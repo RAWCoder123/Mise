@@ -77,6 +77,24 @@ export interface DemoSetupProfile {
   posSales?: SetupPosSaleDraft[];
 }
 
+/**
+ * Demo "current day" sales are seeded with IDs whose numeric suffix falls in
+ * [301, 400). The repository rolls their sale_date forward to today on every
+ * read so a stored demo state never looks stale. Keep this predicate in sync
+ * with the sale fixtures below (…000000000301 through …000000000306).
+ */
+const ROLLING_DEMO_SALE_SUFFIX_MIN = 301;
+const ROLLING_DEMO_SALE_SUFFIX_MAX = 400;
+
+export function isRollingDemoCurrentDaySale(saleId: string) {
+  const suffix = Number.parseInt(saleId.slice(-12), 10);
+  return (
+    Number.isFinite(suffix) &&
+    suffix >= ROLLING_DEMO_SALE_SUFFIX_MIN &&
+    suffix < ROLLING_DEMO_SALE_SUFFIX_MAX
+  );
+}
+
 export const salesBaselines: Record<string, number> = {
   "Chicken Bowl": 32,
   Burger: 26,

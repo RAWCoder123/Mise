@@ -80,7 +80,7 @@ The backend-facing app logic is separated into clear layers:
 - `services/domain/todayTasks.ts`: authoritative, tenant-scoped operational task projections and timezone/role sorting.
 - `services/domain/inventoryUnits.ts`: shared purchasing/recipe unit compatibility.
 - `services/domain/securityLimits.ts`: shared supplier-note, order-message, and restaurant-name bounds.
-- `services/repositories/miseRepository.ts`: local demo repository and Supabase repository implementations.
+- `services/repositories/miseRepository.ts`: facade over `repositoryContracts.ts` (interface + shared types), `supabaseRepository.ts` (hosted backend), and `demoRepository.ts` (local demo backend).
 - `services/miseValidation.ts`: tolerant read normalization plus strict mutation validation and operating bounds.
 - `services/tenantAccess.ts`: membership and role access helpers.
 - `services/telemetry.ts`: typed telemetry with secret redaction.

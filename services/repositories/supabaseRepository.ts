@@ -1,0 +1,975 @@
+import { supabase } from "../../lib/supabase";
+import type {
+  AppUser,
+  AiInsight,
+  Insight,
+  InventoryItem,
+  MenuItemIngredient,
+  PosIntegration,
+  PosProvider,
+  PosSale,
+  PurchaseRecommendation,
+  RecommendationStatus,
+  Restaurant,
+  RestaurantEmailConnection,
+  RestaurantMembership,
+  SetupAttachment,
+  SupplierItem,
+  SupplierOrder,
+  SupplierRecipient
+} from "../../types/mise";
+import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
+import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
+import {
+  normalizeAppUser,
+  normalizeInsight,
+  normalizeAiInsight,
+  normalizeRestaurantEmailConnection,
+  normalizeInventoryItem,
+  normalizeMenuItemIngredient,
+  normalizePosIntegration,
+  normalizePosSale,
+  normalizePurchaseRecommendation,
+  normalizeRestaurant,
+  normalizeRestaurantMembership,
+  normalizeSetupAttachment,
+  normalizeSupplierItem,
+  normalizeSupplierOrder,
+  normalizeSupplierRecipient
+} from "../miseValidation";
+import { toDateKeyInTimeZone } from "../../utils/format";
+import {
+  GmailIntegrationError,
+  normalizeRestaurantData,
+  recommendationHistoryCutoffIso,
+  type GmailConnectionWorkflowResult,
+  type GmailDisconnectWorkflowResult,
+  type GmailIntegrationErrorStatus,
+  type MiseRepository,
+  type RestaurantSetupSnapshotSummary,
+  type SupplierOrderEmailSendResult
+} from "./repositoryContracts";
+
+function parseRecommendationWorkflowResponse(data: unknown): RecommendationWorkflowResult {
+  const payload = (Array.isArray(data) ? data[0] : data) as {
+    outcome?: RecommendationWorkflowResult["outcome"];
+    recommendation?: PurchaseRecommendation;
+    order?: SupplierOrder | null;
+    previous_status?: RecommendationStatus;
+  } | null;
+  if (!payload?.recommendation || !payload.outcome) {
+    throw new Error("Order workflow returned an invalid response.");
+  }
+  return {
+    outcome: payload.outcome,
+    recommendation: normalizePurchaseRecommendation(payload.recommendation),
+    order: payload.order ? normalizeSupplierOrder(payload.order) : null,
+    previousStatus: payload.previous_status ?? payload.recommendation.status
+  };
+}
+
+function parseSupplierOrderSentWorkflowResponse(data: unknown): SupplierOrderSentWorkflowResult {
+  const payload = (Array.isArray(data) ? data[0] : data) as {
+    outcome?: SupplierOrderSentWorkflowResult["outcome"];
+    order?: SupplierOrder;
+    ordered_recommendations?: PurchaseRecommendation[];
+  } | null;
+  if (!payload?.order || !payload.outcome) {
+    throw new Error("Order workflow returned an invalid response.");
+  }
+  return {
+    outcome: payload.outcome,
+    order: normalizeSupplierOrder(payload.order),
+    orderedRecommendations: (payload.ordered_recommendations ?? []).map(normalizePurchaseRecommendation)
+  };
+}
+
+const gmailIntegrationErrorStatuses = new Set<GmailIntegrationErrorStatus>([
+  "delivery_requires_review",
+  "gmail_not_connected",
+  "in_progress",
+  "live_sending_disabled",
+  "needs_reauth",
+  "provider_rejected",
+  "provider_unavailable",
+  "request_blocked",
+  "server_configuration_missing",
+  "supplier_email_invalid",
+  "supplier_email_missing",
+  "unknown"
+]);
+
+function parseGmailConnectionWorkflowResponse(data: unknown): GmailConnectionWorkflowResult {
+  const payload = asUnknownRecord(data);
+  if (payload.status !== "authorization_required") {
+    throw new GmailIntegrationError("unknown", "Gmail authorization returned an invalid response.");
+  }
+  const authorizationUrl = requireGoogleAuthorizationUrl(payload.authorizationUrl);
+  const expiresAt =
+    typeof payload.expiresAt === "string" && Number.isFinite(Date.parse(payload.expiresAt))
+      ? payload.expiresAt
+      : null;
+  return { status: "authorization_required", authorizationUrl, expiresAt };
+}
+
+function parseGmailDisconnectWorkflowResponse(data: unknown): GmailDisconnectWorkflowResult {
+  const payload = asUnknownRecord(data);
+  if (
+    payload.status !== "not_connected" ||
+    (payload.outcome !== "disconnected" && payload.outcome !== "already_disconnected")
+  ) {
+    throw new GmailIntegrationError("unknown", "Gmail disconnection returned an invalid response.");
+  }
+  return { status: "not_connected", outcome: payload.outcome };
+}
+
+function parseSupplierEmailSendResponse(
+  data: unknown,
+  restaurantId: string,
+  orderId: string,
+  fallbackOrder: SupplierOrder | null = null
+): SupplierOrderEmailSendResult {
+  const payload = asUnknownRecord(data);
+  if (
+    payload.status !== "sent" ||
+    (payload.outcome !== "applied" && payload.outcome !== "already_applied" && payload.outcome !== "already_sent")
+  ) {
+    throw new GmailIntegrationError("unknown", "Gmail delivery returned an invalid response.");
+  }
+  const rawOrder = payload.order && typeof payload.order === "object" ? payload.order as SupplierOrder : fallbackOrder;
+  if (!rawOrder) throw new GmailIntegrationError("unknown", "Gmail delivery did not return the supplier order.");
+  const order = normalizeSupplierOrder(rawOrder);
+  if (order.id !== orderId || order.restaurant_id !== restaurantId || order.status === "draft") {
+    throw new GmailIntegrationError("unknown", "Gmail delivery returned an invalid supplier order.");
+  }
+  const rawRecommendations = Array.isArray(payload.orderedRecommendations) ? payload.orderedRecommendations : [];
+  const orderedRecommendations = rawRecommendations.map((entry) => normalizePurchaseRecommendation(entry as PurchaseRecommendation));
+  if (orderedRecommendations.some((entry) => entry.restaurant_id !== restaurantId || entry.supplier_order_id !== orderId)) {
+    throw new GmailIntegrationError("unknown", "Gmail delivery returned invalid order items.");
+  }
+  const providerMessageId =
+    typeof payload.providerMessageId === "string" && payload.providerMessageId.length > 0 && payload.providerMessageId.length <= 1024
+      ? payload.providerMessageId
+      : null;
+  return {
+    status: "sent",
+    outcome: payload.outcome,
+    providerMessageId,
+    order,
+    orderedRecommendations
+  };
+}
+
+function asUnknownRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function requireGoogleAuthorizationUrl(value: unknown) {
+  if (typeof value !== "string" || value.length > 4096) {
+    throw new GmailIntegrationError("unknown", "Gmail authorization returned an invalid URL.");
+  }
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.hostname !== "accounts.google.com" || url.username || url.password) throw new Error();
+    return url.toString();
+  } catch {
+    throw new GmailIntegrationError("unknown", "Gmail authorization returned an invalid URL.");
+  }
+}
+
+async function gmailIntegrationErrorFrom(error: unknown, fallbackMessage: string) {
+  const payload = await readFunctionErrorPayload(error);
+  const candidateStatus = typeof payload.status === "string" ? payload.status : "unknown";
+  const status = gmailIntegrationErrorStatuses.has(candidateStatus as GmailIntegrationErrorStatus)
+    ? candidateStatus as GmailIntegrationErrorStatus
+    : "unknown";
+  const candidateMessage = typeof payload.message === "string"
+    ? payload.message
+    : typeof payload.error === "string"
+      ? payload.error
+      : "";
+  const message = candidateMessage.trim().slice(0, 320) || fallbackMessage;
+  return new GmailIntegrationError(status, message);
+}
+
+async function readFunctionErrorPayload(error: unknown) {
+  if (!error || typeof error !== "object") return {};
+  const context = (error as { context?: unknown }).context;
+  if (!context || typeof context !== "object") return {};
+  const response = context as { clone?: () => unknown; json?: () => Promise<unknown> };
+  try {
+    const reader = (typeof response.clone === "function" ? response.clone() : response) as { json?: () => Promise<unknown> };
+    if (typeof reader.json !== "function") return {};
+    return asUnknownRecord(await reader.json());
+  } catch {
+    return {};
+  }
+}
+
+function parseSetupSnapshotSummary(data: unknown): RestaurantSetupSnapshotSummary {
+  const payload = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  const count = (key: string) => {
+    const value = Number(payload?.[key]);
+    if (!Number.isFinite(value) || value < 0) throw new Error("Setup workflow returned an invalid response.");
+    return Math.floor(value);
+  };
+  return {
+    inventoryItemsSaved: count("inventory_items_saved"),
+    supplierRecipientsSaved: count("supplier_recipients_saved"),
+    recipeMappingsSaved: count("recipe_mappings_saved"),
+    posSalesRowsSaved: count("pos_sales_rows_saved"),
+    attachmentMetadataSaved: count("attachment_metadata_saved"),
+    skippedRecipeIngredients: count("skipped_recipe_ingredients")
+  };
+}
+export function createSupabaseRepository(): MiseRepository {
+  const client = supabase;
+  if (!client) throw new Error("Supabase is not configured");
+
+  async function fetchBoundedPlanningSales(restaurantId: string) {
+    const { data, error } = await client!.rpc("fetch_planning_sales", {
+      p_restaurant_id: restaurantId,
+      p_service_days: 28
+    });
+    if (error) throw error;
+    return ((data ?? []) as PosSale[]).map(normalizePosSale);
+  }
+
+  async function invokeOperationalWorkflow(body: Record<string, unknown>) {
+    const { data, error } = await client!.functions.invoke("operational-workflows", { body });
+    if (error) {
+      throwRepositoryError(error, typeof body.restaurantId === "string" ? body.restaurantId : null);
+    }
+    if (!data || data.status !== "completed") throw new Error("Operational workflow did not complete.");
+    return data as { status: "completed"; result: unknown; setupSummary: unknown };
+  }
+
+  async function invokeGmailFunction(
+    functionName: "link-gmail" | "send-supplier-email",
+    body: Record<string, unknown>,
+    restaurantId: string,
+    fallbackMessage: string
+  ) {
+    const { data, error } = await client!.functions.invoke(functionName, { body });
+    if (error) {
+      if (isTenantAuthorizationError(error)) throwRepositoryError(error, restaurantId);
+      throw await gmailIntegrationErrorFrom(error, fallbackMessage);
+    }
+    return data as unknown;
+  }
+
+  return {
+    async fetchMembershipsForAuthUser(userId) {
+      const { data, error } = await client
+        .from("restaurant_memberships")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .order("created_at", { ascending: true });
+      if (error) throwRepositoryError(error);
+      return ((data ?? []) as RestaurantMembership[]).map(normalizeRestaurantMembership);
+    },
+
+    async addRestaurantMember(restaurantId, targetUserId, role) {
+      const { data, error } = await client.rpc("add_restaurant_member", {
+        p_restaurant_id: restaurantId,
+        p_target_user_id: targetUserId,
+        p_role: role
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return normalizeRestaurantMembership(data as RestaurantMembership);
+    },
+
+    async updateRestaurantMember(restaurantId, targetUserId, patch) {
+      const { data, error } = await client.rpc("update_restaurant_member", {
+        p_restaurant_id: restaurantId,
+        p_target_user_id: targetUserId,
+        p_role: patch.role ?? null,
+        p_status: patch.status ?? null
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return normalizeRestaurantMembership(data as RestaurantMembership);
+    },
+
+    async removeRestaurantMember(restaurantId, targetUserId) {
+      const { data, error } = await client.rpc("remove_restaurant_member", {
+        p_restaurant_id: restaurantId,
+        p_target_user_id: targetUserId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return normalizeRestaurantMembership(data as RestaurantMembership);
+    },
+
+    async updateMyProfile(name) {
+      const { data, error } = await client.rpc("update_my_profile", { p_name: name });
+      if (error) throwRepositoryError(error);
+      return normalizeAppUser(data as AppUser);
+    },
+
+    async createRestaurantWithOwner(name, cuisineType) {
+      const { data, error } = await client.rpc("create_restaurant_with_owner", {
+        restaurant_name: name,
+        restaurant_cuisine_type: cuisineType ?? null
+      });
+      if (error) throw error;
+      return normalizeRestaurant(data as Restaurant);
+    },
+
+    async fetchRestaurant(restaurantId) {
+      const { data, error } = await client.from("restaurants").select("*").eq("id", restaurantId).single();
+      if (error) throwRepositoryError(error, restaurantId);
+      return normalizeRestaurant(data as Restaurant);
+    },
+
+    async updateRestaurantProfile(restaurantId, patch) {
+      const { data, error } = await client.rpc("update_restaurant_profile", {
+        p_restaurant_id: restaurantId,
+        p_patch: patch
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return normalizeRestaurant(data as Restaurant);
+    },
+
+    async fetchRestaurantOpsProfile(restaurantId) {
+      const [restaurantResult, posResult, supplierResult, aiResult] = await Promise.all([
+        client.from("restaurants").select("*").eq("id", restaurantId).single(),
+        client.from("pos_integrations").select("*").eq("restaurant_id", restaurantId).order("updated_at", { ascending: false }),
+        client.from("supplier_items").select("*").eq("restaurant_id", restaurantId).order("supplier_name"),
+        client
+          .from("ai_insights")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .order("created_at", { ascending: false })
+          .limit(5)
+      ]);
+      if (restaurantResult.error) throw restaurantResult.error;
+      if (posResult.error) throw posResult.error;
+      if (supplierResult.error) throw supplierResult.error;
+      if (aiResult.error) throw aiResult.error;
+      return {
+        restaurant: normalizeRestaurant(restaurantResult.data as Restaurant),
+        posIntegrations: ((posResult.data ?? []) as PosIntegration[]).map(normalizePosIntegration),
+        supplierItems: ((supplierResult.data ?? []) as SupplierItem[]).map(normalizeSupplierItem),
+        recentAiInsights: ((aiResult.data ?? []) as AiInsight[]).map(normalizeAiInsight)
+      };
+    },
+
+    async fetchPosIntegrations(restaurantId) {
+      const { data, error } = await client
+        .from("pos_integrations")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as PosIntegration[]).map(normalizePosIntegration);
+    },
+
+    async fetchAiInsights(restaurantId) {
+      const { data, error } = await client
+        .from("ai_insights")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as AiInsight[]).map(normalizeAiInsight);
+    },
+
+    async createAiInsight(input) {
+      const { data, error } = await client.functions.invoke("generate-ai-insights", {
+        body: { restaurantId: input.restaurant_id }
+      });
+      if (error) throw error;
+      const insight = (data as { insight?: unknown } | null)?.insight;
+      if (!insight || typeof insight !== "object") throw new Error("AI insight workflow returned an invalid response.");
+      return normalizeAiInsight(insight as AiInsight);
+    },
+
+    async recordAuditLog(input) {
+      if (
+        input.action !== "setup_completed" ||
+        input.entity_table !== "restaurants" ||
+        input.entity_id !== input.restaurant_id
+      ) {
+        throw new Error("This client audit event must be recorded by a server-owned workflow.");
+      }
+      const { error } = await client.rpc("record_setup_completion_audit", {
+        p_restaurant_id: input.restaurant_id,
+        p_metadata: input.metadata ?? {}
+      });
+      if (error) throw error;
+    },
+
+    async fetchRestaurantData(restaurantId) {
+      const [restaurantResult, sales, inventoryResult, recommendationsResult, insightsResult, mappingResult] =
+        await Promise.all([
+          client.from("restaurants").select("*").eq("id", restaurantId).single(),
+          fetchBoundedPlanningSales(restaurantId),
+          client.from("inventory_items").select("*").eq("restaurant_id", restaurantId),
+          client.from("purchase_recommendations").select("*").eq("restaurant_id", restaurantId),
+          client.from("insights").select("*").eq("restaurant_id", restaurantId),
+          client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId)
+        ]);
+
+      if (restaurantResult.error) throw restaurantResult.error;
+      if (inventoryResult.error) throw inventoryResult.error;
+      if (recommendationsResult.error) throw recommendationsResult.error;
+      if (insightsResult.error) throw insightsResult.error;
+      if (mappingResult.error) throw mappingResult.error;
+
+      return normalizeRestaurantData(
+        restaurantResult.data as Restaurant,
+        sales,
+        (inventoryResult.data ?? []) as InventoryItem[],
+        (recommendationsResult.data ?? []) as PurchaseRecommendation[],
+        (insightsResult.data ?? []) as Insight[],
+        (mappingResult.data ?? []) as MenuItemIngredient[]
+      );
+    },
+
+    async fetchInventoryItems(restaurantId) {
+      const { data, error } = await client
+        .from("inventory_items")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("item_name");
+      if (error) throw error;
+      return ((data ?? []) as InventoryItem[]).map(normalizeInventoryItem);
+    },
+
+    async fetchPlanningData(restaurantId) {
+      const [inventoryResult, sales, mappingResult, restaurantResult] = await Promise.all([
+        client.from("inventory_items").select("*").eq("restaurant_id", restaurantId).order("item_name"),
+        fetchBoundedPlanningSales(restaurantId),
+        client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
+        client.from("restaurants").select("timezone").eq("id", restaurantId).single()
+      ]);
+      if (inventoryResult.error) throw inventoryResult.error;
+      if (mappingResult.error) throw mappingResult.error;
+      if (restaurantResult.error) throw restaurantResult.error;
+      return {
+        inventoryItems: ((inventoryResult.data ?? []) as InventoryItem[]).map(normalizeInventoryItem),
+        sales,
+        menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
+        operatingDate: toDateKeyInTimeZone(
+          new Date(),
+          (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
+        )
+      };
+    },
+
+    async saveRestaurantSetupSnapshot(restaurantId, input) {
+      const response = await invokeOperationalWorkflow({
+        action: "save_setup",
+        restaurantId,
+        setup: {
+          inventoryItems: input.inventoryItems.map(({ restaurant_id: _restaurantId, ...item }) => item),
+          suppliers: input.suppliers.map(({ restaurant_id: _restaurantId, ...supplier }) => supplier),
+          recipeMappings: input.recipeMappings,
+          posSales: input.posSales.map(({ restaurant_id: _restaurantId, ...sale }) => sale),
+          attachments: input.attachments,
+          skippedRecipeIngredients: input.skippedRecipeIngredients
+        }
+      });
+      return parseSetupSnapshotSummary(response.setupSummary);
+    },
+
+    async upsertInventoryItem(input) {
+      const existing = await client
+        .from("inventory_items")
+        .select("*")
+        .eq("restaurant_id", input.restaurant_id)
+        .eq("item_name", input.item_name)
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+
+      if (existing.data) {
+        const { data, error } = await client
+          .from("inventory_items")
+          .update({ ...input, last_updated: new Date().toISOString() })
+          .eq("restaurant_id", input.restaurant_id)
+          .eq("id", existing.data.id)
+          .select("*")
+          .single();
+        if (error) throw error;
+        return normalizeInventoryItem(data as InventoryItem);
+      }
+
+      const { data, error } = await client
+        .from("inventory_items")
+        .insert(input)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return normalizeInventoryItem(data as InventoryItem);
+    },
+
+    async createPosSale(input) {
+      const { data, error } = await client
+        .from("pos_sales")
+        .insert(input)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return normalizePosSale(data as PosSale);
+    },
+
+    async updateInventoryItem(restaurantId, itemId, patch) {
+      const payload = { ...patch, last_updated: new Date().toISOString() };
+      const { data, error } = await client
+        .from("inventory_items")
+        .update(payload)
+        .eq("restaurant_id", restaurantId)
+        .eq("id", itemId)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return normalizeInventoryItem(data as InventoryItem);
+    },
+
+    async updateInventoryItemAndSignals(
+      restaurantId,
+      itemId,
+      _expectedLastUpdated,
+      patch,
+      _recommendations,
+      _insights
+    ) {
+      const response = await invokeOperationalWorkflow({
+        action: "update_inventory",
+        restaurantId,
+        itemId,
+        patch
+      });
+      return normalizeInventoryItem(response.result as InventoryItem);
+    },
+
+    async updateMenuItemIngredientQuantity(restaurantId, mappingId, quantityUsedPerSale) {
+      const { data, error } = await client
+        .from("menu_item_ingredients")
+        .update({ quantity_used_per_sale: quantityUsedPerSale })
+        .eq("restaurant_id", restaurantId)
+        .eq("id", mappingId)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return normalizeMenuItemIngredient(data as MenuItemIngredient);
+    },
+
+    async upsertMenuItemIngredient(input) {
+      const { data, error } = await client
+        .from("menu_item_ingredients")
+        .upsert(input, { onConflict: "restaurant_id,menu_item_name,inventory_item_id" })
+        .select("*")
+        .single();
+      if (error) throw error;
+      return normalizeMenuItemIngredient(data as MenuItemIngredient);
+    },
+
+    async saveRecipeMappingAndSignals(input) {
+      const response = await invokeOperationalWorkflow({
+        action: "upsert_recipe",
+        restaurantId: input.restaurantId,
+        mappingId: input.mappingId,
+        menuItemName: input.menuItemName,
+        inventoryItemId: input.inventoryItemId,
+        quantityUsedPerSale: input.quantityUsedPerSale,
+        unit: input.unit
+      });
+      return normalizeMenuItemIngredient(response.result as MenuItemIngredient);
+    },
+
+    async findPendingRecommendation(restaurantId, itemId) {
+      const existing = await client
+        .from("purchase_recommendations")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_item_id", itemId)
+        .eq("status", "pending")
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+      return existing.data ? normalizePurchaseRecommendation(existing.data as PurchaseRecommendation) : null;
+    },
+
+    async createPurchaseRecommendation(input) {
+      const { data, error } = await client.rpc("create_pending_purchase_recommendation", {
+        p_restaurant_id: input.restaurant_id,
+        p_inventory_item_id: input.inventory_item_id,
+        p_recommended_quantity: input.recommended_quantity,
+        p_reason: input.reason,
+        p_urgency: input.urgency
+      });
+      if (error) throw error;
+      return normalizePurchaseRecommendation(data as PurchaseRecommendation);
+    },
+
+    async fetchPurchaseRecommendations(restaurantId, status = "pending") {
+      let query = client
+        .from("purchase_recommendations")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("created_at", { ascending: false });
+      if (status !== "all") query = query.eq("status", status);
+      const { data, error } = await query;
+      if (error) throw error;
+      return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
+    },
+
+    async fetchRecommendationHistory(restaurantId) {
+      const { data, error } = await client
+        .from("purchase_recommendations")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .gte("created_at", recommendationHistoryCutoffIso())
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
+    },
+
+    async updatePurchaseRecommendation(restaurantId, recommendationId, patch) {
+      const { data, error } = await client
+        .from("purchase_recommendations")
+        .update(patch)
+        .eq("restaurant_id", restaurantId)
+        .eq("id", recommendationId)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return normalizePurchaseRecommendation(data as PurchaseRecommendation);
+    },
+
+    async approvePurchaseRecommendation(restaurantId, recommendationId, recommendedQuantity) {
+      const { data, error } = await client.rpc("approve_purchase_recommendation", {
+        p_restaurant_id: restaurantId,
+        p_recommendation_id: recommendationId,
+        p_recommended_quantity: recommendedQuantity ?? null
+      });
+      if (error) throw error;
+      return parseRecommendationWorkflowResponse(data);
+    },
+
+    async dismissPurchaseRecommendation(restaurantId, recommendationId) {
+      const { data, error } = await client.rpc("dismiss_purchase_recommendation", {
+        p_restaurant_id: restaurantId,
+        p_recommendation_id: recommendationId
+      });
+      if (error) throw error;
+      return parseRecommendationWorkflowResponse(data);
+    },
+
+    async undoPurchaseRecommendationAction(restaurantId, recommendationId) {
+      const { data, error } = await client.rpc("undo_purchase_recommendation_action", {
+        p_restaurant_id: restaurantId,
+        p_recommendation_id: recommendationId
+      });
+      if (error) throw error;
+      return parseRecommendationWorkflowResponse(data);
+    },
+
+    async replacePendingRecommendations(restaurantId, _inserts) {
+      await invokeOperationalWorkflow({ action: "refresh_signals", restaurantId });
+    },
+
+    async fetchApprovedRecommendations(restaurantId, supplierName) {
+      let query = client
+        .from("purchase_recommendations")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "approved");
+      if (supplierName) query = query.eq("supplier_name", supplierName);
+      const { data, error } = await query;
+      if (error) throw error;
+      return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
+    },
+
+    async markApprovedRecommendationsOrdered(restaurantId, supplierName) {
+      const { data, error } = await client
+        .from("purchase_recommendations")
+        .update({ status: "ordered" })
+        .eq("restaurant_id", restaurantId)
+        .eq("supplier_name", supplierName)
+        .eq("status", "approved")
+        .select("*");
+      if (error) throw error;
+      return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
+    },
+
+    async upsertSupplierOrderDraft(draft) {
+      const existing = await client
+        .from("supplier_orders")
+        .select("*")
+        .eq("restaurant_id", draft.restaurant_id)
+        .eq("supplier_name", draft.supplier_name)
+        .eq("status", "draft")
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+
+      const payload = {
+        restaurant_id: draft.restaurant_id,
+        supplier_name: draft.supplier_name,
+        order_message: draft.order_message,
+        operator_note: draft.operator_note,
+        status: draft.status,
+        delivery_date: draft.delivery_date
+      };
+
+      if (existing.data) {
+        const { data, error } = await client
+          .from("supplier_orders")
+          .update(payload)
+          .eq("restaurant_id", draft.restaurant_id)
+          .eq("id", existing.data.id)
+          .select("*")
+          .single();
+        if (error) throw error;
+        return normalizeSupplierOrder(data as SupplierOrder);
+      }
+      const inserted = await client.from("supplier_orders").insert(payload).select("*").single();
+      if (inserted.error?.code === "23505") {
+        const concurrent = await client
+          .from("supplier_orders")
+          .update(payload)
+          .eq("restaurant_id", draft.restaurant_id)
+          .eq("supplier_name", draft.supplier_name)
+          .eq("status", "draft")
+          .select("*")
+          .single();
+        if (concurrent.error) throw concurrent.error;
+        return normalizeSupplierOrder(concurrent.data as SupplierOrder);
+      }
+      if (inserted.error) throw inserted.error;
+      return normalizeSupplierOrder(inserted.data as SupplierOrder);
+    },
+
+    async deleteSupplierOrderDraft(restaurantId, supplierName) {
+      const { error } = await client
+        .from("supplier_orders")
+        .delete()
+        .eq("restaurant_id", restaurantId)
+        .eq("supplier_name", supplierName)
+        .eq("status", "draft");
+      if (error) throw error;
+    },
+
+    async fetchSupplierOrders(restaurantId) {
+      const { data, error } = await client
+        .from("supplier_orders")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as SupplierOrder[]).map(normalizeSupplierOrder);
+    },
+
+    async fetchSupplierOrder(restaurantId, orderId) {
+      const { data, error } = await client
+        .from("supplier_orders")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .single();
+      if (error) throw error;
+      return normalizeSupplierOrder(data as SupplierOrder);
+    },
+
+    async updateSupplierOrder(restaurantId, orderId, patch) {
+      const { data, error } = await client.rpc("update_supplier_order_draft", {
+        p_restaurant_id: restaurantId,
+        p_order_id: orderId,
+        p_operator_note: patch.operator_note ?? null,
+        p_set_operator_note: Object.prototype.hasOwnProperty.call(patch, "operator_note"),
+        p_delivery_date: patch.delivery_date ?? null,
+        p_set_delivery_date: Object.prototype.hasOwnProperty.call(patch, "delivery_date")
+      });
+      if (error) throw error;
+      return normalizeSupplierOrder(data as SupplierOrder);
+    },
+
+    async markSupplierOrderSent(restaurantId, orderId) {
+      const { data, error } = await client.rpc("mark_supplier_order_sent", {
+        p_restaurant_id: restaurantId,
+        p_order_id: orderId
+      });
+      if (error) throw error;
+      return parseSupplierOrderSentWorkflowResponse(data);
+    },
+
+    async connectRestaurantGmail(restaurantId) {
+      const data = await invokeGmailFunction(
+        "link-gmail",
+        { restaurantId, action: "connect" },
+        restaurantId,
+        "Could not start Gmail authorization."
+      );
+      return parseGmailConnectionWorkflowResponse(data);
+    },
+
+    async disconnectRestaurantGmail(restaurantId) {
+      const data = await invokeGmailFunction(
+        "link-gmail",
+        { restaurantId, action: "disconnect" },
+        restaurantId,
+        "Could not disconnect Gmail."
+      );
+      return parseGmailDisconnectWorkflowResponse(data);
+    },
+
+    async sendSupplierOrderEmail(restaurantId, orderId) {
+      const data = await invokeGmailFunction(
+        "send-supplier-email",
+        { restaurantId, orderId },
+        restaurantId,
+        "Could not send this supplier order through Gmail."
+      );
+      const payload = asUnknownRecord(data);
+      let fallbackOrder: SupplierOrder | null = null;
+      if (payload.status === "sent" && (!payload.order || typeof payload.order !== "object")) {
+        const { data: orderData, error } = await client
+          .from("supplier_orders")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .single();
+        if (error) throwRepositoryError(error, restaurantId);
+        fallbackOrder = normalizeSupplierOrder(orderData as SupplierOrder);
+      }
+      return parseSupplierEmailSendResponse(data, restaurantId, orderId, fallbackOrder);
+    },
+
+    async fetchInsights(restaurantId) {
+      const { data, error } = await client
+        .from("insights")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as Insight[]).map(normalizeInsight);
+    },
+
+    async replaceInsights(restaurantId, _insights) {
+      await invokeOperationalWorkflow({ action: "refresh_signals", restaurantId });
+    },
+
+    async replaceOperationalSignals(restaurantId, _recommendations, _insights) {
+      await invokeOperationalWorkflow({ action: "refresh_signals", restaurantId });
+    },
+
+    async fetchEmailConnectionState(restaurantId) {
+      const { data, error } = await client
+        .from("restaurant_email_connections")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("provider", "gmail")
+        .maybeSingle();
+      if (error) throw error;
+      return data ? normalizeRestaurantEmailConnection(data as RestaurantEmailConnection) : null;
+    },
+
+    async fetchSupplierRecipients(restaurantId) {
+      const { data, error } = await client
+        .from("supplier_recipients")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("supplier_name");
+      if (error) throwRepositoryError(error, restaurantId);
+      return ((data ?? []) as SupplierRecipient[]).map(normalizeSupplierRecipient);
+    },
+
+    async upsertSupplierRecipient(input) {
+      const { data, error } = await client.rpc("upsert_supplier_recipient", {
+        p_restaurant_id: input.restaurant_id,
+        p_supplier_name: input.supplier_name,
+        p_email: input.email
+      });
+      if (error) throwRepositoryError(error, input.restaurant_id);
+      const recipient = Array.isArray(data) ? data[0] : data;
+      if (!recipient || typeof recipient !== "object") {
+        throw new Error("Supplier recipient workflow returned an invalid response.");
+      }
+      return normalizeSupplierRecipient(recipient as SupplierRecipient);
+    },
+
+    async createSetupAttachment(input) {
+      const { data, error } = await client
+        .from("setup_attachments")
+        .insert(input)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return normalizeSetupAttachment(data as SetupAttachment);
+    },
+
+    async loadDemoPOSData(_provider, _setupProfile) {
+      throw new Error("Demo POS seeding is local-only. Hosted Supabase restaurant data cannot be reset from the client.");
+    },
+
+    async resetDemoData(_provider, _setupProfile) {
+      throw new Error("Demo reset is local-only. Hosted Supabase restaurant data cannot be reset from the client.");
+    },
+
+    async fetchPOSStatus(restaurantId) {
+      if (!restaurantId) {
+        return {
+          provider: null,
+          connectedAt: null,
+          label: "Not connected"
+        };
+      }
+
+      const integration = await client
+        .from("pos_integrations")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (integration.error) throw integration.error;
+      if (integration.data) {
+        const normalized = normalizePosIntegration(integration.data as PosIntegration);
+        const provider = normalizePosProviderFromIntegration(normalized.provider);
+        return {
+          provider,
+          connectedAt: normalized.last_sync_at ?? normalized.updated_at,
+          label: provider && normalized.status === "connected" ? `${provider} connected` : "Not connected"
+        };
+      }
+
+      const { data, error } = await client
+        .from("pos_sales")
+        .select("source_pos, created_at")
+        .eq("restaurant_id", restaurantId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+
+      const provider = normalizePosProvider(data?.source_pos);
+      return {
+        provider,
+        connectedAt: typeof data?.created_at === "string" ? data.created_at : null,
+        label: provider ? `${provider} demo connected` : "Not connected"
+      };
+    }
+  };
+}
+
+function normalizePosProviderFromIntegration(value: unknown): PosProvider | null {
+  if (value === "toast") return "Toast";
+  if (value === "square") return "Square";
+  if (value === "clover") return "Clover";
+  if (value === "lightspeed") return "Lightspeed";
+  if (value === "manual_csv") return "Manual CSV Upload";
+  return null;
+}
+
+function normalizePosProvider(value: unknown): PosProvider | null {
+  if (
+    value === "Toast" ||
+    value === "Square" ||
+    value === "Clover" ||
+    value === "Lightspeed" ||
+    value === "Manual CSV Upload"
+  ) {
+    return value;
+  }
+  return null;
+}

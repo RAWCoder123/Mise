@@ -64,7 +64,7 @@ test("workspace mutations stop stale continuations and session state is latest-w
 });
 
 test("repository permission failures trigger live membership revalidation", () => {
-  const repository = source("services/repositories/miseRepository.ts");
+  const repository = source("services/repositories/supabaseRepository.ts");
   const events = source("services/tenantAuthorizationEvents.ts");
 
   assert.match(repository, /throwRepositoryError\(error, restaurantId\)/);

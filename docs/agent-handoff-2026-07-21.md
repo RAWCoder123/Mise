@@ -53,24 +53,29 @@ and `DemoState`, violating the "pure domain" rule in `AGENTS.md`.
 
 Gate: `rg "demoData|DEMO_" services/domain/` → no matches; tests green.
 
-### P2 — Split `services/repositories/miseRepository.ts` (2,256 lines)
+### P2 — Split `services/repositories/miseRepository.ts` (2,256 lines) — DONE 2026-07-21
 
-The file already contains `createSupabaseRepository()` and
-`createLocalDemoRepository()` behind one `MiseRepository` interface
-(factory at ~line 297). Split into:
+Split shipped as:
 
-- `services/repositories/repositoryTypes.ts` — interface, input/result types,
-  shared normalizer helpers, `GmailIntegrationError`.
-- `services/repositories/supabaseRepository.ts` — only client file importing
-  `lib/supabase.ts` for data access.
-- `services/repositories/demoRepository.ts` — demo implementation +
+- `services/repositories/repositoryContracts.ts` — `MiseRepository` interface,
+  input/result types, `GmailIntegrationError`, `normalizeRestaurantData`,
+  `RECOMMENDATION_HISTORY_DAYS` + `recommendationHistoryCutoffIso`.
+- `services/repositories/supabaseRepository.ts` — hosted backend; the only
+  repository file importing `lib/supabase.ts`; owns the Gmail/workflow
+  response parsers.
+- `services/repositories/demoRepository.ts` — local demo backend +
   `readReadyDemoState`, `refreshLocalDemoSalesDate`, `appendDemoAuditLog`.
-- Keep `miseRepository.ts` as a re-export facade; no call sites change.
+- `miseRepository.ts` is now a re-export facade (~25 lines); no call sites
+  changed.
 
-Also: add `setMiseRepositoryForTesting()` in `services/application/repository.ts`
-(currently freezes choice at module load); replace the magic-number hack in
-`isRollingDemoCurrentDaySale` (parses ID digits 301–399) with an explicit
-flag on demo fixture rows. Do NOT split the interface into role interfaces yet.
+Also done: `setMiseRepositoryForTesting()` in
+`services/application/repository.ts` (Proxy-backed so application modules
+that captured the repository at import time still see swaps); the rolling
+demo-sale ID contract moved next to the fixtures in
+`services/demo/replaceableDemoData.ts` (`isRollingDemoCurrentDaySale`) with
+named suffix constants. Source-reading security tests and
+`scripts/security-static.mjs` were repointed at the new files.
+Deliberately NOT done: splitting the interface into role interfaces.
 
 ### P3 — Session context: Realtime memberships + state machine
 
@@ -86,20 +91,27 @@ flag on demo fixture rows. Do NOT split the interface into role interfaces yet.
   (clearSessionState vs revoked-membership path) is the top future-bug risk.
   Ship P3a first, soak, then P3b. No TanStack Query in the same change.
 
-### P4 — Bound the recompute-everything mutation path
+### P4 — Bound the recompute-everything mutation path — PARTIALLY DONE 2026-07-21
 
 Every inventory/recipe edit refetches all planning data + ALL recommendation
 history, rebuilds all recommendations/insights (`services/application/inventory.ts`).
 
-1. Add `fetchRecentHandledRecommendations(restaurantId, { days: 180 })`
-   (learned quantities use ≤8 newest per item ≤180 days); index
-   `(restaurant_id, status, created_at desc)`.
-2. Planning sales fetch: last 45 days only (baselines use ≤28 service days).
-3. Debounce recipe-editor saves (`app/settings/recipes.tsx`).
+1. DONE: `fetchRecommendationHistory(restaurantId)` on the repository
+   interface, bounded to `RECOMMENDATION_HISTORY_DAYS` (180 — matches the
+   learned-quantity lookback in `buildLearnedOrderQuantities`, so behavior
+   is unchanged). Hosted backend filters with `.gte("created_at", cutoff)`;
+   demo backend filters in memory. All recompute call sites in
+   `services/application/inventory.ts` and
+   `services/application/recalculations.ts` switched off
+   `fetchPurchaseRecommendations(restaurantId, "all")`.
+   Guarded by `tests/repositoryContracts.test.ts`.
+   TODO when touching migrations next: add index
+   `(restaurant_id, status, created_at desc)` on `purchase_recommendations`.
+2. DONE EARLIER: planning sales are already bounded server-side via the
+   `fetch_planning_sales` RPC (`p_service_days: 28`).
+3. TODO: debounce recipe-editor saves (`app/settings/recipes.tsx`).
 4. Longer term: move signal generation into the `operational-workflows`
    edge function so clients cannot fabricate signals.
-
-Gate: golden-file test — recompute output identical on demo dataset.
 
 ### P5 — Component tests for the big screens
 
