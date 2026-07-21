@@ -102,15 +102,21 @@ export const typography = {
   families: fontFamilies,
   screenTitle: {
     fontFamily: fontFamilies.display,
-    fontSize: 23,
-    lineHeight: 29,
-    letterSpacing: -0.25
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: -0.4
   },
   sectionTitle: {
     fontFamily: fontFamilies.display,
     fontSize: 20,
     lineHeight: 26,
     letterSpacing: -0.15
+  },
+  metricValue: {
+    fontFamily: fontFamilies.bold,
+    fontSize: 23,
+    lineHeight: 28,
+    letterSpacing: -0.3
   },
   cardTitle: {
     fontFamily: fontFamilies.semibold,

@@ -18,7 +18,7 @@ import {
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
-import { CompactMetricStrip, type CompactMetric } from "../../components/ui/CompactMetricStrip";
+import { StatCard, StatCardRow, type StatCardDelta } from "../../components/ui/StatCard";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { InventoryHealth } from "../../components/ui/InventoryHealth";
 import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
@@ -261,48 +261,55 @@ function ServiceMetrics({
     : summary.inventoryHealth.low > 0
       ? inventoryStatusColors.Low
       : inventoryStatusColors.Good;
-  const metrics: CompactMetric[] = [
-    {
-      id: "sales",
-      label: copy.salesToday,
-      value: formatCompactCurrency(summary.salesToday, summary.restaurantCurrency),
-      icon: <ShoppingBag size={16} color={colors.text} strokeWidth={2.1} />
-    },
-    {
-      id: "items",
-      label: copy.itemsSold,
-      value: formatNumber(summary.itemsSold),
-      icon: <BarChart3 size={16} color={colors.text} strokeWidth={2.1} />
-    },
-    {
-      id: "stock",
-      label: copy.stockRisk,
-      value: formatNumber(stockRisk),
-      tone: stockTone,
-      icon: (
-        <Package
-          size={16}
-          color={stockColor}
-          strokeWidth={2.1}
-        />
-      )
-    },
-    {
-      id: "orders",
-      label: copy.orderReview,
-      value: formatNumber(summary.pendingRecommendations),
-      tone: summary.pendingRecommendations > 0 ? "caution" : "success",
-      icon: (
-        <ClipboardList
-          size={16}
-          color={summary.pendingRecommendations > 0 ? colors.caution : colors.success}
-          strokeWidth={2.1}
-        />
-      )
-    }
-  ];
 
-  return <CompactMetricStrip metrics={metrics} accessibilityLabel={copy.serviceMetricsAccessibilityLabel} />;
+  const trend = summary.salesTrend;
+  const currentPoint = trend.at(-1)?.label === summary.operatingDate ? trend.at(-1) : null;
+  const previousPoint = currentPoint && trend.length >= 2 ? trend.at(-2) : null;
+  let salesDelta: StatCardDelta | undefined;
+  if (currentPoint && previousPoint && previousPoint.sales > 0) {
+    const changePercent = Math.round(((currentPoint.sales - previousPoint.sales) / previousPoint.sales) * 100);
+    const changeLabel = `${changePercent > 0 ? "+" : ""}${formatNumber(changePercent)}%`;
+    salesDelta = {
+      label: changeLabel,
+      trend: changePercent > 0 ? "up" : changePercent < 0 ? "down" : "flat",
+      tone: changePercent > 0 ? "success" : changePercent < 0 ? "danger" : "neutral",
+      accessibilityLabel: copy.vsPreviousDay(changeLabel)
+    };
+  }
+
+  return (
+    <StatCardRow accessibilityLabel={copy.serviceMetricsAccessibilityLabel}>
+      <StatCard
+        label={copy.salesToday}
+        value={formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)}
+        icon={<ShoppingBag size={16} color={colors.text} strokeWidth={2.1} />}
+        delta={salesDelta}
+      />
+      <StatCard
+        label={copy.itemsSold}
+        value={formatNumber(summary.itemsSold)}
+        icon={<BarChart3 size={16} color={colors.text} strokeWidth={2.1} />}
+      />
+      <StatCard
+        label={copy.stockRisk}
+        value={formatNumber(stockRisk)}
+        tone={stockTone}
+        icon={<Package size={16} color={stockColor} strokeWidth={2.1} />}
+      />
+      <StatCard
+        label={copy.orderReview}
+        value={formatNumber(summary.pendingRecommendations)}
+        tone={summary.pendingRecommendations > 0 ? "caution" : "success"}
+        icon={
+          <ClipboardList
+            size={16}
+            color={summary.pendingRecommendations > 0 ? colors.caution : colors.success}
+            strokeWidth={2.1}
+          />
+        }
+      />
+    </StatCardRow>
+  );
 }
 
 function TaskSection({
