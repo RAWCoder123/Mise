@@ -315,7 +315,7 @@ test("tenant reinforcement makes membership and profile authority RPC-only", () 
     "supabase/migrations/20260716204112_reinforce_tenant_isolation.sql",
     "utf8"
   );
-  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const edgeShared = readFileSync("supabase/functions/_shared/mise.ts", "utf8");
 
   assert.match(migration, /revoke all on all tables in schema public from public, anon, authenticated, service_role/i);

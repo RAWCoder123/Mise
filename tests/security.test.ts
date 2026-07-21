@@ -222,14 +222,17 @@ test("beta hardening migration closes profile, tenant reference, and audit forge
 });
 
 test("audit client API uses the fixed-semantic setup RPC and does not accept caller-controlled actor_user_id", () => {
-  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const contracts = readFileSync("services/repositories/repositoryContracts.ts", "utf8");
+  const demoRepository = readFileSync("services/repositories/demoRepository.ts", "utf8");
+  const hostedRepository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  const allRepositorySources = contracts + demoRepository + hostedRepository;
 
-  assert.match(repository, /export\s+type\s+AuditLogInput\s*=\s*Pick<AuditLog,\s*"restaurant_id"\s*\|\s*"action"\s*\|\s*"entity_table">/i);
-  assert.doesNotMatch(repository, /type\s+AuditLogInput\s*=\s*Omit<AuditLog,[^;]*actor_user_id/i);
-  assert.match(repository, /actor_user_id:\s*DEMO_USER_ID/i);
-  assert.match(repository, /rpc\("record_setup_completion_audit"/i);
-  assert.doesNotMatch(repository, /from\("audit_logs"\)\.insert\(input\)/i);
-  assert.doesNotMatch(repository, /actor_user_id:\s*input\.actor_user_id|actor_user_id\s*=\s*input\.actor_user_id/i);
+  assert.match(contracts, /export\s+type\s+AuditLogInput\s*=\s*Pick<AuditLog,\s*"restaurant_id"\s*\|\s*"action"\s*\|\s*"entity_table">/i);
+  assert.doesNotMatch(allRepositorySources, /type\s+AuditLogInput\s*=\s*Omit<AuditLog,[^;]*actor_user_id/i);
+  assert.match(demoRepository, /actor_user_id:\s*DEMO_USER_ID/i);
+  assert.match(hostedRepository, /rpc\("record_setup_completion_audit"/i);
+  assert.doesNotMatch(allRepositorySources, /from\("audit_logs"\)\.insert\(input\)/i);
+  assert.doesNotMatch(allRepositorySources, /actor_user_id:\s*input\.actor_user_id|actor_user_id\s*=\s*input\.actor_user_id/i);
 });
 
 test("email scaffolding is tenant-scoped and keeps Gmail tokens out of client-readable tables", () => {
@@ -278,7 +281,7 @@ test("setup attachment migration is tenant-scoped and metadata-only", () => {
 
 test("tenant setup completion uses one bounded replay-safe database workflow", () => {
   const setupWorkflow = readFileSync("services/application/setup.ts", "utf8");
-  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const migration = readFileSync("supabase/migrations/20260714183310_secure_operational_workflows.sql", "utf8");
   const snapshotCall = setupWorkflow.match(/saveRestaurantSetupSnapshot\([\s\S]*?skippedRecipeIngredients\s*\n\s*\}\);/)?.[0] ?? "";
 
@@ -297,11 +300,11 @@ test("tenant setup completion uses one bounded replay-safe database workflow", (
 
 test("inventory counts and regenerated guidance commit through one optimistic workflow", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
-  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const migration = readFileSync("supabase/migrations/20260714183310_secure_operational_workflows.sql", "utf8");
   const updateWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+updateInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
 
-  assert.match(updateWorkflow, /fetchPlanningData[\s\S]*fetchPurchaseRecommendations/i);
+  assert.match(updateWorkflow, /fetchPlanningData[\s\S]*fetchRecommendationHistory/i);
   assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);
   assert.match(updateWorkflow, /updateInventoryItemAndSignals\([\s\S]*existing\.last_updated/i);
   assert.doesNotMatch(updateWorkflow, /repository\.updateInventoryItem\(/i);
@@ -315,7 +318,7 @@ test("inventory counts and regenerated guidance commit through one optimistic wo
 
 test("recipe baseline edits and regenerated guidance commit through one optimistic workflow", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
-  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const migration = readFileSync("supabase/migrations/20260714183310_secure_operational_workflows.sql", "utf8");
 
   assert.match(inventoryWorkflow, /updateRecipeBaselineIngredient[\s\S]*saveRecipeMappingAndSignals/i);
@@ -330,7 +333,7 @@ test("recipe baseline edits and regenerated guidance commit through one optimist
 });
 
 test("Supabase repository keeps demo seed and reset local-only", () => {
-  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const supabaseRepository = repository.match(/function createSupabaseRepository\(\): MiseRepository \{[\s\S]*$/)?.[0] ?? "";
   const loadDemoBlock = supabaseRepository.match(/async loadDemoPOSData\([\s\S]*?\n    \},/)?.[0] ?? "";
   const resetDemoBlock = supabaseRepository.match(/async resetDemoData\([\s\S]*?\n    \},/)?.[0] ?? "";
@@ -342,7 +345,7 @@ test("Supabase repository keeps demo seed and reset local-only", () => {
 });
 
 test("supplier draft undo cleanup is tenant-scoped", () => {
-  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const orderWorkflow = readFileSync("services/application/orders.ts", "utf8");
   const workflowMigration = readFileSync("supabase/migrations/20260712121557_stabilize_order_workflow.sql", "utf8");
   const deleteDraftBlock =
@@ -430,7 +433,7 @@ test("Edge Function firewall migration rate-limits sensitive server workflows", 
 
 test("workflow authority hardening removes direct writes and makes Edge telemetry reservation-bound", () => {
   const migration = readFileSync("supabase/migrations/20260713100023_harden_workflow_authority.sql", "utf8");
-  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const shared = readFileSync("supabase/functions/_shared/mise.ts", "utf8");
   const operationalMigration = readFileSync("supabase/migrations/20260714183310_secure_operational_workflows.sql", "utf8");
 

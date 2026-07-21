@@ -198,14 +198,21 @@ for (const file of clientRoots.flatMap(listFiles).filter((path) => /\.(ts|tsx|js
   }
 }
 
-const repositorySource = read("services/repositories/miseRepository.ts");
+const repositorySources = [
+  "services/repositories/miseRepository.ts",
+  "services/repositories/supabaseRepository.ts",
+  "services/repositories/demoRepository.ts"
+];
 const destructiveQueryPattern = /\.from\("([a-z_]+)"\)([\s\S]*?);/g;
-for (const match of repositorySource.matchAll(destructiveQueryPattern)) {
-  const [, table, chain] = match;
-  if (!restaurantOwnedTables.has(table)) continue;
-  if (!/\.(delete|update)\s*\(/.test(chain)) continue;
-  if (!/\.eq\(\s*"restaurant_id"\s*,/.test(chain)) {
-    failures.push(`services/repositories/miseRepository.ts: destructive ${table} query is missing restaurant_id scope`);
+for (const repositoryFile of repositorySources) {
+  const repositorySource = read(repositoryFile);
+  for (const match of repositorySource.matchAll(destructiveQueryPattern)) {
+    const [, table, chain] = match;
+    if (!restaurantOwnedTables.has(table)) continue;
+    if (!/\.(delete|update)\s*\(/.test(chain)) continue;
+    if (!/\.eq\(\s*"restaurant_id"\s*,/.test(chain)) {
+      failures.push(`${repositoryFile}: destructive ${table} query is missing restaurant_id scope`);
+    }
   }
 }
 

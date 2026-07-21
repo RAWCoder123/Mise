@@ -4,7 +4,8 @@ import test from "node:test";
 
 test("Gmail client workflows stay typed, tenant-scoped, and behind backend functions", () => {
   const application = readFileSync("services/application/orders.ts", "utf8");
-  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const hostedRepository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  const demoRepository = readFileSync("services/repositories/demoRepository.ts", "utf8");
 
   assert.match(application, /export async function connectRestaurantGmail/);
   assert.match(application, /export async function disconnectRestaurantGmail/);
@@ -12,18 +13,18 @@ test("Gmail client workflows stay typed, tenant-scoped, and behind backend funct
   assert.match(application, /requireWorkflowId\(restaurantId, "restaurant"\)/);
   assert.match(application, /requireWorkflowId\(orderId, "supplier order"\)/);
 
-  assert.match(repository, /functions\.invoke\(functionName, \{ body \}\)/);
-  assert.match(repository, /"link-gmail",\s*\{ restaurantId, action: "connect" \}/s);
-  assert.match(repository, /"link-gmail",\s*\{ restaurantId, action: "disconnect" \}/s);
-  assert.match(repository, /"send-supplier-email",\s*\{ restaurantId, orderId \}/s);
-  assert.match(repository, /requireActiveDemoRestaurant\(state, restaurantId\)/);
-  assert.match(repository, /entry\.restaurant_id === restaurantId && entry\.id === orderId/);
-  assert.match(repository, /entry\.restaurant_id === restaurantId && entry\.provider === "gmail"/);
+  assert.match(hostedRepository, /functions\.invoke\(functionName, \{ body \}\)/);
+  assert.match(hostedRepository, /"link-gmail",\s*\{ restaurantId, action: "connect" \}/s);
+  assert.match(hostedRepository, /"link-gmail",\s*\{ restaurantId, action: "disconnect" \}/s);
+  assert.match(hostedRepository, /"send-supplier-email",\s*\{ restaurantId, orderId \}/s);
+  assert.match(demoRepository, /requireActiveDemoRestaurant\(state, restaurantId\)/);
+  assert.match(demoRepository, /entry\.restaurant_id === restaurantId && entry\.id === orderId/);
+  assert.match(demoRepository, /entry\.restaurant_id === restaurantId && entry\.provider === "gmail"/);
   assert.doesNotMatch(application, /client_secret|refresh_token|access_token/i);
 });
 
 test("Gmail client validates provider responses and never trusts arbitrary authorization URLs", () => {
-  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
 
   assert.match(repository, /url\.protocol !== "https:" \|\| url\.hostname !== "accounts\.google\.com"/);
   assert.match(repository, /url\.username \|\| url\.password/);

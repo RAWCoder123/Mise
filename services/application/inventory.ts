@@ -66,7 +66,7 @@ export async function updateRecipeBaselineIngredient(
   const normalizedQuantity = requireRecipeBaselineQuantity(quantityUsedPerSale);
   const [data, recommendationHistory] = await Promise.all([
     repository.fetchPlanningData(restaurantId),
-    repository.fetchPurchaseRecommendations(restaurantId, "all")
+    repository.fetchRecommendationHistory(restaurantId)
   ]);
   const existing = data.menuItemIngredients.find((mapping) => mapping.id === mappingId);
   if (!existing) throw new Error("Recipe baseline mapping not found");
@@ -121,7 +121,7 @@ export async function addRecipeBaselineIngredient(
 
   const [data, recommendationHistory] = await Promise.all([
     repository.fetchPlanningData(restaurantId),
-    repository.fetchPurchaseRecommendations(restaurantId, "all")
+    repository.fetchRecommendationHistory(restaurantId)
   ]);
   const inventoryItem = data.inventoryItems.find((item) => item.id === inventoryItemId);
   if (!inventoryItem) {
@@ -181,7 +181,7 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
   if (existing) return existing;
 
   const { item, prediction } = await fetchInventoryItemOutlook(restaurantId, itemId);
-  const history = await repository.fetchPurchaseRecommendations(restaurantId, "all");
+  const history = await repository.fetchRecommendationHistory(restaurantId);
   if (shouldSuppressRecommendationForItem(restaurantId, item, history)) {
     throw new Error("Update the inventory count first. This item was already handled.");
   }
@@ -203,7 +203,7 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
   const normalizedPatch = requireInventoryItemPatch(patch);
   const [data, recommendationHistory] = await Promise.all([
     repository.fetchPlanningData(restaurantId),
-    repository.fetchPurchaseRecommendations(restaurantId, "all")
+    repository.fetchRecommendationHistory(restaurantId)
   ]);
   const existing = data.inventoryItems.find((item) => item.id === itemId);
   if (!existing) throw new Error("Inventory item not found");

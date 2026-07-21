@@ -18,7 +18,7 @@ export async function generateInsightsFromSalesAndInventory(restaurantId: string
 
 export async function generatePurchaseRecommendations(restaurantId: string) {
   const data = await repository.fetchPlanningData(restaurantId);
-  const recommendationHistory = await repository.fetchPurchaseRecommendations(restaurantId, "all");
+  const recommendationHistory = await repository.fetchRecommendationHistory(restaurantId);
   const inserts = buildRecommendationInserts(
     restaurantId,
     data.inventoryItems,
@@ -33,7 +33,7 @@ export async function generatePurchaseRecommendations(restaurantId: string) {
 export async function regenerateOperationalSignals(restaurantId: string) {
   const [data, recommendationHistory] = await Promise.all([
     repository.fetchPlanningData(restaurantId),
-    repository.fetchPurchaseRecommendations(restaurantId, "all")
+    repository.fetchRecommendationHistory(restaurantId)
   ]);
   const recommendations = buildRecommendationInserts(
     restaurantId,
