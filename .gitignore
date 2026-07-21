@@ -19,3 +19,7 @@ mise-codebase-*.zip
 
 expo-env.d.ts
 # @end expo-cli
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
