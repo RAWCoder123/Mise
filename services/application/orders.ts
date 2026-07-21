@@ -1,0 +1,207 @@
+import type { RecommendationStatus, SupplierOrder } from "../../types/mise";
+import {
+  buildDraftsFromRecommendations,
+  buildOrderQueueSummary,
+  buildSupplierEmailPayload
+} from "../domain/miseDomain";
+import { buildSupplierRecipientDirectory } from "../domain/supplierRecipients";
+import {
+  requireRecommendationApprovalQuantity,
+  requireSupplierOperatorNote,
+  requireSupplierRecipientInput
+} from "../miseValidation";
+import { getMiseRepository } from "./repository";
+import { GmailIntegrationError } from "../repositories/miseRepository";
+import type {
+  GmailConnectionWorkflowResult,
+  GmailDisconnectWorkflowResult,
+  GmailIntegrationErrorStatus,
+  SupplierOrderEmailSendResult
+} from "../repositories/miseRepository";
+
+export { GmailIntegrationError };
+export type {
+  GmailConnectionWorkflowResult,
+  GmailDisconnectWorkflowResult,
+  GmailIntegrationErrorStatus,
+  SupplierOrderEmailSendResult
+};
+
+const repository = getMiseRepository();
+
+export async function fetchPurchaseRecommendations(
+  restaurantId: string,
+  status: RecommendationStatus | "all" = "pending"
+) {
+  return repository.fetchPurchaseRecommendations(restaurantId, status);
+}
+
+export async function approvePurchaseRecommendation(
+  restaurantId: string,
+  recommendationId: string,
+  recommendedQuantity?: number
+) {
+  const result = await repository.approvePurchaseRecommendation(
+    restaurantId,
+    recommendationId,
+    recommendedQuantity === undefined
+      ? undefined
+      : requireRecommendationApprovalQuantity(recommendedQuantity)
+  );
+  return result.recommendation;
+}
+
+export async function dismissPurchaseRecommendation(restaurantId: string, recommendationId: string) {
+  const result = await repository.dismissPurchaseRecommendation(restaurantId, recommendationId);
+  return result.recommendation;
+}
+
+export async function generateSupplierOrderDraft(restaurantId: string, supplierName?: string) {
+  const [recommendations, restaurant] = await Promise.all([
+    repository.fetchApprovedRecommendations(restaurantId, supplierName),
+    repository.fetchRestaurant(restaurantId)
+  ]);
+  const drafts = buildDraftsFromRecommendations(restaurantId, recommendations, {
+    timeZone: restaurant.timezone
+  });
+  for (const draft of drafts) {
+    const order = await repository.upsertSupplierOrderDraft(draft);
+    const linkedRecommendations = recommendations.filter(
+      (recommendation) => recommendation.supplier_name === draft.supplier_name
+    );
+    for (const recommendation of linkedRecommendations) {
+      if (recommendation.supplier_order_id === order.id) continue;
+      await repository.updatePurchaseRecommendation(restaurantId, recommendation.id, {
+        supplier_order_id: order.id
+      });
+    }
+  }
+  return drafts;
+}
+
+export async function rebuildSupplierDraftForRecommendationUndo(restaurantId: string, supplierName: string) {
+  const [recommendations, restaurant] = await Promise.all([
+    repository.fetchApprovedRecommendations(restaurantId, supplierName),
+    repository.fetchRestaurant(restaurantId)
+  ]);
+  const drafts = buildDraftsFromRecommendations(restaurantId, recommendations, {
+    timeZone: restaurant.timezone
+  });
+  if (drafts.length === 0) {
+    await repository.deleteSupplierOrderDraft(restaurantId, supplierName);
+    return null;
+  }
+  const draft = drafts[0]!;
+  await repository.upsertSupplierOrderDraft(draft);
+  return draft;
+}
+
+export async function undoPurchaseRecommendationAction(restaurantId: string, recommendationId: string) {
+  const result = await repository.undoPurchaseRecommendationAction(restaurantId, recommendationId);
+  return result.recommendation;
+}
+
+export async function fetchSupplierOrders(restaurantId: string) {
+  return repository.fetchSupplierOrders(restaurantId);
+}
+
+export async function fetchEmailConnectionState(restaurantId: string) {
+  return repository.fetchEmailConnectionState(restaurantId);
+}
+
+export async function connectRestaurantGmail(restaurantId: string): Promise<GmailConnectionWorkflowResult> {
+  return repository.connectRestaurantGmail(requireWorkflowId(restaurantId, "restaurant"));
+}
+
+export async function disconnectRestaurantGmail(restaurantId: string): Promise<GmailDisconnectWorkflowResult> {
+  return repository.disconnectRestaurantGmail(requireWorkflowId(restaurantId, "restaurant"));
+}
+
+export async function sendSupplierOrderEmail(
+  restaurantId: string,
+  orderId: string
+): Promise<SupplierOrderEmailSendResult> {
+  return repository.sendSupplierOrderEmail(
+    requireWorkflowId(restaurantId, "restaurant"),
+    requireWorkflowId(orderId, "supplier order")
+  );
+}
+
+export function isGmailIntegrationError(error: unknown): error is GmailIntegrationError {
+  return error instanceof GmailIntegrationError;
+}
+
+export async function fetchSupplierRecipients(restaurantId: string) {
+  return repository.fetchSupplierRecipients(requireWorkflowId(restaurantId, "restaurant"));
+}
+
+export async function fetchSupplierRecipientDirectory(restaurantId: string) {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const [inventoryItems, recipients] = await Promise.all([
+    repository.fetchInventoryItems(normalizedRestaurantId),
+    repository.fetchSupplierRecipients(normalizedRestaurantId)
+  ]);
+  return buildSupplierRecipientDirectory(
+    normalizedRestaurantId,
+    inventoryItems.map((item) => item.supplier_name),
+    recipients
+  );
+}
+
+export async function saveSupplierRecipient(
+  restaurantId: string,
+  supplierName: string,
+  email: string
+) {
+  const input = requireSupplierRecipientInput({
+    restaurant_id: requireWorkflowId(restaurantId, "restaurant"),
+    supplier_name: supplierName,
+    email
+  });
+  return repository.upsertSupplierRecipient(input);
+}
+
+export async function prepareSupplierEmailPayload(restaurantId: string, orderId: string) {
+  const [restaurant, order, emailConnection, recipients] = await Promise.all([
+    repository.fetchRestaurant(restaurantId),
+    repository.fetchSupplierOrder(restaurantId, orderId),
+    repository.fetchEmailConnectionState(restaurantId),
+    repository.fetchSupplierRecipients(restaurantId)
+  ]);
+  return buildSupplierEmailPayload(restaurant, order, emailConnection, recipients);
+}
+
+export function summarizeOrderQueue(
+  restaurantId: string,
+  recommendations: Awaited<ReturnType<typeof fetchPurchaseRecommendations>>,
+  orders: Awaited<ReturnType<typeof fetchSupplierOrders>>
+) {
+  return buildOrderQueueSummary(restaurantId, recommendations, orders);
+}
+
+export async function fetchSupplierOrder(restaurantId: string, orderId: string) {
+  return repository.fetchSupplierOrder(restaurantId, orderId);
+}
+
+export async function updateSupplierOrder(
+  restaurantId: string,
+  orderId: string,
+  patch: Partial<Pick<SupplierOrder, "operator_note" | "delivery_date">>
+) {
+  const normalizedPatch = { ...patch };
+  if (Object.prototype.hasOwnProperty.call(patch, "operator_note")) {
+    normalizedPatch.operator_note = requireSupplierOperatorNote(patch.operator_note);
+  }
+  return repository.updateSupplierOrder(restaurantId, orderId, normalizedPatch);
+}
+
+export async function markSupplierOrderSent(restaurantId: string, orderId: string) {
+  const { order, orderedRecommendations } = await repository.markSupplierOrderSent(restaurantId, orderId);
+  return { order, orderedRecommendations };
+}
+
+function requireWorkflowId(value: string, label: string) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized || normalized.length > 128) throw new Error(`Missing ${label}.`);
+  return normalized;
+}

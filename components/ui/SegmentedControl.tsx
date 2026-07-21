@@ -1,0 +1,203 @@
+import { ScrollView, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+
+import { colors, radii, typography } from "../../constants/theme";
+
+export interface SegmentOption<Value extends string> {
+  value: Value;
+  label: string;
+  accessibilityLabel?: string;
+  disabled?: boolean;
+  tone?: SegmentTone;
+}
+
+export type SegmentTone = "brand" | "success" | "caution" | "warning" | "danger" | "neutral";
+
+export interface SegmentedControlProps<Value extends string> {
+  options: readonly SegmentOption<Value>[];
+  value: Value;
+  onValueChange: (value: Value) => void;
+  accessibilityLabel: string;
+  variant?: "segmented" | "pills" | "underline";
+  scrollable?: boolean;
+  style?: StyleProp<ViewStyle>;
+}
+
+/** A shared tab/filter control with mobile-safe targets and localized overflow. */
+export function SegmentedControl<Value extends string>({
+  options,
+  value,
+  onValueChange,
+  accessibilityLabel,
+  variant = "segmented",
+  scrollable = false,
+  style
+}: SegmentedControlProps<Value>) {
+  const buttons = options.map((option) => {
+    const selected = option.value === value;
+    return (
+      <Pressable
+        accessibilityRole="tab"
+        accessibilityLabel={option.accessibilityLabel ?? option.label}
+        accessibilityState={{ selected, disabled: option.disabled }}
+        aria-selected={selected}
+        disabled={option.disabled}
+        key={option.value}
+        onPress={() => onValueChange(option.value)}
+        style={({ pressed }) => [
+          styles.option,
+          !scrollable && styles.flexOption,
+          variant === "pills" && styles.pillOption,
+          variant === "underline" && styles.underlineOption,
+          selected && variant !== "underline" && styles.selectedOption,
+          variant === "pills" && selected && styles.selectedPill,
+          variant === "pills" && selected && selectedPillToneStyles[option.tone ?? "brand"],
+          variant === "underline" && selected && styles.selectedUnderline,
+          option.disabled && styles.disabled,
+          pressed && !option.disabled && styles.pressed
+        ]}
+      >
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.label,
+            selected && styles.selectedLabel,
+            variant === "pills" && selected && selectedLabelToneStyles[option.tone ?? "brand"],
+            variant === "underline" && selected && styles.selectedUnderlineLabel
+          ]}
+        >
+          {option.label}
+        </Text>
+      </Pressable>
+    );
+  });
+
+  return (
+    <View accessibilityLabel={accessibilityLabel} accessibilityRole="tablist" style={style}>
+      {scrollable ? (
+        <ScrollView
+          horizontal
+          contentContainerStyle={[
+            styles.row,
+            variant === "segmented" && styles.segmentedSurface,
+            variant === "underline" && styles.underlineSurface
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsHorizontalScrollIndicator={false}
+        >
+          {buttons}
+        </ScrollView>
+      ) : (
+        <View
+          style={[
+            styles.row,
+            variant === "segmented" && styles.segmentedSurface,
+            variant === "underline" && styles.underlineSurface
+          ]}
+        >
+          {buttons}
+        </View>
+      )}
+    </View>
+  );
+}
+
+export function FilterRow<Value extends string>(
+  props: Omit<SegmentedControlProps<Value>, "variant" | "scrollable">
+) {
+  return <SegmentedControl {...props} variant="pills" scrollable />;
+}
+
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
+  },
+  segmentedSurface: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
+    padding: 3,
+    gap: 3
+  },
+  option: {
+    minHeight: 44,
+    minWidth: 44,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: "transparent",
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  flexOption: {
+    flex: 1,
+    minWidth: 0
+  },
+  pillOption: {
+    borderRadius: radii.md,
+    borderColor: colors.border,
+    backgroundColor: colors.surface
+  },
+  selectedOption: {
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface
+  },
+  selectedPill: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft
+  },
+  underlineSurface: {
+    gap: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  underlineOption: {
+    borderWidth: 0,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+    borderRadius: 0,
+    paddingHorizontal: 8,
+    marginBottom: -1
+  },
+  selectedUnderline: {
+    borderBottomColor: colors.accent,
+    backgroundColor: colors.surface
+  },
+  label: {
+    color: colors.muted,
+    ...typography.caption,
+    textAlign: "center"
+  },
+  selectedLabel: {
+    color: colors.text
+  },
+  selectedUnderlineLabel: {
+    color: colors.accentDark
+  },
+  disabled: {
+    opacity: 0.46
+  },
+  pressed: {
+    opacity: 0.68
+  }
+});
+
+const selectedPillToneStyles: Record<SegmentTone, { backgroundColor: string; borderColor: string }> = {
+  brand: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  success: { backgroundColor: colors.successSoft, borderColor: colors.success },
+  caution: { backgroundColor: colors.cautionSoft, borderColor: colors.caution },
+  warning: { backgroundColor: colors.warningSoft, borderColor: colors.warning },
+  danger: { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
+  neutral: { backgroundColor: colors.panel, borderColor: colors.borderStrong }
+};
+
+const selectedLabelToneStyles: Record<SegmentTone, { color: string }> = {
+  brand: { color: colors.accentDark },
+  success: { color: colors.success },
+  caution: { color: colors.caution },
+  warning: { color: colors.warning },
+  danger: { color: colors.danger },
+  neutral: { color: colors.text }
+};

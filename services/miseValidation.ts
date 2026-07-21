@@ -1,0 +1,670 @@
+import type {
+  AppUser,
+  AiInsight,
+  AuditLog,
+  Insight,
+  EmailConnectionStatus,
+  IntegrationStatus,
+  InventoryItem,
+  InventoryItemPatch,
+  MenuItemIngredient,
+  PosSale,
+  PosIntegration,
+  PurchaseOrder,
+  PurchaseRecommendation,
+  RestaurantMembership,
+  RestaurantEmailConnection,
+  Restaurant,
+  RestaurantOperationalProfile,
+  RestaurantServiceStyle,
+  SalesImport,
+  SetupAttachment,
+  SetupAttachmentStatus,
+  SupplierItem,
+  SupplierOrder,
+  SupplierRecipient
+} from "../types/mise";
+import {
+  RESTAURANT_ADDRESS_MAX_CHARACTERS,
+  RESTAURANT_CUISINE_MAX_CHARACTERS,
+  RESTAURANT_LOGO_URL_MAX_CHARACTERS,
+  RESTAURANT_NAME_MAX_CHARACTERS,
+  RESTAURANT_OPERATIONAL_PROFILE_MAX_BYTES,
+  RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS,
+  RESTAURANT_PROFILE_ARRAY_MAX_ITEMS,
+  RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS,
+  SUPPLIER_NOTE_MAX_CHARACTERS,
+  utf8ByteLength
+} from "./domain/securityLimits";
+
+export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
+
+function asNumber(value: unknown, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function asNonNegativeNumber(value: unknown, fallback = 0) {
+  return Math.max(0, asNumber(value, fallback));
+}
+
+export const operatingLimits = {
+  inventoryQuantity: 1_000_000,
+  recipeQuantityPerSale: 10_000,
+  posQuantitySold: 100_000,
+  posSalesAmount: 10_000_000,
+  recommendationQuantity: 1_000_000
+} as const;
+
+function asBoundedNonNegativeNumber(value: unknown, maximum: number, fallback = 0) {
+  const parsed = asNumber(value, fallback);
+  if (parsed <= 0) return 0;
+  return Math.min(parsed, maximum);
+}
+
+function asString(value: unknown, fallback = "") {
+  return typeof value === "string" ? value : fallback;
+}
+
+function asNullableString(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function asStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
+function normalizeHexColor(value: unknown, fallback: string) {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+
+function normalizeServiceStyle(value: unknown): RestaurantServiceStyle {
+  if (
+    value === "quick_service" ||
+    value === "fast_casual" ||
+    value === "full_service" ||
+    value === "bar" ||
+    value === "cafe" ||
+    value === "ghost_kitchen"
+  ) {
+    return value;
+  }
+  return "fast_casual";
+}
+
+export function normalizeRestaurantOperationalProfile(value: unknown): RestaurantOperationalProfile {
+  const profile = asRecord(value);
+  return {
+    serviceStyle: normalizeServiceStyle(profile.serviceStyle),
+    orderCadence: asStringArray(profile.orderCadence),
+    prepWindows: asStringArray(profile.prepWindows),
+    primarySuppliers: asStringArray(profile.primarySuppliers),
+    inventoryReviewDays: asStringArray(profile.inventoryReviewDays),
+    notes: asNullableString(profile.notes)
+  };
+}
+
+export function normalizeRestaurant(value: Restaurant): Restaurant {
+  return {
+    ...value,
+    name: asString(value.name, "Restaurant"),
+    address: asNullableString(value.address),
+    cuisine_type: asNullableString(value.cuisine_type),
+    brand_color: normalizeHexColor(value.brand_color, "#EF3F27"),
+    accent_color: normalizeHexColor(value.accent_color, "#EF3F27"),
+    logo_url: asNullableString(value.logo_url),
+    service_style: normalizeServiceStyle(value.service_style),
+    timezone: asString(value.timezone, "America/New_York"),
+    currency: asString(value.currency, "USD"),
+    operational_profile: normalizeRestaurantOperationalProfile(value.operational_profile)
+  };
+}
+
+export function normalizeAppUser(value: AppUser): AppUser {
+  return {
+    ...value,
+    name: asString(value.name, "Operator"),
+    email: asString(value.email),
+    role: asString(value.role, "owner")
+  };
+}
+
+export function normalizeRestaurantMembership(value: RestaurantMembership): RestaurantMembership {
+  return {
+    ...value,
+    role: value.role,
+    status: value.status,
+    updated_at: value.updated_at ?? value.created_at
+  };
+}
+
+export function normalizePosSale(value: PosSale): PosSale {
+  return {
+    ...value,
+    quantity_sold: asBoundedNonNegativeNumber(value.quantity_sold, operatingLimits.posQuantitySold),
+    gross_sales: asBoundedNonNegativeNumber(value.gross_sales, operatingLimits.posSalesAmount),
+    net_sales: asBoundedNonNegativeNumber(value.net_sales, operatingLimits.posSalesAmount)
+  };
+}
+
+export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
+  return {
+    ...value,
+    current_quantity: asBoundedNonNegativeNumber(value.current_quantity, operatingLimits.inventoryQuantity),
+    par_level: asBoundedNonNegativeNumber(value.par_level, operatingLimits.inventoryQuantity),
+    reorder_threshold: asBoundedNonNegativeNumber(value.reorder_threshold, operatingLimits.inventoryQuantity),
+    estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost)
+  };
+}
+
+export function normalizeMenuItemIngredient(value: MenuItemIngredient): MenuItemIngredient {
+  return {
+    ...value,
+    quantity_used_per_sale: asBoundedNonNegativeNumber(
+      value.quantity_used_per_sale,
+      operatingLimits.recipeQuantityPerSale
+    )
+  };
+}
+
+export function normalizePurchaseRecommendation(value: PurchaseRecommendation): PurchaseRecommendation {
+  return {
+    ...value,
+    recommended_quantity: normalizeRecommendedQuantity(value.recommended_quantity)
+  };
+}
+
+export function normalizeRecommendedQuantity(value: unknown) {
+  return asBoundedNonNegativeNumber(value, operatingLimits.recommendationQuantity);
+}
+
+export function requireRecommendationApprovalQuantity(value: unknown) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    value > operatingLimits.recommendationQuantity
+  ) {
+    throw new Error(
+      `Enter a quantity from 1 to ${operatingLimits.recommendationQuantity.toLocaleString()}.`
+    );
+  }
+  return value;
+}
+
+export function requireRecipeBaselineQuantity(value: unknown) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    value > operatingLimits.recipeQuantityPerSale
+  ) {
+    throw new Error(
+      `Enter a baseline quantity greater than zero and no more than ${operatingLimits.recipeQuantityPerSale.toLocaleString()}.`
+    );
+  }
+  return value;
+}
+
+export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryItemPatch {
+  const validated: InventoryItemPatch = { ...patch };
+  for (const [field, label] of [
+    ["current_quantity", "Current quantity"],
+    ["par_level", "Par level"],
+    ["reorder_threshold", "Reorder threshold"]
+  ] as const) {
+    const value = validated[field];
+    if (value === undefined) continue;
+    if (
+      typeof value !== "number" ||
+      !Number.isFinite(value) ||
+      value < 0 ||
+      value > operatingLimits.inventoryQuantity
+    ) {
+      throw new Error(
+        `${label} must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
+      );
+    }
+  }
+  if (validated.supplier_name !== undefined) {
+    if (
+      typeof validated.supplier_name !== "string" ||
+      validated.supplier_name.trim().length < 1 ||
+      validated.supplier_name.trim().length > 160
+    ) {
+      throw new Error("Supplier name must be between 1 and 160 characters.");
+    }
+    validated.supplier_name = validated.supplier_name.trim();
+  }
+  return validated;
+}
+
+export function requireSupplierOperatorNote(value: string | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Supplier note must be text.");
+  const normalized = value.trim();
+  if (normalized.length > SUPPLIER_NOTE_MAX_CHARACTERS) {
+    throw new Error(`Supplier note is limited to ${SUPPLIER_NOTE_MAX_CHARACTERS.toLocaleString()} characters.`);
+  }
+  return normalized || null;
+}
+
+export const SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS = 160;
+export const SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS = 254;
+
+export function requireSupplierRecipientInput(input: {
+  restaurant_id: unknown;
+  supplier_name: unknown;
+  email: unknown;
+}): {
+  restaurant_id: string;
+  supplier_name: string;
+  email: string;
+} {
+  const restaurantId = typeof input.restaurant_id === "string" ? input.restaurant_id.trim() : "";
+  if (!restaurantId || restaurantId.length > 128 || hasControlCharacters(restaurantId)) {
+    throw new Error("Missing restaurant workspace.");
+  }
+
+  const rawSupplierName = typeof input.supplier_name === "string" ? input.supplier_name : "";
+  const supplierName = rawSupplierName.trim().replace(/\s+/g, " ");
+  if (
+    supplierName.length < 1 ||
+    supplierName.length > SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS ||
+    hasControlCharacters(rawSupplierName)
+  ) {
+    throw new Error(
+      `Supplier name must be between 1 and ${SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS} characters.`
+    );
+  }
+
+  const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+  if (
+    email.length < 3 ||
+    email.length > SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS ||
+    hasControlCharacters(email) ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  ) {
+    throw new Error("Enter a valid supplier email address.");
+  }
+
+  return { restaurant_id: restaurantId, supplier_name: supplierName, email };
+}
+
+function hasControlCharacters(value: string) {
+  return /[\u0000-\u001f\u007f]/.test(value);
+}
+
+export function requireRestaurantName(value: unknown) {
+  if (typeof value !== "string") throw new Error("Restaurant name is required.");
+  const normalized = value.trim();
+  if (normalized.length < 1 || normalized.length > RESTAURANT_NAME_MAX_CHARACTERS) {
+    throw new Error(`Restaurant name must be between 1 and ${RESTAURANT_NAME_MAX_CHARACTERS} characters.`);
+  }
+  return normalized;
+}
+
+export type RestaurantProfilePatch = Partial<
+  Pick<
+    Restaurant,
+    | "name"
+    | "address"
+    | "cuisine_type"
+    | "brand_color"
+    | "accent_color"
+    | "logo_url"
+    | "service_style"
+    | "timezone"
+    | "currency"
+    | "operational_profile"
+  >
+>;
+
+const restaurantProfilePatchKeys = new Set([
+  "name",
+  "address",
+  "cuisine_type",
+  "brand_color",
+  "accent_color",
+  "logo_url",
+  "service_style",
+  "timezone",
+  "currency",
+  "operational_profile"
+]);
+const operationalProfileKeys = new Set([
+  "serviceStyle",
+  "orderCadence",
+  "prepWindows",
+  "primarySuppliers",
+  "inventoryReviewDays",
+  "notes"
+]);
+
+export function requireRestaurantCuisineType(value: unknown) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Cuisine type must be text or empty.");
+  const normalized = value.trim();
+  if (normalized.length > RESTAURANT_CUISINE_MAX_CHARACTERS) {
+    throw new Error(`Cuisine type is limited to ${RESTAURANT_CUISINE_MAX_CHARACTERS} characters.`);
+  }
+  return normalized || null;
+}
+
+export function requireRestaurantProfilePatch(value: RestaurantProfilePatch): RestaurantProfilePatch {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Restaurant profile changes must be an object.");
+  }
+  const unknownKey = Object.keys(value).find((key) => !restaurantProfilePatchKeys.has(key));
+  if (unknownKey) throw new Error(`Restaurant profile field is not supported: ${unknownKey}.`);
+  if (Object.keys(value).length === 0) throw new Error("Choose at least one restaurant profile field to update.");
+
+  const patch: RestaurantProfilePatch = { ...value };
+  if (patch.name !== undefined) patch.name = requireRestaurantName(patch.name);
+  if (patch.address !== undefined) {
+    patch.address = requireNullableBoundedText(
+      patch.address,
+      "Restaurant address",
+      RESTAURANT_ADDRESS_MAX_CHARACTERS
+    );
+  }
+  if (patch.cuisine_type !== undefined) patch.cuisine_type = requireRestaurantCuisineType(patch.cuisine_type);
+  if (patch.brand_color !== undefined) patch.brand_color = requireHexColor(patch.brand_color, "Brand color");
+  if (patch.accent_color !== undefined) patch.accent_color = requireHexColor(patch.accent_color, "Accent color");
+  if (patch.logo_url !== undefined) patch.logo_url = requireHttpsLogoUrl(patch.logo_url);
+  if (patch.service_style !== undefined) patch.service_style = requireServiceStyle(patch.service_style);
+  if (patch.timezone !== undefined) patch.timezone = requireIanaTimezone(patch.timezone);
+  if (patch.currency !== undefined) {
+    if (typeof patch.currency !== "string" || !/^[A-Z]{3}$/.test(patch.currency)) {
+      throw new Error("Currency must be a three-letter uppercase code.");
+    }
+  }
+  if (patch.operational_profile !== undefined) {
+    patch.operational_profile = requireRestaurantOperationalProfile(patch.operational_profile);
+    if (
+      patch.service_style !== undefined &&
+      patch.operational_profile.serviceStyle !== patch.service_style
+    ) {
+      throw new Error("Profile service style must match the restaurant service style.");
+    }
+  }
+  if (patch.service_style !== undefined && patch.operational_profile === undefined) {
+    // The database mirrors this value into an existing operational profile.
+    patch.service_style = requireServiceStyle(patch.service_style);
+  }
+  return patch;
+}
+
+function requireRestaurantOperationalProfile(value: unknown): RestaurantOperationalProfile {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Operational profile must be an object.");
+  }
+  const profile = value as Record<string, unknown>;
+  const unknownKey = Object.keys(profile).find((key) => !operationalProfileKeys.has(key));
+  if (unknownKey) throw new Error(`Operational profile field is not supported: ${unknownKey}.`);
+
+  const normalized: RestaurantOperationalProfile = {
+    serviceStyle: requireServiceStyle(profile.serviceStyle),
+    orderCadence: requireBoundedStringArray(profile.orderCadence, "Order cadence"),
+    prepWindows: requireBoundedStringArray(profile.prepWindows, "Prep windows"),
+    primarySuppliers: requireBoundedStringArray(profile.primarySuppliers, "Primary suppliers"),
+    inventoryReviewDays: requireBoundedStringArray(profile.inventoryReviewDays, "Inventory review days"),
+    notes: requireNullableBoundedText(
+      profile.notes,
+      "Operational profile notes",
+      RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS
+    )
+  };
+  if (utf8ByteLength(JSON.stringify(normalized)) > RESTAURANT_OPERATIONAL_PROFILE_MAX_BYTES) {
+    throw new Error(`Operational profile is limited to ${RESTAURANT_OPERATIONAL_PROFILE_MAX_BYTES} bytes.`);
+  }
+  return normalized;
+}
+
+function requireBoundedStringArray(value: unknown, label: string) {
+  if (!Array.isArray(value) || value.length > RESTAURANT_PROFILE_ARRAY_MAX_ITEMS) {
+    throw new Error(`${label} is limited to ${RESTAURANT_PROFILE_ARRAY_MAX_ITEMS} entries.`);
+  }
+  return value.map((entry) => {
+    if (typeof entry !== "string") throw new Error(`${label} entries must be text.`);
+    const normalized = entry.trim();
+    if (
+      normalized.length < 1 ||
+      normalized.length > RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS
+    ) {
+      throw new Error(
+        `${label} entries must be between 1 and ${RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS} characters.`
+      );
+    }
+    return normalized;
+  });
+}
+
+function requireNullableBoundedText(value: unknown, label: string, maximum: number) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error(`${label} must be text or empty.`);
+  const normalized = value.trim();
+  if (normalized.length > maximum) throw new Error(`${label} is limited to ${maximum} characters.`);
+  return normalized || null;
+}
+
+function requireHexColor(value: unknown, label: string) {
+  if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) {
+    throw new Error(`${label} must be a six-digit hex color.`);
+  }
+  return value;
+}
+
+function requireHttpsLogoUrl(value: unknown) {
+  const normalized = requireNullableBoundedText(value, "Logo URL", RESTAURANT_LOGO_URL_MAX_CHARACTERS);
+  if (normalized === null) return null;
+  try {
+    const url = new URL(normalized);
+    if (
+      url.protocol !== "https:" ||
+      Boolean(url.username || url.password) ||
+      !/^(?:[a-z0-9-]+\.)+[a-z]{2,63}$/i.test(url.hostname)
+    ) {
+      throw new Error();
+    }
+  } catch {
+    throw new Error("Logo URL must be a valid HTTPS URL.");
+  }
+  return normalized;
+}
+
+function requireServiceStyle(value: unknown): RestaurantServiceStyle {
+  if (
+    value !== "quick_service" &&
+    value !== "fast_casual" &&
+    value !== "full_service" &&
+    value !== "bar" &&
+    value !== "cafe" &&
+    value !== "ghost_kitchen"
+  ) {
+    throw new Error("Service style is not supported.");
+  }
+  return value;
+}
+
+function requireIanaTimezone(value: unknown) {
+  if (typeof value !== "string" || value.length < 1 || value.length > 64) {
+    throw new Error("Timezone must be a supported IANA timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format(new Date(0));
+  } catch {
+    throw new Error("Timezone must be a supported IANA timezone.");
+  }
+  return value;
+}
+
+export function normalizeRecipeBaselineQuantity(value: unknown) {
+  return asBoundedNonNegativeNumber(value, operatingLimits.recipeQuantityPerSale);
+}
+
+export function normalizeInventoryItemPatch(patch: InventoryItemPatch): InventoryItemPatch {
+  const normalized: InventoryItemPatch = { ...patch };
+  if (normalized.current_quantity !== undefined) {
+    normalized.current_quantity = asBoundedNonNegativeNumber(
+      normalized.current_quantity,
+      operatingLimits.inventoryQuantity
+    );
+  }
+  if (normalized.par_level !== undefined) {
+    normalized.par_level = asBoundedNonNegativeNumber(normalized.par_level, operatingLimits.inventoryQuantity);
+  }
+  if (normalized.reorder_threshold !== undefined) {
+    normalized.reorder_threshold = asBoundedNonNegativeNumber(
+      normalized.reorder_threshold,
+      operatingLimits.inventoryQuantity
+    );
+  }
+  if (normalized.supplier_name !== undefined) {
+    normalized.supplier_name = asString(normalized.supplier_name, "Supplier");
+  }
+  return normalized;
+}
+
+export function normalizeSupplierOrder(value: SupplierOrder): SupplierOrder {
+  return {
+    ...value,
+    delivery_date: asNullableString(value.delivery_date)
+  };
+}
+
+export function normalizeInsight(value: Insight): Insight {
+  return {
+    ...value,
+    why_it_matters: value.why_it_matters ?? null
+  };
+}
+
+export function normalizeIntegrationStatus(value: unknown): IntegrationStatus {
+  if (value === "connected" || value === "paused" || value === "error" || value === "not_connected") {
+    return value;
+  }
+  return "not_connected";
+}
+
+export function normalizeEmailConnectionStatus(value: unknown): EmailConnectionStatus {
+  if (
+    value === "not_connected" ||
+    value === "connected" ||
+    value === "needs_reauth" ||
+    value === "restricted"
+  ) {
+    return value;
+  }
+  return "not_connected";
+}
+
+export function normalizeRestaurantEmailConnection(value: RestaurantEmailConnection): RestaurantEmailConnection {
+  return {
+    ...value,
+    provider: "gmail",
+    status: normalizeEmailConnectionStatus(value.status),
+    sender_email: asNullableString(value.sender_email),
+    last_verified_at: asNullableString(value.last_verified_at),
+    updated_at: value.updated_at ?? value.created_at
+  };
+}
+
+export function normalizeSupplierRecipient(value: SupplierRecipient): SupplierRecipient {
+  return {
+    ...value,
+    supplier_name: asString(value.supplier_name, "Supplier"),
+    email: asNullableString(value.email),
+    updated_at: value.updated_at ?? value.created_at
+  };
+}
+
+function normalizeSetupAttachmentStatus(value: unknown): SetupAttachmentStatus {
+  if (value === "queued" || value === "review_needed" || value === "processed" || value === "dismissed") {
+    return value;
+  }
+  return "queued";
+}
+
+export function normalizeSetupAttachment(value: SetupAttachment): SetupAttachment {
+  return {
+    ...value,
+    kind: value.kind === "screenshot" ? "screenshot" : "csv",
+    label: asString(value.label, "Setup reference"),
+    status: normalizeSetupAttachmentStatus(value.status),
+    metadata: asRecord(value.metadata),
+    created_by: asNullableString(value.created_by),
+    updated_at: value.updated_at ?? value.created_at
+  };
+}
+
+export function normalizePosIntegration(value: PosIntegration): PosIntegration {
+  return {
+    ...value,
+    status: normalizeIntegrationStatus(value.status),
+    external_location_id: asNullableString(value.external_location_id),
+    last_sync_at: asNullableString(value.last_sync_at),
+    sync_cursor: asNullableString(value.sync_cursor),
+    settings: asRecord(value.settings),
+    updated_at: value.updated_at ?? value.created_at
+  };
+}
+
+export function normalizeSalesImport(value: SalesImport): SalesImport {
+  return {
+    ...value,
+    records_processed: asNonNegativeNumber(value.records_processed),
+    source_file_name: asNullableString(value.source_file_name),
+    error_message: asNullableString(value.error_message),
+    metadata: asRecord(value.metadata)
+  };
+}
+
+export function normalizeSupplierItem(value: SupplierItem): SupplierItem {
+  return {
+    ...value,
+    supplier_name: asString(value.supplier_name, "Supplier"),
+    supplier_sku: asNullableString(value.supplier_sku),
+    item_name: asString(value.item_name, "Item"),
+    unit: asString(value.unit, "unit"),
+    pack_size: asNullableString(value.pack_size),
+    estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost),
+    preferred: Boolean(value.preferred),
+    updated_at: value.updated_at ?? value.created_at
+  };
+}
+
+export function normalizePurchaseOrder(value: PurchaseOrder): PurchaseOrder {
+  return {
+    ...value,
+    order_payload: asRecord(value.order_payload),
+    subtotal_estimate: asNonNegativeNumber(value.subtotal_estimate),
+    expected_delivery_date: asNullableString(value.expected_delivery_date),
+    submitted_at: asNullableString(value.submitted_at),
+    updated_at: value.updated_at ?? value.created_at
+  };
+}
+
+export function normalizeAiInsight(value: AiInsight): AiInsight {
+  return {
+    ...value,
+    output: asRecord(value.output),
+    confidence: Math.min(1, Math.max(0, asNumber(value.confidence))),
+    generated_by: asNullableString(value.generated_by)
+  };
+}
+
+export function normalizeAuditLog(value: AuditLog): AuditLog {
+  return {
+    ...value,
+    actor_user_id: asNullableString(value.actor_user_id),
+    entity_id: asNullableString(value.entity_id),
+    action: asString(value.action, "unknown"),
+    entity_table: asString(value.entity_table, "unknown"),
+    metadata: asRecord(value.metadata)
+  };
+}
