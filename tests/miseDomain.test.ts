@@ -5,7 +5,10 @@ import {
   createDemoSetupStarterDrafts,
   createInitialDemoState,
   DEMO_DATASET,
-  DEMO_RESTAURANT_ID
+  DEMO_RESTAURANT_ID,
+  DEMO_RESTAURANT_TIME_ZONE,
+  demoDemandFallback,
+  rebuildPurchaseRecommendations
 } from "../services/demoData";
 import {
   buildDemoReadinessSummary,
@@ -25,7 +28,6 @@ import {
   buildRecipeBaselineSummary,
   buildSetupReadinessSummary,
   buildTodaySummary,
-  rebuildPurchaseRecommendations,
   shouldSuppressRecommendationForItem
 } from "../services/domain/miseDomain";
 import {
@@ -56,6 +58,11 @@ import { addDays, toDateKey, toDateKeyInTimeZone } from "../utils/format";
 
 function isoDaysAgo(days: number) {
   return addDays(new Date(), -days).toISOString();
+}
+
+/** Operating date matching the demo restaurant's calendar, as demo callers pass it. */
+function demoOperatingDate() {
+  return toDateKeyInTimeZone(new Date(), DEMO_RESTAURANT_TIME_ZONE);
 }
 
 test("restaurant operating dates follow the restaurant timezone", () => {
@@ -108,7 +115,9 @@ test("inventory outlooks sort urgent kitchen items first", () => {
     DEMO_RESTAURANT_ID,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    demoOperatingDate(),
+    demoDemandFallback
   );
 
   assert.equal(outlooks[0]?.item.item_name, "Chicken breast");
@@ -149,7 +158,7 @@ test("real restaurants never inherit static demo demand assumptions", () => {
     inventory_item_id: item.id,
     quantity_used_per_sale: 0.5,
     unit: "lb"
-  }]);
+  }], toDateKey(new Date()));
 
   assert.equal(prediction.averageDailyUsage, 0);
   assert.equal(prediction.historySource, "none");
@@ -171,7 +180,7 @@ test("historical demand learns a robust restaurant-specific service-day baseline
     source_pos: "Test POS",
     created_at: new Date().toISOString()
   }));
-  const baselines = buildHistoricalDemandBaselines(restaurantId, historicalSales);
+  const baselines = buildHistoricalDemandBaselines(restaurantId, historicalSales, toDateKey(new Date()));
   const baseline = baselines.get("chicken bowl");
 
   assert.ok(baseline);
@@ -194,8 +203,8 @@ test("rolling demand memory adapts as sustained newer behavior replaces old serv
     source_pos: "Test POS",
     created_at: new Date().toISOString()
   }));
-  const transitioning = buildHistoricalDemandBaselines(restaurantId, buildSales(20, 10)).get("rice bowl");
-  const adapted = buildHistoricalDemandBaselines(restaurantId, buildSales(20, 20)).get("rice bowl");
+  const transitioning = buildHistoricalDemandBaselines(restaurantId, buildSales(20, 10), toDateKey(new Date())).get("rice bowl");
+  const adapted = buildHistoricalDemandBaselines(restaurantId, buildSales(20, 20), toDateKey(new Date())).get("rice bowl");
 
   assert.ok(transitioning);
   assert.ok(adapted);
@@ -244,7 +253,7 @@ test("coverage blends current depletion with learned demand and exposes its evid
     inventory_item_id: item.id,
     quantity_used_per_sale: 0.5,
     unit: "lb"
-  }]);
+  }], toDateKey(new Date()));
 
   assert.equal(prediction.todayDepletion, 20);
   assert.equal(prediction.averageDailyUsage, 13.5);
@@ -260,7 +269,10 @@ test("purchase recommendation inserts are idempotent pending inputs by low-stock
     DEMO_RESTAURANT_ID,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    [],
+    demoOperatingDate(),
+    demoDemandFallback
   );
 
   assert.equal(inserts.length, 6);
@@ -324,7 +336,9 @@ test("purchase recommendations learn a bounded median from repeated approved qua
     state.inventoryItems,
     state.posSales,
     state.menuItemIngredients,
-    history
+    history,
+    demoOperatingDate(),
+    demoDemandFallback
   );
   const pancakeRecommendation = inserts.find((insert) => insert.inventory_item_id === pancakeMix.id);
 
@@ -356,7 +370,9 @@ test("one anomalous approval does not override the calculated recommendation", (
     state.inventoryItems,
     state.posSales,
     state.menuItemIngredients,
-    history
+    history,
+    demoOperatingDate(),
+    demoDemandFallback
   );
   const pancakeRecommendation = inserts.find((insert) => insert.inventory_item_id === pancakeMix.id);
   assert.equal(pancakeRecommendation?.recommended_quantity, 40);
@@ -386,7 +402,9 @@ test("stale approvals age out of recommendation learning", () => {
     state.inventoryItems,
     state.posSales,
     state.menuItemIngredients,
-    staleHistory
+    staleHistory,
+    demoOperatingDate(),
+    demoDemandFallback
   ).find((entry) => entry.inventory_item_id === pancakeMix.id);
 
   assert.equal(recommendation?.recommended_quantity, 40);
@@ -416,7 +434,9 @@ test("recommendation learning never mixes incompatible purchasing units", () => 
     state.inventoryItems,
     state.posSales,
     state.menuItemIngredients,
-    incompatibleHistory
+    incompatibleHistory,
+    demoOperatingDate(),
+    demoDemandFallback
   ).find((entry) => entry.inventory_item_id === pancakeMix.id);
 
   assert.equal(recommendation?.recommended_quantity, 40);
@@ -462,7 +482,9 @@ test("repeated recent approvals move learned quantities as operator behavior cha
     state.inventoryItems,
     state.posSales,
     state.menuItemIngredients,
-    history
+    history,
+    demoOperatingDate(),
+    demoDemandFallback
   ).find((entry) => entry.inventory_item_id === pancakeMix.id);
 
   assert.equal(recommendation?.recommended_quantity, 55);
@@ -494,7 +516,9 @@ test("handled recommendations stay suppressed until a fresh inventory count", ()
     state.inventoryItems,
     state.posSales,
     state.menuItemIngredients,
-    [handledRecommendation]
+    [handledRecommendation],
+    demoOperatingDate(),
+    demoDemandFallback
   );
   assert.equal(shouldSuppressRecommendationForItem(DEMO_RESTAURANT_ID, chicken, [handledRecommendation]), true);
   assert.equal(suppressed.some((insert) => insert.inventory_item_id === chicken.id), false);
@@ -505,7 +529,9 @@ test("handled recommendations stay suppressed until a fresh inventory count", ()
     state.inventoryItems,
     state.posSales,
     state.menuItemIngredients,
-    [handledRecommendation]
+    [handledRecommendation],
+    demoOperatingDate(),
+    demoDemandFallback
   );
   assert.equal(shouldSuppressRecommendationForItem(DEMO_RESTAURANT_ID, chicken, [handledRecommendation]), false);
   assert.equal(regenerated.some((insert) => insert.inventory_item_id === chicken.id), true);
@@ -539,7 +565,9 @@ test("approved and ordered recommendations also suppress duplicate pending rows"
           supplier_order_id: null,
           created_at: "2026-06-20T09:30:00.000Z"
         }
-      ]
+      ],
+      demoOperatingDate(),
+      demoDemandFallback
     );
     assert.equal(inserts.some((insert) => insert.inventory_item_id === rice.id), false);
   });
@@ -633,7 +661,10 @@ test("supplier drafts group approved recommendations by supplier", () => {
     DEMO_RESTAURANT_ID,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    [],
+    demoOperatingDate(),
+    demoDemandFallback
   );
   const pendingRecommendations = pendingInserts.map((insert, index) => ({
     ...insert,
@@ -684,7 +715,10 @@ test("order queue summary counts draft suppliers when recommendations are cleare
     DEMO_RESTAURANT_ID,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    [],
+    demoOperatingDate(),
+    demoDemandFallback
   ).map((insert, index) => ({
     ...insert,
     id: `rec_approved_${index}`,
@@ -707,7 +741,8 @@ test("recipe baseline summary proves POS sales can deplete mapped ingredients", 
     DEMO_RESTAURANT_ID,
     state.posSales,
     state.menuItemIngredients,
-    state.inventoryItems
+    state.inventoryItems,
+    demoOperatingDate()
   );
 
   assert.equal(summary.menuItemsTracked, 5);
@@ -736,7 +771,8 @@ test("recipe baseline summary proves POS sales can deplete mapped ingredients", 
     DEMO_RESTAURANT_ID,
     state.posSales,
     state.menuItemIngredients,
-    state.inventoryItems
+    state.inventoryItems,
+    demoOperatingDate()
   );
   assert.ok(
     updatedSummary.items
@@ -823,7 +859,8 @@ test("adding a recipe baseline mapping closes a POS coverage gap", () => {
     DEMO_RESTAURANT_ID,
     state.posSales,
     state.menuItemIngredients,
-    state.inventoryItems
+    state.inventoryItems,
+    demoOperatingDate()
   );
   assert.deepEqual(missingSummary.posItemsMissingRecipes, ["Veggie Bowl"]);
   assert.equal(missingSummary.coveragePercent, 83);
@@ -840,7 +877,8 @@ test("adding a recipe baseline mapping closes a POS coverage gap", () => {
     DEMO_RESTAURANT_ID,
     state.posSales,
     state.menuItemIngredients,
-    state.inventoryItems
+    state.inventoryItems,
+    demoOperatingDate()
   );
 
   assert.equal(mappedSummary.posItemsMissingRecipes.length, 0);
@@ -858,13 +896,18 @@ test("insights and today summary use the same generated operating data", () => {
     DEMO_RESTAURANT_ID,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    demoOperatingDate(),
+    demoDemandFallback
   );
   const recommendations = buildRecommendationInserts(
     DEMO_RESTAURANT_ID,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    [],
+    demoOperatingDate(),
+    demoDemandFallback
   ).map((insert, index) => ({
     ...insert,
     id: `rec_${index}`,
@@ -877,7 +920,9 @@ test("insights and today summary use the same generated operating data", () => {
     state.inventoryItems,
     recommendations,
     insights,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    demoOperatingDate(),
+    demoDemandFallback
   );
   const insightSummary = buildInsightSummary(DEMO_RESTAURANT_ID, insights);
   const orderedRecommendations = recommendations.map((recommendation, index) => ({
@@ -936,7 +981,10 @@ test("demo readiness summary tracks the iOS walkthrough prerequisites", () => {
     DEMO_RESTAURANT_ID,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    [],
+    demoOperatingDate(),
+    demoDemandFallback
   ).map((insert, index) => ({
     ...insert,
     id: `rec_${index}`,
@@ -946,7 +994,9 @@ test("demo readiness summary tracks the iOS walkthrough prerequisites", () => {
     DEMO_RESTAURANT_ID,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    demoOperatingDate(),
+    demoDemandFallback
   );
 
   const summary = buildDemoReadinessSummary(
@@ -955,7 +1005,9 @@ test("demo readiness summary tracks the iOS walkthrough prerequisites", () => {
     state.inventoryItems,
     recommendations,
     insights,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    [],
+    { demandFallback: demoDemandFallback }
   );
 
   assert.equal(summary.status, "ready");
@@ -973,7 +1025,10 @@ test("demo walkthrough checklist covers independent tester workflow", () => {
     restaurant.id,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    [],
+    demoOperatingDate(),
+    demoDemandFallback
   ).map((insert, index) => ({
     ...insert,
     id: `walkthrough_rec_${index}`,
@@ -983,7 +1038,9 @@ test("demo walkthrough checklist covers independent tester workflow", () => {
     restaurant.id,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    demoOperatingDate(),
+    demoDemandFallback
   );
 
   const checklist = buildDemoWalkthroughChecklist(
@@ -993,7 +1050,8 @@ test("demo walkthrough checklist covers independent tester workflow", () => {
     recommendations,
     insights,
     state.menuItemIngredients,
-    state.supplierOrders
+    state.supplierOrders,
+    { demoProfileName: DEMO_DATASET.restaurant.name }
   );
   const byId = new Map(checklist.map((check) => [check.id, check]));
 

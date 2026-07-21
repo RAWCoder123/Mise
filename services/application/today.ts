@@ -10,6 +10,11 @@ import {
 } from "../domain/todayTasks";
 import type { InventoryStatus, TodaySummary } from "../../types/mise";
 import { toDateKeyInTimeZone } from "../../utils/format";
+import {
+  DEMO_DATASET,
+  demandFallbackForRestaurant,
+  isDemoDatasetRestaurantName
+} from "../demoData";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -59,12 +64,14 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
     ? requireRestaurantScoped([emailConnectionResult], normalizedRestaurantId)[0] ?? null
     : null;
   const operatingDate = toDateKeyInTimeZone(new Date(), data.restaurant.timezone);
+  const demandFallback = demandFallbackForRestaurant(normalizedRestaurantId);
   const outlooks = buildInventoryOutlooks(
     normalizedRestaurantId,
     inventoryItems,
     sales,
     mappings,
-    operatingDate
+    operatingDate,
+    demandFallback
   );
   const setupReadiness = buildSetupReadinessSummary({
     restaurant: data.restaurant,
@@ -81,7 +88,8 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
     recommendations,
     insights,
     mappings,
-    operatingDate
+    operatingDate,
+    demandFallback
   );
 
   return {
@@ -115,7 +123,13 @@ export async function fetchDemoReadinessSummary(restaurantId: string) {
     data.purchaseRecommendations,
     data.insights,
     data.menuItemIngredients,
-    orders
+    orders,
+    {
+      demandFallback: demandFallbackForRestaurant(restaurantId),
+      demoProfileName: isDemoDatasetRestaurantName(data.restaurant.name)
+        ? DEMO_DATASET.restaurant.name
+        : null
+    }
   );
 }
 

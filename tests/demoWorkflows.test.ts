@@ -2,18 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  approveRecommendationInDemoState,
   createInitialDemoState,
   DEMO_RESTAURANT_ID,
+  dismissRecommendationInDemoState,
+  markSupplierOrderSentInDemoState,
   repairDemoState,
+  undoRecommendationInDemoState,
   type DemoState,
   type StoredDemoState
 } from "../services/demoData";
-import {
-  approveRecommendationInDemoState,
-  dismissRecommendationInDemoState,
-  markSupplierOrderSentInDemoState,
-  undoRecommendationInDemoState
-} from "../services/domain/miseDomain";
 import type { PurchaseRecommendation, SupplierOrder } from "../types/mise";
 
 const FIXED_NOW = new Date("2026-07-15T16:00:00.000Z");

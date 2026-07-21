@@ -31,31 +31,24 @@ import type {
   TodaySummary,
   Urgency
 } from "../../types/mise";
-import { formatQuantity, nextDateKeyInTimeZone, toDateKey, toDateKeyInTimeZone } from "../../utils/format";
+import { formatQuantity, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../../utils/format";
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
 import { buildRecordedSalesTrend } from "./salesTrends";
-import {
-  DEMO_DATASET,
-  DEMO_RESTAURANT_ID,
-  DEMO_RESTAURANT_TIME_ZONE,
-  isDemoDatasetRestaurantName,
-  salesBaselines,
-  type DemoState
-} from "../demoData";
 
-function defaultOperatingDate(restaurantId: string) {
-  return restaurantId === DEMO_RESTAURANT_ID
-    ? toDateKeyInTimeZone(new Date(), DEMO_RESTAURANT_TIME_ZONE)
-    : toDateKey(new Date());
-}
+/**
+ * Optional seeded demand source for tenants without sales history.
+ * Injected by demo callers; real tenants never receive one, so the domain
+ * layer stays free of demo dataset knowledge.
+ */
+export type DemandFallback = (menuItemName: string) => number | undefined;
 
 export function createId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function isToday(sale: PosSale, operatingDate = toDateKey(new Date())) {
+function isToday(sale: PosSale, operatingDate: string) {
   return sale.sale_date === operatingDate;
 }
 
@@ -80,7 +73,7 @@ const minimumObservedItemDays = 3;
 export function buildHistoricalDemandBaselines(
   restaurantId: string,
   sales: PosSale[],
-  operatingDate = defaultOperatingDate(restaurantId)
+  operatingDate: string
 ): Map<string, HistoricalDemandBaseline> {
   const historicalSales = sales.filter(
     (sale) =>
@@ -143,7 +136,7 @@ export function recommendationReason(item: InventoryItem, prediction?: Inventory
   return `${item.item_name} ${verbForItem(item.item_name)} below reorder level. Mise recommends bringing it back to par before the next rush.`;
 }
 
-function learnedRecommendationReason(
+export function learnedRecommendationReason(
   item: InventoryItem,
   prediction: InventoryPrediction,
   learnedQuantity: number | undefined
@@ -155,7 +148,7 @@ function learnedRecommendationReason(
   return `${reason} Mise is using a stable median from recent approved orders: ${formatQuantity(learnedQuantity)} ${item.unit}.`;
 }
 
-function buildLearnedOrderQuantities(restaurantId: string, history: PurchaseRecommendation[] = []) {
+export function buildLearnedOrderQuantities(restaurantId: string, history: PurchaseRecommendation[] = []) {
   const samples = new Map<string, Array<{ quantity: number; createdAt: string }>>();
   history
     .filter((recommendation) => recommendation.restaurant_id === restaurantId)
@@ -199,7 +192,7 @@ function learnedQuantityKey(itemId: string, unit: string) {
   return `${itemId}::${unit.trim().toLowerCase()}`;
 }
 
-function boundedLearnedQuantity(
+export function boundedLearnedQuantity(
   item: InventoryItem,
   prediction: InventoryPrediction,
   learnedQuantities: Map<string, number>
@@ -250,14 +243,15 @@ export function buildInventoryOutlooks(
   inventoryItems: InventoryItem[],
   sales: PosSale[],
   mappings: MenuItemIngredient[],
-  operatingDate = defaultOperatingDate(restaurantId)
+  operatingDate: string,
+  demandFallback?: DemandFallback
 ): InventoryOutlookItem[] {
   const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .map((item) => ({
       item,
-      prediction: buildInventoryPrediction(item, sales, mappings, operatingDate, historicalBaselines)
+      prediction: buildInventoryPrediction(item, sales, mappings, operatingDate, historicalBaselines, demandFallback)
     }))
     .sort((a, b) => {
       const rankDelta = predictionRank(b.prediction) - predictionRank(a.prediction);
@@ -339,8 +333,9 @@ export function buildInventoryPrediction(
   item: InventoryItem,
   sales: PosSale[],
   mappings: MenuItemIngredient[],
-  operatingDate = defaultOperatingDate(item.restaurant_id),
-  historicalBaselines = buildHistoricalDemandBaselines(item.restaurant_id, sales, operatingDate)
+  operatingDate: string,
+  historicalBaselines = buildHistoricalDemandBaselines(item.restaurant_id, sales, operatingDate),
+  demandFallback?: DemandFallback
 ): InventoryPrediction {
   const safeItem: InventoryItem = {
     ...item,
@@ -372,11 +367,9 @@ export function buildInventoryPrediction(
       historySampleDays = Math.max(historySampleDays, learned.sampleDays);
       hasRestaurantHistory = true;
     }
-    const demoFallback = item.restaurant_id === DEMO_RESTAURANT_ID
-      ? salesBaselines[mapping.menu_item_name] ?? 0
-      : 0;
-    if (!learned && demoFallback > 0) hasDemoFallback = true;
-    const baseline = learned?.dailyQuantity ?? demoFallback;
+    const fallback = demandFallback?.(mapping.menu_item_name) ?? 0;
+    if (!learned && fallback > 0) hasDemoFallback = true;
+    const baseline = learned?.dailyQuantity ?? fallback;
     return sum + baseline * finiteNonNegative(mapping.quantity_used_per_sale);
   }, 0);
   const averageDailyUsage =
@@ -616,7 +609,7 @@ export function buildRecipeBaselineSummary(
   sales: PosSale[],
   mappings: MenuItemIngredient[],
   inventoryItems: InventoryItem[],
-  operatingDate = defaultOperatingDate(restaurantId)
+  operatingDate: string
 ): RecipeBaselineSummary {
   const restaurantSales = sales.filter((sale) => sale.restaurant_id === restaurantId);
   const todaySales = restaurantSales.filter((sale) => isToday(sale, operatingDate));
@@ -687,71 +680,13 @@ export function buildRecipeBaselineSummary(
   };
 }
 
-export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: string) {
-  const now = new Date().toISOString();
-  const recommendationHistory = [...state.purchaseRecommendations];
-  const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
-  const lowOutlooks = buildInventoryOutlooks(
-    restaurantId,
-    state.inventoryItems,
-    state.posSales,
-    state.menuItemIngredients
-  ).filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low");
-  const lowItemIds = new Set(lowOutlooks.map(({ item }) => item.id));
-  const kept = state.purchaseRecommendations.filter((recommendation) => {
-    if (recommendation.restaurant_id !== restaurantId) return true;
-    if (recommendation.status !== "pending") return true;
-    return lowItemIds.has(recommendation.inventory_item_id);
-  });
-
-  lowOutlooks.forEach(({ item, prediction }) => {
-    const pending = kept.find(
-      (recommendation) =>
-        recommendation.restaurant_id === restaurantId &&
-        recommendation.inventory_item_id === item.id &&
-        recommendation.status === "pending"
-    );
-    if (!pending && shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory)) return;
-
-    const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
-    const recommendedQuantity = learnedQuantity ?? prediction.suggestedOrderQuantity;
-    const reason = learnedRecommendationReason(item, prediction, learnedQuantity);
-
-    if (pending) {
-      pending.item_name = item.item_name;
-      pending.supplier_name = item.supplier_name;
-      pending.recommended_quantity = recommendedQuantity;
-      pending.unit = item.unit;
-      pending.reason = reason;
-      pending.urgency = prediction.urgency;
-      return;
-    }
-
-    kept.push({
-      id: createId("rec"),
-      restaurant_id: restaurantId,
-      inventory_item_id: item.id,
-      item_name: item.item_name,
-      supplier_name: item.supplier_name,
-      recommended_quantity: recommendedQuantity,
-      unit: item.unit,
-      reason,
-      urgency: prediction.urgency,
-      status: "pending",
-      supplier_order_id: null,
-      created_at: now
-    });
-  });
-
-  state.purchaseRecommendations = kept;
-}
-
 export function buildInsightsFromData(
   restaurantId: string,
   inventoryItems: InventoryItem[],
   sales: PosSale[],
   mappings: MenuItemIngredient[],
-  operatingDate = defaultOperatingDate(restaurantId)
+  operatingDate: string,
+  demandFallback?: DemandFallback
 ) {
   const now = new Date().toISOString();
   const todaySales = sales.filter(
@@ -760,7 +695,7 @@ export function buildInsightsFromData(
   const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
   const insights: Insight[] = [];
   const usage = estimateUsage(todaySales, mappings, inventoryItems);
-  const outlooks = buildInventoryOutlooks(restaurantId, inventoryItems, sales, mappings, operatingDate);
+  const outlooks = buildInventoryOutlooks(restaurantId, inventoryItems, sales, mappings, operatingDate, demandFallback);
 
   outlooks
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
@@ -795,7 +730,7 @@ export function buildInsightsFromData(
 
   todaySales.forEach((sale) => {
     const baseline = historicalBaselines.get(normalizeMenuItemKey(sale.item_name))?.dailyQuantity ??
-      (restaurantId === DEMO_RESTAURANT_ID ? salesBaselines[sale.item_name] : undefined);
+      demandFallback?.(sale.item_name);
     if (!baseline) return;
     const lift = Math.round(((sale.quantity_sold - baseline) / baseline) * 100);
     if (lift < 20) return;
@@ -884,19 +819,6 @@ export function buildInsightsFromData(
   return insights.slice(0, 8);
 }
 
-export function rebuildInsights(state: DemoState, restaurantId: string) {
-  const generated = buildInsightsFromData(
-    restaurantId,
-    state.inventoryItems,
-    state.posSales,
-    state.menuItemIngredients
-  );
-  state.insights = [
-    ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),
-    ...generated
-  ];
-}
-
 export function buildTodaySummary(
   restaurant: Restaurant,
   sales: PosSale[],
@@ -904,7 +826,8 @@ export function buildTodaySummary(
   recommendations: PurchaseRecommendation[],
   insights: Insight[],
   mappings: MenuItemIngredient[] = [],
-  operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone)
+  operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone),
+  demandFallback?: DemandFallback
 ): TodaySummary {
   const todaySales = sales.filter(
     (sale) => sale.restaurant_id === restaurant.id && isToday(sale, operatingDate)
@@ -913,7 +836,7 @@ export function buildTodaySummary(
   const netSalesToday = todaySales.reduce((sum, sale) => sum + sale.net_sales, 0);
   const itemsSold = todaySales.reduce((sum, sale) => sum + sale.quantity_sold, 0);
   const topItems = [...todaySales].sort((a, b) => b.quantity_sold - a.quantity_sold).slice(0, 3);
-  const outlooks = buildInventoryOutlooks(restaurant.id, inventoryItems, sales, mappings, operatingDate);
+  const outlooks = buildInventoryOutlooks(restaurant.id, inventoryItems, sales, mappings, operatingDate, demandFallback);
   const recipeBaseline = buildRecipeBaselineSummary(restaurant.id, sales, mappings, inventoryItems, operatingDate);
   const workflow = {
     posMenuItemsCovered: recipeBaseline.posItemsCovered,
@@ -1086,9 +1009,7 @@ export function buildDraftsFromRecommendations(
     });
 
   const now = options.now ?? new Date();
-  const timeZone = options.timeZone ?? (
-    restaurantId === DEMO_RESTAURANT_ID ? DEMO_RESTAURANT_TIME_ZONE : "UTC"
-  );
+  const timeZone = options.timeZone ?? "UTC";
   return [...grouped.entries()].map(([supplierName, items]) => {
     const deliveryDate = nextDateKeyInTimeZone(now, timeZone);
     return {
@@ -1131,194 +1052,6 @@ export interface SupplierOrderSentWorkflowResult {
   outcome: RecommendationWorkflowOutcome;
   order: SupplierOrder;
   orderedRecommendations: PurchaseRecommendation[];
-}
-
-export function approveRecommendationInDemoState(
-  state: DemoState,
-  restaurantId: string,
-  recommendationId: string,
-  recommendedQuantity?: number
-): RecommendationWorkflowResult {
-  const recommendation = findRecommendationForWorkflow(state, restaurantId, recommendationId);
-  const previousStatus = recommendation.status;
-  if (recommendation.status === "dismissed" || recommendation.status === "ordered") {
-    throw new Error("Already handled.");
-  }
-  if (recommendation.status === "pending" && recommendedQuantity !== undefined) {
-    if (
-      !Number.isFinite(recommendedQuantity) ||
-      recommendedQuantity <= 0 ||
-      recommendedQuantity > 1_000_000
-    ) {
-      throw new Error("Enter a valid order quantity.");
-    }
-    recommendation.recommended_quantity = recommendedQuantity;
-  }
-
-  let order = recommendation.supplier_order_id
-    ? state.supplierOrders.find(
-        (entry) =>
-          entry.id === recommendation.supplier_order_id &&
-          entry.restaurant_id === restaurantId
-      ) ?? null
-    : null;
-  if (order && order.status !== "draft") {
-    throw new Error("Already handled.");
-  }
-  if (!order) {
-    order = state.supplierOrders.find(
-      (entry) =>
-        entry.restaurant_id === restaurantId &&
-        entry.supplier_name === recommendation.supplier_name &&
-        entry.status === "draft"
-    ) ?? null;
-  }
-  if (!order) {
-    const timeZone = state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.timezone ?? (
-      restaurantId === DEMO_RESTAURANT_ID ? DEMO_RESTAURANT_TIME_ZONE : "UTC"
-    );
-    const now = new Date();
-    order = {
-      id: createId("order"),
-      restaurant_id: restaurantId,
-      supplier_name: recommendation.supplier_name,
-      order_message: "",
-      operator_note: null,
-      status: "draft",
-      delivery_date: nextDateKeyInTimeZone(now, timeZone),
-      created_at: now.toISOString()
-    };
-    state.supplierOrders.push(order);
-  }
-
-  recommendation.status = "approved";
-  recommendation.supplier_order_id = order.id;
-  rebuildDemoDraftMessage(state, order);
-  return {
-    outcome: previousStatus === "approved" ? "already_applied" : "applied",
-    recommendation,
-    order,
-    previousStatus
-  };
-}
-
-export function dismissRecommendationInDemoState(
-  state: DemoState,
-  restaurantId: string,
-  recommendationId: string
-): RecommendationWorkflowResult {
-  const recommendation = findRecommendationForWorkflow(state, restaurantId, recommendationId);
-  const previousStatus = recommendation.status;
-  if (recommendation.status === "approved" || recommendation.status === "ordered") {
-    throw new Error("Already handled.");
-  }
-  if (recommendation.status === "pending") {
-    recommendation.status = "dismissed";
-    recommendation.supplier_order_id = null;
-  }
-  return {
-    outcome: previousStatus === "dismissed" ? "already_applied" : "applied",
-    recommendation,
-    order: null,
-    previousStatus
-  };
-}
-
-export function undoRecommendationInDemoState(
-  state: DemoState,
-  restaurantId: string,
-  recommendationId: string
-): RecommendationWorkflowResult {
-  const recommendation = findRecommendationForWorkflow(state, restaurantId, recommendationId);
-  const previousStatus = recommendation.status;
-  if (recommendation.status === "ordered") {
-    throw new Error("This recommendation is already in supplier history and cannot be undone.");
-  }
-  if (recommendation.status === "pending") {
-    return { outcome: "already_applied", recommendation, order: null, previousStatus };
-  }
-  const newerPending = state.purchaseRecommendations.find(
-    (entry) =>
-      entry.id !== recommendation.id &&
-      entry.restaurant_id === restaurantId &&
-      entry.inventory_item_id === recommendation.inventory_item_id &&
-      entry.status === "pending"
-  );
-  if (newerPending) throw new Error("A newer recommendation is already pending.");
-
-  const order = recommendation.supplier_order_id
-    ? state.supplierOrders.find(
-        (entry) => entry.restaurant_id === restaurantId && entry.id === recommendation.supplier_order_id
-      ) ?? null
-    : null;
-  if (previousStatus === "approved" && order && order.status !== "draft") {
-    throw new Error("This recommendation is already in supplier history and cannot be undone.");
-  }
-
-  recommendation.status = "pending";
-  recommendation.supplier_order_id = null;
-  if (previousStatus === "approved" && order) {
-    const remaining = linkedApprovedRecommendations(state, order.id);
-    if (remaining.length === 0) {
-      state.supplierOrders = state.supplierOrders.filter((entry) => entry.id !== order.id);
-    } else {
-      order.order_message = buildSupplierOrderMessage(order.supplier_name, remaining, order.operator_note);
-    }
-  }
-  return { outcome: "applied", recommendation, order, previousStatus };
-}
-
-export function markSupplierOrderSentInDemoState(
-  state: DemoState,
-  restaurantId: string,
-  orderId: string
-): SupplierOrderSentWorkflowResult {
-  const order = state.supplierOrders.find(
-    (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
-  );
-  if (!order) throw new Error("Order draft not found");
-  const linked = state.purchaseRecommendations.filter(
-    (recommendation) =>
-      recommendation.restaurant_id === restaurantId &&
-      recommendation.supplier_order_id === orderId
-  );
-  if (order.status === "sent" || order.status === "completed") {
-    return {
-      outcome: "already_applied",
-      order,
-      orderedRecommendations: linked.filter((recommendation) => recommendation.status === "ordered")
-    };
-  }
-
-  order.status = "sent";
-  const orderedRecommendations = linked.filter((recommendation) => recommendation.status === "approved");
-  orderedRecommendations.forEach((recommendation) => {
-    recommendation.status = "ordered";
-  });
-  return { outcome: "applied", order, orderedRecommendations };
-}
-
-function findRecommendationForWorkflow(state: DemoState, restaurantId: string, recommendationId: string) {
-  const recommendation = state.purchaseRecommendations.find(
-    (entry) => entry.restaurant_id === restaurantId && entry.id === recommendationId
-  );
-  if (!recommendation) throw new Error("Recommendation not found.");
-  return recommendation;
-}
-
-function linkedApprovedRecommendations(state: DemoState, orderId: string) {
-  return state.purchaseRecommendations.filter(
-    (recommendation) =>
-      recommendation.supplier_order_id === orderId && recommendation.status === "approved"
-  );
-}
-
-function rebuildDemoDraftMessage(state: DemoState, order: SupplierOrder) {
-  order.order_message = buildSupplierOrderMessage(
-    order.supplier_name,
-    linkedApprovedRecommendations(state, order.id),
-    order.operator_note
-  );
 }
 
 export function buildOrderQueueSummary(
@@ -1575,7 +1308,8 @@ export function buildDemoReadinessSummary(
   recommendations: PurchaseRecommendation[],
   insights: Insight[],
   mappings: MenuItemIngredient[],
-  orders: SupplierOrder[] = []
+  orders: SupplierOrder[] = [],
+  options: { demandFallback?: DemandFallback; demoProfileName?: string | null } = {}
 ): DemoReadinessSummary {
   const restaurantSales = sales.filter((sale) => sale.restaurant_id === restaurant.id);
   const restaurantInventory = inventoryItems.filter((item) => item.restaurant_id === restaurant.id);
@@ -1596,7 +1330,8 @@ export function buildDemoReadinessSummary(
     inventoryItems,
     sales,
     mappings,
-    operatingDate
+    operatingDate,
+    options.demandFallback
   );
   const lowOutlookCount = outlooks.filter(
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low"
@@ -1610,7 +1345,8 @@ export function buildDemoReadinessSummary(
     restaurantRecommendations,
     restaurantInsights,
     mappings,
-    restaurantOrders
+    restaurantOrders,
+    { demoProfileName: options.demoProfileName }
   );
 
   const checks: DemoReadinessCheck[] = [
@@ -1734,28 +1470,30 @@ export function buildDemoWalkthroughChecklist(
   recommendations: PurchaseRecommendation[],
   insights: Insight[],
   mappings: MenuItemIngredient[],
-  orders: SupplierOrder[] = []
+  orders: SupplierOrder[] = [],
+  options: { demoProfileName?: string | null } = {}
 ): DemoWalkthroughCheck[] {
   const restaurantSales = sales.filter((sale) => sale.restaurant_id === restaurant.id);
   const restaurantInventory = inventoryItems.filter((item) => item.restaurant_id === restaurant.id);
   const restaurantRecommendations = recommendations.filter((recommendation) => recommendation.restaurant_id === restaurant.id);
   const restaurantInsights = insights.filter((insight) => insight.restaurant_id === restaurant.id);
   const restaurantOrders = orders.filter((order) => order.restaurant_id === restaurant.id);
-  const recipeBaseline = buildRecipeBaselineSummary(restaurant.id, restaurantSales, mappings, restaurantInventory);
+  const operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone);
+  const recipeBaseline = buildRecipeBaselineSummary(restaurant.id, restaurantSales, mappings, restaurantInventory, operatingDate);
   const pendingRecommendations = restaurantRecommendations.filter((recommendation) => recommendation.status === "pending");
   const handledRecommendations = restaurantRecommendations.filter(
     (recommendation) => recommendation.status === "approved" || recommendation.status === "dismissed" || recommendation.status === "ordered"
   );
   const draftOrders = restaurantOrders.filter((order) => order.status === "draft");
   const sentOrders = restaurantOrders.filter((order) => order.status === "sent" || order.status === "completed");
-  const hasDemoDatasetProfile = isDemoDatasetRestaurantName(restaurant.name);
+  const hasDemoDatasetProfile = Boolean(options.demoProfileName);
 
   return [
     {
       id: "enter_demo_data",
       label: "Enter demo data",
       description: hasDemoDatasetProfile
-        ? `The walkthrough opens on ${DEMO_DATASET.restaurant.name}.`
+        ? `The walkthrough opens on ${options.demoProfileName}.`
         : "Use the local demo entry or reset action to load the replaceable demo dataset.",
       route: "/login",
       status: hasDemoDatasetProfile ? "ready" : "attention"
@@ -1885,7 +1623,10 @@ export function buildSetupReadinessSummary({
   const restaurantInventory = inventoryItems.filter((item) => item.restaurant_id === restaurant.id);
   const restaurantMappings = mappings.filter((mapping) => mapping.restaurant_id === restaurant.id);
   const supplierNames = [...new Set(restaurantInventory.map((item) => item.supplier_name).filter(Boolean))];
-  const recipeBaseline = buildRecipeBaselineSummary(restaurant.id, sales, mappings, inventoryItems);
+  // Use the restaurant's own calendar so evening counts west of UTC do not
+  // roll into the wrong service day.
+  const operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone);
+  const recipeBaseline = buildRecipeBaselineSummary(restaurant.id, sales, mappings, inventoryItems, operatingDate);
   const analytics = buildConditionalAnalyticsSummary(restaurant.id, sales, restaurantMappings, restaurantInventory, orders);
 
   const missingProfile = [
@@ -2057,17 +1798,19 @@ export function buildRecommendationInserts(
   inventoryItems: InventoryItem[],
   sales: PosSale[],
   mappings: MenuItemIngredient[],
-  recommendationHistory: PurchaseRecommendation[] = [],
-  operatingDate = defaultOperatingDate(restaurantId)
+  recommendationHistory: PurchaseRecommendation[],
+  operatingDate: string,
+  demandFallback?: DemandFallback
 ) {
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
+  const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
 
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .filter((item) => !shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory))
     .map((item) => ({
       item,
-      prediction: buildInventoryPrediction(item, sales, mappings, operatingDate)
+      prediction: buildInventoryPrediction(item, sales, mappings, operatingDate, historicalBaselines, demandFallback)
     }))
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
     .map(({ item, prediction }) => {

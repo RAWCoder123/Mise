@@ -8,7 +8,6 @@ import {
   buildInventoryPrediction,
   buildRecommendationInserts,
   buildTodaySummary,
-  rebuildPurchaseRecommendations,
   shouldSuppressRecommendationForItem
 } from "../services/domain/miseDomain";
 import { calculateOperationalSignals } from "../services/domain/operationalSignals";
@@ -16,7 +15,9 @@ import { inventoryUnitsAreCompatible } from "../services/domain/inventoryUnits";
 import { buildRecordedSalesTrend } from "../services/domain/salesTrends";
 import {
   createInitialDemoState,
-  DEMO_RESTAURANT_ID
+  DEMO_RESTAURANT_ID,
+  demoDemandFallback,
+  rebuildPurchaseRecommendations
 } from "../services/demoData";
 import type {
   InventoryItem,
@@ -117,7 +118,8 @@ test("default demo presents a balanced kitchen, a real reorder, and healthy sale
     state.inventoryItems,
     state.posSales,
     state.menuItemIngredients,
-    operatingDate
+    operatingDate,
+    demoDemandFallback
   );
   const inventory = buildInventoryControlSummary(DEMO_RESTAURANT_ID, outlooks);
 
@@ -133,7 +135,8 @@ test("default demo presents a balanced kitchen, a real reorder, and healthy sale
     state.posSales,
     state.menuItemIngredients,
     state.purchaseRecommendations,
-    operatingDate
+    operatingDate,
+    demoDemandFallback
   );
   assert.equal(recommendations.length, 1);
   assert.equal(recommendations[0]?.item_name, "Chicken thigh");
@@ -146,7 +149,8 @@ test("default demo presents a balanced kitchen, a real reorder, and healthy sale
     state.purchaseRecommendations,
     state.insights,
     state.menuItemIngredients,
-    operatingDate
+    operatingDate,
+    demoDemandFallback
   );
   const currentSales = today.salesTrend.at(-1)?.sales ?? 0;
   const previousSales = today.salesTrend.at(-2)?.sales ?? 0;

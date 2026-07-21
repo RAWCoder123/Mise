@@ -23,19 +23,25 @@ import type {
   SupplierRecipient
 } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
-import { DEMO_RESTAURANT_ID, DEMO_USER_ID, type DemoSetupProfile, type DemoState } from "../demoData";
 import {
+  DEMO_RESTAURANT_ID,
+  DEMO_USER_ID,
   approveRecommendationInDemoState,
-  buildInsightsFromData,
-  buildSupplierOrderMessage,
-  createId,
+  demandFallbackForRestaurant,
   dismissRecommendationInDemoState,
   markSupplierOrderSentInDemoState,
   rebuildInsights,
   rebuildPurchaseRecommendations,
+  undoRecommendationInDemoState,
+  type DemoSetupProfile,
+  type DemoState
+} from "../demoData";
+import {
+  buildInsightsFromData,
+  buildSupplierOrderMessage,
+  createId,
   severityRank,
   severityRankForUrgency,
-  undoRecommendationInDemoState,
   type RecommendationWorkflowResult,
   type SupplierOrderSentWorkflowResult
 } from "../domain/miseDomain";
@@ -2252,5 +2258,12 @@ function normalizePosProvider(value: unknown): PosProvider | null {
 }
 
 export function buildLocalInsightsForTest(data: PlanningData & { restaurantId: string }) {
-  return buildInsightsFromData(data.restaurantId, data.inventoryItems, data.sales, data.menuItemIngredients);
+  return buildInsightsFromData(
+    data.restaurantId,
+    data.inventoryItems,
+    data.sales,
+    data.menuItemIngredients,
+    data.operatingDate,
+    demandFallbackForRestaurant(data.restaurantId)
+  );
 }

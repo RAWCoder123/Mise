@@ -12,6 +12,7 @@ import {
   requireRecipeBaselineQuantity
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
+import { demandFallbackForRestaurant } from "../demoData";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -27,7 +28,8 @@ export async function fetchInventoryOutlookItems(restaurantId: string) {
     data.inventoryItems,
     data.sales,
     data.menuItemIngredients,
-    data.operatingDate
+    data.operatingDate,
+    demandFallbackForRestaurant(restaurantId)
   );
 }
 

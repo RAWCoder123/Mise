@@ -4,3 +4,5 @@
 export * from "./demo/demoDataset";
 export * from "./demo/demoSetupData";
 export * from "./demo/replaceableDemoData";
+export * from "./demo/demandFallback";
+export * from "./demo/demoWorkflows";

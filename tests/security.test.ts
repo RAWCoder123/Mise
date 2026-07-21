@@ -772,7 +772,7 @@ test("approval quantity bounds are enforced at service, demo, and RPC boundaries
   const service = readFileSync("services/application/orders.ts", "utf8");
   const inventoryService = readFileSync("services/application/inventory.ts", "utf8");
   const setupService = readFileSync("services/application/setup.ts", "utf8");
-  const demo = readFileSync("services/domain/miseDomain.ts", "utf8");
+  const demo = readFileSync("services/demo/demoWorkflows.ts", "utf8");
   const migration = readFileSync(
     "supabase/migrations/20260714035118_enforce_approval_quantity_bounds.sql",
     "utf8"
