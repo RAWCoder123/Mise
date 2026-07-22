@@ -1,6 +1,6 @@
 begin;
 
-select plan(347);
+select plan(349);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -837,10 +837,32 @@ select is(
   'authenticated views are absent or security_invoker'
 );
 select is((select count(*) from storage.buckets where public), 0::bigint, 'pilot Storage has no public buckets');
+select results_eq(
+  $$
+    select schemaname || '.' || tablename
+    from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname in ('public', 'private')
+  $$,
+  array['public.restaurant_memberships'],
+  'only restaurant_memberships is published to Realtime; no other tenant table leaks through the socket'
+);
 select is(
-  (select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname in ('public', 'private')),
-  0::bigint,
-  'pilot tenant tables are not published to Realtime'
+  (
+    select relrowsecurity
+    from pg_class
+    where oid = 'public.restaurant_memberships'::regclass
+  ),
+  true,
+  'the Realtime-published membership table keeps row level security enabled'
+);
+select is(
+  (
+    select relreplident
+    from pg_class
+    where oid = 'public.restaurant_memberships'::regclass
+  ),
+  'f',
+  'membership replica identity is full so revocation DELETE events carry the filter columns'
 );
 select is(
   (
