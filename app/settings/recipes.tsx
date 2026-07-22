@@ -44,11 +44,19 @@ export default function RecipeBaselinesScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   useEffect(() => {
     requestIdRef.current += 1;
+    if (reloadTimerRef.current) {
+      clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = null;
+    }
+    saveTimersRef.current.forEach((timer) => clearTimeout(timer));
+    saveTimersRef.current.clear();
     setLoadedRestaurantId(null);
     setSummary(null);
     setInventoryItems([]);
@@ -88,6 +96,27 @@ export default function RecipeBaselinesScreen() {
     }
   }, [restaurant?.id, t]);
 
+  // Coalesces refetches when the operator saves several ingredient quantities
+  // in a row, so each save does not immediately re-pull all planning data.
+  const scheduleReload = useCallback(
+    (restaurantId: string) => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = setTimeout(() => {
+        reloadTimerRef.current = null;
+        if (activeRestaurantIdRef.current === restaurantId) void load();
+      }, 650);
+    },
+    [load]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+      saveTimersRef.current.forEach((timer) => clearTimeout(timer));
+      saveTimersRef.current.clear();
+    };
+  }, []);
+
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
   const visibleInventoryItems = loadedRestaurantId === restaurant?.id ? inventoryItems : [];
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
@@ -109,7 +138,7 @@ export default function RecipeBaselinesScreen() {
     else router.replace("/settings");
   }
 
-  async function saveIngredient(mappingId: string, quantity: string) {
+  async function saveIngredient(mappingId: string, quantity: string, options?: { quiet?: boolean }) {
     if (!restaurant) return;
     if (!canManage) {
       setError(t("recipes.error.readOnly"));
@@ -125,12 +154,12 @@ export default function RecipeBaselinesScreen() {
     }
     setSavingMappingId(mappingId);
     setError(null);
-    setNotice(null);
+    if (!options?.quiet) setNotice(null);
     try {
       await updateRecipeBaselineIngredient(restaurantId, mappingId, parsed);
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice(t("recipes.notice.saved"));
-      await load();
+      if (!options?.quiet) setNotice(t("recipes.notice.saved"));
+      scheduleReload(restaurantId);
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
         setError(t("recipes.error.save"));
@@ -138,6 +167,30 @@ export default function RecipeBaselinesScreen() {
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSavingMappingId(null);
     }
+  }
+
+  // Debounces the expensive save+recompute path while the operator is still
+  // typing a quantity. Explicit Save flushes the pending timer immediately.
+  function queueIngredientSave(
+    mappingId: string,
+    quantity: string,
+    options?: { immediate?: boolean; cancel?: boolean }
+  ) {
+    const existing = saveTimersRef.current.get(mappingId);
+    if (existing) {
+      clearTimeout(existing);
+      saveTimersRef.current.delete(mappingId);
+    }
+    if (options?.cancel) return;
+    if (options?.immediate) {
+      void saveIngredient(mappingId, quantity);
+      return;
+    }
+    const timer = setTimeout(() => {
+      saveTimersRef.current.delete(mappingId);
+      void saveIngredient(mappingId, quantity, { quiet: true });
+    }, 700);
+    saveTimersRef.current.set(mappingId, timer);
   }
 
   async function addBaselineLink() {
@@ -335,7 +388,7 @@ export default function RecipeBaselinesScreen() {
                   item={item}
                   canManage={canManage}
                   savingMappingId={savingMappingId}
-                  onSave={saveIngredient}
+                  onSave={queueIngredientSave}
                 />
               ))
             )}
@@ -516,9 +569,9 @@ function RecipeRow({
   item: RecipeBaselineItem;
   canManage: boolean;
   savingMappingId: string | null;
-  onSave: (mappingId: string, quantity: string) => void;
+  onSave: (mappingId: string, quantity: string, options?: { immediate?: boolean; cancel?: boolean }) => void;
 }) {
-  const { formatNumber, t } = useLocale();
+  const { formatNumber, parseNumber, t } = useLocale();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -526,6 +579,14 @@ function RecipeRow({
       Object.fromEntries(item.ingredients.map((ingredient) => [ingredient.mappingId, formatNumber(ingredient.quantityUsedPerSale)]))
     );
   }, [formatNumber, item]);
+
+  function parsedQuantity(draftValue: string) {
+    try {
+      return requireRecipeBaselineQuantity(parseNumber(draftValue));
+    } catch {
+      return null;
+    }
+  }
 
   return (
     <View style={styles.recipeRow}>
@@ -553,6 +614,8 @@ function RecipeRow({
               const draftValue = drafts[ingredient.mappingId] ?? formatNumber(ingredient.quantityUsedPerSale);
               const isSaving = savingMappingId === ingredient.mappingId;
               const isBusy = savingMappingId !== null;
+              const parsed = parsedQuantity(draftValue);
+              const isDirty = parsed !== null && parsed !== ingredient.quantityUsedPerSale;
 
               return (
                 <View key={ingredient.mappingId} style={styles.ingredientEditor}>
@@ -565,7 +628,22 @@ function RecipeRow({
                       {canManage ? (
                         <TextInput
                           value={draftValue}
-                          onChangeText={(value) => setDrafts((current) => ({ ...current, [ingredient.mappingId]: value }))}
+                          onChangeText={(value) => {
+                            setDrafts((current) => ({ ...current, [ingredient.mappingId]: value }));
+                            const next = parsedQuantity(value);
+                            if (next === null) {
+                              onSave(ingredient.mappingId, value, { cancel: true });
+                              return;
+                            }
+                            if (next === ingredient.quantityUsedPerSale) {
+                              onSave(ingredient.mappingId, value, { cancel: true });
+                              return;
+                            }
+                            onSave(ingredient.mappingId, value);
+                          }}
+                          onBlur={() => {
+                            if (isDirty) onSave(ingredient.mappingId, draftValue, { immediate: true });
+                          }}
                           editable={!isBusy}
                           keyboardType="decimal-pad"
                           selectTextOnFocus
@@ -595,8 +673,8 @@ function RecipeRow({
                         accessibilityLabel={t("recipes.action.saveAccessibility", { ingredient: ingredient.itemName })}
                         variant="secondary"
                         icon={<Save size={15} color={colors.text} strokeWidth={2.5} />}
-                        disabled={isBusy}
-                        onPress={() => onSave(ingredient.mappingId, draftValue)}
+                        disabled={isBusy || !isDirty}
+                        onPress={() => onSave(ingredient.mappingId, draftValue, { immediate: true })}
                         style={styles.saveButton}
                       />
                     ) : null}
