@@ -14,6 +14,7 @@ import { SectionHeader } from "../../components/ui/SectionHeader";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
+import { TrendLineChart } from "../../components/ui/TrendLineChart";
 import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -23,9 +24,11 @@ import {
   fetchEmailConnectionState,
   fetchPurchaseRecommendations,
   fetchSupplierOrders,
+  fetchSupplierSpendTrend,
   isGmailIntegrationError,
   sendSupplierOrderEmail,
-  undoPurchaseRecommendationAction
+  undoPurchaseRecommendationAction,
+  type SupplierSpendTrendPoint
 } from "../../services/miseService";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
@@ -45,12 +48,13 @@ interface UndoAction {
 const EMPTY_ACTIONS: Record<string, RecommendationAction | undefined> = {};
 
 export default function OrdersScreen() {
-  const { formatNumber, locale, parseNumber, t } = useLocale();
+  const { formatCompactCurrency, formatDate, formatNumber, locale, parseNumber, t } = useLocale();
   const { memberships, restaurant, usingLocalDemo } = useMiseSession();
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canConnectGmail = canDeleteRestaurantData(memberships, restaurant?.id);
   const [recommendations, setRecommendations] = useState<PurchaseRecommendation[]>([]);
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
+  const [spendTrend, setSpendTrend] = useState<SupplierSpendTrendPoint[]>([]);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [lane, setLane] = useState<OrderLane>("drafts");
   const [quantities, setQuantities] = useState<Record<string, string>>({});
@@ -97,16 +101,18 @@ export default function OrdersScreen() {
       setLoadError(null);
 
       try {
-        const [nextRecommendations, nextOrders, nextEmailConnection] = await Promise.all([
+        const [nextRecommendations, nextOrders, nextEmailConnection, nextSpendTrend] = await Promise.all([
           fetchPurchaseRecommendations(restaurantId, "pending"),
           fetchSupplierOrders(restaurantId),
-          fetchEmailConnectionState(restaurantId)
+          fetchEmailConnectionState(restaurantId),
+          fetchSupplierSpendTrend(restaurantId)
         ]);
         if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
         setRecommendations(nextRecommendations);
         setOrders(nextOrders);
         setEmailConnection(nextEmailConnection);
+        setSpendTrend(nextSpendTrend);
         setQuantities((current) => {
           const next: Record<string, string> = {};
           nextRecommendations.forEach((recommendation) => {
@@ -137,6 +143,7 @@ export default function OrdersScreen() {
     undoLockRef.current = false;
     setRecommendations([]);
     setOrders([]);
+    setSpendTrend([]);
     setEmailConnection(null);
     setQuantities({});
     setQuantityErrors({});
@@ -185,6 +192,7 @@ export default function OrdersScreen() {
   const dataMatchesActiveRestaurant = loadedRestaurantRef.current === restaurant?.id;
   const visibleRecommendations = dataMatchesActiveRestaurant ? recommendations : [];
   const visibleOrders = dataMatchesActiveRestaurant ? orders : [];
+  const visibleSpendTrend = dataMatchesActiveRestaurant ? spendTrend : [];
   const visibleEmailConnection = dataMatchesActiveRestaurant ? emailConnection : null;
   const visibleMessage = messageRestaurantId === restaurant?.id ? message : null;
   const visibleUndoAction = dataMatchesActiveRestaurant && canManage ? undoAction : null;
@@ -699,24 +707,48 @@ export default function OrdersScreen() {
           ) : null}
 
           {lane === "sent" ? (
-            sentOrders.length === 0 ? (
-              <EmptyState
-                compact
-                title={t("orders.empty.sent.title")}
-                body={t("orders.empty.sent.body")}
-              />
-            ) : (
-              sentOrders.map((order) => (
-                <SupplierDraftCard
-                  key={order.id}
-                  order={order}
-                  onCopy={() => void copyOrder(order)}
-                  onOpen={() =>
-                    router.push({ pathname: "/orders/[id]", params: { id: order.id } })
-                  }
+            <>
+              {visibleSpendTrend.length >= 2 ? (
+                <SectionSurface
+                  title={t("orders.spend.title")}
+                  subtitle={t("orders.spend.subtitle")}
+                >
+                  <TrendLineChart
+                    series={[{ values: visibleSpendTrend.map((point) => point.spend) }]}
+                    labels={visibleSpendTrend.map((point) =>
+                      formatDate(`${point.date}T12:00:00`, { month: "numeric", day: "numeric" })
+                    )}
+                    height={116}
+                    formatValue={(value) => formatCompactCurrency(value, restaurant?.currency)}
+                    accessibilityLabel={t("orders.spend.accessibility", {
+                      count: formatNumber(visibleSpendTrend.length),
+                      latest: formatCompactCurrency(
+                        visibleSpendTrend[visibleSpendTrend.length - 1]?.spend ?? 0,
+                        restaurant?.currency
+                      )
+                    })}
+                  />
+                </SectionSurface>
+              ) : null}
+              {sentOrders.length === 0 ? (
+                <EmptyState
+                  compact
+                  title={t("orders.empty.sent.title")}
+                  body={t("orders.empty.sent.body")}
                 />
-              ))
-            )
+              ) : (
+                sentOrders.map((order) => (
+                  <SupplierDraftCard
+                    key={order.id}
+                    order={order}
+                    onCopy={() => void copyOrder(order)}
+                    onOpen={() =>
+                      router.push({ pathname: "/orders/[id]", params: { id: order.id } })
+                    }
+                  />
+                ))
+              )}
+            </>
           ) : null}
 
           {lane === "history" ? (
