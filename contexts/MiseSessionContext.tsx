@@ -316,6 +316,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !authUser) return;
+    const client = supabase;
 
     let mounted = true;
     let refreshing = false;
@@ -365,13 +366,35 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     const appStateSubscription = AppState.addEventListener("change", (state) => {
       if (state === "active") void revalidateLiveMemberships();
     });
+    // Primary signal: Realtime events on the caller's own membership rows
+    // (RLS-scoped; restaurant_memberships is the only table in the
+    // supabase_realtime publication). Grants, role changes, and revocations
+    // apply within seconds instead of waiting for a poll.
+    const membershipChannel = client
+      .channel(`restaurant-memberships:${authUser.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "restaurant_memberships",
+          filter: `user_id=eq.${authUser.id}`
+        },
+        () => void revalidateLiveMemberships()
+      )
+      .subscribe((status) => {
+        // Recover missed events after a dropped socket reconnects.
+        if (status === "SUBSCRIBED") void revalidateLiveMemberships();
+      });
+    // Safety net in case the Realtime socket silently degrades.
     const interval = setInterval(() => {
       void revalidateLiveMemberships();
-    }, 10_000);
+    }, 300_000);
 
     return () => {
       mounted = false;
       clearInterval(interval);
+      void client.removeChannel(membershipChannel);
       appStateSubscription.remove();
       unsubscribeDenials();
     };

@@ -63,6 +63,27 @@ test("workspace mutations stop stale continuations and session state is latest-w
   assert.match(session, /AppState\.addEventListener\("change"/);
 });
 
+test("membership changes are pushed over Realtime scoped to the signed-in user", () => {
+  const session = source("contexts/MiseSessionContext.tsx");
+
+  assert.match(session, /channel\(`restaurant-memberships:\$\{authUser\.id\}`\)/, "channel name is per-user");
+  assert.match(session, /"postgres_changes"/, "subscribes to postgres change events");
+  assert.match(session, /table:\s*"restaurant_memberships"/, "watches the membership table");
+  assert.match(
+    session,
+    /filter:\s*`user_id=eq\.\$\{authUser\.id\}`/,
+    "server-side filter restricts events to the subscriber's own membership rows"
+  );
+  assert.match(
+    session,
+    /if \(status === "SUBSCRIBED"\) void revalidateLiveMemberships\(\)/,
+    "revalidates after (re)connect so missed events are recovered"
+  );
+  assert.match(session, /removeChannel\(membershipChannel\)/, "cleans up the channel on unmount");
+  assert.match(session, /300_000/, "keeps a 5-minute polling safety net, not a 10-second hot loop");
+  assert.doesNotMatch(session, /10_000/, "the 10-second membership poll is gone");
+});
+
 test("repository permission failures trigger live membership revalidation", () => {
   const repository = source("services/repositories/supabaseRepository.ts");
   const events = source("services/tenantAuthorizationEvents.ts");
