@@ -47,6 +47,10 @@ test("workspace mutations stop stale continuations and session state is latest-w
   assert.match(inventoryDetail, /await updateInventoryItem[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
   assert.match(orderDetail, /await persistNote\(\)[\s\S]*activeRestaurantIdRef\.current !== restaurantId[\s\S]*await sendSupplierOrderEmail/);
   assert.match(recipes, /selectedInventoryItem\.restaurant_id !== restaurantId/);
+  assert.match(recipes, /queueIngredientSave/);
+  assert.match(recipes, /saveTimersRef/);
+  assert.match(recipes, /, 700\)/);
+  assert.match(recipes, /immediate:\s*true/);
 
   assert.match(session, /posRequestIdRef/);
   assert.match(session, /activeRestaurantIdRef\.current !== expectedRestaurantId/);
