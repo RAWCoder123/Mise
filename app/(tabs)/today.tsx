@@ -26,6 +26,7 @@ import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
+import { TrendLineChart } from "../../components/ui/TrendLineChart";
 import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -442,10 +443,9 @@ function TaskRow({
 }
 
 function SalesMovement({ summary, copy }: { summary: TodayCommandCenterSummary; copy: TodayCopy }) {
-  const { formatCurrency, formatDate, formatNumber } = useLocale();
+  const { formatCompactCurrency, formatCurrency, formatDate, formatNumber } = useLocale();
   const points = summary.salesTrend;
   const todayKey = summary.operatingDate;
-  const maximum = Math.max(1, ...points.map((point) => point.sales));
   const todayPoint = points.find((point) => point.label === todayKey);
   const current = todayPoint?.sales ?? summary.salesToday;
   const previous = points.filter((point) => point.label < todayKey).at(-1)?.sales ?? 0;
@@ -489,28 +489,14 @@ function SalesMovement({ summary, copy }: { summary: TodayCommandCenterSummary; 
       </View>
 
       {hasSales ? (
-        <View
-          accessible
+        <TrendLineChart
+          series={[{ values: points.map((point) => point.sales) }]}
+          labels={dateLabels}
+          showArea
+          formatValue={(value) => formatCompactCurrency(value, summary.restaurantCurrency)}
           accessibilityLabel={copy.salesChartAccessibilityLabel}
           style={styles.chart}
-        >
-          {points.map((point, index) => (
-            <View key={point.label} style={styles.chartPoint}>
-              <View style={styles.barColumn}>
-                <View
-                  style={[
-                    styles.bar,
-                    index === points.length - 1 && styles.currentBar,
-                    { height: Math.max(4, Math.round((point.sales / maximum) * 68)) }
-                  ]}
-                />
-              </View>
-              <Text style={[styles.barLabel, index === points.length - 1 && styles.currentBarLabel]}>
-                {dateLabels[index]}
-              </Text>
-            </View>
-          ))}
-        </View>
+        />
       ) : (
         <Text style={styles.emptyTrend}>{copy.emptySalesTrend}</Text>
       )}
@@ -968,44 +954,7 @@ const styles = StyleSheet.create({
     textAlign: "right"
   },
   chart: {
-    height: 94,
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: 7
-  },
-  chartPoint: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: "center"
-  },
-  barColumn: {
-    height: 72,
-    width: "100%",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
-  },
-  bar: {
-    width: "54%",
-    minWidth: 8,
-    maxWidth: 22,
-    borderTopLeftRadius: radii.sm,
-    borderTopRightRadius: radii.sm,
-    backgroundColor: colors.panelStrong
-  },
-  currentBar: {
-    backgroundColor: colors.accent
-  },
-  barLabel: {
-    color: colors.muted,
-    ...typography.caption,
-    fontSize: 9,
-    lineHeight: 12,
-    marginTop: 5
-  },
-  currentBarLabel: {
-    color: colors.text
+    marginTop: 4
   },
   emptyTrend: {
     color: colors.muted,
