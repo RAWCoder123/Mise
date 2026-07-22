@@ -5,6 +5,7 @@ import {
   buildSupplierEmailPayload
 } from "../domain/miseDomain";
 import { buildSupplierRecipientDirectory } from "../domain/supplierRecipients";
+import { buildSupplierSpendTrend, type SupplierSpendTrendPoint } from "../domain/supplierSpend";
 import {
   requireRecommendationApprovalQuantity,
   requireSupplierOperatorNote,
@@ -103,6 +104,24 @@ export async function undoPurchaseRecommendationAction(restaurantId: string, rec
 
 export async function fetchSupplierOrders(restaurantId: string) {
   return repository.fetchSupplierOrders(restaurantId);
+}
+
+export type { SupplierSpendTrendPoint };
+
+/**
+ * Estimated spend per day for sent/completed supplier orders, priced from
+ * the bounded recommendation history and current inventory unit costs.
+ */
+export async function fetchSupplierSpendTrend(restaurantId: string): Promise<SupplierSpendTrendPoint[]> {
+  const [orders, recommendationHistory, inventoryItems, restaurant] = await Promise.all([
+    repository.fetchSupplierOrders(restaurantId),
+    repository.fetchRecommendationHistory(restaurantId),
+    repository.fetchInventoryItems(restaurantId),
+    repository.fetchRestaurant(restaurantId)
+  ]);
+  return buildSupplierSpendTrend(restaurantId, orders, recommendationHistory, inventoryItems, {
+    timeZone: restaurant.timezone
+  });
 }
 
 export async function fetchEmailConnectionState(restaurantId: string) {
