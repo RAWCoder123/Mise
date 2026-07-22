@@ -115,6 +115,9 @@ history, rebuilds all recommendations/insights (`services/application/inventory.
 2. DONE EARLIER: planning sales are already bounded server-side via the
    `fetch_planning_sales` RPC (`p_service_days: 28`).
 3. TODO: debounce recipe-editor saves (`app/settings/recipes.tsx`).
+   DONE 2026-07-22: quantity edits are debounced (700ms) before the
+   expensive save+recompute path; Save / blur flush immediately; reload
+   coalescing stays at 650ms.
 4. Longer term: move signal generation into the `operational-workflows`
    edge function so clients cannot fabricate signals.
 
@@ -167,19 +170,20 @@ no-shadow aesthetic, Lucide icons.
    soft-red gradient area variant; y-formatter via `useLocale`; accessible
    summary label. Feeds: Sales rhythm (Today) + Supplier spend (Orders).
    [DONE 2026-07-22 for Today's Sales Movement — the bar chart is replaced by
-   the gradient-area line chart; dashed comparison series is supported by the
-   component and still needs an Orders supplier-spend feed.]
+   the gradient-area line chart; Orders supplier-spend feed wired on the
+   Sent lane via `buildSupplierSpendTrend` / `fetchSupplierSpendTrend`.]
 4. `components/ui/ActionTile.tsx` + grid: 4 outlined square tiles
-   (Scan item / New order / Inventory count / Reports), icon + label +
-   small chevron, ≥44px targets.
+   (Inventory count / New order / Recipes / Reports), icon + label +
+   small chevron, ≥44px targets.  [DONE 2026-07-22 on Today]
 5. `StatusNotice`: add `actionVariant: "solid"` (small filled red button) for
-   the "Service needs a stock check → Review Order" banner.
+   the "Service needs a stock check → Review Order" banner.  [DONE]
    `Button`: add `soft` variant (accentSoft bg, accentDark label) for
-   not-yet-enabled actions like Gmail send.
-6. Supplier order card: 40px rounded-square supplier avatar (successSoft or
-   brand color + initials), right-aligned total in `metricValue`, quiet line
-   items, `soft` Send email + `secondary` Copy footer.
+   not-yet-enabled actions like Gmail send.  [DONE]
+6. Supplier order card: 40px rounded-square supplier avatar (successSoft +
+   initials), right-aligned total in `metricValue`, quiet line items,
+   `soft` Send + `secondary` Copy footer.  [DONE 2026-07-22]
 7. `EmptyState`: `framed` prop → dashed border box (Setup "No items yet").
+   [DONE — prop added; migrate call sites opportunistically]
    Optionally recolor `SetupStepRail` complete/connector from green to red.
 8. Attention rows: leading 6px status dot (`inventoryStatusColors`),
    right-aligned bold value ("$1,245" / "3 items") on `OperationalRow`.
