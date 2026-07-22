@@ -79,12 +79,16 @@ Deliberately NOT done: splitting the interface into role interfaces.
 
 ### P3 — Session context: Realtime memberships + state machine
 
-- P3a: replace the 10s `setInterval` membership poll (MiseSessionContext
-  ~line 368) with a Supabase Realtime subscription on
-  `restaurant_memberships` filtered by `user_id`; migration must add the
-  table to `supabase_realtime` publication; add an RLS-leak test in
-  `supabase/tests/database`. Keep AppState foreground revalidation; demote
-  the interval to a 5-minute safety net for one release, then remove.
+- P3a — DONE 2026-07-22: the 10s membership poll is replaced by a Realtime
+  subscription on `restaurant_memberships` filtered by `user_id=eq.<uid>`,
+  with a revalidation on every (re)`SUBSCRIBED` so missed events are
+  recovered, AppState foreground revalidation kept, and the interval demoted
+  to a 5-minute safety net (remove after one release of soak).
+  Migration `20260722120000_realtime_membership_revocation.sql` publishes
+  ONLY `restaurant_memberships` to `supabase_realtime` (replica identity
+  full so DELETE events carry filter columns). `tenant_isolation.test.sql`
+  now asserts the publication contains exactly that one table and that RLS
+  stays enabled on it; `clientTenantSafety.test.ts` locks the client wiring.
 - P3b: refactor the provider to a single reducer-driven `SessionState`
   (`loading | signedOut | noMembership | active`); collapse the three
   request-id refs into one epoch counter. The duplicated 8-way state reset
@@ -105,7 +109,8 @@ history, rebuilds all recommendations/insights (`services/application/inventory.
    `services/application/recalculations.ts` switched off
    `fetchPurchaseRecommendations(restaurantId, "all")`.
    Guarded by `tests/repositoryContracts.test.ts`.
-   TODO when touching migrations next: add index
+   DONE 2026-07-22: `20260722120000_realtime_membership_revocation.sql`
+   adds indexes `(restaurant_id, created_at desc)` and
    `(restaurant_id, status, created_at desc)` on `purchase_recommendations`.
 2. DONE EARLIER: planning sales are already bounded server-side via the
    `fetch_planning_sales` RPC (`p_service_days: 28`).
@@ -157,10 +162,13 @@ no-shadow aesthetic, Lucide icons.
    large value, delta chip ("vs yesterday +12%" with trend icon,
    success/danger tone). Three across on Today. Keep CompactMetricStrip for
    dense contexts.  [DONE]
-3. `components/ui/TrendLineChart.tsx` (~200 lines, react-native-svg, NO chart
-   library): multi-series line chart, dashed comparison series, endpoint dot,
+3. `components/ui/TrendLineChart.tsx` (react-native-svg, NO chart library):
+   multi-series line chart, dashed comparison series, endpoint dot,
    soft-red gradient area variant; y-formatter via `useLocale`; accessible
    summary label. Feeds: Sales rhythm (Today) + Supplier spend (Orders).
+   [DONE 2026-07-22 for Today's Sales Movement — the bar chart is replaced by
+   the gradient-area line chart; dashed comparison series is supported by the
+   component and still needs an Orders supplier-spend feed.]
 4. `components/ui/ActionTile.tsx` + grid: 4 outlined square tiles
    (Scan item / New order / Inventory count / Reports), icon + label +
    small chevron, ≥44px targets.
