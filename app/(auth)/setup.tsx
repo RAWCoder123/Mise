@@ -364,7 +364,7 @@ export default function SetupScreen() {
               {inventoryItems.length === 0 ? (
                 <>
                   <EmptyState
-                    compact
+                    framed
                     title={t("setup.inventory.emptyTitle")}
                     body={t("setup.inventory.emptyBody")}
                     illustration={<ProduceCrateIllustration />}
@@ -401,7 +401,7 @@ export default function SetupScreen() {
             <SetupChecklistCard title={t("setup.suppliers.title")} description={t("setup.suppliers.description")}>
               {suppliers.length === 0 ? (
                 <EmptyState
-                  compact
+                  framed
                   title={t("setup.suppliers.emptyTitle")}
                   body={t("setup.suppliers.emptyBody")}
                   illustration={<SupplierBagIllustration />}
@@ -428,7 +428,7 @@ export default function SetupScreen() {
           >
             {recipes.length === 0 ? (
               <EmptyState
-                compact
+                framed
                 title={t("setup.recipes.emptyTitle")}
                 body={t("setup.recipes.emptyBody")}
                 illustration={<ProduceCrateIllustration />}

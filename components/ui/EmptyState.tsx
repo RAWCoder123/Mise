@@ -7,15 +7,18 @@ export function EmptyState({
   title,
   body,
   illustration,
-  compact
+  compact,
+  framed
 }: {
   title: string;
   body: string;
   illustration?: ReactNode;
   compact?: boolean;
+  /** Dashed border empty box (Setup "No items yet" style). */
+  framed?: boolean;
 }) {
   return (
-    <View style={[styles.empty, compact && styles.compact]}>
+    <View style={[styles.empty, compact && styles.compact, framed && styles.framed]}>
       {illustration ? <View style={styles.illustration}>{illustration}</View> : null}
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.body}>{body}</Text>
@@ -37,6 +40,11 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     backgroundColor: colors.background,
     paddingVertical: 22
+  },
+  framed: {
+    alignItems: "center",
+    borderStyle: "dashed",
+    backgroundColor: colors.background
   },
   illustration: {
     alignSelf: "center",

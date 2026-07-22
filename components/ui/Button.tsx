@@ -12,7 +12,7 @@ import {
 import { colors, radii, typography } from "../../constants/theme";
 import { usePressScale } from "./Motion";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonVariant = "primary" | "secondary" | "soft" | "ghost" | "danger";
 
 interface ButtonProps extends Omit<PressableProps, "style"> {
   title: string;
@@ -35,6 +35,8 @@ export function Button({
 }: ButtonProps) {
   const { pressIn, pressOut, scaleStyle } = usePressScale(0.985);
   const isActionable = typeof props.onPress === "function";
+  const lightLabel = variant === "primary" || variant === "danger";
+  const softLabel = variant === "soft";
 
   return (
     <Pressable
@@ -61,7 +63,12 @@ export function Button({
     >
       <Animated.View style={[styles.content, scaleStyle]}>
         {icon}
-        <Text style={[styles.label, variant === "primary" || variant === "danger" ? styles.lightLabel : styles.darkLabel]}>
+        <Text
+          style={[
+            styles.label,
+            lightLabel ? styles.lightLabel : softLabel ? styles.softLabel : styles.darkLabel
+          ]}
+        >
           {title}
         </Text>
       </Animated.View>
@@ -92,6 +99,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderColor: colors.border
   },
+  soft: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accentSoft
+  },
   ghost: {
     backgroundColor: "transparent",
     borderColor: "transparent"
@@ -105,6 +116,9 @@ const styles = StyleSheet.create({
   },
   lightLabel: {
     color: colors.surface
+  },
+  softLabel: {
+    color: colors.accentDark
   },
   darkLabel: {
     color: colors.text

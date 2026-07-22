@@ -77,9 +77,9 @@ export function SupplierDraftCard({
       >
         <View style={[styles.supplierSeal, !isDraft && styles.supplierSealSent]}>
           {isDraft ? (
-            <Text style={styles.supplierSealText}>{t("orders.card.fresh")}</Text>
+            <Text style={styles.supplierSealText}>{supplierInitials(order.supplier_name)}</Text>
           ) : (
-            <CheckCircle2 size={20} color={colors.surface} strokeWidth={2.25} />
+            <CheckCircle2 size={18} color={colors.surface} strokeWidth={2.25} />
           )}
         </View>
         <View style={styles.headerCopy}>
@@ -143,13 +143,14 @@ export function SupplierDraftCard({
             })}
             accessibilityHint={!sendIsAvailable ? sendDisabledHint : undefined}
             accessibilityState={{ disabled: sendIsDisabled }}
+            variant={busy ? "primary" : "soft"}
             icon={
               busy ? (
                 <CheckCircle2 size={17} color={colors.surface} strokeWidth={2.25} />
               ) : !sendIsAvailable ? (
-                <LockKeyhole size={16} color={colors.surface} strokeWidth={2.25} />
+                <LockKeyhole size={16} color={colors.accentDark} strokeWidth={2.25} />
               ) : (
-                <Send size={17} color={colors.surface} strokeWidth={2.25} />
+                <Send size={17} color={colors.accentDark} strokeWidth={2.25} />
               )
             }
             onPress={sendAction}
@@ -168,6 +169,16 @@ export function SupplierDraftCard({
       </View>
     </View>
   );
+}
+
+function supplierInitials(name: string) {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]!.charAt(0)}${parts[1]!.charAt(0)}`.toUpperCase();
 }
 
 const styles = StyleSheet.create({
@@ -189,10 +200,10 @@ const styles = StyleSheet.create({
     opacity: 0.66
   },
   supplierSeal: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.success,
+    width: 40,
+    height: 40,
+    borderRadius: radii.md,
+    backgroundColor: colors.successSoft,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -200,11 +211,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success
   },
   supplierSealText: {
-    color: colors.surface,
+    color: colors.success,
     fontFamily: typography.families.bold,
-    fontSize: 8,
-    lineHeight: 10,
-    letterSpacing: 0.4
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 0.2
   },
   headerCopy: {
     flex: 1,
@@ -228,8 +239,10 @@ const styles = StyleSheet.create({
   },
   total: {
     color: colors.text,
-    ...typography.caption,
-    fontSize: 12
+    ...typography.metricValue,
+    fontSize: 18,
+    lineHeight: 22,
+    textAlign: "right"
   },
   lines: {
     gap: 1

@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View, type ViewProps } from "react-native"
 import { colors, radii, typography } from "../../constants/theme";
 
 export type StatusNoticeTone = "neutral" | "success" | "caution" | "warning" | "danger";
+export type StatusNoticeActionVariant = "text" | "solid";
 
 export interface StatusNoticeProps extends Omit<ViewProps, "children"> {
   title: string;
@@ -13,6 +14,8 @@ export interface StatusNoticeProps extends Omit<ViewProps, "children"> {
   icon?: ReactNode;
   actionLabel?: string;
   actionAccessibilityLabel?: string;
+  /** `solid` renders a compact filled accent button (mockup alert CTAs). */
+  actionVariant?: StatusNoticeActionVariant;
   onAction?: () => void;
 }
 
@@ -23,11 +26,13 @@ export function StatusNotice({
   icon,
   actionLabel,
   actionAccessibilityLabel,
+  actionVariant = "text",
   onAction,
   style,
   ...props
 }: StatusNoticeProps) {
   const actionIsAvailable = Boolean(actionLabel && onAction);
+  const solidAction = actionVariant === "solid";
 
   return (
     <View
@@ -46,9 +51,21 @@ export function StatusNotice({
           accessibilityLabel={actionAccessibilityLabel ?? actionLabel}
           hitSlop={4}
           onPress={onAction}
-          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.action,
+            solidAction && styles.solidAction,
+            pressed && styles.pressed
+          ]}
         >
-          <Text style={[styles.actionLabel, tone === "danger" && styles.dangerActionLabel]}>{actionLabel}</Text>
+          <Text
+            style={[
+              styles.actionLabel,
+              solidAction && styles.solidActionLabel,
+              !solidAction && tone === "danger" && styles.dangerActionLabel
+            ]}
+          >
+            {actionLabel}
+          </Text>
         </Pressable>
       ) : null}
     </View>
@@ -132,9 +149,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
+  solidAction: {
+    minHeight: 32,
+    minWidth: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.md,
+    backgroundColor: colors.accent
+  },
   actionLabel: {
     color: colors.accentDark,
     ...typography.button
+  },
+  solidActionLabel: {
+    color: colors.surface
   },
   dangerActionLabel: {
     color: colors.danger

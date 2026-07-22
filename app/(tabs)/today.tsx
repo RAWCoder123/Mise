@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { router, useFocusEffect } from "expo-router";
 import {
   BarChart3,
+  BookOpen,
   CheckCircle2,
   ChevronRight,
   ClipboardList,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { ActionTile, ActionTileGrid } from "../../components/ui/ActionTile";
 import { Button } from "../../components/ui/Button";
 import { StatCard, StatCardRow, type StatCardDelta } from "../../components/ui/StatCard";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -168,6 +170,9 @@ export default function TodayScreen() {
                 copy={copy}
               />
             </MotionView>
+            <MotionView delay={75} distance={4} duration={260}>
+              <QuickActions copy={copy} />
+            </MotionView>
             <MotionView delay={90} distance={5} duration={280}>
               <SectionSurface
                 title={copy.inventoryHealthTitle}
@@ -232,11 +237,43 @@ function ServicePulse({
       message={message}
       tone={tone}
       actionLabel={actionLabel}
+      actionVariant={hasRisk ? "solid" : "text"}
       actionAccessibilityLabel={hasOrderReview && stockRisk === 0
         ? copy.reviewOrdersAccessibilityLabel
         : copy.viewInventoryAccessibilityLabel}
       onAction={() => router.push(stockRisk > 0 ? "/inventory" : hasOrderReview ? "/orders" : "/inventory")}
     />
+  );
+}
+
+function QuickActions({ copy }: { copy: TodayCopy }) {
+  return (
+    <ActionTileGrid accessibilityLabel={copy.quickActionsAccessibilityLabel}>
+      <ActionTile
+        label={copy.actionInventory}
+        accessibilityLabel={copy.actionInventoryAccessibilityLabel}
+        icon={<Package size={16} color={colors.accentDark} strokeWidth={2.2} />}
+        onPress={() => router.push("/inventory")}
+      />
+      <ActionTile
+        label={copy.actionOrders}
+        accessibilityLabel={copy.actionOrdersAccessibilityLabel}
+        icon={<ShoppingCart size={16} color={colors.accentDark} strokeWidth={2.2} />}
+        onPress={() => router.push("/orders")}
+      />
+      <ActionTile
+        label={copy.actionRecipes}
+        accessibilityLabel={copy.actionRecipesAccessibilityLabel}
+        icon={<BookOpen size={16} color={colors.accentDark} strokeWidth={2.2} />}
+        onPress={() => router.push("/settings/recipes")}
+      />
+      <ActionTile
+        label={copy.actionInsights}
+        accessibilityLabel={copy.actionInsightsAccessibilityLabel}
+        icon={<BarChart3 size={16} color={colors.accentDark} strokeWidth={2.2} />}
+        onPress={() => router.push("/insights")}
+      />
+    </ActionTileGrid>
   );
 }
 
@@ -599,6 +636,15 @@ interface TodayCopy {
   inventoryHealthTitle: string;
   viewInventory: string;
   viewInventoryAccessibilityLabel: string;
+  quickActionsAccessibilityLabel: string;
+  actionInventory: string;
+  actionInventoryAccessibilityLabel: string;
+  actionOrders: string;
+  actionOrdersAccessibilityLabel: string;
+  actionRecipes: string;
+  actionRecipesAccessibilityLabel: string;
+  actionInsights: string;
+  actionInsightsAccessibilityLabel: string;
   inventoryHealthLabels: {
     good: string;
     watch: string;
@@ -663,6 +709,15 @@ const todayCopy: Readonly<Record<AppLocale, TodayCopy>> = {
     inventoryHealthTitle: "Inventory Health",
     viewInventory: "View inventory",
     viewInventoryAccessibilityLabel: "Open inventory",
+    quickActionsAccessibilityLabel: "Quick operational actions",
+    actionInventory: "Inventory count",
+    actionInventoryAccessibilityLabel: "Open inventory count",
+    actionOrders: "New order",
+    actionOrdersAccessibilityLabel: "Open supplier orders",
+    actionRecipes: "Recipes",
+    actionRecipesAccessibilityLabel: "Open recipe baselines",
+    actionInsights: "Reports",
+    actionInsightsAccessibilityLabel: "Open insights and reports",
     inventoryHealthLabels: {
       good: "Good",
       watch: "Watch",
@@ -725,6 +780,15 @@ const todayCopy: Readonly<Record<AppLocale, TodayCopy>> = {
     inventoryHealthTitle: "Estado del inventario",
     viewInventory: "Ver inventario",
     viewInventoryAccessibilityLabel: "Abrir inventario",
+    quickActionsAccessibilityLabel: "Acciones operativas rápidas",
+    actionInventory: "Conteo de inventario",
+    actionInventoryAccessibilityLabel: "Abrir conteo de inventario",
+    actionOrders: "Nuevo pedido",
+    actionOrdersAccessibilityLabel: "Abrir pedidos a proveedores",
+    actionRecipes: "Recetas",
+    actionRecipesAccessibilityLabel: "Abrir bases de recetas",
+    actionInsights: "Informes",
+    actionInsightsAccessibilityLabel: "Abrir insights e informes",
     inventoryHealthLabels: {
       good: "Bien",
       watch: "Vigilar",
@@ -787,6 +851,15 @@ const todayCopy: Readonly<Record<AppLocale, TodayCopy>> = {
     inventoryHealthTitle: "库存健康度",
     viewInventory: "查看库存",
     viewInventoryAccessibilityLabel: "打开库存",
+    quickActionsAccessibilityLabel: "快捷操作",
+    actionInventory: "库存盘点",
+    actionInventoryAccessibilityLabel: "打开库存盘点",
+    actionOrders: "新建订单",
+    actionOrdersAccessibilityLabel: "打开供应商订单",
+    actionRecipes: "菜谱",
+    actionRecipesAccessibilityLabel: "打开菜谱基准",
+    actionInsights: "报表",
+    actionInsightsAccessibilityLabel: "打开洞察与报表",
     inventoryHealthLabels: {
       good: "良好",
       watch: "关注",
