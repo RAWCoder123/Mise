@@ -45,7 +45,24 @@ import { buildRecordedSalesTrend } from "./salesTrends";
 export type DemandFallback = (menuItemName: string) => number | undefined;
 
 export function createId(prefix: string) {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const uuid =
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : createFallbackId();
+  return `${prefix}_${uuid}`;
+}
+
+function createFallbackId() {
+  // Prefer CSPRNG bytes when randomUUID is unavailable (older runtimes).
+  const bytes = new Uint8Array(16);
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function isToday(sale: PosSale, operatingDate: string) {

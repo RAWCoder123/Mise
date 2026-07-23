@@ -10,29 +10,13 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-if (!isSupabaseConfigured && !isProductionApp() && shouldWarnMissingSupabaseConfig()) {
+const missingSupabaseWarningState = globalThis as typeof globalThis & {
+  __miseMissingSupabaseEnvWarned?: boolean;
+};
+
+if (!isSupabaseConfigured && !isProductionApp() && !missingSupabaseWarningState.__miseMissingSupabaseEnvWarned) {
+  missingSupabaseWarningState.__miseMissingSupabaseEnvWarned = true;
   console.warn("Mise is running without Supabase public env vars. Cloud auth and persistence are disabled.");
-}
-
-function shouldWarnMissingSupabaseConfig() {
-  const warningKey = "mise:missing-supabase-env-warning";
-  const globalWarningState = globalThis as typeof globalThis & { __miseMissingSupabaseEnvWarned?: boolean };
-
-  if (typeof sessionStorage === "undefined") {
-    if (globalWarningState.__miseMissingSupabaseEnvWarned) return false;
-    globalWarningState.__miseMissingSupabaseEnvWarned = true;
-    return true;
-  }
-
-  try {
-    if (sessionStorage.getItem(warningKey) === "shown") return false;
-    sessionStorage.setItem(warningKey, "shown");
-  } catch {
-    if (globalWarningState.__miseMissingSupabaseEnvWarned) return false;
-    globalWarningState.__miseMissingSupabaseEnvWarned = true;
-  }
-
-  return true;
 }
 
 export const supabase = isSupabaseConfigured

@@ -139,13 +139,14 @@ Standardize on typed per-screen copy modules (compile-time completeness via
 `satisfies`), split the catalog into per-namespace files, migrate
 opportunistically when a screen is touched.
 
-### P7 — Small hardening batch
+### P7 — Small hardening batch — PARTIALLY DONE 2026-07-23
 
-- `createId` (weak entropy) → `expo-crypto` `randomUUID()` where non-demo.
-- Simplify `shouldWarnMissingSupabaseConfig` (lib/supabase.ts) to a module bool.
+- `createId` (weak entropy) → `crypto.randomUUID()` / `getRandomValues` fallback. [DONE]
+- Simplify `shouldWarnMissingSupabaseConfig` (lib/supabase.ts) to a module bool. [DONE]
 - Stale-closure `user` in `switchRestaurant`/`connectDemoPOS`/`resetDemoData`
-  snapshot saves (fixed by P3b's reducer; otherwise use a ref).
-- Add Renovate/Dependabot with Expo-SDK-aligned grouping.
+  snapshot saves — fixed with `userRef` / `isDemoModeRef` (full reducer still P3b).
+  [DONE]
+- Add Renovate/Dependabot with Expo-SDK-aligned grouping. [TODO]
 
 ### P8 — CI orchestration
 
