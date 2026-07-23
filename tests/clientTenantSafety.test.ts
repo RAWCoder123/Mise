@@ -52,6 +52,9 @@ test("workspace mutations stop stale continuations and session state is latest-w
   assert.match(recipes, /, 700\)/);
   assert.match(recipes, /immediate:\s*true/);
 
+  assert.match(session, /userRef\.current/);
+  assert.match(session, /isDemoModeRef\.current/);
+  assert.match(session, /saveSnapshot\(\{\s*user:\s*userRef\.current/);
   assert.match(session, /posRequestIdRef/);
   assert.match(session, /activeRestaurantIdRef\.current !== expectedRestaurantId/);
   assert.match(session, /switchRequestIdRef/);

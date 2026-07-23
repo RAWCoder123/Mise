@@ -103,6 +103,8 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   const [posProvider, setPosProvider] = useState<PosProvider | null>(null);
   const [posStatusLabel, setPosStatusLabel] = useState("Not connected");
   const activeRestaurantIdRef = useRef<string | null>(null);
+  const userRef = useRef<AppUser | null>(null);
+  const isDemoModeRef = useRef(false);
   const posRequestIdRef = useRef(0);
   const switchRequestIdRef = useRef(0);
   const sessionRequestIdRef = useRef(0);
@@ -110,6 +112,8 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
 
   const activeRestaurantId = restaurant?.id ?? null;
   activeRestaurantIdRef.current = activeRestaurantId;
+  userRef.current = user;
+  isDemoModeRef.current = isDemoMode;
 
   const refreshPOS = useCallback(async (restaurantId?: string | null) => {
     const expectedRestaurantId = restaurantId ?? null;
@@ -500,9 +504,13 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       if (authUser) setUser(appUserFromAuth(authUser, nextRestaurant.id, membership?.role ?? null));
       await refreshPOS(nextRestaurant.id);
       if (requestId !== switchRequestIdRef.current) return;
-      await saveSnapshot({ user, activeRestaurantId: nextRestaurant.id, isDemoMode });
+      await saveSnapshot({
+        user: userRef.current,
+        activeRestaurantId: nextRestaurant.id,
+        isDemoMode: isDemoModeRef.current
+      });
     },
-    [authUser, availableRestaurants, isDemoMode, memberships, refreshPOS, saveSnapshot, user]
+    [authUser, availableRestaurants, memberships, refreshPOS, saveSnapshot]
   );
 
   const connectDemoPOS = useCallback(
@@ -518,11 +526,15 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       if (sessionRequestId !== sessionRequestIdRef.current) return;
       activeRestaurantIdRef.current = nextRestaurant.id;
       setRestaurant(nextRestaurant);
-      await saveSnapshot({ user, activeRestaurantId: nextRestaurant.id, isDemoMode: true });
+      await saveSnapshot({
+        user: userRef.current,
+        activeRestaurantId: nextRestaurant.id,
+        isDemoMode: true
+      });
       if (sessionRequestId !== sessionRequestIdRef.current) return;
       await refreshPOS(nextRestaurant.id);
     },
-    [isDemoMode, refreshPOS, restaurant?.name, saveSnapshot, user]
+    [isDemoMode, refreshPOS, restaurant?.name, saveSnapshot]
   );
 
   const resetDemoData = useCallback(async (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => {
@@ -537,10 +549,14 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     if (sessionRequestId !== sessionRequestIdRef.current) return;
     activeRestaurantIdRef.current = nextRestaurant.id;
     setRestaurant(nextRestaurant);
-    await saveSnapshot({ user, activeRestaurantId: nextRestaurant.id, isDemoMode: true });
+    await saveSnapshot({
+      user: userRef.current,
+      activeRestaurantId: nextRestaurant.id,
+      isDemoMode: true
+    });
     if (sessionRequestId !== sessionRequestIdRef.current) return;
     await refreshPOS(nextRestaurant.id);
-  }, [isDemoMode, posProvider, refreshPOS, saveSnapshot, user]);
+  }, [isDemoMode, posProvider, refreshPOS, saveSnapshot]);
 
   const signOut = useCallback(async () => {
     if (isSupabaseConfigured && supabase) {

@@ -75,18 +75,20 @@ export function InventoryHealth({
       stateKey={stateKey}
       style={[styles.wrap, style]}
     >
-      <View style={styles.score}>
-        <MotionView distance={0} duration={240} initialOpacity={0.62}>
-          <HealthRing counts={normalizedCounts} />
-        </MotionView>
-        <View style={styles.scoreCopy}>
-          <Text adjustsFontSizeToFit minimumFontScale={0.8} numberOfLines={1} style={styles.scoreValue}>
-            {formatPercent(wellStockedPercentage)}
-          </Text>
-          <Text numberOfLines={2} style={styles.scoreLabel}>
-            {total === 0 ? labels.empty : labels.wellStocked}
-          </Text>
+      <View style={styles.scoreBlock}>
+        <View style={styles.score}>
+          <MotionView distance={0} duration={240} initialOpacity={0.62}>
+            <HealthRing counts={normalizedCounts} />
+          </MotionView>
+          <View style={styles.scoreCopy} pointerEvents="none">
+            <Text adjustsFontSizeToFit minimumFontScale={0.75} numberOfLines={1} style={styles.scoreValue}>
+              {formatPercent(wellStockedPercentage)}
+            </Text>
+          </View>
         </View>
+        <Text numberOfLines={2} style={styles.scoreLabel}>
+          {total === 0 ? labels.empty : labels.wellStocked}
+        </Text>
       </View>
       <View style={styles.distribution}>
         <View style={styles.legend}>
@@ -108,13 +110,17 @@ export function InventoryHealth({
 
 function HealthRing({ counts }: { counts: InventoryHealthCounts }) {
   const total = getInventoryHealthTotal(counts);
-  const radius = 34;
+  // Keep the ring thin enough that the hole stays clear for the center % value.
+  const size = 92;
+  const center = size / 2;
+  const strokeWidth = 7;
+  const radius = 36;
   const circumference = 2 * Math.PI * radius;
   let consumed = 0;
 
   return (
-    <Svg width={88} height={88} viewBox="0 0 88 88">
-      <Circle cx={44} cy={44} r={radius} fill="none" stroke={colors.panelStrong} strokeWidth={8} />
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Circle cx={center} cy={center} r={radius} fill="none" stroke={colors.panelStrong} strokeWidth={strokeWidth} />
       {total > 0
         ? healthSegments.map(({ key, color }) => {
             const value = counts[key];
@@ -125,15 +131,15 @@ function HealthRing({ counts }: { counts: InventoryHealthCounts }) {
             return (
               <Circle
                 key={key}
-                cx={44}
-                cy={44}
+                cx={center}
+                cy={center}
                 r={radius}
                 fill="none"
                 stroke={color}
-                strokeWidth={8}
+                strokeWidth={strokeWidth}
                 strokeDasharray={`${length} ${Math.max(0, circumference - length)}`}
                 strokeDashoffset={-offset}
-                transform="rotate(-90 44 44)"
+                transform={`rotate(-90 ${center} ${center})`}
               />
             );
           })
@@ -183,9 +189,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 16
   },
+  scoreBlock: {
+    width: 92,
+    alignItems: "center",
+    gap: 6
+  },
   score: {
-    width: 88,
-    height: 88,
+    width: 92,
+    height: 92,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -197,23 +208,24 @@ const styles = StyleSheet.create({
     left: 0,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 12,
-    pointerEvents: "none"
+    // Stay inside the ring hole (radius 36, stroke 7 → inner ≈ 32.5).
+    paddingHorizontal: 18
   },
   scoreValue: {
     color: colors.text,
     fontFamily: typography.families.bold,
-    fontSize: 21,
-    lineHeight: 25,
-    letterSpacing: -0.35
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.35,
+    textAlign: "center"
   },
   scoreLabel: {
     color: colors.muted,
     fontFamily: typography.families.medium,
-    fontSize: 9.5,
-    lineHeight: 12,
-    marginTop: 1,
-    textAlign: "center"
+    fontSize: 11,
+    lineHeight: 14,
+    textAlign: "center",
+    maxWidth: 92
   },
   distribution: {
     flex: 1,
