@@ -19,6 +19,11 @@ import { colors, fontFamilies } from "../constants/theme";
 import { LocaleProvider } from "../contexts/LocaleContext";
 import { MiseSessionProvider } from "../contexts/MiseSessionContext";
 import { hostedLocalePreferenceAdapter } from "../services/localePreferences";
+import { initMiseTelemetry } from "../services/telemetry";
+
+// Initialize before first render so the error boundary and session context can
+// report from startup. No-op (zero network calls) when telemetry env is absent.
+initMiseTelemetry();
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
