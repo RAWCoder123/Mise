@@ -23,6 +23,11 @@ import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAutho
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 import { TeamMembershipError, teamMembershipErrorFrom } from "../domain/teamMembership";
 import {
+  inventoryEventRejectionFromRpcError,
+  inventoryEventRpcArguments,
+  normalizeInventoryEventRecord
+} from "../domain/inventoryEventTransport";
+import {
   normalizeAppUser,
   normalizeInsight,
   normalizeAiInsight,
@@ -499,6 +504,22 @@ export function createSupabaseRepository(): MiseRepository {
         .order("item_name");
       if (error) throw error;
       return ((data ?? []) as InventoryItem[]).map(normalizeInventoryItem);
+    },
+
+    async recordInventoryEvent(input) {
+      const { data, error } = await client.rpc(
+        "record_inventory_event",
+        inventoryEventRpcArguments(input)
+      );
+      if (error) {
+        const terminal = inventoryEventRejectionFromRpcError(error);
+        if (terminal) return terminal;
+        throwRepositoryError(error, input.restaurantId);
+      }
+      return {
+        status: "accepted",
+        event: normalizeInventoryEventRecord(data)
+      };
     },
 
     async fetchPlanningData(restaurantId) {

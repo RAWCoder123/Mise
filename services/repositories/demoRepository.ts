@@ -26,6 +26,7 @@ import {
   severityRankForUrgency
 } from "../domain/miseDomain";
 import { TeamMembershipError } from "../domain/teamMembership";
+import { createInMemoryInventoryEventRecorder } from "../domain/inventoryEventTransport";
 import {
   findSupplierRecipientCatalogName,
   supplierRecipientDirectoryKey
@@ -108,7 +109,23 @@ function prepareResetDemoState(state: DemoState) {
   rebuildPurchaseRecommendations(state, state.currentRestaurantId);
   rebuildInsights(state, state.currentRestaurantId);
 }
+
+function deterministicDemoEventId(restaurantId: string, clientEventId: string) {
+  const value = `${restaurantId}\u001f${clientEventId}`;
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `demo_inventory_event_${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 export function createLocalDemoRepository(): MiseRepository {
+  const recordInventoryEvent = createInMemoryInventoryEventRecorder({
+    actorUserId: DEMO_USER_ID,
+    idFor: (event) =>
+      deterministicDemoEventId(event.restaurantId, event.clientEventId)
+  });
   return {
     async fetchMembershipsForAuthUser(userId) {
       const state = await readReadyDemoState();
@@ -270,6 +287,8 @@ export function createLocalDemoRepository(): MiseRepository {
         .map(normalizeInventoryItem)
         .sort((a, b) => a.item_name.localeCompare(b.item_name));
     },
+
+    recordInventoryEvent,
 
     async fetchPlanningData(restaurantId) {
       const state = await readReadyDemoState(restaurantId);

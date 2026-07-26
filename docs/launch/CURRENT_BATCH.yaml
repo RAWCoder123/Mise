@@ -1,34 +1,38 @@
-batch_id: inventory-outbox-device-03
-status: completed
-goal: Bind the replay-safe inventory outbox to serialized device storage behind the stable Mise service surface.
+batch_id: inventory-hosted-submission-04
+status: in_progress
+goal: Connect the durable device outbox to the server-authoritative inventory RPC while preserving deterministic demo behavior.
 started_at: 2026-07-26
 codex_owned:
   - docs/launch/**
   - services/miseService.ts
-  - services/repositories/inventoryOutboxRepository.ts
-  - services/repositories/deviceInventoryOutboxRepository.ts
   - services/application/deviceInventoryOutbox.ts
+  - services/domain/inventoryEventTransport.ts
+  - services/repositories/repositoryContracts.ts
+  - services/repositories/demoRepository.ts
+  - services/repositories/supabaseRepository.ts
   - tests/deviceInventoryOutbox.test.ts
-  - tests/inventoryOutboxRepository.test.ts
+  - tests/inventoryEventTransport.test.ts
 cursor_owned: []
 shared_locked:
   - services/repositories/repositoryContracts.ts
   - services/repositories/demoRepository.ts
   - services/repositories/supabaseRepository.ts
-blocked_files: []
-handoff_required: false
+blocked_files:
+  - app/**
+  - components/**
+handoff_required: true
 dependencies:
-  - private-beta-account-inventory-replay-02
+  - inventory-outbox-device-03
 required_tests:
   - npm run typecheck
   - npm test
+  - npm run security:backend
 stop_conditions:
-  - Concurrent device writes can drop an outbox event
-  - Device storage mixes restaurant outboxes
-  - Provider submission details leak into screen code
-evidence:
-  - npm run typecheck passed
-  - npm test passed with 218 tests
-  - Concurrent storage writes retained both offline events
-unresolved_findings: []
-checkpoint_commit: 38aaaf9
+  - Screen code invokes Supabase directly
+  - Hosted writes bypass the record_inventory_event RPC
+  - Transport failures become terminal outbox rejections
+  - Demo retries create inconsistent authoritative identities
+evidence: []
+unresolved_findings:
+  - Cursor UI handoff is pending because macOS is locked.
+checkpoint_commit:

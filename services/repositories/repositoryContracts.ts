@@ -22,6 +22,10 @@ import type {
   SupplierRecipient
 } from "../../types/mise";
 import type { DemoSetupProfile } from "../demoData";
+import type {
+  InventoryEventAcceptance,
+  InventoryEventInput
+} from "../domain/inventoryLedger";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 import {
   normalizeInsight,
@@ -210,6 +214,11 @@ export interface MiseRepository {
   recordAuditLog(input: AuditLogInput): Promise<void>;
   fetchRestaurantData(restaurantId: string): Promise<RestaurantData>;
   fetchInventoryItems(restaurantId: string): Promise<InventoryItem[]>;
+  /**
+   * Records an append-only, server-authoritative inventory event. Hosted mode
+   * must use record_inventory_event; clients never insert into the ledger.
+   */
+  recordInventoryEvent(input: InventoryEventInput): Promise<InventoryEventAcceptance>;
   fetchPlanningData(restaurantId: string): Promise<PlanningData>;
   saveRestaurantSetupSnapshot(
     restaurantId: string,

@@ -3,10 +3,13 @@ import test from "node:test";
 
 import {
   fetchQueuedInventoryEvents,
+  flushQueuedInventoryEvents,
   queueInventoryEventForSubmission,
-  setDeviceInventoryOutboxRepositoryForTesting
+  setDeviceInventoryOutboxRepositoryForTesting,
+  setInventoryEventSubmitterForTesting
 } from "../services/application/deviceInventoryOutbox";
 import type { InventoryEventInput } from "../services/domain/inventoryLedger";
+import { createInMemoryInventoryEventRecorder } from "../services/domain/inventoryEventTransport";
 import {
   createInventoryOutboxRepository,
   type InventoryOutboxStorage
@@ -60,4 +63,78 @@ test("screen-safe queue API persists a stable offline event by restaurant", asyn
   } finally {
     restore();
   }
+});
+
+test("screen-safe flush sends through the active repository and persists authority", async () => {
+  const outbox = createInventoryOutboxRepository(memoryStorage());
+  const restoreOutbox = setDeviceInventoryOutboxRepositoryForTesting(outbox);
+  const restoreSubmitter = setInventoryEventSubmitterForTesting(
+    createInMemoryInventoryEventRecorder({
+      actorUserId: "manager-1",
+      idFor: (candidate) => `server-${candidate.clientEventId}`
+    })
+  );
+  try {
+    await queueInventoryEventForSubmission({
+      outboxId: "outbox-flush-1",
+      event,
+      now: "2026-07-26T10:00:01.000Z"
+    });
+    const summary = await flushQueuedInventoryEvents("restaurant-a");
+    const [settled] = await fetchQueuedInventoryEvents("restaurant-a");
+
+    assert.deepEqual(summary, {
+      considered: 1,
+      accepted: 1,
+      conflicted: 0,
+      rejected: 0,
+      deferred: 0
+    });
+    assert.equal(settled?.status, "accepted");
+    assert.equal(settled?.authoritativeEvent?.clientEventId, event.clientEventId);
+  } finally {
+    restoreSubmitter();
+    restoreOutbox();
+  }
+});
+
+test("screen-safe flush defers transport failures instead of rejecting evidence", async () => {
+  const outbox = createInventoryOutboxRepository(memoryStorage());
+  const restoreOutbox = setDeviceInventoryOutboxRepositoryForTesting(outbox);
+  const restoreSubmitter = setInventoryEventSubmitterForTesting(async () => {
+    throw new TypeError("network unavailable");
+  });
+  try {
+    await queueInventoryEventForSubmission({
+      outboxId: "outbox-deferred-1",
+      event: { ...event, clientEventId: "device-count-deferred" },
+      now: "2026-07-26T10:00:01.000Z"
+    });
+    const summary = await flushQueuedInventoryEvents("restaurant-a");
+    const [settled] = await fetchQueuedInventoryEvents("restaurant-a");
+
+    assert.equal(summary.deferred, 1);
+    assert.equal(settled?.status, "pending");
+    assert.equal(settled?.resolutionReason, "network_retry");
+  } finally {
+    restoreSubmitter();
+    restoreOutbox();
+  }
+});
+
+test("demo repository deduplicates an exact retry under the same authority", async () => {
+  const record = createInMemoryInventoryEventRecorder({
+    actorUserId: "demo-user",
+    idFor: (candidate) => `demo-${candidate.clientEventId}`,
+    now: () => "2026-07-26T10:00:01.000Z"
+  });
+  const first = await record(event);
+  const second = await record(event);
+
+  assert.equal(first.status, "accepted");
+  assert.equal(second.status, "duplicate");
+  assert.equal(
+    "event" in first ? first.event.id : null,
+    "event" in second ? second.event.id : null
+  );
 });
