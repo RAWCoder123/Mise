@@ -42,11 +42,17 @@ const defaultLabels: InventoryHealthLabels = {
   empty: "No items"
 };
 
+const RING_SIZE = 104;
+const RING_STROKE = 9;
+const RING_RADIUS = 40;
+/** Visual gap between colored arcs along the circumference (px). */
+const SEGMENT_GAP = 3.5;
+
 /** A compact, accessible health distribution that stays legible at mobile width. */
 export function InventoryHealth({
   counts,
   labels: labelOverrides,
-  legendValueMode = "percentage",
+  legendValueMode = "count",
   accessibilityLabel,
   style
 }: InventoryHealthProps) {
@@ -67,6 +73,7 @@ export function InventoryHealth({
     formatPercentage: formatPercent
   });
   const stateKey = `${normalizedCounts.good}-${normalizedCounts.watch}-${normalizedCounts.low}-${normalizedCounts.critical}`;
+  const goodCount = normalizedCounts.good;
 
   return (
     <StateChangeView
@@ -81,13 +88,15 @@ export function InventoryHealth({
             <HealthRing counts={normalizedCounts} />
           </MotionView>
           <View style={styles.scoreCopy} pointerEvents="none">
-            <Text adjustsFontSizeToFit minimumFontScale={0.75} numberOfLines={1} style={styles.scoreValue}>
+            <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.scoreValue}>
               {formatPercent(wellStockedPercentage)}
             </Text>
           </View>
         </View>
         <Text numberOfLines={2} style={styles.scoreLabel}>
-          {total === 0 ? labels.empty : labels.wellStocked}
+          {total === 0
+            ? labels.empty
+            : `${formatNumber(goodCount)} ${labels.good.toLocaleLowerCase()}`}
         </Text>
       </View>
       <View style={styles.distribution}>
@@ -97,7 +106,10 @@ export function InventoryHealth({
               color={color}
               key={key}
               label={labels[key]}
-              value={legendValueMode === "percentage"
+              primary={legendValueMode === "percentage"
+                ? formatPercent(percentages[key])
+                : formatNumber(normalizedCounts[key])}
+              secondary={legendValueMode === "count"
                 ? formatPercent(percentages[key])
                 : formatNumber(normalizedCounts[key])}
             />
@@ -110,34 +122,41 @@ export function InventoryHealth({
 
 function HealthRing({ counts }: { counts: InventoryHealthCounts }) {
   const total = getInventoryHealthTotal(counts);
-  // Keep the ring thin enough that the hole stays clear for the center % value.
-  const size = 92;
-  const center = size / 2;
-  const strokeWidth = 7;
-  const radius = 36;
-  const circumference = 2 * Math.PI * radius;
+  const center = RING_SIZE / 2;
+  const circumference = 2 * Math.PI * RING_RADIUS;
+  const activeSegments = healthSegments.filter(({ key }) => counts[key] > 0);
+  const gapBudget = activeSegments.length > 1 ? SEGMENT_GAP * activeSegments.length : 0;
+  const drawable = Math.max(0, circumference - gapBudget);
   let consumed = 0;
 
   return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <Circle cx={center} cy={center} r={radius} fill="none" stroke={colors.panelStrong} strokeWidth={strokeWidth} />
+    <Svg width={RING_SIZE} height={RING_SIZE} viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}>
+      <Circle
+        cx={center}
+        cy={center}
+        r={RING_RADIUS}
+        fill="none"
+        stroke={colors.panelStrong}
+        strokeWidth={RING_STROKE}
+        strokeLinecap="round"
+      />
       {total > 0
-        ? healthSegments.map(({ key, color }) => {
+        ? activeSegments.map(({ key, color }) => {
             const value = counts[key];
-            if (value === 0) return null;
-            const length = (value / total) * circumference;
+            const length = (value / total) * drawable;
             const offset = consumed;
-            consumed += length;
+            consumed += length + (activeSegments.length > 1 ? SEGMENT_GAP : 0);
             return (
               <Circle
                 key={key}
                 cx={center}
                 cy={center}
-                r={radius}
+                r={RING_RADIUS}
                 fill="none"
                 stroke={color}
-                strokeWidth={strokeWidth}
-                strokeDasharray={`${length} ${Math.max(0, circumference - length)}`}
+                strokeWidth={RING_STROKE}
+                strokeLinecap="round"
+                strokeDasharray={`${Math.max(0.01, length)} ${Math.max(0, circumference - length)}`}
                 strokeDashoffset={-offset}
                 transform={`rotate(-90 ${center} ${center})`}
               />
@@ -164,12 +183,25 @@ export function InventoryHealthBar({ counts }: { counts: InventoryHealthCounts }
   );
 }
 
-function LegendItem({ color, label, value }: { color: string; label: string; value: string }) {
+function LegendItem({
+  color,
+  label,
+  primary,
+  secondary
+}: {
+  color: string;
+  label: string;
+  primary: string;
+  secondary: string;
+}) {
   return (
     <View style={styles.legendItem}>
       <View style={[styles.dot, { backgroundColor: color }]} />
       <Text numberOfLines={1} style={styles.legendLabel}>{label}</Text>
-      <Text numberOfLines={1} style={styles.legendValue}>{value}</Text>
+      <View style={styles.legendValues}>
+        <Text numberOfLines={1} style={styles.legendValue}>{primary}</Text>
+        <Text numberOfLines={1} style={styles.legendSecondary}>{secondary}</Text>
+      </View>
     </View>
   );
 }
@@ -187,16 +219,16 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16
+    gap: 18
   },
   scoreBlock: {
-    width: 92,
+    width: RING_SIZE,
     alignItems: "center",
-    gap: 6
+    gap: 8
   },
   score: {
-    width: 92,
-    height: 92,
+    width: RING_SIZE,
+    height: RING_SIZE,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -208,29 +240,29 @@ const styles = StyleSheet.create({
     left: 0,
     alignItems: "center",
     justifyContent: "center",
-    // Stay inside the ring hole (radius 36, stroke 7 → inner ≈ 32.5).
-    paddingHorizontal: 18
+    paddingHorizontal: 22
   },
   scoreValue: {
     color: colors.text,
     fontFamily: typography.families.bold,
-    fontSize: 22,
-    lineHeight: 26,
-    letterSpacing: -0.35,
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: -0.4,
     textAlign: "center"
   },
   scoreLabel: {
     color: colors.muted,
-    fontFamily: typography.families.medium,
-    fontSize: 11,
-    lineHeight: 14,
+    fontFamily: typography.families.semibold,
+    fontSize: 12,
+    lineHeight: 15,
     textAlign: "center",
-    maxWidth: 92
+    maxWidth: RING_SIZE
   },
   distribution: {
     flex: 1,
     minWidth: 0,
-    justifyContent: "center"
+    justifyContent: "center",
+    paddingVertical: 2
   },
   bar: {
     height: 8,
@@ -244,32 +276,44 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panelStrong
   },
   legend: {
-    gap: 3
+    gap: 8
   },
   legendItem: {
-    minHeight: 19,
+    minHeight: 22,
     flexDirection: "row",
     alignItems: "center",
-    gap: 7
+    gap: 8
   },
   dot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 4
   },
   legendLabel: {
     flex: 1,
-    color: colors.muted,
+    minWidth: 0,
+    color: colors.text,
     fontFamily: typography.families.medium,
-    fontSize: 11.5,
-    lineHeight: 16
+    fontSize: 13,
+    lineHeight: 17
+  },
+  legendValues: {
+    alignItems: "flex-end",
+    gap: 1,
+    minWidth: 44
   },
   legendValue: {
-    minWidth: 34,
     color: colors.text,
     fontFamily: typography.families.semibold,
-    fontSize: 11.5,
+    fontSize: 13,
     lineHeight: 16,
+    textAlign: "right"
+  },
+  legendSecondary: {
+    color: colors.faint,
+    fontFamily: typography.families.medium,
+    fontSize: 11,
+    lineHeight: 13,
     textAlign: "right"
   }
 });

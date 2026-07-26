@@ -9,10 +9,14 @@ const baseRoutes = [
   "/",
   "/login",
   "/setup",
+  "/home",
   "/today",
   "/inventory",
   "/orders",
   "/insights",
+  "/more",
+  "/ask-mise",
+  "/tasks/layout-smoke-task",
   "/settings",
   "/settings/language",
   "/settings/gmail",
@@ -427,7 +431,7 @@ async function setInputByAriaLabel(cdp, label, value) {
   await sleep(200);
 }
 
-const localizedLayoutRoutes = ["/today", "/inventory", "/orders", "/insights", "/setup", "/settings"];
+const localizedLayoutRoutes = ["/home", "/today", "/inventory", "/orders", "/insights", "/more", "/setup", "/settings"];
 
 async function verifyLocalizedLayouts(cdp, localeLabel) {
   console.log(`Mise localized layout QA: ${localeLabel}`);
@@ -449,7 +453,7 @@ async function runOrderInteractionQa(cdp) {
   await clickByRoleAndText(cdp, "button", "Open demo data");
   await waitForBrowserCondition(
     cdp,
-    "location.pathname === '/today' && document.body.innerText.includes('Sales today')",
+    "location.pathname === '/home' && document.body.innerText.includes('Sales today')",
     "initialized demo data"
   );
 
@@ -556,7 +560,13 @@ async function runOrderInteractionQa(cdp) {
   await waitForBrowserCondition(
     cdp,
     "document.body.innerText.includes('Supplier orders') && document.body.innerText.includes('Needs review')",
-    "Orders Drafts lane and review queue"
+    "Orders Drafts lane and review queue prompt"
+  );
+  await clickByRoleAndText(cdp, "tab", "Review");
+  await waitForBrowserCondition(
+    cdp,
+    "Boolean(document.querySelector('[aria-label^=\"Order quantity for \"]'))",
+    "Review lane recommendation queue"
   );
 
   const firstQuantityLabel = await firstAriaLabel(cdp, "Order quantity for ");
@@ -585,6 +595,7 @@ async function runOrderInteractionQa(cdp) {
     "document.body.innerText.includes('Supplier orders')",
     "Orders after reload"
   );
+  await clickByRoleAndText(cdp, "tab", "Review");
   const repeatedAfterReload = await evaluateValue(
     cdp,
     "Boolean(document.querySelector('[aria-label=" + JSON.stringify("Approve " + firstItem) + "]'))"
@@ -705,11 +716,11 @@ async function runOrderInteractionQa(cdp) {
     "document.body.innerText.includes('Demo data restored.')",
     "demo reset confirmation"
   );
-  await navigateAndMeasure(cdp, "/today", []);
+  await navigateAndMeasure(cdp, "/home", []);
   await waitForBrowserCondition(
     cdp,
     "document.body.innerText.includes('Sales today')",
-    "restored Today command board"
+    "restored Home command board"
   );
 
   await navigateAndMeasure(cdp, "/settings", []);

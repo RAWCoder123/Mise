@@ -33,7 +33,7 @@ export function Screen({ title, subtitle, action, children, loading, scroll = tr
   const { restaurant } = useMiseSession();
   const { t } = useLocale();
   const pathname = usePathname();
-  const isTodayRoute = pathname === "/today";
+  const isInsightsRoute = pathname === "/insights";
   const isSettingsRoute = pathname === "/settings";
   const content = (
     <MotionView style={styles.content} distance={6}>
@@ -78,13 +78,13 @@ export function Screen({ title, subtitle, action, children, loading, scroll = tr
             <View style={styles.headerAction} />
           )}
           <BrandLockup size="small" showTagline={false} />
-          {restaurant && !isTodayRoute ? (
+          {restaurant && !isInsightsRoute ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t("screen.openToday")}
-              accessibilityHint={t("screen.openTodayHint")}
+              accessibilityLabel={t("screen.openInsights")}
+              accessibilityHint={t("screen.openInsightsHint")}
               hitSlop={8}
-              onPress={() => router.push("/today")}
+              onPress={() => router.push("/insights")}
               style={({ pressed }) => [styles.headerAction, pressed && styles.headerActionPressed]}
             >
               <Bell size={20} color={colors.text} strokeWidth={1.9} />

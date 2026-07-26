@@ -6,7 +6,6 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  CircleUserRound,
   Database,
   Languages,
   LogOut,
@@ -59,7 +58,8 @@ export default function SettingsScreen() {
     role,
     signOut,
     switchRestaurant,
-    usingLocalDemo
+    usingLocalDemo,
+    user
   } = useMiseSession();
   const [suppliers, setSuppliers] = useState<string[]>([]);
   const [opsProfile, setOpsProfile] = useState<RestaurantOpsProfile | null>(null);
@@ -184,6 +184,20 @@ export default function SettingsScreen() {
       <View style={styles.stack}>
         {message ? <StatusNotice title={t(message.key)} tone={message.tone} /> : null}
 
+        <View style={styles.accountHero}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initialsFor(user?.name || user?.email || "Mise")}</Text>
+          </View>
+          <View style={styles.accountHeroCopy}>
+            <Text style={styles.accountHeroName}>{user?.name?.trim() || t("settings.account.title")}</Text>
+            <Text style={styles.accountHeroMeta}>
+              {localizedRole ? t("settings.account.signedInAs", { role: localizedRole }) : t("settings.account.operator")}
+            </Text>
+            <Text style={styles.accountHeroEmail}>{user?.email?.trim() || t("settings.account.emailMissing")}</Text>
+          </View>
+          {localizedRole ? <Badge label={localizedRole} tone="neutral" /> : null}
+        </View>
+
         <SettingsSection title={t("settings.section.restaurant")}>
           <View style={styles.profileRow}>
             <IconBadge tone="brand">
@@ -192,10 +206,33 @@ export default function SettingsScreen() {
             <View style={styles.profileCopy}>
               <Text style={styles.profileName}>{restaurant?.name ?? t("settings.profile.noRestaurant")}</Text>
               <Text style={styles.profileMeta}>{profileLine}</Text>
-              {restaurant?.address ? <Text style={styles.profileMeta}>{restaurant.address}</Text> : null}
+              {restaurant?.address ? (
+                <Text style={styles.profileMeta}>{restaurant.address}</Text>
+              ) : (
+                <Text style={styles.profileMetaMuted}>{t("settings.profile.addressMissing")}</Text>
+              )}
             </View>
             {localizedRole ? <Badge label={localizedRole} tone="neutral" /> : null}
           </View>
+
+          {restaurant ? (
+            <View style={styles.identityGrid}>
+              <IdentityFact label={t("settings.profile.timezone")} value={restaurant.timezone} />
+              <IdentityFact label={t("settings.profile.currency")} value={restaurant.currency} />
+              <IdentityFact
+                label={t("settings.profile.serviceStyle")}
+                value={serviceStyleLabel(restaurant.service_style, t)}
+              />
+              <IdentityFact
+                label={t("settings.profile.orderCadence")}
+                value={
+                  restaurant.operational_profile.orderCadence.length > 0
+                    ? formatList(restaurant.operational_profile.orderCadence)
+                    : t("settings.profile.orderCadenceEmpty")
+                }
+              />
+            </View>
+          ) : null}
 
           {availableRestaurants.length > 1 ? (
             <View style={styles.workspaceList}>
@@ -401,17 +438,6 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.account")}>
-          <View style={styles.quietRow}>
-            <IconBadge tone="neutral">
-              <CircleUserRound size={20} color={colors.text} strokeWidth={2.25} />
-            </IconBadge>
-            <View style={styles.quietCopy}>
-              <Text style={styles.rowTitle}>{t("settings.account.title")}</Text>
-              <Text style={styles.rowBody}>
-                {localizedRole ? t("settings.account.signedInAs", { role: localizedRole }) : t("settings.account.operator")}
-              </Text>
-            </View>
-          </View>
           <View style={styles.sectionAction}>
             <Button
               title={t(signingOut ? "settings.account.signingOut" : "settings.account.signOut")}
@@ -433,6 +459,15 @@ function SettingsSection({ title, children }: { title: string; children: ReactNo
     <View style={styles.section}>
       <Text accessibilityRole="header" style={styles.sectionTitle}>{title}</Text>
       <View style={styles.sectionSurface}>{children}</View>
+    </View>
+  );
+}
+
+function IdentityFact({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.identityFact}>
+      <Text style={styles.identityLabel}>{label}</Text>
+      <Text style={styles.identityValue} numberOfLines={2}>{value}</Text>
     </View>
   );
 }
@@ -473,6 +508,13 @@ function roleLabel(role: RestaurantRole, t: Translator) {
   return t(`settings.role.${role}` as MessageKey);
 }
 
+function initialsFor(value: string) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "M";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
+}
+
 function serviceStyleLabel(style: RestaurantServiceStyle, t: Translator) {
   const keyByStyle: Record<RestaurantServiceStyle, MessageKey> = {
     quick_service: "settings.serviceStyle.quickService",
@@ -506,6 +548,56 @@ function readinessCheckLabel(checkId: string, t: Translator) {
 const styles = StyleSheet.create({
   stack: {
     gap: spacing.lg
+  },
+  accountHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 14
+  },
+  avatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  avatarText: {
+    color: colors.accentDark,
+    fontFamily: fontFamilies.bold,
+    fontSize: 19,
+    lineHeight: 24
+  },
+  accountHeroCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  accountHeroName: {
+    color: colors.text,
+    fontFamily: fontFamilies.bold,
+    fontSize: 18,
+    lineHeight: 23
+  },
+  accountHeroMeta: {
+    color: colors.text,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2
+  },
+  accountHeroEmail: {
+    color: colors.muted,
+    fontFamily: fontFamilies.body,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 1
   },
   section: {
     gap: spacing.sm
@@ -545,6 +637,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     marginTop: 2
+  },
+  profileMetaMuted: {
+    color: colors.faint,
+    ...typography.body,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2
+  },
+  identityGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border
+  },
+  identityFact: {
+    flexGrow: 1,
+    flexBasis: "46%",
+    minWidth: 0,
+    gap: 2,
+    paddingVertical: 4
+  },
+  identityLabel: {
+    color: colors.faint,
+    fontFamily: typography.families.semibold,
+    fontSize: 11,
+    lineHeight: 14
+  },
+  identityValue: {
+    color: colors.text,
+    fontFamily: typography.families.medium,
+    fontSize: 13,
+    lineHeight: 17
   },
   workspaceList: {
     paddingBottom: spacing.sm

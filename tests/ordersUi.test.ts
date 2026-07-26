@@ -7,8 +7,9 @@ test("orders presents reference-aligned draft, sent, and history lanes with safe
   const segmentedControl = readFileSync("components/ui/SegmentedControl.tsx", "utf8");
   const button = readFileSync("components/ui/Button.tsx", "utf8");
 
-  assert.match(screen, /type OrderLane = "drafts" \| "sent" \| "history"/);
+  assert.match(screen, /type OrderLane = "drafts" \| "review" \| "sent" \| "history"/);
   assert.match(screen, /lane === "drafts"/);
+  assert.match(screen, /lane === "review"/);
   assert.match(screen, /lane === "sent"/);
   assert.match(screen, /lane === "history"/);
   assert.match(screen, /visibleRecommendations\.length > 0/);
