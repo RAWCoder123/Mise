@@ -219,6 +219,11 @@ export interface MiseRepository {
    * must use record_inventory_event; clients never insert into the ledger.
    */
   recordInventoryEvent(input: InventoryEventInput): Promise<InventoryEventAcceptance>;
+  verifyInventoryItemCanonicalUnit(
+    restaurantId: string,
+    itemId: string,
+    canonicalUnit: "g" | "ml" | "each"
+  ): Promise<InventoryItem>;
   fetchPlanningData(restaurantId: string): Promise<PlanningData>;
   saveRestaurantSetupSnapshot(
     restaurantId: string,

@@ -290,6 +290,30 @@ export function createLocalDemoRepository(): MiseRepository {
 
     recordInventoryEvent,
 
+    async verifyInventoryItemCanonicalUnit(restaurantId, itemId, canonicalUnit) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const item = state.inventoryItems.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === itemId
+        );
+        if (!item) throw new Error("Inventory item not found");
+        const now = new Date().toISOString();
+        item.canonical_unit = canonicalUnit;
+        item.canonical_unit_verification_status = "verified";
+        item.canonical_unit_verified_at = now;
+        item.canonical_unit_verified_by = DEMO_USER_ID;
+        item.last_updated = now;
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "inventory_item.canonical_unit_verified",
+          entity_table: "inventory_items",
+          entity_id: item.id,
+          metadata: { canonical_unit: canonicalUnit, simulated: true }
+        });
+        return normalizeInventoryItem(item);
+      });
+    },
+
     async fetchPlanningData(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
       const restaurant = fetchRestaurantFromState(state, restaurantId);

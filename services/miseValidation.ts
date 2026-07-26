@@ -43,6 +43,7 @@ import type {
   InventoryEventInput,
   InventoryEventType
 } from "./domain/inventoryLedger";
+import { normalizeOperationalQuantity } from "./domain/operationalMapping";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
 
@@ -304,12 +305,39 @@ export function normalizePosSale(value: PosSale): PosSale {
 }
 
 export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
+  const normalizedLegacyUnit = normalizeOperationalQuantity({
+    quantity: 1,
+    unit: value.unit
+  });
+  const inferredCanonicalUnit =
+    normalizedLegacyUnit.ok ? normalizedLegacyUnit.unit : null;
+  const canonicalUnit =
+    value.canonical_unit === "g" ||
+    value.canonical_unit === "ml" ||
+    value.canonical_unit === "each"
+      ? value.canonical_unit
+      : inferredCanonicalUnit;
+  const verificationStatus =
+    value.canonical_unit_verification_status === "draft" ||
+    value.canonical_unit_verification_status === "verified" ||
+    value.canonical_unit_verification_status === "rejected" ||
+    value.canonical_unit_verification_status === "expired"
+      ? value.canonical_unit_verification_status
+      : canonicalUnit
+        ? "verified"
+        : "draft";
   return {
     ...value,
     current_quantity: asBoundedNonNegativeNumber(value.current_quantity, operatingLimits.inventoryQuantity),
     par_level: asBoundedNonNegativeNumber(value.par_level, operatingLimits.inventoryQuantity),
     reorder_threshold: asBoundedNonNegativeNumber(value.reorder_threshold, operatingLimits.inventoryQuantity),
-    estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost)
+    estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost),
+    canonical_unit: canonicalUnit,
+    canonical_unit_verification_status: verificationStatus,
+    canonical_unit_verified_at:
+      asNullableString(value.canonical_unit_verified_at) ??
+      (verificationStatus === "verified" ? value.last_updated : null),
+    canonical_unit_verified_by: asNullableString(value.canonical_unit_verified_by)
   };
 }
 

@@ -106,6 +106,10 @@ export interface InventoryItem {
   estimated_unit_cost: number;
   supplier_name: string;
   last_updated: string;
+  canonical_unit?: "g" | "ml" | "each" | null;
+  canonical_unit_verification_status?: "draft" | "verified" | "rejected" | "expired";
+  canonical_unit_verified_at?: string | null;
+  canonical_unit_verified_by?: string | null;
 }
 
 export interface MenuItemIngredient {

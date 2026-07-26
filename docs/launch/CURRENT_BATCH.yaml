@@ -1,50 +1,38 @@
-batch_id: inventory-canonical-authority-06
-status: completed
-goal: Enforce each inventory item's verified canonical unit at the database event boundary.
+batch_id: inventory-verification-sales-import-07
+status: in_progress
+goal: Expose canonical-unit verification through stable repositories while Cursor ships cold-start sales import UI.
 started_at: 2026-07-26
 codex_owned:
   - docs/launch/**
-  - supabase/migrations/20260726233159_inventory_item_canonical_unit_authority.sql
-  - supabase/tests/database/inventory_item_canonical_unit.test.sql
-  - tests/operationalDataFoundationMigration.test.ts
+  - types/mise.ts
+  - services/miseValidation.ts
+  - services/repositories/repositoryContracts.ts
+  - services/repositories/demoRepository.ts
+  - services/repositories/supabaseRepository.ts
+  - tests/inventoryCanonicalUnitRepository.test.ts
 cursor_owned:
-  - supabase/functions/delete-account/index.ts
-  - supabase/migrations/20260726214500_account_deletion_durable_audit.sql
-  - supabase/tests/database/account_deletion.test.sql
-  - tests/accountDeletionMigration.test.ts
-  - app/settings/sales-import.tsx
-  - app/settings/pos.tsx
   - app/(tabs)/settings.tsx
+  - app/settings/pos.tsx
+  - app/settings/sales-import.tsx
   - i18n/catalog.ts
 shared_locked: []
 blocked_files:
-  - services/repositories/**
-  - services/miseValidation.ts
-  - services/application/**
-handoff_required: false
+  - services/application/setup.ts
+  - services/application/deviceInventoryOutbox.ts
+handoff_required: true
 dependencies:
-  - inventory-operation-input-05
+  - inventory-canonical-authority-06
+  - cold-start-daily-sales-import
 required_tests:
   - npm run typecheck
   - npm test
   - npm run security:backend
-  - npm run supabase:test
 stop_conditions:
-  - Unverified inventory items can create authoritative events
-  - Event units can differ from an item's verified canonical unit
-  - Canonical-unit verification bypasses manager authorization
-  - Existing package or ambiguous units are silently marked verified
+  - Client verification bypasses the guarded RPC
+  - Demo and hosted inventory item shapes diverge
+  - Package items appear verified without an explicit action
+  - Cursor and Codex edit the same file
 evidence:
-  - npm run typecheck passed
-  - npm test passed with 236 tests
-  - npm run security:backend passed
-  - npm run supabase:test passed with 481 pgTAP assertions
-  - Concurrent workspace proof passed with 5 accepted, 15 rejected, and 5 immutable allocations
-  - Supabase advisors reported no issues
-  - Cursor durable owner-candidate account deletion checkpoint 4b8764f
-  - Cursor cold-start daily sales CSV import checkpoint 510a68a
-unresolved_findings:
-  - Hosted-staging migration and RPC execution remain external verification.
-  - A typed verification adapter and package-conversion UI remain for the receiving workflow.
-  - Unit-cost setup UI still blocked until Codex unlocks application/setup.ts estimated_unit_cost pass-through and inventory cost patch RPC.
-checkpoint_commit: 4184fdd
+  - Cursor sales CSV checkpoint 510a68a
+unresolved_findings: []
+checkpoint_commit:

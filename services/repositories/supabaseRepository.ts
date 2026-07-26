@@ -522,6 +522,23 @@ export function createSupabaseRepository(): MiseRepository {
       };
     },
 
+    async verifyInventoryItemCanonicalUnit(restaurantId, itemId, canonicalUnit) {
+      const { data, error } = await client.rpc(
+        "verify_inventory_item_canonical_unit",
+        {
+          p_restaurant_id: restaurantId,
+          p_inventory_item_id: itemId,
+          p_canonical_unit: canonicalUnit
+        }
+      );
+      if (error) throwRepositoryError(error, restaurantId);
+      const item = Array.isArray(data) ? data[0] : data;
+      if (!item || typeof item !== "object") {
+        throw new Error("Canonical unit verification returned an invalid response.");
+      }
+      return normalizeInventoryItem(item as InventoryItem);
+    },
+
     async fetchPlanningData(restaurantId) {
       const [inventoryResult, sales, mappingResult, restaurantResult] = await Promise.all([
         client.from("inventory_items").select("*").eq("restaurant_id", restaurantId).order("item_name"),
