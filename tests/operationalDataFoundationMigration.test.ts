@@ -6,6 +6,10 @@ const migration = readFileSync(
   "supabase/migrations/20260726195018_operational_data_foundation_inventory_ledger.sql",
   "utf8"
 );
+const canonicalUnitMigration = readFileSync(
+  "supabase/migrations/20260726233159_inventory_item_canonical_unit_authority.sql",
+  "utf8"
+);
 
 test("operational foundation records every mapping layer and kill switch", () => {
   for (const table of [
@@ -63,4 +67,30 @@ test("active recipe versions cannot overlap for the same menu item and location"
   assert.match(migration, /recipe_versions_no_overlapping_active_windows/i);
   assert.match(migration, /exclude using gist/i);
   assert.match(migration, /tstzrange\(effective_from,[\s\S]*with &&/i);
+});
+
+test("inventory events require the item's verified canonical unit", () => {
+  assert.match(canonicalUnitMigration, /add column if not exists canonical_unit text/i);
+  assert.match(canonicalUnitMigration, /canonical_unit_verification_status/i);
+  assert.match(canonicalUnitMigration, /ambiguous|canonical_unit_for_standard_unit/i);
+  assert.match(canonicalUnitMigration, /before insert on public\.inventory_events/i);
+  assert.match(canonicalUnitMigration, /canonical unit is not verified/i);
+  assert.match(canonicalUnitMigration, /does not match inventory item/i);
+});
+
+test("canonical-unit verification is manager-authorized and audit backed", () => {
+  assert.match(
+    canonicalUnitMigration,
+    /create or replace function public\.verify_inventory_item_canonical_unit/i
+  );
+  assert.match(canonicalUnitMigration, /security definer\s+set search_path = ''/i);
+  assert.match(
+    canonicalUnitMigration,
+    /private\.has_restaurant_role\([\s\S]*owner[\s\S]*admin[\s\S]*manager/i
+  );
+  assert.match(canonicalUnitMigration, /inventory_item\.canonical_unit_verified/i);
+  assert.match(
+    canonicalUnitMigration,
+    /revoke all on function public\.verify_inventory_item_canonical_unit[\s\S]*from public, anon, authenticated/i
+  );
 });

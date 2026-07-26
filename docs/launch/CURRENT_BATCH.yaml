@@ -1,40 +1,36 @@
-batch_id: inventory-operation-input-05
-status: completed
-goal: Add a bounded screen-safe command API for receiving, counts, waste, and stockouts.
+batch_id: inventory-canonical-authority-06
+status: in_progress
+goal: Enforce each inventory item's verified canonical unit at the database event boundary.
 started_at: 2026-07-26
 codex_owned:
   - docs/launch/**
-  - services/miseService.ts
-  - services/miseValidation.ts
-  - services/application/deviceInventoryOutbox.ts
-  - tests/deviceInventoryOutbox.test.ts
-  - tests/inventoryOperationValidation.test.ts
-cursor_owned: []
-shared_locked:
-  - services/miseService.ts
-  - services/miseValidation.ts
+  - supabase/migrations/20260726233159_inventory_item_canonical_unit_authority.sql
+  - supabase/tests/database/inventory_item_canonical_unit.test.sql
+  - tests/operationalDataFoundationMigration.test.ts
+cursor_owned:
+  - supabase/functions/delete-account/index.ts
+  - supabase/migrations/20260726214500_account_deletion_durable_audit.sql
+  - supabase/tests/database/account_deletion.test.sql
+  - tests/accountDeletionMigration.test.ts
+shared_locked: []
 blocked_files:
-  - app/**
-  - components/**
-handoff_required: false
+  - services/repositories/**
+  - services/miseValidation.ts
+  - services/application/**
+handoff_required: true
 dependencies:
-  - inventory-hosted-submission-04
+  - inventory-operation-input-05
 required_tests:
   - npm run typecheck
   - npm test
   - npm run security:backend
+  - npm run supabase:test
 stop_conditions:
-  - Screens construct authoritative actor or sequence fields
-  - A retry regenerates client_event_id or idempotency_key
-  - Unbounded notes or metadata reach the inventory RPC
-  - Invalid units or quantities enter the device outbox
-evidence:
-  - npm run typecheck passed
-  - npm test passed with 233 tests
-  - npm run security:backend passed
-  - Client inputs cannot supply actor, sequence, correction links, source, or arbitrary metadata
-  - Queue generation creates one client event identity and derives its idempotency key once
+  - Unverified inventory items can create authoritative events
+  - Event units can differ from an item's verified canonical unit
+  - Canonical-unit verification bypasses manager authorization
+  - Existing package or ambiguous units are silently marked verified
+evidence: []
 unresolved_findings:
-  - Inventory-item canonical unit still needs a server-enforced binding before production receiving.
-  - Cursor UI handoff remains pending because macOS is locked.
-checkpoint_commit: 3aa16e3
+  - Cursor remains unreachable while macOS is locked; observed account-deletion ownership is recorded from the worktree.
+checkpoint_commit:
