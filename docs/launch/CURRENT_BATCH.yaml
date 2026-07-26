@@ -20,14 +20,15 @@ cursor_owned:
   - contexts/**
   - i18n/**
   - utils/**
-shared_locked:
+shared_locked: []
+released_shared_paths:
   - package.json
   - package-lock.json
   - services/miseService.ts
   - services/repositories/**
   - types/mise.ts
 blocked_files: []
-handoff_required: true
+handoff_required: false
 dependencies:
   - Existing restaurant memberships and private tenant authorization helpers
   - Existing inventory_items, pos_integrations, and supplier_items tables
@@ -50,4 +51,4 @@ unresolved_findings: []
 cross_batch_findings:
   - Cursor team-directory work has incomplete repository imports and currently blocks combined-worktree typecheck
   - Cursor delete-account Edge Function is missing the standard firewall reservation and currently blocks combined-worktree security:backend
-checkpoint_commit: null
+checkpoint_commit: dbe0cc4

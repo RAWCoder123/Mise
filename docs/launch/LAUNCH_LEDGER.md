@@ -20,7 +20,7 @@ commit before another batch begins.
 
 | Batch | Owner | Goal | Status | Checkpoint |
 | --- | --- | --- | --- | --- |
-| `operational-data-foundation-01` | Codex | Tenant-safe operational mappings and append-only inventory events | Complete | Pending |
+| `operational-data-foundation-01` | Codex | Tenant-safe operational mappings and append-only inventory events | Complete | `dbe0cc4` |
 | `appstore-account-deletion-01` | Cursor | In-app account-deletion initiation and service cleanup | In progress | Pending |
 
 ### `operational-data-foundation-01`
