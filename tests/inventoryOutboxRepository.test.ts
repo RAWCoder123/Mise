@@ -118,3 +118,35 @@ test("fails closed on corrupt or cross-tenant persisted data", async () => {
     /inventory_outbox_tenant_mismatch/
   );
 });
+
+test("serializes concurrent device writes so neither event is lost", async () => {
+  const values = new Map<string, string>();
+  const storage: InventoryOutboxStorage = {
+    async getItem(key) {
+      await Promise.resolve();
+      return values.get(key) ?? null;
+    },
+    async setItem(key, value) {
+      await Promise.resolve();
+      values.set(key, value);
+    }
+  };
+  const repository = createInventoryOutboxRepository(storage);
+  const first = createInventoryOutboxEntry({
+    id: "outbox-1",
+    event: event("restaurant-a", "client-a"),
+    now: "2026-07-26T10:00:00.000Z"
+  });
+  const second = createInventoryOutboxEntry({
+    id: "outbox-2",
+    event: event("restaurant-a", "client-b"),
+    now: "2026-07-26T10:00:00.001Z"
+  });
+
+  await Promise.all([repository.save(first), repository.save(second)]);
+
+  assert.deepEqual(
+    (await repository.list("restaurant-a")).map((entry) => entry.id),
+    ["outbox-1", "outbox-2"]
+  );
+});

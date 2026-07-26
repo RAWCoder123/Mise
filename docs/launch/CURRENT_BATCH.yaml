@@ -1,66 +1,34 @@
-batch_id: private-beta-account-inventory-replay-02
+batch_id: inventory-outbox-device-03
 status: completed
-goal: Complete private-beta account controls while defining replay-safe offline inventory submission and reconciliation.
+goal: Bind the replay-safe inventory outbox to serialized device storage behind the stable Mise service surface.
 started_at: 2026-07-26
 codex_owned:
   - docs/launch/**
-  - services/domain/inventoryOutbox.ts
-  - services/domain/inventoryReconciliation.ts
-  - services/domain/inventoryLedger.ts
-  - services/application/inventoryOutbox.ts
+  - services/miseService.ts
   - services/repositories/inventoryOutboxRepository.ts
-  - supabase/migrations/20260726220000_inventory_event_actor_anonymization.sql
-  - supabase/migrations/20260726223000_account_deletion_candidate_cleanup.sql
-  - supabase/tests/database/account_deletion_candidate_cleanup.test.sql
-  - supabase/tests/database/account_deletion.test.sql
-  - supabase/tests/database/inventory_event_ledger.test.sql
-  - supabase/tests/database/tenant_isolation.test.sql
-  - tests/inventoryOutbox.test.ts
-  - tests/inventoryOutboxApplication.test.ts
+  - services/repositories/deviceInventoryOutboxRepository.ts
+  - services/application/deviceInventoryOutbox.ts
+  - tests/deviceInventoryOutbox.test.ts
   - tests/inventoryOutboxRepository.test.ts
-  - tests/inventoryReconciliation.test.ts
-  - tests/inventoryEventActorAnonymization.test.ts
-  - tests/accountDeletionCandidateCleanup.test.ts
-  - tests/accountDeletionMigration.test.ts
-cursor_owned:
-  - app/(auth)/login.tsx
-  - app/(tabs)/settings.tsx
-  - contexts/MiseSessionContext.tsx
-  - i18n/catalog.ts
-  - services/application/restaurant.ts
-  - services/miseValidation.ts
-  - services/repositories/demoRepository.ts
-  - services/repositories/repositoryContracts.ts
-  - services/repositories/supabaseRepository.ts
-  - supabase/config.toml
-  - supabase/functions/delete-account/**
-  - supabase/migrations/20260726210000_account_deletion.sql
-  - supabase/migrations/20260726213000_restaurant_team_directory.sql
-  - tests/accountAuth.test.ts
-  - services/domain/accountAuth.ts
-  - services/domain/teamMembership.ts
+cursor_owned: []
 shared_locked:
-  - services/domain/operationalMapping.ts
+  - services/repositories/repositoryContracts.ts
+  - services/repositories/demoRepository.ts
+  - services/repositories/supabaseRepository.ts
 blocked_files: []
 handoff_required: false
 dependencies:
-  - operational-data-foundation-01
+  - private-beta-account-inventory-replay-02
 required_tests:
   - npm run typecheck
   - npm test
-  - npm run security:backend
-  - npm run supabase:test
 stop_conditions:
-  - Offline retries change client_event_id or idempotency_key
-  - Conflicts are silently retried or overwritten
-  - Reconciliation crosses tenant or inventory-item scope
-  - Account deletion bypasses firewall, authorization, or audit requirements
+  - Concurrent device writes can drop an outbox event
+  - Device storage mixes restaurant outboxes
+  - Provider submission details leak into screen code
 evidence:
   - npm run typecheck passed
-  - npm test passed with 216 tests
-  - npm run security:backend passed
-  - npm run supabase:test passed with 464 pgTAP assertions
-  - Concurrent workspace quota proof passed with 5 accepted, 15 rejected, and 5 immutable allocations
-  - Supabase local security advisors reported no issues
+  - npm test passed with 218 tests
+  - Concurrent storage writes retained both offline events
 unresolved_findings: []
-checkpoint_commit: c82ecf4
+checkpoint_commit: pending

@@ -7,5 +7,6 @@ export * from "./application/restaurant";
 export * from "./application/setup";
 export * from "./application/today";
 export * from "./application/inventory";
+export * from "./application/deviceInventoryOutbox";
 export * from "./application/orders";
 export * from "./application/insights";

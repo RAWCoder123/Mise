@@ -22,6 +22,28 @@ commit before another batch begins.
 | --- | --- | --- | --- | --- |
 | `operational-data-foundation-01` | Codex | Tenant-safe operational mappings and append-only inventory events | Complete | `dbe0cc4` |
 | `private-beta-account-inventory-replay-02` | Tandem | Account controls plus replay-safe inventory reconciliation | Complete | `c82ecf4` |
+| `inventory-outbox-device-03` | Codex | Serialized device persistence for offline inventory events | Complete | Pending |
+
+### `inventory-outbox-device-03`
+
+In scope:
+
+- Serialize device outbox reads and writes so concurrent counts or receiving
+  actions cannot drop each other.
+- Bind the repository to AsyncStorage behind a screen-safe application API.
+- Keep provider submission and Supabase details out of Expo screens.
+
+Delivered:
+
+- AsyncStorage-backed, restaurant-scoped inventory outbox.
+- Serialized read-modify-write operations so concurrent offline events cannot
+  overwrite each other.
+- Stable `miseService` exports to queue and inspect pending device events.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 218 passed
 
 ### `private-beta-account-inventory-replay-02`
 

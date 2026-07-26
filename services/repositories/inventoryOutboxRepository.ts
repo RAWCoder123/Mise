@@ -16,33 +16,47 @@ export function createInventoryOutboxRepository(
   storage: InventoryOutboxStorage,
   keyPrefix = defaultKeyPrefix
 ): InventoryOutboxRepository {
+  let operationQueue: Promise<unknown> = Promise.resolve();
+  function enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = operationQueue.then(operation, operation);
+    operationQueue = pending.then(
+      () => undefined,
+      () => undefined
+    );
+    return pending;
+  }
+
   return {
-    async list(restaurantId) {
-      const key = storageKey(keyPrefix, restaurantId);
-      const raw = await storage.getItem(key);
-      if (raw === null) return [];
-      return parseEntries(raw, restaurantId);
+    list(restaurantId) {
+      return enqueue(async () => {
+        const key = storageKey(keyPrefix, restaurantId);
+        const raw = await storage.getItem(key);
+        if (raw === null) return [];
+        return parseEntries(raw, restaurantId);
+      });
     },
-    async save(entry) {
-      const key = storageKey(keyPrefix, entry.event.restaurantId);
-      const existing = await readEntries(storage, key, entry.event.restaurantId);
-      const previous = existing.find((candidate) => candidate.id === entry.id);
-      if (
-        previous &&
-        (previous.event.clientEventId !== entry.event.clientEventId ||
-          previous.event.idempotencyKey !== entry.event.idempotencyKey)
-      ) {
-        throw new Error("outbox_entry_identity_conflict");
-      }
-      const next = [
-        ...existing.filter((candidate) => candidate.id !== entry.id),
-        entry
-      ].sort(
-        (left, right) =>
-          Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
-          left.id.localeCompare(right.id)
-      );
-      await storage.setItem(key, JSON.stringify(next));
+    save(entry) {
+      return enqueue(async () => {
+        const key = storageKey(keyPrefix, entry.event.restaurantId);
+        const existing = await readEntries(storage, key, entry.event.restaurantId);
+        const previous = existing.find((candidate) => candidate.id === entry.id);
+        if (
+          previous &&
+          (previous.event.clientEventId !== entry.event.clientEventId ||
+            previous.event.idempotencyKey !== entry.event.idempotencyKey)
+        ) {
+          throw new Error("outbox_entry_identity_conflict");
+        }
+        const next = [
+          ...existing.filter((candidate) => candidate.id !== entry.id),
+          entry
+        ].sort(
+          (left, right) =>
+            Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+            left.id.localeCompare(right.id)
+        );
+        await storage.setItem(key, JSON.stringify(next));
+      });
     }
   };
 }
