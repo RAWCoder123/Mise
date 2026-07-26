@@ -4,6 +4,11 @@ import {
   buildOrderQueueSummary,
   buildSupplierEmailPayload
 } from "../domain/miseDomain";
+import {
+  assessOrderAutomation,
+  type OrderAutomationAssessment,
+  type OrderAutomationPolicy
+} from "../domain/orderAutomation";
 import { buildSupplierRecipientDirectory } from "../domain/supplierRecipients";
 import { buildSupplierSpendTrend, type SupplierSpendTrendPoint } from "../domain/supplierSpend";
 import {
@@ -121,6 +126,53 @@ export async function fetchSupplierSpendTrend(restaurantId: string): Promise<Sup
   ]);
   return buildSupplierSpendTrend(restaurantId, orders, recommendationHistory, inventoryItems, {
     timeZone: restaurant.timezone
+  });
+}
+
+/**
+ * Evaluates whether pending recommendations have enough bounded evidence for
+ * future automatic drafting or sending. This is intentionally read-only and
+ * never changes recommendation or supplier-order state.
+ */
+export async function fetchOrderAutomationAssessment(
+  restaurantId: string,
+  supplierName: string,
+  policy?: OrderAutomationPolicy
+): Promise<OrderAutomationAssessment> {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const normalizedSupplierName = supplierName.trim();
+  if (!normalizedSupplierName || normalizedSupplierName.length > 160) {
+    throw new Error("Missing supplier.");
+  }
+
+  const [pendingRecommendations, recommendationHistory, inventoryItems, emailConnection, recipients] =
+    await Promise.all([
+      repository.fetchPurchaseRecommendations(normalizedRestaurantId, "pending"),
+      repository.fetchRecommendationHistory(normalizedRestaurantId),
+      repository.fetchInventoryItems(normalizedRestaurantId),
+      repository.fetchEmailConnectionState(normalizedRestaurantId),
+      repository.fetchSupplierRecipients(normalizedRestaurantId)
+    ]);
+  const supplierKey = normalizedSupplierName.toLocaleLowerCase();
+  const recipientConfigured = recipients.some(
+    (recipient) =>
+      recipient.supplier_name.trim().toLocaleLowerCase() === supplierKey &&
+      Boolean(recipient.email?.trim())
+  );
+
+  return assessOrderAutomation({
+    restaurantId: normalizedRestaurantId,
+    supplierName: normalizedSupplierName,
+    candidates: pendingRecommendations.filter(
+      (recommendation) => recommendation.supplier_name.trim().toLocaleLowerCase() === supplierKey
+    ),
+    inventoryItems,
+    recommendationHistory,
+    policy,
+    delivery: {
+      emailConnected: emailConnection?.status === "connected",
+      supplierRecipientConfigured: recipientConfigured
+    }
   });
 }
 
