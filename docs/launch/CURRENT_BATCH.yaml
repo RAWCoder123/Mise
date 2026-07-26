@@ -1,5 +1,5 @@
 batch_id: inventory-canonical-authority-06
-status: completed
+status: in_progress
 goal: Enforce each inventory item's verified canonical unit at the database event boundary.
 started_at: 2026-07-26
 codex_owned:
@@ -12,12 +12,16 @@ cursor_owned:
   - supabase/migrations/20260726214500_account_deletion_durable_audit.sql
   - supabase/tests/database/account_deletion.test.sql
   - tests/accountDeletionMigration.test.ts
+  - app/settings/sales-import.tsx
+  - app/settings/pos.tsx
+  - app/(tabs)/settings.tsx
+  - i18n/catalog.ts
 shared_locked: []
 blocked_files:
   - services/repositories/**
   - services/miseValidation.ts
   - services/application/**
-handoff_required: false
+handoff_required: true
 dependencies:
   - inventory-operation-input-05
 required_tests:
@@ -31,13 +35,9 @@ stop_conditions:
   - Canonical-unit verification bypasses manager authorization
   - Existing package or ambiguous units are silently marked verified
 evidence:
-  - npm run typecheck passed
-  - npm test passed with 236 tests
-  - npm run security:backend passed
-  - npm run supabase:test passed with 481 pgTAP assertions
-  - Concurrent workspace proof passed with 5 accepted, 15 rejected, and 5 immutable allocations
-  - Supabase advisors reported no issues
+  - Cursor reachable again; durable owner-candidate account deletion checkpoint 4b8764f
+  - Cursor cold-start slice: daily sales CSV import screen wired through existing saveRestaurantSetup upsert path
 unresolved_findings:
-  - Hosted-staging migration and RPC execution remain external verification.
-  - A typed verification adapter and package-conversion UI remain for the receiving workflow.
-checkpoint_commit: 4184fdd
+  - Unit-cost setup UI still blocked until Codex unlocks application/setup.ts estimated_unit_cost pass-through and inventory cost patch RPC
+  - Inventory receive/count/waste UI waits on Codex canonical-unit enforcement handoff
+checkpoint_commit:

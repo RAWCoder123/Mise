@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   Store,
   Trash2,
-  Truck
+  Truck,
+  Upload
 } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -314,15 +315,13 @@ export default function SettingsScreen() {
               onPress={() => router.push("/settings/pos")}
             />
           ) : (
-            <View style={styles.quietRow}>
-              <IconBadge tone="neutral">
-                <PlugZap size={20} color={colors.muted} strokeWidth={2.25} />
-              </IconBadge>
-              <View style={styles.quietCopy}>
-                <Text style={styles.rowTitle}>{t("settings.integration.noPos.title")}</Text>
-                <Text style={styles.rowBody}>{t("settings.integration.noPos.body")}</Text>
-              </View>
-            </View>
+            <OperationalRow
+              title={t("settings.integration.noPos.title")}
+              subtitle={t("settings.integration.noPos.body")}
+              icon={<PlugZap size={20} color={colors.muted} strokeWidth={2.25} />}
+              iconTone="neutral"
+              onPress={() => router.push("/settings/sales-import" as never)}
+            />
           )}
           <OperationalRow
             title={t("settings.integration.gmail.title")}
@@ -343,6 +342,13 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.operations")}>
+          <OperationalRow
+            title={t("settings.operations.salesImport.title")}
+            subtitle={t("settings.operations.salesImport.body")}
+            icon={<Upload size={20} color={colors.success} strokeWidth={2.25} />}
+            iconTone="leaf"
+            onPress={() => router.push("/settings/sales-import" as never)}
+          />
           <OperationalRow
             title={t("settings.operations.recipes.title")}
             subtitle={t("settings.operations.recipes.body")}

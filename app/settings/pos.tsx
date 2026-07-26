@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle, FileText, PlugZap } from "lucide-react-native";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
+import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { usePressScale } from "../../components/ui/Motion";
 import { OperationalHero } from "../../components/ui/OperationalHero";
@@ -30,7 +31,7 @@ export default function POSConnectionScreen() {
 
   async function connect(provider: PosProvider) {
     if (provider === "Manual CSV Upload") {
-      setMessage({ key: "pos.message.csvUnavailable" });
+      router.push("/settings/sales-import" as never);
       return;
     }
     setLoadingProvider(provider);
@@ -93,7 +94,7 @@ export default function POSConnectionScreen() {
               tone: posProvider ? "leaf" : "caution"
             },
             { label: t("pos.stat.mode"), value: isDemoMode ? t("common.demo") : t("common.live"), tone: "neutral" },
-            { label: t("pos.stat.import"), value: t("common.soon"), tone: "neutral" }
+            { label: t("pos.stat.import"), value: t("common.on"), tone: "leaf" }
           ]}
         />
 
@@ -130,7 +131,7 @@ export default function POSConnectionScreen() {
                     selected={selected}
                     isCsv={isCsv}
                     loading={loadingProvider === provider}
-                    disabled={isCsv || loadingProvider !== null}
+                    disabled={loadingProvider !== null}
                     onPress={() => void connect(provider)}
                   />
                 );
@@ -143,6 +144,13 @@ export default function POSConnectionScreen() {
             <Text style={styles.restrictedCopy}>
               {t("pos.restricted.body")}
             </Text>
+            <View style={styles.restrictedAction}>
+              <Button
+                title={t("pos.restricted.importCsv")}
+                onPress={() => router.push("/settings/sales-import" as never)}
+                accessibilityHint={t("pos.provider.hintCsvImport")}
+              />
+            </View>
           </Card>
         )}
       </View>
@@ -178,12 +186,12 @@ function ProviderOption({
       accessibilityRole="button"
       accessibilityLabel={
         isCsv
-          ? t("pos.provider.accessibilityCsv")
+          ? t("pos.provider.accessibilityCsvReady")
           : t("pos.provider.accessibilityDemoFeed", { provider: providerLabel })
       }
       accessibilityHint={
         isCsv
-          ? t("pos.provider.hintUnavailable")
+          ? t("pos.provider.hintCsvImport")
           : selected
             ? t("pos.provider.hintReload")
             : t("pos.provider.hintLoad")
@@ -212,7 +220,7 @@ function ProviderOption({
         </View>
         <View style={styles.providerTrail}>
           <Text style={[styles.providerStatus, selected && styles.providerStatusSelected]}>
-            {selected ? t("common.connected") : isCsv ? t("common.soon") : t("common.demo")}
+            {selected ? t("common.connected") : isCsv ? t("pos.provider.statusImport") : t("common.demo")}
           </Text>
           <Text style={styles.providerAction}>
             {loading
@@ -220,7 +228,7 @@ function ProviderOption({
               : selected
                 ? t("common.reload")
                 : isCsv
-                  ? t("common.comingSoon")
+                  ? t("pos.provider.actionImport")
                   : t("common.connect")}
           </Text>
         </View>
@@ -353,5 +361,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: 8
+  },
+  restrictedAction: {
+    marginTop: 14
   }
 });
