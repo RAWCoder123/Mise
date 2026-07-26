@@ -24,6 +24,31 @@ commit before another batch begins.
 | `private-beta-account-inventory-replay-02` | Tandem | Account controls plus replay-safe inventory reconciliation | Complete | `c82ecf4` |
 | `inventory-outbox-device-03` | Codex | Serialized device persistence for offline inventory events | Complete | `38aaaf9` |
 | `inventory-hosted-submission-04` | Codex | Authoritative hosted and deterministic demo inventory submission | Complete | `d41ff1e` |
+| `inventory-operation-input-05` | Codex | Bounded operator receiving, count, waste, and stockout commands | Complete | `3aa16e3` |
+
+### `inventory-operation-input-05`
+
+Delivered:
+
+- A screen-safe operator command that accepts only receipt, count, waste, and
+  stockout actions.
+- Canonical grams, milliliters, and each validation with bounded quantities,
+  timestamps, references, reason codes, and notes.
+- Fixed evidence sources and allowlisted note metadata; screens cannot provide
+  actor, sequence, correction links, or arbitrary metadata.
+- One-time device client-event creation with an idempotency key derived from
+  that immutable identity before durable queueing.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 233 passed
+- `npm run security:backend`
+
+Remaining:
+
+- Enforce an inventory item's canonical unit at the database boundary.
+- Cursor receiving/count/waste UI and mobile verification.
 
 ### `inventory-hosted-submission-04`
 

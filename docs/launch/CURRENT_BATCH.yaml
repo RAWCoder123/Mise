@@ -1,5 +1,5 @@
 batch_id: inventory-operation-input-05
-status: in_progress
+status: completed
 goal: Add a bounded screen-safe command API for receiving, counts, waste, and stockouts.
 started_at: 2026-07-26
 codex_owned:
@@ -16,7 +16,7 @@ shared_locked:
 blocked_files:
   - app/**
   - components/**
-handoff_required: true
+handoff_required: false
 dependencies:
   - inventory-hosted-submission-04
 required_tests:
@@ -28,7 +28,13 @@ stop_conditions:
   - A retry regenerates client_event_id or idempotency_key
   - Unbounded notes or metadata reach the inventory RPC
   - Invalid units or quantities enter the device outbox
-evidence: []
+evidence:
+  - npm run typecheck passed
+  - npm test passed with 233 tests
+  - npm run security:backend passed
+  - Client inputs cannot supply actor, sequence, correction links, source, or arbitrary metadata
+  - Queue generation creates one client event identity and derives its idempotency key once
 unresolved_findings:
-  - Cursor UI handoff is pending because macOS is locked.
-checkpoint_commit:
+  - Inventory-item canonical unit still needs a server-enforced binding before production receiving.
+  - Cursor UI handoff remains pending because macOS is locked.
+checkpoint_commit: 3aa16e3
