@@ -25,6 +25,38 @@ commit before another batch begins.
 | `inventory-outbox-device-03` | Codex | Serialized device persistence for offline inventory events | Complete | `38aaaf9` |
 | `inventory-hosted-submission-04` | Codex | Authoritative hosted and deterministic demo inventory submission | Complete | `d41ff1e` |
 | `inventory-operation-input-05` | Codex | Bounded operator receiving, count, waste, and stockout commands | Complete | `3aa16e3` |
+| `inventory-canonical-authority-06` | Codex | Verified item-unit authority at the inventory ledger boundary | Complete | `4184fdd` |
+
+### `inventory-canonical-authority-06`
+
+Delivered:
+
+- Canonical-unit authority fields and verification state on every inventory
+  item.
+- Deterministic normalization of standard mass, volume, and count units while
+  leaving cases, packs, and other item-specific units in draft.
+- An inventory-event trigger that rejects unverified items and unit mismatches
+  before append-only history is created.
+- A manager-authorized, tenant-scoped canonical-unit verification RPC with an
+  audit record.
+- Automatic invalidation and re-normalization when an inventory item's display
+  unit changes.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 236 passed
+- `npm run security:backend`
+- `npm run supabase:test`: 481 pgTAP assertions
+- Concurrent workspace quota proof: 5 accepted, 15 rejected, 5 immutable
+- Supabase advisors: no issues
+- Migration list confirmed local schema history through `20260726233159`
+
+Remaining external verification:
+
+- Apply and execute verification/event paths on hosted staging.
+- Add the typed client verification adapter and receiving package-conversion
+  interface.
 
 ### `inventory-operation-input-05`
 
