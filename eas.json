@@ -10,6 +10,9 @@
       "ios": {
         "simulator": true
       },
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "development",
         "EXPO_PUBLIC_ENABLE_DEMO_MODE": "true"
@@ -21,6 +24,9 @@
         "simulator": false,
         "resourceClass": "m-medium"
       },
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "staging",
         "EXPO_PUBLIC_ENABLE_DEMO_MODE": "true"
@@ -31,6 +37,9 @@
       "ios": {
         "resourceClass": "m-medium"
       },
+      "android": {
+        "buildType": "app-bundle"
+      },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_ENABLE_DEMO_MODE": "false"
@@ -39,7 +48,10 @@
   },
   "submit": {
     "production": {
-      "ios": {}
+      "ios": {},
+      "android": {
+        "track": "internal"
+      }
     }
   }
 }
