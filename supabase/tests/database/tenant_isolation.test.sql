@@ -600,9 +600,13 @@ select is(
   array[
     'ai_insights',
     'audit_logs',
+    'ingredient_substitutions',
     'insights',
+    'inventory_events',
     'inventory_items',
     'menu_item_ingredients',
+    'menu_items',
+    'modifier_recipe_adjustments',
     'outreach_agent_runs',
     'outreach_campaigns',
     'outreach_enrollments',
@@ -610,18 +614,24 @@ select is(
     'outreach_leads',
     'outreach_messages',
     'outreach_suppressions',
+    'pos_catalog_item_mappings',
     'pos_integrations',
+    'pos_locations',
     'pos_sales',
     'purchase_orders',
     'purchase_recommendations',
+    'recipe_ingredients',
+    'recipe_versions',
     'restaurant_email_connections',
     'restaurant_memberships',
+    'restaurant_operational_controls',
     'restaurants',
     'sales_imports',
     'setup_attachments',
     'supplier_items',
     'supplier_orders',
     'supplier_recipients',
+    'system_operational_controls',
     'users'
   ]::text[],
   'public Data API table inventory is an exact reviewed allowlist'
@@ -702,8 +712,11 @@ select is(
   array[
     'edge_function_security_events',
     'environment_identity',
+    'gmail_credentials',
+    'gmail_oauth_flows',
     'restaurant_signal_state',
-    'restaurant_workspace_allocations'
+    'restaurant_workspace_allocations',
+    'supplier_email_deliveries'
   ]::text[],
   'private table inventory is an exact reviewed allowlist'
 );
@@ -837,13 +850,16 @@ select is(
   'authenticated views are absent or security_invoker'
 );
 select is((select count(*) from storage.buckets where public), 0::bigint, 'pilot Storage has no public buckets');
-select results_eq(
-  $$
-    select schemaname || '.' || tablename
+select is(
+  (
+    select string_agg(
+      (schemaname || '.' || tablename)::text,
+      ',' order by (schemaname || '.' || tablename)::text collate "C"
+    )
     from pg_publication_tables
     where pubname = 'supabase_realtime' and schemaname in ('public', 'private')
-  $$,
-  array['public.restaurant_memberships'],
+  ),
+  'public.restaurant_memberships'::text,
   'only restaurant_memberships is published to Realtime; no other tenant table leaks through the socket'
 );
 select is(
@@ -1009,53 +1025,53 @@ select is((select status from public.purchase_recommendations where id = 'aaaaaa
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
-select lives_ok(
-  $sql$select public.mark_supplier_order_sent(
+select is(
+  pg_temp.try_execute($sql$select public.mark_supplier_order_sent(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
-  )$sql$,
-  'manager can send an approved supplier order through the guarded workflow RPC'
+  )$sql$),
+  false,
+  'manager cannot mark a supplier order sent without provider acceptance'
 );
 select is(
   (select status from public.supplier_orders where id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'),
-  'sent',
-  'guarded supplier-order transition persisted'
+  'draft',
+  'provider-evidence denial leaves the supplier order in draft'
 );
 select is(
   (select status from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'),
-  'ordered',
-  'sending an order transitions its approved recommendation atomically'
+  'approved',
+  'provider-evidence denial leaves its recommendation approved'
 );
 select is(
-  public.mark_supplier_order_sent(
+  pg_temp.try_execute($sql$select public.mark_supplier_order_sent(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
-  )->>'outcome',
-  'already_applied',
-  'replaying a sent transition is explicitly idempotent'
+  )$sql$),
+  false,
+  'replaying a provider-free sent transition remains denied'
 );
-select is(
-  pg_temp.try_execute($sql$select public.update_supplier_order_draft(
+select lives_ok(
+  $sql$select public.update_supplier_order_draft(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa',
-    'forged after send',
+    'manager revision before provider send',
     true,
     current_date + 2,
     true
-  )$sql$),
-  false,
-  'sent supplier orders cannot be edited through the draft RPC'
+  )$sql$,
+  'the manager can keep editing a draft after a denied provider-free send'
 );
 reset role;
 select is(
   (select count(*) from public.audit_logs where action = 'supplier_order_sent' and entity_id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'),
-  1::bigint,
-  'supplier-order replay creates one semantic audit event'
+  0::bigint,
+  'provider-free send denials create no false supplier-order-sent audit event'
 );
 select is(
   (select actor_user_id from public.audit_logs where action = 'supplier_order_sent' and entity_id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'),
-  '22222222-2222-4222-8222-222222222222'::uuid,
-  'supplier-order audit actor is derived from the authenticated manager'
+  null::uuid,
+  'provider-free send denial records no false audit actor'
 );
 
 set local role service_role;
@@ -1481,7 +1497,7 @@ select ok(
   'staff supplier order update is contained'
 );
 reset role;
-select is((select status from public.supplier_orders where id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'), 'sent', 'staff cannot update supplier orders');
+select is((select status from public.supplier_orders where id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'), 'draft', 'staff cannot update supplier orders');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
@@ -1506,12 +1522,13 @@ select is((select name from public.restaurants where id = 'aaaaaaaa-aaaa-4aaa-8a
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
-select lives_ok(
-  $sql$update public.restaurant_email_connections set status = 'connected', sender_email = 'orders@tenant-a.test' where id = 'aaaaaaaa-8888-4888-8888-aaaaaaaaaaaa'$sql$,
-  'owner can update restaurant Gmail sender connection state'
+select is(
+  pg_temp.try_execute($sql$update public.restaurant_email_connections set status = 'connected', sender_email = 'orders@tenant-a.test' where id = 'aaaaaaaa-8888-4888-8888-aaaaaaaaaaaa'$sql$),
+  false,
+  'owner cannot bypass the Gmail OAuth service workflow with direct connection updates'
 );
 reset role;
-select is((select sender_email from public.restaurant_email_connections where id = 'aaaaaaaa-8888-4888-8888-aaaaaaaaaaaa'), 'orders@tenant-a.test', 'owner Gmail sender update persisted');
+select is((select sender_email from public.restaurant_email_connections where id = 'aaaaaaaa-8888-4888-8888-aaaaaaaaaaaa'), null::text, 'direct Gmail sender update denial leaves connection evidence unchanged');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
@@ -1752,7 +1769,7 @@ reset role;
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
-select is((select count(*) from public.audit_logs), 4::bigint, 'owner reads only their restaurant audit logs, including workflow and setup events');
+select is((select count(*) from public.audit_logs), 3::bigint, 'owner reads only their restaurant audit logs, including workflow and setup events');
 select is(
   (select count(*) from public.audit_logs where restaurant_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'),
   0::bigint,
@@ -1778,7 +1795,7 @@ select is(
   'client audit insert rejects forged actor_user_id'
 );
 reset role;
-select is((select count(*) from public.audit_logs where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), 5::bigint, 'only workflow-derived and fixed-semantic audit events persisted');
+select is((select count(*) from public.audit_logs where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), 4::bigint, 'only workflow-derived and fixed-semantic audit events persisted');
 
 select is(
   pg_temp.try_execute($sql$insert into public.supplier_items (restaurant_id, supplier_name, item_name, unit, estimated_unit_cost)

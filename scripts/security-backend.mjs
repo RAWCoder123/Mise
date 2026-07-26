@@ -21,7 +21,16 @@ const restaurantOwnedTables = new Set([
   "audit_logs",
   "restaurant_email_connections",
   "supplier_recipients",
-  "setup_attachments"
+  "setup_attachments",
+  "restaurant_operational_controls",
+  "pos_locations",
+  "menu_items",
+  "pos_catalog_item_mappings",
+  "recipe_versions",
+  "recipe_ingredients",
+  "modifier_recipe_adjustments",
+  "ingredient_substitutions",
+  "inventory_events"
 ]);
 
 const tenantAuthorizationTables = new Set(["restaurant_memberships"]);

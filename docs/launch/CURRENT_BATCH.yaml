@@ -1,0 +1,53 @@
+batch_id: operational-data-foundation-01
+status: completed
+goal: Establish tenant-safe operational mappings and an append-only inventory event contract.
+started_at: 2026-07-26
+codex_owned:
+  - docs/launch/**
+  - services/domain/operationalMapping.ts
+  - services/domain/inventoryLedger.ts
+  - scripts/security-backend.mjs
+  - tests/operationalMapping.test.ts
+  - tests/inventoryLedger.test.ts
+  - tests/operationalDataFoundationMigration.test.ts
+  - supabase/tests/database/inventory_event_ledger.test.sql
+  - supabase/tests/database/tenant_isolation.test.sql
+  - supabase/migrations/20260726195018_operational_data_foundation_inventory_ledger.sql
+cursor_owned:
+  - app/**
+  - components/**
+  - constants/**
+  - contexts/**
+  - i18n/**
+  - utils/**
+shared_locked:
+  - package.json
+  - package-lock.json
+  - services/miseService.ts
+  - services/repositories/**
+  - types/mise.ts
+blocked_files: []
+handoff_required: true
+dependencies:
+  - Existing restaurant memberships and private tenant authorization helpers
+  - Existing inventory_items, pos_integrations, and supplier_items tables
+required_tests:
+  - npm run typecheck
+  - npm test
+  - npm run supabase:test
+stop_conditions:
+  - Any cross-tenant mapping or inventory event access
+  - Direct authenticated mutation of inventory_events
+  - Mutable or deletable inventory event history
+  - Migration failure on a clean local database
+evidence:
+  - npm run typecheck passed before Cursor's account and team batch entered the shared worktree
+  - npm test passed with 188 tests in the combined worktree
+  - npm run security:backend passed before Cursor's delete-account Edge Function entered the shared worktree
+  - npm run supabase:test passed with 439 pgTAP tests and no security advisor findings
+  - Inventory ledger migration rebuilt successfully from an empty local Supabase database
+unresolved_findings: []
+cross_batch_findings:
+  - Cursor team-directory work has incomplete repository imports and currently blocks combined-worktree typecheck
+  - Cursor delete-account Edge Function is missing the standard firewall reservation and currently blocks combined-worktree security:backend
+checkpoint_commit: null
