@@ -22,7 +22,7 @@ commit before another batch begins.
 | --- | --- | --- | --- | --- |
 | `operational-data-foundation-01` | Codex | Tenant-safe operational mappings and append-only inventory events | Complete | `dbe0cc4` |
 | `private-beta-account-inventory-replay-02` | Tandem | Account controls plus replay-safe inventory reconciliation | Complete | `c82ecf4` |
-| `inventory-outbox-device-03` | Codex | Serialized device persistence for offline inventory events | Complete | Pending |
+| `inventory-outbox-device-03` | Codex | Serialized device persistence for offline inventory events | Complete | `38aaaf9` |
 
 ### `inventory-outbox-device-03`
 

@@ -31,4 +31,4 @@ evidence:
   - npm test passed with 218 tests
   - Concurrent storage writes retained both offline events
 unresolved_findings: []
-checkpoint_commit: pending
+checkpoint_commit: 38aaaf9
