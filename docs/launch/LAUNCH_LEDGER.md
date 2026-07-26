@@ -23,6 +23,41 @@ commit before another batch begins.
 | `operational-data-foundation-01` | Codex | Tenant-safe operational mappings and append-only inventory events | Complete | `dbe0cc4` |
 | `private-beta-account-inventory-replay-02` | Tandem | Account controls plus replay-safe inventory reconciliation | Complete | `c82ecf4` |
 | `inventory-outbox-device-03` | Codex | Serialized device persistence for offline inventory events | Complete | `38aaaf9` |
+| `inventory-hosted-submission-04` | Codex | Authoritative hosted and deterministic demo inventory submission | Complete | `d41ff1e` |
+
+### `inventory-hosted-submission-04`
+
+In scope:
+
+- Flush the serialized device outbox through the active Mise repository without
+  exposing provider details to Expo screens.
+- Use only the manager-authorized `record_inventory_event` RPC in hosted mode.
+- Preserve deterministic, idempotent behavior in local demo mode.
+- Separate deterministic database conflicts from retryable transport failures.
+
+Delivered:
+
+- A strict PostgREST-to-domain normalizer for server-authoritative events.
+- Stable RPC arguments that preserve the device-generated client event and
+  idempotency identities.
+- Screen-safe `flushQueuedInventoryEvents` orchestration with durable retry
+  behavior.
+- Deterministic in-memory demo authority and exact-replay deduplication.
+- Static verification that the hosted adapter cannot directly mutate
+  `inventory_events`.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 226 passed
+- `npm run security:backend`
+- Supabase RPC and database-function security guidance reviewed against the
+  current July 2026 platform documentation and changelog.
+
+Remaining external verification:
+
+- Execute the new repository adapter against hosted staging.
+- Wire receiving/count/waste screens after an explicit Cursor handoff.
 
 ### `inventory-outbox-device-03`
 

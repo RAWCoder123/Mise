@@ -1,5 +1,5 @@
 batch_id: inventory-hosted-submission-04
-status: in_progress
+status: completed
 goal: Connect the durable device outbox to the server-authoritative inventory RPC while preserving deterministic demo behavior.
 started_at: 2026-07-26
 codex_owned:
@@ -20,7 +20,7 @@ shared_locked:
 blocked_files:
   - app/**
   - components/**
-handoff_required: true
+handoff_required: false
 dependencies:
   - inventory-outbox-device-03
 required_tests:
@@ -32,7 +32,13 @@ stop_conditions:
   - Hosted writes bypass the record_inventory_event RPC
   - Transport failures become terminal outbox rejections
   - Demo retries create inconsistent authoritative identities
-evidence: []
+evidence:
+  - npm run typecheck passed
+  - npm test passed with 226 tests
+  - npm run security:backend passed
+  - Hosted repository calls only record_inventory_event and has no inventory_events table mutation
+  - Transport and authorization failures remain non-terminal in the device outbox
 unresolved_findings:
-  - Cursor UI handoff is pending because macOS is locked.
-checkpoint_commit:
+  - Hosted-staging RPC execution remains external verification.
+  - Cursor receiving UI handoff remains pending because macOS is locked.
+checkpoint_commit: d41ff1e
