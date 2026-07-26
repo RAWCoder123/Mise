@@ -546,11 +546,11 @@ test("package exposes private-beta backend security gates", () => {
   assert.match(script("demo:ready"), /qa:interactions/);
   assert.match(script("verify:paid-product"), /verify:private-beta-security/);
 
-  assert.equal(packageJson.dependencies.expo, "~56.0.16");
-  assert.equal(packageJson.dependencies["expo-router"], "~56.2.15");
-  assert.equal(packageJson.dependencies["expo-constants"], "~56.0.18");
-  assert.equal(packageJson.dependencies["expo-linking"], "~56.0.14");
-  assert.equal(packageJson.dependencies["expo-splash-screen"], "~56.0.10");
+  assert.equal(packageJson.dependencies.expo, "~56.0.17");
+  assert.equal(packageJson.dependencies["expo-router"], "~56.2.16");
+  assert.equal(packageJson.dependencies["expo-constants"], "~56.0.22");
+  assert.equal(packageJson.dependencies["expo-linking"], "~56.0.16");
+  assert.equal(packageJson.dependencies["expo-splash-screen"], "~56.0.14");
   assert.equal(packageJson.devDependencies["expo-doctor"], "1.20.1");
 
   const localDatabaseGate = readFileSync("scripts/supabase-local-test.mjs", "utf8");
