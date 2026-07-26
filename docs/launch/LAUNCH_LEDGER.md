@@ -21,7 +21,7 @@ commit before another batch begins.
 | Batch | Owner | Goal | Status | Checkpoint |
 | --- | --- | --- | --- | --- |
 | `operational-data-foundation-01` | Codex | Tenant-safe operational mappings and append-only inventory events | Complete | `dbe0cc4` |
-| `private-beta-account-inventory-replay-02` | Tandem | Account controls plus replay-safe inventory reconciliation | Complete | Pending |
+| `private-beta-account-inventory-replay-02` | Tandem | Account controls plus replay-safe inventory reconciliation | Complete | `c82ecf4` |
 
 ### `private-beta-account-inventory-replay-02`
 
@@ -61,6 +61,8 @@ Evidence:
 - `npm run security:backend`
 - `npm run supabase:test`: 464 pgTAP assertions, concurrency proof, and no
   local security-advisor findings
+- Cursor account/team checkpoint: `40aed3e`
+- Tandem recovery and inventory-replay checkpoint: `c82ecf4`
 
 Remaining external verification:
 

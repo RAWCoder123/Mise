@@ -63,4 +63,4 @@ evidence:
   - Concurrent workspace quota proof passed with 5 accepted, 15 rejected, and 5 immutable allocations
   - Supabase local security advisors reported no issues
 unresolved_findings: []
-checkpoint_commit: pending
+checkpoint_commit: c82ecf4
