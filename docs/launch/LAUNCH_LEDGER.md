@@ -26,6 +26,39 @@ commit before another batch begins.
 | `inventory-hosted-submission-04` | Codex | Authoritative hosted and deterministic demo inventory submission | Complete | `d41ff1e` |
 | `inventory-operation-input-05` | Codex | Bounded operator receiving, count, waste, and stockout commands | Complete | `3aa16e3` |
 | `inventory-canonical-authority-06` | Codex | Verified item-unit authority at the inventory ledger boundary | Complete | `4184fdd` |
+| `inventory-verification-sales-import-07` | Tandem | Typed unit verification plus daily sales CSV cold start | Complete | `3cff0c1` / `3581375` |
+
+### `inventory-verification-sales-import-07`
+
+Codex delivered:
+
+- Canonical-unit authority fields on the shared inventory item type.
+- Consistent normalization for hosted and local demo items.
+- A guarded hosted verification adapter that calls only
+  `verify_inventory_item_canonical_unit`.
+- Demo verification with the same authority fields and audit semantics.
+- Fail-closed normalization when a package item claims verification without a
+  canonical unit.
+
+Cursor delivered:
+
+- A first-class daily CSV sales import route from Settings and POS setup.
+- Live and demo persistence through the existing bounded sales-import path.
+- Missing-restaurant, empty-file, and rejected-row operator feedback.
+- Complete English, Spanish, and Simplified Chinese catalog coverage.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 242 passed
+- `npm run security:backend`
+- Codex checkpoints: `85158d5`, `3cff0c1`
+- Cursor checkpoints: `510a68a`, `3581375`
+
+Remaining:
+
+- Hosted-staging verification-RPC proof.
+- Receiving and package-conversion UI.
 
 ### `inventory-canonical-authority-06`
 

@@ -1,5 +1,5 @@
 batch_id: inventory-verification-sales-import-07
-status: in_progress
+status: completed
 goal: Expose canonical-unit verification through stable repositories while Cursor ships cold-start sales import UI.
 started_at: 2026-07-26
 codex_owned:
@@ -19,7 +19,7 @@ shared_locked: []
 blocked_files:
   - services/application/setup.ts
   - services/application/deviceInventoryOutbox.ts
-handoff_required: true
+handoff_required: false
 dependencies:
   - inventory-canonical-authority-06
   - cold-start-daily-sales-import
@@ -34,5 +34,13 @@ stop_conditions:
   - Cursor and Codex edit the same file
 evidence:
   - Cursor sales CSV checkpoint 510a68a
-unresolved_findings: []
-checkpoint_commit:
+  - Cursor sales CSV polish checkpoint 3581375
+  - npm run typecheck passed
+  - npm test passed with 242 tests
+  - npm run security:backend passed
+  - Hosted verification adapter uses only verify_inventory_item_canonical_unit
+  - Demo verification mirrors canonical authority and audit fields
+unresolved_findings:
+  - Hosted-staging verification RPC execution remains external verification.
+  - Receiving and package-conversion UI remain unimplemented.
+checkpoint_commit: 3cff0c1
