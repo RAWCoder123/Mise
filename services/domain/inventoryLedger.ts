@@ -20,7 +20,7 @@ export interface InventoryEvent {
   canonicalUnit: CanonicalOperationalUnit;
   effectiveAt: string;
   recordedAt: string;
-  actorUserId: string;
+  actorUserId: string | null;
   source: string;
   sourceReference: string | null;
   reasonCode: string | null;

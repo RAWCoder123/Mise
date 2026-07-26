@@ -710,6 +710,7 @@ select is(
     where table_row.schemaname = 'private'
   ),
   array[
+    'account_deletion_audit',
     'edge_function_security_events',
     'environment_identity',
     'gmail_credentials',

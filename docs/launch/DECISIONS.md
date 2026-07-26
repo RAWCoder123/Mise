@@ -13,6 +13,8 @@
 | 2026-07-26 | AI can summarize or rank authoritative evidence but cannot create operational truth or block core workflows. |
 | 2026-07-26 | `savings_share_bps` remains nullable and unset during the measurement pilot. Modeled savings are never billable. |
 | 2026-07-26 | Local checkpoint commits are allowed; no push, merge, release, or production deployment occurs without Raymond's explicit approval. |
+| 2026-07-26 | Account deletion is two-phase: plan without wiping access, delete Auth identity, then finalize tenant cleanup by durable audit ID. Auth failure leaves membership intact and retryable. |
+| 2026-07-26 | Inventory-event actors are anonymized only by the Auth foreign-key action during account deletion; all operational event fields remain append-only. |
 
 ## Deferred decisions
 

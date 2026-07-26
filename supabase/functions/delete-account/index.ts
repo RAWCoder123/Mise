@@ -1,4 +1,5 @@
 import {
+  captureFunctionError,
   firewallBlockedResponse,
   handleError,
   HttpError,
@@ -16,11 +17,31 @@ import {
   type InvocationTerminalContext
 } from "../_shared/mise.ts";
 
-// Permanent account deletion (Apple App Store requirement). The caller must
-// provide their active restaurant so the standard per-restaurant firewall,
-// role check, and audit lifecycle can run. The reservation is finalized before
-// service_delete_account because sole-owner restaurant deletes cascade the
-// private security-event rows.
+type JsonObject = Record<string, unknown>;
+
+function asObject(value: unknown): JsonObject {
+  return value && typeof value === "object" ? (value as JsonObject) : {};
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function asNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+// Recoverable account deletion (Apple App Store requirement).
+//
+// Order (critical invariant):
+//   1) Authorize against the caller's active restaurant membership.
+//   2) Write a durable deletion *plan* without removing tenant data.
+//   3) auth.admin.deleteUser
+//   4) Finalize tenant cleanup by audit_id (works after auth user is gone).
+//
+// Failure boundaries:
+//   - Auth deletion fails  -> memberships intact, client can retry.
+//   - Tenant cleanup fails -> durable tenant_cleanup_failed audit, service-retryable.
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);
@@ -48,8 +69,6 @@ Deno.serve(async (req) => {
       functionName: "delete-account"
     };
 
-    // Any active member may delete their own account; restaurant ownership is
-    // enforced separately inside service_delete_account for cascade scope.
     await requireRestaurantRole(supabase, user.id, restaurantId, ["owner", "admin", "manager", "staff"]);
     await recordFunctionAuditLog(
       securitySupabase,
@@ -58,10 +77,10 @@ Deno.serve(async (req) => {
       "account_deletion_requested",
       "users",
       user.id,
-      { confirmation: "delete_my_account" }
+      { confirmation: "delete_my_account", phase: "authorization" }
     );
 
-    // Close the firewall reservation while the restaurant still exists.
+    // Close the firewall reservation as authorization only. Tenant data still exists.
     await recordFunctionSecurityEvent(
       securitySupabase,
       user.id,
@@ -70,31 +89,126 @@ Deno.serve(async (req) => {
       "delete-account",
       "completed",
       "account_deletion_authorized",
-      { confirmation: "delete_my_account" }
+      { confirmation: "delete_my_account", phase: "authorization" }
     );
     terminalContext = null;
 
-    const { data, error } = await securitySupabase.rpc("service_delete_account", {
-      p_user_id: user.id
-    });
-    if (error) {
-      throw new HttpError(500, "Account data could not be removed. No account changes were applied.");
+    const { data: planData, error: planError } = await securitySupabase.rpc(
+      "service_plan_account_deletion",
+      {
+        p_user_id: user.id,
+        p_requesting_restaurant_id: restaurantId
+      }
+    );
+    if (planError) {
+      captureFunctionError(planError, {
+        functionName: "delete-account",
+        step: "deletion_plan",
+        phase: "post_authorization",
+        restaurantId
+      });
+      throw new HttpError(500, "Account deletion could not be planned. Try again.");
     }
 
-    const summary = (data ?? {}) as { restaurants_deleted?: number; memberships_removed?: number };
+    const plan = asObject(planData);
+    const auditId = asString(plan.audit_id);
+    if (!auditId || plan.phase !== "deletion_planned") {
+      captureFunctionError(new Error("account_deletion_plan_invalid"), {
+        functionName: "delete-account",
+        step: "deletion_plan",
+        phase: "post_authorization",
+        restaurantId
+      });
+      throw new HttpError(500, "Account deletion could not be planned. Try again.");
+    }
 
     const { error: adminError } = await securitySupabase.auth.admin.deleteUser(user.id);
     if (adminError) {
+      captureFunctionError(adminError, {
+        functionName: "delete-account",
+        step: "auth_user_deletion",
+        phase: "post_authorization",
+        restaurantId,
+        auditId
+      });
+
+      const { error: failFinalizeError } = await securitySupabase.rpc(
+        "service_finalize_account_deletion",
+        {
+          p_audit_id: auditId,
+          p_auth_outcome: "auth_deletion_failed"
+        }
+      );
+      if (failFinalizeError) {
+        captureFunctionError(failFinalizeError, {
+          functionName: "delete-account",
+          step: "audit_finalize",
+          phase: "auth_deletion_failed",
+          auditId
+        });
+      }
+
+      // Memberships are still intact, so the client can retry delete-account.
       throw new HttpError(
         500,
-        "Restaurant data was removed but the sign-in account could not be deleted. Try again."
+        "Your sign-in account could not be deleted. Your restaurant access is unchanged — try again."
+      );
+    }
+
+    // Auth user is gone. Tenant cleanup is keyed by audit_id / planned_user_id.
+    const { data: finalizeData, error: finalizeError } = await securitySupabase.rpc(
+      "service_finalize_account_deletion",
+      {
+        p_audit_id: auditId,
+        p_auth_outcome: "auth_deletion_completed"
+      }
+    );
+    if (finalizeError) {
+      captureFunctionError(finalizeError, {
+        functionName: "delete-account",
+        step: "tenant_cleanup",
+        phase: "post_auth_deletion",
+        auditId
+      });
+      throw new HttpError(
+        500,
+        "Your sign-in was deleted but restaurant cleanup needs service recovery. Contact support with your deletion reference."
+      );
+    }
+
+    const finalized = asObject(finalizeData);
+    const phase = asString(finalized.phase);
+    if (phase === "tenant_cleanup_failed") {
+      captureFunctionError(new Error("account_deletion_tenant_cleanup_failed"), {
+        functionName: "delete-account",
+        step: "tenant_cleanup",
+        phase: "tenant_cleanup_failed",
+        auditId
+      });
+      throw new HttpError(
+        500,
+        "Your sign-in was deleted but restaurant cleanup needs service recovery. Contact support with your deletion reference."
+      );
+    }
+
+    if (phase !== "tenant_cleanup_completed") {
+      captureFunctionError(new Error("account_deletion_finalize_unexpected_phase"), {
+        functionName: "delete-account",
+        step: "tenant_cleanup",
+        phase: phase || "unknown",
+        auditId
+      });
+      throw new HttpError(
+        500,
+        "Your sign-in was deleted but restaurant cleanup needs service recovery. Contact support with your deletion reference."
       );
     }
 
     return jsonResponse({
       status: "deleted",
-      restaurantsDeleted: summary.restaurants_deleted ?? 0,
-      membershipsRemoved: summary.memberships_removed ?? 0
+      auditId,
+      restaurantsDeleted: asNumber(finalized.restaurants_deleted),
+      membershipsRemoved: asNumber(finalized.memberships_removed)
     });
   } catch (error) {
     await recordFunctionTerminalError(terminalContext);

@@ -1,0 +1,337 @@
+-- Recoverable account-deletion audit (two-phase).
+--
+-- Invariant: never remove restaurant memberships before auth.admin.deleteUser
+-- succeeds. Otherwise a failed auth deletion leaves an authenticated user who
+-- cannot retry (reserveFunctionInvocation / requireRestaurantRole both need an
+-- active membership).
+--
+-- Phase machine (metadata.phase):
+--   deletion_planned
+--     -> auth_deletion_failed          (memberships intact; client can retry)
+--     -> auth_deletion_completed       (auth user gone; cleanup running)
+--          -> tenant_cleanup_completed (done)
+--          -> tenant_cleanup_failed    (auth gone; service-retryable by audit_id)
+--
+-- planned_user_id has no FK to auth.users so finalize can run after the auth
+-- row is deleted. actor_user_id keeps the live FK while the user still exists.
+
+create table if not exists private.account_deletion_audit (
+  id uuid primary key default gen_random_uuid(),
+  actor_user_id uuid references auth.users(id) on delete set null,
+  planned_user_id uuid not null,
+  requesting_restaurant_id uuid,
+  planned_deleted_restaurant_ids uuid[] not null default '{}'::uuid[],
+  deleted_restaurant_ids uuid[] not null default '{}'::uuid[],
+  restaurants_deleted integer not null default 0
+    check (restaurants_deleted >= 0),
+  memberships_removed integer not null default 0
+    check (memberships_removed >= 0),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  constraint account_deletion_audit_metadata_object_check
+    check (jsonb_typeof(metadata) = 'object'),
+  constraint account_deletion_audit_deleted_ids_match_count_check
+    check (pg_catalog.cardinality(deleted_restaurant_ids) = restaurants_deleted)
+);
+
+comment on table private.account_deletion_audit is
+  'Recoverable account-deletion ledger. Plans are written before any tenant wipe; cleanup is finalized by audit_id after auth deletion.';
+
+create index if not exists idx_account_deletion_audit_actor_created_at
+  on private.account_deletion_audit(actor_user_id, created_at desc);
+
+create index if not exists idx_account_deletion_audit_planned_user_created_at
+  on private.account_deletion_audit(planned_user_id, created_at desc);
+
+create index if not exists idx_account_deletion_audit_created_at
+  on private.account_deletion_audit(created_at desc);
+
+alter table private.account_deletion_audit enable row level security;
+revoke all on table private.account_deletion_audit from public, anon, authenticated, service_role;
+grant select, insert, update on table private.account_deletion_audit to service_role;
+
+-- Replace the earlier one-shot cleanup RPCs if they exist from prior drafts.
+drop function if exists public.service_delete_account(uuid);
+drop function if exists private.service_delete_account(uuid);
+drop function if exists public.service_delete_account(uuid, uuid);
+drop function if exists private.service_delete_account(uuid, uuid);
+drop function if exists public.service_finalize_account_deletion_audit(uuid, text);
+drop function if exists private.service_finalize_account_deletion_audit(uuid, text);
+
+create or replace function private.service_plan_account_deletion(
+  p_user_id uuid,
+  p_requesting_restaurant_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_audit_id uuid;
+  v_planned_restaurant_ids uuid[] := '{}'::uuid[];
+begin
+  if p_user_id is null or p_requesting_restaurant_id is null then
+    raise exception 'Account deletion plan requires a user and requesting restaurant' using errcode = '22023';
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_user_id::text || E'\x1faccount-deletion', 0)
+  );
+
+  if not exists (
+    select 1
+    from public.restaurant_memberships membership
+    where membership.restaurant_id = p_requesting_restaurant_id
+      and membership.user_id = p_user_id
+      and membership.status = 'active'
+  ) then
+    raise exception 'Account deletion plan requires an active restaurant membership' using errcode = '42501';
+  end if;
+
+  select coalesce(pg_catalog.array_agg(owned.restaurant_id), '{}'::uuid[])
+  into v_planned_restaurant_ids
+  from public.restaurant_memberships owned
+  where owned.user_id = p_user_id
+    and owned.role = 'owner'
+    and not exists (
+      select 1
+      from public.restaurant_memberships other
+      where other.restaurant_id = owned.restaurant_id
+        and other.user_id <> p_user_id
+        and other.role = 'owner'
+        and other.status = 'active'
+    );
+
+  insert into private.account_deletion_audit (
+    actor_user_id,
+    planned_user_id,
+    requesting_restaurant_id,
+    planned_deleted_restaurant_ids,
+    deleted_restaurant_ids,
+    restaurants_deleted,
+    memberships_removed,
+    metadata
+  ) values (
+    p_user_id,
+    p_user_id,
+    p_requesting_restaurant_id,
+    v_planned_restaurant_ids,
+    '{}'::uuid[],
+    0,
+    0,
+    pg_catalog.jsonb_build_object(
+      'phase', 'deletion_planned',
+      'requesting_restaurant_id', p_requesting_restaurant_id,
+      'planned_deleted_restaurant_count', pg_catalog.cardinality(v_planned_restaurant_ids)
+    )
+  )
+  returning id into v_audit_id;
+
+  return pg_catalog.jsonb_build_object(
+    'audit_id', v_audit_id,
+    'phase', 'deletion_planned',
+    'planned_deleted_restaurant_ids', to_jsonb(v_planned_restaurant_ids)
+  );
+end;
+$$;
+
+create or replace function public.service_plan_account_deletion(
+  p_user_id uuid,
+  p_requesting_restaurant_id uuid
+)
+returns jsonb
+language sql
+security invoker
+set search_path = ''
+as $$
+  select private.service_plan_account_deletion(p_user_id, p_requesting_restaurant_id);
+$$;
+
+revoke all on function private.service_plan_account_deletion(uuid, uuid) from public, anon, authenticated, service_role;
+revoke all on function public.service_plan_account_deletion(uuid, uuid) from public, anon, authenticated, service_role;
+grant execute on function private.service_plan_account_deletion(uuid, uuid) to service_role;
+grant execute on function public.service_plan_account_deletion(uuid, uuid) to service_role;
+
+comment on function public.service_plan_account_deletion(uuid, uuid) is
+  'Service-only account deletion plan. Writes durable audit evidence without removing tenant memberships or restaurants.';
+
+create or replace function private.service_finalize_account_deletion(
+  p_audit_id uuid,
+  p_auth_outcome text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row private.account_deletion_audit%rowtype;
+  v_restaurants_deleted integer := 0;
+  v_memberships_removed integer := 0;
+  v_deleted_restaurant_ids uuid[] := '{}'::uuid[];
+  v_phase text;
+begin
+  if p_audit_id is null then
+    raise exception 'Account deletion audit target is required' using errcode = '22023';
+  end if;
+  if p_auth_outcome is null
+    or p_auth_outcome not in ('auth_deletion_completed', 'auth_deletion_failed')
+  then
+    raise exception 'Account deletion auth outcome is invalid' using errcode = '22023';
+  end if;
+
+  select * into v_row
+  from private.account_deletion_audit audit
+  where audit.id = p_audit_id
+  for update;
+
+  if not found then
+    raise exception 'Account deletion audit not found' using errcode = 'P0002';
+  end if;
+
+  v_phase := coalesce(v_row.metadata->>'phase', '');
+
+  -- Idempotent success.
+  if v_phase = 'tenant_cleanup_completed' then
+    return pg_catalog.jsonb_build_object(
+      'audit_id', v_row.id,
+      'phase', 'tenant_cleanup_completed',
+      'restaurants_deleted', v_row.restaurants_deleted,
+      'memberships_removed', v_row.memberships_removed,
+      'idempotent', true
+    );
+  end if;
+
+  if p_auth_outcome = 'auth_deletion_failed' then
+    if v_phase not in ('deletion_planned', 'auth_deletion_failed') then
+      raise exception 'Account deletion audit cannot record auth failure from phase %', v_phase
+        using errcode = '22023';
+    end if;
+
+    update private.account_deletion_audit
+    set metadata = metadata || pg_catalog.jsonb_build_object(
+      'phase', 'auth_deletion_failed',
+      'auth_deletion_outcome', 'auth_deletion_failed',
+      'auth_finalized_at', pg_catalog.timezone('utc', now())
+    )
+    where id = p_audit_id;
+
+    return pg_catalog.jsonb_build_object(
+      'audit_id', p_audit_id,
+      'phase', 'auth_deletion_failed',
+      'retryable', true
+    );
+  end if;
+
+  -- auth_deletion_completed path: auth user is gone; cleanup by planned_user_id.
+  if v_phase not in (
+    'deletion_planned',
+    'auth_deletion_completed',
+    'tenant_cleanup_failed'
+  ) then
+    raise exception 'Account deletion audit cannot run tenant cleanup from phase %', v_phase
+      using errcode = '22023';
+  end if;
+
+  update private.account_deletion_audit
+  set metadata = metadata || pg_catalog.jsonb_build_object(
+    'phase', 'auth_deletion_completed',
+    'auth_deletion_outcome', 'auth_deletion_completed',
+    'auth_finalized_at', pg_catalog.timezone('utc', now())
+  )
+  where id = p_audit_id;
+
+  begin
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(v_row.planned_user_id::text || E'\x1faccount-deletion', 0)
+    );
+
+    -- Recompute sole-owner restaurants at cleanup time for the planned user.
+    select coalesce(pg_catalog.array_agg(owned.restaurant_id), '{}'::uuid[])
+    into v_deleted_restaurant_ids
+    from public.restaurant_memberships owned
+    where owned.user_id = v_row.planned_user_id
+      and owned.role = 'owner'
+      and not exists (
+        select 1
+        from public.restaurant_memberships other
+        where other.restaurant_id = owned.restaurant_id
+          and other.user_id <> v_row.planned_user_id
+          and other.role = 'owner'
+          and other.status = 'active'
+      );
+
+    if pg_catalog.cardinality(v_deleted_restaurant_ids) > 0 then
+      delete from public.restaurants restaurant
+      where restaurant.id = any(v_deleted_restaurant_ids);
+      get diagnostics v_restaurants_deleted = row_count;
+    end if;
+
+    delete from public.restaurant_memberships membership
+    where membership.user_id = v_row.planned_user_id;
+    get diagnostics v_memberships_removed = row_count;
+
+    delete from public.users profile
+    where profile.id = v_row.planned_user_id;
+
+    update private.account_deletion_audit
+    set
+      deleted_restaurant_ids = v_deleted_restaurant_ids,
+      restaurants_deleted = v_restaurants_deleted,
+      memberships_removed = v_memberships_removed,
+      metadata = metadata || pg_catalog.jsonb_build_object(
+        'phase', 'tenant_cleanup_completed',
+        'restaurants_deleted', v_restaurants_deleted,
+        'memberships_removed', v_memberships_removed,
+        'tenant_finalized_at', pg_catalog.timezone('utc', now())
+      )
+    where id = p_audit_id;
+
+    return pg_catalog.jsonb_build_object(
+      'audit_id', p_audit_id,
+      'phase', 'tenant_cleanup_completed',
+      'restaurants_deleted', v_restaurants_deleted,
+      'memberships_removed', v_memberships_removed,
+      'deleted_restaurant_ids', to_jsonb(v_deleted_restaurant_ids),
+      'retryable', false
+    );
+  exception
+    when others then
+      update private.account_deletion_audit
+      set metadata = metadata || pg_catalog.jsonb_build_object(
+        'phase', 'tenant_cleanup_failed',
+        'tenant_cleanup_error', pg_catalog.left(sqlerrm, 240),
+        'tenant_cleanup_failed_at', pg_catalog.timezone('utc', now())
+      )
+      where id = p_audit_id;
+
+      return pg_catalog.jsonb_build_object(
+        'audit_id', p_audit_id,
+        'phase', 'tenant_cleanup_failed',
+        'retryable', true,
+        'error', pg_catalog.left(sqlerrm, 240)
+      );
+  end;
+end;
+$$;
+
+create or replace function public.service_finalize_account_deletion(
+  p_audit_id uuid,
+  p_auth_outcome text
+)
+returns jsonb
+language sql
+security invoker
+set search_path = ''
+as $$
+  select private.service_finalize_account_deletion(p_audit_id, p_auth_outcome);
+$$;
+
+revoke all on function private.service_finalize_account_deletion(uuid, text) from public, anon, authenticated, service_role;
+revoke all on function public.service_finalize_account_deletion(uuid, text) from public, anon, authenticated, service_role;
+grant execute on function private.service_finalize_account_deletion(uuid, text) to service_role;
+grant execute on function public.service_finalize_account_deletion(uuid, text) to service_role;
+
+comment on function public.service_finalize_account_deletion(uuid, text) is
+  'Service-only account deletion finalizer. Auth failure leaves memberships intact; auth success runs tenant cleanup by audit_id/planned_user_id and is service-retryable on cleanup failure.';

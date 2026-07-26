@@ -21,7 +21,51 @@ commit before another batch begins.
 | Batch | Owner | Goal | Status | Checkpoint |
 | --- | --- | --- | --- | --- |
 | `operational-data-foundation-01` | Codex | Tenant-safe operational mappings and append-only inventory events | Complete | `dbe0cc4` |
-| `appstore-account-deletion-01` | Cursor | In-app account-deletion initiation and service cleanup | In progress | Pending |
+| `private-beta-account-inventory-replay-02` | Tandem | Account controls plus replay-safe inventory reconciliation | Complete | Pending |
+
+### `private-beta-account-inventory-replay-02`
+
+In scope:
+
+- Codex: deterministic offline inventory outbox transitions, retry policy,
+  authoritative deduplication, conflict surfacing, count reconciliation, and
+  domain tests.
+- Cursor: account deletion, restaurant team directory, invitations, session
+  UX, and the related repository contracts.
+
+Stop conditions:
+
+- A retry changes `client_event_id` or `idempotency_key`.
+- A conflict is silently retried or overwritten.
+- Reconciliation mixes restaurants or inventory items.
+- Account deletion bypasses the standard firewall, authorization, or audit
+  lifecycle.
+
+Delivered:
+
+- Self-serve sign-up, account-deletion initiation, restaurant team directory,
+  role controls, and localized settings UI.
+- Recoverable two-phase account deletion: durable plan, Auth deletion, then
+  service-retryable tenant cleanup by audit ID.
+- Ownership-safe deletion candidates that preserve a restaurant when another
+  active owner remains or is added after planning.
+- Append-only inventory actor anonymization during Auth deletion without
+  allowing direct event updates or deletes.
+- A durable tenant-scoped device outbox, bounded retries, server
+  deduplication, terminal conflict surfacing, and count reconciliation.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 216 passed
+- `npm run security:backend`
+- `npm run supabase:test`: 464 pgTAP assertions, concurrency proof, and no
+  local security-advisor findings
+
+Remaining external verification:
+
+- Hosted-staging account deletion and tenant proof
+- Real-device sign-up, team, deletion, and offline-replay walkthrough
 
 ### `operational-data-foundation-01`
 

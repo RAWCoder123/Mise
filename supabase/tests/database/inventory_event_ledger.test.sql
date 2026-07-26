@@ -1,6 +1,6 @@
 begin;
 
-select plan(15);
+select plan(19);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -213,7 +213,47 @@ select is(
   false,
   'the append-only trigger blocks privileged deletes'
 );
+select is(
+  pg_temp.try_execute($sql$
+    update public.inventory_events
+    set actor_user_id = null
+    where restaurant_id = 'd0000000-0000-4000-8000-000000000001'
+  $sql$),
+  false,
+  'service role cannot directly anonymize an inventory event actor'
+);
 reset role;
+
+select is(
+  pg_temp.try_execute($sql$
+    delete from auth.users
+    where id = 'd1111111-1111-4111-8111-111111111111'
+  $sql$),
+  true,
+  'an operator account can be deleted after recording inventory history'
+);
+select is(
+  (
+    select count(*)
+    from public.inventory_events
+    where restaurant_id = 'd0000000-0000-4000-8000-000000000001'
+      and quantity = 1000
+      and actor_user_id is null
+  ),
+  1::bigint,
+  'account deletion preserves the inventory event and anonymizes only its actor'
+);
+select is(
+  (
+    select count(*)
+    from public.inventory_events
+    where restaurant_id = 'd0000000-0000-4000-8000-000000000001'
+      and client_event_id = 'manager-event-1'
+      and idempotency_key = 'manager-event-1'
+  ),
+  1::bigint,
+  'account deletion preserves immutable replay identity'
+);
 
 select * from finish();
 rollback;
