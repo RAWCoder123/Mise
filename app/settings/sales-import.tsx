@@ -31,9 +31,10 @@ export default function SalesImportScreen() {
   const [successRows, setSuccessRows] = useState<number | null>(null);
   const submitLockRef = useRef(false);
 
-  const canImport = canManageRestaurantData(memberships, restaurant?.id);
+  const canImport = Boolean(restaurant) && canManageRestaurantData(memberships, restaurant?.id);
   const parsed = useMemo(() => validateImportedPosSalesRows(csvText), [csvText]);
   const issuePreview = parsed.issues.slice(0, 3);
+  const rejectedPreviewCount = Math.max(0, parsed.rejectedRowCount);
 
   function goBackToSettings() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -121,7 +122,13 @@ export default function SalesImportScreen() {
           ]}
         />
 
-        {!canImport ? (
+        {!restaurant ? (
+          <StatusNotice
+            tone="caution"
+            title={t("salesImport.missingRestaurant.title")}
+            message={t("salesImport.missingRestaurant.body")}
+          />
+        ) : !canImport ? (
           <StatusNotice
             tone="caution"
             title={t("salesImport.restricted.title")}
@@ -184,6 +191,16 @@ export default function SalesImportScreen() {
           ) : (
             <Text style={styles.readyCopy}>{t("salesImport.ready.empty")}</Text>
           )}
+          {rejectedPreviewCount > 0 ? (
+            <Text style={styles.issueCopy}>
+              {t(
+                rejectedPreviewCount === 1
+                  ? "salesImport.rejected.one"
+                  : "salesImport.rejected.other",
+                { count: formatNumber(rejectedPreviewCount) }
+              )}
+            </Text>
+          ) : null}
           {issuePreview.map((issue) => (
             <Text key={`${issue.row}_${issue.field}`} style={styles.issueCopy}>
               {t("salesImport.issue", {
