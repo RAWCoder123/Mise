@@ -5,13 +5,19 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { InventoryHealth, type InventoryHealthCounts } from "../../components/ui/InventoryHealth";
+import {
+  InventoryHealthBar,
+  buildInventoryHealthAccessibilityLabel,
+  getInventoryHealthTotal,
+  getWellStockedPercentage,
+  type InventoryHealthCounts
+} from "../../components/ui/InventoryHealth";
 import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
 import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { FilterRow, type SegmentOption } from "../../components/ui/SegmentedControl";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -99,6 +105,36 @@ export default function InventoryScreen() {
     low: summary?.lowCount ?? 0,
     critical: summary?.criticalCount ?? 0
   };
+  const healthTotal = getInventoryHealthTotal(healthCounts);
+  const attentionCount = healthCounts.watch + healthCounts.low + healthCounts.critical;
+  const reorderCount = healthCounts.low + healthCounts.critical;
+  const healthPercentLabel = formatNumber(getWellStockedPercentage(healthCounts) / 100, {
+    style: "percent",
+    maximumFractionDigits: 0
+  });
+  const healthLabels = {
+    good: t("inventory.health.good"),
+    watch: t("inventory.health.watch"),
+    low: t("inventory.health.low"),
+    critical: t("inventory.health.critical"),
+    wellStocked: t("inventory.health.wellStocked"),
+    empty: t("inventory.health.empty")
+  };
+  const healthBody = reorderCount > 0
+    ? t(reorderCount === 1 ? "inventory.health.risk.one" : "inventory.health.risk.other", {
+        count: formatNumber(reorderCount)
+      })
+    : healthCounts.watch > 0
+      ? t(healthCounts.watch === 1 ? "inventory.health.watchCopy.one" : "inventory.health.watchCopy.other", {
+          count: formatNumber(healthCounts.watch)
+        })
+      : t("inventory.health.clear");
+  const healthAccessibilityLabel = buildInventoryHealthAccessibilityLabel({
+    counts: healthCounts,
+    labels: healthLabels,
+    formatCount: (value) => formatNumber(value),
+    formatPercentage: (value) => formatNumber(value / 100, { style: "percent", maximumFractionDigits: 0 })
+  });
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -149,19 +185,58 @@ export default function InventoryScreen() {
             title={t("inventory.health.title")}
             separatedHeader={false}
           >
-            <InventoryHealth
-              counts={healthCounts}
-              labels={{
-                good: t("inventory.health.good"),
-                watch: t("inventory.health.watch"),
-                low: t("inventory.health.low"),
-                critical: t("inventory.health.critical"),
-                wellStocked: t("inventory.health.wellStocked"),
-                empty: t("inventory.health.empty")
-              }}
-            />
+            <View accessible accessibilityLabel={healthAccessibilityLabel}>
+              <View style={styles.healthHead}>
+                <Text style={styles.healthPercent}>
+                  {healthTotal === 0 ? formatNumber(0, { style: "percent" }) : healthPercentLabel}
+                </Text>
+                <View style={styles.healthCopy}>
+                  <Text style={styles.healthTitle}>
+                    {healthTotal === 0
+                      ? healthLabels.empty
+                      : attentionCount === 0
+                        ? healthLabels.wellStocked
+                        : t(
+                            attentionCount === 1
+                              ? "inventory.health.attention.one"
+                              : "inventory.health.attention.other",
+                            { count: formatNumber(attentionCount) }
+                          )}
+                  </Text>
+                  <Text style={styles.healthBody}>{healthBody}</Text>
+                </View>
+              </View>
+              <InventoryHealthBar counts={healthCounts} />
+              <View style={styles.healthLegend}>
+                {(
+                  [
+                    { label: healthLabels.good, value: healthCounts.good, color: inventoryStatusColors.Good },
+                    { label: healthLabels.watch, value: healthCounts.watch, color: inventoryStatusColors.Watch },
+                    { label: healthLabels.low, value: healthCounts.low, color: inventoryStatusColors.Low },
+                    { label: healthLabels.critical, value: healthCounts.critical, color: inventoryStatusColors.Critical }
+                  ] as const
+                ).map(({ label, value, color }) => (
+                  <View key={label} style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: color }]} />
+                    <Text style={styles.legendText}>{label} {formatNumber(value)}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
           </SectionSurface>
         </MotionView>
+
+        {reorderCount > 0 ? (
+          <StatusNotice
+            title={t("inventory.reorder.title")}
+            message={t(reorderCount === 1 ? "inventory.reorder.body.one" : "inventory.reorder.body.other", {
+              count: formatNumber(reorderCount)
+            })}
+            tone="warning"
+            actionLabel={t("inventory.reorder.action")}
+            onAction={() => router.push("/orders")}
+          />
+        ) : null}
 
         <MotionView delay={40} distance={3} duration={240}>
           <SectionSurface
@@ -324,6 +399,56 @@ const styles = StyleSheet.create({
   emptyButton: {
     marginTop: 12
   },
+  healthHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12
+  },
+  healthPercent: {
+    color: colors.success,
+    fontFamily: typography.families.bold,
+    fontSize: 31,
+    lineHeight: 36,
+    letterSpacing: -0.8
+  },
+  healthCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  healthTitle: {
+    color: colors.text,
+    ...typography.cardTitle
+  },
+  healthBody: {
+    color: colors.muted,
+    ...typography.body,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2
+  },
+  healthLegend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 10
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5
+  },
+  legendDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4
+  },
+  legendText: {
+    color: colors.muted,
+    fontFamily: typography.families.medium,
+    fontSize: 11,
+    lineHeight: 14
+  },
   controls: {
     gap: 8,
     padding: 12,
@@ -383,9 +508,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceWarm
   },
   statusIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.md,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: inventoryStatusSoftColors.Watch,
     alignItems: "center",
     justifyContent: "center"

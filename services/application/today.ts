@@ -35,7 +35,10 @@ export interface TodayCommandCenterSummary extends TodaySummary {
   restaurantCurrency: string;
 }
 
-export async function fetchTodaySummary(restaurantId: string): Promise<TodayCommandCenterSummary> {
+export async function fetchTodaySummary(
+  restaurantId: string,
+  options: { includeCompletedTasks?: boolean } = {}
+): Promise<TodayCommandCenterSummary> {
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
@@ -103,7 +106,8 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       orders,
       setupReadiness,
       posIntegrations,
-      insights
+      insights,
+      includeCompleted: options.includeCompletedTasks
     }),
     operatingDate,
     restaurantTimeZone: data.restaurant.timezone,

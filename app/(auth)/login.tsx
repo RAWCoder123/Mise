@@ -29,7 +29,7 @@ export default function LoginScreen() {
   useEffect(() => {
     if (!ready) return;
     if (restaurant) {
-      router.replace("/today");
+      router.replace("/home");
     } else if (user) {
       router.replace("/setup");
     }
@@ -73,7 +73,7 @@ export default function LoginScreen() {
         cuisine_type: DEMO_DATASET.restaurant.cuisineType,
         posProvider: DEMO_DATASET.defaultPosProvider
       });
-      router.replace("/today");
+      router.replace("/home");
     } catch (demoError) {
       captureMiseError(demoError, { flow: "login", operation: "open_demo" });
       setErrorKey("login.error.demo");

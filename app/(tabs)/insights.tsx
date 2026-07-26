@@ -18,9 +18,11 @@ import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
+import { TrendLineChart } from "../../components/ui/TrendLineChart";
 import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import type { MessageKey } from "../../i18n/catalog";
 import {
   fetchInsights,
   fetchInsightsSalesTrend,
@@ -36,7 +38,13 @@ import {
 import { buildConciseTrendDateLabels } from "../../services/presentation/salesTrendLabels";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import type { InsightsSalesTrendPoint } from "../../services/miseService";
-import type { Insight, InsightSeverity, LearningMemorySignal, LearningMemorySummary } from "../../types/mise";
+import type {
+  Insight,
+  InsightSeverity,
+  LearningMemorySignal,
+  LearningMemorySummary,
+  RestaurantServiceStyle
+} from "../../types/mise";
 
 type InsightFilter = "all" | InsightSeverity;
 
@@ -175,11 +183,28 @@ export default function InsightsScreen() {
         count: formatNumber(summary.signalCount)
       })
     : t("insights.summary.empty");
+  const infoCount = visibleInsights.filter((insight) => insight.severity === "info").length;
+  const nextStep = summary
+    ? summary.urgentCount > 0
+      ? t("insights.nextStep.urgent")
+      : summary.warningCount > 0
+        ? t("insights.nextStep.watch")
+        : summary.signalCount > 0
+          ? t("insights.nextStep.signals")
+          : t("insights.nextStep.empty")
+    : t("insights.nextStep.empty");
+  const serviceLabel = restaurant ? serviceStyleLabel(restaurant.service_style, t) : null;
+  const subtitle = restaurant
+    ? t("insights.subtitleRestaurantStyle", {
+        restaurant: restaurant.name,
+        style: serviceLabel ?? restaurant.cuisine_type ?? t("settings.profile.cuisineFallback")
+      })
+    : t("insights.subtitle");
 
   return (
     <Screen
       title={t("insights.title")}
-      subtitle={restaurant ? t("insights.subtitleRestaurant", { restaurant: restaurant.name }) : t("insights.subtitle")}
+      subtitle={subtitle}
       loading={loading}
       action={
         restaurant && canManage ? (
@@ -211,14 +236,15 @@ export default function InsightsScreen() {
           <InsightsSummary
             title={summaryTitle}
             body={summaryBody}
+            nextStep={nextStep}
             urgent={summary?.urgentCount ?? 0}
             watch={summary?.warningCount ?? 0}
-            learning={summary?.learningCount ?? 0}
+            info={infoCount}
           />
         </MotionView>
 
         <MotionView delay={70} distance={4}>
-          <SalesTrend points={visibleSalesTrend} />
+          <SalesTrend points={visibleSalesTrend} currency={restaurant?.currency} />
         </MotionView>
 
         <SegmentedControl
@@ -231,7 +257,11 @@ export default function InsightsScreen() {
         <MotionView key={filter} distance={4} duration={220}>
           <SectionSurface
             title={t("insights.brief.title")}
-            subtitle={t("insights.brief.subtitle")}
+            subtitle={
+              serviceLabel
+                ? t("insights.brief.subtitleStyle", { style: serviceLabel })
+                : t("insights.brief.subtitle")
+            }
             action={t(filteredInsights.length === 1 ? "insights.signalCount.one" : "insights.signalCount.other", {
               count: formatNumber(filteredInsights.length)
             })}
@@ -270,26 +300,28 @@ export default function InsightsScreen() {
 function InsightsSummary({
   title,
   body,
+  nextStep,
   urgent,
   watch,
-  learning
+  info
 }: {
   title: string;
   body: string;
+  nextStep: string;
   urgent: number;
   watch: number;
-  learning: number;
+  info: number;
 }) {
   const { t } = useLocale();
-  const tone = urgent > 0 ? "danger" : watch > 0 ? "caution" : learning > 0 ? "success" : "neutral";
-  const palette = summaryToneColors[tone];
+  const tone = urgent > 0 ? "danger" : watch > 0 ? "caution" : info > 0 ? "neutral" : "neutral";
+  const palette = summaryToneColors[tone === "danger" || tone === "caution" ? tone : info > 0 ? "success" : "neutral"];
   return (
     <SectionSurface padding="none">
       <View style={styles.summaryHeader}>
         <View style={[styles.summaryIcon, { backgroundColor: palette.soft }]}>
           {tone === "danger" ? (
             <AlertTriangle size={22} color={palette.strong} strokeWidth={2.25} />
-          ) : tone === "success" ? (
+          ) : urgent === 0 && watch === 0 && info === 0 ? (
             <CheckCircle2 size={22} color={palette.strong} strokeWidth={2.25} />
           ) : (
             <Lightbulb size={22} color={palette.strong} strokeWidth={2.25} />
@@ -298,6 +330,7 @@ function InsightsSummary({
         <View style={styles.summaryCopy}>
           <Text style={styles.summaryTitle}>{title}</Text>
           <Text style={styles.summaryBody}>{body}</Text>
+          <Text style={styles.summaryNextStep}>{nextStep}</Text>
         </View>
       </View>
       <View style={styles.summaryMetrics}>
@@ -315,10 +348,10 @@ function InsightsSummary({
           divided
         />
         <SummaryMetric
-          label={t("insights.metric.learning")}
-          value={learning}
-          tone="success"
-          icon={<CheckCircle2 size={18} color={colors.success} strokeWidth={2.25} />}
+          label={t("insights.metric.info")}
+          value={info}
+          tone="default"
+          icon={<BookOpen size={18} color={info > 0 ? colors.text : colors.muted} strokeWidth={2.25} />}
           divided
         />
       </View>
@@ -326,11 +359,16 @@ function InsightsSummary({
   );
 }
 
-function SalesTrend({ points }: { points: InsightsSalesTrendPoint[] }) {
-  const { formatCurrency, formatDate, formatNumber, t } = useLocale();
+function SalesTrend({
+  points,
+  currency
+}: {
+  points: InsightsSalesTrendPoint[];
+  currency?: string;
+}) {
+  const { formatCompactCurrency, formatCurrency, formatDate, formatNumber, t } = useLocale();
   const latest = points.at(-1);
   const previous = points.at(-2);
-  const maxSales = Math.max(1, ...points.map((point) => point.sales));
   const change = latest && previous && previous.sales > 0
     ? ((latest.sales - previous.sales) / previous.sales) * 100
     : null;
@@ -361,7 +399,7 @@ function SalesTrend({ points }: { points: InsightsSalesTrendPoint[] }) {
           <View style={styles.trendSummary}>
             <View style={styles.trendSummaryCopy}>
               <Text style={styles.trendValue}>
-                {formatCurrency(latest.sales, { maximumFractionDigits: 0 })}
+                {formatCurrency(latest.sales, { currency, maximumFractionDigits: 0 })}
               </Text>
               <Text
                 style={[
@@ -378,33 +416,21 @@ function SalesTrend({ points }: { points: InsightsSalesTrendPoint[] }) {
             </Text>
           </View>
 
-          <View
-            accessible
+          <TrendLineChart
+            series={[{ values: points.map((point) => point.sales) }]}
+            labels={dateLabels}
+            showArea
+            formatValue={(value) => formatCompactCurrency(value, currency)}
             accessibilityLabel={t(
               points.length === 1 ? "insights.trend.accessibility.one" : "insights.trend.accessibility.other",
               {
                 count: formatNumber(points.length),
-                sales: formatCurrency(latest.sales, { maximumFractionDigits: 0 }),
+                sales: formatCurrency(latest.sales, { currency, maximumFractionDigits: 0 }),
                 change: changeLabel
               }
             )}
             style={styles.trendChart}
-          >
-            {points.map((point, index) => {
-              const isLatest = point.date === latest.date;
-              const height = Math.max(4, Math.round((point.sales / maxSales) * 72));
-              return (
-                <View key={point.date} style={styles.trendColumn} importantForAccessibility="no-hide-descendants">
-                  <View style={styles.trendBarTrack}>
-                    <View style={[styles.trendBar, { height }, isLatest && styles.trendBarLatest]} />
-                  </View>
-                  <Text numberOfLines={1} style={[styles.trendLabel, isLatest && styles.trendLabelLatest]}>
-                    {dateLabels[index]}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+          />
         </StateChangeView>
       ) : (
         <View style={styles.trendEmpty}>
@@ -414,6 +440,18 @@ function SalesTrend({ points }: { points: InsightsSalesTrendPoint[] }) {
       )}
     </SectionSurface>
   );
+}
+
+function serviceStyleLabel(style: RestaurantServiceStyle, t: (key: MessageKey) => string) {
+  const keyByStyle: Record<RestaurantServiceStyle, MessageKey> = {
+    quick_service: "settings.serviceStyle.quickService",
+    fast_casual: "settings.serviceStyle.fastCasual",
+    full_service: "settings.serviceStyle.fullService",
+    bar: "settings.serviceStyle.bar",
+    cafe: "settings.serviceStyle.cafe",
+    ghost_kitchen: "settings.serviceStyle.ghostKitchen"
+  };
+  return t(keyByStyle[style]);
 }
 
 function SummaryMetric({
@@ -595,6 +633,13 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 4
   },
+  summaryNextStep: {
+    color: colors.accentDark,
+    fontFamily: typography.families.semibold,
+    fontSize: 12.5,
+    lineHeight: 17,
+    marginTop: 8
+  },
   summaryMetrics: {
     minHeight: 64,
     borderTopWidth: 1,
@@ -697,48 +742,7 @@ const styles = StyleSheet.create({
     textAlign: "right"
   },
   trendChart: {
-    height: 98,
-    marginTop: 12,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 7
-  },
-  trendColumn: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: "center",
-    gap: 6
-  },
-  trendBarTrack: {
-    width: "100%",
-    maxWidth: 32,
-    height: 76,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderStrong,
-    alignItems: "center",
-    justifyContent: "flex-end"
-  },
-  trendBar: {
-    width: "68%",
-    minWidth: 4,
-    maxWidth: 22,
-    borderTopLeftRadius: radii.sm,
-    borderTopRightRadius: radii.sm,
-    backgroundColor: colors.panelStrong
-  },
-  trendBarLatest: {
-    backgroundColor: colors.accent
-  },
-  trendLabel: {
-    width: "100%",
-    color: colors.faint,
-    fontFamily: typography.families.semibold,
-    fontSize: 10,
-    lineHeight: 14,
-    textAlign: "center"
-  },
-  trendLabelLatest: {
-    color: colors.text
+    marginTop: 10
   },
   trendEmpty: {
     minHeight: 82,

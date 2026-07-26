@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { ChartNoAxesColumnIncreasing, Home, Package, Settings, ShoppingCart } from "lucide-react-native";
+import { CalendarDays, Home, MoreHorizontal, Package, ShoppingCart } from "lucide-react-native";
 import { Platform, StyleSheet } from "react-native";
 
 import { colors, fontFamilies } from "../../constants/theme";
@@ -10,7 +10,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
-      initialRouteName="today"
+      initialRouteName="home"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.accentDark,
@@ -22,11 +22,19 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
+        name="home"
+        options={{
+          title: t("nav.home"),
+          tabBarAccessibilityLabel: t("nav.home"),
+          tabBarIcon: ({ color }) => <Home size={20} color={color} strokeWidth={1.9} />
+        }}
+      />
+      <Tabs.Screen
         name="today"
         options={{
           title: t("nav.today"),
           tabBarAccessibilityLabel: t("nav.today"),
-          tabBarIcon: ({ color }) => <Home size={20} color={color} strokeWidth={1.9} />
+          tabBarIcon: ({ color }) => <CalendarDays size={20} color={color} strokeWidth={1.9} />
         }}
       />
       <Tabs.Screen
@@ -46,19 +54,23 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="more"
+        options={{
+          title: t("nav.more"),
+          tabBarAccessibilityLabel: t("nav.more"),
+          tabBarIcon: ({ color }) => <MoreHorizontal size={20} color={color} strokeWidth={1.9} />
+        }}
+      />
+      <Tabs.Screen
         name="insights"
         options={{
-          title: t("nav.insights"),
-          tabBarAccessibilityLabel: t("nav.insights"),
-          tabBarIcon: ({ color }) => <ChartNoAxesColumnIncreasing size={20} color={color} strokeWidth={1.9} />
+          href: null
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: t("nav.settings"),
-          tabBarAccessibilityLabel: t("nav.settings"),
-          tabBarIcon: ({ color }) => <Settings size={20} color={color} strokeWidth={1.9} />
+          href: null
         }}
       />
     </Tabs>

@@ -111,7 +111,7 @@ semanticInventoryPalette.forEach(([status, token]) => {
   }
 });
 
-for (const file of ["components/ui/InventoryHealth.tsx", "app/(tabs)/inventory.tsx", "app/(tabs)/today.tsx"]) {
+for (const file of ["components/ui/InventoryHealth.tsx", "app/(tabs)/inventory.tsx", "app/(tabs)/home.tsx"]) {
   if (!read(file).includes("inventoryStatusColors")) {
     failures.push(`${file}: use the authoritative inventory status palette`);
   }
@@ -123,8 +123,12 @@ for (const filterTone of ['"At risk", label: t("inventory.filter.atRisk"), tone:
 }
 
 const insightsScreen = read("app/(tabs)/insights.tsx");
-if (!insightsScreen.includes("backgroundColor: colors.panelStrong") || !insightsScreen.includes("backgroundColor: colors.accent")) {
-  failures.push("app/(tabs)/insights.tsx: historical chart marks must stay neutral with a brand-colored latest value");
+if (!insightsScreen.includes("TrendLineChart")) {
+  failures.push("app/(tabs)/insights.tsx: sales trend must use TrendLineChart");
+}
+const trendChart = read("components/ui/TrendLineChart.tsx");
+if (!trendChart.includes("colors.accent") || !(trendChart.includes("colors.borderStrong") || trendChart.includes("colors.panelStrong"))) {
+  failures.push("components/ui/TrendLineChart.tsx: historical chart marks must stay neutral with a brand-colored latest value");
 }
 
 for (const fontFace of ["Fraunces_600SemiBold", "Inter_400Regular", "Inter_500Medium", "Inter_600SemiBold", "Inter_700Bold"]) {

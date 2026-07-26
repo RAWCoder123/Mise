@@ -74,20 +74,22 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "47%",
     minWidth: 0,
-    minHeight: 88,
+    minHeight: 96,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    gap: 8
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 10
   },
   iconWrap: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     borderRadius: radii.md,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.surfaceWarm,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -95,14 +97,14 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     color: colors.text,
     ...typography.cardTitle,
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: 13.5,
+    lineHeight: 18,
     paddingRight: 18
   },
   chevron: {
     position: "absolute",
-    right: 10,
-    bottom: 12
+    right: 12,
+    bottom: 14
   },
   pressed: {
     opacity: 0.72

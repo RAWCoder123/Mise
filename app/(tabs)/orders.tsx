@@ -35,7 +35,7 @@ import { operatingLimits } from "../../services/miseValidation";
 import { trackMiseEvent } from "../../services/telemetry";
 import type { PurchaseRecommendation, RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
 
-type OrderLane = "drafts" | "sent" | "history";
+type OrderLane = "drafts" | "review" | "sent" | "history";
 type RecommendationAction = "approve" | "dismiss";
 
 interface UndoAction {
@@ -222,6 +222,7 @@ export default function OrdersScreen() {
   const laneOptions = useMemo<readonly SegmentOption<OrderLane>[]>(
     () => {
       const draftsLabel = t("orders.lane.drafts");
+      const reviewLabel = t("orders.lane.review");
       const sentLabel = t("orders.lane.sent");
       const historyLabel = t("orders.lane.history");
       return [
@@ -231,6 +232,16 @@ export default function OrdersScreen() {
           accessibilityLabel: t("orders.lane.optionAccessibility", {
             lane: draftsLabel,
             count: formatNumber(draftOrders.length)
+          })
+        },
+        {
+          value: "review",
+          label: visibleRecommendations.length > 0
+            ? `${reviewLabel} (${formatNumber(visibleRecommendations.length)})`
+            : reviewLabel,
+          accessibilityLabel: t("orders.lane.optionAccessibility", {
+            lane: reviewLabel,
+            count: formatNumber(visibleRecommendations.length)
           })
         },
         {
@@ -251,7 +262,7 @@ export default function OrdersScreen() {
         }
       ];
     },
-    [completedOrders.length, draftOrders.length, formatNumber, sentOrders.length, t]
+    [completedOrders.length, draftOrders.length, formatNumber, sentOrders.length, t, visibleRecommendations.length]
   );
   const gmailStatus = visibleEmailConnection?.status ?? "not_connected";
   const gmailIsConnected = gmailStatus === "connected";
@@ -537,6 +548,7 @@ export default function OrdersScreen() {
           value={lane}
           onValueChange={setLane}
           variant="underline"
+          scrollable
           style={styles.tabs}
         />
 
@@ -649,61 +661,84 @@ export default function OrdersScreen() {
               )}
 
               {visibleRecommendations.length > 0 ? (
-                <View style={styles.reviewQueue}>
-                  <SectionHeader
-                    title={t("orders.review.title")}
-                    actionTone="caution"
-                    action={t(
-                      visibleRecommendations.length === 1
-                        ? "orders.review.total.one"
-                        : "orders.review.total.other",
-                      { count: formatNumber(visibleRecommendations.length) }
-                    )}
-                    size="compact"
-                  />
-                  {groupedRecommendations.map(([supplierName, supplierRecommendations]) => (
-                    <SectionSurface key={supplierName} padding="none">
-                      <View style={styles.supplierHeader}>
-                        <View style={styles.supplierIcon}>
-                          <Truck size={20} color={colors.success} strokeWidth={2.25} />
-                        </View>
-                        <View style={styles.supplierHeaderCopy}>
-                          <Text style={styles.supplierName}>{supplierName}</Text>
-                          <Text style={styles.supplierMeta}>
-                            {t(
-                              supplierRecommendations.length === 1
-                                ? "orders.review.supplier.one"
-                                : "orders.review.supplier.other",
-                              { count: formatNumber(supplierRecommendations.length) }
-                            )}
-                          </Text>
-                        </View>
-                      </View>
-                      {supplierRecommendations.map((recommendation, index) => (
-                        <RecommendationDecisionRow
-                          key={recommendation.id}
-                          recommendation={recommendation}
-                          quantity={quantities[recommendation.id] ?? formatNumber(
-                            recommendation.recommended_quantity,
-                            { maximumFractionDigits: 3 }
-                          )}
-                          onQuantityChange={(value) => {
-                            setQuantities((current) => ({ ...current, [recommendation.id]: value }));
-                            setQuantityErrors((current) => ({ ...current, [recommendation.id]: undefined }));
-                          }}
-                          onApprove={() => void approve(recommendation)}
-                          onDismiss={() => void dismiss(recommendation)}
-                          action={recommendationActions[recommendation.id]}
-                          error={quantityErrors[recommendation.id]}
-                          readOnly={!canManage}
-                          showDivider={index < supplierRecommendations.length - 1}
-                        />
-                      ))}
-                    </SectionSurface>
-                  ))}
-                </View>
+                <StatusNotice
+                  title={t("orders.review.title")}
+                  message={t(
+                    visibleRecommendations.length === 1
+                      ? "orders.review.cta.one"
+                      : "orders.review.cta.other",
+                    { count: formatNumber(visibleRecommendations.length) }
+                  )}
+                  tone="caution"
+                  actionLabel={t("orders.review.ctaAction")}
+                  onAction={() => setLane("review")}
+                />
               ) : null}
             </>
+          ) : null}
+
+          {lane === "review" ? (
+            visibleRecommendations.length === 0 ? (
+              <EmptyState
+                compact
+                title={t("orders.review.empty.title")}
+                body={t("orders.review.empty.body")}
+              />
+            ) : (
+              <View style={styles.reviewQueue}>
+                <SectionHeader
+                  title={t("orders.review.title")}
+                  actionTone="caution"
+                  action={t(
+                    visibleRecommendations.length === 1
+                      ? "orders.review.total.one"
+                      : "orders.review.total.other",
+                    { count: formatNumber(visibleRecommendations.length) }
+                  )}
+                  size="compact"
+                />
+                {groupedRecommendations.map(([supplierName, supplierRecommendations]) => (
+                  <SectionSurface key={supplierName} padding="none">
+                    <View style={styles.supplierHeader}>
+                      <View style={styles.supplierIcon}>
+                        <Truck size={20} color={colors.success} strokeWidth={2.25} />
+                      </View>
+                      <View style={styles.supplierHeaderCopy}>
+                        <Text style={styles.supplierName}>{supplierName}</Text>
+                        <Text style={styles.supplierMeta}>
+                          {t(
+                            supplierRecommendations.length === 1
+                              ? "orders.review.supplier.one"
+                              : "orders.review.supplier.other",
+                            { count: formatNumber(supplierRecommendations.length) }
+                          )}
+                        </Text>
+                      </View>
+                    </View>
+                    {supplierRecommendations.map((recommendation, index) => (
+                      <RecommendationDecisionRow
+                        key={recommendation.id}
+                        recommendation={recommendation}
+                        quantity={quantities[recommendation.id] ?? formatNumber(
+                          recommendation.recommended_quantity,
+                          { maximumFractionDigits: 3 }
+                        )}
+                        onQuantityChange={(value) => {
+                          setQuantities((current) => ({ ...current, [recommendation.id]: value }));
+                          setQuantityErrors((current) => ({ ...current, [recommendation.id]: undefined }));
+                        }}
+                        onApprove={() => void approve(recommendation)}
+                        onDismiss={() => void dismiss(recommendation)}
+                        action={recommendationActions[recommendation.id]}
+                        error={quantityErrors[recommendation.id]}
+                        readOnly={!canManage}
+                        showDivider={index < supplierRecommendations.length - 1}
+                      />
+                    ))}
+                  </SectionSurface>
+                ))}
+              </View>
+            )
           ) : null}
 
           {lane === "sent" ? (

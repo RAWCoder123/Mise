@@ -13,7 +13,7 @@ export default function Index() {
   }
 
   if (restaurant) {
-    return <Redirect href="/today" />;
+    return <Redirect href="/home" />;
   }
 
   if (user) {
