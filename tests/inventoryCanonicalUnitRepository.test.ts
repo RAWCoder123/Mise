@@ -54,6 +54,19 @@ test("authoritative hosted verification state overrides legacy inference", () =>
   assert.equal(normalized.canonical_unit_verified_by, "manager-1");
 });
 
+test("inconsistent verified package data fails closed in the client shape", () => {
+  const normalized = normalizeInventoryItem(
+    item({
+      unit: "case",
+      canonical_unit: null,
+      canonical_unit_verification_status: "verified",
+      canonical_unit_verified_at: "2026-07-26T11:00:00.000Z"
+    })
+  );
+  assert.equal(normalized.canonical_unit, null);
+  assert.equal(normalized.canonical_unit_verification_status, "draft");
+});
+
 test("hosted canonical verification uses only the guarded RPC", () => {
   const source = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const start = source.indexOf("async verifyInventoryItemCanonicalUnit");

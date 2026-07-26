@@ -317,7 +317,7 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
     value.canonical_unit === "each"
       ? value.canonical_unit
       : inferredCanonicalUnit;
-  const verificationStatus =
+  const declaredVerificationStatus =
     value.canonical_unit_verification_status === "draft" ||
     value.canonical_unit_verification_status === "verified" ||
     value.canonical_unit_verification_status === "rejected" ||
@@ -326,6 +326,10 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
       : canonicalUnit
         ? "verified"
         : "draft";
+  const verificationStatus =
+    declaredVerificationStatus === "verified" && !canonicalUnit
+      ? "draft"
+      : declaredVerificationStatus;
   return {
     ...value,
     current_quantity: asBoundedNonNegativeNumber(value.current_quantity, operatingLimits.inventoryQuantity),
