@@ -24,6 +24,7 @@
     "staging:service-rpc": "node --env-file-if-exists=.mise-staging.env scripts/staging-service-rpc-check.mjs",
     "staging:edge-concurrency": "node --env-file-if-exists=.mise-staging.env scripts/staging-edge-concurrency.mjs",
     "staging:client-race": "node --env-file-if-exists=.mise-staging.env scripts/staging-client-race.mjs",
+    "staging:learning-check": "node --env-file-if-exists=.mise-staging.env scripts/staging-learning-check.mjs",
     "demo:ready": "npm run typecheck && npm test && npm audit --audit-level=high && npm run doctor && npm run security:backend && npm run design:static && npx expo export --platform web --output-dir /private/tmp/mise-web-export && npm run qa:interactions",
     "verify:beta": "npm run typecheck && npm test && npm audit --audit-level=high && npm run doctor && npm run security:backend && npm run design:static && npx expo export --platform web --output-dir /private/tmp/mise-web-export && npm run qa:routes && npm run qa:interactions",
     "verify:private-beta-security:local": "npm run typecheck && npm test && npm audit --audit-level=high && npm run doctor && npm run security:backend && npm run design:static && npm run supabase:test && npx expo export --platform web --output-dir /private/tmp/mise-web-export && npm run qa:routes && npm run qa:interactions",
