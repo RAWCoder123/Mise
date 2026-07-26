@@ -39,14 +39,14 @@
     "@expo-google-fonts/inter": "^0.4.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.108.2",
-    "expo": "~56.0.16",
+    "expo": "~56.0.17",
     "expo-clipboard": "~56.0.4",
-    "expo-constants": "~56.0.18",
+    "expo-constants": "~56.0.22",
     "expo-font": "~56.0.7",
-    "expo-linking": "~56.0.14",
+    "expo-linking": "~56.0.16",
     "expo-localization": "~56.0.6",
-    "expo-router": "~56.2.15",
-    "expo-splash-screen": "~56.0.10",
+    "expo-router": "~56.2.16",
+    "expo-splash-screen": "~56.0.14",
     "expo-status-bar": "~56.0.4",
     "lucide-react-native": "^1.18.0",
     "react": "19.2.3",
@@ -54,7 +54,7 @@
     "react-native": "0.85.3",
     "react-native-gesture-handler": "~2.31.1",
     "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "4.25.2",
+    "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
     "react-native-url-polyfill": "^3.0.0",
     "react-native-web": "^0.21.2",
@@ -68,6 +68,7 @@
     "typescript": "^6.0.3"
   },
   "overrides": {
-    "uuid": "^11.1.1"
+    "uuid": "^11.1.1",
+    "brace-expansion": "^5.0.8"
   }
 }
