@@ -69,7 +69,7 @@ set search_path = ''
 as $$
 declare
   v_audit_id uuid;
-  v_planned_restaurant_ids uuid[] := '{}'::uuid[];
+  v_owner_restaurant_candidates uuid[] := '{}'::uuid[];
 begin
   if p_user_id is null or p_requesting_restaurant_id is null then
     raise exception 'Account deletion plan requires a user and requesting restaurant' using errcode = '22023';
@@ -89,19 +89,18 @@ begin
     raise exception 'Account deletion plan requires an active restaurant membership' using errcode = '42501';
   end if;
 
-  select coalesce(pg_catalog.array_agg(owned.restaurant_id), '{}'::uuid[])
-  into v_planned_restaurant_ids
+  -- Capture every active owner restaurant. Do not filter to then-sole-owner:
+  -- auth.admin.deleteUser cascades memberships away, so finalize must use this
+  -- durable candidate list and re-check remaining owners at cleanup time.
+  select coalesce(
+    pg_catalog.array_agg(owned.restaurant_id order by owned.restaurant_id),
+    '{}'::uuid[]
+  )
+  into v_owner_restaurant_candidates
   from public.restaurant_memberships owned
   where owned.user_id = p_user_id
     and owned.role = 'owner'
-    and not exists (
-      select 1
-      from public.restaurant_memberships other
-      where other.restaurant_id = owned.restaurant_id
-        and other.user_id <> p_user_id
-        and other.role = 'owner'
-        and other.status = 'active'
-    );
+    and owned.status = 'active';
 
   insert into private.account_deletion_audit (
     actor_user_id,
@@ -116,14 +115,14 @@ begin
     p_user_id,
     p_user_id,
     p_requesting_restaurant_id,
-    v_planned_restaurant_ids,
+    v_owner_restaurant_candidates,
     '{}'::uuid[],
     0,
     0,
     pg_catalog.jsonb_build_object(
       'phase', 'deletion_planned',
       'requesting_restaurant_id', p_requesting_restaurant_id,
-      'planned_deleted_restaurant_count', pg_catalog.cardinality(v_planned_restaurant_ids)
+      'owner_restaurant_candidate_count', pg_catalog.cardinality(v_owner_restaurant_candidates)
     )
   )
   returning id into v_audit_id;
@@ -131,7 +130,7 @@ begin
   return pg_catalog.jsonb_build_object(
     'audit_id', v_audit_id,
     'phase', 'deletion_planned',
-    'planned_deleted_restaurant_ids', to_jsonb(v_planned_restaurant_ids)
+    'owner_restaurant_candidates', to_jsonb(v_owner_restaurant_candidates)
   );
 end;
 $$;
@@ -154,7 +153,7 @@ grant execute on function private.service_plan_account_deletion(uuid, uuid) to s
 grant execute on function public.service_plan_account_deletion(uuid, uuid) to service_role;
 
 comment on function public.service_plan_account_deletion(uuid, uuid) is
-  'Service-only account deletion plan. Writes durable audit evidence without removing tenant memberships or restaurants.';
+  'Service-only account deletion plan. Captures active owner-restaurant candidates without removing tenant data.';
 
 create or replace function private.service_finalize_account_deletion(
   p_audit_id uuid,
@@ -224,7 +223,15 @@ begin
     );
   end if;
 
-  -- auth_deletion_completed path: auth user is gone; cleanup by planned_user_id.
+  -- auth_deletion_completed: auth user is gone; memberships may already have
+  -- cascaded away. Delete only planned owner candidates with no remaining owner.
+  if exists (
+    select 1 from auth.users auth_user
+    where auth_user.id = v_row.planned_user_id
+  ) then
+    raise exception 'Auth user must be deleted before tenant cleanup' using errcode = '55000';
+  end if;
+
   if v_phase not in (
     'deletion_planned',
     'auth_deletion_completed',
@@ -247,19 +254,22 @@ begin
       pg_catalog.hashtextextended(v_row.planned_user_id::text || E'\x1faccount-deletion', 0)
     );
 
-    -- Recompute sole-owner restaurants at cleanup time for the planned user.
-    select coalesce(pg_catalog.array_agg(owned.restaurant_id), '{}'::uuid[])
+    select coalesce(
+      pg_catalog.array_agg(candidate.restaurant_id order by candidate.restaurant_id),
+      '{}'::uuid[]
+    )
     into v_deleted_restaurant_ids
-    from public.restaurant_memberships owned
-    where owned.user_id = v_row.planned_user_id
-      and owned.role = 'owner'
+    from pg_catalog.unnest(v_row.planned_deleted_restaurant_ids) candidate(restaurant_id)
+    where exists (
+      select 1 from public.restaurants restaurant
+      where restaurant.id = candidate.restaurant_id
+    )
       and not exists (
         select 1
-        from public.restaurant_memberships other
-        where other.restaurant_id = owned.restaurant_id
-          and other.user_id <> v_row.planned_user_id
-          and other.role = 'owner'
-          and other.status = 'active'
+        from public.restaurant_memberships remaining_owner
+        where remaining_owner.restaurant_id = candidate.restaurant_id
+          and remaining_owner.role = 'owner'
+          and remaining_owner.status = 'active'
       );
 
     if pg_catalog.cardinality(v_deleted_restaurant_ids) > 0 then
@@ -334,4 +344,4 @@ grant execute on function private.service_finalize_account_deletion(uuid, text) 
 grant execute on function public.service_finalize_account_deletion(uuid, text) to service_role;
 
 comment on function public.service_finalize_account_deletion(uuid, text) is
-  'Service-only account deletion finalizer. Auth failure leaves memberships intact; auth success runs tenant cleanup by audit_id/planned_user_id and is service-retryable on cleanup failure.';
+  'Service-only account deletion finalizer. Requires the auth user to be gone and deletes only planned candidates with no remaining active owner.';

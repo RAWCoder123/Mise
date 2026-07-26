@@ -42,6 +42,10 @@ function asNumber(value: unknown): number {
 // Failure boundaries:
 //   - Auth deletion fails  -> memberships intact, client can retry.
 //   - Tenant cleanup fails -> durable tenant_cleanup_failed audit, service-retryable.
+//
+// Cross-system dependency (inventory-owned, not mutated here):
+//   auth.admin.deleteUser must be able to anonymize inventory_events.actor_user_id
+//   via FK ON DELETE SET NULL. This function never UPDATEs/DELETEs inventory_events.
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);

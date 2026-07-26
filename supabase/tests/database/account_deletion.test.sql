@@ -1,6 +1,6 @@
 begin;
 
-select plan(16);
+select plan(19);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -48,6 +48,20 @@ values
     'authenticated', 'authenticated', 'delete-retry-owner@mise.test',
     crypt('password', gen_salt('bf')), now(),
     '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
+  ),
+  (
+    'a5555555-5555-4555-8555-555555555555',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated', 'authenticated', 'delete-race-owner@mise.test',
+    crypt('password', gen_salt('bf')), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
+  ),
+  (
+    'a6666666-6666-4666-8666-666666666666',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated', 'authenticated', 'delete-race-coowner@mise.test',
+    crypt('password', gen_salt('bf')), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
   );
 
 insert into public.users (id, email, name, role, restaurant_id)
@@ -55,20 +69,24 @@ values
   ('a1111111-1111-4111-8111-111111111111', 'delete-sole-owner@mise.test', 'Sole Owner', 'owner', null),
   ('a2222222-2222-4222-8222-222222222222', 'delete-shared-owner@mise.test', 'Shared Owner', 'owner', null),
   ('a3333333-3333-4333-8333-333333333333', 'delete-shared-coowner@mise.test', 'Shared Coowner', 'owner', null),
-  ('a4444444-4444-4444-8444-444444444444', 'delete-retry-owner@mise.test', 'Retry Owner', 'owner', null);
+  ('a4444444-4444-4444-8444-444444444444', 'delete-retry-owner@mise.test', 'Retry Owner', 'owner', null),
+  ('a5555555-5555-4555-8555-555555555555', 'delete-race-owner@mise.test', 'Race Owner', 'owner', null),
+  ('a6666666-6666-4666-8666-666666666666', 'delete-race-coowner@mise.test', 'Race Coowner', 'owner', null);
 
 insert into public.restaurants (id, name, cuisine_type)
 values
   ('a0000000-0000-4000-8000-000000000001', 'Sole Owner Kitchen', 'Cafe'),
   ('a0000000-0000-4000-8000-000000000002', 'Shared Kitchen', 'Bistro'),
-  ('a0000000-0000-4000-8000-000000000003', 'Retry Kitchen', 'Cafe');
+  ('a0000000-0000-4000-8000-000000000003', 'Retry Kitchen', 'Cafe'),
+  ('a0000000-0000-4000-8000-000000000004', 'Race Kitchen', 'Cafe');
 
 insert into public.restaurant_memberships (restaurant_id, user_id, role, status)
 values
   ('a0000000-0000-4000-8000-000000000001', 'a1111111-1111-4111-8111-111111111111', 'owner', 'active'),
   ('a0000000-0000-4000-8000-000000000002', 'a2222222-2222-4222-8222-222222222222', 'owner', 'active'),
   ('a0000000-0000-4000-8000-000000000002', 'a3333333-3333-4333-8333-333333333333', 'owner', 'active'),
-  ('a0000000-0000-4000-8000-000000000003', 'a4444444-4444-4444-8444-444444444444', 'owner', 'active');
+  ('a0000000-0000-4000-8000-000000000003', 'a4444444-4444-4444-8444-444444444444', 'owner', 'active'),
+  ('a0000000-0000-4000-8000-000000000004', 'a5555555-5555-4555-8555-555555555555', 'owner', 'active');
 
 select is(
   has_function_privilege('authenticated', 'public.service_plan_account_deletion(uuid,uuid)', 'EXECUTE'),
@@ -103,9 +121,10 @@ select ok(
     select
       payload->>'phase' = 'deletion_planned'
       and payload ? 'audit_id'
+      and payload->'owner_restaurant_candidates'->>0 = 'a0000000-0000-4000-8000-000000000003'
     from plan
   ),
-  'plan writes deletion_planned without removing tenant data'
+  'plan writes deletion_planned with owner-restaurant candidates and no tenant wipe'
 );
 
 select is(
@@ -158,8 +177,7 @@ select is(
   'auth failure leaves restaurants intact'
 );
 
--- Happy path uses separate statements because PostgreSQL data-modifying CTEs
--- share one snapshot; production also crosses the Auth Admin API boundary.
+-- Sole-owner: plan candidate + auth cascade + finalize deletes the orphaned restaurant.
 select public.service_plan_account_deletion(
   'a1111111-1111-4111-8111-111111111111',
   'a0000000-0000-4000-8000-000000000001'
@@ -188,7 +206,7 @@ select is(
 select is(
   (select count(*)::integer from public.restaurants where id = 'a0000000-0000-4000-8000-000000000001'),
   0,
-  'sole-owner restaurant is removed only during post-auth finalize'
+  'sole-owner restaurant is removed during post-auth finalize from durable candidates'
 );
 
 select is(
@@ -198,7 +216,7 @@ select is(
     where user_id = 'a1111111-1111-4111-8111-111111111111'
   ),
   0,
-  'planned user memberships are removed during post-auth finalize'
+  'planned user memberships are gone after auth cascade / finalize'
 );
 
 select is(
@@ -213,7 +231,7 @@ select is(
   'durable audit ends at tenant_cleanup_completed'
 );
 
--- Shared owner: co-owned restaurant survives finalize.
+-- Shared owner at plan time: co-owned restaurant survives finalize.
 select public.service_plan_account_deletion(
   'a2222222-2222-4222-8222-222222222222',
   'a0000000-0000-4000-8000-000000000002'
@@ -242,13 +260,68 @@ select is(
 select is(
   (
     select count(*)::integer
+    from public.restaurants
+    where id = 'a0000000-0000-4000-8000-000000000002'
+  ),
+  1,
+  'shared-owner restaurant survives after one owner deletes their account'
+);
+
+select is(
+  (
+    select count(*)::integer
     from public.restaurant_memberships
     where restaurant_id = 'a0000000-0000-4000-8000-000000000002'
       and user_id = 'a3333333-3333-4333-8333-333333333333'
       and role = 'owner'
+      and status = 'active'
   ),
   1,
   'co-owner membership remains after the other owner is finalized'
+);
+
+-- Ownership race: co-owner added after planning prevents candidate deletion.
+select public.service_plan_account_deletion(
+  'a5555555-5555-4555-8555-555555555555',
+  'a0000000-0000-4000-8000-000000000004'
+);
+
+insert into public.restaurant_memberships (restaurant_id, user_id, role, status)
+values (
+  'a0000000-0000-4000-8000-000000000004',
+  'a6666666-6666-4666-8666-666666666666',
+  'owner',
+  'active'
+);
+
+delete from auth.users
+where id = 'a5555555-5555-4555-8555-555555555555';
+
+select is(
+  (
+    public.service_finalize_account_deletion(
+      (
+        select id
+        from private.account_deletion_audit
+        where planned_user_id = 'a5555555-5555-4555-8555-555555555555'
+        order by created_at desc
+        limit 1
+      ),
+      'auth_deletion_completed'
+    )->>'restaurants_deleted'
+  )::integer,
+  0,
+  'a co-owner added after planning prevents restaurant deletion'
+);
+
+select is(
+  (
+    select count(*)::integer
+    from public.restaurants
+    where id = 'a0000000-0000-4000-8000-000000000004'
+  ),
+  1,
+  'restaurant remains when ownership changed between plan and finalize'
 );
 
 -- Service-retryable cleanup failure path: a tenant_cleanup_failed audit for an

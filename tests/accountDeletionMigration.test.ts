@@ -6,6 +6,10 @@ const durableAuditMigration = readFileSync(
   "supabase/migrations/20260726214500_account_deletion_durable_audit.sql",
   "utf8"
 );
+const candidateCleanupMigration = readFileSync(
+  "supabase/migrations/20260726223000_account_deletion_candidate_cleanup.sql",
+  "utf8"
+);
 const deleteAccountEdge = readFileSync("supabase/functions/delete-account/index.ts", "utf8");
 
 test("account deletion plan is written before any tenant wipe", () => {
@@ -36,6 +40,35 @@ test("account deletion plan is written before any tenant wipe", () => {
   );
 });
 
+test("plan captures all owner-restaurant candidates; finalize filters by remaining owners", () => {
+  const planFnAt = durableAuditMigration.search(
+    /create or replace function private\.service_plan_account_deletion/i
+  );
+  const finalizeFnAt = durableAuditMigration.search(
+    /create or replace function private\.service_finalize_account_deletion/i
+  );
+  const planBody = durableAuditMigration.slice(planFnAt, finalizeFnAt);
+  const finalizeBody = durableAuditMigration.slice(finalizeFnAt);
+
+  // Planning must retain every active owner restaurant, not only then-sole-owner.
+  assert.match(planBody, /owned\.role = 'owner'/i);
+  assert.match(planBody, /owned\.status = 'active'/i);
+  assert.match(planBody, /owner_restaurant_candidates/i);
+  assert.doesNotMatch(
+    planBody,
+    /and not exists \(\s*select 1\s*from public\.restaurant_memberships other/i
+  );
+
+  // After auth cascade, finalize must use the durable plan — never recompute by planned_user_id.
+  assert.match(
+    finalizeBody,
+    /pg_catalog\.unnest\(v_row\.planned_deleted_restaurant_ids\)/i
+  );
+  assert.match(finalizeBody, /remaining_owner\.role = 'owner'/i);
+  assert.match(finalizeBody, /remaining_owner\.status = 'active'/i);
+  assert.doesNotMatch(finalizeBody, /where owned\.user_id = v_row\.planned_user_id/i);
+});
+
 test("finalize separates auth-failure retryability from post-auth tenant cleanup", () => {
   assert.match(durableAuditMigration, /auth_deletion_failed/);
   assert.match(durableAuditMigration, /auth_deletion_completed/);
@@ -55,9 +88,15 @@ test("finalize separates auth-failure retryability from post-auth tenant cleanup
 test("Edge authorizes, plans without wipe, deletes auth, then finalizes cleanup by audit_id", () => {
   const authorizeAt = deleteAccountEdge.indexOf('"account_deletion_authorized"');
   const planCallAt = deleteAccountEdge.indexOf("service_plan_account_deletion");
-  const authDeleteAt = deleteAccountEdge.indexOf("auth.admin.deleteUser", planCallAt);
+  // Search after the plan RPC call so header comments mentioning auth.admin.deleteUser
+  // cannot satisfy the ordering assertion.
+  const authDeleteAt = deleteAccountEdge.indexOf(
+    "securitySupabase.auth.admin.deleteUser",
+    planCallAt + 1
+  );
   const finalizeSuccessAt = deleteAccountEdge.indexOf(
-    'p_auth_outcome: "auth_deletion_completed"'
+    'p_auth_outcome: "auth_deletion_completed"',
+    authDeleteAt + 1
   );
 
   assert.ok(authorizeAt >= 0);
@@ -90,4 +129,17 @@ test("both failure boundaries report bounded captureFunctionError telemetry", ()
     /step:\s*"tenant_cleanup"[\s\S]*phase:\s*"post_auth_deletion"|step:\s*"tenant_cleanup"[\s\S]*phase:\s*"tenant_cleanup_failed"/
   );
   assert.match(deleteAccountEdge, /captureFunctionError\s*\(/);
+});
+
+test("account deletion path never mutates inventory_events (inventory FK owns actor anonymization)", () => {
+  // Inventory actor nulling is Codex-owned via auth.users FK ON DELETE SET NULL.
+  // Account-deletion plan/finalize and Edge must not UPDATE/DELETE inventory_events.
+  for (const source of [durableAuditMigration, candidateCleanupMigration, deleteAccountEdge]) {
+    assert.doesNotMatch(source, /update\s+(?:only\s+)?(?:public\.)?inventory_events/i);
+    assert.doesNotMatch(source, /delete\s+from\s+(?:public\.)?inventory_events/i);
+  }
+  assert.match(
+    deleteAccountEdge,
+    /never UPDATEs\/DELETEs inventory_events|inventory_events\.actor_user_id/
+  );
 });
