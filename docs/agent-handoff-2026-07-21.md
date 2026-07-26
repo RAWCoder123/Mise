@@ -29,6 +29,44 @@ recompute-everything mutation paths.
   learned quantities, `Number.isFinite` guards.
 - Request-id race guards in `contexts/MiseSessionContext.tsx`.
 
+## Public launch schedule and agent ownership (added 2026-07-26)
+
+Approved launch plan: **public iOS App Store launch September 14, 2026**
+(TestFlight beta Aug 24, App Store submission Sep 7, Google Play ~Oct 5 after
+its mandatory 14-day closed test). Launch ships the deterministic
+learning engine (learned order quantities, signal refresh); LLM features and
+POS integrations are explicitly post-launch.
+
+The pre-launch branch stack is open as PRs 1-6 (`split/*` branches):
+domain decouple → repo split + Realtime → design system → mockup redesign,
+plus dependency alignment and the order-automation evaluator. Ongoing work
+continues on `cursor/initial-mise-import` until the stack merges.
+
+Ownership split so we do not collide:
+
+- **Cursor owns (launch-critical, Jul 27 – Aug 21):** self-serve sign-up +
+  account deletion, team invites UI (wiring existing membership RPCs),
+  cold-start data quality (setup unit costs, manual sales/CSV as daily flow),
+  supplier email via Resend Edge path (Gmail OAuth verification submitted in
+  parallel; `GMAIL_SEND_ENABLED` stays the gate), EAS/build identity,
+  production Sentry/PostHog SDKs, hosted staging security re-proof.
+- **Codex owns:** P5 component tests (needed before the Aug 24 beta — it is
+  our substitute for a native e2e gate), P8 CI parallelization, and P4 item 4
+  (move signal generation fully server-side into `operational-workflows`) —
+  promoted to pre-launch hardening.
+
+Sequencing rules:
+
+1. **P3b (session reducer) waits** until Cursor's sign-up/account-deletion
+   lands in `contexts/MiseSessionContext.tsx`; the refactor then absorbs the
+   new auth paths. Do not start P3b before that merge.
+2. **P6 (i18n unification) waits** until the mockup-redesign PR merges; it
+   adds ~630 lines to `i18n/catalog.ts` and a catalog split now would
+   conflict.
+3. `services/domain/orderAutomation.ts`, `tests/orderAutomation.test.ts`, and
+   `fetchOrderAutomationAssessment` remain Codex-owned; the evaluator stays
+   assessment-only (no UI wiring) until months of real approval history exist.
+
 ## Prioritized fixes
 
 ### P1 — Decouple `services/domain/` from the demo dataset  [DONE 2026-07-21]
