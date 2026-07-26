@@ -13,6 +13,9 @@ import type {
   PurchaseOrder,
   PurchaseRecommendation,
   RestaurantMembership,
+  RestaurantMembershipStatus,
+  RestaurantRole,
+  RestaurantTeamMember,
   RestaurantEmailConnection,
   Restaurant,
   RestaurantOperationalProfile,
@@ -138,6 +141,27 @@ export function normalizeRestaurantMembership(value: RestaurantMembership): Rest
     ...value,
     role: value.role,
     status: value.status,
+    updated_at: value.updated_at ?? value.created_at
+  };
+}
+
+function normalizeMembershipRole(value: unknown): RestaurantRole {
+  return value === "owner" || value === "admin" || value === "manager" || value === "staff"
+    ? value
+    : "staff";
+}
+
+function normalizeMembershipStatus(value: unknown): RestaurantMembershipStatus {
+  return value === "active" || value === "invited" || value === "disabled" ? value : "active";
+}
+
+export function normalizeRestaurantTeamMember(value: RestaurantTeamMember): RestaurantTeamMember {
+  return {
+    ...value,
+    role: normalizeMembershipRole(value.role),
+    status: normalizeMembershipStatus(value.status),
+    name: asNullableString(value.name),
+    email: asNullableString(value.email),
     updated_at: value.updated_at ?? value.created_at
   };
 }

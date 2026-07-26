@@ -68,6 +68,18 @@ export interface RestaurantMembership {
   updated_at: string;
 }
 
+/** A membership joined with the member's profile name and account email. */
+export interface RestaurantTeamMember {
+  restaurant_id: string;
+  user_id: string;
+  role: RestaurantRole;
+  status: RestaurantMembershipStatus;
+  name: string | null;
+  email: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PosSale {
   id: string;
   restaurant_id: string;

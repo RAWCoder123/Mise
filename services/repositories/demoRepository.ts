@@ -25,6 +25,7 @@ import {
   severityRank,
   severityRankForUrgency
 } from "../domain/miseDomain";
+import { TeamMembershipError } from "../domain/teamMembership";
 import {
   findSupplierRecipientCatalogName,
   supplierRecipientDirectoryKey
@@ -43,6 +44,7 @@ import {
   normalizePurchaseRecommendation,
   normalizeRestaurant,
   normalizeRestaurantMembership,
+  normalizeRestaurantTeamMember,
   normalizeSetupAttachment,
   normalizeSupplierItem,
   normalizeSupplierOrder,
@@ -125,6 +127,32 @@ export function createLocalDemoRepository(): MiseRepository {
       ];
     },
 
+    async fetchRestaurantTeam(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      requireActiveDemoRestaurant(state, restaurantId);
+      const user = state.users.find((entry) => entry.restaurant_id === restaurantId) ?? state.users[0];
+      if (!user) return [];
+      return [
+        normalizeRestaurantTeamMember({
+          restaurant_id: restaurantId,
+          user_id: user.id,
+          role: "owner",
+          status: "active",
+          name: user.name,
+          email: user.email,
+          created_at: user.created_at,
+          updated_at: user.created_at
+        })
+      ];
+    },
+
+    async addRestaurantMemberByEmail() {
+      throw new TeamMembershipError(
+        "account_not_found",
+        "Demo mode is a single-operator workspace. Create a hosted account to add teammates."
+      );
+    },
+
     async addRestaurantMember() {
       throw new Error("Team membership management is available only for authenticated restaurant workspaces.");
     },
@@ -144,6 +172,11 @@ export function createLocalDemoRepository(): MiseRepository {
         user.name = name;
         return normalizeAppUser(user);
       });
+    },
+
+    async deleteAccount(_restaurantId) {
+      // Demo accounts live only on this device; deletion resets the local store.
+      await resetDemoStore();
     },
 
     async createRestaurantWithOwner(name, cuisineType) {

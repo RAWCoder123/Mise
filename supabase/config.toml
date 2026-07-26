@@ -47,6 +47,9 @@ verify_jwt = true
 [functions.operational-workflows]
 verify_jwt = true
 
+[functions.delete-account]
+verify_jwt = true
+
 [functions.outreach-agent]
 verify_jwt = false
 

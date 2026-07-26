@@ -14,9 +14,10 @@ import {
   RefreshCw,
   ShieldCheck,
   Store,
+  Trash2,
   Truck
 } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -30,6 +31,7 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { LANGUAGE_OPTIONS, type MessageKey, type MessageValues } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
 import {
+  deleteAccount,
   fetchDemoReadinessSummary,
   fetchEmailConnectionState,
   fetchRestaurantOpsProfile,
@@ -69,6 +71,9 @@ export default function SettingsScreen() {
   const [message, setMessage] = useState<SettingsNotice | null>(null);
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [switchingRestaurantId, setSwitchingRestaurantId] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
@@ -151,6 +156,21 @@ export default function SettingsScreen() {
       captureMiseError(signOutError, { flow: "settings", operation: "sign_out" });
       setMessage({ key: "settings.notice.signOutError", tone: "danger" });
       setSigningOut(false);
+    }
+  }
+
+  async function removeAccount() {
+    if (deletingAccount || !restaurant) return;
+    setDeletingAccount(true);
+    setMessage(null);
+    try {
+      await deleteAccount(restaurant.id);
+      await signOut();
+      router.replace("/login");
+    } catch (deleteError) {
+      captureMiseError(deleteError, { flow: "settings", operation: "delete_account", restaurant_id: restaurant.id });
+      setMessage({ key: "settings.notice.deleteAccountError", tone: "danger" });
+      setDeletingAccount(false);
     }
   }
 
@@ -448,6 +468,69 @@ export default function SettingsScreen() {
               fullWidth
             />
           </View>
+          <View style={styles.dangerZone}>
+            <Text style={styles.rowTitle}>{t("settings.account.deleteTitle")}</Text>
+            <Text style={styles.rowBody}>{t("settings.account.deleteBody")}</Text>
+            {deleteConfirmOpen ? (
+              <View style={styles.deleteConfirm}>
+                <StatusNotice
+                  tone="danger"
+                  title={t("settings.account.deleteWarningTitle")}
+                  message={t("settings.account.deleteWarningBody")}
+                />
+                <Text style={styles.deleteConfirmLabel}>
+                  {t("settings.account.deleteConfirmLabel", { word: t("settings.account.deleteConfirmWord") })}
+                </Text>
+                <TextInput
+                  value={deleteConfirmText}
+                  onChangeText={setDeleteConfirmText}
+                  accessibilityLabel={t("settings.account.deleteConfirmAccessibility")}
+                  accessibilityHint={t("settings.account.deleteConfirmHint", {
+                    word: t("settings.account.deleteConfirmWord")
+                  })}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  editable={!deletingAccount}
+                  placeholder={t("settings.account.deleteConfirmWord")}
+                  placeholderTextColor={colors.faint}
+                  style={styles.deleteConfirmInput}
+                />
+                <Button
+                  title={t(deletingAccount ? "settings.account.deleting" : "settings.account.deleteConfirm")}
+                  variant="danger"
+                  icon={<Trash2 size={18} color={colors.surface} strokeWidth={2.25} />}
+                  onPress={removeAccount}
+                  disabled={
+                    deletingAccount ||
+                    deleteConfirmText.trim().toLowerCase() !==
+                      t("settings.account.deleteConfirmWord").toLowerCase()
+                  }
+                  fullWidth
+                />
+                <Button
+                  title={t("common.cancel")}
+                  variant="ghost"
+                  onPress={() => {
+                    setDeleteConfirmOpen(false);
+                    setDeleteConfirmText("");
+                  }}
+                  disabled={deletingAccount}
+                  fullWidth
+                />
+              </View>
+            ) : (
+              <View style={styles.deleteOpenAction}>
+                <Button
+                  title={t("settings.account.deleteTitle")}
+                  accessibilityHint={t("settings.account.deleteOpenHint")}
+                  variant="secondary"
+                  icon={<Trash2 size={18} color={colors.danger} strokeWidth={2.25} />}
+                  onPress={() => setDeleteConfirmOpen(true)}
+                  fullWidth
+                />
+              </View>
+            )}
+          </View>
         </SettingsSection>
       </View>
     </Screen>
@@ -736,6 +819,34 @@ const styles = StyleSheet.create({
   },
   sectionAction: {
     paddingVertical: spacing.md
+  },
+  dangerZone: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingVertical: spacing.md
+  },
+  deleteOpenAction: {
+    marginTop: spacing.md
+  },
+  deleteConfirm: {
+    marginTop: spacing.md,
+    gap: spacing.sm
+  },
+  deleteConfirmLabel: {
+    color: colors.text,
+    ...typography.caption
+  },
+  deleteConfirmInput: {
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceWarm,
+    color: colors.text,
+    ...typography.body,
+    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10
   },
   diagnostics: {
     borderTopWidth: 1,

@@ -45,7 +45,14 @@ const serviceOnlyPublicTables = new Set([
   "outreach_messages",
   "outreach_suppressions"
 ]);
-const edgeFunctionNames = ["sync-pos-sales", "generate-ai-insights", "link-gmail", "send-supplier-email", "operational-workflows"];
+const edgeFunctionNames = [
+  "sync-pos-sales",
+  "generate-ai-insights",
+  "link-gmail",
+  "send-supplier-email",
+  "operational-workflows",
+  "delete-account"
+];
 
 const failures = [];
 

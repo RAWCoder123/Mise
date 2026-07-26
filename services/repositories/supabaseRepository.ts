@@ -13,6 +13,7 @@ import type {
   Restaurant,
   RestaurantEmailConnection,
   RestaurantMembership,
+  RestaurantTeamMember,
   SetupAttachment,
   SupplierItem,
   SupplierOrder,
@@ -20,6 +21,7 @@ import type {
 } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
+import { TeamMembershipError, teamMembershipErrorFrom } from "../domain/teamMembership";
 import {
   normalizeAppUser,
   normalizeInsight,
@@ -32,6 +34,7 @@ import {
   normalizePurchaseRecommendation,
   normalizeRestaurant,
   normalizeRestaurantMembership,
+  normalizeRestaurantTeamMember,
   normalizeSetupAttachment,
   normalizeSupplierItem,
   normalizeSupplierOrder,
@@ -270,6 +273,49 @@ export function createSupabaseRepository(): MiseRepository {
       return ((data ?? []) as RestaurantMembership[]).map(normalizeRestaurantMembership);
     },
 
+    async fetchRestaurantTeam(restaurantId) {
+      const { data, error } = await client.rpc("list_restaurant_members", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return ((data ?? []) as RestaurantTeamMember[]).map(normalizeRestaurantTeamMember);
+    },
+
+    async addRestaurantMemberByEmail(restaurantId, email, role) {
+      const { data: candidateUserId, error: lookupError } = await client.rpc("find_restaurant_member_candidate", {
+        p_restaurant_id: restaurantId,
+        p_email: email
+      });
+      if (lookupError) {
+        if (isTenantAuthorizationError(lookupError)) throwRepositoryError(lookupError, restaurantId);
+        throw teamMembershipErrorFrom(lookupError);
+      }
+      if (typeof candidateUserId !== "string" || candidateUserId.length === 0) {
+        throw new TeamMembershipError("account_not_found", "No Mise account uses this email.");
+      }
+
+      const { data, error } = await client.rpc("add_restaurant_member", {
+        p_restaurant_id: restaurantId,
+        p_target_user_id: candidateUserId,
+        p_role: role
+      });
+      if (error) {
+        if (isTenantAuthorizationError(error)) throwRepositoryError(error, restaurantId);
+        throw teamMembershipErrorFrom(error);
+      }
+      const membership = normalizeRestaurantMembership(data as RestaurantMembership);
+      return normalizeRestaurantTeamMember({
+        restaurant_id: membership.restaurant_id,
+        user_id: membership.user_id,
+        role: membership.role,
+        status: membership.status,
+        name: null,
+        email: email.trim().toLowerCase(),
+        created_at: membership.created_at,
+        updated_at: membership.updated_at
+      });
+    },
+
     async addRestaurantMember(restaurantId, targetUserId, role) {
       const { data, error } = await client.rpc("add_restaurant_member", {
         p_restaurant_id: restaurantId,
@@ -304,6 +350,25 @@ export function createSupabaseRepository(): MiseRepository {
       const { data, error } = await client.rpc("update_my_profile", { p_name: name });
       if (error) throwRepositoryError(error);
       return normalizeAppUser(data as AppUser);
+    },
+
+    async deleteAccount(restaurantId) {
+      const { data, error } = await client.functions.invoke("delete-account", {
+        body: {
+          confirmation: "delete_my_account",
+          restaurantId
+        }
+      });
+      if (error) {
+        const payload = await readFunctionErrorPayload(error);
+        const message = typeof payload.error === "string" && payload.error.trim().length > 0
+          ? payload.error.trim().slice(0, 320)
+          : "Your account could not be deleted. Try again.";
+        throw new Error(message);
+      }
+      if (!data || (data as { status?: unknown }).status !== "deleted") {
+        throw new Error("Account deletion did not complete.");
+      }
     },
 
     async createRestaurantWithOwner(name, cuisineType) {

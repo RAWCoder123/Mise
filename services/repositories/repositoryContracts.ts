@@ -16,6 +16,7 @@ import type {
   RestaurantEmailConnection,
   RestaurantMembership,
   RestaurantOpsProfile,
+  RestaurantTeamMember,
   SetupAttachment,
   SupplierOrder,
   SupplierRecipient
@@ -155,6 +156,18 @@ export interface PlanningData {
 
 export interface MiseRepository {
   fetchMembershipsForAuthUser(userId: string): Promise<RestaurantMembership[]>;
+  /** Membership rows joined with member names and emails for the team screen. */
+  fetchRestaurantTeam(restaurantId: string): Promise<RestaurantTeamMember[]>;
+  /**
+   * Adds an existing Mise account to the restaurant by email. Throws
+   * TeamMembershipError("account_not_found") when no account uses the email —
+   * there is no pending-invite system.
+   */
+  addRestaurantMemberByEmail(
+    restaurantId: string,
+    email: string,
+    role: Exclude<RestaurantMembership["role"], "owner">
+  ): Promise<RestaurantTeamMember>;
   addRestaurantMember(restaurantId: string, targetUserId: string, role: RestaurantMembership["role"]): Promise<RestaurantMembership>;
   updateRestaurantMember(
     restaurantId: string,
@@ -163,6 +176,13 @@ export interface MiseRepository {
   ): Promise<RestaurantMembership>;
   removeRestaurantMember(restaurantId: string, targetUserId: string): Promise<RestaurantMembership>;
   updateMyProfile(name: string): Promise<AppUser>;
+  /**
+   * Permanently deletes the signed-in operator's account. Hosted mode invokes
+   * the delete-account Edge Function with the active restaurant for firewall /
+   * audit reservation (sole-owner restaurants cascade away and the auth user
+   * is removed); demo mode resets the on-device demo store.
+   */
+  deleteAccount(restaurantId: string): Promise<void>;
   createRestaurantWithOwner(name: string, cuisineType?: string | null): Promise<Restaurant>;
   fetchRestaurant(restaurantId: string): Promise<Restaurant>;
   updateRestaurantProfile(

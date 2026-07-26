@@ -116,8 +116,9 @@ export default function MoreScreen() {
           <OperationalRow
             title={t("more.row.team.title")}
             subtitle={t("more.row.team.body")}
-            icon={<UsersRound size={20} color={colors.muted} strokeWidth={2.25} />}
+            icon={<UsersRound size={20} color={colors.text} strokeWidth={2.25} />}
             iconTone="neutral"
+            onPress={() => router.push("/settings/team" as never)}
           />
           <OperationalRow
             title={t("more.row.help.title")}

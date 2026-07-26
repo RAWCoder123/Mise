@@ -3,6 +3,10 @@ import { buildAiInsightInput, parseStructuredInsightOutput } from "../ai/structu
 import { DEMO_DATASET, type DemoSetupProfile } from "../demoData";
 import type { AuditLogInput } from "../repositories/miseRepository";
 import {
+  normalizeTeamMemberEmail,
+  type AssignableTeamRole
+} from "../domain/teamMembership";
+import {
   requireRestaurantCuisineType,
   requireRestaurantName,
   requireRestaurantProfilePatch
@@ -18,6 +22,24 @@ export async function fetchRestaurant(restaurantId: string) {
 
 export async function fetchMembershipsForAuthUser(userId: string) {
   return repository.fetchMembershipsForAuthUser(userId);
+}
+
+export async function fetchRestaurantTeam(restaurantId: string) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  return repository.fetchRestaurantTeam(normalizedRestaurantId);
+}
+
+export async function addRestaurantMemberByEmail(
+  restaurantId: string,
+  email: string,
+  role: AssignableTeamRole
+) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedEmail = normalizeTeamMemberEmail(email);
+  if (!normalizedEmail) throw new Error("Enter a valid teammate email.");
+  return repository.addRestaurantMemberByEmail(normalizedRestaurantId, normalizedEmail, role);
 }
 
 export async function addRestaurantMember(
@@ -39,6 +61,12 @@ export async function updateRestaurantMember(
 
 export async function removeRestaurantMember(restaurantId: string, targetUserId: string) {
   return repository.removeRestaurantMember(restaurantId, targetUserId);
+}
+
+export async function deleteAccount(restaurantId: string) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  return repository.deleteAccount(normalizedRestaurantId);
 }
 
 export async function updateMyProfile(name: string) {

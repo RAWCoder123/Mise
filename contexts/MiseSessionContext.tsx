@@ -29,6 +29,7 @@ import {
   resetDemoData as resetDemoService,
   updateRestaurantProfile
 } from "../services/miseService";
+import { interpretSignUpResult, type SignUpOutcome } from "../services/domain/accountAuth";
 import { activeMembershipForRestaurant, requireRestaurantAccess } from "../services/tenantAccess";
 import { captureMiseError } from "../services/telemetry";
 import { subscribeToTenantAuthorizationDenials } from "../services/tenantAuthorizationEvents";
@@ -56,6 +57,7 @@ interface MiseSessionContextValue {
   usingLocalDemo: boolean;
   canUseDemoMode: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<SignUpOutcome>;
   continueWithDemo: (profile?: { name?: string; cuisine_type?: string; posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   createRestaurant: (profile: {
     name: string;
@@ -491,6 +493,22 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     [hydrateSupabaseUser]
   );
 
+  const signUp = useCallback(
+    async (email: string, password: string) => {
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error("Supabase is not configured. Enable local demo mode for device-only testing.");
+      }
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      const outcome = interpretSignUpResult(data);
+      if (outcome === "session_ready" && data.user) {
+        await hydrateSupabaseUser(data.user);
+      }
+      return outcome;
+    },
+    [hydrateSupabaseUser]
+  );
+
   const switchRestaurant = useCallback(
     async (restaurantId: string) => {
       requireRestaurantAccess(memberships, restaurantId);
@@ -583,6 +601,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       usingLocalDemo: isDemoMode,
       canUseDemoMode: demoModeAvailable,
       signIn,
+      signUp,
       continueWithDemo,
       createRestaurant,
       switchRestaurant,
@@ -607,6 +626,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       role,
       signIn,
       signOut,
+      signUp,
       switchRestaurant,
       user
     ]
