@@ -1,44 +1,34 @@
-batch_id: inventory-hosted-submission-04
-status: completed
-goal: Connect the durable device outbox to the server-authoritative inventory RPC while preserving deterministic demo behavior.
+batch_id: inventory-operation-input-05
+status: in_progress
+goal: Add a bounded screen-safe command API for receiving, counts, waste, and stockouts.
 started_at: 2026-07-26
 codex_owned:
   - docs/launch/**
   - services/miseService.ts
+  - services/miseValidation.ts
   - services/application/deviceInventoryOutbox.ts
-  - services/domain/inventoryEventTransport.ts
-  - services/repositories/repositoryContracts.ts
-  - services/repositories/demoRepository.ts
-  - services/repositories/supabaseRepository.ts
   - tests/deviceInventoryOutbox.test.ts
-  - tests/inventoryEventTransport.test.ts
+  - tests/inventoryOperationValidation.test.ts
 cursor_owned: []
 shared_locked:
-  - services/repositories/repositoryContracts.ts
-  - services/repositories/demoRepository.ts
-  - services/repositories/supabaseRepository.ts
+  - services/miseService.ts
+  - services/miseValidation.ts
 blocked_files:
   - app/**
   - components/**
-handoff_required: false
+handoff_required: true
 dependencies:
-  - inventory-outbox-device-03
+  - inventory-hosted-submission-04
 required_tests:
   - npm run typecheck
   - npm test
   - npm run security:backend
 stop_conditions:
-  - Screen code invokes Supabase directly
-  - Hosted writes bypass the record_inventory_event RPC
-  - Transport failures become terminal outbox rejections
-  - Demo retries create inconsistent authoritative identities
-evidence:
-  - npm run typecheck passed
-  - npm test passed with 226 tests
-  - npm run security:backend passed
-  - Hosted repository calls only record_inventory_event and has no inventory_events table mutation
-  - Transport and authorization failures remain non-terminal in the device outbox
+  - Screens construct authoritative actor or sequence fields
+  - A retry regenerates client_event_id or idempotency_key
+  - Unbounded notes or metadata reach the inventory RPC
+  - Invalid units or quantities enter the device outbox
+evidence: []
 unresolved_findings:
-  - Hosted-staging RPC execution remains external verification.
-  - Cursor receiving UI handoff remains pending because macOS is locked.
-checkpoint_commit: d41ff1e
+  - Cursor UI handoff is pending because macOS is locked.
+checkpoint_commit:

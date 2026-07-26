@@ -39,6 +39,10 @@ import {
   SUPPLIER_NOTE_MAX_CHARACTERS,
   utf8ByteLength
 } from "./domain/securityLimits";
+import type {
+  InventoryEventInput,
+  InventoryEventType
+} from "./domain/inventoryLedger";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
 
@@ -58,6 +62,130 @@ export const operatingLimits = {
   posSalesAmount: 10_000_000,
   recommendationQuantity: 1_000_000
 } as const;
+
+const operatorInventoryEventTypes = new Set<InventoryEventType>([
+  "receipt",
+  "count",
+  "waste",
+  "stockout"
+]);
+
+export interface InventoryOperationClientInput {
+  restaurantId: unknown;
+  inventoryItemId: unknown;
+  eventType: unknown;
+  quantity: unknown;
+  canonicalUnit: unknown;
+  effectiveAt: unknown;
+  sourceReference?: unknown;
+  reasonCode?: unknown;
+  note?: unknown;
+}
+
+export type ValidatedInventoryOperation = Omit<
+  InventoryEventInput,
+  "clientEventId" | "idempotencyKey"
+>;
+
+/**
+ * The operator-facing inventory boundary accepts only bounded evidence fields.
+ * Actor, sequence, arbitrary metadata, and correction links are intentionally
+ * absent; those require server authority or a dedicated reconciliation flow.
+ */
+export function requireInventoryOperation(
+  input: InventoryOperationClientInput
+): ValidatedInventoryOperation {
+  const restaurantId = requireBoundedText(input.restaurantId, "restaurant", 200);
+  const inventoryItemId = requireBoundedText(input.inventoryItemId, "inventory item", 200);
+  const eventType = requireOperatorInventoryEventType(input.eventType);
+  const canonicalUnit = requireCanonicalUnit(input.canonicalUnit);
+  const effectiveAt = requireInventoryTimestamp(input.effectiveAt);
+  const quantity = requireInventoryQuantity(input.quantity);
+  if (eventType === "stockout" && quantity !== 0) {
+    throw new Error("A stockout quantity must be zero.");
+  }
+  if ((eventType === "receipt" || eventType === "waste") && quantity === 0) {
+    throw new Error("Enter a quantity greater than zero.");
+  }
+
+  const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
+  const reasonCode = optionalBoundedText(input.reasonCode, "reason", 80);
+  const note = optionalBoundedText(input.note, "note", 500);
+  return {
+    restaurantId,
+    inventoryItemId,
+    eventType,
+    quantity,
+    canonicalUnit,
+    effectiveAt,
+    source: `operator_${eventType}`,
+    sourceReference,
+    reasonCode,
+    supersedesEventId: null,
+    metadata: note ? { note } : {}
+  };
+}
+
+function requireOperatorInventoryEventType(value: unknown) {
+  if (typeof value !== "string" || !operatorInventoryEventTypes.has(value as InventoryEventType)) {
+    throw new Error("Choose a supported inventory operation.");
+  }
+  return value as "receipt" | "count" | "waste" | "stockout";
+}
+
+function requireCanonicalUnit(value: unknown) {
+  if (value !== "g" && value !== "ml" && value !== "each") {
+    throw new Error("Choose grams, milliliters, or each.");
+  }
+  return value;
+}
+
+function requireInventoryTimestamp(value: unknown) {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
+    !Number.isFinite(Date.parse(value))
+  ) {
+    throw new Error("Enter a valid inventory time.");
+  }
+  return new Date(value).toISOString();
+}
+
+function requireInventoryQuantity(value: unknown) {
+  if (
+    (typeof value !== "number" && typeof value !== "string") ||
+    (typeof value === "string" && !value.trim())
+  ) {
+    throw new Error("Enter a valid inventory quantity.");
+  }
+  const quantity = Number(value);
+  if (
+    !Number.isFinite(quantity) ||
+    quantity < 0 ||
+    quantity > operatingLimits.inventoryQuantity
+  ) {
+    throw new Error("Enter a valid inventory quantity.");
+  }
+  return quantity;
+}
+
+function requireBoundedText(value: unknown, label: string, maximum: number) {
+  if (typeof value !== "string") throw new Error(`Enter a valid ${label}.`);
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maximum) {
+    throw new Error(`Enter a valid ${label}.`);
+  }
+  return normalized;
+}
+
+function optionalBoundedText(value: unknown, label: string, maximum: number) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") throw new Error(`Enter a valid ${label}.`);
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (normalized.length > maximum) throw new Error(`Enter a shorter ${label}.`);
+  return normalized;
+}
 
 function asBoundedNonNegativeNumber(value: unknown, maximum: number, fallback = 0) {
   const parsed = asNumber(value, fallback);

@@ -6,6 +6,11 @@ import type {
   InventoryEventAcceptance,
   InventoryEventInput
 } from "../domain/inventoryLedger";
+import { createId } from "../domain/miseDomain";
+import {
+  requireInventoryOperation,
+  type InventoryOperationClientInput
+} from "../miseValidation";
 import { deviceInventoryOutboxRepository } from "../repositories/deviceInventoryOutboxRepository";
 import type { InventoryOutboxRepository } from "../repositories/inventoryOutboxRepository";
 import { flushInventoryOutbox } from "./inventoryOutbox";
@@ -29,6 +34,19 @@ export async function queueInventoryEventForSubmission(input: {
   });
   await activeDeviceOutboxRepository.save(entry);
   return entry;
+}
+
+export function queueInventoryOperation(input: InventoryOperationClientInput) {
+  const clientEventId = createId("inventory_event");
+  const event = requireInventoryOperation(input);
+  return queueInventoryEventForSubmission({
+    outboxId: createId("inventory_outbox"),
+    event: {
+      ...event,
+      clientEventId,
+      idempotencyKey: `inventory:${clientEventId}`
+    }
+  });
 }
 
 export function fetchQueuedInventoryEvents(restaurantId: string) {

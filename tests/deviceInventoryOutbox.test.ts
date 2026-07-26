@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
+  queueInventoryOperation,
   queueInventoryEventForSubmission,
   setDeviceInventoryOutboxRepositoryForTesting,
   setInventoryEventSubmitterForTesting
@@ -60,6 +61,33 @@ test("screen-safe queue API persists a stable offline event by restaurant", asyn
     const restaurantB = await fetchQueuedInventoryEvents("restaurant-b");
     assert.deepEqual(restaurantA.map((entry) => entry.id), ["outbox-1"]);
     assert.deepEqual(restaurantB, []);
+  } finally {
+    restore();
+  }
+});
+
+test("operator queue API generates one stable retry identity after validation", async () => {
+  const restore = setDeviceInventoryOutboxRepositoryForTesting(
+    createInventoryOutboxRepository(memoryStorage())
+  );
+  try {
+    const queued = await queueInventoryOperation({
+      restaurantId: "restaurant-a",
+      inventoryItemId: "chicken",
+      eventType: "count",
+      quantity: 1200,
+      canonicalUnit: "g",
+      effectiveAt: "2026-07-26T10:00:00.000Z",
+      note: "Opening count"
+    });
+
+    assert.match(queued.id, /^inventory_outbox_/);
+    assert.match(queued.event.clientEventId, /^inventory_event_/);
+    assert.equal(
+      queued.event.idempotencyKey,
+      `inventory:${queued.event.clientEventId}`
+    );
+    assert.deepEqual(queued.event.metadata, { note: "Opening count" });
   } finally {
     restore();
   }
