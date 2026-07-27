@@ -19,6 +19,7 @@ const chromeCandidates = process.platform === "darwin"
   : ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
 const chromePath = process.env.CHROME_PATH ?? chromeCandidates.find(existsSync);
 const timeoutMs = Number(process.env.MISE_STAGING_CLIENT_RACE_TIMEOUT_MS ?? 120000);
+const cdpCommandTimeoutMs = 15000;
 const tenantAInventoryId = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const tenantBInventoryId = "bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb";
 const tenantAOrderId = "aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa";
@@ -161,11 +162,20 @@ function connectCdp(webSocketUrl) {
   const pending = new Map();
   const listeners = new Map();
 
+  function rejectPending(error) {
+    for (const entry of pending.values()) {
+      clearTimeout(entry.timeoutId);
+      entry.reject(error);
+    }
+    pending.clear();
+  }
+
   ws.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
     if (message.id && pending.has(message.id)) {
       const entry = pending.get(message.id);
       pending.delete(message.id);
+      clearTimeout(entry.timeoutId);
       if (message.error) entry.reject(new Error(message.error.message));
       else entry.resolve(message.result ?? {});
       return;
@@ -177,15 +187,35 @@ function connectCdp(webSocketUrl) {
     async open() {
       if (ws.readyState === WebSocket.OPEN) return;
       await new Promise((resolve, reject) => {
-        ws.addEventListener("open", resolve, { once: true });
-        ws.addEventListener("error", reject, { once: true });
+        const timeoutId = setTimeout(
+          () => reject(new Error("Timed out opening the Chrome debugging connection.")),
+          cdpCommandTimeoutMs
+        );
+        ws.addEventListener("open", () => {
+          clearTimeout(timeoutId);
+          resolve();
+        }, { once: true });
+        ws.addEventListener("error", (event) => {
+          clearTimeout(timeoutId);
+          reject(event);
+        }, { once: true });
       });
     },
     send(method, params = {}) {
       const id = nextId++;
       return new Promise((resolve, reject) => {
-        pending.set(id, { resolve, reject });
-        ws.send(JSON.stringify({ id, method, params }));
+        const timeoutId = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error(`Timed out waiting for Chrome command ${method}.`));
+        }, cdpCommandTimeoutMs);
+        pending.set(id, { resolve, reject, timeoutId });
+        try {
+          ws.send(JSON.stringify({ id, method, params }));
+        } catch (error) {
+          clearTimeout(timeoutId);
+          pending.delete(id);
+          reject(error);
+        }
       });
     },
     on(method, listener) {
@@ -194,6 +224,7 @@ function connectCdp(webSocketUrl) {
       listeners.set(method, methodListeners);
     },
     close() {
+      rejectPending(new Error("Chrome debugging connection closed."));
       ws.close();
     }
   };
