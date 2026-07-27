@@ -29,6 +29,50 @@ commit before another batch begins.
 | `inventory-verification-sales-import-07` | Tandem | Typed unit verification plus daily sales CSV cold start | Complete | `3cff0c1` / `3581375` |
 | `private-beta-inventory-closure-08` | Tandem | Hosted tenant proof plus append-only mobile inventory operations | Complete | `d4dfd28` / `debf9f1` |
 | `private-beta-operations-observability-09` | Codex | Scrubbed correlation, live receipt proof, and alert ownership | Complete; activation evidence pending | `1d16169` |
+| `private-beta-recovery-lifecycle-10` | Codex | Isolated restore proof and beta incident/data-lifecycle authority | Complete; managed recovery pending | `63cd913` |
+
+### `private-beta-recovery-lifecycle-10`
+
+In scope:
+
+- Produce an encrypted-transport logical dump of staging operational schemas.
+- Restore it into an ephemeral isolated PostgreSQL cluster that cannot resolve
+  to staging or production.
+- Verify every restored table using row counts and deterministic content
+  digests without emitting row content.
+- Record timing, artifact digest, object counts, cleanup, and remaining hosted
+  recovery evidence.
+- Document incident actions for tenant exposure, provider malfunction, bad
+  recommendations, recovery, and emergency read-only mode.
+
+Delivered:
+
+- A TLS-only staging logical dump with staging identity and production-reference
+  guards.
+- An ephemeral loopback-only PostgreSQL restore that removes its cluster and
+  dump after verification.
+- One-session UTC-normalized counts and content digests for every restored
+  operational table.
+- Content-free recovery evidence with timing, size, object counts, and SHA-256.
+- Incident procedures for tenant exposure, provider replay, bad
+  recommendations, restoration, and emergency operating modes.
+
+Evidence:
+
+- `npm run recovery:staging-check`: 43 tables and 474 rows matched in 22 seconds
+- Dump SHA-256:
+  `0308331b18eb090a92c3733c086fe8895f32805624924ff83ca28f619e11da32`
+- `npm run typecheck`
+- `npm test`: 255 passed
+- `npm run security:backend`
+- Codex checkpoint: `63cd913`
+
+Remaining external evidence:
+
+- Managed Supabase Auth, Storage, Vault, and project-configuration recovery in
+  a dedicated hosted recovery project.
+- A named backup incident commander and communications owner.
+- Approved retention and complete restaurant export policy.
 
 ### `private-beta-operations-observability-09`
 

@@ -4,7 +4,7 @@ Updated: 2026-07-27
 
 | Gate | Status | Current evidence | Remaining blockers |
 | --- | --- | --- | --- |
-| 1. Private-beta foundation | In progress | Expo dependency repair, beta verification scripts, tenant security migrations, demo mode, sign-up, team roles, recoverable in-app account deletion, complete hosted two-tenant and privileged-boundary proof | Internal TestFlight, monitoring and restore evidence |
+| 1. Private-beta foundation | In progress | Expo dependency repair, beta verification scripts, tenant security migrations, demo mode, sign-up, team roles, recoverable in-app account deletion, complete hosted two-tenant proof, scrubbed observability contracts, operational restore evidence and incident runbooks | Live Sentry/PostHog receipt and alert rules, managed hosted recovery, internal TestFlight |
 | 2. Inventory truth | Beta scope complete; device proof pending | Effective-dated mapping schema/domain rules, verified conversions, append-only ledger, event-derived on-hand projection, replay-safe RPC/outbox, count reconciliation, daily CSV import, mobile count/receipt/waste/stockout workflows, hosted learning proof | Real-device inventory/offline walkthrough; package mappings remain fail-closed until verified |
 | 3. Square shadow mode | Not started | Fail-closed POS adapter scaffold | OAuth, webhooks, backfill, reconciliation, shadow evidence |
 | 4. Operational pilot | Not started | Default-off order safety evaluator and manager-controlled email workflow | Persisted policy, scheduler, pilot evidence |
@@ -35,4 +35,4 @@ Remaining external verification:
 
 - Install and walk the critical workflow on real supported iPhones.
 - Install/select full Xcode so `simctl` and native prerequisite checks can run.
-- Complete monitoring, backup-restore, and TestFlight evidence.
+- Complete live monitoring, managed Supabase recovery, and TestFlight evidence.

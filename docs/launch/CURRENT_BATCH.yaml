@@ -1,53 +1,48 @@
-batch_id: private-beta-operations-observability-09
+batch_id: private-beta-recovery-lifecycle-10
 status: completed
-goal: Make beta telemetry scrubbed, correlated, environment-specific, and operationally owned without making monitoring a core-workflow dependency.
+goal: Prove a staging logical backup can be restored and verified in isolation, and document beta incident and data-lifecycle authority.
 started_at: 2026-07-27
 codex_owned:
   - docs/launch/**
-  - docs/operations/MONITORING.md
-  - docs/build-identity.md
-  - services/domain/telemetrySecurity.ts
-  - services/telemetry.ts
-  - supabase/functions/_shared/mise.ts
-  - scripts/verify-observability.mjs
+  - docs/operations/RECOVERY.md
+  - docs/operations/INCIDENT_RESPONSE.md
+  - scripts/staging-backup-restore-check.mjs
   - tests/**
   - package.json
 cursor_owned: []
-shared_locked:
-  - services/telemetry.ts
-  - services/domain/telemetrySecurity.ts
-  - supabase/functions/_shared/mise.ts
+shared_locked: []
 blocked_files:
   - app/**
   - i18n/catalog.ts
+  - services/miseService.ts
 handoff_required: false
 dependencies:
-  - private-beta-inventory-closure-08
+  - private-beta-operations-observability-09
 required_tests:
   - npm run typecheck
   - npm test
+  - npm run recovery:staging-check
   - npm run security:backend
-  - npm run observability:check
 stop_conditions:
-  - Telemetry contains credentials, contact data, raw request bodies, or raw errors
-  - Monitoring failure blocks an operator workflow
-  - Staging and production telemetry credentials are shared
-  - Cursor and Codex edit the same file
+  - A restore target is production or the source staging database
+  - Backup evidence contains credentials or restaurant row content
+  - Restore verification relies only on command exit status
+  - Incident steps weaken tenant isolation or mutate inventory history
 evidence:
-  - Read-only operations audit identified exact telemetry and alerting gaps
-  - App and Edge telemetry share complete sanitized correlation fields
-  - Sentry beforeSend emits a bounded allowlist and removes raw SDK context
-  - EAS development, preview, and production profiles select isolated environments
+  - Staging has a dedicated database password and direct read connection
+  - PostgreSQL 17 client and isolated cluster tools are available locally
+  - Staging identity preflight passed before the database password was transmitted
+  - Operational dump restored into an ephemeral loopback-only PostgreSQL cluster
+  - 43 tables and 474 rows matched by UTC-normalized row count and content digest
+  - Dump was 455963 bytes with SHA-256 0308331b18eb090a92c3733c086fe8895f32805624924ff83ca28f619e11da32
+  - Restore completed in 22 seconds and removed the ephemeral cluster and dump
+  - Incident procedures cover tenant exposure, provider malfunction, bad recommendations, recovery, and emergency modes
   - npm run typecheck passed
-  - npm test passed with 249 tests
-  - npm audit found 0 vulnerabilities
-  - npm run observability:check passed in static mode
+  - npm test passed with 255 tests
   - npm run security:backend passed
-  - npm run design:static passed
-  - All seven staging Edge Functions were refreshed with the shared telemetry boundary
-  - Hosted Edge tenant forgery, role, concurrency, and rate-limit proof passed after refresh
 unresolved_findings:
-  - No configured provider credentials are visible in the repository
-  - Controlled Sentry and PostHog receipt proof requires project-owner credentials
-  - Provider alert rule IDs and a named backup owner remain external go-live evidence
-checkpoint_commit: 1d16169
+  - No dedicated hosted recovery project is configured
+  - Retention policy and complete restaurant export require separate authority
+  - Managed Supabase Auth, Storage, Vault, and project-configuration recovery is not proven
+  - A named backup incident commander remains required before restaurant admission
+checkpoint_commit: 63cd913
