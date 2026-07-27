@@ -1,6 +1,6 @@
 begin;
 
-select plan(19);
+select plan(26);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -13,6 +13,20 @@ begin
 exception
   when others then
     return false;
+end;
+$$;
+
+create or replace function pg_temp.execute_error(statement text)
+returns text
+language plpgsql
+security invoker
+as $$
+begin
+  execute statement;
+  return null;
+exception
+  when others then
+    return sqlerrm;
 end;
 $$;
 
@@ -177,9 +191,57 @@ select is(
   false,
   'a changed offline replay surfaces an idempotency conflict'
 );
+select ok(
+  (public.record_inventory_event(
+    'd0000000-0000-4000-8000-000000000001',
+    'd0000000-0000-4000-8000-000000000011',
+    'receipt', 100, 'g', '2026-07-26T10:10:00Z', 'operator_receipt',
+    'manager-event-2', 'manager-event-2'
+  )).id is not null,
+  'an accepted receipt is appended'
+);
+select ok(
+  (public.record_inventory_event(
+    'd0000000-0000-4000-8000-000000000001',
+    'd0000000-0000-4000-8000-000000000011',
+    'waste', 50, 'g', '2026-07-26T10:20:00Z', 'operator_waste',
+    'manager-event-3', 'manager-event-3'
+  )).id is not null,
+  'an accepted waste event is appended'
+);
+select is(
+  (
+    select round(current_quantity, 6)
+    from public.inventory_items
+    where id = 'd0000000-0000-4000-8000-000000000011'
+  ),
+  round(1050::numeric / 453.59237::numeric, 6),
+  'canonical events convert into the item native unit during projection'
+);
+select is(
+  pg_temp.try_execute($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'waste', 2000, 'g', '2026-07-26T10:30:00Z', 'operator_waste',
+      'manager-event-4', 'manager-event-4'
+    )
+  $sql$),
+  false,
+  'an event that would make on-hand negative is rejected atomically'
+);
+select is(
+  (
+    select round(current_quantity, 6)
+    from public.inventory_items
+    where id = 'd0000000-0000-4000-8000-000000000011'
+  ),
+  round(1050::numeric / 453.59237::numeric, 6),
+  'a rejected projection leaves on-hand unchanged'
+);
 select is(
   (select count(*) from public.inventory_events),
-  1::bigint,
+  3::bigint,
   'replays and denied writes create no duplicate tenant-visible events'
 );
 select is(
@@ -191,8 +253,8 @@ reset role;
 
 select is(
   (select count(*) from public.audit_logs where action = 'inventory_event.recorded'),
-  1::bigint,
-  'the accepted event records one audit entry'
+  3::bigint,
+  'each accepted event records one audit entry'
 );
 
 set local role service_role;
@@ -221,6 +283,23 @@ select is(
   $sql$),
   false,
   'service role cannot directly anonymize an inventory event actor'
+);
+select is(
+  pg_temp.execute_error($sql$
+    delete from public.restaurants
+    where id = 'e0000000-0000-4000-8000-000000000001'
+  $sql$),
+  null,
+  'authorized whole-restaurant deletion can cascade immutable tenant history'
+);
+select is(
+  (
+    select count(*)
+    from public.inventory_events
+    where restaurant_id = 'e0000000-0000-4000-8000-000000000001'
+  ),
+  0::bigint,
+  'tenant cascade removes the deleted restaurant event set'
 );
 reset role;
 

@@ -107,6 +107,7 @@ export interface InventoryItem {
   supplier_name: string;
   last_updated: string;
   canonical_unit?: "g" | "ml" | "each" | null;
+  canonical_quantity_per_unit?: number | null;
   canonical_unit_verification_status?: "draft" | "verified" | "rejected" | "expired";
   canonical_unit_verified_at?: string | null;
   canonical_unit_verified_by?: string | null;

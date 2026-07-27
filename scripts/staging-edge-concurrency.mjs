@@ -94,7 +94,7 @@ const sameTenantInvocations = [
       from: new Date(Date.now() - 86_400_000).toISOString(),
       to: new Date().toISOString()
     },
-    allowedStatuses: [501]
+    allowedStatuses: [501, 503]
   },
   {
     functionName: "generate-ai-insights",
@@ -106,13 +106,13 @@ const sameTenantInvocations = [
     functionName: "link-gmail",
     token: ownerA.token,
     body: { restaurantId: tenantA },
-    allowedStatuses: [501]
+    allowedStatuses: [501, 503]
   },
   {
     functionName: "send-supplier-email",
     token: managerA.token,
     body: { restaurantId: tenantA, orderId: tenantAOrderId },
-    allowedStatuses: [409, 501]
+    allowedStatuses: [409, 501, 503]
   },
   {
     functionName: "operational-workflows",

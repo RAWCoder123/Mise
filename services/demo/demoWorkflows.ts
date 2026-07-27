@@ -61,6 +61,9 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
       pending.unit = item.unit;
       pending.reason = reason;
       pending.urgency = prediction.urgency;
+      if (pending.created_at.localeCompare(item.last_updated) < 0) {
+        pending.created_at = now;
+      }
       return;
     }
 

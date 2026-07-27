@@ -267,9 +267,9 @@ try {
 
   // 4. Three approvals at an adjusted quantity. The signal engine suppresses a
   // new recommendation for an item whose latest handled recommendation is
-  // newer than the item's last_updated, so each cycle recounts the item
-  // through the update_inventory workflow (same on-hand value; bumps
-  // last_updated server-side) before regenerating with refresh_signals.
+  // newer than the item's last_updated, so each cycle appends an authoritative
+  // count event (same native on-hand value, expressed in canonical grams)
+  // before regenerating with refresh_signals.
   const adjustedQuantity = Math.ceil(baselineQuantity * 4 / 3);
   const learnedMinimum = Math.max(1, baselineQuantity * 0.5);
   const learnedMaximum = Math.max(baselineQuantity * 1.75, chicken.par_level * 1.25, 1);
@@ -304,12 +304,22 @@ try {
     );
     assert.equal(approved.data.order.status, "draft", `approval ${approval} lands on a draft supplier order`);
 
-    await invokeOperationalWorkflow(ownerClient, `inventory recount after approval ${approval}`, {
-      action: "update_inventory",
-      restaurantId: state.restaurantId,
-      itemId: chickenId,
-      patch: { current_quantity: chicken.current_quantity }
+    const recount = await ownerClient.rpc("record_inventory_event", {
+      p_restaurant_id: state.restaurantId,
+      p_inventory_item_id: chickenId,
+      p_event_type: "count",
+      p_quantity: chicken.current_quantity * 453.59237,
+      p_canonical_unit: "g",
+      p_effective_at: new Date().toISOString(),
+      p_source: "hosted_learning_check",
+      p_client_event_id: `learning-recount-${runId}-${approval}`,
+      p_idempotency_key: `learning-recount-${runId}-${approval}`,
+      p_source_reference: "staging-learning-check",
+      p_reason_code: "learning_cycle_recount",
+      p_supersedes_event_id: null,
+      p_metadata: { staging_fixture: true, approval_cycle: approval }
     });
+    if (recount.error) throw recount.error;
     await invokeOperationalWorkflow(ownerClient, `refresh_signals after approval ${approval}`, {
       action: "refresh_signals",
       restaurantId: state.restaurantId
@@ -352,18 +362,16 @@ try {
     await ownerClient.auth.signOut().catch(() => {});
   }
   if (state.restaurantId) {
-    // Explicit child-table deletes mirror staging-seed's marker-scoped
-    // cleanup order; the restaurant delete then cascades memberships and
-    // private planning state. Memberships are never deleted directly because
-    // the last-active-owner guard only yields to restaurant/user cascades.
+    // Clear mutable fixtures first, then let the restaurant deletion cascade
+    // immutable inventory events, their inventory items, memberships, and
+    // private planning state. Inventory history is never deleted directly.
     for (const table of [
       "audit_logs",
       "insights",
       "purchase_recommendations",
       "supplier_orders",
       "menu_item_ingredients",
-      "pos_sales",
-      "inventory_items"
+      "pos_sales"
     ]) {
       const { error } = await admin.from(table).delete().eq("restaurant_id", state.restaurantId);
       if (error) cleanupFailures.push(`${table}: ${error.message}`);

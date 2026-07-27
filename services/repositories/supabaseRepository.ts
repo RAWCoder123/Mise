@@ -522,13 +522,19 @@ export function createSupabaseRepository(): MiseRepository {
       };
     },
 
-    async verifyInventoryItemCanonicalUnit(restaurantId, itemId, canonicalUnit) {
+    async verifyInventoryItemCanonicalUnit(
+      restaurantId,
+      itemId,
+      canonicalUnit,
+      canonicalQuantityPerUnit
+    ) {
       const { data, error } = await client.rpc(
         "verify_inventory_item_canonical_unit",
         {
           p_restaurant_id: restaurantId,
           p_inventory_item_id: itemId,
-          p_canonical_unit: canonicalUnit
+          p_canonical_unit: canonicalUnit,
+          p_canonical_quantity_per_unit: canonicalQuantityPerUnit
         }
       );
       if (error) throwRepositoryError(error, restaurantId);

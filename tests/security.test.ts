@@ -298,12 +298,20 @@ test("tenant setup completion uses one bounded replay-safe database workflow", (
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.replace_operational_signals[\s\S]*authenticated/i);
 });
 
-test("inventory counts and regenerated guidance commit through one optimistic workflow", () => {
+test("inventory policy edits regenerate guidance while on-hand changes require ledger evidence", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
+  const validation = readFileSync("services/miseValidation.ts", "utf8");
+  const edgeWorkflow = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
   const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const migration = readFileSync("supabase/migrations/20260714183310_secure_operational_workflows.sql", "utf8");
+  const projectionMigration = readFileSync(
+    "supabase/migrations/20260727203458_inventory_event_projection_authority.sql",
+    "utf8"
+  );
   const updateWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+updateInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
 
+  assert.match(validation, /patch\.current_quantity[\s\S]*remain auditable/i);
+  assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold", "supplier_name"\]\)/i);
   assert.match(updateWorkflow, /fetchPlanningData[\s\S]*fetchRecommendationHistory/i);
   assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);
   assert.match(updateWorkflow, /updateInventoryItemAndSignals\([\s\S]*existing\.last_updated/i);
@@ -314,6 +322,7 @@ test("inventory counts and regenerated guidance commit through one optimistic wo
   assert.match(migration, /planning_revision[\s\S]*p_expected_revision/i);
   assert.match(migration, /update\s+public\.inventory_items[\s\S]*commit_operational_signals/i);
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.update_inventory_item_and_signals[\s\S]*authenticated/i);
+  assert.match(projectionMigration, /after insert on public\.inventory_events/i);
 });
 
 test("recipe baseline edits and regenerated guidance commit through one optimistic workflow", () => {

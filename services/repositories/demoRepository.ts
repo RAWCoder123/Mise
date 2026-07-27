@@ -121,11 +121,87 @@ function deterministicDemoEventId(restaurantId: string, clientEventId: string) {
 }
 
 export function createLocalDemoRepository(): MiseRepository {
-  const recordInventoryEvent = createInMemoryInventoryEventRecorder({
+  const recordInventoryEventAuthority = createInMemoryInventoryEventRecorder({
     actorUserId: DEMO_USER_ID,
     idFor: (event) =>
       deterministicDemoEventId(event.restaurantId, event.clientEventId)
   });
+  const projectedDemoEventIds = new Set<string>();
+
+  async function recordInventoryEvent(
+    input: Parameters<MiseRepository["recordInventoryEvent"]>[0]
+  ) {
+    const state = await readReadyDemoState(input.restaurantId);
+    requireActiveDemoRestaurant(state, input.restaurantId);
+    const item = state.inventoryItems.find(
+      (entry) =>
+        entry.restaurant_id === input.restaurantId &&
+        entry.id === input.inventoryItemId
+    );
+    if (!item) throw new Error("Inventory item not found");
+    const normalizedItem = normalizeInventoryItem(item);
+    const conversion = normalizedItem.canonical_quantity_per_unit;
+    if (
+      normalizedItem.canonical_unit_verification_status !== "verified" ||
+      normalizedItem.canonical_unit !== input.canonicalUnit ||
+      conversion === null ||
+      conversion === undefined ||
+      !Number.isFinite(conversion) ||
+      conversion <= 0
+    ) {
+      throw new Error("Inventory item canonical conversion is not verified");
+    }
+
+    const nativeQuantity = input.quantity / conversion;
+    const projectedQuantity =
+      input.eventType === "count"
+        ? nativeQuantity
+        : input.eventType === "stockout"
+          ? 0
+          : input.eventType === "receipt"
+            ? item.current_quantity + nativeQuantity
+            : input.eventType === "waste" || input.eventType === "usage"
+              ? item.current_quantity - nativeQuantity
+              : item.current_quantity + nativeQuantity;
+    if (
+      !Number.isFinite(projectedQuantity) ||
+      projectedQuantity < 0 ||
+      projectedQuantity > 1_000_000
+    ) {
+      throw new Error("Inventory event would move on-hand outside supported limits");
+    }
+
+    const acceptance = await recordInventoryEventAuthority(input);
+    if (acceptance.status !== "accepted" || projectedDemoEventIds.has(acceptance.event.id)) {
+      return acceptance;
+    }
+
+    await mutateDemoState((nextState) => {
+      const projectedItem = nextState.inventoryItems.find(
+        (entry) =>
+          entry.restaurant_id === input.restaurantId &&
+          entry.id === input.inventoryItemId
+      );
+      if (!projectedItem) throw new Error("Inventory item not found");
+      projectedItem.current_quantity = projectedQuantity;
+      projectedItem.last_updated = acceptance.event.recordedAt;
+      appendDemoAuditLog(nextState, {
+        restaurant_id: input.restaurantId,
+        action: "inventory_event.recorded",
+        entity_table: "inventory_events",
+        entity_id: acceptance.event.id,
+        metadata: {
+          event_type: input.eventType,
+          client_event_id: input.clientEventId,
+          sequence: acceptance.event.sequence,
+          simulated: true
+        }
+      });
+    });
+    projectedDemoEventIds.add(acceptance.event.id);
+    return acceptance;
+  }
+
   return {
     async fetchMembershipsForAuthUser(userId) {
       const state = await readReadyDemoState();
@@ -290,15 +366,28 @@ export function createLocalDemoRepository(): MiseRepository {
 
     recordInventoryEvent,
 
-    async verifyInventoryItemCanonicalUnit(restaurantId, itemId, canonicalUnit) {
+    async verifyInventoryItemCanonicalUnit(
+      restaurantId,
+      itemId,
+      canonicalUnit,
+      canonicalQuantityPerUnit
+    ) {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, restaurantId);
+        if (
+          !Number.isFinite(canonicalQuantityPerUnit) ||
+          canonicalQuantityPerUnit <= 0 ||
+          canonicalQuantityPerUnit > 1_000_000_000
+        ) {
+          throw new Error("Canonical quantity per inventory unit is invalid");
+        }
         const item = state.inventoryItems.find(
           (entry) => entry.restaurant_id === restaurantId && entry.id === itemId
         );
         if (!item) throw new Error("Inventory item not found");
         const now = new Date().toISOString();
         item.canonical_unit = canonicalUnit;
+        item.canonical_quantity_per_unit = canonicalQuantityPerUnit;
         item.canonical_unit_verification_status = "verified";
         item.canonical_unit_verified_at = now;
         item.canonical_unit_verified_by = DEMO_USER_ID;
@@ -308,7 +397,11 @@ export function createLocalDemoRepository(): MiseRepository {
           action: "inventory_item.canonical_unit_verified",
           entity_table: "inventory_items",
           entity_id: item.id,
-          metadata: { canonical_unit: canonicalUnit, simulated: true }
+          metadata: {
+            canonical_unit: canonicalUnit,
+            canonical_quantity_per_unit: canonicalQuantityPerUnit,
+            simulated: true
+          }
         });
         return normalizeInventoryItem(item);
       });

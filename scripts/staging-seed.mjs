@@ -88,7 +88,10 @@ const today = new Intl.DateTimeFormat("en-CA", {
 }).format(new Date());
 
 // Keep the bootstrap rerunnable after destructive workflow and race tests. The
-// cleanup is deliberately limited to the two reserved fixture tenant IDs.
+// cleanup is deliberately limited to the reserved fixture tenant IDs. Inventory
+// items are retained because their authoritative event history is append-only;
+// the server-only fixture upsert restores their deterministic projection while
+// preserving every prior hosted verification event.
 for (const table of [
   "audit_logs",
   "setup_attachments",
@@ -103,8 +106,7 @@ for (const table of [
   "menu_item_ingredients",
   "pos_sales",
   "supplier_items",
-  "purchase_orders",
-  "inventory_items"
+  "purchase_orders"
 ]) {
   await clearFixtureTable(table);
 }

@@ -222,7 +222,8 @@ export interface MiseRepository {
   verifyInventoryItemCanonicalUnit(
     restaurantId: string,
     itemId: string,
-    canonicalUnit: "g" | "ml" | "each"
+    canonicalUnit: "g" | "ml" | "each",
+    canonicalQuantityPerUnit: number
   ): Promise<InventoryItem>;
   fetchPlanningData(restaurantId: string): Promise<PlanningData>;
   saveRestaurantSetupSnapshot(

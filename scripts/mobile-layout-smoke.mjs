@@ -514,28 +514,33 @@ async function runOrderInteractionQa(cdp) {
 
   await navigateAndMeasure(cdp, "/inventory", []);
   await waitForBrowserCondition(cdp, "document.body.innerText.includes('Stock list')", "Inventory stock list");
-  const inventoryRowLabel = await firstAriaLabelEnding(cdp, "Open inventory item.");
+  const inventoryRowLabel = await firstAriaLabelEnding(
+    cdp,
+    "Record count, receive, waste, or stockout."
+  );
   if (!inventoryRowLabel) throw new Error("Inventory did not render an editable stock row.");
   await clickByAriaLabel(cdp, inventoryRowLabel);
-  await waitForBrowserCondition(cdp, "document.body.innerText.includes('Update count')", "Inventory count editor");
-  const countInputLabel = await firstAriaLabel(cdp, "Current quantity (");
-  if (!countInputLabel) throw new Error("Inventory detail did not expose the current quantity input.");
-  const currentCount = Number(await inputValueByAriaLabel(cdp, countInputLabel));
-  if (!Number.isFinite(currentCount)) throw new Error("Inventory current quantity was not numeric.");
-  const nextCount = String(Math.round((currentCount + 1) * 100) / 100);
-  await setInputByAriaLabel(cdp, countInputLabel, nextCount);
-  await clickByRoleAndText(cdp, "button", "Save Count");
   await waitForBrowserCondition(
     cdp,
-    "document.body.innerText.includes('Inventory count updated')",
-    "inventory count confirmation"
+    "document.body.innerText.includes('Inventory operations')",
+    "Inventory ledger operations"
+  );
+  const countInputLabel = await firstAriaLabel(cdp, "Quantity (");
+  if (!countInputLabel) throw new Error("Inventory detail did not expose the canonical count input.");
+  const canonicalCount = "453.59237";
+  await setInputByAriaLabel(cdp, countInputLabel, canonicalCount);
+  await clickByRoleAndText(cdp, "button", "Submit inventory event");
+  await waitForBrowserCondition(
+    cdp,
+    "document.body.innerText.includes('Inventory event accepted into the ledger.')",
+    "inventory ledger acceptance"
   );
   await cdp.send("Page.reload", { ignoreCache: true });
   await sleep(1200);
   await waitForBrowserCondition(
     cdp,
-    "document.querySelector('[aria-label=" + JSON.stringify(countInputLabel) + "]')?.value === " + JSON.stringify(nextCount),
-    "persisted inventory count"
+    "document.body.innerText.includes('1 lb') && document.body.innerText.includes('Accepted')",
+    "persisted canonical inventory projection and accepted queue evidence"
   );
 
   await navigateAndMeasure(cdp, "/settings/gmail", []);
@@ -580,13 +585,39 @@ async function runOrderInteractionQa(cdp) {
     "positive quantity validation"
   );
 
-  await setInputByAriaLabel(cdp, firstQuantityLabel, "1");
-  await clickByAriaLabel(cdp, "Approve " + firstItem);
+  await cdp.send("Page.reload", { ignoreCache: true });
+  await sleep(1200);
   await waitForBrowserCondition(
     cdp,
-    "!document.querySelector('[aria-label=" + JSON.stringify("Approve " + firstItem) + "]')",
-    "approved recommendation to leave Review"
+    "document.body.innerText.includes('Supplier orders')",
+    "Orders after invalid quantity validation"
   );
+  await clickByRoleAndText(cdp, "tab", "Review");
+  await waitForBrowserCondition(
+    cdp,
+    "Boolean(document.querySelector('[aria-label=" +
+      JSON.stringify("Approve " + firstItem) +
+      "]'))",
+    "recommendation review after validation reload"
+  );
+  await clickByAriaLabel(cdp, "Approve " + firstItem);
+  try {
+    await waitForBrowserCondition(
+      cdp,
+      "!document.querySelector('[aria-label=" + JSON.stringify("Approve " + firstItem) + "]')",
+      "approved recommendation to leave Review"
+    );
+  } catch (error) {
+    const snapshot = await evaluateValue(
+      cdp,
+      "(() => ({body:(document.body?.innerText||'').slice(0,1800),quantity:document.querySelector('[aria-label=" +
+        JSON.stringify(firstQuantityLabel) +
+        "]')?.value ?? null,disabled:Boolean(document.querySelector('[aria-label=" +
+        JSON.stringify("Approve " + firstItem) +
+        "]')?.disabled)}))()"
+    );
+    throw new Error(`${error instanceof Error ? error.message : String(error)} ${JSON.stringify(snapshot)}`);
+  }
 
   await cdp.send("Page.reload", { ignoreCache: true });
   await sleep(1600);

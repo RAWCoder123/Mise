@@ -328,7 +328,8 @@ function createRequestHold(cdp) {
 }
 
 async function switchWorkspace(cdp, targetName) {
-  await clickAria(cdp, "Settings");
+  await clickAria(cdp, "More");
+  await clickText(cdp, "Settings");
   const switchLabel = `Switch to ${targetName}`;
   const switchSelector = `[aria-label=${JSON.stringify(switchLabel)}]`;
   await waitFor(
@@ -339,7 +340,7 @@ async function switchWorkspace(cdp, targetName) {
         const control = document.querySelector(${JSON.stringify(switchSelector)});
         return Boolean(control && !control.disabled && control.getAttribute('aria-disabled') !== 'true');
       })()`,
-    `Settings did not render the switch control for ${targetName}`
+    `More did not render the switch control for ${targetName}`
   );
   await clickAria(cdp, switchLabel);
   await waitFor(
@@ -376,7 +377,8 @@ async function main() {
     await signIn(cdp);
     const hold = createRequestHold(cdp);
 
-    await clickAria(cdp, "Settings");
+    await clickAria(cdp, "More");
+    await clickText(cdp, "Settings");
     const todayPause = hold.holdNext(
       (requestUrl) => requestUrl.includes("/rest/v1/inventory_items") && requestUrl.includes("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
       "tenant A Today inventory request"
@@ -385,9 +387,13 @@ async function main() {
     await todayPause;
     await switchWorkspace(cdp, "Northside Cafe");
     await clickAria(cdp, "Today");
-    await waitFor(cdp, "document.body?.innerText.includes('Review Espresso Beans reorder')", "Tenant B Today did not load before releasing tenant A");
+    await waitFor(
+      cdp,
+      "document.body?.innerText.includes('Northside Cafe ·')",
+      "Tenant B Today did not load before releasing tenant A"
+    );
     await hold.release();
-    await assertTenantBOnly(cdp, "Review Espresso Beans reorder", "Review Chicken Breast reorder");
+    await assertTenantBOnly(cdp, "Northside Cafe ·", "Luna Bistro · Monday");
     console.log("Staging race passed: Today workspace switch");
 
     await switchWorkspace(cdp, "Luna Bistro");
@@ -433,10 +439,12 @@ async function main() {
       (requestUrl) => requestUrl.includes("/rest/v1/insights") && requestUrl.includes("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
       "tenant A insights request"
     );
-    await clickAria(cdp, "Insights");
+    await clickAria(cdp, "More");
+    await clickText(cdp, "Insights");
     await insightPause;
     await switchWorkspace(cdp, "Northside Cafe");
-    await clickAria(cdp, "Insights");
+    await clickAria(cdp, "More");
+    await clickText(cdp, "Insights");
     await waitFor(cdp, "document.body?.innerText.includes('Northside espresso')", "Tenant B insights did not load before releasing tenant A");
     await hold.release();
     await assertTenantBOnly(cdp, "Northside espresso", "Luna chicken");
@@ -448,7 +456,8 @@ async function main() {
       (requestUrl) => requestUrl.includes("/rest/v1/supplier_items") && requestUrl.includes("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
       "tenant A settings supplier request"
     );
-    await clickAria(cdp, "Settings");
+    await clickAria(cdp, "More");
+    await clickText(cdp, "Settings");
     await settingsPause;
     await waitFor(
       cdp,
@@ -465,13 +474,17 @@ async function main() {
       "Tenant B settings did not load before releasing tenant A"
     );
     await hold.release();
-    await waitFor(cdp, "document.querySelector('[aria-label=\"Current restaurant: Northside Cafe\"]')", "Settings did not retain tenant B after the stale supplier response");
+    await waitFor(cdp, "document.querySelector('[aria-label=\"Current restaurant: Northside Cafe\"]')", "More did not retain tenant B after the stale supplier response");
     await assertTenantBOnly(cdp, "Cafe Supply", "Fresh Produce Co.");
     console.log("Staging race passed: settings workspace switch");
 
     await switchWorkspace(cdp, "Luna Bistro");
     await clickAria(cdp, "Orders");
-    await waitFor(cdp, "document.body?.innerText.includes('Fresh Produce Co.')", "Tenant A order did not render");
+    await waitFor(
+      cdp,
+      "location.pathname === '/orders' && document.querySelector('[aria-label=\"Open Fresh Produce Co. order. Status: Draft.\"]')",
+      "Tenant A order did not render"
+    );
     const orderDetailPause = hold.holdNext(
       (requestUrl) => requestUrl.includes("/rest/v1/supplier_orders") && requestUrl.includes(tenantAOrderId),
       "tenant A order detail request"
@@ -481,7 +494,11 @@ async function main() {
     await clickAria(cdp, "Back to orders");
     await switchWorkspace(cdp, "Northside Cafe");
     await clickAria(cdp, "Orders");
-    await waitFor(cdp, "document.body?.innerText.includes('Cafe Supply')", "Tenant B orders did not render for detail race");
+    await waitFor(
+      cdp,
+      "location.pathname === '/orders' && document.querySelector('[aria-label=\"Open Cafe Supply order. Status: Draft.\"]')",
+      "Tenant B orders did not render for detail race"
+    );
     await clickAria(cdp, "Open Cafe Supply order. Status: Draft.");
     await waitFor(
       cdp,
@@ -495,10 +512,20 @@ async function main() {
 
     await switchWorkspace(cdp, "Luna Bistro");
     await clickAria(cdp, "Orders");
-    await waitFor(cdp, "document.body?.innerText.includes('Fresh Produce Co.')", "Tenant A order did not render before mutation race");
+    await waitFor(
+      cdp,
+      "location.pathname === '/orders' && document.querySelector('[aria-label=\"Open Fresh Produce Co. order. Status: Draft.\"]')",
+      "Tenant A order did not render before mutation race"
+    );
     const mutationPause = hold.holdNext(
       (requestUrl, method) => method === "POST" && requestUrl.includes("/rest/v1/rpc/approve_purchase_recommendation"),
       "tenant A recommendation approval mutation"
+    );
+    await clickText(cdp, "Open review");
+    await waitFor(
+      cdp,
+      "document.querySelector('[aria-label=\"Approve Chicken Breast\"]')",
+      "Tenant A recommendation review did not render"
     );
     await clickAria(cdp, "Approve Chicken Breast");
     await mutationPause;

@@ -7,6 +7,7 @@ import {
   DEMO_RESTAURANT_ID,
   dismissRecommendationInDemoState,
   markSupplierOrderSentInDemoState,
+  rebuildPurchaseRecommendations,
   repairDemoState,
   undoRecommendationInDemoState,
   type DemoState,
@@ -77,6 +78,53 @@ test("approving recommendations reuses one supplier draft and is replay-safe", (
   assert.equal(apples.recommended_quantity, 5);
   assert.equal(state.supplierOrders.length, 1);
   assert.equal(first.order.order_message.match(/Apples/g)?.length, 1);
+});
+
+test("refreshed pending evidence stays suppressed after approval until a newer count", () => {
+  const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
+  state.purchaseRecommendations = [];
+  state.supplierOrders = [];
+  rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
+  const pending = state.purchaseRecommendations.find(
+    (recommendation) => recommendation.status === "pending"
+  );
+  assert.ok(pending);
+  const item = state.inventoryItems.find(
+    (inventoryItem) => inventoryItem.id === pending.inventory_item_id
+  );
+  assert.ok(item);
+
+  pending.created_at = "2026-07-15T09:00:00.000Z";
+  item.last_updated = "2026-07-16T09:00:00.000Z";
+  rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
+
+  const refreshed = state.purchaseRecommendations.find(
+    (recommendation) => recommendation.id === pending.id
+  );
+  assert.ok(refreshed);
+  assert.equal(refreshed.status, "pending");
+  assert.ok(refreshed.created_at.localeCompare(item.last_updated) >= 0);
+
+  approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, refreshed.id);
+  rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
+  assert.equal(
+    state.purchaseRecommendations.some(
+      (recommendation) =>
+        recommendation.inventory_item_id === item.id &&
+        recommendation.status === "pending"
+    ),
+    false
+  );
+
+  item.last_updated = new Date(Date.now() + 60_000).toISOString();
+  rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
+  const nextPending = state.purchaseRecommendations.find(
+    (recommendation) =>
+      recommendation.inventory_item_id === item.id &&
+      recommendation.status === "pending"
+  );
+  assert.ok(nextPending);
+  assert.notEqual(nextPending.id, refreshed.id);
 });
 
 test("recommendation decisions reject invalid quantities, tenants, and handled states", () => {

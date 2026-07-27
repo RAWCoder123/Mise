@@ -1,5 +1,5 @@
-import { canonicalInventoryUnit, inventoryUnitsAreCompatible } from "./inventoryUnits";
-import type { InsightPresentationDescriptor } from "../../types/presentation";
+import { canonicalInventoryUnit, inventoryUnitsAreCompatible } from "./inventoryUnits.ts";
+import type { InsightPresentationDescriptor } from "../../types/presentation.ts";
 
 export interface OperationalInventoryItem {
   id: string;

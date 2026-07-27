@@ -642,12 +642,13 @@ test("validation normalizes reads and rejects invalid mutation quantities", () =
       /Enter a quantity from 1 to 1,000,000/
     );
   }
-  assert.deepEqual(requireInventoryItemPatch({ current_quantity: 0, par_level: 10 }), {
-    current_quantity: 0,
-    par_level: 10
-  });
+  assert.deepEqual(requireInventoryItemPatch({ par_level: 10 }), { par_level: 10 });
+  assert.throws(
+    () => requireInventoryItemPatch({ current_quantity: 0 }),
+    /remain auditable/
+  );
   for (const invalid of [-1, Number.NaN, Number.POSITIVE_INFINITY, 1_000_001]) {
-    assert.throws(() => requireInventoryItemPatch({ current_quantity: invalid }), /Current quantity must be between/);
+    assert.throws(() => requireInventoryItemPatch({ par_level: invalid }), /Par level must be between/);
   }
   assert.equal(requireRecipeBaselineQuantity(0.5), 0.5);
   for (const invalid of [-1, 0, Number.NaN, Number.POSITIVE_INFINITY, 10_001]) {

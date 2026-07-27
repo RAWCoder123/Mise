@@ -317,6 +317,13 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
     value.canonical_unit === "each"
       ? value.canonical_unit
       : inferredCanonicalUnit;
+  const canonicalQuantityPerUnit =
+    Number.isFinite(value.canonical_quantity_per_unit) &&
+    Number(value.canonical_quantity_per_unit) > 0
+      ? Number(value.canonical_quantity_per_unit)
+      : normalizedLegacyUnit.ok
+        ? normalizedLegacyUnit.quantity
+        : null;
   const declaredVerificationStatus =
     value.canonical_unit_verification_status === "draft" ||
     value.canonical_unit_verification_status === "verified" ||
@@ -327,7 +334,11 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
         ? "verified"
         : "draft";
   const verificationStatus =
-    declaredVerificationStatus === "verified" && !canonicalUnit
+    declaredVerificationStatus === "verified" &&
+    (
+      !canonicalUnit ||
+      canonicalQuantityPerUnit === null
+    )
       ? "draft"
       : declaredVerificationStatus;
   return {
@@ -337,6 +348,7 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
     reorder_threshold: asBoundedNonNegativeNumber(value.reorder_threshold, operatingLimits.inventoryQuantity),
     estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost),
     canonical_unit: canonicalUnit,
+    canonical_quantity_per_unit: canonicalQuantityPerUnit,
     canonical_unit_verification_status: verificationStatus,
     canonical_unit_verified_at:
       asNullableString(value.canonical_unit_verified_at) ??
@@ -395,9 +407,13 @@ export function requireRecipeBaselineQuantity(value: unknown) {
 }
 
 export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryItemPatch {
+  if (patch.current_quantity !== undefined) {
+    throw new Error(
+      "Record a count, receipt, waste, or stockout so on-hand changes remain auditable."
+    );
+  }
   const validated: InventoryItemPatch = { ...patch };
   for (const [field, label] of [
-    ["current_quantity", "Current quantity"],
     ["par_level", "Par level"],
     ["reorder_threshold", "Reorder threshold"]
   ] as const) {

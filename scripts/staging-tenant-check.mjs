@@ -17,6 +17,8 @@ const tenantARecommendationId = "aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa";
 const tenantBRecommendationId = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 const tenantAOrderId = "aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa";
 const tenantBOrderId = "bbbbbbbb-3333-4333-8333-bbbbbbbbbbbb";
+const inventoryProofRunId = crypto.randomUUID();
+const inventoryProofEffectiveAt = new Date().toISOString();
 
 const tenantScopedTables = [
   "pos_sales",
@@ -524,14 +526,59 @@ assert.equal(
   "failed signal regeneration preserves the optimistic version"
 );
 
-const validInventoryUpdate = await invokeOperationalWorkflow(managerA, {
+const directCountWorkflow = await invokeOperationalWorkflow(managerA, {
   action: "update_inventory",
   restaurantId: tenantA,
   itemId: tenantAInventoryId,
   patch: { current_quantity: 4 }
 });
-if (validInventoryUpdate.error) await throwInvocationFailure("valid inventory workflow", validInventoryUpdate.error);
-assert.equal(Number(validInventoryUpdate.data.result.current_quantity), 4, "server workflow persists a valid inventory count");
+assert.notEqual(
+  directCountWorkflow.error,
+  null,
+  "the operational patch workflow rejects unaudited current-quantity changes"
+);
+
+const validInventoryEventInput = {
+  p_restaurant_id: tenantA,
+  p_inventory_item_id: tenantAInventoryId,
+  p_event_type: "count",
+  p_quantity: 1814.36948,
+  p_canonical_unit: "g",
+  p_effective_at: inventoryProofEffectiveAt,
+  p_source: "operator_count",
+  p_client_event_id: `staging-manager-count-${inventoryProofRunId}`,
+  p_idempotency_key: `staging-manager-count-${inventoryProofRunId}`,
+  p_source_reference: "hosted-tenant-proof",
+  p_reason_code: "cycle_count",
+  p_supersedes_event_id: null,
+  p_metadata: { staging_fixture: true }
+};
+const validInventoryEvent = await managerA.client.rpc(
+  "record_inventory_event",
+  validInventoryEventInput
+);
+if (validInventoryEvent.error) throw validInventoryEvent.error;
+const replayedInventoryEvent = await managerA.client.rpc(
+  "record_inventory_event",
+  validInventoryEventInput
+);
+if (replayedInventoryEvent.error) throw replayedInventoryEvent.error;
+assert.equal(
+  replayedInventoryEvent.data.id,
+  validInventoryEvent.data.id,
+  "an identical offline replay deduplicates to the authoritative event"
+);
+const inventoryAfterEvent = await managerA.client
+  .from("inventory_items")
+  .select("current_quantity")
+  .eq("id", tenantAInventoryId)
+  .single();
+if (inventoryAfterEvent.error) throw inventoryAfterEvent.error;
+assert.equal(
+  Number(inventoryAfterEvent.data.current_quantity),
+  4,
+  "the append-only count event updates the on-hand projection"
+);
 
 const staleInventoryUpdate = await managerA.client.rpc("update_inventory_item_and_signals", {
   p_restaurant_id: tenantA,
@@ -543,13 +590,22 @@ const staleInventoryUpdate = await managerA.client.rpc("update_inventory_item_an
 });
 assertDenied(staleInventoryUpdate, "stale clients cannot fall back to the obsolete inventory RPC");
 
-const crossTenantRpc = await invokeOperationalWorkflow(managerA, {
-  action: "update_inventory",
-  restaurantId: tenantB,
-  itemId: tenantBInventoryId,
-  patch: { current_quantity: 1 }
+const crossTenantRpc = await managerA.client.rpc("record_inventory_event", {
+  p_restaurant_id: tenantB,
+  p_inventory_item_id: tenantBInventoryId,
+  p_event_type: "count",
+  p_quantity: 1,
+  p_canonical_unit: "g",
+  p_effective_at: inventoryProofEffectiveAt,
+  p_source: "operator_count",
+  p_client_event_id: `staging-cross-tenant-count-${inventoryProofRunId}`,
+  p_idempotency_key: `staging-cross-tenant-count-${inventoryProofRunId}`,
+  p_source_reference: "hosted-tenant-proof",
+  p_reason_code: "cycle_count",
+  p_supersedes_event_id: null,
+  p_metadata: { staging_fixture: true }
 });
-assert.notEqual(crossTenantRpc.error, null, "manager A cannot invoke a tenant B inventory workflow");
+assert.notEqual(crossTenantRpc.error, null, "manager A cannot record a tenant B inventory event");
 
 const staffRpc = await invokeOperationalWorkflow(staffA, {
   action: "refresh_signals",

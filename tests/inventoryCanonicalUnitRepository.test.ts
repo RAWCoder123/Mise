@@ -25,6 +25,7 @@ function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
 test("normalized inventory items expose deterministic standard unit authority", () => {
   const normalized = normalizeInventoryItem(item());
   assert.equal(normalized.canonical_unit, "g");
+  assert.equal(normalized.canonical_quantity_per_unit, 453.59237);
   assert.equal(normalized.canonical_unit_verification_status, "verified");
   assert.equal(
     normalized.canonical_unit_verified_at,
@@ -44,12 +45,14 @@ test("authoritative hosted verification state overrides legacy inference", () =>
     item({
       unit: "case",
       canonical_unit: "each",
+      canonical_quantity_per_unit: 24,
       canonical_unit_verification_status: "verified",
       canonical_unit_verified_at: "2026-07-26T11:00:00.000Z",
       canonical_unit_verified_by: "manager-1"
     })
   );
   assert.equal(normalized.canonical_unit, "each");
+  assert.equal(normalized.canonical_quantity_per_unit, 24);
   assert.equal(normalized.canonical_unit_verification_status, "verified");
   assert.equal(normalized.canonical_unit_verified_by, "manager-1");
 });
@@ -75,6 +78,7 @@ test("hosted canonical verification uses only the guarded RPC", () => {
 
   assert.ok(start >= 0 && end > start);
   assert.match(method, /client\.rpc\(\s*"verify_inventory_item_canonical_unit"/);
+  assert.match(method, /p_canonical_quantity_per_unit: canonicalQuantityPerUnit/);
   assert.doesNotMatch(method, /\.from\(\s*"inventory_items"\s*\)/);
   assert.doesNotMatch(method, /\.(?:insert|update|delete)\(/);
 });
@@ -87,6 +91,7 @@ test("demo verification mirrors authority fields and audit semantics", () => {
 
   assert.ok(start >= 0 && end > start);
   assert.match(method, /canonical_unit = canonicalUnit/);
+  assert.match(method, /canonical_quantity_per_unit = canonicalQuantityPerUnit/);
   assert.match(method, /canonical_unit_verification_status = "verified"/);
   assert.match(method, /inventory_item\.canonical_unit_verified/);
   assert.match(method, /requireActiveDemoRestaurant\(state, restaurantId\)/);

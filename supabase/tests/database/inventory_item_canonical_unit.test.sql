@@ -1,6 +1,6 @@
 begin;
 
-select plan(14);
+select plan(17);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -78,7 +78,7 @@ select is(
 select is(
   has_function_privilege(
     'authenticated',
-    'public.verify_inventory_item_canonical_unit(uuid,uuid,text)',
+    'public.verify_inventory_item_canonical_unit(uuid,uuid,text,numeric)',
     'EXECUTE'
   ),
   true,
@@ -87,7 +87,7 @@ select is(
 select is(
   has_function_privilege(
     'anon',
-    'public.verify_inventory_item_canonical_unit(uuid,uuid,text)',
+    'public.verify_inventory_item_canonical_unit(uuid,uuid,text,numeric)',
     'EXECUTE'
   ),
   false,
@@ -102,7 +102,8 @@ select is(
     select public.verify_inventory_item_canonical_unit(
       'f0000000-0000-4000-8000-000000000001',
       'f0000000-0000-4000-8000-000000000012',
-      'each'
+      'each',
+      24
     )
   $sql$),
   false,
@@ -130,7 +131,8 @@ select is(
     select public.verify_inventory_item_canonical_unit(
       'f0000000-0000-4000-8000-000000000002',
       'f0000000-0000-4000-8000-000000000021',
-      'each'
+      'each',
+      12
     )
   $sql$),
   false,
@@ -140,10 +142,20 @@ select is(
   (public.verify_inventory_item_canonical_unit(
     'f0000000-0000-4000-8000-000000000001',
     'f0000000-0000-4000-8000-000000000012',
-    'each'
+    'each',
+    24
   )).canonical_unit,
   'each',
   'a manager can verify a scoped package item'
+);
+select is(
+  (
+    select canonical_quantity_per_unit
+    from public.inventory_items
+    where id = 'f0000000-0000-4000-8000-000000000012'
+  ),
+  24::numeric,
+  'package verification records the item-specific canonical conversion'
 );
 select is(
   pg_temp.try_execute($sql$
@@ -183,6 +195,32 @@ select is(
   false,
   'authenticated clients cannot directly update canonical authority'
 );
+
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$
+    insert into public.inventory_items (
+      id, restaurant_id, item_name, category, unit, current_quantity,
+      par_level, reorder_threshold, estimated_unit_cost, supplier_name
+    ) values (
+      'f0000000-0000-4000-8000-000000000022',
+      'f0000000-0000-4000-8000-000000000002',
+      'Service-seeded flour', 'Dry goods', 'lb', 8, 16, 4, 2, 'Supplier B'
+    )
+  $sql$),
+  true,
+  'the server-only service role can seed an item through the private normalization trigger'
+);
+select is(
+  (
+    select canonical_unit
+    from public.inventory_items
+    where id = 'f0000000-0000-4000-8000-000000000022'
+  ),
+  'g',
+  'service-seeded standard units receive the same canonical authority'
+);
+reset role;
 
 select * from finish();
 rollback;
