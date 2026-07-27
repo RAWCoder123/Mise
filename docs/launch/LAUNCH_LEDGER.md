@@ -27,6 +27,63 @@ commit before another batch begins.
 | `inventory-operation-input-05` | Codex | Bounded operator receiving, count, waste, and stockout commands | Complete | `3aa16e3` |
 | `inventory-canonical-authority-06` | Codex | Verified item-unit authority at the inventory ledger boundary | Complete | `4184fdd` |
 | `inventory-verification-sales-import-07` | Tandem | Typed unit verification plus daily sales CSV cold start | Complete | `3cff0c1` / `3581375` |
+| `private-beta-inventory-closure-08` | Tandem | Hosted tenant proof plus append-only mobile inventory operations | Complete | `d4dfd28` / `debf9f1` |
+
+### `private-beta-inventory-closure-08`
+
+In scope:
+
+- Repair the hosted rendered security race for the redesigned More navigation
+  without reducing any tenant-switch assertion.
+- Make count, receipt, waste, and stockout actions flow through the durable
+  device outbox and server-authoritative inventory-event RPC.
+- Keep `inventory_items.current_quantity` as a projection cache derived from
+  accepted inventory events rather than a second client-controlled truth.
+- Surface pending, accepted, retryable, rejected, and conflicting inventory
+  evidence on the inventory detail workflow.
+- Keep package items blocked until a manager verifies their canonical grams,
+  milliliters, or each conversion.
+
+Ownership:
+
+- Codex: launch records, hosted verification harness, projection authority,
+  repositories, validation, and backend tests.
+- Cursor: inventory detail/list interaction, operation selection, outbox
+  status, accessibility, and English/Spanish/Simplified Chinese copy.
+
+Delivered:
+
+- Server-authoritative inventory events now project native on-hand quantities
+  from verified canonical grams, milliliters, or each conversions.
+- Counts, receipts, waste, and stockouts use the durable device outbox and
+  retain accepted, retryable, rejected, or conflicting evidence.
+- Direct client inventory quantity mutation remains rejected.
+- Whole-restaurant deletion preserves append-only history rules while allowing
+  the intended tenant cascade.
+- Demo behavior mirrors hosted projection and recommendation suppression.
+- Inventory list and detail screens expose compact manager operations, queue
+  state, role restrictions, and localized copy.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 247 passed
+- `npm run security:backend`
+- `npm run design:static`
+- `npm run qa:interactions`: passed at 390x844 in English, Spanish, and
+  Simplified Chinese
+- `npm run verify:private-beta-security:hosted`: all rendered tenant races,
+  tenant/RPC boundaries, service authority, Edge forgery, roles, and rate
+  limits passed without skipped checks
+- `npm run staging:learning-check`: 14 service days and three 40 lb manager
+  approvals moved the next bounded suggestion from 30 lb to 40 lb
+- Cursor checkpoint: `debf9f1`
+- Codex checkpoint: `d4dfd28`
+
+Remaining external verification:
+
+- Full Xcode and `simctl` are unavailable on the current Mac.
+- Real-device offline recovery and TestFlight walkthrough remain required.
 
 ### `inventory-verification-sales-import-07`
 
