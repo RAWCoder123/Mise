@@ -35,6 +35,37 @@ commit before another batch begins.
 | `private-beta-data-export-authority-13` | Codex | Bounded, tenant-safe restaurant data export | Complete; UI handoff pending | `875ce5a` |
 | `private-beta-daily-findings-contract-14` | Codex | Deterministic evidence-backed daily brief | Complete; UI handoff pending | `e81dbb5` |
 | `private-beta-rendered-race-harness-15` | Codex | Bounded hosted rendered race verification | Complete | `ba3b427` |
+| `private-beta-export-client-contract-16` | Codex | Typed hosted/demo export facade | Complete; UI handoff ready | `3bf2058` |
+
+### `private-beta-export-client-contract-16`
+
+Delivered:
+
+- A screen-facing `exportRestaurantData` method through the stable Mise service
+  facade and repository contract.
+- Hosted invocation of only the audited `export-restaurant-data` Edge boundary.
+- Deterministic local-demo export using the same 24-dataset response shape and
+  no live credentials.
+- A second client validation boundary for schema version, serialized size,
+  restaurant/team identity, dataset presence, exact counts, per-dataset row
+  limits, protected provider keys, and retention statements.
+- Expo SDK-matched file-system and sharing modules for the native UI handoff.
+
+Evidence:
+
+- Cross-tenant, incomplete, and protected-key payloads fail before reaching a
+  screen.
+- `npm run typecheck`
+- `npm test`: 277 passed
+- `npm run security:backend`
+- `npm audit`: zero vulnerabilities
+- Expo Doctor: 21/21
+
+Remaining handoff:
+
+- Cursor implements owner/admin file generation and sharing from Settings using
+  only the stable service facade. The bounded instructions are recorded in
+  `docs/launch/CURSOR_HANDOFF.md`.
 
 ### `private-beta-rendered-race-harness-15`
 

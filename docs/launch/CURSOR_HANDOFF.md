@@ -1,0 +1,88 @@
+# Cursor Handoff
+
+Updated: 2026-07-27
+
+Status: ready when the Cursor desktop session is unlocked.
+
+## Base checkpoint
+
+- Use repository state at or after `3bf2058`.
+- The last Cursor-authored checkpoint observed by Codex was `debf9f1`.
+- Codex has since completed hosted account deletion, restaurant export,
+  deterministic daily findings, and bounded hosted race verification.
+- Do not rewrite or revert those backend checkpoints.
+
+## Cursor-owned slice A — Daily brief presentation
+
+Allowed paths:
+
+- `app/(tabs)/today.tsx`
+- `app/(tabs)/insights.tsx`
+- `i18n/catalog.ts`
+- focused UI tests
+
+Use only `fetchDailyOperationalBrief(restaurantId)` from
+`services/miseService.ts`. Do not call repositories, Supabase, or AI providers
+from a screen.
+
+Requirements:
+
+- Render compact `Now`, `Up next`, and `Later` sections using
+  `brief.priorities` and the stable finding IDs.
+- Show severity, confidence, freshness, missing-data warnings, evidence count,
+  affected workflow, and recommended action without inventing evidence.
+- Use tomato red only for urgent/primary state, green for fresh/healthy state,
+  and warm neutral surfaces for supporting content.
+- Add loading, empty, stale, incomplete, error, and permission-safe states.
+- Keep 44px controls, screen-reader labels, Dynamic Type resilience, and no
+  horizontal overflow at supported phone widths.
+- Translate fixed UI labels in English, Spanish, and Simplified Chinese.
+  Restaurant-entered or deterministic evidence copy may remain opaque source
+  evidence, consistent with the existing Insight presentation policy.
+
+## Cursor-owned slice B — Restaurant export interaction
+
+Allowed paths:
+
+- `app/(tabs)/settings.tsx`
+- a new route under `app/settings/`
+- `i18n/catalog.ts`
+- focused UI tests
+
+Use only `exportRestaurantData(restaurantId)` from `services/miseService.ts`.
+The service already validates schema, byte size, counts, tenant identity,
+protected keys, and all 24 datasets. Never log the payload.
+
+Requirements:
+
+- Show the export control only to owners and admins.
+- Serialize the returned object as a JSON file. On iOS, use the installed
+  `expo-file-system` and `expo-sharing` SDK modules; on web, use a bounded Blob
+  download.
+- Use a safe filename such as `mise-restaurant-export-YYYY-MM-DD.json`.
+- Show progress, cancellation-safe navigation, success, unavailable-sharing,
+  oversized/support, and generic failure states.
+- Explain that provider credentials and private security logs are excluded.
+- Do not add a public pricing, purchase, Gmail-send, or autonomous-order action.
+
+## Locked shared paths
+
+Until Codex records an explicit handoff, Cursor must not edit:
+
+- `services/**`
+- `supabase/**`
+- `scripts/**`
+- `package.json`
+- `package-lock.json`
+- `app.json`
+- `docs/launch/**` other than appending a completed Cursor checkpoint to this
+  handoff file
+
+Run:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run design:static`
+- mobile interaction verification for `/today`, `/insights`, and `/settings` in
+  all three supported locales
+

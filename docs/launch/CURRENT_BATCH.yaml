@@ -1,41 +1,42 @@
-batch_id: private-beta-rendered-race-harness-15
+batch_id: private-beta-export-client-contract-16
 status: completed
-goal: Make rendered two-tenant request and mutation races bounded so the hosted security gate cannot hang silently.
+goal: Expose restaurant export through the stable Mise service facade with strict hosted-response validation and deterministic demo behavior.
 started_at: 2026-07-27
 codex_owned:
   - docs/launch/**
-  - scripts/staging-client-race.mjs
+  - services/application/restaurant.ts
+  - services/repositories/**
+  - services/miseService.ts
   - tests/**
 cursor_owned: []
 shared_locked: []
 blocked_files:
   - app/**
-  - services/**
   - i18n/catalog.ts
-handoff_required: false
+handoff_required: true
 dependencies:
-  - private-beta-daily-findings-contract-14
+  - private-beta-data-export-authority-13
 required_tests:
   - npm run typecheck
   - npm test
-  - npm run staging:seed
-  - npm run staging:client-race
+  - npm run security:backend
 stop_conditions:
-  - A CDP request can remain pending without a timeout
-  - A held application request is released into the wrong tenant
-  - Harness cleanup leaves Expo or Chrome running
-  - A failed race exits successfully
+  - A screen must call Supabase Functions directly
+  - Hosted export rows are accepted without restaurant-scope validation
+  - Demo export requires live credentials
+  - A malformed or oversized response reaches file sharing
 evidence:
-  - Every Chrome debugging command is bounded to 15 seconds
-  - Every intercepted application request hold is bounded to 20 seconds
-  - Pending Chrome commands are rejected and timers cleared during cleanup
-  - All seven rendered request and mutation races passed
+  - services/miseService.ts exposes exportRestaurantData through the restaurant application facade
+  - Hosted mode invokes only export-restaurant-data and validates the response before returning
+  - Demo mode builds the same 24-dataset contract without live credentials
+  - Client validation rejects cross-tenant rows, missing datasets, count mismatches, oversized payloads, protected keys, invalid retention, and malformed identities
+  - Expo SDK-matched file-system and sharing modules are installed for the Cursor UI slice
   - npm run typecheck passed
-  - npm test passed with 274 tests
+  - npm test passed with 277 tests
   - npm run security:backend passed
-  - npm run staging:seed passed
-  - npm run staging:client-race passed and exited cleanly
-  - Full hosted private-beta security suite passed without skipped checks
+  - npm audit found 0 vulnerabilities
+  - Expo Doctor passed 21 of 21 checks
 unresolved_findings:
-  - Real-device request cancellation and workspace switching remain external TestFlight evidence
-checkpoint_commit: ba3b427
+  - Cursor must implement the owner/admin file export and share interaction
+  - Native sharing still requires real-device proof
+checkpoint_commit: 3bf2058
