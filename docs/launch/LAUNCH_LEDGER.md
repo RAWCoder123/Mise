@@ -32,6 +32,44 @@ commit before another batch begins.
 | `private-beta-recovery-lifecycle-10` | Codex | Isolated restore proof and beta incident/data-lifecycle authority | Complete; managed recovery pending | `63cd913` |
 | `private-beta-emergency-control-11` | Codex | Enforced read-only/emergency tenant mutation authority | Complete | `6d4d18f` |
 | `private-beta-account-lifecycle-proof-12` | Codex | Disposable hosted account-deletion and tenant-safety proof | Complete; device proof pending | `fe576a7` |
+| `private-beta-data-export-authority-13` | Codex | Bounded, tenant-safe restaurant data export | Complete; UI handoff pending | `875ce5a` |
+
+### `private-beta-data-export-authority-13`
+
+Delivered:
+
+- An owner/admin-only `export-restaurant-data` Edge boundary using the standard
+  authenticated firewall, role authorization, terminal event lifecycle, and
+  bounded audit metadata.
+- Twenty-four fixed operational datasets covering the restaurant profile, team,
+  sales, immutable inventory history, recipes and mappings, supplier work,
+  findings, setup metadata, provider connection status, and audit history.
+- Deterministic pagination with per-dataset, total-row, and serialized-byte
+  limits. Exports fail explicitly rather than returning partial data.
+- A protected-key scanner and fixed public-schema allowlist that exclude Vault,
+  OAuth credentials, private security logs, and provider secrets.
+- Privacy copy that describes active-workspace retention, deletion-audit
+  retention, credential exclusions, and the secure-support path for oversized
+  exports.
+
+Evidence:
+
+- The firewall migration and function are active on dedicated staging only.
+- The hosted proof returned all 24 tenant-A datasets with matching counts,
+  denied a tenant-A manager, denied a tenant-B owner forging tenant A, found no
+  protected keys, and recorded a content-free completion audit.
+- `npm run typecheck`
+- `npm test`: 264 passed
+- `npm run security:backend`
+- `npm run supabase:test`: 506 pgTAP assertions, quota concurrency proof, and no
+  local advisor findings
+- `npm run staging:restaurant-export-check`
+
+Remaining handoff:
+
+- Cursor adds a Settings export/download/share interaction for owners and
+  admins after the Mac is unlocked. Real-device file sharing and the monitored
+  privacy address remain release evidence.
 
 ### `private-beta-account-lifecycle-proof-12`
 
