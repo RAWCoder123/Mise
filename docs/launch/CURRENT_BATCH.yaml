@@ -1,12 +1,14 @@
-batch_id: private-beta-recovery-lifecycle-10
+batch_id: private-beta-emergency-control-11
 status: completed
-goal: Prove a staging logical backup can be restored and verified in isolation, and document beta incident and data-lifecycle authority.
+goal: Make read-only and emergency modes auditable database authority over authenticated tenant mutations.
 started_at: 2026-07-27
 codex_owned:
   - docs/launch/**
-  - docs/operations/RECOVERY.md
   - docs/operations/INCIDENT_RESPONSE.md
-  - scripts/staging-backup-restore-check.mjs
+  - supabase/migrations/**
+  - supabase/tests/database/**
+  - scripts/staging-emergency-mode-check.mjs
+  - scripts/security-backend.mjs
   - tests/**
   - package.json
 cursor_owned: []
@@ -17,32 +19,30 @@ blocked_files:
   - services/miseService.ts
 handoff_required: false
 dependencies:
-  - private-beta-operations-observability-09
+  - private-beta-recovery-lifecycle-10
 required_tests:
   - npm run typecheck
   - npm test
-  - npm run recovery:staging-check
   - npm run security:backend
+  - npm run supabase:test
+  - npm run staging:emergency-mode-check
 stop_conditions:
-  - A restore target is production or the source staging database
-  - Backup evidence contains credentials or restaurant row content
-  - Restore verification relies only on command exit status
-  - Incident steps weaken tenant isolation or mutate inventory history
+  - Emergency mode can be changed by an authenticated client
+  - Read-only mode permits an authenticated tenant mutation
+  - Incident controls rewrite or delete inventory history
+  - A hosted proof leaves staging outside normal mode
 evidence:
-  - Staging has a dedicated database password and direct read connection
-  - PostgreSQL 17 client and isolated cluster tools are available locally
-  - Staging identity preflight passed before the database password was transmitted
-  - Operational dump restored into an ephemeral loopback-only PostgreSQL cluster
-  - 43 tables and 474 rows matched by UTC-normalized row count and content digest
-  - Dump was 455963 bytes with SHA-256 0308331b18eb090a92c3733c086fe8895f32805624924ff83ca28f619e11da32
-  - Restore completed in 22 seconds and removed the ephemeral cluster and dump
-  - Incident procedures cover tenant exposure, provider malfunction, bad recommendations, recovery, and emergency modes
+  - Service-only operational-mode transitions are replay-safe and append-only
+  - Authenticated mutations across all current public operational tables are blocked in read_only and emergency modes
   - npm run typecheck passed
-  - npm test passed with 255 tests
+  - npm test passed with 258 tests
   - npm run security:backend passed
+  - npm run design:static passed
+  - npm audit found 0 vulnerabilities
+  - npm run supabase:test passed 501 pgTAP assertions plus quota concurrency and security advisor checks
+  - Hosted emergency proof passed and rolled staging back to normal
+  - Full hosted private-beta security suite passed without skipped checks
+  - Post-migration recovery matched 44 tables and 443 rows in 22.5 seconds
 unresolved_findings:
-  - No dedicated hosted recovery project is configured
-  - Retention policy and complete restaurant export require separate authority
-  - Managed Supabase Auth, Storage, Vault, and project-configuration recovery is not proven
-  - A named backup incident commander remains required before restaurant admission
-checkpoint_commit: 63cd913
+  - Future public operational tables must attach the enforcement trigger in their creating migration
+checkpoint_commit: 6d4d18f

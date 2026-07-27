@@ -4,7 +4,7 @@ Updated: 2026-07-27
 
 | Gate | Status | Current evidence | Remaining blockers |
 | --- | --- | --- | --- |
-| 1. Private-beta foundation | In progress | Expo dependency repair, beta verification scripts, tenant security migrations, demo mode, sign-up, team roles, recoverable in-app account deletion, complete hosted two-tenant proof, scrubbed observability contracts, operational restore evidence and incident runbooks | Live Sentry/PostHog receipt and alert rules, managed hosted recovery, internal TestFlight |
+| 1. Private-beta foundation | In progress | Expo dependency repair, beta verification scripts, tenant security migrations, demo mode, sign-up, team roles, recoverable in-app account deletion, complete hosted two-tenant proof, scrubbed observability contracts, operational restore evidence, incident runbooks, and enforced auditable read-only/emergency modes | Live Sentry/PostHog receipt and alert rules, managed hosted recovery, internal TestFlight |
 | 2. Inventory truth | Beta scope complete; device proof pending | Effective-dated mapping schema/domain rules, verified conversions, append-only ledger, event-derived on-hand projection, replay-safe RPC/outbox, count reconciliation, daily CSV import, mobile count/receipt/waste/stockout workflows, hosted learning proof | Real-device inventory/offline walkthrough; package mappings remain fail-closed until verified |
 | 3. Square shadow mode | Not started | Fail-closed POS adapter scaffold | OAuth, webhooks, backfill, reconciliation, shadow evidence |
 | 4. Operational pilot | Not started | Default-off order safety evaluator and manager-controlled email workflow | Persisted policy, scheduler, pilot evidence |
@@ -23,13 +23,13 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
 - `npm run design:static`
 - `npm run qa:interactions`: passed at 390x844 in English, Spanish, and
   Simplified Chinese
-- `npm run supabase:test`: 491 pgTAP assertions, bounded concurrency proof,
+- `npm run supabase:test`: 501 pgTAP assertions, bounded concurrency proof,
   and no local security-advisor findings
 - `npm run verify:private-beta-security:hosted`: passed without skipped checks
 - `npm run staging:learning-check`: a bounded 30 lb recommendation learned the
   manager-approved 40 lb median without crossing tenants or sending an order
 - Staging migrations confirmed through
-  `20260727211036_allow_inventory_history_tenant_cascade.sql`
+  `20260727224500_operational_mode_history_rls.sql`
 
 Remaining external verification:
 

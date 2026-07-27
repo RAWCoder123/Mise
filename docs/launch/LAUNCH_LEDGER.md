@@ -30,6 +30,37 @@ commit before another batch begins.
 | `private-beta-inventory-closure-08` | Tandem | Hosted tenant proof plus append-only mobile inventory operations | Complete | `d4dfd28` / `debf9f1` |
 | `private-beta-operations-observability-09` | Codex | Scrubbed correlation, live receipt proof, and alert ownership | Complete; activation evidence pending | `1d16169` |
 | `private-beta-recovery-lifecycle-10` | Codex | Isolated restore proof and beta incident/data-lifecycle authority | Complete; managed recovery pending | `63cd913` |
+| `private-beta-emergency-control-11` | Codex | Enforced read-only/emergency tenant mutation authority | Complete | `6d4d18f` |
+
+### `private-beta-emergency-control-11`
+
+Delivered:
+
+- A service-role-only, replay-safe operational-mode transition RPC.
+- Append-only private mode-change evidence with RLS and no client access.
+- Database triggers that block authenticated inserts, updates, and deletes on
+  every current public operational table in `read_only` or `emergency`.
+- Normal mode preserves otherwise authorized restaurant operations;
+  service-side recovery and account-deletion work remain available.
+- A hosted proof that enters read-only inside a transaction, denies an
+  authenticated inventory event, deduplicates a replay, and proves staging
+  returned to `normal`.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 258 passed
+- `npm run supabase:test`: 501 pgTAP assertions, quota concurrency, and no
+  local security-advisor findings
+- `npm run staging:emergency-mode-check`
+- `npm run verify:private-beta-security:hosted`: passed without skipped checks
+- Post-migration recovery: 44 tables and 443 rows matched
+- Codex checkpoint: `6d4d18f`
+
+Remaining:
+
+- Every future public operational table must attach the mode-enforcement
+  trigger in its creating migration.
 
 ### `private-beta-recovery-lifecycle-10`
 
