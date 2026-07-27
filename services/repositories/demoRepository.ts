@@ -54,6 +54,8 @@ import {
 import { toDateKeyInTimeZone } from "../../utils/format";
 import {
   GmailIntegrationError,
+  RESTAURANT_EXPORT_DATASETS,
+  normalizeRestaurantDataExport,
   normalizeRestaurantData,
   recommendationHistoryCutoffIso,
   type AuditLogInput,
@@ -108,6 +110,64 @@ function appendDemoAuditLog(state: DemoState, input: AuditLogInput) {
 function prepareResetDemoState(state: DemoState) {
   rebuildPurchaseRecommendations(state, state.currentRestaurantId);
   rebuildInsights(state, state.currentRestaurantId);
+}
+
+function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
+  const restaurant = fetchRestaurantFromState(state, restaurantId);
+  const generatedAt = new Date().toISOString();
+  const datasets = Object.fromEntries(
+    RESTAURANT_EXPORT_DATASETS.map((name) => [name, []])
+  ) as unknown as Record<(typeof RESTAURANT_EXPORT_DATASETS)[number], unknown[]>;
+  const tenantRows = <TRow extends { restaurant_id: string }>(rows: TRow[]) =>
+    rows.filter((row) => row.restaurant_id === restaurantId);
+
+  datasets.pos_sales = tenantRows(state.posSales);
+  datasets.inventory_items = tenantRows(state.inventoryItems);
+  datasets.menu_item_ingredients = tenantRows(state.menuItemIngredients);
+  datasets.purchase_recommendations = tenantRows(state.purchaseRecommendations);
+  datasets.supplier_orders = tenantRows(state.supplierOrders);
+  datasets.pos_integrations = tenantRows(state.posIntegrations);
+  datasets.sales_imports = tenantRows(state.salesImports);
+  datasets.insights = tenantRows(state.insights);
+  datasets.supplier_items = tenantRows(state.supplierItems);
+  datasets.purchase_orders = tenantRows(state.purchaseOrders);
+  datasets.ai_insights = tenantRows(state.aiInsights);
+  datasets.restaurant_email_connections = tenantRows(state.emailConnections);
+  datasets.supplier_recipients = tenantRows(state.supplierRecipients);
+  datasets.audit_logs = tenantRows(state.auditLogs);
+
+  const team = state.users
+    .filter((user) => user.restaurant_id === restaurantId)
+    .map((user) => ({
+      restaurant_id: restaurantId,
+      user_id: user.id,
+      role: "owner" as const,
+      status: "active" as const,
+      name: user.name,
+      email: user.email,
+      created_at: user.created_at,
+      updated_at: user.created_at
+    }));
+  const counts = Object.fromEntries([
+    ["team", team.length],
+    ...RESTAURANT_EXPORT_DATASETS.map((name) => [name, datasets[name].length])
+  ]);
+
+  return normalizeRestaurantDataExport({
+    schemaVersion: 1,
+    generatedAt,
+    restaurantId,
+    restaurant,
+    team,
+    datasets,
+    counts,
+    retention: {
+      scope: "restaurant_operational_data",
+      credentialsExcluded: true,
+      privateSecurityLogsExcluded: true,
+      backupDeletion: "Demo data is stored only on this device and is removed when demo data is reset."
+    }
+  }, restaurantId);
 }
 
 function deterministicDemoEventId(restaurantId: string, clientEventId: string) {
@@ -270,6 +330,10 @@ export function createLocalDemoRepository(): MiseRepository {
     async deleteAccount(_restaurantId) {
       // Demo accounts live only on this device; deletion resets the local store.
       await resetDemoStore();
+    },
+
+    async exportRestaurantData(restaurantId) {
+      return buildDemoRestaurantExport(await readReadyDemoState(restaurantId), restaurantId);
     },
 
     async createRestaurantWithOwner(name, cuisineType) {

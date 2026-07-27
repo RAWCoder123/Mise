@@ -69,6 +69,12 @@ export async function deleteAccount(restaurantId: string) {
   return repository.deleteAccount(normalizedRestaurantId);
 }
 
+export async function exportRestaurantData(restaurantId: string) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  return repository.exportRestaurantData(normalizedRestaurantId);
+}
+
 export async function updateMyProfile(name: string) {
   const normalizedName = name.trim();
   if (normalizedName.length < 1 || normalizedName.length > 120) {

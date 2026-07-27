@@ -33,7 +33,8 @@ import {
   normalizeMenuItemIngredient,
   normalizePosSale,
   normalizePurchaseRecommendation,
-  normalizeRestaurant
+  normalizeRestaurant,
+  normalizeRestaurantTeamMember
 } from "../miseValidation";
 
 export type PurchaseRecommendationInput = Omit<PurchaseRecommendation, "id" | "created_at">;
@@ -151,6 +152,69 @@ export interface RestaurantData {
   menuItemIngredients: MenuItemIngredient[];
 }
 
+export const RESTAURANT_EXPORT_DATASETS = [
+  "pos_sales",
+  "inventory_items",
+  "inventory_events",
+  "menu_item_ingredients",
+  "purchase_recommendations",
+  "supplier_orders",
+  "pos_integrations",
+  "sales_imports",
+  "insights",
+  "supplier_items",
+  "purchase_orders",
+  "ai_insights",
+  "restaurant_email_connections",
+  "supplier_recipients",
+  "setup_attachments",
+  "restaurant_operational_controls",
+  "pos_locations",
+  "pos_catalog_item_mappings",
+  "menu_items",
+  "recipe_versions",
+  "recipe_ingredients",
+  "modifier_recipe_adjustments",
+  "ingredient_substitutions",
+  "audit_logs"
+] as const;
+
+export type RestaurantExportDatasetName = (typeof RESTAURANT_EXPORT_DATASETS)[number];
+export type RestaurantExportRow = Record<string, unknown> & { restaurant_id: string };
+
+export interface RestaurantDataExport {
+  schemaVersion: 1;
+  generatedAt: string;
+  restaurantId: string;
+  restaurant: Restaurant;
+  team: RestaurantTeamMember[];
+  datasets: Record<RestaurantExportDatasetName, RestaurantExportRow[]>;
+  counts: Record<RestaurantExportDatasetName | "team", number>;
+  retention: {
+    scope: "restaurant_operational_data";
+    credentialsExcluded: true;
+    privateSecurityLogsExcluded: true;
+    backupDeletion: string;
+  };
+}
+
+const restaurantExportProtectedKeyPattern =
+  /(?:^|_)(?:access_token|refresh_token|oauth_token|client_secret|api_key|password|authorization|pkce_verifier|claim_token|credential_id|secret_id)(?:$|_)/i;
+
+function assertRestaurantExportProtectedDataAbsent(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach(assertRestaurantExportProtectedDataAbsent);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (restaurantExportProtectedKeyPattern.test(key)) {
+      throw new Error("Restaurant export contained protected provider data.");
+    }
+    assertRestaurantExportProtectedDataAbsent(nested);
+  }
+}
+
 export interface PlanningData {
   inventoryItems: InventoryItem[];
   sales: PosSale[];
@@ -187,6 +251,7 @@ export interface MiseRepository {
    * is removed); demo mode resets the on-device demo store.
    */
   deleteAccount(restaurantId: string): Promise<void>;
+  exportRestaurantData(restaurantId: string): Promise<RestaurantDataExport>;
   createRestaurantWithOwner(name: string, cuisineType?: string | null): Promise<Restaurant>;
   fetchRestaurant(restaurantId: string): Promise<Restaurant>;
   updateRestaurantProfile(
@@ -329,5 +394,101 @@ export function normalizeRestaurantData(
     purchaseRecommendations: purchaseRecommendations.map(normalizePurchaseRecommendation),
     insights: insights.map(normalizeInsight),
     menuItemIngredients: menuItemIngredients.map(normalizeMenuItemIngredient)
+  };
+}
+
+export function normalizeRestaurantDataExport(
+  value: unknown,
+  expectedRestaurantId: string
+): RestaurantDataExport {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Restaurant export returned an invalid response.");
+  }
+  const payload = value as Record<string, unknown>;
+  const serializedBytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
+  if (serializedBytes > 6 * 1024 * 1024) {
+    throw new Error("Restaurant export exceeded the supported in-app size.");
+  }
+  if (
+    payload.schemaVersion !== 1 ||
+    payload.restaurantId !== expectedRestaurantId ||
+    typeof payload.generatedAt !== "string" ||
+    !Number.isFinite(Date.parse(payload.generatedAt))
+  ) {
+    throw new Error("Restaurant export returned an invalid response.");
+  }
+  assertRestaurantExportProtectedDataAbsent(payload);
+
+  const restaurant = normalizeRestaurant(payload.restaurant as Restaurant);
+  if (restaurant.id !== expectedRestaurantId) {
+    throw new Error("Restaurant export failed restaurant scope validation.");
+  }
+  if (!Array.isArray(payload.team)) {
+    throw new Error("Restaurant export returned an invalid team directory.");
+  }
+  const team = payload.team.map(normalizeRestaurantTeamMember);
+  if (team.some((member) => member.restaurant_id !== expectedRestaurantId)) {
+    throw new Error("Restaurant export failed restaurant scope validation.");
+  }
+
+  if (!payload.datasets || typeof payload.datasets !== "object" || Array.isArray(payload.datasets)) {
+    throw new Error("Restaurant export returned invalid datasets.");
+  }
+  if (!payload.counts || typeof payload.counts !== "object" || Array.isArray(payload.counts)) {
+    throw new Error("Restaurant export returned invalid counts.");
+  }
+  const sourceDatasets = payload.datasets as Record<string, unknown>;
+  const sourceCounts = payload.counts as Record<string, unknown>;
+  const datasets = {} as Record<RestaurantExportDatasetName, RestaurantExportRow[]>;
+  const counts = {} as Record<RestaurantExportDatasetName | "team", number>;
+  counts.team = team.length;
+  if (sourceCounts.team !== team.length) {
+    throw new Error("Restaurant export returned an incomplete team directory.");
+  }
+
+  for (const name of RESTAURANT_EXPORT_DATASETS) {
+    const rows = sourceDatasets[name];
+    if (!Array.isArray(rows) || rows.length > 5_000 || sourceCounts[name] !== rows.length) {
+      throw new Error(`Restaurant export returned an incomplete ${name} dataset.`);
+    }
+    const normalizedRows = rows.map((row) => {
+      if (!row || typeof row !== "object" || Array.isArray(row)) {
+        throw new Error(`Restaurant export returned an invalid ${name} row.`);
+      }
+      const record = row as RestaurantExportRow;
+      if (record.restaurant_id !== expectedRestaurantId) {
+        throw new Error("Restaurant export failed restaurant scope validation.");
+      }
+      return record;
+    });
+    datasets[name] = normalizedRows;
+    counts[name] = normalizedRows.length;
+  }
+
+  const retention = payload.retention as Partial<RestaurantDataExport["retention"]> | null;
+  if (
+    !retention ||
+    retention.scope !== "restaurant_operational_data" ||
+    retention.credentialsExcluded !== true ||
+    retention.privateSecurityLogsExcluded !== true ||
+    typeof retention.backupDeletion !== "string"
+  ) {
+    throw new Error("Restaurant export returned an invalid retention statement.");
+  }
+
+  return {
+    schemaVersion: 1,
+    generatedAt: payload.generatedAt,
+    restaurantId: expectedRestaurantId,
+    restaurant,
+    team,
+    datasets,
+    counts,
+    retention: {
+      scope: "restaurant_operational_data",
+      credentialsExcluded: true,
+      privateSecurityLogsExcluded: true,
+      backupDeletion: retention.backupDeletion.slice(0, 500)
+    }
   };
 }

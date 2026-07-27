@@ -48,12 +48,14 @@ import {
 import { toDateKeyInTimeZone } from "../../utils/format";
 import {
   GmailIntegrationError,
+  normalizeRestaurantDataExport,
   normalizeRestaurantData,
   recommendationHistoryCutoffIso,
   type GmailConnectionWorkflowResult,
   type GmailDisconnectWorkflowResult,
   type GmailIntegrationErrorStatus,
   type MiseRepository,
+  type RestaurantDataExport,
   type RestaurantSetupSnapshotSummary,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
@@ -382,6 +384,21 @@ export function createSupabaseRepository(): MiseRepository {
       if (!data || (data as { status?: unknown }).status !== "deleted") {
         throw new Error("Account deletion did not complete.");
       }
+    },
+
+    async exportRestaurantData(restaurantId): Promise<RestaurantDataExport> {
+      const { data, error } = await client.functions.invoke("export-restaurant-data", {
+        body: { restaurantId }
+      });
+      if (error) {
+        const payload = await readFunctionErrorPayload(error);
+        const message =
+          typeof payload.error === "string" && payload.error.trim().length > 0
+            ? payload.error.trim().slice(0, 320)
+            : "Restaurant data could not be exported. Try again.";
+        throw new Error(message);
+      }
+      return normalizeRestaurantDataExport(data, restaurantId);
     },
 
     async createRestaurantWithOwner(name, cuisineType) {
