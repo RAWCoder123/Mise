@@ -1,53 +1,43 @@
-batch_id: private-beta-data-export-authority-13
+batch_id: private-beta-daily-findings-contract-14
 status: completed
-goal: Add a bounded owner-authorized restaurant export that is complete, tenant-isolated, auditable, and secret-free.
+goal: Generate a deterministic tenant-scoped daily brief with bounded evidence, confidence, freshness, missing-data warnings, and Now/Up next/Later priority.
 started_at: 2026-07-27
 codex_owned:
   - docs/launch/**
-  - docs/store/privacy-policy.md
-  - scripts/staging-restaurant-export-check.mjs
-  - supabase/functions/export-restaurant-data/**
-  - supabase/functions/_shared/mise.ts
-  - supabase/migrations/**
+  - services/domain/operationalFindings.ts
+  - services/application/findings.ts
+  - services/miseService.ts
   - tests/**
-  - package.json
 cursor_owned: []
 shared_locked: []
 blocked_files:
   - app/**
   - i18n/catalog.ts
-  - services/miseService.ts
 handoff_required: true
 dependencies:
-  - private-beta-account-lifecycle-proof-12
+  - private-beta-data-export-authority-13
 required_tests:
   - npm run typecheck
   - npm test
-  - npm run security:backend
-  - npm run supabase:test
-  - npm run staging:restaurant-export-check
 stop_conditions:
-  - A non-owner or non-admin can export restaurant data
-  - An export contains another restaurant's row
-  - An export contains Vault, OAuth, provider credential, or private security data
-  - An oversized export is returned partially or without an explicit failure
-  - Export generation is unaudited
+  - Evidence references cross restaurants
+  - Confidence falls outside zero to one
+  - Missing or stale data is presented as fresh evidence
+  - Generative AI is required for any finding
+  - Findings create inventory events or supplier orders
 evidence:
-  - Export migration applied to dedicated hosted staging only
-  - export-restaurant-data Edge Function deployed to dedicated hosted staging only
-  - Hosted owner export returned 24 complete tenant-scoped datasets with matching counts
-  - Hosted manager export was denied
-  - Hosted cross-tenant owner export was denied
-  - Protected provider keys, private security logs, and backend credential schemas are excluded
-  - Export completion produced bounded tenant audit evidence without raw exported content
-  - Oversized or incomplete datasets fail closed instead of returning a partial export
+  - One read-only repository snapshot feeds each brief
+  - Findings are tenant-fail-closed before evidence construction
+  - Recommendations, rule insights, sales gaps, inventory gaps, and mapping gaps produce bounded findings
+  - Every finding includes severity, priority, confidence, evidence, affected workflow, action, source window, freshness, missing data, and policy version
+  - Now, Up next, and Later contain stable finding IDs in deterministic order
+  - Stale and incomplete evidence lower confidence or produce explicit data-quality work
+  - The brief is capped at 12 findings and five evidence references per finding
+  - No AI provider, inventory mutation, supplier draft, or send path is imported
   - npm run typecheck passed
-  - npm test passed with 264 tests
+  - npm test passed with 271 tests
   - npm run security:backend passed
-  - npm run supabase:test passed 506 pgTAP assertions plus quota concurrency and security advisors
-  - npm run staging:restaurant-export-check passed
 unresolved_findings:
-  - Cursor must add the owner/admin Settings download/share interaction through the stable backend boundary
-  - Real-device exported-file sharing remains external
-  - The monitored privacy support address is still a placeholder
-checkpoint_commit: 875ce5a
+  - Cursor must surface the brief contract in Today/Insights with localized scan-first sections
+  - Append-only feedback for non-order findings remains a separate backend batch
+checkpoint_commit: e81dbb5

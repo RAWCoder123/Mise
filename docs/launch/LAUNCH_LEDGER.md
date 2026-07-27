@@ -33,6 +33,41 @@ commit before another batch begins.
 | `private-beta-emergency-control-11` | Codex | Enforced read-only/emergency tenant mutation authority | Complete | `6d4d18f` |
 | `private-beta-account-lifecycle-proof-12` | Codex | Disposable hosted account-deletion and tenant-safety proof | Complete; device proof pending | `fe576a7` |
 | `private-beta-data-export-authority-13` | Codex | Bounded, tenant-safe restaurant data export | Complete; UI handoff pending | `875ce5a` |
+| `private-beta-daily-findings-contract-14` | Codex | Deterministic evidence-backed daily brief | Complete; UI handoff pending | `e81dbb5` |
+
+### `private-beta-daily-findings-contract-14`
+
+Delivered:
+
+- A typed beta finding contract with restaurant identity, category, severity,
+  priority, bounded confidence, evidence references, affected workflow,
+  recommended action, source window, generated time, freshness state,
+  missing-data warnings, and policy version.
+- A deterministic daily brief capped at 12 findings and five evidence
+  references per finding, grouped by stable IDs into `Now`, `Up next`, and
+  `Later`.
+- Findings for pending inventory/order work, existing deterministic rule
+  insights, missing daily sales, missing inventory setup, and unmapped sold menu
+  items.
+- Fail-closed tenant validation and one read-only repository snapshot. No model
+  provider, inventory mutation, supplier draft, or send dependency exists.
+
+Evidence:
+
+- Fresh verified recommendation evidence receives bounded high confidence;
+  stale evidence remains visible but cannot be labeled fresh.
+- Missing daily sales, inventory, or mappings create explicit data-quality work.
+- Reversed/noisy input produces the same bounded deterministic brief.
+- Mixed-tenant input fails before any evidence reference can be emitted.
+- `npm run typecheck`
+- `npm test`: 271 passed
+- `npm run security:backend`
+
+Remaining handoff:
+
+- Cursor surfaces the contract on Today/Insights with localized, scan-first
+  sections. Append-only feedback for non-order findings is the next backend
+  lifecycle gap.
 
 ### `private-beta-data-export-authority-13`
 
