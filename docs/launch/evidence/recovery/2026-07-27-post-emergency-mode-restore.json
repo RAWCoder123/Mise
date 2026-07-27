@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "source": "dedicated_staging",
+  "target": "ephemeral_isolated_postgresql",
+  "schemas": ["public", "private"],
+  "tables_verified": 44,
+  "rows_verified": 443,
+  "auth_identities_stubbed": 6,
+  "dump_bytes": 478383,
+  "dump_sha256": "e5b1675fb71cf09578388402c8e514b0cef37121f8291df5a5189eb583adde38",
+  "duration_seconds": 22.5,
+  "row_content_emitted": false,
+  "cleanup": "ephemeral_cluster_removed",
+  "reason": "Post-migration proof including append-only operational mode history."
+}

@@ -31,6 +31,13 @@ No beta opens with an unresolved P0 or P1.
 6. Notify the backup incident owner and affected restaurant contact using the
    monitored support process.
 
+Operational mode transitions use only the replay-safe, service-role-only
+`service_set_system_operational_mode` RPC. The operator supplies a new UUID
+request ID, the target mode, a bounded reason code, and an optional known Auth
+actor ID. Repeating the exact request is safe; reusing the request ID with
+different values is rejected. Authenticated restaurant clients cannot call
+this RPC or mutate its append-only history.
+
 ## Tenant exposure
 
 - Enter `emergency`; revoke the implicated session/membership and provider
@@ -71,4 +78,6 @@ No beta opens with an unresolved P0 or P1.
 
 Record root cause, affected scope, evidence IDs, mitigation, restoration point,
 RPO/RTO, customer communication, follow-up owner, and the tests required to
-prevent recurrence. A P0/P1 closes only after Raymond reviews this record.
+prevent recurrence. Verify the persisted system mode is `normal` and rerun the
+hosted tenant suite before closing. A P0/P1 closes only after Raymond reviews
+this record.

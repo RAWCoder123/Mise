@@ -715,6 +715,7 @@ select is(
     'environment_identity',
     'gmail_credentials',
     'gmail_oauth_flows',
+    'operational_mode_changes',
     'restaurant_signal_state',
     'restaurant_workspace_allocations',
     'supplier_email_deliveries'
