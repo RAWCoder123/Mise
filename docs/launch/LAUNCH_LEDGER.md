@@ -31,6 +31,43 @@ commit before another batch begins.
 | `private-beta-operations-observability-09` | Codex | Scrubbed correlation, live receipt proof, and alert ownership | Complete; activation evidence pending | `1d16169` |
 | `private-beta-recovery-lifecycle-10` | Codex | Isolated restore proof and beta incident/data-lifecycle authority | Complete; managed recovery pending | `63cd913` |
 | `private-beta-emergency-control-11` | Codex | Enforced read-only/emergency tenant mutation authority | Complete | `6d4d18f` |
+| `private-beta-account-lifecycle-proof-12` | Codex | Disposable hosted account-deletion and tenant-safety proof | Complete; device proof pending | `fe576a7` |
+
+### `private-beta-account-lifecycle-proof-12`
+
+Delivered:
+
+- A staging-only disposable lifecycle proof that provisions a new Auth user,
+  creates a sole-owner restaurant with authoritative inventory evidence, invokes
+  the production account-deletion boundary, and verifies exact cleanup.
+- Durable post-auth recovery references in the Edge response and the hosted
+  repository's operator-facing support error.
+- Cross-tenant safety assertions covering stable sentinel fields and bounded
+  restaurant and inventory-event counts.
+- Exact failure cleanup limited to the generated email, restaurant ID, and
+  staging-marker name.
+
+Evidence:
+
+- Hosted deletion audit
+  `5a750618-e6d8-41de-b74b-0703e14d768f` reached
+  `tenant_cleanup_completed`.
+- The disposable Auth user and its sole-owner tenant were deleted; its one
+  inventory event cascaded with the tenant; the sentinel tenant was unchanged.
+- `npm run typecheck`
+- `npm test`: 259 passed
+- `npm run security:backend`
+- `npm run staging:tenant-check`
+- `npm run staging:service-rpc`
+- `npm run staging:edge-concurrency`
+
+Known finding:
+
+- The rendered client-race harness completed six route races but did not exit
+  with its final mutation-race result after an interrupted run. An exact fixture
+  reseed restored deterministic staging state, and the direct hosted tenant,
+  service-RPC, and Edge suites passed. Treat the rendered harness hang as a
+  release-test infrastructure defect until rerun green.
 
 ### `private-beta-emergency-control-11`
 

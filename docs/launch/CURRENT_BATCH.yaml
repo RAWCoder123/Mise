@@ -1,14 +1,12 @@
-batch_id: private-beta-emergency-control-11
+batch_id: private-beta-account-lifecycle-proof-12
 status: completed
-goal: Make read-only and emergency modes auditable database authority over authenticated tenant mutations.
+goal: Prove disposable hosted account deletion completes without cross-tenant damage and leaves recoverable audit evidence.
 started_at: 2026-07-27
 codex_owned:
   - docs/launch/**
-  - docs/operations/INCIDENT_RESPONSE.md
-  - supabase/migrations/**
-  - supabase/tests/database/**
-  - scripts/staging-emergency-mode-check.mjs
-  - scripts/security-backend.mjs
+  - scripts/staging-account-deletion-check.mjs
+  - services/repositories/supabaseRepository.ts
+  - supabase/functions/delete-account/index.ts
   - tests/**
   - package.json
 cursor_owned: []
@@ -19,30 +17,31 @@ blocked_files:
   - services/miseService.ts
 handoff_required: false
 dependencies:
-  - private-beta-recovery-lifecycle-10
+  - private-beta-emergency-control-11
 required_tests:
   - npm run typecheck
   - npm test
   - npm run security:backend
-  - npm run supabase:test
-  - npm run staging:emergency-mode-check
+  - npm run staging:account-deletion-check
 stop_conditions:
-  - Emergency mode can be changed by an authenticated client
-  - Read-only mode permits an authenticated tenant mutation
-  - Incident controls rewrite or delete inventory history
-  - A hosted proof leaves staging outside normal mode
+  - The proof targets a non-disposable user or restaurant
+  - Another tenant changes during deletion
+  - Inventory history is directly updated or deleted
+  - Deletion failure omits its durable audit reference
 evidence:
-  - Service-only operational-mode transitions are replay-safe and append-only
-  - Authenticated mutations across all current public operational tables are blocked in read_only and emergency modes
+  - Hosted delete-account Edge Function refreshed on dedicated staging only
+  - Disposable Auth user and sole-owner tenant deletion passed end to end
+  - Inventory history cascaded only with the deleted tenant; no direct inventory mutation exists in the deletion path
+  - Durable account deletion audit 5a750618-e6d8-41de-b74b-0703e14d768f reached tenant_cleanup_completed
+  - Sentinel tenant identity and stable fields remained unchanged
+  - Post-auth cleanup failures return a bounded deletion reference and the client preserves it for support
   - npm run typecheck passed
-  - npm test passed with 258 tests
+  - npm test passed with 259 tests
   - npm run security:backend passed
-  - npm run design:static passed
-  - npm audit found 0 vulnerabilities
-  - npm run supabase:test passed 501 pgTAP assertions plus quota concurrency and security advisor checks
-  - Hosted emergency proof passed and rolled staging back to normal
-  - Full hosted private-beta security suite passed without skipped checks
-  - Post-migration recovery matched 44 tables and 443 rows in 22.5 seconds
+  - npm run staging:tenant-check passed after deterministic fixture reseed
+  - npm run staging:service-rpc passed
+  - npm run staging:edge-concurrency passed
 unresolved_findings:
-  - Future public operational tables must attach the enforcement trigger in their creating migration
-checkpoint_commit: 6d4d18f
+  - The rendered staging client-race harness completed six route races but hung before its final mutation-race result; direct hosted tenant, service-RPC, and Edge regressions passed
+  - Real-device account-deletion walkthrough remains external
+checkpoint_commit: fe576a7
