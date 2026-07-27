@@ -18,7 +18,7 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
 ## Current beta evidence
 
 - `npm run typecheck`
-- `npm test`: 274 passed
+- `npm test`: 277 passed
 - `npm run security:backend`
 - `npm run design:static`
 - `npm run qa:interactions`: passed at 390x844 in English, Spanish, and
