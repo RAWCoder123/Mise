@@ -34,6 +34,35 @@ commit before another batch begins.
 | `private-beta-account-lifecycle-proof-12` | Codex | Disposable hosted account-deletion and tenant-safety proof | Complete; device proof pending | `fe576a7` |
 | `private-beta-data-export-authority-13` | Codex | Bounded, tenant-safe restaurant data export | Complete; UI handoff pending | `875ce5a` |
 | `private-beta-daily-findings-contract-14` | Codex | Deterministic evidence-backed daily brief | Complete; UI handoff pending | `e81dbb5` |
+| `private-beta-rendered-race-harness-15` | Codex | Bounded hosted rendered race verification | Complete | `ba3b427` |
+
+### `private-beta-rendered-race-harness-15`
+
+Delivered:
+
+- A 15-second bound on every Chrome debugging connection and command.
+- Deterministic rejection and timer cleanup for every pending command when the
+  browser connection closes.
+- Preserved 20-second request interception and 30-second rendered-state bounds.
+- Static coverage requiring all seven route and mutation race labels plus child
+  process and temporary-profile cleanup.
+
+Evidence:
+
+- The independent rendered staging suite passed Today, inventory list,
+  inventory detail, Insights, Settings, order detail, and order mutation
+  workspace-switch races, then exited cleanly.
+- The complete hosted private-beta security suite passed without skipped checks,
+  including tenant/workflow authority, service-RPC binding, all-Edge
+  concurrency/forgery/rate limits, and the restaurant export proof.
+- `npm run typecheck`
+- `npm test`: 274 passed
+- `npm run security:backend`
+
+Remaining:
+
+- Equivalent real-device switching and request-cancellation behavior remains
+  part of the TestFlight walkthrough.
 
 ### `private-beta-daily-findings-contract-14`
 

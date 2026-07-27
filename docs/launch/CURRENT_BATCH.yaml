@@ -1,43 +1,41 @@
-batch_id: private-beta-daily-findings-contract-14
+batch_id: private-beta-rendered-race-harness-15
 status: completed
-goal: Generate a deterministic tenant-scoped daily brief with bounded evidence, confidence, freshness, missing-data warnings, and Now/Up next/Later priority.
+goal: Make rendered two-tenant request and mutation races bounded so the hosted security gate cannot hang silently.
 started_at: 2026-07-27
 codex_owned:
   - docs/launch/**
-  - services/domain/operationalFindings.ts
-  - services/application/findings.ts
-  - services/miseService.ts
+  - scripts/staging-client-race.mjs
   - tests/**
 cursor_owned: []
 shared_locked: []
 blocked_files:
   - app/**
+  - services/**
   - i18n/catalog.ts
-handoff_required: true
+handoff_required: false
 dependencies:
-  - private-beta-data-export-authority-13
+  - private-beta-daily-findings-contract-14
 required_tests:
   - npm run typecheck
   - npm test
+  - npm run staging:seed
+  - npm run staging:client-race
 stop_conditions:
-  - Evidence references cross restaurants
-  - Confidence falls outside zero to one
-  - Missing or stale data is presented as fresh evidence
-  - Generative AI is required for any finding
-  - Findings create inventory events or supplier orders
+  - A CDP request can remain pending without a timeout
+  - A held application request is released into the wrong tenant
+  - Harness cleanup leaves Expo or Chrome running
+  - A failed race exits successfully
 evidence:
-  - One read-only repository snapshot feeds each brief
-  - Findings are tenant-fail-closed before evidence construction
-  - Recommendations, rule insights, sales gaps, inventory gaps, and mapping gaps produce bounded findings
-  - Every finding includes severity, priority, confidence, evidence, affected workflow, action, source window, freshness, missing data, and policy version
-  - Now, Up next, and Later contain stable finding IDs in deterministic order
-  - Stale and incomplete evidence lower confidence or produce explicit data-quality work
-  - The brief is capped at 12 findings and five evidence references per finding
-  - No AI provider, inventory mutation, supplier draft, or send path is imported
+  - Every Chrome debugging command is bounded to 15 seconds
+  - Every intercepted application request hold is bounded to 20 seconds
+  - Pending Chrome commands are rejected and timers cleared during cleanup
+  - All seven rendered request and mutation races passed
   - npm run typecheck passed
-  - npm test passed with 271 tests
+  - npm test passed with 274 tests
   - npm run security:backend passed
+  - npm run staging:seed passed
+  - npm run staging:client-race passed and exited cleanly
+  - Full hosted private-beta security suite passed without skipped checks
 unresolved_findings:
-  - Cursor must surface the brief contract in Today/Insights with localized scan-first sections
-  - Append-only feedback for non-order findings remains a separate backend batch
-checkpoint_commit: e81dbb5
+  - Real-device request cancellation and workspace switching remain external TestFlight evidence
+checkpoint_commit: ba3b427
