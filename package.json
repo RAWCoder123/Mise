@@ -18,6 +18,7 @@
     "observability:check": "node scripts/verify-observability.mjs",
     "recovery:staging-check": "node --env-file-if-exists=.mise-staging.env scripts/staging-backup-restore-check.mjs",
     "staging:emergency-mode-check": "node --env-file-if-exists=.mise-staging.env scripts/staging-emergency-mode-check.mjs",
+    "staging:account-deletion-check": "node --env-file-if-exists=.mise-staging.env scripts/staging-account-deletion-check.mjs",
     "security:static": "node scripts/security-static.mjs",
     "security:backend": "node scripts/security-backend.mjs",
     "design:static": "node scripts/design-static.mjs",

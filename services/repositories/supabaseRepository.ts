@@ -369,7 +369,15 @@ export function createSupabaseRepository(): MiseRepository {
         const message = typeof payload.error === "string" && payload.error.trim().length > 0
           ? payload.error.trim().slice(0, 320)
           : "Your account could not be deleted. Try again.";
-        throw new Error(message);
+        const deletionReference =
+          typeof payload.deletionReference === "string"
+            ? payload.deletionReference.trim().slice(0, 80)
+            : "";
+        throw new Error(
+          deletionReference
+            ? `${message} Reference: ${deletionReference}`
+            : message
+        );
       }
       if (!data || (data as { status?: unknown }).status !== "deleted") {
         throw new Error("Account deletion did not complete.");

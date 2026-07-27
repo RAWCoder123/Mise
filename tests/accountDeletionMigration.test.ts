@@ -11,6 +11,7 @@ const candidateCleanupMigration = readFileSync(
   "utf8"
 );
 const deleteAccountEdge = readFileSync("supabase/functions/delete-account/index.ts", "utf8");
+const supabaseRepository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
 
 test("account deletion plan is written before any tenant wipe", () => {
   assert.match(durableAuditMigration, /create table if not exists private\.account_deletion_audit/i);
@@ -109,6 +110,7 @@ test("Edge authorizes, plans without wipe, deletes auth, then finalizes cleanup 
   assert.match(deleteAccountEdge, /auth_deletion_completed/);
   assert.match(deleteAccountEdge, /tenant_cleanup_completed/);
   assert.match(deleteAccountEdge, /tenant_cleanup_failed/);
+  assert.match(deleteAccountEdge, /deletionReference:\s*auditId/);
   assert.match(deleteAccountEdge, /Your restaurant access is unchanged — try again/);
 
   // Ensure Edge never calls the old wipe-before-auth RPC.
@@ -129,6 +131,12 @@ test("both failure boundaries report bounded captureFunctionError telemetry", ()
     /step:\s*"tenant_cleanup"[\s\S]*phase:\s*"post_auth_deletion"|step:\s*"tenant_cleanup"[\s\S]*phase:\s*"tenant_cleanup_failed"/
   );
   assert.match(deleteAccountEdge, /captureFunctionError\s*\(/);
+});
+
+test("post-auth cleanup failures preserve the deletion reference for support", () => {
+  assert.match(deleteAccountEdge, /deletionReference:\s*auditId/);
+  assert.match(supabaseRepository, /payload\.deletionReference/);
+  assert.match(supabaseRepository, /Reference:\s*\$\{deletionReference\}/);
 });
 
 test("account deletion path never mutates inventory_events (inventory FK owns actor anonymization)", () => {

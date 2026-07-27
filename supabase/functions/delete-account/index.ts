@@ -174,9 +174,12 @@ Deno.serve(async (req) => {
         phase: "post_auth_deletion",
         auditId
       });
-      throw new HttpError(
-        500,
-        "Your sign-in was deleted but restaurant cleanup needs service recovery. Contact support with your deletion reference."
+      return jsonResponse(
+        {
+          error: "Your sign-in was deleted but restaurant cleanup needs service recovery. Contact support with your deletion reference.",
+          deletionReference: auditId
+        },
+        500
       );
     }
 
@@ -189,9 +192,12 @@ Deno.serve(async (req) => {
         phase: "tenant_cleanup_failed",
         auditId
       });
-      throw new HttpError(
-        500,
-        "Your sign-in was deleted but restaurant cleanup needs service recovery. Contact support with your deletion reference."
+      return jsonResponse(
+        {
+          error: "Your sign-in was deleted but restaurant cleanup needs service recovery. Contact support with your deletion reference.",
+          deletionReference: auditId
+        },
+        500
       );
     }
 
@@ -202,9 +208,12 @@ Deno.serve(async (req) => {
         phase: phase || "unknown",
         auditId
       });
-      throw new HttpError(
-        500,
-        "Your sign-in was deleted but restaurant cleanup needs service recovery. Contact support with your deletion reference."
+      return jsonResponse(
+        {
+          error: "Your sign-in was deleted but restaurant cleanup needs service recovery. Contact support with your deletion reference.",
+          deletionReference: auditId
+        },
+        500
       );
     }
 
