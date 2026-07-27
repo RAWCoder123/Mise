@@ -53,13 +53,19 @@ We share data only with the service providers required to operate Mise: Supabase
 
 ## Data retention and deletion
 
+- Restaurant operational data is retained while the restaurant workspace is
+  active so Mise can preserve inventory history, decisions, reconciliation, and
+  audit evidence.
 - You can delete your account at any time from Settings → Account → Delete account. This removes your account, your memberships, and any restaurant workspaces where you are the sole owner.
 - Restaurants with other remaining owners are not deleted when one member leaves.
+- Deleting a sole-owner restaurant removes its primary-database operational
+  records. A durable, access-restricted deletion audit may remain so Mise can
+  prove completion or recover a failed cleanup.
 - Backups expire on our infrastructure providers' standard schedules.
 
 ## Your rights
 
-Depending on your jurisdiction (for example GDPR or CCPA), you may have rights to access, correct, export, or delete your personal data. Contact us at the address below and we will respond within 30 days.
+Depending on your jurisdiction (for example GDPR or CCPA), you may have rights to access, correct, export, or delete your personal data. Restaurant owners and administrators may request a machine-readable export of the restaurant profile, team directory, operational mappings, sales, inventory history, supplier drafts, findings, and audit history. Provider credentials, encrypted secrets, and private security logs are never included in that export. Oversized exports are delivered through Mise support rather than returned partially. Contact us at the address below and we will respond within 30 days.
 
 ## Children
 

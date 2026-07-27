@@ -19,7 +19,8 @@ export type EdgeFunctionName =
   | "gmail-oauth-callback"
   | "send-supplier-email"
   | "operational-workflows"
-  | "delete-account";
+  | "delete-account"
+  | "export-restaurant-data";
 export type EdgeFunctionSecurityEventType = "blocked" | "completed" | "error";
 
 export interface FunctionInvocationReservation {

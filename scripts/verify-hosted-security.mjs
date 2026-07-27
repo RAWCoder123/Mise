@@ -59,5 +59,6 @@ run("staging:seed");
 run("staging:tenant-check");
 run("staging:service-rpc");
 run("staging:edge-concurrency");
+run("staging:restaurant-export-check");
 
 console.log("Mise hosted private-beta security verification passed without skipped checks.");

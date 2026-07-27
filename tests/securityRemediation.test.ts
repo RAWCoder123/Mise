@@ -69,7 +69,8 @@ test("every Edge handler authenticates before body processing and closes accepte
     "send-supplier-email",
     "sync-pos-sales",
     "operational-workflows",
-    "delete-account"
+    "delete-account",
+    "export-restaurant-data"
   ]) {
     const source = readFileSync(`supabase/functions/${name}/index.ts`, "utf8");
     assert.ok(

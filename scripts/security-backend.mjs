@@ -51,7 +51,8 @@ const edgeFunctionNames = [
   "link-gmail",
   "send-supplier-email",
   "operational-workflows",
-  "delete-account"
+  "delete-account",
+  "export-restaurant-data"
 ];
 
 const failures = [];
