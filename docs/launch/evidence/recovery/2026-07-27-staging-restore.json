@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "source": "dedicated_staging",
+  "target": "ephemeral_isolated_postgresql",
+  "schemas": ["public", "private"],
+  "tables_verified": 43,
+  "rows_verified": 474,
+  "auth_identities_stubbed": 6,
+  "dump_bytes": 455963,
+  "dump_sha256": "0308331b18eb090a92c3733c086fe8895f32805624924ff83ca28f619e11da32",
+  "duration_seconds": 22,
+  "row_content_emitted": false,
+  "cleanup": "ephemeral_cluster_removed",
+  "limitations": [
+    "This proves the Mise operational schemas, not Supabase Auth or Storage disaster recovery.",
+    "A managed hosted recovery-project exercise remains required before public production."
+  ]
+}
