@@ -10,3 +10,4 @@ export * from "./application/inventory";
 export * from "./application/deviceInventoryOutbox";
 export * from "./application/orders";
 export * from "./application/insights";
+export * from "./application/findings";
