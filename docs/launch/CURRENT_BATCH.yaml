@@ -1,58 +1,53 @@
-batch_id: private-beta-inventory-closure-08
+batch_id: private-beta-operations-observability-09
 status: completed
-goal: Close hosted tenant proof and make operator inventory actions append-only, replay-safe, and usable on mobile.
+goal: Make beta telemetry scrubbed, correlated, environment-specific, and operationally owned without making monitoring a core-workflow dependency.
 started_at: 2026-07-27
 codex_owned:
   - docs/launch/**
-  - scripts/staging-client-race.mjs
-  - scripts/staging-tenant-check.mjs
-  - supabase/migrations/**
-  - supabase/functions/operational-workflows/index.ts
-  - services/application/deviceInventoryOutbox.ts
-  - services/application/inventory.ts
-  - services/domain/operationalSignals.ts
-  - services/domain/inventoryLedger.ts
-  - services/repositories/**
+  - docs/operations/MONITORING.md
+  - docs/build-identity.md
+  - services/domain/telemetrySecurity.ts
+  - services/telemetry.ts
+  - supabase/functions/_shared/mise.ts
+  - scripts/verify-observability.mjs
   - tests/**
-cursor_owned:
-  - app/inventory/[id].tsx
-  - app/(tabs)/inventory.tsx
-  - i18n/catalog.ts
+  - package.json
+cursor_owned: []
 shared_locked:
-  - services/miseService.ts
+  - services/telemetry.ts
+  - services/domain/telemetrySecurity.ts
+  - supabase/functions/_shared/mise.ts
 blocked_files:
-  - app/(auth)/setup.tsx
-  - app/(tabs)/orders.tsx
-  - contexts/MiseSessionContext.tsx
-handoff_required: true
+  - app/**
+  - i18n/catalog.ts
+handoff_required: false
 dependencies:
-  - inventory-verification-sales-import-07
+  - private-beta-inventory-closure-08
 required_tests:
   - npm run typecheck
   - npm test
   - npm run security:backend
-  - npm run supabase:test
-  - npm run verify:private-beta-security:hosted
-  - npm run qa:interactions
+  - npm run observability:check
 stop_conditions:
-  - An operator inventory action bypasses the append-only event ledger
-  - A replay changes client_event_id or idempotency_key
-  - A stale response renders data from another restaurant
-  - An unverified canonical unit can enter inventory history
+  - Telemetry contains credentials, contact data, raw request bodies, or raw errors
+  - Monitoring failure blocks an operator workflow
+  - Staging and production telemetry credentials are shared
   - Cursor and Codex edit the same file
 evidence:
-  - Cursor inventory operations checkpoint debf9f1
-  - Codex inventory authority and hosted proof checkpoint d4dfd28
+  - Read-only operations audit identified exact telemetry and alerting gaps
+  - App and Edge telemetry share complete sanitized correlation fields
+  - Sentry beforeSend emits a bounded allowlist and removes raw SDK context
+  - EAS development, preview, and production profiles select isolated environments
   - npm run typecheck passed
-  - npm test passed with 247 tests
+  - npm test passed with 249 tests
+  - npm audit found 0 vulnerabilities
+  - npm run observability:check passed in static mode
   - npm run security:backend passed
   - npm run design:static passed
-  - npm run qa:interactions passed at 390x844 in English, Spanish, and Simplified Chinese
-  - npm run verify:private-beta-security:hosted passed without skipped checks
-  - Hosted learning proof shifted a 30 lb recommendation to the approved 40 lb median
-  - Hosted inventory count replay deduplicates and projects canonical quantity into the native item unit
-  - Square, Gmail delivery, live AI, ordering, and billing remain disabled by policy and kill switches
+  - All seven staging Edge Functions were refreshed with the shared telemetry boundary
+  - Hosted Edge tenant forgery, role, concurrency, and rate-limit proof passed after refresh
 unresolved_findings:
-  - Real-device TestFlight verification remains external
-  - Full Xcode and simctl are unavailable on this Mac; Command Line Tools are selected
-checkpoint_commit: d4dfd28
+  - No configured provider credentials are visible in the repository
+  - Controlled Sentry and PostHog receipt proof requires project-owner credentials
+  - Provider alert rule IDs and a named backup owner remain external go-live evidence
+checkpoint_commit: 1d16169

@@ -28,6 +28,59 @@ commit before another batch begins.
 | `inventory-canonical-authority-06` | Codex | Verified item-unit authority at the inventory ledger boundary | Complete | `4184fdd` |
 | `inventory-verification-sales-import-07` | Tandem | Typed unit verification plus daily sales CSV cold start | Complete | `3cff0c1` / `3581375` |
 | `private-beta-inventory-closure-08` | Tandem | Hosted tenant proof plus append-only mobile inventory operations | Complete | `d4dfd28` / `debf9f1` |
+| `private-beta-operations-observability-09` | Codex | Scrubbed correlation, live receipt proof, and alert ownership | Complete; activation evidence pending | `1d16169` |
+
+### `private-beta-operations-observability-09`
+
+In scope:
+
+- Apply one bounded correlation contract to app and Edge telemetry.
+- Sanitize the entire outgoing Sentry event, not only manually supplied extras.
+- Bind every event to an environment and release without user contact data.
+- Add a credentialed, fail-closed receipt-proof script for one controlled
+  Sentry error and one scrubbed PostHog beta event.
+- Document alert thresholds, ownership, escalation, and evidence recording.
+
+Ownership:
+
+- Codex owns the telemetry domain, app and Edge adapters, proof harness,
+  operations documentation, and tests.
+- Cursor has no files in this backend-only batch and must avoid the locked
+  telemetry contracts until the checkpoint is recorded.
+
+Delivered:
+
+- A shared, bounded correlation contract for environment, release, operation,
+  request, operation, restaurant, and authoritative event identities.
+- Whole-event Sentry redaction that drops raw SDK user, request, breadcrumb,
+  context, and message fields and rejects contact/credential values.
+- Environment-specific EAS profile selection so preview cannot consume
+  production observability or database configuration.
+- Bounded Edge authorization/firewall error capture that never changes the
+  operator response or blocks the workflow.
+- A credentialed proof harness that sends and queries one controlled Sentry
+  event and one scrubbed PostHog event.
+- Monitoring ownership, thresholds, escalation, and evidence instructions.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 249 passed
+- `npm audit --audit-level=high`: 0 vulnerabilities
+- `npm run observability:check`: static contract passed
+- `npm run security:backend`
+- `npm run design:static`
+- All seven staging Edge Functions refreshed with the shared telemetry code
+- Hosted Edge tenant-forgery, role, concurrency, and rate-limit proof passed
+  after deployment
+- Codex checkpoint: `1d16169`
+
+Remaining external activation evidence:
+
+- Configure distinct staging Sentry and PostHog projects and run
+  `MISE_OBSERVABILITY_LIVE=1 npm run observability:check`.
+- Record provider event IDs, alert rule IDs, monitored support target, and a
+  named backup owner.
 
 ### `private-beta-inventory-closure-08`
 
