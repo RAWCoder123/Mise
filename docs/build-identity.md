@@ -28,24 +28,29 @@ created under the owning Expo account — do not paste a placeholder value.
 1. `npx eas login` — log in as the account that will own the app.
 2. `npx eas init` — creates (or links) the EAS project and writes
    `extra.eas.projectId` into `app.json`. Commit that change.
-3. Create build-time secrets (EAS injects them as env vars during `eas build`;
-   because they are `EXPO_PUBLIC_*`, Expo inlines them into the JS bundle):
+3. Create build-time values separately in the EAS `preview` and `production`
+   environments. Because these are `EXPO_PUBLIC_*`, Expo inlines them into the
+   JS bundle; they are project identifiers, not server credentials:
 
    ```sh
-   npx eas secret:create --scope project --name EXPO_PUBLIC_SUPABASE_URL --value "<url>"
-   npx eas secret:create --scope project --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value "<anon key>"
-   npx eas secret:create --scope project --name EXPO_PUBLIC_SENTRY_DSN --value "<dsn>"
-   npx eas secret:create --scope project --name EXPO_PUBLIC_POSTHOG_KEY --value "<project api key>"
-   npx eas secret:create --scope project --name EXPO_PUBLIC_POSTHOG_HOST --value "https://us.i.posthog.com"
+   npx eas env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_SUPABASE_URL --value "<staging url>"
+   npx eas env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value "<staging anon key>"
+   npx eas env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_SENTRY_DSN --value "<staging dsn>"
+   npx eas env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_POSTHOG_KEY --value "<staging project api key>"
+   npx eas env:create --environment preview --visibility plaintext --name EXPO_PUBLIC_POSTHOG_HOST --value "https://us.i.posthog.com"
    ```
 
-   (Newer EAS CLI versions expose the same thing as `eas env:create`.)
+   Repeat for `--environment production` with the production Supabase,
+   Sentry, and PostHog projects only after the production go/no-go. Never put a
+   Supabase service-role key, Sentry auth token, or PostHog personal API key in
+   an `EXPO_PUBLIC_*` value.
 
-4. How profiles consume them: `eas.json` profiles only pin
-   `EXPO_PUBLIC_APP_ENV` and `EXPO_PUBLIC_ENABLE_DEMO_MODE`; every secret
-   above is merged into the build environment for all profiles. Nothing in
-   this repo hardcodes those values, so a build without the secrets simply
-   produces a demo-mode binary with telemetry disabled.
+4. How profiles consume them: each `eas.json` build profile explicitly selects
+   `development`, `preview`, or `production`. Preview cannot silently consume
+   production telemetry or database values. Nothing in this repo hardcodes
+   those values, so a build without the values simply has telemetry disabled.
+   `EXPO_PUBLIC_RELEASE` is intentionally checked into each profile and must be
+   updated with `app.json` version/build changes before a release candidate.
 
 ## Apple (existing flow)
 

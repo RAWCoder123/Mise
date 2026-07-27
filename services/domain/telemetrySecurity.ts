@@ -14,11 +14,37 @@ export const TELEMETRY_MAX_DEPTH = 3;
 export const TELEMETRY_MAX_OBJECT_KEYS = 40;
 export const TELEMETRY_MAX_PAYLOAD_BYTES = 8 * 1024;
 export const EXTERNAL_ERROR_MESSAGE = "Mise operation failed.";
+export const TELEMETRY_NOT_APPLICABLE = "not_applicable";
 
 const forbiddenTelemetryMarker =
   /(token|secret|password|authorization|cookie|credential|private|service[_-]?role|api[_-]?key)/i;
+const forbiddenTelemetryKeyMarker =
+  /(email|phone|name|address|contact|recipient|sender|note|message|body|payload)/i;
+const emailLikeValuePattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+const bearerLikeValuePattern = /\bbearer\s+[A-Za-z0-9._~+/-]+=*/i;
 const safeErrorTypePattern = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 const safeErrorCodePattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
+const safeCorrelationValuePattern = /^[A-Za-z0-9][A-Za-z0-9_.:/@+-]{0,127}$/;
+
+export interface TelemetryCorrelationInput {
+  environment: unknown;
+  release: unknown;
+  operation: unknown;
+  requestId: unknown;
+  operationId: unknown;
+  restaurantId?: unknown;
+  authoritativeEventId?: unknown;
+}
+
+export interface TelemetryCorrelation extends Record<string, string> {
+  app_env: string;
+  release: string;
+  operation: string;
+  request_id: string;
+  operation_id: string;
+  restaurant_id: string;
+  authoritative_event_id: string;
+}
 
 interface SanitizeState {
   objectKeys: number;
@@ -61,15 +87,38 @@ export function telemetryPayloadFits(value: string | unknown) {
   return utf8ByteLength(serialized) <= TELEMETRY_MAX_PAYLOAD_BYTES;
 }
 
+export function buildTelemetryCorrelation(input: TelemetryCorrelationInput): TelemetryCorrelation {
+  return {
+    app_env: safeCorrelationValue(input.environment, "unknown"),
+    release: safeCorrelationValue(input.release, "unversioned"),
+    operation: safeCorrelationValue(input.operation, "unknown_operation"),
+    request_id: safeCorrelationValue(input.requestId, "missing_request_id"),
+    operation_id: safeCorrelationValue(input.operationId, "missing_operation_id"),
+    restaurant_id: safeCorrelationValue(input.restaurantId, TELEMETRY_NOT_APPLICABLE),
+    authoritative_event_id: safeCorrelationValue(
+      input.authoritativeEventId,
+      TELEMETRY_NOT_APPLICABLE
+    )
+  };
+}
+
 function sanitizeTelemetryValue(
   value: unknown,
   key: string,
   depth: number,
   state: SanitizeState
 ): SafeTelemetryValue {
-  if (forbiddenTelemetryMarker.test(key)) return "[redacted]";
+  if (forbiddenTelemetryMarker.test(key) || forbiddenTelemetryKeyMarker.test(key)) {
+    return "[redacted]";
+  }
   if (typeof value === "string") {
-    if (forbiddenTelemetryMarker.test(value)) return "[redacted]";
+    if (
+      forbiddenTelemetryMarker.test(value) ||
+      emailLikeValuePattern.test(value) ||
+      bearerLikeValuePattern.test(value)
+    ) {
+      return "[redacted]";
+    }
     return value.slice(0, TELEMETRY_MAX_STRING_CHARACTERS);
   }
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -102,4 +151,16 @@ function sanitizeTelemetryValue(
 
 function isSafeRecord(value: SafeTelemetryValue): value is Record<string, SafeTelemetryValue> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function safeCorrelationValue(value: unknown, fallback: string) {
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim();
+  if (
+    !safeCorrelationValuePattern.test(normalized) ||
+    forbiddenTelemetryMarker.test(normalized)
+  ) {
+    return fallback;
+  }
+  return normalized;
 }

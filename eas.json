@@ -5,6 +5,7 @@
   },
   "build": {
     "development": {
+      "environment": "development",
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
@@ -15,10 +16,12 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "development",
-        "EXPO_PUBLIC_ENABLE_DEMO_MODE": "true"
+        "EXPO_PUBLIC_ENABLE_DEMO_MODE": "true",
+        "EXPO_PUBLIC_RELEASE": "mise-mobile@0.1.0+2"
       }
     },
     "preview": {
+      "environment": "preview",
       "distribution": "internal",
       "ios": {
         "simulator": false,
@@ -29,10 +32,12 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "staging",
-        "EXPO_PUBLIC_ENABLE_DEMO_MODE": "true"
+        "EXPO_PUBLIC_ENABLE_DEMO_MODE": "true",
+        "EXPO_PUBLIC_RELEASE": "mise-mobile@0.1.0+2"
       }
     },
     "production": {
+      "environment": "production",
       "autoIncrement": true,
       "ios": {
         "resourceClass": "m-medium"
@@ -42,7 +47,8 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_ENABLE_DEMO_MODE": "false"
+        "EXPO_PUBLIC_ENABLE_DEMO_MODE": "false",
+        "EXPO_PUBLIC_RELEASE": "mise-mobile@0.1.0+2"
       }
     }
   },

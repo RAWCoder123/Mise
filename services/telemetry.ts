@@ -1,5 +1,6 @@
 import {
   TELEMETRY_MAX_PAYLOAD_BYTES,
+  buildTelemetryCorrelation,
   safeExternalError,
   sanitizeTelemetryRecord,
   telemetryPayloadFits,
@@ -30,15 +31,20 @@ interface SentryEventShape {
   exception?: { values?: SentryExceptionEntry[] };
   tags?: Record<string, string>;
   extra?: Record<string, JsonValue>;
+  contexts?: Record<string, JsonValue>;
+  environment?: string;
+  release?: string;
   user?: unknown;
   request?: unknown;
   breadcrumbs?: unknown;
+  message?: unknown;
 }
 
 interface SentryModule {
   init(options: {
     dsn: string;
     environment: string;
+    release?: string;
     sendDefaultPii: boolean;
     maxBreadcrumbs: number;
     beforeSend: (event: SentryEventShape) => SentryEventShape;
@@ -77,6 +83,7 @@ export function initMiseTelemetry() {
       sentry.init({
         dsn: sentryDsn,
         environment: process.env.EXPO_PUBLIC_APP_ENV ?? "development",
+        release: telemetryRelease(),
         sendDefaultPii: false,
         maxBreadcrumbs: 0,
         beforeSend: redactSentryEvent
@@ -106,9 +113,10 @@ export function sanitizeTelemetryProperties(properties: TelemetryProperties = {}
 export function trackMiseEvent(name: MiseAnalyticsEvent, properties: TelemetryProperties = {}) {
   const posthogKey = process.env.EXPO_PUBLIC_POSTHOG_KEY;
   const posthogHost = normalizePosthogHost(process.env.EXPO_PUBLIC_POSTHOG_HOST);
+  const correlation = appTelemetryCorrelation(name, properties);
   const payload = sanitizeTelemetryProperties({
     ...properties,
-    app_env: process.env.EXPO_PUBLIC_APP_ENV ?? "development"
+    ...correlation
   });
 
   if (!posthogKey || !posthogHost) return;
@@ -159,6 +167,9 @@ export function captureMiseError(error: unknown, context: TelemetryProperties = 
   }
 
   const externalError = safeExternalError(error);
+  const operation =
+    typeof context.operation === "string" ? context.operation : "app_error";
+  const correlation = appTelemetryCorrelation(operation, context);
   const sentryEvent: SentryEventShape = {
     level: "error",
     exception: {
@@ -169,12 +180,16 @@ export function captureMiseError(error: unknown, context: TelemetryProperties = 
         }
       ]
     },
-    tags: {
-      app_env: process.env.EXPO_PUBLIC_APP_ENV ?? "development"
-    },
+    environment: correlation.app_env,
+    release: correlation.release,
+    tags: correlation,
     extra: externalError.code
-      ? sanitizeTelemetryProperties({ ...sanitizedContext, error_code: externalError.code })
-      : sanitizedContext
+      ? sanitizeTelemetryProperties({
+          ...sanitizedContext,
+          ...correlation,
+          error_code: externalError.code
+        })
+      : sanitizeTelemetryProperties({ ...sanitizedContext, ...correlation })
   };
 
   if (sentrySdk) {
@@ -225,18 +240,37 @@ export function captureMiseError(error: unknown, context: TelemetryProperties = 
  * control. Mirror the manual redaction guarantees on every outgoing event:
  * no raw error messages, no user/request context.
  */
-function redactSentryEvent(event: SentryEventShape): SentryEventShape {
-  for (const entry of event.exception?.values ?? []) {
+export function redactSentryEvent(event: SentryEventShape): SentryEventShape {
+  const exceptionValues = (event.exception?.values ?? []).slice(0, 5).map((entry) => {
     const probe = new Error();
     probe.name = entry.type ?? "Error";
     const safe = safeExternalError(probe);
-    entry.type = safe.type;
-    entry.value = safe.value;
-  }
-  delete event.user;
-  delete event.request;
-  delete event.breadcrumbs;
-  return event;
+    return { type: safe.type, value: safe.value };
+  });
+  const safeTags = sanitizeTelemetryRecord(event.tags);
+  const tags = Object.fromEntries(
+    Object.entries(safeTags).map(([key, value]) => [
+      key,
+      typeof value === "string" ? value : JSON.stringify(value)
+    ])
+  );
+  const redacted: SentryEventShape = {
+    level: event.level === "warning" ? "warning" : "error",
+    ...(exceptionValues.length > 0 ? { exception: { values: exceptionValues } } : {}),
+    tags,
+    extra: sanitizeTelemetryRecord(event.extra),
+    environment: safeTelemetryLabel(event.environment, "unknown"),
+    release: safeTelemetryLabel(event.release, "unversioned")
+  };
+  return telemetryPayloadFits(redacted)
+    ? redacted
+    : {
+        level: redacted.level,
+        exception: redacted.exception,
+        tags: { telemetry_truncated: "true" },
+        environment: redacted.environment,
+        release: redacted.release
+      };
 }
 
 function normalizePosthogHost(value: string | undefined) {
@@ -258,4 +292,39 @@ function sentryEnvelopeEndpoint(dsn: string) {
 
 function randomEventId() {
   return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+}
+
+function appTelemetryCorrelation(operation: string, properties: TelemetryProperties) {
+  const requestId =
+    typeof properties.request_id === "string" ? properties.request_id : randomTelemetryId();
+  const operationId =
+    typeof properties.operation_id === "string" ? properties.operation_id : requestId;
+  return buildTelemetryCorrelation({
+    environment: process.env.EXPO_PUBLIC_APP_ENV ?? "development",
+    release: telemetryRelease(),
+    operation,
+    requestId,
+    operationId,
+    restaurantId: properties.restaurant_id,
+    authoritativeEventId: properties.authoritative_event_id
+  });
+}
+
+function telemetryRelease() {
+  return process.env.EXPO_PUBLIC_RELEASE ?? "unversioned";
+}
+
+function randomTelemetryId() {
+  const candidate = globalThis.crypto?.randomUUID?.();
+  return candidate ?? randomEventId();
+}
+
+function safeTelemetryLabel(value: unknown, fallback: string) {
+  return buildTelemetryCorrelation({
+    environment: fallback,
+    release: value,
+    operation: "label",
+    requestId: "label",
+    operationId: "label"
+  }).release;
 }

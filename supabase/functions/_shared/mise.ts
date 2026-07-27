@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2";
 import {
   TELEMETRY_MAX_PAYLOAD_BYTES,
+  buildTelemetryCorrelation,
   safeExternalError,
   sanitizeTelemetryRecord,
   telemetryPayloadFits
@@ -186,6 +187,12 @@ export async function reserveFunctionInvocation(
 }
 
 export function firewallBlockedResponse(reservation: FunctionInvocationReservation) {
+  captureFunctionError(new Error("edge_firewall_blocked"), {
+    operation: "edge_firewall_blocked",
+    operationId: reservation.reservation_id,
+    reservationId: reservation.reservation_id,
+    reason: reservation.reason ?? "forbidden"
+  });
   if (reservation.reason === "rate_limited") {
     return jsonResponse(
       {
@@ -283,6 +290,12 @@ export async function recordFunctionAuditLog(
 
 export function handleError(error: unknown) {
   if (error instanceof HttpError) {
+    if (error.status === 401 || error.status === 403) {
+      captureFunctionError(new Error("edge_authorization_denied"), {
+        operation: "edge_authorization_denied",
+        status: error.status
+      });
+    }
     return jsonResponse({ error: error.message }, error.status);
   }
   captureFunctionError(error);
@@ -298,6 +311,25 @@ export function captureFunctionError(error: unknown, context: Record<string, unk
   if (!endpoint) return;
 
   const externalError = safeExternalError(error);
+  const requestId = safeContextString(context.requestId) ?? crypto.randomUUID();
+  const operationId =
+    safeContextString(context.operationId) ??
+    safeContextString(context.reservationId) ??
+    requestId;
+  const operation =
+    safeContextString(context.operation) ??
+    safeContextString(context.actionName) ??
+    safeContextString(context.functionName) ??
+    "edge_function_error";
+  const correlation = buildTelemetryCorrelation({
+    environment: Deno.env.get("MISE_APP_ENV") ?? "staging",
+    release: Deno.env.get("MISE_RELEASE") ?? Deno.env.get("DENO_DEPLOYMENT_ID") ?? "unversioned",
+    operation,
+    requestId,
+    operationId,
+    restaurantId: context.restaurantId,
+    authoritativeEventId: context.authoritativeEventId ?? context.eventId
+  });
   const event = {
     event_id: crypto.randomUUID().replaceAll("-", ""),
     timestamp: new Date().toISOString(),
@@ -311,9 +343,12 @@ export function captureFunctionError(error: unknown, context: Record<string, unk
         }
       ]
     },
-    tags: { runtime: "supabase_edge_function" },
+    environment: correlation.app_env,
+    release: correlation.release,
+    tags: { runtime: "supabase_edge_function", ...correlation },
     extra: sanitizeTelemetryRecord({
       ...context,
+      ...correlation,
       ...(externalError.code ? { error_code: externalError.code } : {})
     })
   };
@@ -370,6 +405,10 @@ function sanitizeMetadataValue(value: unknown, key = ""): unknown {
     );
   }
   return null;
+}
+
+function safeContextString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 export const structuredInsightContract = {

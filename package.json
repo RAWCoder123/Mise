@@ -15,6 +15,7 @@
     "qa:mobile-layout": "node scripts/mobile-layout-smoke.mjs",
     "qa:interactions": "MISE_QA_INTERACTIONS=1 node scripts/mobile-layout-smoke.mjs",
     "qa:ios-prereq": "node scripts/ios-native-prereq.mjs",
+    "observability:check": "node scripts/verify-observability.mjs",
     "security:static": "node scripts/security-static.mjs",
     "security:backend": "node scripts/security-backend.mjs",
     "design:static": "node scripts/design-static.mjs",
