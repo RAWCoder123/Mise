@@ -22,8 +22,13 @@ import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, typogr
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
-import { fetchInventoryOutlookItems, summarizeInventoryOutlooks } from "../../services/miseService";
-import type { InventoryOutlookItem, InventoryStatus } from "../../types/mise";
+import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import {
+  fetchInventoryOutlookItems,
+  fetchQueuedInventoryEvents,
+  summarizeInventoryOutlooks
+} from "../../services/miseService";
+import type { InventoryItem, InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
 
@@ -31,6 +36,7 @@ export default function InventoryScreen() {
   const { formatNumber, t } = useLocale();
   const { restaurant } = useMiseSession();
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
+  const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InventoryFilter>("All");
   const [loading, setLoading] = useState(true);
@@ -44,6 +50,7 @@ export default function InventoryScreen() {
     requestIdRef.current += 1;
     setLoadedRestaurantId(null);
     setOutlooks([]);
+    setQueueEntries([]);
     setQuery("");
     setFilter("All");
     setError(false);
@@ -61,9 +68,13 @@ export default function InventoryScreen() {
     setLoading(true);
     setError(false);
     try {
-      const nextOutlooks = await fetchInventoryOutlookItems(restaurantId);
+      const [nextOutlooks, nextQueue] = await Promise.all([
+        fetchInventoryOutlookItems(restaurantId),
+        fetchQueuedInventoryEvents(restaurantId)
+      ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlooks(nextOutlooks);
+      setQueueEntries(nextQueue);
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -80,6 +91,12 @@ export default function InventoryScreen() {
   );
 
   const visibleOutlooks = loadedRestaurantId === restaurant?.id ? outlooks : [];
+  const visibleQueue = loadedRestaurantId === restaurant?.id ? queueEntries : [];
+  const queueSummary = useMemo(() => summarizeQueue(visibleQueue), [visibleQueue]);
+  const unverifiedCount = useMemo(
+    () => visibleOutlooks.filter(({ item }) => !isCanonicalUnitReady(item)).length,
+    [visibleOutlooks]
+  );
 
   const filterOptions = useMemo<readonly SegmentOption<InventoryFilter>[]>(() => {
     const options: readonly SegmentOption<InventoryFilter>[] = [
@@ -238,10 +255,35 @@ export default function InventoryScreen() {
           />
         ) : null}
 
+        {queueSummary.open > 0 ? (
+          <StatusNotice
+            title={t("inventory.queueSummary.title")}
+            message={t("inventory.queueSummary.body", {
+              pending: formatNumber(queueSummary.pending),
+              conflicts: formatNumber(queueSummary.conflicts),
+              rejected: formatNumber(queueSummary.rejected)
+            })}
+            tone={queueSummary.conflicts + queueSummary.rejected > 0 ? "danger" : "caution"}
+          />
+        ) : null}
+
+        {unverifiedCount > 0 ? (
+          <StatusNotice
+            title={t("inventory.unverifiedSummary.title")}
+            message={t(
+              unverifiedCount === 1
+                ? "inventory.unverifiedSummary.body.one"
+                : "inventory.unverifiedSummary.body.other",
+              { count: formatNumber(unverifiedCount) }
+            )}
+            tone="warning"
+          />
+        ) : null}
+
         <MotionView delay={40} distance={3} duration={240}>
           <SectionSurface
             title={t("inventory.list.title")}
-            subtitle={t("inventory.list.subtitle")}
+            subtitle={t("inventory.list.subtitleLedger")}
             action={t(filtered.length === 1 ? "inventory.itemCount.one" : "inventory.itemCount.other", {
               count: formatNumber(filtered.length)
             })}
@@ -277,7 +319,12 @@ export default function InventoryScreen() {
             ) : (
               <View style={styles.inventoryList}>
                 {filtered.map((outlook, index) => (
-                  <InventoryListRow key={outlook.item.id} outlook={outlook} divided={index > 0} />
+                  <InventoryListRow
+                    key={outlook.item.id}
+                    outlook={outlook}
+                    divided={index > 0}
+                    queueCount={visibleQueue.filter((entry) => entry.event.inventoryItemId === outlook.item.id).length}
+                  />
                 ))}
               </View>
             )}
@@ -294,7 +341,34 @@ function matchesInventoryFilter(status: InventoryStatus, filter: InventoryFilter
   return status === filter;
 }
 
-function InventoryListRow({ outlook, divided }: { outlook: InventoryOutlookItem; divided: boolean }) {
+function isCanonicalUnitReady(item: InventoryItem) {
+  return (
+    item.canonical_unit_verification_status === "verified" &&
+    (item.canonical_unit === "g" || item.canonical_unit === "ml" || item.canonical_unit === "each")
+  );
+}
+
+function summarizeQueue(entries: readonly InventoryOutboxEntry[]) {
+  let pending = 0;
+  let conflicts = 0;
+  let rejected = 0;
+  for (const entry of entries) {
+    if (entry.status === "conflict") conflicts += 1;
+    else if (entry.status === "rejected") rejected += 1;
+    else if (entry.status === "pending" || entry.status === "submitting") pending += 1;
+  }
+  return { pending, conflicts, rejected, open: pending + conflicts + rejected };
+}
+
+function InventoryListRow({
+  outlook,
+  divided,
+  queueCount
+}: {
+  outlook: InventoryOutlookItem;
+  divided: boolean;
+  queueCount: number;
+}) {
   const { formatNumber, t } = useLocale();
   const { item, prediction } = outlook;
   const localized = localizeInventoryPrediction(t, formatNumber, item, prediction);
@@ -302,17 +376,27 @@ function InventoryListRow({ outlook, divided }: { outlook: InventoryOutlookItem;
   const isLow = prediction.projectedStatus === "Low";
   const isWatch = prediction.projectedStatus === "Watch";
   const isGood = prediction.projectedStatus === "Good";
+  const canonicalReady = isCanonicalUnitReady(item);
+  const entryHint = !canonicalReady
+    ? t("inventory.row.needsVerification")
+    : queueCount > 0
+      ? t(queueCount === 1 ? "inventory.row.queued.one" : "inventory.row.queued.other", {
+          count: formatNumber(queueCount)
+        })
+      : t("inventory.row.openOps");
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={t("inventory.row.accessibility", {
+      accessibilityLabel={t("inventory.row.accessibilityLedger", {
         item: item.item_name,
         status: localized.status,
         coverage: localized.coverage,
         action: localized.action,
-        confidence: localized.confidence
+        confidence: localized.confidence,
+        queue: entryHint
       })}
+      accessibilityHint={t("inventory.row.hintOps")}
       onPress={() => router.push(`/inventory/${item.id}`)}
       style={({ pressed }) => [
         styles.inventoryRow,
@@ -385,6 +469,12 @@ function InventoryListRow({ outlook, divided }: { outlook: InventoryOutlookItem;
         </View>
         <Text style={styles.itemEvidence} numberOfLines={2}>
           {t("inventory.row.confidence", { confidence: localized.confidence })}
+        </Text>
+        <Text
+          style={[styles.itemOpsHint, !canonicalReady && styles.itemOpsHintWarn, queueCount > 0 && styles.itemOpsHintQueue]}
+          numberOfLines={1}
+        >
+          {entryHint}
         </Text>
       </View>
       <ChevronRight size={20} color={colors.faint} strokeWidth={2.25} />
@@ -618,6 +708,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     marginTop: 3
+  },
+  itemOpsHint: {
+    color: colors.text,
+    fontFamily: typography.families.semibold,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 4
+  },
+  itemOpsHintWarn: {
+    color: colors.warning
+  },
+  itemOpsHintQueue: {
+    color: colors.caution
   },
   emptyList: {
     minHeight: 150,
