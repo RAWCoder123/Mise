@@ -1,65 +1,30 @@
-batch_id: private-beta-owner-invitation-26
-status: complete
-goal: Deliver a controlled administrator invitation and owner onboarding path from hosted Auth issuance through first password setup and tenant hydration.
+batch_id: private-beta-quota-proof-27
+status: in_progress
+goal: Prove the service-only restaurant provisioning boundary rejects a sixth lifetime workspace after creator membership churn.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - package.json
-  - scripts/beta-restaurant-provisioning.mjs
-  - scripts/staging-owner-invitation-check.mjs
-  - scripts/lib/betaRestaurantProvisioning.mjs
-  - services/domain/accountAuth.ts
-  - services/application/account.ts
-  - services/miseService.ts
-  - supabase/config.toml
-  - supabase/environments/staging/supabase/config.toml
-  - contexts/MiseSessionContext.tsx
-  - tests/accountAuth.test.ts
-  - tests/betaRestaurantProvisioning.test.ts
-  - tests/inviteOnlyAdmission.test.ts
-cursor_owned:
-  - app/(auth)/accept-invite.tsx
-  - app/(auth)/login.tsx
-  - app/_layout.tsx
-  - i18n/catalog.ts
-  - scripts/mobile-route-smoke.mjs
-  - scripts/mobile-layout-smoke.mjs
+  - supabase/tests/database/tenant_isolation.test.sql
+cursor_owned: []
 shared_locked:
-  - app.json
-  - eas.json
-  - lib/supabase.ts
-  - services/repositories/**
-blocked_files:
+  - app/**
+  - services/**
+  - supabase/migrations/**
+  - package.json
   - package-lock.json
-handoff_required: true
-handoff_checkpoint: 69a715a
+blocked_files: []
+handoff_required: false
 dependencies:
   - private-beta-invite-only-admission-25
+  - private-beta-owner-invitation-26
 required_tests:
-  - npm run typecheck
-  - npm test
+  - npm run supabase:test
   - npm run security:backend
-  - npm run design:static
-  - npm run qa:routes
-  - npm run qa:interactions
 stop_conditions:
-  - An invite, OTP, access token, refresh token, secret key, or password is printed or committed
-  - Provisioning can target production or an unconfirmed project reference
-  - An invitation artifact overwrites an existing file or is readable outside its owner
-  - A public or authenticated client regains signup or tenant-allocation authority
-  - The app accepts a callback that is not an invite or mixes credentials from different callbacks
-  - Password setup bypasses bounded validation or leaves a failed partial session active
-  - A newly provisioned restaurant enables any provider, drafting, billing, or sending capability
-evidence:
-  - docs/launch/evidence/security/2026-07-28-owner-invitation.md
-  - npm run staging:owner-invitation-check
-  - npm run typecheck
-  - npm test (329 passed)
-  - npm run security:backend
-  - npm run design:static
-  - npm run qa:routes
-  - npm run qa:interactions
-unresolved_findings:
-  - Physical-iPhone invitation acceptance and initial tenant hydration remain release-candidate evidence.
-  - External restaurant delivery requires either configured custom SMTP or a Raymond-administered protected-link channel.
-checkpoint_commit: 0237f89
+  - The proof calls the revoked legacy tenant-allocation RPC instead of the service-only provisioning boundary
+  - The sixth service provisioning request succeeds
+  - Membership churn removes or rewrites an immutable workspace allocation
+  - A runtime schema or production environment is changed
+evidence: []
+unresolved_findings: []
+checkpoint_commit: null
