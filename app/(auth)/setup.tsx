@@ -63,18 +63,19 @@ export default function SetupScreen() {
     authUser,
     canUseDemoMode,
     continueWithDemo,
-    createRestaurant,
     isDemoMode,
     memberships,
     ready,
-    restaurant
+    restaurant,
+    signOut
   } = useMiseSession();
   const isDemoSetup = canUseDemoMode && (!authUser || isDemoMode);
+  const hasActiveMembership = memberships.some((membership) => membership.status === "active");
   const canConfigure = Boolean(
     isDemoSetup ||
-    (authUser && !restaurant) ||
     (restaurant && canUpdateRestaurantProfile(memberships, restaurant.id))
   );
+  const [signingOut, setSigningOut] = useState(false);
   const starterDrafts = useMemo(() => createDemoSetupStarterDrafts(), []);
   const submissionLockRef = useRef(false);
   const [activeStep, setActiveStep] = useState<SetupStepId>("profile");
@@ -186,6 +187,10 @@ export default function SetupScreen() {
           posSales
         });
       } else {
+        if (!restaurant) {
+          setError(t("setup.error.create"));
+          return;
+        }
         const operationalProfile = {
           serviceStyle: "fast_casual" as const,
           orderCadence: selectedDays,
@@ -198,18 +203,12 @@ export default function SetupScreen() {
             posSales.length > 0 ? `${posSales.length} POS sales rows imported during setup.` : "POS import pending."
           ].filter(Boolean).join(" ")
         };
-        const nextRestaurant = restaurant
-          ? await updateRestaurantProfile(restaurant.id, {
-              name: restaurantName,
-              cuisine_type: cuisineType,
-              operational_profile: operationalProfile,
-              service_style: operationalProfile.serviceStyle
-            })
-          : await createRestaurant({
-              name: restaurantName,
-              cuisine_type: cuisineType,
-              operational_profile: operationalProfile
-            });
+        const nextRestaurant = await updateRestaurantProfile(restaurant.id, {
+          name: restaurantName,
+          cuisine_type: cuisineType,
+          operational_profile: operationalProfile,
+          service_style: operationalProfile.serviceStyle
+        });
         await saveRestaurantSetup(nextRestaurant.id, {
           inventoryItems: normalizedInventoryItems,
           suppliers,
@@ -273,6 +272,41 @@ export default function SetupScreen() {
 
   if (!canConfigure) {
     const needsSignIn = !authUser;
+    const needsProvisioning = Boolean(authUser && !isDemoSetup && !hasActiveMembership);
+
+    async function handlePendingSignOut() {
+      if (signingOut) return;
+      setSigningOut(true);
+      try {
+        await signOut();
+        router.replace("/login");
+      } catch {
+        setSigningOut(false);
+      }
+    }
+
+    if (needsProvisioning) {
+      return (
+        <Screen title={t("setup.title")} subtitle={t("setup.access.pendingSubtitle")}>
+          <StatusNotice
+            tone="warning"
+            title={t("setup.access.pendingTitle")}
+            message={t("setup.access.pendingBody")}
+          />
+          <Button
+            title={signingOut ? t("setup.access.signingOutAction") : t("setup.access.signOutAction")}
+            accessibilityLabel={t("setup.access.signOutAction")}
+            accessibilityHint={t("setup.access.signOutHint")}
+            accessibilityState={{ disabled: signingOut, busy: signingOut }}
+            onPress={() => void handlePendingSignOut()}
+            disabled={signingOut}
+            fullWidth
+            style={styles.accessButton}
+          />
+        </Screen>
+      );
+    }
+
     return (
       <Screen
         title={t("setup.title")}

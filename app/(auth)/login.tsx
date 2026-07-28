@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookOpen, ChefHat, ClipboardCheck, LogIn, MailCheck, PackageCheck, PlugZap, UserPlus } from "lucide-react-native";
+import { BookOpen, ChefHat, ClipboardCheck, LogIn, PackageCheck, PlugZap } from "lucide-react-native";
 import { router } from "expo-router";
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -8,41 +8,23 @@ import { Card } from "../../components/ui/Card";
 import { OperationsFlow } from "../../components/ui/OperationsFlow";
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
-import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import { getInitialLoginCredentials } from "../../lib/appConfig";
 import { isSupabaseConfigured } from "../../lib/supabase";
-import {
-  isUserAlreadyRegisteredError,
-  validateSignUpInput,
-  type SignUpValidationError
-} from "../../services/domain/accountAuth";
 import { DEMO_DATASET } from "../../services/demoData";
 import { captureMiseError } from "../../services/telemetry";
 
-type AuthMode = "signIn" | "signUp";
-
-const signUpValidationKeys: Record<SignUpValidationError, MessageKey> = {
-  email_required: "login.error.emailRequired",
-  email_invalid: "login.error.emailInvalid",
-  password_too_short: "login.error.passwordTooShort",
-  password_mismatch: "login.error.passwordMismatch"
-};
-
 export default function LoginScreen() {
   const { formatNumber, t } = useLocale();
-  const { canUseDemoMode, continueWithDemo, ready, restaurant, signIn, signUp, user, usingLocalDemo } = useMiseSession();
+  const { canUseDemoMode, continueWithDemo, ready, restaurant, signIn, user, usingLocalDemo } = useMiseSession();
   const initialCredentials = getInitialLoginCredentials();
-  const [mode, setMode] = useState<AuthMode>("signIn");
   const [email, setEmail] = useState(initialCredentials.email);
   const [password, setPassword] = useState(initialCredentials.password);
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
-  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ready) return;
@@ -79,55 +61,6 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
-  }
-
-  async function handleSignUp() {
-    const normalizedEmail = email.trim();
-    const validationError = validateSignUpInput(normalizedEmail, password, confirmPassword);
-    if (validationError) {
-      setErrorKey(signUpValidationKeys[validationError]);
-      return;
-    }
-
-    setLoading(true);
-    setErrorKey(null);
-    try {
-      const outcome = await signUp(normalizedEmail, password);
-      if (outcome === "already_registered") {
-        setErrorKey("login.error.alreadyRegistered");
-        return;
-      }
-      if (outcome === "confirmation_required") {
-        setConfirmationEmail(normalizedEmail);
-        setConfirmPassword("");
-        return;
-      }
-      router.replace("/");
-    } catch (signUpError) {
-      if (isUserAlreadyRegisteredError(signUpError)) {
-        setErrorKey("login.error.alreadyRegistered");
-        return;
-      }
-      captureMiseError(signUpError, { flow: "login", operation: "sign_up" });
-      setErrorKey("login.error.signUp");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function switchMode(nextMode: AuthMode) {
-    if (loading) return;
-    setMode(nextMode);
-    setErrorKey(null);
-    setConfirmPassword("");
-  }
-
-  function backToSignIn() {
-    setConfirmationEmail(null);
-    setMode("signIn");
-    setPassword("");
-    setConfirmPassword("");
-    setErrorKey(null);
   }
 
   async function handleDemo() {
@@ -167,41 +100,11 @@ export default function LoginScreen() {
           />
 
           <Card>
-            {confirmationEmail ? (
-              <View>
-                <View style={styles.confirmHeader}>
-                  <MailCheck size={22} color={colors.success} strokeWidth={2.4} />
-                  <Text accessibilityRole="header" style={styles.cardTitle}>{t("login.confirm.title")}</Text>
-                </View>
-                <Text accessibilityLiveRegion="polite" style={styles.cardCopy}>
-                  {t("login.confirm.body", { email: confirmationEmail })}
-                </Text>
-                <Button
-                  title={t("login.confirm.back")}
-                  variant="secondary"
-                  onPress={backToSignIn}
-                  fullWidth
-                  style={styles.confirmBack}
-                />
-              </View>
-            ) : (
-              <View>
             <Text accessibilityRole="header" style={styles.cardTitle}>
-              {mode === "signIn" ? t("login.form.title") : t("login.signUp.title")}
+              {t("login.form.title")}
             </Text>
-            <Text style={styles.cardCopy}>
-              {mode === "signIn" ? t("login.form.body") : t("login.signUp.body")}
-            </Text>
-            <SegmentedControl
-              accessibilityLabel={t("login.mode.toggleAccessibility")}
-              options={[
-                { value: "signIn", label: t("login.mode.signIn") },
-                { value: "signUp", label: t("login.mode.signUp") }
-              ]}
-              value={mode}
-              onValueChange={switchMode}
-              style={styles.modeToggle}
-            />
+            <Text style={styles.cardCopy}>{t("login.form.body")}</Text>
+            <Text style={styles.inviteNote}>{t("login.invite.supportHint")}</Text>
             <View style={styles.field}>
               <Text style={styles.label}>{t("login.form.email")}</Text>
               <TextInput
@@ -226,61 +129,32 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={setPassword}
                 accessibilityLabel={t("login.form.password")}
-                accessibilityHint={mode === "signIn" ? t("login.form.passwordHint") : t("login.form.newPasswordHint")}
-                autoComplete={mode === "signIn" ? "current-password" : "new-password"}
+                accessibilityHint={t("login.form.passwordHint")}
+                autoComplete="current-password"
                 editable={!loading}
-                onSubmitEditing={mode === "signIn" ? () => void handleSignIn() : undefined}
-                returnKeyType={mode === "signIn" ? "go" : "next"}
+                onSubmitEditing={() => void handleSignIn()}
+                returnKeyType="go"
                 secureTextEntry
                 style={styles.input}
                 placeholder={t("login.form.passwordPlaceholder")}
                 placeholderTextColor={colors.faint}
-                textContentType={mode === "signIn" ? "password" : "newPassword"}
+                textContentType="password"
               />
             </View>
-            {mode === "signUp" ? (
-              <View style={styles.field}>
-                <Text style={styles.label}>{t("login.form.confirmPassword")}</Text>
-                <TextInput
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  accessibilityLabel={t("login.form.confirmPassword")}
-                  accessibilityHint={t("login.form.confirmPasswordHint")}
-                  autoComplete="new-password"
-                  editable={!loading}
-                  onSubmitEditing={() => void handleSignUp()}
-                  returnKeyType="go"
-                  secureTextEntry
-                  style={styles.input}
-                  placeholder={t("login.form.passwordPlaceholder")}
-                  placeholderTextColor={colors.faint}
-                  textContentType="newPassword"
-                />
-              </View>
-            ) : null}
             {errorKey ? (
               <Text accessibilityLiveRegion="assertive" accessibilityRole="alert" style={styles.error}>
                 {t(errorKey)}
               </Text>
             ) : null}
-            {mode === "signIn" ? (
-              <Button
-                title={!isSupabaseConfigured ? t("login.action.cloudUnavailable") : loading ? t("login.action.opening") : t("login.action.signIn")}
-                icon={<LogIn size={17} color={colors.surface} strokeWidth={2.5} />}
-                onPress={handleSignIn}
-                disabled={loading || !isSupabaseConfigured}
-                fullWidth
-              />
-            ) : (
-              <Button
-                title={!isSupabaseConfigured ? t("login.action.cloudUnavailable") : loading ? t("login.action.creating") : t("login.action.signUp")}
-                icon={<UserPlus size={17} color={colors.surface} strokeWidth={2.5} />}
-                onPress={handleSignUp}
-                disabled={loading || !isSupabaseConfigured}
-                fullWidth
-              />
-            )}
-            {canUseDemoMode && (
+            <Button
+              title={!isSupabaseConfigured ? t("login.action.cloudUnavailable") : loading ? t("login.action.opening") : t("login.action.signIn")}
+              icon={<LogIn size={17} color={colors.surface} strokeWidth={2.5} />}
+              onPress={handleSignIn}
+              disabled={loading || !isSupabaseConfigured}
+              fullWidth
+              style={styles.signInButton}
+            />
+            {canUseDemoMode ? (
               <View style={styles.demoPanel}>
                 <Text style={styles.demoKicker}>{t("login.demo.eyebrow")}</Text>
                 <Text accessibilityRole="header" style={styles.demoTitle}>{t("login.demo.title")}</Text>
@@ -301,9 +175,7 @@ export default function LoginScreen() {
                   fullWidth
                 />
               </View>
-            )}
-              </View>
-            )}
+            ) : null}
           </Card>
 
           <OperationsFlow
@@ -390,18 +262,13 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginTop: 6
   },
+  inviteNote: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 8
+  },
   field: {
-    marginTop: 16
-  },
-  modeToggle: {
-    marginTop: 14
-  },
-  confirmHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10
-  },
-  confirmBack: {
     marginTop: 16
   },
   label: {
@@ -419,6 +286,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     color: colors.text,
     fontSize: 16
+  },
+  signInButton: {
+    marginTop: 14
   },
   demoButton: {
     marginTop: 10
