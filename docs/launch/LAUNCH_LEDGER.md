@@ -40,6 +40,40 @@ commit before another batch begins.
 | `private-beta-finding-feedback-loop-18` | Codex | Apply exact manager feedback to later deterministic briefs | Complete; UI handoff ready | `17e14d9` |
 | `private-beta-finding-feedback-outbox-19` | Codex | Restart-safe device delivery for manager feedback | Complete; UI handoff ready | `13bbeb1` |
 | `private-beta-release-authority-20` | Codex | Exact-commit August 3 beta go/no-go authority | Complete; external evidence pending | `8b93f47` |
+| `private-beta-operator-ui-21` | Cursor + Codex review | Daily Brief, finding feedback, and restaurant export UI | Complete; device proof pending | `828555e` |
+
+### `private-beta-operator-ui-21`
+
+Delivered:
+
+- Localized, scan-first Now, Up next, and Later findings on Today and Insights.
+- Owner/admin/manager approve, edit, and dismiss controls through only the
+  restart-safe device outbox facade; staff remains read-only.
+- Original findings remain visible after feedback. Queue badges bind only to
+  the exact current evidence snapshot, so changed evidence, action, or policy
+  cannot inherit an old accepted state.
+- Independently accessible action controls, 44px targets, bounded edit input,
+  loading/error/stale/incomplete/permission states, and live result copy.
+- Owner/admin-only restaurant JSON export with native sharing and bounded web
+  download, payload-safe telemetry, cancellation-safe tenant switching, and
+  explicit credential/security-log exclusions.
+
+Evidence:
+
+- Cursor feature checkpoint `a17c136`; Codex-reviewed hardening checkpoint
+  `828555e`
+- `npm run typecheck`
+- `npm test`: 303 passed
+- `npm run design:static`
+- `npm run qa:interactions`: English, Spanish, and Simplified Chinese at
+  390x844 with zero overflow on every existing smoke route
+- `git diff --check`
+
+Remaining:
+
+- Add `/settings/export` to the Codex-owned rendered route harness.
+- Test export sharing, interruption, feedback recovery, and accessibility on
+  physical iPhones.
 
 ### `private-beta-release-authority-20`
 

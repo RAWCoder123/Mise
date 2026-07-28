@@ -1,5 +1,5 @@
 batch_id: private-beta-operator-ui-21
-status: in_progress
+status: complete
 goal: Surface deterministic daily findings, restart-safe manager feedback, and owner/admin restaurant export in a polished mobile UI.
 started_at: 2026-07-28
 codex_owned:
@@ -35,7 +35,20 @@ stop_conditions:
   - Staff can submit manager feedback or restaurant exports
   - Retry identity is regenerated after an ambiguous result
   - Any supported route or locale overflows or loses accessible controls
-evidence: []
+evidence:
+  - Today and Insights render deterministic Now, Up next, and Later findings through fetchDailyOperationalBrief.
+  - Owner/admin/manager feedback uses only the restart-safe queue, list, and flush facade; staff remains read-only.
+  - Original evidence and recommendation remain visible after feedback.
+  - Queue badges require an exact restaurant, finding, policy, confidence, action, evidence, and source-window match.
+  - Owner/admin restaurant export uses only exportRestaurantData and never logs the payload.
+  - Finding cards preserve independently accessible action controls and 44px targets.
+  - npm run typecheck passed.
+  - npm test passed with 303 tests.
+  - npm run design:static passed.
+  - npm run qa:interactions passed at 390x844 in English, Spanish, and Simplified Chinese with zero route overflow.
+  - git diff --check passed.
 unresolved_findings:
   - Real-device proof remains separate release evidence
-checkpoint_commit: null
+  - The new /settings/export route must be added to the Codex-owned route smoke list
+  - Native iOS share-sheet behavior remains real-device evidence
+checkpoint_commit: 828555e

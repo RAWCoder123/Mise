@@ -131,3 +131,26 @@ commit, TestFlight build, device model/OS, locale, workflow results, timestamp,
 and unresolved findings. Do not mark
 `docs/launch/BETA_RELEASE_EVIDENCE.json` passed until Codex or Raymond reviews
 the receipt.
+
+## Reviewed checkpoint — daily brief / export / finding feedback
+
+- Cursor feature checkpoint: `a17c136`
+- Codex-reviewed checkpoint: `828555e`
+- Paths:
+  - `app/(tabs)/today.tsx`
+  - `app/(tabs)/insights.tsx`
+  - `app/(tabs)/settings.tsx`
+  - `app/settings/export.tsx`
+  - `components/dailyBrief/**`
+  - `i18n/catalog.ts`
+  - `tests/dailyBriefAndExportUi.test.ts`
+- Verification:
+  - `npm run typecheck` passed
+  - `npm test` passed (303)
+  - `npm run design:static` passed
+  - `npm run qa:interactions` passed for English, Spanish, and Simplified
+    Chinese at 390x844 with zero overflow on every existing smoke route
+- Codex review removed card-level accessibility grouping and made queue status
+  exact-snapshot scoped before accepting the batch.
+- Not done: push, merge, deploy, release, provider activation, physical-device
+  share-sheet proof, or TestFlight evidence.
