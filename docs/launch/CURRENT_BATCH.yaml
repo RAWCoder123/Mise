@@ -1,50 +1,44 @@
-batch_id: private-beta-privacy-support-24
-status: complete
-goal: Make the August 3 beta privacy and support disclosures accurate, accessible in-app, localized, and ready for monitored public hosting.
+batch_id: private-beta-invite-only-admission-25
+status: in_progress
+goal: Enforce admin-provisioned restaurant admission across the August 3 beta UI and hosted database while preserving deterministic local demo setup.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - docs/store/**
+  - supabase/migrations/**
+  - supabase/tests/**
   - tests/**
 cursor_owned:
   - app/(auth)/login.tsx
-  - app/settings/privacy.tsx
-  - app/settings/support.tsx
-  - app/(tabs)/settings.tsx
+  - app/(auth)/setup.tsx
   - i18n/catalog.ts
   - scripts/mobile-route-smoke.mjs
   - scripts/mobile-layout-smoke.mjs
 shared_locked:
-  - components/**
+  - contexts/MiseSessionContext.tsx
+  - services/miseService.ts
+  - services/repositories/**
+  - lib/appConfig.ts
+  - eas.json
 blocked_files:
-  - services/**
-  - supabase/**
   - package.json
   - package-lock.json
 handoff_required: true
 dependencies:
-  - private-beta-provider-kill-switches-23
+  - private-beta-privacy-support-24
 required_tests:
   - npm run typecheck
   - npm test
+  - npm run security:backend
+  - npm run supabase:test
   - npm run design:static
   - npm run qa:routes
   - npm run qa:interactions
 stop_conditions:
-  - Policy describes a provider or data flow disabled for the beta as active
-  - Policy or support copy contains an unmarked placeholder or incorrect date
-  - Privacy, support, deletion, or export access is hidden from a signed-in user
-  - Privacy and support disclosures are unavailable before sign-in
-  - A route overflows or loses meaning in English, Spanish, or Simplified Chinese
-evidence:
-  - docs/launch/evidence/devices/2026-07-28-privacy-support-access.md
-  - Cursor implementation checkpoints 42d92d6, c286102, 599827c, and 77642e1
-  - Codex policy checkpoint b172ab1 and access-test checkpoint 96403ac
-  - npm run typecheck
-  - npm test (313 passed)
-  - npm run design:static
-  - npm run qa:routes
-  - npm run qa:interactions (English, Spanish, and Simplified Chinese at 390x844)
-unresolved_findings:
-  - Publishing https://getmise.app/privacy and confirming that support@getmise.app and privacy@getmise.app are monitored require Raymond
-checkpoint_commit: 96403ac
+  - An anon or authenticated client can create a restaurant or owner membership
+  - A hosted user without a provisioned active membership can enter restaurant setup
+  - Admin provisioning accepts a nonexistent Auth user, creates duplicate ownership, or enables providers
+  - Local deterministic demo setup is removed or production demo access is enabled
+  - Signed-out privacy and support access regresses
+evidence: []
+unresolved_findings: []
+checkpoint_commit: null

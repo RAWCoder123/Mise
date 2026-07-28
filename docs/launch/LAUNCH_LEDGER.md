@@ -44,6 +44,7 @@ commit before another batch begins.
 | `private-beta-testflight-tooling-22` | Codex | Pinned EAS prerequisites and export route coverage | Complete; account/device proof pending | `209e533` |
 | `private-beta-provider-kill-switches-23` | Codex | Persisted provider and draft-only authority at supplier delivery | Complete; providers remain disabled | `07cd9ba` |
 | `private-beta-privacy-support-24` | Tandem | Accurate localized in-app privacy and support access | Complete; public hosting/monitoring pending | `96403ac` |
+| `private-beta-invite-only-admission-25` | Tandem | Admin-provisioned beta accounts and restaurants | In progress | — |
 
 ### `private-beta-privacy-support-24`
 
