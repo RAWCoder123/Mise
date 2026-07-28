@@ -48,6 +48,38 @@ commit before another batch begins.
 | `private-beta-owner-invitation-26` | Tandem | Controlled hosted invitation acceptance and first owner hydration | Complete; device/delivery proof pending | `dc1d5db` / `0237f89` |
 | `private-beta-quota-proof-27` | Codex | Direct sixth-workspace rejection through the service provisioning boundary | Complete | `84f2c9d` |
 | `private-beta-hosted-harness-28` | Codex | Restore hosted rendered tenant-race proof after invite-only UI changes | Complete | `213fcf4` |
+| `private-beta-release-prerequisite-audit-29` | Codex | Refresh recovery evidence and isolate external release prerequisites | Complete; candidate freeze ready | `30158cd` |
+
+### `private-beta-release-prerequisite-audit-29`
+
+Delivered:
+
+- Refreshed the staging operational dump/restore proof into an isolated
+  ephemeral PostgreSQL target with content-equivalence verification and
+  automatic cleanup.
+- Revalidated the static Sentry/PostHog correlation and redaction contract.
+- Confirmed the native and EAS gates fail closed on missing full Xcode,
+  `simctl`, EAS authentication, and project identity.
+- Confirmed the public policy/support host is not yet responding and the exact
+  release authority remains blocked with zero unearned receipts.
+
+Evidence:
+
+- `npm run observability:check`
+- `npm run recovery:staging-check`: 46 tables and 746 rows matched in 23.2
+  seconds without emitting row content
+- `npm run qa:ios-prereq`: expected prerequisite failure
+- `npm run qa:eas-account`: expected prerequisite failure
+- `npm run beta:go-no-go -- --json`: expected fail-closed result
+- `docs/launch/evidence/release/2026-07-28-prerequisite-audit.md`
+
+Remaining:
+
+- Install full Xcode; authenticate and link EAS.
+- Configure live Sentry/PostHog proof access.
+- Publish and monitor privacy/support endpoints.
+- Perform managed hosted recovery, two-device verification, TestFlight
+  installation, and Raymond's exact-candidate approval.
 
 ### `private-beta-hosted-harness-28`
 

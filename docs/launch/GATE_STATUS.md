@@ -71,12 +71,18 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
   zero horizontal overflow.
 - The complete hosted security closure passes after the invite-only UI update,
   including all seven rendered tenant workspace-switch and mutation races.
+- The refreshed isolated staging restore matched 46 operational tables and 746
+  rows in 23.2 seconds without emitting row content; managed hosted recovery
+  remains a separate receipt.
 
 Remaining external verification:
 
 - Install and walk the critical workflow on real supported iPhones.
 - Install/select full Xcode so `simctl` and native prerequisite checks can run.
 - Authenticate EAS and link `expo.extra.eas.projectId`.
+- Install full Xcode so `simctl` and native release checks are available.
+- Publish responsive `getmise.app/privacy` and support endpoints and confirm
+  monitored support/privacy inboxes.
 - Accept a release-candidate owner invitation on a physical iPhone and confirm
   the monitored invitation-delivery channel.
 - Complete live monitoring, managed Supabase recovery, and TestFlight evidence.
