@@ -35,6 +35,74 @@ export interface OperationalFindingDecision {
   recordedAt: string;
 }
 
+function evidenceMatches(
+  finding: OperationalFinding,
+  decision: OperationalFindingDecision
+) {
+  return JSON.stringify(finding.evidence) === JSON.stringify(decision.evidence);
+}
+
+function decisionApplies(
+  finding: OperationalFinding,
+  decision: OperationalFindingDecision
+) {
+  return (
+    decision.findingId === finding.id &&
+    decision.policyVersion === finding.policyVersion &&
+    decision.findingCategory === finding.category &&
+    decision.severity === finding.severity &&
+    decision.confidenceScore === finding.confidence.score &&
+    decision.originalRecommendedAction === finding.recommendedAction &&
+    Date.parse(decision.recordedAt) >= Date.parse(finding.sourceWindow.end) &&
+    evidenceMatches(finding, decision)
+  );
+}
+
+export function applyOperationalFindingDecisions(
+  restaurantId: string,
+  findings: readonly OperationalFinding[],
+  decisions: readonly OperationalFindingDecision[]
+): OperationalFinding[] {
+  if (
+    findings.some((finding) => finding.restaurantId !== restaurantId) ||
+    decisions.some((decision) => decision.restaurantId !== restaurantId)
+  ) {
+    throw new Error("Finding feedback failed restaurant scope validation.");
+  }
+
+  return findings.map((finding) => {
+    const latest = decisions
+      .filter((decision) => decisionApplies(finding, decision))
+      .sort((left, right) =>
+        right.sequence - left.sequence ||
+        right.recordedAt.localeCompare(left.recordedAt)
+      )[0];
+    if (!latest) {
+      return {
+        ...finding,
+        managerFeedback: {
+          state: "unreviewed",
+          decisionId: null,
+          recordedAt: null,
+          effectiveRecommendedAction: finding.recommendedAction
+        }
+      };
+    }
+
+    return {
+      ...finding,
+      priority: "later",
+      managerFeedback: {
+        state: latest.decisionType,
+        decisionId: latest.id,
+        recordedAt: latest.recordedAt,
+        effectiveRecommendedAction:
+          latest.editedRecommendedAction ?? finding.recommendedAction
+      }
+    };
+  });
+}
+
 const findingIdPattern = /^finding:[a-z0-9][a-z0-9:_-]{1,231}$/;
 const policyVersionPattern = /^[a-z0-9][a-z0-9._-]{2,63}$/;
 const findingCategories = new Set<FindingCategory>([

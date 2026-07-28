@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  applyOperationalFindingDecisions,
   normalizeOperationalFindingDecision,
   normalizeOperationalFindingDecisionInput,
-  operationalFindingDecisionRpcArguments
+  operationalFindingDecisionRpcArguments,
+  type OperationalFindingDecision
 } from "../services/domain/operationalFindingDecisions";
 import type { OperationalFinding } from "../services/domain/operationalFindings";
 
@@ -38,6 +40,12 @@ const finding: OperationalFinding = {
     staleAfter: "2026-07-30T12:00:00.000Z",
     missingData: []
   },
+  managerFeedback: {
+    state: "unreviewed",
+    decisionId: null,
+    recordedAt: null,
+    effectiveRecommendedAction: "Review 38 lb from Fresh Produce Co."
+  },
   policyVersion: "beta-findings-v1"
 };
 
@@ -48,6 +56,31 @@ function input(overrides = {}) {
     decisionType: "approved" as const,
     clientEventId: "device-a:finding-decision-1",
     idempotencyKey: "finding-decision:device-a:1",
+    ...overrides
+  };
+}
+
+function decision(
+  overrides: Partial<OperationalFindingDecision> = {}
+): OperationalFindingDecision {
+  return {
+    id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    sequence: 7,
+    restaurantId,
+    findingId: finding.id,
+    policyVersion: finding.policyVersion,
+    decisionType: "edited",
+    findingGeneratedAt: finding.generatedAt,
+    findingCategory: finding.category,
+    severity: finding.severity,
+    confidenceScore: finding.confidence.score,
+    evidence: finding.evidence,
+    originalRecommendedAction: finding.recommendedAction,
+    editedRecommendedAction: "Review 30 lb after recounting.",
+    clientEventId: "device-a:finding-decision-2",
+    idempotencyKey: "finding-decision:device-a:2",
+    actorUserId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    recordedAt: "2026-07-28T12:10:00.000Z",
     ...overrides
   };
 }
@@ -146,6 +179,86 @@ test("finding feedback stays behind one stable facade in hosted and demo modes",
   assert.match(hosted, /\.rpc\(\s*"record_operational_finding_decision"/);
   assert.match(demo, /state\.operationalFindingDecisions\.push/);
   assert.doesNotMatch(application, /supabase|functions\.invoke|openai/i);
+});
+
+test("exact manager feedback is visible without rewriting the original finding evidence", () => {
+  const [applied] = applyOperationalFindingDecisions(
+    restaurantId,
+    [finding],
+    [decision()]
+  );
+
+  assert.ok(applied);
+  assert.equal(applied.priority, "later");
+  assert.equal(applied.managerFeedback.state, "edited");
+  assert.equal(
+    applied.managerFeedback.effectiveRecommendedAction,
+    "Review 30 lb after recounting."
+  );
+  assert.equal(applied.recommendedAction, finding.recommendedAction);
+  assert.deepEqual(applied.evidence, finding.evidence);
+  assert.equal(applied.confidence.score, finding.confidence.score);
+});
+
+test("feedback expires when evidence, policy, or the original action changes", () => {
+  const changedEvidence = {
+    ...finding,
+    evidence: [{
+      ...finding.evidence[0]!,
+      observedAt: "2026-07-28T12:20:00.000Z",
+      summary: "A newer count changed chicken coverage."
+    }],
+    sourceWindow: {
+      start: "2026-07-28T12:20:00.000Z",
+      end: "2026-07-28T12:20:00.000Z"
+    }
+  };
+  const changedAction = {
+    ...finding,
+    recommendedAction: "Review 20 lb after the latest count."
+  };
+
+  for (const candidate of [
+    changedEvidence,
+    changedAction,
+    { ...finding, policyVersion: "beta-findings-v2" as typeof finding.policyVersion }
+  ]) {
+    const [result] = applyOperationalFindingDecisions(
+      restaurantId,
+      [candidate],
+      [decision()]
+    );
+    assert.equal(result?.managerFeedback.state, "unreviewed");
+    assert.equal(result?.priority, candidate.priority);
+  }
+});
+
+test("the newest exact decision wins and mixed-tenant feedback fails closed", () => {
+  const [applied] = applyOperationalFindingDecisions(
+    restaurantId,
+    [finding],
+    [
+      decision(),
+      decision({
+        id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        sequence: 8,
+        decisionType: "dismissed",
+        editedRecommendedAction: null,
+        recordedAt: "2026-07-28T12:11:00.000Z"
+      })
+    ]
+  );
+  assert.equal(applied?.managerFeedback.state, "dismissed");
+  assert.equal(applied?.managerFeedback.decisionId, "ffffffff-ffff-4fff-8fff-ffffffffffff");
+
+  assert.throws(
+    () => applyOperationalFindingDecisions(
+      restaurantId,
+      [finding],
+      [decision({ restaurantId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" })]
+    ),
+    /restaurant scope/
+  );
 });
 
 test("finding decision schema is append-only, role-guarded, and operational-mode aware", () => {

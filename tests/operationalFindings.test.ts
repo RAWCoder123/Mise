@@ -185,6 +185,105 @@ test("daily brief stays bounded and deterministic under noisy rule output", () =
   assert.deepEqual(first, second);
 });
 
+test("daily brief moves exact handled evidence to Later but keeps it visible", () => {
+  const initial = build();
+  const target = initial.findings.find(
+    (entry) => entry.id === `finding:recommendation:${recommendation.id}`
+  );
+  assert.ok(target);
+
+  const decision = {
+    id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    sequence: 1,
+    restaurantId,
+    findingId: target.id,
+    policyVersion: target.policyVersion,
+    decisionType: "approved" as const,
+    findingGeneratedAt: target.generatedAt,
+    findingCategory: target.category,
+    severity: target.severity,
+    confidenceScore: target.confidence.score,
+    evidence: target.evidence,
+    originalRecommendedAction: target.recommendedAction,
+    editedRecommendedAction: null,
+    clientEventId: "brief-decision-1",
+    idempotencyKey: "brief-decision-1",
+    actorUserId: "owner-a",
+    recordedAt: "2026-07-27T12:10:00.000Z"
+  };
+  const next = build({ decisions: [decision] });
+  const handled = next.findings.find((entry) => entry.id === target.id);
+
+  assert.ok(handled);
+  assert.equal(handled.managerFeedback.state, "approved");
+  assert.equal(handled.priority, "later");
+  assert.ok(next.priorities.later.includes(target.id));
+  assert.ok(!next.priorities.now.includes(target.id));
+  assert.deepEqual(handled.evidence, target.evidence);
+});
+
+test("same-day data-gap feedback survives a brief refresh and expires with new evidence", () => {
+  const initial = build({
+    sales: [],
+    inventoryItems: [],
+    mappings: [],
+    recommendations: [],
+    insights: []
+  });
+  const target = initial.findings.find(
+    (entry) => entry.id === "finding:data-gap:sales:2026-07-27"
+  );
+  assert.ok(target);
+  const decision = {
+    id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    sequence: 2,
+    restaurantId,
+    findingId: target.id,
+    policyVersion: target.policyVersion,
+    decisionType: "dismissed" as const,
+    findingGeneratedAt: target.generatedAt,
+    findingCategory: target.category,
+    severity: target.severity,
+    confidenceScore: target.confidence.score,
+    evidence: target.evidence,
+    originalRecommendedAction: target.recommendedAction,
+    editedRecommendedAction: null,
+    clientEventId: "brief-decision-2",
+    idempotencyKey: "brief-decision-2",
+    actorUserId: "owner-a",
+    recordedAt: "2026-07-27T12:10:00.000Z"
+  };
+  const refreshed = build({
+    generatedAt: "2026-07-27T13:00:00.000Z",
+    sales: [],
+    inventoryItems: [],
+    mappings: [],
+    recommendations: [],
+    insights: [],
+    decisions: [decision]
+  });
+  assert.equal(
+    refreshed.findings.find((entry) => entry.id === target.id)?.managerFeedback.state,
+    "dismissed"
+  );
+
+  const nextDay = build({
+    operatingDate: "2026-07-28",
+    generatedAt: "2026-07-28T13:00:00.000Z",
+    sales: [],
+    inventoryItems: [],
+    mappings: [],
+    recommendations: [],
+    insights: [],
+    decisions: [decision]
+  });
+  assert.equal(
+    nextDay.findings.find((entry) => entry.id === "finding:data-gap:sales:2026-07-28")
+      ?.managerFeedback.state,
+    "unreviewed"
+  );
+});
+
 test("screen-facing daily brief stays behind miseService and has no AI or mutation dependency", () => {
   const facade = readFileSync("services/miseService.ts", "utf8");
   const application = readFileSync("services/application/findings.ts", "utf8");
@@ -192,6 +291,7 @@ test("screen-facing daily brief stays behind miseService and has no AI or mutati
 
   assert.match(facade, /export \* from "\.\/application\/findings"/);
   assert.match(application, /repository\.fetchRestaurantData/);
+  assert.match(application, /repository\.fetchOperationalFindingDecisions/);
   assert.match(application, /toDateKeyInTimeZone/);
   assert.doesNotMatch(application, /fetchPlanningData/);
   assert.doesNotMatch(application, /create|insert|update|delete|sendSupplier/i);

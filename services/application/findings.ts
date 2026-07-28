@@ -8,7 +8,10 @@ export async function fetchDailyOperationalBrief(restaurantId: string) {
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const restaurantData = await repository.fetchRestaurantData(normalizedRestaurantId);
+  const [restaurantData, decisions] = await Promise.all([
+    repository.fetchRestaurantData(normalizedRestaurantId),
+    repository.fetchOperationalFindingDecisions(normalizedRestaurantId)
+  ]);
 
   return buildDailyOperationalBrief({
     restaurantId: normalizedRestaurantId,
@@ -17,6 +20,7 @@ export async function fetchDailyOperationalBrief(restaurantId: string) {
     inventoryItems: restaurantData.inventoryItems,
     mappings: restaurantData.menuItemIngredients,
     recommendations: restaurantData.purchaseRecommendations,
-    insights: restaurantData.insights
+    insights: restaurantData.insights,
+    decisions
   });
 }

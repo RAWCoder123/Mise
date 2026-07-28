@@ -5,6 +5,10 @@ import type {
   PosSale,
   PurchaseRecommendation
 } from "../../types/mise";
+import {
+  applyOperationalFindingDecisions,
+  type OperationalFindingDecision
+} from "./operationalFindingDecisions";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
 const MAX_FINDINGS = 12;
@@ -61,6 +65,12 @@ export interface OperationalFinding {
     staleAfter: string;
     missingData: string[];
   };
+  managerFeedback: {
+    state: "unreviewed" | "approved" | "edited" | "dismissed";
+    decisionId: string | null;
+    recordedAt: string | null;
+    effectiveRecommendedAction: string;
+  };
   policyVersion: typeof BETA_FINDING_POLICY_VERSION;
 }
 
@@ -86,6 +96,7 @@ export interface DailyOperationalBriefInput {
   mappings: readonly MenuItemIngredient[];
   recommendations: readonly PurchaseRecommendation[];
   insights: readonly Insight[];
+  decisions?: readonly OperationalFindingDecision[];
 }
 
 function normalizedKey(value: string) {
@@ -99,6 +110,10 @@ function boundedText(value: string, fallback: string, max = 240) {
 
 function finiteTimestamp(value: string | null | undefined, fallback: string) {
   return value && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : fallback;
+}
+
+function operatingDateEvidenceAt(operatingDate: string) {
+  return `${operatingDate}T00:00:00.000Z`;
 }
 
 function freshnessFor(
@@ -151,11 +166,24 @@ function assertTenantScope(input: DailyOperationalBriefInput) {
     input.inventoryItems,
     input.mappings,
     input.recommendations,
-    input.insights
+    input.insights,
+    input.decisions ?? []
   ];
-  if (collections.some((collection) => collection.some((row) => row.restaurant_id !== input.restaurantId))) {
+  if (collections.some((collection) => collection.some((row) => {
+    const restaurantId = "restaurant_id" in row ? row.restaurant_id : row.restaurantId;
+    return restaurantId !== input.restaurantId;
+  }))) {
     throw new Error("Finding inputs failed restaurant scope validation.");
   }
+}
+
+function unreviewedFeedback(recommendedAction: string): OperationalFinding["managerFeedback"] {
+  return {
+    state: "unreviewed",
+    decisionId: null,
+    recordedAt: null,
+    effectiveRecommendedAction: recommendedAction
+  };
 }
 
 export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): DailyOperationalBrief {
@@ -216,6 +244,10 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
         : "info";
     const priority: FindingPriority = severity === "urgent" ? "now" : severity === "warning" ? "up_next" : "later";
     const confidenceScore = freshness.state === "fresh" ? 0.92 : freshness.state === "stale" ? 0.55 : 0.62;
+    const recommendedAction = boundedText(
+      `Review ${recommendation.recommended_quantity} ${recommendation.unit} from ${recommendation.supplier_name}; edit or dismiss the draft suggestion as needed.`,
+      "Review the recommendation."
+    );
     findings.push({
       id: `finding:recommendation:${recommendation.id}`,
       restaurantId,
@@ -232,13 +264,11 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       ),
       evidence: evidence.slice(0, MAX_EVIDENCE_PER_FINDING),
       affectedWorkflow: "inventory_and_ordering",
-      recommendedAction: boundedText(
-        `Review ${recommendation.recommended_quantity} ${recommendation.unit} from ${recommendation.supplier_name}; edit or dismiss the draft suggestion as needed.`,
-        "Review the recommendation."
-      ),
+      recommendedAction,
       sourceWindow: sourceWindow(evidence, generatedAt),
       generatedAt,
       freshness,
+      managerFeedback: unreviewedFeedback(recommendedAction),
       policyVersion: BETA_FINDING_POLICY_VERSION
     });
   }
@@ -261,6 +291,7 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       : insight.severity === "warning"
         ? "up_next"
         : "later";
+    const recommendedAction = boundedText(insight.recommended_action, "Review the underlying restaurant evidence.");
     findings.push({
       id: `finding:insight:${insight.id}`,
       restaurantId,
@@ -277,22 +308,25 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       ),
       evidence,
       affectedWorkflow: insight.insight_type,
-      recommendedAction: boundedText(insight.recommended_action, "Review the underlying restaurant evidence."),
+      recommendedAction,
       sourceWindow: sourceWindow(evidence, generatedAt),
       generatedAt,
       freshness,
+      managerFeedback: unreviewedFeedback(recommendedAction),
       policyVersion: BETA_FINDING_POLICY_VERSION
     });
   }
 
   const todaySales = input.sales.filter((sale) => sale.sale_date === input.operatingDate);
   if (todaySales.length === 0) {
+    const observedAt = operatingDateEvidenceAt(input.operatingDate);
     const evidence: FindingEvidenceReference[] = [{
       type: "data_gap",
       id: `sales:${input.operatingDate}`,
-      observedAt: generatedAt,
+      observedAt,
       summary: `No sales rows are recorded for ${input.operatingDate}.`
     }];
+    const recommendedAction = "Import or enter today’s sales, then refresh the daily brief.";
     findings.push({
       id: `finding:data-gap:sales:${input.operatingDate}`,
       restaurantId,
@@ -304,21 +338,24 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       confidence: boundedConfidence(1, "The restaurant-scoped sales dataset contains no rows for this operating date."),
       evidence,
       affectedWorkflow: "daily_sales_import",
-      recommendedAction: "Import or enter today’s sales, then refresh the daily brief.",
+      recommendedAction,
       sourceWindow: sourceWindow(evidence, generatedAt),
       generatedAt,
       freshness: freshnessFor(generatedAt, generatedAt, ["daily_sales"]),
+      managerFeedback: unreviewedFeedback(recommendedAction),
       policyVersion: BETA_FINDING_POLICY_VERSION
     });
   }
 
   if (input.inventoryItems.length === 0) {
+    const observedAt = operatingDateEvidenceAt(input.operatingDate);
     const evidence: FindingEvidenceReference[] = [{
       type: "data_gap",
       id: `inventory:${restaurantId}`,
-      observedAt: generatedAt,
+      observedAt,
       summary: "No inventory items are configured for this restaurant."
     }];
+    const recommendedAction = "Add inventory items, canonical units, costs, and suppliers before relying on recommendations.";
     findings.push({
       id: `finding:data-gap:inventory:${restaurantId}`,
       restaurantId,
@@ -330,10 +367,11 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       confidence: boundedConfidence(1, "The restaurant-scoped inventory dataset is empty."),
       evidence,
       affectedWorkflow: "inventory_setup",
-      recommendedAction: "Add inventory items, canonical units, costs, and suppliers before relying on recommendations.",
+      recommendedAction,
       sourceWindow: sourceWindow(evidence, generatedAt),
       generatedAt,
       freshness: freshnessFor(generatedAt, generatedAt, ["inventory_items"]),
+      managerFeedback: unreviewedFeedback(recommendedAction),
       policyVersion: BETA_FINDING_POLICY_VERSION
     });
   }
@@ -349,6 +387,7 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
     }));
     const missingNames = [...new Set(unmappedSales.map((sale) => boundedText(sale.item_name, "menu item", 80)))]
       .slice(0, 5);
+    const recommendedAction = "Verify recipe and ingredient mappings for the sold items before using depletion forecasts.";
     findings.push({
       id: `finding:data-gap:mapping:${input.operatingDate}`,
       restaurantId,
@@ -360,7 +399,7 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       confidence: boundedConfidence(1, "Current restaurant sales were compared directly with restaurant-scoped menu mappings."),
       evidence,
       affectedWorkflow: "recipe_mapping",
-      recommendedAction: "Verify recipe and ingredient mappings for the sold items before using depletion forecasts.",
+      recommendedAction,
       sourceWindow: sourceWindow(evidence, generatedAt),
       generatedAt,
       freshness: freshnessFor(
@@ -368,11 +407,17 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
         generatedAt,
         missingNames.map((name) => `menu_mapping:${name}`)
       ),
+      managerFeedback: unreviewedFeedback(recommendedAction),
       policyVersion: BETA_FINDING_POLICY_VERSION
     });
   }
 
-  const sorted = findings
+  const findingsWithFeedback = applyOperationalFindingDecisions(
+    restaurantId,
+    findings,
+    input.decisions ?? []
+  );
+  const sorted = findingsWithFeedback
     .sort((left, right) =>
       priorityRank(left.priority) - priorityRank(right.priority) ||
       severityRank(left.severity) - severityRank(right.severity) ||
@@ -394,4 +439,3 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
     }
   };
 }
-
