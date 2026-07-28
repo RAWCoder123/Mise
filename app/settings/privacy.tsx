@@ -21,10 +21,14 @@ export default function PrivacySettingsScreen() {
   const { restaurant, user } = useMiseSession();
   const [linkError, setLinkError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+  const signedIn = Boolean(user);
 
-  function goBackToSettings() {
-    if (navigation.canGoBack()) navigation.goBack();
-    else router.replace("/settings");
+  function goBack() {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    router.replace(signedIn ? "/settings" : "/login");
   }
 
   async function openPrivacyPolicyUrl() {
@@ -45,39 +49,26 @@ export default function PrivacySettingsScreen() {
     }
   }
 
-  if (!user) {
-    return (
-      <Screen
-        title={t("privacy.title")}
-        subtitle={t("privacy.subtitle")}
-        action={
-          <ActionIcon accessibilityLabel={t("privacy.backToSettings")} onPress={goBackToSettings}>
-            <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
-          </ActionIcon>
-        }
-      >
-        <StatusNotice tone="caution" title={t("privacy.signedOut.title")} message={t("privacy.signedOut.body")} />
-      </Screen>
-    );
-  }
-
   return (
     <Screen
       title={t("privacy.title")}
-      subtitle={restaurant ? t("privacy.subtitleRestaurant", { restaurant: restaurant.name }) : t("privacy.subtitle")}
+      subtitle={
+        signedIn && restaurant
+          ? t("privacy.subtitleRestaurant", { restaurant: restaurant.name })
+          : t("privacy.subtitle")
+      }
       action={
-        <ActionIcon accessibilityLabel={t("privacy.backToSettings")} onPress={goBackToSettings}>
+        <ActionIcon
+          accessibilityLabel={t(signedIn ? "privacy.backToSettings" : "privacy.backToLogin")}
+          onPress={goBack}
+        >
           <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
         </ActionIcon>
       }
     >
       <View style={styles.stack}>
         <StatusNotice tone="caution" title={t("privacy.beta.title")} message={t("privacy.beta.body")} />
-        <StatusNotice
-          tone="caution"
-          title={t("privacy.hosting.title")}
-          message={t("privacy.hosting.body")}
-        />
+        <StatusNotice tone="caution" title={t("privacy.hosting.title")} message={t("privacy.hosting.body")} />
 
         <Card>
           <View style={styles.hero}>
@@ -114,12 +105,14 @@ export default function PrivacySettingsScreen() {
           onPress={() => router.push("/settings/support" as never)}
           fullWidth
         />
-        <Button
-          title={t("privacy.action.openExport")}
-          variant="ghost"
-          onPress={() => router.push("/settings/export" as never)}
-          fullWidth
-        />
+        {signedIn ? (
+          <Button
+            title={t("privacy.action.openExport")}
+            variant="ghost"
+            onPress={() => router.push("/settings/export" as never)}
+            fullWidth
+          />
+        ) : null}
       </View>
     </Screen>
   );

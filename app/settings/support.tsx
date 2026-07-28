@@ -22,10 +22,14 @@ export default function SupportSettingsScreen() {
   const { restaurant, user } = useMiseSession();
   const [linkError, setLinkError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+  const signedIn = Boolean(user);
 
-  function goBackToSettings() {
-    if (navigation.canGoBack()) navigation.goBack();
-    else router.replace("/settings");
+  function goBack() {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    router.replace(signedIn ? "/settings" : "/login");
   }
 
   async function openBoundedMailto(url: typeof SUPPORT_MAILTO | typeof PRIVACY_MAILTO) {
@@ -46,28 +50,19 @@ export default function SupportSettingsScreen() {
     }
   }
 
-  if (!user) {
-    return (
-      <Screen
-        title={t("support.title")}
-        subtitle={t("support.subtitle")}
-        action={
-          <ActionIcon accessibilityLabel={t("support.backToSettings")} onPress={goBackToSettings}>
-            <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
-          </ActionIcon>
-        }
-      >
-        <StatusNotice tone="caution" title={t("support.signedOut.title")} message={t("support.signedOut.body")} />
-      </Screen>
-    );
-  }
-
   return (
     <Screen
       title={t("support.title")}
-      subtitle={restaurant ? t("support.subtitleRestaurant", { restaurant: restaurant.name }) : t("support.subtitle")}
+      subtitle={
+        signedIn && restaurant
+          ? t("support.subtitleRestaurant", { restaurant: restaurant.name })
+          : t("support.subtitle")
+      }
       action={
-        <ActionIcon accessibilityLabel={t("support.backToSettings")} onPress={goBackToSettings}>
+        <ActionIcon
+          accessibilityLabel={t(signedIn ? "support.backToSettings" : "support.backToLogin")}
+          onPress={goBack}
+        >
           <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
         </ActionIcon>
       }
@@ -123,19 +118,23 @@ export default function SupportSettingsScreen() {
           onPress={() => router.push("/settings/privacy" as never)}
           fullWidth
         />
-        <Button
-          title={t("support.action.openExport")}
-          variant="ghost"
-          onPress={() => router.push("/settings/export" as never)}
-          fullWidth
-        />
-        <Button
-          title={t("support.action.openAccount")}
-          variant="ghost"
-          onPress={goBackToSettings}
-          fullWidth
-          accessibilityHint={t("support.action.openAccountHint")}
-        />
+        {signedIn ? (
+          <>
+            <Button
+              title={t("support.action.openExport")}
+              variant="ghost"
+              onPress={() => router.push("/settings/export" as never)}
+              fullWidth
+            />
+            <Button
+              title={t("support.action.openAccount")}
+              variant="ghost"
+              onPress={goBack}
+              fullWidth
+              accessibilityHint={t("support.action.openAccountHint")}
+            />
+          </>
+        ) : null}
       </View>
     </Screen>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { BookOpen, ChefHat, ClipboardCheck, LogIn, MailCheck, PackageCheck, PlugZap, UserPlus } from "lucide-react-native";
 import { router } from "expo-router";
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
@@ -9,7 +9,7 @@ import { OperationsFlow } from "../../components/ui/OperationsFlow";
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
-import { colors } from "../../constants/theme";
+import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -345,6 +345,30 @@ export default function LoginScreen() {
               ? t("login.mode.demo")
               : t("login.mode.cloud")}
           </Text>
+
+          <View style={styles.legalRow} accessibilityRole="text">
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={t("login.legal.privacyAccessibility")}
+              accessibilityHint={t("login.legal.privacyHint")}
+              onPress={() => router.push("/settings/privacy" as never)}
+              style={({ pressed }) => [styles.legalLink, pressed && styles.legalLinkPressed]}
+            >
+              <Text style={styles.legalLinkText}>{t("login.legal.privacy")}</Text>
+            </Pressable>
+            <Text style={styles.legalSeparator} accessible={false}>
+              ·
+            </Text>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={t("login.legal.supportAccessibility")}
+              accessibilityHint={t("login.legal.supportHint")}
+              onPress={() => router.push("/settings/support" as never)}
+              style={({ pressed }) => [styles.legalLink, pressed && styles.legalLinkPressed]}
+            >
+              <Text style={styles.legalLinkText}>{t("login.legal.support")}</Text>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -440,5 +464,37 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 18,
     paddingHorizontal: 12
+  },
+  legalRow: {
+    marginTop: 8,
+    marginBottom: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingHorizontal: 12
+  },
+  legalLink: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.sm
+  },
+  legalLinkPressed: {
+    backgroundColor: colors.surfaceWarm
+  },
+  legalLinkText: {
+    color: colors.muted,
+    fontFamily: typography.families.semibold,
+    fontSize: 13,
+    lineHeight: 18,
+    textDecorationLine: "underline"
+  },
+  legalSeparator: {
+    color: colors.faint,
+    fontSize: 13,
+    lineHeight: 18
   }
 });
