@@ -51,7 +51,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
-    }
+      "router": {},
+      "eas": {
+        "projectId": "bf74b605-68fb-4457-9eb8-e68b9c4aac0d"
+      }
+    },
+    "owner": "raymondaws-team"
   }
 }
