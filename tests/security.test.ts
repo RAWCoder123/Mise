@@ -150,6 +150,10 @@ test("Supabase schema and migration replace broad RLS with membership-scoped pol
     .map((file) => readFileSync(`supabase/migrations/${file}`, "utf8"))
     .join("\n");
   const combined = `${schema}\n${migrations}`;
+  const betaAdmission = readFileSync(
+    "supabase/migrations/20260728210609_enforce_invite_only_beta_admission.sql",
+    "utf8"
+  );
 
   assert.equal(/\busing\s*\(\s*true\s*\)/i.test(combined), false);
   assert.equal(/\bwith\s+check\s*\(\s*true\s*\)/i.test(combined), false);
@@ -162,7 +166,14 @@ test("Supabase schema and migration replace broad RLS with membership-scoped pol
   assert.match(combined, /private\.is_restaurant_member\(restaurant_id\)/i);
   assert.match(combined, /private\.has_restaurant_role\(restaurant_id,\s*array\['owner',\s*'admin',\s*'manager'\]\)/i);
   assert.match(combined, /revoke\s+all\s+on\s+function\s+private\.is_restaurant_member\(uuid\)\s+from\s+public,\s+anon/i);
-  assert.match(combined, /grant\s+execute\s+on\s+function\s+public\.create_restaurant_with_owner\(text,\s*text\)\s+to\s+authenticated/i);
+  assert.match(
+    betaAdmission,
+    /revoke\s+all\s+on\s+function\s+public\.create_restaurant_with_owner\(text,\s*text\)\s+from\s+public,\s*anon,\s*authenticated,\s*service_role/i
+  );
+  assert.match(
+    betaAdmission,
+    /grant\s+execute\s+on\s+function\s+public\.service_provision_beta_restaurant\(uuid,\s*text,\s*text,\s*uuid\)\s+to\s+service_role/i
+  );
   assert.doesNotMatch(combined, /grant\s+select,\s+update\s+on\s+public\.users\s+to\s+authenticated/i);
   const anonGrants = combined.match(/grant\s+[^;]+\s+to\s+anon[^;]*;/gi) ?? [];
   assert.deepEqual(

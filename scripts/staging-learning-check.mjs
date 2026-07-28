@@ -149,13 +149,15 @@ try {
   if (signIn.error) throw signIn.error;
   assert.equal(signIn.data.user?.id, state.ownerUserId, "owner sign-in returns the seeded auth user");
 
-  const createdRestaurant = await ownerClient.rpc("create_restaurant_with_owner", {
-    restaurant_name: tenantName,
-    restaurant_cuisine_type: "Staging learning-loop fixture"
+  const createdRestaurant = await admin.rpc("service_provision_beta_restaurant", {
+    p_owner_user_id: state.ownerUserId,
+    p_restaurant_name: tenantName,
+    p_restaurant_cuisine_type: "Staging learning-loop fixture",
+    p_idempotency_key: randomUUID()
   });
   if (createdRestaurant.error) throw createdRestaurant.error;
   state.restaurantId = createdRestaurant.data.id;
-  assert.ok(state.restaurantId, "create_restaurant_with_owner returns the new tenant id");
+  assert.ok(state.restaurantId, "service beta provisioning returns the new tenant id");
 
   // Timezone pins the operating date used by the planning snapshot so the
   // seeded sale dates stay strictly in the past. Profile fields are set with

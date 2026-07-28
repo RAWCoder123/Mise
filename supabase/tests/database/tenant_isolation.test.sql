@@ -712,6 +712,7 @@ select is(
   ),
   array[
     'account_deletion_audit',
+    'beta_restaurant_provisioning_requests',
     'edge_function_security_events',
     'environment_identity',
     'gmail_credentials',
@@ -2055,15 +2056,19 @@ select is(
   'authenticated clients cannot read the private workspace allocation ledger'
 );
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '66666666-6666-4666-8666-666666666666', true);
+set local role service_role;
 select lives_ok(
   $sql$create temp table quota_workspaces on commit drop as
     select (
-      public.create_restaurant_with_owner('Quota workspace ' || sequence_number::text, 'Test')
+      public.service_provision_beta_restaurant(
+        '66666666-6666-4666-8666-666666666666',
+        'Quota workspace ' || sequence_number::text,
+        'Test',
+        ('66000000-0000-4000-8000-' || lpad(sequence_number::text, 12, '0'))::uuid
+      )
     ).id as restaurant_id
     from generate_series(1, 5) sequence_number$sql$,
-  'quota owner can create five lifetime workspaces'
+  'service administration can provision five lifetime workspaces'
 );
 select is((select count(*) from quota_workspaces), 5::bigint, 'five quota workspaces were created');
 reset role;

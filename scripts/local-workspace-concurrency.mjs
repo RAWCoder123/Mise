@@ -27,11 +27,18 @@ function runPsql(sql, allowFailure = false) {
 }
 
 function runConcurrentCreate(index) {
+  const idempotencyKey = `d0d00000-0000-4000-8000-${String(index).padStart(12, "0")}`;
   const sql = `
     begin;
-    set local role authenticated;
-    select set_config('request.jwt.claim.sub', '${actorUserId}', true);
-    select (public.create_restaurant_with_owner('Concurrent quota ${index}', 'Test')).id;
+    set local role service_role;
+    select (
+      public.service_provision_beta_restaurant(
+        '${actorUserId}',
+        'Concurrent quota ${index}',
+        'Test',
+        '${idempotencyKey}'
+      )
+    ).id;
     commit;
   `;
   return new Promise((resolve) => {

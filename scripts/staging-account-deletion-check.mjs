@@ -68,9 +68,21 @@ try {
   });
   if (signedIn.error) throw signedIn.error;
 
-  const restaurant = await owner.rpc("create_restaurant_with_owner", {
-    restaurant_name: restaurantName,
-    restaurant_cuisine_type: "Disposable account deletion proof"
+  const unauthorizedAllocation = await owner.rpc("create_restaurant_with_owner", {
+    restaurant_name: `${restaurantName} unauthorized`.slice(0, 120),
+    restaurant_cuisine_type: "Must remain blocked"
+  });
+  assert.ok(
+    unauthorizedAllocation.error,
+    "a signed-in beta user must not receive self-service restaurant allocation"
+  );
+  assert.equal(unauthorizedAllocation.data, null);
+
+  const restaurant = await admin.rpc("service_provision_beta_restaurant", {
+    p_owner_user_id: state.userId,
+    p_restaurant_name: restaurantName,
+    p_restaurant_cuisine_type: "Disposable account deletion proof",
+    p_idempotency_key: randomUUID()
   });
   if (restaurant.error || !restaurant.data?.id) {
     throw restaurant.error ?? new Error("Disposable restaurant was not created.");
