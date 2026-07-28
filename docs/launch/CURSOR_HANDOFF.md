@@ -6,11 +6,12 @@ Status: ready when the Cursor desktop session is unlocked.
 
 ## Base checkpoint
 
-- Use repository state at or after `17e14d9`.
+- Use repository state at or after `13bbeb1`.
 - The last Cursor-authored checkpoint observed by Codex was `debf9f1`.
 - Codex has since completed hosted account deletion, restaurant export,
   deterministic daily findings, append-only manager feedback, exact feedback
-  application to later briefs, and bounded hosted race verification.
+  application to later briefs, restart-safe feedback delivery, and bounded
+  hosted race verification.
 - Do not rewrite or revert those backend checkpoints.
 
 ## Cursor-owned slice A — Daily brief presentation
@@ -75,20 +76,25 @@ Allowed paths:
 - `i18n/catalog.ts`
 - focused UI tests
 
-Use only `recordOperationalFindingDecision(input)` from
-`services/miseService.ts`. The exact `OperationalFinding` returned by
-`fetchDailyOperationalBrief` must be passed back unchanged.
+Use only `queueOperationalFindingDecision(input)`,
+`fetchQueuedOperationalFindingDecisions(restaurantId)`, and
+`flushQueuedOperationalFindingDecisions(restaurantId)` from
+`services/miseService.ts`. Do not call the direct record method from a screen.
+The exact `OperationalFinding` returned by `fetchDailyOperationalBrief` must be
+passed back unchanged.
 
 Requirements:
 
 - Owners, admins, and managers may approve, edit, or dismiss a finding; staff
   remain read-only.
-- Preserve one stable `clientEventId` and `idempotencyKey` for the lifetime of
-  an action attempt and every retry. Never regenerate identity after an
+- The queue generates and persists one stable `clientEventId` and
+  `idempotencyKey`; never reconstruct or replace the queued payload after an
   ambiguous transport result.
 - An edit requires a distinct, non-empty action capped by the service contract.
 - Disable duplicate taps while the request is pending and show applied,
   retryable failure, permission, and conflict states.
+- Flush after queueing and when connectivity returns. Pending or interrupted
+  entries remain durable across app restart.
 - Do not imply that feedback changed inventory, sent an order, or rewrote the
   original evidence.
 - Keep the original evidence and recommended action visible after feedback.

@@ -38,6 +38,38 @@ commit before another batch begins.
 | `private-beta-export-client-contract-16` | Codex | Typed hosted/demo export facade | Complete; UI handoff ready | `3bf2058` |
 | `private-beta-finding-feedback-17` | Codex | Append-only manager feedback linked to deterministic findings | Complete; UI handoff ready | `c0439c0` |
 | `private-beta-finding-feedback-loop-18` | Codex | Apply exact manager feedback to later deterministic briefs | Complete; UI handoff ready | `17e14d9` |
+| `private-beta-finding-feedback-outbox-19` | Codex | Restart-safe device delivery for manager feedback | Complete; UI handoff ready | `13bbeb1` |
+
+### `private-beta-finding-feedback-outbox-19`
+
+Delivered:
+
+- A tenant-scoped AsyncStorage outbox for manager finding decisions behind the
+  stable Mise service facade.
+- One generated client event and idempotency key persist across repository and
+  app restarts, transient failures, and interrupted submissions.
+- Serialized device flushes prevent concurrent local replay. Retry timing uses
+  bounded exponential backoff.
+- Authoritative responses must match the restaurant, finding, policy, decision,
+  client event, and idempotency identity before an entry settles accepted.
+- Permission denials and changed-payload idempotency conflicts settle as
+  visible terminal states; ambiguous transport failures remain retryable.
+- Corrupt, cross-tenant, oversized, or locally identity-conflicting persisted
+  payloads fail closed.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 293 passed
+- `npm run security:backend`
+- `git diff --check`
+
+Remaining handoff:
+
+- Cursor uses the queue, list, and flush facade methods for the feedback
+  interaction and renders accepted, pending, conflict, rejected, and retry
+  states.
+- Real-device interruption and offline recovery remain release evidence.
 
 ### `private-beta-finding-feedback-loop-18`
 
