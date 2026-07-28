@@ -9,6 +9,7 @@ cursor_owned:
   - app/(tabs)/insights.tsx
   - app/(tabs)/settings.tsx
   - app/settings/**
+  - components/dailyBrief/**
   - i18n/catalog.ts
   - focused UI tests
 shared_locked:
