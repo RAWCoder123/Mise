@@ -4,6 +4,7 @@ goal: Enforce admin-provisioned restaurant admission across the August 3 beta UI
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
+  - scripts/local-workspace-concurrency.mjs
   - supabase/migrations/**
   - supabase/tests/**
   - tests/**
