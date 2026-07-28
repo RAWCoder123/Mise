@@ -1,42 +1,35 @@
-batch_id: private-beta-release-prerequisite-audit-29
-status: complete
-goal: Refresh exact pre-release operational evidence and reduce the remaining launch blockers to owner-controlled credentials, public endpoints, physical devices, and final approval.
+batch_id: private-beta-eas-project-link-30
+status: in_progress
+goal: Link Mise to one organization-owned EAS project, persist its project identity, and restore exact-candidate release evidence after the configuration change.
 started_at: 2026-07-28
 codex_owned:
+  - app.json
   - docs/launch/**
+  - tests/testflightReadiness.test.ts
 cursor_owned: []
 shared_locked:
   - app/**
   - services/**
   - scripts/**
   - supabase/**
+  - eas.json
   - package.json
   - package-lock.json
 blocked_files: []
 handoff_required: false
 dependencies:
-  - private-beta-hosted-harness-28
+  - private-beta-release-prerequisite-audit-29
 required_tests:
-  - npm run observability:check
-  - npm run recovery:staging-check
-  - npm run qa:ios-prereq
   - npm run qa:eas-account
+  - npm run typecheck
+  - npm test
   - npm run beta:go-no-go
 stop_conditions:
-  - A release receipt is marked passed without exact-candidate durable evidence
-  - Production, App Store Connect, EAS, DNS, email, monitoring, or hosted recovery state is mutated
-  - A credential value or restored restaurant row is printed or committed
-evidence:
-  - docs/launch/evidence/release/2026-07-28-prerequisite-audit.md
-  - npm run observability:check
-  - npm run recovery:staging-check
-  - npm run qa:ios-prereq (expected external prerequisite failure)
-  - npm run qa:eas-account (expected external prerequisite failure)
-  - npm run beta:go-no-go (expected fail-closed result)
-unresolved_findings:
-  - Full Xcode and simctl are unavailable.
-  - EAS is unauthenticated and app.json has no linked project ID.
-  - Live Sentry and PostHog proof credentials are unavailable.
-  - getmise.app did not return a web response for root, privacy, or support.
-  - Managed hosted recovery, physical devices, TestFlight, and Raymond approval remain external.
-checkpoint_commit: 30158cd
+  - More than one EAS project is created or linked
+  - The project owner is not raymondaws-team
+  - The bundle identifier changes from com.mise.mobile
+  - A credential or token is printed or committed
+  - A build, submission, production deployment, or App Store action starts
+evidence: []
+unresolved_findings: []
+checkpoint_commit: null
