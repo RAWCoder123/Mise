@@ -43,7 +43,42 @@ commit before another batch begins.
 | `private-beta-operator-ui-21` | Cursor + Codex review | Daily Brief, finding feedback, and restaurant export UI | Complete; device proof pending | `828555e` |
 | `private-beta-testflight-tooling-22` | Codex | Pinned EAS prerequisites and export route coverage | Complete; account/device proof pending | `209e533` |
 | `private-beta-provider-kill-switches-23` | Codex | Persisted provider and draft-only authority at supplier delivery | Complete; providers remain disabled | `07cd9ba` |
-| `private-beta-privacy-support-24` | Tandem | Accurate localized in-app privacy and support access | In progress | — |
+| `private-beta-privacy-support-24` | Tandem | Accurate localized in-app privacy and support access | Complete; public hosting/monitoring pending | `96403ac` |
+
+### `private-beta-privacy-support-24`
+
+Delivered:
+
+- Beta-accurate privacy, support, and App Store listing source copy covering
+  actual data flows, disabled providers, draft-only ordering, export, deletion,
+  retention, and emergency contacts.
+- Public privacy and support routes available before sign-in, with quiet
+  independently accessible login links and signed-in settings entry points.
+- Bounded support and privacy email actions that transmit only the public
+  address and fixed subject, plus a fixed privacy-policy URL action.
+- Explicit in-app warnings that the public policy host and contact monitoring
+  are not launch-ready until Raymond confirms them.
+- English, Spanish, and Simplified Chinese copy plus shell, layout, interaction,
+  and static contract coverage.
+
+Evidence:
+
+- Cursor checkpoints `42d92d6`, `c286102`, `599827c`, and `77642e1`
+- Codex policy checkpoint `b172ab1` and access-test checkpoint `96403ac`
+- `npm run typecheck`
+- `npm test`: 313 passed
+- `npm run design:static`
+- `npm run qa:routes`: privacy and support returned HTTP 200
+- `npm run qa:interactions`: all routes passed at 390x844 in English,
+  Spanish, and Simplified Chinese with no horizontal overflow
+- `docs/launch/evidence/devices/2026-07-28-privacy-support-access.md`
+
+Remaining:
+
+- Raymond must publish `https://getmise.app/privacy` and confirm that
+  `support@getmise.app` and `privacy@getmise.app` are actively monitored.
+- Physical-iPhone accessibility and mail/browser handoff remain part of the
+  exact release-candidate walkthrough.
 
 ### `private-beta-provider-kill-switches-23`
 

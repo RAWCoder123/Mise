@@ -1,5 +1,5 @@
 batch_id: private-beta-privacy-support-24
-status: in_progress
+status: complete
 goal: Make the August 3 beta privacy and support disclosures accurate, accessible in-app, localized, and ready for monitored public hosting.
 started_at: 2026-07-28
 codex_owned:
@@ -36,7 +36,15 @@ stop_conditions:
   - Privacy, support, deletion, or export access is hidden from a signed-in user
   - Privacy and support disclosures are unavailable before sign-in
   - A route overflows or loses meaning in English, Spanish, or Simplified Chinese
-evidence: []
+evidence:
+  - docs/launch/evidence/devices/2026-07-28-privacy-support-access.md
+  - Cursor implementation checkpoints 42d92d6, c286102, 599827c, and 77642e1
+  - Codex policy checkpoint b172ab1 and access-test checkpoint 96403ac
+  - npm run typecheck
+  - npm test (313 passed)
+  - npm run design:static
+  - npm run qa:routes
+  - npm run qa:interactions (English, Spanish, and Simplified Chinese at 390x844)
 unresolved_findings:
-  - Public hosting and confirmation that the contact inbox is monitored require Raymond
-checkpoint_commit: null
+  - Publishing https://getmise.app/privacy and confirming that support@getmise.app and privacy@getmise.app are monitored require Raymond
+checkpoint_commit: 96403ac
