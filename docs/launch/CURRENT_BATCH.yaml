@@ -6,6 +6,7 @@ codex_owned:
   - docs/launch/**
   - scripts/staging-client-race.mjs
   - tests/stagingClientRaceHarness.test.ts
+  - tests/security.test.ts
 cursor_owned: []
 shared_locked:
   - app/**
