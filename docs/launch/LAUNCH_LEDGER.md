@@ -43,6 +43,7 @@ commit before another batch begins.
 | `private-beta-operator-ui-21` | Cursor + Codex review | Daily Brief, finding feedback, and restaurant export UI | Complete; device proof pending | `828555e` |
 | `private-beta-testflight-tooling-22` | Codex | Pinned EAS prerequisites and export route coverage | Complete; account/device proof pending | `209e533` |
 | `private-beta-provider-kill-switches-23` | Codex | Persisted provider and draft-only authority at supplier delivery | Complete; providers remain disabled | `07cd9ba` |
+| `private-beta-privacy-support-24` | Tandem | Accurate localized in-app privacy and support access | In progress | — |
 
 ### `private-beta-provider-kill-switches-23`
 

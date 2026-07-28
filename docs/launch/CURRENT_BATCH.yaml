@@ -1,46 +1,40 @@
-batch_id: private-beta-provider-kill-switches-23
-status: complete
-goal: Enforce global and restaurant provider kill switches plus persisted off/draft-only ordering policy at the authoritative supplier-delivery boundary.
+batch_id: private-beta-privacy-support-24
+status: in_progress
+goal: Make the August 3 beta privacy and support disclosures accurate, accessible in-app, localized, and ready for monitored public hosting.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - supabase/migrations/**
-  - supabase/tests/database/**
-  - supabase/functions/send-supplier-email/index.ts
-  - scripts/staging-provider-restrictions-check.mjs
+  - docs/store/**
   - tests/**
-cursor_owned: []
-shared_locked: []
-blocked_files:
-  - app/**
-  - components/**
+cursor_owned:
+  - app/settings/privacy.tsx
+  - app/settings/support.tsx
+  - app/(tabs)/settings.tsx
   - i18n/catalog.ts
+  - scripts/mobile-route-smoke.mjs
+  - scripts/mobile-layout-smoke.mjs
+shared_locked:
+  - components/**
+blocked_files:
   - services/**
+  - supabase/**
   - package.json
   - package-lock.json
 handoff_required: true
 dependencies:
-  - private-beta-testflight-tooling-22
+  - private-beta-provider-kill-switches-23
 required_tests:
   - npm run typecheck
   - npm test
-  - npm run security:backend
-  - npm run supabase:test
-  - staging provider restriction proof
+  - npm run design:static
+  - npm run qa:routes
+  - npm run qa:interactions
 stop_conditions:
-  - A provider environment flag can bypass either database kill switch
-  - The service role can bypass the guarded supplier-send claim
-  - An off ordering policy permits order drafting
-  - Disabled or paused provider state creates delivery evidence or changes an order
-evidence:
-  - npm run typecheck passed
-  - npm test passed with 307 tests
-  - npm run security:backend passed
-  - npm run supabase:test passed with 547 pgTAP assertions and no local advisor issues
-  - guarded staging provider restriction proof passed
-  - linked staging security advisors had no error-level findings
-  - docs/launch/evidence/security/2026-07-28-provider-kill-switches.md
+  - Policy describes a provider or data flow disabled for the beta as active
+  - Policy or support copy contains an unmarked placeholder or incorrect date
+  - Privacy, support, deletion, or export access is hidden from a signed-in user
+  - A route overflows or loses meaning in English, Spanish, or Simplified Chinese
+evidence: []
 unresolved_findings:
-  - Live provider delivery remains disabled and outside the August 3 beta
-  - Existing warning-level hosted advisor findings remain recorded for launch review
-checkpoint_commit: 07cd9ba
+  - Public hosting and confirmation that the contact inbox is monitored require Raymond
+checkpoint_commit: null
