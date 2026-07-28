@@ -2086,12 +2086,16 @@ select lives_ok(
   'trusted administration can disable creators after replacement owners exist'
 );
 reset role;
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '66666666-6666-4666-8666-666666666666', true);
+set local role service_role;
 select is(
-  pg_temp.try_execute($sql$select public.create_restaurant_with_owner('Quota bypass attempt', 'Test')$sql$),
+  pg_temp.try_execute($sql$select public.service_provision_beta_restaurant(
+    '66666666-6666-4666-8666-666666666666',
+    'Quota workspace 6',
+    'Test',
+    '66000000-0000-4000-8000-000000000006'
+  )$sql$),
   false,
-  'membership churn does not release the lifetime workspace quota'
+  'service administration cannot provision a sixth lifetime workspace after membership churn'
 );
 reset role;
 select is(
