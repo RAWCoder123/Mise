@@ -7,6 +7,7 @@ codex_owned:
   - scripts/local-workspace-concurrency.mjs
   - scripts/staging-account-deletion-check.mjs
   - scripts/staging-learning-check.mjs
+  - supabase/config.toml
   - supabase/migrations/**
   - supabase/tests/**
   - tests/**
