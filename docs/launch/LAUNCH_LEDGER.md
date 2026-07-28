@@ -1156,7 +1156,7 @@ Unresolved:
 
 Checkpoint:
 
-- Documentation commit pending
+- `ea641c1fcb3d70506281237d2fde548845f828ba`
 
 ### Managed recovery capability audit
 

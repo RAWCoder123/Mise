@@ -33,4 +33,4 @@ evidence:
 unresolved_findings:
   - Sentry remains unconfigured and its controlled error receipt is still pending.
   - Alert delivery and named on-call acknowledgement require provider-side configuration and proof.
-checkpoint_commit: pending_documentation_commit
+checkpoint_commit: ea641c1fcb3d70506281237d2fde548845f828ba
