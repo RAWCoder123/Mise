@@ -46,6 +46,26 @@ commit before another batch begins.
 | `private-beta-privacy-support-24` | Tandem | Accurate localized in-app privacy and support access | Complete; public hosting/monitoring pending | `96403ac` |
 | `private-beta-invite-only-admission-25` | Tandem | Admin-provisioned beta accounts and restaurants | Complete; production/device proof pending | `642bae0` |
 | `private-beta-owner-invitation-26` | Tandem | Controlled hosted invitation acceptance and first owner hydration | Complete; device/delivery proof pending | `dc1d5db` / `0237f89` |
+| `private-beta-quota-proof-27` | Codex | Direct sixth-workspace rejection through the service provisioning boundary | Complete | `84f2c9d` |
+
+### `private-beta-quota-proof-27`
+
+Delivered:
+
+- Replaced the obsolete quota assertion against the revoked self-service RPC
+  with a sixth `service_provision_beta_restaurant` request under the trusted
+  service role.
+- Proved that disabling the creator's five memberships after adding replacement
+  owners does not release or rewrite the immutable lifetime allocation quota.
+
+Evidence:
+
+- `npm run supabase:test`: 566 pgTAP assertions passed, including direct
+  rejection of the sixth service provisioning request; the concurrent proof
+  accepted 5, rejected 15, and preserved 5 immutable allocations
+- Local Supabase security advisors: no issues
+- `npm run security:backend`
+- Checkpoint `84f2c9d`
 
 ### `private-beta-owner-invitation-26`
 

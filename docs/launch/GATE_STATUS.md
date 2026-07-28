@@ -39,6 +39,9 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
   removed all disposable state.
 - Hosted tenant allocation is service-only and idempotent; authenticated users
   cannot call the legacy allocation RPC or enter setup without membership.
+- The lifetime workspace quota is exercised directly through the service-only
+  provisioning RPC: five allocations survive membership churn and a sixth
+  service request is rejected.
 - Hosted restaurant export returned 25 tenant-scoped datasets, denied manager
   and cross-tenant access, and excluded credentials and private security logs.
 - Hosted finding feedback denied staff, direct-DML, cross-tenant, changed

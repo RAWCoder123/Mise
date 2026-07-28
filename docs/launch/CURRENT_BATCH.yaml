@@ -1,5 +1,5 @@
 batch_id: private-beta-quota-proof-27
-status: in_progress
+status: complete
 goal: Prove the service-only restaurant provisioning boundary rejects a sixth lifetime workspace after creator membership churn.
 started_at: 2026-07-28
 codex_owned:
@@ -25,6 +25,8 @@ stop_conditions:
   - The sixth service provisioning request succeeds
   - Membership churn removes or rewrites an immutable workspace allocation
   - A runtime schema or production environment is changed
-evidence: []
+evidence:
+  - npm run supabase:test (566 pgTAP assertions)
+  - npm run security:backend
 unresolved_findings: []
-checkpoint_commit: null
+checkpoint_commit: 84f2c9d
