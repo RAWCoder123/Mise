@@ -22,13 +22,14 @@ Every shift, Mise turns your inventory and sales into a clear plan:
 
 - TODAY — A shift timeline that tells you what needs doing now, next, and later.
 - INVENTORY — Live stock health, low-stock alerts, and fast counting built for a working kitchen.
-- ORDERS — Purchase recommendations that learn from what you actually approve. Review, adjust, and email supplier orders in two taps.
+- ORDERS — Purchase recommendations that learn from what you actually approve. Review, adjust, and copy or export draft orders for your existing supplier workflow.
 - INSIGHTS — Signals that matter for your restaurant's service style: usage trends, stock risk, and spend by supplier.
 - TEAM — Bring in managers and staff with role-based access.
 
 Mise learns your restaurant. The more you count, sell, and order, the sharper its recommendations get — no spreadsheets, no guesswork.
 
-Built for independents: no POS required to start. Enter sales manually or import a CSV, and connect integrations as you grow.
+Built for independents: no POS required to start. Enter sales manually or
+import a CSV while integrations remain disabled for the restaurant beta.
 
 ## Keywords (iOS, 100 chars)
 
@@ -53,19 +54,25 @@ Not collected: location, contacts, photos, browsing history, purchases, health, 
 
 ## Review notes (App Store reviewer)
 
-Mise requires a restaurant workspace. For review, use the demo credentials below — the demo build ships with a fully seeded example restaurant so every feature is explorable without real data:
+Mise requires a restaurant workspace. For review, use the invite-only account
+provided in App Store Connect. The reviewer build includes a populated sample
+restaurant so core beta features are explorable without live provider access:
 
-- Demo access: tap "Explore the demo" on the login screen (no credentials needed) — available when the review build has demo mode enabled, OR
-- Reviewer account: create via in-app sign-up; a fresh account walks through restaurant setup.
+- Review access: use the invite-only review account provided in App Store
+  Connect. It opens a populated sample restaurant without live provider
+  credentials.
+- Demo access is available only in internal/reviewer builds and is disabled in
+  production restaurant builds.
 
 Account deletion is at Settings → Account → Delete account.
+Privacy and support are available from Settings.
 
 ## Screenshot plan (6.7" iPhone required set)
 
 1. Home command center — "Your restaurant at a glance"
 2. Today timeline — "Know every shift's priorities"
 3. Inventory health — "Catch stock risk before service"
-4. Order review with supplier email — "Approve and send orders in two taps"
+4. Order review — "Review drafts before your supplier workflow"
 5. Insights trends — "Signals that match your service style"
 6. Setup flow — "Running in an afternoon, no POS needed"
 

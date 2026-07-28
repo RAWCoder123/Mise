@@ -1,80 +1,135 @@
 # Mise Privacy Policy
 
-Effective date: September 14, 2026 (draft — requires legal review before publication)
+Effective date: August 3, 2026
 
-Publish this document at a public URL (for example `https://getmise.app/privacy`) before App Store submission. Apple and Google both require a working privacy policy URL.
+Mise is an invite-only mobile operations service for restaurant
+organizations. This policy explains what Mise collects, why it is used, how it
+is protected, and the choices available to account holders and restaurant
+owners.
 
-## Who we are
+## Information Mise processes
 
-Mise ("Mise", "we", "us") is a mobile operations system for independent restaurants. This policy explains what information we collect when you use the Mise app, why we collect it, and the choices you have.
+### Account and access information
 
-## Information we collect
+- Email address, display name, account identifier, restaurant membership, and
+  role.
+- Authentication sessions and security events needed to sign users in,
+  enforce permissions, investigate abuse, and revoke access.
+- Passwords are handled by Supabase Auth. Mise does not store plaintext
+  passwords.
 
-### Account information
+### Restaurant operational information
 
-- Email address and password (passwords are handled by our authentication provider, Supabase Auth; we never store plaintext passwords).
-- Your name and role, if you provide them.
+Mise processes information entered or imported by an authorized restaurant
+team, including:
 
-### Restaurant operational data
+- restaurant profile, operating timezone, currency, service style, and
+  branding;
+- inventory items, counts, receipts, waste, stockouts, unit costs, canonical
+  units, and reconciliation history;
+- recipes, yields, menu mappings, suppliers, and package conversions;
+- manually entered or CSV-imported sales;
+- supplier recommendations, manager decisions, and draft orders;
+- operational findings, evidence references, and feedback; and
+- team membership and audit history.
 
-Data you or your team enter to run your restaurant:
+Restaurant operational information remains scoped to the restaurant
+organization that provided it. Mise uses it to deliver inventory,
+reconciliation, findings, export, and manager-controlled planning workflows.
 
-- Restaurant profile: name, address, timezone, currency, service style, branding.
-- Inventory items, unit costs, par levels, and counts.
-- Recipes and menu item ingredients.
-- Sales records you enter manually or import from CSV files.
-- Supplier names, contact emails, and purchase orders.
-- Team membership: which accounts belong to your restaurant workspace and their roles.
+### Diagnostics and product analytics
 
-This data belongs to your restaurant. We use it only to provide the product's features (inventory tracking, order recommendations, insights).
+Beta builds may use Sentry for crash diagnostics and PostHog for product
+analytics when those services are configured. Mise applies a bounded allowlist
+and secret-scrubbing before telemetry is sent. Telemetry may include an
+internal user or restaurant identifier, app release, route, operation,
+result, and technical error category. Mise does not intentionally send raw
+restaurant records, passwords, provider credentials, supplier messages, or
+direct contact details in telemetry.
 
-### Supplier email delivery
+## Beta capabilities and provider access
 
-When you send a purchase order to a supplier through Mise, we transmit the order email through our email delivery provider. If you later connect a Gmail account for sending, Google OAuth refresh tokens are stored encrypted server-side and are never available to the app on your device. We only request the minimum Gmail permission required to send email on your behalf, and we never read your inbox.
+For the August 3, 2026 restaurant beta:
 
-### Diagnostics and analytics
+- supplier orders are drafts only; managers copy or export approved drafts and
+  send them outside Mise;
+- Square synchronization and webhooks are disabled;
+- Gmail supplier delivery is disabled;
+- live generative AI is disabled;
+- billing and Stripe invoicing are disabled; and
+- autonomous supplier ordering is not available.
 
-If enabled in the build, we collect crash reports (via Sentry) and product usage events (via PostHog) to keep the app reliable and improve it. These are scrubbed of secrets before transmission. We do not sell this data or use it for advertising.
+Mise does not request Gmail or Square access for this beta. If those
+integrations are introduced in a later release, this policy and the in-app
+disclosures will be updated before activation.
 
-## What we do NOT collect
+## Storage, security, and tenant isolation
 
-- We do not collect precise location.
-- We do not access your contacts, photos, or messages.
-- We do not sell personal data to third parties.
-- We do not use your data for third-party advertising.
+Mise uses Supabase-hosted authentication, Postgres, and server functions.
+Restaurant records are protected by tenant identifiers, role checks, row-level
+security, validated server boundaries, and audit evidence. Inventory and
+manager-decision history is append-only; corrections create new evidence
+instead of silently rewriting prior events.
 
-## How your data is stored
+Mise uses transport encryption supported by its infrastructure providers and
+keeps privileged provider credentials outside the mobile application.
+No security control can eliminate every risk, so suspected unauthorized
+access should be reported promptly using the contact information below.
 
-Data is stored with Supabase (hosted Postgres) with row-level security so each restaurant workspace can only be accessed by its own members. Backups and encryption in transit (TLS) and at rest are provided by our infrastructure providers.
+## Sharing and service providers
 
-## Data sharing
+Mise does not sell personal information and does not use restaurant data for
+third-party advertising. Information is shared only as needed with service
+providers operating the product:
 
-We share data only with the service providers required to operate Mise: Supabase (database, authentication, serverless functions), our email delivery provider (supplier order emails), and, if enabled, Sentry (crash reporting) and PostHog (analytics). Each provider processes data only on our instructions.
+- Supabase for authentication, database storage, and server functions;
+- Sentry for scrubbed crash diagnostics, when configured; and
+- PostHog for scrubbed product analytics, when configured.
 
-## Data retention and deletion
+Authorized restaurant team members can access information according to their
+role. A restaurant owner or administrator may export the restaurant's
+operational data from the app.
 
-- Restaurant operational data is retained while the restaurant workspace is
-  active so Mise can preserve inventory history, decisions, reconciliation, and
-  audit evidence.
-- You can delete your account at any time from Settings → Account → Delete account. This removes your account, your memberships, and any restaurant workspaces where you are the sole owner.
-- Restaurants with other remaining owners are not deleted when one member leaves.
-- Deleting a sole-owner restaurant removes its primary-database operational
-  records. A durable, access-restricted deletion audit may remain so Mise can
-  prove completion or recover a failed cleanup.
-- Backups expire on our infrastructure providers' standard schedules.
+## Retention, export, and deletion
 
-## Your rights
+- Operational information is retained while its restaurant workspace is
+  active so Mise can preserve inventory history, decisions, reconciliation,
+  and audit evidence.
+- Owners and administrators may request a machine-readable export and can
+  initiate it from Settings.
+- Provider credentials, encrypted secrets, and private security logs are never included.
+- Oversized exports are delivered through Mise support rather than returned partially.
+- Any signed-in account holder can initiate account deletion from Settings.
+- Deleting an account removes its active memberships. A restaurant workspace
+  is deleted when the account is its sole remaining owner; a workspace with
+  another active owner remains available to that organization.
+- A durable, access-restricted deletion audit may remain to prove or recover completion of a deletion request.
+- Provider backups expire under the applicable backup retention process.
 
-Depending on your jurisdiction (for example GDPR or CCPA), you may have rights to access, correct, export, or delete your personal data. Restaurant owners and administrators may request a machine-readable export of the restaurant profile, team directory, operational mappings, sales, inventory history, supplier drafts, findings, and audit history. Provider credentials, encrypted secrets, and private security logs are never included in that export. Oversized exports are delivered through Mise support rather than returned partially. Contact us at the address below and we will respond within 30 days.
+For help with an export, deletion, correction, or access request, contact Mise.
+Mise will verify the requester and restaurant authority before disclosing or
+changing organization data.
 
-## Children
+## Choices and rights
 
-Mise is a business tool and is not directed at children under 13. We do not knowingly collect data from children.
+Depending on location, an individual may have rights to request access,
+correction, export, restriction, or deletion of personal information. Mise is
+a United States, business-to-business beta, but applicable privacy rights are
+honored. Requests receive a response within 30 days unless a different period
+is required by law.
+
+Mise does not knowingly collect information from children under 13. The
+service is intended for restaurant organizations and their authorized staff.
 
 ## Changes
 
-We will update this policy as the product evolves and note the effective date above. Material changes will be announced in the app.
+Mise will update this policy when data practices or enabled providers change.
+The effective date above will change, and material changes will be disclosed
+in the app or through the restaurant's beta contact.
 
 ## Contact
 
-- Email: privacy@getmise.app (placeholder — replace with a monitored address before publication)
+- Privacy and data requests: privacy@getmise.app
+- Product and account support: support@getmise.app
+
+These addresses must be actively monitored before the restaurant beta opens.
