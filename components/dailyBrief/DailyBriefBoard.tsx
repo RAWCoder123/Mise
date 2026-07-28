@@ -13,6 +13,9 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { latestMatchingQueueEntry } from "./findingQueueMatch";
+
+export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
 
 type FeedbackHandler = (
   finding: OperationalFinding,
@@ -68,16 +71,6 @@ export function DailyBriefBoard({
     return null;
   }, [brief, t]);
 
-  const queueByFindingId = useMemo(() => {
-    const map = new Map<string, FindingDecisionOutboxEntry>();
-    for (const entry of queue) {
-      const findingId = entry.decision.finding.id;
-      const existing = map.get(findingId);
-      if (!existing || entry.updatedAt > existing.updatedAt) map.set(findingId, entry);
-    }
-    return map;
-  }, [queue]);
-
   return (
     <SectionSurface title={t("dailyBrief.title")} subtitle={t("dailyBrief.subtitle")} padding="none">
       <View style={styles.board}>
@@ -107,7 +100,7 @@ export function DailyBriefBoard({
                 <FindingCard
                   key={finding.id}
                   finding={finding}
-                  queueEntry={queueByFindingId.get(finding.id) ?? null}
+                  queueEntry={latestMatchingQueueEntry(finding, queue)}
                   canManage={canManage}
                   busy={busyFindingId === finding.id}
                   disabled={Boolean(busyFindingId)}
@@ -161,14 +154,12 @@ function FindingCard({
     setEditError(undefined);
   }
 
+  const severityLabel = t(`dailyBrief.severity.${finding.severity}` as "dailyBrief.severity.info");
+
   return (
-    <View
-      style={[styles.card, finding.severity === "urgent" && styles.cardUrgent]}
-      accessible
-      accessibilityLabel={`${finding.title}. ${t(`dailyBrief.severity.${finding.severity}`)}`}
-    >
+    <View style={[styles.card, finding.severity === "urgent" && styles.cardUrgent]}>
       <View style={styles.badgeRow}>
-        <Badge label={t(`dailyBrief.severity.${finding.severity}` as "dailyBrief.severity.info")} tone={severityTone} />
+        <Badge label={severityLabel} tone={severityTone} />
         <Badge
           label={t(`dailyBrief.${finding.freshness.state}.label` as "dailyBrief.fresh.label")}
           tone={freshnessTone}
@@ -193,7 +184,13 @@ function FindingCard({
         ) : null}
       </View>
 
-      <Text style={styles.cardTitle}>{finding.title}</Text>
+      <Text
+        style={styles.cardTitle}
+        accessibilityRole="header"
+        accessibilityLabel={`${finding.title}. ${severityLabel}`}
+      >
+        {finding.title}
+      </Text>
       <Text style={styles.cardBody}>{finding.explanation}</Text>
       <Text style={styles.meta}>
         {t("dailyBrief.confidence", { score: confidencePercent })} ·{" "}
@@ -301,6 +298,7 @@ function queueStatusKey(entry: FindingDecisionOutboxEntry) {
   if (entry.status === "pending" && entry.resolutionReason) return "retryable" as const;
   return entry.status;
 }
+
 
 function queueTone(status: string): BadgeTone {
   if (status === "accepted") return "success";
