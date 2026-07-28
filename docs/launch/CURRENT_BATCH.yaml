@@ -8,6 +8,7 @@ codex_owned:
   - scripts/staging-account-deletion-check.mjs
   - scripts/staging-learning-check.mjs
   - supabase/config.toml
+  - supabase/environments/staging/**
   - supabase/migrations/**
   - supabase/tests/**
   - tests/**
