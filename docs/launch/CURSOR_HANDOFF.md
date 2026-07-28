@@ -6,11 +6,11 @@ Status: ready when the Cursor desktop session is unlocked.
 
 ## Base checkpoint
 
-- Use repository state at or after `c0439c0`.
+- Use repository state at or after `17e14d9`.
 - The last Cursor-authored checkpoint observed by Codex was `debf9f1`.
 - Codex has since completed hosted account deletion, restaurant export,
-  deterministic daily findings, append-only manager feedback, and bounded
-  hosted race verification.
+  deterministic daily findings, append-only manager feedback, exact feedback
+  application to later briefs, and bounded hosted race verification.
 - Do not rewrite or revert those backend checkpoints.
 
 ## Cursor-owned slice A — Daily brief presentation
@@ -92,6 +92,9 @@ Requirements:
 - Do not imply that feedback changed inventory, sent an order, or rewrote the
   original evidence.
 - Keep the original evidence and recommended action visible after feedback.
+- Render `finding.managerFeedback` from every refreshed brief. Its
+  `effectiveRecommendedAction` is a manager annotation, not rewritten
+  operational evidence.
 - Use compact tomato-red primary actions, warm neutral secondary controls,
   44px targets, accessible labels, and localized fixed copy.
 

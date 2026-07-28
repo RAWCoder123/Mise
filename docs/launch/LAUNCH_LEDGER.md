@@ -37,6 +37,40 @@ commit before another batch begins.
 | `private-beta-rendered-race-harness-15` | Codex | Bounded hosted rendered race verification | Complete | `ba3b427` |
 | `private-beta-export-client-contract-16` | Codex | Typed hosted/demo export facade | Complete; UI handoff ready | `3bf2058` |
 | `private-beta-finding-feedback-17` | Codex | Append-only manager feedback linked to deterministic findings | Complete; UI handoff ready | `c0439c0` |
+| `private-beta-finding-feedback-loop-18` | Codex | Apply exact manager feedback to later deterministic briefs | Complete; UI handoff ready | `17e14d9` |
+
+### `private-beta-finding-feedback-loop-18`
+
+Delivered:
+
+- Daily briefs load restaurant evidence and append-only manager decisions
+  through the stable repository and service boundaries.
+- Only the latest decision matching the exact restaurant, finding ID, policy,
+  category, severity, confidence, original action, evidence, and source window
+  affects a finding.
+- Approved, edited, and dismissed findings remain visible with their original
+  evidence and recommendation; handled work moves to Later and exposes a
+  separate effective manager action.
+- Changed evidence, recommendations, or policy versions automatically require
+  a fresh decision. Mixed-tenant feedback fails closed.
+- Same-day data-gap evidence is stable across refreshes and expires on the next
+  operating day.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 287 passed
+- `npm run security:backend`
+- `git diff --check`
+- No inventory event, recommendation, supplier draft, or order authority was
+  added to the feedback lifecycle.
+
+Remaining handoff:
+
+- Cursor renders the returned `managerFeedback` state and records actions only
+  through the stable Mise service facade.
+- Real-device feedback, retry, accessibility, and locale verification remain
+  release evidence.
 
 ### `private-beta-finding-feedback-17`
 

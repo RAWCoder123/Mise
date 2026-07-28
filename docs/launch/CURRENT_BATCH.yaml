@@ -1,5 +1,5 @@
 batch_id: private-beta-finding-feedback-loop-18
-status: in_progress
+status: complete
 goal: Apply exact append-only manager feedback to later deterministic briefs without hiding or rewriting changed evidence.
 started_at: 2026-07-28
 codex_owned:
@@ -27,7 +27,15 @@ stop_conditions:
   - Feedback remains applicable after evidence or the original action changes
   - A dismissed finding disappears instead of preserving its original evidence
   - Feedback mutates inventory, recommendations, supplier drafts, or orders
-evidence: []
+evidence:
+  - Exact finding, policy, action, confidence, evidence, and source-window matching applies the latest manager decision.
+  - Approved, edited, and dismissed findings remain visible with their original evidence and recommendation.
+  - Changed evidence, action, policy, or tenant scope expires or rejects prior feedback.
+  - Same-day data-gap findings retain stable evidence while next-day findings require fresh review.
+  - npm run typecheck passed.
+  - npm test passed with 287 tests.
+  - npm run security:backend passed.
+  - git diff --check passed.
 unresolved_findings:
   - Cursor UI and real-device proof remain outside this backend batch
-checkpoint_commit: null
+checkpoint_commit: 17e14d9
