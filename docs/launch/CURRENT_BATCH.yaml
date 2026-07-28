@@ -1,54 +1,37 @@
-batch_id: private-beta-operator-ui-21
-status: complete
-goal: Surface deterministic daily findings, restart-safe manager feedback, and owner/admin restaurant export in a polished mobile UI.
+batch_id: private-beta-testflight-tooling-22
+status: in_progress
+goal: Make TestFlight prerequisites deterministic and add the new restaurant export route to rendered release coverage.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-cursor_owned:
-  - app/(tabs)/today.tsx
-  - app/(tabs)/insights.tsx
-  - app/(tabs)/settings.tsx
-  - app/settings/**
-  - components/dailyBrief/**
-  - i18n/catalog.ts
-  - focused UI tests
-shared_locked:
-  - services/miseService.ts
+  - package.json
+  - scripts/eas-account-prereq.mjs
+  - scripts/mobile-layout-smoke.mjs
+  - scripts/mobile-route-smoke.mjs
+  - tests/**
+cursor_owned: []
+shared_locked: []
 blocked_files:
+  - app/**
+  - components/**
+  - i18n/catalog.ts
   - services/**
   - supabase/**
-  - scripts/**
-  - package.json
-  - package-lock.json
-  - app.json
 handoff_required: true
 dependencies:
-  - private-beta-release-authority-20
+  - private-beta-operator-ui-21
 required_tests:
   - npm run typecheck
   - npm test
-  - npm run design:static
-  - npm run qa:interactions
+  - npm run qa:routes
+  - npm run qa:mobile-layout
+  - npm run qa:eas-account
 stop_conditions:
-  - A screen calls a repository, Supabase, provider, or direct finding-record method
-  - Original finding evidence or recommended action is hidden or rewritten after feedback
-  - Staff can submit manager feedback or restaurant exports
-  - Retry identity is regenerated after an ambiguous result
-  - Any supported route or locale overflows or loses accessible controls
-evidence:
-  - Today and Insights render deterministic Now, Up next, and Later findings through fetchDailyOperationalBrief.
-  - Owner/admin/manager feedback uses only the restart-safe queue, list, and flush facade; staff remains read-only.
-  - Original evidence and recommendation remain visible after feedback.
-  - Queue badges require an exact restaurant, finding, policy, confidence, action, evidence, and source-window match.
-  - Owner/admin restaurant export uses only exportRestaurantData and never logs the payload.
-  - Finding cards preserve independently accessible action controls and 44px targets.
-  - npm run typecheck passed.
-  - npm test passed with 303 tests.
-  - npm run design:static passed.
-  - npm run qa:interactions passed at 390x844 in English, Spanish, and Simplified Chinese with zero route overflow.
-  - git diff --check passed.
+  - TestFlight scripts invoke the wrong npm package or an unpinned CLI
+  - A build can start without EAS login or a configured EAS project identity
+  - The new export route is absent from either rendered route harness
+  - Missing Xcode, EAS access, or project identity is reported as ready
+evidence: []
 unresolved_findings:
-  - Real-device proof remains separate release evidence
-  - The new /settings/export route must be added to the Codex-owned route smoke list
-  - Native iOS share-sheet behavior remains real-device evidence
-checkpoint_commit: 828555e
+  - EAS login, EAS project identity, full Xcode, and real devices require Raymond
+checkpoint_commit: null
