@@ -24,19 +24,19 @@ App Store action was started.
   `raymondaws-team (Role: Owner)`.
 - `npm run typecheck`: passed after linking.
 - `npm test`: 330 tests passed after linking.
-- `npx --yes eas-cli@21.4.0 env:list --environment preview`: returned no
-  project-scoped preview variables.
+- The initial `npx --yes eas-cli@21.4.0 env:list --environment preview` check
+  returned no project-scoped preview variables.
 - `npm run qa:ios-prereq`: validated the assets, bundle identifier, and build
   number, then failed closed because full Xcode and `simctl` are unavailable.
 
 ## Build boundary
 
-The EAS project identity prerequisite is complete. A beta build must not start
-yet because the preview environment has no project-scoped runtime
-configuration. Full Xcode remains required for local simulator and native
-release verification, but it is not required merely to use EAS cloud builds.
+The EAS project identity prerequisite is complete. The bounded preview runtime
+configuration was added and verified in the follow-up receipt:
+`docs/launch/evidence/release/2026-07-28-eas-preview-runtime.md`.
+Full Xcode remains required for local simulator and native release
+verification, but it is not required merely to use EAS cloud builds.
 
-Before a hosted-tenant preview build, record and verify only the bounded public
-client configuration required by the app. Never store a service-role key,
-provider secret, or production credential in an Expo public environment
-variable.
+Only the bounded public client configuration required by the app was added.
+Never store a service-role key, provider secret, or production credential in
+an Expo public environment variable.
