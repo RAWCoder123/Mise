@@ -44,7 +44,52 @@ commit before another batch begins.
 | `private-beta-testflight-tooling-22` | Codex | Pinned EAS prerequisites and export route coverage | Complete; account/device proof pending | `209e533` |
 | `private-beta-provider-kill-switches-23` | Codex | Persisted provider and draft-only authority at supplier delivery | Complete; providers remain disabled | `07cd9ba` |
 | `private-beta-privacy-support-24` | Tandem | Accurate localized in-app privacy and support access | Complete; public hosting/monitoring pending | `96403ac` |
-| `private-beta-invite-only-admission-25` | Tandem | Admin-provisioned beta accounts and restaurants | In progress | — |
+| `private-beta-invite-only-admission-25` | Tandem | Admin-provisioned beta accounts and restaurants | Complete; production/device proof pending | `642bae0` |
+
+### `private-beta-invite-only-admission-25`
+
+Delivered:
+
+- A sign-in-only beta login with deterministic internal demo access and
+  independently accessible privacy and support routes.
+- A fail-closed pending-access state for hosted users without an active
+  restaurant membership; hosted setup cannot allocate a tenant.
+- A service-role-only, idempotent restaurant provisioning boundary that
+  requires an existing Auth user, creates one owner membership, respects the
+  workspace quota, and verifies every provider and ordering control is off.
+- Revocation of the legacy self-service restaurant allocation RPC from anon,
+  authenticated, and service clients.
+- Separate local and hosted-staging Auth configuration sources.
+- Global hosted signup disabled while email login remains available for
+  invited users and anonymous admission remains disabled.
+- Automated hosted proof of blocked public signup, blocked client tenant
+  allocation, service provisioning, sign-in, account deletion, tenant
+  isolation, and bounded learning.
+
+Evidence:
+
+- Cursor checkpoint `dc0b186`
+- Backend checkpoint `7be80f4`
+- Hosted Auth checkpoint `642bae0`
+- `npm run typecheck`
+- `npm test`: 318 passed
+- `npm run security:backend`
+- `npm run supabase:test`: 566 pgTAP assertions, 5 accepted and 15 rejected
+  concurrent allocations, 5 immutable workspaces, and no local advisor issues
+- `npm run design:static`
+- `npm run qa:routes`
+- `npm run qa:interactions`: English, Spanish, and Simplified Chinese at
+  390x844 with zero horizontal overflow
+- Hosted account deletion audit
+  `06820571-8eb8-430d-9c00-20c085ea0dee`
+- `docs/launch/evidence/security/2026-07-28-invite-only-admission.md`
+
+Remaining:
+
+- Production remains untouched until Raymond approves a specific release
+  candidate.
+- Physical-iPhone invitation, sign-in, pending-access, role-revocation, and
+  account-deletion walkthroughs remain required release evidence.
 
 ### `private-beta-privacy-support-24`
 

@@ -1,5 +1,5 @@
 batch_id: private-beta-invite-only-admission-25
-status: in_progress
+status: complete
 goal: Enforce admin-provisioned restaurant admission across the August 3 beta UI and hosted database while preserving deterministic local demo setup.
 started_at: 2026-07-28
 codex_owned:
@@ -44,6 +44,11 @@ stop_conditions:
   - Admin provisioning accepts a nonexistent Auth user, creates duplicate ownership, or enables providers
   - Local deterministic demo setup is removed or production demo access is enabled
   - Signed-out privacy and support access regresses
-evidence: []
-unresolved_findings: []
-checkpoint_commit: null
+evidence:
+  - docs/launch/evidence/security/2026-07-28-invite-only-admission.md
+  - Cursor UI checkpoint dc0b186
+  - Backend admission checkpoint 7be80f4
+  - Hosted Auth checkpoint 642bae0
+unresolved_findings:
+  - Production Auth and tenant admission remain undeployed pending Raymond approval of a specific release candidate.
+checkpoint_commit: 642bae0
