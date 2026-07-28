@@ -39,6 +39,41 @@ commit before another batch begins.
 | `private-beta-finding-feedback-17` | Codex | Append-only manager feedback linked to deterministic findings | Complete; UI handoff ready | `c0439c0` |
 | `private-beta-finding-feedback-loop-18` | Codex | Apply exact manager feedback to later deterministic briefs | Complete; UI handoff ready | `17e14d9` |
 | `private-beta-finding-feedback-outbox-19` | Codex | Restart-safe device delivery for manager feedback | Complete; UI handoff ready | `13bbeb1` |
+| `private-beta-release-authority-20` | Codex | Exact-commit August 3 beta go/no-go authority | Complete; external evidence pending | `8b93f47` |
+
+### `private-beta-release-authority-20`
+
+Delivered:
+
+- A typed, fail-closed release evaluator and `npm run beta:go-no-go` command.
+- Twelve required evidence receipts covering local/hosted gates, isolation,
+  managed recovery, live telemetry, two real devices, critical workflows,
+  monitored privacy/support, TestFlight installation, and provider
+  restrictions.
+- Exact-candidate verification for every receipt and Raymond approval.
+  Evidence-only commits may follow the tested candidate, but any product,
+  schema, configuration, or uncommitted workspace change blocks release.
+- Explicit beta enforcement for disabled Square, Gmail delivery, AI, billing,
+  autonomous ordering, and supplier delivery from Mise.
+- August 3 owner and TestFlight guidance aligned to one restaurant first and a
+  second only after one healthy operating day.
+- Removed stale August 24/public-launch and Resend supplier-delivery guidance
+  from the beta path.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 300 passed
+- `npm run security:backend`
+- `git diff --check`
+- `npm run beta:go-no-go` correctly reports BLOCKED with 0/12 receipts, no
+  candidate build, and no Raymond approval.
+
+Remaining:
+
+- External owners must populate durable receipts only after testing the exact
+  candidate build. No checklist item is self-attesting.
+- The beta cannot open until the command exits successfully.
 
 ### `private-beta-finding-feedback-outbox-19`
 

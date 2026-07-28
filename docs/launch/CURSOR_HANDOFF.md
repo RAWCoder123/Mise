@@ -6,7 +6,7 @@ Status: ready when the Cursor desktop session is unlocked.
 
 ## Base checkpoint
 
-- Use repository state at or after `13bbeb1`.
+- Use repository state at or after `8b93f47`.
 - The last Cursor-authored checkpoint observed by Codex was `debf9f1`.
 - Codex has since completed hosted account deletion, restaurant export,
   deterministic daily findings, append-only manager feedback, exact feedback
@@ -124,3 +124,10 @@ Run:
 - `npm run design:static`
 - mobile interaction verification for `/today`, `/insights`, and `/settings` in
   all three supported locales
+
+For release evidence, Cursor may add device receipts only under
+`docs/launch/evidence/devices/`. Each receipt must identify the exact candidate
+commit, TestFlight build, device model/OS, locale, workflow results, timestamp,
+and unresolved findings. Do not mark
+`docs/launch/BETA_RELEASE_EVIDENCE.json` passed until Codex or Raymond reviews
+the receipt.
