@@ -38,6 +38,7 @@
     "verify:private-beta-security": "node --env-file-if-exists=.mise-staging.env scripts/verify-private-beta-security.mjs",
     "verify:paid-product": "npm run verify:private-beta-security",
     "ios:testflight:check": "npm run qa:ios-prereq && npm run demo:ready",
+    "beta:go-no-go": "node --import tsx scripts/beta-go-no-go.ts",
     "ios:testflight:build": "npx eas build --platform ios --profile preview",
     "ios:testflight:submit": "npx eas submit --platform ios --profile production --latest"
   },

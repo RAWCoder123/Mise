@@ -1,40 +1,71 @@
-# Launch Ops Checklist — Owner Actions
+# August 3 Restaurant Beta — Owner Actions
 
-Target: TestFlight beta Aug 24 · App Store submission Sep 7 · **iOS public launch Sep 14, 2026** · Google Play ~Oct 5.
+Target: invite-only iOS TestFlight beta on August 3, 2026 for one restaurant,
+then a second restaurant after one healthy operating day.
 
-These are the account-holder actions no agent can do for you. Engineering items live in the agent handoff doc. Do the "start immediately" items this week — they are the external clocks that set the launch date.
+This is not a public App Store launch. Square, Gmail delivery, generative AI,
+billing, autonomous ordering, and in-app supplier sending remain disabled.
+Managers review and copy or export supplier drafts, then communicate through
+their existing channels outside Mise.
 
-## Start immediately (week of Jul 27)
+## External access required before the release candidate
 
-- [ ] **Apple Developer Program enrollment** ($99/yr). Can take days to clear identity verification. Needed for everything iOS.
-- [ ] **Google Play Console account** ($25 one-time). New personal accounts must run a closed test with at least 12 testers for 14 continuous days before production access — this is why Android launches ~3 weeks after iOS. Recruit the 12 testers now (friends/staff are fine).
-- [ ] **Google Cloud OAuth verification** for the Gmail send scope (restricted scope; 4–8 weeks). Submit now so "send from your Gmail" can ship post-launch. Launch itself uses Resend and does not wait for this.
-- [ ] **Domain + two public pages**: privacy policy (publish `docs/store/privacy-policy.md`) and a support/contact page. Both URLs are required fields in App Store Connect.
-- [ ] **Resend account**: verify the sending domain (e.g. `orders@getmise.app`), get the API key. Needed for supplier order email at launch.
+- [ ] Confirm the active Apple Developer Program membership.
+- [ ] Confirm the App Store Connect app for `com.mise.mobile`.
+- [ ] Confirm Expo/EAS account and project access with `npx eas whoami`.
+- [ ] Configure dedicated staging and production Supabase projects. Do not
+  deploy or promote production until the recorded go/no-go is approved.
+- [ ] Configure Sentry and PostHog beta projects with scrubbed,
+  environment-specific public client credentials.
+- [ ] Publish monitored privacy-policy and support URLs.
+- [ ] Identify one recent and one older supported iPhone for verification.
+- [ ] Confirm one initial restaurant and one held-back restaurant, each with a
+  named owner and manager.
 
-## Once Apple enrollment clears (target: by Aug 7)
+## Required evidence
 
-- [ ] Create the app record in App Store Connect (bundle `com.mise.mobile`).
-- [ ] `eas login` + `eas init` in the repo to link the EAS project (writes `extra.eas.projectId`). Follow `docs/build-identity.md`.
-- [ ] Set EAS secrets: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `EXPO_PUBLIC_SENTRY_DSN`, `EXPO_PUBLIC_POSTHOG_KEY`, `EXPO_PUBLIC_POSTHOG_HOST`.
-- [ ] Create Sentry and PostHog projects (free tiers fine); paste DSN/key into EAS secrets.
-- [ ] Set Supabase Edge secrets for email: `RESEND_SEND_ENABLED=true`, `RESEND_API_KEY`, `MISE_ORDER_FROM_EMAIL`, `MISE_ORDER_FROM_NAME` (see `docs/resend-sending.md`).
+Record receipts in `docs/launch/BETA_RELEASE_EVIDENCE.json`. Each passed check
+must name its owner, exact candidate commit, verification time, and durable
+evidence reference.
 
-## Before TestFlight beta (Aug 24)
+- [ ] Complete local release gate.
+- [ ] Complete hosted security suite.
+- [ ] Complete two-tenant negative proof.
+- [ ] Restore a managed backup into an isolated recovery environment.
+- [ ] Receive a controlled scrubbed Sentry event.
+- [ ] Receive a controlled scrubbed PostHog event.
+- [ ] Pass the real-device walkthrough on both iPhones.
+- [ ] Pass the complete critical workflow walkthrough.
+- [ ] Verify monitored privacy and support URLs.
+- [ ] Install the exact candidate build through TestFlight.
+- [ ] Verify prohibited providers and supplier delivery remain disabled.
+- [ ] Record no unresolved P0/P1 defects.
+- [ ] Record Raymond’s approval for the exact candidate commit.
 
-- [ ] `npm run ios:testflight:build` + `:submit`; add 3–5 pilot restaurants as external testers (external TestFlight requires a one-time beta review, allow ~2 days).
-- [ ] Upload the first Android build to the Play closed test track; start the 14-day clock with 12 testers.
-- [ ] Fill Apple's App Privacy questionnaire using the answers in `docs/store/app-store-listing.md`.
+Run:
 
-## Before App Store submission (Sep 7)
+```bash
+npm run beta:go-no-go
+```
 
-- [ ] Screenshots per the plan in `docs/store/app-store-listing.md`.
-- [ ] Listing copy (drafted in the same file), support URL, privacy URL, review notes with demo access instructions.
-- [ ] Confirm account deletion works in the submitted build (Apple checks this).
-- [ ] Verify the hosted staging security gate is green (engineering will have run `verify:private-beta-security:hosted`; do not submit if it is red).
+The command must remain blocked until every receipt and exact-commit approval is
+present. A date, successful build, or partial checklist never opens the beta.
 
-## Launch week (Sep 14)
+## August 3 admission
 
-- [ ] Release the approved build (manual release, not automatic, so you control the moment).
-- [ ] Watch Sentry for crash spikes the first 48 hours; keep a hotfix build path warm (`eas build` on `main`).
-- [ ] Play production rollout ~Oct 5 once the 14-day closed test completes and review clears (start at 20% staged rollout).
+1. Admit only the first restaurant.
+2. Observe authentication, ingestion, findings, inventory reconciliation,
+   offline recovery, and tenant-denial telemetry through one operating day.
+3. Stop admission for any P0/P1 issue, tenant ambiguity, missing authoritative
+   evidence, or inability to restore service safely.
+4. Admit the second restaurant only after the first-day evidence is reviewed.
+
+## Explicitly deferred
+
+- Public App Store distribution
+- Square production sync
+- Gmail or any in-app supplier delivery
+- Stripe or savings-share billing
+- Generative AI findings
+- Autonomous supplier ordering
+- Android and non-US support

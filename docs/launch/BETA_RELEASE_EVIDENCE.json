@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "target": "invite_only_testflight_beta",
+  "candidateCommit": null,
+  "candidateBuildId": null,
+  "providerRestrictions": {
+    "squareEnabled": false,
+    "gmailDeliveryEnabled": false,
+    "aiEnabled": false,
+    "billingEnabled": false,
+    "autonomousOrderingEnabled": false,
+    "orderingPolicy": "draft_only",
+    "supplierDelivery": "outside_mise"
+  },
+  "defects": {
+    "p0": [],
+    "p1": []
+  },
+  "checks": [
+    {
+      "id": "local_release_gate",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Codex"
+    },
+    {
+      "id": "hosted_security",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Codex"
+    },
+    {
+      "id": "tenant_isolation",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Codex"
+    },
+    {
+      "id": "managed_backup_restore",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Raymond"
+    },
+    {
+      "id": "sentry_receipt",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Raymond"
+    },
+    {
+      "id": "posthog_receipt",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Raymond"
+    },
+    {
+      "id": "recent_iphone",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Cursor"
+    },
+    {
+      "id": "older_iphone",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Cursor"
+    },
+    {
+      "id": "critical_workflow",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Cursor"
+    },
+    {
+      "id": "privacy_and_support",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Raymond"
+    },
+    {
+      "id": "testflight_install",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Raymond"
+    },
+    {
+      "id": "provider_restrictions",
+      "status": "pending",
+      "verifiedAt": null,
+      "verifiedCommit": null,
+      "evidence": null,
+      "owner": "Codex"
+    }
+  ],
+  "raymondApproval": {
+    "approved": false,
+    "approvedAt": null,
+    "approvedCommit": null
+  }
+}

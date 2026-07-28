@@ -1,6 +1,9 @@
 # Mise TestFlight Readiness
 
-This pass targets an internal TestFlight demo first. Public App Store submission and external TestFlight review still need Apple metadata, privacy, support, and account-deletion completion.
+This pass targets the August 3 invite-only restaurant TestFlight beta. Public
+App Store submission remains a later gate. The beta uses manual/CSV data and
+external supplier communication; Square, Gmail delivery, generative AI,
+billing, and autonomous ordering remain disabled.
 
 ## Current iOS Identity
 
@@ -22,11 +25,11 @@ npm run qa:ios-prereq
 
 `qa:ios-prereq` validates the app icon, supported `expo-splash-screen` plugin and splash asset, absence of legacy Expo fields, bundle identifier, build number, encryption setting, and local Xcode simulator tooling. It requires full Xcode, not only Command Line Tools.
 
-## Internal TestFlight Path
+## Invite-Only Restaurant TestFlight Path
 
 1. Join or confirm access to the Apple Developer Program.
 2. Create or open the App Store Connect app for bundle ID `com.mise.mobile`.
-3. Confirm App Store Connect has a support URL, privacy policy URL, and app privacy answers started.
+3. Confirm App Store Connect has monitored support and privacy-policy URLs.
 4. Sign in to Expo/EAS:
 
 ```bash
@@ -53,14 +56,23 @@ npm run ios:testflight:submit
 ```
 
 8. In App Store Connect, open TestFlight, add an internal tester group, and attach the uploaded build.
-9. Install through the TestFlight app on a real iPhone and walk through:
-   - local demo-data load
+9. Install through the TestFlight app on one recent and one older supported
+   iPhone and walk through:
+   - controlled restaurant invitation and restaurant selection
+   - setup and daily sales CSV import
+   - receiving, counts, waste, stockouts, and reconciliation
+   - offline queue interruption and recovery
+   - deterministic daily findings and manager feedback
+   - supplier draft review and copy/export without in-app sending
    - Today
    - Inventory
    - Supplier orders
    - Insights
    - Settings
    - Setup
+10. Record every receipt for the exact candidate commit in
+    `docs/launch/BETA_RELEASE_EVIDENCE.json`.
+11. Run `npm run beta:go-no-go`. Do not admit a restaurant until it passes.
 
 ## Replaceable Local Demo
 
@@ -74,17 +86,21 @@ The local demo preset is deterministic. It seeds:
 
 The dataset is local-only. It does not touch hosted Supabase tenant data. Replace its identity and fixture rows in `services/demo/` without changing screens or Supabase repositories.
 
-## Required Before External TestFlight Or Public Launch
+## Required Before The August 3 Restaurant Beta
 
 - Hosted Supabase staging project with migrations applied
 - Two-restaurant tenant isolation checks on staging
-- Final Apple privacy questionnaire
-- Privacy policy URL
-- Support URL
+- Monitored privacy-policy and support URLs
 - In-app account deletion or documented account deletion flow
 - Production Supabase URL/anon key set in EAS secrets
-- Sentry/PostHog production configuration if enabled
+- Controlled scrubbed Sentry and PostHog receipts
+- Managed backup restoration into an isolated recovery environment
 - Real device performance pass on at least one recent iPhone and one older supported iPhone
+- Exact-commit Raymond approval and no unresolved P0/P1 defects
+
+The first restaurant is admitted alone. The second remains held back until one
+healthy operating day is reviewed. Public App Store distribution, supplier
+delivery from Mise, Square, AI, and billing are separate later gates.
 
 Official references:
 
