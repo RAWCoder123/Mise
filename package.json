@@ -32,6 +32,7 @@
     "staging:client-race": "node --env-file-if-exists=.mise-staging.env scripts/staging-client-race.mjs",
     "staging:learning-check": "node --env-file-if-exists=.mise-staging.env scripts/staging-learning-check.mjs",
     "staging:finding-decision-check": "node --env-file-if-exists=.mise-staging.env scripts/staging-finding-decision-check.mjs",
+    "staging:owner-invitation-check": "node --import tsx --env-file-if-exists=.mise-staging.env scripts/staging-owner-invitation-check.mjs",
     "beta:provision-owner": "node --env-file-if-exists=.mise-staging.env scripts/beta-restaurant-provisioning.mjs",
     "demo:ready": "npm run typecheck && npm test && npm audit --audit-level=high && npm run doctor && npm run security:backend && npm run design:static && npx expo export --platform web --output-dir /private/tmp/mise-web-export && npm run qa:interactions",
     "verify:beta": "npm run typecheck && npm test && npm audit --audit-level=high && npm run doctor && npm run security:backend && npm run design:static && npx expo export --platform web --output-dir /private/tmp/mise-web-export && npm run qa:routes && npm run qa:interactions",

@@ -11,6 +11,8 @@ import {
 } from "../scripts/lib/betaRestaurantProvisioning.mjs";
 
 const operatorScript = readFileSync("scripts/beta-restaurant-provisioning.mjs", "utf8");
+const hostedProof = readFileSync("scripts/staging-owner-invitation-check.mjs", "utf8");
+const packageJson = readFileSync("package.json", "utf8");
 
 function request(overrides: Record<string, unknown> = {}) {
   return normalizeProvisioningRequest({
@@ -173,4 +175,12 @@ test("the operator command never prints invitation credentials or bypasses stagi
   assert.match(operatorScript, /service_provision_beta_restaurant/);
   assert.doesNotMatch(operatorScript, /console\.(?:log|error)\([^)]*actionLink/);
   assert.doesNotMatch(operatorScript, /console\.(?:log|error)\([^)]*(?:secretKey|accessToken|refreshToken)/);
+  assert.match(packageJson, /"beta:provision-owner"/);
+  assert.match(packageJson, /"staging:owner-invitation-check"/);
+  assert.match(hostedProof, /redirect:\s*"manual"/);
+  assert.match(hostedProof, /parseInviteCallbackUrl\(callbackUrl\)/);
+  assert.match(hostedProof, /owner\.auth\.updateUser\(\{\s*password\s*\}\)/);
+  assert.match(hostedProof, /owner\.auth\.signInWithPassword/);
+  assert.match(hostedProof, /inviteStats\.mode\s*&\s*0o077/);
+  assert.doesNotMatch(hostedProof, /console\.(?:log|error)\([^)]*(?:actionLink|callbackUrl|accessToken|refreshToken|password)/);
 });
