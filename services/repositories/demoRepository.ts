@@ -28,6 +28,10 @@ import {
 import { TeamMembershipError } from "../domain/teamMembership";
 import { createInMemoryInventoryEventRecorder } from "../domain/inventoryEventTransport";
 import {
+  normalizeOperationalFindingDecision,
+  normalizeOperationalFindingDecisionInput
+} from "../domain/operationalFindingDecisions";
+import {
   findSupplierRecipientCatalogName,
   supplierRecipientDirectoryKey
 } from "../domain/supplierRecipients";
@@ -57,6 +61,7 @@ import {
   RESTAURANT_EXPORT_DATASETS,
   normalizeRestaurantDataExport,
   normalizeRestaurantData,
+  operationalDecisionHistoryCutoffIso,
   recommendationHistoryCutoffIso,
   type AuditLogInput,
   type MiseRepository,
@@ -134,6 +139,7 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   datasets.ai_insights = tenantRows(state.aiInsights);
   datasets.restaurant_email_connections = tenantRows(state.emailConnections);
   datasets.supplier_recipients = tenantRows(state.supplierRecipients);
+  datasets.operational_finding_decisions = tenantRows(state.operationalFindingDecisions);
   datasets.audit_logs = tenantRows(state.auditLogs);
 
   const team = state.users
@@ -418,6 +424,78 @@ export function createLocalDemoRepository(): MiseRepository {
         state.insights.filter((insight) => insight.restaurant_id === restaurantId),
         state.menuItemIngredients.filter((mapping) => mapping.restaurant_id === restaurantId)
       );
+    },
+
+    async recordOperationalFindingDecision(input) {
+      const normalized = normalizeOperationalFindingDecisionInput(input);
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, normalized.restaurantId);
+        const existing = state.operationalFindingDecisions.find(
+          (decision) =>
+            decision.restaurant_id === normalized.restaurantId &&
+            (
+              decision.client_event_id === normalized.clientEventId ||
+              decision.idempotency_key === normalized.idempotencyKey
+            )
+        );
+        const recordedAt = existing?.recorded_at ?? new Date().toISOString();
+        const sequence = existing?.sequence ?? state.operationalFindingDecisions.length + 1;
+        const raw = {
+          id: deterministicDemoEventId(normalized.restaurantId, normalized.clientEventId)
+            .replace("demo_inventory_event_", "demo_finding_decision_"),
+          sequence,
+          restaurant_id: normalized.restaurantId,
+          finding_id: normalized.finding.id,
+          policy_version: normalized.finding.policyVersion,
+          decision_type: normalized.decisionType,
+          finding_generated_at: normalized.finding.generatedAt,
+          finding_category: normalized.finding.category,
+          severity: normalized.finding.severity,
+          confidence_score: normalized.finding.confidence.score,
+          evidence: normalized.finding.evidence,
+          original_recommended_action: normalized.finding.recommendedAction,
+          edited_recommended_action: normalized.editedRecommendedAction ?? null,
+          client_event_id: normalized.clientEventId,
+          idempotency_key: normalized.idempotencyKey,
+          actor_user_id: DEMO_USER_ID,
+          recorded_at: recordedAt
+        };
+        if (existing) {
+          if (JSON.stringify(existing) !== JSON.stringify(raw)) {
+            throw new Error("Operational finding decision idempotency conflict.");
+          }
+          return normalizeOperationalFindingDecision(existing, normalized.restaurantId);
+        }
+        state.operationalFindingDecisions.push(raw);
+        appendDemoAuditLog(state, {
+          restaurant_id: normalized.restaurantId,
+          action: "operational_finding.decision_recorded",
+          entity_table: "operational_finding_decisions",
+          entity_id: raw.id,
+          metadata: {
+            finding_id: raw.finding_id,
+            policy_version: raw.policy_version,
+            decision_type: raw.decision_type,
+            client_event_id: raw.client_event_id,
+            sequence: raw.sequence,
+            simulated: true
+          }
+        });
+        return normalizeOperationalFindingDecision(raw, normalized.restaurantId);
+      });
+    },
+
+    async fetchOperationalFindingDecisions(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      const cutoff = operationalDecisionHistoryCutoffIso();
+      return state.operationalFindingDecisions
+        .filter(
+          (decision) =>
+            decision.restaurant_id === restaurantId &&
+            decision.recorded_at >= cutoff
+        )
+        .sort((left, right) => right.recorded_at.localeCompare(left.recorded_at))
+        .map((decision) => normalizeOperationalFindingDecision(decision, restaurantId));
     },
 
     async fetchInventoryItems(restaurantId) {

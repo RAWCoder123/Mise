@@ -28,6 +28,10 @@ import {
   normalizeInventoryEventRecord
 } from "../domain/inventoryEventTransport";
 import {
+  normalizeOperationalFindingDecision,
+  operationalFindingDecisionRpcArguments
+} from "../domain/operationalFindingDecisions";
+import {
   normalizeAppUser,
   normalizeInsight,
   normalizeAiInsight,
@@ -50,6 +54,7 @@ import {
   GmailIntegrationError,
   normalizeRestaurantDataExport,
   normalizeRestaurantData,
+  operationalDecisionHistoryCutoffIso,
   recommendationHistoryCutoffIso,
   type GmailConnectionWorkflowResult,
   type GmailDisconnectWorkflowResult,
@@ -518,6 +523,28 @@ export function createSupabaseRepository(): MiseRepository {
         (recommendationsResult.data ?? []) as PurchaseRecommendation[],
         (insightsResult.data ?? []) as Insight[],
         (mappingResult.data ?? []) as MenuItemIngredient[]
+      );
+    },
+
+    async recordOperationalFindingDecision(input) {
+      const { data, error } = await client.rpc(
+        "record_operational_finding_decision",
+        operationalFindingDecisionRpcArguments(input)
+      );
+      if (error) throwRepositoryError(error, input.restaurantId);
+      return normalizeOperationalFindingDecision(data, input.restaurantId);
+    },
+
+    async fetchOperationalFindingDecisions(restaurantId) {
+      const { data, error } = await client
+        .from("operational_finding_decisions")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .gte("recorded_at", operationalDecisionHistoryCutoffIso())
+        .order("recorded_at", { ascending: false });
+      if (error) throwRepositoryError(error, restaurantId);
+      return (data ?? []).map((entry) =>
+        normalizeOperationalFindingDecision(entry, restaurantId)
       );
     },
 

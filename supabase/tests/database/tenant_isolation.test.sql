@@ -607,6 +607,7 @@ select is(
     'menu_item_ingredients',
     'menu_items',
     'modifier_recipe_adjustments',
+    'operational_finding_decisions',
     'outreach_agent_runs',
     'outreach_campaigns',
     'outreach_enrollments',
@@ -751,7 +752,7 @@ select is(
         'pos_sales', 'inventory_items', 'menu_item_ingredients', 'purchase_recommendations',
         'supplier_orders', 'insights', 'pos_integrations', 'sales_imports', 'supplier_items',
         'purchase_orders', 'ai_insights', 'audit_logs', 'restaurant_email_connections',
-        'supplier_recipients', 'setup_attachments'
+        'supplier_recipients', 'setup_attachments', 'operational_finding_decisions'
       )
       and column_row.column_name = 'restaurant_id'
       and column_row.is_nullable <> 'NO'
@@ -766,7 +767,7 @@ select is(
       'pos_sales', 'inventory_items', 'menu_item_ingredients', 'purchase_recommendations',
       'supplier_orders', 'insights', 'pos_integrations', 'sales_imports', 'supplier_items',
       'purchase_orders', 'ai_insights', 'audit_logs', 'restaurant_email_connections',
-      'supplier_recipients', 'setup_attachments'
+      'supplier_recipients', 'setup_attachments', 'operational_finding_decisions'
     ]) table_name
     where not exists (
       select 1 from pg_policies policy

@@ -48,6 +48,7 @@ const exportDatasets = [
   { name: "recipe_ingredients", order: "id" },
   { name: "modifier_recipe_adjustments", order: "id" },
   { name: "ingredient_substitutions", order: "id" },
+  { name: "operational_finding_decisions", order: "id" },
   { name: "audit_logs", order: "id" }
 ] as const;
 

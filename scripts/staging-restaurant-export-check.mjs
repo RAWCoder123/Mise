@@ -46,6 +46,7 @@ const requiredDatasets = [
   "recipe_ingredients",
   "modifier_recipe_adjustments",
   "ingredient_substitutions",
+  "operational_finding_decisions",
   "audit_logs"
 ];
 

@@ -18,6 +18,7 @@ import type {
   SupplierRecipient
 } from "../../types/mise";
 import type { SetupPosSaleDraft } from "../domain/setupDrafts";
+import type { OperationalFindingDecision } from "../domain/operationalFindingDecisions";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
 import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
 
@@ -35,8 +36,28 @@ const itemIds = {
   pancakeMix: "00000000-0000-4000-8000-000000000107"
 };
 
+export type StoredOperationalFindingDecision = {
+  id: string;
+  sequence: number;
+  restaurant_id: string;
+  finding_id: string;
+  policy_version: string;
+  decision_type: OperationalFindingDecision["decisionType"];
+  finding_generated_at: string;
+  finding_category: OperationalFindingDecision["findingCategory"];
+  severity: OperationalFindingDecision["severity"];
+  confidence_score: number;
+  evidence: OperationalFindingDecision["evidence"];
+  original_recommended_action: string;
+  edited_recommended_action: string | null;
+  client_event_id: string;
+  idempotency_key: string;
+  actor_user_id: string | null;
+  recorded_at: string;
+};
+
 export interface DemoState {
-  schema_version: 2;
+  schema_version: 3;
   restaurants: Restaurant[];
   users: AppUser[];
   posSales: PosSale[];
@@ -51,6 +72,7 @@ export interface DemoState {
   purchaseOrders: PurchaseOrder[];
   aiInsights: AiInsight[];
   auditLogs: AuditLog[];
+  operationalFindingDecisions: StoredOperationalFindingDecision[];
   emailConnections: RestaurantEmailConnection[];
   supplierRecipients: SupplierRecipient[];
   currentRestaurantId: string;
@@ -266,7 +288,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 2,
+    schema_version: 3,
     restaurants: [restaurant],
     users: [user],
     posSales,
@@ -397,6 +419,7 @@ export function createInitialDemoState(
         updated_at: now
       }
     ],
+    operationalFindingDecisions: [],
     auditLogs: [
       {
         id: "00000000-0000-4000-8000-000000000901",
@@ -424,9 +447,10 @@ export function createInitialDemoState(
  * Version 1 reused `rec_<inventory item id>` for every recommendation
  * lifecycle. After a fresh count, that produced duplicate React keys and made
  * an old handled recommendation indistinguishable from the new pending one.
- * Version 2 retains every handled row, keeps only the newest pending row for an
+ * Version 2 retained every handled row, kept only the newest pending row for an
  * item, assigns unique lifecycle ids, and restores the exact order link when a
- * legacy row can be matched safely.
+ * legacy row can be matched safely. Version 3 adds the append-only operational
+ * finding decision ledger without discarding an existing operator workspace.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const seeded = createInitialDemoState(raw.posProvider ?? DEMO_DATASET.defaultPosProvider);
@@ -490,7 +514,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 2,
+    schema_version: 3,
     restaurants,
     users: raw.users ?? seeded.users,
     posSales: raw.posSales ?? seeded.posSales,
@@ -505,6 +529,8 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     purchaseOrders: raw.purchaseOrders ?? seeded.purchaseOrders,
     aiInsights: raw.aiInsights ?? seeded.aiInsights,
     auditLogs: raw.auditLogs ?? seeded.auditLogs,
+    operationalFindingDecisions:
+      raw.operationalFindingDecisions ?? seeded.operationalFindingDecisions,
     emailConnections: raw.emailConnections ?? seeded.emailConnections,
     supplierRecipients: raw.supplierRecipients ?? seeded.supplierRecipients,
     currentRestaurantId: raw.currentRestaurantId ?? seeded.currentRestaurantId,
@@ -515,7 +541,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 2 ||
+      raw.schema_version !== 3 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note)

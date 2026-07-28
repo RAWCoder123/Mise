@@ -26,6 +26,10 @@ import type {
   InventoryEventAcceptance,
   InventoryEventInput
 } from "../domain/inventoryLedger";
+import type {
+  OperationalFindingDecision,
+  OperationalFindingDecisionInput
+} from "../domain/operationalFindingDecisions";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 import {
   normalizeInsight,
@@ -53,6 +57,7 @@ export type SetupAttachmentInput = Omit<SetupAttachment, "id" | "created_at" | "
  * bounded to it so recompute paths do not scale with a tenant's full history.
  */
 export const RECOMMENDATION_HISTORY_DAYS = 180;
+export const OPERATIONAL_DECISION_HISTORY_DAYS = 180;
 
 export type GmailIntegrationErrorStatus =
   | "delivery_requires_review"
@@ -176,6 +181,7 @@ export const RESTAURANT_EXPORT_DATASETS = [
   "recipe_ingredients",
   "modifier_recipe_adjustments",
   "ingredient_substitutions",
+  "operational_finding_decisions",
   "audit_logs"
 ] as const;
 
@@ -278,6 +284,12 @@ export interface MiseRepository {
   createAiInsight(input: Omit<AiInsight, "id" | "created_at">): Promise<AiInsight>;
   recordAuditLog(input: AuditLogInput): Promise<void>;
   fetchRestaurantData(restaurantId: string): Promise<RestaurantData>;
+  recordOperationalFindingDecision(
+    input: OperationalFindingDecisionInput
+  ): Promise<OperationalFindingDecision>;
+  fetchOperationalFindingDecisions(
+    restaurantId: string
+  ): Promise<OperationalFindingDecision[]>;
   fetchInventoryItems(restaurantId: string): Promise<InventoryItem[]>;
   /**
    * Records an append-only, server-authoritative inventory event. Hosted mode
@@ -377,6 +389,10 @@ export interface MiseRepository {
 
 export function recommendationHistoryCutoffIso(now = Date.now()): string {
   return new Date(now - RECOMMENDATION_HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+}
+
+export function operationalDecisionHistoryCutoffIso(now = Date.now()): string {
+  return new Date(now - OPERATIONAL_DECISION_HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
 
 export function normalizeRestaurantData(
