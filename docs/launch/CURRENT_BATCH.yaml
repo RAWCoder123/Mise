@@ -1,13 +1,13 @@
-batch_id: private-beta-eas-project-link-30
+batch_id: private-beta-public-web-31
 status: completed
-goal: Link Mise to one organization-owned EAS project, persist its project identity, and restore exact-candidate release evidence after the configuration change.
+goal: Publish reviewed privacy and beta-support pages through the existing Mise site and prove whether they are publicly reachable.
 started_at: 2026-07-28
 codex_owned:
-  - app.json
+  - site/**
   - docs/launch/**
-  - tests/testflightReadiness.test.ts
 cursor_owned: []
 shared_locked:
+  - app.json
   - app/**
   - services/**
   - scripts/**
@@ -18,21 +18,19 @@ shared_locked:
 blocked_files: []
 handoff_required: false
 dependencies:
-  - private-beta-release-prerequisite-audit-29
+  - private-beta-eas-project-link-30
 required_tests:
-  - npm run qa:eas-account
-  - npm run typecheck
-  - npm test
-  - npm run beta:go-no-go
+  - cd site && npm test
+  - cd site && npm run lint
+  - Public HTTP reachability for /privacy and /support
 stop_conditions:
-  - More than one EAS project is created or linked
-  - The project owner is not raymondaws-team
-  - The bundle identifier changes from com.mise.mobile
-  - A credential or token is printed or committed
-  - A build, submission, production deployment, or App Store action starts
+  - Any app, tenant, database, provider, or production credential is exposed
+  - Existing site architecture or unrelated Cursor work is overwritten
+  - Public access would expose anything beyond marketing, privacy, and support content
 evidence:
-  - docs/launch/evidence/release/2026-07-28-eas-project-link.md
+  - docs/launch/evidence/release/2026-07-28-public-privacy-support-site.md
 unresolved_findings:
-  - The EAS preview environment has no project-scoped variables, so a hosted-tenant beta build must not start until its bounded public runtime configuration is added and verified.
-  - Full Xcode is not installed or selected, leaving simctl and local native release verification unavailable.
-checkpoint_commit: 5d98a7b98b46f3122f36265ccd21b2ff4e467f13
+  - The Sites workspace rejects public access with sites_publish_disabled, so the deployed pages remain owner-only.
+  - getmise.app/privacy and getmise.app/support time out and are not publicly usable.
+  - support@getmise.app and privacy@getmise.app still require named monitored responders.
+checkpoint_commit: e38d0c2a1c857c0e66aed5bf96eaea035cfb0504

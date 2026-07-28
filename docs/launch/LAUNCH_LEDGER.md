@@ -1089,6 +1089,41 @@ Checkpoint commits:
 
 - `5d98a7b98b46f3122f36265ccd21b2ff4e467f13`
 
+### `private-beta-public-web-31`
+
+In scope:
+
+- Turn the reviewed privacy and beta-support policy sources into responsive,
+  accessible public-web routes.
+- Use the existing Sites project and preserve its architecture and owner-only
+  boundary until public access is explicitly proven safe.
+- Verify unauthenticated reachability for the intended release URLs.
+
+Delivered:
+
+- Added `/privacy` and `/support` to the existing Mise marketing site.
+- Added durable marketing-footer links and server-render route coverage.
+- Built, tested, pushed, saved, and deployed exact site checkpoint
+  `e38d0c2a1c857c0e66aed5bf96eaea035cfb0504` as Sites version 9.
+- Preserved the owner-only access policy after the workspace rejected public
+  publishing.
+
+Evidence:
+
+- `docs/launch/evidence/release/2026-07-28-public-privacy-support-site.md`
+- `cd site && npm test`: passed
+- `cd site && npm run lint`: zero errors
+
+Unresolved:
+
+- Public Sites publishing is disabled for the workspace.
+- `getmise.app/privacy` and `getmise.app/support` time out.
+- The support and privacy inboxes need named monitored responders.
+
+Checkpoint:
+
+- Site source: `e38d0c2a1c857c0e66aed5bf96eaea035cfb0504`
+
 ## Handoff format
 
 Every completed batch records:
