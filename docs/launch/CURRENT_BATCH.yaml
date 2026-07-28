@@ -6,6 +6,7 @@ codex_owned:
   - docs/launch/**
   - package.json
   - scripts/beta-restaurant-provisioning.mjs
+  - scripts/staging-owner-invitation-check.mjs
   - scripts/lib/betaRestaurantProvisioning.mjs
   - services/domain/accountAuth.ts
   - services/application/account.ts
