@@ -1,44 +1,40 @@
-batch_id: private-beta-release-authority-20
-status: complete
-goal: Add a fail-closed August 3 beta go/no-go authority and remove stale launch instructions that contradict the approved beta scope.
+batch_id: private-beta-operator-ui-21
+status: in_progress
+goal: Surface deterministic daily findings, restart-safe manager feedback, and owner/admin restaurant export in a polished mobile UI.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - docs/testflight-readiness.md
-  - docs/store/launch-ops-checklist.md
-  - scripts/beta-go-no-go.ts
-  - services/domain/betaReleaseReadiness.ts
-  - tests/betaReleaseReadiness.test.ts
-  - package.json
-cursor_owned: []
-shared_locked: []
-blocked_files:
-  - app/**
+cursor_owned:
+  - app/(tabs)/today.tsx
+  - app/(tabs)/insights.tsx
+  - app/(tabs)/settings.tsx
+  - app/settings/**
   - i18n/catalog.ts
+  - focused UI tests
+shared_locked:
+  - services/miseService.ts
+blocked_files:
+  - services/**
+  - supabase/**
+  - scripts/**
+  - package.json
+  - package-lock.json
+  - app.json
 handoff_required: true
 dependencies:
-  - private-beta-finding-feedback-outbox-19
+  - private-beta-release-authority-20
 required_tests:
   - npm run typecheck
   - npm test
-  - npm run security:backend
-  - npm run beta:go-no-go
+  - npm run design:static
+  - npm run qa:interactions
 stop_conditions:
-  - A missing external receipt or approval can produce a launch-ready result
-  - Evidence for another commit can approve the current release candidate
-  - Square, Gmail delivery, AI, billing, or autonomous ordering can be enabled
-  - Stale supplier-sending or public-launch instructions remain in the beta path
-evidence:
-  - A typed release authority requires all 12 beta receipts, a TestFlight build identity, no P0/P1 defects, and Raymond approval.
-  - Every receipt and approval must match the exact tested candidate commit.
-  - Evidence-only commits may follow a candidate; code, configuration, schema, or uncommitted changes invalidate readiness.
-  - Provider restrictions enforce no Square, Gmail delivery, AI, billing, autonomous ordering, or in-app supplier delivery.
-  - Stale August 24, public-launch, Resend, and supplier-email beta instructions were removed.
-  - npm run typecheck passed.
-  - npm test passed with 300 tests.
-  - npm run security:backend passed.
-  - npm run beta:go-no-go correctly blocked with 0 of 12 external receipts and no Raymond approval.
-  - git diff --check passed.
+  - A screen calls a repository, Supabase, provider, or direct finding-record method
+  - Original finding evidence or recommended action is hidden or rewritten after feedback
+  - Staff can submit manager feedback or restaurant exports
+  - Retry identity is regenerated after an ambiguous result
+  - Any supported route or locale overflows or loses accessible controls
+evidence: []
 unresolved_findings:
-  - Cursor UI and real-device proof remain outside this backend batch
-checkpoint_commit: 8b93f47
+  - Real-device proof remains separate release evidence
+checkpoint_commit: null
