@@ -2498,6 +2498,21 @@ select is(
 );
 reset role;
 
+update public.system_operational_controls
+set gmail_delivery_enabled = true
+where singleton;
+
+insert into public.restaurant_operational_controls (
+  restaurant_id,
+  gmail_delivery_enabled
+)
+values (
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  true
+)
+on conflict (restaurant_id) do update
+set gmail_delivery_enabled = excluded.gmail_delivery_enabled;
+
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);

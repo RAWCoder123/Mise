@@ -436,6 +436,19 @@ function claimOutcomeResponse(value: unknown) {
       },
     };
   }
+  if (outcome === "provider_not_enabled") {
+    return {
+      outcome,
+      eventType: "blocked" as const,
+      action: "supplier_email_provider_disabled",
+      status: 503,
+      body: {
+        status: "provider_not_enabled",
+        message:
+          "Supplier email delivery is disabled for this restaurant. Copy or export the approved draft and send it outside Mise.",
+      },
+    };
+  }
   if (
     outcome === "supplier_email_missing" ||
     outcome === "supplier_email_invalid"

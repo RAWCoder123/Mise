@@ -43,9 +43,6 @@ values (
   'active'
 );
 
-insert into public.restaurant_operational_controls (restaurant_id)
-values ('f0000000-0000-4000-8000-000000000001');
-
 select is(
   has_function_privilege(
     'service_role',
