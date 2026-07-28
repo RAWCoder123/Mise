@@ -8,6 +8,7 @@ import { publicQaEnv } from "./safe-env.mjs";
 const baseRoutes = [
   "/",
   "/login",
+  "/accept-invite",
   "/setup",
   "/home",
   "/today",
@@ -442,6 +443,7 @@ const localizedLayoutRoutes = [
   "/insights",
   "/more",
   "/setup",
+  "/accept-invite",
   "/settings",
   "/settings/export"
 ];
