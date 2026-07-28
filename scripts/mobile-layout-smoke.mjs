@@ -18,6 +18,7 @@ const baseRoutes = [
   "/ask-mise",
   "/tasks/layout-smoke-task",
   "/settings",
+  "/settings/export",
   "/settings/language",
   "/settings/gmail",
   "/settings/suppliers",
@@ -431,7 +432,17 @@ async function setInputByAriaLabel(cdp, label, value) {
   await sleep(200);
 }
 
-const localizedLayoutRoutes = ["/home", "/today", "/inventory", "/orders", "/insights", "/more", "/setup", "/settings"];
+const localizedLayoutRoutes = [
+  "/home",
+  "/today",
+  "/inventory",
+  "/orders",
+  "/insights",
+  "/more",
+  "/setup",
+  "/settings",
+  "/settings/export"
+];
 
 async function verifyLocalizedLayouts(cdp, localeLabel) {
   console.log(`Mise localized layout QA: ${localeLabel}`);

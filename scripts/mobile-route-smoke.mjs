@@ -10,6 +10,7 @@ const routes = [
   "/orders",
   "/insights",
   "/settings",
+  "/settings/export",
   "/settings/language",
   "/settings/gmail",
   "/settings/suppliers"
