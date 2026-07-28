@@ -9,6 +9,7 @@ import {
   Database,
   Download,
   Languages,
+  LifeBuoy,
   LogOut,
   Mail,
   PlugZap,
@@ -478,6 +479,20 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.account")}>
+          <OperationalRow
+            title={t("settings.account.privacy.title")}
+            subtitle={t("settings.account.privacy.body")}
+            icon={<ShieldCheck size={20} color={colors.success} strokeWidth={2.25} />}
+            iconTone="leaf"
+            onPress={() => router.push("/settings/privacy" as never)}
+          />
+          <OperationalRow
+            title={t("settings.account.support.title")}
+            subtitle={t("settings.account.support.body")}
+            icon={<LifeBuoy size={20} color={colors.accentDark} strokeWidth={2.25} />}
+            iconTone="brand"
+            onPress={() => router.push("/settings/support" as never)}
+          />
           <View style={styles.sectionAction}>
             <Button
               title={t(signingOut ? "settings.account.signingOut" : "settings.account.signOut")}

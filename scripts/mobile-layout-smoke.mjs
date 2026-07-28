@@ -19,6 +19,8 @@ const baseRoutes = [
   "/tasks/layout-smoke-task",
   "/settings",
   "/settings/export",
+  "/settings/privacy",
+  "/settings/support",
   "/settings/language",
   "/settings/gmail",
   "/settings/suppliers",
