@@ -25,19 +25,19 @@ zero telemetry network calls when the env vars below are absent.
 `extra.eas.projectId` is intentionally NOT set in `app.json`. It must be
 created under the owning Expo account — do not paste a placeholder value.
 
-1. `npx eas login` — log in as the account that will own the app.
-2. `npx eas init` — creates (or links) the EAS project and writes
+1. `npx --yes eas-cli@21.4.0 login` — log in as the account that will own the app.
+2. `npx --yes eas-cli@21.4.0 init` — creates (or links) the EAS project and writes
    `extra.eas.projectId` into `app.json`. Commit that change.
 3. Create build-time values separately in the EAS `preview` and `production`
    environments. Because these are `EXPO_PUBLIC_*`, Expo inlines them into the
    JS bundle; they are project identifiers, not server credentials:
 
    ```sh
-   npx eas env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_SUPABASE_URL --value "<staging url>"
-   npx eas env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value "<staging anon key>"
-   npx eas env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_SENTRY_DSN --value "<staging dsn>"
-   npx eas env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_POSTHOG_KEY --value "<staging project api key>"
-   npx eas env:create --environment preview --visibility plaintext --name EXPO_PUBLIC_POSTHOG_HOST --value "https://us.i.posthog.com"
+   npx --yes eas-cli@21.4.0 env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_SUPABASE_URL --value "<staging url>"
+   npx --yes eas-cli@21.4.0 env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value "<staging anon key>"
+   npx --yes eas-cli@21.4.0 env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_SENTRY_DSN --value "<staging dsn>"
+   npx --yes eas-cli@21.4.0 env:create --environment preview --visibility sensitive --name EXPO_PUBLIC_POSTHOG_KEY --value "<staging project api key>"
+   npx --yes eas-cli@21.4.0 env:create --environment preview --visibility plaintext --name EXPO_PUBLIC_POSTHOG_HOST --value "https://us.i.posthog.com"
    ```
 
    Repeat for `--environment production` with the production Supabase,
@@ -67,7 +67,8 @@ created under the owning Expo account — do not paste a placeholder value.
    `serviceAccountKeyPath` (keep the key out of git) or `eas credentials`.
 4. `submit.production.android.track` is set to `internal` — promote to
    closed/production tracks from the Play Console.
-5. Build with `npx eas build --platform android --profile production`
+5. Build with
+   `npx --yes eas-cli@21.4.0 build --platform android --profile production`
    (produces an app bundle).
 
 ## Sentry

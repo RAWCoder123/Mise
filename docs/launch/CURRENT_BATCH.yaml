@@ -1,9 +1,12 @@
 batch_id: private-beta-testflight-tooling-22
-status: in_progress
+status: complete
 goal: Make TestFlight prerequisites deterministic and add the new restaurant export route to rendered release coverage.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
+  - docs/build-identity.md
+  - docs/testflight-readiness.md
+  - docs/store/launch-ops-checklist.md
   - package.json
   - scripts/eas-account-prereq.mjs
   - scripts/mobile-layout-smoke.mjs
@@ -31,7 +34,17 @@ stop_conditions:
   - A build can start without EAS login or a configured EAS project identity
   - The new export route is absent from either rendered route harness
   - Missing Xcode, EAS access, or project identity is reported as ready
-evidence: []
+evidence:
+  - TestFlight build and submit commands use pinned eas-cli 21.4.0 instead of the invalid eas package.
+  - qa:eas-account fails closed until both authenticated EAS access and expo.extra.eas.projectId exist.
+  - /settings/export is included in shell, rendered mobile, and localized layout route lists.
+  - npm run typecheck passed.
+  - npm test passed with 305 tests.
+  - npm run security:backend passed.
+  - npm run qa:routes passed including /settings/export.
+  - npm run qa:mobile-layout passed for /settings/export at 390x844 with zero overflow.
+  - npm run qa:eas-account correctly reported missing project identity and EAS login.
+  - git diff --check passed.
 unresolved_findings:
   - EAS login, EAS project identity, full Xcode, and real devices require Raymond
-checkpoint_commit: null
+checkpoint_commit: 209e533

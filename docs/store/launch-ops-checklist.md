@@ -12,7 +12,8 @@ their existing channels outside Mise.
 
 - [ ] Confirm the active Apple Developer Program membership.
 - [ ] Confirm the App Store Connect app for `com.mise.mobile`.
-- [ ] Confirm Expo/EAS account and project access with `npx eas whoami`.
+- [ ] Confirm Expo/EAS account and project access with
+  `npx --yes eas-cli@21.4.0 whoami`.
 - [ ] Configure dedicated staging and production Supabase projects. Do not
   deploy or promote production until the recorded go/no-go is approved.
 - [ ] Configure Sentry and PostHog beta projects with scrubbed,

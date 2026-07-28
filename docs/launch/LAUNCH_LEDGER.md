@@ -41,6 +41,38 @@ commit before another batch begins.
 | `private-beta-finding-feedback-outbox-19` | Codex | Restart-safe device delivery for manager feedback | Complete; UI handoff ready | `13bbeb1` |
 | `private-beta-release-authority-20` | Codex | Exact-commit August 3 beta go/no-go authority | Complete; external evidence pending | `8b93f47` |
 | `private-beta-operator-ui-21` | Cursor + Codex review | Daily Brief, finding feedback, and restaurant export UI | Complete; device proof pending | `828555e` |
+| `private-beta-testflight-tooling-22` | Codex | Pinned EAS prerequisites and export route coverage | Complete; account/device proof pending | `209e533` |
+
+### `private-beta-testflight-tooling-22`
+
+Delivered:
+
+- Replaced invalid `npx eas` invocations with pinned
+  `npx --yes eas-cli@21.4.0` build and submit commands.
+- Added a non-secret EAS account preflight that requires both authenticated
+  account access and a valid `expo.extra.eas.projectId`.
+- Added `/settings/export` to HTTP shell, rendered mobile, and localized layout
+  route lists.
+- Aligned build and launch documentation to the same pinned CLI.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 305 passed
+- `npm run security:backend`
+- `npm run qa:routes`: `/settings/export` returned HTTP 200
+- `npm run qa:mobile-layout`: `/settings/export` rendered at 390x844 with zero
+  overflow or runtime errors
+- `npm run qa:eas-account`: correctly BLOCKED on missing EAS project identity
+  and missing authenticated session
+- `git diff --check`
+
+Remaining:
+
+- Raymond must authenticate EAS and link the project; these actions create
+  persistent account/project authority and are not agent-self-attested.
+- Full Xcode, physical iPhones, TestFlight build/install, and native sharing
+  remain required release evidence.
 
 ### `private-beta-operator-ui-21`
 

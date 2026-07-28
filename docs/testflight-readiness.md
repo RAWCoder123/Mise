@@ -33,8 +33,8 @@ npm run qa:ios-prereq
 4. Sign in to Expo/EAS:
 
 ```bash
-npx eas login
-npx eas whoami
+npx --yes eas-cli@21.4.0 login
+npx --yes eas-cli@21.4.0 whoami
 ```
 
 5. Run the local demo gate:
