@@ -773,7 +773,7 @@ test("rendered staging races cover every tenant-sensitive operational surface", 
   const script = readFileSync("scripts/staging-client-race.mjs", "utf8");
 
   for (const marker of [
-    "Review Espresso Beans reorder",
+    "Luna chicken",
     "Espresso Beans",
     "Northside espresso",
     "Cafe Supply",
