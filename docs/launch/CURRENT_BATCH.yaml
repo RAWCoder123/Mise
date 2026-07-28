@@ -1,16 +1,13 @@
-batch_id: private-beta-testflight-tooling-22
-status: complete
-goal: Make TestFlight prerequisites deterministic and add the new restaurant export route to rendered release coverage.
+batch_id: private-beta-provider-kill-switches-23
+status: in_progress
+goal: Enforce global and restaurant provider kill switches plus persisted off/draft-only ordering policy at the authoritative supplier-delivery boundary.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - docs/build-identity.md
-  - docs/testflight-readiness.md
-  - docs/store/launch-ops-checklist.md
-  - package.json
-  - scripts/eas-account-prereq.mjs
-  - scripts/mobile-layout-smoke.mjs
-  - scripts/mobile-route-smoke.mjs
+  - supabase/migrations/**
+  - supabase/tests/database/**
+  - supabase/functions/send-supplier-email/index.ts
+  - scripts/staging-provider-restrictions-check.mjs
   - tests/**
 cursor_owned: []
 shared_locked: []
@@ -19,32 +16,23 @@ blocked_files:
   - components/**
   - i18n/catalog.ts
   - services/**
-  - supabase/**
+  - package.json
+  - package-lock.json
 handoff_required: true
 dependencies:
-  - private-beta-operator-ui-21
+  - private-beta-testflight-tooling-22
 required_tests:
   - npm run typecheck
   - npm test
-  - npm run qa:routes
-  - npm run qa:mobile-layout
-  - npm run qa:eas-account
+  - npm run security:backend
+  - npm run supabase:test
+  - staging provider restriction proof
 stop_conditions:
-  - TestFlight scripts invoke the wrong npm package or an unpinned CLI
-  - A build can start without EAS login or a configured EAS project identity
-  - The new export route is absent from either rendered route harness
-  - Missing Xcode, EAS access, or project identity is reported as ready
-evidence:
-  - TestFlight build and submit commands use pinned eas-cli 21.4.0 instead of the invalid eas package.
-  - qa:eas-account fails closed until both authenticated EAS access and expo.extra.eas.projectId exist.
-  - /settings/export is included in shell, rendered mobile, and localized layout route lists.
-  - npm run typecheck passed.
-  - npm test passed with 305 tests.
-  - npm run security:backend passed.
-  - npm run qa:routes passed including /settings/export.
-  - npm run qa:mobile-layout passed for /settings/export at 390x844 with zero overflow.
-  - npm run qa:eas-account correctly reported missing project identity and EAS login.
-  - git diff --check passed.
+  - A provider environment flag can bypass either database kill switch
+  - The service role can bypass the guarded supplier-send claim
+  - An off ordering policy permits order drafting
+  - Disabled or paused provider state creates delivery evidence or changes an order
+evidence: []
 unresolved_findings:
-  - EAS login, EAS project identity, full Xcode, and real devices require Raymond
-checkpoint_commit: 209e533
+  - Live provider delivery remains disabled and outside the August 3 beta
+checkpoint_commit: null
