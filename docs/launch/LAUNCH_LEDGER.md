@@ -36,6 +36,51 @@ commit before another batch begins.
 | `private-beta-daily-findings-contract-14` | Codex | Deterministic evidence-backed daily brief | Complete; UI handoff pending | `e81dbb5` |
 | `private-beta-rendered-race-harness-15` | Codex | Bounded hosted rendered race verification | Complete | `ba3b427` |
 | `private-beta-export-client-contract-16` | Codex | Typed hosted/demo export facade | Complete; UI handoff ready | `3bf2058` |
+| `private-beta-finding-feedback-17` | Codex | Append-only manager feedback linked to deterministic findings | Complete; UI handoff ready | `c0439c0` |
+
+### `private-beta-finding-feedback-17`
+
+Delivered:
+
+- A tenant-scoped append-only `operational_finding_decisions` ledger linked to
+  the exact finding ID, policy version, generated time, confidence, evidence,
+  original action, and manager decision.
+- A manager-authorized, replay-safe RPC for approved, edited, and dismissed
+  feedback. Staff, anonymous, direct-DML, and cross-tenant attempts fail closed.
+- Immutable actor-preserving history that permits only Auth-owned actor
+  anonymization and whole-restaurant deletion cascades.
+- Emergency/read-only enforcement, bounded evidence allowlists, protected-key
+  rejection, audit evidence, and 180-day bounded learning reads.
+- Stable `recordOperationalFindingDecision` and
+  `fetchOperationalFindingDecisions` screen-facing methods with hosted and
+  deterministic demo implementations.
+- Restaurant exports now include all 25 reviewed operational datasets,
+  including finding feedback.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 282 passed
+- `npm run security:backend`
+- `npm run supabase:test`: 530 pgTAP assertions, quota concurrency proof, and
+  no local security-advisor findings
+- `npm run verify:private-beta-security:hosted`: passed without skipped checks
+- Dedicated hosted feedback proof passed direct-DML, staff, cross-tenant,
+  replay, changed-replay, evidence-poisoning, RLS, and audit assertions
+- Hosted export returned all 25 datasets with exact counts and secret-free
+  evidence
+- Staging migrations applied through
+  `20260728194253_harden_operational_finding_evidence.sql`
+- Production was not changed
+
+Known non-blocking findings:
+
+- Supabase hosted advisors report existing intentional public RPC warnings
+  plus staging leaked-password protection disabled; no advisor error was
+  reported. These warnings remain staging/production configuration review
+  items rather than an exception to RPC authorization tests.
+- Cursor still needs to surface the daily brief, export interaction, and
+  manager feedback controls on real devices.
 
 ### `private-beta-export-client-contract-16`
 
@@ -44,7 +89,7 @@ Delivered:
 - A screen-facing `exportRestaurantData` method through the stable Mise service
   facade and repository contract.
 - Hosted invocation of only the audited `export-restaurant-data` Edge boundary.
-- Deterministic local-demo export using the same 24-dataset response shape and
+- Deterministic local-demo export using the same 25-dataset response shape and
   no live credentials.
 - A second client validation boundary for schema version, serialized size,
   restaurant/team identity, dataset presence, exact counts, per-dataset row

@@ -1,15 +1,16 @@
 # Cursor Handoff
 
-Updated: 2026-07-27
+Updated: 2026-07-28
 
 Status: ready when the Cursor desktop session is unlocked.
 
 ## Base checkpoint
 
-- Use repository state at or after `3bf2058`.
+- Use repository state at or after `c0439c0`.
 - The last Cursor-authored checkpoint observed by Codex was `debf9f1`.
 - Codex has since completed hosted account deletion, restaurant export,
-  deterministic daily findings, and bounded hosted race verification.
+  deterministic daily findings, append-only manager feedback, and bounded
+  hosted race verification.
 - Do not rewrite or revert those backend checkpoints.
 
 ## Cursor-owned slice A — Daily brief presentation
@@ -51,7 +52,7 @@ Allowed paths:
 
 Use only `exportRestaurantData(restaurantId)` from `services/miseService.ts`.
 The service already validates schema, byte size, counts, tenant identity,
-protected keys, and all 24 datasets. Never log the payload.
+  protected keys, and all 25 datasets. Never log the payload.
 
 Requirements:
 
@@ -64,6 +65,35 @@ Requirements:
   oversized/support, and generic failure states.
 - Explain that provider credentials and private security logs are excluded.
 - Do not add a public pricing, purchase, Gmail-send, or autonomous-order action.
+
+## Cursor-owned slice C — Finding feedback interaction
+
+Allowed paths:
+
+- `app/(tabs)/today.tsx`
+- `app/(tabs)/insights.tsx`
+- `i18n/catalog.ts`
+- focused UI tests
+
+Use only `recordOperationalFindingDecision(input)` from
+`services/miseService.ts`. The exact `OperationalFinding` returned by
+`fetchDailyOperationalBrief` must be passed back unchanged.
+
+Requirements:
+
+- Owners, admins, and managers may approve, edit, or dismiss a finding; staff
+  remain read-only.
+- Preserve one stable `clientEventId` and `idempotencyKey` for the lifetime of
+  an action attempt and every retry. Never regenerate identity after an
+  ambiguous transport result.
+- An edit requires a distinct, non-empty action capped by the service contract.
+- Disable duplicate taps while the request is pending and show applied,
+  retryable failure, permission, and conflict states.
+- Do not imply that feedback changed inventory, sent an order, or rewrote the
+  original evidence.
+- Keep the original evidence and recommended action visible after feedback.
+- Use compact tomato-red primary actions, warm neutral secondary controls,
+  44px targets, accessible labels, and localized fixed copy.
 
 ## Locked shared paths
 
@@ -85,4 +115,3 @@ Run:
 - `npm run design:static`
 - mobile interaction verification for `/today`, `/insights`, and `/settings` in
   all three supported locales
-

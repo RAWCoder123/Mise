@@ -1,12 +1,15 @@
-batch_id: private-beta-export-client-contract-16
+batch_id: private-beta-finding-feedback-17
 status: completed
-goal: Expose restaurant export through the stable Mise service facade with strict hosted-response validation and deterministic demo behavior.
-started_at: 2026-07-27
+goal: Persist append-only manager feedback linked to deterministic findings and their original evidence.
+started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - services/application/restaurant.ts
+  - services/application/findingDecisions.ts
+  - services/domain/operationalFindingDecisions.ts
   - services/repositories/**
   - services/miseService.ts
+  - scripts/**
+  - supabase/**
   - tests/**
 cursor_owned: []
 shared_locked: []
@@ -15,28 +18,35 @@ blocked_files:
   - i18n/catalog.ts
 handoff_required: true
 dependencies:
-  - private-beta-data-export-authority-13
+  - private-beta-daily-findings-contract-14
 required_tests:
   - npm run typecheck
   - npm test
   - npm run security:backend
+  - npm run supabase:test
+  - npm run verify:private-beta-security:hosted
 stop_conditions:
-  - A screen must call Supabase Functions directly
-  - Hosted export rows are accepted without restaurant-scope validation
-  - Demo export requires live credentials
-  - A malformed or oversized response reaches file sharing
+  - A client can directly insert, update, or delete authoritative feedback
+  - Staff or another restaurant can record or read a tenant decision
+  - A changed replay overwrites an accepted decision
+  - Extra evidence fields can persist or poison restaurant exports
+  - Feedback changes inventory or creates or sends an order
 evidence:
-  - services/miseService.ts exposes exportRestaurantData through the restaurant application facade
-  - Hosted mode invokes only export-restaurant-data and validates the response before returning
-  - Demo mode builds the same 24-dataset contract without live credentials
-  - Client validation rejects cross-tenant rows, missing datasets, count mismatches, oversized payloads, protected keys, invalid retention, and malformed identities
-  - Expo SDK-matched file-system and sharing modules are installed for the Cursor UI slice
+  - Append-only finding decisions preserve exact finding identity, policy version, evidence, original action, and manager feedback
+  - Hosted and demo modes share one stable screen-facing facade
+  - Staff, direct-DML, cross-tenant, changed-replay, and poisoned-evidence attempts fail closed
+  - Read-only and emergency modes block feedback mutations
+  - Account deletion anonymizes only the actor and tenant deletion owns the full cascade
+  - Restaurant export includes 25 reviewed tenant datasets
   - npm run typecheck passed
-  - npm test passed with 277 tests
+  - npm test passed with 282 tests
   - npm run security:backend passed
-  - npm audit found 0 vulnerabilities
-  - Expo Doctor passed 21 of 21 checks
+  - npm run supabase:test passed with 530 pgTAP assertions
+  - Hosted private-beta security passed without skipped checks
+  - Hosted export and dedicated finding-feedback proofs passed
+  - npm audit found 0 vulnerabilities and Expo Doctor passed 21 of 21 checks
 unresolved_findings:
-  - Cursor must implement the owner/admin file export and share interaction
-  - Native sharing still requires real-device proof
-checkpoint_commit: 3bf2058
+  - Cursor must surface daily findings, export, and manager feedback interactions
+  - Feedback retry identity and all new interactions still require real-device proof
+  - Live monitoring, managed recovery, and TestFlight remain external
+checkpoint_commit: c0439c0
