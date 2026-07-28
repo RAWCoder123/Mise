@@ -6,6 +6,10 @@ const login = readFileSync("app/(auth)/login.tsx", "utf8");
 const setup = readFileSync("app/(auth)/setup.tsx", "utf8");
 const catalog = readFileSync("i18n/catalog.ts", "utf8");
 const localConfig = readFileSync("supabase/config.toml", "utf8");
+const stagingConfig = readFileSync(
+  "supabase/environments/staging/supabase/config.toml",
+  "utf8"
+);
 const migration = readFileSync(
   "supabase/migrations/20260728210609_enforce_invite_only_beta_admission.sql",
   "utf8"
@@ -33,9 +37,14 @@ test("hosted users without a restaurant fail closed before setup", () => {
   assert.match(setup, /const isDemoSetup = canUseDemoMode/);
 });
 
-test("local and deployed Auth policy sources disable public email signup", () => {
-  assert.match(localConfig, /\[auth\.email\][\s\S]*enable_signup\s*=\s*false/);
-  assert.doesNotMatch(localConfig, /\[auth\.email\][\s\S]*enable_signup\s*=\s*true/);
+test("local and hosted Auth policy disables registration without disabling email login", () => {
+  for (const config of [localConfig, stagingConfig]) {
+    assert.match(config, /\[auth\][\s\S]*?enable_signup\s*=\s*false[\s\S]*?\[auth\.email\]/);
+    assert.match(config, /\[auth\.email\][\s\S]*?enable_signup\s*=\s*true/);
+  }
+  assert.match(stagingAccountDeletion, /settings\.disable_signup,\s*true/);
+  assert.match(stagingAccountDeletion, /settings\.external\?\.email,\s*true/);
+  assert.match(stagingAccountDeletion, /signupResponse\.status,\s*422/);
 });
 
 test("database admission is service-only, replay-safe, and default-off", () => {

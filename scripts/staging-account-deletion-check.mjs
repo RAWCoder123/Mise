@@ -33,6 +33,8 @@ const admin = createClient(url, secretKey, {
 const owner = createClient(url, anonKey, {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
 });
+await assertInviteOnlyAuth();
+
 const runId = randomUUID().slice(0, 8);
 const email = `account-delete-${runId}@mise-staging.test`;
 const restaurantName = `Account Deletion ${runId} ${process.env.MISE_STAGING_MARKER}`
@@ -196,6 +198,40 @@ async function boundedCounts() {
     restaurants: restaurants.count ?? 0,
     inventory_events: events.count ?? 0
   };
+}
+
+async function assertInviteOnlyAuth() {
+  const settingsResponse = await fetch(`${url}/auth/v1/settings`, {
+    headers: { apikey: anonKey }
+  });
+  assert.equal(settingsResponse.ok, true, "Hosted Auth settings must be readable.");
+  const settings = await settingsResponse.json();
+  assert.equal(settings.disable_signup, true, "Hosted Auth must reject all public signup.");
+  assert.equal(settings.external?.email, true, "Hosted email login must remain available.");
+  assert.equal(
+    settings.external?.anonymous_users,
+    false,
+    "Hosted anonymous signup must remain disabled."
+  );
+
+  const signupResponse = await fetch(`${url}/auth/v1/signup`, {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      email: `blocked-signup-${randomUUID()}@mise-staging.test`,
+      password: "Not-A-Real-Beta-Password-123!"
+    })
+  });
+  const signupBody = await signupResponse.json();
+  assert.equal(signupResponse.status, 422);
+  assert.match(
+    signupBody.msg ?? signupBody.message ?? "",
+    /signups not allowed/i,
+    "Hosted Auth must fail closed instead of creating an unprovisioned user."
+  );
 }
 
 async function loadSentinel() {
