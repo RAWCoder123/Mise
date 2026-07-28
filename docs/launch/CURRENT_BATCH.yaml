@@ -8,6 +8,7 @@ codex_owned:
   - scripts/beta-restaurant-provisioning.mjs
   - scripts/lib/betaRestaurantProvisioning.mjs
   - services/domain/accountAuth.ts
+  - services/application/account.ts
   - services/miseService.ts
   - contexts/MiseSessionContext.tsx
   - tests/accountAuth.test.ts
