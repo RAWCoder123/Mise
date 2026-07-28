@@ -5,6 +5,11 @@ import test from "node:test";
 const privacy = readFileSync("docs/store/privacy-policy.md", "utf8");
 const support = readFileSync("docs/store/support.md", "utf8");
 const listing = readFileSync("docs/store/app-store-listing.md", "utf8");
+const login = readFileSync("app/(auth)/login.tsx", "utf8");
+const privacyRoute = readFileSync("app/settings/privacy.tsx", "utf8");
+const supportRoute = readFileSync("app/settings/support.tsx", "utf8");
+const routeSmoke = readFileSync("scripts/mobile-route-smoke.mjs", "utf8");
+const layoutSmoke = readFileSync("scripts/mobile-layout-smoke.mjs", "utf8");
 
 test("beta privacy policy names actual data flows and disabled providers", () => {
   assert.match(privacy, /Effective date: August 3, 2026/);
@@ -45,4 +50,52 @@ test("store listing matches invite-only draft-only beta behavior", () => {
   assert.doesNotMatch(listing, /email supplier orders in two taps/i);
   assert.doesNotMatch(listing, /Approve and send orders in two taps/i);
   assert.doesNotMatch(listing, /create via in-app sign-up/i);
+});
+
+test("privacy and support remain discoverable before sign-in", () => {
+  assert.match(login, /router\.push\("\/settings\/privacy"/);
+  assert.match(login, /router\.push\("\/settings\/support"/);
+  assert.match(login, /accessibilityRole="link"/);
+  assert.doesNotMatch(
+    login,
+    /legalRow[^>]*accessibilityRole="text"/,
+    "the legal-link container must not collapse its independently accessible links",
+  );
+  assert.doesNotMatch(privacyRoute, /if\s*\(\s*!user\s*\)/);
+  assert.doesNotMatch(supportRoute, /if\s*\(\s*!user\s*\)/);
+  assert.match(privacyRoute, /signedIn\s*\?\s*"\/settings"\s*:\s*"\/login"/);
+  assert.match(supportRoute, /signedIn\s*\?\s*"\/settings"\s*:\s*"\/login"/);
+});
+
+test("contact and policy actions transmit only bounded public destinations", () => {
+  assert.match(
+    supportRoute,
+    /const SUPPORT_MAILTO = "mailto:support@getmise\.app\?subject=Mise%20beta%20support"/,
+  );
+  assert.match(
+    supportRoute,
+    /const PRIVACY_MAILTO = "mailto:privacy@getmise\.app\?subject=Mise%20beta%20privacy"/,
+  );
+  assert.match(
+    supportRoute,
+    /Linking\.canOpenURL\(url\)[\s\S]*Linking\.openURL\(url\)/,
+  );
+  assert.doesNotMatch(supportRoute, /[?&](?:body|cc|bcc)=/i);
+  assert.match(
+    privacyRoute,
+    /const PRIVACY_POLICY_URL = "https:\/\/getmise\.app\/privacy"/,
+  );
+  assert.match(
+    privacyRoute,
+    /Linking\.canOpenURL\(PRIVACY_POLICY_URL\)[\s\S]*Linking\.openURL\(PRIVACY_POLICY_URL\)/,
+  );
+  assert.match(privacyRoute, /privacy\.hosting\.title/);
+  assert.match(supportRoute, /support\.monitoring\.title/);
+});
+
+test("privacy and support routes are part of shell and localized mobile QA", () => {
+  for (const route of ["/settings/privacy", "/settings/support"]) {
+    assert.match(routeSmoke, new RegExp(`"${route}"`));
+    assert.match(layoutSmoke, new RegExp(`"${route}"`));
+  }
 });
