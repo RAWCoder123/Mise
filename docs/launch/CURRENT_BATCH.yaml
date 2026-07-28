@@ -1,15 +1,14 @@
-batch_id: private-beta-finding-feedback-17
-status: completed
-goal: Persist append-only manager feedback linked to deterministic findings and their original evidence.
+batch_id: private-beta-finding-feedback-loop-18
+status: in_progress
+goal: Apply exact append-only manager feedback to later deterministic briefs without hiding or rewriting changed evidence.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - services/application/findingDecisions.ts
+  - services/application/findings.ts
   - services/domain/operationalFindingDecisions.ts
+  - services/domain/operationalFindings.ts
   - services/repositories/**
   - services/miseService.ts
-  - scripts/**
-  - supabase/**
   - tests/**
 cursor_owned: []
 shared_locked: []
@@ -18,35 +17,17 @@ blocked_files:
   - i18n/catalog.ts
 handoff_required: true
 dependencies:
-  - private-beta-daily-findings-contract-14
+  - private-beta-finding-feedback-17
 required_tests:
   - npm run typecheck
   - npm test
   - npm run security:backend
-  - npm run supabase:test
-  - npm run verify:private-beta-security:hosted
 stop_conditions:
-  - A client can directly insert, update, or delete authoritative feedback
-  - Staff or another restaurant can record or read a tenant decision
-  - A changed replay overwrites an accepted decision
-  - Extra evidence fields can persist or poison restaurant exports
-  - Feedback changes inventory or creates or sends an order
-evidence:
-  - Append-only finding decisions preserve exact finding identity, policy version, evidence, original action, and manager feedback
-  - Hosted and demo modes share one stable screen-facing facade
-  - Staff, direct-DML, cross-tenant, changed-replay, and poisoned-evidence attempts fail closed
-  - Read-only and emergency modes block feedback mutations
-  - Account deletion anonymizes only the actor and tenant deletion owns the full cascade
-  - Restaurant export includes 25 reviewed tenant datasets
-  - npm run typecheck passed
-  - npm test passed with 282 tests
-  - npm run security:backend passed
-  - npm run supabase:test passed with 530 pgTAP assertions
-  - Hosted private-beta security passed without skipped checks
-  - Hosted export and dedicated finding-feedback proofs passed
-  - npm audit found 0 vulnerabilities and Expo Doctor passed 21 of 21 checks
+  - Feedback from another restaurant or policy can affect a finding
+  - Feedback remains applicable after evidence or the original action changes
+  - A dismissed finding disappears instead of preserving its original evidence
+  - Feedback mutates inventory, recommendations, supplier drafts, or orders
+evidence: []
 unresolved_findings:
-  - Cursor must surface daily findings, export, and manager feedback interactions
-  - Feedback retry identity and all new interactions still require real-device proof
-  - Live monitoring, managed recovery, and TestFlight remain external
-checkpoint_commit: c0439c0
+  - Cursor UI and real-device proof remain outside this backend batch
+checkpoint_commit: null
