@@ -1,32 +1,31 @@
-batch_id: private-beta-quota-proof-27
-status: complete
-goal: Prove the service-only restaurant provisioning boundary rejects a sixth lifetime workspace after creator membership churn.
+batch_id: private-beta-hosted-harness-28
+status: in_progress
+goal: Restore the hosted rendered tenant-race proof after the invite-only login copy change without weakening its authentication or tenant assertions.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - supabase/tests/database/tenant_isolation.test.sql
+  - scripts/staging-client-race.mjs
+  - tests/stagingClientRaceHarness.test.ts
 cursor_owned: []
 shared_locked:
   - app/**
+  - i18n/**
   - services/**
-  - supabase/migrations/**
+  - supabase/**
   - package.json
   - package-lock.json
 blocked_files: []
 handoff_required: false
 dependencies:
-  - private-beta-invite-only-admission-25
   - private-beta-owner-invitation-26
 required_tests:
-  - npm run supabase:test
-  - npm run security:backend
+  - node --test --import tsx tests/stagingClientRaceHarness.test.ts
+  - npm run verify:private-beta-security:hosted
 stop_conditions:
-  - The proof calls the revoked legacy tenant-allocation RPC instead of the service-only provisioning boundary
-  - The sixth service provisioning request succeeds
-  - Membership churn removes or rewrites an immutable workspace allocation
-  - A runtime schema or production environment is changed
+  - The harness depends on mutable marketing copy instead of accessible login controls
+  - Authentication or any tenant-negative assertion is removed or weakened
+  - A production environment is targeted
 evidence:
-  - npm run supabase:test (566 pgTAP assertions)
-  - npm run security:backend
+  - Initial hosted run failed before authentication because the obsolete Open Mise text was absent
 unresolved_findings: []
-checkpoint_commit: 84f2c9d
+checkpoint_commit: null
