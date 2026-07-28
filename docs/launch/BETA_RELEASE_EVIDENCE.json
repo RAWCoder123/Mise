@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "target": "invite_only_testflight_beta",
-  "candidateCommit": "c795d1ea3192ed0e4727ed2f5c0d5e35f65edb2b",
+  "candidateCommit": "a19ca2365a559de2c5f14ed28bf38cd289eeceb8",
   "candidateBuildId": null,
   "providerRestrictions": {
     "squareEnabled": false,
@@ -20,25 +20,25 @@
     {
       "id": "local_release_gate",
       "status": "passed",
-      "verifiedAt": "2026-07-28T22:53:42Z",
-      "verifiedCommit": "c795d1ea3192ed0e4727ed2f5c0d5e35f65edb2b",
-      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-c795d1e.md#local-release-gate",
+      "verifiedAt": "2026-07-28T23:29:22Z",
+      "verifiedCommit": "a19ca2365a559de2c5f14ed28bf38cd289eeceb8",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-a19ca23.md#local-release-gate",
       "owner": "Codex"
     },
     {
       "id": "hosted_security",
       "status": "passed",
-      "verifiedAt": "2026-07-28T22:53:42Z",
-      "verifiedCommit": "c795d1ea3192ed0e4727ed2f5c0d5e35f65edb2b",
-      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-c795d1e.md#hosted-security",
+      "verifiedAt": "2026-07-28T23:29:22Z",
+      "verifiedCommit": "a19ca2365a559de2c5f14ed28bf38cd289eeceb8",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-a19ca23.md#hosted-security",
       "owner": "Codex"
     },
     {
       "id": "tenant_isolation",
       "status": "passed",
-      "verifiedAt": "2026-07-28T22:53:42Z",
-      "verifiedCommit": "c795d1ea3192ed0e4727ed2f5c0d5e35f65edb2b",
-      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-c795d1e.md#tenant-isolation",
+      "verifiedAt": "2026-07-28T23:29:22Z",
+      "verifiedCommit": "a19ca2365a559de2c5f14ed28bf38cd289eeceb8",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-a19ca23.md#tenant-isolation",
       "owner": "Codex"
     },
     {
@@ -108,9 +108,9 @@
     {
       "id": "provider_restrictions",
       "status": "passed",
-      "verifiedAt": "2026-07-28T22:53:42Z",
-      "verifiedCommit": "c795d1ea3192ed0e4727ed2f5c0d5e35f65edb2b",
-      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-c795d1e.md#provider-restrictions",
+      "verifiedAt": "2026-07-28T23:29:22Z",
+      "verifiedCommit": "a19ca2365a559de2c5f14ed28bf38cd289eeceb8",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-a19ca23.md#provider-restrictions",
       "owner": "Codex"
     }
   ],
