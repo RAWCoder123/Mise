@@ -1,15 +1,15 @@
-batch_id: private-beta-finding-feedback-outbox-19
-status: complete
-goal: Persist stable manager-feedback retry identity across app restarts and settle exact authoritative decisions without duplicate evidence.
+batch_id: private-beta-release-authority-20
+status: in_progress
+goal: Add a fail-closed August 3 beta go/no-go authority and remove stale launch instructions that contradict the approved beta scope.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - services/application/findingDecisionOutbox.ts
-  - services/domain/operationalFindingDecisions.ts
-  - services/repositories/findingDecisionOutboxRepository.ts
-  - services/repositories/deviceFindingDecisionOutboxRepository.ts
-  - services/miseService.ts
-  - tests/findingDecisionOutbox.test.ts
+  - docs/testflight-readiness.md
+  - docs/store/launch-ops-checklist.md
+  - scripts/beta-go-no-go.ts
+  - services/domain/betaReleaseReadiness.ts
+  - tests/betaReleaseReadiness.test.ts
+  - package.json
 cursor_owned: []
 shared_locked: []
 blocked_files:
@@ -17,26 +17,18 @@ blocked_files:
   - i18n/catalog.ts
 handoff_required: true
 dependencies:
-  - private-beta-finding-feedback-loop-18
+  - private-beta-finding-feedback-outbox-19
 required_tests:
   - npm run typecheck
   - npm test
   - npm run security:backend
+  - npm run beta:go-no-go
 stop_conditions:
-  - A retry generates a new client event or idempotency key
-  - One local outbox identity can be reused for a different finding or decision payload
-  - Another restaurant can read or submit the queued decision
-  - An ambiguous transport failure becomes a terminal rejection
-evidence:
-  - Device storage preserves one client event and idempotency key across app and repository restarts.
-  - Ambiguous transport failures defer with bounded backoff and retain the original decision payload.
-  - Interrupted submissions recover to a retryable state without changing authority.
-  - Exact authoritative responses settle accepted; permission denials and idempotency conflicts remain visible terminal states.
-  - Tenant-scoped storage and local identity conflicts fail closed.
-  - npm run typecheck passed.
-  - npm test passed with 293 tests.
-  - npm run security:backend passed.
-  - git diff --check passed.
+  - A missing external receipt or approval can produce a launch-ready result
+  - Evidence for another commit can approve the current release candidate
+  - Square, Gmail delivery, AI, billing, or autonomous ordering can be enabled
+  - Stale supplier-sending or public-launch instructions remain in the beta path
+evidence: []
 unresolved_findings:
   - Cursor UI and real-device proof remain outside this backend batch
-checkpoint_commit: 13bbeb1
+checkpoint_commit: null
