@@ -1,6 +1,7 @@
+import { useState } from "react";
+import { Linking, StyleSheet, Text, View } from "react-native";
 import { router, useNavigation } from "expo-router";
-import { ArrowLeft, LifeBuoy } from "lucide-react-native";
-import { StyleSheet, Text, View } from "react-native";
+import { ArrowLeft, LifeBuoy, Mail } from "lucide-react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Button } from "../../components/ui/Button";
@@ -12,14 +13,37 @@ import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 
+const SUPPORT_MAILTO = "mailto:support@getmise.app?subject=Mise%20beta%20support";
+const PRIVACY_MAILTO = "mailto:privacy@getmise.app?subject=Mise%20beta%20privacy";
+
 export default function SupportSettingsScreen() {
   const navigation = useNavigation();
   const { t } = useLocale();
   const { restaurant, user } = useMiseSession();
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
 
   function goBackToSettings() {
     if (navigation.canGoBack()) navigation.goBack();
     else router.replace("/settings");
+  }
+
+  async function openBoundedMailto(url: typeof SUPPORT_MAILTO | typeof PRIVACY_MAILTO) {
+    if (opening) return;
+    setOpening(true);
+    setLinkError(null);
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        setLinkError(t("support.link.unavailable"));
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      setLinkError(t("support.link.unavailable"));
+    } finally {
+      setOpening(false);
+    }
   }
 
   if (!user) {
@@ -50,6 +74,11 @@ export default function SupportSettingsScreen() {
     >
       <View style={styles.stack}>
         <StatusNotice tone="caution" title={t("support.beta.title")} message={t("support.beta.body")} />
+        <StatusNotice
+          tone="caution"
+          title={t("support.monitoring.title")}
+          message={t("support.monitoring.body")}
+        />
 
         <Card>
           <View style={styles.hero}>
@@ -67,9 +96,30 @@ export default function SupportSettingsScreen() {
         <InfoBlock title={t("support.section.disabled")} body={t("support.section.disabledBody")} />
         <InfoBlock title={t("support.section.contact")} body={t("support.section.contactBody")} />
 
+        {linkError ? <StatusNotice tone="danger" title={t("support.link.errorTitle")} message={linkError} /> : null}
+
+        <Button
+          title={t("support.action.emailSupport")}
+          accessibilityLabel={t("support.action.emailSupportAccessibility")}
+          accessibilityHint={t("support.action.emailSupportHint")}
+          icon={<Mail size={17} color={colors.surface} strokeWidth={2.5} />}
+          onPress={() => void openBoundedMailto(SUPPORT_MAILTO)}
+          disabled={opening}
+          fullWidth
+        />
+        <Button
+          title={t("support.action.emailPrivacy")}
+          variant="secondary"
+          accessibilityLabel={t("support.action.emailPrivacyAccessibility")}
+          accessibilityHint={t("support.action.emailPrivacyHint")}
+          icon={<Mail size={17} color={colors.text} strokeWidth={2.5} />}
+          onPress={() => void openBoundedMailto(PRIVACY_MAILTO)}
+          disabled={opening}
+          fullWidth
+        />
         <Button
           title={t("support.action.openPrivacy")}
-          variant="secondary"
+          variant="ghost"
           onPress={() => router.push("/settings/privacy" as never)}
           fullWidth
         />
