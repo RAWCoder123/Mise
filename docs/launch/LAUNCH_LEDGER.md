@@ -45,6 +45,47 @@ commit before another batch begins.
 | `private-beta-provider-kill-switches-23` | Codex | Persisted provider and draft-only authority at supplier delivery | Complete; providers remain disabled | `07cd9ba` |
 | `private-beta-privacy-support-24` | Tandem | Accurate localized in-app privacy and support access | Complete; public hosting/monitoring pending | `96403ac` |
 | `private-beta-invite-only-admission-25` | Tandem | Admin-provisioned beta accounts and restaurants | Complete; production/device proof pending | `642bae0` |
+| `private-beta-owner-invitation-26` | Tandem | Controlled hosted invitation acceptance and first owner hydration | Complete; device/delivery proof pending | `dc1d5db` / `0237f89` |
+
+### `private-beta-owner-invitation-26`
+
+Delivered:
+
+- A staging-pinned trusted operator command that provisions one existing or new
+  beta owner through the service-only tenant boundary and writes a protected
+  invitation artifact outside the repository without printing its link.
+- A fail-closed invitation callback parser and application service that require
+  one complete `type=invite` session, bounded matching passwords, and cleanup of
+  failed partial sessions.
+- A localized Expo invitation screen that consumes one Mise Linking callback,
+  clears password input, hydrates the active owner tenant, and preserves
+  sign-in, privacy, and support recovery paths.
+- Hosted acceptance, password sign-in, idempotent replay, sentinel isolation,
+  and disposable-state cleanup proof.
+
+Evidence:
+
+- Contract checkpoint `69a715a`
+- Staging redirect checkpoint `91ef00f`
+- Hosted proof checkpoint `dc1d5db`
+- Cursor UI checkpoint `0237f89`
+- `npm run staging:owner-invitation-check`
+- `npm run typecheck`
+- `npm test`: 329 passed
+- `npm run security:backend`
+- `npm run design:static`
+- `npm run qa:routes`
+- `npm run qa:interactions`: English, Spanish, and Simplified Chinese at
+  390x844 with zero horizontal overflow
+- `docs/launch/evidence/security/2026-07-28-owner-invitation.md`
+
+Remaining:
+
+- A physical iPhone must accept the release-candidate invitation and verify
+  initial tenant hydration.
+- Restaurant delivery requires configured custom SMTP or a Raymond-controlled
+  protected-link channel; no invitation secret may enter source control,
+  telemetry, or support screenshots.
 
 ### `private-beta-invite-only-admission-25`
 

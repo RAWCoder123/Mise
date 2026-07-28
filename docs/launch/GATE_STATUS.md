@@ -4,7 +4,7 @@ Updated: 2026-07-28
 
 | Gate | Status | Current evidence | Remaining blockers |
 | --- | --- | --- | --- |
-| 1. Private-beta foundation | In progress | Expo dependency repair, tenant security migrations, deterministic demo mode, team roles, hosted account-deletion proof, service-only restaurant provisioning, globally disabled public signup with invited-user email login preserved, owner/admin restaurant export, complete hosted two-tenant and rendered race proof, scrubbed observability contracts, operational restore evidence, incident runbooks, enforced read-only/emergency modes, fail-closed exact-commit release authority, pinned TestFlight tooling, and localized signed-out/in-app privacy and support access | EAS login/project link, full Xcode, live Sentry/PostHog receipts and alerts, managed hosted recovery, published privacy policy and monitored support/privacy inboxes, internal TestFlight |
+| 1. Private-beta foundation | In progress | Expo dependency repair, tenant security migrations, deterministic demo mode, team roles, hosted account-deletion proof, service-only restaurant provisioning, globally disabled public signup with invited-user email login preserved, protected owner invitation acceptance and sign-in, owner/admin restaurant export, complete hosted two-tenant and rendered race proof, scrubbed observability contracts, operational restore evidence, incident runbooks, enforced read-only/emergency modes, fail-closed exact-commit release authority, pinned TestFlight tooling, and localized signed-out/in-app privacy and support access | EAS login/project link, full Xcode, physical-iPhone invitation/device proof, monitored invitation delivery, live Sentry/PostHog receipts and alerts, managed hosted recovery, published privacy policy and monitored support/privacy inboxes, internal TestFlight |
 | 2. Inventory truth | Beta scope complete; device proof pending | Effective-dated mapping schema/domain rules, verified conversions, append-only ledger, event-derived on-hand projection, replay-safe RPC/outbox, count reconciliation, daily CSV import, mobile count/receipt/waste/stockout workflows, hosted learning proof, deterministic evidence-backed daily findings, exact append-only manager feedback, restart-safe feedback delivery, and localized operator UI including rendered export | Real-device inventory/offline/share walkthrough; package mappings remain fail-closed until verified |
 | 3. Square shadow mode | Not started | Fail-closed POS adapter scaffold | OAuth, webhooks, backfill, reconciliation, shadow evidence |
 | 4. Operational pilot | Not started | Default-off order safety evaluator, persisted `off`/`draft_only` policy, tenant/global provider gates, and manager-controlled email workflow | Scheduler, provider activation proof, pilot evidence |
@@ -18,7 +18,7 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
 ## Current beta evidence
 
 - `npm run typecheck`
-- `npm test`: 318 passed
+- `npm test`: 329 passed
 - `npm run security:backend`
 - `npm run design:static`
 - `npm run qa:interactions`: passed at 390x844 in English, Spanish, and
@@ -33,6 +33,10 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
 - Hosted Auth rejects public signup with HTTP 422, preserves invited-user email
   login, disables anonymous admission, and reconciles to the repository-recorded
   staging configuration with no drift.
+- Hosted owner invitation proof provisioned a disposable tenant, accepted one
+  protected link, set and re-used the owner's sign-in credentials, replayed the
+  service request without duplication, preserved the sentinel tenant, and
+  removed all disposable state.
 - Hosted tenant allocation is service-only and idempotent; authenticated users
   cannot call the legacy allocation RPC or enter setup without membership.
 - Hosted restaurant export returned 25 tenant-scoped datasets, denied manager
@@ -60,10 +64,14 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
   policy destinations. Public hosting and inbox monitoring remain external.
 - `/settings/export` now passes shell and 390x844 rendered coverage. The EAS
   preflight correctly blocks on missing login and project identity.
+- `/accept-invite` now passes shell and localized 390x844 rendered coverage with
+  zero horizontal overflow.
 
 Remaining external verification:
 
 - Install and walk the critical workflow on real supported iPhones.
 - Install/select full Xcode so `simctl` and native prerequisite checks can run.
 - Authenticate EAS and link `expo.extra.eas.projectId`.
+- Accept a release-candidate owner invitation on a physical iPhone and confirm
+  the monitored invitation-delivery channel.
 - Complete live monitoring, managed Supabase recovery, and TestFlight evidence.

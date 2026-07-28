@@ -1,5 +1,5 @@
 batch_id: private-beta-owner-invitation-26
-status: in_progress
+status: complete
 goal: Deliver a controlled administrator invitation and owner onboarding path from hosted Auth issuance through first password setup and tenant hydration.
 started_at: 2026-07-28
 codex_owned:
@@ -50,6 +50,16 @@ stop_conditions:
   - The app accepts a callback that is not an invite or mixes credentials from different callbacks
   - Password setup bypasses bounded validation or leaves a failed partial session active
   - A newly provisioned restaurant enables any provider, drafting, billing, or sending capability
-evidence: []
-unresolved_findings: []
-checkpoint_commit: null
+evidence:
+  - docs/launch/evidence/security/2026-07-28-owner-invitation.md
+  - npm run staging:owner-invitation-check
+  - npm run typecheck
+  - npm test (329 passed)
+  - npm run security:backend
+  - npm run design:static
+  - npm run qa:routes
+  - npm run qa:interactions
+unresolved_findings:
+  - Physical-iPhone invitation acceptance and initial tenant hydration remain release-candidate evidence.
+  - External restaurant delivery requires either configured custom SMTP or a Raymond-administered protected-link channel.
+checkpoint_commit: 0237f89
