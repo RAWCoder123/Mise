@@ -11,6 +11,8 @@ codex_owned:
   - services/domain/accountAuth.ts
   - services/application/account.ts
   - services/miseService.ts
+  - supabase/config.toml
+  - supabase/environments/staging/supabase/config.toml
   - contexts/MiseSessionContext.tsx
   - tests/accountAuth.test.ts
   - tests/betaRestaurantProvisioning.test.ts
@@ -27,8 +29,6 @@ shared_locked:
   - eas.json
   - lib/supabase.ts
   - services/repositories/**
-  - supabase/config.toml
-  - supabase/environments/staging/**
 blocked_files:
   - package-lock.json
 handoff_required: true
