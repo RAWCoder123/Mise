@@ -267,7 +267,12 @@ async function clickText(cdp, text) {
 
 async function signIn(cdp) {
   await cdp.send("Page.navigate", { url: `${baseUrl}/login` });
-  await waitFor(cdp, "document.body?.innerText.includes('Open Mise')", "Login screen did not render");
+  await waitFor(
+    cdp,
+    `document.querySelector('input[aria-label="Email"]') &&
+      document.querySelector('input[aria-label="Password"]')`,
+    "Accessible login controls did not render"
+  );
   const filled = await evaluate(
     cdp,
     `(() => {
@@ -286,21 +291,13 @@ async function signIn(cdp) {
   await waitFor(
     cdp,
     `document.body?.innerText.includes('Luna Bistro') &&
-      !document.body?.innerText.includes('Northside Cafe') &&
-      (document.body?.innerText.includes('Review Chicken Breast reorder') ||
-        document.body?.innerText.includes('Set up your restaurant'))`,
+      !document.body?.innerText.includes('Northside Cafe')`,
     "Dual-tenant account did not enter tenant A"
   );
-  const alreadyOnTenantAToday = await evaluate(
-    cdp,
-    "document.body?.innerText.includes('Review Chicken Breast reorder')"
-  );
-  if (!alreadyOnTenantAToday) {
-    await cdp.send("Page.navigate", { url: `${baseUrl}/today` });
-  }
+  await cdp.send("Page.navigate", { url: `${baseUrl}/today` });
   await waitFor(
     cdp,
-    "document.body?.innerText.includes('Review Chicken Breast reorder') && !document.body?.innerText.includes('Review Espresso Beans reorder')",
+    "document.body?.innerText.includes('Luna chicken') && !document.body?.innerText.includes('Northside espresso')",
     "Dual-tenant account did not establish tenant A before race checks"
   );
 }

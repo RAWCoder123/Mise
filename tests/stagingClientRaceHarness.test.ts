@@ -36,3 +36,12 @@ test("rendered race harness still requires every route and mutation race", () =>
   assert.match(harness, /must pass the source-tenant role boundary|assertTenantBOnly/);
 });
 
+test("rendered race login readiness uses stable accessible controls instead of marketing copy", () => {
+  assert.match(harness, /input\[aria-label="Email"\]/);
+  assert.match(harness, /input\[aria-label="Password"\]/);
+  assert.doesNotMatch(harness, /innerText\.includes\('Open Mise'\)/);
+  assert.match(
+    harness,
+    /innerText\.includes\('Luna Bistro'\)[\s\S]*Page\.navigate[\s\S]*innerText\.includes\('Luna chicken'\)/
+  );
+});
