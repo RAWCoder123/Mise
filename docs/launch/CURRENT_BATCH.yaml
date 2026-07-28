@@ -1,15 +1,15 @@
-batch_id: private-beta-finding-feedback-loop-18
-status: complete
-goal: Apply exact append-only manager feedback to later deterministic briefs without hiding or rewriting changed evidence.
+batch_id: private-beta-finding-feedback-outbox-19
+status: in_progress
+goal: Persist stable manager-feedback retry identity across app restarts and settle exact authoritative decisions without duplicate evidence.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - services/application/findings.ts
+  - services/application/findingDecisionOutbox.ts
   - services/domain/operationalFindingDecisions.ts
-  - services/domain/operationalFindings.ts
-  - services/repositories/**
+  - services/repositories/findingDecisionOutboxRepository.ts
+  - services/repositories/deviceFindingDecisionOutboxRepository.ts
   - services/miseService.ts
-  - tests/**
+  - tests/findingDecisionOutbox.test.ts
 cursor_owned: []
 shared_locked: []
 blocked_files:
@@ -17,25 +17,17 @@ blocked_files:
   - i18n/catalog.ts
 handoff_required: true
 dependencies:
-  - private-beta-finding-feedback-17
+  - private-beta-finding-feedback-loop-18
 required_tests:
   - npm run typecheck
   - npm test
   - npm run security:backend
 stop_conditions:
-  - Feedback from another restaurant or policy can affect a finding
-  - Feedback remains applicable after evidence or the original action changes
-  - A dismissed finding disappears instead of preserving its original evidence
-  - Feedback mutates inventory, recommendations, supplier drafts, or orders
-evidence:
-  - Exact finding, policy, action, confidence, evidence, and source-window matching applies the latest manager decision.
-  - Approved, edited, and dismissed findings remain visible with their original evidence and recommendation.
-  - Changed evidence, action, policy, or tenant scope expires or rejects prior feedback.
-  - Same-day data-gap findings retain stable evidence while next-day findings require fresh review.
-  - npm run typecheck passed.
-  - npm test passed with 287 tests.
-  - npm run security:backend passed.
-  - git diff --check passed.
+  - A retry generates a new client event or idempotency key
+  - One local outbox identity can be reused for a different finding or decision payload
+  - Another restaurant can read or submit the queued decision
+  - An ambiguous transport failure becomes a terminal rejection
+evidence: []
 unresolved_findings:
   - Cursor UI and real-device proof remain outside this backend batch
-checkpoint_commit: 17e14d9
+checkpoint_commit: null
