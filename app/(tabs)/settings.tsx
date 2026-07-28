@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronUp,
   Database,
+  Download,
   Languages,
   LogOut,
   Mail,
@@ -38,6 +39,7 @@ import {
   fetchRestaurantOpsProfile,
   fetchSuppliers
 } from "../../services/miseService";
+import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type {
   DemoReadinessSummary,
@@ -55,6 +57,7 @@ export default function SettingsScreen() {
   const {
     availableRestaurants,
     isDemoMode,
+    memberships,
     restaurant,
     posProvider,
     resetDemoData,
@@ -195,6 +198,7 @@ export default function SettingsScreen() {
   const visibleReadiness = loadedRestaurantId === restaurant?.id ? readiness : null;
   const gmailConnected = visibleEmailConnection?.status === "connected";
   const gmailNeedsAttention = visibleEmailConnection?.status === "needs_reauth" || visibleEmailConnection?.status === "restricted";
+  const canExportRestaurant = Boolean(restaurant) && canDeleteRestaurantData(memberships, restaurant?.id);
   const localizedRole = role ? roleLabel(role, t) : null;
   const profileLine = restaurant
     ? `${restaurant.cuisine_type?.trim() || t("settings.profile.cuisineFallback")} · ${serviceStyleLabel(restaurant.service_style, t)}`
@@ -391,6 +395,16 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
+
+          {canExportRestaurant ? (
+            <OperationalRow
+              title={t("settings.data.export.title")}
+              subtitle={t("settings.data.export.body")}
+              icon={<Download size={20} color={colors.accentDark} strokeWidth={2.25} />}
+              iconTone="brand"
+              onPress={() => router.push("/settings/export" as never)}
+            />
+          ) : null}
 
           {isDemoMode ? (
             <View style={styles.sectionAction}>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import {
   AlertTriangle,
@@ -9,8 +10,8 @@ import {
   Lightbulb,
   RefreshCw
 } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { InsightChartIllustration } from "../../components/ui/MiseIllustrations";
 import { MotionView, StateChangeView } from "../../components/ui/Motion";
@@ -23,11 +24,18 @@ import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDecisionOutbox";
+import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
+import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
 import {
+  fetchDailyOperationalBrief,
   fetchInsights,
   fetchInsightsSalesTrend,
   fetchLearningMemorySummary,
+  fetchQueuedOperationalFindingDecisions,
+  flushQueuedOperationalFindingDecisions,
   generateInsightsFromSalesAndInventory,
+  queueOperationalFindingDecision,
   summarizeInsights
 } from "../../services/miseService";
 import {
@@ -52,12 +60,17 @@ export default function InsightsScreen() {
   const { formatNumber, t } = useLocale();
   const { memberships, restaurant } = useMiseSession();
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [brief, setBrief] = useState<DailyOperationalBrief | null>(null);
+  const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
   const [memory, setMemory] = useState<LearningMemorySummary | null>(null);
   const [salesTrend, setSalesTrend] = useState<InsightsSalesTrendPoint[]>([]);
   const [filter, setFilter] = useState<InsightFilter>("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
+  const [briefMessage, setBriefMessage] = useState<string | null>(null);
+  const [briefMessageIsError, setBriefMessageIsError] = useState(false);
+  const [busyFindingId, setBusyFindingId] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const hasLoaded = useRef(false);
   const requestIdRef = useRef(0);
@@ -69,10 +82,15 @@ export default function InsightsScreen() {
     hasLoaded.current = false;
     setLoadedRestaurantId(null);
     setInsights([]);
+    setBrief(null);
+    setFindingQueue([]);
     setMemory(null);
     setSalesTrend([]);
     setFilter("all");
     setError(false);
+    setBriefMessage(null);
+    setBriefMessageIsError(false);
+    setBusyFindingId(null);
     setLoading(Boolean(restaurant));
     setRefreshing(false);
   }, [restaurant?.id]);
@@ -88,15 +106,22 @@ export default function InsightsScreen() {
     if (!hasLoaded.current) setLoading(true);
     setError(false);
     try {
-      const [nextInsights, nextMemory, nextSalesTrend] = await Promise.all([
+      await flushQueuedOperationalFindingDecisions(restaurantId);
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+
+      const [nextInsights, nextMemory, nextSalesTrend, nextBrief, nextQueue] = await Promise.all([
         fetchInsights(restaurantId),
         fetchLearningMemorySummary(restaurantId),
-        fetchInsightsSalesTrend(restaurantId)
+        fetchInsightsSalesTrend(restaurantId),
+        fetchDailyOperationalBrief(restaurantId),
+        fetchQueuedOperationalFindingDecisions(restaurantId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setInsights(nextInsights);
       setMemory(nextMemory);
       setSalesTrend(nextSalesTrend);
+      setBrief(nextBrief);
+      setFindingQueue(nextQueue);
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -115,7 +140,46 @@ export default function InsightsScreen() {
     }, [load])
   );
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void load();
+    });
+    return () => subscription.remove();
+  }, [load]);
+
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
+
+  async function submitFindingFeedback(
+    finding: OperationalFinding,
+    decisionType: OperationalFindingDecisionType,
+    editedRecommendedAction?: string
+  ) {
+    if (!restaurant || !canManage || busyFindingId) return;
+    const restaurantId = restaurant.id;
+    setBusyFindingId(finding.id);
+    setBriefMessage(null);
+    setBriefMessageIsError(false);
+    try {
+      await queueOperationalFindingDecision({
+        finding,
+        decisionType,
+        editedRecommendedAction: decisionType === "edited" ? editedRecommendedAction : null
+      });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      const flushSummary = await flushQueuedOperationalFindingDecisions(restaurantId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setBriefMessage(describeFindingFlush(flushSummary, t));
+      setBriefMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
+    } catch {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setBriefMessage(t("dailyBrief.result.error"));
+      setBriefMessageIsError(true);
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setBusyFindingId(null);
+    }
+  }
 
   const refreshInsights = useCallback(async () => {
     if (!restaurant || refreshing || !canManage) return;
@@ -127,15 +191,19 @@ export default function InsightsScreen() {
     try {
       await generateInsightsFromSalesAndInventory(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      const [nextInsights, nextMemory, nextSalesTrend] = await Promise.all([
+      const [nextInsights, nextMemory, nextSalesTrend, nextBrief, nextQueue] = await Promise.all([
         fetchInsights(restaurantId),
         fetchLearningMemorySummary(restaurantId),
-        fetchInsightsSalesTrend(restaurantId)
+        fetchInsightsSalesTrend(restaurantId),
+        fetchDailyOperationalBrief(restaurantId),
+        fetchQueuedOperationalFindingDecisions(restaurantId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setInsights(nextInsights);
       setMemory(nextMemory);
       setSalesTrend(nextSalesTrend);
+      setBrief(nextBrief);
+      setFindingQueue(nextQueue);
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -146,6 +214,8 @@ export default function InsightsScreen() {
   }, [canManage, refreshing, restaurant?.id]);
 
   const visibleInsights = loadedRestaurantId === restaurant?.id ? insights : [];
+  const visibleBrief = loadedRestaurantId === restaurant?.id ? brief : null;
+  const visibleFindingQueue = loadedRestaurantId === restaurant?.id ? findingQueue : [];
   const visibleMemory = loadedRestaurantId === restaurant?.id ? memory : null;
   const visibleSalesTrend = loadedRestaurantId === restaurant?.id ? salesTrend : [];
 
@@ -231,6 +301,18 @@ export default function InsightsScreen() {
             accessibilityLabel={t("insights.retry.accessibility")}
           />
         ) : null}
+
+        <MotionView delay={20} distance={4}>
+          <DailyBriefBoard
+            brief={visibleBrief}
+            queue={visibleFindingQueue}
+            canManage={canManage}
+            busyFindingId={busyFindingId}
+            message={briefMessage}
+            messageIsError={briefMessageIsError}
+            onSubmitFeedback={submitFindingFeedback}
+          />
+        </MotionView>
 
         <MotionView delay={30} distance={4}>
           <InsightsSummary
@@ -440,6 +522,22 @@ function SalesTrend({
       )}
     </SectionSurface>
   );
+}
+
+function describeFindingFlush(
+  summary: {
+    accepted: number;
+    conflicted: number;
+    rejected: number;
+    deferred: number;
+  },
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  if (summary.conflicted > 0) return t("dailyBrief.result.conflict");
+  if (summary.rejected > 0) return t("dailyBrief.result.rejected");
+  if (summary.deferred > 0) return t("dailyBrief.result.deferred");
+  if (summary.accepted > 0) return t("dailyBrief.result.accepted");
+  return t("dailyBrief.result.queued");
 }
 
 function serviceStyleLabel(style: RestaurantServiceStyle, t: (key: MessageKey) => string) {

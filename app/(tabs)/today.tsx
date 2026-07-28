@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import {
   CheckCircle2,
@@ -9,8 +10,8 @@ import {
   ShoppingCart,
   Sparkles
 } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
@@ -23,6 +24,9 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
+import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDecisionOutbox";
+import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
+import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
 import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
@@ -30,8 +34,16 @@ import {
   type OperationalTodayTaskActionIntent,
   type OperationalTodayTaskTiming
 } from "../../services/domain/todayTasks";
-import { fetchTodaySummary, type TodayCommandCenterSummary } from "../../services/miseService";
+import {
+  fetchDailyOperationalBrief,
+  fetchQueuedOperationalFindingDecisions,
+  fetchTodaySummary,
+  flushQueuedOperationalFindingDecisions,
+  queueOperationalFindingDecision,
+  type TodayCommandCenterSummary
+} from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
+import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type { RestaurantRole } from "../../types/mise";
 
@@ -39,13 +51,19 @@ type TaskFilter = "now" | "up_next" | "later" | "done";
 type Translator = (key: MessageKey, values?: MessageValues) => string;
 
 export default function TodayScreen() {
-  const { canUseDemoMode, continueWithDemo, restaurant, role } = useMiseSession();
+  const { canUseDemoMode, continueWithDemo, memberships, restaurant, role } = useMiseSession();
   const { formatDate, formatNumber, t, locale } = useLocale();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
+  const [brief, setBrief] = useState<DailyOperationalBrief | null>(null);
+  const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
   const [filter, setFilter] = useState<TaskFilter>("now");
   const [snoozedTaskIds, setSnoozedTaskIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [briefError, setBriefError] = useState(false);
+  const [briefMessage, setBriefMessage] = useState<string | null>(null);
+  const [briefMessageIsError, setBriefMessageIsError] = useState(false);
+  const [busyFindingId, setBusyFindingId] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
@@ -54,10 +72,16 @@ export default function TodayScreen() {
   useEffect(() => {
     requestIdRef.current += 1;
     setSummary(null);
+    setBrief(null);
+    setFindingQueue([]);
     setLoadedRestaurantId(null);
     setFilter("now");
     setSnoozedTaskIds(new Set());
     setError(null);
+    setBriefError(false);
+    setBriefMessage(null);
+    setBriefMessageIsError(false);
+    setBusyFindingId(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
@@ -71,16 +95,27 @@ export default function TodayScreen() {
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
+    setBriefError(false);
     try {
-      const nextSummary = await fetchTodaySummary(restaurantId, { includeCompletedTasks: true });
+      await flushQueuedOperationalFindingDecisions(restaurantId);
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+
+      const [nextSummary, nextBrief, nextQueue] = await Promise.all([
+        fetchTodaySummary(restaurantId, { includeCompletedTasks: true }),
+        fetchDailyOperationalBrief(restaurantId),
+        fetchQueuedOperationalFindingDecisions(restaurantId)
+      ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
+      setBrief(nextBrief);
+      setFindingQueue(nextQueue);
       setLoadedRestaurantId(restaurantId);
       setSnoozedTaskIds(new Set());
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "today", operation: "load", restaurant_id: restaurantId });
       setError(t("today.error"));
+      setBriefError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
@@ -91,6 +126,56 @@ export default function TodayScreen() {
       void load();
     }, [load])
   );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void load();
+    });
+    return () => subscription.remove();
+  }, [load]);
+
+  const canManageBrief = canManageRestaurantData(memberships, restaurant?.id);
+
+  async function submitFindingFeedback(
+    finding: OperationalFinding,
+    decisionType: OperationalFindingDecisionType,
+    editedRecommendedAction?: string
+  ) {
+    if (!restaurant || !canManageBrief || busyFindingId) return;
+    const restaurantId = restaurant.id;
+    setBusyFindingId(finding.id);
+    setBriefMessage(null);
+    setBriefMessageIsError(false);
+    try {
+      await queueOperationalFindingDecision({
+        finding,
+        decisionType,
+        editedRecommendedAction: decisionType === "edited" ? editedRecommendedAction : null
+      });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      const flushSummary = await flushQueuedOperationalFindingDecisions(restaurantId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setBriefMessage(describeFindingFlush(flushSummary, t));
+      setBriefMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
+    } catch (submitError) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(submitError, {
+        flow: "today",
+        operation: "finding_feedback",
+        restaurant_id: restaurantId
+      });
+      const message =
+        submitError instanceof Error && /permission|authorization|forbidden|denied/i.test(submitError.message)
+          ? t("dailyBrief.viewOnly.body")
+          : t("dailyBrief.result.error");
+      setBriefMessage(message);
+      setBriefMessageIsError(true);
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setBusyFindingId(null);
+    }
+  }
 
   async function openDemo() {
     await continueWithDemo({
@@ -103,6 +188,8 @@ export default function TodayScreen() {
   }
 
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
+  const visibleBrief = loadedRestaurantId === restaurant?.id ? brief : null;
+  const visibleFindingQueue = loadedRestaurantId === restaurant?.id ? findingQueue : [];
   const grouped = useMemo(() => {
     if (!visibleSummary) return emptyBuckets();
     return bucketTasks(
@@ -167,6 +254,28 @@ export default function TodayScreen() {
             onRetry={() => void load()}
           />
         ) : null}
+
+        {briefError && !error ? (
+          <RetryNotice
+            title={t("dailyBrief.retry.title")}
+            message={t("dailyBrief.loadError")}
+            retryLabel={t("common.retry")}
+            accessibilityLabel={t("dailyBrief.retry.accessibility")}
+            onRetry={() => void load()}
+          />
+        ) : null}
+
+        <MotionView distance={3} duration={220}>
+          <DailyBriefBoard
+            brief={visibleBrief}
+            queue={visibleFindingQueue}
+            canManage={canManageBrief}
+            busyFindingId={busyFindingId}
+            message={briefMessage}
+            messageIsError={briefMessageIsError}
+            onSubmitFeedback={submitFindingFeedback}
+          />
+        </MotionView>
 
         <SegmentedControl
           accessibilityLabel={t("today.filter.accessibility")}
@@ -320,6 +429,22 @@ function bucketTasks(tasks: OperationalTodayTask[], restaurantTimeZone: string):
     else buckets.later.push(task);
   });
   return buckets;
+}
+
+function describeFindingFlush(
+  summary: {
+    accepted: number;
+    conflicted: number;
+    rejected: number;
+    deferred: number;
+  },
+  t: Translator
+) {
+  if (summary.conflicted > 0) return t("dailyBrief.result.conflict");
+  if (summary.rejected > 0) return t("dailyBrief.result.rejected");
+  if (summary.deferred > 0) return t("dailyBrief.result.deferred");
+  if (summary.accepted > 0) return t("dailyBrief.result.accepted");
+  return t("dailyBrief.result.queued");
 }
 
 function emptyBuckets(): Record<TaskFilter, OperationalTodayTask[]> {
