@@ -42,6 +42,43 @@ commit before another batch begins.
 | `private-beta-release-authority-20` | Codex | Exact-commit August 3 beta go/no-go authority | Complete; external evidence pending | `8b93f47` |
 | `private-beta-operator-ui-21` | Cursor + Codex review | Daily Brief, finding feedback, and restaurant export UI | Complete; device proof pending | `828555e` |
 | `private-beta-testflight-tooling-22` | Codex | Pinned EAS prerequisites and export route coverage | Complete; account/device proof pending | `209e533` |
+| `private-beta-provider-kill-switches-23` | Codex | Persisted provider and draft-only authority at supplier delivery | Complete; providers remain disabled | `07cd9ba` |
+
+### `private-beta-provider-kill-switches-23`
+
+Delivered:
+
+- Persisted `off` and `draft_only` ordering policy at both global and
+  restaurant scope, defaulting to `off`.
+- Database constraints that reject order-drafting enablement while policy is
+  `off`.
+- Automatic default-off operational controls for every existing and newly
+  provisioned restaurant.
+- An actor-first, global-and-restaurant guarded supplier-email claim that also
+  requires normal system mode.
+- Revoked service-role access to the prior unguarded provider claim.
+- A safe Edge response that directs managers to copy or export the draft when
+  in-app delivery is disabled.
+
+Evidence:
+
+- Backend checkpoint `22c6e5b`; hosted proof checkpoint `07cd9ba`
+- `npm run typecheck`
+- `npm test`: 307 passed
+- `npm run security:backend`
+- `npm run supabase:test`: 547 pgTAP assertions, concurrency proof, and no
+  local advisor findings
+- Guarded staging migration and Edge Function deployment
+- Hosted provider restriction proof passed with every staging tenant
+  default-off and no delivery evidence created
+- Linked hosted advisors reported no error-level security findings
+
+Remaining:
+
+- Gmail delivery, Square, live AI, order drafting, and billing remain disabled
+  and outside the August 3 beta.
+- Existing warning-level hosted advisor findings remain recorded for launch
+  review.
 
 ### `private-beta-testflight-tooling-22`
 

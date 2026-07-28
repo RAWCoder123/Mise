@@ -16,6 +16,7 @@
 | 2026-07-26 | Account deletion is two-phase: plan without wiping access, delete Auth identity, then finalize tenant cleanup by durable audit ID. Auth failure leaves membership intact and retryable. |
 | 2026-07-26 | Inventory-event actors are anonymized only by the Auth foreign-key action during account deletion; all operational event fields remain append-only. |
 | 2026-07-28 | Manager feedback on deterministic findings is append-only and linked to the original evidence and policy version. Feedback may tune later suggestions but cannot rewrite evidence, inventory, safety limits, or ordering authority. |
+| 2026-07-28 | Environment configuration never grants supplier-delivery authority by itself. The database must also permit Gmail delivery globally and for the restaurant while system mode is normal. All provider flags and ordering policy remain off for the August 3 beta. |
 
 ## Deferred decisions
 

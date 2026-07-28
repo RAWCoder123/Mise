@@ -1,5 +1,5 @@
 batch_id: private-beta-provider-kill-switches-23
-status: in_progress
+status: complete
 goal: Enforce global and restaurant provider kill switches plus persisted off/draft-only ordering policy at the authoritative supplier-delivery boundary.
 started_at: 2026-07-28
 codex_owned:
@@ -32,7 +32,15 @@ stop_conditions:
   - The service role can bypass the guarded supplier-send claim
   - An off ordering policy permits order drafting
   - Disabled or paused provider state creates delivery evidence or changes an order
-evidence: []
+evidence:
+  - npm run typecheck passed
+  - npm test passed with 307 tests
+  - npm run security:backend passed
+  - npm run supabase:test passed with 547 pgTAP assertions and no local advisor issues
+  - guarded staging provider restriction proof passed
+  - linked staging security advisors had no error-level findings
+  - docs/launch/evidence/security/2026-07-28-provider-kill-switches.md
 unresolved_findings:
   - Live provider delivery remains disabled and outside the August 3 beta
-checkpoint_commit: null
+  - Existing warning-level hosted advisor findings remain recorded for launch review
+checkpoint_commit: 07cd9ba
