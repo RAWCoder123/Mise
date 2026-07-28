@@ -47,6 +47,31 @@ commit before another batch begins.
 | `private-beta-invite-only-admission-25` | Tandem | Admin-provisioned beta accounts and restaurants | Complete; production/device proof pending | `642bae0` |
 | `private-beta-owner-invitation-26` | Tandem | Controlled hosted invitation acceptance and first owner hydration | Complete; device/delivery proof pending | `dc1d5db` / `0237f89` |
 | `private-beta-quota-proof-27` | Codex | Direct sixth-workspace rejection through the service provisioning boundary | Complete | `84f2c9d` |
+| `private-beta-hosted-harness-28` | Codex | Restore hosted rendered tenant-race proof after invite-only UI changes | Complete | `213fcf4` |
+
+### `private-beta-hosted-harness-28`
+
+Delivered:
+
+- Replaced a brittle wait on obsolete login marketing copy with the stable,
+  accessible email and password controls.
+- Removed an unrelated Home dashboard refresh dependency before the Today race
+  while retaining explicit tenant-A selection and tenant-A/tenant-B evidence
+  exclusion.
+- Aligned static security coverage with the seeded `Luna chicken` and
+  `Northside espresso` tenant markers.
+
+Evidence:
+
+- Focused harness tests: 4 passed
+- `npm test`: 330 passed
+- `npm run security:backend`
+- `npm run staging:client-race`: all seven rendered workspace-switch and
+  mutation races passed
+- `npm run verify:private-beta-security:hosted`: hosted tenant, role, service
+  RPC, Edge concurrency, finding-decision, export, and rendered race checks
+  passed without skipped checks
+- Checkpoint `213fcf4`
 
 ### `private-beta-quota-proof-27`
 

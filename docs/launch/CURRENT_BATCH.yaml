@@ -1,5 +1,5 @@
 batch_id: private-beta-hosted-harness-28
-status: in_progress
+status: complete
 goal: Restore the hosted rendered tenant-race proof after the invite-only login copy change without weakening its authentication or tenant assertions.
 started_at: 2026-07-28
 codex_owned:
@@ -28,5 +28,10 @@ stop_conditions:
   - A production environment is targeted
 evidence:
   - Initial hosted run failed before authentication because the obsolete Open Mise text was absent
+  - node --test --import tsx tests/stagingClientRaceHarness.test.ts (4 passed)
+  - npm test (330 passed)
+  - npm run security:backend
+  - npm run staging:client-race
+  - npm run verify:private-beta-security:hosted
 unresolved_findings: []
-checkpoint_commit: null
+checkpoint_commit: 213fcf4

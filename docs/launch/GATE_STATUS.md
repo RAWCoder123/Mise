@@ -18,7 +18,7 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
 ## Current beta evidence
 
 - `npm run typecheck`
-- `npm test`: 329 passed
+- `npm test`: 330 passed
 - `npm run security:backend`
 - `npm run design:static`
 - `npm run qa:interactions`: passed at 390x844 in English, Spanish, and
@@ -69,6 +69,8 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
   preflight correctly blocks on missing login and project identity.
 - `/accept-invite` now passes shell and localized 390x844 rendered coverage with
   zero horizontal overflow.
+- The complete hosted security closure passes after the invite-only UI update,
+  including all seven rendered tenant workspace-switch and mutation races.
 
 Remaining external verification:
 
