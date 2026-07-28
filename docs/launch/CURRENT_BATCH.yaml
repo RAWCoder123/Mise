@@ -7,6 +7,7 @@ codex_owned:
   - docs/store/**
   - tests/**
 cursor_owned:
+  - app/(auth)/login.tsx
   - app/settings/privacy.tsx
   - app/settings/support.tsx
   - app/(tabs)/settings.tsx
@@ -33,6 +34,7 @@ stop_conditions:
   - Policy describes a provider or data flow disabled for the beta as active
   - Policy or support copy contains an unmarked placeholder or incorrect date
   - Privacy, support, deletion, or export access is hidden from a signed-in user
+  - Privacy and support disclosures are unavailable before sign-in
   - A route overflows or loses meaning in English, Spanish, or Simplified Chinese
 evidence: []
 unresolved_findings:
