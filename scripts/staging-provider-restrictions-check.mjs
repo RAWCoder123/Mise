@@ -110,31 +110,27 @@ if (!actor.user_id || !actor.restaurant_id) {
   throw new Error("Staging has no active manager fixture for the provider boundary proof.");
 }
 
-const blocked = JSON.parse(
-  await query(`
+const blockedOutcome = await query(`
     begin;
     set local role service_role;
-    select json_build_object(
-      'outcome', (
-        public.service_claim_supplier_email_send(
-          '${actor.user_id}'::uuid,
-          '${actor.restaurant_id}'::uuid,
-          '00000000-0000-4000-8000-000000000001'::uuid,
-          '00000000-0000-4000-8000-000000000001'::uuid,
-          '<mise-staging-provider-proof@mise.test>'
-        )->>'outcome'
-      ),
-      'delivery_rows', (
-        select count(*)
-        from private.supplier_email_deliveries
-        where restaurant_id = '${actor.restaurant_id}'::uuid
-          and supplier_order_id = '00000000-0000-4000-8000-000000000001'::uuid
-      )
-    )::text;
+    select public.service_claim_supplier_email_send(
+      '${actor.user_id}'::uuid,
+      '${actor.restaurant_id}'::uuid,
+      '00000000-0000-4000-8000-000000000001'::uuid,
+      '00000000-0000-4000-8000-000000000001'::uuid,
+      '<mise-staging-provider-proof@mise.test>'
+    )->>'outcome';
     rollback;
+  `);
+const deliveryRows = Number(
+  await query(`
+    select count(*)
+    from private.supplier_email_deliveries
+    where restaurant_id = '${actor.restaurant_id}'::uuid
+      and supplier_order_id = '00000000-0000-4000-8000-000000000001'::uuid;
   `)
 );
-if (blocked.outcome !== "provider_not_enabled" || Number(blocked.delivery_rows) !== 0) {
+if (blockedOutcome !== "provider_not_enabled" || deliveryRows !== 0) {
   throw new Error("The authoritative staging provider claim did not fail closed.");
 }
 
