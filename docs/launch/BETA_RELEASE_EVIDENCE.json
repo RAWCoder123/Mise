@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "target": "invite_only_testflight_beta",
-  "candidateCommit": null,
+  "candidateCommit": "c795d1ea3192ed0e4727ed2f5c0d5e35f65edb2b",
   "candidateBuildId": null,
   "providerRestrictions": {
     "squareEnabled": false,
@@ -19,26 +19,26 @@
   "checks": [
     {
       "id": "local_release_gate",
-      "status": "pending",
-      "verifiedAt": null,
-      "verifiedCommit": null,
-      "evidence": null,
+      "status": "passed",
+      "verifiedAt": "2026-07-28T22:53:42Z",
+      "verifiedCommit": "c795d1ea3192ed0e4727ed2f5c0d5e35f65edb2b",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-c795d1e.md#local-release-gate",
       "owner": "Codex"
     },
     {
       "id": "hosted_security",
-      "status": "pending",
-      "verifiedAt": null,
-      "verifiedCommit": null,
-      "evidence": null,
+      "status": "passed",
+      "verifiedAt": "2026-07-28T22:53:42Z",
+      "verifiedCommit": "c795d1ea3192ed0e4727ed2f5c0d5e35f65edb2b",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-c795d1e.md#hosted-security",
       "owner": "Codex"
     },
     {
       "id": "tenant_isolation",
-      "status": "pending",
-      "verifiedAt": null,
-      "verifiedCommit": null,
-      "evidence": null,
+      "status": "passed",
+      "verifiedAt": "2026-07-28T22:53:42Z",
+      "verifiedCommit": "c795d1ea3192ed0e4727ed2f5c0d5e35f65edb2b",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-c795d1e.md#tenant-isolation",
       "owner": "Codex"
     },
     {
@@ -107,10 +107,10 @@
     },
     {
       "id": "provider_restrictions",
-      "status": "pending",
-      "verifiedAt": null,
-      "verifiedCommit": null,
-      "evidence": null,
+      "status": "passed",
+      "verifiedAt": "2026-07-28T22:53:42Z",
+      "verifiedCommit": "c795d1ea3192ed0e4727ed2f5c0d5e35f65edb2b",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-c795d1e.md#provider-restrictions",
       "owner": "Codex"
     }
   ],
