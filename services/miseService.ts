@@ -12,3 +12,4 @@ export * from "./application/orders";
 export * from "./application/insights";
 export * from "./application/findings";
 export * from "./application/findingDecisions";
+export * from "./application/findingDecisionOutbox";
