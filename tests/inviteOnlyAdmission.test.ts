@@ -17,6 +17,8 @@ const migration = readFileSync(
 const localConcurrency = readFileSync("scripts/local-workspace-concurrency.mjs", "utf8");
 const stagingAccountDeletion = readFileSync("scripts/staging-account-deletion-check.mjs", "utf8");
 const stagingLearning = readFileSync("scripts/staging-learning-check.mjs", "utf8");
+const sessionContext = readFileSync("contexts/MiseSessionContext.tsx", "utf8");
+const accountApplication = readFileSync("services/application/account.ts", "utf8");
 
 test("beta login is sign-in-only while preserving bounded demo and public help access", () => {
   assert.doesNotMatch(login, /\bsignUp\b/);
@@ -35,6 +37,24 @@ test("hosted users without a restaurant fail closed before setup", () => {
   assert.match(setup, /setup\.access\.pendingTitle/);
   assert.match(setup, /await signOut\(\)/);
   assert.match(setup, /const isDemoSetup = canUseDemoMode/);
+});
+
+test("the application removes dead self-service account and tenant allocation APIs", () => {
+  assert.doesNotMatch(sessionContext, /\bsignUp\s*:/);
+  assert.doesNotMatch(sessionContext, /supabase\.auth\.signUp/);
+  assert.doesNotMatch(sessionContext, /\bcreateRestaurant\s*:/);
+  assert.doesNotMatch(sessionContext, /createRestaurantWithOwner/);
+});
+
+test("invite acceptance sets one bounded session and clears partial password failures", () => {
+  assert.match(accountApplication, /parseInviteCallbackUrl/);
+  assert.match(accountApplication, /supabase\.auth\.setSession/);
+  assert.match(accountApplication, /supabase\.auth\.updateUser\(\{\s*password\s*\}\)/);
+  assert.match(
+    accountApplication,
+    /updated\.error[\s\S]*supabase\.auth\.signOut\(\{\s*scope:\s*"local"\s*\}\)/
+  );
+  assert.doesNotMatch(accountApplication, /console\.(?:log|error)/);
 });
 
 test("local and hosted Auth policy disables registration without disabling email login", () => {

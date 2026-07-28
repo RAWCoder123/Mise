@@ -5,6 +5,10 @@
 /** Supabase's default minimum password length. */
 export const MIN_ACCOUNT_PASSWORD_LENGTH = 6;
 export const MAX_ACCOUNT_EMAIL_LENGTH = 254;
+export const MIN_INVITE_PASSWORD_LENGTH = 12;
+export const MAX_INVITE_PASSWORD_LENGTH = 128;
+const MAX_INVITE_CALLBACK_LENGTH = 20_000;
+const MAX_INVITE_TOKEN_LENGTH = 12_000;
 
 export type SignUpValidationError =
   | "email_required"
@@ -14,6 +18,25 @@ export type SignUpValidationError =
 
 export type SignUpOutcome = "session_ready" | "confirmation_required" | "already_registered";
 
+export type InviteCallbackError =
+  | "invite_callback_required"
+  | "invite_callback_invalid"
+  | "invite_callback_wrong_destination"
+  | "invite_callback_wrong_type"
+  | "invite_callback_incomplete"
+  | "invite_callback_mixed_credentials"
+  | "invite_callback_rejected";
+
+export type InvitePasswordValidationError =
+  | "password_too_short"
+  | "password_too_long"
+  | "password_mismatch";
+
+export interface InviteCallbackTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
 export function isValidAccountEmail(value: string) {
   const normalized = value.trim();
   return (
@@ -21,6 +44,64 @@ export function isValidAccountEmail(value: string) {
     normalized.length <= MAX_ACCOUNT_EMAIL_LENGTH &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)
   );
+}
+
+/**
+ * Parse the exact custom-scheme callback issued for an owner invitation.
+ *
+ * Supabase returns the invite session in the URL fragment. Query credentials
+ * are accepted only as a complete alternate representation for SDK/runtime
+ * compatibility; credentials from the two locations are never combined.
+ */
+export function parseInviteCallbackUrl(value: string): InviteCallbackTokens | InviteCallbackError {
+  if (!value) return "invite_callback_required";
+  if (value.length > MAX_INVITE_CALLBACK_LENGTH) return "invite_callback_invalid";
+
+  let callback: URL;
+  try {
+    callback = new URL(value);
+  } catch {
+    return "invite_callback_invalid";
+  }
+
+  const destination = `${callback.hostname}${callback.pathname}`.replace(/^\/+|\/+$/g, "");
+  if (callback.protocol !== "mise:" || destination !== "accept-invite") {
+    return "invite_callback_wrong_destination";
+  }
+
+  const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
+  const query = callback.searchParams;
+  const credentialKeys = ["access_token", "refresh_token", "type", "error", "error_code"];
+  const fragmentHasCredentials = credentialKeys.some((key) => fragment.has(key));
+  const queryHasCredentials = credentialKeys.some((key) => query.has(key));
+  if (fragmentHasCredentials && queryHasCredentials) return "invite_callback_mixed_credentials";
+
+  const source = fragmentHasCredentials ? fragment : query;
+  if (source.has("error") || source.has("error_code")) return "invite_callback_rejected";
+  if (source.get("type") !== "invite") return "invite_callback_wrong_type";
+
+  const accessToken = source.get("access_token") ?? "";
+  const refreshToken = source.get("refresh_token") ?? "";
+  if (
+    !accessToken ||
+    !refreshToken ||
+    accessToken.length > MAX_INVITE_TOKEN_LENGTH ||
+    refreshToken.length > MAX_INVITE_TOKEN_LENGTH
+  ) {
+    return "invite_callback_incomplete";
+  }
+
+  return { accessToken, refreshToken };
+}
+
+export function validateInvitePassword(
+  password: string,
+  confirmPassword: string
+): InvitePasswordValidationError | null {
+  if (password.length < MIN_INVITE_PASSWORD_LENGTH) return "password_too_short";
+  if (password.length > MAX_INVITE_PASSWORD_LENGTH) return "password_too_long";
+  if (password !== confirmPassword) return "password_mismatch";
+  return null;
 }
 
 export function validateSignUpInput(

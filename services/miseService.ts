@@ -4,6 +4,7 @@ export {
 } from "./domain/setupDrafts";
 
 export * from "./application/restaurant";
+export * from "./application/account";
 export * from "./application/setup";
 export * from "./application/today";
 export * from "./application/inventory";

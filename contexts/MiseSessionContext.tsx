@@ -10,7 +10,6 @@ import type {
   PosProvider,
   Restaurant,
   RestaurantMembership,
-  RestaurantOperationalProfile,
   RestaurantRole
 } from "../types/mise";
 import type { DemoSetupProfile } from "../services/demoData";
@@ -21,7 +20,6 @@ import {
   isDemoDatasetRestaurantName
 } from "../services/demoData";
 import {
-  createRestaurantWithOwner,
   fetchMembershipsForAuthUser,
   fetchPOSStatus,
   fetchRestaurant,
@@ -29,7 +27,6 @@ import {
   resetDemoData as resetDemoService,
   updateRestaurantProfile
 } from "../services/miseService";
-import { interpretSignUpResult, type SignUpOutcome } from "../services/domain/accountAuth";
 import { activeMembershipForRestaurant, requireRestaurantAccess } from "../services/tenantAccess";
 import { captureMiseError } from "../services/telemetry";
 import { subscribeToTenantAuthorizationDenials } from "../services/tenantAuthorizationEvents";
@@ -57,13 +54,7 @@ interface MiseSessionContextValue {
   usingLocalDemo: boolean;
   canUseDemoMode: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<SignUpOutcome>;
   continueWithDemo: (profile?: { name?: string; cuisine_type?: string; posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
-  createRestaurant: (profile: {
-    name: string;
-    cuisine_type?: string | null;
-    operational_profile?: RestaurantOperationalProfile;
-  }) => Promise<Restaurant>;
   switchRestaurant: (restaurantId: string) => Promise<void>;
   connectDemoPOS: (provider: PosProvider) => Promise<void>;
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
@@ -460,26 +451,6 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     [posProvider, refreshPOS, saveSnapshot]
   );
 
-  const createRestaurant = useCallback(
-    async (profile: { name: string; cuisine_type?: string | null; operational_profile?: RestaurantOperationalProfile }) => {
-      if (!authUser) {
-        throw new Error("Sign in before creating a restaurant.");
-      }
-      const nextRestaurant = await createRestaurantWithOwner(profile.name, profile.cuisine_type ?? null);
-      if (profile.operational_profile) {
-        const updatedRestaurant = await updateRestaurantProfile(nextRestaurant.id, {
-          operational_profile: profile.operational_profile,
-          service_style: profile.operational_profile.serviceStyle
-        });
-        await hydrateSupabaseUser(authUser, updatedRestaurant.id);
-        return updatedRestaurant;
-      }
-      await hydrateSupabaseUser(authUser, nextRestaurant.id);
-      return nextRestaurant;
-    },
-    [authUser, hydrateSupabaseUser]
-  );
-
   const signIn = useCallback(
     async (email: string, password: string) => {
       if (!isSupabaseConfigured || !supabase) {
@@ -489,22 +460,6 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
       if (!data.user) throw new Error("Could not load authenticated user.");
       await hydrateSupabaseUser(data.user);
-    },
-    [hydrateSupabaseUser]
-  );
-
-  const signUp = useCallback(
-    async (email: string, password: string) => {
-      if (!isSupabaseConfigured || !supabase) {
-        throw new Error("Supabase is not configured. Enable local demo mode for device-only testing.");
-      }
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) throw error;
-      const outcome = interpretSignUpResult(data);
-      if (outcome === "session_ready" && data.user) {
-        await hydrateSupabaseUser(data.user);
-      }
-      return outcome;
     },
     [hydrateSupabaseUser]
   );
@@ -601,9 +556,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       usingLocalDemo: isDemoMode,
       canUseDemoMode: demoModeAvailable,
       signIn,
-      signUp,
       continueWithDemo,
-      createRestaurant,
       switchRestaurant,
       connectDemoPOS,
       resetDemoData,
@@ -613,8 +566,8 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       activeRestaurantId,
       authUser,
       availableRestaurants,
+      connectDemoPOS,
       continueWithDemo,
-      createRestaurant,
       isDemoMode,
       isLoading,
       memberships,
@@ -626,7 +579,6 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       role,
       signIn,
       signOut,
-      signUp,
       switchRestaurant,
       user
     ]
