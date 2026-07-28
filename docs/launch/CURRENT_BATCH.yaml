@@ -1,54 +1,52 @@
-batch_id: private-beta-invite-only-admission-25
-status: complete
-goal: Enforce admin-provisioned restaurant admission across the August 3 beta UI and hosted database while preserving deterministic local demo setup.
+batch_id: private-beta-owner-invitation-26
+status: in_progress
+goal: Deliver a controlled administrator invitation and owner onboarding path from hosted Auth issuance through first password setup and tenant hydration.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - scripts/local-workspace-concurrency.mjs
-  - scripts/staging-account-deletion-check.mjs
-  - scripts/staging-learning-check.mjs
-  - supabase/config.toml
-  - supabase/environments/staging/**
-  - supabase/migrations/**
-  - supabase/tests/**
-  - tests/**
+  - package.json
+  - scripts/beta-restaurant-provisioning.mjs
+  - scripts/lib/betaRestaurantProvisioning.mjs
+  - services/domain/accountAuth.ts
+  - services/miseService.ts
+  - contexts/MiseSessionContext.tsx
+  - tests/accountAuth.test.ts
+  - tests/betaRestaurantProvisioning.test.ts
+  - tests/inviteOnlyAdmission.test.ts
 cursor_owned:
+  - app/(auth)/accept-invite.tsx
   - app/(auth)/login.tsx
-  - app/(auth)/setup.tsx
+  - app/_layout.tsx
   - i18n/catalog.ts
   - scripts/mobile-route-smoke.mjs
   - scripts/mobile-layout-smoke.mjs
 shared_locked:
-  - contexts/MiseSessionContext.tsx
-  - services/miseService.ts
-  - services/repositories/**
-  - lib/appConfig.ts
+  - app.json
   - eas.json
+  - lib/supabase.ts
+  - services/repositories/**
+  - supabase/config.toml
+  - supabase/environments/staging/**
 blocked_files:
-  - package.json
   - package-lock.json
 handoff_required: true
 dependencies:
-  - private-beta-privacy-support-24
+  - private-beta-invite-only-admission-25
 required_tests:
   - npm run typecheck
   - npm test
   - npm run security:backend
-  - npm run supabase:test
   - npm run design:static
   - npm run qa:routes
   - npm run qa:interactions
 stop_conditions:
-  - An anon or authenticated client can create a restaurant or owner membership
-  - A hosted user without a provisioned active membership can enter restaurant setup
-  - Admin provisioning accepts a nonexistent Auth user, creates duplicate ownership, or enables providers
-  - Local deterministic demo setup is removed or production demo access is enabled
-  - Signed-out privacy and support access regresses
-evidence:
-  - docs/launch/evidence/security/2026-07-28-invite-only-admission.md
-  - Cursor UI checkpoint dc0b186
-  - Backend admission checkpoint 7be80f4
-  - Hosted Auth checkpoint 642bae0
-unresolved_findings:
-  - Production Auth and tenant admission remain undeployed pending Raymond approval of a specific release candidate.
-checkpoint_commit: 642bae0
+  - An invite, OTP, access token, refresh token, secret key, or password is printed or committed
+  - Provisioning can target production or an unconfirmed project reference
+  - An invitation artifact overwrites an existing file or is readable outside its owner
+  - A public or authenticated client regains signup or tenant-allocation authority
+  - The app accepts a callback that is not an invite or mixes credentials from different callbacks
+  - Password setup bypasses bounded validation or leaves a failed partial session active
+  - A newly provisioned restaurant enables any provider, drafting, billing, or sending capability
+evidence: []
+unresolved_findings: []
+checkpoint_commit: null
