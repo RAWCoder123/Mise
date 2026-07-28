@@ -346,7 +346,7 @@ export default function LoginScreen() {
               : t("login.mode.cloud")}
           </Text>
 
-          <View style={styles.legalRow} accessibilityRole="text">
+          <View style={styles.legalRow}>
             <Pressable
               accessibilityRole="link"
               accessibilityLabel={t("login.legal.privacyAccessibility")}
