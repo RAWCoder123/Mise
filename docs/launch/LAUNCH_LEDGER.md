@@ -1049,6 +1049,46 @@ Cross-batch findings handed to Cursor:
 - The in-progress delete-account Edge Function still needs the standard
   firewall reservation before combined backend security checks can pass.
 
+### `private-beta-eas-project-link-30`
+
+In scope:
+
+- Authenticate the pinned EAS CLI under Raymond's organization account.
+- Link exactly one organization-owned EAS project without changing the iOS
+  bundle identifier.
+- Inspect the preview environment and native prerequisite boundary without
+  starting a build, submission, production deployment, or App Store action.
+
+Delivered:
+
+- Linked `@raymondaws-team/mise` with project ID
+  `bf74b605-68fb-4457-9eb8-e68b9c4aac0d`.
+- Persisted EAS owner and project identity in `app.json`.
+- Preserved `com.mise.mobile`.
+- Verified the pinned EAS CLI sees `raymondaws-team (Role: Owner)`.
+- Confirmed that the project-scoped preview environment currently has no
+  variables and must remain fail-closed for a hosted-tenant beta build.
+- Confirmed local native readiness is blocked specifically by missing full
+  Xcode and `simctl`.
+
+Evidence:
+
+- `docs/launch/evidence/release/2026-07-28-eas-project-link.md`
+- `npm run qa:eas-account`
+- `npm run typecheck`
+- `npm test`: 330 passed
+
+Remaining external verification:
+
+- Add and verify bounded staging client runtime configuration in EAS preview.
+- Install and select full Xcode.
+- Create and install a release-candidate build only after the exact-candidate
+  receipts are refreshed.
+
+Checkpoint commits:
+
+- `5d98a7b98b46f3122f36265ccd21b2ff4e467f13`
+
 ## Handoff format
 
 Every completed batch records:

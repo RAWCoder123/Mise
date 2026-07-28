@@ -1,5 +1,5 @@
 batch_id: private-beta-eas-project-link-30
-status: in_progress
+status: completed
 goal: Link Mise to one organization-owned EAS project, persist its project identity, and restore exact-candidate release evidence after the configuration change.
 started_at: 2026-07-28
 codex_owned:
@@ -30,6 +30,9 @@ stop_conditions:
   - The bundle identifier changes from com.mise.mobile
   - A credential or token is printed or committed
   - A build, submission, production deployment, or App Store action starts
-evidence: []
-unresolved_findings: []
-checkpoint_commit: null
+evidence:
+  - docs/launch/evidence/release/2026-07-28-eas-project-link.md
+unresolved_findings:
+  - The EAS preview environment has no project-scoped variables, so a hosted-tenant beta build must not start until its bounded public runtime configuration is added and verified.
+  - Full Xcode is not installed or selected, leaving simctl and local native release verification unavailable.
+checkpoint_commit: 5d98a7b98b46f3122f36265ccd21b2ff4e467f13

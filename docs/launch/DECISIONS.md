@@ -20,6 +20,7 @@
 | 2026-07-28 | The beta privacy target is `https://getmise.app/privacy`; support and privacy contacts are `support@getmise.app` and `privacy@getmise.app`. In-app copy must continue to mark hosting and monitoring as pending until Raymond confirms both. |
 | 2026-07-28 | Beta admission is admin-provisioned. Global Auth signup is disabled, email login remains enabled for invited users, anonymous admission is disabled, and only the service-role provisioning RPC may create a restaurant and initial owner membership. |
 | 2026-07-28 | Beta owner invitations use a protected link created by trusted staging/production administration. Until monitored custom SMTP is configured, the link is delivered only through a Raymond-controlled external channel, stored in an owner-only temporary artifact, and never logged, committed, analyzed, or shown in support screenshots. |
+| 2026-07-28 | Mise's sole EAS project is `@raymondaws-team/mise`, owned by the organization account and linked through `expo.extra.eas.projectId`. A beta build cannot start until the preview environment's bounded public runtime configuration is present and verified. |
 
 ## Deferred decisions
 

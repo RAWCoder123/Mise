@@ -4,7 +4,7 @@ Updated: 2026-07-28
 
 | Gate | Status | Current evidence | Remaining blockers |
 | --- | --- | --- | --- |
-| 1. Private-beta foundation | In progress | Expo dependency repair, tenant security migrations, deterministic demo mode, team roles, hosted account-deletion proof, service-only restaurant provisioning, globally disabled public signup with invited-user email login preserved, protected owner invitation acceptance and sign-in, owner/admin restaurant export, complete hosted two-tenant and rendered race proof, scrubbed observability contracts, operational restore evidence, incident runbooks, enforced read-only/emergency modes, fail-closed exact-commit release authority, pinned TestFlight tooling, and localized signed-out/in-app privacy and support access | EAS login/project link, full Xcode, physical-iPhone invitation/device proof, monitored invitation delivery, live Sentry/PostHog receipts and alerts, managed hosted recovery, published privacy policy and monitored support/privacy inboxes, internal TestFlight |
+| 1. Private-beta foundation | In progress | Expo dependency repair, tenant security migrations, deterministic demo mode, team roles, hosted account-deletion proof, service-only restaurant provisioning, globally disabled public signup with invited-user email login preserved, protected owner invitation acceptance and sign-in, owner/admin restaurant export, complete hosted two-tenant and rendered race proof, scrubbed observability contracts, operational restore evidence, incident runbooks, enforced read-only/emergency modes, fail-closed exact-commit release authority, pinned TestFlight tooling, organization-owned EAS project identity, and localized signed-out/in-app privacy and support access | EAS preview runtime configuration, full Xcode, physical-iPhone invitation/device proof, monitored invitation delivery, live Sentry/PostHog receipts and alerts, managed hosted recovery, published privacy policy and monitored support/privacy inboxes, internal TestFlight |
 | 2. Inventory truth | Beta scope complete; device proof pending | Effective-dated mapping schema/domain rules, verified conversions, append-only ledger, event-derived on-hand projection, replay-safe RPC/outbox, count reconciliation, daily CSV import, mobile count/receipt/waste/stockout workflows, hosted learning proof, deterministic evidence-backed daily findings, exact append-only manager feedback, restart-safe feedback delivery, and localized operator UI including rendered export | Real-device inventory/offline/share walkthrough; package mappings remain fail-closed until verified |
 | 3. Square shadow mode | Not started | Fail-closed POS adapter scaffold | OAuth, webhooks, backfill, reconciliation, shadow evidence |
 | 4. Operational pilot | Not started | Default-off order safety evaluator, persisted `off`/`draft_only` policy, tenant/global provider gates, and manager-controlled email workflow | Scheduler, provider activation proof, pilot evidence |
@@ -79,7 +79,8 @@ Remaining external verification:
 
 - Install and walk the critical workflow on real supported iPhones.
 - Install/select full Xcode so `simctl` and native prerequisite checks can run.
-- Authenticate EAS and link `expo.extra.eas.projectId`.
+- Add and verify bounded staging runtime variables in the EAS preview
+  environment; it currently has no project-scoped variables.
 - Install full Xcode so `simctl` and native release checks are available.
 - Publish responsive `getmise.app/privacy` and support endpoints and confirm
   monitored support/privacy inboxes.
