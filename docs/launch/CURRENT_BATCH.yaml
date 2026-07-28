@@ -1,37 +1,31 @@
-batch_id: private-beta-hosted-harness-28
-status: complete
-goal: Restore the hosted rendered tenant-race proof after the invite-only login copy change without weakening its authentication or tenant assertions.
+batch_id: private-beta-release-prerequisite-audit-29
+status: in_progress
+goal: Refresh exact pre-release operational evidence and reduce the remaining launch blockers to owner-controlled credentials, public endpoints, physical devices, and final approval.
 started_at: 2026-07-28
 codex_owned:
   - docs/launch/**
-  - scripts/staging-client-race.mjs
-  - tests/stagingClientRaceHarness.test.ts
-  - tests/security.test.ts
 cursor_owned: []
 shared_locked:
   - app/**
-  - i18n/**
   - services/**
+  - scripts/**
   - supabase/**
   - package.json
   - package-lock.json
 blocked_files: []
 handoff_required: false
 dependencies:
-  - private-beta-owner-invitation-26
+  - private-beta-hosted-harness-28
 required_tests:
-  - node --test --import tsx tests/stagingClientRaceHarness.test.ts
-  - npm run verify:private-beta-security:hosted
+  - npm run observability:check
+  - npm run recovery:staging-check
+  - npm run qa:ios-prereq
+  - npm run qa:eas-account
+  - npm run beta:go-no-go
 stop_conditions:
-  - The harness depends on mutable marketing copy instead of accessible login controls
-  - Authentication or any tenant-negative assertion is removed or weakened
-  - A production environment is targeted
-evidence:
-  - Initial hosted run failed before authentication because the obsolete Open Mise text was absent
-  - node --test --import tsx tests/stagingClientRaceHarness.test.ts (4 passed)
-  - npm test (330 passed)
-  - npm run security:backend
-  - npm run staging:client-race
-  - npm run verify:private-beta-security:hosted
+  - A release receipt is marked passed without exact-candidate durable evidence
+  - Production, App Store Connect, EAS, DNS, email, monitoring, or hosted recovery state is mutated
+  - A credential value or restored restaurant row is printed or committed
+evidence: []
 unresolved_findings: []
-checkpoint_commit: 213fcf4
+checkpoint_commit: null
