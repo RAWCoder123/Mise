@@ -1,9 +1,9 @@
-batch_id: private-beta-public-web-31
+batch_id: private-beta-posthog-receipt-32
 status: completed
-goal: Publish reviewed privacy and beta-support pages through the existing Mise site and prove whether they are publicly reachable.
+goal: Connect the Mise preview build to the correct PostHog project and record one scrubbed, query-verified staging telemetry receipt.
 started_at: 2026-07-28
 codex_owned:
-  - site/**
+  - EAS preview environment
   - docs/launch/**
 cursor_owned: []
 shared_locked:
@@ -18,19 +18,19 @@ shared_locked:
 blocked_files: []
 handoff_required: false
 dependencies:
-  - private-beta-eas-project-link-30
+  - private-beta-public-web-31
 required_tests:
-  - cd site && npm test
-  - cd site && npm run lint
-  - Public HTTP reachability for /privacy and /support
+  - npm run observability:check
+  - EAS preview configuration inspection
+  - PostHog event taxonomy inspection
+  - Exact receipt HogQL query
 stop_conditions:
-  - Any app, tenant, database, provider, or production credential is exposed
-  - Existing site architecture or unrelated Cursor work is overwritten
-  - Public access would expose anything beyond marketing, privacy, and support content
+  - A PostHog personal API key or other privileged credential is printed or committed
+  - Any restaurant, user, contact, supplier, inventory, or raw payload data enters the proof event
+  - Production EAS environment or production application state changes
 evidence:
-  - docs/launch/evidence/release/2026-07-28-public-privacy-support-site.md
+  - docs/launch/evidence/observability/2026-07-28-posthog-live-receipt.md
 unresolved_findings:
-  - The Sites workspace rejects public access with sites_publish_disabled, so the deployed pages remain owner-only.
-  - getmise.app/privacy and getmise.app/support time out and are not publicly usable.
-  - support@getmise.app and privacy@getmise.app still require named monitored responders.
-checkpoint_commit: e38d0c2a1c857c0e66aed5bf96eaea035cfb0504
+  - Sentry remains unconfigured and its controlled error receipt is still pending.
+  - Alert delivery and named on-call acknowledgement require provider-side configuration and proof.
+checkpoint_commit: pending_documentation_commit

@@ -1124,6 +1124,51 @@ Checkpoint:
 
 - Site source: `e38d0c2a1c857c0e66aed5bf96eaea035cfb0504`
 
+### `private-beta-posthog-receipt-32`
+
+In scope:
+
+- Confirm the connected PostHog organization and project.
+- Configure only the public PostHog project key and host for EAS Preview.
+- Emit one synthetic, bounded staging event and verify its exact scrubbed
+  receipt through PostHog.
+
+Delivered:
+
+- Added Preview-only PostHog runtime configuration without a privileged key.
+- Recorded one live event with the required correlation contract and no
+  restaurant or personal data.
+- Verified the event UUID and `[redacted]` marker through a time-bounded HogQL
+  query.
+- Preserved the production EAS environment unchanged.
+
+Evidence:
+
+- `docs/launch/evidence/observability/2026-07-28-posthog-live-receipt.md`
+- `npm run observability:check`
+- EAS Preview configuration inspection
+- PostHog event-schema and exact-receipt queries
+
+Unresolved:
+
+- Sentry receipt and provider alert acknowledgement
+- Real-device and TestFlight telemetry
+
+Checkpoint:
+
+- Documentation commit pending
+
+### Managed recovery capability audit
+
+The current Supabase organization is on the Free plan. Managed daily backups
+and restore-to-new-project require a paid plan, and a recovery project incurs
+additional cost. No billable project was created and production remained
+untouched.
+
+Evidence:
+
+- `docs/launch/evidence/recovery/2026-07-28-managed-recovery-capability-audit.md`
+
 ## Handoff format
 
 Every completed batch records:
