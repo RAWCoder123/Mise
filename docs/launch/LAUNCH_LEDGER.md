@@ -51,6 +51,40 @@ commit before another batch begins.
 | `private-beta-release-prerequisite-audit-29` | Codex | Refresh recovery evidence and isolate external release prerequisites | Complete; candidate freeze ready | `30158cd` |
 | `private-beta-hosted-candidate-closure-38` | Codex | Restore exact-candidate rendered tenant race and refresh provisional release evidence | Complete | `3249e77` |
 | `private-beta-expo-patch-closure-39` | Codex | Restore Expo Doctor with SDK 56 patch-compatible dependencies | Complete | `2346e62` |
+| `private-beta-external-receipts-40` | Codex | Close exact-candidate external receipts through bounded secure handoffs | In progress; external approvals pending | — |
+
+### `private-beta-external-receipts-40`
+
+In scope:
+
+- Preserve candidate `ad7083b` and change launch evidence only.
+- Verify provider receipts and public endpoints through bounded read-only checks.
+- Prepare Raymond-controlled handoffs for authentication, credentials, paid
+  recovery, Apple signing, physical devices, and public hosting.
+- Keep Cursor out of shared contracts and application files until the receipt
+  batch is checkpointed or explicitly handed off.
+
+Delivered:
+
+- Recorded the exact-candidate PostHog receipt with bounded fields and a
+  preserved `[redacted]` marker.
+- Rechecked unauthenticated privacy/support availability: `getmise.app` still
+  times out and the reviewed Sites deployment remains owner-only.
+- Rechecked the live Supabase organization and documented the current managed
+  recovery boundary. No paid branch, project, or restore was started.
+- Attempted the secure Sentry browser handoff without reading or transmitting
+  credentials; the Mac was locked, so no external state changed.
+
+Unresolved:
+
+- Raymond must unlock the Mac and complete any Sentry or Apple authentication
+  prompt locally. Persistent credential creation requires action-time approval.
+- Managed recovery needs approval for a paid target. The currently quoted
+  Supabase development-branch rate is `$0.01344/hour`, although a branch alone
+  is not accepted as managed backup evidence unless it restores the required
+  staging snapshot.
+- Public hosting requires an approved access-policy or DNS change.
+- Real-device and TestFlight receipts remain pending.
 
 ### `private-beta-release-prerequisite-audit-29`
 
