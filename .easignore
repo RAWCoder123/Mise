@@ -1,0 +1,40 @@
+# Dependency and generated output
+node_modules/
+.expo/
+dist/
+web-build/
+coverage/
+
+# Local credentials and environment state
+.env
+.env.*
+.mise-staging.env
+*.pem
+*.p12
+*.mobileprovision
+
+# Local agent and editor state
+.cursor/
+.vscode/
+.idea/
+
+# Non-mobile repositories and operational tooling
+site/
+docs/
+scripts/
+supabase/
+tests/
+outputs/
+mise-codebase-*.zip
+
+# Source-control and local runtime state
+.git/
+.github/
+supabase/.temp/
+supabase/.branches/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Expo-generated local declaration
+expo-env.d.ts

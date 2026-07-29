@@ -16,6 +16,7 @@
     "qa:interactions": "MISE_QA_INTERACTIONS=1 node scripts/mobile-layout-smoke.mjs",
     "qa:ios-prereq": "node scripts/ios-native-prereq.mjs",
     "qa:eas-account": "node scripts/eas-account-prereq.mjs",
+    "qa:eas-archive": "node scripts/eas-archive-prereq.mjs",
     "observability:check": "node scripts/verify-observability.mjs",
     "recovery:staging-check": "node --env-file-if-exists=.mise-staging.env scripts/staging-backup-restore-check.mjs",
     "staging:emergency-mode-check": "node --env-file-if-exists=.mise-staging.env scripts/staging-emergency-mode-check.mjs",
@@ -40,7 +41,7 @@
     "verify:private-beta-security:hosted": "node --env-file-if-exists=.mise-staging.env scripts/verify-hosted-security.mjs",
     "verify:private-beta-security": "node --env-file-if-exists=.mise-staging.env scripts/verify-private-beta-security.mjs",
     "verify:paid-product": "npm run verify:private-beta-security",
-    "ios:testflight:check": "npm run qa:ios-prereq && npm run qa:eas-account && npm run demo:ready",
+    "ios:testflight:check": "npm run qa:eas-archive && npm run qa:eas-account && npm run qa:ios-prereq && npm run demo:ready",
     "beta:go-no-go": "node --import tsx scripts/beta-go-no-go.ts",
     "ios:testflight:build": "npx --yes eas-cli@21.4.0 build --platform ios --profile preview",
     "ios:testflight:submit": "npx --yes eas-cli@21.4.0 submit --platform ios --profile production --latest"
