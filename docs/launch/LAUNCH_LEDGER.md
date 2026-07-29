@@ -49,7 +49,7 @@ commit before another batch begins.
 | `private-beta-quota-proof-27` | Codex | Direct sixth-workspace rejection through the service provisioning boundary | Complete | `84f2c9d` |
 | `private-beta-hosted-harness-28` | Codex | Restore hosted rendered tenant-race proof after invite-only UI changes | Complete | `213fcf4` |
 | `private-beta-release-prerequisite-audit-29` | Codex | Refresh recovery evidence and isolate external release prerequisites | Complete; candidate freeze ready | `30158cd` |
-| `private-beta-hosted-candidate-closure-38` | Codex | Restore exact-candidate rendered tenant race and refresh provisional release evidence | In progress | — |
+| `private-beta-hosted-candidate-closure-38` | Codex | Restore exact-candidate rendered tenant race and refresh provisional release evidence | Complete | `3249e77` |
 
 ### `private-beta-release-prerequisite-audit-29`
 
@@ -1332,6 +1332,49 @@ Unresolved:
 Checkpoint:
 
 - `40dc9cd61d193b8646b2dd26680621f4ad50946b`
+
+### `private-beta-hosted-candidate-closure-38`
+
+In scope:
+
+- Restore the rendered two-tenant staging proof after the concept rebuild.
+- Keep the application surfaces locked while changing only the security
+  harness, its static contracts, and repository launch evidence.
+- Produce a fresh provisional candidate only after exact-commit local and
+  hosted verification.
+
+Delivered:
+
+- Made duplicate accessibility labels deterministic by preferring enabled tab
+  controls before same-label headings or secondary controls.
+- Replaced the obsolete Settings supplier-name marker with the compact
+  screen's tenant-specific service-style field.
+- Moved the order mutation race from hidden visible copy to the review card's
+  accessibility contract.
+- Added bounded browser diagnostics for request-hold timeouts without exposing
+  credentials or unbounded payloads.
+
+Evidence:
+
+- `node --test --import tsx tests/stagingClientRaceHarness.test.ts`: 7 passed.
+- `npm run typecheck`: passed.
+- `npm test`: 333 passed.
+- Standalone rendered staging proof: all seven request and mutation races
+  passed on isolated ports.
+- `npm run verify:private-beta-security:hosted`: passed without skipped checks,
+  including fixture provisioning, rendered races, workflow/RPC authority,
+  Edge concurrency and forgery checks, append-only finding decisions, and the
+  25-dataset tenant-safe export.
+
+Unresolved:
+
+- None in this batch. Apple signing, physical-device, managed recovery,
+  Sentry, public support/privacy, TestFlight installation, and Raymond
+  approval remain external release receipts.
+
+Checkpoint:
+
+- `3249e771ea3bda5ce18c06bd84678776e110d952`
 
 Every completed batch records:
 

@@ -1,5 +1,5 @@
 batch_id: private-beta-hosted-candidate-closure-38
-status: in_progress
+status: completed
 goal: Restore the rendered two-tenant staging race after the concept rebuild, then record a fresh exact-commit provisional beta candidate without granting external release authority.
 started_at: 2026-07-29
 codex_owned:
@@ -38,6 +38,13 @@ evidence:
   - "Batch 37 exact checkpoint passed typecheck, design:static, 330 tests, route QA, and standalone English/Spanish/Simplified Chinese interaction QA at 390x844 with zero horizontal overflow."
   - "The full local security wrapper passed every component through production export and route QA; its default-port interaction child later became idle, while the same exact interaction suite had already passed independently."
   - "Hosted security fixture provisioning passed, then the rendered staging race reproducibly timed out waiting for the tenant-A Today inventory request with no intercepted requests."
-unresolved_findings:
-  - "P1: restore an observable, deterministic Today workspace-switch race proof or demonstrate and correct a stale harness assumption."
-checkpoint_commit: null
+  - "The concept redesign introduced duplicate Today accessibility labels; the harness now deterministically prefers an enabled tab before other same-label controls."
+  - "The compact Settings proof now uses the rendered tenant-specific service style instead of a supplier name that no longer appears on that screen."
+  - "The order mutation proof now uses the compact review card's accessibility label instead of hidden visible copy."
+  - "node --test --import tsx tests/stagingClientRaceHarness.test.ts: 7 passed."
+  - "npm run typecheck: passed."
+  - "npm test: 333 passed."
+  - "MISE_STAGING_CLIENT_RACE_PORT=8099 MISE_STAGING_CLIENT_RACE_DEBUG_PORT=9349 MISE_STAGING_CLIENT_RACE_TIMEOUT_MS=180000 npm run staging:client-race: all seven rendered request/mutation races passed."
+  - "MISE_STAGING_CLIENT_RACE_PORT=8100 MISE_STAGING_CLIENT_RACE_DEBUG_PORT=9350 MISE_STAGING_CLIENT_RACE_TIMEOUT_MS=180000 npm run verify:private-beta-security:hosted: passed without skipped checks."
+unresolved_findings: []
+checkpoint_commit: 3249e771ea3bda5ce18c06bd84678776e110d952
