@@ -1,5 +1,5 @@
 batch_id: private-beta-expo-patch-closure-39
-status: in_progress
+status: completed
 goal: Restore Expo Doctor to 21/21 by applying only the SDK 56 compatible Expo and Expo Router patch releases, then revalidate the exact provisional candidate.
 started_at: 2026-07-29
 codex_owned:
@@ -38,6 +38,13 @@ stop_conditions:
   - Any cloud build, upload, distribution, production deployment, or paid action would begin
 evidence:
   - "At commit 93f24fb, typecheck, 333 tests, and npm audit passed, but Expo Doctor newly reported expo 56.0.17 vs expected ~56.0.18 and expo-router 56.2.16 vs expected ~56.2.17."
-unresolved_findings:
-  - "P1: apply the two SDK-compatible patch upgrades and restore Expo Doctor to 21/21."
-checkpoint_commit: null
+  - "Upgraded only expo to ~56.0.18 and expo-router to ~56.2.17 using the Expo installer; the lockfile resolved the matching SDK 56 patch graph."
+  - "Updated the repository dependency guard to require the new exact patch ranges."
+  - "npm run doctor: 21/21 checks passed."
+  - "npm audit --audit-level=high: zero vulnerabilities."
+  - "npm run typecheck: passed."
+  - "npm test: 333 passed."
+  - "npm run design:static and npm run qa:routes: passed."
+  - "MISE_MOBILE_LAYOUT_PORT=8103 MISE_MOBILE_LAYOUT_DEBUG_PORT=9353 MISE_MOBILE_LAYOUT_TIMEOUT_MS=240000 npm run qa:interactions: passed at 390x844 with zero overflow, core workflow, Español, and 简体中文."
+unresolved_findings: []
+checkpoint_commit: 2346e62619906dadbf74fe00c0121b216682e88e

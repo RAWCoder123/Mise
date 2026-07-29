@@ -50,7 +50,7 @@ commit before another batch begins.
 | `private-beta-hosted-harness-28` | Codex | Restore hosted rendered tenant-race proof after invite-only UI changes | Complete | `213fcf4` |
 | `private-beta-release-prerequisite-audit-29` | Codex | Refresh recovery evidence and isolate external release prerequisites | Complete; candidate freeze ready | `30158cd` |
 | `private-beta-hosted-candidate-closure-38` | Codex | Restore exact-candidate rendered tenant race and refresh provisional release evidence | Complete | `3249e77` |
-| `private-beta-expo-patch-closure-39` | Codex | Restore Expo Doctor with SDK 56 patch-compatible dependencies | In progress | — |
+| `private-beta-expo-patch-closure-39` | Codex | Restore Expo Doctor with SDK 56 patch-compatible dependencies | Complete | `2346e62` |
 
 ### `private-beta-release-prerequisite-audit-29`
 
@@ -1376,6 +1376,39 @@ Unresolved:
 Checkpoint:
 
 - `3249e771ea3bda5ce18c06bd84678776e110d952`
+
+### `private-beta-expo-patch-closure-39`
+
+In scope:
+
+- Apply only the Expo SDK 56 patch releases newly required by Expo Doctor.
+- Preserve the application, backend, native configuration, and launch safety
+  boundaries unchanged.
+
+Delivered:
+
+- Updated `expo` from `~56.0.17` to `~56.0.18`.
+- Updated `expo-router` from `~56.2.16` to `~56.2.17`.
+- Refreshed the lockfile through the Expo installer and updated the repository
+  dependency pinning contract.
+
+Evidence:
+
+- `npm run doctor`: 21/21 checks passed.
+- `npm audit --audit-level=high`: zero vulnerabilities.
+- `npm run typecheck`: passed.
+- `npm test`: 333 passed.
+- Static design and route checks passed.
+- Core interaction QA plus Español and 简体中文 passed at 390x844 with zero
+  horizontal overflow.
+
+Unresolved:
+
+- None in this batch.
+
+Checkpoint:
+
+- `2346e62619906dadbf74fe00c0121b216682e88e`
 
 Every completed batch records:
 
