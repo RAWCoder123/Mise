@@ -539,6 +539,7 @@ export default function OrdersScreen() {
   return (
     <Screen
       title={t("orders.title")}
+      titleAlign="left"
       loading={loading}
     >
       <View style={styles.stack}>

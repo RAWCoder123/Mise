@@ -226,7 +226,7 @@ export default function TodayScreen() {
 
   if (!restaurant) {
     return (
-      <Screen title={t("nav.today")} subtitle={t("today.subtitle")}>
+      <Screen title={t("nav.today")} subtitle={t("today.subtitle")} titleAlign="left">
         <EmptyState
           title={t("workspace.none.title")}
           body={t(canUseDemoMode ? "workspace.none.demoBody" : "workspace.none.body")}
@@ -243,7 +243,7 @@ export default function TodayScreen() {
   }
 
   return (
-    <Screen title={t("nav.today")} subtitle={`${restaurant.name} · ${dateLabel}`} loading={loading}>
+    <Screen title={t("nav.today")} subtitle={`${restaurant.name} · ${dateLabel}`} titleAlign="left" loading={loading}>
       <View style={styles.stack}>
         {error ? (
           <RetryNotice

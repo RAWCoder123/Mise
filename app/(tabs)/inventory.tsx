@@ -169,7 +169,7 @@ export default function InventoryScreen() {
 
   if (!restaurant) {
     return (
-      <Screen title={t("inventory.title")} subtitle={t("inventory.subtitle")}>
+      <Screen title={t("inventory.title")} subtitle={t("inventory.subtitle")} titleAlign="left">
         <EmptyState
           title={t("inventory.noWorkspace.title")}
           body={t("inventory.noWorkspace.body")}
@@ -184,6 +184,7 @@ export default function InventoryScreen() {
     <Screen
       title={t("inventory.title")}
       subtitle={t("inventory.subtitleRestaurant", { restaurant: restaurant.name })}
+      titleAlign="left"
       loading={loading}
     >
       <View style={styles.stack}>

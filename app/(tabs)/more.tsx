@@ -38,6 +38,7 @@ export default function MoreScreen() {
     <Screen
       title={t("nav.more")}
       subtitle={restaurant ? `${restaurant.name} · ${t("more.subtitle")}` : t("more.subtitle")}
+      titleAlign="left"
     >
       <View style={styles.stack}>
         <ActionTileGrid columns={4} accessibilityLabel={t("more.shortcuts.accessibility")}>
