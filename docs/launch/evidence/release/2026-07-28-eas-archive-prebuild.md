@@ -50,9 +50,18 @@ The EAS iOS Preview pre-build inspection:
 
 - loaded only the Preview Supabase and PostHog client variables;
 - selected `staging`, internal distribution, and a physical-device profile;
-- found the organization-owned remote iOS credential configuration; and
+- reached the organization-owned iOS credential workflow; and
 - stopped before native generation because Apple account authorization is
-  required to generate or fully validate the signing credentials.
+  required to create and validate the missing signing credentials.
+
+A separate read-only EAS credential inspection selected the Preview profile,
+declined Apple login, and reported:
+
+- project: `@raymondaws-team/mise`;
+- bundle identifier: `com.mise.mobile`; and
+- `No credentials set up yet!`
+
+The inspection exited without entering the build-credential workflow.
 
 No native project, cloud build, signing mutation, archive upload, TestFlight
 submission, or production action was produced.
@@ -60,7 +69,7 @@ submission, or production action was produced.
 ## Required handoff
 
 Raymond must complete the Apple account authorization prompt in a controlled
-interactive EAS credential flow. Codex must then rerun the pre-build
-inspection, record the signing-team and bundle-ID match without exposing
-credentials, and only start an internal build under a separately recorded
-batch.
+interactive EAS credential flow so EAS can create the distribution certificate
+and provisioning profile. Codex must then rerun the pre-build inspection,
+record the signing-team and bundle-ID match without exposing credentials, and
+only start an internal build under a separately recorded batch.
