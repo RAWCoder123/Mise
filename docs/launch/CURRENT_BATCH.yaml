@@ -1,9 +1,12 @@
-batch_id: private-beta-posthog-receipt-32
+batch_id: private-beta-eas-archive-prebuild-33
 status: completed
-goal: Connect the Mise preview build to the correct PostHog project and record one scrubbed, query-verified staging telemetry receipt.
+goal: Prove the iOS EAS upload contains only the mobile source and advance the non-build preflight to the Apple credential boundary.
 started_at: 2026-07-28
 codex_owned:
-  - EAS preview environment
+  - .easignore
+  - scripts/eas-archive-prereq.mjs
+  - package.json
+  - tests/testflightTooling.test.ts
   - docs/launch/**
 cursor_owned: []
 shared_locked:
@@ -18,19 +21,20 @@ shared_locked:
 blocked_files: []
 handoff_required: false
 dependencies:
-  - private-beta-public-web-31
+  - private-beta-posthog-receipt-32
 required_tests:
-  - npm run observability:check
-  - EAS preview configuration inspection
-  - PostHog event taxonomy inspection
-  - Exact receipt HogQL query
+  - npm run qa:eas-archive
+  - npm run typecheck
+  - npm test
+  - EAS archive inspection
+  - EAS iOS preview pre-build inspection
 stop_conditions:
-  - A PostHog personal API key or other privileged credential is printed or committed
-  - Any restaurant, user, contact, supplier, inventory, or raw payload data enters the proof event
-  - Production EAS environment or production application state changes
+  - Any local credential, Cursor state, independent site source, test, Supabase, or operational artifact enters the mobile upload
+  - Apple credentials are requested without a Raymond-controlled authorization handoff
+  - A cloud build, signing mutation, upload, submission, or production action starts
 evidence:
-  - docs/launch/evidence/observability/2026-07-28-posthog-live-receipt.md
+  - docs/launch/evidence/release/2026-07-28-eas-archive-prebuild.md
 unresolved_findings:
-  - Sentry remains unconfigured and its controlled error receipt is still pending.
-  - Alert delivery and named on-call acknowledgement require provider-side configuration and proof.
-checkpoint_commit: ea641c1fcb3d70506281237d2fde548845f828ba
+  - Apple account authorization is required to generate or fully validate iOS signing credentials.
+  - Full Xcode and physical-iPhone verification remain pending after the cloud credential boundary.
+checkpoint_commit: 550e3844d28bc9eb61bdc8666f80951c9f7cc93e

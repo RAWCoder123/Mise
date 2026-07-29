@@ -1169,6 +1169,44 @@ Evidence:
 
 - `docs/launch/evidence/recovery/2026-07-28-managed-recovery-capability-audit.md`
 
+### `private-beta-eas-archive-prebuild-33`
+
+In scope:
+
+- Inspect the exact iOS Preview upload without consuming a cloud build.
+- Exclude local credentials, agent state, independent repositories, tests, and
+  backend operations from the mobile artifact.
+- Advance EAS pre-build only to the Apple credential boundary.
+
+Delivered:
+
+- Added an explicit `.easignore` and automated archive-policy gate.
+- Reordered TestFlight checks so archive and account authority fail before the
+  local Xcode dependency.
+- Confirmed the sanitized archive contains zero files from `.cursor`, `site`,
+  `docs`, `scripts`, `supabase`, or `tests`.
+- Confirmed protected local environment files and provider-auth credential
+  names are absent.
+- Reached the Apple authorization requirement without starting a build or
+  changing signing state.
+
+Evidence:
+
+- `docs/launch/evidence/release/2026-07-28-eas-archive-prebuild.md`
+- `npm run qa:eas-archive`
+- `npm run typecheck`
+- `npm test`: 330 passed
+- EAS Preview archive and pre-build inspections
+
+Unresolved:
+
+- Raymond-controlled Apple account authorization
+- Full Xcode, signed internal build, and physical-device evidence
+
+Checkpoint:
+
+- `550e3844d28bc9eb61bdc8666f80951c9f7cc93e`
+
 ## Handoff format
 
 Every completed batch records:
