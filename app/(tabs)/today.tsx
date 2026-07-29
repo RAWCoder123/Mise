@@ -52,7 +52,7 @@ const GROUP_ORDER: readonly TaskFilter[] = ["now", "up_next", "later", "done"];
 
 export default function TodayScreen() {
   const { canUseDemoMode, continueWithDemo, memberships, restaurant, role } = useMiseSession();
-  const { formatNumber, t, locale } = useLocale();
+  const { formatDate, formatNumber, t, locale } = useLocale();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [brief, setBrief] = useState<DailyOperationalBrief | null>(null);
   const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
@@ -246,9 +246,14 @@ export default function TodayScreen() {
     return rows;
   }, [timelineGroups]);
 
+  const dateLabel = useMemo(
+    () => formatDate(new Date(), { weekday: "long", month: "short", day: "numeric" }),
+    [formatDate]
+  );
+
   if (!restaurant) {
     return (
-      <Screen title={t("nav.today")} titleAlign="left">
+      <Screen title={t("nav.today")} subtitle={t("today.subtitle")} titleAlign="left">
         <EmptyState
           title={t("workspace.none.title")}
           body={t(canUseDemoMode ? "workspace.none.demoBody" : "workspace.none.body")}
@@ -267,6 +272,7 @@ export default function TodayScreen() {
   return (
     <Screen
       title={t("nav.today")}
+      subtitle={`${restaurant.name} · ${dateLabel}`}
       titleAlign="left"
       loading={loading}
       action={

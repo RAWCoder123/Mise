@@ -63,7 +63,7 @@ export function Screen({
   const isInsightsRoute = pathname === "/insights";
   const align = titleAlign;
   const showBodyTitle = Boolean(title) && isBrand;
-  const showBodySubtitle = Boolean(subtitle) && isBrand;
+  const showBodySubtitle = Boolean(subtitle);
 
   const content = (
     <MotionView style={styles.content} distance={3}>

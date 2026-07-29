@@ -26,7 +26,7 @@ import {
   fetchQueuedInventoryEvents,
   summarizeInventoryOutlooks
 } from "../../services/miseService";
-import type { InventoryOutlookItem, InventoryStatus } from "../../types/mise";
+import type { InventoryItem, InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
 
@@ -360,6 +360,13 @@ function matchesInventoryFilter(status: InventoryStatus, filter: InventoryFilter
   return status === filter;
 }
 
+function isCanonicalUnitReady(item: InventoryItem) {
+  return (
+    item.canonical_unit_verification_status === "verified" &&
+    (item.canonical_unit === "g" || item.canonical_unit === "ml" || item.canonical_unit === "each")
+  );
+}
+
 function categoryIcon(category: string, color: string) {
   const props = { size: 16, color, strokeWidth: 2.2 } as const;
   const normalized = category.trim().toLowerCase();
@@ -399,6 +406,14 @@ function InventoryListRow({
   const isLow = prediction.projectedStatus === "Low";
   const isWatch = prediction.projectedStatus === "Watch";
   const isGood = prediction.projectedStatus === "Good";
+  const canonicalReady = isCanonicalUnitReady(item);
+  const entryHint = !canonicalReady
+    ? t("inventory.row.needsVerification")
+    : queueCount > 0
+      ? t(queueCount === 1 ? "inventory.row.queued.one" : "inventory.row.queued.other", {
+          count: formatNumber(queueCount)
+        })
+      : t("inventory.row.openOps");
 
   return (
     <Pressable
@@ -409,7 +424,7 @@ function InventoryListRow({
         coverage: localized.coverage,
         action: localized.action,
         confidence: localized.confidence,
-        queue: queueCount > 0 ? t("inventory.row.queued.one", { count: formatNumber(queueCount) }) : t("inventory.row.openOps")
+        queue: entryHint
       })}
       accessibilityHint={t("inventory.row.hintOps")}
       onPress={() => router.push(`/inventory/${item.id}`)}
