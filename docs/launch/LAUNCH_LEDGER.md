@@ -1288,6 +1288,47 @@ Checkpoint:
 
 ## Handoff format
 
+### `private-beta-concept-fidelity-37`
+
+In scope:
+
+- Rebuild the primary mobile surfaces to closely reproduce the supplied
+  eight-screen Mise concept.
+- Preserve real restaurant data, invite-only admission, role gates, daily
+  finding feedback, Gmail safety guidance, and draft-only order behavior.
+
+Delivered:
+
+- Rebuilt Home, Today, Inventory, Orders, More, Ask Mise, Task detail, and
+  Profile/Settings around the reference's compact mobile anatomy.
+- Replaced dashboard-heavy composition with white surfaces, hairline grouping,
+  small typography, tomato-red actions, restrained freshness green, compact
+  pills, dense operational rows, and reference-aligned navigation.
+- Kept the full Today timeline visible while retaining the protected Daily
+  Brief workflow as continuation content.
+- Restored source-contract Gmail setup/security guidance without displacing the
+  reference-aligned supplier draft hierarchy.
+
+Evidence:
+
+- Direct 390x844 screenshot comparison across all eight concept surfaces.
+- `npm run typecheck`: passed.
+- `npm run design:static`: passed.
+- `npm test`: 330 passed.
+- `npm run qa:routes`: passed for every required route.
+- Daily Brief and Orders UI source contracts: 7 passed.
+
+Unresolved:
+
+- The final `npm run qa:interactions` rerun was blocked when the approved
+  in-app Browser rejected the localhost target under URL policy. No alternate
+  browser surface was used. Batch 36 retains the latest passing 390x844
+  interaction and horizontal-overflow evidence.
+
+Checkpoint:
+
+- `7cbc68d093c6a718f82fccae4e268046b55c6b1c`
+
 Every completed batch records:
 
 1. The exact paths changed.

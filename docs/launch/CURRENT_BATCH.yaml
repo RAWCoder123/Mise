@@ -1,6 +1,6 @@
-batch_id: private-beta-concept-aesthetic-36
-status: completed
-goal: Restyle shared design tokens, UI primitives, brand lockup, and main tab screens to match the concept mockup while preserving invite-only and draft-only behavior.
+batch_id: private-beta-concept-fidelity-37
+status: checkpointed_with_verification_blocker
+goal: Rebuild the primary mobile tabs to closely reproduce the supplied eight-screen concept anatomy, density, hierarchy, and interaction feel while preserving real demo data, invite-only admission, and draft-only behavior.
 started_at: 2026-07-29
 codex_owned:
   - docs/launch/**
@@ -11,6 +11,7 @@ cursor_owned:
   - app/(tabs)/**
   - app/ask-mise.tsx
   - app/tasks/**
+  - app/settings/**
   - i18n/catalog.ts
   - scripts/mobile-route-smoke.mjs
   - scripts/mobile-layout-smoke.mjs
@@ -25,7 +26,7 @@ shared_locked:
 blocked_files: []
 handoff_required: true
 dependencies:
-  - private-beta-native-prerequisite-35
+  - private-beta-concept-aesthetic-36
 required_tests:
   - npm run typecheck
   - npm run design:static
@@ -37,12 +38,13 @@ stop_conditions:
   - Provider activation, billing, or autonomous ordering is enabled
   - Product thumbnails or invented metrics are fabricated without real data
 evidence:
-  - "Cursor visual checkpoint b0c6e2d: compact white concept anatomy, flat Home metrics, per-route chrome, and simplified Mise mark."
-  - "Cursor alignment checkpoint 5577c26: left-aligned Today, Inventory, Orders, and More tab titles."
+  - "Cursor rebuilt Home, Today, Inventory, Orders, More, Ask Mise, Task detail, and Profile/Settings against the supplied eight-screen concept at a 390x844 mobile viewport."
+  - "Direct visual comparison verified the concept-first white/tomato/green palette, compact app bars and pill controls, flat scan-first hierarchy, dense operational rows, five-item bottom navigation, and reference-aligned secondary screens."
+  - "node --test --import tsx tests/dailyBriefAndExportUi.test.ts tests/ordersUi.test.ts: 7 passed."
   - "npm run typecheck: passed."
   - "npm run design:static: passed."
-  - "npm run qa:routes: passed for all required routes."
-  - "npm run qa:interactions: passed at 390x844; all measured routes reported overflowX=0; core interaction QA and localized Español/简体中文 passes completed."
-  - "Visual inspection compared the supplied concept with the final 390x844 Orders capture; compact title chrome, pill controls, hairline cards, tomato active state, green sent state, dense order rows, and five-item bottom navigation were verified."
-unresolved_findings: []
-checkpoint_commit: 5577c26d4ca90bf15892e62f05aa4851fddf7166
+  - "npm test: 330 passed."
+  - "npm run qa:routes: passed for every required route."
+unresolved_findings:
+  - "npm run qa:interactions could not be rerun after the final surgical pass because the approved in-app Browser rejected the localhost target under URL policy. No alternate browser surface was used. Batch 36's prior 390x844 interaction and overflow pass remains the latest automation evidence."
+checkpoint_commit: 7cbc68d093c6a718f82fccae4e268046b55c6b1c
