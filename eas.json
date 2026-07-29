@@ -36,6 +36,18 @@
         "EXPO_PUBLIC_RELEASE": "mise-mobile@0.1.0+2"
       }
     },
+    "testflight": {
+      "environment": "preview",
+      "distribution": "store",
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_ENABLE_DEMO_MODE": "true",
+        "EXPO_PUBLIC_RELEASE": "mise-mobile@0.1.0+2"
+      }
+    },
     "production": {
       "environment": "production",
       "autoIncrement": true,
@@ -53,6 +65,9 @@
     }
   },
   "submit": {
+    "testflight": {
+      "ios": {}
+    },
     "production": {
       "ios": {},
       "android": {

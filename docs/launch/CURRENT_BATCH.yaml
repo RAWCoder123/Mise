@@ -1,40 +1,33 @@
-batch_id: private-beta-eas-archive-prebuild-33
-status: completed
-goal: Prove the iOS EAS upload contains only the mobile source and advance the non-build preflight to the Apple credential boundary.
+batch_id: private-beta-testflight-profile-34
+status: in_progress
+goal: Correct the beta build boundary from ad hoc internal distribution to an App Store/TestFlight candidate profile before Apple signing is created.
 started_at: 2026-07-28
 codex_owned:
-  - .easignore
-  - scripts/eas-archive-prereq.mjs
+  - eas.json
   - package.json
   - tests/testflightTooling.test.ts
   - docs/launch/**
 cursor_owned: []
 shared_locked:
-  - app.json
   - app/**
   - services/**
   - scripts/**
   - supabase/**
-  - eas.json
-  - package.json
   - package-lock.json
 blocked_files: []
 handoff_required: false
 dependencies:
-  - private-beta-posthog-receipt-32
+  - private-beta-eas-archive-prebuild-33
 required_tests:
-  - npm run qa:eas-archive
+  - npm run qa:eas-account
   - npm run typecheck
   - npm test
-  - EAS archive inspection
-  - EAS iOS preview pre-build inspection
+  - EAS TestFlight configuration inspection
+  - EAS TestFlight pre-build inspection
 stop_conditions:
-  - Any local credential, Cursor state, independent site source, test, Supabase, or operational artifact enters the mobile upload
+  - The beta command resolves to internal or ad hoc distribution
   - Apple credentials are requested without a Raymond-controlled authorization handoff
   - A cloud build, signing mutation, upload, submission, or production action starts
-evidence:
-  - docs/launch/evidence/release/2026-07-28-eas-archive-prebuild.md
-unresolved_findings:
-  - Apple account authorization is required to generate or fully validate iOS signing credentials.
-  - Full Xcode and physical-iPhone verification remain pending after the cloud credential boundary.
-checkpoint_commit: 550e3844d28bc9eb61bdc8666f80951c9f7cc93e
+evidence: []
+unresolved_findings: []
+checkpoint_commit:

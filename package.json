@@ -43,8 +43,8 @@
     "verify:paid-product": "npm run verify:private-beta-security",
     "ios:testflight:check": "npm run qa:eas-archive && npm run qa:eas-account && npm run qa:ios-prereq && npm run demo:ready",
     "beta:go-no-go": "node --import tsx scripts/beta-go-no-go.ts",
-    "ios:testflight:build": "npx --yes eas-cli@21.4.0 build --platform ios --profile preview",
-    "ios:testflight:submit": "npx --yes eas-cli@21.4.0 submit --platform ios --profile production --latest"
+    "ios:testflight:build": "npx --yes eas-cli@21.4.0 build --platform ios --profile testflight",
+    "ios:testflight:submit": "npx --yes eas-cli@21.4.0 submit --platform ios --profile testflight --latest"
   },
   "dependencies": {
     "@expo-google-fonts/fraunces": "^0.4.1",
