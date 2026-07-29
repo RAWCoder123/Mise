@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "target": "invite_only_testflight_beta",
-  "candidateCommit": "a19ca2365a559de2c5f14ed28bf38cd289eeceb8",
+  "candidateCommit": "0027a885f659ead7d58e5fb6cd6585d1097797cf",
   "candidateBuildId": null,
   "providerRestrictions": {
     "squareEnabled": false,
@@ -20,25 +20,25 @@
     {
       "id": "local_release_gate",
       "status": "passed",
-      "verifiedAt": "2026-07-28T23:29:22Z",
-      "verifiedCommit": "a19ca2365a559de2c5f14ed28bf38cd289eeceb8",
-      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-a19ca23.md#local-release-gate",
+      "verifiedAt": "2026-07-28T23:56:23Z",
+      "verifiedCommit": "0027a885f659ead7d58e5fb6cd6585d1097797cf",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-0027a88.md#local-release-gate",
       "owner": "Codex"
     },
     {
       "id": "hosted_security",
       "status": "passed",
-      "verifiedAt": "2026-07-28T23:29:22Z",
-      "verifiedCommit": "a19ca2365a559de2c5f14ed28bf38cd289eeceb8",
-      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-a19ca23.md#hosted-security",
+      "verifiedAt": "2026-07-28T23:56:23Z",
+      "verifiedCommit": "0027a885f659ead7d58e5fb6cd6585d1097797cf",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-0027a88.md#hosted-security",
       "owner": "Codex"
     },
     {
       "id": "tenant_isolation",
       "status": "passed",
-      "verifiedAt": "2026-07-28T23:29:22Z",
-      "verifiedCommit": "a19ca2365a559de2c5f14ed28bf38cd289eeceb8",
-      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-a19ca23.md#tenant-isolation",
+      "verifiedAt": "2026-07-28T23:56:23Z",
+      "verifiedCommit": "0027a885f659ead7d58e5fb6cd6585d1097797cf",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-0027a88.md#tenant-isolation",
       "owner": "Codex"
     },
     {
@@ -59,11 +59,11 @@
     },
     {
       "id": "posthog_receipt",
-      "status": "pending",
-      "verifiedAt": null,
-      "verifiedCommit": null,
-      "evidence": null,
-      "owner": "Raymond"
+      "status": "passed",
+      "verifiedAt": "2026-07-28T23:56:23Z",
+      "verifiedCommit": "0027a885f659ead7d58e5fb6cd6585d1097797cf",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-0027a88.md#posthog-receipt",
+      "owner": "Codex"
     },
     {
       "id": "recent_iphone",
@@ -108,9 +108,9 @@
     {
       "id": "provider_restrictions",
       "status": "passed",
-      "verifiedAt": "2026-07-28T23:29:22Z",
-      "verifiedCommit": "a19ca2365a559de2c5f14ed28bf38cd289eeceb8",
-      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-a19ca23.md#provider-restrictions",
+      "verifiedAt": "2026-07-28T23:56:23Z",
+      "verifiedCommit": "0027a885f659ead7d58e5fb6cd6585d1097797cf",
+      "evidence": "docs/launch/evidence/release/2026-07-28-candidate-0027a88.md#provider-restrictions",
       "owner": "Codex"
     }
   ],
