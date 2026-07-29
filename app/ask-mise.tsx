@@ -8,7 +8,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { IconBadge } from "../components/ui/IconBadge";
 import { Screen } from "../components/ui/Screen";
 import { RetryNotice } from "../components/ui/StatusNotice";
-import { colors, radii, typography } from "../constants/theme";
+import { colors, radii, shadows, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
 import type { MessageKey, MessageValues } from "../i18n/catalog";
@@ -253,7 +253,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: 14
+    padding: 14,
+    ...shadows.card
   },
   heroCopy: {
     flex: 1,
@@ -280,12 +281,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
     paddingHorizontal: 13
   },
   suggestionText: {
-    color: colors.text,
+    color: colors.accentDark,
     ...typography.caption
   },
   pressed: {
@@ -304,11 +305,14 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border
+    borderColor: colors.border,
+    ...shadows.card
   },
   userBubble: {
     alignSelf: "flex-end",
-    backgroundColor: colors.accent
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent
   },
   bubbleText: {
     color: colors.text,
@@ -317,7 +321,7 @@ const styles = StyleSheet.create({
     lineHeight: 18
   },
   userBubbleText: {
-    color: colors.surface
+    color: colors.accentDark
   },
   inputRow: {
     minHeight: 48,

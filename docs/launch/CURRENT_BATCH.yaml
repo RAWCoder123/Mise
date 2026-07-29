@@ -1,33 +1,41 @@
-batch_id: private-beta-native-prerequisite-35
-status: completed
-goal: Complete and prove the local Xcode, iOS simulator runtime, and native prerequisite boundary without creating signing credentials or starting a release.
+batch_id: private-beta-concept-aesthetic-36
+status: in_progress
+goal: Restyle shared design tokens, UI primitives, brand lockup, and main tab screens to match the concept mockup while preserving invite-only and draft-only behavior.
 started_at: 2026-07-29
 codex_owned:
   - docs/launch/**
-cursor_owned: []
+cursor_owned:
+  - constants/theme.ts
+  - components/ui/**
+  - assets/brand/**
+  - app/(tabs)/**
+  - app/ask-mise.tsx
+  - app/tasks/**
+  - i18n/catalog.ts
+  - scripts/mobile-route-smoke.mjs
+  - scripts/mobile-layout-smoke.mjs
 shared_locked:
-  - app/**
   - services/**
-  - scripts/**
+  - contexts/**
   - supabase/**
   - eas.json
+  - app.json
   - package.json
   - package-lock.json
 blocked_files: []
-handoff_required: false
+handoff_required: true
 dependencies:
-  - private-beta-testflight-profile-34
+  - private-beta-native-prerequisite-35
 required_tests:
-  - npm run qa:ios-prereq
-  - xcrun simctl bootstatus
-  - xcrun simctl list devices booted
+  - npm run typecheck
+  - npm run design:static
+  - npm run qa:routes
+  - npm run qa:interactions
 stop_conditions:
-  - The Xcode agreement requires acceptance by Codex rather than Raymond
-  - No iPhone simulator runtime is available
-  - Apple signing credentials, a cloud build, upload, submission, or production action starts
-evidence:
-  - docs/launch/evidence/release/2026-07-29-xcode-native-prerequisite.md
-unresolved_findings:
-  - Raymond-controlled Apple account authorization is required to create and validate the missing App Store distribution certificate and provisioning profile.
-  - A cloud candidate build, physical-device walkthrough, and TestFlight submission remain separate approval-gated actions.
-checkpoint_commit: 3513e13a58c66bfa17bf08eeada5223b505fbc9a
+  - Invite-only admission, pending-access setup, or draft-only ordering regresses
+  - Public signup or tenant self-allocation is reintroduced
+  - Provider activation, billing, or autonomous ordering is enabled
+  - Product thumbnails or invented metrics are fabricated without real data
+evidence: []
+unresolved_findings: []
+checkpoint_commit: null

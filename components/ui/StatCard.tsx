@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { Minus, TrendingDown, TrendingUp } from "lucide-react-native";
 
-import { colors, radii, spacing, typography } from "../../constants/theme";
+import { colors, radii, shadows, spacing, typography } from "../../constants/theme";
 
 export type StatCardTone = "default" | "accent" | "success" | "caution" | "warning" | "danger";
 export type StatDeltaTone = "success" | "danger" | "neutral";
@@ -97,7 +97,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface
+    backgroundColor: colors.surface,
+    ...shadows.card
   },
   headerRow: {
     flexDirection: "row",

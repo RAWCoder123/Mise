@@ -142,7 +142,7 @@ export function Screen({ title, subtitle, action, children, loading, scroll = tr
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.surface
+    backgroundColor: colors.panel
   },
   appBar: {
     height: 56,
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: colors.panel
   },
   scrollContent: {
     paddingBottom: 96

@@ -18,7 +18,7 @@ import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { FilterRow, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, typography } from "../../constants/theme";
+import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, shadows, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
@@ -566,17 +566,22 @@ const styles = StyleSheet.create({
     paddingVertical: 0
   },
   inventoryList: {
-    backgroundColor: colors.surface
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: "hidden",
+    ...shadows.card
   },
   inventoryRow: {
-    minHeight: 120,
-    borderLeftWidth: 3,
+    minHeight: 112,
+    borderLeftWidth: 4,
     borderLeftColor: colors.borderStrong,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 12
   },
   inventoryRowCritical: {
     borderLeftColor: inventoryStatusColors.Critical

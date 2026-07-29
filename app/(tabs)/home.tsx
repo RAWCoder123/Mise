@@ -15,7 +15,7 @@ import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations"
 import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
-import { StatCard, StatCardRow, type StatCardDelta } from "../../components/ui/StatCard";
+import { CompactMetricStrip } from "../../components/ui/CompactMetricStrip";
 import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, inventoryStatusColors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
@@ -254,42 +254,53 @@ function HomeMetrics({
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   t: Translator;
 }) {
-  const salesDelta = buildSalesDelta(summary, formatNumber);
   const openTasks = summary.operationalTasks.filter((task) => task.status === "open");
   const highPriority = openTasks.filter((task) => task.priority === "urgent" || task.priority === "high").length;
+  const stockAlerts = summary.inventoryHealth.low + summary.inventoryHealth.critical;
+  const salesDelta = buildSalesDelta(summary, formatNumber);
 
   return (
-    <StatCardRow accessibilityLabel={t("home.metrics.accessibility")}>
-      <StatCard
-        label={t("home.metric.sales")}
-        value={formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)}
-        delta={salesDelta}
-        icon={<ShoppingBag size={16} color={colors.text} strokeWidth={2.15} />}
-      />
-      <StatCard
-        label={t("home.metric.openTasks")}
-        value={formatNumber(openTasks.length)}
-        tone={highPriority > 0 ? "danger" : "default"}
-        delta={
-          highPriority > 0
-            ? { label: t("home.metric.high", { count: formatNumber(highPriority) }), trend: "flat", tone: "danger" }
+    <CompactMetricStrip
+      accessibilityLabel={t("home.metrics.accessibility")}
+      metrics={[
+        {
+          id: "sales",
+          label: t("home.metric.sales"),
+          value: formatCompactCurrency(summary.salesToday, summary.restaurantCurrency),
+          icon: <ShoppingBag size={14} color={colors.text} strokeWidth={2.15} />,
+          accessibilityLabel: salesDelta
+            ? `${t("home.metric.sales")}: ${formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)}, ${salesDelta.label}`
             : undefined
+        },
+        {
+          id: "tasks",
+          label: t("home.metric.openTasks"),
+          value: formatNumber(openTasks.length),
+          tone: highPriority > 0 ? "danger" : "default",
+          icon: <CalendarCheck size={14} color={highPriority > 0 ? colors.danger : colors.text} strokeWidth={2.15} />
+        },
+        {
+          id: "orders",
+          label: t("home.metric.orderReview"),
+          value: formatNumber(summary.pendingRecommendations),
+          tone: summary.pendingRecommendations > 0 ? "caution" : "success",
+          icon: (
+            <ClipboardList
+              size={14}
+              color={summary.pendingRecommendations > 0 ? colors.caution : colors.success}
+              strokeWidth={2.15}
+            />
+          )
+        },
+        {
+          id: "stock",
+          label: t("home.metric.stockAlerts"),
+          value: formatNumber(stockAlerts),
+          tone: stockAlerts > 0 ? "danger" : "success",
+          icon: <Package size={14} color={stockAlerts > 0 ? colors.danger : colors.success} strokeWidth={2.15} />
         }
-        icon={<CalendarCheck size={16} color={highPriority > 0 ? colors.danger : colors.text} strokeWidth={2.15} />}
-      />
-      <StatCard
-        label={t("home.metric.orderReview")}
-        value={formatNumber(summary.pendingRecommendations)}
-        tone={summary.pendingRecommendations > 0 ? "caution" : "success"}
-        icon={
-          <ClipboardList
-            size={16}
-            color={summary.pendingRecommendations > 0 ? colors.caution : colors.success}
-            strokeWidth={2.15}
-          />
-        }
-      />
-    </StatCardRow>
+      ]}
+    />
   );
 }
 
@@ -498,7 +509,7 @@ function HomeTaskRow({
 function buildSalesDelta(
   summary: TodayCommandCenterSummary,
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string
-): StatCardDelta | undefined {
+): { label: string; trend: "up" | "down" | "flat"; tone: "success" | "danger" | "neutral" } | undefined {
   const currentPoint = summary.salesTrend.at(-1)?.label === summary.operatingDate ? summary.salesTrend.at(-1) : null;
   const previousPoint = currentPoint && summary.salesTrend.length >= 2 ? summary.salesTrend.at(-2) : null;
   if (!currentPoint || !previousPoint || previousPoint.sales <= 0) return undefined;
@@ -538,7 +549,7 @@ function greetingKeyForNow(): MessageKey {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 14
+    gap: 16
   },
   emptyButton: {
     marginTop: 12

@@ -19,7 +19,7 @@ import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, radii, shadows, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
@@ -282,6 +282,7 @@ export default function TodayScreen() {
           options={filterOptions}
           value={filter}
           onValueChange={setFilter}
+          variant="pills"
           scrollable
         />
 
@@ -396,9 +397,9 @@ function TimelineTask({
 
         <View style={styles.taskActions}>
           {canAct && task.status !== "completed" ? (
-            <Button title={t("today.action.start")} onPress={() => router.push(task.action.route)} style={styles.startButton} />
+            <Button title={t("today.action.start")} onPress={() => router.push(task.action.route)} fullWidth style={styles.startButton} />
           ) : canAct ? (
-            <Button title={t("today.action.open")} variant="secondary" onPress={() => router.push(task.action.route)} style={styles.startButton} />
+            <Button title={t("today.action.open")} variant="secondary" onPress={() => router.push(task.action.route)} fullWidth style={styles.startButton} />
           ) : (
             <View style={styles.lockedAction}>
               <LockKeyhole size={14} color={colors.muted} strokeWidth={2.2} />
@@ -408,7 +409,7 @@ function TimelineTask({
             </View>
           )}
           {task.status !== "completed" ? (
-            <Button title={t("today.action.snooze")} variant="secondary" onPress={onSnooze} style={styles.snoozeButton} />
+            <Button title={t("today.action.snooze")} variant="secondary" onPress={onSnooze} fullWidth style={styles.snoozeButton} />
           ) : null}
         </View>
       </Pressable>
@@ -513,7 +514,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface
+    backgroundColor: colors.surface,
+    ...shadows.card
   },
   timelineHeader: {
     minHeight: 68,
@@ -622,7 +624,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: 12
+    padding: 14,
+    ...shadows.card
   },
   taskCardPressed: {
     backgroundColor: colors.surfaceWarm
@@ -632,9 +635,9 @@ const styles = StyleSheet.create({
     gap: 10
   },
   taskIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.panel,
     alignItems: "center",
     justifyContent: "center"
@@ -658,15 +661,15 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.text,
     ...typography.cardTitle,
-    fontSize: 14,
-    lineHeight: 19
+    fontSize: 15,
+    lineHeight: 20
   },
   taskDetail: {
     color: colors.muted,
     ...typography.body,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 3
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4
   },
   priorityBadge: {
     borderRadius: radii.xl,
@@ -693,20 +696,20 @@ const styles = StyleSheet.create({
     color: colors.success
   },
   taskActions: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "stretch",
     gap: 8,
-    marginTop: 12
+    marginTop: 14
   },
   startButton: {
-    flex: 1
+    width: "100%"
   },
   snoozeButton: {
-    minWidth: 96
+    width: "100%"
   },
   lockedAction: {
-    flex: 1,
-    minHeight: 44,
+    width: "100%",
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

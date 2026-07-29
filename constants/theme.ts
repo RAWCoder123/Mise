@@ -8,14 +8,14 @@
 export const colors = {
   background: "#FFFFFF",
   surface: "#FFFFFF",
-  surfaceWarm: "#FAFAF8",
-  panel: "#FAFAF8",
-  panelStrong: "#F0F0ED",
+  surfaceWarm: "#FAF8F5",
+  panel: "#F3F1ED",
+  panelStrong: "#EAE7E2",
   text: "#171715",
   muted: "#6A6965",
   faint: "#8A8984",
   border: "#E7E7E3",
-  borderStrong: "#D8D8D3",
+  borderStrong: "#D6D1C9",
   redSoft: "#FDEBEC",
   redBase: "#F5222D",
   redDark: "#E51620",
@@ -39,7 +39,7 @@ export const colors = {
   mint: "#357B45",
   mintDark: "#286638",
   mintSoft: "#EAF4EC",
-  cream: "#FFFFFF",
+  cream: "#FAF8F5",
   charcoalSoft: "#2A2A27",
   ink: "#171715",
   inkSoft: "#2A2A27",
@@ -74,10 +74,10 @@ export const inventoryStatusSoftColors = {
 } as const;
 
 export const radii = {
-  sm: 6,
-  md: 9,
-  lg: 12,
-  xl: 16
+  sm: 8,
+  md: 12,
+  lg: 14,
+  xl: 18
 } as const;
 
 export const spacing = {
@@ -88,6 +88,17 @@ export const spacing = {
   lg: 16,
   xl: 24,
   xxl: 32
+} as const;
+
+/** Single restrained card elevation — soft depth without decorative glow. */
+export const shadows = {
+  card: {
+    shadowColor: "#171715",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2
+  }
 } as const;
 
 export const fontFamilies = {

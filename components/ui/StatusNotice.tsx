@@ -110,10 +110,10 @@ function defaultIcon(tone: StatusNoticeTone) {
 const styles = StyleSheet.create({
   notice: {
     minHeight: 64,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
     flexDirection: "row",
     alignItems: "center",
     gap: 10
@@ -174,10 +174,10 @@ const styles = StyleSheet.create({
 
 const noticeToneStyles = StyleSheet.create<Record<StatusNoticeTone, { backgroundColor: string; borderColor: string }>>({
   neutral: { backgroundColor: colors.surface, borderColor: colors.border },
-  success: { backgroundColor: colors.surface, borderColor: colors.border },
-  caution: { backgroundColor: colors.surface, borderColor: colors.border },
-  warning: { backgroundColor: colors.surface, borderColor: colors.border },
-  danger: { backgroundColor: colors.surface, borderColor: colors.border }
+  success: { backgroundColor: colors.successSoft, borderColor: colors.success },
+  caution: { backgroundColor: colors.cautionSoft, borderColor: colors.caution },
+  warning: { backgroundColor: colors.warningSoft, borderColor: colors.warning },
+  danger: { backgroundColor: colors.dangerSoft, borderColor: colors.danger }
 });
 
 const iconToneStyles = StyleSheet.create<Record<StatusNoticeTone, { backgroundColor: string }>>({

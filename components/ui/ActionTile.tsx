@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { ChevronRight } from "lucide-react-native";
 
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, radii, shadows, typography } from "../../constants/theme";
 
 export interface ActionTileProps {
   label: string;
@@ -81,7 +81,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    gap: 10
+    gap: 10,
+    ...shadows.card
   },
   iconWrap: {
     width: 36,

@@ -13,7 +13,7 @@ export default function TabsLayout() {
       initialRouteName="home"
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.accentDark,
+        tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,
         tabBarHideOnKeyboard: true,
         tabBarStyle: styles.tabBar,
@@ -86,16 +86,21 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     borderTopWidth: 1,
     ...Platform.select({
-      android: { elevation: 0 },
-      web: { boxShadow: "none" },
-      default: { shadowOpacity: 0 }
+      android: { elevation: 8 },
+      web: { boxShadow: "0 -2px 10px rgba(23, 23, 21, 0.06)" },
+      default: {
+        shadowColor: "#171715",
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8
+      }
     })
   },
   tabBarItem: {
     minHeight: 50
   },
   tabBarLabel: {
-    fontFamily: fontFamilies.medium,
+    fontFamily: fontFamilies.semibold,
     fontSize: 10,
     lineHeight: 13,
     marginTop: 1

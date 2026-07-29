@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { StyleSheet, type ViewProps } from "react-native";
 
-import { colors, radii } from "../../constants/theme";
+import { colors, radii, shadows } from "../../constants/theme";
 import { MotionView } from "./Motion";
 
 interface CardProps extends ViewProps {
@@ -23,7 +23,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 16
+    padding: 16,
+    ...shadows.card
   },
   warm: {
     backgroundColor: colors.surfaceWarm

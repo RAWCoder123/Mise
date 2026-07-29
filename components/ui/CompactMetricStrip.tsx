@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, radii, shadows, typography } from "../../constants/theme";
 
 export type CompactMetricTone = "default" | "accent" | "success" | "caution" | "warning" | "danger";
 
@@ -53,7 +53,7 @@ export const MetricStrip = CompactMetricStrip;
 
 const styles = StyleSheet.create({
   strip: {
-    minHeight: 76,
+    minHeight: 80,
     flexDirection: "row",
     alignItems: "stretch",
     overflow: "hidden",
@@ -61,14 +61,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 10
+    paddingVertical: 12,
+    ...shadows.card
   },
   metric: {
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     justifyContent: "space-between",
-    gap: 5
+    gap: 6
   },
   dividedMetric: {
     borderLeftWidth: 1,

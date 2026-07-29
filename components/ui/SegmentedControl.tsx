@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   },
   selectedPill: {
     borderColor: colors.accent,
-    backgroundColor: colors.accentSoft
+    backgroundColor: colors.accent
   },
   underlineSurface: {
     gap: 0,
@@ -185,19 +185,19 @@ const styles = StyleSheet.create({
 });
 
 const selectedPillToneStyles: Record<SegmentTone, { backgroundColor: string; borderColor: string }> = {
-  brand: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
-  success: { backgroundColor: colors.successSoft, borderColor: colors.success },
-  caution: { backgroundColor: colors.cautionSoft, borderColor: colors.caution },
-  warning: { backgroundColor: colors.warningSoft, borderColor: colors.warning },
-  danger: { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
-  neutral: { backgroundColor: colors.panel, borderColor: colors.borderStrong }
+  brand: { backgroundColor: colors.accent, borderColor: colors.accent },
+  success: { backgroundColor: colors.success, borderColor: colors.success },
+  caution: { backgroundColor: colors.caution, borderColor: colors.caution },
+  warning: { backgroundColor: colors.warning, borderColor: colors.warning },
+  danger: { backgroundColor: colors.danger, borderColor: colors.danger },
+  neutral: { backgroundColor: colors.text, borderColor: colors.text }
 };
 
 const selectedLabelToneStyles: Record<SegmentTone, { color: string }> = {
-  brand: { color: colors.accentDark },
-  success: { color: colors.success },
-  caution: { color: colors.caution },
-  warning: { color: colors.warning },
-  danger: { color: colors.danger },
-  neutral: { color: colors.text }
+  brand: { color: colors.surface },
+  success: { color: colors.surface },
+  caution: { color: colors.surface },
+  warning: { color: colors.surface },
+  danger: { color: colors.surface },
+  neutral: { color: colors.surface }
 };

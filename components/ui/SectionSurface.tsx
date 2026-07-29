@@ -1,6 +1,6 @@
 import { StyleSheet, View, type ViewProps } from "react-native";
 
-import { colors, radii } from "../../constants/theme";
+import { colors, radii, shadows } from "../../constants/theme";
 import { SectionHeader } from "./SectionHeader";
 
 export interface SectionSurfaceProps extends ViewProps {
@@ -67,27 +67,28 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface
+    backgroundColor: colors.surface,
+    ...shadows.card
   },
   warm: {
     backgroundColor: colors.surfaceWarm
   },
   header: {
-    paddingHorizontal: 12,
-    paddingVertical: 11
+    paddingHorizontal: 14,
+    paddingVertical: 12
   },
   separatedHeader: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border
   },
   content: {
-    padding: 12
+    padding: 14
   },
   standaloneCompactPadding: {
-    padding: 12
+    padding: 14
   },
   comfortablePadding: {
-    padding: 14
+    padding: 16
   },
   noPadding: {
     padding: 0

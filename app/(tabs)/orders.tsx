@@ -547,7 +547,7 @@ export default function OrdersScreen() {
           options={laneOptions}
           value={lane}
           onValueChange={setLane}
-          variant="underline"
+          variant="pills"
           scrollable
           style={styles.tabs}
         />
