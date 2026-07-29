@@ -1,7 +1,7 @@
 # External prerequisite handoffs
 
 Verified: 2026-07-29T01:23:15Z
-Reverified: 2026-07-29T17:31:12Z
+Reverified: 2026-07-29T21:16:59Z
 
 This evidence records external launch prerequisites that cannot be completed by
 repository changes or unattended automation. It contains no passwords, 2FA
@@ -30,6 +30,10 @@ valid code-signing identities, and both supported provisioning-profile
 directories contain zero profiles. A Personal Team cannot provide the App
 Store distribution certificate and provisioning profile required by
 TestFlight.
+
+The July 29 recheck also found no physical iPhone in `xctrace` and no iOS cloud
+build in the organization-owned EAS project. Simulator readiness is not being
+substituted for either physical-device or TestFlight evidence.
 
 The secure handoff remains:
 
@@ -62,6 +66,9 @@ The Sentry sign-in page was reverified at `https://sentry.io/auth/login/` and is
 open for a Raymond-controlled login. Creating a Mise project, DSN, or API token
 remains prohibited until that authenticated handoff is complete.
 
+The secure browser handoff was retried on July 29, but macOS was locked. No
+credential was read or entered and no Sentry state changed.
+
 ## Public privacy and support domain
 
 Sites now has a pending custom-domain binding for `getmise.app` on the existing
@@ -82,6 +89,14 @@ Required validation records:
 
 Authoritative nameservers are Cloudflare. The current apex still resolves to
 `104.21.92.243` and `172.67.200.249`; `/privacy` and `/support` time out.
+Neither required validation TXT record is published.
+
+The domain does publish Namecheap forwarding MX records
+(`eforward1`–`eforward5.registrar-servers.com`). That proves a mail-routing
+configuration exists, but it does not prove that `support@getmise.app` or
+`privacy@getmise.app` reaches a named monitored responder. No SPF or DMARC TXT
+policy was present at the recheck.
+
 The Cloudflare tab was reverified at `https://dash.cloudflare.com/login`;
 Chrome has no authenticated Cloudflare session, so no DNS record was changed.
 
