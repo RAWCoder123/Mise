@@ -75,9 +75,9 @@ export const inventoryStatusSoftColors = {
 
 export const radii = {
   sm: 8,
-  md: 10,
-  lg: 12,
-  xl: 16
+  md: 8,
+  lg: 10,
+  xl: 14
 } as const;
 
 export const spacing = {
@@ -90,14 +90,14 @@ export const spacing = {
   xxl: 32
 } as const;
 
-/** Hairline elevation only — concept uses thin borders more than drop shadows. */
+/** Concept uses hairline borders — keep shadow tokens inert. */
 export const shadows = {
   card: {
-    shadowColor: "#171715",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1
+    shadowColor: "transparent",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0
   },
   none: {
     shadowColor: "transparent",
@@ -120,44 +120,44 @@ export const typography = {
   families: fontFamilies,
   screenTitle: {
     fontFamily: fontFamilies.bold,
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.35
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.2
   },
   sectionTitle: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 16,
-    lineHeight: 21,
-    letterSpacing: -0.1
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0
   },
   metricValue: {
     fontFamily: fontFamilies.bold,
-    fontSize: 20,
-    lineHeight: 24,
-    letterSpacing: -0.3
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.2
   },
   cardTitle: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 17,
     letterSpacing: 0
   },
   body: {
     fontFamily: fontFamilies.body,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
     letterSpacing: 0
   },
   caption: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 10,
+    lineHeight: 13,
     letterSpacing: 0
   },
   button: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 15,
     letterSpacing: 0
   }
 } as const;

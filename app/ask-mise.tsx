@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
-import { Send, Sparkles } from "lucide-react-native";
+import { ArrowLeft, CheckSquare, Send } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
-import { IconBadge } from "../components/ui/IconBadge";
+import { MiseMark } from "../components/ui/BrandLockup";
 import { Screen } from "../components/ui/Screen";
 import { RetryNotice } from "../components/ui/StatusNotice";
 import { colors, radii, typography } from "../constants/theme";
@@ -16,23 +15,43 @@ import { fetchInsights, fetchTodaySummary, type TodayCommandCenterSummary } from
 import { presentInsight, presentOperationalTodayTask } from "../services/presentation/operationsPresentation";
 import { captureMiseError } from "../services/telemetry";
 import type { Insight } from "../types/mise";
+import type { OperationalTodayTask } from "../services/domain/todayTasks";
 
-type ChatMessage = { id: string; role: "user" | "mise"; text: string };
+type ChatMessage = {
+  id: string;
+  role: "user" | "mise";
+  text: string;
+  priorities?: OperationalTodayTask[];
+};
 type Translator = (key: MessageKey, values?: MessageValues) => string;
+
+function BackAction() {
+  const { t } = useLocale();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t("common.back")}
+      hitSlop={8}
+      onPress={() => router.back()}
+      style={({ pressed }) => [{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }, pressed && { opacity: 0.55 }]}
+    >
+      <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+    </Pressable>
+  );
+}
 
 export default function AskMiseScreen() {
   const navigation = useNavigation();
-  const { formatCompactCurrency, formatNumber, locale, t } = useLocale();
-  const { restaurant } = useMiseSession();
+  const { formatCompactCurrency, formatDueTime, formatNumber, locale, t } = useLocale();
+  const { restaurant, user } = useMiseSession();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    { id: "welcome", role: "mise", text: t("ask.welcome") }
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const seededRef = useRef(false);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -47,6 +66,8 @@ export default function AskMiseScreen() {
     setInsights([]);
     setLoadedRestaurantId(null);
     setError(null);
+    setMessages([]);
+    seededRef.current = false;
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
@@ -86,10 +107,42 @@ export default function AskMiseScreen() {
 
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
   const visibleInsights = loadedRestaurantId === restaurant?.id ? insights : [];
+  const topPriorityTasks = useMemo(
+    () => (visibleSummary?.operationalTasks.filter((task) => task.status === "open").slice(0, 3) ?? []),
+    [visibleSummary]
+  );
+
+  useEffect(() => {
+    if (!visibleSummary || seededRef.current) return;
+    seededRef.current = true;
+    const greetingName = user?.name?.trim().split(/\s+/)[0] || t("ask.greeting.fallbackName");
+    const priorities = topPriorityTasks;
+    setMessages([
+      {
+        id: "welcome",
+        role: "mise",
+        text: t("ask.greeting.hi", { name: greetingName })
+      },
+      {
+        id: "seed-user",
+        role: "user",
+        text: t("ask.suggestion.priorities")
+      },
+      {
+        id: "seed-priorities",
+        role: "mise",
+        text: t("ask.answer.prioritiesLead"),
+        priorities
+      }
+    ]);
+  }, [t, topPriorityTasks, user?.name, visibleSummary]);
 
   function ask(question: string) {
     const trimmed = question.trim();
     if (!trimmed || !visibleSummary) return;
+    const priorities = priorityKeywords.test(trimmed.toLowerCase())
+      ? visibleSummary.operationalTasks.filter((task) => task.status === "open").slice(0, 3)
+      : undefined;
     const response = scriptedAnswer(trimmed, visibleSummary, visibleInsights, {
       formatCompactCurrency,
       formatNumber,
@@ -99,21 +152,26 @@ export default function AskMiseScreen() {
     setMessages((current) => [
       ...current,
       { id: `u-${Date.now()}`, role: "user", text: trimmed },
-      { id: `m-${Date.now()}`, role: "mise", text: response }
+      {
+        id: `m-${Date.now()}`,
+        role: "mise",
+        text: priorities ? t("ask.answer.prioritiesLead") : response,
+        priorities
+      }
     ]);
     setInput("");
   }
 
   if (!restaurant) {
     return (
-      <Screen title={t("ask.title")} subtitle={t("workspace.none.title")}>
+      <Screen title={t("ask.title")} titleAlign="center" leadingAction={<BackAction />}>
         <EmptyState title={t("tasks.noRestaurant.title")} body={t("ask.noRestaurant.body")} />
       </Screen>
     );
   }
 
   return (
-    <Screen title={t("ask.title")} subtitle={restaurant.name} loading={loading}>
+    <Screen title={t("ask.title")} titleAlign="center" leadingAction={<BackAction />} loading={loading}>
       <View style={styles.stack}>
         {error ? (
           <RetryNotice
@@ -125,14 +183,51 @@ export default function AskMiseScreen() {
           />
         ) : null}
 
-        <View style={styles.hero}>
-          <IconBadge tone="brand">
-            <Sparkles size={20} color={colors.accentDark} strokeWidth={2.25} />
-          </IconBadge>
-          <View style={styles.heroCopy}>
-            <Text style={styles.heroTitle}>{t("ask.hero.title")}</Text>
-            <Text style={styles.heroBody}>{t("ask.hero.body")}</Text>
-          </View>
+        <View style={styles.chat}>
+          {messages.map((message) =>
+            message.role === "user" ? (
+              <View key={message.id} style={[styles.bubble, styles.userBubble]}>
+                <Text style={[styles.bubbleText, styles.userBubbleText]}>{message.text}</Text>
+              </View>
+            ) : (
+              <View key={message.id} style={styles.miseRow}>
+                <MiseMark size={16} />
+                <View style={styles.miseCopy}>
+                  <Text style={styles.bubbleText}>{message.text}</Text>
+                  {message.priorities && message.priorities.length > 0 ? (
+                    <View style={styles.priorityList}>
+                      {message.priorities.map((task) => {
+                        const presentation = presentOperationalTodayTask(locale, task);
+                        const high = task.priority === "urgent" || task.priority === "high";
+                        const due = task.dueAt && visibleSummary
+                          ? formatDueTime(task.dueAt, { timeZone: visibleSummary.restaurantTimeZone })
+                          : t("task.timing.noTime");
+                        return (
+                          <Pressable
+                            key={task.id}
+                            accessibilityRole="button"
+                            onPress={() => router.push(`/tasks/${task.id}`)}
+                            style={({ pressed }) => [styles.priorityRow, pressed && styles.pressed]}
+                          >
+                            <CheckSquare size={14} color={colors.muted} strokeWidth={2.2} />
+                            <View style={styles.priorityCopy}>
+                              <Text numberOfLines={1} style={styles.priorityTitle}>{presentation.title}</Text>
+                              <Text numberOfLines={1} style={styles.priorityDue}>{due}</Text>
+                            </View>
+                            <View style={[styles.priorityChip, high && styles.priorityChipHigh]}>
+                              <Text style={[styles.priorityChipText, high && styles.priorityChipTextHigh]}>
+                                {t(high ? "task.badge.high" : "task.badge.normal")}
+                              </Text>
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            )
+          )}
         </View>
 
         {visibleSummary ? (
@@ -149,14 +244,6 @@ export default function AskMiseScreen() {
             ))}
           </View>
         ) : null}
-
-        <View style={styles.chat}>
-          {messages.map((message) => (
-            <View key={message.id} style={[styles.bubble, message.role === "user" ? styles.userBubble : styles.miseBubble]}>
-              <Text style={[styles.bubbleText, message.role === "user" && styles.userBubbleText]}>{message.text}</Text>
-            </View>
-          ))}
-        </View>
 
         <View style={styles.inputRow}>
           <TextInput
@@ -175,11 +262,9 @@ export default function AskMiseScreen() {
             onPress={() => ask(input)}
             style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}
           >
-            <Send size={20} color={colors.surface} strokeWidth={2.25} />
+            <Send size={18} color={colors.surface} strokeWidth={2.25} />
           </Pressable>
         </View>
-
-        <Button title={t("ask.back")} variant="secondary" onPress={() => router.replace("/more")} fullWidth />
       </View>
     </Screen>
   );
@@ -188,6 +273,7 @@ export default function AskMiseScreen() {
 const stockKeywords = /stock|low|inventory|inventario|existencias|bajo|库存|盘点/;
 const orderKeywords = /order|supplier|pedido|proveedor|订单|订货|供应商/;
 const salesKeywords = /sales|revenue|venta|ingreso|销售|营收/;
+const priorityKeywords = /priorit|prioridad|优先/;
 
 function scriptedAnswer(
   question: string,
@@ -243,106 +329,141 @@ function scriptedAnswer(
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 10
-  },
-  hero: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: 12
-  },
-  heroCopy: {
     flex: 1,
-    minWidth: 0
-  },
-  heroTitle: {
-    color: colors.text,
-    ...typography.cardTitle
-  },
-  heroBody: {
-    color: colors.muted,
-    ...typography.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 2
-  },
-  suggestions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8
-  },
-  suggestion: {
-    minHeight: 44,
-    justifyContent: "center",
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSoft,
-    paddingHorizontal: 13
-  },
-  suggestionText: {
-    color: colors.accentDark,
-    ...typography.caption
-  },
-  pressed: {
-    opacity: 0.7
+    gap: 10
   },
   chat: {
-    gap: 10
+    gap: 12,
+    flexGrow: 1
+  },
+  miseRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    maxWidth: "94%"
+  },
+  miseCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 8
   },
   bubble: {
-    maxWidth: "86%",
-    borderRadius: radii.lg,
+    maxWidth: "78%",
+    borderRadius: radii.md,
     paddingHorizontal: 12,
-    paddingVertical: 10
-  },
-  miseBubble: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border
+    paddingVertical: 8
   },
   userBubble: {
     alignSelf: "flex-end",
-    backgroundColor: colors.accentSoft,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent
+    backgroundColor: colors.panelStrong
   },
   bubbleText: {
     color: colors.text,
-    ...typography.body,
+    fontFamily: typography.families.body,
     fontSize: 13,
     lineHeight: 18
   },
   userBubbleText: {
-    color: colors.accentDark
+    color: colors.text
+  },
+  priorityList: {
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: "hidden"
+  },
+  priorityRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border
+  },
+  priorityCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  priorityTitle: {
+    color: colors.text,
+    fontFamily: typography.families.semibold,
+    fontSize: 12,
+    lineHeight: 15
+  },
+  priorityDue: {
+    color: colors.muted,
+    fontFamily: typography.families.body,
+    fontSize: 10,
+    lineHeight: 13,
+    marginTop: 1
+  },
+  priorityChip: {
+    borderRadius: radii.xl,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: colors.panelStrong
+  },
+  priorityChipHigh: {
+    backgroundColor: colors.dangerSoft
+  },
+  priorityChipText: {
+    color: colors.muted,
+    fontFamily: typography.families.semibold,
+    fontSize: 10,
+    lineHeight: 12
+  },
+  priorityChipTextHigh: {
+    color: colors.danger
+  },
+  suggestions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6
+  },
+  suggestion: {
+    minHeight: 28,
+    height: 28,
+    justifyContent: "center",
+    borderRadius: radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
+    paddingHorizontal: 10
+  },
+  suggestionText: {
+    color: colors.muted,
+    fontFamily: typography.families.body,
+    fontSize: 11,
+    lineHeight: 14
+  },
+  pressed: {
+    opacity: 0.7
   },
   inputRow: {
-    minHeight: 48,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 8
   },
   input: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 44,
     borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     color: colors.text,
     fontFamily: typography.families.body,
-    fontSize: 15
+    fontSize: 14
   },
   sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.lg,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center"

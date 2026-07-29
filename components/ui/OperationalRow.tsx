@@ -20,7 +20,7 @@ type RowBadgeTone = Exclude<RowSemanticTone, "brand">;
 
 interface OperationalRowProps {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   icon: ReactNode;
   iconTone?: IconBadgeTone;
   value?: string;
@@ -55,6 +55,7 @@ export function OperationalRow({
 }: OperationalRowProps) {
   const { pressIn, pressOut, scaleStyle } = usePressScale(0.985);
   const isActionable = typeof onPress === "function";
+  const showSubtitle = Boolean(subtitle?.trim());
 
   return (
     <Pressable
@@ -74,9 +75,11 @@ export function OperationalRow({
             </Text>
             {badgeLabel && <Badge label={badgeLabel} tone={badgeTone} />}
           </View>
-          <Text style={styles.subtitle} numberOfLines={subtitleLines}>
-            {subtitle}
-          </Text>
+          {showSubtitle ? (
+            <Text style={styles.subtitle} numberOfLines={subtitleLines}>
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
         {(value || meta || trailing || isActionable) && (
           <View style={styles.trail}>
@@ -91,7 +94,7 @@ export function OperationalRow({
                 {meta}
               </Text>
             )}
-            {isActionable && <ChevronRight size={19} color={colors.text} strokeWidth={2.45} />}
+            {isActionable && <ChevronRight size={16} color={colors.text} strokeWidth={2.45} />}
           </View>
         )}
       </Animated.View>
@@ -101,11 +104,11 @@ export function OperationalRow({
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 56,
+    minHeight: 46,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 8,
+    paddingVertical: 6,
     flexDirection: "row",
     alignItems: "center",
     gap: 10
@@ -127,9 +130,9 @@ const styles = StyleSheet.create({
   subtitle: {
     color: colors.muted,
     fontFamily: fontFamilies.body,
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 2
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 1
   },
   trail: {
     minWidth: 36,
@@ -141,15 +144,15 @@ const styles = StyleSheet.create({
     maxWidth: 76,
     color: colors.text,
     fontFamily: fontFamilies.semibold,
-    fontSize: 15,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 18,
     textAlign: "right"
   },
   meta: {
     maxWidth: 84,
     color: colors.muted,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 10,
+    lineHeight: 13,
     fontFamily: fontFamilies.semibold,
     textAlign: "right"
   },

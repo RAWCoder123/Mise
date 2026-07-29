@@ -139,8 +139,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     borderColor: colors.border,
     backgroundColor: colors.panel,
-    minHeight: 36,
-    paddingHorizontal: 12
+    minHeight: 28,
+    height: 28,
+    paddingHorizontal: 10,
+    paddingVertical: 0
   },
   selectedOption: {
     borderColor: colors.borderStrong,

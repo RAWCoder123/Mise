@@ -10,7 +10,7 @@ import {
   Download,
   Languages,
   LifeBuoy,
-  LogOut,
+  ArrowLeft,
   Mail,
   PlugZap,
   RefreshCw,
@@ -22,13 +22,11 @@ import {
 } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
-import { IconBadge } from "../../components/ui/IconBadge";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
-import { colors, fontFamilies, radii, spacing, typography } from "../../constants/theme";
+import { colors, fontFamilies, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { LANGUAGE_OPTIONS, type MessageKey, type MessageValues } from "../../i18n/catalog";
@@ -54,7 +52,7 @@ type Translator = (key: MessageKey, values?: MessageValues) => string;
 type SettingsNotice = { key: MessageKey; tone: StatusNoticeTone };
 
 export default function SettingsScreen() {
-  const { formatList, formatNumber, locale, t } = useLocale();
+  const { formatNumber, locale, t } = useLocale();
   const {
     availableRestaurants,
     isDemoMode,
@@ -201,12 +199,24 @@ export default function SettingsScreen() {
   const gmailNeedsAttention = visibleEmailConnection?.status === "needs_reauth" || visibleEmailConnection?.status === "restricted";
   const canExportRestaurant = Boolean(restaurant) && canDeleteRestaurantData(memberships, restaurant?.id);
   const localizedRole = role ? roleLabel(role, t) : null;
-  const profileLine = restaurant
-    ? `${restaurant.cuisine_type?.trim() || t("settings.profile.cuisineFallback")} · ${serviceStyleLabel(restaurant.service_style, t)}`
-    : t("settings.workspace.metaFallback");
+
 
   return (
-    <Screen title={t("settings.title")} subtitle={t("settings.subtitle")}>
+    <Screen
+      title={t("settings.profile.screenTitle")}
+      titleAlign="center"
+      leadingAction={
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("common.back")}
+          hitSlop={8}
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.headerBack, pressed && styles.pressed]}
+        >
+          <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+        </Pressable>
+      }
+    >
       <View style={styles.stack}>
         {message ? <StatusNotice title={t(message.key)} tone={message.tone} /> : null}
 
@@ -217,52 +227,58 @@ export default function SettingsScreen() {
           <View style={styles.accountHeroCopy}>
             <Text style={styles.accountHeroName}>{user?.name?.trim() || t("settings.account.title")}</Text>
             <Text style={styles.accountHeroMeta}>
-              {localizedRole ? t("settings.account.signedInAs", { role: localizedRole }) : t("settings.account.operator")}
+              {localizedRole ?? t("settings.account.operator")}
             </Text>
             <Text style={styles.accountHeroEmail}>{user?.email?.trim() || t("settings.account.emailMissing")}</Text>
           </View>
-          {localizedRole ? <Badge label={localizedRole} tone="neutral" /> : null}
         </View>
 
+        <SettingsSection title={t("settings.section.account")}>
+          <OperationalRow
+            title={t("settings.account.privacy.title")}
+            icon={<ShieldCheck size={18} color={colors.success} strokeWidth={2.25} />}
+            iconTone="leaf"
+            onPress={() => router.push("/settings/privacy" as never)}
+          />
+          <OperationalRow
+            title={t("settings.account.support.title")}
+            icon={<LifeBuoy size={18} color={colors.accentDark} strokeWidth={2.25} />}
+            iconTone="brand"
+            onPress={() => router.push("/settings/support" as never)}
+          />
+        </SettingsSection>
+
         <SettingsSection title={t("settings.section.restaurant")}>
-          <View style={styles.profileRow}>
-            <IconBadge tone="brand">
-              <Store size={20} color={colors.accentDark} strokeWidth={2.25} />
-            </IconBadge>
-            <View style={styles.profileCopy}>
-              <Text style={styles.profileName}>{restaurant?.name ?? t("settings.profile.noRestaurant")}</Text>
-              <Text style={styles.profileMeta}>{profileLine}</Text>
-              {restaurant?.address ? (
-                <Text style={styles.profileMeta}>{restaurant.address}</Text>
-              ) : (
-                <Text style={styles.profileMetaMuted}>{t("settings.profile.addressMissing")}</Text>
-              )}
-            </View>
-            {localizedRole ? <Badge label={localizedRole} tone="neutral" /> : null}
-          </View>
-
+          <OperationalRow
+            title={restaurant?.name ?? t("settings.profile.noRestaurant")}
+            value={localizedRole ?? undefined}
+            icon={<Store size={18} color={colors.accentDark} strokeWidth={2.25} />}
+            iconTone="brand"
+          />
           {restaurant ? (
-            <View style={styles.identityGrid}>
-              <IdentityFact label={t("settings.profile.timezone")} value={restaurant.timezone} />
-              <IdentityFact label={t("settings.profile.currency")} value={restaurant.currency} />
-              <IdentityFact
-                label={t("settings.profile.serviceStyle")}
+            <>
+              <OperationalRow
+                title={t("settings.profile.timezone")}
+                value={restaurant.timezone}
+                icon={<Building2 size={18} color={colors.muted} strokeWidth={2.25} />}
+                iconTone="neutral"
+              />
+              <OperationalRow
+                title={t("settings.profile.currency")}
+                value={restaurant.currency}
+                icon={<Building2 size={18} color={colors.muted} strokeWidth={2.25} />}
+                iconTone="neutral"
+              />
+              <OperationalRow
+                title={t("settings.profile.serviceStyle")}
                 value={serviceStyleLabel(restaurant.service_style, t)}
+                icon={<Store size={18} color={colors.muted} strokeWidth={2.25} />}
+                iconTone="neutral"
               />
-              <IdentityFact
-                label={t("settings.profile.orderCadence")}
-                value={
-                  restaurant.operational_profile.orderCadence.length > 0
-                    ? formatList(restaurant.operational_profile.orderCadence)
-                    : t("settings.profile.orderCadenceEmpty")
-                }
-              />
-            </View>
+            </>
           ) : null}
-
-          {availableRestaurants.length > 1 ? (
-            <View style={styles.workspaceList}>
-              {availableRestaurants.map((item) => {
+          {availableRestaurants.length > 1
+            ? availableRestaurants.map((item) => {
                 const selected = item.id === restaurant?.id;
                 return (
                   <Pressable
@@ -283,65 +299,66 @@ export default function SettingsScreen() {
                       pressed && styles.pressed
                     ]}
                   >
-                    <Building2 size={20} color={selected ? colors.accentDark : colors.muted} strokeWidth={2.25} />
+                    <Building2 size={18} color={selected ? colors.accentDark : colors.muted} strokeWidth={2.25} />
                     <View style={styles.workspaceCopy}>
                       <Text style={styles.workspaceName}>{item.name}</Text>
                       <Text style={styles.workspaceMeta}>{item.cuisine_type ?? t("settings.workspace.metaFallback")}</Text>
                     </View>
-                    {selected ? <Check size={20} color={colors.success} strokeWidth={2.25} /> : null}
+                    {selected ? <Check size={18} color={colors.success} strokeWidth={2.25} /> : null}
                   </Pressable>
                 );
-              })}
-            </View>
-          ) : null}
+              })
+            : null}
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.preferences")}>
           <OperationalRow
             title={t("settings.preference.language")}
-            subtitle={LANGUAGE_OPTIONS.find((option) => option.locale === locale)?.nativeName ?? locale}
-            icon={<Languages size={20} color={colors.caution} strokeWidth={2.25} />}
+            value={LANGUAGE_OPTIONS.find((option) => option.locale === locale)?.nativeName ?? locale}
+            icon={<Languages size={18} color={colors.caution} strokeWidth={2.25} />}
             iconTone="caution"
             onPress={() => router.push("/settings/language" as never)}
           />
         </SettingsSection>
 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t(signingOut ? "settings.account.signingOut" : "settings.account.signOut")}
+          disabled={signingOut}
+          onPress={leave}
+          style={({ pressed }) => [styles.signOutTextButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.signOutText}>{t(signingOut ? "settings.account.signingOut" : "settings.account.signOut")}</Text>
+        </Pressable>
+
         <SettingsSection title={t("settings.section.integrations")}>
           {isDemoMode ? (
             <OperationalRow
               title={t("settings.integration.pos.title")}
-              subtitle={posProvider
-                ? t("settings.integration.pos.connectedSubtitle", { provider: posProviderLabel(posProvider, t) })
-                : t("settings.integration.pos.notConnectedSubtitle")}
-              icon={<PlugZap size={20} color={posProvider ? colors.success : colors.muted} strokeWidth={2.25} />}
+              value={t(posProvider ? "settings.integration.pos.connected" : "settings.integration.pos.notConnected")}
+              icon={<PlugZap size={18} color={posProvider ? colors.success : colors.muted} strokeWidth={2.25} />}
               iconTone={posProvider ? "leaf" : "neutral"}
-              badgeLabel={t(posProvider ? "settings.integration.pos.connected" : "settings.integration.pos.notConnected")}
-              badgeTone={posProvider ? "success" : "neutral"}
               onPress={() => router.push("/settings/pos")}
             />
           ) : (
             <OperationalRow
               title={t("settings.integration.noPos.title")}
-              subtitle={t("settings.integration.noPos.body")}
-              icon={<PlugZap size={20} color={colors.muted} strokeWidth={2.25} />}
+              icon={<PlugZap size={18} color={colors.muted} strokeWidth={2.25} />}
               iconTone="neutral"
               onPress={() => router.push("/settings/sales-import" as never)}
             />
           )}
           <OperationalRow
             title={t("settings.integration.gmail.title")}
-            titleLines={2}
-            subtitle={gmailConnectionSubtitle(visibleEmailConnection, t)}
+            value={gmailConnectionBadge(visibleEmailConnection, t)}
             icon={
               <Mail
-                size={20}
+                size={18}
                 color={gmailConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
                 strokeWidth={2.25}
               />
             }
             iconTone={gmailConnected ? "leaf" : gmailNeedsAttention ? "caution" : "neutral"}
-            badgeLabel={gmailConnectionBadge(visibleEmailConnection, t)}
-            badgeTone={gmailConnected ? "success" : gmailNeedsAttention ? "caution" : "neutral"}
             onPress={() => router.push("/settings/gmail" as never)}
           />
         </SettingsSection>
@@ -349,59 +366,36 @@ export default function SettingsScreen() {
         <SettingsSection title={t("settings.section.operations")}>
           <OperationalRow
             title={t("settings.operations.salesImport.title")}
-            subtitle={t("settings.operations.salesImport.body")}
-            icon={<Upload size={20} color={colors.success} strokeWidth={2.25} />}
+            icon={<Upload size={18} color={colors.success} strokeWidth={2.25} />}
             iconTone="leaf"
             onPress={() => router.push("/settings/sales-import" as never)}
           />
           <OperationalRow
             title={t("settings.operations.recipes.title")}
-            subtitle={t("settings.operations.recipes.body")}
-            icon={<BookOpen size={20} color={colors.caution} strokeWidth={2.25} />}
+            icon={<BookOpen size={18} color={colors.caution} strokeWidth={2.25} />}
             iconTone="caution"
             onPress={() => router.push("/settings/recipes" as never)}
           />
           <OperationalRow
             title={t("settings.operations.suppliers.title")}
-            subtitle={supplierSummary(visibleSuppliers, t, formatList, formatNumber)}
-            icon={<Truck size={20} color={colors.text} strokeWidth={2.25} />}
-            iconTone="neutral"
             value={formatNumber(visibleSuppliers.length)}
+            icon={<Truck size={18} color={colors.text} strokeWidth={2.25} />}
+            iconTone="neutral"
             onPress={() => router.push("/settings/suppliers" as never)}
           />
-          {restaurant ? (
-            <View style={styles.quietRow}>
-              <IconBadge tone="leaf">
-                <ShieldCheck size={20} color={colors.success} strokeWidth={2.25} />
-              </IconBadge>
-              <View style={styles.quietCopy}>
-                <Text style={styles.rowTitle}>{t("settings.operations.service.title")}</Text>
-                <Text style={styles.rowBody}>
-                  {serviceStyleLabel(restaurant.service_style, t)} · {restaurant.timezone} · {restaurant.currency}
-                </Text>
-              </View>
-            </View>
-          ) : null}
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.data")}>
-          <View style={styles.quietRow}>
-            <IconBadge tone={usingLocalDemo ? "neutral" : "leaf"}>
-              <Database size={20} color={usingLocalDemo ? colors.muted : colors.success} strokeWidth={2.25} />
-            </IconBadge>
-            <View style={styles.quietCopy}>
-              <Text style={styles.rowTitle}>{t(usingLocalDemo ? "settings.data.local.title" : "settings.data.hosted.title")}</Text>
-              <Text style={styles.rowBody}>
-                {t(usingLocalDemo ? "settings.data.local.body" : "settings.data.hosted.body")}
-              </Text>
-            </View>
-          </View>
+          <OperationalRow
+            title={t(usingLocalDemo ? "settings.data.local.title" : "settings.data.hosted.title")}
+            icon={<Database size={18} color={usingLocalDemo ? colors.muted : colors.success} strokeWidth={2.25} />}
+            iconTone={usingLocalDemo ? "neutral" : "leaf"}
+          />
 
           {canExportRestaurant ? (
             <OperationalRow
               title={t("settings.data.export.title")}
-              subtitle={t("settings.data.export.body")}
-              icon={<Download size={20} color={colors.accentDark} strokeWidth={2.25} />}
+              icon={<Download size={18} color={colors.accentDark} strokeWidth={2.25} />}
               iconTone="brand"
               onPress={() => router.push("/settings/export" as never)}
             />
@@ -476,33 +470,7 @@ export default function SettingsScreen() {
               ) : null}
             </View>
           ) : null}
-        </SettingsSection>
 
-        <SettingsSection title={t("settings.section.account")}>
-          <OperationalRow
-            title={t("settings.account.privacy.title")}
-            subtitle={t("settings.account.privacy.body")}
-            icon={<ShieldCheck size={20} color={colors.success} strokeWidth={2.25} />}
-            iconTone="leaf"
-            onPress={() => router.push("/settings/privacy" as never)}
-          />
-          <OperationalRow
-            title={t("settings.account.support.title")}
-            subtitle={t("settings.account.support.body")}
-            icon={<LifeBuoy size={20} color={colors.accentDark} strokeWidth={2.25} />}
-            iconTone="brand"
-            onPress={() => router.push("/settings/support" as never)}
-          />
-          <View style={styles.sectionAction}>
-            <Button
-              title={t(signingOut ? "settings.account.signingOut" : "settings.account.signOut")}
-              variant="ghost"
-              icon={<LogOut size={18} color={colors.text} strokeWidth={2.25} />}
-              onPress={leave}
-              disabled={signingOut}
-              fullWidth
-            />
-          </View>
           <View style={styles.dangerZone}>
             <Text style={styles.rowTitle}>{t("settings.account.deleteTitle")}</Text>
             <Text style={styles.rowBody}>{t("settings.account.deleteBody")}</Text>
@@ -581,45 +549,11 @@ function SettingsSection({ title, children }: { title: string; children: ReactNo
   );
 }
 
-function IdentityFact({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.identityFact}>
-      <Text style={styles.identityLabel}>{label}</Text>
-      <Text style={styles.identityValue} numberOfLines={2}>{value}</Text>
-    </View>
-  );
-}
-
-function gmailConnectionSubtitle(connection: RestaurantEmailConnection | null, t: Translator) {
-  if (connection?.status === "connected") {
-    return connection.sender_email
-      ? t("settings.integration.gmail.connectedWithSender", { sender: connection.sender_email })
-      : t("settings.integration.gmail.connected");
-  }
-  if (connection?.status === "needs_reauth") return t("settings.integration.gmail.reconnect");
-  if (connection?.status === "restricted") return t("settings.integration.gmail.restricted");
-  return t("settings.integration.gmail.notConnected");
-}
-
 function gmailConnectionBadge(connection: RestaurantEmailConnection | null, t: Translator) {
   if (connection?.status === "connected") return t("settings.gmail.status.connected");
   if (connection?.status === "needs_reauth") return t("settings.gmail.status.needsReauth");
   if (connection?.status === "restricted") return t("settings.gmail.status.restricted");
   return t("settings.gmail.status.notConnected");
-}
-
-function supplierSummary(
-  suppliers: string[],
-  t: Translator,
-  formatList: (values: readonly string[], options?: Intl.ListFormatOptions) => string,
-  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string
-) {
-  if (suppliers.length === 0) return t("settings.operations.suppliers.empty");
-  if (suppliers.length <= 2) return formatList(suppliers);
-  return t("settings.operations.suppliers.more", {
-    suppliers: formatList(suppliers.slice(0, 2)),
-    count: formatNumber(suppliers.length - 2)
-  });
 }
 
 function roleLabel(role: RestaurantRole, t: Translator) {
@@ -645,12 +579,6 @@ function serviceStyleLabel(style: RestaurantServiceStyle, t: Translator) {
   return t(keyByStyle[style]);
 }
 
-function posProviderLabel(provider: string, t: Translator) {
-  if (provider === "manual_csv") return t("settings.integration.pos.manualCsv");
-  if (provider === "demo") return t("common.demo");
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
-}
-
 function readinessCheckLabel(checkId: string, t: Translator) {
   const keyById: Record<string, MessageKey> = {
     profile: "settings.diagnostics.check.profile",
@@ -665,33 +593,27 @@ function readinessCheckLabel(checkId: string, t: Translator) {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: spacing.lg
+    gap: 12
   },
   accountHero: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: 14
+    gap: 10,
+    paddingVertical: 4
   },
   avatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: colors.border
+    backgroundColor: colors.accentSoft
   },
   avatarText: {
     color: colors.accentDark,
     fontFamily: fontFamilies.bold,
-    fontSize: 19,
-    lineHeight: 24
+    fontSize: 16,
+    lineHeight: 20
   },
   accountHeroCopy: {
     flex: 1,
@@ -700,25 +622,25 @@ const styles = StyleSheet.create({
   accountHeroName: {
     color: colors.text,
     fontFamily: fontFamilies.bold,
-    fontSize: 18,
-    lineHeight: 23
+    fontSize: 16,
+    lineHeight: 20
   },
   accountHeroMeta: {
     color: colors.text,
     fontFamily: fontFamilies.semibold,
     fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2
+    lineHeight: 15,
+    marginTop: 1
   },
   accountHeroEmail: {
     color: colors.muted,
     fontFamily: fontFamilies.body,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 11,
+    lineHeight: 14,
     marginTop: 1
   },
   section: {
-    gap: spacing.sm
+    gap: 4
   },
   sectionTitle: {
     color: colors.text,
@@ -726,81 +648,21 @@ const styles = StyleSheet.create({
   },
   sectionSurface: {
     overflow: "hidden",
-    borderRadius: radii.lg,
-    borderWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 14
-  },
-  profileRow: {
-    minHeight: 80,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
-  },
-  profileCopy: {
-    flex: 1,
-    minWidth: 0
-  },
-  profileName: {
-    color: colors.text,
-    ...typography.cardTitle
-  },
-  profileMeta: {
-    color: colors.muted,
-    ...typography.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 2
-  },
-  profileMetaMuted: {
-    color: colors.faint,
-    ...typography.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 2
-  },
-  identityGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border
-  },
-  identityFact: {
-    flexGrow: 1,
-    flexBasis: "46%",
-    minWidth: 0,
-    gap: 2,
-    paddingVertical: 4
-  },
-  identityLabel: {
-    color: colors.faint,
-    fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
-  },
-  identityValue: {
-    color: colors.text,
-    fontFamily: typography.families.medium,
-    fontSize: 13,
-    lineHeight: 17
-  },
-  workspaceList: {
-    paddingBottom: spacing.sm
+    paddingHorizontal: 0
   },
   workspaceRow: {
-    minHeight: 64,
-    borderBottomWidth: 1,
+    minHeight: 46,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 2
   },
   workspaceRowSelected: {
     backgroundColor: colors.accentSoft
@@ -814,26 +676,15 @@ const styles = StyleSheet.create({
   },
   workspaceName: {
     color: colors.text,
-    ...typography.cardTitle
+    fontFamily: typography.families.semibold,
+    fontSize: 13,
+    lineHeight: 16
   },
   workspaceMeta: {
     color: colors.muted,
-    ...typography.body,
-    fontSize: 13,
-    lineHeight: 18
-  },
-  quietRow: {
-    minHeight: 68,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.md
-  },
-  quietCopy: {
-    flex: 1,
-    minWidth: 0
+    fontFamily: typography.families.body,
+    fontSize: 11,
+    lineHeight: 14
   },
   rowTitle: {
     color: colors.text,
@@ -841,31 +692,26 @@ const styles = StyleSheet.create({
   },
   rowBody: {
     color: colors.muted,
-    ...typography.body,
-    fontSize: 13,
-    lineHeight: 18,
+    fontFamily: typography.families.body,
+    fontSize: 12,
+    lineHeight: 16,
     marginTop: 2
   },
-  rowValue: {
-    color: colors.text,
-    fontFamily: fontFamilies.semibold,
-    fontSize: 17,
-    lineHeight: 21
-  },
   sectionAction: {
-    paddingVertical: spacing.md
+    paddingVertical: 10
   },
   dangerZone: {
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    paddingVertical: spacing.md
+    paddingVertical: 10,
+    gap: 4
   },
   deleteOpenAction: {
-    marginTop: spacing.md
+    marginTop: 8
   },
   deleteConfirm: {
-    marginTop: spacing.md,
-    gap: spacing.sm
+    marginTop: 8,
+    gap: 8
   },
   deleteConfirmLabel: {
     color: colors.text,
@@ -874,24 +720,24 @@ const styles = StyleSheet.create({
   deleteConfirmInput: {
     minHeight: 44,
     borderRadius: radii.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderStrong,
-    backgroundColor: colors.surfaceWarm,
+    backgroundColor: colors.surface,
     color: colors.text,
     ...typography.body,
-    fontSize: 16,
+    fontSize: 15,
     paddingHorizontal: 12,
     paddingVertical: 10
   },
   diagnostics: {
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
   },
   diagnosticsToggle: {
-    minHeight: 56,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md
+    gap: 10
   },
   diagnosticsCopy: {
     flex: 1
@@ -902,20 +748,20 @@ const styles = StyleSheet.create({
   },
   diagnosticsMeta: {
     color: colors.muted,
-    ...typography.body,
-    fontSize: 12,
-    lineHeight: 16
+    fontFamily: typography.families.body,
+    fontSize: 11,
+    lineHeight: 14
   },
   diagnosticsList: {
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    paddingVertical: spacing.sm
+    paddingVertical: 8
   },
   diagnosticRow: {
-    minHeight: 36,
+    minHeight: 32,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm
+    gap: 8
   },
   diagnosticDot: {
     width: 7,
@@ -925,9 +771,9 @@ const styles = StyleSheet.create({
   diagnosticLabel: {
     flex: 1,
     color: colors.text,
-    ...typography.body,
-    fontSize: 13,
-    lineHeight: 18
+    fontFamily: typography.families.body,
+    fontSize: 12,
+    lineHeight: 16
   },
   diagnosticStatus: {
     color: colors.muted,
@@ -935,10 +781,29 @@ const styles = StyleSheet.create({
   },
   diagnosticFootnote: {
     color: colors.muted,
-    ...typography.body,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: spacing.sm
+    fontFamily: typography.families.body,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 6
+  },
+  signOutTextButton: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 0,
+    marginBottom: 4
+  },
+  signOutText: {
+    color: colors.accent,
+    fontFamily: typography.families.semibold,
+    fontSize: 13,
+    lineHeight: 16
+  },
+  headerBack: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center"
   },
   pressed: {
     opacity: 0.68

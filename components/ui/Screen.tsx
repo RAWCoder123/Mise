@@ -25,13 +25,15 @@ interface ScreenProps {
   title?: string;
   subtitle?: string;
   action?: ReactNode;
+  /** Optional left app-bar control for centered title chrome (e.g. back). */
+  leadingAction?: ReactNode;
   children?: ReactNode;
   loading?: boolean;
   scroll?: boolean;
   keyboardAware?: boolean;
   /** Home uses brand lockup; other tabs use the screen title in the top bar. */
   chrome?: ScreenChrome;
-  /** Title bar alignment when `chrome="title"`. Defaults to centered for main tabs. */
+  /** Title bar alignment when `chrome="title"`. Defaults to left for main tabs. */
   titleAlign?: "left" | "center";
 }
 
@@ -45,12 +47,13 @@ export function Screen({
   title,
   subtitle,
   action,
+  leadingAction,
   children,
   loading,
   scroll = true,
   keyboardAware = false,
   chrome,
-  titleAlign
+  titleAlign = "left"
 }: ScreenProps) {
   const { restaurant } = useMiseSession();
   const { t } = useLocale();
@@ -58,12 +61,12 @@ export function Screen({
   const resolvedChrome = resolveChrome(pathname, chrome);
   const isBrand = resolvedChrome === "brand";
   const isInsightsRoute = pathname === "/insights";
-  const align = titleAlign ?? (pathname === "/more" || pathname.startsWith("/settings") ? "left" : "center");
+  const align = titleAlign;
   const showBodyTitle = Boolean(title) && isBrand;
-  const showBodySubtitle = Boolean(subtitle);
+  const showBodySubtitle = Boolean(subtitle) && isBrand;
 
   const content = (
-    <MotionView style={styles.content} distance={4}>
+    <MotionView style={styles.content} distance={3}>
       {showBodyTitle || showBodySubtitle || (action && isBrand) ? (
         <View style={styles.header}>
           <View style={styles.headerText}>
@@ -102,7 +105,7 @@ export function Screen({
                 onPress={() => router.push("/insights")}
                 style={({ pressed }) => [styles.headerAction, pressed && styles.headerActionPressed]}
               >
-                <Bell size={20} color={colors.text} strokeWidth={1.9} />
+                <Bell size={18} color={colors.text} strokeWidth={1.9} />
               </Pressable>
             ) : (
               <View style={styles.headerAction} />
@@ -112,7 +115,7 @@ export function Screen({
           <View style={styles.topBar}>
             {align === "center" ? (
               <View style={[styles.barSide, styles.barSideStart]}>
-                <View style={styles.headerAction} />
+                {leadingAction ?? <View style={styles.headerAction} />}
               </View>
             ) : null}
             <View style={[styles.titleSlot, align === "left" && styles.titleSlotLeft]}>
@@ -198,8 +201,8 @@ const styles = StyleSheet.create({
   appBarTitle: {
     color: colors.text,
     fontFamily: typography.families.bold,
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 20,
     letterSpacing: -0.2
   },
   appBarTitleCentered: {
@@ -219,7 +222,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background
   },
   scrollContent: {
-    paddingBottom: 88
+    paddingBottom: 80
   },
   keyboardAwareScrollContent: {
     paddingBottom: 160
@@ -229,14 +232,14 @@ const styles = StyleSheet.create({
     maxWidth: 440,
     alignSelf: "center",
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md
+    paddingTop: 10
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: spacing.md,
-    marginBottom: 12
+    marginBottom: 8
   },
   headerText: {
     flex: 1,
@@ -253,7 +256,7 @@ const styles = StyleSheet.create({
     maxWidth: 480
   },
   loading: {
-    minHeight: 200,
+    minHeight: 160,
     alignItems: "center",
     justifyContent: "center"
   }

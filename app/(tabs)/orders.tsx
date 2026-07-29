@@ -228,7 +228,9 @@ export default function OrdersScreen() {
       return [
         {
           value: "drafts",
-          label: draftsLabel,
+          label: draftOrders.length > 0
+            ? `${draftsLabel} (${formatNumber(draftOrders.length)})`
+            : draftsLabel,
           accessibilityLabel: t("orders.lane.optionAccessibility", {
             lane: draftsLabel,
             count: formatNumber(draftOrders.length)
@@ -541,6 +543,17 @@ export default function OrdersScreen() {
       title={t("orders.title")}
       titleAlign="left"
       loading={loading}
+      action={
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("orders.title")}
+          hitSlop={6}
+          onPress={() => setLane("drafts")}
+          style={({ pressed }) => [styles.plusButton, pressed && styles.plusButtonPressed]}
+        >
+          <Text style={styles.plusLabel}>+</Text>
+        </Pressable>
+      }
     >
       <View style={styles.stack}>
         <SegmentedControl
@@ -586,45 +599,6 @@ export default function OrdersScreen() {
         <MotionView key={lane} distance={4} duration={220} style={styles.laneContent}>
           {lane === "drafts" ? (
             <>
-              <SectionSurface padding="none">
-                <View style={styles.emailMain}>
-                  <View
-                    style={[
-                      styles.mailIcon,
-                      gmailIsConnected && styles.mailIconConnected,
-                      gmailNeedsAttention && styles.mailIconAttention
-                    ]}
-                  >
-                    <Mail
-                      size={22}
-                      color={gmailIsConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
-                      strokeWidth={2}
-                    />
-                  </View>
-                  <View style={styles.emailCopy}>
-                    <Text style={styles.emailTitle}>{gmailTitle}</Text>
-                    <Text style={styles.emailBody}>{gmailBody}</Text>
-                  </View>
-                  {canConnectGmail ? (
-                    <Button
-                      title={gmailActionTitle}
-                      variant="secondary"
-                      accessibilityLabel={t("orders.gmail.settingsAccessibility")}
-                      onPress={() => router.push("/settings/gmail" as never)}
-                      style={styles.emailButton}
-                    />
-                  ) : null}
-                </View>
-                <View style={styles.emailSecurity}>
-                  <LockKeyhole size={12} color={colors.muted} strokeWidth={1.8} />
-                  <Text style={styles.emailSecurityText}>
-                    {usingLocalDemo
-                      ? t("orders.gmail.security.demo")
-                      : t("orders.gmail.security.live")}
-                  </Text>
-                </View>
-              </SectionSurface>
-
               {draftOrders.length === 0 ? (
                 <EmptyState
                   compact
@@ -662,19 +636,65 @@ export default function OrdersScreen() {
               )}
 
               {visibleRecommendations.length > 0 ? (
-                <StatusNotice
-                  title={t("orders.review.title")}
-                  message={t(
-                    visibleRecommendations.length === 1
-                      ? "orders.review.cta.one"
-                      : "orders.review.cta.other",
-                    { count: formatNumber(visibleRecommendations.length) }
-                  )}
-                  tone="caution"
-                  actionLabel={t("orders.review.ctaAction")}
-                  onAction={() => setLane("review")}
-                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t("orders.review.ctaAction")}
+                  onPress={() => setLane("review")}
+                  style={({ pressed }) => [styles.pendingCard, pressed && styles.plusButtonPressed]}
+                >
+                  <View style={styles.pendingCopy}>
+                    <Text style={styles.pendingTitle}>{t("orders.review.title")}</Text>
+                    <Text style={styles.pendingBody}>
+                      {t(
+                        visibleRecommendations.length === 1
+                          ? "orders.review.cta.one"
+                          : "orders.review.cta.other",
+                        { count: formatNumber(visibleRecommendations.length) }
+                      )}
+                    </Text>
+                  </View>
+                  <Text style={styles.pendingChip}>{t("orders.lane.review")}</Text>
+                </Pressable>
               ) : null}
+
+              <SectionSurface padding="none">
+                <View style={styles.emailMain}>
+                  <View
+                    style={[
+                      styles.mailIcon,
+                      gmailIsConnected && styles.mailIconConnected,
+                      gmailNeedsAttention && styles.mailIconAttention
+                    ]}
+                  >
+                    <Mail
+                      size={18}
+                      color={gmailIsConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
+                      strokeWidth={2}
+                    />
+                  </View>
+                  <View style={styles.emailCopy}>
+                    <Text style={styles.emailTitle}>{gmailTitle}</Text>
+                    <Text style={styles.emailBody} numberOfLines={2}>{gmailBody}</Text>
+                  </View>
+                  {canConnectGmail ? (
+                    <Button
+                      title={gmailActionTitle}
+                      variant="secondary"
+                      accessibilityLabel={t("orders.gmail.settingsAccessibility")}
+                      onPress={() => router.push("/settings/gmail" as never)}
+                      style={styles.emailButton}
+                    />
+                  ) : null}
+                </View>
+                <View style={styles.emailSecurity}>
+                  <LockKeyhole size={12} color={colors.muted} strokeWidth={1.8} />
+                  <Text style={styles.emailSecurityText}>
+                    {usingLocalDemo
+                      ? t("orders.gmail.security.demo")
+                      : t("orders.gmail.security.live")}
+                  </Text>
+                </View>
+              </SectionSurface>
             </>
           ) : null}
 
@@ -853,7 +873,72 @@ const styles = StyleSheet.create({
     paddingBottom: 72
   },
   tabs: {
-    marginTop: -8
+    marginBottom: 2
+  },
+  plusButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  plusButtonPressed: {
+    opacity: 0.72
+  },
+  plusLabel: {
+    color: colors.surface,
+    fontFamily: typography.families.bold,
+    fontSize: 20,
+    lineHeight: 22,
+    marginTop: -1
+  },
+  pendingCard: {
+    minHeight: 64,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10
+  },
+  pendingCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2
+  },
+  pendingTitle: {
+    color: colors.text,
+    fontFamily: typography.families.semibold,
+    fontSize: 13,
+    lineHeight: 16
+  },
+  pendingBody: {
+    color: colors.muted,
+    fontFamily: typography.families.body,
+    fontSize: 11,
+    lineHeight: 14
+  },
+  pendingChip: {
+    color: colors.caution,
+    fontFamily: typography.families.semibold,
+    fontSize: 10,
+    lineHeight: 12,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radii.xl,
+    backgroundColor: colors.cautionSoft,
+    overflow: "hidden"
+  },
+  simNote: {
+    color: colors.muted,
+    fontFamily: typography.families.body,
+    fontSize: 10,
+    lineHeight: 13,
+    marginTop: 2
   },
   laneContent: {
     gap: 10

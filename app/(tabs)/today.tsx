@@ -1,21 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import {
-  CheckCircle2,
-  ClipboardList,
-  LockKeyhole,
-  Package,
-  Settings,
-  ShoppingCart,
-  Sparkles
-} from "lucide-react-native";
+import { CalendarDays, CheckCircle2, LockKeyhole } from "lucide-react-native";
 
 import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
-import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
@@ -50,13 +41,22 @@ import type { RestaurantRole } from "../../types/mise";
 type TaskFilter = "now" | "up_next" | "later" | "done";
 type Translator = (key: MessageKey, values?: MessageValues) => string;
 
+const GROUP_CAPS: Record<TaskFilter, number> = {
+  now: 1,
+  up_next: 2,
+  later: 4,
+  done: 2
+};
+
+const GROUP_ORDER: readonly TaskFilter[] = ["now", "up_next", "later", "done"];
+
 export default function TodayScreen() {
   const { canUseDemoMode, continueWithDemo, memberships, restaurant, role } = useMiseSession();
-  const { formatDate, formatNumber, t, locale } = useLocale();
+  const { formatNumber, t, locale } = useLocale();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [brief, setBrief] = useState<DailyOperationalBrief | null>(null);
   const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
-  const [filter, setFilter] = useState<TaskFilter>("now");
+  const [focus, setFocus] = useState<TaskFilter>("now");
   const [snoozedTaskIds, setSnoozedTaskIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +75,7 @@ export default function TodayScreen() {
     setBrief(null);
     setFindingQueue([]);
     setLoadedRestaurantId(null);
-    setFilter("now");
+    setFocus("now");
     setSnoozedTaskIds(new Set());
     setError(null);
     setBriefError(false);
@@ -197,7 +197,19 @@ export default function TodayScreen() {
       visibleSummary.restaurantTimeZone
     );
   }, [snoozedTaskIds, visibleSummary]);
-  const visibleTasks = grouped[filter];
+
+  const timelineGroups = useMemo(() => {
+    const focusedFirst = [focus, ...GROUP_ORDER.filter((value) => value !== focus)];
+    return focusedFirst
+      .map((key) => ({
+        key,
+        label: t(groupLabelKey(key)),
+        tasks: grouped[key].slice(0, GROUP_CAPS[key]),
+        total: grouped[key].length
+      }))
+      .filter((group) => group.total > 0 || group.key === focus);
+  }, [focus, grouped, t]);
+
   const filterOptions = useMemo<readonly SegmentOption<TaskFilter>[]>(
     () =>
       (
@@ -219,14 +231,24 @@ export default function TodayScreen() {
       }),
     [formatNumber, grouped, t]
   );
-  const dateLabel = useMemo(
-    () => formatDate(new Date(), { weekday: "long", month: "short", day: "numeric" }),
-    [formatDate]
-  );
+
+  const flatTimeline = useMemo(() => {
+    const rows: { task: OperationalTodayTask; group: TaskFilter; showPrimary: boolean }[] = [];
+    timelineGroups.forEach((group) => {
+      group.tasks.forEach((task, index) => {
+        rows.push({
+          task,
+          group: group.key,
+          showPrimary: group.key === "now" && index === 0 && task.status !== "completed"
+        });
+      });
+    });
+    return rows;
+  }, [timelineGroups]);
 
   if (!restaurant) {
     return (
-      <Screen title={t("nav.today")} subtitle={t("today.subtitle")} titleAlign="left">
+      <Screen title={t("nav.today")} titleAlign="left">
         <EmptyState
           title={t("workspace.none.title")}
           body={t(canUseDemoMode ? "workspace.none.demoBody" : "workspace.none.body")}
@@ -243,7 +265,22 @@ export default function TodayScreen() {
   }
 
   return (
-    <Screen title={t("nav.today")} subtitle={`${restaurant.name} · ${dateLabel}`} titleAlign="left" loading={loading}>
+    <Screen
+      title={t("nav.today")}
+      titleAlign="left"
+      loading={loading}
+      action={
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("nav.today")}
+          hitSlop={8}
+          onPress={() => setFocus("now")}
+          style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
+        >
+          <CalendarDays size={18} color={colors.text} strokeWidth={1.9} />
+        </Pressable>
+      }
+    >
       <View style={styles.stack}>
         {error ? (
           <RetryNotice
@@ -265,7 +302,58 @@ export default function TodayScreen() {
           />
         ) : null}
 
-        <MotionView distance={3} duration={220}>
+        <SegmentedControl
+          accessibilityLabel={t("today.filter.accessibility")}
+          options={filterOptions}
+          value={focus}
+          onValueChange={setFocus}
+          variant="pills"
+          scrollable
+        />
+
+        {visibleSummary ? (
+          flatTimeline.length === 0 ? (
+            <View style={styles.emptyTimeline}>
+              <CheckCircle2 size={22} color={colors.success} strokeWidth={2.25} />
+              <Text style={styles.emptyTitle}>{t(emptyTitleKey(focus))}</Text>
+              <Text style={styles.emptyBody}>{t("today.emptyBody")}</Text>
+            </View>
+          ) : (
+            <View style={styles.timelineList}>
+              {timelineGroups.map((group) => {
+                if (group.tasks.length === 0) return null;
+                const groupStartIndex = flatTimeline.findIndex((row) => row.group === group.key);
+                return (
+                  <View key={group.key} style={styles.timelineGroup}>
+                    <Text style={styles.groupLabel}>
+                      {group.label}
+                      {group.total > 0 ? ` · ${formatNumber(group.total)}` : ""}
+                    </Text>
+                    {group.tasks.map((task, index) => {
+                      const globalIndex = groupStartIndex + index;
+                      return (
+                        <TimelineTask
+                          key={task.id}
+                          task={task}
+                          locale={locale}
+                          role={role ?? "staff"}
+                          restaurantTimeZone={visibleSummary.restaurantTimeZone}
+                          isFirst={globalIndex === 0}
+                          isLast={globalIndex === flatTimeline.length - 1}
+                          showPrimaryAction={group.key === "now" && index === 0}
+                          onSnooze={() => setSnoozedTaskIds((current) => new Set([...current, task.id]))}
+                          t={t}
+                        />
+                      );
+                    })}
+                  </View>
+                );
+              })}
+            </View>
+          )
+        ) : null}
+
+        <View style={styles.briefContinuation}>
           <DailyBriefBoard
             brief={visibleBrief}
             queue={visibleFindingQueue}
@@ -275,56 +363,7 @@ export default function TodayScreen() {
             messageIsError={briefMessageIsError}
             onSubmitFeedback={submitFindingFeedback}
           />
-        </MotionView>
-
-        <SegmentedControl
-          accessibilityLabel={t("today.filter.accessibility")}
-          options={filterOptions}
-          value={filter}
-          onValueChange={setFilter}
-          variant="pills"
-          scrollable
-        />
-
-        {visibleSummary ? (
-          <MotionView key={filter} distance={4} duration={220}>
-            <View style={styles.timelineSurface}>
-              <View style={styles.timelineHeader}>
-                <View>
-                  <Text style={styles.timelineTitle}>{t(filterTitleKey(filter))}</Text>
-                  <Text style={styles.timelineSubtitle}>
-                    {t(filter === "done" ? "today.section.done" : "today.section.active")}
-                  </Text>
-                </View>
-                <Text style={styles.timelineCount}>{formatNumber(visibleTasks.length)}</Text>
-              </View>
-
-              {visibleTasks.length === 0 ? (
-                <View style={styles.emptyTimeline}>
-                  <CheckCircle2 size={26} color={colors.success} strokeWidth={2.25} />
-                  <Text style={styles.emptyTitle}>{t(emptyTitleKey(filter))}</Text>
-                  <Text style={styles.emptyBody}>{t("today.emptyBody")}</Text>
-                </View>
-              ) : (
-                <View style={styles.timelineList}>
-                  {visibleTasks.map((task, index) => (
-                    <TimelineTask
-                      key={task.id}
-                      task={task}
-                      locale={locale}
-                      role={role ?? "staff"}
-                      restaurantTimeZone={visibleSummary.restaurantTimeZone}
-                      isFirst={index === 0}
-                      isLast={index === visibleTasks.length - 1}
-                      onSnooze={() => setSnoozedTaskIds((current) => new Set([...current, task.id]))}
-                      t={t}
-                    />
-                  ))}
-                </View>
-              )}
-            </View>
-          </MotionView>
-        ) : null}
+        </View>
       </View>
     </Screen>
   );
@@ -337,6 +376,7 @@ function TimelineTask({
   restaurantTimeZone,
   isFirst,
   isLast,
+  showPrimaryAction,
   onSnooze,
   t
 }: {
@@ -346,6 +386,7 @@ function TimelineTask({
   restaurantTimeZone: string;
   isFirst: boolean;
   isLast: boolean;
+  showPrimaryAction: boolean;
   onSnooze: () => void;
   t: Translator;
 }) {
@@ -358,7 +399,7 @@ function TimelineTask({
   const actionLabel = t(intentKey(task.action.intent));
 
   return (
-    <View style={styles.timelineRow}>
+    <View style={[styles.timelineRow, showPrimaryAction && styles.timelineRowActive]}>
       <View style={styles.timeColumn}>
         <Text numberOfLines={1} style={[styles.timeText, high && styles.timeTextHigh]}>{timeLabel}</Text>
         <View style={styles.lineWrap}>
@@ -368,70 +409,46 @@ function TimelineTask({
         </View>
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t("today.task.accessibility", {
-          title: presentation.title,
-          detail: presentation.detail,
-          action: actionLabel
-        })}
-        onPress={() => router.push(`/tasks/${task.id}`)}
-        style={({ pressed }) => [styles.taskCard, pressed && styles.taskCardPressed]}
-      >
-        <View style={styles.taskCardTop}>
-          <View style={[styles.taskIcon, high && styles.taskIconHigh, task.status === "completed" && styles.taskIconDone]}>
-            {taskIcon(task, high ? colors.danger : task.status === "completed" ? colors.success : colors.text)}
-          </View>
+      <View style={[styles.taskCard, showPrimaryAction && styles.taskCardActive]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("today.task.accessibility", {
+            title: presentation.title,
+            detail: presentation.detail,
+            action: actionLabel
+          })}
+          onPress={() => router.push(`/tasks/${task.id}`)}
+          style={({ pressed }) => [styles.taskMain, pressed && styles.pressed]}
+        >
           <View style={styles.taskCopy}>
             <View style={styles.taskTitleRow}>
-              <Text numberOfLines={2} style={styles.taskTitle}>{presentation.title}</Text>
+              <Text numberOfLines={1} style={styles.taskTitle}>{presentation.title}</Text>
               <View style={[styles.priorityBadge, high && styles.priorityBadgeHigh, task.status === "completed" && styles.priorityBadgeDone]}>
                 <Text style={[styles.priorityText, high && styles.priorityTextHigh, task.status === "completed" && styles.priorityTextDone]}>
                   {t(task.status === "completed" ? "task.badge.done" : high ? "task.badge.high" : "task.badge.normal")}
                 </Text>
               </View>
             </View>
-            <Text numberOfLines={2} style={styles.taskDetail}>{presentation.detail}</Text>
+            <Text numberOfLines={1} style={styles.taskDetail}>{presentation.detail}</Text>
           </View>
-        </View>
+        </Pressable>
 
-        <View style={styles.taskActions}>
-          {task.status !== "completed" ? (
+        {showPrimaryAction && canAct && task.status !== "completed" ? (
+          <View style={styles.taskActions}>
             <Button title={t("today.action.snooze")} variant="secondary" onPress={onSnooze} style={styles.snoozeButton} />
-          ) : (
-            <View style={styles.actionSpacer} />
-          )}
-          {canAct && task.status !== "completed" ? (
             <Button title={t("today.action.start")} onPress={() => router.push(task.action.route)} style={styles.startButton} />
-          ) : canAct ? (
-            <Button title={t("today.action.open")} variant="secondary" onPress={() => router.push(task.action.route)} style={styles.startButton} />
-          ) : (
-            <View style={styles.lockedAction}>
-              <LockKeyhole size={13} color={colors.muted} strokeWidth={2.2} />
-              <Text style={styles.lockedText}>
-                {t(task.requiredRole === "owner_admin" ? "today.locked.ownerAdmin" : "today.locked.manager")}
-              </Text>
-            </View>
-          )}
-        </View>
-      </Pressable>
+          </View>
+        ) : showPrimaryAction && !canAct && task.status !== "completed" ? (
+          <View style={styles.lockedAction}>
+            <LockKeyhole size={12} color={colors.muted} strokeWidth={2.2} />
+            <Text style={styles.lockedText}>
+              {t(task.requiredRole === "owner_admin" ? "today.locked.ownerAdmin" : "today.locked.manager")}
+            </Text>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
-}
-
-function bucketTasks(tasks: OperationalTodayTask[], restaurantTimeZone: string): Record<TaskFilter, OperationalTodayTask[]> {
-  const buckets = emptyBuckets();
-  tasks.forEach((task) => {
-    if (task.status === "completed") {
-      buckets.done.push(task);
-      return;
-    }
-    const timing = classifyOperationalTodayTaskTiming(task, { restaurantTimeZone });
-    if (timing === "overdue" || timing === "due_soon") buckets.now.push(task);
-    else if (timing === "today") buckets.up_next.push(task);
-    else buckets.later.push(task);
-  });
-  return buckets;
 }
 
 function describeFindingFlush(
@@ -450,11 +467,26 @@ function describeFindingFlush(
   return t("dailyBrief.result.queued");
 }
 
+function bucketTasks(tasks: OperationalTodayTask[], restaurantTimeZone: string): Record<TaskFilter, OperationalTodayTask[]> {
+  const buckets = emptyBuckets();
+  tasks.forEach((task) => {
+    if (task.status === "completed") {
+      buckets.done.push(task);
+      return;
+    }
+    const timing = classifyOperationalTodayTaskTiming(task, { restaurantTimeZone });
+    if (timing === "overdue" || timing === "due_soon") buckets.now.push(task);
+    else if (timing === "today") buckets.up_next.push(task);
+    else buckets.later.push(task);
+  });
+  return buckets;
+}
+
 function emptyBuckets(): Record<TaskFilter, OperationalTodayTask[]> {
   return { now: [], up_next: [], later: [], done: [] };
 }
 
-function filterTitleKey(filter: TaskFilter): MessageKey {
+function groupLabelKey(filter: TaskFilter): MessageKey {
   if (filter === "now") return "today.filter.now";
   if (filter === "up_next") return "today.filter.upNext";
   if (filter === "later") return "today.filter.later";
@@ -495,102 +527,79 @@ function intentKey(intent: OperationalTodayTaskActionIntent): MessageKey {
   return "today.intent.manageConnection";
 }
 
-function taskIcon(task: OperationalTodayTask, color: string): ReactNode {
-  const props = { size: 18, color, strokeWidth: 2.2 } as const;
-  if (task.source.kind === "inventory") return <Package {...props} />;
-  if (task.source.kind === "recommendation" || task.source.kind === "order") return <ShoppingCart {...props} />;
-  if (task.source.kind === "setup") return <Settings {...props} />;
-  if (task.source.kind === "integration") return <ClipboardList {...props} />;
-  return <Sparkles {...props} />;
-}
-
 const styles = StyleSheet.create({
   stack: {
-    gap: 10
+    gap: 8
   },
   emptyButton: {
     marginTop: 12
   },
-  timelineSurface: {
-    overflow: "hidden",
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface
-  },
-  timelineHeader: {
-    minHeight: 48,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    flexDirection: "row",
+  headerAction: {
+    width: 44,
+    height: 44,
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10
-  },
-  timelineTitle: {
-    color: colors.text,
-    fontFamily: typography.families.bold,
-    fontSize: 15,
-    lineHeight: 19
-  },
-  timelineSubtitle: {
-    color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 11.5,
-    lineHeight: 15,
-    marginTop: 1
-  },
-  timelineCount: {
-    color: colors.accentDark,
-    fontFamily: typography.families.bold,
-    fontSize: 16,
-    lineHeight: 20
+    justifyContent: "center"
   },
   emptyTimeline: {
-    minHeight: 140,
+    minHeight: 160,
     alignItems: "center",
     justifyContent: "center",
-    padding: 18
+    padding: 16,
+    gap: 4
   },
   emptyTitle: {
     color: colors.text,
     ...typography.cardTitle,
-    marginTop: 8
+    marginTop: 6
   },
   emptyBody: {
     color: colors.muted,
     ...typography.body,
-    textAlign: "center",
-    marginTop: 3
+    textAlign: "center"
   },
   timelineList: {
-    paddingVertical: 2
+    gap: 2
+  },
+  timelineGroup: {
+    gap: 0
+  },
+  groupLabel: {
+    color: colors.muted,
+    fontFamily: typography.families.semibold,
+    fontSize: 10,
+    lineHeight: 12,
+    marginBottom: 2,
+    marginTop: 4,
+    paddingLeft: 52
   },
   timelineRow: {
     flexDirection: "row",
-    paddingRight: 10
+    minHeight: 52,
+    maxHeight: 60
+  },
+  timelineRowActive: {
+    minHeight: 84,
+    maxHeight: 96
   },
   timeColumn: {
-    width: 58,
+    width: 52,
     alignItems: "center"
   },
   timeText: {
-    width: 54,
+    width: 50,
     color: colors.muted,
     fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 10,
+    lineHeight: 12,
     textAlign: "center",
-    marginTop: 10
+    marginTop: 6
   },
   timeTextHigh: {
     color: colors.danger
   },
   lineWrap: {
     flex: 1,
-    minHeight: 64,
+    minHeight: 28,
     alignItems: "center",
     marginTop: 2
   },
@@ -605,9 +614,9 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent"
   },
   timelineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.borderStrong,
     marginVertical: 2
   },
@@ -620,34 +629,26 @@ const styles = StyleSheet.create({
   taskCard: {
     flex: 1,
     minWidth: 0,
-    marginVertical: 4,
+    minHeight: 52,
+    maxHeight: 60,
+    marginBottom: 4,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     paddingHorizontal: 10,
-    paddingVertical: 9
-  },
-  taskCardPressed: {
-    backgroundColor: colors.panel
-  },
-  taskCardTop: {
-    flexDirection: "row",
-    gap: 8
-  },
-  taskIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.panel,
-    alignItems: "center",
+    paddingVertical: 6,
     justifyContent: "center"
   },
-  taskIconHigh: {
-    backgroundColor: colors.dangerSoft
+  taskCardActive: {
+    minHeight: 84,
+    maxHeight: 96,
+    paddingVertical: 8
   },
-  taskIconDone: {
-    backgroundColor: colors.successSoft
+  taskMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
   },
   taskCopy: {
     flex: 1,
@@ -655,26 +656,26 @@ const styles = StyleSheet.create({
   },
   taskTitleRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 6
   },
   taskTitle: {
     flex: 1,
     color: colors.text,
-    ...typography.cardTitle,
-    fontSize: 13.5,
-    lineHeight: 17
+    fontFamily: typography.families.semibold,
+    fontSize: 13,
+    lineHeight: 16
   },
   taskDetail: {
     color: colors.muted,
-    ...typography.body,
-    fontSize: 11.5,
-    lineHeight: 15,
-    marginTop: 2
+    fontFamily: typography.families.body,
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 1
   },
   priorityBadge: {
     borderRadius: radii.xl,
-    paddingHorizontal: 7,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     backgroundColor: colors.panelStrong
   },
@@ -688,7 +689,7 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontFamily: typography.families.semibold,
     fontSize: 10,
-    lineHeight: 13
+    lineHeight: 12
   },
   priorityTextHigh: {
     color: colors.danger
@@ -700,26 +701,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: 8,
-    marginTop: 8
+    gap: 6,
+    marginTop: 6
   },
   startButton: {
-    minWidth: 96,
-    alignSelf: "flex-end"
+    minWidth: 84,
+    minHeight: 32,
+    height: 32
   },
   snoozeButton: {
-    minWidth: 84
-  },
-  actionSpacer: {
-    flex: 1
+    minWidth: 68,
+    minHeight: 32,
+    height: 32
   },
   lockedAction: {
-    minHeight: 40,
-    paddingHorizontal: 10,
+    marginTop: 6,
+    minHeight: 28,
+    paddingHorizontal: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: 4,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     borderRadius: radii.sm,
@@ -728,5 +730,14 @@ const styles = StyleSheet.create({
   lockedText: {
     color: colors.muted,
     ...typography.caption
+  },
+  briefContinuation: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
+  },
+  pressed: {
+    opacity: 0.72
   }
 });

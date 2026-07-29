@@ -3,7 +3,7 @@ import Svg, { Path } from "react-native-svg";
 
 import { colors, fontFamilies } from "../../constants/theme";
 
-/** Tiny red script-like “m” mark from the concept header. */
+/** Tiny red handwritten/script “m” mark from the concept header. */
 export function MiseMark({
   size = 20,
   style
@@ -15,10 +15,10 @@ export function MiseMark({
     <View style={[styles.markBox, { width: size, height: size }, style]}>
       <Svg width={size} height={size} viewBox="0 0 24 24">
         <Path
-          d="M3.2 18.8V8.1c0-.9.5-1.5 1.2-1.5.5 0 .9.3 1.2.9l3.9 7.4c.2.4.5.6.9.6s.7-.2.9-.6l3.2-6.2c.3-.6.7-.9 1.2-.9.8 0 1.3.6 1.3 1.5v9.5"
+          d="M3.1 18.6c.15-4.2.55-8.4 1.55-10.35.55-1.05 1.45-1.55 2.35-1.25.75.25 1.2.95 1.55 2.05 1.05 3.25 1.85 6.7 2.45 9.35.15.7.5 1.05 1.05.95.55-.1.9-.55 1.2-1.35 1.15-3.35 2.35-6.85 3.45-8.55.55-.85 1.3-1.25 2.15-1.05.95.2 1.4 1.05 1.45 2.55.15 3.05 0 6.55-.25 9.45-.05.55.15 1 .65 1.15.2.05.4.05.6-.05"
           fill="none"
           stroke={colors.accent}
-          strokeWidth={2.35}
+          strokeWidth={2.15}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
