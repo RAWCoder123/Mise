@@ -59,11 +59,11 @@
     },
     {
       "id": "posthog_receipt",
-      "status": "pending",
-      "verifiedAt": null,
-      "verifiedCommit": null,
-      "evidence": null,
-      "owner": "Raymond"
+      "status": "passed",
+      "verifiedAt": "2026-07-29T21:09:07Z",
+      "verifiedCommit": "ad7083b18af24cd11b66b06bf45145cf1c405237",
+      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-ad7083b.md#posthog-receipt",
+      "owner": "Codex"
     },
     {
       "id": "recent_iphone",
