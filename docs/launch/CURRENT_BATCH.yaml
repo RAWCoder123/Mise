@@ -1,5 +1,5 @@
 batch_id: private-beta-concept-aesthetic-36
-status: in_progress
+status: completed
 goal: Restyle shared design tokens, UI primitives, brand lockup, and main tab screens to match the concept mockup while preserving invite-only and draft-only behavior.
 started_at: 2026-07-29
 codex_owned:
@@ -36,6 +36,13 @@ stop_conditions:
   - Public signup or tenant self-allocation is reintroduced
   - Provider activation, billing, or autonomous ordering is enabled
   - Product thumbnails or invented metrics are fabricated without real data
-evidence: []
+evidence:
+  - "Cursor visual checkpoint b0c6e2d: compact white concept anatomy, flat Home metrics, per-route chrome, and simplified Mise mark."
+  - "Cursor alignment checkpoint 5577c26: left-aligned Today, Inventory, Orders, and More tab titles."
+  - "npm run typecheck: passed."
+  - "npm run design:static: passed."
+  - "npm run qa:routes: passed for all required routes."
+  - "npm run qa:interactions: passed at 390x844; all measured routes reported overflowX=0; core interaction QA and localized Español/简体中文 passes completed."
+  - "Visual inspection compared the supplied concept with the final 390x844 Orders capture; compact title chrome, pill controls, hairline cards, tomato active state, green sent state, dense order rows, and five-item bottom navigation were verified."
 unresolved_findings: []
-checkpoint_commit: null
+checkpoint_commit: 5577c26d4ca90bf15892e62f05aa4851fddf7166
