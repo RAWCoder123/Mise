@@ -49,6 +49,7 @@ commit before another batch begins.
 | `private-beta-quota-proof-27` | Codex | Direct sixth-workspace rejection through the service provisioning boundary | Complete | `84f2c9d` |
 | `private-beta-hosted-harness-28` | Codex | Restore hosted rendered tenant-race proof after invite-only UI changes | Complete | `213fcf4` |
 | `private-beta-release-prerequisite-audit-29` | Codex | Refresh recovery evidence and isolate external release prerequisites | Complete; candidate freeze ready | `30158cd` |
+| `private-beta-hosted-candidate-closure-38` | Codex | Restore exact-candidate rendered tenant race and refresh provisional release evidence | In progress | — |
 
 ### `private-beta-release-prerequisite-audit-29`
 

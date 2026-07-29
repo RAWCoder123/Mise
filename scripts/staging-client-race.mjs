@@ -249,7 +249,22 @@ async function waitFor(cdp, expression, message, timeout = 30000) {
 async function clickAria(cdp, label) {
   const clicked = await evaluate(
     cdp,
-    `(() => { const node = document.querySelector('[aria-label=${JSON.stringify(label)}]'); if (!node) return false; node.click(); return true; })()`
+    `(() => {
+      const nodes = [...document.querySelectorAll('[aria-label=${JSON.stringify(label)}]')];
+      const isEnabled = (candidate) =>
+        !candidate.disabled &&
+        candidate.getAttribute('aria-disabled') !== 'true';
+      const node =
+        nodes.find((candidate) => candidate.matches('[role="tab"]') && isEnabled(candidate)) ??
+        nodes.find((candidate) =>
+          candidate.matches('button,a,[role="button"],[role="link"]') &&
+          isEnabled(candidate)
+        ) ??
+        nodes[0];
+      if (!node) return false;
+      node.click();
+      return true;
+    })()`
   );
   if (!clicked) {
     const body = await evaluate(cdp, "document.body?.innerText ?? ''");
@@ -336,10 +351,29 @@ function createRequestHold(cdp) {
       return new Promise((resolve, reject) => {
         resolveHeld = resolve;
         rejectHeld = reject;
-        timeoutId = setTimeout(
-          () => reject(new Error(`Timed out waiting for ${holdLabel}. Observed:\n${observedPaths.join("\n") || "(no requests)"}`)),
-          20000
-        );
+        timeoutId = setTimeout(async () => {
+          let browserState = "(browser diagnostics unavailable)";
+          try {
+            browserState = await evaluate(
+              cdp,
+              `JSON.stringify({
+                pathname: location.pathname,
+                body: (document.body?.innerText ?? '').slice(0, 1200),
+                ariaLabels: [...document.querySelectorAll('[aria-label]')]
+                  .map((node) => node.getAttribute('aria-label'))
+                  .filter(Boolean)
+                  .slice(0, 40)
+              })`
+            );
+          } catch {
+            // Preserve the original bounded timeout when Chrome is unavailable.
+          }
+          reject(
+            new Error(
+              `Timed out waiting for ${holdLabel}. Observed:\n${observedPaths.join("\n") || "(no requests)"}\nBrowser:\n${browserState}`
+            )
+          );
+        }, 20000);
       });
     },
     async release() {
@@ -498,12 +532,17 @@ async function main() {
     await clickAria(cdp, "Switch to Northside Cafe");
     await waitFor(
       cdp,
-      "document.querySelector('[aria-label=\"Current restaurant: Northside Cafe\"]') && document.body?.innerText.includes('Cafe Supply')",
+      "document.querySelector('[aria-label=\"Current restaurant: Northside Cafe\"]') && document.body?.innerText.includes('Service style\\nCafe')",
       "Tenant B settings did not load before releasing tenant A"
     );
     await hold.release();
-    await waitFor(cdp, "document.querySelector('[aria-label=\"Current restaurant: Northside Cafe\"]')", "More did not retain tenant B after the stale supplier response");
-    await assertTenantBOnly(cdp, "Cafe Supply", "Fresh Produce Co.");
+    await waitFor(
+      cdp,
+      "document.querySelector('[aria-label=\"Current restaurant: Northside Cafe\"]') && document.body?.innerText.includes('Service style\\nCafe')",
+      "More did not retain tenant B after the stale supplier response"
+    );
+    const settingsBody = await evaluate(cdp, "document.body?.innerText ?? ''");
+    assert.doesNotMatch(settingsBody, /Service style\s+Fast casual Mediterranean/i);
     console.log("Staging race passed: settings workspace switch");
 
     await switchWorkspace(cdp, "Luna Bistro");
@@ -549,7 +588,7 @@ async function main() {
       (requestUrl, method) => method === "POST" && requestUrl.includes("/rest/v1/rpc/approve_purchase_recommendation"),
       "tenant A recommendation approval mutation"
     );
-    await clickText(cdp, "Open review");
+    await clickAria(cdp, "Open review");
     await waitFor(
       cdp,
       "document.querySelector('[aria-label=\"Approve Chicken Breast\"]')",
