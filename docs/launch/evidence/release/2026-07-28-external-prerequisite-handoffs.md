@@ -8,20 +8,13 @@ codes, session tokens, provider API keys, or private application data.
 
 ## Full Xcode
 
-Read-only native-tooling inspection confirmed:
+This handoff is resolved. Raymond approved the App Store installation and
+accepted the Xcode and Apple SDK agreement. Xcode 26.6 is selected, the iOS
+26.5 simulator runtime is installed, `npm run qa:ios-prereq` passes, and an
+iPhone 17 Pro simulator completes first boot.
 
-- `/Applications/Xcode.app` and `Xcode-beta.app` are absent;
-- the selected developer directory is Command Line Tools;
-- `xcodebuild` and `simctl` are unavailable; and
-- the machine has approximately 598 GiB of free storage.
-
-The official Mac App Store Xcode download is staged under the signed-in Apple
-App Store account and is waiting for local Touch ID approval. No password was
-entered or captured by Codex.
-
-After approval and installation, Mise must select
-`/Applications/Xcode.app/Contents/Developer`, finish first-launch components,
-and rerun `npm run qa:ios-prereq`.
+The authoritative completion receipt is
+`docs/launch/evidence/release/2026-07-29-xcode-native-prerequisite.md`.
 
 ## Sentry
 

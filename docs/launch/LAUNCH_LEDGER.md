@@ -1246,6 +1246,46 @@ Checkpoint:
 
 - `041f224b375fc61088588debfb47aee73ce4a43a`
 
+### `private-beta-native-prerequisite-35`
+
+In scope:
+
+- Complete the Raymond-controlled Xcode installation and agreement handoff.
+- Install an iOS simulator runtime.
+- Prove Mise's native prerequisite boundary and simulator boot without creating
+  Apple signing credentials, a cloud build, or an App Store submission.
+
+Delivered:
+
+- Selected Xcode 26.6 (`17F113`) at
+  `/Applications/Xcode.app/Contents/Developer`.
+- Installed the iOS 26.5 (`23F77`, arm64) simulator runtime.
+- Passed `npm run qa:ios-prereq` for bundle identifier
+  `com.mise.mobile`, build number `2`, assets, Xcode, `simctl`, and an
+  available iPhone simulator.
+- Booted an iPhone 17 Pro simulator through first-boot migration and verified
+  its terminal `Booted` state.
+- Preserved the Apple signing, cloud-build, upload, and release approval
+  boundaries.
+
+Evidence:
+
+- `docs/launch/evidence/release/2026-07-29-xcode-native-prerequisite.md`
+- `npm run qa:ios-prereq`: passed
+- `xcrun simctl bootstatus ... -b`: finished
+- `xcrun simctl list devices booted --json`: iPhone 17 Pro booted
+
+Unresolved:
+
+- Raymond-controlled Apple login and 2FA
+- App Store distribution certificate and provisioning profile
+- Candidate cloud build, physical-device walkthrough, and TestFlight
+  submission
+
+Checkpoint:
+
+- `3513e13a58c66bfa17bf08eeada5223b505fbc9a`
+
 ## Handoff format
 
 Every completed batch records:
