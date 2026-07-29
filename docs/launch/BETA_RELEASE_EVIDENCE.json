@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "target": "invite_only_testflight_beta",
-  "candidateCommit": "fe0c279d69401b799172709a77ff1b5a70d1f86a",
+  "candidateCommit": "e52f7dc412969b4a1897f0f007df7543b1e11727",
   "candidateBuildId": null,
   "providerRestrictions": {
     "squareEnabled": false,
@@ -20,25 +20,25 @@
     {
       "id": "local_release_gate",
       "status": "passed",
-      "verifiedAt": "2026-07-29T00:26:39Z",
-      "verifiedCommit": "fe0c279d69401b799172709a77ff1b5a70d1f86a",
-      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-fe0c279.md#local-release-gate",
+      "verifiedAt": "2026-07-29T01:15:50Z",
+      "verifiedCommit": "e52f7dc412969b4a1897f0f007df7543b1e11727",
+      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-e52f7dc.md#local-release-gate",
       "owner": "Codex"
     },
     {
       "id": "hosted_security",
       "status": "passed",
-      "verifiedAt": "2026-07-29T00:26:39Z",
-      "verifiedCommit": "fe0c279d69401b799172709a77ff1b5a70d1f86a",
-      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-fe0c279.md#hosted-security",
+      "verifiedAt": "2026-07-29T01:15:50Z",
+      "verifiedCommit": "e52f7dc412969b4a1897f0f007df7543b1e11727",
+      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-e52f7dc.md#hosted-security",
       "owner": "Codex"
     },
     {
       "id": "tenant_isolation",
       "status": "passed",
-      "verifiedAt": "2026-07-29T00:26:39Z",
-      "verifiedCommit": "fe0c279d69401b799172709a77ff1b5a70d1f86a",
-      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-fe0c279.md#tenant-isolation",
+      "verifiedAt": "2026-07-29T01:15:50Z",
+      "verifiedCommit": "e52f7dc412969b4a1897f0f007df7543b1e11727",
+      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-e52f7dc.md#tenant-isolation",
       "owner": "Codex"
     },
     {
@@ -60,9 +60,9 @@
     {
       "id": "posthog_receipt",
       "status": "passed",
-      "verifiedAt": "2026-07-29T00:26:39Z",
-      "verifiedCommit": "fe0c279d69401b799172709a77ff1b5a70d1f86a",
-      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-fe0c279.md#posthog-receipt",
+      "verifiedAt": "2026-07-29T01:15:50Z",
+      "verifiedCommit": "e52f7dc412969b4a1897f0f007df7543b1e11727",
+      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-e52f7dc.md#posthog-receipt",
       "owner": "Codex"
     },
     {
@@ -108,9 +108,9 @@
     {
       "id": "provider_restrictions",
       "status": "passed",
-      "verifiedAt": "2026-07-29T00:26:39Z",
-      "verifiedCommit": "fe0c279d69401b799172709a77ff1b5a70d1f86a",
-      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-fe0c279.md#provider-restrictions",
+      "verifiedAt": "2026-07-29T01:15:50Z",
+      "verifiedCommit": "e52f7dc412969b4a1897f0f007df7543b1e11727",
+      "evidence": "docs/launch/evidence/release/2026-07-29-candidate-e52f7dc.md#provider-restrictions",
       "owner": "Codex"
     }
   ],
