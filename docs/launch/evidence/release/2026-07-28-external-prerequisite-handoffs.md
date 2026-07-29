@@ -1,6 +1,7 @@
 # External prerequisite handoffs
 
 Verified: 2026-07-29T01:23:15Z
+Reverified: 2026-07-29T15:49:11Z
 
 This evidence records external launch prerequisites that cannot be completed by
 repository changes or unattended automation. It contains no passwords, 2FA
@@ -16,15 +17,35 @@ iPhone 17 Pro simulator completes first boot.
 The authoritative completion receipt is
 `docs/launch/evidence/release/2026-07-29-xcode-native-prerequisite.md`.
 
+## Apple signing
+
+The organization-owned EAS project still reaches the optional Apple login
+prompt for the `testflight` profile. The local macOS keychain reports zero
+valid code-signing identities, and both supported provisioning-profile
+directories contain zero profiles.
+
+The secure handoff remains:
+
+```text
+cd /Users/RAW/Documents/Mise
+npx --yes eas-cli@21.4.0 credentials --platform ios
+```
+
+Raymond must select `testflight`, complete Apple login and 2FA locally, and
+finish the Build Credentials workflow. Apple credentials and one-time codes
+must never be pasted into chat or committed. A cloud build, upload, and
+TestFlight submission remain separately approval-gated after signing
+validation.
+
 ## Sentry
 
 The Expo application already includes `@sentry/react-native`, bounded
 `beforeSend` behavior, and a live-receipt verifier. EAS Preview has no
 `EXPO_PUBLIC_SENTRY_DSN`, and Chrome has no authenticated Sentry session.
 
-The Sentry sign-in page is open for a Raymond-controlled login. Creating a Mise
-project, DSN, or API token remains prohibited until that authenticated handoff
-is complete.
+The Sentry sign-in page was reverified at `https://sentry.io/auth/login/` and is
+open for a Raymond-controlled login. Creating a Mise project, DSN, or API token
+remains prohibited until that authenticated handoff is complete.
 
 ## Public privacy and support domain
 
@@ -46,6 +67,7 @@ Required validation records:
 
 Authoritative nameservers are Cloudflare. The current apex still resolves to
 `104.21.92.243` and `172.67.200.249`; `/privacy` and `/support` time out.
+The Cloudflare tab was reverified at `https://dash.cloudflare.com/login`;
 Chrome has no authenticated Cloudflare session, so no DNS record was changed.
 
 After Raymond signs into the correct Cloudflare account, changing the apex
