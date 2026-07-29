@@ -1,10 +1,11 @@
-batch_id: private-beta-hosted-candidate-closure-38
-status: completed
-goal: Restore the rendered two-tenant staging race after the concept rebuild, then record a fresh exact-commit provisional beta candidate without granting external release authority.
+batch_id: private-beta-expo-patch-closure-39
+status: in_progress
+goal: Restore Expo Doctor to 21/21 by applying only the SDK 56 compatible Expo and Expo Router patch releases, then revalidate the exact provisional candidate.
 started_at: 2026-07-29
 codex_owned:
-  - scripts/staging-client-race.mjs
-  - tests/stagingClientRaceHarness.test.ts
+  - package.json
+  - package-lock.json
+  - tests/security.test.ts
   - docs/launch/**
 cursor_owned: []
 shared_locked:
@@ -15,36 +16,28 @@ shared_locked:
   - i18n/**
   - services/**
   - supabase/**
+  - scripts/**
   - app.json
   - eas.json
-  - package.json
-  - package-lock.json
 blocked_files: []
 handoff_required: true
 dependencies:
-  - private-beta-concept-fidelity-37
+  - private-beta-hosted-candidate-closure-38
 required_tests:
   - npm run typecheck
   - npm test
-  - npm run staging:client-race
+  - npm audit --audit-level=high
+  - npm run doctor
+  - npm run verify:private-beta-security:local
   - npm run verify:private-beta-security:hosted
   - npm run beta:go-no-go -- --json
 stop_conditions:
-  - A stale tenant response can replace the active restaurant after a workspace switch
-  - Any tenant boundary, role authority, provider restriction, or draft-only policy fails
-  - A release receipt is recorded without exact-commit evidence
-  - Any build, upload, TestFlight distribution, production deployment, or external paid action would begin
+  - The upgrade exceeds Expo SDK 56 patch-compatible versions
+  - Any application, domain, security, database, build, route, or interaction check regresses
+  - Any release receipt is recorded without exact-commit evidence
+  - Any cloud build, upload, distribution, production deployment, or paid action would begin
 evidence:
-  - "Batch 37 exact checkpoint passed typecheck, design:static, 330 tests, route QA, and standalone English/Spanish/Simplified Chinese interaction QA at 390x844 with zero horizontal overflow."
-  - "The full local security wrapper passed every component through production export and route QA; its default-port interaction child later became idle, while the same exact interaction suite had already passed independently."
-  - "Hosted security fixture provisioning passed, then the rendered staging race reproducibly timed out waiting for the tenant-A Today inventory request with no intercepted requests."
-  - "The concept redesign introduced duplicate Today accessibility labels; the harness now deterministically prefers an enabled tab before other same-label controls."
-  - "The compact Settings proof now uses the rendered tenant-specific service style instead of a supplier name that no longer appears on that screen."
-  - "The order mutation proof now uses the compact review card's accessibility label instead of hidden visible copy."
-  - "node --test --import tsx tests/stagingClientRaceHarness.test.ts: 7 passed."
-  - "npm run typecheck: passed."
-  - "npm test: 333 passed."
-  - "MISE_STAGING_CLIENT_RACE_PORT=8099 MISE_STAGING_CLIENT_RACE_DEBUG_PORT=9349 MISE_STAGING_CLIENT_RACE_TIMEOUT_MS=180000 npm run staging:client-race: all seven rendered request/mutation races passed."
-  - "MISE_STAGING_CLIENT_RACE_PORT=8100 MISE_STAGING_CLIENT_RACE_DEBUG_PORT=9350 MISE_STAGING_CLIENT_RACE_TIMEOUT_MS=180000 npm run verify:private-beta-security:hosted: passed without skipped checks."
-unresolved_findings: []
-checkpoint_commit: 3249e771ea3bda5ce18c06bd84678776e110d952
+  - "At commit 93f24fb, typecheck, 333 tests, and npm audit passed, but Expo Doctor newly reported expo 56.0.17 vs expected ~56.0.18 and expo-router 56.2.16 vs expected ~56.2.17."
+unresolved_findings:
+  - "P1: apply the two SDK-compatible patch upgrades and restore Expo Doctor to 21/21."
+checkpoint_commit: null
