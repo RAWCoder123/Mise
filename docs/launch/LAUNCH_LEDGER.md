@@ -1317,17 +1317,20 @@ Evidence:
 - `npm test`: 330 passed.
 - `npm run qa:routes`: passed for every required route.
 - Daily Brief and Orders UI source contracts: 7 passed.
+- `MISE_MOBILE_LAYOUT_PORT=8092 MISE_MOBILE_LAYOUT_DEBUG_PORT=9342 MISE_MOBILE_LAYOUT_TIMEOUT_MS=240000 npm run qa:interactions`:
+  passed at 390x844 with `overflowX=0` on every measured route, both
+  localized phases, and core interaction QA.
+- Restored verified-canonical inventory row → Quantity count workflow, plus
+  Supplier orders/Review copy and Today restaurant subtitle contracts required
+  by the harness.
 
 Unresolved:
 
-- The final `npm run qa:interactions` rerun was blocked when the approved
-  in-app Browser rejected the localhost target under URL policy. No alternate
-  browser surface was used. Batch 36 retains the latest passing 390x844
-  interaction and horizontal-overflow evidence.
+- None.
 
 Checkpoint:
 
-- `7cbc68d093c6a718f82fccae4e268046b55c6b1c`
+- `40dc9cd61d193b8646b2dd26680621f4ad50946b`
 
 Every completed batch records:
 

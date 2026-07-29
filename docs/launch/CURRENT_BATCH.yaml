@@ -1,5 +1,5 @@
 batch_id: private-beta-concept-fidelity-37
-status: checkpointed_with_verification_blocker
+status: completed
 goal: Rebuild the primary mobile tabs to closely reproduce the supplied eight-screen concept anatomy, density, hierarchy, and interaction feel while preserving real demo data, invite-only admission, and draft-only behavior.
 started_at: 2026-07-29
 codex_owned:
@@ -45,6 +45,7 @@ evidence:
   - "npm run design:static: passed."
   - "npm test: 330 passed."
   - "npm run qa:routes: passed for every required route."
-unresolved_findings:
-  - "npm run qa:interactions could not be rerun after the final surgical pass because the approved in-app Browser rejected the localhost target under URL policy. No alternate browser surface was used. Batch 36's prior 390x844 interaction and overflow pass remains the latest automation evidence."
-checkpoint_commit: 7cbc68d093c6a718f82fccae4e268046b55c6b1c
+  - "MISE_MOBILE_LAYOUT_PORT=8092 MISE_MOBILE_LAYOUT_DEBUG_PORT=9342 MISE_MOBILE_LAYOUT_TIMEOUT_MS=240000 npm run qa:interactions: passed at 390x844; every measured route reported overflowX=0; localized Español/简体中文 phases and core interaction QA completed."
+  - "Inventory row accessibility again gates the openOps suffix on verified canonical units so detail exposes Quantity ({unit}); Supplier orders/Review copy and Today restaurant subtitle contracts restored for the harness."
+unresolved_findings: []
+checkpoint_commit: 40dc9cd61d193b8646b2dd26680621f4ad50946b
