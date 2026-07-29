@@ -19,7 +19,7 @@ import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, shadows, typography } from "../../constants/theme";
+import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
@@ -396,21 +396,23 @@ function TimelineTask({
         </View>
 
         <View style={styles.taskActions}>
+          {task.status !== "completed" ? (
+            <Button title={t("today.action.snooze")} variant="secondary" onPress={onSnooze} style={styles.snoozeButton} />
+          ) : (
+            <View style={styles.actionSpacer} />
+          )}
           {canAct && task.status !== "completed" ? (
-            <Button title={t("today.action.start")} onPress={() => router.push(task.action.route)} fullWidth style={styles.startButton} />
+            <Button title={t("today.action.start")} onPress={() => router.push(task.action.route)} style={styles.startButton} />
           ) : canAct ? (
-            <Button title={t("today.action.open")} variant="secondary" onPress={() => router.push(task.action.route)} fullWidth style={styles.startButton} />
+            <Button title={t("today.action.open")} variant="secondary" onPress={() => router.push(task.action.route)} style={styles.startButton} />
           ) : (
             <View style={styles.lockedAction}>
-              <LockKeyhole size={14} color={colors.muted} strokeWidth={2.2} />
+              <LockKeyhole size={13} color={colors.muted} strokeWidth={2.2} />
               <Text style={styles.lockedText}>
                 {t(task.requiredRole === "owner_admin" ? "today.locked.ownerAdmin" : "today.locked.manager")}
               </Text>
             </View>
           )}
-          {task.status !== "completed" ? (
-            <Button title={t("today.action.snooze")} variant="secondary" onPress={onSnooze} fullWidth style={styles.snoozeButton} />
-          ) : null}
         </View>
       </Pressable>
     </View>
@@ -504,109 +506,108 @@ function taskIcon(task: OperationalTodayTask, color: string): ReactNode {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 14
+    gap: 10
   },
   emptyButton: {
     marginTop: 12
   },
   timelineSurface: {
     overflow: "hidden",
-    borderRadius: radii.lg,
-    borderWidth: 1,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
-    ...shadows.card
+    backgroundColor: colors.surface
   },
   timelineHeader: {
-    minHeight: 68,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12
+    gap: 10
   },
   timelineTitle: {
     color: colors.text,
     fontFamily: typography.families.bold,
-    fontSize: 18,
-    lineHeight: 23
+    fontSize: 15,
+    lineHeight: 19
   },
   timelineSubtitle: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 12.5,
-    lineHeight: 18,
-    marginTop: 2
+    fontSize: 11.5,
+    lineHeight: 15,
+    marginTop: 1
   },
   timelineCount: {
     color: colors.accentDark,
     fontFamily: typography.families.bold,
-    fontSize: 21,
-    lineHeight: 26
+    fontSize: 16,
+    lineHeight: 20
   },
   emptyTimeline: {
-    minHeight: 220,
+    minHeight: 140,
     alignItems: "center",
     justifyContent: "center",
-    padding: 24
+    padding: 18
   },
   emptyTitle: {
     color: colors.text,
     ...typography.cardTitle,
-    marginTop: 10
+    marginTop: 8
   },
   emptyBody: {
     color: colors.muted,
     ...typography.body,
     textAlign: "center",
-    marginTop: 4
+    marginTop: 3
   },
   timelineList: {
-    paddingVertical: 4
+    paddingVertical: 2
   },
   timelineRow: {
     flexDirection: "row",
-    paddingRight: 12
+    paddingRight: 10
   },
   timeColumn: {
-    width: 76,
+    width: 58,
     alignItems: "center"
   },
   timeText: {
-    width: 70,
+    width: 54,
     color: colors.muted,
     fontFamily: typography.families.semibold,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 14,
     textAlign: "center",
-    marginTop: 15
+    marginTop: 10
   },
   timeTextHigh: {
     color: colors.danger
   },
   lineWrap: {
     flex: 1,
-    minHeight: 92,
+    minHeight: 64,
     alignItems: "center",
-    marginTop: 4
+    marginTop: 2
   },
   timelineLine: {
-    width: 1,
+    width: StyleSheet.hairlineWidth,
     flex: 1,
     backgroundColor: colors.border
   },
   timelineLineTransparent: {
-    width: 1,
+    width: StyleSheet.hairlineWidth,
     flex: 1,
     backgroundColor: "transparent"
   },
   timelineDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
     backgroundColor: colors.borderStrong,
     marginVertical: 2
   },
@@ -619,25 +620,25 @@ const styles = StyleSheet.create({
   taskCard: {
     flex: 1,
     minWidth: 0,
-    marginVertical: 8,
-    borderRadius: radii.lg,
-    borderWidth: 1,
+    marginVertical: 4,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: 14,
-    ...shadows.card
+    paddingHorizontal: 10,
+    paddingVertical: 9
   },
   taskCardPressed: {
-    backgroundColor: colors.surfaceWarm
+    backgroundColor: colors.panel
   },
   taskCardTop: {
     flexDirection: "row",
-    gap: 10
+    gap: 8
   },
   taskIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: colors.panel,
     alignItems: "center",
     justifyContent: "center"
@@ -655,26 +656,26 @@ const styles = StyleSheet.create({
   taskTitleRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 8
+    gap: 6
   },
   taskTitle: {
     flex: 1,
     color: colors.text,
     ...typography.cardTitle,
-    fontSize: 15,
-    lineHeight: 20
+    fontSize: 13.5,
+    lineHeight: 17
   },
   taskDetail: {
     color: colors.muted,
     ...typography.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 4
+    fontSize: 11.5,
+    lineHeight: 15,
+    marginTop: 2
   },
   priorityBadge: {
     borderRadius: radii.xl,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     backgroundColor: colors.panelStrong
   },
   priorityBadgeHigh: {
@@ -686,8 +687,8 @@ const styles = StyleSheet.create({
   priorityText: {
     color: colors.muted,
     fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
+    fontSize: 10,
+    lineHeight: 13
   },
   priorityTextHigh: {
     color: colors.danger
@@ -696,27 +697,32 @@ const styles = StyleSheet.create({
     color: colors.success
   },
   taskActions: {
-    flexDirection: "column",
-    alignItems: "stretch",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
     gap: 8,
-    marginTop: 14
+    marginTop: 8
   },
   startButton: {
-    width: "100%"
+    minWidth: 96,
+    alignSelf: "flex-end"
   },
   snoozeButton: {
-    width: "100%"
+    minWidth: 84
+  },
+  actionSpacer: {
+    flex: 1
   },
   lockedAction: {
-    width: "100%",
-    minHeight: 48,
+    minHeight: 40,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    borderWidth: 1,
+    gap: 5,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     backgroundColor: colors.panel
   },
   lockedText: {

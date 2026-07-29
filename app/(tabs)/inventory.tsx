@@ -18,7 +18,7 @@ import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { FilterRow, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, shadows, typography } from "../../constants/theme";
+import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
@@ -484,7 +484,7 @@ function InventoryListRow({
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 14
+    gap: 10
   },
   emptyButton: {
     marginTop: 12
@@ -498,9 +498,9 @@ const styles = StyleSheet.create({
   healthPercent: {
     color: colors.success,
     fontFamily: typography.families.bold,
-    fontSize: 31,
-    lineHeight: 36,
-    letterSpacing: -0.8
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: -0.5
   },
   healthCopy: {
     flex: 1,
@@ -567,21 +567,20 @@ const styles = StyleSheet.create({
   },
   inventoryList: {
     backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    overflow: "hidden",
-    ...shadows.card
+    overflow: "hidden"
   },
   inventoryRow: {
-    minHeight: 112,
-    borderLeftWidth: 4,
+    minHeight: 72,
+    borderLeftWidth: 3,
     borderLeftColor: colors.borderStrong,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12
+    gap: 10
   },
   inventoryRowCritical: {
     borderLeftColor: inventoryStatusColors.Critical
@@ -603,9 +602,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceWarm
   },
   statusIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: inventoryStatusSoftColors.Watch,
     alignItems: "center",
     justifyContent: "center"
@@ -635,51 +634,59 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.text,
     fontFamily: typography.families.bold,
-    fontSize: 15,
-    lineHeight: 20
+    fontSize: 14,
+    lineHeight: 18
   },
   statusLabel: {
     color: inventoryStatusColors.Watch,
     fontFamily: typography.families.bold,
-    fontSize: 11,
-    lineHeight: 15
+    fontSize: 10,
+    lineHeight: 13,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.xl,
+    overflow: "hidden",
+    backgroundColor: inventoryStatusSoftColors.Watch
   },
   statusLabelCritical: {
-    color: inventoryStatusColors.Critical
+    color: inventoryStatusColors.Critical,
+    backgroundColor: colors.dangerSoft
   },
   statusLabelLow: {
-    color: inventoryStatusColors.Low
+    color: inventoryStatusColors.Low,
+    backgroundColor: inventoryStatusSoftColors.Low
   },
   statusLabelGood: {
-    color: inventoryStatusColors.Good
+    color: inventoryStatusColors.Good,
+    backgroundColor: colors.successSoft
   },
   itemSupplier: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 1
   },
   itemCoverage: {
     color: colors.text,
     fontFamily: typography.families.semibold,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 4
+    fontSize: 11.5,
+    lineHeight: 15,
+    marginTop: 2
   },
   signalRow: {
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    marginTop: 5
+    gap: 4,
+    marginTop: 3
   },
   itemAction: {
     flexShrink: 1,
     color: colors.text,
     fontFamily: typography.families.bold,
-    fontSize: 11,
-    lineHeight: 15
+    fontSize: 10.5,
+    lineHeight: 14
   },
   itemActionCritical: {
     color: inventoryStatusColors.Critical

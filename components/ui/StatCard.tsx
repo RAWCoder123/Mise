@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { Minus, TrendingDown, TrendingUp } from "lucide-react-native";
 
-import { colors, radii, shadows, spacing, typography } from "../../constants/theme";
+import { colors, radii, spacing, typography } from "../../constants/theme";
 
 export type StatCardTone = "default" | "accent" | "success" | "caution" | "warning" | "danger";
 export type StatDeltaTone = "success" | "danger" | "neutral";
@@ -27,8 +27,8 @@ export interface StatCardProps {
 }
 
 /**
- * A single prominent KPI card: icon, muted label, large value, and an
- * optional trend chip. Use `StatCardRow` to lay several out in a grid.
+ * Compact KPI card: muted label, optional top-right delta, large value.
+ * Use `StatCardRow` for a 2×2 grid.
  */
 export function StatCard({ label, value, icon, tone = "default", delta, accessibilityLabel, style }: StatCardProps) {
   const deltaIconColor = deltaIconColors[delta?.tone ?? "neutral"];
@@ -44,8 +44,18 @@ export function StatCard({ label, value, icon, tone = "default", delta, accessib
       style={[styles.card, style]}
     >
       <View style={styles.headerRow}>
-        {icon}
-        <Text numberOfLines={2} style={styles.label}>{label}</Text>
+        <View style={styles.labelRow}>
+          {icon}
+          <Text numberOfLines={1} style={styles.label}>{label}</Text>
+        </View>
+        {delta ? (
+          <View style={[styles.deltaChip, deltaChipStyles[delta.tone]]}>
+            <DeltaIcon size={10} color={deltaIconColor} strokeWidth={2.4} />
+            <Text numberOfLines={1} style={[styles.deltaLabel, { color: deltaIconColor }]}>
+              {delta.label}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <Text
         adjustsFontSizeToFit
@@ -55,14 +65,6 @@ export function StatCard({ label, value, icon, tone = "default", delta, accessib
       >
         {value}
       </Text>
-      {delta ? (
-        <View style={[styles.deltaChip, deltaChipStyles[delta.tone]]}>
-          <DeltaIcon size={12} color={deltaIconColor} strokeWidth={2.4} />
-          <Text numberOfLines={1} style={[styles.deltaLabel, { color: deltaIconColor }]}>
-            {delta.label}
-          </Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -90,20 +92,28 @@ const styles = StyleSheet.create({
   },
   card: {
     flexGrow: 1,
-    flexBasis: "44%",
+    flexBasis: "47%",
     minWidth: 0,
-    gap: 6,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    borderWidth: 1,
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
-    ...shadows.card
+    backgroundColor: colors.surface
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6
+    justifyContent: "space-between",
+    gap: 4
+  },
+  labelRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4
   },
   label: {
     flexShrink: 1,
@@ -115,16 +125,18 @@ const styles = StyleSheet.create({
     ...typography.metricValue
   },
   deltaChip: {
-    alignSelf: "flex-start",
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    gap: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
     borderRadius: radii.xl
   },
   deltaLabel: {
-    ...typography.caption
+    fontFamily: typography.families.semibold,
+    fontSize: 10,
+    lineHeight: 13
   }
 });
 

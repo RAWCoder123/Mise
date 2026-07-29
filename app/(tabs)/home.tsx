@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { CalendarCheck, ClipboardList, Package, ShoppingBag, ShoppingCart, Sparkles } from "lucide-react-native";
+import { Package, ShoppingCart, Sparkles } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -260,47 +260,44 @@ function HomeMetrics({
   const salesDelta = buildSalesDelta(summary, formatNumber);
 
   return (
-    <CompactMetricStrip
-      accessibilityLabel={t("home.metrics.accessibility")}
-      metrics={[
-        {
-          id: "sales",
-          label: t("home.metric.sales"),
-          value: formatCompactCurrency(summary.salesToday, summary.restaurantCurrency),
-          icon: <ShoppingBag size={14} color={colors.text} strokeWidth={2.15} />,
-          accessibilityLabel: salesDelta
-            ? `${t("home.metric.sales")}: ${formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)}, ${salesDelta.label}`
-            : undefined
-        },
-        {
-          id: "tasks",
-          label: t("home.metric.openTasks"),
-          value: formatNumber(openTasks.length),
-          tone: highPriority > 0 ? "danger" : "default",
-          icon: <CalendarCheck size={14} color={highPriority > 0 ? colors.danger : colors.text} strokeWidth={2.15} />
-        },
-        {
-          id: "orders",
-          label: t("home.metric.orderReview"),
-          value: formatNumber(summary.pendingRecommendations),
-          tone: summary.pendingRecommendations > 0 ? "caution" : "success",
-          icon: (
-            <ClipboardList
-              size={14}
-              color={summary.pendingRecommendations > 0 ? colors.caution : colors.success}
-              strokeWidth={2.15}
-            />
-          )
-        },
-        {
-          id: "stock",
-          label: t("home.metric.stockAlerts"),
-          value: formatNumber(stockAlerts),
-          tone: stockAlerts > 0 ? "danger" : "success",
-          icon: <Package size={14} color={stockAlerts > 0 ? colors.danger : colors.success} strokeWidth={2.15} />
-        }
-      ]}
-    />
+    <View style={styles.metricsBlock}>
+      <Text style={styles.metricsEyebrow}>{t("home.glance.title")}</Text>
+      <CompactMetricStrip
+        accessibilityLabel={t("home.metrics.accessibility")}
+        metrics={[
+          {
+            id: "sales",
+            label: t("home.metric.sales"),
+            value: formatCompactCurrency(summary.salesToday, summary.restaurantCurrency),
+            caption: salesDelta?.label,
+            captionTone: salesDelta?.tone === "success" ? "success" : salesDelta?.tone === "danger" ? "danger" : "default",
+            accessibilityLabel: salesDelta
+              ? `${t("home.metric.sales")}: ${formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)}, ${salesDelta.label}`
+              : undefined
+          },
+          {
+            id: "tasks",
+            label: t("home.metric.openTasks"),
+            value: formatNumber(openTasks.length),
+            tone: highPriority > 0 ? "danger" : "default",
+            caption: highPriority > 0 ? t("home.metric.high", { count: formatNumber(highPriority) }) : undefined,
+            captionTone: highPriority > 0 ? "danger" : undefined
+          },
+          {
+            id: "orders",
+            label: t("home.metric.orderReview"),
+            value: formatNumber(summary.pendingRecommendations),
+            tone: summary.pendingRecommendations > 0 ? "caution" : "success"
+          },
+          {
+            id: "stock",
+            label: t("home.metric.stockAlerts"),
+            value: formatNumber(stockAlerts),
+            tone: stockAlerts > 0 ? "danger" : "success"
+          }
+        ]}
+      />
+    </View>
   );
 }
 
@@ -549,42 +546,52 @@ function greetingKeyForNow(): MessageKey {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 16
+    gap: 10
   },
   emptyButton: {
     marginTop: 12
   },
   greetingBlock: {
-    gap: 3
+    gap: 1
   },
   dateText: {
-    color: colors.accentDark,
+    color: colors.muted,
     fontFamily: typography.families.semibold,
-    fontSize: 12,
-    lineHeight: 16
+    fontSize: 11,
+    lineHeight: 14
   },
   greeting: {
     color: colors.text,
     fontFamily: typography.families.bold,
-    fontSize: 23,
-    lineHeight: 29,
-    letterSpacing: -0.45
+    fontSize: 20,
+    lineHeight: 25,
+    letterSpacing: -0.35
   },
   greetingSubtext: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 13,
-    lineHeight: 19
+    fontSize: 12,
+    lineHeight: 16
+  },
+  metricsBlock: {
+    gap: 6
+  },
+  metricsEyebrow: {
+    color: colors.muted,
+    fontFamily: typography.families.semibold,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.2
   },
   briefRow: {
     flexDirection: "row",
-    gap: 11,
+    gap: 10,
     alignItems: "center"
   },
   sparkIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.md,
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.accentSoft
@@ -600,22 +607,22 @@ const styles = StyleSheet.create({
   briefBody: {
     color: colors.muted,
     ...typography.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 2
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 1
   },
   healthHead: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 12
+    gap: 10,
+    marginBottom: 8
   },
   healthPercent: {
     color: colors.success,
     fontFamily: typography.families.bold,
-    fontSize: 31,
-    lineHeight: 36,
-    letterSpacing: -0.8
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: -0.5
   },
   healthCopy: {
     flex: 1,
@@ -628,55 +635,55 @@ const styles = StyleSheet.create({
   healthBody: {
     color: colors.muted,
     ...typography.body,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2
+    fontSize: 11.5,
+    lineHeight: 15,
+    marginTop: 1
   },
   healthLegend: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
-    marginTop: 10
+    gap: 8,
+    marginTop: 8
   },
   legendItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5
+    gap: 4
   },
   legendDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4
+    width: 6,
+    height: 6,
+    borderRadius: 3
   },
   legendText: {
     color: colors.muted,
     fontFamily: typography.families.medium,
-    fontSize: 11,
-    lineHeight: 14
+    fontSize: 10.5,
+    lineHeight: 13
   },
   emptyCopy: {
     color: colors.muted,
     ...typography.body
   },
   taskRow: {
-    minHeight: 64,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    minHeight: 48,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 8
   },
   divided: {
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
   },
   pressedRow: {
-    backgroundColor: colors.surfaceWarm
+    backgroundColor: colors.panel
   },
   taskGlyph: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.panel
@@ -691,19 +698,19 @@ const styles = StyleSheet.create({
   taskTitle: {
     color: colors.text,
     ...typography.cardTitle,
-    fontSize: 13.5,
-    lineHeight: 18
+    fontSize: 13,
+    lineHeight: 17
   },
   taskMeta: {
     color: colors.muted,
     ...typography.caption,
-    marginTop: 2
+    marginTop: 1
   },
   priorityBadge: {
     borderRadius: radii.xl,
     backgroundColor: colors.panelStrong,
-    paddingHorizontal: 9,
-    paddingVertical: 4
+    paddingHorizontal: 7,
+    paddingVertical: 2
   },
   priorityBadgeHigh: {
     backgroundColor: colors.dangerSoft
@@ -711,8 +718,8 @@ const styles = StyleSheet.create({
   priorityText: {
     color: colors.muted,
     fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
+    fontSize: 10,
+    lineHeight: 13
   },
   priorityTextHigh: {
     color: colors.danger

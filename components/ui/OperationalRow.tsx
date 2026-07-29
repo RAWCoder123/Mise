@@ -101,14 +101,14 @@ export function OperationalRow({
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 72,
-    borderBottomWidth: 1,
+    minHeight: 56,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 12,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12
+    gap: 10
   },
   copy: {
     flex: 1,
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   titleLine: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 6
   },
   title: {
     flexShrink: 1,
@@ -127,29 +127,29 @@ const styles = StyleSheet.create({
   subtitle: {
     color: colors.muted,
     fontFamily: fontFamilies.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 4
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2
   },
   trail: {
-    minWidth: 42,
+    minWidth: 36,
     alignItems: "flex-end",
     justifyContent: "center",
-    gap: 3
+    gap: 2
   },
   value: {
     maxWidth: 76,
     color: colors.text,
     fontFamily: fontFamilies.semibold,
-    fontSize: 17,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 19,
     textAlign: "right"
   },
   meta: {
     maxWidth: 84,
     color: colors.muted,
-    fontSize: 12,
-    lineHeight: 15,
+    fontSize: 11,
+    lineHeight: 14,
     fontFamily: fontFamilies.semibold,
     textAlign: "right"
   },

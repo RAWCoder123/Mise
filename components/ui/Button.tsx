@@ -78,12 +78,12 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 48,
+    minHeight: 44,
     borderRadius: radii.md,
-    paddingHorizontal: 18,
+    paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1
+    borderWidth: StyleSheet.hairlineWidth
   },
   content: {
     flexDirection: "row",

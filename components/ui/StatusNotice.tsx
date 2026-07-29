@@ -42,8 +42,8 @@ export function StatusNotice({
     >
       <View style={[styles.icon, iconToneStyles[tone]]}>{icon ?? defaultIcon(tone)}</View>
       <View style={styles.copy}>
-        <Text style={styles.title}>{title}</Text>
-        {message ? <Text style={styles.message}>{message}</Text> : null}
+        <Text style={styles.title} numberOfLines={2}>{title}</Text>
+        {message ? <Text style={styles.message} numberOfLines={2}>{message}</Text> : null}
       </View>
       {actionIsAvailable ? (
         <Pressable
@@ -100,28 +100,28 @@ export function RetryNotice({
 }
 
 function defaultIcon(tone: StatusNoticeTone) {
-  if (tone === "success") return <CircleCheck size={20} color={colors.success} strokeWidth={2.25} />;
-  if (tone === "caution") return <TriangleAlert size={20} color={colors.caution} strokeWidth={2.25} />;
-  if (tone === "warning") return <TriangleAlert size={20} color={colors.warning} strokeWidth={2.25} />;
-  if (tone === "danger") return <CircleAlert size={20} color={colors.danger} strokeWidth={2.25} />;
-  return <Info size={20} color={colors.muted} strokeWidth={2.25} />;
+  if (tone === "success") return <CircleCheck size={16} color={colors.success} strokeWidth={2.25} />;
+  if (tone === "caution") return <TriangleAlert size={16} color={colors.caution} strokeWidth={2.25} />;
+  if (tone === "warning") return <TriangleAlert size={16} color={colors.warning} strokeWidth={2.25} />;
+  if (tone === "danger") return <CircleAlert size={16} color={colors.danger} strokeWidth={2.25} />;
+  return <Info size={16} color={colors.muted} strokeWidth={2.25} />;
 }
 
 const styles = StyleSheet.create({
   notice: {
-    minHeight: 64,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    minHeight: 52,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 8
   },
   icon: {
-    width: 34,
-    height: 34,
-    borderRadius: radii.md,
+    width: 28,
+    height: 28,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -132,34 +132,35 @@ const styles = StyleSheet.create({
   title: {
     color: colors.text,
     ...typography.cardTitle,
-    fontSize: 14,
-    lineHeight: 19
+    fontSize: 13,
+    lineHeight: 17
   },
   message: {
     color: colors.muted,
     ...typography.body,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2
+    fontSize: 11.5,
+    lineHeight: 15,
+    marginTop: 1
   },
   action: {
-    minHeight: 44,
+    minHeight: 36,
     minWidth: 44,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     alignItems: "center",
     justifyContent: "center"
   },
   solidAction: {
-    minHeight: 32,
+    minHeight: 28,
     minWidth: 0,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radii.md,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.sm,
     backgroundColor: colors.accent
   },
   actionLabel: {
     color: colors.accentDark,
-    ...typography.button
+    ...typography.button,
+    fontSize: 12
   },
   solidActionLabel: {
     color: colors.surface
@@ -174,14 +175,14 @@ const styles = StyleSheet.create({
 
 const noticeToneStyles = StyleSheet.create<Record<StatusNoticeTone, { backgroundColor: string; borderColor: string }>>({
   neutral: { backgroundColor: colors.surface, borderColor: colors.border },
-  success: { backgroundColor: colors.successSoft, borderColor: colors.success },
-  caution: { backgroundColor: colors.cautionSoft, borderColor: colors.caution },
-  warning: { backgroundColor: colors.warningSoft, borderColor: colors.warning },
-  danger: { backgroundColor: colors.dangerSoft, borderColor: colors.danger }
+  success: { backgroundColor: colors.successSoft, borderColor: colors.successSoft },
+  caution: { backgroundColor: colors.cautionSoft, borderColor: colors.cautionSoft },
+  warning: { backgroundColor: colors.warningSoft, borderColor: colors.warningSoft },
+  danger: { backgroundColor: colors.dangerSoft, borderColor: colors.dangerSoft }
 });
 
 const iconToneStyles = StyleSheet.create<Record<StatusNoticeTone, { backgroundColor: string }>>({
-  neutral: { backgroundColor: colors.surfaceWarm },
+  neutral: { backgroundColor: colors.panel },
   success: { backgroundColor: colors.successSoft },
   caution: { backgroundColor: colors.cautionSoft },
   warning: { backgroundColor: colors.warningSoft },

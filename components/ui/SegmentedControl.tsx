@@ -136,9 +136,11 @@ const styles = StyleSheet.create({
     minWidth: 0
   },
   pillOption: {
-    borderRadius: radii.md,
+    borderRadius: radii.xl,
     borderColor: colors.border,
-    backgroundColor: colors.surface
+    backgroundColor: colors.panel,
+    minHeight: 36,
+    paddingHorizontal: 12
   },
   selectedOption: {
     borderColor: colors.borderStrong,

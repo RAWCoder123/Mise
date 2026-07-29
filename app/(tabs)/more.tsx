@@ -16,7 +16,6 @@ import { StyleSheet, Text, View } from "react-native";
 import { ActionTile, ActionTileGrid } from "../../components/ui/ActionTile";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
-import { SectionSurface } from "../../components/ui/SectionSurface";
 import { colors, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -41,99 +40,109 @@ export default function MoreScreen() {
       subtitle={restaurant ? `${restaurant.name} · ${t("more.subtitle")}` : t("more.subtitle")}
     >
       <View style={styles.stack}>
-        <SectionSurface padding="comfortable">
-          <View style={styles.profileRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
-            <View style={styles.profileCopy}>
-              <Text style={styles.profileName}>{user?.name?.trim() || t("more.profile.fallbackName")}</Text>
-              <Text style={styles.profileMeta}>{role ? t(roleKeys[role]) : t("settings.account.operator")}</Text>
-              <Text style={styles.profileEmail}>{user?.email?.trim() || t("settings.account.emailMissing")}</Text>
-            </View>
-          </View>
-        </SectionSurface>
-
-        <ActionTileGrid accessibilityLabel={t("more.shortcuts.accessibility")}>
+        <ActionTileGrid columns={4} accessibilityLabel={t("more.shortcuts.accessibility")}>
           <ActionTile
+            compact
             label={t("more.shortcut.createTask")}
             accessibilityLabel={t("more.shortcut.createTaskHint")}
-            icon={<ClipboardList size={17} color={colors.accentDark} strokeWidth={2.2} />}
+            icon={<ClipboardList size={15} color={colors.accentDark} strokeWidth={2.2} />}
             onPress={() => router.push("/today")}
           />
           <ActionTile
+            compact
             label={t("more.shortcut.logDelivery")}
             accessibilityLabel={t("more.shortcut.logDeliveryHint")}
-            icon={<Truck size={17} color={colors.text} strokeWidth={2.2} />}
+            icon={<Truck size={15} color={colors.text} strokeWidth={2.2} />}
             onPress={() => router.push("/inventory")}
           />
           <ActionTile
+            compact
             label={t("more.shortcut.scanItem")}
             accessibilityLabel={t("more.shortcut.scanItemHint")}
-            icon={<ScanLine size={17} color={colors.text} strokeWidth={2.2} />}
+            icon={<ScanLine size={15} color={colors.text} strokeWidth={2.2} />}
             onPress={() => router.push("/inventory")}
           />
           <ActionTile
+            compact
             label={t("more.shortcut.askMise")}
             accessibilityLabel={t("more.shortcut.askMiseHint")}
-            icon={<Sparkles size={17} color={colors.accentDark} strokeWidth={2.2} />}
+            icon={<Sparkles size={15} color={colors.accentDark} strokeWidth={2.2} />}
             onPress={() => router.push("/ask-mise")}
           />
         </ActionTileGrid>
 
-        <SectionSurface title={t("more.section.operations")} padding="none">
-          <OperationalRow
-            title={t("nav.insights")}
-            subtitle={t("more.row.insights.subtitle")}
-            icon={<BarChart3 size={20} color={colors.text} strokeWidth={2.25} />}
-            iconTone="neutral"
-            onPress={() => router.push("/insights")}
-          />
-          <OperationalRow
-            title={t("more.row.integrations.title")}
-            subtitle={t("more.row.integrations.subtitle")}
-            icon={<Mail size={20} color={colors.accentDark} strokeWidth={2.25} />}
-            iconTone="brand"
-            onPress={() => router.push("/settings/gmail")}
-          />
-          <OperationalRow
-            title={t("more.row.suppliers.title")}
-            subtitle={t("more.row.suppliers.subtitle")}
-            icon={<Truck size={20} color={colors.text} strokeWidth={2.25} />}
-            iconTone="neutral"
-            onPress={() => router.push("/settings/suppliers")}
-          />
-          <OperationalRow
-            title={t("nav.settings")}
-            subtitle={t("more.row.settings.subtitle")}
-            icon={<Settings size={20} color={colors.text} strokeWidth={2.25} />}
-            iconTone="neutral"
-            onPress={() => router.push("/settings")}
-          />
-        </SectionSurface>
+        <View style={styles.listGroup}>
+          <Text style={styles.listLabel}>{t("more.section.operations")}</Text>
+          <View style={styles.list}>
+            <OperationalRow
+              title={t("nav.insights")}
+              subtitle={t("more.row.insights.subtitle")}
+              icon={<BarChart3 size={18} color={colors.text} strokeWidth={2.25} />}
+              iconTone="neutral"
+              onPress={() => router.push("/insights")}
+            />
+            <OperationalRow
+              title={t("more.row.integrations.title")}
+              subtitle={t("more.row.integrations.subtitle")}
+              icon={<Mail size={18} color={colors.accentDark} strokeWidth={2.25} />}
+              iconTone="brand"
+              onPress={() => router.push("/settings/gmail")}
+            />
+            <OperationalRow
+              title={t("more.row.suppliers.title")}
+              subtitle={t("more.row.suppliers.subtitle")}
+              icon={<Truck size={18} color={colors.text} strokeWidth={2.25} />}
+              iconTone="neutral"
+              onPress={() => router.push("/settings/suppliers")}
+            />
+            <OperationalRow
+              title={t("nav.settings")}
+              subtitle={t("more.row.settings.subtitle")}
+              icon={<Settings size={18} color={colors.text} strokeWidth={2.25} />}
+              iconTone="neutral"
+              onPress={() => router.push("/settings")}
+            />
+          </View>
+        </View>
 
-        <SectionSurface title={t("more.section.team")} padding="none">
-          <OperationalRow
-            title={t("more.row.team.title")}
-            subtitle={t("more.row.team.body")}
-            icon={<UsersRound size={20} color={colors.text} strokeWidth={2.25} />}
-            iconTone="neutral"
-            onPress={() => router.push("/settings/team" as never)}
-          />
-          <OperationalRow
-            title={t("more.row.help.title")}
-            subtitle={t("more.row.help.body")}
-            icon={<HelpCircle size={20} color={colors.muted} strokeWidth={2.25} />}
-            iconTone="neutral"
-          />
-          <OperationalRow
-            title={t("more.row.report.title")}
-            subtitle={t("more.row.report.body")}
-            icon={<PackageSearch size={20} color={colors.muted} strokeWidth={2.25} />}
-            iconTone="neutral"
-            onPress={() => router.push("/insights")}
-          />
-        </SectionSurface>
+        <View style={styles.listGroup}>
+          <Text style={styles.listLabel}>{t("more.section.team")}</Text>
+          <View style={styles.list}>
+            <OperationalRow
+              title={t("more.row.team.title")}
+              subtitle={t("more.row.team.body")}
+              icon={<UsersRound size={18} color={colors.text} strokeWidth={2.25} />}
+              iconTone="neutral"
+              onPress={() => router.push("/settings/team" as never)}
+            />
+            <OperationalRow
+              title={t("more.row.help.title")}
+              subtitle={t("more.row.help.body")}
+              icon={<HelpCircle size={18} color={colors.muted} strokeWidth={2.25} />}
+              iconTone="neutral"
+            />
+            <OperationalRow
+              title={t("more.row.report.title")}
+              subtitle={t("more.row.report.body")}
+              icon={<PackageSearch size={18} color={colors.muted} strokeWidth={2.25} />}
+              iconTone="neutral"
+              onPress={() => router.push("/insights")}
+            />
+          </View>
+        </View>
+
+        <View style={styles.profileRow}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
+          <View style={styles.profileCopy}>
+            <Text style={styles.profileName}>{user?.name?.trim() || t("more.profile.fallbackName")}</Text>
+            <Text style={styles.profileMeta}>
+              {role ? t(roleKeys[role]) : t("settings.account.operator")}
+              {user?.email?.trim() ? ` · ${user.email.trim()}` : ""}
+            </Text>
+          </View>
+        </View>
       </View>
     </Screen>
   );
@@ -148,28 +157,47 @@ function initialsFor(value: string) {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 14
+    gap: 16
+  },
+  listGroup: {
+    gap: 6
+  },
+  listLabel: {
+    color: colors.muted,
+    fontFamily: typography.families.semibold,
+    fontSize: 11,
+    lineHeight: 14,
+    textTransform: "uppercase",
+    letterSpacing: 0.4
+  },
+  list: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface
   },
   profileRow: {
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12
+    gap: 10,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
   },
   avatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: colors.border
+    backgroundColor: colors.accentSoft
   },
   avatarText: {
     color: colors.accentDark,
     fontFamily: typography.families.bold,
-    fontSize: 19,
-    lineHeight: 24
+    fontSize: 13,
+    lineHeight: 16
   },
   profileCopy: {
     flex: 1,
@@ -177,22 +205,15 @@ const styles = StyleSheet.create({
   },
   profileName: {
     color: colors.text,
-    fontFamily: typography.families.bold,
-    fontSize: 18,
-    lineHeight: 23
+    fontFamily: typography.families.semibold,
+    fontSize: 14,
+    lineHeight: 18
   },
   profileMeta: {
-    color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2
-  },
-  profileEmail: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 11.5,
+    lineHeight: 15,
     marginTop: 1
   }
 });

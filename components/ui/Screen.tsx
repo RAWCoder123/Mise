@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import { router, usePathname } from "expo-router";
-import { Bell, ChevronDown, Menu } from "lucide-react-native";
+import { Bell } from "lucide-react-native";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -19,6 +19,8 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { BrandLockup } from "./BrandLockup";
 import { MotionView } from "./Motion";
 
+export type ScreenChrome = "brand" | "title";
+
 interface ScreenProps {
   title?: string;
   subtitle?: string;
@@ -27,23 +29,48 @@ interface ScreenProps {
   loading?: boolean;
   scroll?: boolean;
   keyboardAware?: boolean;
+  /** Home uses brand lockup; other tabs use the screen title in the top bar. */
+  chrome?: ScreenChrome;
+  /** Title bar alignment when `chrome="title"`. Defaults to centered for main tabs. */
+  titleAlign?: "left" | "center";
 }
 
-export function Screen({ title, subtitle, action, children, loading, scroll = true, keyboardAware = false }: ScreenProps) {
+function resolveChrome(pathname: string, chrome?: ScreenChrome): ScreenChrome {
+  if (chrome) return chrome;
+  if (pathname === "/home" || pathname === "/") return "brand";
+  return "title";
+}
+
+export function Screen({
+  title,
+  subtitle,
+  action,
+  children,
+  loading,
+  scroll = true,
+  keyboardAware = false,
+  chrome,
+  titleAlign
+}: ScreenProps) {
   const { restaurant } = useMiseSession();
   const { t } = useLocale();
   const pathname = usePathname();
+  const resolvedChrome = resolveChrome(pathname, chrome);
+  const isBrand = resolvedChrome === "brand";
   const isInsightsRoute = pathname === "/insights";
-  const isSettingsRoute = pathname === "/settings";
+  const align = titleAlign ?? (pathname === "/more" || pathname.startsWith("/settings") ? "left" : "center");
+  const showBodyTitle = Boolean(title) && isBrand;
+  const showBodySubtitle = Boolean(subtitle);
+
   const content = (
-    <MotionView style={styles.content} distance={6}>
-      {title || subtitle || action ? (
+    <MotionView style={styles.content} distance={4}>
+      {showBodyTitle || showBodySubtitle || (action && isBrand) ? (
         <View style={styles.header}>
           <View style={styles.headerText}>
-            {title ? <Text style={styles.title}>{title}</Text> : null}
-            {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+            {showBodyTitle ? <Text style={styles.title}>{title}</Text> : null}
+            {showBodySubtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           </View>
-          {action}
+          {isBrand ? action : null}
         </View>
       ) : null}
       {loading ? (
@@ -62,60 +89,48 @@ export function Screen({ title, subtitle, action, children, loading, scroll = tr
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-      <View style={[styles.appBar, restaurant && styles.workspaceAppBar]}>
-        <View style={styles.topBar}>
-          {restaurant && !isSettingsRoute ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t("screen.openSettings")}
-              hitSlop={8}
-              onPress={() => router.push("/settings")}
-              style={({ pressed }) => [styles.headerAction, pressed && styles.headerActionPressed]}
-            >
-              <Menu size={21} color={colors.text} strokeWidth={1.9} />
-            </Pressable>
-          ) : (
-            <View style={styles.headerAction} />
-          )}
-          <BrandLockup size="small" showTagline={false} />
-          {restaurant && !isInsightsRoute ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t("screen.openInsights")}
-              accessibilityHint={t("screen.openInsightsHint")}
-              hitSlop={8}
-              onPress={() => router.push("/insights")}
-              style={({ pressed }) => [styles.headerAction, pressed && styles.headerActionPressed]}
-            >
-              <Bell size={20} color={colors.text} strokeWidth={1.9} />
-            </Pressable>
-          ) : (
-            <View style={styles.headerAction} />
-          )}
-        </View>
-        {restaurant ? (
-          isSettingsRoute ? (
-            <View
-              accessible
-              style={styles.restaurantBar}
-              accessibilityLabel={t("screen.currentRestaurant", { restaurant: restaurant.name })}
-            >
-              <Text style={styles.restaurantName} numberOfLines={1}>{restaurant.name}</Text>
+      <View style={styles.appBar}>
+        {isBrand ? (
+          <View style={styles.topBar}>
+            <BrandLockup size="small" showTagline={false} />
+            {restaurant && !isInsightsRoute ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("screen.openInsights")}
+                accessibilityHint={t("screen.openInsightsHint")}
+                hitSlop={8}
+                onPress={() => router.push("/insights")}
+                style={({ pressed }) => [styles.headerAction, pressed && styles.headerActionPressed]}
+              >
+                <Bell size={20} color={colors.text} strokeWidth={1.9} />
+              </Pressable>
+            ) : (
+              <View style={styles.headerAction} />
+            )}
+          </View>
+        ) : (
+          <View style={styles.topBar}>
+            {align === "center" ? (
+              <View style={[styles.barSide, styles.barSideStart]}>
+                <View style={styles.headerAction} />
+              </View>
+            ) : null}
+            <View style={[styles.titleSlot, align === "left" && styles.titleSlotLeft]}>
+              {title ? (
+                <Text
+                  accessibilityRole="header"
+                  numberOfLines={1}
+                  style={[styles.appBarTitle, align === "center" && styles.appBarTitleCentered]}
+                >
+                  {title}
+                </Text>
+              ) : null}
             </View>
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t("screen.openRestaurantSettings", { restaurant: restaurant.name })}
-              accessibilityHint={t("screen.openRestaurantSettingsHint")}
-              hitSlop={{ top: 8, bottom: 9, left: 0, right: 0 }}
-              onPress={() => router.push("/settings")}
-              style={({ pressed }) => [styles.restaurantBar, pressed && styles.restaurantBarPressed]}
-            >
-              <Text style={styles.restaurantName} numberOfLines={1}>{restaurant.name}</Text>
-              <ChevronDown size={14} color={colors.text} strokeWidth={2} />
-            </Pressable>
-          )
-        ) : null}
+            <View style={[styles.barSide, styles.barSideEnd]}>
+              {action ?? (align === "center" ? <View style={styles.headerAction} /> : null)}
+            </View>
+          </View>
+        )}
       </View>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -142,23 +157,53 @@ export function Screen({ title, subtitle, action, children, loading, scroll = tr
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.panel
+    backgroundColor: colors.background
   },
   appBar: {
     height: 56,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface
   },
-  workspaceAppBar: {
-    height: 98
-  },
   topBar: {
-    height: 54,
+    height: 56,
     paddingHorizontal: spacing.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between"
+  },
+  barSide: {
+    minWidth: 44,
+    minHeight: 44,
+    flexShrink: 0,
+    justifyContent: "center"
+  },
+  barSideStart: {
+    alignItems: "flex-start"
+  },
+  barSideEnd: {
+    alignItems: "flex-end"
+  },
+  titleSlot: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8
+  },
+  titleSlotLeft: {
+    alignItems: "flex-start",
+    paddingHorizontal: 0
+  },
+  appBarTitle: {
+    color: colors.text,
+    fontFamily: typography.families.bold,
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: -0.2
+  },
+  appBarTitleCentered: {
+    textAlign: "center"
   },
   headerAction: {
     width: 44,
@@ -169,29 +214,12 @@ const styles = StyleSheet.create({
   headerActionPressed: {
     opacity: 0.5
   },
-  restaurantBar: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    paddingHorizontal: 56
-  },
-  restaurantName: {
-    maxWidth: 260,
-    color: colors.text,
-    ...typography.caption,
-    fontSize: 12
-  },
-  restaurantBarPressed: {
-    backgroundColor: colors.surfaceWarm
-  },
   body: {
     flex: 1,
-    backgroundColor: colors.panel
+    backgroundColor: colors.background
   },
   scrollContent: {
-    paddingBottom: 96
+    paddingBottom: 88
   },
   keyboardAwareScrollContent: {
     paddingBottom: 160
@@ -201,14 +229,14 @@ const styles = StyleSheet.create({
     maxWidth: 440,
     alignSelf: "center",
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg
+    paddingTop: spacing.md
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: spacing.md,
-    marginBottom: 18
+    marginBottom: 12
   },
   headerText: {
     flex: 1,
@@ -221,11 +249,11 @@ const styles = StyleSheet.create({
   subtitle: {
     color: colors.muted,
     ...typography.body,
-    marginTop: spacing.xs,
+    marginTop: 2,
     maxWidth: 480
   },
   loading: {
-    minHeight: 240,
+    minHeight: 200,
     alignItems: "center",
     justifyContent: "center"
   }

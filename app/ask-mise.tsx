@@ -8,7 +8,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { IconBadge } from "../components/ui/IconBadge";
 import { Screen } from "../components/ui/Screen";
 import { RetryNotice } from "../components/ui/StatusNotice";
-import { colors, radii, shadows, typography } from "../constants/theme";
+import { colors, radii, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
 import type { MessageKey, MessageValues } from "../i18n/catalog";
@@ -243,18 +243,17 @@ function scriptedAnswer(
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 14
+    gap: 10
   },
   hero: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    borderRadius: radii.lg,
-    borderWidth: 1,
+    gap: 10,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: 14,
-    ...shadows.card
+    padding: 12
   },
   heroCopy: {
     flex: 1,
@@ -304,14 +303,13 @@ const styles = StyleSheet.create({
   miseBubble: {
     alignSelf: "flex-start",
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.card
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border
   },
   userBubble: {
     alignSelf: "flex-end",
     backgroundColor: colors.accentSoft,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.accent
   },
   bubbleText: {

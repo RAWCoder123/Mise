@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { colors, radii, shadows, typography } from "../../constants/theme";
+import { colors, radii, typography } from "../../constants/theme";
 
 export type CompactMetricTone = "default" | "accent" | "success" | "caution" | "warning" | "danger";
 
@@ -9,6 +9,9 @@ export interface CompactMetric {
   id: string;
   label: string;
   value: string | number;
+  /** Optional trend/caption under the value (e.g. "+12%"). */
+  caption?: string;
+  captionTone?: CompactMetricTone;
   icon?: ReactNode;
   tone?: CompactMetricTone;
   accessibilityLabel?: string;
@@ -20,20 +23,23 @@ export interface CompactMetricStripProps {
   accessibilityLabel?: string;
 }
 
-/** A scan-first row for two to four small operational KPIs. */
+/** Flat 4-up “At a glance” row with subtle vertical dividers. */
 export function CompactMetricStrip({ metrics, style, accessibilityLabel }: CompactMetricStripProps) {
   return (
     <View accessibilityLabel={accessibilityLabel} style={[styles.strip, style]}>
       {metrics.map((metric, index) => (
         <View
           accessible
-          accessibilityLabel={metric.accessibilityLabel ?? `${metric.label}: ${metric.value}`}
+          accessibilityLabel={
+            metric.accessibilityLabel ??
+            [metric.label, String(metric.value), metric.caption].filter(Boolean).join(", ")
+          }
           key={metric.id}
           style={[styles.metric, index > 0 && styles.dividedMetric]}
         >
-          {metric.icon ? <View style={styles.labelRow}>{metric.icon}<Text style={styles.label} numberOfLines={2}>{metric.label}</Text></View> : (
-            <Text style={styles.label} numberOfLines={2}>{metric.label}</Text>
-          )}
+          <Text style={styles.label} numberOfLines={1}>
+            {metric.label}
+          </Text>
           <Text
             adjustsFontSizeToFit
             minimumFontScale={0.72}
@@ -42,6 +48,14 @@ export function CompactMetricStrip({ metrics, style, accessibilityLabel }: Compa
           >
             {metric.value}
           </Text>
+          {metric.caption ? (
+            <Text
+              numberOfLines={1}
+              style={[styles.caption, metric.captionTone ? toneStyles[metric.captionTone] : styles.captionMuted]}
+            >
+              {metric.caption}
+            </Text>
+          ) : null}
         </View>
       ))}
     </View>
@@ -53,43 +67,47 @@ export const MetricStrip = CompactMetricStrip;
 
 const styles = StyleSheet.create({
   strip: {
-    minHeight: 80,
+    minHeight: 64,
     flexDirection: "row",
     alignItems: "stretch",
     overflow: "hidden",
-    borderRadius: radii.lg,
-    borderWidth: 1,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 12,
-    ...shadows.card
+    paddingVertical: 10
   },
   metric: {
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: 10,
-    justifyContent: "space-between",
-    gap: 6
+    paddingHorizontal: 8,
+    justifyContent: "center",
+    gap: 2
   },
   dividedMetric: {
-    borderLeftWidth: 1,
+    borderLeftWidth: StyleSheet.hairlineWidth,
     borderLeftColor: colors.border
   },
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5
-  },
   label: {
-    flexShrink: 1,
     color: colors.muted,
-    ...typography.caption
+    ...typography.caption,
+    fontSize: 10,
+    lineHeight: 13
   },
   value: {
     color: colors.text,
     fontFamily: typography.families.bold,
-    fontSize: 17,
-    lineHeight: 21
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.2
+  },
+  caption: {
+    fontFamily: typography.families.semibold,
+    fontSize: 10,
+    lineHeight: 13
+  },
+  captionMuted: {
+    color: colors.muted
   }
 });
 

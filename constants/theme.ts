@@ -9,8 +9,8 @@ export const colors = {
   background: "#FFFFFF",
   surface: "#FFFFFF",
   surfaceWarm: "#FAF8F5",
-  panel: "#F3F1ED",
-  panelStrong: "#EAE7E2",
+  panel: "#F7F7F5",
+  panelStrong: "#EEEEEC",
   text: "#171715",
   muted: "#6A6965",
   faint: "#8A8984",
@@ -75,9 +75,9 @@ export const inventoryStatusSoftColors = {
 
 export const radii = {
   sm: 8,
-  md: 12,
-  lg: 14,
-  xl: 18
+  md: 10,
+  lg: 12,
+  xl: 16
 } as const;
 
 export const spacing = {
@@ -90,14 +90,21 @@ export const spacing = {
   xxl: 32
 } as const;
 
-/** Single restrained card elevation — soft depth without decorative glow. */
+/** Hairline elevation only — concept uses thin borders more than drop shadows. */
 export const shadows = {
   card: {
     shadowColor: "#171715",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1
+  },
+  none: {
+    shadowColor: "transparent",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0
   }
 } as const;
 
@@ -112,27 +119,27 @@ export const fontFamilies = {
 export const typography = {
   families: fontFamilies,
   screenTitle: {
-    fontFamily: fontFamilies.display,
-    fontSize: 30,
-    lineHeight: 36,
-    letterSpacing: -0.4
+    fontFamily: fontFamilies.bold,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.35
   },
   sectionTitle: {
-    fontFamily: fontFamilies.display,
-    fontSize: 20,
-    lineHeight: 26,
-    letterSpacing: -0.15
+    fontFamily: fontFamilies.semibold,
+    fontSize: 16,
+    lineHeight: 21,
+    letterSpacing: -0.1
   },
   metricValue: {
     fontFamily: fontFamilies.bold,
-    fontSize: 23,
-    lineHeight: 28,
+    fontSize: 20,
+    lineHeight: 24,
     letterSpacing: -0.3
   },
   cardTitle: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 18,
     letterSpacing: 0
   },
   body: {
@@ -144,7 +151,7 @@ export const typography = {
   caption: {
     fontFamily: fontFamilies.semibold,
     fontSize: 11,
-    lineHeight: 15,
+    lineHeight: 14,
     letterSpacing: 0
   },
   button: {

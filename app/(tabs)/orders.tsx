@@ -848,14 +848,14 @@ export default function OrdersScreen() {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 14,
+    gap: 10,
     paddingBottom: 72
   },
   tabs: {
     marginTop: -8
   },
   laneContent: {
-    gap: 14
+    gap: 10
   },
   emailMain: {
     minHeight: 68,

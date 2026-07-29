@@ -1,8 +1,7 @@
 import { type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
-import { ChevronRight } from "lucide-react-native";
 
-import { colors, radii, shadows, typography } from "../../constants/theme";
+import { colors, radii, typography } from "../../constants/theme";
 
 export interface ActionTileProps {
   label: string;
@@ -11,11 +10,12 @@ export interface ActionTileProps {
   accessibilityLabel?: string;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
+  compact?: boolean;
 }
 
 /**
- * Outlined square quick-action tile: icon, label, quiet chevron.
- * Pair with `ActionTileGrid` for a two-by-two scan-first row on Today.
+ * Outlined quick-action tile: icon + label.
+ * Pair with `ActionTileGrid` — use `columns={4}` for a compact More shortcut row.
  */
 export function ActionTile({
   label,
@@ -23,7 +23,8 @@ export function ActionTile({
   onPress,
   accessibilityLabel,
   disabled,
-  style
+  style,
+  compact
 }: ActionTileProps) {
   return (
     <Pressable
@@ -35,16 +36,16 @@ export function ActionTile({
       onPress={onPress}
       style={({ pressed }) => [
         styles.tile,
+        compact && styles.compactTile,
         disabled && styles.disabled,
         pressed && !disabled && styles.pressed,
         style
       ]}
     >
-      <View style={styles.iconWrap}>{icon}</View>
-      <Text numberOfLines={2} style={styles.label}>
+      <View style={[styles.iconWrap, compact && styles.compactIconWrap]}>{icon}</View>
+      <Text numberOfLines={2} style={[styles.label, compact && styles.compactLabel]}>
         {label}
       </Text>
-      <ChevronRight size={16} color={colors.faint} strokeWidth={2.2} style={styles.chevron} />
     </Pressable>
   );
 }
@@ -53,12 +54,16 @@ export interface ActionTileGridProps {
   children: ReactNode;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
+  columns?: 2 | 4;
 }
 
-/** Two-column wrapping grid for ActionTiles. */
-export function ActionTileGrid({ children, accessibilityLabel, style }: ActionTileGridProps) {
+/** Wrapping grid for ActionTiles. */
+export function ActionTileGrid({ children, accessibilityLabel, style, columns = 2 }: ActionTileGridProps) {
   return (
-    <View accessibilityLabel={accessibilityLabel} style={[styles.grid, style]}>
+    <View
+      accessibilityLabel={accessibilityLabel}
+      style={[styles.grid, columns === 4 && styles.gridFour, style]}
+    >
       {children}
     </View>
   );
@@ -70,42 +75,60 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8
   },
+  gridFour: {
+    gap: 6,
+    flexWrap: "nowrap"
+  },
   tile: {
     flexGrow: 1,
     flexBasis: "47%",
     minWidth: 0,
-    minHeight: 96,
-    borderRadius: radii.lg,
-    borderWidth: 1,
+    minHeight: 72,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    gap: 10,
-    ...shadows.card
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 8
+  },
+  compactTile: {
+    flexBasis: 0,
+    flexGrow: 1,
+    minHeight: 64,
+    alignItems: "center",
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    gap: 6
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.md,
-    backgroundColor: colors.surfaceWarm,
-    borderWidth: 1,
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    backgroundColor: colors.panel,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center"
   },
+  compactIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 0,
+    backgroundColor: colors.accentSoft
+  },
   label: {
-    flexGrow: 1,
     color: colors.text,
     ...typography.cardTitle,
-    fontSize: 13.5,
-    lineHeight: 18,
-    paddingRight: 18
+    fontSize: 12.5,
+    lineHeight: 16
   },
-  chevron: {
-    position: "absolute",
-    right: 12,
-    bottom: 14
+  compactLabel: {
+    textAlign: "center",
+    fontSize: 10.5,
+    lineHeight: 13,
+    fontFamily: typography.families.semibold
   },
   pressed: {
     opacity: 0.72

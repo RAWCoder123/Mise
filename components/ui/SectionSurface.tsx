@@ -1,6 +1,6 @@
 import { StyleSheet, View, type ViewProps } from "react-native";
 
-import { colors, radii, shadows } from "../../constants/theme";
+import { colors, radii } from "../../constants/theme";
 import { SectionHeader } from "./SectionHeader";
 
 export interface SectionSurfaceProps extends ViewProps {
@@ -13,6 +13,8 @@ export interface SectionSurfaceProps extends ViewProps {
   tone?: "default" | "warm";
   padding?: "none" | "compact" | "comfortable";
   separatedHeader?: boolean;
+  /** Flat hairline group without rounded outer chrome (More lists). */
+  flat?: boolean;
 }
 
 /** A consistent bordered surface for compact operational sections and lists. */
@@ -26,6 +28,7 @@ export function SectionSurface({
   tone = "default",
   padding = "compact",
   separatedHeader = true,
+  flat = false,
   children,
   style,
   ...props
@@ -33,9 +36,17 @@ export function SectionSurface({
   const hasHeader = Boolean(title);
 
   return (
-    <View style={[styles.surface, tone === "warm" && styles.warm, style]} {...props}>
+    <View
+      style={[
+        styles.surface,
+        flat && styles.flat,
+        tone === "warm" && styles.warm,
+        style
+      ]}
+      {...props}
+    >
       {title ? (
-        <View style={[styles.header, separatedHeader && styles.separatedHeader]}>
+        <View style={[styles.header, flat && styles.flatHeader, separatedHeader && styles.separatedHeader]}>
           <SectionHeader
             title={title}
             eyebrow={eyebrow}
@@ -50,6 +61,7 @@ export function SectionSurface({
       <View
         style={[
           styles.content,
+          flat && styles.flatContent,
           padding === "none" && styles.noPadding,
           padding === "comfortable" && styles.comfortablePadding,
           !hasHeader && padding === "compact" && styles.standaloneCompactPadding
@@ -65,30 +77,44 @@ const styles = StyleSheet.create({
   surface: {
     overflow: "hidden",
     borderRadius: radii.lg,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
-    ...shadows.card
+    backgroundColor: colors.surface
+  },
+  flat: {
+    borderRadius: 0,
+    borderWidth: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.surface
   },
   warm: {
     backgroundColor: colors.surfaceWarm
   },
   header: {
-    paddingHorizontal: 14,
-    paddingVertical: 12
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  flatHeader: {
+    paddingHorizontal: 0,
+    paddingTop: 4,
+    paddingBottom: 8
   },
   separatedHeader: {
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border
   },
   content: {
-    padding: 14
+    padding: 12
+  },
+  flatContent: {
+    paddingHorizontal: 0
   },
   standaloneCompactPadding: {
-    padding: 14
+    padding: 12
   },
   comfortablePadding: {
-    padding: 16
+    padding: 14
   },
   noPadding: {
     padding: 0
