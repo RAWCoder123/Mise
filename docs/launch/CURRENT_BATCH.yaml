@@ -1,8 +1,11 @@
-batch_id: private-beta-external-receipts-40
-status: in_progress
-goal: Close exact-candidate external release receipts through bounded, non-production handoffs without changing application code or triggering paid, signing, build, distribution, DNS, or production actions.
+batch_id: private-beta-expo-patch-closure-39
+status: completed
+goal: Restore Expo Doctor to 21/21 by applying only the SDK 56 compatible Expo and Expo Router patch releases, then revalidate the exact provisional candidate.
 started_at: 2026-07-29
 codex_owned:
+  - package.json
+  - package-lock.json
+  - tests/security.test.ts
   - docs/launch/**
 cursor_owned: []
 shared_locked:
@@ -14,31 +17,34 @@ shared_locked:
   - services/**
   - supabase/**
   - scripts/**
-  - tests/**
-  - package.json
-  - package-lock.json
   - app.json
   - eas.json
 blocked_files: []
 handoff_required: true
 dependencies:
-  - private-beta-expo-patch-closure-39
+  - private-beta-hosted-candidate-closure-38
 required_tests:
+  - npm run typecheck
+  - npm test
+  - npm audit --audit-level=high
+  - npm run doctor
+  - npm run verify:private-beta-security:local
+  - npm run verify:private-beta-security:hosted
   - npm run beta:go-no-go -- --json
 stop_conditions:
+  - The upgrade exceeds Expo SDK 56 patch-compatible versions
+  - Any application, domain, security, database, build, route, or interaction check regresses
   - Any release receipt is recorded without exact-commit evidence
   - Any cloud build, upload, distribution, production deployment, or paid action would begin
-  - Any credential, authentication secret, or one-time code would be transmitted through chat or committed
-  - Any Apple signing, persistent provider credential, managed recovery target, public DNS, or access-policy change lacks action-time approval
 evidence:
-  - "PostHog project 518939 exposed the exact controlled release mise-mobile@0.1.0+2 event with the bounded correlation contract and redaction_probe=[redacted]; receipt recorded at commit dec0788."
-  - "Unauthenticated checks at 2026-07-29T21:13:40Z found https://getmise.app/privacy and /support timing out, while the reviewed Sites deployment remained owner-only with HTTP 401."
-  - "The computer-control handoff found the Mac locked; no Sentry authentication or credential setup was attempted."
-  - "Supabase project discovery found the dedicated Mise Staging Security project ACTIVE_HEALTHY."
-  - "Current Supabase documentation and CLI confirm managed daily backups are paid-plan capabilities; a development branch in the connected organization would cost $0.01344/hour and was not created without explicit cost approval."
-unresolved_findings:
-  - "Sentry project/receipt requires Raymond-controlled authentication and action-time approval before persistent credentials are created."
-  - "Managed hosted recovery requires a paid recovery target and explicit cost approval; existing logical isolated restore evidence remains valid but is not equivalent."
-  - "Public privacy/support access requires an approved Sites access-policy or production DNS/hosting change."
-  - "Apple signing, physical-device, TestFlight installation, and Raymond approval receipts remain pending."
-checkpoint_commit: null
+  - "At commit 93f24fb, typecheck, 333 tests, and npm audit passed, but Expo Doctor newly reported expo 56.0.17 vs expected ~56.0.18 and expo-router 56.2.16 vs expected ~56.2.17."
+  - "Upgraded only expo to ~56.0.18 and expo-router to ~56.2.17 using the Expo installer; the lockfile resolved the matching SDK 56 patch graph."
+  - "Updated the repository dependency guard to require the new exact patch ranges."
+  - "npm run doctor: 21/21 checks passed."
+  - "npm audit --audit-level=high: zero vulnerabilities."
+  - "npm run typecheck: passed."
+  - "npm test: 333 passed."
+  - "npm run design:static and npm run qa:routes: passed."
+  - "MISE_MOBILE_LAYOUT_PORT=8103 MISE_MOBILE_LAYOUT_DEBUG_PORT=9353 MISE_MOBILE_LAYOUT_TIMEOUT_MS=240000 npm run qa:interactions: passed at 390x844 with zero overflow, core workflow, Español, and 简体中文."
+unresolved_findings: []
+checkpoint_commit: 2346e62619906dadbf74fe00c0121b216682e88e
