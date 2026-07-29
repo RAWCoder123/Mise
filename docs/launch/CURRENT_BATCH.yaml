@@ -1,5 +1,5 @@
 batch_id: private-beta-testflight-profile-34
-status: in_progress
+status: completed
 goal: Correct the beta build boundary from ad hoc internal distribution to an App Store/TestFlight candidate profile before Apple signing is created.
 started_at: 2026-07-28
 codex_owned:
@@ -28,6 +28,9 @@ stop_conditions:
   - The beta command resolves to internal or ad hoc distribution
   - Apple credentials are requested without a Raymond-controlled authorization handoff
   - A cloud build, signing mutation, upload, submission, or production action starts
-evidence: []
-unresolved_findings: []
-checkpoint_commit:
+evidence:
+  - docs/launch/evidence/release/2026-07-28-testflight-store-profile.md
+unresolved_findings:
+  - Raymond-controlled Apple account authorization is required to create and validate the missing App Store distribution certificate and provisioning profile.
+  - A cloud candidate build and TestFlight submission remain separate approval-gated actions.
+checkpoint_commit: 041f224b375fc61088588debfb47aee73ce4a43a

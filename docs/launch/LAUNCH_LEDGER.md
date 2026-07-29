@@ -1207,6 +1207,45 @@ Checkpoint:
 
 - `550e3844d28bc9eb61bdc8666f80951c9f7cc93e`
 
+### `private-beta-testflight-profile-34`
+
+In scope:
+
+- Verify that the named TestFlight command produces an App Store-distributed
+  candidate rather than an ad hoc internal build.
+- Keep beta runtime data isolated in the EAS Preview environment.
+- Stop before Apple authorization, credential creation, build upload, or
+  submission.
+
+Delivered:
+
+- Added a dedicated EAS `testflight` build profile with `distribution: store`.
+- Kept its runtime on Preview/staging with deterministic reviewer demo access
+  and release identity `mise-mobile@0.1.0+2`.
+- Bound the TestFlight build and submit commands to the same named profile.
+- Added automated assertions preventing the command from silently regressing to
+  ad hoc/internal distribution.
+- Re-inspected the sanitized archive and advanced the App Store pre-build only
+  to the missing Apple signing-credential boundary.
+
+Evidence:
+
+- `docs/launch/evidence/release/2026-07-28-testflight-store-profile.md`
+- `npm run qa:eas-account`: passed
+- `npm run typecheck`: passed
+- `npm test`: 330 passed
+- EAS TestFlight configuration and archive inspections
+
+Unresolved:
+
+- Raymond-controlled Apple login and 2FA
+- App Store distribution certificate and provisioning profile
+- Candidate cloud build and TestFlight submission
+
+Checkpoint:
+
+- `041f224b375fc61088588debfb47aee73ce4a43a`
+
 ## Handoff format
 
 Every completed batch records:

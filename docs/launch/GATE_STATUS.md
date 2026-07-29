@@ -79,14 +79,16 @@ Remaining external verification:
 
 - Install and walk the critical workflow on real supported iPhones.
 - Complete the Raymond-controlled Apple account authorization so EAS can
-  generate or fully validate iOS signing credentials.
-- Install/select full Xcode so `simctl` and native prerequisite checks can run.
+  generate and validate the App Store distribution certificate and
+  provisioning profile for the dedicated `testflight` profile.
+- The former ad hoc Preview command has been corrected: TestFlight now resolves
+  to App Store distribution with staging runtime configuration and deterministic
+  reviewer demo access.
 - Enable public hosting for the reviewed privacy/support site or connect the
   exact source to `getmise.app`; the current Sites workspace rejects public
   access and both `getmise.app` routes time out.
 - Install full Xcode so `simctl` and native release checks are available.
-- Publish responsive `getmise.app/privacy` and support endpoints and confirm
-  monitored support/privacy inboxes.
+- Confirm monitored support/privacy inboxes.
 - Accept a release-candidate owner invitation on a physical iPhone and confirm
   the monitored invitation-delivery channel.
 - Complete live monitoring, managed Supabase recovery, and TestFlight evidence.
