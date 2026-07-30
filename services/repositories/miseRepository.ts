@@ -24,7 +24,13 @@ import type {
   SupplierRecipient
 } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
-import { DEMO_RESTAURANT_ID, DEMO_USER_ID, type DemoSetupProfile, type DemoState } from "../demoData";
+import {
+  applyManualPosSalesIngestToDemoState,
+  DEMO_RESTAURANT_ID,
+  DEMO_USER_ID,
+  type DemoSetupProfile,
+  type DemoState
+} from "../demoData";
 import {
   approveRecommendationInDemoState,
   buildInsightsFromData,
@@ -852,85 +858,9 @@ function createLocalDemoRepository(): MiseRepository {
     },
 
     async importManualPosSalesCsv(restaurantId, sales, sourceFileName = null) {
-      return mutateDemoState((state) => {
-        const now = new Date().toISOString();
-        const keptSales = state.posSales.filter(
-          (sale) => sale.restaurant_id !== restaurantId || sale.source_pos !== "Manual CSV Upload"
-        );
-        const importedSales = sales.map((saleInput) => ({
-          ...saleInput,
-          id: createId("sale"),
-          restaurant_id: restaurantId,
-          created_at: now
-        }));
-        state.posSales = [...keptSales, ...importedSales];
-        state.posProvider = "Manual CSV Upload";
-        state.posConnectedAt = now;
-
-        const existingIntegration = state.posIntegrations.find(
-          (entry) => entry.restaurant_id === restaurantId && entry.provider === "manual_csv"
-        );
-        const integrationId = existingIntegration?.id ?? createId("pos_integration");
-        if (existingIntegration) {
-          existingIntegration.status = "connected";
-          existingIntegration.last_sync_at = now;
-          existingIntegration.updated_at = now;
-          existingIntegration.settings = {
-            mode: "manual_csv",
-            importsSales: true,
-            storesCredentials: false
-          };
-        } else {
-          state.posIntegrations.push({
-            id: integrationId,
-            restaurant_id: restaurantId,
-            provider: "manual_csv",
-            status: "connected",
-            external_location_id: null,
-            last_sync_at: now,
-            sync_cursor: null,
-            settings: {
-              mode: "manual_csv",
-              importsSales: true,
-              storesCredentials: false
-            },
-            created_at: now,
-            updated_at: now
-          });
-        }
-
-        const salesImportId = createId("sales_import");
-        state.salesImports.unshift({
-          id: salesImportId,
-          restaurant_id: restaurantId,
-          pos_integration_id: integrationId,
-          import_type: "csv_upload",
-          status: "completed",
-          source_file_name: sourceFileName,
-          records_processed: importedSales.length,
-          error_message: null,
-          metadata: {
-            source: "manual_csv_ingest",
-            storage_status: "rows_only",
-            raw_file_stored: false
-          },
-          imported_at: now
-        });
-
-        appendDemoAuditLog(state, {
-          restaurant_id: restaurantId,
-          action: "manual_pos_csv_ingested",
-          entity_table: "sales_imports",
-          entity_id: salesImportId,
-          metadata: {
-            pos_sales_rows_saved: importedSales.length,
-            pos_integration_id: integrationId,
-            source_file_name: sourceFileName
-          }
-        });
-
-        return { posSalesRowsSaved: importedSales.length, salesImportId };
-      });
+      return mutateDemoState((state) =>
+        applyManualPosSalesIngestToDemoState(state, restaurantId, sales, sourceFileName)
+      );
     },
 
     async upsertInventoryItem(input) {
@@ -1689,7 +1619,7 @@ function createSupabaseRepository(): MiseRepository {
       throwRepositoryError(error, typeof body.restaurantId === "string" ? body.restaurantId : null);
     }
     if (!data || data.status !== "completed") throw new Error("Operational workflow did not complete.");
-    return data as { status: "completed"; result: unknown; setupSummary: unknown };
+    return data as { status: "completed"; result: unknown; setupSummary: unknown; ingestSummary?: unknown };
   }
 
   async function invokeGmailFunction(
