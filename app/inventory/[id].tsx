@@ -17,19 +17,21 @@ import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import {
   addInventoryItemToOrder,
   fetchInventoryItemOutlook,
+  fetchInventoryMovements,
   updateInventoryItem
 } from "../../services/miseService";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
-import type { InventoryOutlookItem } from "../../types/mise";
+import type { InventoryMovement, InventoryOutlookItem } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
 
 export default function InventoryDetailScreen() {
-  const { formatNumber, parseNumber, t } = useLocale();
+  const { formatDate, formatNumber, formatRelativeTime, parseNumber, t } = useLocale();
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const { memberships, restaurant } = useMiseSession();
   const [outlook, setOutlook] = useState<InventoryOutlookItem | null>(null);
+  const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [currentQuantity, setCurrentQuantity] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
@@ -57,9 +59,13 @@ export default function InventoryDetailScreen() {
     setMessage(null);
     setMessageIsError(false);
     try {
-      const nextOutlook = await fetchInventoryItemOutlook(restaurantId, itemId);
+      const [nextOutlook, nextMovements] = await Promise.all([
+        fetchInventoryItemOutlook(restaurantId, itemId),
+        fetchInventoryMovements(restaurantId, itemId, 6).catch(() => [] as InventoryMovement[])
+      ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(nextOutlook);
+      setMovements(nextMovements);
       setLoadedRestaurantId(restaurantId);
       if (nextOutlook) {
         setCurrentQuantity(formatNumber(nextOutlook.item.current_quantity, { maximumFractionDigits: 2, useGrouping: false }));
@@ -70,6 +76,7 @@ export default function InventoryDetailScreen() {
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(null);
+      setMovements([]);
       setMessage(t("inventory.detail.loadError"));
       setMessageIsError(true);
     } finally {
@@ -340,6 +347,33 @@ export default function InventoryDetailScreen() {
               />
             ) : null}
           </Card>
+
+          <Card>
+            <Text style={styles.cardTitle}>{t("inventory.detail.movements.title")}</Text>
+            {movements.length === 0 ? (
+              <Text style={styles.copy}>{t("inventory.detail.movements.empty")}</Text>
+            ) : (
+              <View style={styles.movementList}>
+                {movements.map((movement) => (
+                  <View key={movement.id} style={styles.movementRow}>
+                    <View style={styles.movementCopy}>
+                      <Text style={styles.movementReason}>{t("inventory.detail.movements.manualCount")}</Text>
+                      <Text style={styles.movementDelta}>
+                        {t("inventory.detail.movements.delta", {
+                          before: formatNumber(movement.quantity_before, { maximumFractionDigits: 1 }),
+                          after: formatNumber(movement.quantity_after, { maximumFractionDigits: 1 }),
+                          unit: item.unit
+                        })}
+                      </Text>
+                    </View>
+                    <Text style={styles.movementWhen} accessibilityLabel={formatDate(movement.created_at, { dateStyle: "medium", timeStyle: "short" })}>
+                      {formatRelativeTime(movement.created_at)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </Card>
         </View>
       ) : (
         <Text style={[styles.message, messageIsError && styles.error]}>{message ?? t("inventory.detail.notFound")}</Text>
@@ -564,6 +598,41 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     marginTop: 2
+  },
+  movementList: {
+    gap: 10,
+    marginTop: 4
+  },
+  movementRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: 10
+  },
+  movementCopy: {
+    flex: 1,
+    gap: 3
+  },
+  movementReason: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  movementDelta: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700"
+  },
+  movementWhen: {
+    color: colors.faint,
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "right",
+    maxWidth: 96
   },
   message: {
     color: colors.text,
