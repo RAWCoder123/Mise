@@ -115,6 +115,27 @@ await assertDeniedRpc(
   "inventory workflow rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
+  "service_ingest_manual_pos_sales",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_sales: [
+      {
+        source_record_id: "forged_csv_row",
+        sale_date: "2026-07-28",
+        item_name: "Forged Item",
+        category: "Sales",
+        quantity_sold: 1,
+        gross_sales: 10,
+        net_sales: 9.3,
+        source_pos: "Manual CSV Upload"
+      }
+    ],
+    p_source_file_name: "forged.csv"
+  },
+  "manual CSV POS ingest rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
   "service_save_recipe_and_signals",
   {
     p_actor_user_id: managerA.id,

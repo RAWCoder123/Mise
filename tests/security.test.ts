@@ -300,6 +300,28 @@ test("tenant setup completion uses one bounded replay-safe database workflow", (
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.replace_operational_signals[\s\S]*authenticated/i);
 });
 
+test("manual CSV POS ingest is service-owned, bounded, and keeps live sync fail-closed", () => {
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const syncPos = readFileSync("supabase/functions/sync-pos-sales/index.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const application = readFileSync("services/application/posIngest.ts", "utf8");
+  const migration = readFileSync("supabase/migrations/20260730220548_ingest_manual_pos_sales_csv.sql", "utf8");
+
+  assert.match(application, /buildManualPosSalesIngestPayload|assertManualPosSalesIngestReady/);
+  assert.match(repository, /action:\s*"ingest_pos_csv"/i);
+  assert.match(edge, /"ingest_pos_csv"/);
+  assert.match(edge, /service_ingest_manual_pos_sales/);
+  assert.match(edge, /Manual CSV Upload/);
+  assert.match(migration, /create\s+or\s+replace\s+function\s+private\.service_ingest_manual_pos_sales/i);
+  assert.match(migration, /jsonb_array_length\(safe_sales\)\s*>\s*1000/i);
+  assert.match(migration, /source_pos\s*<>\s*'Manual CSV Upload'/i);
+  assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_ingest_manual_pos_sales[\s\S]*authenticated/i);
+  assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_ingest_manual_pos_sales[\s\S]*service_role/i);
+  assert.match(syncPos, /provider_not_enabled/);
+  assert.doesNotMatch(syncPos, /service_ingest_manual_pos_sales/);
+  assert.doesNotMatch(application, /\.from\("pos_sales"\)\.insert/);
+});
+
 test("inventory counts and regenerated guidance commit through one optimistic workflow", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
