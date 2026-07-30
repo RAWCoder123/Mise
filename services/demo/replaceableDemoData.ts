@@ -4,6 +4,7 @@ import type {
   AuditLog,
   Insight,
   InventoryItem,
+  InventoryMovement,
   MenuItemIngredient,
   PosIntegration,
   PosProvider,
@@ -36,11 +37,12 @@ const itemIds = {
 };
 
 export interface DemoState {
-  schema_version: 2;
+  schema_version: 3;
   restaurants: Restaurant[];
   users: AppUser[];
   posSales: PosSale[];
   inventoryItems: InventoryItem[];
+  inventoryMovements: InventoryMovement[];
   menuItemIngredients: MenuItemIngredient[];
   purchaseRecommendations: PurchaseRecommendation[];
   supplierOrders: SupplierOrder[];
@@ -248,11 +250,12 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 2,
+    schema_version: 3,
     restaurants: [restaurant],
     users: [user],
     posSales,
     inventoryItems,
+    inventoryMovements: [],
     menuItemIngredients,
     purchaseRecommendations: [
       {
@@ -472,11 +475,12 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 2,
+    schema_version: 3,
     restaurants,
     users: raw.users ?? seeded.users,
     posSales: raw.posSales ?? seeded.posSales,
     inventoryItems: raw.inventoryItems ?? seeded.inventoryItems,
+    inventoryMovements: Array.isArray(raw.inventoryMovements) ? raw.inventoryMovements : seeded.inventoryMovements,
     menuItemIngredients: raw.menuItemIngredients ?? seeded.menuItemIngredients,
     purchaseRecommendations,
     supplierOrders,
@@ -497,10 +501,11 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 2 ||
+      raw.schema_version !== 3 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
-      supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note)
+      supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
+      !Array.isArray(raw.inventoryMovements)
   };
 }
 

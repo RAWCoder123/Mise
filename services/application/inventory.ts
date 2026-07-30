@@ -235,3 +235,7 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     insights
   );
 }
+
+export async function fetchInventoryMovements(restaurantId: string, itemId: string, limit = 8) {
+  return repository.fetchInventoryMovements(restaurantId, itemId, limit);
+}

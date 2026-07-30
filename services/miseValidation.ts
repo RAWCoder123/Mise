@@ -7,6 +7,8 @@ import type {
   IntegrationStatus,
   InventoryItem,
   InventoryItemPatch,
+  InventoryMovement,
+  InventoryMovementReason,
   MenuItemIngredient,
   PosSale,
   PosIntegration,
@@ -153,11 +155,49 @@ export function normalizePosSale(value: PosSale): PosSale {
 
 export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
   return {
-    ...value,
+    id: asString(value.id),
+    restaurant_id: asString(value.restaurant_id),
+    item_name: asString(value.item_name),
+    category: asString(value.category),
+    unit: asString(value.unit),
     current_quantity: asBoundedNonNegativeNumber(value.current_quantity, operatingLimits.inventoryQuantity),
     par_level: asBoundedNonNegativeNumber(value.par_level, operatingLimits.inventoryQuantity),
     reorder_threshold: asBoundedNonNegativeNumber(value.reorder_threshold, operatingLimits.inventoryQuantity),
-    estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost)
+    estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost),
+    supplier_name: asString(value.supplier_name),
+    last_updated: asString(value.last_updated)
+  };
+}
+
+const inventoryMovementReasons = new Set<InventoryMovementReason>([
+  "manual_count",
+  "manager_correction",
+  "receiving",
+  "waste",
+  "transfer",
+  "pos_consumption",
+  "recipe_consumption",
+  "system_adjustment"
+]);
+
+export function normalizeInventoryMovement(value: InventoryMovement): InventoryMovement {
+  const reason = inventoryMovementReasons.has(value.reason as InventoryMovementReason)
+    ? (value.reason as InventoryMovementReason)
+    : "system_adjustment";
+  const quantityBefore = asBoundedNonNegativeNumber(value.quantity_before, operatingLimits.inventoryQuantity);
+  const quantityAfter = asBoundedNonNegativeNumber(value.quantity_after, operatingLimits.inventoryQuantity);
+  return {
+    id: asString(value.id),
+    restaurant_id: asString(value.restaurant_id),
+    inventory_item_id: asString(value.inventory_item_id),
+    actor_user_id: asNullableString(value.actor_user_id),
+    reason,
+    quantity_before: quantityBefore,
+    quantity_after: quantityAfter,
+    delta: asNumber(value.delta, quantityAfter - quantityBefore),
+    source_workflow: asNullableString(value.source_workflow),
+    metadata: asRecord(value.metadata),
+    created_at: asString(value.created_at)
   };
 }
 
