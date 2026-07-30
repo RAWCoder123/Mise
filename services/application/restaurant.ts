@@ -110,6 +110,10 @@ export async function loadDemoPOSData(
   return restaurant;
 }
 
+export async function requestAccountDeletion(confirmation: string) {
+  return repository.requestAccountDeletion(confirmation);
+}
+
 export async function resetDemoData(
   provider: PosProvider | null = DEMO_DATASET.defaultPosProvider,
   setupProfile?: DemoSetupProfile
