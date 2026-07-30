@@ -337,6 +337,18 @@ test("demo-state repair links histories only to compatible tenant order lanes", 
   );
 });
 
+test("demo seed includes a multi-role team roster", () => {
+  const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
+  assert.equal(state.schema_version, 4);
+  assert.equal(state.memberships.length, 3);
+  assert.deepEqual(
+    state.memberships.map((membership) => membership.role).sort(),
+    ["manager", "owner", "staff"]
+  );
+  assert.equal(state.users.length, 3);
+  assert.ok(state.users.every((user) => state.memberships.some((membership) => membership.user_id === user.id)));
+});
+
 test("already-current demo state does not report a migration", () => {
   const seed = createInitialDemoState("Toast", undefined, FIXED_NOW);
   const repaired = repairDemoState(seed);
