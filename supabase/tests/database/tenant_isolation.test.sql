@@ -1,6 +1,6 @@
 begin;
 
-select plan(347);
+select plan(365);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -290,6 +290,20 @@ values
   ('bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Espresso Beans', 'Beverage', 'lb', 10, 16, 6, 7.5, 'Cafe Supply'),
   ('cccccccc-1111-4111-8111-cccccccccccc', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Bread Flour', 'Dry goods', 'lb', 25, 40, 12, 1.5, 'Bakery Supply');
 
+insert into public.inventory_movements (
+  id,
+  restaurant_id,
+  inventory_item_id,
+  actor_user_id,
+  reason,
+  quantity_before,
+  quantity_after,
+  source_workflow
+)
+values
+  ('bbbbbbbb-1212-4212-8212-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', '44444444-4444-4444-8444-444444444444', 'manual_count', 12, 10, 'fixture'),
+  ('cccccccc-1212-4212-8212-cccccccccccc', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'cccccccc-1111-4111-8111-cccccccccccc', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'manual_count', 30, 25, 'fixture');
+
 insert into public.pos_sales (id, restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales, source_pos)
 values
   ('aaaaaaaa-1010-4010-8010-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', current_date, 'Chicken Bowl', 'Entree', 2, 20, 18, 'Fixture POS'),
@@ -428,6 +442,11 @@ values
     'inventory_items',
     $probe$insert into public.inventory_items (id, restaurant_id, item_name, category, unit, current_quantity, par_level, reorder_threshold, estimated_unit_cost, supplier_name)
       values ('dddddddd-1002-4002-8002-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Forged inventory', 'Dry goods', 'lb', 1, 2, 1, 1, 'Probe supplier')$probe$
+  ),
+  (
+    'inventory_movements',
+    $probe$insert into public.inventory_movements (id, restaurant_id, inventory_item_id, actor_user_id, reason, quantity_before, quantity_after, source_workflow)
+      values ('dddddddd-1016-4016-8016-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'cccccccc-1111-4111-8111-cccccccccccc', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'manual_count', 1, 2, 'cross-tenant-probe')$probe$
   ),
   (
     'menu_item_ingredients',
@@ -582,6 +601,14 @@ select is(has_table_privilege('authenticated', 'public.supplier_recipients', 'UP
 select is(has_table_privilege('authenticated', 'public.setup_attachments', 'INSERT'), false, 'setup attachment writes are RPC-only');
 select is(has_table_privilege('authenticated', 'public.inventory_items', 'UPDATE'), false, 'inventory count writes are atomic RPC-only');
 select is(has_table_privilege('authenticated', 'public.menu_item_ingredients', 'UPDATE'), false, 'recipe baseline writes are atomic RPC-only');
+select is(has_table_privilege('authenticated', 'public.pos_integrations', 'INSERT'), false, 'POS integration writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.pos_integrations', 'UPDATE'), false, 'POS integration updates are service-owned');
+select is(has_table_privilege('authenticated', 'public.sales_imports', 'INSERT'), false, 'sales import writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.supplier_items', 'INSERT'), false, 'supplier catalog writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.purchase_orders', 'INSERT'), false, 'purchase order writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.inventory_movements', 'INSERT'), false, 'inventory movements are append-only via service workflows');
+select is(has_table_privilege('authenticated', 'public.inventory_movements', 'SELECT'), true, 'members can read inventory movements');
+select is(has_table_privilege('authenticated', 'public.account_deletion_requests', 'INSERT'), false, 'account deletion requests are RPC or Edge owned');
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'INSERT'), false, 'membership inserts are RPC-only');
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'UPDATE'), false, 'membership updates are RPC-only');
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'DELETE'), false, 'membership deletes are RPC-only');
@@ -598,10 +625,12 @@ select is(
     where table_row.schemaname = 'public'
   ),
   array[
+    'account_deletion_requests',
     'ai_insights',
     'audit_logs',
     'insights',
     'inventory_items',
+    'inventory_movements',
     'menu_item_ingredients',
     'outreach_agent_runs',
     'outreach_campaigns',
@@ -733,7 +762,7 @@ select is(
     from information_schema.columns column_row
     where column_row.table_schema = 'public'
       and column_row.table_name in (
-        'pos_sales', 'inventory_items', 'menu_item_ingredients', 'purchase_recommendations',
+        'pos_sales', 'inventory_items', 'inventory_movements', 'menu_item_ingredients', 'purchase_recommendations',
         'supplier_orders', 'insights', 'pos_integrations', 'sales_imports', 'supplier_items',
         'purchase_orders', 'ai_insights', 'audit_logs', 'restaurant_email_connections',
         'supplier_recipients', 'setup_attachments'
@@ -748,7 +777,7 @@ select is(
   (
     select count(*)
     from unnest(array[
-      'pos_sales', 'inventory_items', 'menu_item_ingredients', 'purchase_recommendations',
+      'pos_sales', 'inventory_items', 'inventory_movements', 'menu_item_ingredients', 'purchase_recommendations',
       'supplier_orders', 'insights', 'pos_integrations', 'sales_imports', 'supplier_items',
       'purchase_orders', 'ai_insights', 'audit_logs', 'restaurant_email_connections',
       'supplier_recipients', 'setup_attachments'
@@ -870,6 +899,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select is((select count(*) from public.inventory_items), 1::bigint, 'manager reads only their restaurant inventory');
+select is((select count(*) from public.inventory_movements), 0::bigint, 'manager sees no foreign inventory movement fixtures before own counts');
 select is((select count(*) from public.purchase_recommendations), 1::bigint, 'manager reads only their restaurant recommendations');
 select is((select count(*) from public.supplier_orders), 1::bigint, 'manager reads only their restaurant supplier orders');
 select is((select count(*) from public.sales_imports), 1::bigint, 'manager reads only their restaurant POS imports');
@@ -883,6 +913,7 @@ select is(
     select count(*) from (
       select id from public.pos_sales where restaurant_id in ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
       union all select id from public.inventory_items where restaurant_id in ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
+      union all select id from public.inventory_movements where restaurant_id in ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
       union all select id from public.menu_item_ingredients where restaurant_id in ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
       union all select id from public.purchase_recommendations where restaurant_id in ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
       union all select id from public.supplier_orders where restaurant_id in ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
@@ -1054,6 +1085,21 @@ select lives_ok(
 );
 reset role;
 select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 42::numeric, 'atomic inventory update persisted');
+select is(
+  (select count(*) from public.inventory_movements where inventory_item_id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  1::bigint,
+  'inventory quantity change writes one movement ledger row'
+);
+select is(
+  (select quantity_after from public.inventory_movements where inventory_item_id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa' order by created_at desc limit 1),
+  42::numeric,
+  'inventory movement records the committed quantity'
+);
+select is(
+  (select actor_user_id from public.inventory_movements where inventory_item_id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa' order by created_at desc limit 1),
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'inventory movement records the authorizing actor'
+);
 
 set local role service_role;
 select is(
