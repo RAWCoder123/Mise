@@ -65,7 +65,12 @@ test("tenant role helper keeps staff read-only and lets managers operate invento
 });
 
 test("production mode does not expose demo credentials or demo access", () => {
-  const productionConfig = { appEnv: "production" as const, enableDemoMode: true };
+  const productionConfig = {
+    appEnv: "production" as const,
+    enableDemoMode: true,
+    privacyPolicyUrl: null,
+    supportUrl: null
+  };
   const credentials = getInitialLoginCredentials(productionConfig);
 
   assert.equal(canUseDemoMode(productionConfig), false);
@@ -804,4 +809,30 @@ test("security readiness document defines private-beta backend rules and public 
   assert.match(doc, /Provider credentials belong in backend-only Supabase Edge Function secrets/);
   assert.match(doc, /Do not use real restaurant data until all are true/);
   assert.match(doc, /Public-Launch Blockers/);
+});
+
+test("secondary operational tables lose authenticated DML and inventory movements are ledgered", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260730211800_close_secondary_dml_and_inventory_movements.sql",
+    "utf8"
+  );
+  const edge = readFileSync("supabase/functions/request-account-deletion/index.ts", "utf8");
+  const settings = readFileSync("app/(tabs)/settings.tsx", "utf8");
+  const config = readFileSync("supabase/config.toml", "utf8");
+
+  assert.match(migration, /create table if not exists public\.inventory_movements/i);
+  assert.match(migration, /insert into public\.inventory_movements/i);
+  assert.match(migration, /reason in \(\s*'manual_count'/i);
+  assert.match(
+    migration,
+    /revoke insert, update, delete on table[\s\S]*public\.pos_integrations[\s\S]*public\.purchase_orders[\s\S]*from authenticated/i
+  );
+  assert.match(migration, /create table if not exists public\.account_deletion_requests/i);
+  assert.match(migration, /create or replace function public\.request_my_account_deletion/i);
+  assert.match(migration, /subject_user_id uuid not null/i);
+  assert.match(config, /\[functions\.request-account-deletion\][\s\S]*verify_jwt\s*=\s*true/i);
+  assert.match(edge, /request_my_account_deletion/);
+  assert.match(edge, /auth\.admin\.deleteUser/);
+  assert.match(settings, /requestAccountDeletion/);
+  assert.match(settings, /EXPO_PUBLIC_PRIVACY_POLICY_URL|privacyPolicyUrl/);
 });
