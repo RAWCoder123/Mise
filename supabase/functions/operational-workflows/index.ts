@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
       auditAction(action),
       auditEntityTable(action),
       auditEntityId(action, body),
-      { workflow: action }
+      auditMetadata(action, body, result)
     );
     await recordFunctionSecurityEvent(
       securitySupabase,
@@ -310,4 +310,17 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>)
   if (action === "update_inventory") return requireUuid(body.itemId, "itemId");
   if (action === "upsert_recipe" && body.mappingId != null) return requireUuid(body.mappingId, "mappingId");
   return null;
+}
+
+function auditMetadata(action: OperationalAction, body: Record<string, unknown>, result: unknown) {
+  const metadata: Record<string, unknown> = { workflow: action };
+  if (action !== "update_inventory" || !result || typeof result !== "object") return metadata;
+  const row = result as Record<string, unknown>;
+  if (typeof row.quantity_before === "number") metadata.quantity_before = row.quantity_before;
+  if (typeof row.current_quantity === "number") metadata.quantity_after = row.current_quantity;
+  if (typeof row.quantity_changed === "boolean") metadata.quantity_changed = row.quantity_changed;
+  if (body.patch && typeof body.patch === "object") {
+    metadata.patch_fields = Object.keys(body.patch as Record<string, unknown>);
+  }
+  return metadata;
 }

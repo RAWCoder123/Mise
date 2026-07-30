@@ -6,6 +6,7 @@ import type {
   Insight,
   InventoryItem,
   InventoryItemPatch,
+  InventoryMovement,
   MenuItemIngredient,
   MenuItemIngredientInput,
   PosIntegration,
@@ -51,6 +52,7 @@ import {
   normalizeAuditLog,
   normalizeRestaurantEmailConnection,
   normalizeInventoryItem,
+  normalizeInventoryMovement,
   normalizeMenuItemIngredient,
   normalizePosIntegration,
   normalizePosSale,
@@ -231,6 +233,8 @@ export interface MiseRepository {
     recommendations: PurchaseRecommendationInput[],
     insights: Insight[]
   ): Promise<InventoryItem>;
+  fetchInventoryMovements(restaurantId: string, itemId: string, limit?: number): Promise<InventoryMovement[]>;
+  requestAccountDeletion(confirmation: string): Promise<{ status: string; requestId?: string }>;
   updateMenuItemIngredientQuantity(
     restaurantId: string,
     mappingId: string,
@@ -363,6 +367,31 @@ function appendDemoAuditLog(state: DemoState, input: AuditLogInput) {
     created_at: new Date().toISOString()
   };
   state.auditLogs.push(normalizeAuditLog(entry));
+}
+
+function appendDemoInventoryMovement(
+  state: DemoState,
+  input: {
+    restaurantId: string;
+    itemId: string;
+    quantityBefore: number;
+    quantityAfter: number;
+  }
+) {
+  const movement: InventoryMovement = {
+    id: createId("movement"),
+    restaurant_id: input.restaurantId,
+    inventory_item_id: input.itemId,
+    actor_user_id: DEMO_USER_ID,
+    reason: "manual_count",
+    quantity_before: input.quantityBefore,
+    quantity_after: input.quantityAfter,
+    delta: input.quantityAfter - input.quantityBefore,
+    source_workflow: "update_inventory",
+    metadata: {},
+    created_at: new Date().toISOString()
+  };
+  state.inventoryMovements = [normalizeInventoryMovement(movement), ...(state.inventoryMovements ?? [])].slice(0, 200);
 }
 
 function prepareResetDemoState(state: DemoState) {
@@ -849,7 +878,16 @@ function createLocalDemoRepository(): MiseRepository {
       return mutateDemoState((state) => {
         const item = state.inventoryItems.find((entry) => entry.restaurant_id === restaurantId && entry.id === itemId);
         if (!item) throw new Error("Inventory item not found");
+        const quantityBefore = item.current_quantity;
         Object.assign(item, payload);
+        if (patch.current_quantity !== undefined && patch.current_quantity !== quantityBefore) {
+          appendDemoInventoryMovement(state, {
+            restaurantId,
+            itemId,
+            quantityBefore,
+            quantityAfter: item.current_quantity
+          });
+        }
         return normalizeInventoryItem(item);
       });
     },
@@ -870,7 +908,16 @@ function createLocalDemoRepository(): MiseRepository {
         if (item.last_updated !== expectedLastUpdated) {
           throw new Error("Inventory item changed since it was loaded. Reload and try again.");
         }
+        const quantityBefore = item.current_quantity;
         Object.assign(item, patch, { last_updated: new Date().toISOString() });
+        if (patch.current_quantity !== undefined && item.current_quantity !== quantityBefore) {
+          appendDemoInventoryMovement(state, {
+            restaurantId,
+            itemId,
+            quantityBefore,
+            quantityAfter: item.current_quantity
+          });
+        }
         state.purchaseRecommendations = [
           ...state.purchaseRecommendations.filter(
             (recommendation) => recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
@@ -887,6 +934,23 @@ function createLocalDemoRepository(): MiseRepository {
         ];
         return normalizeInventoryItem(item);
       });
+    },
+
+    async fetchInventoryMovements(restaurantId, itemId, limit = 8) {
+      const state = await readReadyDemoState(restaurantId);
+      return state.inventoryMovements
+        .filter((movement) => movement.restaurant_id === restaurantId && movement.inventory_item_id === itemId)
+        .sort((left, right) => right.created_at.localeCompare(left.created_at))
+        .slice(0, Math.max(1, Math.min(limit, 50)))
+        .map(normalizeInventoryMovement);
+    },
+
+    async requestAccountDeletion(confirmation) {
+      if (confirmation.trim().toUpperCase() !== "DELETE") {
+        throw new Error("Type DELETE to confirm account deletion.");
+      }
+      await resetDemoStore();
+      return { status: "completed", requestId: createId("account_deletion") };
     },
 
     async updateMenuItemIngredientQuantity(restaurantId, mappingId, quantityUsedPerSale) {
@@ -1829,6 +1893,31 @@ function createSupabaseRepository(): MiseRepository {
         patch
       });
       return normalizeInventoryItem(response.result as InventoryItem);
+    },
+
+    async fetchInventoryMovements(restaurantId, itemId, limit = 8) {
+      const { data, error } = await client
+        .from("inventory_movements")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_item_id", itemId)
+        .order("created_at", { ascending: false })
+        .limit(Math.max(1, Math.min(limit ?? 8, 50)));
+      if (error) throw error;
+      return ((data ?? []) as InventoryMovement[]).map(normalizeInventoryMovement);
+    },
+
+    async requestAccountDeletion(confirmation) {
+      if (!client) throw new Error("Supabase is not configured.");
+      const { data, error } = await client.functions.invoke("request-account-deletion", {
+        body: { confirmation }
+      });
+      if (error) throw error;
+      const payload = data as { status?: string; requestId?: string; message?: string } | null;
+      if (!payload?.status) {
+        throw new Error(payload?.message ?? "Account deletion could not be completed.");
+      }
+      return { status: payload.status, requestId: payload.requestId };
     },
 
     async updateMenuItemIngredientQuantity(restaurantId, mappingId, quantityUsedPerSale) {

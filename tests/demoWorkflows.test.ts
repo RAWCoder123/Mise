@@ -270,7 +270,8 @@ test("demo-state repair retains history, deduplicates pending rows, and restores
   const pending = repaired.state.purchaseRecommendations.find((entry) => entry.status === "pending");
 
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 2);
+  assert.equal(repaired.state.schema_version, 3);
+  assert.ok(Array.isArray(repaired.state.inventoryMovements));
   assert.equal(repaired.state.purchaseRecommendations.length, 3);
   assert.equal(new Set(repaired.state.purchaseRecommendations.map((entry) => entry.id)).size, 3);
   assert.deepEqual(
@@ -347,4 +348,34 @@ test("already-current demo state does not report a migration", () => {
     repaired.state.purchaseRecommendations.map((entry) => entry.supplier_order_id),
     seed.purchaseRecommendations.map((entry) => entry.supplier_order_id)
   );
+});
+
+test("demo inventory quantity changes append an auditable movement", () => {
+  const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
+  const item = state.inventoryItems[0]!;
+  const before = item.current_quantity;
+  const after = before + 3;
+
+  state.inventoryItems[0] = { ...item, current_quantity: after, last_updated: FIXED_NOW.toISOString() };
+  state.inventoryMovements = [
+    {
+      id: "movement_1",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      inventory_item_id: item.id,
+      actor_user_id: state.users[0]!.id,
+      reason: "manual_count",
+      quantity_before: before,
+      quantity_after: after,
+      delta: after - before,
+      source_workflow: "update_inventory",
+      metadata: {},
+      created_at: FIXED_NOW.toISOString()
+    },
+    ...state.inventoryMovements
+  ];
+
+  assert.equal(state.inventoryMovements.length, 1);
+  assert.equal(state.inventoryMovements[0]?.quantity_before, before);
+  assert.equal(state.inventoryMovements[0]?.quantity_after, after);
+  assert.equal(state.inventoryMovements[0]?.reason, "manual_count");
 });
