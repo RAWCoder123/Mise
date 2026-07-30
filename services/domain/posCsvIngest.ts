@@ -50,11 +50,11 @@ export function assertManualPosSalesIngestReady(payload: ManualPosSalesIngestPay
   if (payload.characterCount > setupImportLimits.characters) {
     throw new Error(`POS CSV is limited to ${setupImportLimits.characters.toLocaleString()} characters.`);
   }
+  if (payload.status === "needs_review" || payload.issues.length > 0) {
+    throw new Error("Fix CSV validation issues before importing.");
+  }
   if (payload.status === "empty" || payload.rows.length === 0) {
     throw new Error("Paste at least one valid POS sales row before importing.");
-  }
-  if (payload.status === "needs_review" || payload.issues.length > 0) {
-    throw new Error("Fix CSV validation issues before importing sales.");
   }
   if (payload.rows.length > setupImportLimits.rows) {
     throw new Error(`POS CSV is limited to ${setupImportLimits.rows.toLocaleString()} sales rows.`);
