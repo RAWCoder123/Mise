@@ -19,7 +19,7 @@ import {
   type InvocationTerminalContext
 } from "../_shared/mise.ts";
 
-const actions = ["refresh_signals", "update_inventory", "upsert_recipe", "save_setup"] as const;
+const actions = ["refresh_signals", "update_inventory", "upsert_recipe", "save_setup", "ingest_pos_csv"] as const;
 type OperationalAction = (typeof actions)[number];
 
 Deno.serve(async (req) => {
@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
 
     let result: unknown;
     let setupSummary: unknown = null;
+    let ingestSummary: unknown = null;
     if (action === "save_setup") {
       const setup = requireRecord(body.setup, "setup");
       await serviceRpc(securitySupabase, "service_mark_operational_signals_pending", {
@@ -83,6 +84,27 @@ Deno.serve(async (req) => {
         true,
         requireRecord(data, "setup summary")
       );
+    } else if (action === "ingest_pos_csv") {
+      const sales = requireManualPosSales(body.sales);
+      await serviceRpc(securitySupabase, "service_mark_operational_signals_pending", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId
+      });
+      ingestSummary = await serviceRpc(securitySupabase, "service_ingest_manual_pos_sales", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_sales: sales,
+        p_source_file_name: body.sourceFileName == null ? null : requireBoundedString(body.sourceFileName, "sourceFileName", 240)
+      });
+      result = await refreshWithRetry(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        action,
+        body,
+        false,
+        requireRecord(ingestSummary, "ingest summary")
+      );
     } else {
       result = await refreshWithRetry(securitySupabase, user.id, restaurantId, action, body, false, {});
     }
@@ -94,7 +116,7 @@ Deno.serve(async (req) => {
       auditAction(action),
       auditEntityTable(action),
       auditEntityId(action, body),
-      auditMetadata(action, body, result)
+      auditMetadata(action, body, result, ingestSummary)
     );
     await recordFunctionSecurityEvent(
       securitySupabase,
@@ -107,7 +129,7 @@ Deno.serve(async (req) => {
       { workflow: action }
     );
     terminalContext = null;
-    return jsonResponse({ status: "completed", result, setupSummary });
+    return jsonResponse({ status: "completed", result, setupSummary, ingestSummary });
   } catch (error) {
     await recordFunctionTerminalError(terminalContext);
     return handleError(error);
@@ -255,6 +277,31 @@ function requireArray(value: unknown, fieldName: string, maximumLength: number) 
   return value;
 }
 
+function requireManualPosSales(value: unknown) {
+  const sales = requireArray(value, "sales", 1000);
+  if (sales.length < 1) throw new HttpError(400, "sales must include at least one row.");
+  return sales.map((entry, index) => {
+    const row = requireRecord(entry, `sales[${index}]`);
+    const quantitySold = requireBoundedNumber(row.quantity_sold, `sales[${index}].quantity_sold`, Number.EPSILON, 100_000);
+    const grossSales = requireBoundedNumber(row.gross_sales, `sales[${index}].gross_sales`, 0, 10_000_000);
+    const netSales = requireBoundedNumber(row.net_sales, `sales[${index}].net_sales`, 0, 10_000_000);
+    const sourcePos = requireBoundedString(row.source_pos, `sales[${index}].source_pos`, 80);
+    if (sourcePos !== "Manual CSV Upload") {
+      throw new HttpError(400, `sales[${index}].source_pos must be Manual CSV Upload.`);
+    }
+    return {
+      source_record_id: requireBoundedString(row.source_record_id, `sales[${index}].source_record_id`, 200),
+      sale_date: requireBoundedString(row.sale_date, `sales[${index}].sale_date`, 32),
+      item_name: requireBoundedString(row.item_name, `sales[${index}].item_name`, 200),
+      category: requireBoundedString(row.category, `sales[${index}].category`, 120),
+      quantity_sold: quantitySold,
+      gross_sales: grossSales,
+      net_sales: netSales,
+      source_pos: sourcePos
+    };
+  });
+}
+
 function requireBoundedString(value: unknown, fieldName: string, maximumLength: number) {
   const text = requireString(value, fieldName);
   if (text.length > maximumLength) throw new HttpError(400, `${fieldName} is too long.`);
@@ -297,12 +344,14 @@ function auditAction(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_updated";
   if (action === "upsert_recipe") return "recipe_baseline_updated";
   if (action === "save_setup") return "setup_signals_completed";
+  if (action === "ingest_pos_csv") return "manual_pos_csv_signals_completed";
   return "operational_signals_refreshed";
 }
 
 function auditEntityTable(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_items";
   if (action === "upsert_recipe") return "menu_item_ingredients";
+  if (action === "ingest_pos_csv") return "sales_imports";
   return "restaurants";
 }
 
@@ -312,8 +361,21 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>)
   return null;
 }
 
-function auditMetadata(action: OperationalAction, body: Record<string, unknown>, result: unknown) {
+function auditMetadata(
+  action: OperationalAction,
+  body: Record<string, unknown>,
+  result: unknown,
+  ingestSummary: unknown = null
+) {
   const metadata: Record<string, unknown> = { workflow: action };
+  if (action === "ingest_pos_csv" && ingestSummary && typeof ingestSummary === "object") {
+    const summary = ingestSummary as Record<string, unknown>;
+    if (typeof summary.pos_sales_rows_saved === "number") {
+      metadata.pos_sales_rows_saved = summary.pos_sales_rows_saved;
+    }
+    if (typeof summary.sales_import_id === "string") metadata.sales_import_id = summary.sales_import_id;
+    return metadata;
+  }
   if (action !== "update_inventory" || !result || typeof result !== "object") return metadata;
   const row = result as Record<string, unknown>;
   if (typeof row.quantity_before === "number") metadata.quantity_before = row.quantity_before;

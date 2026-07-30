@@ -5,6 +5,7 @@ export {
 
 export * from "./application/restaurant";
 export * from "./application/setup";
+export * from "./application/posIngest";
 export * from "./application/today";
 export * from "./application/inventory";
 export * from "./application/orders";

@@ -20,6 +20,7 @@ Classification guidance uses evidence, not polish. Current overall status: **not
 | No embedded test credentials in production | complete | Demo credentials hidden when `EXPO_PUBLIC_APP_ENV=production` |
 | Tenant isolation / RLS | blocked | Latest migration chain must re-pass Docker pgTAP + hosted staging |
 | Live POS provider | blocked | Fail-closed until provider credentials and server adapter exist |
+| Manual CSV POS ingest | tested (code) | Bounded Settings/setup CSV path; live providers remain fail-closed |
 | Live Gmail send | requires external credentials | Implemented; keep `GMAIL_SEND_ENABLED=false` until approved test |
 | Real-device iPhone QA | requires Apple Developer account action | Needs physical device / TestFlight |
 | Crash reporting | requires founder decision | Optional public Sentry DSN |
