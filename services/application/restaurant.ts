@@ -1,6 +1,11 @@
 import type { AiInsight, PosProvider, Restaurant, RestaurantMembership } from "../../types/mise";
 import { buildAiInsightInput, parseStructuredInsightOutput } from "../ai/structuredInsights";
 import { DEMO_DATASET, type DemoSetupProfile } from "../demoData";
+import {
+  isValidMemberEmail,
+  normalizeMemberEmail,
+  type AssignableRestaurantRole
+} from "../domain/teamMembership";
 import type { AuditLogInput } from "../repositories/miseRepository";
 import {
   requireRestaurantCuisineType,
@@ -20,12 +25,28 @@ export async function fetchMembershipsForAuthUser(userId: string) {
   return repository.fetchMembershipsForAuthUser(userId);
 }
 
+export async function fetchRestaurantTeamMembers(restaurantId: string) {
+  return repository.fetchRestaurantTeamMembers(restaurantId);
+}
+
 export async function addRestaurantMember(
   restaurantId: string,
   targetUserId: string,
-  role: Exclude<RestaurantMembership["role"], "owner">
+  role: AssignableRestaurantRole
 ) {
   return repository.addRestaurantMember(restaurantId, targetUserId, role);
+}
+
+export async function addRestaurantMemberByEmail(
+  restaurantId: string,
+  email: string,
+  role: AssignableRestaurantRole
+) {
+  const normalizedEmail = normalizeMemberEmail(email);
+  if (!isValidMemberEmail(normalizedEmail)) {
+    throw new Error("Enter a valid teammate email address.");
+  }
+  return repository.addRestaurantMemberByEmail(restaurantId, normalizedEmail, role);
 }
 
 export async function updateRestaurantMember(

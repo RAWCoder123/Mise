@@ -1,4 +1,5 @@
 import type { RestaurantMembership, RestaurantRole } from "../types/mise";
+import { canManageRestaurantTeam, canViewRestaurantTeam } from "./domain/teamMembership";
 
 const managerRoles: RestaurantRole[] = ["owner", "admin", "manager"];
 const ownerAdminRoles: RestaurantRole[] = ["owner", "admin"];
@@ -43,6 +44,22 @@ export function canUpdateRestaurantProfile(
   restaurantId: string | null | undefined
 ) {
   return canDeleteRestaurantData(memberships, restaurantId);
+}
+
+export function canViewTeamForRestaurant(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  const membership = activeMembershipForRestaurant(memberships, restaurantId);
+  return Boolean(membership && canViewRestaurantTeam(membership.role));
+}
+
+export function canManageTeamForRestaurant(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  const membership = activeMembershipForRestaurant(memberships, restaurantId);
+  return Boolean(membership && canManageRestaurantTeam(membership.role));
 }
 
 export function requireRestaurantAccess(

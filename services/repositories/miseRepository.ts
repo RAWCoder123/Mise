@@ -18,6 +18,7 @@ import type {
   RestaurantEmailConnection,
   RestaurantMembership,
   RestaurantOpsProfile,
+  RestaurantTeamMember,
   SetupAttachment,
   SupplierItem,
   SupplierOrder,
@@ -50,6 +51,16 @@ import {
   findSupplierRecipientCatalogName,
   supplierRecipientDirectoryKey
 } from "../domain/supplierRecipients";
+import {
+  canActorChangeMemberRole,
+  canActorChangeMemberStatus,
+  canActorRemoveMember,
+  compareTeamMembers,
+  isValidMemberEmail,
+  normalizeMemberEmail,
+  rolesAssignableBy,
+  type AssignableRestaurantRole
+} from "../domain/teamMembership";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
 import {
   normalizeAppUser,
@@ -188,7 +199,13 @@ export interface PlanningData {
 
 export interface MiseRepository {
   fetchMembershipsForAuthUser(userId: string): Promise<RestaurantMembership[]>;
-  addRestaurantMember(restaurantId: string, targetUserId: string, role: RestaurantMembership["role"]): Promise<RestaurantMembership>;
+  fetchRestaurantTeamMembers(restaurantId: string): Promise<RestaurantTeamMember[]>;
+  addRestaurantMember(restaurantId: string, targetUserId: string, role: AssignableRestaurantRole): Promise<RestaurantMembership>;
+  addRestaurantMemberByEmail(
+    restaurantId: string,
+    email: string,
+    role: AssignableRestaurantRole
+  ): Promise<RestaurantMembership>;
   updateRestaurantMember(
     restaurantId: string,
     targetUserId: string,
@@ -387,6 +404,167 @@ function appendDemoAuditLog(state: DemoState, input: AuditLogInput) {
     created_at: new Date().toISOString()
   };
   state.auditLogs.push(normalizeAuditLog(entry));
+}
+
+function ensureDemoMemberships(state: DemoState) {
+  if (!Array.isArray(state.memberships)) {
+    state.memberships = [];
+  }
+}
+
+function actorDemoMembership(state: DemoState, restaurantId: string, actorUserId: string) {
+  ensureDemoMemberships(state);
+  return (
+    state.memberships.find(
+      (membership) =>
+        membership.restaurant_id === restaurantId &&
+        membership.user_id === actorUserId &&
+        membership.status === "active"
+    ) ?? null
+  );
+}
+
+function listDemoTeamMembers(state: DemoState, restaurantId: string): RestaurantTeamMember[] {
+  ensureDemoMemberships(state);
+  const members = state.memberships
+    .filter((membership) => membership.restaurant_id === restaurantId)
+    .map((membership) => {
+      const user = state.users.find((entry) => entry.id === membership.user_id);
+      return {
+        ...normalizeRestaurantMembership(membership),
+        display_name: user?.name?.trim() || user?.email?.split("@")[0] || "Operator",
+        email: user?.email ?? ""
+      };
+    });
+  return members.sort(compareTeamMembers);
+}
+
+function addDemoRestaurantMember(
+  state: DemoState,
+  restaurantId: string,
+  targetUserId: string,
+  role: AssignableRestaurantRole,
+  actorUserId: string
+) {
+  ensureDemoMemberships(state);
+  const actor = actorDemoMembership(state, restaurantId, actorUserId);
+  if (!actor || !rolesAssignableBy(actor.role).includes(role)) {
+    throw new Error("Membership access denied.");
+  }
+  if (targetUserId === actorUserId) {
+    throw new Error("Membership target is not allowed.");
+  }
+  if (state.memberships.some((membership) => membership.restaurant_id === restaurantId && membership.user_id === targetUserId)) {
+    throw new Error("Membership already exists.");
+  }
+  const targetUser = state.users.find((entry) => entry.id === targetUserId);
+  if (!targetUser) {
+    throw new Error("Membership target is unavailable.");
+  }
+  const now = new Date().toISOString();
+  const created = normalizeRestaurantMembership({
+    id: createId("membership"),
+    restaurant_id: restaurantId,
+    user_id: targetUserId,
+    role,
+    status: "active",
+    created_at: now,
+    updated_at: now
+  });
+  state.memberships.push(created);
+  targetUser.role = role;
+  targetUser.restaurant_id = restaurantId;
+  appendDemoAuditLog(state, {
+    restaurant_id: restaurantId,
+    action: "restaurant_member_added",
+    entity_table: "restaurant_memberships",
+    entity_id: created.id,
+    metadata: { target_user_id: targetUserId, role, status: "active" }
+  });
+  return created;
+}
+
+function updateDemoRestaurantMember(
+  state: DemoState,
+  restaurantId: string,
+  targetUserId: string,
+  patch: Partial<Pick<RestaurantMembership, "role" | "status">>,
+  actorUserId: string
+) {
+  ensureDemoMemberships(state);
+  const actor = actorDemoMembership(state, restaurantId, actorUserId);
+  if (!actor) throw new Error("Membership access denied.");
+  if (targetUserId === actorUserId) throw new Error("Self-membership changes are not allowed.");
+  const target = state.memberships.find(
+    (membership) => membership.restaurant_id === restaurantId && membership.user_id === targetUserId
+  );
+  if (!target) throw new Error("Membership target is unavailable.");
+  if (target.status === "invited") {
+    throw new Error("Invitations require a trusted invitation workflow.");
+  }
+  if (patch.role && !canActorChangeMemberRole(actor.role, target.role, patch.role)) {
+    throw new Error("Membership access denied.");
+  }
+  if (patch.status && !canActorChangeMemberStatus(actor.role, target.role, patch.status)) {
+    throw new Error("Membership access denied.");
+  }
+  const previousRole = target.role;
+  const previousStatus = target.status;
+  if (patch.role) target.role = patch.role;
+  if (patch.status) target.status = patch.status;
+  target.updated_at = new Date().toISOString();
+  const user = state.users.find((entry) => entry.id === targetUserId);
+  if (user) user.role = target.role;
+  appendDemoAuditLog(state, {
+    restaurant_id: restaurantId,
+    action: "restaurant_member_updated",
+    entity_table: "restaurant_memberships",
+    entity_id: target.id,
+    metadata: {
+      target_user_id: targetUserId,
+      previous_role: previousRole,
+      previous_status: previousStatus,
+      role: target.role,
+      status: target.status
+    }
+  });
+  return normalizeRestaurantMembership(target);
+}
+
+function removeDemoRestaurantMember(
+  state: DemoState,
+  restaurantId: string,
+  targetUserId: string,
+  actorUserId: string
+) {
+  ensureDemoMemberships(state);
+  const actor = actorDemoMembership(state, restaurantId, actorUserId);
+  if (!actor) throw new Error("Membership access denied.");
+  if (targetUserId === actorUserId) throw new Error("Self-membership changes are not allowed.");
+  const index = state.memberships.findIndex(
+    (membership) => membership.restaurant_id === restaurantId && membership.user_id === targetUserId
+  );
+  if (index < 0) throw new Error("Membership target is unavailable.");
+  const target = state.memberships[index]!;
+  if (target.status === "invited") {
+    throw new Error("Invitations require a trusted invitation workflow.");
+  }
+  if (!canActorRemoveMember(actor.role, target.role)) {
+    throw new Error("Membership access denied.");
+  }
+  state.memberships.splice(index, 1);
+  appendDemoAuditLog(state, {
+    restaurant_id: restaurantId,
+    action: "restaurant_member_removed",
+    entity_table: "restaurant_memberships",
+    entity_id: target.id,
+    metadata: {
+      target_user_id: targetUserId,
+      role: target.role,
+      status: target.status
+    }
+  });
+  return normalizeRestaurantMembership(target);
 }
 
 function appendDemoInventoryMovement(
@@ -596,6 +774,12 @@ function createLocalDemoRepository(): MiseRepository {
   return {
     async fetchMembershipsForAuthUser(userId) {
       const state = await readReadyDemoState();
+      const memberships = (state.memberships ?? []).filter(
+        (membership) => membership.user_id === userId && membership.status === "active"
+      );
+      if (memberships.length > 0) {
+        return memberships.map(normalizeRestaurantMembership);
+      }
       const user = state.users.find((entry) => entry.id === userId);
       if (!user?.restaurant_id) return [];
       return [
@@ -611,16 +795,57 @@ function createLocalDemoRepository(): MiseRepository {
       ];
     },
 
-    async addRestaurantMember() {
-      throw new Error("Team membership management is available only for authenticated restaurant workspaces.");
+    async fetchRestaurantTeamMembers(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      requireActiveDemoRestaurant(state, restaurantId);
+      return listDemoTeamMembers(state, restaurantId);
     },
 
-    async updateRestaurantMember() {
-      throw new Error("Team membership management is available only for authenticated restaurant workspaces.");
+    async addRestaurantMember(restaurantId, targetUserId, role) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        return addDemoRestaurantMember(state, restaurantId, targetUserId, role, DEMO_USER_ID);
+      });
     },
 
-    async removeRestaurantMember() {
-      throw new Error("Team membership management is available only for authenticated restaurant workspaces.");
+    async addRestaurantMemberByEmail(restaurantId, email, role) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const normalizedEmail = normalizeMemberEmail(email);
+        if (!isValidMemberEmail(normalizedEmail)) {
+          throw new Error("Enter a valid teammate email address.");
+        }
+        let existingUser = state.users.find(
+          (entry) => normalizeMemberEmail(entry.email) === normalizedEmail
+        );
+        if (!existingUser) {
+          const now = new Date().toISOString();
+          existingUser = normalizeAppUser({
+            id: createId("user"),
+            restaurant_id: restaurantId,
+            name: normalizedEmail.split("@")[0] || "Teammate",
+            email: normalizedEmail,
+            role,
+            created_at: now
+          });
+          state.users.push(existingUser);
+        }
+        return addDemoRestaurantMember(state, restaurantId, existingUser.id, role, DEMO_USER_ID);
+      });
+    },
+
+    async updateRestaurantMember(restaurantId, targetUserId, patch) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        return updateDemoRestaurantMember(state, restaurantId, targetUserId, patch, DEMO_USER_ID);
+      });
+    },
+
+    async removeRestaurantMember(restaurantId, targetUserId) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        return removeDemoRestaurantMember(state, restaurantId, targetUserId, DEMO_USER_ID);
+      });
     },
 
     async updateMyProfile(name) {
@@ -1648,10 +1873,34 @@ function createSupabaseRepository(): MiseRepository {
       return ((data ?? []) as RestaurantMembership[]).map(normalizeRestaurantMembership);
     },
 
+    async fetchRestaurantTeamMembers(restaurantId) {
+      const { data, error } = await client.rpc("list_restaurant_members", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return ((data ?? []) as Array<RestaurantMembership & { display_name?: string; email?: string }>).map((row) => ({
+        ...normalizeRestaurantMembership(row),
+        display_name: typeof row.display_name === "string" && row.display_name.trim()
+          ? row.display_name.trim()
+          : "Operator",
+        email: typeof row.email === "string" ? row.email : ""
+      }));
+    },
+
     async addRestaurantMember(restaurantId, targetUserId, role) {
       const { data, error } = await client.rpc("add_restaurant_member", {
         p_restaurant_id: restaurantId,
         p_target_user_id: targetUserId,
+        p_role: role
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return normalizeRestaurantMembership(data as RestaurantMembership);
+    },
+
+    async addRestaurantMemberByEmail(restaurantId, email, role) {
+      const { data, error } = await client.rpc("add_restaurant_member_by_email", {
+        p_restaurant_id: restaurantId,
+        p_email: email,
         p_role: role
       });
       if (error) throwRepositoryError(error, restaurantId);

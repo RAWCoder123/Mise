@@ -13,6 +13,7 @@ import type {
   PurchaseRecommendation,
   Restaurant,
   RestaurantEmailConnection,
+  RestaurantMembership,
   SalesImport,
   SupplierItem,
   SupplierOrder,
@@ -24,6 +25,8 @@ import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
 
 export const DEMO_RESTAURANT_ID = DEMO_DATASET.restaurant.id;
 export const DEMO_USER_ID = DEMO_DATASET.user.id;
+export const DEMO_MANAGER_USER_ID = "00000000-0000-4000-8000-000000000012";
+export const DEMO_STAFF_USER_ID = "00000000-0000-4000-8000-000000000013";
 export const DEMO_RESTAURANT_TIME_ZONE = DEMO_DATASET.restaurant.timezone;
 
 const itemIds = {
@@ -37,9 +40,10 @@ const itemIds = {
 };
 
 export interface DemoState {
-  schema_version: 3;
+  schema_version: 4;
   restaurants: Restaurant[];
   users: AppUser[];
+  memberships: RestaurantMembership[];
   posSales: PosSale[];
   inventoryItems: InventoryItem[];
   inventoryMovements: InventoryMovement[];
@@ -133,6 +137,51 @@ export function createInitialDemoState(
     role: "owner",
     created_at: now
   };
+  const managerUser: AppUser = {
+    id: DEMO_MANAGER_USER_ID,
+    restaurant_id: DEMO_RESTAURANT_ID,
+    name: "Alex Manager",
+    email: "alex.manager@demo.mise",
+    role: "manager",
+    created_at: now
+  };
+  const staffUser: AppUser = {
+    id: DEMO_STAFF_USER_ID,
+    restaurant_id: DEMO_RESTAURANT_ID,
+    name: "Sam Staff",
+    email: "sam.staff@demo.mise",
+    role: "staff",
+    created_at: now
+  };
+  const memberships: RestaurantMembership[] = [
+    {
+      id: "00000000-0000-4000-8000-000000000021",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      user_id: DEMO_USER_ID,
+      role: "owner",
+      status: "active",
+      created_at: now,
+      updated_at: now
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000022",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      user_id: DEMO_MANAGER_USER_ID,
+      role: "manager",
+      status: "active",
+      created_at: now,
+      updated_at: now
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000023",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      user_id: DEMO_STAFF_USER_ID,
+      role: "staff",
+      status: "active",
+      created_at: now,
+      updated_at: now
+    }
+  ];
 
   const inventoryItems: InventoryItem[] = [
     {
@@ -250,9 +299,10 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 3,
+    schema_version: 4,
     restaurants: [restaurant],
-    users: [user],
+    users: [user, managerUser, staffUser],
+    memberships,
     posSales,
     inventoryItems,
     inventoryMovements: [],
@@ -472,12 +522,26 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     };
   });
 
+  const memberships = Array.isArray(raw.memberships) && raw.memberships.length > 0
+    ? raw.memberships
+    : seeded.memberships;
+  const users = (() => {
+    const base = raw.users && raw.users.length > 0 ? [...raw.users] : [...seeded.users];
+    for (const membership of memberships) {
+      if (base.some((entry) => entry.id === membership.user_id)) continue;
+      const seededUser = seeded.users.find((entry) => entry.id === membership.user_id);
+      if (seededUser) base.push(seededUser);
+    }
+    return base;
+  })();
+
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 3,
+    schema_version: 4,
     restaurants,
-    users: raw.users ?? seeded.users,
+    users,
+    memberships,
     posSales: raw.posSales ?? seeded.posSales,
     inventoryItems: raw.inventoryItems ?? seeded.inventoryItems,
     inventoryMovements: Array.isArray(raw.inventoryMovements) ? raw.inventoryMovements : seeded.inventoryMovements,
@@ -501,11 +565,13 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 3 ||
+      raw.schema_version !== 4 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
-      !Array.isArray(raw.inventoryMovements)
+      !Array.isArray(raw.inventoryMovements) ||
+      !Array.isArray(raw.memberships) ||
+      (raw.memberships?.length ?? 0) === 0
   };
 }
 
