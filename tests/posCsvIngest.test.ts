@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyManualPosSalesIngestToDemoState,
+  createInitialDemoState,
+  DEMO_RESTAURANT_ID
+} from "../services/demoData";
+import {
   assertManualPosSalesIngestReady,
   buildManualPosSalesIngestPayload
 } from "../services/domain/posCsvIngest";
-import { createMiseRepository } from "../services/repositories/miseRepository";
-import { resetDemoStore } from "../services/localStore";
-import { DEMO_RESTAURANT_ID } from "../services/demoData";
 
 const SAMPLE_CSV = [
   "sale_date,item_name,category,quantity_sold,gross_sales",
@@ -35,27 +37,23 @@ test("manual POS CSV ingest rejects invalid or empty rows", () => {
   assert.throws(() => assertManualPosSalesIngestReady(invalid), /validation issues/i);
 });
 
-test("demo repository imports manual CSV sales idempotently and records an import", async () => {
-  await resetDemoStore("Toast");
-  const repository = createMiseRepository();
-  const payload = buildManualPosSalesIngestPayload(SAMPLE_CSV);
-  const rows = assertManualPosSalesIngestReady(payload);
+test("demo state CSV ingest replaces manual rows, connects provider, and records an import", () => {
+  const state = createInitialDemoState("Toast", undefined, new Date("2026-07-28T16:00:00.000Z"));
+  const rows = assertManualPosSalesIngestReady(buildManualPosSalesIngestPayload(SAMPLE_CSV));
 
-  const first = await repository.importManualPosSalesCsv(DEMO_RESTAURANT_ID, rows, "unit_test.csv");
+  const first = applyManualPosSalesIngestToDemoState(state, DEMO_RESTAURANT_ID, rows, "unit_test.csv");
   assert.equal(first.posSalesRowsSaved, 2);
   assert.ok(first.salesImportId);
+  assert.equal(state.posProvider, "Manual CSV Upload");
 
-  const second = await repository.importManualPosSalesCsv(DEMO_RESTAURANT_ID, rows, "unit_test.csv");
+  const second = applyManualPosSalesIngestToDemoState(state, DEMO_RESTAURANT_ID, rows, "unit_test.csv");
   assert.equal(second.posSalesRowsSaved, 2);
 
-  const planning = await repository.fetchPlanningData(DEMO_RESTAURANT_ID);
-  const csvSales = planning.sales.filter((sale) => sale.source_pos === "Manual CSV Upload");
+  const csvSales = state.posSales.filter((sale) => sale.source_pos === "Manual CSV Upload");
   assert.equal(csvSales.length, 2);
   assert.equal(csvSales.every((sale) => Boolean(sale.source_record_id)), true);
-
-  const status = await repository.fetchPOSStatus(DEMO_RESTAURANT_ID);
-  assert.equal(status.provider, "Manual CSV Upload");
-
-  const integrations = await repository.fetchPosIntegrations(DEMO_RESTAURANT_ID);
-  assert.ok(integrations.some((entry) => entry.provider === "manual_csv" && entry.status === "connected"));
+  assert.ok(state.posIntegrations.some((entry) => entry.provider === "manual_csv" && entry.status === "connected"));
+  assert.equal(state.salesImports[0]?.import_type, "csv_upload");
+  assert.equal(state.salesImports[0]?.records_processed, 2);
+  assert.equal(state.auditLogs[0]?.action, "manual_pos_csv_ingested");
 });
