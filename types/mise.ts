@@ -96,6 +96,30 @@ export interface InventoryItem {
   last_updated: string;
 }
 
+export type InventoryMovementReason =
+  | "manual_count"
+  | "manager_correction"
+  | "receiving"
+  | "waste"
+  | "transfer"
+  | "pos_consumption"
+  | "recipe_consumption"
+  | "system_adjustment";
+
+export interface InventoryMovement {
+  id: string;
+  restaurant_id: string;
+  inventory_item_id: string;
+  actor_user_id: string | null;
+  reason: InventoryMovementReason;
+  quantity_before: number;
+  quantity_after: number;
+  delta: number;
+  source_workflow: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface MenuItemIngredient {
   id: string;
   restaurant_id: string;
