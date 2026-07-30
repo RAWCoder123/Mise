@@ -17,7 +17,8 @@ import {
   ShieldCheck,
   Store,
   Trash2,
-  Truck
+  Truck,
+  Users
 } from "lucide-react-native";
 import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -336,6 +337,13 @@ export default function SettingsScreen() {
             iconTone="neutral"
             value={formatNumber(visibleSuppliers.length)}
             onPress={() => router.push("/settings/suppliers" as never)}
+          />
+          <OperationalRow
+            title={t("settings.operations.team.title")}
+            subtitle={t("settings.operations.team.body")}
+            icon={<Users size={20} color={colors.text} strokeWidth={2.25} />}
+            iconTone="neutral"
+            onPress={() => router.push("/settings/team" as never)}
           />
           {restaurant ? (
             <View style={styles.quietRow}>

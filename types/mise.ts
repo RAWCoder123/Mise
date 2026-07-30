@@ -68,6 +68,11 @@ export interface RestaurantMembership {
   updated_at: string;
 }
 
+export interface RestaurantTeamMember extends RestaurantMembership {
+  display_name: string;
+  email: string;
+}
+
 export interface PosSale {
   id: string;
   restaurant_id: string;

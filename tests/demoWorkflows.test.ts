@@ -270,8 +270,10 @@ test("demo-state repair retains history, deduplicates pending rows, and restores
   const pending = repaired.state.purchaseRecommendations.find((entry) => entry.status === "pending");
 
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 3);
+  assert.equal(repaired.state.schema_version, 4);
   assert.ok(Array.isArray(repaired.state.inventoryMovements));
+  assert.ok(Array.isArray(repaired.state.memberships));
+  assert.ok(repaired.state.memberships.length >= 1);
   assert.equal(repaired.state.purchaseRecommendations.length, 3);
   assert.equal(new Set(repaired.state.purchaseRecommendations.map((entry) => entry.id)).size, 3);
   assert.deepEqual(
