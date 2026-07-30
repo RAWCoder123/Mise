@@ -48,6 +48,7 @@ export default function RootLayout() {
               <Stack.Screen name="settings/language" />
               <Stack.Screen name="settings/gmail" />
               <Stack.Screen name="settings/suppliers" />
+              <Stack.Screen name="settings/team" />
             </Stack>
             <StatusBar style="dark" />
           </LocaleProvider>

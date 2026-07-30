@@ -17,6 +17,7 @@ const baseRoutes = [
   "/settings/language",
   "/settings/gmail",
   "/settings/suppliers",
+  "/settings/team",
   "/settings/pos",
   "/settings/recipes"
 ];
