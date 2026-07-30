@@ -8,6 +8,7 @@ import {
   ChevronUp,
   CircleUserRound,
   Database,
+  ExternalLink,
   Languages,
   LogOut,
   Mail,
@@ -15,9 +16,10 @@ import {
   RefreshCw,
   ShieldCheck,
   Store,
+  Trash2,
   Truck
 } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -30,11 +32,13 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { LANGUAGE_OPTIONS, type MessageKey, type MessageValues } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
+import { readPublicAppConfig } from "../../lib/appConfig";
 import {
   fetchDemoReadinessSummary,
   fetchEmailConnectionState,
   fetchRestaurantOpsProfile,
-  fetchSuppliers
+  fetchSuppliers,
+  requestAccountDeletion
 } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 import type {
@@ -69,11 +73,15 @@ export default function SettingsScreen() {
   const [message, setMessage] = useState<SettingsNotice | null>(null);
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [switchingRestaurantId, setSwitchingRestaurantId] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
+  const appConfig = readPublicAppConfig();
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -151,6 +159,34 @@ export default function SettingsScreen() {
       captureMiseError(signOutError, { flow: "settings", operation: "sign_out" });
       setMessage({ key: "settings.notice.signOutError", tone: "danger" });
       setSigningOut(false);
+    }
+  }
+
+  async function openExternalUrl(url: string | null, missingKey: MessageKey) {
+    if (!url) {
+      setMessage({ key: missingKey, tone: "caution" });
+      return;
+    }
+    try {
+      await Linking.openURL(url);
+    } catch (openError) {
+      captureMiseError(openError, { flow: "settings", operation: "open_external_url" });
+      setMessage({ key: missingKey, tone: "danger" });
+    }
+  }
+
+  async function confirmDeleteAccount() {
+    if (deleteConfirmation.trim().toUpperCase() !== "DELETE" || deletingAccount) return;
+    setDeletingAccount(true);
+    setMessage(null);
+    try {
+      await requestAccountDeletion("DELETE");
+      await signOut();
+      router.replace("/login");
+    } catch (deleteError) {
+      captureMiseError(deleteError, { flow: "settings", operation: "delete_account" });
+      setMessage({ key: "settings.account.deleteError", tone: "danger" });
+      setDeletingAccount(false);
     }
   }
 
@@ -412,13 +448,82 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
+          <OperationalRow
+            title={t("settings.account.privacy")}
+            subtitle={appConfig.privacyPolicyUrl ?? t("settings.account.privacyMissing")}
+            icon={<ShieldCheck size={20} color={colors.text} strokeWidth={2.25} />}
+            iconTone="neutral"
+            onPress={() => void openExternalUrl(appConfig.privacyPolicyUrl, "settings.account.privacyMissing")}
+          />
+          <OperationalRow
+            title={t("settings.account.support")}
+            subtitle={appConfig.supportUrl ?? t("settings.account.supportMissing")}
+            icon={<ExternalLink size={20} color={colors.text} strokeWidth={2.25} />}
+            iconTone="neutral"
+            onPress={() => void openExternalUrl(appConfig.supportUrl, "settings.account.supportMissing")}
+          />
+          {deleteConfirmOpen ? (
+            <View style={styles.deletePanel}>
+              <Text style={styles.rowTitle}>{t("settings.account.deleteConfirmTitle")}</Text>
+              <Text style={styles.rowBody}>
+                {t(usingLocalDemo ? "settings.account.deleteDemoBody" : "settings.account.deleteConfirmBody")}
+              </Text>
+              <TextInput
+                accessibilityLabel={t("settings.account.deleteConfirmPlaceholder")}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                value={deleteConfirmation}
+                onChangeText={setDeleteConfirmation}
+                placeholder={t("settings.account.deleteConfirmPlaceholder")}
+                placeholderTextColor={colors.faint}
+                style={styles.deleteInput}
+              />
+              <View style={styles.deleteActions}>
+                <Button
+                  title={t("settings.account.deleteCancel")}
+                  variant="ghost"
+                  onPress={() => {
+                    setDeleteConfirmOpen(false);
+                    setDeleteConfirmation("");
+                  }}
+                  disabled={deletingAccount}
+                  fullWidth
+                />
+                <Button
+                  title={t(deletingAccount ? "settings.account.deleting" : "settings.account.deleteConfirmAction")}
+                  variant="secondary"
+                  icon={<Trash2 size={18} color={colors.danger} strokeWidth={2.25} />}
+                  onPress={() => void confirmDeleteAccount()}
+                  disabled={deletingAccount || deleteConfirmation.trim().toUpperCase() !== "DELETE"}
+                  fullWidth
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.sectionAction}>
+              <Button
+                title={t("settings.account.delete")}
+                variant="ghost"
+                icon={<Trash2 size={18} color={colors.danger} strokeWidth={2.25} />}
+                onPress={() => {
+                  setDeleteConfirmOpen(true);
+                  setDeleteConfirmation("");
+                  if (!usingLocalDemo) {
+                    Alert.alert(t("settings.account.deleteConfirmTitle"), t("settings.account.deleteConfirmBody"));
+                  }
+                }}
+                disabled={signingOut || deletingAccount}
+                fullWidth
+              />
+            </View>
+          )}
           <View style={styles.sectionAction}>
             <Button
               title={t(signingOut ? "settings.account.signingOut" : "settings.account.signOut")}
               variant="ghost"
               icon={<LogOut size={18} color={colors.text} strokeWidth={2.25} />}
               onPress={leave}
-              disabled={signingOut}
+              disabled={signingOut || deletingAccount}
               fullWidth
             />
           </View>
@@ -667,6 +772,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     marginTop: spacing.sm
+  },
+  deletePanel: {
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border
+  },
+  deleteInput: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    color: colors.text,
+    ...typography.body
+  },
+  deleteActions: {
+    gap: spacing.sm
   },
   pressed: {
     opacity: 0.68
