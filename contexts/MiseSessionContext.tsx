@@ -64,6 +64,7 @@ interface MiseSessionContextValue {
   }) => Promise<Restaurant>;
   switchRestaurant: (restaurantId: string) => Promise<void>;
   connectDemoPOS: (provider: PosProvider) => Promise<void>;
+  refreshPosStatus: () => Promise<void>;
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -502,6 +503,10 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     [isDemoMode, refreshPOS, restaurant?.name, saveSnapshot, user]
   );
 
+  const refreshPosStatus = useCallback(async () => {
+    await refreshPOS(activeRestaurantIdRef.current);
+  }, [refreshPOS]);
+
   const resetDemoData = useCallback(async (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => {
     if (!isDemoMode) {
       throw new Error("Demo reset is only available in local demo mode.");
@@ -548,6 +553,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       createRestaurant,
       switchRestaurant,
       connectDemoPOS,
+      refreshPosStatus,
       resetDemoData,
       signOut
     }),
@@ -557,12 +563,14 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       availableRestaurants,
       continueWithDemo,
       createRestaurant,
+      connectDemoPOS,
       isDemoMode,
       isLoading,
       memberships,
       posProvider,
       posStatusLabel,
       ready,
+      refreshPosStatus,
       restaurant,
       resetDemoData,
       role,
