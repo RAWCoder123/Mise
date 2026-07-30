@@ -11,7 +11,10 @@ import {
   getWellStockedPercentage,
   type InventoryHealthCounts
 } from "../../components/ui/InventoryHealth";
-import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
+import {
+  BriefClipboardIllustration,
+  ProduceCrateIllustration
+} from "../../components/ui/MiseIllustrations";
 import { Screen } from "../../components/ui/Screen";
 import { CompactMetricStrip } from "../../components/ui/CompactMetricStrip";
 import { RetryNotice } from "../../components/ui/StatusNotice";
@@ -331,7 +334,7 @@ function DailyBrief({
             </View>
           ))}
         </View>
-        <ProduceCrateIllustration size={56} />
+        <BriefClipboardIllustration size={56} />
       </View>
     </View>
   );

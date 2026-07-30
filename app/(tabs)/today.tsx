@@ -368,6 +368,8 @@ export default function TodayScreen() {
             message={briefMessage}
             messageIsError={briefMessageIsError}
             onSubmitFeedback={submitFindingFeedback}
+            compact
+            onOpen={() => router.push("/insights")}
           />
         </View>
       </View>

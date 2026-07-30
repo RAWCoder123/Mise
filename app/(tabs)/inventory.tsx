@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { Beef, ChevronRight, Droplets, LeafyGreen, Milk, Package, Search, SlidersHorizontal, Wheat } from "lucide-react-native";
+import { Beef, ChevronRight, Droplets, Filter, LeafyGreen, Milk, Package, Search, Wheat } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -196,7 +196,7 @@ export default function InventoryScreen() {
             onPress={() => setFilter((current) => (current === "At risk" ? "All" : "At risk"))}
             style={({ pressed }) => [styles.headerAction, pressed && styles.rowPressed]}
           >
-            <SlidersHorizontal size={17} color={filter === "At risk" ? colors.warning : colors.text} strokeWidth={2} />
+            <Filter size={17} color={filter === "At risk" ? colors.warning : colors.text} strokeWidth={2} />
           </Pressable>
         </View>
       }

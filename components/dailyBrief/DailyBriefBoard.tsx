@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { ChevronRight } from "lucide-react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -30,7 +31,9 @@ export function DailyBriefBoard({
   busyFindingId,
   message,
   messageIsError,
-  onSubmitFeedback
+  onSubmitFeedback,
+  compact = false,
+  onOpen
 }: {
   brief: DailyOperationalBrief | null;
   queue: readonly FindingDecisionOutboxEntry[];
@@ -39,6 +42,8 @@ export function DailyBriefBoard({
   message: string | null;
   messageIsError: boolean;
   onSubmitFeedback: FeedbackHandler;
+  compact?: boolean;
+  onOpen?: () => void;
 }) {
   const { formatNumber, t } = useLocale();
   const sections = useMemo(() => {
@@ -70,6 +75,48 @@ export function DailyBriefBoard({
     }
     return null;
   }, [brief, t]);
+
+  if (compact) {
+    const priorityIds = brief
+      ? [...brief.priorities.now, ...brief.priorities.upNext, ...brief.priorities.later]
+      : [];
+    const firstFinding = priorityIds
+      .map((id) => brief?.findings.find((finding) => finding.id === id))
+      .find((finding): finding is OperationalFinding => Boolean(finding));
+    const signalCount = brief?.findings.length ?? 0;
+
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("dailyBrief.title")}
+        disabled={!onOpen}
+        onPress={onOpen}
+        style={({ pressed }) => [styles.preview, pressed && styles.previewPressed]}
+      >
+        <View style={styles.previewCopy}>
+          <View style={styles.previewHeading}>
+            <Text style={styles.previewTitle}>{t("dailyBrief.title")}</Text>
+            <Text style={styles.previewCount}>{formatNumber(signalCount)}</Text>
+          </View>
+          {firstFinding ? (
+            <>
+              <Text numberOfLines={1} style={styles.previewFinding}>
+                {firstFinding.title}
+              </Text>
+              <Text numberOfLines={1} style={styles.previewBody}>
+                {firstFinding.explanation}
+              </Text>
+            </>
+          ) : (
+            <Text numberOfLines={1} style={styles.previewBody}>
+              {t("dailyBrief.empty.body")}
+            </Text>
+          )}
+        </View>
+        <ChevronRight size={15} color={colors.faint} strokeWidth={2.2} />
+      </Pressable>
+    );
+  }
 
   return (
     <SectionSurface title={t("dailyBrief.title")} subtitle={t("dailyBrief.subtitle")} padding="none">
@@ -308,6 +355,51 @@ function queueTone(status: string): BadgeTone {
 }
 
 const styles = StyleSheet.create({
+  preview: {
+    minHeight: 58,
+    paddingVertical: 7,
+    paddingHorizontal: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  previewPressed: {
+    opacity: 0.68
+  },
+  previewCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1
+  },
+  previewHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5
+  },
+  previewTitle: {
+    color: colors.text,
+    fontFamily: typography.families.semibold,
+    fontSize: 11,
+    lineHeight: 14
+  },
+  previewCount: {
+    color: colors.accent,
+    fontFamily: typography.families.semibold,
+    fontSize: 9,
+    lineHeight: 12
+  },
+  previewFinding: {
+    color: colors.text,
+    fontFamily: typography.families.semibold,
+    fontSize: 11,
+    lineHeight: 14
+  },
+  previewBody: {
+    color: colors.muted,
+    fontFamily: typography.families.body,
+    fontSize: 9,
+    lineHeight: 12
+  },
   board: { gap: 12, padding: 12 },
   disclaimer: {
     color: colors.muted,

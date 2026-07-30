@@ -43,6 +43,71 @@ export function ProduceCrateIllustration({ size = 86 }: { size?: number }) {
   );
 }
 
+/** Compact checklist-and-produce artwork used by the concept's Home briefing. */
+export function BriefClipboardIllustration({ size = 86 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 96 86">
+      <Ellipse cx="50" cy="78" rx="31" ry="5" fill={shadowFill} />
+      <Circle cx="49" cy="45" r="31" fill={colors.warningSoft} opacity="0.72" />
+      <Rect
+        x="28"
+        y="12"
+        width="40"
+        height="58"
+        rx="7"
+        fill="#FFDCC4"
+        stroke={colors.tomato}
+        strokeWidth="2.2"
+      />
+      <Rect x="34" y="18" width="28" height="44" rx="2.5" fill={paperFill} />
+      <Rect x="39" y="7" width="18" height="11" rx="3" fill={colors.tomato} />
+      <Path
+        d="M39 29l3 3 6-7"
+        fill="none"
+        stroke={colors.tomato}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Line x1="51" y1="29" x2="58" y2="29" stroke={colors.borderStrong} strokeWidth="2.2" strokeLinecap="round" />
+      <Path
+        d="M39 40l3 3 6-7"
+        fill="none"
+        stroke={colors.tomato}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Line x1="51" y1="40" x2="58" y2="40" stroke={colors.borderStrong} strokeWidth="2.2" strokeLinecap="round" />
+      <Path
+        d="M39 51l3 3 6-7"
+        fill="none"
+        stroke={colors.tomato}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Line x1="51" y1="51" x2="58" y2="51" stroke={colors.borderStrong} strokeWidth="2.2" strokeLinecap="round" />
+      <Circle cx="68" cy="64" r="9" fill={colors.tomato} stroke={colors.text} strokeWidth="2" />
+      <Path
+        d="M68 54c-4-5-2-10 2-13 3 5 2 9-2 13Z"
+        fill={colors.success}
+        stroke={colors.text}
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M61 68c-10 4-17 0-20-7 8-3 16-1 20 7Z"
+        fill={colors.success}
+        stroke={colors.text}
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <Circle cx="78" cy="69" r="5" fill="#F2B94B" stroke={colors.text} strokeWidth="1.8" />
+    </Svg>
+  );
+}
+
 export function SupplierBagIllustration({ size = 86 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 96 86">

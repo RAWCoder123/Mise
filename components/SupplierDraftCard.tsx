@@ -65,7 +65,7 @@ export function SupplierDraftCard({
     : null;
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isDraft && styles.cardDraft]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t("orders.card.openAccessibility", {
@@ -189,6 +189,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: 12,
     gap: 10
+  },
+  cardDraft: {
+    borderColor: colors.accentSoft
   },
   header: {
     minHeight: 46,

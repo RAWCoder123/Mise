@@ -540,7 +540,7 @@ export default function OrdersScreen() {
 
   return (
     <Screen
-      title={t("orders.title")}
+      title={t("nav.orders")}
       titleAlign="left"
       loading={loading}
       action={
