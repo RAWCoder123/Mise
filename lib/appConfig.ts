@@ -5,6 +5,19 @@ export type PublicAppEnv = "development" | "staging" | "production";
 export interface PublicAppConfig {
   appEnv: PublicAppEnv;
   enableDemoMode: boolean;
+  privacyPolicyUrl: string | null;
+  supportUrl: string | null;
+}
+
+function normalizeOptionalHttpsUrl(value: string | undefined): string | null {
+  if (!value || !value.trim()) return null;
+  try {
+    const parsed = new URL(value.trim());
+    if (parsed.protocol !== "https:") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 function normalizeAppEnv(value: string | undefined): PublicAppEnv {
@@ -24,7 +37,9 @@ export function readPublicAppConfig(): PublicAppConfig {
 
   return {
     appEnv,
-    enableDemoMode: demoModeValue === undefined ? appEnv !== "production" : parseBoolean(demoModeValue)
+    enableDemoMode: demoModeValue === undefined ? appEnv !== "production" : parseBoolean(demoModeValue),
+    privacyPolicyUrl: normalizeOptionalHttpsUrl(process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL),
+    supportUrl: normalizeOptionalHttpsUrl(process.env.EXPO_PUBLIC_SUPPORT_URL)
   };
 }
 

@@ -1,6 +1,6 @@
 # Mise Code And Readiness Status
 
-Last updated: July 19, 2026
+Last updated: July 30, 2026
 
 ## Executive Summary
 
@@ -115,6 +115,7 @@ Supabase support is present and structured around real multi-restaurant tenancy.
 - `20260719062148_gmail_backend_oauth_delivery.sql`
 - `20260719062921_add_operator_locale_preference.sql`
 - `20260719214822_supplier_recipient_management.sql`
+- `20260730211800_close_secondary_dml_and_inventory_movements.sql`
 
 Important Supabase concepts already modeled:
 
@@ -134,6 +135,10 @@ Important Supabase concepts already modeled:
 - `restaurant_email_connections`
 - `supplier_recipients`
 - `setup_attachments`
+- `inventory_movements` (append-only count ledger; client SELECT only)
+- `account_deletion_requests` (user-scoped deletion audit; client SELECT own rows only)
+
+Authenticated Data API writes are revoked for `pos_integrations`, `sales_imports`, `supplier_items`, and `purchase_orders` (service/Edge owned). Settings includes in-app account deletion plus privacy/support URL hooks.
 
 The Gmail migration also creates backend-only OAuth, credential, and delivery records in the private schema. PKCE verifiers and refresh credentials are stored through Supabase Vault; Expo can read only safe connection metadata.
 
