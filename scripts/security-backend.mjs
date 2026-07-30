@@ -9,6 +9,7 @@ const root = process.cwd();
 const restaurantOwnedTables = new Set([
   "pos_sales",
   "inventory_items",
+  "inventory_movements",
   "menu_item_ingredients",
   "purchase_recommendations",
   "supplier_orders",
@@ -25,7 +26,7 @@ const restaurantOwnedTables = new Set([
 ]);
 
 const tenantAuthorizationTables = new Set(["restaurant_memberships"]);
-const publicUserScopedTables = new Set(["users"]);
+const publicUserScopedTables = new Set(["users", "account_deletion_requests"]);
 const tenantRootTables = new Set(["restaurants"]);
 const serviceOnlyPublicTables = new Set([
   "outreach_agent_runs",
@@ -37,6 +38,7 @@ const serviceOnlyPublicTables = new Set([
   "outreach_suppressions"
 ]);
 const edgeFunctionNames = ["sync-pos-sales", "generate-ai-insights", "link-gmail", "send-supplier-email", "operational-workflows"];
+const userScopedEdgeFunctionNames = ["request-account-deletion"];
 
 const failures = [];
 
@@ -142,7 +144,10 @@ for (const { table, block } of policyBlocks) {
     failures.push(`supabase: public.${table} policy is missing a private membership/role predicate.`);
   }
 
-  if (publicUserScopedTables.has(table) && !/\b(id|user_id)\s*=\s*auth\.uid\(\)/i.test(block)) {
+  if (
+    publicUserScopedTables.has(table) &&
+    !/\b(id|user_id|subject_user_id)\s*=\s*auth\.uid\(\)/i.test(block)
+  ) {
     failures.push(`supabase: public.${table} policy must be scoped to auth.uid().`);
   }
 }
@@ -230,6 +235,26 @@ for (const functionName of edgeFunctionNames) {
     if (unsafeSecretResponse) {
       failures.push(`${functionPath}: response text must not reveal provider secret identifiers.`);
     }
+  }
+}
+
+for (const functionName of userScopedEdgeFunctionNames) {
+  const functionPath = `supabase/functions/${functionName}/index.ts`;
+  const source = read(functionPath);
+  const escapedFunctionName = escapeRegExp(functionName);
+  const configBlock = config.match(new RegExp(`\\[functions\\.${escapedFunctionName}\\]([\\s\\S]*?)(?=\\n\\[|$)`, "i"))?.[1] ?? "";
+
+  if (!/verify_jwt\s*=\s*true/i.test(configBlock)) {
+    failures.push(`supabase/config.toml: ${functionName} must set verify_jwt = true.`);
+  }
+  if (!/requireAuthenticatedContext\s*\(/.test(source)) {
+    failures.push(`${functionPath}: missing requireAuthenticatedContext guard.`);
+  }
+  if (!/auth\.admin\.deleteUser|request_my_account_deletion/.test(source)) {
+    failures.push(`${functionPath}: must revoke memberships and delete or queue Auth account removal.`);
+  }
+  if (/requireRestaurantRole\s*\(/.test(source)) {
+    failures.push(`${functionPath}: account deletion is user-scoped and must not require a restaurant role.`);
   }
 }
 
