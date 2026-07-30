@@ -27,7 +27,9 @@ const allowedPublicEnv = new Set([
   "EXPO_PUBLIC_APP_ENV",
   "EXPO_PUBLIC_SENTRY_DSN",
   "EXPO_PUBLIC_POSTHOG_KEY",
-  "EXPO_PUBLIC_POSTHOG_HOST"
+  "EXPO_PUBLIC_POSTHOG_HOST",
+  "EXPO_PUBLIC_PRIVACY_POLICY_URL",
+  "EXPO_PUBLIC_SUPPORT_URL"
 ]);
 
 const sqlChecks = [
@@ -52,6 +54,7 @@ const sensitiveClientReadableColumns = [
 const restaurantOwnedTables = new Set([
   "pos_sales",
   "inventory_items",
+  "inventory_movements",
   "menu_item_ingredients",
   "purchase_recommendations",
   "supplier_orders",
@@ -235,6 +238,13 @@ for (const file of functionSources) {
       }
       if (!/recordFunctionSecurityEvent\s*\(/.test(contents)) {
         failures.push(`${file}: OAuth callback must finalize its reserved firewall security event`);
+      }
+    } else if (functionName === "request-account-deletion") {
+      if (!/requireAuthenticatedContext\s*\(/.test(contents)) {
+        failures.push(`${file}: account deletion must authenticate the caller before mutating memberships`);
+      }
+      if (!/request_my_account_deletion/.test(contents) || !/auth\.admin\.deleteUser/.test(contents)) {
+        failures.push(`${file}: account deletion must revoke memberships and delete the Auth user`);
       }
     } else if (!/reserveFunctionInvocation\s*\(/.test(contents)) {
       failures.push(`${file}: Edge Function must reserve a firewall/rate-limit invocation before sensitive work`);
