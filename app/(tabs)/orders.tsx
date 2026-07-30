@@ -680,6 +680,7 @@ export default function OrdersScreen() {
                     <Button
                       title={gmailActionTitle}
                       variant="secondary"
+                      size="compact"
                       accessibilityLabel={t("orders.gmail.settingsAccessibility")}
                       onPress={() => router.push("/settings/gmail" as never)}
                       style={styles.emailButton}
@@ -722,7 +723,7 @@ export default function OrdersScreen() {
                   <SectionSurface key={supplierName} padding="none">
                     <View style={styles.supplierHeader}>
                       <View style={styles.supplierIcon}>
-                        <Truck size={20} color={colors.success} strokeWidth={2.25} />
+                        <Truck size={16} color={colors.success} strokeWidth={2.1} />
                       </View>
                       <View style={styles.supplierHeaderCopy}>
                         <Text style={styles.supplierName}>{supplierName}</Text>
@@ -869,16 +870,16 @@ export default function OrdersScreen() {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 10,
+    gap: 8,
     paddingBottom: 72
   },
   tabs: {
     marginBottom: 2
   },
   plusButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center"
@@ -889,46 +890,46 @@ const styles = StyleSheet.create({
   plusLabel: {
     color: colors.surface,
     fontFamily: typography.families.bold,
-    fontSize: 20,
-    lineHeight: 22,
+    fontSize: 18,
+    lineHeight: 20,
     marginTop: -1
   },
   pendingCard: {
-    minHeight: 64,
+    minHeight: 52,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 8
   },
   pendingCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 2
+    gap: 1
   },
   pendingTitle: {
     color: colors.text,
     fontFamily: typography.families.semibold,
-    fontSize: 13,
-    lineHeight: 16
+    fontSize: 12,
+    lineHeight: 15
   },
   pendingBody: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 14
+    fontSize: 10,
+    lineHeight: 13
   },
   pendingChip: {
     color: colors.caution,
     fontFamily: typography.families.semibold,
-    fontSize: 10,
+    fontSize: 9,
     lineHeight: 12,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: radii.xl,
     backgroundColor: colors.cautionSoft,
     overflow: "hidden"
@@ -941,20 +942,20 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   laneContent: {
-    gap: 10
+    gap: 8
   },
   emailMain: {
-    minHeight: 68,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    minHeight: 52,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 8
   },
   mailIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 6,
     backgroundColor: colors.surfaceWarm,
     alignItems: "center",
     justifyContent: "center"
@@ -971,53 +972,54 @@ const styles = StyleSheet.create({
   },
   emailTitle: {
     color: colors.text,
-    ...typography.caption,
-    fontSize: 12
+    fontFamily: typography.families.semibold,
+    fontSize: 11,
+    lineHeight: 14
   },
   emailBody: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 2
+    fontSize: 10,
+    lineHeight: 13,
+    marginTop: 1
   },
   emailButton: {
-    paddingHorizontal: 10
+    paddingHorizontal: 8
   },
   emailSecurity: {
-    minHeight: 29,
-    paddingHorizontal: 12,
+    minHeight: 26,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
   },
   emailSecurityText: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 10,
-    lineHeight: 13
+    fontSize: 9,
+    lineHeight: 12
   },
   reviewQueue: {
-    gap: 10,
-    paddingTop: 4
+    gap: 8,
+    paddingTop: 2
   },
   supplierHeader: {
-    minHeight: 60,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     flexDirection: "row",
     alignItems: "center",
-    gap: 11,
+    gap: 8,
     backgroundColor: colors.surface,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border
   },
   supplierIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.md,
+    width: 28,
+    height: 28,
+    borderRadius: radii.sm,
     backgroundColor: colors.successSoft,
     alignItems: "center",
     justifyContent: "center"
@@ -1028,15 +1030,16 @@ const styles = StyleSheet.create({
   },
   supplierName: {
     color: colors.text,
-    ...typography.cardTitle,
-    fontSize: 16,
-    lineHeight: 21
+    fontFamily: typography.families.semibold,
+    fontSize: 12,
+    lineHeight: 15
   },
   supplierMeta: {
     color: colors.muted,
-    ...typography.caption,
-    fontWeight: "500",
-    marginTop: 1
+    fontFamily: typography.families.body,
+    fontSize: 9,
+    lineHeight: 12,
+    marginTop: 0
   },
   undoToast: {
     position: "absolute",

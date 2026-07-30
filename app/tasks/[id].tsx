@@ -7,7 +7,7 @@ import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -178,9 +178,9 @@ export default function TaskDetailScreen() {
                     style={({ pressed }) => [styles.checkRow, pressed && styles.pressed]}
                   >
                     {isChecked ? (
-                      <CheckCircle2 size={18} color={colors.success} strokeWidth={2.2} />
+                      <CheckCircle2 size={16} color={colors.success} strokeWidth={2.2} />
                     ) : (
-                      <Circle size={18} color={colors.borderStrong} strokeWidth={2.2} />
+                      <Circle size={16} color={colors.borderStrong} strokeWidth={2.2} />
                     )}
                     <Text style={[styles.checkText, isChecked && styles.checkTextDone]}>{t(key)}</Text>
                   </Pressable>
@@ -251,7 +251,7 @@ function relatedLabelFor(task: OperationalTodayTask, t: (key: MessageKey) => str
 }
 
 function taskIcon(task: OperationalTodayTask, color: string): ReactNode {
-  const props = { size: 18, color, strokeWidth: 2.2 } as const;
+  const props = { size: 15, color, strokeWidth: 2.1 } as const;
   if (task.source.kind === "inventory") return <Package {...props} />;
   if (task.source.kind === "recommendation" || task.source.kind === "order") return <ShoppingCart {...props} />;
   if (task.source.kind === "integration") return <ClipboardList {...props} />;
@@ -262,7 +262,7 @@ function taskIcon(task: OperationalTodayTask, color: string): ReactNode {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 12
+    gap: 8
   },
   emptyButton: {
     marginTop: 12
@@ -270,12 +270,12 @@ const styles = StyleSheet.create({
   hero: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12
+    gap: 10
   },
   heroIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: density.iconPlain,
+    height: density.iconPlain,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.panelStrong
@@ -286,20 +286,18 @@ const styles = StyleSheet.create({
   heroCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 2
+    gap: 1
   },
   title: {
     color: colors.text,
     fontFamily: typography.families.bold,
-    fontSize: 16,
-    lineHeight: 20,
-    letterSpacing: -0.2
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: -0.1
   },
   priority: {
     color: colors.muted,
-    fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
+    ...conceptTypography.caption
   },
   priorityHigh: {
     color: colors.danger
@@ -308,7 +306,7 @@ const styles = StyleSheet.create({
     gap: 0
   },
   metaRow: {
-    minHeight: 36,
+    minHeight: 32,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -318,52 +316,42 @@ const styles = StyleSheet.create({
   },
   metaLabel: {
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 12,
-    lineHeight: 16
+    ...conceptTypography.body
   },
   metaValue: {
     flex: 1,
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 12,
-    lineHeight: 16,
+    ...conceptTypography.rowTitle,
     textAlign: "right"
   },
   instructions: {
-    gap: 4
+    gap: 3
   },
   sectionTitle: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 12,
-    lineHeight: 15
+    ...conceptTypography.sectionTitle
   },
   instructionsBody: {
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 12,
-    lineHeight: 17
+    ...conceptTypography.body
   },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border
   },
   checklist: {
-    gap: 4
+    gap: 2
   },
   checkRow: {
-    minHeight: 40,
+    minHeight: 30,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 8
   },
   checkText: {
     flex: 1,
     color: colors.text,
-    fontFamily: typography.families.body,
-    fontSize: 13,
-    lineHeight: 17
+    ...conceptTypography.body
   },
   checkTextDone: {
     color: colors.muted,
@@ -376,17 +364,17 @@ const styles = StyleSheet.create({
   },
   primaryAction: {
     flex: 1.4,
-    minHeight: 42,
-    height: 42
+    minHeight: 40,
+    height: 40
   },
   secondaryAction: {
     flex: 1,
-    minHeight: 42,
-    height: 42
+    minHeight: 40,
+    height: 40
   },
   restricted: {
     color: colors.muted,
-    ...typography.caption,
+    ...conceptTypography.caption,
     textAlign: "center"
   },
   pressed: {

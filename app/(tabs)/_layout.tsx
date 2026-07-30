@@ -2,7 +2,7 @@ import { Tabs } from "expo-router";
 import { CalendarDays, Home, MoreHorizontal, Package, ShoppingCart } from "lucide-react-native";
 import { StyleSheet } from "react-native";
 
-import { colors, fontFamilies } from "../../constants/theme";
+import { colors, conceptTypography, density, fontFamilies } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 
 export default function TabsLayout() {
@@ -26,7 +26,7 @@ export default function TabsLayout() {
         options={{
           title: t("nav.home"),
           tabBarAccessibilityLabel: t("nav.home"),
-          tabBarIcon: ({ color }) => <Home size={20} color={color} strokeWidth={1.9} />
+          tabBarIcon: ({ color }) => <Home size={density.tabIcon} color={color} strokeWidth={1.9} />
         }}
       />
       <Tabs.Screen
@@ -34,7 +34,7 @@ export default function TabsLayout() {
         options={{
           title: t("nav.today"),
           tabBarAccessibilityLabel: t("nav.today"),
-          tabBarIcon: ({ color }) => <CalendarDays size={20} color={color} strokeWidth={1.9} />
+          tabBarIcon: ({ color }) => <CalendarDays size={density.tabIcon} color={color} strokeWidth={1.9} />
         }}
       />
       <Tabs.Screen
@@ -42,7 +42,7 @@ export default function TabsLayout() {
         options={{
           title: t("nav.inventory"),
           tabBarAccessibilityLabel: t("nav.inventory"),
-          tabBarIcon: ({ color }) => <Package size={20} color={color} strokeWidth={1.9} />
+          tabBarIcon: ({ color }) => <Package size={density.tabIcon} color={color} strokeWidth={1.9} />
         }}
       />
       <Tabs.Screen
@@ -50,7 +50,7 @@ export default function TabsLayout() {
         options={{
           title: t("nav.orders"),
           tabBarAccessibilityLabel: t("nav.orders"),
-          tabBarIcon: ({ color }) => <ShoppingCart size={20} color={color} strokeWidth={1.9} />
+          tabBarIcon: ({ color }) => <ShoppingCart size={density.tabIcon} color={color} strokeWidth={1.9} />
         }}
       />
       <Tabs.Screen
@@ -58,7 +58,7 @@ export default function TabsLayout() {
         options={{
           title: t("nav.more"),
           tabBarAccessibilityLabel: t("nav.more"),
-          tabBarIcon: ({ color }) => <MoreHorizontal size={20} color={color} strokeWidth={1.9} />
+          tabBarIcon: ({ color }) => <MoreHorizontal size={density.tabIcon} color={color} strokeWidth={1.9} />
         }}
       />
       <Tabs.Screen
@@ -80,19 +80,19 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   tabBar: {
     height: 62,
-    paddingTop: 6,
-    paddingBottom: 4,
+    paddingTop: 4,
+    paddingBottom: 2,
     backgroundColor: colors.surface,
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth
   },
   tabBarItem: {
-    minHeight: 48
+    minHeight: 44
   },
   tabBarLabel: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 10,
-    lineHeight: 12,
-    marginTop: 1
+    fontSize: density.tabLabel,
+    lineHeight: conceptTypography.caption.lineHeight,
+    marginTop: 0
   }
 });

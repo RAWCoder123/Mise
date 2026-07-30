@@ -26,7 +26,7 @@ import { Button } from "../../components/ui/Button";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
-import { colors, fontFamilies, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, fontFamilies, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { LANGUAGE_OPTIONS, type MessageKey, type MessageValues } from "../../i18n/catalog";
@@ -235,45 +235,45 @@ export default function SettingsScreen() {
 
         <SettingsSection title={t("settings.section.account")}>
           <OperationalRow
+            density="menu"
             title={t("settings.account.privacy.title")}
-            icon={<ShieldCheck size={18} color={colors.success} strokeWidth={2.25} />}
-            iconTone="leaf"
+            icon={<ShieldCheck size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/privacy" as never)}
           />
           <OperationalRow
+            density="menu"
             title={t("settings.account.support.title")}
-            icon={<LifeBuoy size={18} color={colors.accentDark} strokeWidth={2.25} />}
-            iconTone="brand"
+            icon={<LifeBuoy size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/support" as never)}
           />
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.restaurant")}>
           <OperationalRow
+            density="menu"
             title={restaurant?.name ?? t("settings.profile.noRestaurant")}
             value={localizedRole ?? undefined}
-            icon={<Store size={18} color={colors.accentDark} strokeWidth={2.25} />}
-            iconTone="brand"
+            icon={<Store size={17} color={colors.text} strokeWidth={1.9} />}
           />
           {restaurant ? (
             <>
               <OperationalRow
+                density="menu"
                 title={t("settings.profile.timezone")}
                 value={restaurant.timezone}
-                icon={<Building2 size={18} color={colors.muted} strokeWidth={2.25} />}
-                iconTone="neutral"
+                icon={<Building2 size={17} color={colors.muted} strokeWidth={1.9} />}
               />
               <OperationalRow
+                density="menu"
                 title={t("settings.profile.currency")}
                 value={restaurant.currency}
-                icon={<Building2 size={18} color={colors.muted} strokeWidth={2.25} />}
-                iconTone="neutral"
+                icon={<Building2 size={17} color={colors.muted} strokeWidth={1.9} />}
               />
               <OperationalRow
+                density="menu"
                 title={t("settings.profile.serviceStyle")}
                 value={serviceStyleLabel(restaurant.service_style, t)}
-                icon={<Store size={18} color={colors.muted} strokeWidth={2.25} />}
-                iconTone="neutral"
+                icon={<Store size={17} color={colors.muted} strokeWidth={1.9} />}
               />
             </>
           ) : null}
@@ -313,10 +313,10 @@ export default function SettingsScreen() {
 
         <SettingsSection title={t("settings.section.preferences")}>
           <OperationalRow
+            density="menu"
             title={t("settings.preference.language")}
             value={LANGUAGE_OPTIONS.find((option) => option.locale === locale)?.nativeName ?? locale}
-            icon={<Languages size={18} color={colors.caution} strokeWidth={2.25} />}
-            iconTone="caution"
+            icon={<Languages size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/language" as never)}
           />
         </SettingsSection>
@@ -334,69 +334,69 @@ export default function SettingsScreen() {
         <SettingsSection title={t("settings.section.integrations")}>
           {isDemoMode ? (
             <OperationalRow
+              density="menu"
               title={t("settings.integration.pos.title")}
               value={t(posProvider ? "settings.integration.pos.connected" : "settings.integration.pos.notConnected")}
-              icon={<PlugZap size={18} color={posProvider ? colors.success : colors.muted} strokeWidth={2.25} />}
-              iconTone={posProvider ? "leaf" : "neutral"}
+              icon={<PlugZap size={17} color={posProvider ? colors.success : colors.muted} strokeWidth={1.9} />}
               onPress={() => router.push("/settings/pos")}
             />
           ) : (
             <OperationalRow
+              density="menu"
               title={t("settings.integration.noPos.title")}
-              icon={<PlugZap size={18} color={colors.muted} strokeWidth={2.25} />}
-              iconTone="neutral"
+              icon={<PlugZap size={17} color={colors.muted} strokeWidth={1.9} />}
               onPress={() => router.push("/settings/sales-import" as never)}
             />
           )}
           <OperationalRow
+            density="menu"
             title={t("settings.integration.gmail.title")}
             value={gmailConnectionBadge(visibleEmailConnection, t)}
             icon={
               <Mail
-                size={18}
+                size={17}
                 color={gmailConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
-                strokeWidth={2.25}
+                strokeWidth={1.9}
               />
             }
-            iconTone={gmailConnected ? "leaf" : gmailNeedsAttention ? "caution" : "neutral"}
             onPress={() => router.push("/settings/gmail" as never)}
           />
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.operations")}>
           <OperationalRow
+            density="menu"
             title={t("settings.operations.salesImport.title")}
-            icon={<Upload size={18} color={colors.success} strokeWidth={2.25} />}
-            iconTone="leaf"
+            icon={<Upload size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/sales-import" as never)}
           />
           <OperationalRow
+            density="menu"
             title={t("settings.operations.recipes.title")}
-            icon={<BookOpen size={18} color={colors.caution} strokeWidth={2.25} />}
-            iconTone="caution"
+            icon={<BookOpen size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/recipes" as never)}
           />
           <OperationalRow
+            density="menu"
             title={t("settings.operations.suppliers.title")}
             value={formatNumber(visibleSuppliers.length)}
-            icon={<Truck size={18} color={colors.text} strokeWidth={2.25} />}
-            iconTone="neutral"
+            icon={<Truck size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/suppliers" as never)}
           />
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.data")}>
           <OperationalRow
+            density="menu"
             title={t(usingLocalDemo ? "settings.data.local.title" : "settings.data.hosted.title")}
-            icon={<Database size={18} color={usingLocalDemo ? colors.muted : colors.success} strokeWidth={2.25} />}
-            iconTone={usingLocalDemo ? "neutral" : "leaf"}
+            icon={<Database size={17} color={usingLocalDemo ? colors.muted : colors.success} strokeWidth={1.9} />}
           />
 
           {canExportRestaurant ? (
             <OperationalRow
+              density="menu"
               title={t("settings.data.export.title")}
-              icon={<Download size={18} color={colors.accentDark} strokeWidth={2.25} />}
-              iconTone="brand"
+              icon={<Download size={17} color={colors.text} strokeWidth={1.9} />}
               onPress={() => router.push("/settings/export" as never)}
             />
           ) : null}
@@ -593,18 +593,20 @@ function readinessCheckLabel(checkId: string, t: Translator) {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 12
+    gap: 8
   },
   accountHero: {
+    minHeight: density.identityRow,
+    height: density.identityRow,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 4
+    paddingVertical: 0
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.accentSoft
@@ -612,8 +614,8 @@ const styles = StyleSheet.create({
   avatarText: {
     color: colors.accentDark,
     fontFamily: fontFamilies.bold,
-    fontSize: 16,
-    lineHeight: 20
+    fontSize: 13,
+    lineHeight: 16
   },
   accountHeroCopy: {
     flex: 1,
@@ -621,30 +623,26 @@ const styles = StyleSheet.create({
   },
   accountHeroName: {
     color: colors.text,
-    fontFamily: fontFamilies.bold,
-    fontSize: 16,
-    lineHeight: 20
+    ...conceptTypography.rowTitle,
+    fontFamily: fontFamilies.bold
   },
   accountHeroMeta: {
     color: colors.text,
-    fontFamily: fontFamilies.semibold,
-    fontSize: 12,
-    lineHeight: 15,
+    ...conceptTypography.caption,
     marginTop: 1
   },
   accountHeroEmail: {
     color: colors.muted,
+    ...conceptTypography.caption,
     fontFamily: fontFamilies.body,
-    fontSize: 11,
-    lineHeight: 14,
-    marginTop: 1
+    marginTop: 0
   },
   section: {
-    gap: 4
+    gap: 2
   },
   sectionTitle: {
     color: colors.text,
-    ...typography.sectionTitle
+    ...conceptTypography.sectionTitle
   },
   sectionSurface: {
     overflow: "hidden",
@@ -655,13 +653,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0
   },
   workspaceRow: {
-    minHeight: 46,
+    minHeight: density.menuRow,
+    height: density.menuRow,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 8,
+    paddingVertical: 0,
     paddingHorizontal: 2
   },
   workspaceRowSelected: {
@@ -676,34 +675,29 @@ const styles = StyleSheet.create({
   },
   workspaceName: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 13,
-    lineHeight: 16
+    ...conceptTypography.rowTitle
   },
   workspaceMeta: {
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 14
+    ...conceptTypography.caption,
+    fontFamily: fontFamilies.body
   },
   rowTitle: {
     color: colors.text,
-    ...typography.cardTitle
+    ...conceptTypography.rowTitle
   },
   rowBody: {
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 12,
-    lineHeight: 16,
+    ...conceptTypography.body,
     marginTop: 2
   },
   sectionAction: {
-    paddingVertical: 10
+    paddingVertical: 8
   },
   dangerZone: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    paddingVertical: 10,
+    paddingVertical: 8,
     gap: 4
   },
   deleteOpenAction: {
@@ -715,7 +709,7 @@ const styles = StyleSheet.create({
   },
   deleteConfirmLabel: {
     color: colors.text,
-    ...typography.caption
+    ...conceptTypography.caption
   },
   deleteConfirmInput: {
     minHeight: 44,
@@ -734,7 +728,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border
   },
   diagnosticsToggle: {
-    minHeight: 48,
+    minHeight: density.menuRow,
     flexDirection: "row",
     alignItems: "center",
     gap: 10
@@ -787,21 +781,19 @@ const styles = StyleSheet.create({
     marginTop: 6
   },
   signOutTextButton: {
-    minHeight: 44,
+    minHeight: density.hitTarget,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 0,
-    marginBottom: 4
+    marginBottom: 2
   },
   signOutText: {
     color: colors.accent,
-    fontFamily: typography.families.semibold,
-    fontSize: 13,
-    lineHeight: 16
+    ...conceptTypography.rowTitle
   },
   headerBack: {
-    width: 44,
-    height: 44,
+    width: density.hitTarget,
+    height: density.hitTarget,
     alignItems: "center",
     justifyContent: "center"
   },

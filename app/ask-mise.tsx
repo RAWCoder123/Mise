@@ -7,7 +7,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { MiseMark } from "../components/ui/BrandLockup";
 import { Screen } from "../components/ui/Screen";
 import { RetryNotice } from "../components/ui/StatusNotice";
-import { colors, radii, typography } from "../constants/theme";
+import { colors, conceptTypography, radii, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
 import type { MessageKey, MessageValues } from "../i18n/catalog";
@@ -245,7 +245,7 @@ export default function AskMiseScreen() {
           </View>
         ) : null}
 
-        <View style={styles.inputRow}>
+        <View style={styles.composer}>
           <TextInput
             accessibilityLabel={t("ask.input.accessibility")}
             value={input}
@@ -259,10 +259,11 @@ export default function AskMiseScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t("ask.send.accessibility")}
+            hitSlop={10}
             onPress={() => ask(input)}
             style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}
           >
-            <Send size={18} color={colors.surface} strokeWidth={2.25} />
+            <Send size={16} color={colors.accent} strokeWidth={2.25} />
           </Pressable>
         </View>
       </View>
@@ -330,10 +331,10 @@ function scriptedAnswer(
 const styles = StyleSheet.create({
   stack: {
     flex: 1,
-    gap: 10
+    gap: 8
   },
   chat: {
-    gap: 12,
+    gap: 8,
     flexGrow: 1
   },
   miseRow: {
@@ -345,13 +346,13 @@ const styles = StyleSheet.create({
   miseCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 8
+    gap: 6
   },
   bubble: {
     maxWidth: "78%",
     borderRadius: radii.md,
-    paddingHorizontal: 12,
-    paddingVertical: 8
+    paddingHorizontal: 10,
+    paddingVertical: 6
   },
   userBubble: {
     alignSelf: "flex-end",
@@ -359,9 +360,7 @@ const styles = StyleSheet.create({
   },
   bubbleText: {
     color: colors.text,
-    fontFamily: typography.families.body,
-    fontSize: 13,
-    lineHeight: 18
+    ...conceptTypography.body
   },
   userBubbleText: {
     color: colors.text
@@ -374,12 +373,12 @@ const styles = StyleSheet.create({
     overflow: "hidden"
   },
   priorityRow: {
-    minHeight: 44,
+    minHeight: 36,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border
   },
@@ -389,21 +388,18 @@ const styles = StyleSheet.create({
   },
   priorityTitle: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 12,
-    lineHeight: 15
+    ...conceptTypography.rowTitle
   },
   priorityDue: {
     color: colors.muted,
+    ...conceptTypography.caption,
     fontFamily: typography.families.body,
-    fontSize: 10,
-    lineHeight: 13,
-    marginTop: 1
+    marginTop: 0
   },
   priorityChip: {
-    borderRadius: radii.xl,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
     backgroundColor: colors.panelStrong
   },
   priorityChipHigh: {
@@ -411,9 +407,7 @@ const styles = StyleSheet.create({
   },
   priorityChipText: {
     color: colors.muted,
-    fontFamily: typography.families.semibold,
-    fontSize: 10,
-    lineHeight: 12
+    ...conceptTypography.caption
   },
   priorityChipTextHigh: {
     color: colors.danger
@@ -424,47 +418,50 @@ const styles = StyleSheet.create({
     gap: 6
   },
   suggestion: {
-    minHeight: 28,
-    height: 28,
+    minHeight: 25,
+    height: 25,
     justifyContent: "center",
     borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.panel,
-    paddingHorizontal: 10
+    paddingHorizontal: 9
   },
   suggestionText: {
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 14
+    ...conceptTypography.caption,
+    fontFamily: typography.families.body
   },
   pressed: {
     opacity: 0.7
   },
-  inputRow: {
-    minHeight: 44,
+  composer: {
+    minHeight: 41,
+    height: 41,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
-  },
-  input: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: radii.lg,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 12,
+    paddingLeft: 10,
+    paddingRight: 4,
+    gap: 4
+  },
+  input: {
+    flex: 1,
+    minHeight: 36,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
     color: colors.text,
     fontFamily: typography.families.body,
-    fontSize: 14
+    fontSize: 12,
+    lineHeight: 16
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.accent,
+    width: 24,
+    height: 24,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center"
   }

@@ -15,7 +15,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ActionTile, ActionTileGrid } from "../../components/ui/ActionTile";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -42,67 +42,67 @@ export default function MoreScreen() {
             compact
             label={t("more.shortcut.createTask")}
             accessibilityLabel={t("more.shortcut.createTaskHint")}
-            icon={<ClipboardList size={15} color={colors.accentDark} strokeWidth={2.2} />}
+            icon={<ClipboardList size={16} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/today")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.logDelivery")}
             accessibilityLabel={t("more.shortcut.logDeliveryHint")}
-            icon={<Truck size={15} color={colors.text} strokeWidth={2.2} />}
+            icon={<Truck size={16} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/inventory")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.scanItem")}
             accessibilityLabel={t("more.shortcut.scanItemHint")}
-            icon={<ScanLine size={15} color={colors.text} strokeWidth={2.2} />}
+            icon={<ScanLine size={16} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/inventory")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.dailyReport")}
             accessibilityLabel={t("more.shortcut.dailyReportHint")}
-            icon={<BarChart3 size={15} color={colors.accentDark} strokeWidth={2.2} />}
+            icon={<BarChart3 size={16} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/insights")}
           />
         </ActionTileGrid>
 
         <View style={styles.list}>
           <OperationalRow
+            density="menu"
             title={t("more.row.team.title")}
-            icon={<UsersRound size={18} color={colors.text} strokeWidth={2.25} />}
-            iconTone="neutral"
+            icon={<UsersRound size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/team" as never)}
           />
           <OperationalRow
+            density="menu"
             title={t("nav.insights")}
-            icon={<BarChart3 size={18} color={colors.text} strokeWidth={2.25} />}
-            iconTone="neutral"
+            icon={<BarChart3 size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/insights")}
           />
           <OperationalRow
+            density="menu"
             title={t("more.row.integrations.title")}
-            icon={<Mail size={18} color={colors.accentDark} strokeWidth={2.25} />}
-            iconTone="brand"
+            icon={<Mail size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/gmail")}
           />
           <OperationalRow
+            density="menu"
             title={t("more.row.suppliers.title")}
-            icon={<Truck size={18} color={colors.text} strokeWidth={2.25} />}
-            iconTone="neutral"
+            icon={<Truck size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/suppliers")}
           />
           <OperationalRow
+            density="menu"
             title={t("nav.settings")}
-            icon={<Settings size={18} color={colors.text} strokeWidth={2.25} />}
-            iconTone="neutral"
+            icon={<Settings size={17} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings")}
           />
           <OperationalRow
+            density="menu"
             title={t("more.row.help.title")}
-            icon={<HelpCircle size={18} color={colors.muted} strokeWidth={2.25} />}
-            iconTone="neutral"
+            icon={<HelpCircle size={17} color={colors.muted} strokeWidth={1.9} />}
           />
         </View>
 
@@ -119,7 +119,7 @@ export default function MoreScreen() {
             <Text style={styles.profileName}>{user?.name?.trim() || t("more.profile.fallbackName")}</Text>
             <Text style={styles.profileMeta}>{role ? t(roleKeys[role]) : t("settings.account.operator")}</Text>
           </View>
-          <ChevronRight size={16} color={colors.faint} strokeWidth={2.25} />
+          <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={2.25} />
         </Pressable>
       </View>
     </Screen>
@@ -135,11 +135,11 @@ function initialsFor(value: string) {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 12
+    gap: 8
   },
   shortcutsLabel: {
     color: colors.text,
-    ...typography.sectionTitle
+    ...conceptTypography.sectionTitle
   },
   list: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -148,8 +148,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface
   },
   profileRow: {
-    minHeight: 56,
-    height: 56,
+    minHeight: density.profileRow,
+    height: density.profileRow,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -160,18 +160,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.accentSoft
   },
   avatarText: {
     color: colors.accentDark,
-    fontFamily: typography.families.bold,
-    fontSize: 13,
-    lineHeight: 16
+    fontFamily: conceptTypography.rowTitle.fontFamily,
+    fontSize: 12,
+    lineHeight: 15
   },
   profileCopy: {
     flex: 1,
@@ -179,15 +179,12 @@ const styles = StyleSheet.create({
   },
   profileName: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 14,
-    lineHeight: 18
+    ...conceptTypography.rowTitle
   },
   profileMeta: {
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 14,
+    ...conceptTypography.caption,
+    fontFamily: conceptTypography.body.fontFamily,
     marginTop: 1
   },
   pressed: {

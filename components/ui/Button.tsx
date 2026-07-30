@@ -9,15 +9,17 @@ import {
   type ViewStyle
 } from "react-native";
 
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, radii, typography } from "../../constants/theme";
 import { usePressScale } from "./Motion";
 
 type ButtonVariant = "primary" | "secondary" | "soft" | "ghost" | "danger";
+type ButtonSize = "default" | "compact";
 
 interface ButtonProps extends Omit<PressableProps, "style"> {
   title: string;
   icon?: ReactNode;
   variant?: ButtonVariant;
+  size?: ButtonSize;
   fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
 }
@@ -26,6 +28,7 @@ export function Button({
   title,
   icon,
   variant = "primary",
+  size = "default",
   fullWidth,
   disabled,
   style,
@@ -37,6 +40,10 @@ export function Button({
   const isActionable = typeof props.onPress === "function";
   const lightLabel = variant === "primary" || variant === "danger";
   const softLabel = variant === "soft";
+  const isCompact = size === "compact";
+  const hitSlop = isCompact
+    ? Math.max(0, Math.ceil((density.hitTarget - density.compactButton) / 2))
+    : 6;
 
   return (
     <Pressable
@@ -53,12 +60,13 @@ export function Button({
       style={({ pressed }) => [
         styles.base,
         styles[variant],
+        isCompact && styles.compact,
         fullWidth && styles.fullWidth,
         disabled && styles.disabled,
         pressed && !disabled && styles.pressed,
         style
       ]}
-      hitSlop={6}
+      hitSlop={hitSlop}
       {...props}
     >
       <Animated.View style={[styles.content, scaleStyle]}>
@@ -66,6 +74,7 @@ export function Button({
         <Text
           style={[
             styles.label,
+            isCompact && styles.compactLabel,
             lightLabel ? styles.lightLabel : softLabel ? styles.softLabel : styles.darkLabel
           ]}
         >
@@ -84,6 +93,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth
+  },
+  compact: {
+    minHeight: density.compactButton,
+    height: density.compactButton,
+    paddingHorizontal: 10,
+    borderRadius: radii.sm
   },
   content: {
     flexDirection: "row",
@@ -113,6 +128,9 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.button
+  },
+  compactLabel: {
+    ...conceptTypography.button
   },
   lightLabel: {
     color: colors.surface

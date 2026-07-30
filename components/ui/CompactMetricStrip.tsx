@@ -41,8 +41,6 @@ export function CompactMetricStrip({ metrics, style, accessibilityLabel }: Compa
             {metric.label}
           </Text>
           <Text
-            adjustsFontSizeToFit
-            minimumFontScale={0.72}
             numberOfLines={1}
             style={[styles.value, metric.tone ? toneStyles[metric.tone] : undefined]}
           >

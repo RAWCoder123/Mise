@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, typography } from "../../constants/theme";
+import { colors, conceptTypography, density } from "../../constants/theme";
 
 interface SectionHeaderProps {
   title: string;
@@ -61,36 +61,36 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     color: colors.accent,
-    ...typography.caption,
+    ...conceptTypography.caption,
     textTransform: "uppercase",
-    marginBottom: 3
+    marginBottom: 2
   },
   title: {
     color: colors.text,
-    ...typography.sectionTitle
+    ...conceptTypography.sectionTitle
   },
   compactTitle: {
-    ...typography.cardTitle
+    ...conceptTypography.rowTitle
   },
   subtitle: {
     color: colors.muted,
-    ...typography.body,
-    marginTop: 3
+    ...conceptTypography.body,
+    marginTop: 2
   },
   actionButton: {
-    minHeight: 44,
-    minWidth: 44,
+    minHeight: density.hitTarget,
+    minWidth: density.hitTarget,
     paddingHorizontal: 6,
     alignItems: "flex-end",
     justifyContent: "center"
   },
   action: {
     color: colors.accentDark,
-    ...typography.caption
+    ...conceptTypography.caption
   },
   meta: {
     color: colors.accentDark,
-    ...typography.caption,
+    ...conceptTypography.caption,
     textAlign: "right"
   },
   pressed: {

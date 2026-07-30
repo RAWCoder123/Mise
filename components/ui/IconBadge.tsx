@@ -1,18 +1,33 @@
 import { type ReactNode } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { colors, radii } from "../../constants/theme";
+import { colors, density, radii } from "../../constants/theme";
 
 export type IconBadgeTone = "brand" | "leaf" | "neutral" | "caution" | "warning" | "danger" | "inverse";
+export type IconBadgeSize = "md" | "sm" | "plain";
 
 interface IconBadgeProps {
   children: ReactNode;
   tone?: IconBadgeTone;
+  /** `plain` keeps outline icons without colored tiles; `sm` is ~28px. */
+  size?: IconBadgeSize;
   style?: StyleProp<ViewStyle>;
 }
 
-export function IconBadge({ children, tone = "neutral", style }: IconBadgeProps) {
-  return <View style={[styles.badge, toneStyles[tone], style]}>{children}</View>;
+export function IconBadge({ children, tone = "neutral", size = "md", style }: IconBadgeProps) {
+  return (
+    <View
+      style={[
+        styles.badge,
+        size === "sm" && styles.badgeSm,
+        size === "plain" && styles.badgePlain,
+        size !== "plain" && toneStyles[tone],
+        style
+      ]}
+    >
+      {children}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -22,6 +37,17 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center"
+  },
+  badgeSm: {
+    width: density.iconPlain,
+    height: density.iconPlain,
+    borderRadius: radii.sm
+  },
+  badgePlain: {
+    width: density.iconPlain,
+    height: density.iconPlain,
+    borderRadius: 0,
+    backgroundColor: "transparent"
   }
 });
 

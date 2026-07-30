@@ -116,6 +116,10 @@ export const fontFamilies = {
   bold: "Inter_700Bold"
 } as const;
 
+/**
+ * Default typography — keep slightly roomier for setup/auth and dense forms.
+ * Primary tab/reference surfaces should prefer `conceptTypography`.
+ */
 export const typography = {
   families: fontFamilies,
   screenTitle: {
@@ -160,4 +164,68 @@ export const typography = {
     lineHeight: 15,
     letterSpacing: 0
   }
+} as const;
+
+/** iOS-compact scale for the eight-screen concept surfaces. */
+export const conceptTypography = {
+  screenTitle: {
+    fontFamily: fontFamilies.bold,
+    fontSize: 15,
+    lineHeight: 19,
+    letterSpacing: -0.2
+  },
+  sectionTitle: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0
+  },
+  rowTitle: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0
+  },
+  body: {
+    fontFamily: fontFamilies.body,
+    fontSize: 11,
+    lineHeight: 15,
+    letterSpacing: 0
+  },
+  caption: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 0
+  },
+  button: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0
+  }
+} as const;
+
+/** Shared concept density — visible control sizes; use hitSlop for 44px targets.
+ * App bar / tab bar heights stay at the design:static-locked 56 / 62 chrome sizes.
+ */
+export const density = {
+  appBar: 56,
+  tabBar: 62,
+  tabIcon: 18,
+  tabLabel: 9,
+  gutter: 16,
+  hitTarget: 44,
+  timeColumn: 54,
+  timelineRow: 48,
+  timelineRowActive: 74,
+  menuRow: 40,
+  operationalRow: 45,
+  healthCard: 80,
+  shortcutTile: 52,
+  profileRow: 54,
+  identityRow: 54,
+  compactButton: 28,
+  iconPlain: 28,
+  chevron: 14
 } as const;

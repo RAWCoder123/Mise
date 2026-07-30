@@ -10,7 +10,7 @@ import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations"
 import { Screen } from "../../components/ui/Screen";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
@@ -415,7 +415,7 @@ function TimelineTask({
         </View>
       </View>
 
-      <View style={[styles.taskCard, showPrimaryAction && styles.taskCardActive]}>
+      <View style={[styles.taskContent, showPrimaryAction && styles.taskContentActive]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("today.task.accessibility", {
@@ -441,8 +441,19 @@ function TimelineTask({
 
         {showPrimaryAction && canAct && task.status !== "completed" ? (
           <View style={styles.taskActions}>
-            <Button title={t("today.action.snooze")} variant="secondary" onPress={onSnooze} style={styles.snoozeButton} />
-            <Button title={t("today.action.start")} onPress={() => router.push(task.action.route)} style={styles.startButton} />
+            <Button
+              title={t("today.action.snooze")}
+              variant="secondary"
+              size="compact"
+              onPress={onSnooze}
+              style={styles.snoozeButton}
+            />
+            <Button
+              title={t("today.action.start")}
+              size="compact"
+              onPress={() => router.push(task.action.route)}
+              style={styles.startButton}
+            />
           </View>
         ) : showPrimaryAction && !canAct && task.status !== "completed" ? (
           <View style={styles.lockedAction}>
@@ -535,77 +546,74 @@ function intentKey(intent: OperationalTodayTaskActionIntent): MessageKey {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 8
+    gap: 6
   },
   emptyButton: {
     marginTop: 12
   },
   headerAction: {
-    width: 44,
-    height: 44,
+    width: density.hitTarget,
+    height: density.hitTarget,
     alignItems: "center",
     justifyContent: "center"
   },
   emptyTimeline: {
-    minHeight: 160,
+    minHeight: 120,
     alignItems: "center",
     justifyContent: "center",
-    padding: 16,
+    padding: 12,
     gap: 4
   },
   emptyTitle: {
     color: colors.text,
-    ...typography.cardTitle,
-    marginTop: 6
+    ...conceptTypography.rowTitle,
+    marginTop: 4
   },
   emptyBody: {
     color: colors.muted,
-    ...typography.body,
+    ...conceptTypography.body,
     textAlign: "center"
   },
   timelineList: {
-    gap: 2
+    gap: 0
   },
   timelineGroup: {
     gap: 0
   },
   groupLabel: {
     color: colors.muted,
-    fontFamily: typography.families.semibold,
-    fontSize: 10,
-    lineHeight: 12,
+    ...conceptTypography.caption,
+    textAlign: "left",
     marginBottom: 2,
-    marginTop: 4,
-    paddingLeft: 52
+    marginTop: 6,
+    paddingLeft: 0
   },
   timelineRow: {
     flexDirection: "row",
-    minHeight: 52,
-    maxHeight: 60
+    minHeight: density.timelineRow,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border
   },
   timelineRowActive: {
-    minHeight: 84,
-    maxHeight: 96
+    minHeight: density.timelineRowActive
   },
   timeColumn: {
-    width: 52,
+    width: density.timeColumn,
     alignItems: "center"
   },
   timeText: {
-    width: 50,
+    width: density.timeColumn - 4,
     color: colors.muted,
-    fontFamily: typography.families.semibold,
-    fontSize: 10,
-    lineHeight: 12,
+    ...conceptTypography.caption,
     textAlign: "center",
-    marginTop: 6
+    marginTop: 8
   },
   timeTextHigh: {
     color: colors.danger
   },
   lineWrap: {
     flex: 1,
-    minHeight: 28,
+    minHeight: 20,
     alignItems: "center",
     marginTop: 2
   },
@@ -632,29 +640,22 @@ const styles = StyleSheet.create({
   timelineDotDone: {
     backgroundColor: colors.success
   },
-  taskCard: {
+  taskContent: {
     flex: 1,
     minWidth: 0,
-    minHeight: 52,
-    maxHeight: 60,
-    marginBottom: 4,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 10,
+    justifyContent: "center",
     paddingVertical: 6,
-    justifyContent: "center"
+    paddingRight: 2,
+    paddingLeft: 2
   },
-  taskCardActive: {
-    minHeight: 84,
-    maxHeight: 96,
-    paddingVertical: 8
+  taskContentActive: {
+    paddingVertical: 8,
+    justifyContent: "flex-start"
   },
   taskMain: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 6
   },
   taskCopy: {
     flex: 1,
@@ -668,21 +669,18 @@ const styles = StyleSheet.create({
   taskTitle: {
     flex: 1,
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 13,
-    lineHeight: 16
+    ...conceptTypography.rowTitle
   },
   taskDetail: {
     color: colors.muted,
+    ...conceptTypography.caption,
     fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 14,
     marginTop: 1
   },
   priorityBadge: {
-    borderRadius: radii.xl,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
     backgroundColor: colors.panelStrong
   },
   priorityBadgeHigh: {
@@ -693,9 +691,7 @@ const styles = StyleSheet.create({
   },
   priorityText: {
     color: colors.muted,
-    fontFamily: typography.families.semibold,
-    fontSize: 10,
-    lineHeight: 12
+    ...conceptTypography.caption
   },
   priorityTextHigh: {
     color: colors.danger
@@ -711,18 +707,14 @@ const styles = StyleSheet.create({
     marginTop: 6
   },
   startButton: {
-    minWidth: 84,
-    minHeight: 32,
-    height: 32
+    minWidth: 72
   },
   snoozeButton: {
-    minWidth: 68,
-    minHeight: 32,
-    height: 32
+    minWidth: 64
   },
   lockedAction: {
     marginTop: 6,
-    minHeight: 28,
+    minHeight: 26,
     paddingHorizontal: 8,
     flexDirection: "row",
     alignItems: "center",
@@ -730,15 +722,15 @@ const styles = StyleSheet.create({
     gap: 4,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    borderRadius: radii.sm,
+    borderRadius: 6,
     backgroundColor: colors.panel
   },
   lockedText: {
     color: colors.muted,
-    ...typography.caption
+    ...conceptTypography.caption
   },
   briefContinuation: {
-    marginTop: 8,
+    marginTop: 10,
     paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border

@@ -16,7 +16,7 @@ import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations"
 import { Screen } from "../../components/ui/Screen";
 import { FilterRow, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, inventoryStatusColors, inventoryStatusSoftColors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
@@ -491,15 +491,15 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   healthCard: {
-    minHeight: 105,
-    maxHeight: 118,
+    minHeight: density.healthCard,
+    maxHeight: 84,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
     justifyContent: "center"
   },
   healthLabelRow: {
@@ -510,14 +510,12 @@ const styles = StyleSheet.create({
   },
   healthLabel: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
+    ...conceptTypography.sectionTitle
   },
   healthChip: {
     borderRadius: radii.xl,
-    paddingHorizontal: 8,
-    paddingVertical: 2
+    paddingHorizontal: 6,
+    paddingVertical: 1
   },
   healthChipGood: {
     backgroundColor: colors.successSoft
@@ -526,9 +524,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warningSoft
   },
   healthChipText: {
-    fontFamily: typography.families.semibold,
-    fontSize: 10,
-    lineHeight: 12
+    ...conceptTypography.caption
   },
   healthChipTextGood: {
     color: colors.success
@@ -539,14 +535,14 @@ const styles = StyleSheet.create({
   healthHead: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 8
   },
   healthPercent: {
     color: colors.success,
     fontFamily: typography.families.bold,
-    fontSize: 22,
-    lineHeight: 26,
-    letterSpacing: -0.4
+    fontSize: 20,
+    lineHeight: 24,
+    letterSpacing: -0.3
   },
   healthCopy: {
     flex: 1,
@@ -554,32 +550,29 @@ const styles = StyleSheet.create({
   },
   healthTitle: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 13,
-    lineHeight: 16
+    ...conceptTypography.rowTitle
   },
   healthBody: {
     color: colors.muted,
+    ...conceptTypography.caption,
     fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 14,
-    marginTop: 1
+    marginTop: 0
   },
   group: {
-    gap: 4
+    gap: 2
   },
   groupHeader: {
-    minHeight: 24,
+    minHeight: 20,
     justifyContent: "center"
   },
   groupTitle: {
     color: colors.text,
-    ...typography.sectionTitle
+    ...conceptTypography.sectionTitle
   },
   allStock: {
-    gap: 6,
-    marginTop: 8,
-    paddingTop: 8,
+    gap: 4,
+    marginTop: 6,
+    paddingTop: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
   },
@@ -589,10 +582,10 @@ const styles = StyleSheet.create({
     opacity: 0
   },
   controls: {
-    gap: 8
+    gap: 6
   },
   searchBox: {
-    minHeight: 40,
+    minHeight: 36,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     borderRadius: radii.md,
@@ -604,11 +597,11 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    minHeight: 38,
+    minHeight: 34,
     color: colors.text,
     fontFamily: typography.families.body,
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 16,
     paddingVertical: 0
   },
   inventoryList: {
@@ -619,17 +612,19 @@ const styles = StyleSheet.create({
     overflow: "hidden"
   },
   inventoryRow: {
-    minHeight: 56,
-    borderLeftWidth: 3,
+    minHeight: density.operationalRow,
+    height: density.operationalRow,
+    borderLeftWidth: 2,
     borderLeftColor: colors.borderStrong,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 8
   },
   inventoryRowCompact: {
-    minHeight: 52
+    minHeight: density.operationalRow,
+    height: density.operationalRow
   },
   inventoryRowCritical: {
     borderLeftColor: inventoryStatusColors.Critical
@@ -651,9 +646,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel
   },
   statusIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: density.iconPlain,
+    height: density.iconPlain,
+    borderRadius: 6,
     backgroundColor: inventoryStatusSoftColors.Watch,
     alignItems: "center",
     justifyContent: "center"
@@ -682,18 +677,15 @@ const styles = StyleSheet.create({
   itemTitle: {
     flex: 1,
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 13,
-    lineHeight: 16
+    ...conceptTypography.rowTitle
   },
   statusLabel: {
     color: inventoryStatusColors.Watch,
+    ...conceptTypography.caption,
     fontFamily: typography.families.bold,
-    fontSize: 10,
-    lineHeight: 12,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radii.xl,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
     overflow: "hidden",
     backgroundColor: inventoryStatusSoftColors.Watch
   },
@@ -711,17 +703,16 @@ const styles = StyleSheet.create({
   },
   itemCoverage: {
     color: colors.muted,
+    ...conceptTypography.caption,
     fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 14,
-    marginTop: 2
+    marginTop: 0
   },
   emptyList: {
-    minHeight: 88,
+    minHeight: 72,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
-    padding: 16,
+    padding: 12,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,

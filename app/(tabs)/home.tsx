@@ -33,7 +33,7 @@ type Translator = (key: MessageKey, values?: MessageValues) => string;
 
 export default function HomeScreen() {
   const { canUseDemoMode, continueWithDemo, restaurant, user } = useMiseSession();
-  const { formatCompactCurrency, formatNumber, t, locale } = useLocale();
+  const { formatCurrency, formatNumber, t, locale } = useLocale();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -145,7 +145,9 @@ export default function HomeScreen() {
             <ServiceAlert summary={visibleSummary} formatNumber={formatNumber} t={t} />
             <HomeMetrics
               summary={visibleSummary}
-              formatCompactCurrency={formatCompactCurrency}
+              formatSalesCurrency={(value, currency) =>
+                formatCurrency(value, { currency, maximumFractionDigits: 0 })
+              }
               formatNumber={formatNumber}
               t={t}
             />
@@ -235,12 +237,12 @@ function ServiceAlert({
 
 function HomeMetrics({
   summary,
-  formatCompactCurrency,
+  formatSalesCurrency,
   formatNumber,
   t
 }: {
   summary: TodayCommandCenterSummary;
-  formatCompactCurrency: (value: number, currency?: string) => string;
+  formatSalesCurrency: (value: number, currency?: string) => string;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   t: Translator;
 }) {
@@ -256,7 +258,7 @@ function HomeMetrics({
           {
             id: "sales",
             label: t("home.metric.sales"),
-            value: formatCompactCurrency(summary.salesToday, summary.restaurantCurrency),
+            value: formatSalesCurrency(summary.salesToday, summary.restaurantCurrency),
             caption: salesDelta?.label,
             captionTone: salesDelta?.tone === "success" ? "success" : salesDelta?.tone === "danger" ? "danger" : "default"
           },
@@ -514,17 +516,17 @@ function greetingKeyForNow(): MessageKey {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 10
+    gap: 8
   },
   emptyButton: {
     marginTop: 12
   },
   restaurantChip: {
     alignSelf: "flex-start",
-    minHeight: 28,
+    minHeight: 26,
     maxWidth: "88%",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
@@ -536,34 +538,34 @@ const styles = StyleSheet.create({
   restaurantChipText: {
     color: colors.text,
     fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
+    fontSize: 10,
+    lineHeight: 13
   },
   greetingBlock: {
-    gap: 2
+    gap: 1
   },
   greeting: {
     color: colors.text,
     fontFamily: typography.families.bold,
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: 17,
+    lineHeight: 21,
     letterSpacing: -0.3
   },
   greetingSubtext: {
     color: colors.muted,
     fontFamily: typography.families.body,
     fontSize: 11,
-    lineHeight: 15
+    lineHeight: 14
   },
   alert: {
-    minHeight: 52,
-    maxHeight: 56,
+    minHeight: 48,
+    maxHeight: 54,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 7,
     flexDirection: "row",
     alignItems: "center",
     gap: 8
@@ -612,19 +614,21 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     color: colors.text,
-    ...typography.sectionTitle
+    fontFamily: typography.families.semibold,
+    fontSize: 11,
+    lineHeight: 14
   },
   sectionHead: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 6
+    marginBottom: 4
   },
   sectionAction: {
     color: colors.accentDark,
     fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
+    fontSize: 10,
+    lineHeight: 13
   },
   briefSection: {
     gap: 0
@@ -632,22 +636,22 @@ const styles = StyleSheet.create({
   briefBody: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 8
   },
   briefBullets: {
     flex: 1,
     minWidth: 0,
-    gap: 5
+    gap: 4
   },
   bulletRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 7
+    gap: 6
   },
   bulletDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     marginTop: 5,
     backgroundColor: colors.accent
   },
@@ -655,11 +659,11 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.text,
     fontFamily: typography.families.body,
-    fontSize: 12,
-    lineHeight: 16
+    fontSize: 11,
+    lineHeight: 15
   },
   healthSection: {
-    gap: 6
+    gap: 4
   },
   healthRow: {
     flexDirection: "row",
@@ -669,40 +673,40 @@ const styles = StyleSheet.create({
   healthPercent: {
     color: colors.success,
     fontFamily: typography.families.bold,
-    fontSize: 20,
-    lineHeight: 24,
-    letterSpacing: -0.4
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: -0.3
   },
   healthHealthy: {
     color: colors.muted,
     fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
+    fontSize: 10,
+    lineHeight: 13
   },
   healthLegend: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10
+    gap: 8
   },
   legendText: {
     color: colors.muted,
     fontFamily: typography.families.medium,
-    fontSize: 10,
-    lineHeight: 13
+    fontSize: 9,
+    lineHeight: 12
   },
   tasksSection: {
     gap: 0,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    paddingTop: 8
+    paddingTop: 6
   },
   emptyCopy: {
     color: colors.muted,
     ...typography.body
   },
   taskRow: {
-    minHeight: 48,
-    paddingVertical: 6,
+    minHeight: 44,
+    paddingVertical: 5,
     flexDirection: "row",
     alignItems: "center",
     gap: 8
@@ -715,9 +719,9 @@ const styles = StyleSheet.create({
     opacity: 0.72
   },
   taskGlyph: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.panel
@@ -732,21 +736,21 @@ const styles = StyleSheet.create({
   taskTitle: {
     color: colors.text,
     fontFamily: typography.families.semibold,
-    fontSize: 13,
-    lineHeight: 16
+    fontSize: 12,
+    lineHeight: 15
   },
   taskMeta: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 10,
-    lineHeight: 13,
-    marginTop: 1
+    fontSize: 9,
+    lineHeight: 12,
+    marginTop: 0
   },
   priorityBadge: {
-    borderRadius: radii.xl,
+    borderRadius: 4,
     backgroundColor: colors.panelStrong,
-    paddingHorizontal: 7,
-    paddingVertical: 2
+    paddingHorizontal: 5,
+    paddingVertical: 1
   },
   priorityBadgeHigh: {
     backgroundColor: colors.dangerSoft
@@ -754,7 +758,7 @@ const styles = StyleSheet.create({
   priorityText: {
     color: colors.muted,
     fontFamily: typography.families.semibold,
-    fontSize: 10,
+    fontSize: 9,
     lineHeight: 12
   },
   priorityTextHigh: {

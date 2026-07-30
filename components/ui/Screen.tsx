@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { colors, spacing, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, spacing } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { BrandLockup } from "./BrandLockup";
@@ -170,14 +170,14 @@ const styles = StyleSheet.create({
   },
   topBar: {
     height: 56,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: density.gutter,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between"
   },
   barSide: {
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: density.hitTarget,
+    minHeight: density.hitTarget,
     flexShrink: 0,
     justifyContent: "center"
   },
@@ -200,17 +200,14 @@ const styles = StyleSheet.create({
   },
   appBarTitle: {
     color: colors.text,
-    fontFamily: typography.families.bold,
-    fontSize: 16,
-    lineHeight: 20,
-    letterSpacing: -0.2
+    ...conceptTypography.screenTitle
   },
   appBarTitleCentered: {
     textAlign: "center"
   },
   headerAction: {
-    width: 44,
-    height: 44,
+    width: density.hitTarget,
+    height: density.hitTarget,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -231,15 +228,15 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 440,
     alignSelf: "center",
-    paddingHorizontal: spacing.lg,
-    paddingTop: 10
+    paddingHorizontal: density.gutter,
+    paddingTop: 8
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: spacing.md,
-    marginBottom: 8
+    marginBottom: 6
   },
   headerText: {
     flex: 1,
@@ -247,12 +244,12 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    ...typography.screenTitle
+    ...conceptTypography.screenTitle
   },
   subtitle: {
     color: colors.muted,
-    ...typography.body,
-    marginTop: 2,
+    ...conceptTypography.body,
+    marginTop: 1,
     maxWidth: 480
   },
   loading: {

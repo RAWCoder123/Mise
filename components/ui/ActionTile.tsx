@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, radii } from "../../constants/theme";
 
 export interface ActionTileProps {
   label: string;
@@ -95,11 +95,13 @@ const styles = StyleSheet.create({
   compactTile: {
     flexBasis: 0,
     flexGrow: 1,
-    minHeight: 64,
+    minHeight: density.shortcutTile,
+    height: density.shortcutTile,
     alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 4,
-    paddingVertical: 8,
-    gap: 6
+    paddingVertical: 6,
+    gap: 4
   },
   iconWrap: {
     width: 32,
@@ -112,23 +114,20 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   compactIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 22,
+    height: 22,
+    borderRadius: 0,
     borderWidth: 0,
-    backgroundColor: colors.accentSoft
+    backgroundColor: "transparent"
   },
   label: {
     color: colors.text,
-    ...typography.cardTitle,
-    fontSize: 12.5,
-    lineHeight: 16
+    ...conceptTypography.rowTitle
   },
   compactLabel: {
     textAlign: "center",
-    fontSize: 10.5,
-    lineHeight: 13,
-    fontFamily: typography.families.semibold
+    ...conceptTypography.caption,
+    fontFamily: conceptTypography.caption.fontFamily
   },
   pressed: {
     opacity: 0.72
