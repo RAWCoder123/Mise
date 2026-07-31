@@ -138,13 +138,13 @@ test("demo invite revoke blocks later claims", async () => {
 
 test("demo schema v6 includes member invite storage", () => {
   const seed = createInitialDemoState("Toast");
-  assert.equal(seed.schema_version, 6);
+  assert.equal(seed.schema_version, 7);
   assert.deepEqual(seed.memberInvites, []);
 
   const { memberInvites: _ignored, schema_version: _version, ...legacy } = seed;
   const repaired = repairDemoState({ ...legacy, schema_version: 5 });
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 6);
+  assert.equal(repaired.state.schema_version, 7);
   assert.ok(Array.isArray(repaired.state.memberInvites));
 });
 

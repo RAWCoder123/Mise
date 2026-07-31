@@ -531,12 +531,45 @@ test("Edge firewall allows staff on operational-workflows while keeping other fu
   assert.match(staffOperationalActions, /"save_count_lines"/);
   assert.match(staffOperationalActions, /"submit_count_session"/);
   assert.match(staffOperationalActions, /"record_waste"/);
+  assert.match(staffOperationalActions, /"transfer_inventory"/);
   assert.doesNotMatch(staffOperationalActions, /"approve_count_session"/);
   assert.doesNotMatch(staffOperationalActions, /"cancel_count_session"/);
   assert.doesNotMatch(staffOperationalActions, /"update_inventory"/);
   assert.doesNotMatch(staffOperationalActions, /"create_inventory_item"/);
   assert.match(databaseTests, /staff can reserve operational-workflows for authorized actions/i);
   assert.match(databaseTests, /staff still cannot reserve manager-only POS sync/i);
+});
+
+test("storage locations and inventory transfer are RLS-readable and service-mutated", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260731163000_storage_locations_and_transfer.sql",
+    "utf8"
+  );
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
+  const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+
+  assert.match(migration, /create table if not exists public\.storage_locations/i);
+  assert.match(migration, /create table if not exists public\.inventory_location_balances/i);
+  assert.match(migration, /revoke all on table public\.storage_locations from public, anon, authenticated/i);
+  assert.match(migration, /grant select on public\.storage_locations to authenticated/i);
+  assert.match(migration, /revoke all on table public\.inventory_location_balances from public, anon, authenticated/i);
+  assert.match(migration, /grant select on public\.inventory_location_balances to authenticated/i);
+  assert.match(migration, /create or replace function public\.create_storage_location/i);
+  assert.match(migration, /create or replace function public\.ensure_restaurant_storage_locations/i);
+  assert.match(migration, /private\.service_transfer_inventory/i);
+  assert.match(migration, /'transfer_inventory'/);
+  assert.match(migration, /array\['owner', 'admin', 'manager', 'staff'\]/);
+  assert.match(edge, /"transfer_inventory"/);
+  assert.match(edge, /service_transfer_inventory/);
+  assert.match(repository, /action:\s*"transfer_inventory"/);
+  assert.match(inventoryWorkflow, /export async function transferInventory/);
+  assert.match(securityStatic, /"storage_locations"/);
+  assert.match(securityStatic, /"inventory_location_balances"/);
+  assert.match(securityBackend, /"storage_locations"/);
+  assert.match(securityBackend, /"inventory_location_balances"/);
 });
 
 test("inventory item create is service-owned with opening ledger movement and manager UI", () => {

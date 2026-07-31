@@ -12,6 +12,8 @@ const restaurantOwnedTables = new Set([
   "inventory_movements",
   "inventory_count_sessions",
   "inventory_count_lines",
+  "storage_locations",
+  "inventory_location_balances",
   "menu_item_ingredients",
   "purchase_recommendations",
   "supplier_orders",

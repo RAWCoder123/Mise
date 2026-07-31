@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
-import { ArrowDownRight, ArrowLeft, ClipboardList, PackageCheck, Save, Trash2 } from "lucide-react-native";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ArrowDownRight,
+  ArrowLeft,
+  ArrowLeftRight,
+  ClipboardList,
+  PackageCheck,
+  Save,
+  Trash2
+} from "lucide-react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge } from "../../components/ui/Badge";
@@ -16,15 +24,31 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import {
   addInventoryItemToOrder,
+  createStorageLocation,
   fetchInventoryItemOutlook,
+  fetchInventoryLocationBalances,
   fetchInventoryMovements,
+  fetchStorageLocations,
   recordInventoryWaste,
+  transferInventory,
   updateInventoryItem
 } from "../../services/miseService";
-import { canManageRestaurantData, canRecordInventoryWaste } from "../../services/tenantAccess";
+import { reconcileLocationBalancesForDisplay } from "../../services/domain/inventoryTransfer";
+import {
+  canManageRestaurantData,
+  canManageStorageLocations,
+  canRecordInventoryWaste,
+  canTransferInventory
+} from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
 import type { MessageKey } from "../../i18n/catalog";
-import type { InventoryMovement, InventoryMovementReason, InventoryOutlookItem } from "../../types/mise";
+import type {
+  InventoryLocationBalance,
+  InventoryMovement,
+  InventoryMovementReason,
+  InventoryOutlookItem,
+  StorageLocation
+} from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
 
 export default function InventoryDetailScreen() {
@@ -40,6 +64,13 @@ export default function InventoryDetailScreen() {
   const [wasteQuantity, setWasteQuantity] = useState("");
   const [wasteNote, setWasteNote] = useState("");
   const [correctionNote, setCorrectionNote] = useState("");
+  const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
+  const [locationBalances, setLocationBalances] = useState<InventoryLocationBalance[]>([]);
+  const [fromStorageLocationId, setFromStorageLocationId] = useState("");
+  const [toStorageLocationId, setToStorageLocationId] = useState("");
+  const [transferQuantity, setTransferQuantity] = useState("");
+  const [transferNote, setTransferNote] = useState("");
+  const [newLocationName, setNewLocationName] = useState("");
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<InventoryFieldErrors>({});
   const [loading, setLoading] = useState(true);
@@ -64,13 +95,17 @@ export default function InventoryDetailScreen() {
     setMessage(null);
     setMessageIsError(false);
     try {
-      const [nextOutlook, nextMovements] = await Promise.all([
+      const [nextOutlook, nextMovements, nextLocations, nextBalances] = await Promise.all([
         fetchInventoryItemOutlook(restaurantId, itemId),
-        fetchInventoryMovements(restaurantId, itemId, 6).catch(() => [] as InventoryMovement[])
+        fetchInventoryMovements(restaurantId, itemId, 6).catch(() => [] as InventoryMovement[]),
+        fetchStorageLocations(restaurantId).catch(() => [] as StorageLocation[]),
+        fetchInventoryLocationBalances(restaurantId, itemId).catch(() => [] as InventoryLocationBalance[])
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(nextOutlook);
       setMovements(nextMovements);
+      setStorageLocations(nextLocations);
+      setLocationBalances(nextBalances);
       setLoadedRestaurantId(restaurantId);
       if (nextOutlook) {
         setCurrentQuantity(formatNumber(nextOutlook.item.current_quantity, { maximumFractionDigits: 2, useGrouping: false }));
@@ -78,10 +113,23 @@ export default function InventoryDetailScreen() {
         setReorderThreshold(formatNumber(nextOutlook.item.reorder_threshold, { maximumFractionDigits: 2, useGrouping: false }));
         setFieldErrors({});
       }
+      const main = nextLocations.find((location) => location.name.toLowerCase() === "main") ?? nextLocations[0];
+      const secondary =
+        nextLocations.find((location) => location.id !== main?.id) ?? nextLocations[1] ?? null;
+      setFromStorageLocationId((current) =>
+        current && nextLocations.some((location) => location.id === current) ? current : main?.id ?? ""
+      );
+      setToStorageLocationId((current) =>
+        current && nextLocations.some((location) => location.id === current) && current !== (main?.id ?? "")
+          ? current
+          : secondary?.id ?? ""
+      );
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(null);
       setMovements([]);
+      setStorageLocations([]);
+      setLocationBalances([]);
       setMessage(t("inventory.detail.loadError"));
       setMessageIsError(true);
     } finally {
@@ -99,6 +147,13 @@ export default function InventoryDetailScreen() {
     setWasteQuantity("");
     setWasteNote("");
     setCorrectionNote("");
+    setStorageLocations([]);
+    setLocationBalances([]);
+    setFromStorageLocationId("");
+    setToStorageLocationId("");
+    setTransferQuantity("");
+    setTransferNote("");
+    setNewLocationName("");
     setSaving(false);
     setFieldErrors({});
     setMessage(null);
@@ -116,8 +171,23 @@ export default function InventoryDetailScreen() {
   const status = prediction?.projectedStatus ?? null;
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canRecordWaste = canRecordInventoryWaste(memberships, restaurant?.id);
+  const canTransfer = canTransferInventory(memberships, restaurant?.id);
+  const canManageLocations = canManageStorageLocations(memberships, restaurant?.id);
   /** Staff primary action — surface waste above read-only count settings. */
   const showWasteBeforeCountSettings = canRecordWaste && !canManage;
+  const balanceView = item
+    ? reconcileLocationBalancesForDisplay({
+        onHandQuantity: item.current_quantity,
+        balances: locationBalances.map((balance) => {
+          const location = storageLocations.find((entry) => entry.id === balance.storage_location_id);
+          return {
+            storageLocationId: balance.storage_location_id,
+            name: location?.name ?? balance.storage_location_id,
+            quantity: balance.quantity
+          };
+        })
+      })
+    : null;
 
   function goBackToInventory() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -255,6 +325,101 @@ export default function InventoryDetailScreen() {
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
         setMessage(t("inventory.detail.wasteError"));
+        setMessageIsError(true);
+      }
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
+    }
+  }
+
+  async function submitTransfer() {
+    if (!restaurant || !item) return;
+    if (!canTransfer) {
+      setMessage(t("inventory.detail.viewOnlyInventory"));
+      setMessageIsError(true);
+      return;
+    }
+
+    const transferFieldError = validateWasteQuantity(
+      transferQuantity,
+      t("inventory.detail.field.transferQuantity"),
+      parseNumber,
+      formatNumber,
+      t
+    );
+    if (transferFieldError || !fromStorageLocationId || !toStorageLocationId) {
+      setFieldErrors((current) => ({
+        ...current,
+        transferQuantity: transferFieldError,
+        transferFrom: !fromStorageLocationId ? t("inventory.detail.fieldRequired", { field: t("inventory.detail.transferFrom") }) : undefined,
+        transferTo: !toStorageLocationId ? t("inventory.detail.fieldRequired", { field: t("inventory.detail.transferTo") }) : undefined
+      }));
+      setMessage(t("inventory.detail.reviewTransfer"));
+      setMessageIsError(true);
+      return;
+    }
+    if (transferNote.trim().length > 240) {
+      setFieldErrors((current) => ({
+        ...current,
+        transferNote: t("inventory.detail.transferNoteTooLong")
+      }));
+      setMessage(t("inventory.detail.reviewTransfer"));
+      setMessageIsError(true);
+      return;
+    }
+
+    const restaurantId = restaurant.id;
+    setFieldErrors((current) => ({
+      ...current,
+      transferQuantity: undefined,
+      transferNote: undefined,
+      transferFrom: undefined,
+      transferTo: undefined
+    }));
+    setSaving(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      await transferInventory(
+        restaurantId,
+        item.id,
+        fromStorageLocationId,
+        toStorageLocationId,
+        parseNumber(transferQuantity) ?? 0,
+        transferNote.trim() || null
+      );
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setTransferQuantity("");
+      setTransferNote("");
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(t("inventory.detail.transferRecorded"));
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setMessage(t("inventory.detail.transferError"));
+        setMessageIsError(true);
+      }
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
+    }
+  }
+
+  async function addLocation() {
+    if (!restaurant || !canManageLocations) return;
+    const restaurantId = restaurant.id;
+    setSaving(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      await createStorageLocation(restaurantId, newLocationName);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNewLocationName("");
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(t("inventory.detail.locationAdded"));
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setMessage(t("inventory.detail.locationError"));
         setMessageIsError(true);
       }
     } finally {
@@ -407,6 +572,33 @@ export default function InventoryDetailScreen() {
             />
           ) : null}
 
+          {canTransfer ? (
+            <TransferStockCard
+              t={t}
+              formatNumber={formatNumber}
+              itemName={item.item_name}
+              unit={item.unit}
+              locations={storageLocations}
+              balanceView={balanceView}
+              fromStorageLocationId={fromStorageLocationId}
+              toStorageLocationId={toStorageLocationId}
+              transferQuantity={transferQuantity}
+              transferNote={transferNote}
+              newLocationName={newLocationName}
+              canManageLocations={canManageLocations}
+              fieldErrors={fieldErrors}
+              saving={saving}
+              setFromStorageLocationId={setFromStorageLocationId}
+              setToStorageLocationId={setToStorageLocationId}
+              setTransferQuantity={setTransferQuantity}
+              setTransferNote={setTransferNote}
+              setNewLocationName={setNewLocationName}
+              setFieldErrors={setFieldErrors}
+              onTransfer={submitTransfer}
+              onAddLocation={addLocation}
+            />
+          ) : null}
+
           <Card>
             <Text style={styles.cardTitle}>{canManage ? t("inventory.detail.updateCount") : t("inventory.detail.countSettings")}</Text>
             <Field
@@ -534,6 +726,10 @@ interface InventoryFieldErrors {
   correctionNote?: string;
   wasteQuantity?: string;
   wasteNote?: string;
+  transferQuantity?: string;
+  transferNote?: string;
+  transferFrom?: string;
+  transferTo?: string;
 }
 
 function WasteRecordingCard({
@@ -605,6 +801,204 @@ function WasteRecordingCard({
         style={styles.saveButton}
       />
     </Card>
+  );
+}
+
+function TransferStockCard({
+  t,
+  formatNumber,
+  itemName,
+  unit,
+  locations,
+  balanceView,
+  fromStorageLocationId,
+  toStorageLocationId,
+  transferQuantity,
+  transferNote,
+  newLocationName,
+  canManageLocations,
+  fieldErrors,
+  saving,
+  setFromStorageLocationId,
+  setToStorageLocationId,
+  setTransferQuantity,
+  setTransferNote,
+  setNewLocationName,
+  setFieldErrors,
+  onTransfer,
+  onAddLocation
+}: {
+  t: ReturnType<typeof useLocale>["t"];
+  formatNumber: ReturnType<typeof useLocale>["formatNumber"];
+  itemName: string;
+  unit: string;
+  locations: StorageLocation[];
+  balanceView: ReturnType<typeof reconcileLocationBalancesForDisplay> | null;
+  fromStorageLocationId: string;
+  toStorageLocationId: string;
+  transferQuantity: string;
+  transferNote: string;
+  newLocationName: string;
+  canManageLocations: boolean;
+  fieldErrors: InventoryFieldErrors;
+  saving: boolean;
+  setFromStorageLocationId: (value: string) => void;
+  setToStorageLocationId: (value: string) => void;
+  setTransferQuantity: (value: string) => void;
+  setTransferNote: (value: string) => void;
+  setNewLocationName: (value: string) => void;
+  setFieldErrors: Dispatch<SetStateAction<InventoryFieldErrors>>;
+  onTransfer: () => void;
+  onAddLocation: () => void;
+}) {
+  return (
+    <Card>
+      <Text style={styles.cardTitle}>{t("inventory.detail.transfer")}</Text>
+      <Text style={styles.copy}>{t("inventory.detail.transferHelp")}</Text>
+      {balanceView && balanceView.balances.length > 0 ? (
+        <View style={styles.balanceList}>
+          <Text style={styles.kicker}>{t("inventory.detail.transferBalances")}</Text>
+          {balanceView.balances.map((balance) => (
+            <Text key={balance.storageLocationId} style={styles.copy}>
+              {balance.name}: {formatNumber(balance.quantity, { maximumFractionDigits: 1 })} {unit}
+            </Text>
+          ))}
+          {balanceView.unallocatedQuantity > 0 ? (
+            <Text style={styles.copy}>
+              {t("inventory.detail.transferUnallocated", {
+                quantity: formatNumber(balanceView.unallocatedQuantity, { maximumFractionDigits: 1 }),
+                unit
+              })}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+      <LocationChooser
+        label={t("inventory.detail.transferFrom")}
+        locations={locations}
+        selectedId={fromStorageLocationId}
+        error={fieldErrors.transferFrom}
+        disabled={saving}
+        onSelect={(value) => {
+          setFromStorageLocationId(value);
+          setFieldErrors((current) => ({ ...current, transferFrom: undefined }));
+        }}
+      />
+      <LocationChooser
+        label={t("inventory.detail.transferTo")}
+        locations={locations.filter((location) => location.id !== fromStorageLocationId)}
+        selectedId={toStorageLocationId}
+        error={fieldErrors.transferTo}
+        disabled={saving}
+        onSelect={(value) => {
+          setToStorageLocationId(value);
+          setFieldErrors((current) => ({ ...current, transferTo: undefined }));
+        }}
+      />
+      <Field
+        label={t("inventory.detail.transferQuantity", { unit })}
+        value={transferQuantity}
+        onChangeText={(value) => {
+          setTransferQuantity(value);
+          setFieldErrors((current) => ({ ...current, transferQuantity: undefined }));
+        }}
+        editable={!saving}
+        error={fieldErrors.transferQuantity}
+      />
+      <View style={styles.field}>
+        <Text style={styles.label}>{t("inventory.detail.transferNote")}</Text>
+        <TextInput
+          accessibilityLabel={t("inventory.detail.transferNote")}
+          accessibilityHint={fieldErrors.transferNote}
+          value={transferNote}
+          onChangeText={(value) => {
+            setTransferNote(value);
+            setFieldErrors((current) => ({ ...current, transferNote: undefined }));
+          }}
+          editable={!saving}
+          multiline
+          style={[styles.input, styles.noteInput, fieldErrors.transferNote && styles.inputError]}
+        />
+        {fieldErrors.transferNote ? (
+          <Text style={styles.fieldError} accessibilityLiveRegion="polite">
+            {fieldErrors.transferNote}
+          </Text>
+        ) : null}
+      </View>
+      <Button
+        title={saving ? t("inventory.detail.saving") : t("inventory.detail.transferAction")}
+        accessibilityLabel={t("inventory.detail.transferAccessibility", { item: itemName })}
+        icon={<ArrowLeftRight size={17} color={colors.surface} strokeWidth={2.5} />}
+        onPress={onTransfer}
+        disabled={saving || locations.length < 2}
+        fullWidth
+        style={styles.saveButton}
+      />
+      {canManageLocations ? (
+        <View style={styles.locationCreate}>
+          <View style={styles.field}>
+            <Text style={styles.label}>{t("inventory.detail.newLocation")}</Text>
+            <TextInput
+              accessibilityLabel={t("inventory.detail.newLocation")}
+              value={newLocationName}
+              onChangeText={setNewLocationName}
+              editable={!saving}
+              style={styles.input}
+            />
+          </View>
+          <Button
+            title={t("inventory.detail.addLocation")}
+            variant="secondary"
+            onPress={onAddLocation}
+            disabled={saving || !newLocationName.trim()}
+            fullWidth
+          />
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
+function LocationChooser({
+  label,
+  locations,
+  selectedId,
+  error,
+  disabled,
+  onSelect
+}: {
+  label: string;
+  locations: StorageLocation[];
+  selectedId: string;
+  error?: string;
+  disabled: boolean;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.locationChips}>
+        {locations.map((location) => {
+          const selected = location.id === selectedId;
+          return (
+            <Pressable
+              key={location.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected, disabled }}
+              accessibilityLabel={location.name}
+              disabled={disabled}
+              onPress={() => onSelect(location.id)}
+              style={[styles.locationChip, selected && styles.locationChipSelected]}
+            >
+              <Text style={[styles.locationChipText, selected && styles.locationChipTextSelected]}>
+                {location.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {error ? <Text style={styles.fieldError} accessibilityLiveRegion="polite">{error}</Text> : null}
+    </View>
   );
 }
 
@@ -702,6 +1096,42 @@ function validateWasteQuantity(
 const styles = StyleSheet.create({
   stack: {
     gap: 14
+  },
+  balanceList: {
+    gap: 4,
+    marginBottom: 10
+  },
+  locationChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  locationChip: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    justifyContent: "center"
+  },
+  locationChipSelected: {
+    borderColor: colors.accentDark,
+    backgroundColor: colors.accentSoft ?? colors.surface
+  },
+  locationChipText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "600"
+  },
+  locationChipTextSelected: {
+    color: colors.accentDark
+  },
+  locationCreate: {
+    gap: 10,
+    marginTop: 8
   },
   cardHeader: {
     flexDirection: "row",

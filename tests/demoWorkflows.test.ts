@@ -8,6 +8,7 @@ import {
   type DemoState,
   type StoredDemoState
 } from "../services/demoData";
+import { transferDemoInventory } from "../services/demo/storageLocations";
 import {
   approveRecommendationInDemoState,
   dismissRecommendationInDemoState,
@@ -270,7 +271,7 @@ test("demo-state repair retains history, deduplicates pending rows, and restores
   const pending = repaired.state.purchaseRecommendations.find((entry) => entry.status === "pending");
 
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 6);
+  assert.equal(repaired.state.schema_version, 7);
   assert.ok(Array.isArray(repaired.state.inventoryMovements));
   assert.ok(Array.isArray(repaired.state.inventoryCountSessions));
   assert.ok(Array.isArray(repaired.state.memberships));
@@ -340,7 +341,7 @@ test("demo-state repair links histories only to compatible tenant order lanes", 
 
 test("demo seed includes a multi-role team roster", () => {
   const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
-  assert.equal(state.schema_version, 6);
+  assert.equal(state.schema_version, 7);
   assert.equal(state.memberships.length, 3);
   assert.deepEqual(
     state.memberships.map((membership) => membership.role).sort(),
@@ -439,12 +440,65 @@ test("demo waste recording deducts on-hand stock with a waste ledger reason", ()
 
 test("demo state seeds empty inventory count sessions and migrates older stores", () => {
   const seed = createInitialDemoState("Toast", undefined, FIXED_NOW);
-  assert.equal(seed.schema_version, 6);
+  assert.equal(seed.schema_version, 7);
   assert.deepEqual(seed.inventoryCountSessions, []);
+  assert.ok(seed.storageLocations.some((location) => location.name === "Main"));
+  assert.ok(seed.storageLocations.some((location) => location.name === "Walk-in"));
+  assert.deepEqual(seed.inventoryLocationBalances, []);
 
   const { inventoryCountSessions: _ignored, schema_version: _version, ...legacy } = seed;
   const repaired = repairDemoState({ ...legacy, schema_version: 4 });
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 6);
+  assert.equal(repaired.state.schema_version, 7);
   assert.ok(Array.isArray(repaired.state.inventoryCountSessions));
+  assert.ok(Array.isArray(repaired.state.storageLocations));
+});
+
+test("demo inventory transfer moves location balances without changing restaurant on-hand", () => {
+  const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
+  const item = state.inventoryItems[0]!;
+  const main = state.storageLocations.find((location) => location.name === "Main")!;
+  const walkIn = state.storageLocations.find((location) => location.name === "Walk-in")!;
+  const onHandBefore = item.current_quantity;
+
+  transferDemoInventory({
+    state,
+    restaurantId: DEMO_RESTAURANT_ID,
+    item,
+    fromStorageLocationId: main.id,
+    toStorageLocationId: walkIn.id,
+    quantity: 3,
+    note: "Line prep",
+    appendMovement: (movementInput) => {
+      state.inventoryMovements = [
+        {
+          id: "movement_transfer_1",
+          restaurant_id: movementInput.restaurantId,
+          inventory_item_id: movementInput.itemId,
+          actor_user_id: state.users[0]!.id,
+          reason: movementInput.reason,
+          quantity_before: movementInput.quantityBefore,
+          quantity_after: movementInput.quantityAfter,
+          delta: movementInput.quantityAfter - movementInput.quantityBefore,
+          source_workflow: movementInput.sourceWorkflow,
+          metadata: movementInput.metadata,
+          created_at: FIXED_NOW.toISOString()
+        },
+        ...state.inventoryMovements
+      ];
+    }
+  });
+
+  assert.equal(item.current_quantity, onHandBefore);
+  assert.equal(
+    state.inventoryLocationBalances.find((row) => row.storage_location_id === main.id)?.quantity,
+    onHandBefore - 3
+  );
+  assert.equal(
+    state.inventoryLocationBalances.find((row) => row.storage_location_id === walkIn.id)?.quantity,
+    3
+  );
+  assert.equal(state.inventoryMovements[0]?.reason, "transfer");
+  assert.equal(state.inventoryMovements[0]?.source_workflow, "transfer_inventory");
+  assert.equal(state.inventoryMovements[0]?.delta, 0);
 });
