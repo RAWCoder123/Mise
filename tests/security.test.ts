@@ -398,7 +398,7 @@ test("inventory count sessions are service-owned with draft progress and approve
   assert.match(migration, /reason,\s*[\s\S]*'manual_count'/i);
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_approve_inventory_count_session[\s\S]*authenticated/i);
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_approve_inventory_count_session[\s\S]*service_role/i);
-  assert.match(migration, /grant select on table public\.inventory_count_sessions to authenticated/i);
+  assert.match(migration, /grant select on public\.inventory_count_sessions to authenticated/i);
   assert.doesNotMatch(migration, /grant insert on table public\.inventory_count_sessions to authenticated/i);
   assert.match(screen, /beginInventoryCountSession/);
   assert.match(screen, /approveInventoryCountSession/);
