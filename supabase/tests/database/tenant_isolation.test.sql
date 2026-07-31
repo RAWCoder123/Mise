@@ -1,6 +1,6 @@
 begin;
 
-select plan(371);
+select plan(379);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -1520,6 +1520,99 @@ select is(
 );
 reset role;
 
+insert into public.inventory_movements (
+  id,
+  restaurant_id,
+  inventory_item_id,
+  actor_user_id,
+  reason,
+  quantity_before,
+  quantity_after,
+  source_workflow,
+  metadata
+) values (
+  'aaaaaaaa-m313-4313-8313-aaaaaaaaaaaa',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+  '22222222-2222-4222-8222-222222222222',
+  'recipe_consumption',
+  40,
+  39,
+  'ingest_pos_csv',
+  jsonb_build_object(
+    'mapping_id', 'aaaaaaaa-1313-4313-8313-aaaaaaaaaaaa',
+    'menu_item_name', 'Chicken Bowl',
+    'quantity_used', 1
+  )
+);
+
+set local role service_role;
+select lives_ok(
+  $sql$select public.service_delete_recipe_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1313-4313-8313-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$,
+  'trusted workflow unlinks a recipe mapping without rewriting historical consumption'
+);
+reset role;
+select is(
+  (select count(*) from public.menu_item_ingredients where id = 'aaaaaaaa-1313-4313-8313-aaaaaaaaaaaa'),
+  0::bigint,
+  'recipe unlink removes the live mapping'
+);
+select is(
+  (select count(*) from public.inventory_movements where id = 'aaaaaaaa-m313-4313-8313-aaaaaaaaaaaa'),
+  1::bigint,
+  'recipe unlink retains historical recipe_consumption movements'
+);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+select is(
+  pg_temp.try_execute($sql$select public.service_delete_recipe_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    pg_temp.snapshot_recipe_mapping_id(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'Atomic Bowl'
+    ),
+    0,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$),
+  false,
+  'authenticated clients cannot execute the recipe unlink service RPC directly'
+);
+reset role;
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_delete_recipe_and_signals(
+    '33333333-3333-4333-8333-333333333333',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    pg_temp.snapshot_recipe_mapping_id(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'Atomic Bowl'
+    ),
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$),
+  false,
+  'staff cannot unlink recipe mappings through the service-owned workflow'
+);
+reset role;
+
 insert into public.pos_sales (
   restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales, source_pos
 ) values (
@@ -2176,7 +2269,7 @@ select is(
     select count(*)
     from private.edge_function_security_events
     where actor_user_id = '33333333-3333-4333-8333-333333333333'
-      and event_type = 'forbidden'
+      and function_name in ('link-gmail', 'sync-pos-sales')
   ),
   0::bigint,
   'forbidden Edge attempts do not write tenant-attributed ledger rows'

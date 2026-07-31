@@ -26,6 +26,7 @@ const actions = [
   "record_waste",
   "receive_supplier_order",
   "upsert_recipe",
+  "delete_recipe",
   "save_setup",
   "ingest_pos_csv",
   "begin_count_session",
@@ -305,6 +306,16 @@ async function refreshWithRetry(
           p_insights: insights
         });
       }
+      if (action === "delete_recipe") {
+        return await serviceRpc(securitySupabase, "service_delete_recipe_and_signals", {
+          p_actor_user_id: actorUserId,
+          p_restaurant_id: restaurantId,
+          p_mapping_id: requireUuid(body.mappingId, "mappingId"),
+          p_expected_revision: revision,
+          p_recommendations: recommendations,
+          p_insights: insights
+        });
+      }
       return await serviceRpc(securitySupabase, "service_commit_operational_signals", {
         p_actor_user_id: actorUserId,
         p_restaurant_id: restaurantId,
@@ -506,6 +517,18 @@ function applyRequestedMutation(
         : [...snapshot.menuItemIngredients, mapping]
     };
   }
+  if (action === "delete_recipe") {
+    const mappingId = requireUuid(body.mappingId, "mappingId");
+    if (!snapshot.menuItemIngredients.some((entry) => (entry as { id?: string }).id === mappingId)) {
+      throw new HttpError(404, "Recipe mapping not found.");
+    }
+    return {
+      ...snapshot,
+      menuItemIngredients: snapshot.menuItemIngredients.filter(
+        (entry) => (entry as { id?: string }).id !== mappingId
+      )
+    };
+  }
   return snapshot;
 }
 
@@ -688,6 +711,7 @@ function auditAction(action: OperationalAction) {
   if (action === "cancel_count_session") return "inventory_count_session_cancelled";
   if (action === "approve_count_session") return "inventory_count_session_approved";
   if (action === "upsert_recipe") return "recipe_baseline_updated";
+  if (action === "delete_recipe") return "recipe_baseline_deleted";
   if (action === "save_setup") return "setup_signals_completed";
   if (action === "ingest_pos_csv") return "manual_pos_csv_signals_completed";
   return "operational_signals_refreshed";
@@ -707,7 +731,7 @@ function auditEntityTable(action: OperationalAction) {
   ) {
     return "inventory_count_sessions";
   }
-  if (action === "upsert_recipe") return "menu_item_ingredients";
+  if (action === "upsert_recipe" || action === "delete_recipe") return "menu_item_ingredients";
   if (action === "ingest_pos_csv") return "sales_imports";
   return "restaurants";
 }
@@ -733,7 +757,9 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>,
   if (action === "begin_count_session" && body.sessionId != null) {
     return requireUuid(body.sessionId, "sessionId");
   }
-  if (action === "upsert_recipe" && body.mappingId != null) return requireUuid(body.mappingId, "mappingId");
+  if ((action === "upsert_recipe" || action === "delete_recipe") && body.mappingId != null) {
+    return requireUuid(body.mappingId, "mappingId");
+  }
   return null;
 }
 

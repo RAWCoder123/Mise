@@ -203,6 +203,13 @@ export interface RecipeMappingSignalInput {
   insights: Insight[];
 }
 
+export interface RecipeMappingDeleteSignalInput {
+  restaurantId: string;
+  mappingId: string;
+  recommendations: PurchaseRecommendationInput[];
+  insights: Insight[];
+}
+
 export interface RestaurantData {
   restaurant: Restaurant;
   sales: PosSale[];
@@ -338,6 +345,7 @@ export interface MiseRepository {
   ): Promise<MenuItemIngredient>;
   upsertMenuItemIngredient(input: MenuItemIngredientInput): Promise<MenuItemIngredient>;
   saveRecipeMappingAndSignals(input: RecipeMappingSignalInput): Promise<MenuItemIngredient>;
+  deleteRecipeMappingAndSignals(input: RecipeMappingDeleteSignalInput): Promise<void>;
   findPendingRecommendation(restaurantId: string, itemId: string): Promise<PurchaseRecommendation | null>;
   createPurchaseRecommendation(input: PurchaseRecommendationInput): Promise<PurchaseRecommendation>;
   fetchPurchaseRecommendations(
@@ -1727,6 +1735,30 @@ function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async deleteRecipeMappingAndSignals(input) {
+      await mutateDemoState((state) => {
+        const index = state.menuItemIngredients.findIndex(
+          (entry) => entry.restaurant_id === input.restaurantId && entry.id === input.mappingId
+        );
+        if (index < 0) throw new Error("Recipe mapping not found");
+        state.menuItemIngredients.splice(index, 1);
+        state.purchaseRecommendations = [
+          ...state.purchaseRecommendations.filter(
+            (recommendation) => recommendation.restaurant_id !== input.restaurantId || recommendation.status !== "pending"
+          ),
+          ...input.recommendations.map((recommendation) => ({
+            ...recommendation,
+            id: createId("rec"),
+            created_at: new Date().toISOString()
+          }))
+        ];
+        state.insights = [
+          ...state.insights.filter((insight) => insight.restaurant_id !== input.restaurantId),
+          ...input.insights
+        ];
+      });
+    },
+
     async findPendingRecommendation(restaurantId, itemId) {
       const state = await readReadyDemoState(restaurantId);
       const recommendation = state.purchaseRecommendations.find(
@@ -2895,6 +2927,14 @@ function createSupabaseRepository(): MiseRepository {
         unit: input.unit
       });
       return normalizeMenuItemIngredient(response.result as MenuItemIngredient);
+    },
+
+    async deleteRecipeMappingAndSignals(input) {
+      await invokeOperationalWorkflow({
+        action: "delete_recipe",
+        restaurantId: input.restaurantId,
+        mappingId: input.mappingId
+      });
     },
 
     async findPendingRecommendation(restaurantId, itemId) {

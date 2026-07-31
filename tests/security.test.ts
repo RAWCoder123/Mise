@@ -573,6 +573,45 @@ test("recipe baseline edits and regenerated guidance commit through one optimist
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.save_recipe_mapping_and_signals[\s\S]*authenticated/i);
 });
 
+test("recipe baseline unlink is service-owned, manager-only, and preserves historical consumption", () => {
+  const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const migration = readFileSync("supabase/migrations/20260731072000_delete_recipe_mapping.sql", "utf8");
+  const screen = readFileSync("app/settings/recipes.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const databaseTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const deleteWorkflow =
+    inventoryWorkflow.match(/export\s+async\s+function\s+deleteRecipeBaselineIngredient[\s\S]*?\n\}/)?.[0] ?? "";
+  const staffOperationalActions =
+    edge.match(/const staffOperationalActions = new Set<OperationalAction>\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+
+  assert.match(deleteWorkflow, /deleteRecipeMappingAndSignals/);
+  assert.match(deleteWorkflow, /filter\(\(mapping\) => mapping\.id !== mappingId\)/);
+  assert.match(repository, /action:\s*"delete_recipe"/i);
+  assert.match(repository, /deleteRecipeMappingAndSignals/);
+  assert.match(edge, /"delete_recipe"/);
+  assert.match(edge, /service_delete_recipe_and_signals/);
+  assert.match(edge, /recipe_baseline_deleted/);
+  assert.doesNotMatch(staffOperationalActions, /"delete_recipe"/);
+  assert.match(migration, /create\s+or\s+replace\s+function\s+private\.service_delete_recipe_and_signals/i);
+  assert.match(
+    migration,
+    /actor_has_restaurant_role\([\s\S]*array\['owner', 'admin', 'manager'\]/i
+  );
+  assert.match(migration, /delete from public\.menu_item_ingredients/i);
+  assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_delete_recipe_and_signals[\s\S]*authenticated/i);
+  assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_delete_recipe_and_signals[\s\S]*service_role/i);
+  assert.match(migration, /Historical inventory movements are retained/i);
+  assert.match(screen, /deleteRecipeBaselineIngredient/);
+  assert.match(screen, /recipes\.unlink\.confirmTitle/);
+  assert.match(screen, /onUnlink/);
+  assert.match(catalog, /"recipes\.action\.unlink"/);
+  assert.match(catalog, /"recipes\.notice\.unlinked"/);
+  assert.match(databaseTests, /trusted workflow unlinks a recipe mapping without rewriting historical consumption/i);
+  assert.doesNotMatch(inventoryWorkflow, /\.from\("menu_item_ingredients"\)\.delete\(/i);
+});
+
 test("Supabase repository keeps demo seed and reset local-only", () => {
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const supabaseRepository = repository.match(/function createSupabaseRepository\(\): MiseRepository \{[\s\S]*$/)?.[0] ?? "";
@@ -982,6 +1021,7 @@ test("hosted Edge and service RPC checks forge every privileged tenant boundary"
     "service_begin_inventory_count_session",
     "service_approve_inventory_count_session",
     "service_save_recipe_and_signals",
+    "service_delete_recipe_and_signals",
     "service_create_rules_engine_ai_insight",
     "service_record_edge_audit_log"
   ]) {
