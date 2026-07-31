@@ -97,6 +97,7 @@ import {
   createDemoStorageLocation,
   listDemoInventoryLocationBalances,
   listDemoStorageLocations,
+  reconcileDemoLocationBalancesToOnHand,
   transferDemoInventory
 } from "../demo/storageLocations";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
@@ -1241,6 +1242,7 @@ function createLocalDemoRepository(): MiseRepository {
           );
           if (existing) {
             Object.assign(existing, inventoryInput, { last_updated: now });
+            reconcileDemoLocationBalancesToOnHand(state, restaurantId, existing, now);
             inventoryByName.set(key, existing);
           } else {
             const item: InventoryItem = {
@@ -1249,6 +1251,7 @@ function createLocalDemoRepository(): MiseRepository {
               last_updated: now
             };
             state.inventoryItems.push(item);
+            reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
             inventoryByName.set(key, item);
           }
         });
@@ -1346,6 +1349,7 @@ function createLocalDemoRepository(): MiseRepository {
 
         if (existing) {
           Object.assign(existing, input, { last_updated: now });
+          reconcileDemoLocationBalancesToOnHand(state, existing.restaurant_id, existing, now);
           return normalizeInventoryItem(existing);
         }
 
@@ -1355,6 +1359,7 @@ function createLocalDemoRepository(): MiseRepository {
           last_updated: now
         };
         state.inventoryItems.push(item);
+        reconcileDemoLocationBalancesToOnHand(state, item.restaurant_id, item, now);
         return normalizeInventoryItem(item);
       });
     },
@@ -1387,6 +1392,7 @@ function createLocalDemoRepository(): MiseRepository {
           last_updated: now
         };
         state.inventoryItems.push(item);
+        reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
         appendDemoInventoryMovement(state, {
           restaurantId,
           itemId: item.id,
@@ -1422,6 +1428,7 @@ function createLocalDemoRepository(): MiseRepository {
         const quantityBefore = item.current_quantity;
         Object.assign(item, payload);
         if (patch.current_quantity !== undefined && patch.current_quantity !== quantityBefore) {
+          reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, payload.last_updated);
           appendDemoInventoryMovement(state, {
             restaurantId,
             itemId,
@@ -1458,8 +1465,10 @@ function createLocalDemoRepository(): MiseRepository {
           throw new Error("Inventory item changed since it was loaded. Reload and try again.");
         }
         const quantityBefore = item.current_quantity;
-        Object.assign(item, patch, { last_updated: new Date().toISOString() });
+        const now = new Date().toISOString();
+        Object.assign(item, patch, { last_updated: now });
         if (patch.current_quantity !== undefined && item.current_quantity !== quantityBefore) {
+          reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
           appendDemoInventoryMovement(state, {
             restaurantId,
             itemId,
@@ -1517,8 +1526,10 @@ function createLocalDemoRepository(): MiseRepository {
           quantityRemoved,
           note
         });
+        const now = new Date().toISOString();
         item.current_quantity = planned.quantityAfter;
-        item.last_updated = new Date().toISOString();
+        item.last_updated = now;
+        reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
         appendDemoInventoryMovement(state, {
           restaurantId,
           itemId,
@@ -1535,7 +1546,7 @@ function createLocalDemoRepository(): MiseRepository {
           ...recommendations.map((recommendation) => ({
             ...recommendation,
             id: createId("rec"),
-            created_at: new Date().toISOString()
+            created_at: now
           }))
         ];
         state.insights = [
@@ -1724,6 +1735,7 @@ function createLocalDemoRepository(): MiseRepository {
           const quantityBefore = item.current_quantity;
           item.current_quantity = approval.quantityAfter;
           item.last_updated = now;
+          reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
           appendDemoInventoryMovement(state, {
             restaurantId,
             itemId: item.id,
@@ -2195,6 +2207,12 @@ function createLocalDemoRepository(): MiseRepository {
         const now = new Date().toISOString();
         state.inventoryItems = applyPlannedReceiveToInventory(state.inventoryItems, planned, now);
         for (const line of planned.lines) {
+          const item = state.inventoryItems.find(
+            (entry) => entry.restaurant_id === restaurantId && entry.id === line.inventoryItemId
+          );
+          if (item) {
+            reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
+          }
           appendDemoInventoryMovement(state, {
             restaurantId,
             itemId: line.inventoryItemId,

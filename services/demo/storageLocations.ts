@@ -2,6 +2,7 @@ import { createId } from "../domain/miseDomain";
 import {
   MAIN_STORAGE_LOCATION_NAME,
   planInventoryTransfer,
+  planLocationBalanceReconcile,
   planStorageLocationCreate
 } from "../domain/inventoryTransfer";
 import type { DemoState } from "./replaceableDemoData";
@@ -130,6 +131,36 @@ function upsertDemoBalance(
   return created;
 }
 
+/** Align location balances with restaurant on-hand after create/count/waste/receive/POS. */
+export function reconcileDemoLocationBalancesToOnHand(
+  state: DemoState,
+  restaurantId: string,
+  item: InventoryItem,
+  now = new Date().toISOString()
+): void {
+  const main = ensureDemoMainStorageLocation(state, restaurantId, now);
+  const balances = listDemoInventoryLocationBalances(state, restaurantId, item.id);
+  const planned = planLocationBalanceReconcile({
+    onHandQuantity: item.current_quantity,
+    balances: balances.map((balance) => ({
+      storageLocationId: balance.storage_location_id,
+      quantity: balance.quantity
+    })),
+    mainStorageLocationId: main.id
+  });
+  if (!planned.changed) return;
+  for (const update of planned.balanceUpdates) {
+    upsertDemoBalance(
+      state,
+      restaurantId,
+      item.id,
+      update.storageLocationId,
+      update.quantityAfter,
+      now
+    );
+  }
+}
+
 export function transferDemoInventory(input: {
   state: DemoState;
   restaurantId: string;
@@ -158,19 +189,8 @@ export function transferDemoInventory(input: {
     throw new Error("Storage location not found.");
   }
 
-  let balances = listDemoInventoryLocationBalances(state, restaurantId, item.id);
-  if (balances.length === 0) {
-    upsertDemoBalance(state, restaurantId, item.id, main.id, item.current_quantity, now);
-    balances = listDemoInventoryLocationBalances(state, restaurantId, item.id);
-  } else {
-    const sum = balances.reduce((total, row) => total + row.quantity, 0);
-    if (Math.abs(sum - item.current_quantity) > 1e-9) {
-      const mainBalance = balances.find((row) => row.storage_location_id === main.id);
-      const nextMainQuantity = Math.max(0, (mainBalance?.quantity ?? 0) + (item.current_quantity - sum));
-      upsertDemoBalance(state, restaurantId, item.id, main.id, nextMainQuantity, now);
-      balances = listDemoInventoryLocationBalances(state, restaurantId, item.id);
-    }
-  }
+  reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
+  const balances = listDemoInventoryLocationBalances(state, restaurantId, item.id);
 
   const planned = planInventoryTransfer({
     onHandQuantity: item.current_quantity,

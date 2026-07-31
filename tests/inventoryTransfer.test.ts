@@ -7,6 +7,7 @@ import {
   canManageStorageLocations,
   canTransferInventory,
   planInventoryTransfer,
+  planLocationBalanceReconcile,
   planStorageLocationCreate,
   reconcileLocationBalancesForDisplay
 } from "../services/domain/inventoryTransfer";
@@ -118,6 +119,73 @@ test("reconcileLocationBalancesForDisplay exposes unallocated stock when balance
   assert.equal(view.matchesOnHand, false);
 });
 
+test("planLocationBalanceReconcile seeds empty balances onto Main", () => {
+  const planned = planLocationBalanceReconcile({
+    onHandQuantity: 18,
+    balances: [],
+    mainStorageLocationId: "loc_main"
+  });
+  assert.equal(planned.changed, true);
+  assert.equal(planned.seededMain, true);
+  assert.deepEqual(planned.balanceUpdates, [
+    { storageLocationId: "loc_main", quantityBefore: 0, quantityAfter: 18 }
+  ]);
+});
+
+test("planLocationBalanceReconcile adds on-hand increases to Main", () => {
+  const planned = planLocationBalanceReconcile({
+    onHandQuantity: 25,
+    balances: [
+      { storageLocationId: "loc_main", quantity: 10 },
+      { storageLocationId: "loc_line", quantity: 5 }
+    ],
+    mainStorageLocationId: "loc_main"
+  });
+  assert.equal(planned.changed, true);
+  assert.equal(planned.delta, 10);
+  assert.deepEqual(planned.balanceUpdates, [
+    { storageLocationId: "loc_main", quantityBefore: 10, quantityAfter: 20 }
+  ]);
+});
+
+test("planLocationBalanceReconcile reduces Main first, then other stations", () => {
+  const planned = planLocationBalanceReconcile({
+    onHandQuantity: 4,
+    balances: [
+      { storageLocationId: "loc_main", quantity: 3 },
+      { storageLocationId: "loc_line", quantity: 5 },
+      { storageLocationId: "loc_walkin", quantity: 2 }
+    ],
+    mainStorageLocationId: "loc_main"
+  });
+  assert.equal(planned.changed, true);
+  assert.equal(planned.delta, -6);
+  assert.deepEqual(planned.balanceUpdates, [
+    { storageLocationId: "loc_main", quantityBefore: 3, quantityAfter: 0 },
+    { storageLocationId: "loc_line", quantityBefore: 5, quantityAfter: 2 }
+  ]);
+  const afterById = new Map(
+    [
+      ...planned.balanceUpdates,
+      { storageLocationId: "loc_walkin", quantityBefore: 2, quantityAfter: 2 }
+    ].map((row) => [row.storageLocationId, row.quantityAfter])
+  );
+  assert.equal([...afterById.values()].reduce((sum, qty) => sum + qty, 0), 4);
+});
+
+test("planLocationBalanceReconcile is a no-op when balances already match on-hand", () => {
+  const planned = planLocationBalanceReconcile({
+    onHandQuantity: 15,
+    balances: [
+      { storageLocationId: "loc_main", quantity: 10 },
+      { storageLocationId: "loc_line", quantity: 5 }
+    ],
+    mainStorageLocationId: "loc_main"
+  });
+  assert.equal(planned.changed, false);
+  assert.equal(planned.balanceUpdates.length, 0);
+});
+
 test("transfer quantity and location name validators bound operator input", () => {
   assert.equal(requireInventoryTransferQuantity(2.5), 2.5);
   assert.throws(() => requireInventoryTransferQuantity(0), /greater than zero/i);
@@ -159,6 +227,12 @@ test("inventory detail surfaces transfer controls and localized copy", () => {
     "supabase/migrations/20260731163000_storage_locations_and_transfer.sql",
     "utf8"
   );
+  const syncMigration = readFileSync(
+    "supabase/migrations/20260731173000_sync_location_balances_on_quantity_writes.sql",
+    "utf8"
+  );
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const demoStorage = readFileSync("services/demo/storageLocations.ts", "utf8");
 
   assert.match(detail, /canTransferInventory/);
   assert.match(detail, /transferInventory/);
@@ -171,4 +245,8 @@ test("inventory detail surfaces transfer controls and localized copy", () => {
   assert.match(migration, /create table if not exists public\.inventory_location_balances/i);
   assert.match(migration, /service_transfer_inventory/i);
   assert.match(migration, /source_workflow,\s*[\s\S]*'transfer_inventory'/i);
+  assert.match(syncMigration, /reconcile_inventory_location_balances_to_on_hand/i);
+  assert.match(syncMigration, /inventory_items_reconcile_location_balances/i);
+  assert.match(demoStorage, /reconcileDemoLocationBalancesToOnHand/);
+  assert.match(repository, /reconcileDemoLocationBalancesToOnHand/);
 });

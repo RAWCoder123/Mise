@@ -8,7 +8,10 @@ import {
   type DemoState,
   type StoredDemoState
 } from "../services/demoData";
-import { transferDemoInventory } from "../services/demo/storageLocations";
+import {
+  reconcileDemoLocationBalancesToOnHand,
+  transferDemoInventory
+} from "../services/demo/storageLocations";
 import {
   approveRecommendationInDemoState,
   dismissRecommendationInDemoState,
@@ -271,7 +274,7 @@ test("demo-state repair retains history, deduplicates pending rows, and restores
   const pending = repaired.state.purchaseRecommendations.find((entry) => entry.status === "pending");
 
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 7);
+  assert.equal(repaired.state.schema_version, 8);
   assert.ok(Array.isArray(repaired.state.inventoryMovements));
   assert.ok(Array.isArray(repaired.state.inventoryCountSessions));
   assert.ok(Array.isArray(repaired.state.memberships));
@@ -341,7 +344,7 @@ test("demo-state repair links histories only to compatible tenant order lanes", 
 
 test("demo seed includes a multi-role team roster", () => {
   const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
-  assert.equal(state.schema_version, 7);
+  assert.equal(state.schema_version, 8);
   assert.equal(state.memberships.length, 3);
   assert.deepEqual(
     state.memberships.map((membership) => membership.role).sort(),
@@ -438,20 +441,63 @@ test("demo waste recording deducts on-hand stock with a waste ledger reason", ()
   assert.equal(state.inventoryMovements[0]?.delta, -removed);
 });
 
-test("demo state seeds empty inventory count sessions and migrates older stores", () => {
+test("demo state seeds Main location balances and migrates older stores", () => {
   const seed = createInitialDemoState("Toast", undefined, FIXED_NOW);
-  assert.equal(seed.schema_version, 7);
+  assert.equal(seed.schema_version, 8);
   assert.deepEqual(seed.inventoryCountSessions, []);
   assert.ok(seed.storageLocations.some((location) => location.name === "Main"));
   assert.ok(seed.storageLocations.some((location) => location.name === "Walk-in"));
-  assert.deepEqual(seed.inventoryLocationBalances, []);
+  assert.equal(seed.inventoryLocationBalances.length, seed.inventoryItems.length);
+  assert.ok(
+    seed.inventoryItems.every((item) => {
+      const sum = seed.inventoryLocationBalances
+        .filter((balance) => balance.inventory_item_id === item.id)
+        .reduce((total, row) => total + row.quantity, 0);
+      return Math.abs(sum - item.current_quantity) < 1e-9;
+    })
+  );
 
   const { inventoryCountSessions: _ignored, schema_version: _version, ...legacy } = seed;
-  const repaired = repairDemoState({ ...legacy, schema_version: 4 });
+  const repaired = repairDemoState({
+    ...legacy,
+    schema_version: 4,
+    inventoryLocationBalances: []
+  });
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 7);
+  assert.equal(repaired.state.schema_version, 8);
   assert.ok(Array.isArray(repaired.state.inventoryCountSessions));
   assert.ok(Array.isArray(repaired.state.storageLocations));
+  assert.ok(repaired.state.inventoryLocationBalances.length >= repaired.state.inventoryItems.length);
+});
+
+test("demo waste and receive keep Main location balances synced to on-hand", () => {
+  const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
+  const item = state.inventoryItems[0]!;
+  const main = state.storageLocations.find((location) => location.name === "Main")!;
+  const before = item.current_quantity;
+  const mainBefore = state.inventoryLocationBalances.find(
+    (row) => row.inventory_item_id === item.id && row.storage_location_id === main.id
+  )!.quantity;
+
+  item.current_quantity = before - 2;
+  item.last_updated = FIXED_NOW.toISOString();
+  reconcileDemoLocationBalancesToOnHand(state, DEMO_RESTAURANT_ID, item, FIXED_NOW.toISOString());
+
+  assert.equal(
+    state.inventoryLocationBalances.find(
+      (row) => row.inventory_item_id === item.id && row.storage_location_id === main.id
+    )?.quantity,
+    mainBefore - 2
+  );
+
+  item.current_quantity = before + 5;
+  reconcileDemoLocationBalancesToOnHand(state, DEMO_RESTAURANT_ID, item, FIXED_NOW.toISOString());
+  assert.equal(
+    state.inventoryLocationBalances.find(
+      (row) => row.inventory_item_id === item.id && row.storage_location_id === main.id
+    )?.quantity,
+    mainBefore + 5
+  );
 });
 
 test("demo inventory transfer moves location balances without changing restaurant on-hand", () => {

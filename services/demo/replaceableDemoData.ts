@@ -29,6 +29,10 @@ import {
 } from "../domain/posConsumption";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
 import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
+import { reconcileDemoLocationBalancesToOnHand } from "./storageLocations";
+
+const DEMO_SCHEMA_VERSION = 8 as const;
+const DEMO_MAIN_STORAGE_LOCATION_ID = "00000000-0000-4000-8000-000000000701";
 
 export const DEMO_RESTAURANT_ID = DEMO_DATASET.restaurant.id;
 export const DEMO_USER_ID = DEMO_DATASET.user.id;
@@ -62,7 +66,7 @@ export interface DemoMemberInviteRecord {
 }
 
 export interface DemoState {
-  schema_version: 7;
+  schema_version: typeof DEMO_SCHEMA_VERSION;
   restaurants: Restaurant[];
   users: AppUser[];
   memberships: RestaurantMembership[];
@@ -326,7 +330,7 @@ export function createInitialDemoState(
 
   const storageLocations: StorageLocation[] = [
     {
-      id: "00000000-0000-4000-8000-000000000701",
+      id: DEMO_MAIN_STORAGE_LOCATION_ID,
       restaurant_id: DEMO_RESTAURANT_ID,
       name: "Main",
       sort_order: 0,
@@ -354,8 +358,18 @@ export function createInitialDemoState(
     }
   ];
 
+  const inventoryLocationBalances: InventoryLocationBalance[] = inventoryItems.map((item, index) => ({
+    id: `00000000-0000-4000-8000-0000000008${String(index + 1).padStart(2, "0")}`,
+    restaurant_id: DEMO_RESTAURANT_ID,
+    inventory_item_id: item.id,
+    storage_location_id: DEMO_MAIN_STORAGE_LOCATION_ID,
+    quantity: item.current_quantity,
+    created_at: now,
+    updated_at: now
+  }));
+
   const state: DemoState = {
-    schema_version: 7,
+    schema_version: DEMO_SCHEMA_VERSION,
     restaurants: [restaurant],
     users: [user, managerUser, staffUser],
     memberships,
@@ -365,7 +379,7 @@ export function createInitialDemoState(
     inventoryMovements: [],
     inventoryCountSessions: [],
     storageLocations,
-    inventoryLocationBalances: [],
+    inventoryLocationBalances,
     menuItemIngredients,
     purchaseRecommendations: [
       {
@@ -598,7 +612,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 7,
+    schema_version: DEMO_SCHEMA_VERSION,
     restaurants,
     users,
     memberships,
@@ -630,10 +644,28 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     posConnectedAt: raw.posConnectedAt ?? seeded.posConnectedAt
   };
 
+  const needsBalanceSync =
+    !Array.isArray(raw.inventoryLocationBalances) ||
+    raw.schema_version !== DEMO_SCHEMA_VERSION ||
+    state.inventoryItems.some((item) => {
+      const balances = state.inventoryLocationBalances.filter(
+        (balance) =>
+          balance.restaurant_id === item.restaurant_id && balance.inventory_item_id === item.id
+      );
+      if (balances.length === 0) return item.current_quantity > 0;
+      const sum = balances.reduce((total, row) => total + Number(row.quantity || 0), 0);
+      return Math.abs(sum - item.current_quantity) > 1e-9;
+    });
+  if (needsBalanceSync) {
+    for (const item of state.inventoryItems) {
+      reconcileDemoLocationBalancesToOnHand(state, item.restaurant_id, item);
+    }
+  }
+
   return {
     state,
     migrated:
-      raw.schema_version !== 7 ||
+      raw.schema_version !== DEMO_SCHEMA_VERSION ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
@@ -641,6 +673,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       !Array.isArray(raw.inventoryCountSessions) ||
       !Array.isArray(raw.storageLocations) ||
       !Array.isArray(raw.inventoryLocationBalances) ||
+      needsBalanceSync ||
       !Array.isArray(raw.memberships) ||
       !Array.isArray(raw.memberInvites) ||
       (raw.memberships?.length ?? 0) === 0
@@ -1208,6 +1241,7 @@ export function applyManualPosSalesIngestToDemoState(
     const quantityAfter = Math.round(Math.max(0, quantityBefore - line.quantityUsed) * 10000) / 10000;
     item.current_quantity = quantityAfter;
     item.last_updated = now;
+    reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
     const movement: InventoryMovement = {
       id: `manual_csv_consumption_${line.sourceRecordId}_${line.inventoryItemId}`,
       restaurant_id: restaurantId,
