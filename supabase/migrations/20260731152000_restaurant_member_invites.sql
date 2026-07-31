@@ -44,7 +44,8 @@ create index if not exists restaurant_member_invites_restaurant_status_idx
 
 alter table public.restaurant_member_invites enable row level security;
 
-revoke all on table public.restaurant_member_invites from public, anon, authenticated;
+revoke all on public.restaurant_member_invites from public;
+revoke all on public.restaurant_member_invites from anon, authenticated;
 grant select, insert, update, delete on public.restaurant_member_invites to service_role;
 
 create or replace function public.create_restaurant_member_invite(

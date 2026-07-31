@@ -14,6 +14,12 @@ import {
   resolveInviteExpiryHours
 } from "../services/domain/teamInvites.ts";
 import {
+  claimDemoMemberInvite,
+  createDemoMemberInvite,
+  listDemoMemberInvites,
+  revokeDemoMemberInvite
+} from "../services/demo/memberInvites.ts";
+import {
   createInitialDemoState,
   DEMO_RESTAURANT_ID,
   DEMO_USER_ID,
@@ -59,73 +65,73 @@ test("pending invite expiry helper treats past timestamps as inactive", () => {
 });
 
 test("demo invite create, revoke, and claim stay tenant-bound", async () => {
-  const { createMiseRepository } = await import("../services/repositories/miseRepository.ts");
-  const { resetDemoStore } = await import("../services/localStore.ts");
-
-  await resetDemoStore("Toast");
-  const repository = createMiseRepository();
-
-  const created = await repository.createRestaurantMemberInvite(
+  const state = createInitialDemoState("Toast");
+  const created = await createDemoMemberInvite(
+    state,
     DEMO_RESTAURANT_ID,
     "new.cook@mise.test",
     "staff",
+    DEMO_USER_ID,
     24
   );
   assert.equal(created.status, "pending");
   assert.equal(isValidInviteToken(created.claim_token), true);
   assert.equal(created.email, "new.cook@mise.test");
 
-  const listed = await repository.fetchRestaurantMemberInvites(DEMO_RESTAURANT_ID);
+  const listed = listDemoMemberInvites(state, DEMO_RESTAURANT_ID, DEMO_USER_ID);
   assert.equal(listed.some((invite) => invite.id === created.id && invite.status === "pending"), true);
 
   await assert.rejects(
-    () => repository.claimRestaurantMemberInvite(created.claim_token),
+    () => claimDemoMemberInvite(state, created.claim_token, DEMO_USER_ID),
     /email does not match/i
   );
 
-  const { mutateDemoState } = await import("../services/localStore.ts");
-  await mutateDemoState((state) => {
-    const owner = state.users.find((entry) => entry.id === DEMO_USER_ID);
-    assert.ok(owner);
-    owner.email = "new.cook@mise.test";
-    // Demo repository always acts as DEMO_USER_ID; drop the owner membership so claim can bind it.
-    state.memberships = state.memberships.filter((membership) => membership.user_id !== DEMO_USER_ID);
+  const inviteeId = "invitee-user-1";
+  state.users.push({
+    id: inviteeId,
+    restaurant_id: null,
+    name: "New Cook",
+    email: "new.cook@mise.test",
+    role: "staff",
+    created_at: new Date().toISOString()
   });
 
-  const membership = await repository.claimRestaurantMemberInvite(created.claim_token);
+  const membership = await claimDemoMemberInvite(state, created.claim_token, inviteeId);
   assert.equal(membership.restaurant_id, DEMO_RESTAURANT_ID);
-  assert.equal(membership.user_id, DEMO_USER_ID);
+  assert.equal(membership.user_id, inviteeId);
   assert.equal(membership.role, "staff");
   assert.equal(membership.status, "active");
 
   await assert.rejects(
-    () => repository.claimRestaurantMemberInvite(created.claim_token),
+    () => claimDemoMemberInvite(state, created.claim_token, inviteeId),
     /already been claimed|already exists/i
   );
 });
 
 test("demo invite revoke blocks later claims", async () => {
-  const { createMiseRepository } = await import("../services/repositories/miseRepository.ts");
-  const { resetDemoStore, mutateDemoState } = await import("../services/localStore.ts");
-
-  await resetDemoStore("Toast");
-  const repository = createMiseRepository();
-  const created = await repository.createRestaurantMemberInvite(
+  const state = createInitialDemoState("Toast");
+  const created = await createDemoMemberInvite(
+    state,
     DEMO_RESTAURANT_ID,
     "revoked.cook@mise.test",
-    "manager"
+    "manager",
+    DEMO_USER_ID
   );
-  const revoked = await repository.revokeRestaurantMemberInvite(DEMO_RESTAURANT_ID, created.id);
+  const revoked = revokeDemoMemberInvite(state, DEMO_RESTAURANT_ID, created.id, DEMO_USER_ID);
   assert.equal(revoked.status, "revoked");
 
-  await mutateDemoState((state) => {
-    const owner = state.users.find((entry) => entry.id === DEMO_USER_ID);
-    assert.ok(owner);
-    owner.email = "revoked.cook@mise.test";
+  const inviteeId = "invitee-user-2";
+  state.users.push({
+    id: inviteeId,
+    restaurant_id: null,
+    name: "Revoked Cook",
+    email: "revoked.cook@mise.test",
+    role: "manager",
+    created_at: new Date().toISOString()
   });
 
   await assert.rejects(
-    () => repository.claimRestaurantMemberInvite(created.claim_token),
+    () => claimDemoMemberInvite(state, created.claim_token, inviteeId),
     /revoked/i
   );
 });
@@ -145,6 +151,7 @@ test("demo schema v6 includes member invite storage", () => {
 test("member invite migration and client wiring are present", () => {
   const migration = readFileSync("supabase/migrations/20260731152000_restaurant_member_invites.sql", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const demoInvites = readFileSync("services/demo/memberInvites.ts", "utf8");
   const screen = readFileSync("app/settings/team.tsx", "utf8");
   const claimScreen = readFileSync("app/invite/[token].tsx", "utf8");
   const routes = readFileSync("scripts/mobile-route-smoke.mjs", "utf8");
@@ -153,12 +160,12 @@ test("member invite migration and client wiring are present", () => {
   assert.match(migration, /create table if not exists public\.restaurant_member_invites/i);
   assert.match(migration, /create or replace function public\.create_restaurant_member_invite/i);
   assert.match(migration, /create or replace function public\.claim_restaurant_member_invite/i);
-  assert.match(migration, /revoke all on table public\.restaurant_member_invites from public, anon, authenticated/i);
+  assert.match(migration, /revoke all on public\.restaurant_member_invites from anon, authenticated/i);
   assert.match(migration, /restaurant_member_invite_created/i);
   assert.match(securityBackend, /restaurant_member_invites/);
   assert.match(repository, /rpc\("create_restaurant_member_invite"/i);
   assert.match(repository, /rpc\("claim_restaurant_member_invite"/i);
-  assert.match(repository, /createDemoMemberInvite/i);
+  assert.match(demoInvites, /export async function createDemoMemberInvite/i);
   assert.match(screen, /createRestaurantMemberInvite/i);
   assert.match(screen, /revokeRestaurantMemberInvite/i);
   assert.match(claimScreen, /claimRestaurantMemberInvite/i);
