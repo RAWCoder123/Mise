@@ -27,7 +27,8 @@ export async function fetchInventoryOutlookItems(restaurantId: string) {
     data.inventoryItems,
     data.sales,
     data.menuItemIngredients,
-    data.operatingDate
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
   );
 }
 
@@ -77,14 +78,16 @@ export async function updateRecipeBaselineIngredient(
     data.sales,
     planningMappings,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
   );
   const insights = buildInsightsFromData(
     restaurantId,
     data.inventoryItems,
     data.sales,
     planningMappings,
-    data.operatingDate
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -152,14 +155,16 @@ export async function addRecipeBaselineIngredient(
     data.sales,
     planningMappings,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
   );
   const insights = buildInsightsFromData(
     restaurantId,
     data.inventoryItems,
     data.sales,
     planningMappings,
-    data.operatingDate
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -217,14 +222,16 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     data.sales,
     data.menuItemIngredients,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
   );
   const insights = buildInsightsFromData(
     restaurantId,
     planningInventory,
     data.sales,
     data.menuItemIngredients,
-    data.operatingDate
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
   );
   return repository.updateInventoryItemAndSignals(
     restaurantId,

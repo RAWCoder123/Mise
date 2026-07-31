@@ -22,7 +22,8 @@ import {
 } from "../../services/miseService";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
-import type { InventoryMovement, InventoryOutlookItem } from "../../types/mise";
+import type { MessageKey } from "../../i18n/catalog";
+import type { InventoryMovement, InventoryMovementReason, InventoryOutlookItem } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
 
 export default function InventoryDetailScreen() {
@@ -357,7 +358,7 @@ export default function InventoryDetailScreen() {
                 {movements.map((movement) => (
                   <View key={movement.id} style={styles.movementRow}>
                     <View style={styles.movementCopy}>
-                      <Text style={styles.movementReason}>{t("inventory.detail.movements.manualCount")}</Text>
+                      <Text style={styles.movementReason}>{movementReasonLabel(t, movement.reason)}</Text>
                       <Text style={styles.movementDelta}>
                         {t("inventory.detail.movements.delta", {
                           before: formatNumber(movement.quantity_before, { maximumFractionDigits: 1 }),
@@ -418,6 +419,21 @@ interface InventoryFieldErrors {
   currentQuantity?: string;
   parLevel?: string;
   reorderThreshold?: string;
+}
+
+const movementReasonKeys: Record<InventoryMovementReason, MessageKey> = {
+  manual_count: "inventory.detail.movements.manualCount",
+  manager_correction: "inventory.detail.movements.managerCorrection",
+  receiving: "inventory.detail.movements.receiving",
+  waste: "inventory.detail.movements.waste",
+  transfer: "inventory.detail.movements.transfer",
+  pos_consumption: "inventory.detail.movements.posConsumption",
+  recipe_consumption: "inventory.detail.movements.recipeConsumption",
+  system_adjustment: "inventory.detail.movements.systemAdjustment"
+};
+
+function movementReasonLabel(t: ReturnType<typeof useLocale>["t"], reason: InventoryMovementReason) {
+  return t(movementReasonKeys[reason] ?? "inventory.detail.movements.systemAdjustment");
 }
 
 function validateInventoryNumber(

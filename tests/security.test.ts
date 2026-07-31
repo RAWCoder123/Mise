@@ -306,6 +306,10 @@ test("manual CSV POS ingest is service-owned, bounded, and keeps live sync fail-
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const application = readFileSync("services/application/posIngest.ts", "utf8");
   const migration = readFileSync("supabase/migrations/20260730220548_ingest_manual_pos_sales_csv.sql", "utf8");
+  const consumptionMigration = readFileSync(
+    "supabase/migrations/20260731001500_apply_pos_recipe_consumption.sql",
+    "utf8"
+  );
 
   assert.match(application, /buildManualPosSalesIngestPayload|assertManualPosSalesIngestReady/);
   assert.match(repository, /action:\s*"ingest_pos_csv"/i);
@@ -317,6 +321,12 @@ test("manual CSV POS ingest is service-owned, bounded, and keeps live sync fail-
   assert.match(migration, /source_pos\s*<>\s*'Manual CSV Upload'/i);
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_ingest_manual_pos_sales[\s\S]*authenticated/i);
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_ingest_manual_pos_sales[\s\S]*service_role/i);
+  assert.match(consumptionMigration, /private\.apply_recipe_consumption_for_sales/i);
+  assert.match(consumptionMigration, /recipe_consumption/i);
+  assert.match(consumptionMigration, /inventory_movements_recipe_consumption_source_uidx/i);
+  assert.match(consumptionMigration, /appliedTodayConsumptionByItemId/i);
+  assert.match(consumptionMigration, /revoke\s+all\s+on\s+function\s+private\.apply_recipe_consumption_for_sales[\s\S]*authenticated/i);
+  assert.match(consumptionMigration, /grant\s+execute\s+on\s+function\s+private\.apply_recipe_consumption_for_sales[\s\S]*service_role/i);
   assert.match(syncPos, /provider_not_enabled/);
   assert.doesNotMatch(syncPos, /service_ingest_manual_pos_sales/);
   assert.doesNotMatch(application, /\.from\("pos_sales"\)\.insert/);

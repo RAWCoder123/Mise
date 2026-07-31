@@ -47,6 +47,7 @@ import {
   type RecommendationWorkflowResult,
   type SupplierOrderSentWorkflowResult
 } from "../domain/miseDomain";
+import { buildAppliedTodayConsumptionByItemId } from "../domain/posConsumption";
 import {
   findSupplierRecipientCatalogName,
   supplierRecipientDirectoryKey
@@ -195,6 +196,7 @@ export interface PlanningData {
   sales: PosSale[];
   menuItemIngredients: MenuItemIngredient[];
   operatingDate: string;
+  appliedTodayConsumptionByItemId: Record<string, number>;
 }
 
 export interface MiseRepository {
@@ -258,7 +260,12 @@ export interface MiseRepository {
       source_pos: "Manual CSV Upload";
     }>,
     sourceFileName?: string | null
-  ): Promise<{ posSalesRowsSaved: number; salesImportId?: string }>;
+  ): Promise<{
+    posSalesRowsSaved: number;
+    salesImportId?: string;
+    consumptionMovementsWritten?: number;
+    unmappedSaleCount?: number;
+  }>;
   upsertInventoryItem(input: InventoryItemInput): Promise<InventoryItem>;
   createPosSale(input: PosSaleInput): Promise<PosSale>;
   updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch): Promise<InventoryItem>;
@@ -952,13 +959,18 @@ function createLocalDemoRepository(): MiseRepository {
     async fetchPlanningData(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
       const restaurant = fetchRestaurantFromState(state, restaurantId);
+      const operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone);
       return {
         inventoryItems: state.inventoryItems.filter((item) => item.restaurant_id === restaurantId).map(normalizeInventoryItem),
         sales: state.posSales.filter((sale) => sale.restaurant_id === restaurantId).map(normalizePosSale),
         menuItemIngredients: state.menuItemIngredients
           .filter((mapping) => mapping.restaurant_id === restaurantId)
           .map(normalizeMenuItemIngredient),
-        operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone)
+        operatingDate,
+        appliedTodayConsumptionByItemId: buildAppliedTodayConsumptionByItemId(
+          state.inventoryMovements ?? [],
+          operatingDate
+        )
       };
     },
 
@@ -2064,22 +2076,35 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async fetchPlanningData(restaurantId) {
-      const [inventoryResult, sales, mappingResult, restaurantResult] = await Promise.all([
+      const [inventoryResult, sales, mappingResult, restaurantResult, movementsResult] = await Promise.all([
         client.from("inventory_items").select("*").eq("restaurant_id", restaurantId).order("item_name"),
         fetchBoundedPlanningSales(restaurantId),
         client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
-        client.from("restaurants").select("timezone").eq("id", restaurantId).single()
+        client.from("restaurants").select("timezone").eq("id", restaurantId).single(),
+        client
+          .from("inventory_movements")
+          .select("reason,inventory_item_id,quantity_before,quantity_after,metadata")
+          .eq("restaurant_id", restaurantId)
+          .in("reason", ["recipe_consumption", "pos_consumption"])
+          .order("created_at", { ascending: false })
+          .limit(500)
       ]);
       if (inventoryResult.error) throw inventoryResult.error;
       if (mappingResult.error) throw mappingResult.error;
       if (restaurantResult.error) throw restaurantResult.error;
+      if (movementsResult.error) throw movementsResult.error;
+      const operatingDate = toDateKeyInTimeZone(
+        new Date(),
+        (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
+      );
       return {
         inventoryItems: ((inventoryResult.data ?? []) as InventoryItem[]).map(normalizeInventoryItem),
         sales,
         menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
-        operatingDate: toDateKeyInTimeZone(
-          new Date(),
-          (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
+        operatingDate,
+        appliedTodayConsumptionByItemId: buildAppliedTodayConsumptionByItemId(
+          (movementsResult.data ?? []) as InventoryMovement[],
+          operatingDate
         )
       };
     },
@@ -2110,10 +2135,14 @@ function createSupabaseRepository(): MiseRepository {
       const summary = (response.ingestSummary ?? response.result ?? {}) as {
         pos_sales_rows_saved?: number;
         sales_import_id?: string;
+        consumption_movements_written?: number;
+        unmapped_sale_count?: number;
       };
       return {
         posSalesRowsSaved: Number(summary.pos_sales_rows_saved ?? sales.length),
-        salesImportId: typeof summary.sales_import_id === "string" ? summary.sales_import_id : undefined
+        salesImportId: typeof summary.sales_import_id === "string" ? summary.sales_import_id : undefined,
+        consumptionMovementsWritten: Number(summary.consumption_movements_written ?? 0),
+        unmappedSaleCount: Number(summary.unmapped_sale_count ?? 0)
       };
     },
 
