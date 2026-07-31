@@ -432,12 +432,19 @@ test("supplier order receiving is service-owned, ledgered, and distinct from Gma
   assert.match(receiveWorkflow, /planSupplierOrderReceive/);
   assert.match(receiveWorkflow, /receiveSupplierOrderAndSignals/);
   assert.match(repository, /action:\s*"receive_supplier_order"/i);
-  assert.match(repository, /confirm_supplier_order_placed/);
+  assert.match(repository, /action:\s*"confirm_supplier_order_placed"/i);
+  assert.doesNotMatch(
+    repository.match(/async confirmSupplierOrderPlaced[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']confirm_supplier_order_placed["']/i
+  );
   assert.match(repository, /Direct POS sale inserts are disabled/);
   assert.match(repository, /Direct supplier draft writes are disabled/);
   assert.match(edge, /"receive_supplier_order"/);
+  assert.match(edge, /"confirm_supplier_order_placed"/);
   assert.match(edge, /service_receive_supplier_order_and_signals/);
+  assert.match(edge, /service_confirm_supplier_order_placed/);
   assert.match(edge, /supplier_order_received/);
+  assert.match(edge, /supplier_order_placed_externally/);
   assert.match(migration, /create\s+or\s+replace\s+function\s+public\.confirm_supplier_order_placed/i);
   assert.match(migration, /placement_channel',\s*'manual_external'/i);
   assert.match(migration, /create\s+or\s+replace\s+function\s+private\.service_receive_supplier_order_and_signals/i);
@@ -445,6 +452,13 @@ test("supplier order receiving is service-owned, ledgered, and distinct from Gma
   assert.match(migration, /source_workflow,\s*[\s\S]*'receive_supplier_order'/i);
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_receive_supplier_order_and_signals[\s\S]*authenticated/i);
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_receive_supplier_order_and_signals[\s\S]*service_role/i);
+  const edgePlaceMigration = readFileSync(
+    "supabase/migrations/20260731220000_edge_storage_location_and_external_place.sql",
+    "utf8"
+  );
+  assert.match(edgePlaceMigration, /private\.service_confirm_supplier_order_placed/i);
+  assert.match(edgePlaceMigration, /grant execute on function public\.service_confirm_supplier_order_placed[\s\S]*service_role/i);
+  assert.match(edgePlaceMigration, /revoke all on function public\.confirm_supplier_order_placed/i);
   assert.match(detail, /confirmSupplierOrderPlaced/);
   assert.match(detail, /receiveSupplierOrder/);
 });
@@ -571,13 +585,29 @@ test("storage locations and inventory transfer are RLS-readable and service-muta
   assert.match(migration, /'transfer_inventory'/);
   assert.match(migration, /array\['owner', 'admin', 'manager', 'staff'\]/);
   assert.match(edge, /"transfer_inventory"/);
+  assert.match(edge, /"create_storage_location"/);
   assert.match(edge, /service_transfer_inventory/);
+  assert.match(edge, /service_create_storage_location/);
+  assert.match(edge, /storage_location_created/);
   assert.match(repository, /action:\s*"transfer_inventory"/);
+  assert.match(repository, /action:\s*"create_storage_location"/);
+  assert.doesNotMatch(
+    repository.match(/async createStorageLocation[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']create_storage_location["']/i
+  );
   assert.match(inventoryWorkflow, /export async function transferInventory/);
+  assert.match(inventoryWorkflow, /export async function createStorageLocation/);
   assert.match(securityStatic, /"storage_locations"/);
   assert.match(securityStatic, /"inventory_location_balances"/);
   assert.match(securityBackend, /"storage_locations"/);
   assert.match(securityBackend, /"inventory_location_balances"/);
+  const edgePlaceMigration = readFileSync(
+    "supabase/migrations/20260731220000_edge_storage_location_and_external_place.sql",
+    "utf8"
+  );
+  assert.match(edgePlaceMigration, /private\.service_create_storage_location/i);
+  assert.match(edgePlaceMigration, /grant execute on function public\.service_create_storage_location[\s\S]*service_role/i);
+  assert.match(edgePlaceMigration, /revoke all on function public\.create_storage_location/i);
 });
 
 test("inventory item create is service-owned with opening ledger movement and manager UI", () => {

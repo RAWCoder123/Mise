@@ -23,8 +23,10 @@ const actions = [
   "refresh_signals",
   "update_inventory",
   "create_inventory_item",
+  "create_storage_location",
   "record_waste",
   "transfer_inventory",
+  "confirm_supplier_order_placed",
   "receive_supplier_order",
   "upsert_recipe",
   "delete_recipe",
@@ -156,6 +158,18 @@ Deno.serve(async (req) => {
         p_to_storage_location_id: requireUuid(body.toStorageLocationId, "toStorageLocationId"),
         p_quantity: requireBoundedNumber(body.quantity, "quantity", Number.EPSILON, 1_000_000),
         p_note: body.note == null ? null : requireBoundedString(body.note, "note", 240)
+      });
+    } else if (action === "create_storage_location") {
+      result = await serviceRpc(securitySupabase, "service_create_storage_location", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_name: requireBoundedString(body.name, "name", 80)
+      });
+    } else if (action === "confirm_supplier_order_placed") {
+      result = await serviceRpc(securitySupabase, "service_confirm_supplier_order_placed", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_order_id: requireUuid(body.orderId, "orderId")
       });
     } else if (countSessionDraftActions.has(action)) {
       result = await runCountSessionDraftAction(securitySupabase, user.id, restaurantId, action, body);
@@ -723,8 +737,10 @@ function isRevisionConflict(error: unknown) {
 function auditAction(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_updated";
   if (action === "create_inventory_item") return "inventory_item_created";
+  if (action === "create_storage_location") return "storage_location_created";
   if (action === "record_waste") return "inventory_waste_recorded";
   if (action === "transfer_inventory") return "inventory_transfer_recorded";
+  if (action === "confirm_supplier_order_placed") return "supplier_order_placed_externally";
   if (action === "receive_supplier_order") return "supplier_order_received";
   if (action === "begin_count_session") return "inventory_count_session_started";
   if (action === "save_count_lines") return "inventory_count_lines_saved";
@@ -747,7 +763,10 @@ function auditEntityTable(action: OperationalAction) {
   ) {
     return "inventory_items";
   }
-  if (action === "receive_supplier_order") return "supplier_orders";
+  if (action === "create_storage_location") return "storage_locations";
+  if (action === "confirm_supplier_order_placed" || action === "receive_supplier_order") {
+    return "supplier_orders";
+  }
   if (
     action === "begin_count_session" ||
     action === "save_count_lines" ||
@@ -766,14 +785,18 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>,
   if (action === "update_inventory" || action === "record_waste" || action === "transfer_inventory") {
     return requireUuid(body.itemId, "itemId");
   }
-  if (action === "create_inventory_item") {
+  if (action === "create_inventory_item" || action === "create_storage_location") {
     if (result && typeof result === "object" && typeof (result as { id?: unknown }).id === "string") {
       return requireUuid((result as { id: string }).id, "result.id");
     }
-    if (body.itemId != null) return requireUuid(body.itemId, "itemId");
+    if (action === "create_inventory_item" && body.itemId != null) {
+      return requireUuid(body.itemId, "itemId");
+    }
     return null;
   }
-  if (action === "receive_supplier_order") return requireUuid(body.orderId, "orderId");
+  if (action === "confirm_supplier_order_placed" || action === "receive_supplier_order") {
+    return requireUuid(body.orderId, "orderId");
+  }
   if (
     action === "save_count_lines" ||
     action === "submit_count_session" ||
@@ -824,6 +847,23 @@ function auditMetadata(
       if (typeof row.lines_changed === "number") metadata.lines_changed = row.lines_changed;
       if (typeof row.lines_total === "number") metadata.lines_total = row.lines_total;
     }
+    return metadata;
+  }
+  if (action === "create_storage_location" && result && typeof result === "object") {
+    const row = result as Record<string, unknown>;
+    if (typeof row.name === "string") metadata.location_name = row.name;
+    return metadata;
+  }
+  if (action === "confirm_supplier_order_placed" && result && typeof result === "object") {
+    const row = result as Record<string, unknown>;
+    if (typeof row.outcome === "string") metadata.outcome = row.outcome;
+    const order = row.order && typeof row.order === "object"
+      ? row.order as Record<string, unknown>
+      : null;
+    if (order && typeof order.supplier_name === "string") {
+      metadata.supplier_name = order.supplier_name;
+    }
+    metadata.placement_channel = "manual_external";
     return metadata;
   }
   if (

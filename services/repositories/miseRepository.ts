@@ -3009,12 +3009,12 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async createStorageLocation(restaurantId, name) {
-      const { data, error } = await client.rpc("create_storage_location", {
-        p_restaurant_id: restaurantId,
-        p_name: name
+      const response = await invokeOperationalWorkflow({
+        action: "create_storage_location",
+        restaurantId,
+        name
       });
-      if (error) throw error;
-      return normalizeStorageLocation(data as StorageLocation);
+      return normalizeStorageLocation(response.result as StorageLocation);
     },
 
     async fetchInventoryLocationBalances(restaurantId, itemId) {
@@ -3346,12 +3346,12 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async confirmSupplierOrderPlaced(restaurantId, orderId) {
-      const { data, error } = await client.rpc("confirm_supplier_order_placed", {
-        p_restaurant_id: restaurantId,
-        p_order_id: orderId
+      const response = await invokeOperationalWorkflow({
+        action: "confirm_supplier_order_placed",
+        restaurantId,
+        orderId
       });
-      if (error) throw error;
-      return parseSupplierOrderSentWorkflowResponse(data);
+      return parseSupplierOrderSentWorkflowResponse(response.result);
     },
 
     async receiveSupplierOrderAndSignals(
