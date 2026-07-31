@@ -36,19 +36,23 @@ export default function InventoryCountSessionScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
+  activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   const load = useCallback(async () => {
     if (!restaurant) {
       setLoading(false);
       return;
     }
+    const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
-      const open = await fetchOpenInventoryCountSession(restaurant.id);
-      if (requestId !== requestIdRef.current) return;
+      const open = await fetchOpenInventoryCountSession(restaurantId);
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(open);
       setDraftCounts(
         Object.fromEntries(
@@ -61,13 +65,28 @@ export default function InventoryCountSessionScreen() {
       setDraftNotes(
         Object.fromEntries((open?.lines ?? []).map((line) => [line.inventory_item_id, line.note ?? ""]))
       );
+      setLoadedRestaurantId(restaurantId);
     } catch {
-      if (requestId !== requestIdRef.current) return;
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setError(t("inventory.count.loadError"));
     } finally {
-      if (requestId === requestIdRef.current) setLoading(false);
+      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        setLoading(false);
+      }
     }
   }, [restaurant?.id, t]);
+
+  useEffect(() => {
+    requestIdRef.current += 1;
+    setLoadedRestaurantId(null);
+    setDetail(null);
+    setDraftCounts({});
+    setDraftNotes({});
+    setSaving(false);
+    setError(null);
+    setNotice(null);
+    setLoading(Boolean(restaurant));
+  }, [restaurant?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -75,32 +94,34 @@ export default function InventoryCountSessionScreen() {
     }, [load])
   );
 
-  useEffect(() => {
-    setNotice(null);
-  }, [restaurant?.id]);
+  const visibleDetail = loadedRestaurantId === restaurant?.id ? detail : null;
 
   const progress = useMemo(
-    () => summarizeCountSessionProgress(detail?.lines ?? []),
-    [detail?.lines]
+    () => summarizeCountSessionProgress(visibleDetail?.lines ?? []),
+    [visibleDetail?.lines]
   );
 
   async function startSession() {
     if (!restaurant || !canDraft) return;
+    const restaurantId = restaurant.id;
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      const next = await beginInventoryCountSession(restaurant.id);
+      const next = await beginInventoryCountSession(restaurantId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(next);
       setDraftCounts(
         Object.fromEntries(next.lines.map((line) => [line.inventory_item_id, ""]))
       );
       setDraftNotes(Object.fromEntries(next.lines.map((line) => [line.inventory_item_id, ""])));
+      setLoadedRestaurantId(restaurantId);
       setNotice(t("inventory.count.started"));
     } catch (caught) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setError(caught instanceof Error ? caught.message : t("inventory.count.startError"));
     } finally {
-      setSaving(false);
+      if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
   }
 
@@ -116,9 +137,11 @@ export default function InventoryCountSessionScreen() {
     setDraftNotes(Object.fromEntries(next.lines.map((line) => [line.inventory_item_id, line.note ?? ""])));
   }
 
-  function buildCountLinePayload(requireComplete: boolean) {
-    if (!detail) return [];
-    const lines = detail.lines
+  function buildCountLinePayload(
+    sessionDetail: InventoryCountSessionDetail,
+    requireComplete: boolean
+  ) {
+    const lines = sessionDetail.lines
       .map((line) => {
         const raw = draftCounts[line.inventory_item_id]?.trim() ?? "";
         if (!raw) return null;
@@ -140,17 +163,18 @@ export default function InventoryCountSessionScreen() {
         ): line is { inventoryItemId: string; countedQuantity: number; note: string | null } =>
           Boolean(line)
       );
-    if (requireComplete && lines.length !== detail.lines.length) {
+    if (requireComplete && lines.length !== sessionDetail.lines.length) {
       throw new Error(t("inventory.count.incomplete"));
     }
     return lines;
   }
 
   async function saveProgress() {
-    if (!restaurant || !detail || !canDraft) return;
+    if (!restaurant || !visibleDetail || !canDraft) return;
+    const restaurantId = restaurant.id;
     let lines: Array<{ inventoryItemId: string; countedQuantity: number; note: string | null }>;
     try {
-      lines = buildCountLinePayload(false);
+      lines = buildCountLinePayload(visibleDetail, false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("inventory.count.saveError"));
       return;
@@ -162,52 +186,66 @@ export default function InventoryCountSessionScreen() {
     setSaving(true);
     setError(null);
     try {
-      const next = await saveInventoryCountLines(restaurant.id, detail.session.id, lines);
+      const next = await saveInventoryCountLines(restaurantId, visibleDetail.session.id, lines);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(next);
       syncDraftsFromDetail(next);
+      setLoadedRestaurantId(restaurantId);
       setNotice(t("inventory.count.saved"));
     } catch (caught) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setError(caught instanceof Error ? caught.message : t("inventory.count.saveError"));
     } finally {
-      setSaving(false);
+      if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
   }
 
   async function submitSession() {
-    if (!restaurant || !detail || !canDraft) return;
+    if (!restaurant || !visibleDetail || !canDraft) return;
+    const restaurantId = restaurant.id;
     setSaving(true);
     setError(null);
     try {
-      const lines = buildCountLinePayload(true);
-      await saveInventoryCountLines(restaurant.id, detail.session.id, lines);
-      const next = await submitInventoryCountSession(restaurant.id, detail.session.id);
+      const lines = buildCountLinePayload(visibleDetail, true);
+      await saveInventoryCountLines(restaurantId, visibleDetail.session.id, lines);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      const next = await submitInventoryCountSession(restaurantId, visibleDetail.session.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(next);
       syncDraftsFromDetail(next);
+      setLoadedRestaurantId(restaurantId);
       setNotice(t("inventory.count.submitted"));
     } catch (caught) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setError(caught instanceof Error ? caught.message : t("inventory.count.submitError"));
     } finally {
-      setSaving(false);
+      if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
   }
 
   async function approveSession() {
-    if (!restaurant || !detail || !canApprove) return;
+    if (!restaurant || !visibleDetail || !canApprove) return;
+    const restaurantId = restaurant.id;
     setSaving(true);
     setError(null);
     try {
-      const next = await approveInventoryCountSession(restaurant.id, detail.session.id);
+      const next = await approveInventoryCountSession(restaurantId, visibleDetail.session.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(next);
+      setLoadedRestaurantId(restaurantId);
       setNotice(t("inventory.count.approved"));
     } catch (caught) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setError(caught instanceof Error ? caught.message : t("inventory.count.approveError"));
     } finally {
-      setSaving(false);
+      if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
   }
 
   function confirmCancel() {
-    if (!restaurant || !detail || !canApprove) return;
+    if (!restaurant || !visibleDetail || !canApprove) return;
+    const restaurantId = restaurant.id;
+    const sessionId = visibleDetail.session.id;
     Alert.alert(t("inventory.count.cancelTitle"), t("inventory.count.cancelBody"), [
       { text: t("common.cancel"), style: "cancel" },
       {
@@ -218,13 +256,16 @@ export default function InventoryCountSessionScreen() {
             setSaving(true);
             setError(null);
             try {
-              const next = await cancelInventoryCountSession(restaurant.id, detail.session.id);
+              const next = await cancelInventoryCountSession(restaurantId, sessionId);
+              if (activeRestaurantIdRef.current !== restaurantId) return;
               setDetail(next);
+              setLoadedRestaurantId(restaurantId);
               setNotice(t("inventory.count.cancelled"));
             } catch (caught) {
+              if (activeRestaurantIdRef.current !== restaurantId) return;
               setError(caught instanceof Error ? caught.message : t("inventory.count.cancelError"));
             } finally {
-              setSaving(false);
+              if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
             }
           })();
         }
@@ -245,11 +286,11 @@ export default function InventoryCountSessionScreen() {
   }
 
   const statusLabel =
-    detail?.session.status === "submitted"
+    visibleDetail?.session.status === "submitted"
       ? t("inventory.count.status.submitted")
-      : detail?.session.status === "approved"
+      : visibleDetail?.session.status === "approved"
         ? t("inventory.count.status.approved")
-        : detail?.session.status === "cancelled"
+        : visibleDetail?.session.status === "cancelled"
           ? t("inventory.count.status.cancelled")
           : t("inventory.count.status.inProgress");
 
@@ -271,7 +312,9 @@ export default function InventoryCountSessionScreen() {
         ) : null}
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
-        {!detail || detail.session.status === "approved" || detail.session.status === "cancelled" ? (
+        {!visibleDetail ||
+        visibleDetail.session.status === "approved" ||
+        visibleDetail.session.status === "cancelled" ? (
           <MotionView distance={3} duration={240}>
             <SectionSurface
               title={t("inventory.count.startTitle")}
@@ -317,7 +360,7 @@ export default function InventoryCountSessionScreen() {
                 padding="none"
               >
                 <View style={styles.lineList}>
-                  {detail.lines.map((line, index) => {
+                  {visibleDetail.lines.map((line, index) => {
                     const countedRaw = draftCounts[line.inventory_item_id] ?? "";
                     const noteRaw = draftNotes[line.inventory_item_id] ?? "";
                     const counted = countedRaw.trim() === "" ? null : Number(countedRaw);
@@ -326,7 +369,7 @@ export default function InventoryCountSessionScreen() {
                         ? null
                         : counted - line.system_quantity_at_start;
                     const editable =
-                      canDraft && detail.session.status === "in_progress" && !saving;
+                      canDraft && visibleDetail.session.status === "in_progress" && !saving;
                     const showNoteField =
                       editable || noteRaw.trim().length > 0 || (variance != null && variance !== 0);
                     return (
@@ -400,7 +443,7 @@ export default function InventoryCountSessionScreen() {
             </MotionView>
 
             <View style={styles.actions}>
-              {detail.session.status === "in_progress" && canDraft ? (
+              {visibleDetail.session.status === "in_progress" && canDraft ? (
                 <>
                   <Button
                     title={t("inventory.count.saveAction")}
@@ -417,7 +460,7 @@ export default function InventoryCountSessionScreen() {
                   />
                 </>
               ) : null}
-              {detail.session.status === "submitted" && canApprove ? (
+              {visibleDetail.session.status === "submitted" && canApprove ? (
                 <Button
                   title={t("inventory.count.approveAction")}
                   onPress={() => void approveSession()}
@@ -425,7 +468,7 @@ export default function InventoryCountSessionScreen() {
                   fullWidth
                 />
               ) : null}
-              {detail.session.status === "submitted" && !canApprove ? (
+              {visibleDetail.session.status === "submitted" && !canApprove ? (
                 <Text style={styles.help}>{t("inventory.count.staffAwaitingApproval")}</Text>
               ) : null}
               {canApprove ? (

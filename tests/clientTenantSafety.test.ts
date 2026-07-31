@@ -15,6 +15,7 @@ test("operational screens reject late requests and render only active-restaurant
     settings: source("app/(tabs)/settings.tsx"),
     recipes: source("app/settings/recipes.tsx"),
     inventoryDetail: source("app/inventory/[id].tsx"),
+    inventoryCount: source("app/inventory/count.tsx"),
     orderDetail: source("app/orders/[id].tsx")
   };
 
@@ -35,17 +36,24 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.orders, /loadedRestaurantRef\.current\s*===\s*restaurant\?\.id/);
   assert.match(screens.recipes, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*summary\s*:\s*null/);
   assert.match(screens.inventoryDetail, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*outlook\s*:\s*null/);
+  assert.match(screens.inventoryCount, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*detail\s*:\s*null/);
   assert.match(screens.orderDetail, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*order\s*:\s*null/);
 });
 
 test("workspace mutations stop stale continuations and session state is latest-wins", () => {
   const inventoryDetail = source("app/inventory/[id].tsx");
+  const inventoryCount = source("app/inventory/count.tsx");
   const orderDetail = source("app/orders/[id].tsx");
   const recipes = source("app/settings/recipes.tsx");
   const session = source("contexts/MiseSessionContext.tsx");
 
   assert.match(inventoryDetail, /await updateInventoryItem[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
   assert.match(inventoryDetail, /await recordInventoryWaste[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
+  assert.match(inventoryCount, /await beginInventoryCountSession[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
+  assert.match(inventoryCount, /await saveInventoryCountLines[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
+  assert.match(inventoryCount, /await submitInventoryCountSession[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
+  assert.match(inventoryCount, /await approveInventoryCountSession[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
+  assert.match(inventoryCount, /await cancelInventoryCountSession[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
   assert.match(orderDetail, /await persistNote\(\)[\s\S]*activeRestaurantIdRef\.current !== restaurantId[\s\S]*await sendSupplierOrderEmail/);
   assert.match(recipes, /selectedInventoryItem\.restaurant_id !== restaurantId/);
 
