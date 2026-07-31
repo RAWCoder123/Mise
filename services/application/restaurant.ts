@@ -6,6 +6,13 @@ import {
   normalizeMemberEmail,
   type AssignableRestaurantRole
 } from "../domain/teamMembership";
+import {
+  isValidInviteEmail,
+  isValidInviteToken,
+  normalizeInviteEmail,
+  normalizeInviteToken,
+  resolveInviteExpiryHours
+} from "../domain/teamInvites";
 import type { AuditLogInput } from "../repositories/miseRepository";
 import {
   requireRestaurantCuisineType,
@@ -47,6 +54,41 @@ export async function addRestaurantMemberByEmail(
     throw new Error("Enter a valid teammate email address.");
   }
   return repository.addRestaurantMemberByEmail(restaurantId, normalizedEmail, role);
+}
+
+export async function createRestaurantMemberInvite(
+  restaurantId: string,
+  email: string,
+  role: AssignableRestaurantRole,
+  expiresInHours?: number
+) {
+  const normalizedEmail = normalizeInviteEmail(email);
+  if (!isValidInviteEmail(normalizedEmail)) {
+    throw new Error("Enter a valid teammate email address.");
+  }
+  return repository.createRestaurantMemberInvite(
+    restaurantId,
+    normalizedEmail,
+    role,
+    resolveInviteExpiryHours(expiresInHours)
+  );
+}
+
+export async function fetchRestaurantMemberInvites(restaurantId: string) {
+  return repository.fetchRestaurantMemberInvites(restaurantId);
+}
+
+export async function revokeRestaurantMemberInvite(restaurantId: string, inviteId: string) {
+  if (!inviteId.trim()) throw new Error("Invite is required.");
+  return repository.revokeRestaurantMemberInvite(restaurantId, inviteId.trim());
+}
+
+export async function claimRestaurantMemberInvite(claimToken: string) {
+  const normalizedToken = normalizeInviteToken(claimToken);
+  if (!isValidInviteToken(normalizedToken)) {
+    throw new Error("Invite token is invalid.");
+  }
+  return repository.claimRestaurantMemberInvite(normalizedToken);
 }
 
 export async function updateRestaurantMember(

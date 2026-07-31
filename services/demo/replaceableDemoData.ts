@@ -44,11 +44,27 @@ const itemIds = {
   pancakeMix: "00000000-0000-4000-8000-000000000107"
 };
 
+export interface DemoMemberInviteRecord {
+  id: string;
+  restaurant_id: string;
+  email: string;
+  role: Exclude<RestaurantMembership["role"], "owner">;
+  status: "pending" | "claimed" | "revoked" | "expired";
+  token_hash: string;
+  created_by: string;
+  claimed_by: string | null;
+  expires_at: string;
+  created_at: string;
+  claimed_at: string | null;
+  revoked_at: string | null;
+}
+
 export interface DemoState {
-  schema_version: 5;
+  schema_version: 6;
   restaurants: Restaurant[];
   users: AppUser[];
   memberships: RestaurantMembership[];
+  memberInvites: DemoMemberInviteRecord[];
   posSales: PosSale[];
   inventoryItems: InventoryItem[];
   inventoryMovements: InventoryMovement[];
@@ -305,10 +321,11 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 5,
+    schema_version: 6,
     restaurants: [restaurant],
     users: [user, managerUser, staffUser],
     memberships,
+    memberInvites: [],
     posSales,
     inventoryItems,
     inventoryMovements: [],
@@ -545,10 +562,11 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 5,
+    schema_version: 6,
     restaurants,
     users,
     memberships,
+    memberInvites: Array.isArray(raw.memberInvites) ? raw.memberInvites : [],
     posSales: raw.posSales ?? seeded.posSales,
     inventoryItems: raw.inventoryItems ?? seeded.inventoryItems,
     inventoryMovements: Array.isArray(raw.inventoryMovements) ? raw.inventoryMovements : seeded.inventoryMovements,
@@ -575,13 +593,14 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 5 ||
+      raw.schema_version !== 6 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
       !Array.isArray(raw.inventoryMovements) ||
       !Array.isArray(raw.inventoryCountSessions) ||
       !Array.isArray(raw.memberships) ||
+      !Array.isArray(raw.memberInvites) ||
       (raw.memberships?.length ?? 0) === 0
   };
 }

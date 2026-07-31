@@ -65,6 +65,7 @@ interface MiseSessionContextValue {
   switchRestaurant: (restaurantId: string) => Promise<void>;
   connectDemoPOS: (provider: PosProvider) => Promise<void>;
   refreshPosStatus: () => Promise<void>;
+  refreshSession: () => Promise<void>;
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -507,6 +508,20 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     await refreshPOS(activeRestaurantIdRef.current);
   }, [refreshPOS]);
 
+  const refreshSession = useCallback(async () => {
+    if (authUser && isSupabaseConfigured) {
+      await hydrateSupabaseUser(authUser, activeRestaurantIdRef.current);
+      return;
+    }
+    if (isDemoMode) {
+      await hydrateLocalDemo({
+        user,
+        activeRestaurantId: activeRestaurantIdRef.current,
+        isDemoMode: true
+      });
+    }
+  }, [authUser, hydrateLocalDemo, hydrateSupabaseUser, isDemoMode, user]);
+
   const resetDemoData = useCallback(async (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => {
     if (!isDemoMode) {
       throw new Error("Demo reset is only available in local demo mode.");
@@ -554,6 +569,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       switchRestaurant,
       connectDemoPOS,
       refreshPosStatus,
+      refreshSession,
       resetDemoData,
       signOut
     }),
@@ -571,6 +587,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       posStatusLabel,
       ready,
       refreshPosStatus,
+      refreshSession,
       restaurant,
       resetDemoData,
       role,
