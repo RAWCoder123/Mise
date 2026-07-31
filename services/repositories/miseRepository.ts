@@ -50,6 +50,7 @@ import {
   type SupplierOrderSentWorkflowResult
 } from "../domain/miseDomain";
 import { planInventoryWaste } from "../domain/inventoryWaste";
+import { buildManagerCorrectionMetadata } from "../domain/managerCorrection";
 import {
   assertInventoryItemCreateCapacity,
   findDuplicateInventoryItemName,
@@ -309,7 +310,8 @@ export interface MiseRepository {
     expectedLastUpdated: string,
     patch: InventoryItemPatch,
     recommendations: PurchaseRecommendationInput[],
-    insights: Insight[]
+    insights: Insight[],
+    note?: string | null
   ): Promise<InventoryItem>;
   recordInventoryWasteAndSignals(
     restaurantId: string,
@@ -1355,7 +1357,12 @@ function createLocalDemoRepository(): MiseRepository {
             quantityBefore,
             quantityAfter: item.current_quantity,
             reason: "manager_correction",
-            sourceWorkflow: "update_inventory"
+            sourceWorkflow: "update_inventory",
+            metadata: buildManagerCorrectionMetadata({
+              parLevel: item.par_level,
+              reorderThreshold: item.reorder_threshold,
+              note: null
+            })
           });
         }
         return normalizeInventoryItem(item);
@@ -1368,7 +1375,8 @@ function createLocalDemoRepository(): MiseRepository {
       expectedLastUpdated,
       patch,
       recommendations,
-      insights
+      insights,
+      note = null
     ) {
       return mutateDemoState((state) => {
         const item = state.inventoryItems.find(
@@ -1387,7 +1395,12 @@ function createLocalDemoRepository(): MiseRepository {
             quantityBefore,
             quantityAfter: item.current_quantity,
             reason: "manager_correction",
-            sourceWorkflow: "update_inventory"
+            sourceWorkflow: "update_inventory",
+            metadata: buildManagerCorrectionMetadata({
+              parLevel: item.par_level,
+              reorderThreshold: item.reorder_threshold,
+              note
+            })
           });
         }
         state.purchaseRecommendations = [
@@ -2744,13 +2757,15 @@ function createSupabaseRepository(): MiseRepository {
       _expectedLastUpdated,
       patch,
       _recommendations,
-      _insights
+      _insights,
+      note = null
     ) {
       const response = await invokeOperationalWorkflow({
         action: "update_inventory",
         restaurantId,
         itemId,
-        patch
+        patch,
+        note
       });
       return normalizeInventoryItem(response.result as InventoryItem);
     },
@@ -2891,26 +2906,16 @@ function createSupabaseRepository(): MiseRepository {
       return { status: payload.status, requestId: payload.requestId };
     },
 
-    async updateMenuItemIngredientQuantity(restaurantId, mappingId, quantityUsedPerSale) {
-      const { data, error } = await client
-        .from("menu_item_ingredients")
-        .update({ quantity_used_per_sale: quantityUsedPerSale })
-        .eq("restaurant_id", restaurantId)
-        .eq("id", mappingId)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizeMenuItemIngredient(data as MenuItemIngredient);
+    async updateMenuItemIngredientQuantity(_restaurantId, _mappingId, _quantityUsedPerSale) {
+      throw new Error(
+        "Direct recipe mapping updates are disabled. Use operational recipe workflows."
+      );
     },
 
-    async upsertMenuItemIngredient(input) {
-      const { data, error } = await client
-        .from("menu_item_ingredients")
-        .upsert(input, { onConflict: "restaurant_id,menu_item_name,inventory_item_id" })
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizeMenuItemIngredient(data as MenuItemIngredient);
+    async upsertMenuItemIngredient(_input) {
+      throw new Error(
+        "Direct recipe mapping writes are disabled. Use operational recipe workflows."
+      );
     },
 
     async saveRecipeMappingAndSignals(input) {
@@ -3205,14 +3210,10 @@ function createSupabaseRepository(): MiseRepository {
       return normalizeSupplierRecipient(recipient as SupplierRecipient);
     },
 
-    async createSetupAttachment(input) {
-      const { data, error } = await client
-        .from("setup_attachments")
-        .insert(input)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizeSetupAttachment(data as SetupAttachment);
+    async createSetupAttachment(_input) {
+      throw new Error(
+        "Direct setup attachment writes are disabled. Use the restaurant setup workflow."
+      );
     },
 
     async loadDemoPOSData(_provider, _setupProfile) {

@@ -336,6 +336,16 @@ export function requireInventoryWasteNote(value: string | null | undefined) {
   return normalized || null;
 }
 
+export function requireManagerCorrectionNote(value: string | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Correction note must be text.");
+  const normalized = value.trim();
+  if (normalized.length > 240) {
+    throw new Error("Correction note is limited to 240 characters.");
+  }
+  return normalized || null;
+}
+
 export function requireSupplierOrderReceiveLines(
   value: unknown
 ): Array<{ inventoryItemId: string; quantityReceived: number; note: string | null }> {

@@ -39,6 +39,7 @@ export default function InventoryDetailScreen() {
   const [reorderThreshold, setReorderThreshold] = useState("");
   const [wasteQuantity, setWasteQuantity] = useState("");
   const [wasteNote, setWasteNote] = useState("");
+  const [correctionNote, setCorrectionNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<InventoryFieldErrors>({});
   const [loading, setLoading] = useState(true);
@@ -97,6 +98,7 @@ export default function InventoryDetailScreen() {
     setReorderThreshold("");
     setWasteQuantity("");
     setWasteNote("");
+    setCorrectionNote("");
     setSaving(false);
     setFieldErrors({});
     setMessage(null);
@@ -133,6 +135,9 @@ export default function InventoryDetailScreen() {
       parLevel: validateInventoryNumber(parLevel, t("inventory.detail.field.parLevel"), parseNumber, formatNumber, t),
       reorderThreshold: validateInventoryNumber(reorderThreshold, t("inventory.detail.field.reorderThreshold"), parseNumber, formatNumber, t)
     };
+    if (correctionNote.trim().length > 240) {
+      nextFieldErrors.correctionNote = t("inventory.detail.correctionNoteTooLong");
+    }
     if (Object.values(nextFieldErrors).some(Boolean)) {
       setFieldErrors(nextFieldErrors);
       setMessage(t("inventory.detail.reviewFields"));
@@ -146,12 +151,18 @@ export default function InventoryDetailScreen() {
     setMessage(null);
     setMessageIsError(false);
     try {
-      await updateInventoryItem(restaurantId, item.id, {
-        current_quantity: parseNumber(currentQuantity) ?? 0,
-        par_level: parseNumber(parLevel) ?? 0,
-        reorder_threshold: parseNumber(reorderThreshold) ?? 0
-      });
+      await updateInventoryItem(
+        restaurantId,
+        item.id,
+        {
+          current_quantity: parseNumber(currentQuantity) ?? 0,
+          par_level: parseNumber(parLevel) ?? 0,
+          reorder_threshold: parseNumber(reorderThreshold) ?? 0
+        },
+        correctionNote.trim() || null
+      );
       if (activeRestaurantIdRef.current !== restaurantId) return;
+      setCorrectionNote("");
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setMessage(t("inventory.detail.updated"));
@@ -411,6 +422,28 @@ export default function InventoryDetailScreen() {
               error={fieldErrors.reorderThreshold}
             />
             {canManage ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>{t("inventory.detail.correctionNote")}</Text>
+                <TextInput
+                  accessibilityLabel={t("inventory.detail.correctionNote")}
+                  accessibilityHint={fieldErrors.correctionNote}
+                  value={correctionNote}
+                  onChangeText={(value) => {
+                    setCorrectionNote(value);
+                    setFieldErrors((current) => ({ ...current, correctionNote: undefined }));
+                  }}
+                  editable={!saving}
+                  multiline
+                  style={[styles.input, styles.noteInput, fieldErrors.correctionNote && styles.inputError]}
+                />
+                {fieldErrors.correctionNote ? (
+                  <Text style={styles.fieldError} accessibilityLiveRegion="polite">
+                    {fieldErrors.correctionNote}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+            {canManage ? (
               <Button
                 title={saving ? t("inventory.detail.saving") : t("inventory.detail.saveCount")}
                 icon={<Save size={17} color={colors.surface} strokeWidth={2.5} />}
@@ -474,7 +507,9 @@ export default function InventoryDetailScreen() {
               <Text style={styles.copy}>{t("inventory.detail.movements.empty")}</Text>
             ) : (
               <View style={styles.movementList}>
-                {movements.map((movement) => (
+                {movements.map((movement) => {
+                  const movementNote = movementNoteText(movement.metadata);
+                  return (
                   <View key={movement.id} style={styles.movementRow}>
                     <View style={styles.movementCopy}>
                       <Text style={styles.movementReason}>{movementReasonLabel(t, movement.reason)}</Text>
@@ -485,12 +520,14 @@ export default function InventoryDetailScreen() {
                           unit: item.unit
                         })}
                       </Text>
+                      {movementNote ? <Text style={styles.movementNote}>{movementNote}</Text> : null}
                     </View>
                     <Text style={styles.movementWhen} accessibilityLabel={formatDate(movement.created_at, { dateStyle: "medium", timeStyle: "short" })}>
                       {formatRelativeTime(movement.created_at)}
                     </Text>
                   </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </Card>
@@ -538,6 +575,7 @@ interface InventoryFieldErrors {
   currentQuantity?: string;
   parLevel?: string;
   reorderThreshold?: string;
+  correctionNote?: string;
   wasteQuantity?: string;
   wasteNote?: string;
 }
@@ -555,6 +593,14 @@ const movementReasonKeys: Record<InventoryMovementReason, MessageKey> = {
 
 function movementReasonLabel(t: ReturnType<typeof useLocale>["t"], reason: InventoryMovementReason) {
   return t(movementReasonKeys[reason] ?? "inventory.detail.movements.systemAdjustment");
+}
+
+function movementNoteText(metadata: InventoryMovement["metadata"] | null | undefined) {
+  if (!metadata || typeof metadata !== "object") return null;
+  const note = (metadata as Record<string, unknown>).note;
+  if (typeof note !== "string") return null;
+  const trimmed = note.trim();
+  return trimmed || null;
 }
 
 function validateInventoryNumber(
@@ -788,6 +834,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     fontWeight: "700"
+  },
+  movementNote: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "600",
+    marginTop: 2
   },
   movementWhen: {
     color: colors.faint,

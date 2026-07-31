@@ -351,9 +351,15 @@ test("manual CSV POS ingest is service-owned, bounded, and keeps live sync fail-
 test("inventory counts and regenerated guidance commit through one optimistic workflow", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const detail = readFileSync("app/inventory/[id].tsx", "utf8");
   const migration = readFileSync("supabase/migrations/20260714183310_secure_operational_workflows.sql", "utf8");
   const correctionMigration = readFileSync(
     "supabase/migrations/20260731080000_manager_correction_ledger_reason.sql",
+    "utf8"
+  );
+  const correctionNoteMigration = readFileSync(
+    "supabase/migrations/20260731090000_manager_correction_optional_note.sql",
     "utf8"
   );
   const updateWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+updateInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
@@ -362,16 +368,33 @@ test("inventory counts and regenerated guidance commit through one optimistic wo
     hostedRepository.match(
       /async updateInventoryItem\([\s\S]*?\n\s*\},[\s\S]*?async updateInventoryItemAndSignals/
     )?.[0] ?? "";
+  const hostedRecipeUpdate =
+    hostedRepository.match(/async updateMenuItemIngredientQuantity[\s\S]*?\n\s*\},/)?.[0] ?? "";
+  const hostedRecipeUpsert =
+    hostedRepository.match(/async upsertMenuItemIngredient[\s\S]*?\n\s*\},/)?.[0] ?? "";
+  const hostedSetupAttachment =
+    hostedRepository.match(/async createSetupAttachment[\s\S]*?\n\s*\},/)?.[0] ?? "";
 
   assert.match(updateWorkflow, /fetchPlanningData[\s\S]*fetchPurchaseRecommendations/i);
   assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);
-  assert.match(updateWorkflow, /updateInventoryItemAndSignals\([\s\S]*existing\.last_updated/i);
+  assert.match(updateWorkflow, /requireManagerCorrectionNote/);
+  assert.match(updateWorkflow, /updateInventoryItemAndSignals\([\s\S]*existing\.last_updated[\s\S]*normalizedNote/i);
   assert.doesNotMatch(updateWorkflow, /repository\.updateInventoryItem\(/i);
   assert.match(repository, /action:\s*"update_inventory"/i);
   assert.match(repository, /functions\.invoke\("operational-workflows"/i);
+  assert.match(repository, /buildManagerCorrectionMetadata/);
   assert.match(hostedUpdateMethod, /Direct inventory updates are disabled/i);
   assert.doesNotMatch(hostedUpdateMethod, /\.from\(\s*["']inventory_items["']\s*\)\s*\.update/i);
   assert.doesNotMatch(hostedRepository, /\.from\(\s*["']inventory_items["']\s*\)\s*\.update/i);
+  assert.match(hostedRecipeUpdate, /Direct recipe mapping updates are disabled/i);
+  assert.match(hostedRecipeUpsert, /Direct recipe mapping writes are disabled/i);
+  assert.match(hostedSetupAttachment, /Direct setup attachment writes are disabled/i);
+  assert.doesNotMatch(hostedRecipeUpdate, /\.from\(\s*["']menu_item_ingredients["']\s*\)\s*\.update/i);
+  assert.doesNotMatch(hostedRecipeUpsert, /\.from\(\s*["']menu_item_ingredients["']\s*\)\s*\.upsert/i);
+  assert.doesNotMatch(hostedSetupAttachment, /\.from\(\s*["']setup_attachments["']\s*\)\s*\.insert/i);
+  assert.match(edge, /action === "update_inventory"[\s\S]*requireBoundedString\(body\.note,\s*"note",\s*240\)/);
+  assert.match(detail, /inventory\.detail\.correctionNote/);
+  assert.match(detail, /movementNoteText/);
   assert.match(migration, /create\s+or\s+replace\s+function\s+private\.service_update_inventory_and_signals/i);
   assert.match(migration, /planning_revision[\s\S]*p_expected_revision/i);
   assert.match(migration, /update\s+public\.inventory_items[\s\S]*commit_operational_signals/i);
@@ -383,6 +406,9 @@ test("inventory counts and regenerated guidance commit through one optimistic wo
     correctionMigration.match(/insert into public\.inventory_movements[\s\S]*?;/i)?.[0] ?? "",
     /'manual_count'/i
   );
+  assert.match(correctionNoteMigration, /safe_patch := safe_patch - 'note'/i);
+  assert.match(correctionNoteMigration, /jsonb_build_object\('note',\s*safe_note\)/i);
+  assert.match(correctionNoteMigration, /Correction note is outside supported limits/i);
 });
 
 test("supplier order receiving is service-owned, ledgered, and distinct from Gmail mark-sent", () => {

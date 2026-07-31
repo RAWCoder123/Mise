@@ -238,12 +238,16 @@ async function refreshWithRetry(
       }));
 
       if (action === "update_inventory") {
+        const patch = requireInventoryPatch(body.patch);
+        const note = body.note == null || body.note === ""
+          ? null
+          : requireBoundedString(body.note, "note", 240);
         return await serviceRpc(securitySupabase, "service_update_inventory_and_signals", {
           p_actor_user_id: actorUserId,
           p_restaurant_id: restaurantId,
           p_inventory_item_id: requireUuid(body.itemId, "itemId"),
           p_expected_revision: revision,
-          p_patch: requireInventoryPatch(body.patch),
+          p_patch: note ? { ...patch, note } : patch,
           p_recommendations: recommendations,
           p_insights: insights
         });
@@ -820,6 +824,12 @@ function auditMetadata(
   if (typeof row.item_name === "string") metadata.item_name = row.item_name;
   if (action === "update_inventory" && body.patch && typeof body.patch === "object") {
     metadata.patch_fields = Object.keys(body.patch as Record<string, unknown>);
+  }
+  if (action === "update_inventory" && typeof body.note === "string" && body.note.trim()) {
+    metadata.note = body.note.trim().slice(0, 240);
+  }
+  if (action === "update_inventory" && typeof row.note === "string" && row.note.trim()) {
+    metadata.note = row.note.trim().slice(0, 240);
   }
   if (action === "record_waste" && typeof body.quantityRemoved === "number") {
     metadata.quantity_removed = body.quantityRemoved;

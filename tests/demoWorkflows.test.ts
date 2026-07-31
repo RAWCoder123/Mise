@@ -383,7 +383,11 @@ test("demo inventory quantity changes append an auditable manager_correction mov
       quantity_after: after,
       delta: after - before,
       source_workflow: "update_inventory",
-      metadata: {},
+      metadata: {
+        par_level: item.par_level,
+        reorder_threshold: item.reorder_threshold,
+        note: "Cycle count fix"
+      },
       created_at: FIXED_NOW.toISOString()
     },
     ...state.inventoryMovements
@@ -394,6 +398,7 @@ test("demo inventory quantity changes append an auditable manager_correction mov
   assert.equal(state.inventoryMovements[0]?.quantity_after, after);
   assert.equal(state.inventoryMovements[0]?.reason, "manager_correction");
   assert.equal(state.inventoryMovements[0]?.source_workflow, "update_inventory");
+  assert.equal(state.inventoryMovements[0]?.metadata.note, "Cycle count fix");
 });
 
 test("demo waste recording deducts on-hand stock with a waste ledger reason", () => {

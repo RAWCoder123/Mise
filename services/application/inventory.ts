@@ -25,6 +25,7 @@ import {
   requireInventoryItemPatch,
   requireInventoryWasteNote,
   requireInventoryWasteQuantity,
+  requireManagerCorrectionNote,
   requireRecipeBaselineQuantity
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
@@ -315,8 +316,14 @@ export async function createInventoryItem(restaurantId: string, input: Inventory
   );
 }
 
-export async function updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch) {
+export async function updateInventoryItem(
+  restaurantId: string,
+  itemId: string,
+  patch: InventoryItemPatch,
+  note?: string | null
+) {
   const normalizedPatch = requireInventoryItemPatch(patch);
+  const normalizedNote = requireManagerCorrectionNote(note);
   const [data, recommendationHistory] = await Promise.all([
     repository.fetchPlanningData(restaurantId),
     repository.fetchPurchaseRecommendations(restaurantId, "all")
@@ -352,7 +359,8 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     existing.last_updated,
     normalizedPatch,
     recommendations,
-    insights
+    insights,
+    normalizedNote
   );
 }
 

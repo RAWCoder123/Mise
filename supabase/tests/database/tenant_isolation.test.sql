@@ -1113,6 +1113,34 @@ select is(
 
 set local role service_role;
 select lives_ok(
+  $sql$select public.service_update_inventory_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '{"current_quantity":40,"note":"Cycle count fix"}'::jsonb,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$,
+  'trusted workflow accepts optional manager correction notes in the inventory patch'
+);
+reset role;
+select is(
+  (select metadata->>'note' from public.inventory_movements where inventory_item_id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa' order by created_at desc limit 1),
+  'Cycle count fix',
+  'manager correction movement stores the optional note in metadata'
+);
+select is(
+  (select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  40::numeric,
+  'noted manager correction still persists the quantity change'
+);
+
+set local role service_role;
+select lives_ok(
   $sql$select public.service_record_inventory_waste_and_signals(
     '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -1131,7 +1159,7 @@ select lives_ok(
 reset role;
 select is(
   (select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
-  37::numeric,
+  35::numeric,
   'waste recording deducts on-hand stock'
 );
 select is(
