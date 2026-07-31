@@ -270,7 +270,7 @@ test("demo-state repair retains history, deduplicates pending rows, and restores
   const pending = repaired.state.purchaseRecommendations.find((entry) => entry.status === "pending");
 
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 5);
+  assert.equal(repaired.state.schema_version, 6);
   assert.ok(Array.isArray(repaired.state.inventoryMovements));
   assert.ok(Array.isArray(repaired.state.inventoryCountSessions));
   assert.ok(Array.isArray(repaired.state.memberships));
@@ -340,7 +340,7 @@ test("demo-state repair links histories only to compatible tenant order lanes", 
 
 test("demo seed includes a multi-role team roster", () => {
   const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
-  assert.equal(state.schema_version, 5);
+  assert.equal(state.schema_version, 6);
   assert.equal(state.memberships.length, 3);
   assert.deepEqual(
     state.memberships.map((membership) => membership.role).sort(),
@@ -439,12 +439,12 @@ test("demo waste recording deducts on-hand stock with a waste ledger reason", ()
 
 test("demo state seeds empty inventory count sessions and migrates older stores", () => {
   const seed = createInitialDemoState("Toast", undefined, FIXED_NOW);
-  assert.equal(seed.schema_version, 5);
+  assert.equal(seed.schema_version, 6);
   assert.deepEqual(seed.inventoryCountSessions, []);
 
   const { inventoryCountSessions: _ignored, schema_version: _version, ...legacy } = seed;
   const repaired = repairDemoState({ ...legacy, schema_version: 4 });
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 5);
+  assert.equal(repaired.state.schema_version, 6);
   assert.ok(Array.isArray(repaired.state.inventoryCountSessions));
 });
