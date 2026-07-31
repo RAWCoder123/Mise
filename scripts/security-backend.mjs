@@ -37,7 +37,8 @@ const serviceOnlyPublicTables = new Set([
   "outreach_events",
   "outreach_leads",
   "outreach_messages",
-  "outreach_suppressions"
+  "outreach_suppressions",
+  "restaurant_member_invites"
 ]);
 const edgeFunctionNames = ["sync-pos-sales", "generate-ai-insights", "link-gmail", "send-supplier-email", "operational-workflows"];
 const userScopedEdgeFunctionNames = ["request-account-deletion"];
