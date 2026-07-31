@@ -7,6 +7,7 @@ import {
   shouldSuppressRecommendationForItem
 } from "../domain/miseDomain";
 import { planInventoryWaste } from "../domain/inventoryWaste";
+import { planInventoryTransfer, planStorageLocationCreate } from "../domain/inventoryTransfer";
 import {
   assertInventoryItemCreateCapacity,
   findDuplicateInventoryItemName,
@@ -23,10 +24,13 @@ import {
   requireInventoryCountSessionNote,
   requireInventoryItemCreateInput,
   requireInventoryItemPatch,
+  requireInventoryTransferNote,
+  requireInventoryTransferQuantity,
   requireInventoryWasteNote,
   requireInventoryWasteQuantity,
   requireManagerCorrectionNote,
-  requireRecipeBaselineQuantity
+  requireRecipeBaselineQuantity,
+  requireStorageLocationName
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
 import { getMiseRepository } from "./repository";
@@ -497,5 +501,59 @@ export async function recordInventoryWaste(
     normalizedNote,
     recommendations,
     insights
+  );
+}
+
+export async function fetchStorageLocations(restaurantId: string) {
+  return repository.fetchStorageLocations(restaurantId);
+}
+
+export async function createStorageLocation(restaurantId: string, name: string) {
+  const planned = planStorageLocationCreate({ name: requireStorageLocationName(name) });
+  return repository.createStorageLocation(restaurantId, planned.name);
+}
+
+export async function fetchInventoryLocationBalances(restaurantId: string, itemId: string) {
+  return repository.fetchInventoryLocationBalances(restaurantId, itemId);
+}
+
+export async function transferInventory(
+  restaurantId: string,
+  itemId: string,
+  fromStorageLocationId: string,
+  toStorageLocationId: string,
+  quantity: number,
+  note?: string | null
+) {
+  const normalizedQuantity = requireInventoryTransferQuantity(quantity);
+  const normalizedNote = requireInventoryTransferNote(note);
+  const [itemOutlook, locations, balances] = await Promise.all([
+    fetchInventoryItemOutlook(restaurantId, itemId),
+    repository.fetchStorageLocations(restaurantId),
+    repository.fetchInventoryLocationBalances(restaurantId, itemId)
+  ]);
+  const main = locations.find((location) => location.name.toLowerCase() === "main") ?? locations[0];
+  if (!main) {
+    throw new Error("Create a storage location before transferring stock.");
+  }
+  planInventoryTransfer({
+    onHandQuantity: itemOutlook.item.current_quantity,
+    balances: balances.map((balance) => ({
+      storageLocationId: balance.storage_location_id,
+      quantity: balance.quantity
+    })),
+    fromStorageLocationId,
+    toStorageLocationId,
+    quantity: normalizedQuantity,
+    note: normalizedNote,
+    mainStorageLocationId: main.id
+  });
+  return repository.transferInventory(
+    restaurantId,
+    itemId,
+    fromStorageLocationId,
+    toStorageLocationId,
+    normalizedQuantity,
+    normalizedNote
   );
 }

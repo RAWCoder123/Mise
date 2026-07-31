@@ -24,6 +24,7 @@ const actions = [
   "update_inventory",
   "create_inventory_item",
   "record_waste",
+  "transfer_inventory",
   "receive_supplier_order",
   "upsert_recipe",
   "delete_recipe",
@@ -43,14 +44,15 @@ const countSessionDraftActions = new Set<OperationalAction>([
   "cancel_count_session"
 ]);
 /**
- * Staff may draft/submit counts and record observed waste.
- * Approve/cancel counts and other mutations stay manager+.
+ * Staff may draft/submit counts, record observed waste, and transfer stock
+ * between storage locations. Approve/cancel counts and other mutations stay manager+.
  */
 const staffOperationalActions = new Set<OperationalAction>([
   "begin_count_session",
   "save_count_lines",
   "submit_count_session",
-  "record_waste"
+  "record_waste",
+  "transfer_inventory"
 ]);
 
 Deno.serve(async (req) => {
@@ -145,6 +147,16 @@ Deno.serve(async (req) => {
         false,
         requireRecord(ingestSummary, "ingest summary")
       );
+    } else if (action === "transfer_inventory") {
+      result = await serviceRpc(securitySupabase, "service_transfer_inventory", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_inventory_item_id: requireUuid(body.itemId, "itemId"),
+        p_from_storage_location_id: requireUuid(body.fromStorageLocationId, "fromStorageLocationId"),
+        p_to_storage_location_id: requireUuid(body.toStorageLocationId, "toStorageLocationId"),
+        p_quantity: requireBoundedNumber(body.quantity, "quantity", Number.EPSILON, 1_000_000),
+        p_note: body.note == null ? null : requireBoundedString(body.note, "note", 240)
+      });
     } else if (countSessionDraftActions.has(action)) {
       result = await runCountSessionDraftAction(securitySupabase, user.id, restaurantId, action, body);
     } else {
@@ -712,6 +724,7 @@ function auditAction(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_updated";
   if (action === "create_inventory_item") return "inventory_item_created";
   if (action === "record_waste") return "inventory_waste_recorded";
+  if (action === "transfer_inventory") return "inventory_transfer_recorded";
   if (action === "receive_supplier_order") return "supplier_order_received";
   if (action === "begin_count_session") return "inventory_count_session_started";
   if (action === "save_count_lines") return "inventory_count_lines_saved";
@@ -726,7 +739,12 @@ function auditAction(action: OperationalAction) {
 }
 
 function auditEntityTable(action: OperationalAction) {
-  if (action === "update_inventory" || action === "create_inventory_item" || action === "record_waste") {
+  if (
+    action === "update_inventory" ||
+    action === "create_inventory_item" ||
+    action === "record_waste" ||
+    action === "transfer_inventory"
+  ) {
     return "inventory_items";
   }
   if (action === "receive_supplier_order") return "supplier_orders";
@@ -745,7 +763,9 @@ function auditEntityTable(action: OperationalAction) {
 }
 
 function auditEntityId(action: OperationalAction, body: Record<string, unknown>, result: unknown = null) {
-  if (action === "update_inventory" || action === "record_waste") return requireUuid(body.itemId, "itemId");
+  if (action === "update_inventory" || action === "record_waste" || action === "transfer_inventory") {
+    return requireUuid(body.itemId, "itemId");
+  }
   if (action === "create_inventory_item") {
     if (result && typeof result === "object" && typeof (result as { id?: unknown }).id === "string") {
       return requireUuid((result as { id: string }).id, "result.id");
@@ -807,7 +827,12 @@ function auditMetadata(
     return metadata;
   }
   if (
-    (action !== "update_inventory" && action !== "create_inventory_item" && action !== "record_waste") ||
+    (
+      action !== "update_inventory" &&
+      action !== "create_inventory_item" &&
+      action !== "record_waste" &&
+      action !== "transfer_inventory"
+    ) ||
     !result ||
     typeof result !== "object"
   ) {
@@ -837,6 +862,18 @@ function auditMetadata(
   }
   if (action === "record_waste" && typeof body.quantityRemoved === "number") {
     metadata.quantity_removed = body.quantityRemoved;
+  }
+  if (action === "transfer_inventory") {
+    if (typeof row.quantity_moved === "number") metadata.quantity_moved = row.quantity_moved;
+    if (typeof row.from_storage_location_id === "string") {
+      metadata.from_storage_location_id = row.from_storage_location_id;
+    }
+    if (typeof row.to_storage_location_id === "string") {
+      metadata.to_storage_location_id = row.to_storage_location_id;
+    }
+    if (typeof body.note === "string" && body.note.trim()) {
+      metadata.note = body.note.trim().slice(0, 240);
+    }
   }
   return metadata;
 }

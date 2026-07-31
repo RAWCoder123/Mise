@@ -9,8 +9,10 @@ import type {
   InventoryCountSessionDetail,
   InventoryItem,
   InventoryItemPatch,
+  InventoryLocationBalance,
   InventoryMovement,
   MenuItemIngredient,
+  StorageLocation,
   MenuItemIngredientInput,
   PosIntegration,
   PosProvider,
@@ -91,6 +93,12 @@ import {
   listDemoMemberInvites,
   revokeDemoMemberInvite
 } from "../demo/memberInvites";
+import {
+  createDemoStorageLocation,
+  listDemoInventoryLocationBalances,
+  listDemoStorageLocations,
+  transferDemoInventory
+} from "../demo/storageLocations";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
 import {
   normalizeAppUser,
@@ -100,8 +108,10 @@ import {
   normalizeRestaurantEmailConnection,
   normalizeInventoryCountSessionDetail,
   normalizeInventoryItem,
+  normalizeInventoryLocationBalance,
   normalizeInventoryMovement,
   normalizeMenuItemIngredient,
+  normalizeStorageLocation,
   normalizePosIntegration,
   normalizePosSale,
   normalizePurchaseRecommendation,
@@ -343,6 +353,20 @@ export interface MiseRepository {
     note: string | null,
     recommendations: PurchaseRecommendationInput[],
     insights: Insight[]
+  ): Promise<InventoryItem>;
+  fetchStorageLocations(restaurantId: string): Promise<StorageLocation[]>;
+  createStorageLocation(restaurantId: string, name: string): Promise<StorageLocation>;
+  fetchInventoryLocationBalances(
+    restaurantId: string,
+    itemId: string
+  ): Promise<InventoryLocationBalance[]>;
+  transferInventory(
+    restaurantId: string,
+    itemId: string,
+    fromStorageLocationId: string,
+    toStorageLocationId: string,
+    quantity: number,
+    note: string | null
   ): Promise<InventoryItem>;
   fetchInventoryMovements(restaurantId: string, itemId: string, limit?: number): Promise<InventoryMovement[]>;
   fetchOpenInventoryCountSession(restaurantId: string): Promise<InventoryCountSessionDetail | null>;
@@ -1519,6 +1543,53 @@ function createLocalDemoRepository(): MiseRepository {
           ...insights
         ];
         return normalizeInventoryItem(item);
+      });
+    },
+
+    async fetchStorageLocations(restaurantId) {
+      return mutateDemoState((state) =>
+        listDemoStorageLocations(state, restaurantId).map(normalizeStorageLocation)
+      );
+    },
+
+    async createStorageLocation(restaurantId, name) {
+      return mutateDemoState((state) =>
+        normalizeStorageLocation(createDemoStorageLocation(state, restaurantId, name))
+      );
+    },
+
+    async fetchInventoryLocationBalances(restaurantId, itemId) {
+      const state = await readReadyDemoState(restaurantId);
+      return listDemoInventoryLocationBalances(state, restaurantId, itemId).map(
+        normalizeInventoryLocationBalance
+      );
+    },
+
+    async transferInventory(
+      restaurantId,
+      itemId,
+      fromStorageLocationId,
+      toStorageLocationId,
+      quantity,
+      note
+    ) {
+      return mutateDemoState((state) => {
+        const item = state.inventoryItems.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === itemId
+        );
+        if (!item) throw new Error("Inventory item not found");
+        return normalizeInventoryItem(
+          transferDemoInventory({
+            state,
+            restaurantId,
+            item,
+            fromStorageLocationId,
+            toStorageLocationId,
+            quantity,
+            note,
+            appendMovement: (movementInput) => appendDemoInventoryMovement(state, movementInput)
+          })
+        );
       });
     },
 
@@ -2906,6 +2977,54 @@ function createSupabaseRepository(): MiseRepository {
         restaurantId,
         itemId,
         quantityRemoved,
+        note
+      });
+      return normalizeInventoryItem(response.result as InventoryItem);
+    },
+
+    async fetchStorageLocations(restaurantId) {
+      const { data, error } = await client.rpc("ensure_restaurant_storage_locations", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throw error;
+      return ((data ?? []) as StorageLocation[]).map(normalizeStorageLocation);
+    },
+
+    async createStorageLocation(restaurantId, name) {
+      const { data, error } = await client.rpc("create_storage_location", {
+        p_restaurant_id: restaurantId,
+        p_name: name
+      });
+      if (error) throw error;
+      return normalizeStorageLocation(data as StorageLocation);
+    },
+
+    async fetchInventoryLocationBalances(restaurantId, itemId) {
+      const { data, error } = await client
+        .from("inventory_location_balances")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_item_id", itemId)
+        .order("storage_location_id", { ascending: true });
+      if (error) throw error;
+      return ((data ?? []) as InventoryLocationBalance[]).map(normalizeInventoryLocationBalance);
+    },
+
+    async transferInventory(
+      restaurantId,
+      itemId,
+      fromStorageLocationId,
+      toStorageLocationId,
+      quantity,
+      note
+    ) {
+      const response = await invokeOperationalWorkflow({
+        action: "transfer_inventory",
+        restaurantId,
+        itemId,
+        fromStorageLocationId,
+        toStorageLocationId,
+        quantity,
         note
       });
       return normalizeInventoryItem(response.result as InventoryItem);

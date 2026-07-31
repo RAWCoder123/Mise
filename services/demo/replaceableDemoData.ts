@@ -5,6 +5,7 @@ import type {
   Insight,
   InventoryCountSessionDetail,
   InventoryItem,
+  InventoryLocationBalance,
   InventoryMovement,
   MenuItemIngredient,
   PosIntegration,
@@ -16,6 +17,7 @@ import type {
   RestaurantEmailConnection,
   RestaurantMembership,
   SalesImport,
+  StorageLocation,
   SupplierItem,
   SupplierOrder,
   SupplierRecipient
@@ -60,7 +62,7 @@ export interface DemoMemberInviteRecord {
 }
 
 export interface DemoState {
-  schema_version: 6;
+  schema_version: 7;
   restaurants: Restaurant[];
   users: AppUser[];
   memberships: RestaurantMembership[];
@@ -69,6 +71,8 @@ export interface DemoState {
   inventoryItems: InventoryItem[];
   inventoryMovements: InventoryMovement[];
   inventoryCountSessions: InventoryCountSessionDetail[];
+  storageLocations: StorageLocation[];
+  inventoryLocationBalances: InventoryLocationBalance[];
   menuItemIngredients: MenuItemIngredient[];
   purchaseRecommendations: PurchaseRecommendation[];
   supplierOrders: SupplierOrder[];
@@ -320,8 +324,38 @@ export function createInitialDemoState(
     sale("00000000-0000-4000-8000-000000000305", today, "Pancakes", "Breakfast", 24, 288, provider ?? "Demo POS", now)
   ];
 
+  const storageLocations: StorageLocation[] = [
+    {
+      id: "00000000-0000-4000-8000-000000000701",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      name: "Main",
+      sort_order: 0,
+      is_active: true,
+      created_at: now,
+      updated_at: now
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000702",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      name: "Walk-in",
+      sort_order: 10,
+      is_active: true,
+      created_at: now,
+      updated_at: now
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000703",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      name: "Line",
+      sort_order: 20,
+      is_active: true,
+      created_at: now,
+      updated_at: now
+    }
+  ];
+
   const state: DemoState = {
-    schema_version: 6,
+    schema_version: 7,
     restaurants: [restaurant],
     users: [user, managerUser, staffUser],
     memberships,
@@ -330,6 +364,8 @@ export function createInitialDemoState(
     inventoryItems,
     inventoryMovements: [],
     inventoryCountSessions: [],
+    storageLocations,
+    inventoryLocationBalances: [],
     menuItemIngredients,
     purchaseRecommendations: [
       {
@@ -562,7 +598,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 6,
+    schema_version: 7,
     restaurants,
     users,
     memberships,
@@ -573,6 +609,10 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     inventoryCountSessions: Array.isArray(raw.inventoryCountSessions)
       ? raw.inventoryCountSessions
       : seeded.inventoryCountSessions,
+    storageLocations: Array.isArray(raw.storageLocations) ? raw.storageLocations : seeded.storageLocations,
+    inventoryLocationBalances: Array.isArray(raw.inventoryLocationBalances)
+      ? raw.inventoryLocationBalances
+      : seeded.inventoryLocationBalances,
     menuItemIngredients: raw.menuItemIngredients ?? seeded.menuItemIngredients,
     purchaseRecommendations,
     supplierOrders,
@@ -593,12 +633,14 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 6 ||
+      raw.schema_version !== 7 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
       !Array.isArray(raw.inventoryMovements) ||
       !Array.isArray(raw.inventoryCountSessions) ||
+      !Array.isArray(raw.storageLocations) ||
+      !Array.isArray(raw.inventoryLocationBalances) ||
       !Array.isArray(raw.memberships) ||
       !Array.isArray(raw.memberInvites) ||
       (raw.memberships?.length ?? 0) === 0
