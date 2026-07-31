@@ -15,6 +15,7 @@ import {
 } from "../services/domain/teamMembership.ts";
 import {
   canManageTeamForRestaurant,
+  canViewMemberInvitesForRestaurant,
   canViewTeamForRestaurant
 } from "../services/tenantAccess.ts";
 import type { RestaurantMembership } from "../types/mise.ts";
@@ -58,9 +59,22 @@ test("team role hierarchy mirrors RPC authority", () => {
 test("tenant helpers gate team screens by active membership role", () => {
   assert.equal(canViewTeamForRestaurant([membership("manager")], "restaurant_a"), true);
   assert.equal(canManageTeamForRestaurant([membership("manager")], "restaurant_a"), false);
+  assert.equal(canViewMemberInvitesForRestaurant([membership("manager")], "restaurant_a"), true);
   assert.equal(canManageTeamForRestaurant([membership("owner")], "restaurant_a"), true);
+  assert.equal(canViewMemberInvitesForRestaurant([membership("owner")], "restaurant_a"), true);
   assert.equal(canViewTeamForRestaurant([membership("staff")], "restaurant_a"), false);
+  assert.equal(canViewMemberInvitesForRestaurant([membership("staff")], "restaurant_a"), false);
   assert.equal(canViewTeamForRestaurant([membership("owner", "disabled")], "restaurant_a"), false);
+  assert.equal(canViewMemberInvitesForRestaurant([membership("owner", "disabled")], "restaurant_a"), false);
+});
+
+test("team settings screen loads pending invites for managers without revoke controls", () => {
+  const screen = readFileSync("app/settings/team.tsx", "utf8");
+  assert.match(screen, /canViewMemberInvitesForRestaurant/);
+  assert.match(screen, /canViewInvites \? fetchRestaurantMemberInvites/);
+  assert.match(screen, /pendingInvitesReadOnlyBody/);
+  assert.match(screen, /canActorRevokeMemberInvite\(role, invite\.role\)/);
+  assert.doesNotMatch(screen, /canManage \? fetchRestaurantMemberInvites/);
 });
 
 test("team member sorting prefers owners then active status", () => {

@@ -34,8 +34,16 @@ import {
   rolesAssignableBy,
   type AssignableRestaurantRole
 } from "../../services/domain/teamMembership";
-import { buildInviteClaimPath, isInvitePending } from "../../services/domain/teamInvites";
-import { canManageTeamForRestaurant, canViewTeamForRestaurant } from "../../services/tenantAccess";
+import {
+  buildInviteClaimPath,
+  canActorRevokeMemberInvite,
+  isInvitePending
+} from "../../services/domain/teamInvites";
+import {
+  canManageTeamForRestaurant,
+  canViewMemberInvitesForRestaurant,
+  canViewTeamForRestaurant
+} from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type { CreatedRestaurantMemberInvite, RestaurantMemberInvite, RestaurantRole, RestaurantTeamMember } from "../../types/mise";
 
@@ -60,6 +68,7 @@ export default function TeamSettingsScreen() {
 
   const canView = canViewTeamForRestaurant(memberships, restaurant?.id);
   const canManage = canManageTeamForRestaurant(memberships, restaurant?.id);
+  const canViewInvites = canViewMemberInvitesForRestaurant(memberships, restaurant?.id);
   const assignableRoles = useMemo(() => rolesAssignableBy(role), [role]);
 
   useEffect(() => {
@@ -81,7 +90,7 @@ export default function TeamSettingsScreen() {
     try {
       const [nextMembers, nextInvites] = await Promise.all([
         fetchRestaurantTeamMembers(restaurantId),
-        canManage ? fetchRestaurantMemberInvites(restaurantId) : Promise.resolve([])
+        canViewInvites ? fetchRestaurantMemberInvites(restaurantId) : Promise.resolve([])
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setMembers(nextMembers);
@@ -96,7 +105,7 @@ export default function TeamSettingsScreen() {
         setLoading(false);
       }
     }
-  }, [canManage, canView, restaurant?.id]);
+  }, [canView, canViewInvites, restaurant?.id]);
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -397,126 +406,133 @@ export default function TeamSettingsScreen() {
             </SectionSurface>
 
             {canManage ? (
-              <>
-                <SectionSurface>
-                  <View style={styles.sectionHeading}>
-                    <IconBadge tone="brand">
-                      <Link2 size={20} color={colors.accentDark} strokeWidth={2.25} />
-                    </IconBadge>
-                    <View style={styles.sectionCopy}>
-                      <Text style={styles.sectionTitle}>{t("settings.team.shareInviteTitle")}</Text>
-                      <Text style={styles.sectionBody}>{t("settings.team.shareInviteBody")}</Text>
-                    </View>
+              <SectionSurface>
+                <View style={styles.sectionHeading}>
+                  <IconBadge tone="brand">
+                    <Link2 size={20} color={colors.accentDark} strokeWidth={2.25} />
+                  </IconBadge>
+                  <View style={styles.sectionCopy}>
+                    <Text style={styles.sectionTitle}>{t("settings.team.shareInviteTitle")}</Text>
+                    <Text style={styles.sectionBody}>{t("settings.team.shareInviteBody")}</Text>
                   </View>
+                </View>
 
-                  <Text style={styles.label}>{t("settings.team.emailLabel")}</Text>
-                  <TextInput
-                    accessibilityLabel={t("settings.team.emailLabel")}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="email-address"
-                    placeholder={t("settings.team.emailPlaceholder")}
-                    placeholderTextColor={colors.muted}
-                    style={styles.input}
-                    value={inviteEmail}
-                    onChangeText={setInviteEmail}
+                <Text style={styles.label}>{t("settings.team.emailLabel")}</Text>
+                <TextInput
+                  accessibilityLabel={t("settings.team.emailLabel")}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  placeholder={t("settings.team.emailPlaceholder")}
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                  value={inviteEmail}
+                  onChangeText={setInviteEmail}
+                />
+
+                {assignableRoles.length > 0 ? (
+                  <SegmentedControl
+                    accessibilityLabel={t("settings.team.inviteRoleAccessibility")}
+                    options={assignableRoles.map((entry) => ({
+                      value: entry,
+                      label: roleLabel(entry, t)
+                    }))}
+                    value={inviteRole}
+                    onValueChange={setInviteRole}
+                    variant="pills"
+                    scrollable
+                    style={styles.roleControl}
                   />
+                ) : null}
 
-                  {assignableRoles.length > 0 ? (
-                    <SegmentedControl
-                      accessibilityLabel={t("settings.team.inviteRoleAccessibility")}
-                      options={assignableRoles.map((entry) => ({
-                        value: entry,
-                        label: roleLabel(entry, t)
-                      }))}
-                      value={inviteRole}
-                      onValueChange={setInviteRole}
-                      variant="pills"
-                      scrollable
-                      style={styles.roleControl}
-                    />
-                  ) : null}
+                <View style={styles.actionRow}>
+                  <Button
+                    title={t(
+                      busyKey === "create-invite" ? "settings.team.creatingInvite" : "settings.team.createInvite"
+                    )}
+                    icon={<Link2 size={18} color={colors.surface} strokeWidth={2.25} />}
+                    onPress={() => void createInviteLink()}
+                    disabled={Boolean(busyKey) || assignableRoles.length === 0}
+                  />
+                  <Button
+                    title={t(busyKey === "add" ? "settings.team.adding" : "settings.team.add")}
+                    icon={<UserPlus size={18} color={colors.text} strokeWidth={2.25} />}
+                    variant="secondary"
+                    onPress={() => void addExistingMember()}
+                    disabled={Boolean(busyKey) || assignableRoles.length === 0}
+                  />
+                </View>
+                <Text style={styles.helper}>{t("settings.team.inviteHelper")}</Text>
 
-                  <View style={styles.actionRow}>
+                {createdInvite ? (
+                  <View style={styles.createdInvite}>
+                    <Text style={styles.memberName}>{t("settings.team.createdInviteTitle")}</Text>
+                    <Text style={styles.memberEmail}>{createdInvite.email}</Text>
+                    <Text style={styles.path}>{buildInviteClaimPath(createdInvite.claim_token)}</Text>
                     <Button
-                      title={t(
-                        busyKey === "create-invite" ? "settings.team.creatingInvite" : "settings.team.createInvite"
+                      title={t("settings.team.copyInvite")}
+                      icon={<Copy size={18} color={colors.surface} strokeWidth={2.25} />}
+                      onPress={() => void copyCreatedInvite()}
+                      fullWidth
+                    />
+                    <Text style={styles.helper}>{t("settings.team.createdInviteHelper")}</Text>
+                  </View>
+                ) : null}
+              </SectionSurface>
+            ) : (
+              <Pressable accessibilityRole="text" style={styles.readOnlyNote}>
+                <Text style={styles.helper}>{t("settings.team.readOnlyHelper")}</Text>
+              </Pressable>
+            )}
+
+            {canViewInvites ? (
+              <SectionSurface>
+                <View style={styles.sectionHeading}>
+                  <IconBadge tone="neutral">
+                    <UserPlus size={20} color={colors.text} strokeWidth={2.25} />
+                  </IconBadge>
+                  <View style={styles.sectionCopy}>
+                    <Text style={styles.sectionTitle}>{t("settings.team.pendingInvitesTitle")}</Text>
+                    <Text style={styles.sectionBody}>
+                      {t(
+                        canManage
+                          ? "settings.team.pendingInvitesBody"
+                          : "settings.team.pendingInvitesReadOnlyBody",
+                        { count: formatNumber(pendingInvites.length) }
                       )}
-                      icon={<Link2 size={18} color={colors.surface} strokeWidth={2.25} />}
-                      onPress={() => void createInviteLink()}
-                      disabled={Boolean(busyKey) || assignableRoles.length === 0}
-                    />
-                    <Button
-                      title={t(busyKey === "add" ? "settings.team.adding" : "settings.team.add")}
-                      icon={<UserPlus size={18} color={colors.text} strokeWidth={2.25} />}
-                      variant="secondary"
-                      onPress={() => void addExistingMember()}
-                      disabled={Boolean(busyKey) || assignableRoles.length === 0}
-                    />
+                    </Text>
                   </View>
-                  <Text style={styles.helper}>{t("settings.team.inviteHelper")}</Text>
+                </View>
 
-                  {createdInvite ? (
-                    <View style={styles.createdInvite}>
-                      <Text style={styles.memberName}>{t("settings.team.createdInviteTitle")}</Text>
-                      <Text style={styles.memberEmail}>{createdInvite.email}</Text>
-                      <Text style={styles.path}>{buildInviteClaimPath(createdInvite.claim_token)}</Text>
-                      <Button
-                        title={t("settings.team.copyInvite")}
-                        icon={<Copy size={18} color={colors.surface} strokeWidth={2.25} />}
-                        onPress={() => void copyCreatedInvite()}
-                        fullWidth
-                      />
-                      <Text style={styles.helper}>{t("settings.team.createdInviteHelper")}</Text>
-                    </View>
-                  ) : null}
-                </SectionSurface>
-
-                <SectionSurface>
-                  <View style={styles.sectionHeading}>
-                    <IconBadge tone="neutral">
-                      <UserPlus size={20} color={colors.text} strokeWidth={2.25} />
-                    </IconBadge>
-                    <View style={styles.sectionCopy}>
-                      <Text style={styles.sectionTitle}>{t("settings.team.pendingInvitesTitle")}</Text>
-                      <Text style={styles.sectionBody}>
-                        {t("settings.team.pendingInvitesBody", { count: formatNumber(pendingInvites.length) })}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {pendingInvites.length === 0 ? (
-                    <Text style={styles.helper}>{t("settings.team.pendingInvitesEmpty")}</Text>
-                  ) : (
-                    <View style={styles.memberList}>
-                      {pendingInvites.map((invite) => (
-                        <View key={invite.id} style={styles.memberCard}>
-                          <View style={styles.memberHeader}>
-                            <View style={styles.memberCopy}>
-                              <Text style={styles.memberName}>{invite.email}</Text>
-                              <Text style={styles.memberMeta}>
-                                {t("settings.team.status.invited")} · {roleLabel(invite.role, t)}
-                              </Text>
-                            </View>
-                            <Badge label={t("settings.team.status.invited")} tone="caution" />
+                {pendingInvites.length === 0 ? (
+                  <Text style={styles.helper}>{t("settings.team.pendingInvitesEmpty")}</Text>
+                ) : (
+                  <View style={styles.memberList}>
+                    {pendingInvites.map((invite) => (
+                      <View key={invite.id} style={styles.memberCard}>
+                        <View style={styles.memberHeader}>
+                          <View style={styles.memberCopy}>
+                            <Text style={styles.memberName}>{invite.email}</Text>
+                            <Text style={styles.memberMeta}>
+                              {t("settings.team.status.invited")} · {roleLabel(invite.role, t)}
+                            </Text>
                           </View>
+                          <Badge label={t("settings.team.status.invited")} tone="caution" />
+                        </View>
+                        {canManage && canActorRevokeMemberInvite(role, invite.role) ? (
                           <Button
                             title={t("settings.team.action.revokeInvite")}
                             variant="secondary"
                             onPress={() => void revokeInvite(invite)}
                             disabled={Boolean(busyKey)}
                           />
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </SectionSurface>
-              </>
-            ) : (
-              <Pressable accessibilityRole="text" style={styles.readOnlyNote}>
-                <Text style={styles.helper}>{t("settings.team.readOnlyHelper")}</Text>
-              </Pressable>
-            )}
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </SectionSurface>
+            ) : null}
           </>
         )}
       </View>

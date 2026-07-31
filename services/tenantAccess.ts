@@ -8,6 +8,7 @@ import {
   canManageStorageLocations as canManageStorageLocationsRole,
   canTransferInventory as canTransferInventoryRole
 } from "./domain/inventoryTransfer";
+import { canViewMemberInvites } from "./domain/teamInvites";
 import { canManageRestaurantTeam, canViewRestaurantTeam } from "./domain/teamMembership";
 
 const managerRoles: RestaurantRole[] = ["owner", "admin", "manager"];
@@ -69,6 +70,14 @@ export function canManageTeamForRestaurant(
 ) {
   const membership = activeMembershipForRestaurant(memberships, restaurantId);
   return Boolean(membership && canManageRestaurantTeam(membership.role));
+}
+
+export function canViewMemberInvitesForRestaurant(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  const membership = activeMembershipForRestaurant(memberships, restaurantId);
+  return Boolean(membership && canViewMemberInvites(membership.role));
 }
 
 export function canDraftInventoryCount(

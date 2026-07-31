@@ -6,6 +6,7 @@ import {
   buildInviteClaimPath,
   canActorCreateMemberInvite,
   canActorRevokeMemberInvite,
+  canViewMemberInvites,
   generateInviteToken,
   hashInviteToken,
   isInvitePending,
@@ -47,6 +48,10 @@ test("invite authority mirrors membership hierarchy", () => {
   assert.equal(canActorRevokeMemberInvite("admin", "manager"), true);
   assert.equal(canActorRevokeMemberInvite("admin", "admin"), false);
   assert.equal(canActorRevokeMemberInvite("manager", "staff"), false);
+  assert.equal(canViewMemberInvites("owner"), true);
+  assert.equal(canViewMemberInvites("admin"), true);
+  assert.equal(canViewMemberInvites("manager"), true);
+  assert.equal(canViewMemberInvites("staff"), false);
 });
 
 test("pending invite expiry helper treats past timestamps as inactive", () => {
