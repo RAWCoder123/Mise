@@ -442,6 +442,42 @@ test("staff waste recording is authorized in SQL, Edge, and inventory detail UI"
   assert.match(detail, /\{canRecordWaste \? \(/);
 });
 
+test("Edge firewall allows staff on operational-workflows while keeping other functions manager+", () => {
+  const policyMigration = readFileSync(
+    "supabase/migrations/20260731071000_staff_operational_workflows_edge_policy.sql",
+    "utf8"
+  );
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const databaseTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+
+  assert.match(
+    policyMigration,
+    /'operational-workflows',\s*60,\s*60,\s*array\['owner',\s*'admin',\s*'manager',\s*'staff'\]/i
+  );
+  assert.match(
+    policyMigration,
+    /'sync-pos-sales',\s*8,\s*60,\s*array\['owner',\s*'admin',\s*'manager'\]/i
+  );
+  assert.match(
+    policyMigration,
+    /'link-gmail',\s*4,\s*300,\s*array\['owner',\s*'admin'\]/i
+  );
+  assert.match(
+    policyMigration,
+    /'send-supplier-email',\s*12,\s*60,\s*array\['owner',\s*'admin',\s*'manager'\]/i
+  );
+  assert.match(edge, /staffOperationalActions/);
+  assert.match(edge, /"begin_count_session"/);
+  assert.match(edge, /"save_count_lines"/);
+  assert.match(edge, /"submit_count_session"/);
+  assert.match(edge, /"record_waste"/);
+  assert.doesNotMatch(edge, /staffOperationalActions[\s\S]*"approve_count_session"/);
+  assert.doesNotMatch(edge, /staffOperationalActions[\s\S]*"update_inventory"/);
+  assert.doesNotMatch(edge, /staffOperationalActions[\s\S]*"create_inventory_item"/);
+  assert.match(databaseTests, /staff can reserve operational-workflows for authorized actions/i);
+  assert.match(databaseTests, /staff still cannot reserve manager-only POS sync/i);
+});
+
 test("inventory item create is service-owned with opening ledger movement and manager UI", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");

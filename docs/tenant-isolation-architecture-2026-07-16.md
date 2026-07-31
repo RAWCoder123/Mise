@@ -99,7 +99,7 @@ Private functions are not Data API endpoints. The final inventory is: `actor_has
 
 | Edge Function | Allowed roles | Trusted boundary |
 |---|---|---|
-| `operational-workflows` | Owner/admin/manager | Auth first; 64 KiB body; independent live role check; reservation; actor-bound revision RPC |
+| `operational-workflows` | Owner/admin/manager/staff | Auth first; 64 KiB body; reservation; independent live role check (staff limited to count draft/submit + waste; manager+ for other mutations); actor-bound revision RPC |
 | `sync-pos-sales` | Owner/admin/manager | Auth first; bounded request; reservation; live membership; audited fail-closed `501`/`503`; no import row until a provider is enabled |
 | `generate-ai-insights` | Owner/admin/manager | Auth first; reservation; live membership; audited fail-closed `501`/`503`; no placeholder insight or live model call |
 | `link-gmail` | Owner/admin | Auth first; reservation; live membership; no OAuth token storage or live OAuth |

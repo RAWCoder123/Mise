@@ -2133,12 +2133,50 @@ select is(
   'forbidden',
   'staff cannot reserve owner/admin Gmail link workflow'
 );
+select is(
+  public.reserve_edge_function_invocation(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '33333333-3333-4333-8333-333333333333',
+    'sync-pos-sales',
+    'pos_sync_requested',
+    '{"provider":"square"}'::jsonb
+  )->>'reason',
+  'forbidden',
+  'staff still cannot reserve manager-only POS sync'
+);
+create temp table staff_operational_reservation as
+select public.reserve_edge_function_invocation(
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  '33333333-3333-4333-8333-333333333333',
+  'operational-workflows',
+  'record_waste',
+  '{"source":"pgTAP"}'::jsonb
+) as payload;
+select is(
+  (select payload->>'allowed' from staff_operational_reservation),
+  'true',
+  'staff can reserve operational-workflows for authorized actions'
+);
+select is(
+  public.record_edge_function_security_event(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '33333333-3333-4333-8333-333333333333',
+    (select (payload->>'reservation_id')::uuid from staff_operational_reservation),
+    'operational-workflows',
+    'completed',
+    'staff_waste_reserved',
+    '{"source":"pgTAP"}'::jsonb
+  ),
+  true,
+  'staff operational-workflows reservation can complete a terminal event'
+);
 reset role;
 select is(
   (
     select count(*)
     from private.edge_function_security_events
     where actor_user_id = '33333333-3333-4333-8333-333333333333'
+      and event_type = 'forbidden'
   ),
   0::bigint,
   'forbidden Edge attempts do not write tenant-attributed ledger rows'
