@@ -475,6 +475,8 @@ test("staff waste recording is authorized in SQL, Edge, and inventory detail UI"
     "utf8"
   );
   const detail = readFileSync("app/inventory/[id].tsx", "utf8");
+  const list = readFileSync("app/(tabs)/inventory.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
   const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
   const domain = readFileSync("services/domain/inventoryWaste.ts", "utf8");
 
@@ -489,7 +491,14 @@ test("staff waste recording is authorized in SQL, Edge, and inventory detail UI"
   );
   assert.match(detail, /canRecordWaste/);
   assert.match(detail, /inventory\.detail\.limitedAccess/);
-  assert.match(detail, /\{canRecordWaste \? \(/);
+  assert.match(detail, /showWasteBeforeCountSettings/);
+  assert.match(detail, /WasteRecordingCard/);
+  assert.match(list, /canRecordInventoryWaste/);
+  assert.match(list, /inventory\.waste\.cardTitle/);
+  assert.match(list, /inventory\.waste\.findItemAction/);
+  assert.match(catalog, /"inventory\.waste\.cardTitle"/);
+  assert.match(catalog, /"inventory\.waste\.cardSubtitle"/);
+  assert.match(catalog, /"inventory\.waste\.findItemAction"/);
 });
 
 test("Edge firewall allows staff on operational-workflows while keeping other functions manager+", () => {

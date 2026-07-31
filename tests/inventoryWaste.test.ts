@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -80,4 +81,21 @@ test("staff may record waste while remaining outside manager inventory edit role
   ];
   assert.equal(canRecordInventoryWasteForRestaurant(staffMembership, "restaurant_a"), true);
   assert.equal(canRecordInventoryWasteForRestaurant(staffMembership, "restaurant_b"), false);
+});
+
+test("inventory list and staff detail surface waste recording without manager count edits", () => {
+  const list = readFileSync("app/(tabs)/inventory.tsx", "utf8");
+  const detail = readFileSync("app/inventory/[id].tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(list, /canRecordInventoryWaste/);
+  assert.match(list, /canRecordWaste \? \(/);
+  assert.match(list, /inventory\.waste\.cardTitle/);
+  assert.match(list, /searchInputRef\.current\?\.focus\(\)/);
+  assert.match(detail, /showWasteBeforeCountSettings = canRecordWaste && !canManage/);
+  assert.match(detail, /showWasteBeforeCountSettings \? \(/);
+  assert.match(detail, /canRecordWaste && !showWasteBeforeCountSettings/);
+  assert.match(catalog, /"inventory\.waste\.cardTitle": "Record waste"/);
+  assert.match(catalog, /"inventory\.waste\.cardTitle": "Registrar merma"/);
+  assert.match(catalog, /"inventory\.waste\.cardTitle": "记录损耗"/);
 });

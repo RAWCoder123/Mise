@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { ArrowDownRight, ArrowLeft, ClipboardList, PackageCheck, Save, Trash2 } from "lucide-react-native";
 import { StyleSheet, Text, TextInput, View } from "react-native";
@@ -116,6 +116,8 @@ export default function InventoryDetailScreen() {
   const status = prediction?.projectedStatus ?? null;
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canRecordWaste = canRecordInventoryWaste(memberships, restaurant?.id);
+  /** Staff primary action — surface waste above read-only count settings. */
+  const showWasteBeforeCountSettings = canRecordWaste && !canManage;
 
   function goBackToInventory() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -389,6 +391,22 @@ export default function InventoryDetailScreen() {
             ) : null}
           </Card>
 
+          {showWasteBeforeCountSettings ? (
+            <WasteRecordingCard
+              t={t}
+              itemName={item.item_name}
+              unit={item.unit}
+              wasteQuantity={wasteQuantity}
+              wasteNote={wasteNote}
+              fieldErrors={fieldErrors}
+              saving={saving}
+              setWasteQuantity={setWasteQuantity}
+              setWasteNote={setWasteNote}
+              setFieldErrors={setFieldErrors}
+              onRecordWaste={recordWaste}
+            />
+          ) : null}
+
           <Card>
             <Text style={styles.cardTitle}>{canManage ? t("inventory.detail.updateCount") : t("inventory.detail.countSettings")}</Text>
             <Field
@@ -455,50 +473,20 @@ export default function InventoryDetailScreen() {
             ) : null}
           </Card>
 
-          {canRecordWaste ? (
-            <Card>
-              <Text style={styles.cardTitle}>{t("inventory.detail.recordWaste")}</Text>
-              <Text style={styles.copy}>{t("inventory.detail.wasteHelp")}</Text>
-              <Field
-                label={t("inventory.detail.wasteQuantity", { unit: item.unit })}
-                value={wasteQuantity}
-                onChangeText={(value) => {
-                  setWasteQuantity(value);
-                  setFieldErrors((current) => ({ ...current, wasteQuantity: undefined }));
-                }}
-                editable={!saving}
-                error={fieldErrors.wasteQuantity}
-              />
-              <View style={styles.field}>
-                <Text style={styles.label}>{t("inventory.detail.wasteNote")}</Text>
-                <TextInput
-                  accessibilityLabel={t("inventory.detail.wasteNote")}
-                  accessibilityHint={fieldErrors.wasteNote}
-                  value={wasteNote}
-                  onChangeText={(value) => {
-                    setWasteNote(value);
-                    setFieldErrors((current) => ({ ...current, wasteNote: undefined }));
-                  }}
-                  editable={!saving}
-                  multiline
-                  style={[styles.input, styles.noteInput, fieldErrors.wasteNote && styles.inputError]}
-                />
-                {fieldErrors.wasteNote ? (
-                  <Text style={styles.fieldError} accessibilityLiveRegion="polite">
-                    {fieldErrors.wasteNote}
-                  </Text>
-                ) : null}
-              </View>
-              <Button
-                title={saving ? t("inventory.detail.saving") : t("inventory.detail.recordWasteAction")}
-                accessibilityLabel={t("inventory.detail.wasteAccessibility", { item: item.item_name })}
-                icon={<Trash2 size={17} color={colors.surface} strokeWidth={2.5} />}
-                onPress={recordWaste}
-                disabled={saving}
-                fullWidth
-                style={styles.saveButton}
-              />
-            </Card>
+          {canRecordWaste && !showWasteBeforeCountSettings ? (
+            <WasteRecordingCard
+              t={t}
+              itemName={item.item_name}
+              unit={item.unit}
+              wasteQuantity={wasteQuantity}
+              wasteNote={wasteNote}
+              fieldErrors={fieldErrors}
+              saving={saving}
+              setWasteQuantity={setWasteQuantity}
+              setWasteNote={setWasteNote}
+              setFieldErrors={setFieldErrors}
+              onRecordWaste={recordWaste}
+            />
           ) : null}
 
           <Card>
@@ -539,6 +527,87 @@ export default function InventoryDetailScreen() {
   );
 }
 
+interface InventoryFieldErrors {
+  currentQuantity?: string;
+  parLevel?: string;
+  reorderThreshold?: string;
+  correctionNote?: string;
+  wasteQuantity?: string;
+  wasteNote?: string;
+}
+
+function WasteRecordingCard({
+  t,
+  itemName,
+  unit,
+  wasteQuantity,
+  wasteNote,
+  fieldErrors,
+  saving,
+  setWasteQuantity,
+  setWasteNote,
+  setFieldErrors,
+  onRecordWaste
+}: {
+  t: ReturnType<typeof useLocale>["t"];
+  itemName: string;
+  unit: string;
+  wasteQuantity: string;
+  wasteNote: string;
+  fieldErrors: InventoryFieldErrors;
+  saving: boolean;
+  setWasteQuantity: (value: string) => void;
+  setWasteNote: (value: string) => void;
+  setFieldErrors: Dispatch<SetStateAction<InventoryFieldErrors>>;
+  onRecordWaste: () => void;
+}) {
+  return (
+    <Card>
+      <Text style={styles.cardTitle}>{t("inventory.detail.recordWaste")}</Text>
+      <Text style={styles.copy}>{t("inventory.detail.wasteHelp")}</Text>
+      <Field
+        label={t("inventory.detail.wasteQuantity", { unit })}
+        value={wasteQuantity}
+        onChangeText={(value) => {
+          setWasteQuantity(value);
+          setFieldErrors((current) => ({ ...current, wasteQuantity: undefined }));
+        }}
+        editable={!saving}
+        error={fieldErrors.wasteQuantity}
+      />
+      <View style={styles.field}>
+        <Text style={styles.label}>{t("inventory.detail.wasteNote")}</Text>
+        <TextInput
+          accessibilityLabel={t("inventory.detail.wasteNote")}
+          accessibilityHint={fieldErrors.wasteNote}
+          value={wasteNote}
+          onChangeText={(value) => {
+            setWasteNote(value);
+            setFieldErrors((current) => ({ ...current, wasteNote: undefined }));
+          }}
+          editable={!saving}
+          multiline
+          style={[styles.input, styles.noteInput, fieldErrors.wasteNote && styles.inputError]}
+        />
+        {fieldErrors.wasteNote ? (
+          <Text style={styles.fieldError} accessibilityLiveRegion="polite">
+            {fieldErrors.wasteNote}
+          </Text>
+        ) : null}
+      </View>
+      <Button
+        title={saving ? t("inventory.detail.saving") : t("inventory.detail.recordWasteAction")}
+        accessibilityLabel={t("inventory.detail.wasteAccessibility", { item: itemName })}
+        icon={<Trash2 size={17} color={colors.surface} strokeWidth={2.5} />}
+        onPress={onRecordWaste}
+        disabled={saving}
+        fullWidth
+        style={styles.saveButton}
+      />
+    </Card>
+  );
+}
+
 function Field({
   label,
   value,
@@ -569,15 +638,6 @@ function Field({
       {error ? <Text style={styles.fieldError} accessibilityLiveRegion="polite">{error}</Text> : null}
     </View>
   );
-}
-
-interface InventoryFieldErrors {
-  currentQuantity?: string;
-  parLevel?: string;
-  reorderThreshold?: string;
-  correctionNote?: string;
-  wasteQuantity?: string;
-  wasteNote?: string;
 }
 
 const movementReasonKeys: Record<InventoryMovementReason, MessageKey> = {

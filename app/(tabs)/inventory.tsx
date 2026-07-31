@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, Clock3, Package, PackagePlus, Search } from "lucide-react-native";
+import { AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, Clock3, Package, PackagePlus, Search, Trash2 } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -21,7 +21,7 @@ import {
   fetchOpenInventoryCountSession,
   summarizeInventoryOutlooks
 } from "../../services/miseService";
-import { canDraftInventoryCount, canManageRestaurantData } from "../../services/tenantAccess";
+import { canDraftInventoryCount, canManageRestaurantData, canRecordInventoryWaste } from "../../services/tenantAccess";
 import type { InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
@@ -31,6 +31,7 @@ export default function InventoryScreen() {
   const { restaurant, memberships } = useMiseSession();
   const canDraftCount = canDraftInventoryCount(memberships, restaurant?.id ?? "");
   const canManageInventory = canManageRestaurantData(memberships, restaurant?.id ?? "");
+  const canRecordWaste = canRecordInventoryWaste(memberships, restaurant?.id ?? "");
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
   const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -39,6 +40,7 @@ export default function InventoryScreen() {
   const [error, setError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const searchInputRef = useRef<TextInput>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -222,6 +224,24 @@ export default function InventoryScreen() {
           </MotionView>
         ) : null}
 
+        {canRecordWaste ? (
+          <MotionView delay={30} distance={3} duration={240}>
+            <SectionSurface
+              title={t("inventory.waste.cardTitle")}
+              subtitle={t("inventory.waste.cardSubtitle")}
+            >
+              <Button
+                title={t("inventory.waste.findItemAction")}
+                onPress={() => searchInputRef.current?.focus()}
+                fullWidth
+                variant="secondary"
+                accessibilityLabel={t("inventory.waste.findItemAccessibility")}
+                icon={<Trash2 size={18} color={colors.text} strokeWidth={2.25} />}
+              />
+            </SectionSurface>
+          </MotionView>
+        ) : null}
+
         <MotionView delay={40} distance={3} duration={240}>
           <SectionSurface
             title={t("inventory.list.title")}
@@ -235,6 +255,7 @@ export default function InventoryScreen() {
               <View style={styles.searchBox}>
                 <Search size={20} color={colors.faint} strokeWidth={2.25} />
                 <TextInput
+                  ref={searchInputRef}
                   accessibilityLabel={t("inventory.search.accessibility")}
                   value={query}
                   onChangeText={setQuery}
