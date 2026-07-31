@@ -150,6 +150,25 @@ await assertDeniedRpc(
   "count session approve rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
+  "service_receive_supplier_order_and_signals",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_order_id: "bbbbbbbb-3333-4333-8333-bbbbbbbbbbbb",
+    p_expected_revision: 0,
+    p_receive_lines: [
+      {
+        inventory_item_id: tenantBInventoryId,
+        quantity_received: 1,
+        note: null
+      }
+    ],
+    p_recommendations: [],
+    p_insights: []
+  },
+  "supplier order receive rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
   "service_ingest_manual_pos_sales",
   {
     p_actor_user_id: managerA.id,

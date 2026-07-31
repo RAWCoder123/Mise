@@ -51,6 +51,10 @@ import {
 } from "../domain/miseDomain";
 import { planInventoryWaste } from "../domain/inventoryWaste";
 import {
+  applyPlannedReceiveToInventory,
+  planSupplierOrderReceive
+} from "../domain/supplierOrderReceiving";
+import {
   assertSessionMutable,
   buildCountSessionLinesFromInventory,
   isOpenCountSessionStatus,
@@ -360,6 +364,14 @@ export interface MiseRepository {
     patch: Partial<Pick<SupplierOrder, "operator_note" | "delivery_date">>
   ): Promise<SupplierOrder>;
   markSupplierOrderSent(restaurantId: string, orderId: string): Promise<SupplierOrderSentWorkflowResult>;
+  confirmSupplierOrderPlaced(restaurantId: string, orderId: string): Promise<SupplierOrderSentWorkflowResult>;
+  receiveSupplierOrderAndSignals(
+    restaurantId: string,
+    orderId: string,
+    receiveLines: Array<{ inventoryItemId: string; quantityReceived: number; note: string | null }>,
+    recommendations: PurchaseRecommendationInput[],
+    insights: Insight[]
+  ): Promise<SupplierOrderReceiveWorkflowResult>;
   connectRestaurantGmail(restaurantId: string): Promise<GmailConnectionWorkflowResult>;
   disconnectRestaurantGmail(restaurantId: string): Promise<GmailDisconnectWorkflowResult>;
   sendSupplierOrderEmail(restaurantId: string, orderId: string): Promise<SupplierOrderEmailSendResult>;
@@ -726,6 +738,46 @@ function parseSupplierOrderSentWorkflowResponse(data: unknown): SupplierOrderSen
     outcome: payload.outcome,
     order: normalizeSupplierOrder(payload.order),
     orderedRecommendations: (payload.ordered_recommendations ?? []).map(normalizePurchaseRecommendation)
+  };
+}
+
+export type SupplierOrderReceiveWorkflowResult = {
+  outcome: "applied" | "already_applied";
+  order: SupplierOrder;
+  receivedLines: Array<{
+    inventoryItemId: string;
+    quantityOrdered: number;
+    quantityReceived: number;
+    quantityBefore: number;
+    quantityAfter: number;
+    discrepancy: number;
+  }>;
+  discrepancyCount: number;
+};
+
+function parseSupplierOrderReceiveWorkflowResponse(data: unknown): SupplierOrderReceiveWorkflowResult {
+  const payload = (Array.isArray(data) ? data[0] : data) as {
+    outcome?: SupplierOrderReceiveWorkflowResult["outcome"];
+    order?: SupplierOrder;
+    received_lines?: Array<Record<string, unknown>>;
+    discrepancy_count?: number;
+  } | null;
+  if (!payload?.order || !payload.outcome) {
+    throw new Error("Receive workflow returned an invalid response.");
+  }
+  const receivedLines = (payload.received_lines ?? []).map((line) => ({
+    inventoryItemId: String(line.inventory_item_id ?? ""),
+    quantityOrdered: Number(line.quantity_ordered ?? 0),
+    quantityReceived: Number(line.quantity_received ?? 0),
+    quantityBefore: Number(line.quantity_before ?? 0),
+    quantityAfter: Number(line.quantity_after ?? 0),
+    discrepancy: Number(line.discrepancy ?? 0)
+  }));
+  return {
+    outcome: payload.outcome,
+    order: normalizeSupplierOrder(payload.order),
+    receivedLines,
+    discrepancyCount: Number(payload.discrepancy_count ?? 0)
   };
 }
 
@@ -1868,6 +1920,112 @@ function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async confirmSupplierOrderPlaced(restaurantId, orderId) {
+      return mutateDemoState((state) => {
+        const result = markSupplierOrderSentInDemoState(state, restaurantId, orderId);
+        if (result.outcome === "applied") {
+          appendDemoAuditLog(state, {
+            restaurant_id: restaurantId,
+            action: "supplier_order_placed_externally",
+            entity_table: "supplier_orders",
+            entity_id: result.order.id,
+            metadata: {
+              supplier_name: result.order.supplier_name,
+              placement_channel: "manual_external",
+              ordered_recommendation_count: result.orderedRecommendations.length
+            }
+          });
+        }
+        return {
+          ...result,
+          order: normalizeSupplierOrder(result.order),
+          orderedRecommendations: result.orderedRecommendations.map(normalizePurchaseRecommendation)
+        };
+      });
+    },
+
+    async receiveSupplierOrderAndSignals(
+      restaurantId,
+      orderId,
+      receiveLines,
+      recommendations,
+      insights
+    ) {
+      return mutateDemoState((state) => {
+        const order = state.supplierOrders.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
+        );
+        if (!order) throw new Error("Order draft not found");
+        if (order.status === "completed") {
+          return {
+            outcome: "already_applied" as const,
+            order: normalizeSupplierOrder(order),
+            receivedLines: [],
+            discrepancyCount: 0
+          };
+        }
+        const planned = planSupplierOrderReceive({
+          order,
+          recommendations: state.purchaseRecommendations,
+          inventoryItems: state.inventoryItems,
+          receiveLines
+        });
+        const now = new Date().toISOString();
+        state.inventoryItems = applyPlannedReceiveToInventory(state.inventoryItems, planned, now);
+        for (const line of planned.lines) {
+          appendDemoInventoryMovement(state, {
+            restaurantId,
+            itemId: line.inventoryItemId,
+            quantityBefore: line.quantityBefore,
+            quantityAfter: line.quantityAfter,
+            reason: line.reason,
+            sourceWorkflow: line.sourceWorkflow,
+            metadata: line.metadata
+          });
+        }
+        order.status = "completed";
+        state.purchaseRecommendations = [
+          ...state.purchaseRecommendations.filter(
+            (recommendation) =>
+              recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
+          ),
+          ...recommendations.map((recommendation) => ({
+            ...recommendation,
+            id: createId("rec"),
+            created_at: now
+          }))
+        ];
+        state.insights = [
+          ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),
+          ...insights
+        ];
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_order_received",
+          entity_table: "supplier_orders",
+          entity_id: order.id,
+          metadata: {
+            supplier_name: order.supplier_name,
+            line_count: planned.lines.length,
+            discrepancy_count: planned.discrepancyCount
+          }
+        });
+        return {
+          outcome: "applied" as const,
+          order: normalizeSupplierOrder(order),
+          receivedLines: planned.lines.map((line) => ({
+            inventoryItemId: line.inventoryItemId,
+            quantityOrdered: line.quantityOrdered,
+            quantityReceived: line.quantityReceived,
+            quantityBefore: line.quantityBefore,
+            quantityAfter: line.quantityAfter,
+            discrepancy: line.discrepancy
+          })),
+          discrepancyCount: planned.discrepancyCount
+        };
+      });
+    },
+
     async connectRestaurantGmail(restaurantId) {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, restaurantId);
@@ -2454,44 +2612,16 @@ function createSupabaseRepository(): MiseRepository {
       };
     },
 
-    async upsertInventoryItem(input) {
-      const existing = await client
-        .from("inventory_items")
-        .select("*")
-        .eq("restaurant_id", input.restaurant_id)
-        .eq("item_name", input.item_name)
-        .maybeSingle();
-      if (existing.error) throw existing.error;
-
-      if (existing.data) {
-        const { data, error } = await client
-          .from("inventory_items")
-          .update({ ...input, last_updated: new Date().toISOString() })
-          .eq("restaurant_id", input.restaurant_id)
-          .eq("id", existing.data.id)
-          .select("*")
-          .single();
-        if (error) throw error;
-        return normalizeInventoryItem(data as InventoryItem);
-      }
-
-      const { data, error } = await client
-        .from("inventory_items")
-        .insert(input)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizeInventoryItem(data as InventoryItem);
+    async upsertInventoryItem(_input) {
+      throw new Error(
+        "Direct inventory upserts are disabled. Use setup or operational inventory workflows."
+      );
     },
 
-    async createPosSale(input) {
-      const { data, error } = await client
-        .from("pos_sales")
-        .insert(input)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizePosSale(data as PosSale);
+    async createPosSale(_input) {
+      throw new Error(
+        "Direct POS sale inserts are disabled. Use setup import or manual CSV ingest workflows."
+      );
     },
 
     async updateInventoryItem(restaurantId, itemId, patch) {
@@ -2731,16 +2861,10 @@ function createSupabaseRepository(): MiseRepository {
       return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
     },
 
-    async updatePurchaseRecommendation(restaurantId, recommendationId, patch) {
-      const { data, error } = await client
-        .from("purchase_recommendations")
-        .update(patch)
-        .eq("restaurant_id", restaurantId)
-        .eq("id", recommendationId)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizePurchaseRecommendation(data as PurchaseRecommendation);
+    async updatePurchaseRecommendation(_restaurantId, _recommendationId, _patch) {
+      throw new Error(
+        "Direct recommendation updates are disabled. Use approve, dismiss, or undo RPCs."
+      );
     },
 
     async approvePurchaseRecommendation(restaurantId, recommendationId, recommendedQuantity) {
@@ -2787,73 +2911,22 @@ function createSupabaseRepository(): MiseRepository {
       return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
     },
 
-    async markApprovedRecommendationsOrdered(restaurantId, supplierName) {
-      const { data, error } = await client
-        .from("purchase_recommendations")
-        .update({ status: "ordered" })
-        .eq("restaurant_id", restaurantId)
-        .eq("supplier_name", supplierName)
-        .eq("status", "approved")
-        .select("*");
-      if (error) throw error;
-      return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
+    async markApprovedRecommendationsOrdered(_restaurantId, _supplierName) {
+      throw new Error(
+        "Direct recommendation ordering is disabled. Confirm placement or send through Gmail."
+      );
     },
 
-    async upsertSupplierOrderDraft(draft) {
-      const existing = await client
-        .from("supplier_orders")
-        .select("*")
-        .eq("restaurant_id", draft.restaurant_id)
-        .eq("supplier_name", draft.supplier_name)
-        .eq("status", "draft")
-        .maybeSingle();
-      if (existing.error) throw existing.error;
-
-      const payload = {
-        restaurant_id: draft.restaurant_id,
-        supplier_name: draft.supplier_name,
-        order_message: draft.order_message,
-        operator_note: draft.operator_note,
-        status: draft.status,
-        delivery_date: draft.delivery_date
-      };
-
-      if (existing.data) {
-        const { data, error } = await client
-          .from("supplier_orders")
-          .update(payload)
-          .eq("restaurant_id", draft.restaurant_id)
-          .eq("id", existing.data.id)
-          .select("*")
-          .single();
-        if (error) throw error;
-        return normalizeSupplierOrder(data as SupplierOrder);
-      }
-      const inserted = await client.from("supplier_orders").insert(payload).select("*").single();
-      if (inserted.error?.code === "23505") {
-        const concurrent = await client
-          .from("supplier_orders")
-          .update(payload)
-          .eq("restaurant_id", draft.restaurant_id)
-          .eq("supplier_name", draft.supplier_name)
-          .eq("status", "draft")
-          .select("*")
-          .single();
-        if (concurrent.error) throw concurrent.error;
-        return normalizeSupplierOrder(concurrent.data as SupplierOrder);
-      }
-      if (inserted.error) throw inserted.error;
-      return normalizeSupplierOrder(inserted.data as SupplierOrder);
+    async upsertSupplierOrderDraft(_draft) {
+      throw new Error(
+        "Direct supplier draft writes are disabled. Approve a recommendation to create a draft."
+      );
     },
 
-    async deleteSupplierOrderDraft(restaurantId, supplierName) {
-      const { error } = await client
-        .from("supplier_orders")
-        .delete()
-        .eq("restaurant_id", restaurantId)
-        .eq("supplier_name", supplierName)
-        .eq("status", "draft");
-      if (error) throw error;
+    async deleteSupplierOrderDraft(_restaurantId, _supplierName) {
+      throw new Error(
+        "Direct supplier draft deletes are disabled. Undo recommendation approvals through the RPC."
+      );
     },
 
     async fetchSupplierOrders(restaurantId) {
@@ -2897,6 +2970,35 @@ function createSupabaseRepository(): MiseRepository {
       });
       if (error) throw error;
       return parseSupplierOrderSentWorkflowResponse(data);
+    },
+
+    async confirmSupplierOrderPlaced(restaurantId, orderId) {
+      const { data, error } = await client.rpc("confirm_supplier_order_placed", {
+        p_restaurant_id: restaurantId,
+        p_order_id: orderId
+      });
+      if (error) throw error;
+      return parseSupplierOrderSentWorkflowResponse(data);
+    },
+
+    async receiveSupplierOrderAndSignals(
+      restaurantId,
+      orderId,
+      receiveLines,
+      _recommendations,
+      _insights
+    ) {
+      const response = await invokeOperationalWorkflow({
+        action: "receive_supplier_order",
+        restaurantId,
+        orderId,
+        receiveLines: receiveLines.map((line) => ({
+          inventoryItemId: line.inventoryItemId,
+          quantityReceived: line.quantityReceived,
+          note: line.note
+        }))
+      });
+      return parseSupplierOrderReceiveWorkflowResponse(response.result);
     },
 
     async connectRestaurantGmail(restaurantId) {

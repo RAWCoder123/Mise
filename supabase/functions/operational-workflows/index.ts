@@ -23,6 +23,7 @@ const actions = [
   "refresh_signals",
   "update_inventory",
   "record_waste",
+  "receive_supplier_order",
   "upsert_recipe",
   "save_setup",
   "ingest_pos_csv",
@@ -231,6 +232,17 @@ async function refreshWithRetry(
           p_insights: insights
         });
       }
+      if (action === "receive_supplier_order") {
+        return await serviceRpc(securitySupabase, "service_receive_supplier_order_and_signals", {
+          p_actor_user_id: actorUserId,
+          p_restaurant_id: restaurantId,
+          p_order_id: requireUuid(body.orderId, "orderId"),
+          p_expected_revision: revision,
+          p_receive_lines: requireReceiveLines(body.receiveLines),
+          p_recommendations: recommendations,
+          p_insights: insights
+        });
+      }
       if (action === "approve_count_session") {
         return await serviceRpc(securitySupabase, "service_approve_inventory_count_session", {
           p_actor_user_id: actorUserId,
@@ -369,6 +381,29 @@ function applyRequestedMutation(
         : item)
     };
   }
+  if (action === "receive_supplier_order") {
+    const receiveLines = requireReceiveLines(body.receiveLines);
+    const quantityByItemId = new Map(
+      receiveLines.map((line) => [line.inventory_item_id as string, Number(line.quantity_received)] as const)
+    );
+    for (const itemId of quantityByItemId.keys()) {
+      if (!snapshot.inventoryItems.some((item) => item.id === itemId)) {
+        throw new HttpError(404, "Inventory item not found.");
+      }
+    }
+    return {
+      ...snapshot,
+      inventoryItems: snapshot.inventoryItems.map((item) =>
+        quantityByItemId.has(item.id)
+          ? {
+              ...item,
+              current_quantity: item.current_quantity + (quantityByItemId.get(item.id) as number),
+              last_updated: new Date().toISOString()
+            }
+          : item
+      )
+    };
+  }
   if (action === "upsert_recipe") {
     const mappingId = body.mappingId == null ? null : requireUuid(body.mappingId, "mappingId");
     const inventoryItemId = requireUuid(body.inventoryItemId, "inventoryItemId");
@@ -501,6 +536,34 @@ function requireCountLineUpdates(value: unknown) {
   });
 }
 
+function requireReceiveLines(value: unknown) {
+  const lines = requireArray(value, "receiveLines", 250);
+  if (lines.length < 1) throw new HttpError(400, "receiveLines must include at least one row.");
+  const seen = new Set<string>();
+  return lines.map((entry, index) => {
+    const row = requireRecord(entry, `receiveLines[${index}]`);
+    const inventoryItemId = requireUuid(
+      row.inventoryItemId ?? row.inventory_item_id,
+      `receiveLines[${index}].inventoryItemId`
+    );
+    if (seen.has(inventoryItemId)) {
+      throw new HttpError(400, `receiveLines[${index}] duplicates an inventory item.`);
+    }
+    seen.add(inventoryItemId);
+    const noteValue = row.note;
+    return {
+      inventory_item_id: inventoryItemId,
+      quantity_received: requireBoundedNumber(
+        row.quantityReceived ?? row.quantity_received,
+        `receiveLines[${index}].quantityReceived`,
+        0,
+        1_000_000
+      ),
+      note: noteValue == null ? null : requireBoundedString(noteValue, `receiveLines[${index}].note`, 240)
+    };
+  });
+}
+
 function isRevisionConflict(error: unknown) {
   const candidate = error as { code?: unknown; message?: unknown };
   return candidate?.code === "40001" || String(candidate?.message ?? "").includes("Planning snapshot changed");
@@ -509,6 +572,7 @@ function isRevisionConflict(error: unknown) {
 function auditAction(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_updated";
   if (action === "record_waste") return "inventory_waste_recorded";
+  if (action === "receive_supplier_order") return "supplier_order_received";
   if (action === "begin_count_session") return "inventory_count_session_started";
   if (action === "save_count_lines") return "inventory_count_lines_saved";
   if (action === "submit_count_session") return "inventory_count_session_submitted";
@@ -522,6 +586,7 @@ function auditAction(action: OperationalAction) {
 
 function auditEntityTable(action: OperationalAction) {
   if (action === "update_inventory" || action === "record_waste") return "inventory_items";
+  if (action === "receive_supplier_order") return "supplier_orders";
   if (
     action === "begin_count_session" ||
     action === "save_count_lines" ||
@@ -538,6 +603,7 @@ function auditEntityTable(action: OperationalAction) {
 
 function auditEntityId(action: OperationalAction, body: Record<string, unknown>) {
   if (action === "update_inventory" || action === "record_waste") return requireUuid(body.itemId, "itemId");
+  if (action === "receive_supplier_order") return requireUuid(body.orderId, "orderId");
   if (
     action === "save_count_lines" ||
     action === "submit_count_session" ||

@@ -1,13 +1,19 @@
 import type { RecommendationStatus, SupplierOrder } from "../../types/mise";
 import {
-  buildDraftsFromRecommendations,
   buildOrderQueueSummary,
   buildSupplierEmailPayload
 } from "../domain/miseDomain";
+import {
+  defaultReceiveLinesFromRecommendations,
+  linkedOrderedRecommendationsForOrder,
+  planSupplierOrderReceive
+} from "../domain/supplierOrderReceiving";
 import { buildSupplierRecipientDirectory } from "../domain/supplierRecipients";
+import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
 import {
   requireRecommendationApprovalQuantity,
   requireSupplierOperatorNote,
+  requireSupplierOrderReceiveLines,
   requireSupplierRecipientInput
 } from "../miseValidation";
 import { getMiseRepository } from "./repository";
@@ -56,44 +62,16 @@ export async function dismissPurchaseRecommendation(restaurantId: string, recomm
   return result.recommendation;
 }
 
-export async function generateSupplierOrderDraft(restaurantId: string, supplierName?: string) {
-  const [recommendations, restaurant] = await Promise.all([
-    repository.fetchApprovedRecommendations(restaurantId, supplierName),
-    repository.fetchRestaurant(restaurantId)
-  ]);
-  const drafts = buildDraftsFromRecommendations(restaurantId, recommendations, {
-    timeZone: restaurant.timezone
-  });
-  for (const draft of drafts) {
-    const order = await repository.upsertSupplierOrderDraft(draft);
-    const linkedRecommendations = recommendations.filter(
-      (recommendation) => recommendation.supplier_name === draft.supplier_name
-    );
-    for (const recommendation of linkedRecommendations) {
-      if (recommendation.supplier_order_id === order.id) continue;
-      await repository.updatePurchaseRecommendation(restaurantId, recommendation.id, {
-        supplier_order_id: order.id
-      });
-    }
-  }
-  return drafts;
+export async function generateSupplierOrderDraft(_restaurantId: string, _supplierName?: string) {
+  throw new Error(
+    "Supplier drafts are created by approving a recommendation. Direct draft generation is disabled."
+  );
 }
 
-export async function rebuildSupplierDraftForRecommendationUndo(restaurantId: string, supplierName: string) {
-  const [recommendations, restaurant] = await Promise.all([
-    repository.fetchApprovedRecommendations(restaurantId, supplierName),
-    repository.fetchRestaurant(restaurantId)
-  ]);
-  const drafts = buildDraftsFromRecommendations(restaurantId, recommendations, {
-    timeZone: restaurant.timezone
-  });
-  if (drafts.length === 0) {
-    await repository.deleteSupplierOrderDraft(restaurantId, supplierName);
-    return null;
-  }
-  const draft = drafts[0]!;
-  await repository.upsertSupplierOrderDraft(draft);
-  return draft;
+export async function rebuildSupplierDraftForRecommendationUndo(_restaurantId: string, _supplierName: string) {
+  throw new Error(
+    "Supplier draft rebuild runs inside the recommendation undo RPC. Direct draft writes are disabled."
+  );
 }
 
 export async function undoPurchaseRecommendationAction(restaurantId: string, recommendationId: string) {
@@ -198,6 +176,83 @@ export async function updateSupplierOrder(
 export async function markSupplierOrderSent(restaurantId: string, orderId: string) {
   const { order, orderedRecommendations } = await repository.markSupplierOrderSent(restaurantId, orderId);
   return { order, orderedRecommendations };
+}
+
+export async function confirmSupplierOrderPlaced(restaurantId: string, orderId: string) {
+  return repository.confirmSupplierOrderPlaced(
+    requireWorkflowId(restaurantId, "restaurant"),
+    requireWorkflowId(orderId, "supplier order")
+  );
+}
+
+export async function fetchSupplierOrderReceivePreview(restaurantId: string, orderId: string) {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
+  const [order, recommendations, inventoryItems] = await Promise.all([
+    repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
+    repository.fetchInventoryItems(normalizedRestaurantId)
+  ]);
+  const linked = linkedOrderedRecommendationsForOrder(normalizedOrderId, recommendations);
+  const planned = planSupplierOrderReceive({
+    order,
+    recommendations,
+    inventoryItems,
+    receiveLines: defaultReceiveLinesFromRecommendations(linked)
+  });
+  return { order, linkedRecommendations: linked, planned };
+}
+
+export async function receiveSupplierOrder(
+  restaurantId: string,
+  orderId: string,
+  receiveLines: unknown
+) {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
+  const normalizedLines = requireSupplierOrderReceiveLines(receiveLines);
+  const [order, recommendations, data, recommendationHistory] = await Promise.all([
+    repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
+    repository.fetchPlanningData(normalizedRestaurantId),
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all")
+  ]);
+  const planned = planSupplierOrderReceive({
+    order,
+    recommendations,
+    inventoryItems: data.inventoryItems,
+    receiveLines: normalizedLines
+  });
+  const planningInventory = data.inventoryItems.map((item) => {
+    const line = planned.lines.find((entry) => entry.inventoryItemId === item.id);
+    return line
+      ? { ...item, current_quantity: line.quantityAfter, last_updated: new Date().toISOString() }
+      : item;
+  });
+  const nextRecommendations = buildRecommendationInserts(
+    normalizedRestaurantId,
+    planningInventory,
+    data.sales,
+    data.menuItemIngredients,
+    recommendationHistory,
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
+  );
+  const nextInsights = buildInsightsFromData(
+    normalizedRestaurantId,
+    planningInventory,
+    data.sales,
+    data.menuItemIngredients,
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
+  );
+  return repository.receiveSupplierOrderAndSignals(
+    normalizedRestaurantId,
+    normalizedOrderId,
+    normalizedLines,
+    nextRecommendations,
+    nextInsights
+  );
 }
 
 function requireWorkflowId(value: string, label: string) {

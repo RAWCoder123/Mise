@@ -335,6 +335,44 @@ export function requireInventoryWasteNote(value: string | null | undefined) {
   return normalized || null;
 }
 
+export function requireSupplierOrderReceiveLines(
+  value: unknown
+): Array<{ inventoryItemId: string; quantityReceived: number; note: string | null }> {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 250) {
+    throw new Error("Provide between 1 and 250 receive lines.");
+  }
+  const seen = new Set<string>();
+  return value.map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(`Receive line ${index + 1} is invalid.`);
+    }
+    const row = entry as Record<string, unknown>;
+    const inventoryItemId = String(row.inventoryItemId ?? row.inventory_item_id ?? "").trim();
+    if (!inventoryItemId) {
+      throw new Error(`Receive line ${index + 1} is missing an inventory item.`);
+    }
+    if (seen.has(inventoryItemId)) {
+      throw new Error(`Receive line ${index + 1} duplicates an inventory item.`);
+    }
+    seen.add(inventoryItemId);
+    const quantityReceived = Number(row.quantityReceived ?? row.quantity_received);
+    if (
+      typeof quantityReceived !== "number" ||
+      !Number.isFinite(quantityReceived) ||
+      quantityReceived < 0 ||
+      quantityReceived > operatingLimits.inventoryQuantity
+    ) {
+      throw new Error(
+        `Receive line ${index + 1} quantity must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
+      );
+    }
+    const note = requireInventoryWasteNote(
+      row.note === undefined || row.note === null ? null : String(row.note)
+    );
+    return { inventoryItemId, quantityReceived, note };
+  });
+}
+
 export function requireInventoryCountSessionNote(value: string | null | undefined) {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") throw new Error("Count session note must be text.");
