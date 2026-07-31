@@ -250,6 +250,30 @@ export function requireRecipeBaselineQuantity(value: unknown) {
   return value;
 }
 
+export function requireInventoryWasteQuantity(value: unknown) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    value > operatingLimits.inventoryQuantity
+  ) {
+    throw new Error(
+      `Enter a waste quantity greater than zero and no more than ${operatingLimits.inventoryQuantity.toLocaleString()}.`
+    );
+  }
+  return value;
+}
+
+export function requireInventoryWasteNote(value: string | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Waste note must be text.");
+  const normalized = value.trim();
+  if (normalized.length > 240) {
+    throw new Error("Waste note is limited to 240 characters.");
+  }
+  return normalized || null;
+}
+
 export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryItemPatch {
   const validated: InventoryItemPatch = { ...patch };
   for (const [field, label] of [
