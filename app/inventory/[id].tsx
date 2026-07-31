@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
-import { ArrowDownRight, ArrowLeft, ClipboardList, PackageCheck, Save } from "lucide-react-native";
+import { ArrowDownRight, ArrowLeft, ClipboardList, PackageCheck, Save, Trash2 } from "lucide-react-native";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -18,6 +18,7 @@ import {
   addInventoryItemToOrder,
   fetchInventoryItemOutlook,
   fetchInventoryMovements,
+  recordInventoryWaste,
   updateInventoryItem
 } from "../../services/miseService";
 import { canManageRestaurantData } from "../../services/tenantAccess";
@@ -36,6 +37,8 @@ export default function InventoryDetailScreen() {
   const [currentQuantity, setCurrentQuantity] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
+  const [wasteQuantity, setWasteQuantity] = useState("");
+  const [wasteNote, setWasteNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<InventoryFieldErrors>({});
   const [loading, setLoading] = useState(true);
@@ -92,6 +95,8 @@ export default function InventoryDetailScreen() {
     setCurrentQuantity("");
     setParLevel("");
     setReorderThreshold("");
+    setWasteQuantity("");
+    setWasteNote("");
     setSaving(false);
     setFieldErrors({});
     setMessage(null);
@@ -177,6 +182,65 @@ export default function InventoryDetailScreen() {
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
         setMessage(t("inventory.detail.addError"));
+        setMessageIsError(true);
+      }
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
+    }
+  }
+
+  async function recordWaste() {
+    if (!restaurant || !item) return;
+    if (!canManage) {
+      setMessage(t("inventory.detail.viewOnlyInventory"));
+      setMessageIsError(true);
+      return;
+    }
+
+    const wasteFieldError = validateWasteQuantity(
+      wasteQuantity,
+      t("inventory.detail.field.wasteQuantity"),
+      parseNumber,
+      formatNumber,
+      t
+    );
+    if (wasteFieldError) {
+      setFieldErrors((current) => ({ ...current, wasteQuantity: wasteFieldError }));
+      setMessage(t("inventory.detail.reviewWaste"));
+      setMessageIsError(true);
+      return;
+    }
+    if (wasteNote.trim().length > 240) {
+      setFieldErrors((current) => ({
+        ...current,
+        wasteNote: t("inventory.detail.wasteNoteTooLong")
+      }));
+      setMessage(t("inventory.detail.reviewWaste"));
+      setMessageIsError(true);
+      return;
+    }
+
+    const restaurantId = restaurant.id;
+    setFieldErrors((current) => ({ ...current, wasteQuantity: undefined, wasteNote: undefined }));
+    setSaving(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      await recordInventoryWaste(
+        restaurantId,
+        item.id,
+        parseNumber(wasteQuantity) ?? 0,
+        wasteNote.trim() || null
+      );
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setWasteQuantity("");
+      setWasteNote("");
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(t("inventory.detail.wasteRecorded"));
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setMessage(t("inventory.detail.wasteError"));
         setMessageIsError(true);
       }
     } finally {
@@ -349,6 +413,52 @@ export default function InventoryDetailScreen() {
             ) : null}
           </Card>
 
+          {canManage ? (
+            <Card>
+              <Text style={styles.cardTitle}>{t("inventory.detail.recordWaste")}</Text>
+              <Text style={styles.copy}>{t("inventory.detail.wasteHelp")}</Text>
+              <Field
+                label={t("inventory.detail.wasteQuantity", { unit: item.unit })}
+                value={wasteQuantity}
+                onChangeText={(value) => {
+                  setWasteQuantity(value);
+                  setFieldErrors((current) => ({ ...current, wasteQuantity: undefined }));
+                }}
+                editable={!saving}
+                error={fieldErrors.wasteQuantity}
+              />
+              <View style={styles.field}>
+                <Text style={styles.label}>{t("inventory.detail.wasteNote")}</Text>
+                <TextInput
+                  accessibilityLabel={t("inventory.detail.wasteNote")}
+                  accessibilityHint={fieldErrors.wasteNote}
+                  value={wasteNote}
+                  onChangeText={(value) => {
+                    setWasteNote(value);
+                    setFieldErrors((current) => ({ ...current, wasteNote: undefined }));
+                  }}
+                  editable={!saving}
+                  multiline
+                  style={[styles.input, styles.noteInput, fieldErrors.wasteNote && styles.inputError]}
+                />
+                {fieldErrors.wasteNote ? (
+                  <Text style={styles.fieldError} accessibilityLiveRegion="polite">
+                    {fieldErrors.wasteNote}
+                  </Text>
+                ) : null}
+              </View>
+              <Button
+                title={saving ? t("inventory.detail.saving") : t("inventory.detail.recordWasteAction")}
+                accessibilityLabel={t("inventory.detail.wasteAccessibility", { item: item.item_name })}
+                icon={<Trash2 size={17} color={colors.surface} strokeWidth={2.5} />}
+                onPress={recordWaste}
+                disabled={saving}
+                fullWidth
+                style={styles.saveButton}
+              />
+            </Card>
+          ) : null}
+
           <Card>
             <Text style={styles.cardTitle}>{t("inventory.detail.movements.title")}</Text>
             {movements.length === 0 ? (
@@ -419,6 +529,8 @@ interface InventoryFieldErrors {
   currentQuantity?: string;
   parLevel?: string;
   reorderThreshold?: string;
+  wasteQuantity?: string;
+  wasteNote?: string;
 }
 
 const movementReasonKeys: Record<InventoryMovementReason, MessageKey> = {
@@ -447,6 +559,24 @@ function validateInventoryNumber(
   const parsed = parseNumber(value);
   if (parsed === null || parsed < 0 || parsed > operatingLimits.inventoryQuantity) {
     return t("inventory.detail.fieldRange", {
+      field: label,
+      maximum: formatNumber(operatingLimits.inventoryQuantity)
+    });
+  }
+  return undefined;
+}
+
+function validateWasteQuantity(
+  value: string,
+  label: string,
+  parseNumber: ReturnType<typeof useLocale>["parseNumber"],
+  formatNumber: ReturnType<typeof useLocale>["formatNumber"],
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  if (!value.trim()) return t("inventory.detail.fieldRequired", { field: label });
+  const parsed = parseNumber(value);
+  if (parsed === null || parsed <= 0 || parsed > operatingLimits.inventoryQuantity) {
+    return t("inventory.detail.wasteFieldRange", {
       field: label,
       maximum: formatNumber(operatingLimits.inventoryQuantity)
     });
@@ -598,6 +728,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
     fontWeight: "800"
+  },
+  noteInput: {
+    minHeight: 84,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontWeight: "600",
+    textAlignVertical: "top"
   },
   inputReadOnly: {
     color: colors.muted,
