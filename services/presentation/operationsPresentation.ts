@@ -50,6 +50,10 @@ interface OperationsCopy {
     confirmCountDetail: (quantity: string, unit: string) => string;
     resolveStockTitle: (itemName: string) => string;
     resolveStockDetail: (quantity: string, unit: string) => string;
+    continueCountSessionTitle: string;
+    continueCountSessionDetail: string;
+    approveCountSessionTitle: string;
+    approveCountSessionDetail: string;
     sendOrderTitle: (supplierName: string) => string;
     reviewOrderTitle: (supplierName: string) => string;
     orderDeliveryDetail: string;
@@ -134,6 +138,12 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       confirmCountDetail: (quantity, unit) => `Projected ${quantity} ${unit}. Update the count before making an ordering decision.`,
       resolveStockTitle: (itemName) => `Resolve ${itemName} stock risk`,
       resolveStockDetail: (quantity, unit) => `Projected ${quantity} ${unit}. Review the count and supplier coverage.`,
+      continueCountSessionTitle: "Continue inventory count",
+      continueCountSessionDetail:
+        "An inventory count session is in progress. Finish counting items and submit for approval.",
+      approveCountSessionTitle: "Approve inventory count",
+      approveCountSessionDetail:
+        "A submitted multi-item count is waiting for manager approval before stock is updated.",
       sendOrderTitle: (supplierName) => `Send ${supplierName} order`,
       reviewOrderTitle: (supplierName) => `Review ${supplierName} order`,
       orderDeliveryDetail: "A supplier delivery commitment is recorded for this order.",
@@ -237,6 +247,12 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       confirmCountDetail: (quantity, unit) => `Proyección: ${quantity} ${unit}. Actualiza el conteo antes de decidir el pedido.`,
       resolveStockTitle: (itemName) => `Resolver riesgo de inventario de ${itemName}`,
       resolveStockDetail: (quantity, unit) => `Proyección: ${quantity} ${unit}. Revisa el conteo y la cobertura del proveedor.`,
+      continueCountSessionTitle: "Continuar conteo de inventario",
+      continueCountSessionDetail:
+        "Hay una sesión de conteo en curso. Termina de contar y envíala para aprobación.",
+      approveCountSessionTitle: "Aprobar conteo de inventario",
+      approveCountSessionDetail:
+        "Un conteo de varios artículos enviado espera aprobación del gerente antes de actualizar el stock.",
       sendOrderTitle: (supplierName) => `Enviar pedido a ${supplierName}`,
       reviewOrderTitle: (supplierName) => `Revisar pedido de ${supplierName}`,
       orderDeliveryDetail: "Este pedido tiene un compromiso de entrega del proveedor.",
@@ -340,6 +356,10 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       confirmCountDetail: (quantity, unit) => `预计剩余 ${quantity} ${unit}。请先更新盘点数量，再决定是否订货。`,
       resolveStockTitle: (itemName) => `处理 ${itemName} 库存风险`,
       resolveStockDetail: (quantity, unit) => `预计剩余 ${quantity} ${unit}。请检查盘点数量和供应保障。`,
+      continueCountSessionTitle: "继续库存盘点",
+      continueCountSessionDetail: "库存盘点会话进行中。请完成盘点并提交审批。",
+      approveCountSessionTitle: "批准库存盘点",
+      approveCountSessionDetail: "已提交的多项目盘点等待经理批准后才会更新库存。",
       sendOrderTitle: (supplierName) => `发送 ${supplierName} 订单`,
       reviewOrderTitle: (supplierName) => `审核 ${supplierName} 订单`,
       orderDeliveryDetail: "此订单已记录供应商交货承诺。",
@@ -461,6 +481,12 @@ export function presentOperationalTodayTask(
       copy.today.resolveStockTitle(values.itemName),
       copy.today.resolveStockDetail(quantity(values.projectedQuantity), values.unit)
     );
+  }
+  if (code === "today.inventory_count_session.continue") {
+    return result(copy.today.continueCountSessionTitle, copy.today.continueCountSessionDetail);
+  }
+  if (code === "today.inventory_count_session.approve") {
+    return result(copy.today.approveCountSessionTitle, copy.today.approveCountSessionDetail);
   }
   if (code === "today.order.send" || code === "today.order.review") {
     return result(

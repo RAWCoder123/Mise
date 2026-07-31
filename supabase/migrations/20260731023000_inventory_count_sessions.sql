@@ -94,12 +94,12 @@ create policy "Members can read inventory count lines"
 on public.inventory_count_lines for select to authenticated
 using (private.is_restaurant_member(restaurant_id));
 
-revoke all on table public.inventory_count_sessions from public, anon, authenticated;
-revoke all on table public.inventory_count_lines from public, anon, authenticated;
-grant select on table public.inventory_count_sessions to authenticated;
-grant select on table public.inventory_count_lines to authenticated;
-grant select, insert, update, delete on table public.inventory_count_sessions to service_role;
-grant select, insert, update, delete on table public.inventory_count_lines to service_role;
+revoke all on public.inventory_count_sessions from public, anon, authenticated;
+revoke all on public.inventory_count_lines from public, anon, authenticated;
+grant select on public.inventory_count_sessions to authenticated;
+grant select on public.inventory_count_lines to authenticated;
+grant select, insert, update, delete on public.inventory_count_sessions to service_role;
+grant select, insert, update, delete on public.inventory_count_lines to service_role;
 
 comment on table public.inventory_count_sessions is
   'Multi-item inventory count workflow. Clients may read; writes go through service-owned RPCs.';
@@ -130,6 +130,9 @@ begin
   return jsonb_build_object('session', to_jsonb(session_row), 'lines', lines_json);
 end;
 $$;
+
+revoke all on function private.inventory_count_session_detail(uuid) from public, anon, authenticated;
+grant execute on function private.inventory_count_session_detail(uuid) to service_role;
 
 create or replace function private.service_begin_inventory_count_session(
   p_actor_user_id uuid,

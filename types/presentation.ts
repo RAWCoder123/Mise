@@ -18,6 +18,8 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.recommendation.prepare_draft",
   "today.inventory.confirm_count",
   "today.inventory.resolve_stock",
+  "today.inventory_count_session.continue",
+  "today.inventory_count_session.approve",
   "today.order.send",
   "today.order.review",
   "today.setup.profile.open",
@@ -72,6 +74,10 @@ export type TodayTaskPresentationDescriptor =
         unit: string;
         status: "Low" | "Critical";
       };
+    }
+  | {
+      code: "today.inventory_count_session.continue" | "today.inventory_count_session.approve";
+      values: { status: string };
     }
   | {
       code: "today.order.send" | "today.order.review";
