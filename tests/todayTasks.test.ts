@@ -174,7 +174,7 @@ test("in-progress inventory count sessions are visible to staff counters", () =>
   const countTask = tasks.find((task) => task.source.kind === "inventory_count_session");
   assert.equal(countTask?.requiredRole, "member");
   assert.equal(countTask?.priority, "normal");
-  assert.equal(countTask?.presentation.code, "today.inventory_count_session.continue");
+  assert.equal(countTask?.presentation?.code, "today.inventory_count_session.continue");
 });
 
 test("completed tasks are projections of changed source state and keep stable IDs", () => {
