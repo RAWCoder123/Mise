@@ -21,21 +21,37 @@ import { captureMiseError } from "../../services/telemetry";
 
 export default function LoginScreen() {
   const { formatNumber, t } = useLocale();
-  const { canUseDemoMode, continueWithDemo, ready, restaurant, signIn, user, usingLocalDemo } = useMiseSession();
+  const {
+    canUseDemoMode,
+    continueWithDemo,
+    passwordRecoveryPending,
+    ready,
+    requestPasswordReset,
+    restaurant,
+    signIn,
+    user,
+    usingLocalDemo
+  } = useMiseSession();
   const initialCredentials = getInitialLoginCredentials();
   const [email, setEmail] = useState(initialCredentials.email);
   const [password, setPassword] = useState(initialCredentials.password);
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
+  const [noticeKey, setNoticeKey] = useState<MessageKey | null>(null);
 
   useEffect(() => {
     if (!ready) return;
+    if (passwordRecoveryPending) {
+      router.replace("/reset-password");
+      return;
+    }
     if (restaurant) {
       router.replace("/today");
     } else if (user) {
       router.replace("/setup");
     }
-  }, [ready, restaurant, user]);
+  }, [passwordRecoveryPending, ready, restaurant, user]);
 
   if (!ready) {
     return <Screen title={t("boot.title")} subtitle={t("boot.subtitle")} loading />;
@@ -54,6 +70,7 @@ export default function LoginScreen() {
 
     setLoading(true);
     setErrorKey(null);
+    setNoticeKey(null);
     try {
       await signIn(normalizedEmail, password);
       const pendingInviteToken = await readPendingInviteToken();
@@ -73,6 +90,7 @@ export default function LoginScreen() {
   async function handleDemo() {
     setLoading(true);
     setErrorKey(null);
+    setNoticeKey(null);
     try {
       await continueWithDemo({
         preset: DEMO_DATASET.id,
@@ -84,6 +102,30 @@ export default function LoginScreen() {
     } catch (demoError) {
       captureMiseError(demoError, { flow: "login", operation: "open_demo" });
       setErrorKey("login.error.demo");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      setErrorKey("login.error.emailRequired");
+      setNoticeKey(null);
+      return;
+    }
+
+    setLoading(true);
+    setErrorKey(null);
+    setNoticeKey(null);
+    setResetSent(false);
+    try {
+      await requestPasswordReset(normalizedEmail);
+      setResetSent(true);
+      setNoticeKey("login.reset.sent");
+    } catch (resetError) {
+      captureMiseError(resetError, { flow: "login", operation: "password_reset" });
+      setErrorKey("login.reset.error.requestFailed");
     } finally {
       setLoading(false);
     }
@@ -150,6 +192,11 @@ export default function LoginScreen() {
                 {t(errorKey)}
               </Text>
             ) : null}
+            {noticeKey ? (
+              <Text accessibilityLiveRegion="polite" style={styles.notice}>
+                {t(noticeKey)}
+              </Text>
+            ) : null}
             <Button
               title={!isSupabaseConfigured ? t("login.action.cloudUnavailable") : loading ? t("login.action.opening") : t("login.action.signIn")}
               icon={<LogIn size={17} color={colors.surface} strokeWidth={2.5} />}
@@ -157,6 +204,21 @@ export default function LoginScreen() {
               disabled={loading || !isSupabaseConfigured}
               fullWidth
             />
+            {isSupabaseConfigured ? (
+              <Button
+                title={
+                  loading
+                    ? t("login.action.sendingReset")
+                    : resetSent
+                      ? t("login.action.resendReset")
+                      : t("login.action.forgotPassword")
+                }
+                variant="ghost"
+                onPress={() => void handleForgotPassword()}
+                disabled={loading}
+                fullWidth
+              />
+            ) : null}
             {canUseDemoMode && (
               <View style={styles.demoPanel}>
                 <Text style={styles.demoKicker}>{t("login.demo.eyebrow")}</Text>
@@ -296,6 +358,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     marginVertical: 12
+  },
+  notice: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 19,
+    marginVertical: 12,
+    fontWeight: "600"
   },
   modeNote: {
     color: colors.muted,

@@ -1,10 +1,20 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import * as Linking from "expo-linking";
 import { AppState } from "react-native";
 
 import { canUseDemoMode as canUseDemoModeForConfig, readPublicAppConfig } from "../lib/appConfig";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
+import {
+  extractAuthCallbackParams,
+  isPasswordRecoveryAuthEvent,
+  isRecoveryCallback,
+  isValidRecoveryEmail,
+  normalizeRecoveryEmail,
+  PASSWORD_RESET_PATH,
+  validateNewPassword
+} from "../services/domain/authRecovery";
 import type {
   AppUser,
   PosProvider,
@@ -55,7 +65,11 @@ interface MiseSessionContextValue {
   isDemoMode: boolean;
   usingLocalDemo: boolean;
   canUseDemoMode: boolean;
+  passwordRecoveryPending: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  completePasswordReset: (password: string) => Promise<void>;
+  clearPasswordRecovery: () => void;
   continueWithDemo: (profile?: { name?: string; cuisine_type?: string; posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   createRestaurant: (profile: {
     name: string;
@@ -69,6 +83,8 @@ interface MiseSessionContextValue {
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   signOut: () => Promise<void>;
 }
+
+const PASSWORD_RECOVERY_STORAGE_KEY = "mise:password-recovery:v1";
 
 const STORAGE_KEY = "mise:session:v2";
 const appConfig = readPublicAppConfig();
@@ -104,6 +120,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [posProvider, setPosProvider] = useState<PosProvider | null>(null);
   const [posStatusLabel, setPosStatusLabel] = useState("Not connected");
+  const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
   const activeRestaurantIdRef = useRef<string | null>(null);
   const posRequestIdRef = useRef(0);
   const switchRequestIdRef = useRef(0);
@@ -131,6 +148,20 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       .then(() => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)));
     storageQueueRef.current = write;
     await write;
+  }, []);
+
+  const markPasswordRecovery = useCallback(async () => {
+    setPasswordRecoveryPending(true);
+    try {
+      await AsyncStorage.setItem(PASSWORD_RECOVERY_STORAGE_KEY, "1");
+    } catch {
+      // Best-effort persistence for cold starts after the recovery deep link.
+    }
+  }, []);
+
+  const clearPasswordRecovery = useCallback(() => {
+    setPasswordRecoveryPending(false);
+    void AsyncStorage.removeItem(PASSWORD_RECOVERY_STORAGE_KEY).catch(() => undefined);
   }, []);
 
   const clearSessionState = useCallback(async () => {
@@ -298,8 +329,11 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
+      if (isPasswordRecoveryAuthEvent(event)) {
+        void markPasswordRecovery();
+      }
       if (session?.user) {
         hydrateSupabaseUser(session.user).catch((error) => {
           captureMiseError(error, { flow: "auth_state_change" });
@@ -314,7 +348,56 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       mounted = false;
       data.subscription.unsubscribe();
     };
-  }, [clearSessionState, hydrateLocalDemo, hydrateSupabaseUser]);
+  }, [clearSessionState, hydrateLocalDemo, hydrateSupabaseUser, markPasswordRecovery]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    let mounted = true;
+
+    async function consumeAuthCallback(url: string | null) {
+      if (!url || !supabase) return;
+      const params = extractAuthCallbackParams(url);
+      if (!isRecoveryCallback(params)) return;
+
+      try {
+        if (params.code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(params.code);
+          if (error) throw error;
+        } else if (params.accessToken && params.refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: params.accessToken,
+            refresh_token: params.refreshToken
+          });
+          if (error) throw error;
+        }
+        if (params.type === "recovery" || params.code || (params.accessToken && params.refreshToken)) {
+          if (mounted) await markPasswordRecovery();
+        }
+      } catch (callbackError) {
+        captureMiseError(callbackError, { flow: "password_recovery", operation: "auth_callback" });
+      }
+    }
+
+    void AsyncStorage.getItem(PASSWORD_RECOVERY_STORAGE_KEY)
+      .then((value) => {
+        if (mounted && value === "1") setPasswordRecoveryPending(true);
+      })
+      .catch(() => undefined);
+
+    void Linking.getInitialURL()
+      .then((url) => consumeAuthCallback(url))
+      .catch((error) => captureMiseError(error, { flow: "password_recovery", operation: "initial_url" }));
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      void consumeAuthCallback(url);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, [markPasswordRecovery]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !authUser) return;
@@ -458,12 +541,43 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       if (!isSupabaseConfigured || !supabase) {
         throw new Error("Supabase is not configured. Enable local demo mode for device-only testing.");
       }
+      clearPasswordRecovery();
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       if (!data.user) throw new Error("Could not load authenticated user.");
       await hydrateSupabaseUser(data.user);
     },
-    [hydrateSupabaseUser]
+    [clearPasswordRecovery, hydrateSupabaseUser]
+  );
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error("Supabase is not configured. Password reset requires cloud auth.");
+    }
+    const normalizedEmail = normalizeRecoveryEmail(email);
+    if (!isValidRecoveryEmail(normalizedEmail)) {
+      throw new Error("Enter a valid email address.");
+    }
+    const redirectTo = Linking.createURL(PASSWORD_RESET_PATH.replace(/^\//, ""));
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
+    if (error) throw error;
+  }, []);
+
+  const completePasswordReset = useCallback(
+    async (password: string) => {
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error("Supabase is not configured. Password reset requires cloud auth.");
+      }
+      const validationError = validateNewPassword(password);
+      if (validationError) throw new Error(validationError);
+      if (!passwordRecoveryPending) {
+        throw new Error("Open the password reset link from your email before setting a new password.");
+      }
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      clearPasswordRecovery();
+    },
+    [clearPasswordRecovery, passwordRecoveryPending]
   );
 
   const switchRestaurant = useCallback(
@@ -540,11 +654,12 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   }, [isDemoMode, posProvider, refreshPOS, saveSnapshot, user]);
 
   const signOut = useCallback(async () => {
+    clearPasswordRecovery();
     if (isSupabaseConfigured && supabase) {
       await supabase.auth.signOut();
     }
     await clearSessionState();
-  }, [clearSessionState]);
+  }, [clearPasswordRecovery, clearSessionState]);
 
   const value = useMemo<MiseSessionContextValue>(
     () => ({
@@ -563,7 +678,11 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       isDemoMode,
       usingLocalDemo: isDemoMode,
       canUseDemoMode: demoModeAvailable,
+      passwordRecoveryPending,
       signIn,
+      requestPasswordReset,
+      completePasswordReset,
+      clearPasswordRecovery,
       continueWithDemo,
       createRestaurant,
       switchRestaurant,
@@ -577,17 +696,21 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       activeRestaurantId,
       authUser,
       availableRestaurants,
+      clearPasswordRecovery,
+      completePasswordReset,
       continueWithDemo,
       createRestaurant,
       connectDemoPOS,
       isDemoMode,
       isLoading,
       memberships,
+      passwordRecoveryPending,
       posProvider,
       posStatusLabel,
       ready,
       refreshPosStatus,
       refreshSession,
+      requestPasswordReset,
       restaurant,
       resetDemoData,
       role,
