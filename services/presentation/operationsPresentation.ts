@@ -53,6 +53,8 @@ interface OperationsCopy {
     confirmCountDetail: (quantity: string, unit: string) => string;
     resolveStockTitle: (itemName: string) => string;
     resolveStockDetail: (quantity: string, unit: string) => string;
+    beginCountSessionTitle: string;
+    beginCountSessionDetail: (riskItemCount: string) => string;
     continueCountSessionTitle: string;
     continueCountSessionDetail: string;
     approveCountSessionTitle: string;
@@ -77,6 +79,7 @@ interface OperationsCopy {
     reviewInsightDetail: string;
     actions: {
       updateInventoryCount: string;
+      beginCountSession: string;
       continueCountSession: string;
       reviewCountSession: string;
       reviewRecommendation: string;
@@ -157,6 +160,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       confirmCountDetail: (quantity, unit) => `Projected ${quantity} ${unit}. Update the count before making an ordering decision.`,
       resolveStockTitle: (itemName) => `Resolve ${itemName} stock risk`,
       resolveStockDetail: (quantity, unit) => `Projected ${quantity} ${unit}. Review the count and supplier coverage.`,
+      beginCountSessionTitle: "Start inventory count",
+      beginCountSessionDetail: (riskItemCount) =>
+        `${riskItemCount} stock-risk items need a multi-item count. Begin the session and submit it for manager approval.`,
       continueCountSessionTitle: "Continue inventory count",
       continueCountSessionDetail:
         "An inventory count session is in progress. Finish counting items and submit for approval.",
@@ -203,6 +209,7 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       reviewInsightDetail: "Open the evidence and recommended action before the next service window.",
       actions: {
         updateInventoryCount: "Review count",
+        beginCountSession: "Start count",
         continueCountSession: "Continue count",
         reviewCountSession: "Review count",
         reviewRecommendation: "Review recommendation",
@@ -282,6 +289,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       confirmCountDetail: (quantity, unit) => `Proyección: ${quantity} ${unit}. Actualiza el conteo antes de decidir el pedido.`,
       resolveStockTitle: (itemName) => `Resolver riesgo de inventario de ${itemName}`,
       resolveStockDetail: (quantity, unit) => `Proyección: ${quantity} ${unit}. Revisa el conteo y la cobertura del proveedor.`,
+      beginCountSessionTitle: "Iniciar conteo de inventario",
+      beginCountSessionDetail: (riskItemCount) =>
+        `${riskItemCount} artículos con riesgo de inventario necesitan un conteo de varios ítems. Inicia la sesión y envíala para aprobación del gerente.`,
       continueCountSessionTitle: "Continuar conteo de inventario",
       continueCountSessionDetail:
         "Hay una sesión de conteo en curso. Termina de contar y envíala para aprobación.",
@@ -328,6 +338,7 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       reviewInsightDetail: "Abre la evidencia y la acción recomendada antes del próximo servicio.",
       actions: {
         updateInventoryCount: "Revisar conteo",
+        beginCountSession: "Iniciar conteo",
         continueCountSession: "Continuar conteo",
         reviewCountSession: "Revisar conteo",
         reviewRecommendation: "Revisar recomendación",
@@ -407,6 +418,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       confirmCountDetail: (quantity, unit) => `预计剩余 ${quantity} ${unit}。请先更新盘点数量，再决定是否订货。`,
       resolveStockTitle: (itemName) => `处理 ${itemName} 库存风险`,
       resolveStockDetail: (quantity, unit) => `预计剩余 ${quantity} ${unit}。请检查盘点数量和供应保障。`,
+      beginCountSessionTitle: "开始库存盘点",
+      beginCountSessionDetail: (riskItemCount) =>
+        `有 ${riskItemCount} 个库存风险品项需要多项目盘点。请开始会话并提交给经理审批。`,
       continueCountSessionTitle: "继续库存盘点",
       continueCountSessionDetail: "库存盘点会话进行中。请完成盘点并提交审批。",
       approveCountSessionTitle: "批准库存盘点",
@@ -451,6 +465,7 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       reviewInsightDetail: "请在下一个营业时段前查看依据和建议操作。",
       actions: {
         updateInventoryCount: "检查盘点",
+        beginCountSession: "开始盘点",
         continueCountSession: "继续盘点",
         reviewCountSession: "检查盘点",
         reviewRecommendation: "审核建议",
@@ -521,6 +536,8 @@ export function presentOperationalTodayTaskAction(
   switch (intent) {
     case "update_inventory_count":
       return actions.updateInventoryCount;
+    case "begin_inventory_count_session":
+      return actions.beginCountSession;
     case "continue_inventory_count_session":
       return task.presentation?.code === "today.inventory_count_session.approve"
         ? actions.reviewCountSession
@@ -587,6 +604,12 @@ export function presentOperationalTodayTask(
     return result(
       copy.today.resolveStockTitle(values.itemName),
       copy.today.resolveStockDetail(quantity(values.projectedQuantity), values.unit)
+    );
+  }
+  if (code === "today.inventory_count_session.begin") {
+    return result(
+      copy.today.beginCountSessionTitle,
+      copy.today.beginCountSessionDetail(quantity(values.riskItemCount))
     );
   }
   if (code === "today.inventory_count_session.continue") {

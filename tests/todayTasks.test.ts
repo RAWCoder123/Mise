@@ -6,6 +6,8 @@ import {
   classifyOperationalTodayTaskTiming,
   deriveOperationalTodayTasks,
   operationalTodayTaskId,
+  prioritizeOperationalTodayTasksForRole,
+  SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID,
   sortOperationalTodayTasks,
   type OperationalTodayTask
 } from "../services/domain/todayTasks";
@@ -290,6 +292,92 @@ test("rejects non-UTC dueAt values and enforces action role tiers", () => {
   assert.equal(canRestaurantRoleActOnTodayTask("manager", ownerTask), false);
   assert.equal(canRestaurantRoleActOnTodayTask("admin", ownerTask), true);
   assert.equal(canRestaurantRoleActOnTodayTask("owner", ownerTask), true);
+});
+
+test("stock-risk without an open count session suggests a staff-startable count", () => {
+  const tasks = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [outlook("critical_item", "Critical"), outlook("watch_item", "Watch")],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    openCountSession: null,
+    now
+  });
+  const beginTask = tasks.find((entry) => entry.action.intent === "begin_inventory_count_session");
+  assert.ok(beginTask);
+  assert.equal(beginTask?.source.id, SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID);
+  assert.equal(beginTask?.requiredRole, "member");
+  assert.equal(beginTask?.priority, "urgent");
+  assert.equal(beginTask?.action.route, "/inventory/count");
+  assert.equal(beginTask?.presentation?.code, "today.inventory_count_session.begin");
+  assert.equal(canRestaurantRoleActOnTodayTask("staff", beginTask!), true);
+});
+
+test("open count sessions suppress the suggested begin-count task", () => {
+  const session: InventoryCountSession = {
+    id: "count_session_open",
+    restaurant_id: restaurantId,
+    status: "in_progress",
+    started_by: "user_staff",
+    submitted_by: null,
+    approved_by: null,
+    cancelled_by: null,
+    started_at: "2026-07-31T01:00:00.000Z",
+    submitted_at: null,
+    approved_at: null,
+    cancelled_at: null,
+    note: null,
+    created_at: "2026-07-31T01:00:00.000Z",
+    updated_at: "2026-07-31T01:30:00.000Z"
+  };
+  const tasks = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [outlook("critical_item", "Critical")],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    openCountSession: session,
+    now
+  });
+  assert.equal(
+    tasks.some((entry) => entry.action.intent === "begin_inventory_count_session"),
+    false
+  );
+  assert.equal(
+    tasks.some((entry) => entry.action.intent === "continue_inventory_count_session"),
+    true
+  );
+});
+
+test("role prioritization keeps staff-actionable work ahead of locked manager tasks", () => {
+  const managerTask = task("manager_first", {
+    requiredRole: "manager",
+    priority: "urgent",
+    dueAt: "2026-07-18T12:00:00.000Z"
+  });
+  const staffTask = task("staff_second", {
+    requiredRole: "member",
+    priority: "normal",
+    dueAt: null
+  });
+  const sorted = sortOperationalTodayTasks([staffTask, managerTask], {
+    restaurantTimeZone: "UTC",
+    now
+  });
+  assert.equal(sorted[0]?.source.id, "manager_first");
+  const forStaff = prioritizeOperationalTodayTasksForRole(sorted, "staff");
+  assert.deepEqual(
+    forStaff.map((entry) => entry.source.id),
+    ["staff_second", "manager_first"]
+  );
+  const forManager = prioritizeOperationalTodayTasksForRole(sorted, "manager");
+  assert.deepEqual(
+    forManager.map((entry) => entry.source.id),
+    ["manager_first", "staff_second"]
+  );
 });
 
 function recommendation(

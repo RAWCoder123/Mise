@@ -33,6 +33,7 @@ import { DEMO_DATASET } from "../../services/demoData";
 import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
+  prioritizeOperationalTodayTasksForRole,
   type OperationalTodayTask,
   type OperationalTodayTaskTiming
 } from "../../services/domain/todayTasks";
@@ -339,14 +340,25 @@ function TaskSection({
   copy: TodayCopy;
   locale: AppLocale;
 }) {
-  const hasMore = tasks.length > COMPACT_TASK_COUNT;
-  const visibleTasks = showAll ? tasks : tasks.slice(0, COMPACT_TASK_COUNT);
-  const action = hasMore ? (showAll ? copy.showLess : copy.viewAll) : copy.taskCount(String(tasks.length));
+  const prioritizedTasks = prioritizeOperationalTodayTasksForRole(tasks, role);
+  const actionableCount = prioritizedTasks.filter((task) => canRestaurantRoleActOnTodayTask(role, task)).length;
+  const hasRestrictedFollowUps = actionableCount < prioritizedTasks.length;
+  const hasMore = prioritizedTasks.length > COMPACT_TASK_COUNT;
+  const visibleTasks = showAll ? prioritizedTasks : prioritizedTasks.slice(0, COMPACT_TASK_COUNT);
+  const action = hasMore
+    ? showAll
+      ? copy.showLess
+      : copy.viewAll
+    : copy.taskCount(String(prioritizedTasks.length));
+  const subtitle =
+    hasRestrictedFollowUps && actionableCount > 0
+      ? copy.tasksSubtitleRoleAware
+      : copy.tasksSubtitle;
 
   return (
     <SectionSurface
       title={copy.tasksTitle}
-      subtitle={copy.tasksSubtitle}
+      subtitle={subtitle}
       action={action}
       onAction={hasMore ? onToggle : undefined}
       actionAccessibilityLabel={showAll ? copy.collapseTasksAccessibilityLabel : copy.expandTasksAccessibilityLabel}
@@ -585,7 +597,11 @@ function taskToneColor(task: OperationalTodayTask) {
 
 function taskIcon(task: OperationalTodayTask, color: string): ReactNode {
   const props = { size: 19, color, strokeWidth: 2.15 } as const;
-  if (task.source.kind === "inventory") return <Package {...props} />;
+  if (task.source.kind === "inventory" || task.source.kind === "inventory_count_session") {
+    return task.source.kind === "inventory_count_session"
+      ? <ClipboardList {...props} />
+      : <Package {...props} />;
+  }
   if (task.source.kind === "recommendation" || task.source.kind === "order") return <ShoppingCart {...props} />;
   if (task.source.kind === "integration") return <PlugZap {...props} />;
   if (task.source.kind === "setup") return <Settings {...props} />;
@@ -627,6 +643,7 @@ interface TodayCopy {
   };
   tasksTitle: string;
   tasksSubtitle: string;
+  tasksSubtitleRoleAware: string;
   taskCount: (count: string) => string;
   viewAll: string;
   showLess: string;
@@ -683,6 +700,7 @@ const todayCopy: Readonly<Record<AppLocale, TodayCopy>> = {
     },
     tasksTitle: "Today’s Tasks",
     tasksSubtitle: "Generated from current restaurant operations",
+    tasksSubtitleRoleAware: "Your actionable work first · manager follow-ups below",
     taskCount: (count) => `${count} open`,
     viewAll: "View all",
     showLess: "Show less",
@@ -737,6 +755,7 @@ const todayCopy: Readonly<Record<AppLocale, TodayCopy>> = {
     },
     tasksTitle: "Tareas de hoy",
     tasksSubtitle: "Generadas a partir de las operaciones actuales",
+    tasksSubtitleRoleAware: "Primero lo que puedes hacer · luego lo del gerente",
     taskCount: (count) => `${count} pendientes`,
     viewAll: "Ver todo",
     showLess: "Ver menos",
@@ -791,6 +810,7 @@ const todayCopy: Readonly<Record<AppLocale, TodayCopy>> = {
     },
     tasksTitle: "今日任务",
     tasksSubtitle: "根据当前餐厅运营生成",
+    tasksSubtitleRoleAware: "先显示你可处理的事项 · 经理跟进在后",
     taskCount: (count) => `${count} 项待处理`,
     viewAll: "查看全部",
     showLess: "收起",

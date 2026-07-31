@@ -25,7 +25,7 @@ const supplierName = "Proveedor Ñ";
 const providerName = "Square 企业";
 
 test("every Today task action intent has a localized non-fallback label", () => {
-  assert.equal(OPERATIONAL_TODAY_TASK_ACTION_INTENTS.length, 11);
+  assert.equal(OPERATIONAL_TODAY_TASK_ACTION_INTENTS.length, 12);
 
   for (const locale of locales) {
     for (const intent of OPERATIONAL_TODAY_TASK_ACTION_INTENTS) {
@@ -96,6 +96,7 @@ test("every allowlisted Today presentation code renders in all locales and prese
     { code: "today.recommendation.prepare_draft", values: { itemName, supplierName } },
     { code: "today.inventory.confirm_count", values: { itemName, projectedQuantity: 12.5, unit: "lb" } },
     { code: "today.inventory.resolve_stock", values: { itemName, projectedQuantity: 2.5, unit: "kg", status: "Critical" } },
+    { code: "today.inventory_count_session.begin", values: { riskItemCount: 3 } },
     { code: "today.inventory_count_session.continue", values: { status: "in_progress" } },
     { code: "today.inventory_count_session.approve", values: { status: "submitted" } },
     { code: "today.order.send", values: { supplierName, deliveryDate: null } },

@@ -32,6 +32,7 @@ export type OperationalTodayTaskTiming = "overdue" | "due_soon" | "today" | "lat
 
 export type OperationalTodayTaskActionIntent =
   | "update_inventory_count"
+  | "begin_inventory_count_session"
   | "continue_inventory_count_session"
   | "review_recommendation"
   | "prepare_supplier_draft"
@@ -46,6 +47,7 @@ export type OperationalTodayTaskActionIntent =
 /** Exhaustive list for presentation and contract tests. Keep in sync with the union above. */
 export const OPERATIONAL_TODAY_TASK_ACTION_INTENTS = [
   "update_inventory_count",
+  "begin_inventory_count_session",
   "continue_inventory_count_session",
   "review_recommendation",
   "prepare_supplier_draft",
@@ -57,6 +59,9 @@ export const OPERATIONAL_TODAY_TASK_ACTION_INTENTS = [
   "repair_pos_connection",
   "review_insight"
 ] as const satisfies readonly OperationalTodayTaskActionIntent[];
+
+/** Stable synthetic source id for the suggested begin-count task (not a DB session id). */
+export const SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID = "suggested_begin";
 
 export type OperationalTodayTaskRoute =
   | "/inventory"
@@ -188,6 +193,45 @@ export function deriveOperationalTodayTasks(
       }),
       includeCompleted
     );
+  } else {
+    const riskOutlooks = input.inventoryOutlooks.filter(
+      (outlook) =>
+        outlook.item.restaurant_id === restaurantId && outlook.prediction.projectedStatus !== "Good"
+    );
+    if (riskOutlooks.length > 0) {
+      const hasCritical = riskOutlooks.some(
+        (outlook) => outlook.prediction.projectedStatus === "Critical"
+      );
+      const hasLow = riskOutlooks.some((outlook) => outlook.prediction.projectedStatus === "Low");
+      pushIfVisible(
+        tasks,
+        buildTask({
+          restaurantId,
+          sourceKind: "inventory_count_session",
+          sourceId: SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID,
+          sourceStatus: "suggested",
+          title: "Start inventory count",
+          detail:
+            "Stock-risk items need a multi-item count. Staff can begin the session and submit it for manager approval.",
+          presentation: {
+            code: "today.inventory_count_session.begin",
+            values: { riskItemCount: riskOutlooks.length }
+          },
+          priority: hasCritical ? "urgent" : hasLow ? "high" : "normal",
+          action: {
+            intent: "begin_inventory_count_session",
+            label: "Start count",
+            route: "/inventory/count",
+            entityId: null
+          },
+          // Matches begin_count_session Edge/SQL staff+ authority.
+          requiredRole: "member",
+          isComplete: false,
+          completionReason: "No open inventory count session exists while stock-risk items remain."
+        }),
+        includeCompleted
+      );
+    }
   }
 
   for (const recommendation of recommendations) {
@@ -558,6 +602,23 @@ export function canRestaurantRoleActOnTodayTask(
   if (task.requiredRole === "member") return true;
   if (task.requiredRole === "manager") return role !== "staff";
   return role === "owner" || role === "admin";
+}
+
+/**
+ * Keep urgency ordering inside each group, but surface work the current role can
+ * act on before locked manager/owner follow-ups. Tasks are assumed pre-sorted.
+ */
+export function prioritizeOperationalTodayTasksForRole(
+  tasks: readonly OperationalTodayTask[],
+  role: RestaurantRole
+): OperationalTodayTask[] {
+  const actionable: OperationalTodayTask[] = [];
+  const restricted: OperationalTodayTask[] = [];
+  for (const task of tasks) {
+    if (canRestaurantRoleActOnTodayTask(role, task)) actionable.push(task);
+    else restricted.push(task);
+  }
+  return [...actionable, ...restricted];
 }
 
 function buildSetupTask(
