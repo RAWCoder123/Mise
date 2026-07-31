@@ -350,6 +350,31 @@ test("inventory counts and regenerated guidance commit through one optimistic wo
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.update_inventory_item_and_signals[\s\S]*authenticated/i);
 });
 
+test("inventory waste writes are service-owned, ledgered, and separate from count saves", () => {
+  const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const migration = readFileSync("supabase/migrations/20260731012000_record_inventory_waste.sql", "utf8");
+  const detail = readFileSync("app/inventory/[id].tsx", "utf8");
+  const wasteWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+recordInventoryWaste[\s\S]*?\n\}/)?.[0] ?? "";
+
+  assert.match(wasteWorkflow, /requireInventoryWasteQuantity/);
+  assert.match(wasteWorkflow, /planInventoryWaste/);
+  assert.match(wasteWorkflow, /recordInventoryWasteAndSignals\([\s\S]*existing\.last_updated/i);
+  assert.doesNotMatch(wasteWorkflow, /updateInventoryItemAndSignals/);
+  assert.match(repository, /action:\s*"record_waste"/i);
+  assert.match(edge, /"record_waste"/);
+  assert.match(edge, /service_record_inventory_waste_and_signals/);
+  assert.match(edge, /inventory_waste_recorded/);
+  assert.match(migration, /create\s+or\s+replace\s+function\s+private\.service_record_inventory_waste_and_signals/i);
+  assert.match(migration, /reason,\s*[\s\S]*'waste'/i);
+  assert.match(migration, /source_workflow,\s*[\s\S]*'record_waste'/i);
+  assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_record_inventory_waste_and_signals[\s\S]*authenticated/i);
+  assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_record_inventory_waste_and_signals[\s\S]*service_role/i);
+  assert.match(detail, /recordInventoryWaste/);
+  assert.match(detail, /inventory\.detail\.recordWaste/);
+});
+
 test("recipe baseline edits and regenerated guidance commit through one optimistic workflow", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
@@ -770,6 +795,7 @@ test("hosted Edge and service RPC checks forge every privileged tenant boundary"
     "service_mark_operational_signals_pending",
     "service_commit_operational_signals",
     "service_update_inventory_and_signals",
+    "service_record_inventory_waste_and_signals",
     "service_save_recipe_and_signals",
     "service_create_rules_engine_ai_insight",
     "service_record_edge_audit_log"

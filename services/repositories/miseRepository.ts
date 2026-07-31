@@ -47,6 +47,7 @@ import {
   type RecommendationWorkflowResult,
   type SupplierOrderSentWorkflowResult
 } from "../domain/miseDomain";
+import { planInventoryWaste } from "../domain/inventoryWaste";
 import { buildAppliedTodayConsumptionByItemId } from "../domain/posConsumption";
 import {
   findSupplierRecipientCatalogName,
@@ -274,6 +275,15 @@ export interface MiseRepository {
     itemId: string,
     expectedLastUpdated: string,
     patch: InventoryItemPatch,
+    recommendations: PurchaseRecommendationInput[],
+    insights: Insight[]
+  ): Promise<InventoryItem>;
+  recordInventoryWasteAndSignals(
+    restaurantId: string,
+    itemId: string,
+    expectedLastUpdated: string,
+    quantityRemoved: number,
+    note: string | null,
     recommendations: PurchaseRecommendationInput[],
     insights: Insight[]
   ): Promise<InventoryItem>;
@@ -581,6 +591,9 @@ function appendDemoInventoryMovement(
     itemId: string;
     quantityBefore: number;
     quantityAfter: number;
+    reason?: InventoryMovement["reason"];
+    sourceWorkflow?: string;
+    metadata?: Record<string, unknown>;
   }
 ) {
   const movement: InventoryMovement = {
@@ -588,12 +601,12 @@ function appendDemoInventoryMovement(
     restaurant_id: input.restaurantId,
     inventory_item_id: input.itemId,
     actor_user_id: DEMO_USER_ID,
-    reason: "manual_count",
+    reason: input.reason ?? "manual_count",
     quantity_before: input.quantityBefore,
     quantity_after: input.quantityAfter,
     delta: input.quantityAfter - input.quantityBefore,
-    source_workflow: "update_inventory",
-    metadata: {},
+    source_workflow: input.sourceWorkflow ?? "update_inventory",
+    metadata: input.metadata ?? {},
     created_at: new Date().toISOString()
   };
   state.inventoryMovements = [normalizeInventoryMovement(movement), ...(state.inventoryMovements ?? [])].slice(0, 200);
@@ -1181,6 +1194,60 @@ function createLocalDemoRepository(): MiseRepository {
             quantityAfter: item.current_quantity
           });
         }
+        state.purchaseRecommendations = [
+          ...state.purchaseRecommendations.filter(
+            (recommendation) => recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
+          ),
+          ...recommendations.map((recommendation) => ({
+            ...recommendation,
+            id: createId("rec"),
+            created_at: new Date().toISOString()
+          }))
+        ];
+        state.insights = [
+          ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),
+          ...insights
+        ];
+        return normalizeInventoryItem(item);
+      });
+    },
+
+    async recordInventoryWasteAndSignals(
+      restaurantId,
+      itemId,
+      expectedLastUpdated,
+      quantityRemoved,
+      note,
+      recommendations,
+      insights
+    ) {
+      return mutateDemoState((state) => {
+        const item = state.inventoryItems.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === itemId
+        );
+        if (!item) throw new Error("Inventory item not found");
+        if (item.last_updated !== expectedLastUpdated) {
+          throw new Error("Inventory item changed since it was loaded. Reload and try again.");
+        }
+        if (item.current_quantity <= 0) {
+          throw new Error("Nothing on hand to record as waste. Update the count first.");
+        }
+        const planned = planInventoryWaste({
+          quantityBefore: item.current_quantity,
+          quantityRemoved,
+          note
+        });
+        item.current_quantity = planned.quantityAfter;
+        item.last_updated = new Date().toISOString();
+        appendDemoInventoryMovement(state, {
+          restaurantId,
+          itemId,
+          quantityBefore: planned.quantityBefore,
+          quantityAfter: planned.quantityAfter,
+          reason: planned.reason,
+          sourceWorkflow: planned.sourceWorkflow,
+          metadata: planned.metadata
+        });
         state.purchaseRecommendations = [
           ...state.purchaseRecommendations.filter(
             (recommendation) => recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
@@ -2212,6 +2279,25 @@ function createSupabaseRepository(): MiseRepository {
         restaurantId,
         itemId,
         patch
+      });
+      return normalizeInventoryItem(response.result as InventoryItem);
+    },
+
+    async recordInventoryWasteAndSignals(
+      restaurantId,
+      itemId,
+      _expectedLastUpdated,
+      quantityRemoved,
+      note,
+      _recommendations,
+      _insights
+    ) {
+      const response = await invokeOperationalWorkflow({
+        action: "record_waste",
+        restaurantId,
+        itemId,
+        quantityRemoved,
+        note
       });
       return normalizeInventoryItem(response.result as InventoryItem);
     },

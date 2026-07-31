@@ -45,6 +45,7 @@ test("workspace mutations stop stale continuations and session state is latest-w
   const session = source("contexts/MiseSessionContext.tsx");
 
   assert.match(inventoryDetail, /await updateInventoryItem[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
+  assert.match(inventoryDetail, /await recordInventoryWaste[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
   assert.match(orderDetail, /await persistNote\(\)[\s\S]*activeRestaurantIdRef\.current !== restaurantId[\s\S]*await sendSupplierOrderEmail/);
   assert.match(recipes, /selectedInventoryItem\.restaurant_id !== restaurantId/);
 

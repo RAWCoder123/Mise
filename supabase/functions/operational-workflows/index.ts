@@ -19,7 +19,14 @@ import {
   type InvocationTerminalContext
 } from "../_shared/mise.ts";
 
-const actions = ["refresh_signals", "update_inventory", "upsert_recipe", "save_setup", "ingest_pos_csv"] as const;
+const actions = [
+  "refresh_signals",
+  "update_inventory",
+  "record_waste",
+  "upsert_recipe",
+  "save_setup",
+  "ingest_pos_csv"
+] as const;
 type OperationalAction = (typeof actions)[number];
 
 Deno.serve(async (req) => {
@@ -182,6 +189,18 @@ async function refreshWithRetry(
           p_insights: insights
         });
       }
+      if (action === "record_waste") {
+        return await serviceRpc(securitySupabase, "service_record_inventory_waste_and_signals", {
+          p_actor_user_id: actorUserId,
+          p_restaurant_id: restaurantId,
+          p_inventory_item_id: requireUuid(body.itemId, "itemId"),
+          p_expected_revision: revision,
+          p_quantity_removed: requireBoundedNumber(body.quantityRemoved, "quantityRemoved", Number.EPSILON, 1_000_000),
+          p_note: body.note == null ? null : requireBoundedString(body.note, "note", 240),
+          p_recommendations: recommendations,
+          p_insights: insights
+        });
+      }
       if (action === "upsert_recipe") {
         return await serviceRpc(securitySupabase, "service_save_recipe_and_signals", {
           p_actor_user_id: actorUserId,
@@ -226,6 +245,23 @@ function applyRequestedMutation(
       ...snapshot,
       inventoryItems: snapshot.inventoryItems.map((item) => item.id === itemId
         ? { ...item, ...patch, last_updated: new Date().toISOString() }
+        : item)
+    };
+  }
+  if (action === "record_waste") {
+    const itemId = requireUuid(body.itemId, "itemId");
+    const quantityRemoved = requireBoundedNumber(body.quantityRemoved, "quantityRemoved", Number.EPSILON, 1_000_000);
+    if (body.note != null) requireBoundedString(body.note, "note", 240);
+    const existing = snapshot.inventoryItems.find((item) => item.id === itemId);
+    if (!existing) throw new HttpError(404, "Inventory item not found.");
+    if (existing.current_quantity <= 0) {
+      throw new HttpError(400, "Nothing on hand to record as waste. Update the count first.");
+    }
+    const quantityAfter = Math.max(0, existing.current_quantity - Math.min(quantityRemoved, existing.current_quantity));
+    return {
+      ...snapshot,
+      inventoryItems: snapshot.inventoryItems.map((item) => item.id === itemId
+        ? { ...item, current_quantity: quantityAfter, last_updated: new Date().toISOString() }
         : item)
     };
   }
@@ -342,6 +378,7 @@ function isRevisionConflict(error: unknown) {
 
 function auditAction(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_updated";
+  if (action === "record_waste") return "inventory_waste_recorded";
   if (action === "upsert_recipe") return "recipe_baseline_updated";
   if (action === "save_setup") return "setup_signals_completed";
   if (action === "ingest_pos_csv") return "manual_pos_csv_signals_completed";
@@ -349,14 +386,14 @@ function auditAction(action: OperationalAction) {
 }
 
 function auditEntityTable(action: OperationalAction) {
-  if (action === "update_inventory") return "inventory_items";
+  if (action === "update_inventory" || action === "record_waste") return "inventory_items";
   if (action === "upsert_recipe") return "menu_item_ingredients";
   if (action === "ingest_pos_csv") return "sales_imports";
   return "restaurants";
 }
 
 function auditEntityId(action: OperationalAction, body: Record<string, unknown>) {
-  if (action === "update_inventory") return requireUuid(body.itemId, "itemId");
+  if (action === "update_inventory" || action === "record_waste") return requireUuid(body.itemId, "itemId");
   if (action === "upsert_recipe" && body.mappingId != null) return requireUuid(body.mappingId, "mappingId");
   return null;
 }
@@ -376,13 +413,25 @@ function auditMetadata(
     if (typeof summary.sales_import_id === "string") metadata.sales_import_id = summary.sales_import_id;
     return metadata;
   }
-  if (action !== "update_inventory" || !result || typeof result !== "object") return metadata;
+  if ((action !== "update_inventory" && action !== "record_waste") || !result || typeof result !== "object") {
+    return metadata;
+  }
   const row = result as Record<string, unknown>;
   if (typeof row.quantity_before === "number") metadata.quantity_before = row.quantity_before;
   if (typeof row.current_quantity === "number") metadata.quantity_after = row.current_quantity;
   if (typeof row.quantity_changed === "boolean") metadata.quantity_changed = row.quantity_changed;
-  if (body.patch && typeof body.patch === "object") {
+  if (typeof row.quantity_removed_requested === "number") {
+    metadata.quantity_removed_requested = row.quantity_removed_requested;
+  }
+  if (typeof row.quantity_removed_applied === "number") {
+    metadata.quantity_removed_applied = row.quantity_removed_applied;
+  }
+  if (typeof row.floored === "boolean") metadata.floored = row.floored;
+  if (action === "update_inventory" && body.patch && typeof body.patch === "object") {
     metadata.patch_fields = Object.keys(body.patch as Record<string, unknown>);
+  }
+  if (action === "record_waste" && typeof body.quantityRemoved === "number") {
+    metadata.quantity_removed = body.quantityRemoved;
   }
   return metadata;
 }

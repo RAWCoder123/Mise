@@ -115,6 +115,20 @@ await assertDeniedRpc(
   "inventory workflow rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
+  "service_record_inventory_waste_and_signals",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_inventory_item_id: tenantBInventoryId,
+    p_expected_revision: 0,
+    p_quantity_removed: 1,
+    p_note: "forged waste",
+    p_recommendations: [],
+    p_insights: []
+  },
+  "inventory waste workflow rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
   "service_ingest_manual_pos_sales",
   {
     p_actor_user_id: managerA.id,

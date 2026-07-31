@@ -393,3 +393,39 @@ test("demo inventory quantity changes append an auditable movement", () => {
   assert.equal(state.inventoryMovements[0]?.quantity_after, after);
   assert.equal(state.inventoryMovements[0]?.reason, "manual_count");
 });
+
+test("demo waste recording deducts on-hand stock with a waste ledger reason", () => {
+  const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
+  const item = state.inventoryItems[0]!;
+  const before = item.current_quantity;
+  const removed = Math.min(2, before);
+  const after = before - removed;
+
+  state.inventoryItems[0] = { ...item, current_quantity: after, last_updated: FIXED_NOW.toISOString() };
+  state.inventoryMovements = [
+    {
+      id: "movement_waste_1",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      inventory_item_id: item.id,
+      actor_user_id: state.users[0]!.id,
+      reason: "waste",
+      quantity_before: before,
+      quantity_after: after,
+      delta: after - before,
+      source_workflow: "record_waste",
+      metadata: {
+        quantity_removed_requested: removed,
+        quantity_removed_applied: removed,
+        floored: false,
+        note: "Trim loss"
+      },
+      created_at: FIXED_NOW.toISOString()
+    },
+    ...state.inventoryMovements
+  ];
+
+  assert.equal(state.inventoryItems[0]?.current_quantity, after);
+  assert.equal(state.inventoryMovements[0]?.reason, "waste");
+  assert.equal(state.inventoryMovements[0]?.source_workflow, "record_waste");
+  assert.equal(state.inventoryMovements[0]?.delta, -removed);
+});

@@ -1,6 +1,6 @@
 begin;
 
-select plan(365);
+select plan(371);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -1100,6 +1100,62 @@ select is(
   '22222222-2222-4222-8222-222222222222'::uuid,
   'inventory movement records the authorizing actor'
 );
+
+set local role service_role;
+select lives_ok(
+  $sql$select public.service_record_inventory_waste_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    5,
+    'Spoiled batch',
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$,
+  'trusted workflow records waste and refreshes operational signals atomically'
+);
+reset role;
+select is(
+  (select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  37::numeric,
+  'waste recording deducts on-hand stock'
+);
+select is(
+  (select reason from public.inventory_movements where inventory_item_id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa' order by created_at desc limit 1),
+  'waste',
+  'waste recording writes a waste ledger reason'
+);
+select is(
+  (select source_workflow from public.inventory_movements where inventory_item_id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa' order by created_at desc limit 1),
+  'record_waste',
+  'waste recording tags the record_waste workflow'
+);
+select is(
+  (select metadata->>'note' from public.inventory_movements where inventory_item_id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa' order by created_at desc limit 1),
+  'Spoiled batch',
+  'waste recording stores the operator note in movement metadata'
+);
+
+set local role authenticated;
+select is(
+  pg_temp.try_execute($sql$select public.service_record_inventory_waste_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    0,
+    1,
+    'client probe',
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$),
+  false,
+  'authenticated clients cannot execute the waste service RPC directly'
+);
+reset role;
 
 set local role service_role;
 select is(

@@ -6,9 +6,12 @@ import {
   recommendationReason,
   shouldSuppressRecommendationForItem
 } from "../domain/miseDomain";
+import { planInventoryWaste } from "../domain/inventoryWaste";
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
 import {
   requireInventoryItemPatch,
+  requireInventoryWasteNote,
+  requireInventoryWasteQuantity,
   requireRecipeBaselineQuantity
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
@@ -245,4 +248,63 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
 
 export async function fetchInventoryMovements(restaurantId: string, itemId: string, limit = 8) {
   return repository.fetchInventoryMovements(restaurantId, itemId, limit);
+}
+
+export async function recordInventoryWaste(
+  restaurantId: string,
+  itemId: string,
+  quantityRemoved: number,
+  note?: string | null
+) {
+  const normalizedQuantity = requireInventoryWasteQuantity(quantityRemoved);
+  const normalizedNote = requireInventoryWasteNote(note);
+  const [data, recommendationHistory] = await Promise.all([
+    repository.fetchPlanningData(restaurantId),
+    repository.fetchPurchaseRecommendations(restaurantId, "all")
+  ]);
+  const existing = data.inventoryItems.find((item) => item.id === itemId);
+  if (!existing) throw new Error("Inventory item not found");
+  if (existing.current_quantity <= 0) {
+    throw new Error("Nothing on hand to record as waste. Update the count first.");
+  }
+
+  const planned = planInventoryWaste({
+    quantityBefore: existing.current_quantity,
+    quantityRemoved: normalizedQuantity,
+    note: normalizedNote
+  });
+  const updatedForPlanning = {
+    ...existing,
+    current_quantity: planned.quantityAfter,
+    last_updated: new Date().toISOString()
+  };
+  const planningInventory = data.inventoryItems.map((item) =>
+    item.id === itemId ? updatedForPlanning : item
+  );
+  const recommendations = buildRecommendationInserts(
+    restaurantId,
+    planningInventory,
+    data.sales,
+    data.menuItemIngredients,
+    recommendationHistory,
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
+  );
+  const insights = buildInsightsFromData(
+    restaurantId,
+    planningInventory,
+    data.sales,
+    data.menuItemIngredients,
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
+  );
+  return repository.recordInventoryWasteAndSignals(
+    restaurantId,
+    itemId,
+    existing.last_updated,
+    planned.quantityRemovedRequested,
+    normalizedNote,
+    recommendations,
+    insights
+  );
 }
