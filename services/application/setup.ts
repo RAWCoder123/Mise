@@ -163,7 +163,11 @@ export async function saveRestaurantSetup(
     skippedRecipeIngredients
   });
 
-  await regenerateOperationalSignals(normalizedRestaurantId);
+  // Hosted save_setup already refreshes signals in Edge; a second refresh_signals can
+  // fail after a successful write and surface as a false setup failure.
+  if (!repository.workflowsRefreshOperationalSignals) {
+    await regenerateOperationalSignals(normalizedRestaurantId);
+  }
   return summary;
 }
 

@@ -229,6 +229,11 @@ export interface PlanningData {
 }
 
 export interface MiseRepository {
+  /**
+   * Hosted Edge mutating workflows already refresh recommendations/insights.
+   * Local demo must regenerate signals on the client after those writes.
+   */
+  readonly workflowsRefreshOperationalSignals: boolean;
   fetchMembershipsForAuthUser(userId: string): Promise<RestaurantMembership[]>;
   fetchRestaurantTeamMembers(restaurantId: string): Promise<RestaurantTeamMember[]>;
   addRestaurantMember(restaurantId: string, targetUserId: string, role: AssignableRestaurantRole): Promise<RestaurantMembership>;
@@ -943,6 +948,7 @@ function parseSetupSnapshotSummary(data: unknown): RestaurantSetupSnapshotSummar
 
 function createLocalDemoRepository(): MiseRepository {
   return {
+    workflowsRefreshOperationalSignals: false,
     async fetchMembershipsForAuthUser(userId) {
       const state = await readReadyDemoState();
       const memberships = (state.memberships ?? []).filter(
@@ -2444,6 +2450,7 @@ function createSupabaseRepository(): MiseRepository {
   }
 
   return {
+    workflowsRefreshOperationalSignals: true,
     async fetchMembershipsForAuthUser(userId) {
       const { data, error } = await client
         .from("restaurant_memberships")

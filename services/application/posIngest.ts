@@ -36,7 +36,11 @@ export async function importManualPosSalesCsv(
     rows,
     sourceFileName?.trim() || null
   );
-  await regenerateOperationalSignals(normalizedRestaurantId);
+  // Hosted ingest_pos_csv already refreshes signals in Edge; avoid a second refresh_signals
+  // that can fail after a successful import and look like an ingest error.
+  if (!repository.workflowsRefreshOperationalSignals) {
+    await regenerateOperationalSignals(normalizedRestaurantId);
+  }
 
   return {
     posSalesRowsSaved: summary.posSalesRowsSaved,
