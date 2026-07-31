@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { planInventoryWaste } from "../services/domain/inventoryWaste";
+import {
+  canRecordInventoryWaste,
+  planInventoryWaste
+} from "../services/domain/inventoryWaste";
 import {
   operatingLimits,
   requireInventoryWasteNote,
   requireInventoryWasteQuantity
 } from "../services/miseValidation";
+import { canRecordInventoryWaste as canRecordInventoryWasteForRestaurant } from "../services/tenantAccess";
+import type { RestaurantMembership } from "../types/mise";
 
 test("planInventoryWaste deducts waste and floors at zero without going negative", () => {
   const planned = planInventoryWaste({
@@ -53,4 +58,26 @@ test("requireInventoryWasteNote trims and bounds optional notes", () => {
   assert.equal(requireInventoryWasteNote(undefined), null);
   assert.equal(requireInventoryWasteNote("  trim me  "), "trim me");
   assert.throws(() => requireInventoryWasteNote("x".repeat(241)), /240/i);
+});
+
+test("staff may record waste while remaining outside manager inventory edit roles", () => {
+  assert.equal(canRecordInventoryWaste("staff"), true);
+  assert.equal(canRecordInventoryWaste("manager"), true);
+  assert.equal(canRecordInventoryWaste("owner"), true);
+  assert.equal(canRecordInventoryWaste("admin"), true);
+  assert.equal(canRecordInventoryWaste(null), false);
+
+  const staffMembership: RestaurantMembership[] = [
+    {
+      id: "membership_staff",
+      restaurant_id: "restaurant_a",
+      user_id: "user_staff",
+      role: "staff",
+      status: "active",
+      created_at: "2026-07-31T00:00:00.000Z",
+      updated_at: "2026-07-31T00:00:00.000Z"
+    }
+  ];
+  assert.equal(canRecordInventoryWasteForRestaurant(staffMembership, "restaurant_a"), true);
+  assert.equal(canRecordInventoryWasteForRestaurant(staffMembership, "restaurant_b"), false);
 });

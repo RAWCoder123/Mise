@@ -21,7 +21,7 @@ import {
   recordInventoryWaste,
   updateInventoryItem
 } from "../../services/miseService";
-import { canManageRestaurantData } from "../../services/tenantAccess";
+import { canManageRestaurantData, canRecordInventoryWaste } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
 import type { MessageKey } from "../../i18n/catalog";
 import type { InventoryMovement, InventoryMovementReason, InventoryOutlookItem } from "../../types/mise";
@@ -113,6 +113,7 @@ export default function InventoryDetailScreen() {
     : null;
   const status = prediction?.projectedStatus ?? null;
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
+  const canRecordWaste = canRecordInventoryWaste(memberships, restaurant?.id);
 
   function goBackToInventory() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -191,7 +192,7 @@ export default function InventoryDetailScreen() {
 
   async function recordWaste() {
     if (!restaurant || !item) return;
-    if (!canManage) {
+    if (!canRecordWaste) {
       setMessage(t("inventory.detail.viewOnlyInventory"));
       setMessageIsError(true);
       return;
@@ -297,8 +298,16 @@ export default function InventoryDetailScreen() {
 
           {!canManage ? (
             <StatusNotice
-              title={t("inventory.detail.viewOnly.title")}
-              message={t("inventory.detail.viewOnly.body")}
+              title={t(
+                canRecordWaste
+                  ? "inventory.detail.limitedAccess.title"
+                  : "inventory.detail.viewOnly.title"
+              )}
+              message={t(
+                canRecordWaste
+                  ? "inventory.detail.limitedAccess.body"
+                  : "inventory.detail.viewOnly.body"
+              )}
             />
           ) : null}
 
@@ -413,7 +422,7 @@ export default function InventoryDetailScreen() {
             ) : null}
           </Card>
 
-          {canManage ? (
+          {canRecordWaste ? (
             <Card>
               <Text style={styles.cardTitle}>{t("inventory.detail.recordWaste")}</Text>
               <Text style={styles.copy}>{t("inventory.detail.wasteHelp")}</Text>

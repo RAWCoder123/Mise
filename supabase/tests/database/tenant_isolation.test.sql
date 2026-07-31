@@ -1140,6 +1140,35 @@ select is(
   'waste recording stores the operator note in movement metadata'
 );
 
+set local role service_role;
+select lives_ok(
+  $sql$select public.service_record_inventory_waste_and_signals(
+    '33333333-3333-4333-8333-333333333333',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '33333333-3333-4333-8333-333333333333',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    2,
+    'Staff observed spoilage',
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$,
+  'active staff can record waste through the service-owned workflow'
+);
+reset role;
+select is(
+  (select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  35::numeric,
+  'staff waste recording deducts on-hand stock'
+);
+select is(
+  (select actor_user_id from public.inventory_movements where inventory_item_id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa' order by created_at desc limit 1),
+  '33333333-3333-4333-8333-333333333333'::uuid,
+  'staff waste recording attributes the staff actor on the ledger'
+);
+
 set local role authenticated;
 select is(
   pg_temp.try_execute($sql$select public.service_record_inventory_waste_and_signals(
@@ -1224,7 +1253,7 @@ select is(
   'invalid regenerated signals roll back the inventory count change'
 );
 reset role;
-select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 42::numeric, 'rolled-back signal refresh preserves the prior count');
+select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 35::numeric, 'rolled-back signal refresh preserves the prior count');
 
 set local role service_role;
 select is(

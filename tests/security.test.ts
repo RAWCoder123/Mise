@@ -10,6 +10,7 @@ import {
   canDraftInventoryCount,
   canManageRestaurantData,
   canReadRestaurantData,
+  canRecordInventoryWaste,
   canUpdateRestaurantProfile
 } from "../services/tenantAccess";
 import { sanitizeTelemetryProperties } from "../services/telemetry";
@@ -49,7 +50,7 @@ test("tenant access helper isolates restaurant data by active membership", () =>
   assert.equal(canReadRestaurantData([membership("restaurant_a", "owner", "disabled")], "restaurant_a"), false);
 });
 
-test("tenant role helper keeps staff read-only and lets managers operate inventory workflows", () => {
+test("tenant role helper keeps staff out of manager edits while allowing count drafts and waste", () => {
   const staff = [membership("restaurant_a", "staff")];
   const manager = [membership("restaurant_a", "manager")];
   const owner = [membership("restaurant_a", "owner")];
@@ -60,15 +61,18 @@ test("tenant role helper keeps staff read-only and lets managers operate invento
   assert.equal(canDeleteRestaurantData(staff, "restaurant_a"), false);
   assert.equal(canDraftInventoryCount(staff, "restaurant_a"), true);
   assert.equal(canApproveInventoryCount(staff, "restaurant_a"), false);
+  assert.equal(canRecordInventoryWaste(staff, "restaurant_a"), true);
 
   assert.equal(canManageRestaurantData(manager, "restaurant_a"), true);
   assert.equal(canDeleteRestaurantData(manager, "restaurant_a"), false);
   assert.equal(canDraftInventoryCount(manager, "restaurant_a"), true);
   assert.equal(canApproveInventoryCount(manager, "restaurant_a"), true);
+  assert.equal(canRecordInventoryWaste(manager, "restaurant_a"), true);
 
   assert.equal(canUpdateRestaurantProfile(owner, "restaurant_a"), true);
   assert.equal(canUpdateRestaurantProfile(admin, "restaurant_a"), true);
   assert.equal(canApproveInventoryCount(owner, "restaurant_a"), true);
+  assert.equal(canRecordInventoryWaste(owner, "restaurant_a"), true);
 });
 
 test("production mode does not expose demo credentials or demo access", () => {
@@ -410,6 +414,32 @@ test("inventory waste writes are service-owned, ledgered, and separate from coun
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_record_inventory_waste_and_signals[\s\S]*service_role/i);
   assert.match(detail, /recordInventoryWaste/);
   assert.match(detail, /inventory\.detail\.recordWaste/);
+  assert.match(detail, /canRecordInventoryWaste/);
+  assert.match(detail, /canRecordWaste/);
+});
+
+test("staff waste recording is authorized in SQL, Edge, and inventory detail UI", () => {
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const migration = readFileSync(
+    "supabase/migrations/20260731060925_staff_inventory_waste_roles.sql",
+    "utf8"
+  );
+  const detail = readFileSync("app/inventory/[id].tsx", "utf8");
+  const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
+  const domain = readFileSync("services/domain/inventoryWaste.ts", "utf8");
+
+  assert.match(domain, /INVENTORY_WASTE_RECORD_ROLES/);
+  assert.match(domain, /canRecordInventoryWaste/);
+  assert.match(tenantAccess, /export function canRecordInventoryWaste/);
+  assert.match(edge, /staffOperationalActions/);
+  assert.match(edge, /"record_waste"/);
+  assert.match(
+    migration,
+    /service_record_inventory_waste_and_signals[\s\S]*array\['owner', 'admin', 'manager', 'staff'\]/i
+  );
+  assert.match(detail, /canRecordWaste/);
+  assert.match(detail, /inventory\.detail\.limitedAccess/);
+  assert.match(detail, /\{canRecordWaste \? \(/);
 });
 
 test("inventory item create is service-owned with opening ledger movement and manager UI", () => {
@@ -458,7 +488,7 @@ test("inventory count sessions are service-owned with draft progress and approve
   assert.match(repository, /action:\s*"approve_count_session"/i);
   assert.match(edge, /"begin_count_session"/);
   assert.match(edge, /"approve_count_session"/);
-  assert.match(edge, /staffCountDraftActions/);
+  assert.match(edge, /staffOperationalActions/);
   assert.match(edge, /service_approve_inventory_count_session/);
   assert.match(edge, /inventory_count_session_approved/);
   assert.match(migration, /create table if not exists public\.inventory_count_sessions/i);

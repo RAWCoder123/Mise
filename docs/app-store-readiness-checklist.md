@@ -23,6 +23,7 @@ Classification guidance uses evidence, not polish. Current overall status: **not
 | Manual CSV POS ingest | tested (code) | Bounded Settings/setup CSV path; live providers remain fail-closed |
 | Team roster / role management | tested (code) | Settings → Team; RPC list/add-by-email/update/remove; demo roster seeded |
 | Inventory count role split | tested (code) | Staff may draft/submit multi-item counts; manager+ approve ledger writes |
+| Staff waste recording | tested (code) | Staff+ may record spoilage to the ledger; count/par edits stay manager+ |
 | Post-setup inventory item create | tested (code) | Manager+ Add item flow; service-owned create + opening ledger movement |
 | Live Gmail send | requires external credentials | Implemented; keep `GMAIL_SEND_ENABLED=false` until approved test |
 | Real-device iPhone QA | requires Apple Developer account action | Needs physical device / TestFlight |
