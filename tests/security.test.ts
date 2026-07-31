@@ -449,6 +449,8 @@ test("Edge firewall allows staff on operational-workflows while keeping other fu
   );
   const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
   const databaseTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const staffOperationalActions =
+    edge.match(/const staffOperationalActions = new Set<OperationalAction>\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
 
   assert.match(
     policyMigration,
@@ -466,14 +468,14 @@ test("Edge firewall allows staff on operational-workflows while keeping other fu
     policyMigration,
     /'send-supplier-email',\s*12,\s*60,\s*array\['owner',\s*'admin',\s*'manager'\]/i
   );
-  assert.match(edge, /staffOperationalActions/);
-  assert.match(edge, /"begin_count_session"/);
-  assert.match(edge, /"save_count_lines"/);
-  assert.match(edge, /"submit_count_session"/);
-  assert.match(edge, /"record_waste"/);
-  assert.doesNotMatch(edge, /staffOperationalActions[\s\S]*"approve_count_session"/);
-  assert.doesNotMatch(edge, /staffOperationalActions[\s\S]*"update_inventory"/);
-  assert.doesNotMatch(edge, /staffOperationalActions[\s\S]*"create_inventory_item"/);
+  assert.match(staffOperationalActions, /"begin_count_session"/);
+  assert.match(staffOperationalActions, /"save_count_lines"/);
+  assert.match(staffOperationalActions, /"submit_count_session"/);
+  assert.match(staffOperationalActions, /"record_waste"/);
+  assert.doesNotMatch(staffOperationalActions, /"approve_count_session"/);
+  assert.doesNotMatch(staffOperationalActions, /"cancel_count_session"/);
+  assert.doesNotMatch(staffOperationalActions, /"update_inventory"/);
+  assert.doesNotMatch(staffOperationalActions, /"create_inventory_item"/);
   assert.match(databaseTests, /staff can reserve operational-workflows for authorized actions/i);
   assert.match(databaseTests, /staff still cannot reserve manager-only POS sync/i);
 });
