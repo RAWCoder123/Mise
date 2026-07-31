@@ -43,6 +43,21 @@ export type OperationalTodayTaskActionIntent =
   | "repair_pos_connection"
   | "review_insight";
 
+/** Exhaustive list for presentation and contract tests. Keep in sync with the union above. */
+export const OPERATIONAL_TODAY_TASK_ACTION_INTENTS = [
+  "update_inventory_count",
+  "continue_inventory_count_session",
+  "review_recommendation",
+  "prepare_supplier_draft",
+  "send_supplier_order",
+  "receive_supplier_order",
+  "finish_setup",
+  "connect_pos",
+  "manage_pos_connection",
+  "repair_pos_connection",
+  "review_insight"
+] as const satisfies readonly OperationalTodayTaskActionIntent[];
+
 export type OperationalTodayTaskRoute =
   | "/inventory"
   | `/inventory/${string}`
@@ -408,8 +423,9 @@ export function deriveOperationalTodayTasks(
             },
             priority: integration.status === "error" ? "urgent" : "high",
             action: {
+              // Keep manage_pos_connection across connected/broken states so task IDs stay stable.
               intent: "manage_pos_connection",
-              label: isComplete ? "View connection" : "Review connection",
+              label: isComplete ? "View connection" : "Repair connection",
               route: "/settings/pos",
               entityId: integration.id
             },

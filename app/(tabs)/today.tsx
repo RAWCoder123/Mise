@@ -34,7 +34,6 @@ import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
-  type OperationalTodayTaskActionIntent,
   type OperationalTodayTaskTiming
 } from "../../services/domain/todayTasks";
 import {
@@ -42,17 +41,23 @@ import {
   type TodayCommandCenterSummary
 } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
-import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
+import {
+  presentOperationalTodayTask,
+  presentOperationalTodayTaskAction
+} from "../../services/presentation/operationsPresentation";
 import { buildConciseTrendDateLabels } from "../../services/presentation/salesTrendLabels";
+import { canRecordInventoryWaste } from "../../services/tenantAccess";
 import type { RestaurantRole } from "../../types/mise";
 import type { AppLocale } from "../../i18n/catalog";
 
 const COMPACT_TASK_COUNT = 3;
 
 export default function TodayScreen() {
-  const { canUseDemoMode, restaurant, role, continueWithDemo } = useMiseSession();
+  const { canUseDemoMode, memberships, restaurant, role, continueWithDemo } = useMiseSession();
   const { locale, t, formatCompactCurrency, formatDate, formatNumber } = useLocale();
   const copy = todayCopy[locale];
+  const showStaffWasteTip =
+    role === "staff" && canRecordInventoryWaste(memberships, restaurant?.id ?? "");
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -181,6 +186,17 @@ export default function TodayScreen() {
                 />
               </SectionSurface>
             </MotionView>
+            {showStaffWasteTip ? (
+              <MotionView delay={110} distance={4} duration={280}>
+                <SectionSurface
+                  title={t("today.waste.cardTitle")}
+                  subtitle={t("today.waste.cardSubtitle")}
+                  action={t("today.waste.openInventoryAction")}
+                  actionAccessibilityLabel={t("today.waste.openInventoryAccessibility")}
+                  onAction={() => router.push("/inventory")}
+                />
+              </MotionView>
+            ) : null}
             <MotionView delay={125} distance={5} duration={300}>
               <TaskSection
                 tasks={visibleSummary.operationalTasks}
@@ -189,6 +205,7 @@ export default function TodayScreen() {
                 showAll={showAllTasks}
                 onToggle={() => setShowAllTasks((current) => !current)}
                 copy={copy}
+                locale={locale}
               />
             </MotionView>
             <MotionView delay={160} distance={5} duration={320}>
@@ -311,7 +328,8 @@ function TaskSection({
   role,
   showAll,
   onToggle,
-  copy
+  copy,
+  locale
 }: {
   tasks: OperationalTodayTask[];
   restaurantTimeZone: string;
@@ -319,6 +337,7 @@ function TaskSection({
   showAll: boolean;
   onToggle: () => void;
   copy: TodayCopy;
+  locale: AppLocale;
 }) {
   const hasMore = tasks.length > COMPACT_TASK_COUNT;
   const visibleTasks = showAll ? tasks : tasks.slice(0, COMPACT_TASK_COUNT);
@@ -351,6 +370,7 @@ function TaskSection({
               restaurantTimeZone={restaurantTimeZone}
               divided={index > 0}
               copy={copy}
+              locale={locale}
             />
           ))}
         </MotionView>
@@ -364,15 +384,17 @@ function TaskRow({
   role,
   restaurantTimeZone,
   divided,
-  copy
+  copy,
+  locale
 }: {
   task: OperationalTodayTask;
   role: RestaurantRole;
   restaurantTimeZone: string;
   divided: boolean;
   copy: TodayCopy;
+  locale: AppLocale;
 }) {
-  const { formatDate, formatDueTime, locale, t } = useLocale();
+  const { formatDate, formatDueTime, t } = useLocale();
   const canAct = canRestaurantRoleActOnTodayTask(role, task);
   const presentation = presentOperationalTodayTask(locale, task);
   const timing = classifyOperationalTodayTaskTiming(task, { restaurantTimeZone });
@@ -387,7 +409,7 @@ function TaskRow({
     noDeadlineLabel: copy.noDeadline
   });
   const roleLabel = task.requiredRole === "owner_admin" ? copy.ownerAdminOnly : copy.managerOnly;
-  const actionLabel = localizedTaskAction(task.action.intent, copy);
+  const actionLabel = presentOperationalTodayTaskAction(locale, task);
   const accessibleAction = canAct ? actionLabel : roleLabel;
 
   return (
@@ -570,17 +592,6 @@ function taskIcon(task: OperationalTodayTask, color: string): ReactNode {
   return <Lightbulb {...props} />;
 }
 
-function localizedTaskAction(intent: OperationalTodayTaskActionIntent, copy: TodayCopy) {
-  if (intent === "update_inventory_count") return copy.reviewCount;
-  if (intent === "review_recommendation") return copy.reviewRecommendation;
-  if (intent === "prepare_supplier_draft") return copy.prepareDraft;
-  if (intent === "send_supplier_order") return copy.reviewOrder;
-  if (intent === "finish_setup") return copy.continueSetup;
-  if (intent === "connect_pos") return copy.connectPos;
-  if (intent === "review_insight") return copy.reviewInsight;
-  return copy.manageConnection;
-}
-
 interface TodayCopy {
   commandSubtitle: string;
   noRestaurantTitle: string;
@@ -626,14 +637,6 @@ interface TodayCopy {
   noDeadline: string;
   ownerAdminOnly: string;
   managerOnly: string;
-  reviewCount: string;
-  reviewRecommendation: string;
-  prepareDraft: string;
-  reviewOrder: string;
-  continueSetup: string;
-  connectPos: string;
-  reviewInsight: string;
-  manageConnection: string;
   salesMovementTitle: string;
   viewInsights: string;
   viewInsightsAccessibilityLabel: string;
@@ -690,14 +693,6 @@ const todayCopy: Readonly<Record<AppLocale, TodayCopy>> = {
     noDeadline: "No set time",
     ownerAdminOnly: "Owner or admin",
     managerOnly: "Manager only",
-    reviewCount: "Review count",
-    reviewRecommendation: "Review recommendation",
-    prepareDraft: "Prepare draft",
-    reviewOrder: "Review order",
-    continueSetup: "Continue setup",
-    connectPos: "Connect POS",
-    reviewInsight: "Review insight",
-    manageConnection: "Manage connection",
     salesMovementTitle: "Sales Movement",
     viewInsights: "View insights",
     viewInsightsAccessibilityLabel: "Open sales insights",
@@ -752,14 +747,6 @@ const todayCopy: Readonly<Record<AppLocale, TodayCopy>> = {
     noDeadline: "Sin hora fijada",
     ownerAdminOnly: "Propietario o admin",
     managerOnly: "Solo gerente",
-    reviewCount: "Revisar conteo",
-    reviewRecommendation: "Revisar recomendación",
-    prepareDraft: "Preparar borrador",
-    reviewOrder: "Revisar pedido",
-    continueSetup: "Continuar configuración",
-    connectPos: "Conectar POS",
-    reviewInsight: "Revisar análisis",
-    manageConnection: "Gestionar conexión",
     salesMovementTitle: "Movimiento de ventas",
     viewInsights: "Ver análisis",
     viewInsightsAccessibilityLabel: "Abrir análisis de ventas",
@@ -814,14 +801,6 @@ const todayCopy: Readonly<Record<AppLocale, TodayCopy>> = {
     noDeadline: "未设时间",
     ownerAdminOnly: "仅所有者或管理员",
     managerOnly: "仅经理",
-    reviewCount: "检查盘点",
-    reviewRecommendation: "审核建议",
-    prepareDraft: "准备草稿",
-    reviewOrder: "审核订单",
-    continueSetup: "继续设置",
-    connectPos: "连接 POS",
-    reviewInsight: "查看洞察",
-    manageConnection: "管理连接",
     salesMovementTitle: "销售趋势",
     viewInsights: "查看洞察",
     viewInsightsAccessibilityLabel: "打开销售洞察",

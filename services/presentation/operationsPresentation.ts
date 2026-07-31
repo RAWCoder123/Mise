@@ -8,7 +8,10 @@ import type {
   LearningMemorySignalPresentationDescriptor,
   TodayTaskPresentationDescriptor
 } from "../../types/presentation";
-import type { OperationalTodayTask } from "../domain/todayTasks";
+import type {
+  OperationalTodayTask,
+  OperationalTodayTaskActionIntent
+} from "../domain/todayTasks";
 
 export interface PresentedOperationalCopy {
   title: string;
@@ -72,6 +75,20 @@ interface OperationsCopy {
     repairSalesDisconnectedDetail: string;
     reviewInsightTitle: (typeLabel: string) => string;
     reviewInsightDetail: string;
+    actions: {
+      updateInventoryCount: string;
+      continueCountSession: string;
+      reviewCountSession: string;
+      reviewRecommendation: string;
+      prepareDraft: string;
+      sendOrder: string;
+      receiveOrder: string;
+      finishSetup: string;
+      connectPos: string;
+      managePosConnection: string;
+      repairPosConnection: string;
+      reviewInsight: string;
+    };
   };
   insight: {
     inventoryCriticalTitle: (itemName: string) => string;
@@ -183,7 +200,21 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesPausedDetail: "Sales synchronization is paused. Review the connection to resume current signals.",
       repairSalesDisconnectedDetail: "This sales source is not connected.",
       reviewInsightTitle: (typeLabel) => `Review ${typeLabel}`,
-      reviewInsightDetail: "Open the evidence and recommended action before the next service window."
+      reviewInsightDetail: "Open the evidence and recommended action before the next service window.",
+      actions: {
+        updateInventoryCount: "Review count",
+        continueCountSession: "Continue count",
+        reviewCountSession: "Review count",
+        reviewRecommendation: "Review recommendation",
+        prepareDraft: "Prepare draft",
+        sendOrder: "Review order",
+        receiveOrder: "Receive delivery",
+        finishSetup: "Continue setup",
+        connectPos: "Connect POS",
+        managePosConnection: "Manage connection",
+        repairPosConnection: "Repair connection",
+        reviewInsight: "Review insight"
+      }
     },
     insight: {
       inventoryCriticalTitle: (itemName) => `${itemName} may run out today`,
@@ -294,7 +325,21 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesPausedDetail: "La sincronización de ventas está pausada. Revisa la conexión para reanudar las señales.",
       repairSalesDisconnectedDetail: "Esta fuente de ventas no está conectada.",
       reviewInsightTitle: (typeLabel) => `Revisar ${typeLabel}`,
-      reviewInsightDetail: "Abre la evidencia y la acción recomendada antes del próximo servicio."
+      reviewInsightDetail: "Abre la evidencia y la acción recomendada antes del próximo servicio.",
+      actions: {
+        updateInventoryCount: "Revisar conteo",
+        continueCountSession: "Continuar conteo",
+        reviewCountSession: "Revisar conteo",
+        reviewRecommendation: "Revisar recomendación",
+        prepareDraft: "Preparar borrador",
+        sendOrder: "Revisar pedido",
+        receiveOrder: "Recibir entrega",
+        finishSetup: "Continuar configuración",
+        connectPos: "Conectar POS",
+        managePosConnection: "Gestionar conexión",
+        repairPosConnection: "Reparar conexión",
+        reviewInsight: "Revisar análisis"
+      }
     },
     insight: {
       inventoryCriticalTitle: (itemName) => `${itemName} podría agotarse hoy`,
@@ -403,7 +448,21 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesPausedDetail: "销售同步已暂停。请检查连接以恢复当前信号。",
       repairSalesDisconnectedDetail: "此销售数据源尚未连接。",
       reviewInsightTitle: (typeLabel) => `查看${typeLabel}`,
-      reviewInsightDetail: "请在下一个营业时段前查看依据和建议操作。"
+      reviewInsightDetail: "请在下一个营业时段前查看依据和建议操作。",
+      actions: {
+        updateInventoryCount: "检查盘点",
+        continueCountSession: "继续盘点",
+        reviewCountSession: "检查盘点",
+        reviewRecommendation: "审核建议",
+        prepareDraft: "准备草稿",
+        sendOrder: "审核订单",
+        receiveOrder: "接收送货",
+        finishSetup: "继续设置",
+        connectPos: "连接 POS",
+        managePosConnection: "管理连接",
+        repairPosConnection: "修复连接",
+        reviewInsight: "查看洞察"
+      }
     },
     insight: {
       inventoryCriticalTitle: (itemName) => `${itemName} 今天可能用完`,
@@ -452,6 +511,46 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
     }
   }
 };
+
+export function presentOperationalTodayTaskAction(
+  locale: AppLocale,
+  task: Pick<OperationalTodayTask, "action" | "presentation">
+): string {
+  const actions = copyByLocale[locale].today.actions;
+  const intent: OperationalTodayTaskActionIntent = task.action.intent;
+  switch (intent) {
+    case "update_inventory_count":
+      return actions.updateInventoryCount;
+    case "continue_inventory_count_session":
+      return task.presentation?.code === "today.inventory_count_session.approve"
+        ? actions.reviewCountSession
+        : actions.continueCountSession;
+    case "review_recommendation":
+      return actions.reviewRecommendation;
+    case "prepare_supplier_draft":
+      return actions.prepareDraft;
+    case "send_supplier_order":
+      return actions.sendOrder;
+    case "receive_supplier_order":
+      return actions.receiveOrder;
+    case "finish_setup":
+      return actions.finishSetup;
+    case "connect_pos":
+      return actions.connectPos;
+    case "manage_pos_connection":
+      return task.presentation?.code === "today.integration.repair"
+        ? actions.repairPosConnection
+        : actions.managePosConnection;
+    case "repair_pos_connection":
+      return actions.repairPosConnection;
+    case "review_insight":
+      return actions.reviewInsight;
+    default: {
+      const _exhaustive: never = intent;
+      throw new Error(`Unsupported Today task action intent: ${String(_exhaustive)}`);
+    }
+  }
+}
 
 export function presentOperationalTodayTask(
   locale: AppLocale,

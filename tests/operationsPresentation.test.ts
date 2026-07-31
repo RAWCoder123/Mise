@@ -3,10 +3,12 @@ import test from "node:test";
 
 import { createInitialDemoState } from "../services/demoData";
 import { buildLearningMemorySummary } from "../services/domain/miseDomain";
+import { OPERATIONAL_TODAY_TASK_ACTION_INTENTS } from "../services/domain/todayTasks";
 import {
   presentInsight,
   presentLearningMemory,
-  presentOperationalTodayTask
+  presentOperationalTodayTask,
+  presentOperationalTodayTaskAction
 } from "../services/presentation/operationsPresentation";
 import type { Insight } from "../types/mise";
 import {
@@ -21,6 +23,72 @@ const locales = ["en", "es", "zh-Hans"] as const;
 const itemName = "龙门 Tomato";
 const supplierName = "Proveedor Ñ";
 const providerName = "Square 企业";
+
+test("every Today task action intent has a localized non-fallback label", () => {
+  assert.equal(OPERATIONAL_TODAY_TASK_ACTION_INTENTS.length, 11);
+
+  for (const locale of locales) {
+    for (const intent of OPERATIONAL_TODAY_TASK_ACTION_INTENTS) {
+      const label = presentOperationalTodayTaskAction(locale, {
+        action: {
+          intent,
+          label: "unused-legacy-label",
+          route: "/inventory",
+          entityId: null
+        },
+        presentation: undefined
+      });
+      assert.ok(label.trim().length > 0, `${locale} ${intent}`);
+      assert.notEqual(label, "unused-legacy-label");
+    }
+
+    const continueLabel = presentOperationalTodayTaskAction(locale, {
+      action: {
+        intent: "continue_inventory_count_session",
+        label: "legacy",
+        route: "/inventory/count",
+        entityId: "session"
+      },
+      presentation: { code: "today.inventory_count_session.continue", values: { status: "in_progress" } }
+    });
+    const approveLabel = presentOperationalTodayTaskAction(locale, {
+      action: {
+        intent: "continue_inventory_count_session",
+        label: "legacy",
+        route: "/inventory/count",
+        entityId: "session"
+      },
+      presentation: { code: "today.inventory_count_session.approve", values: { status: "submitted" } }
+    });
+    assert.notEqual(continueLabel, approveLabel, `${locale} count-session action labels diverge`);
+
+    const manageLabel = presentOperationalTodayTaskAction(locale, {
+      action: {
+        intent: "manage_pos_connection",
+        label: "legacy",
+        route: "/settings/pos",
+        entityId: "pos"
+      },
+      presentation: {
+        code: "today.integration.connected",
+        values: { providerName, status: "connected", lastSyncAt: null }
+      }
+    });
+    const repairLabel = presentOperationalTodayTaskAction(locale, {
+      action: {
+        intent: "manage_pos_connection",
+        label: "legacy",
+        route: "/settings/pos",
+        entityId: "pos"
+      },
+      presentation: {
+        code: "today.integration.repair",
+        values: { providerName, status: "error", lastSyncAt: null }
+      }
+    });
+    assert.notEqual(manageLabel, repairLabel, `${locale} POS connection action labels diverge`);
+  }
+});
 
 test("every allowlisted Today presentation code renders in all locales and preserves business names", () => {
   const descriptors: TodayTaskPresentationDescriptor[] = [

@@ -86,6 +86,7 @@ test("staff may record waste while remaining outside manager inventory edit role
 test("inventory list and staff detail surface waste recording without manager count edits", () => {
   const list = readFileSync("app/(tabs)/inventory.tsx", "utf8");
   const detail = readFileSync("app/inventory/[id].tsx", "utf8");
+  const today = readFileSync("app/(tabs)/today.tsx", "utf8");
   const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
   assert.match(list, /canRecordInventoryWaste/);
@@ -95,7 +96,14 @@ test("inventory list and staff detail surface waste recording without manager co
   assert.match(detail, /showWasteBeforeCountSettings = canRecordWaste && !canManage/);
   assert.match(detail, /showWasteBeforeCountSettings \? \(/);
   assert.match(detail, /canRecordWaste && !showWasteBeforeCountSettings/);
+  assert.match(today, /showStaffWasteTip/);
+  assert.match(today, /role === "staff" && canRecordInventoryWaste/);
+  assert.match(today, /today\.waste\.cardTitle/);
+  assert.match(today, /router\.push\("\/inventory"\)/);
   assert.match(catalog, /"inventory\.waste\.cardTitle": "Record waste"/);
   assert.match(catalog, /"inventory\.waste\.cardTitle": "Registrar merma"/);
   assert.match(catalog, /"inventory\.waste\.cardTitle": "记录损耗"/);
+  assert.match(catalog, /"today\.waste\.openInventoryAction": "Open inventory"/);
+  assert.match(catalog, /"today\.waste\.openInventoryAction": "Abrir inventario"/);
+  assert.match(catalog, /"today\.waste\.openInventoryAction": "打开库存"/);
 });
