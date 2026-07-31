@@ -27,6 +27,7 @@ Classification guidance uses evidence, not polish. Current overall status: **not
 | Staff waste recording | tested (code) | Staff+ may record spoilage to the ledger; count/par edits stay manager+; Inventory list + staff detail elevate the waste path |
 | Post-setup inventory item create | tested (code) | Manager+ Add item flow; service-owned create + opening ledger movement |
 | Manager inventory corrections | tested (code) | Single-item quantity edits ledger `manager_correction`; count sessions keep `manual_count`; hosted direct inventory updates disabled |
+| Purchase approve / dismiss / draft / mark-sent | tested (code) | Edge-routed through `operational-workflows` with service-owned RPCs; legacy authenticated RPCs revoked |
 | Live Gmail send | requires external credentials | Implemented; keep `GMAIL_SEND_ENABLED=false` until approved test |
 | Real-device iPhone QA | requires Apple Developer account action | Needs physical device / TestFlight |
 | Crash reporting | requires founder decision | Optional public Sentry DSN |
