@@ -329,7 +329,7 @@ export interface MiseRepository {
   saveInventoryCountLines(
     restaurantId: string,
     sessionId: string,
-    lines: Array<{ inventoryItemId: string; countedQuantity: number }>
+    lines: Array<{ inventoryItemId: string; countedQuantity: number; note?: string | null }>
   ): Promise<InventoryCountSessionDetail>;
   submitInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
   cancelInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
@@ -1616,7 +1616,8 @@ function createLocalDemoRepository(): MiseRepository {
             metadata: {
               session_id: sessionId,
               system_quantity_at_start: approval.systemQuantityAtStart,
-              variance_from_system: approval.quantityAfter - approval.systemQuantityAtStart
+              variance_from_system: approval.quantityAfter - approval.systemQuantityAtStart,
+              ...(approval.note ? { note: approval.note } : {})
             }
           });
         }

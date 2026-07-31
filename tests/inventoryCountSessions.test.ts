@@ -105,6 +105,44 @@ test("mergeCountLineUpdates rejects unknown items and accepts valid counts", () 
   );
 });
 
+test("mergeCountLineUpdates persists optional variance notes and clears them", () => {
+  const lines = buildCountSessionLinesFromInventory(
+    "rest_a",
+    "session_1",
+    [item("tomatoes", 10), item("lettuce", 5)],
+    "2026-07-31T00:00:00.000Z"
+  );
+  const withNote = mergeCountLineUpdates(lines, [
+    { inventoryItemId: "tomatoes", countedQuantity: 8, note: "  Spill during prep  " }
+  ]);
+  assert.equal(withNote.find((entry) => entry.inventory_item_id === "tomatoes")?.note, "Spill during prep");
+  assert.equal(withNote.find((entry) => entry.inventory_item_id === "lettuce")?.note, null);
+
+  const cleared = mergeCountLineUpdates(withNote, [
+    { inventoryItemId: "tomatoes", countedQuantity: 8, note: null }
+  ]);
+  assert.equal(cleared.find((entry) => entry.inventory_item_id === "tomatoes")?.note, null);
+
+  assert.throws(
+    () =>
+      mergeCountLineUpdates(lines, [
+        { inventoryItemId: "tomatoes", countedQuantity: 8, note: "n".repeat(241) }
+      ]),
+    /240/i
+  );
+});
+
+test("planCountSessionApprovals carries count-line notes for ledger metadata", () => {
+  const tomatoLine = line("tomatoes", 10, 8);
+  tomatoLine.note = "Case short on delivery";
+  const planned = planCountSessionApprovals({
+    inventoryItems: [item("tomatoes", 9)],
+    lines: [tomatoLine]
+  });
+  assert.equal(planned[0]?.note, "Case short on delivery");
+  assert.equal(planned[0]?.changed, true);
+});
+
 test("assertSessionMutable enforces workflow transitions", () => {
   assert.doesNotThrow(() => assertSessionMutable({ status: "in_progress" }, "save"));
   assert.throws(() => assertSessionMutable({ status: "submitted" }, "save"), /in-progress/i);

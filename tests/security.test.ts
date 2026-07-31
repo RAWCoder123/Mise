@@ -566,6 +566,11 @@ test("inventory count sessions are service-owned with draft progress and approve
     "supabase/migrations/20260731040129_count_session_staff_draft_roles.sql",
     "utf8"
   );
+  const countNoteMigration = readFileSync(
+    "supabase/migrations/20260731100000_count_line_variance_notes.sql",
+    "utf8"
+  );
+  const validation = readFileSync("services/miseValidation.ts", "utf8");
   const screen = readFileSync("app/inventory/count.tsx", "utf8");
   const list = readFileSync("app/(tabs)/inventory.tsx", "utf8");
   const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
@@ -579,8 +584,10 @@ test("inventory count sessions are service-owned with draft progress and approve
   assert.match(edge, /staffOperationalActions/);
   assert.match(edge, /service_approve_inventory_count_session/);
   assert.match(edge, /inventory_count_session_approved/);
+  assert.match(edge, /requireCountLineUpdates[\s\S]*note/);
   assert.match(migration, /create table if not exists public\.inventory_count_sessions/i);
   assert.match(migration, /create table if not exists public\.inventory_count_lines/i);
+  assert.match(migration, /note text check \(note is null or char_length\(note\) <= 240\)/i);
   assert.match(migration, /inventory_count_sessions_one_open_per_restaurant_idx/i);
   assert.match(migration, /source_workflow,\s*[\s\S]*'approve_count_session'/i);
   assert.match(migration, /reason,\s*[\s\S]*'manual_count'/i);
@@ -596,11 +603,18 @@ test("inventory count sessions are service-owned with draft progress and approve
     staffRolesMigration,
     /service_submit_inventory_count_session[\s\S]*array\['owner', 'admin', 'manager', 'staff'\]/i
   );
+  assert.match(countNoteMigration, /note = safe_note/i);
+  assert.match(countNoteMigration, /Count line note is outside supported limits/i);
+  assert.match(countNoteMigration, /jsonb_build_object\('note',\s*safe_note\)/i);
+  assert.match(validation, /requireInventoryCountLineNote/);
+  assert.match(validation, /requireInventoryCountLineUpdates[\s\S]*note/);
   assert.match(screen, /canDraftInventoryCount/);
   assert.match(screen, /canApproveInventoryCount/);
   assert.match(screen, /beginInventoryCountSession/);
   assert.match(screen, /approveInventoryCountSession/);
   assert.match(screen, /staffAwaitingApproval/);
+  assert.match(screen, /draftNotes/);
+  assert.match(screen, /inventory\.count\.notePlaceholder/);
   assert.match(list, /canDraftInventoryCount/);
   assert.match(list, /\/inventory\/count/);
   assert.match(tenantAccess, /canDraftInventoryCount/);

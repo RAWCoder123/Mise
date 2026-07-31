@@ -394,9 +394,19 @@ export function requireInventoryCountSessionNote(value: string | null | undefine
   return normalized || null;
 }
 
+export function requireInventoryCountLineNote(value: string | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Count line note must be text.");
+  const normalized = value.trim();
+  if (normalized.length > 240) {
+    throw new Error("Count line note is limited to 240 characters.");
+  }
+  return normalized || null;
+}
+
 export function requireInventoryCountLineUpdates(
   value: unknown
-): Array<{ inventoryItemId: string; countedQuantity: number }> {
+): Array<{ inventoryItemId: string; countedQuantity: number; note: string | null }> {
   if (!Array.isArray(value) || value.length < 1 || value.length > 250) {
     throw new Error("Provide between 1 and 250 count lines to save.");
   }
@@ -425,7 +435,10 @@ export function requireInventoryCountLineUpdates(
         `Counted quantity must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
       );
     }
-    return { inventoryItemId, countedQuantity };
+    const note = requireInventoryCountLineNote(
+      row.note === undefined || row.note === null ? null : String(row.note)
+    );
+    return { inventoryItemId, countedQuantity, note };
   });
 }
 

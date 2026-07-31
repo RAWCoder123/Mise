@@ -659,6 +659,7 @@ function requireCountLineUpdates(value: unknown) {
       throw new HttpError(400, `lines[${index}] duplicates an inventory item.`);
     }
     seen.add(inventoryItemId);
+    const noteValue = row.note;
     return {
       inventory_item_id: inventoryItemId,
       counted_quantity: requireBoundedNumber(
@@ -666,7 +667,10 @@ function requireCountLineUpdates(value: unknown) {
         `lines[${index}].countedQuantity`,
         0,
         1_000_000
-      )
+      ),
+      note: noteValue == null || noteValue === ""
+        ? null
+        : requireBoundedString(noteValue, `lines[${index}].note`, 240)
     };
   });
 }

@@ -33,6 +33,7 @@ export function canCancelInventoryCountSession(role: RestaurantRole | null | und
 export type InventoryCountLineInput = {
   inventoryItemId: string;
   countedQuantity: number;
+  note?: string | null;
 };
 
 export type PlannedCountLineApproval = {
@@ -45,6 +46,7 @@ export type PlannedCountLineApproval = {
   quantityAfter: number;
   variance: number;
   changed: boolean;
+  note: string | null;
 };
 
 export type CountSessionProgressSummary = {
@@ -104,6 +106,11 @@ export function planCountSessionApprovals(input: {
     }
     const quantityBefore = Number(item.current_quantity);
     const quantityAfter = countedQuantity;
+    const note =
+      typeof line.note === "string" && line.note.trim() ? line.note.trim() : null;
+    if (note && note.length > 240) {
+      throw new Error("Count line note is outside supported limits.");
+    }
     planned.push({
       inventoryItemId: item.id,
       itemName: item.item_name,
@@ -113,7 +120,8 @@ export function planCountSessionApprovals(input: {
       quantityBefore,
       quantityAfter,
       variance: quantityAfter - quantityBefore,
-      changed: quantityAfter !== quantityBefore
+      changed: quantityAfter !== quantityBefore,
+      note
     });
   }
 
@@ -171,7 +179,7 @@ export function mergeCountLineUpdates(
   if (updates.length < 1) throw new Error("Provide at least one count line to save.");
   if (updates.length > 250) throw new Error("Too many count lines in one save.");
 
-  const updatesByItemId = new Map<string, number>();
+  const updatesByItemId = new Map<string, { countedQuantity: number; note: string | null; noteProvided: boolean }>();
   for (const update of updates) {
     const itemId = update.inventoryItemId.trim();
     if (!itemId) throw new Error("Count line is missing an inventory item.");
@@ -179,16 +187,33 @@ export function mergeCountLineUpdates(
     if (!Number.isFinite(quantity) || quantity < 0 || quantity > 1_000_000) {
       throw new Error("Counted quantity must be between 0 and 1,000,000.");
     }
-    updatesByItemId.set(itemId, quantity);
+    const noteProvided = Object.prototype.hasOwnProperty.call(update, "note");
+    let note: string | null = null;
+    if (noteProvided) {
+      if (update.note === null || update.note === undefined) {
+        note = null;
+      } else if (typeof update.note !== "string") {
+        throw new Error("Count line note must be text.");
+      } else {
+        const normalized = update.note.trim();
+        if (normalized.length > 240) {
+          throw new Error("Count line note is limited to 240 characters.");
+        }
+        note = normalized || null;
+      }
+    }
+    updatesByItemId.set(itemId, { countedQuantity: quantity, note, noteProvided });
   }
 
   let matched = 0;
   const next = lines.map((line) => {
-    if (!updatesByItemId.has(line.inventory_item_id)) return line;
+    const update = updatesByItemId.get(line.inventory_item_id);
+    if (!update) return line;
     matched += 1;
     return {
       ...line,
-      counted_quantity: updatesByItemId.get(line.inventory_item_id) ?? null,
+      counted_quantity: update.countedQuantity,
+      note: update.noteProvided ? update.note : line.note,
       updated_at: new Date().toISOString()
     };
   });
