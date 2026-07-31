@@ -40,6 +40,12 @@ const countSessionDraftActions = new Set<OperationalAction>([
   "submit_count_session",
   "cancel_count_session"
 ]);
+/** Staff may draft/submit counts; approve/cancel and other mutations stay manager+. */
+const staffCountDraftActions = new Set<OperationalAction>([
+  "begin_count_session",
+  "save_count_lines",
+  "submit_count_session"
+]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -67,7 +73,16 @@ Deno.serve(async (req) => {
       functionName: "operational-workflows"
     };
 
-    await requireRestaurantRole(supabase, user.id, restaurantId, ["owner", "admin", "manager"]);
+    if (staffCountDraftActions.has(action)) {
+      await requireRestaurantRole(supabase, user.id, restaurantId, [
+        "owner",
+        "admin",
+        "manager",
+        "staff"
+      ]);
+    } else {
+      await requireRestaurantRole(supabase, user.id, restaurantId, ["owner", "admin", "manager"]);
+    }
 
     let result: unknown;
     let setupSummary: unknown = null;

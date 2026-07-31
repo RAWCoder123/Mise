@@ -144,6 +144,39 @@ test("open inventory count sessions become manager Today tasks", () => {
   assert.equal(countTask?.status, "open");
 });
 
+test("in-progress inventory count sessions are visible to staff counters", () => {
+  const session = {
+    id: "count_session_in_progress",
+    restaurant_id: restaurantId,
+    status: "in_progress" as const,
+    started_by: "user_staff",
+    submitted_by: null,
+    approved_by: null,
+    cancelled_by: null,
+    started_at: "2026-07-31T01:00:00.000Z",
+    submitted_at: null,
+    approved_at: null,
+    cancelled_at: null,
+    note: null,
+    created_at: "2026-07-31T01:00:00.000Z",
+    updated_at: "2026-07-31T01:30:00.000Z"
+  };
+  const tasks = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    openCountSession: session,
+    now
+  });
+  const countTask = tasks.find((task) => task.source.kind === "inventory_count_session");
+  assert.equal(countTask?.requiredRole, "member");
+  assert.equal(countTask?.priority, "normal");
+  assert.equal(countTask?.presentation.code, "today.inventory_count_session.continue");
+});
+
 test("completed tasks are projections of changed source state and keep stable IDs", () => {
   const open = deriveOperationalTodayTasks({
     restaurantId,

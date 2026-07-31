@@ -5,7 +5,9 @@ import { test } from "node:test";
 import { getInitialLoginCredentials, canUseDemoMode, readPublicAppConfig } from "../lib/appConfig";
 import { DEMO_DATASET } from "../services/demoData";
 import {
+  canApproveInventoryCount,
   canDeleteRestaurantData,
+  canDraftInventoryCount,
   canManageRestaurantData,
   canReadRestaurantData,
   canUpdateRestaurantProfile
@@ -56,12 +58,17 @@ test("tenant role helper keeps staff read-only and lets managers operate invento
   assert.equal(canReadRestaurantData(staff, "restaurant_a"), true);
   assert.equal(canManageRestaurantData(staff, "restaurant_a"), false);
   assert.equal(canDeleteRestaurantData(staff, "restaurant_a"), false);
+  assert.equal(canDraftInventoryCount(staff, "restaurant_a"), true);
+  assert.equal(canApproveInventoryCount(staff, "restaurant_a"), false);
 
   assert.equal(canManageRestaurantData(manager, "restaurant_a"), true);
   assert.equal(canDeleteRestaurantData(manager, "restaurant_a"), false);
+  assert.equal(canDraftInventoryCount(manager, "restaurant_a"), true);
+  assert.equal(canApproveInventoryCount(manager, "restaurant_a"), true);
 
   assert.equal(canUpdateRestaurantProfile(owner, "restaurant_a"), true);
   assert.equal(canUpdateRestaurantProfile(admin, "restaurant_a"), true);
+  assert.equal(canApproveInventoryCount(owner, "restaurant_a"), true);
 });
 
 test("production mode does not expose demo credentials or demo access", () => {
@@ -410,8 +417,13 @@ test("inventory count sessions are service-owned with draft progress and approve
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
   const migration = readFileSync("supabase/migrations/20260731023000_inventory_count_sessions.sql", "utf8");
+  const staffRolesMigration = readFileSync(
+    "supabase/migrations/20260731040129_count_session_staff_draft_roles.sql",
+    "utf8"
+  );
   const screen = readFileSync("app/inventory/count.tsx", "utf8");
   const list = readFileSync("app/(tabs)/inventory.tsx", "utf8");
+  const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
 
   assert.match(inventoryWorkflow, /beginInventoryCountSession/);
   assert.match(inventoryWorkflow, /approveInventoryCountSession[\s\S]*planCountSessionApprovals/);
@@ -419,6 +431,7 @@ test("inventory count sessions are service-owned with draft progress and approve
   assert.match(repository, /action:\s*"approve_count_session"/i);
   assert.match(edge, /"begin_count_session"/);
   assert.match(edge, /"approve_count_session"/);
+  assert.match(edge, /staffCountDraftActions/);
   assert.match(edge, /service_approve_inventory_count_session/);
   assert.match(edge, /inventory_count_session_approved/);
   assert.match(migration, /create table if not exists public\.inventory_count_sessions/i);
@@ -430,9 +443,23 @@ test("inventory count sessions are service-owned with draft progress and approve
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_approve_inventory_count_session[\s\S]*service_role/i);
   assert.match(migration, /grant select on public\.inventory_count_sessions to authenticated/i);
   assert.doesNotMatch(migration, /grant insert on table public\.inventory_count_sessions to authenticated/i);
+  assert.match(
+    staffRolesMigration,
+    /service_begin_inventory_count_session[\s\S]*array\['owner', 'admin', 'manager', 'staff'\]/i
+  );
+  assert.match(
+    staffRolesMigration,
+    /service_submit_inventory_count_session[\s\S]*array\['owner', 'admin', 'manager', 'staff'\]/i
+  );
+  assert.match(screen, /canDraftInventoryCount/);
+  assert.match(screen, /canApproveInventoryCount/);
   assert.match(screen, /beginInventoryCountSession/);
   assert.match(screen, /approveInventoryCountSession/);
+  assert.match(screen, /staffAwaitingApproval/);
+  assert.match(list, /canDraftInventoryCount/);
   assert.match(list, /\/inventory\/count/);
+  assert.match(tenantAccess, /canDraftInventoryCount/);
+  assert.match(tenantAccess, /canApproveInventoryCount/);
 });
 
 test("recipe baseline edits and regenerated guidance commit through one optimistic workflow", () => {

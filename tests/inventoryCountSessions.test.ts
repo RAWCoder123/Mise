@@ -5,6 +5,9 @@ import {
   applyCountApprovalsToInventory,
   assertSessionMutable,
   buildCountSessionLinesFromInventory,
+  canApproveInventoryCountSession,
+  canCancelInventoryCountSession,
+  canDraftInventoryCountSession,
   mergeCountLineUpdates,
   planCountSessionApprovals,
   summarizeCountSessionProgress
@@ -108,4 +111,15 @@ test("assertSessionMutable enforces workflow transitions", () => {
   assert.doesNotThrow(() => assertSessionMutable({ status: "submitted" }, "approve"));
   assert.throws(() => assertSessionMutable({ status: "in_progress" }, "approve"), /Submit/i);
   assert.throws(() => assertSessionMutable({ status: "approved" }, "cancel"), /already closed/i);
+});
+
+test("staff may draft and submit counts; only managers approve or cancel", () => {
+  assert.equal(canDraftInventoryCountSession("staff"), true);
+  assert.equal(canDraftInventoryCountSession("manager"), true);
+  assert.equal(canApproveInventoryCountSession("staff"), false);
+  assert.equal(canApproveInventoryCountSession("manager"), true);
+  assert.equal(canApproveInventoryCountSession("owner"), true);
+  assert.equal(canCancelInventoryCountSession("staff"), false);
+  assert.equal(canCancelInventoryCountSession("admin"), true);
+  assert.equal(canDraftInventoryCountSession(null), false);
 });

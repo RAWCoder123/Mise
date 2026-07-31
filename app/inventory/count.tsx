@@ -21,13 +21,14 @@ import {
   saveInventoryCountLines,
   submitInventoryCountSession
 } from "../../services/miseService";
-import { canManageRestaurantData } from "../../services/tenantAccess";
+import { canApproveInventoryCount, canDraftInventoryCount } from "../../services/tenantAccess";
 import type { InventoryCountSessionDetail } from "../../types/mise";
 
 export default function InventoryCountSessionScreen() {
   const { formatNumber, t } = useLocale();
   const { restaurant, memberships } = useMiseSession();
-  const canManage = canManageRestaurantData(memberships, restaurant?.id ?? "");
+  const canDraft = canDraftInventoryCount(memberships, restaurant?.id ?? "");
+  const canApprove = canApproveInventoryCount(memberships, restaurant?.id ?? "");
   const [detail, setDetail] = useState<InventoryCountSessionDetail | null>(null);
   const [draftCounts, setDraftCounts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -80,7 +81,7 @@ export default function InventoryCountSessionScreen() {
   );
 
   async function startSession() {
-    if (!restaurant || !canManage) return;
+    if (!restaurant || !canDraft) return;
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -99,7 +100,7 @@ export default function InventoryCountSessionScreen() {
   }
 
   async function saveProgress() {
-    if (!restaurant || !detail || !canManage) return;
+    if (!restaurant || !detail || !canDraft) return;
     const lines = detail.lines
       .map((line) => {
         const raw = draftCounts[line.inventory_item_id]?.trim() ?? "";
@@ -135,7 +136,7 @@ export default function InventoryCountSessionScreen() {
   }
 
   async function submitSession() {
-    if (!restaurant || !detail || !canManage) return;
+    if (!restaurant || !detail || !canDraft) return;
     setSaving(true);
     setError(null);
     try {
@@ -170,7 +171,7 @@ export default function InventoryCountSessionScreen() {
   }
 
   async function approveSession() {
-    if (!restaurant || !detail || !canManage) return;
+    if (!restaurant || !detail || !canApprove) return;
     setSaving(true);
     setError(null);
     try {
@@ -185,7 +186,7 @@ export default function InventoryCountSessionScreen() {
   }
 
   function confirmCancel() {
-    if (!restaurant || !detail || !canManage) return;
+    if (!restaurant || !detail || !canApprove) return;
     Alert.alert(t("inventory.count.cancelTitle"), t("inventory.count.cancelBody"), [
       { text: t("common.cancel"), style: "cancel" },
       {
@@ -258,11 +259,11 @@ export default function InventoryCountSessionScreen() {
               <Button
                 title={t("inventory.count.startAction")}
                 onPress={() => void startSession()}
-                disabled={!canManage || saving}
+                disabled={!canDraft || saving}
                 fullWidth
                 accessibilityLabel={t("inventory.count.startAccessibility")}
               />
-              {!canManage ? (
+              {!canDraft ? (
                 <Text style={styles.help}>{t("inventory.count.staffReadonly")}</Text>
               ) : null}
               <Button
@@ -331,7 +332,7 @@ export default function InventoryCountSessionScreen() {
                           accessibilityLabel={t("inventory.count.countedAccessibility", {
                             item: line.item_name
                           })}
-                          editable={canManage && detail.session.status === "in_progress" && !saving}
+                          editable={canDraft && detail.session.status === "in_progress" && !saving}
                           keyboardType="decimal-pad"
                           value={countedRaw}
                           onChangeText={(value) =>
@@ -351,33 +352,36 @@ export default function InventoryCountSessionScreen() {
               </SectionSurface>
             </MotionView>
 
-            {canManage ? (
-              <View style={styles.actions}>
-                {detail.session.status === "in_progress" ? (
-                  <>
-                    <Button
-                      title={t("inventory.count.saveAction")}
-                      onPress={() => void saveProgress()}
-                      disabled={saving}
-                      fullWidth
-                    />
-                    <Button
-                      title={t("inventory.count.submitAction")}
-                      onPress={() => void submitSession()}
-                      disabled={saving}
-                      fullWidth
-                      style={styles.secondaryAction}
-                    />
-                  </>
-                ) : null}
-                {detail.session.status === "submitted" ? (
+            <View style={styles.actions}>
+              {detail.session.status === "in_progress" && canDraft ? (
+                <>
                   <Button
-                    title={t("inventory.count.approveAction")}
-                    onPress={() => void approveSession()}
+                    title={t("inventory.count.saveAction")}
+                    onPress={() => void saveProgress()}
                     disabled={saving}
                     fullWidth
                   />
-                ) : null}
+                  <Button
+                    title={t("inventory.count.submitAction")}
+                    onPress={() => void submitSession()}
+                    disabled={saving}
+                    fullWidth
+                    style={styles.secondaryAction}
+                  />
+                </>
+              ) : null}
+              {detail.session.status === "submitted" && canApprove ? (
+                <Button
+                  title={t("inventory.count.approveAction")}
+                  onPress={() => void approveSession()}
+                  disabled={saving}
+                  fullWidth
+                />
+              ) : null}
+              {detail.session.status === "submitted" && !canApprove ? (
+                <Text style={styles.help}>{t("inventory.count.staffAwaitingApproval")}</Text>
+              ) : null}
+              {canApprove ? (
                 <Button
                   title={t("inventory.count.cancelAction")}
                   variant="secondary"
@@ -386,10 +390,8 @@ export default function InventoryCountSessionScreen() {
                   fullWidth
                   style={styles.secondaryAction}
                 />
-              </View>
-            ) : (
-              <Text style={styles.help}>{t("inventory.count.staffReadonly")}</Text>
-            )}
+              ) : null}
+            </View>
           </>
         )}
       </View>

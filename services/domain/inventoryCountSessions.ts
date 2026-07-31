@@ -1,7 +1,34 @@
-import type { InventoryCountLine, InventoryCountSession, InventoryCountSessionStatus, InventoryItem } from "../../types/mise";
+import type {
+  InventoryCountLine,
+  InventoryCountSession,
+  InventoryCountSessionStatus,
+  InventoryItem,
+  RestaurantRole
+} from "../../types/mise";
 
 export const INVENTORY_COUNT_SESSION_OPEN_STATUSES = ["in_progress", "submitted"] as const;
 export type InventoryCountSessionOpenStatus = (typeof INVENTORY_COUNT_SESSION_OPEN_STATUSES)[number];
+
+/** Staff may begin, save, and submit counts; only managers+ may approve or cancel. */
+export const INVENTORY_COUNT_DRAFT_ROLES: readonly RestaurantRole[] = [
+  "owner",
+  "admin",
+  "manager",
+  "staff"
+];
+export const INVENTORY_COUNT_APPROVE_ROLES: readonly RestaurantRole[] = ["owner", "admin", "manager"];
+
+export function canDraftInventoryCountSession(role: RestaurantRole | null | undefined): boolean {
+  return Boolean(role && INVENTORY_COUNT_DRAFT_ROLES.includes(role));
+}
+
+export function canApproveInventoryCountSession(role: RestaurantRole | null | undefined): boolean {
+  return Boolean(role && INVENTORY_COUNT_APPROVE_ROLES.includes(role));
+}
+
+export function canCancelInventoryCountSession(role: RestaurantRole | null | undefined): boolean {
+  return canApproveInventoryCountSession(role);
+}
 
 export type InventoryCountLineInput = {
   inventoryItemId: string;

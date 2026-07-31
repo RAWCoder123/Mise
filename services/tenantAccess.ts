@@ -1,4 +1,8 @@
 import type { RestaurantMembership, RestaurantRole } from "../types/mise";
+import {
+  canApproveInventoryCountSession,
+  canDraftInventoryCountSession
+} from "./domain/inventoryCountSessions";
 import { canManageRestaurantTeam, canViewRestaurantTeam } from "./domain/teamMembership";
 
 const managerRoles: RestaurantRole[] = ["owner", "admin", "manager"];
@@ -60,6 +64,22 @@ export function canManageTeamForRestaurant(
 ) {
   const membership = activeMembershipForRestaurant(memberships, restaurantId);
   return Boolean(membership && canManageRestaurantTeam(membership.role));
+}
+
+export function canDraftInventoryCount(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  const membership = activeMembershipForRestaurant(memberships, restaurantId);
+  return canDraftInventoryCountSession(membership?.role);
+}
+
+export function canApproveInventoryCount(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  const membership = activeMembershipForRestaurant(memberships, restaurantId);
+  return canApproveInventoryCountSession(membership?.role);
 }
 
 export function requireRestaurantAccess(

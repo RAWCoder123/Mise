@@ -21,7 +21,7 @@ import {
   fetchOpenInventoryCountSession,
   summarizeInventoryOutlooks
 } from "../../services/miseService";
-import { canManageRestaurantData } from "../../services/tenantAccess";
+import { canDraftInventoryCount } from "../../services/tenantAccess";
 import type { InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
@@ -29,7 +29,7 @@ type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
 export default function InventoryScreen() {
   const { formatNumber, t } = useLocale();
   const { restaurant, memberships } = useMiseSession();
-  const canManage = canManageRestaurantData(memberships, restaurant?.id ?? "");
+  const canDraftCount = canDraftInventoryCount(memberships, restaurant?.id ?? "");
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
   const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -175,7 +175,7 @@ export default function InventoryScreen() {
           </SectionSurface>
         </MotionView>
 
-        {canManage || openCountSessionId ? (
+        {canDraftCount || openCountSessionId ? (
           <MotionView delay={20} distance={3} duration={240}>
             <SectionSurface
               title={t("inventory.count.cardTitle")}

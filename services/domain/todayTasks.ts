@@ -164,7 +164,8 @@ export function deriveOperationalTodayTasks(
           route: "/inventory/count",
           entityId: openCountSession.id
         },
-        requiredRole: "manager",
+        // Staff may count and submit; only managers+ approve ledger adjustments.
+        requiredRole: awaitingApproval ? "manager" : "member",
         isComplete: false,
         completionReason: awaitingApproval
           ? "Count session is submitted and awaiting approval."
