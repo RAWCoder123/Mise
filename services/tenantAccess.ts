@@ -4,6 +4,10 @@ import {
   canDraftInventoryCountSession
 } from "./domain/inventoryCountSessions";
 import { canRecordInventoryWaste as canRecordInventoryWasteRole } from "./domain/inventoryWaste";
+import {
+  canManageStorageLocations as canManageStorageLocationsRole,
+  canTransferInventory as canTransferInventoryRole
+} from "./domain/inventoryTransfer";
 import { canManageRestaurantTeam, canViewRestaurantTeam } from "./domain/teamMembership";
 
 const managerRoles: RestaurantRole[] = ["owner", "admin", "manager"];
@@ -89,6 +93,22 @@ export function canRecordInventoryWaste(
 ) {
   const membership = activeMembershipForRestaurant(memberships, restaurantId);
   return canRecordInventoryWasteRole(membership?.role);
+}
+
+export function canTransferInventory(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  const membership = activeMembershipForRestaurant(memberships, restaurantId);
+  return canTransferInventoryRole(membership?.role);
+}
+
+export function canManageStorageLocations(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  const membership = activeMembershipForRestaurant(memberships, restaurantId);
+  return canManageStorageLocationsRole(membership?.role);
 }
 
 export function requireRestaurantAccess(

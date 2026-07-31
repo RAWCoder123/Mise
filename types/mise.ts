@@ -143,6 +143,26 @@ export interface InventoryMovement {
   created_at: string;
 }
 
+export interface StorageLocation {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InventoryLocationBalance {
+  id: string;
+  restaurant_id: string;
+  inventory_item_id: string;
+  storage_location_id: string;
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export type InventoryCountSessionStatus = "in_progress" | "submitted" | "approved" | "cancelled";
 
 export interface InventoryCountSession {

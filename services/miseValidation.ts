@@ -205,6 +205,46 @@ export function normalizeInventoryMovement(value: InventoryMovement): InventoryM
   };
 }
 
+export function normalizeStorageLocation(value: {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}) {
+  return {
+    id: asString(value.id),
+    restaurant_id: asString(value.restaurant_id),
+    name: asString(value.name),
+    sort_order: Math.max(0, Math.min(100000, Math.trunc(asNumber(value.sort_order, 100)))),
+    is_active: Boolean(value.is_active),
+    created_at: asString(value.created_at),
+    updated_at: asString(value.updated_at)
+  };
+}
+
+export function normalizeInventoryLocationBalance(value: {
+  id: string;
+  restaurant_id: string;
+  inventory_item_id: string;
+  storage_location_id: string;
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+}) {
+  return {
+    id: asString(value.id),
+    restaurant_id: asString(value.restaurant_id),
+    inventory_item_id: asString(value.inventory_item_id),
+    storage_location_id: asString(value.storage_location_id),
+    quantity: asBoundedNonNegativeNumber(value.quantity, operatingLimits.inventoryQuantity),
+    created_at: asString(value.created_at),
+    updated_at: asString(value.updated_at)
+  };
+}
+
 const inventoryCountSessionStatuses = new Set([
   "in_progress",
   "submitted",
@@ -334,6 +374,39 @@ export function requireInventoryWasteNote(value: string | null | undefined) {
     throw new Error("Waste note is limited to 240 characters.");
   }
   return normalized || null;
+}
+
+export function requireInventoryTransferQuantity(value: unknown) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    value > operatingLimits.inventoryQuantity
+  ) {
+    throw new Error(
+      `Enter a transfer quantity greater than zero and no more than ${operatingLimits.inventoryQuantity.toLocaleString()}.`
+    );
+  }
+  return value;
+}
+
+export function requireInventoryTransferNote(value: string | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Transfer note must be text.");
+  const normalized = value.trim();
+  if (normalized.length > 240) {
+    throw new Error("Transfer note is limited to 240 characters.");
+  }
+  return normalized || null;
+}
+
+export function requireStorageLocationName(value: unknown) {
+  if (typeof value !== "string") throw new Error("Storage location name must be text.");
+  const normalized = value.trim();
+  if (normalized.length < 1 || normalized.length > 80) {
+    throw new Error("Storage location name must be between 1 and 80 characters.");
+  }
+  return normalized;
 }
 
 export function requireManagerCorrectionNote(value: string | null | undefined) {
