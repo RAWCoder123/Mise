@@ -9,6 +9,7 @@ import type {
   InventoryCountSession,
   InventoryCountSessionDetail,
   InventoryItem,
+  InventoryItemCreateInput,
   InventoryItemPatch,
   InventoryMovement,
   InventoryMovementReason,
@@ -449,6 +450,61 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
     validated.supplier_name = validated.supplier_name.trim();
   }
   return validated;
+}
+
+export function requireInventoryItemCreateInput(input: unknown): InventoryItemCreateInput {
+  if (!input || typeof input !== "object") {
+    throw new Error("Inventory item details are required.");
+  }
+  const value = input as Record<string, unknown>;
+  const itemName = typeof value.item_name === "string" ? value.item_name.trim().replace(/\s+/g, " ") : "";
+  const category = typeof value.category === "string" ? value.category.trim().replace(/\s+/g, " ") : "";
+  const unit = typeof value.unit === "string" ? value.unit.trim().replace(/\s+/g, " ") : "";
+  const supplierName =
+    typeof value.supplier_name === "string" ? value.supplier_name.trim().replace(/\s+/g, " ") : "";
+
+  if (itemName.length < 1 || itemName.length > 160) {
+    throw new Error("Item name must be between 1 and 160 characters.");
+  }
+  if (category.length < 1 || category.length > 120) {
+    throw new Error("Category must be between 1 and 120 characters.");
+  }
+  if (unit.length < 1 || unit.length > 40) {
+    throw new Error("Unit must be between 1 and 40 characters.");
+  }
+  if (supplierName.length < 1 || supplierName.length > 160) {
+    throw new Error("Supplier name must be between 1 and 160 characters.");
+  }
+
+  for (const [field, label] of [
+    ["current_quantity", "Current quantity"],
+    ["par_level", "Par level"],
+    ["reorder_threshold", "Reorder threshold"],
+    ["estimated_unit_cost", "Estimated unit cost"]
+  ] as const) {
+    const numeric = value[field];
+    if (
+      typeof numeric !== "number" ||
+      !Number.isFinite(numeric) ||
+      numeric < 0 ||
+      numeric > operatingLimits.inventoryQuantity
+    ) {
+      throw new Error(
+        `${label} must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
+      );
+    }
+  }
+
+  return {
+    item_name: itemName,
+    category,
+    unit,
+    current_quantity: value.current_quantity as number,
+    par_level: value.par_level as number,
+    reorder_threshold: value.reorder_threshold as number,
+    estimated_unit_cost: value.estimated_unit_cost as number,
+    supplier_name: supplierName
+  };
 }
 
 export function requireSupplierOperatorNote(value: string | null | undefined) {

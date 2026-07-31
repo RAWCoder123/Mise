@@ -22,6 +22,7 @@ import {
 const actions = [
   "refresh_signals",
   "update_inventory",
+  "create_inventory_item",
   "record_waste",
   "receive_supplier_order",
   "upsert_recipe",
@@ -151,7 +152,7 @@ Deno.serve(async (req) => {
       restaurantId,
       auditAction(action),
       auditEntityTable(action),
-      auditEntityId(action, body),
+      auditEntityId(action, body, result),
       auditMetadata(action, body, result, ingestSummary)
     );
     await recordFunctionSecurityEvent(
@@ -207,6 +208,13 @@ async function refreshWithRetry(
         }
         mutationBody = { ...body, approvedLines: requireArray(detail.lines, "count session.lines", 250) };
       }
+      if (action === "create_inventory_item") {
+        mutationBody = {
+          ...body,
+          itemId: crypto.randomUUID(),
+          item: requireInventoryCreate(body.item)
+        };
+      }
       const planning = applyRequestedMutation(snapshot, action, mutationBody);
       const signals = calculateOperationalSignals(planning);
       const recommendations = signals.recommendations.map((recommendation) => ({
@@ -231,6 +239,17 @@ async function refreshWithRetry(
           p_inventory_item_id: requireUuid(body.itemId, "itemId"),
           p_expected_revision: revision,
           p_patch: requireInventoryPatch(body.patch),
+          p_recommendations: recommendations,
+          p_insights: insights
+        });
+      }
+      if (action === "create_inventory_item") {
+        return await serviceRpc(securitySupabase, "service_create_inventory_item_and_signals", {
+          p_actor_user_id: actorUserId,
+          p_restaurant_id: restaurantId,
+          p_inventory_item_id: requireUuid(mutationBody.itemId, "itemId"),
+          p_expected_revision: revision,
+          p_item: requireInventoryCreate(mutationBody.item),
           p_recommendations: recommendations,
           p_insights: insights
         });
@@ -379,6 +398,43 @@ function applyRequestedMutation(
         : item)
     };
   }
+  if (action === "create_inventory_item") {
+    if (snapshot.inventoryItems.length >= 250) {
+      throw new HttpError(400, "This restaurant already has the maximum of 250 inventory items.");
+    }
+    const item = requireInventoryCreate(body.item);
+    const itemId = requireUuid(body.itemId, "itemId");
+    const duplicate = snapshot.inventoryItems.some(
+      (existing) =>
+        existing.item_name.trim().toLowerCase().replace(/\s+/g, " ") ===
+        item.item_name.trim().toLowerCase().replace(/\s+/g, " ")
+    );
+    if (duplicate) {
+      throw new HttpError(409, "An inventory item with this name already exists.");
+    }
+    if (snapshot.inventoryItems.some((existing) => existing.id === itemId)) {
+      throw new HttpError(409, "Inventory item id already exists.");
+    }
+    return {
+      ...snapshot,
+      inventoryItems: [
+        ...snapshot.inventoryItems,
+        {
+          id: itemId,
+          restaurant_id: snapshot.restaurantId,
+          item_name: item.item_name,
+          category: item.category,
+          unit: item.unit,
+          current_quantity: item.current_quantity,
+          par_level: item.par_level,
+          reorder_threshold: item.reorder_threshold,
+          estimated_unit_cost: item.estimated_unit_cost,
+          supplier_name: item.supplier_name,
+          last_updated: new Date().toISOString()
+        }
+      ]
+    };
+  }
   if (action === "record_waste") {
     const itemId = requireUuid(body.itemId, "itemId");
     const quantityRemoved = requireBoundedNumber(body.quantityRemoved, "quantityRemoved", Number.EPSILON, 1_000_000);
@@ -525,6 +581,39 @@ function requireInventoryPatch(value: unknown) {
   return normalized;
 }
 
+function requireInventoryCreate(value: unknown) {
+  const item = requireRecord(value, "item");
+  const allowed = new Set([
+    "item_name",
+    "category",
+    "unit",
+    "current_quantity",
+    "par_level",
+    "reorder_threshold",
+    "estimated_unit_cost",
+    "supplier_name"
+  ]);
+  if (Object.keys(item).some((key) => !allowed.has(key))) {
+    throw new HttpError(400, "item contains unsupported fields.");
+  }
+  const normalizeText = (raw: unknown, fieldName: string, maximumLength: number) => {
+    const text = requireBoundedString(raw, fieldName, maximumLength).trim().replace(/\s+/g, " ");
+    if (text.length < 1) throw new HttpError(400, `${fieldName} is required.`);
+    if (text.length > maximumLength) throw new HttpError(400, `${fieldName} is too long.`);
+    return text;
+  };
+  return {
+    item_name: normalizeText(item.item_name, "item.item_name", 160),
+    category: normalizeText(item.category, "item.category", 120),
+    unit: normalizeText(item.unit, "item.unit", 40),
+    current_quantity: requireBoundedNumber(item.current_quantity, "item.current_quantity", 0, 1_000_000),
+    par_level: requireBoundedNumber(item.par_level, "item.par_level", 0, 1_000_000),
+    reorder_threshold: requireBoundedNumber(item.reorder_threshold, "item.reorder_threshold", 0, 1_000_000),
+    estimated_unit_cost: requireBoundedNumber(item.estimated_unit_cost, "item.estimated_unit_cost", 0, 1_000_000),
+    supplier_name: normalizeText(item.supplier_name, "item.supplier_name", 160)
+  };
+}
+
 function requireCountLineUpdates(value: unknown) {
   const lines = requireArray(value, "lines", 250);
   if (lines.length < 1) throw new HttpError(400, "lines must include at least one row.");
@@ -586,6 +675,7 @@ function isRevisionConflict(error: unknown) {
 
 function auditAction(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_updated";
+  if (action === "create_inventory_item") return "inventory_item_created";
   if (action === "record_waste") return "inventory_waste_recorded";
   if (action === "receive_supplier_order") return "supplier_order_received";
   if (action === "begin_count_session") return "inventory_count_session_started";
@@ -600,7 +690,9 @@ function auditAction(action: OperationalAction) {
 }
 
 function auditEntityTable(action: OperationalAction) {
-  if (action === "update_inventory" || action === "record_waste") return "inventory_items";
+  if (action === "update_inventory" || action === "create_inventory_item" || action === "record_waste") {
+    return "inventory_items";
+  }
   if (action === "receive_supplier_order") return "supplier_orders";
   if (
     action === "begin_count_session" ||
@@ -616,8 +708,15 @@ function auditEntityTable(action: OperationalAction) {
   return "restaurants";
 }
 
-function auditEntityId(action: OperationalAction, body: Record<string, unknown>) {
+function auditEntityId(action: OperationalAction, body: Record<string, unknown>, result: unknown = null) {
   if (action === "update_inventory" || action === "record_waste") return requireUuid(body.itemId, "itemId");
+  if (action === "create_inventory_item") {
+    if (result && typeof result === "object" && typeof (result as { id?: unknown }).id === "string") {
+      return requireUuid((result as { id: string }).id, "result.id");
+    }
+    if (body.itemId != null) return requireUuid(body.itemId, "itemId");
+    return null;
+  }
   if (action === "receive_supplier_order") return requireUuid(body.orderId, "orderId");
   if (
     action === "save_count_lines" ||
@@ -669,7 +768,11 @@ function auditMetadata(
     }
     return metadata;
   }
-  if ((action !== "update_inventory" && action !== "record_waste") || !result || typeof result !== "object") {
+  if (
+    (action !== "update_inventory" && action !== "create_inventory_item" && action !== "record_waste") ||
+    !result ||
+    typeof result !== "object"
+  ) {
     return metadata;
   }
   const row = result as Record<string, unknown>;
@@ -683,6 +786,8 @@ function auditMetadata(
     metadata.quantity_removed_applied = row.quantity_removed_applied;
   }
   if (typeof row.floored === "boolean") metadata.floored = row.floored;
+  if (typeof row.created === "boolean") metadata.created = row.created;
+  if (typeof row.item_name === "string") metadata.item_name = row.item_name;
   if (action === "update_inventory" && body.patch && typeof body.patch === "object") {
     metadata.patch_fields = Object.keys(body.patch as Record<string, unknown>);
   }

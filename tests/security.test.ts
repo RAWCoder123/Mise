@@ -412,6 +412,33 @@ test("inventory waste writes are service-owned, ledgered, and separate from coun
   assert.match(detail, /inventory\.detail\.recordWaste/);
 });
 
+test("inventory item create is service-owned with opening ledger movement and manager UI", () => {
+  const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const migration = readFileSync("supabase/migrations/20260731050500_create_inventory_item.sql", "utf8");
+  const list = readFileSync("app/(tabs)/inventory.tsx", "utf8");
+  const createScreen = readFileSync("app/inventory/new.tsx", "utf8");
+  const createWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+createInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
+
+  assert.match(createWorkflow, /requireInventoryItemCreateInput/);
+  assert.match(createWorkflow, /planInventoryItemCreate/);
+  assert.match(createWorkflow, /assertInventoryItemCreateCapacity/);
+  assert.match(createWorkflow, /findDuplicateInventoryItemName/);
+  assert.match(createWorkflow, /createInventoryItemAndSignals/);
+  assert.match(repository, /action:\s*"create_inventory_item"/i);
+  assert.match(edge, /"create_inventory_item"/);
+  assert.match(edge, /service_create_inventory_item_and_signals/);
+  assert.match(edge, /inventory_item_created/);
+  assert.match(migration, /create\s+or\s+replace\s+function\s+private\.service_create_inventory_item_and_signals/i);
+  assert.match(migration, /source_workflow,\s*[\s\S]*'create_inventory_item'/i);
+  assert.match(migration, /reason,\s*[\s\S]*'manual_count'/i);
+  assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_create_inventory_item_and_signals[\s\S]*authenticated/i);
+  assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_create_inventory_item_and_signals[\s\S]*service_role/i);
+  assert.match(list, /inventory\/new/);
+  assert.match(createScreen, /createInventoryItem/);
+});
+
 test("inventory count sessions are service-owned with draft progress and approve-time ledger writes", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
@@ -883,6 +910,7 @@ test("hosted Edge and service RPC checks forge every privileged tenant boundary"
     "service_commit_operational_signals",
     "service_update_inventory_and_signals",
     "service_record_inventory_waste_and_signals",
+    "service_create_inventory_item_and_signals",
     "service_begin_inventory_count_session",
     "service_approve_inventory_count_session",
     "service_save_recipe_and_signals",

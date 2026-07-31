@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, Clock3, Package, Search } from "lucide-react-native";
+import { AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, Clock3, Package, PackagePlus, Search } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -21,7 +21,7 @@ import {
   fetchOpenInventoryCountSession,
   summarizeInventoryOutlooks
 } from "../../services/miseService";
-import { canDraftInventoryCount } from "../../services/tenantAccess";
+import { canDraftInventoryCount, canManageRestaurantData } from "../../services/tenantAccess";
 import type { InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
@@ -30,6 +30,7 @@ export default function InventoryScreen() {
   const { formatNumber, t } = useLocale();
   const { restaurant, memberships } = useMiseSession();
   const canDraftCount = canDraftInventoryCount(memberships, restaurant?.id ?? "");
+  const canManageInventory = canManageRestaurantData(memberships, restaurant?.id ?? "");
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
   const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -174,6 +175,23 @@ export default function InventoryScreen() {
             />
           </SectionSurface>
         </MotionView>
+
+        {canManageInventory ? (
+          <MotionView delay={10} distance={3} duration={240}>
+            <SectionSurface
+              title={t("inventory.create.cardTitle")}
+              subtitle={t("inventory.create.listSubtitle")}
+            >
+              <Button
+                title={t("inventory.create.listAction")}
+                onPress={() => router.push("/inventory/new")}
+                fullWidth
+                accessibilityLabel={t("inventory.create.listAccessibility")}
+                icon={<PackagePlus size={18} color={colors.cream} strokeWidth={2.25} />}
+              />
+            </SectionSurface>
+          </MotionView>
+        ) : null}
 
         {canDraftCount || openCountSessionId ? (
           <MotionView delay={20} distance={3} duration={240}>

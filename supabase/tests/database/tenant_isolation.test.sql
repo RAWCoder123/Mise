@@ -1158,6 +1158,55 @@ select is(
 reset role;
 
 set local role service_role;
+select lives_ok(
+  $sql$select public.service_create_inventory_item_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-cce1-4ce1-8ce1-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '{"item_name":"Atomic Create Item","category":"Produce","unit":"lb","current_quantity":6,"par_level":12,"reorder_threshold":4,"estimated_unit_cost":2.5,"supplier_name":"Neighborhood Produce"}'::jsonb,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$,
+  'trusted workflow creates inventory items and refreshes operational signals'
+);
+reset role;
+select is(
+  (select current_quantity from public.inventory_items where id = 'aaaaaaaa-cce1-4ce1-8ce1-aaaaaaaaaaaa'),
+  6::numeric,
+  'inventory item create persists opening quantity'
+);
+select is(
+  (select reason from public.inventory_movements where inventory_item_id = 'aaaaaaaa-cce1-4ce1-8ce1-aaaaaaaaaaaa' order by created_at desc limit 1),
+  'manual_count',
+  'inventory item create writes an opening manual_count movement'
+);
+select is(
+  (select source_workflow from public.inventory_movements where inventory_item_id = 'aaaaaaaa-cce1-4ce1-8ce1-aaaaaaaaaaaa' order by created_at desc limit 1),
+  'create_inventory_item',
+  'inventory item create tags the create_inventory_item workflow'
+);
+
+set local role authenticated;
+select is(
+  pg_temp.try_execute($sql$select public.service_create_inventory_item_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-cce2-4ce2-8ce2-aaaaaaaaaaaa',
+    0,
+    '{"item_name":"Client Create Probe","category":"Produce","unit":"lb","current_quantity":1,"par_level":2,"reorder_threshold":1,"estimated_unit_cost":1,"supplier_name":"Probe"}'::jsonb,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$),
+  false,
+  'authenticated clients cannot execute the inventory create service RPC directly'
+);
+reset role;
+
+set local role service_role;
 select is(
   pg_temp.try_execute($sql$select public.service_update_inventory_and_signals(
     '22222222-2222-4222-8222-222222222222',

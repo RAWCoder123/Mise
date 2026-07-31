@@ -8,6 +8,7 @@ const routes = [
   "/today",
   "/inventory",
   "/inventory/count",
+  "/inventory/new",
   "/orders",
   "/insights",
   "/settings",

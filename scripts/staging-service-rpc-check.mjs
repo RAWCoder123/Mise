@@ -129,6 +129,28 @@ await assertDeniedRpc(
   "inventory waste workflow rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
+  "service_create_inventory_item_and_signals",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_inventory_item_id: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+    p_expected_revision: 0,
+    p_item: {
+      item_name: "Forged Create Item",
+      category: "Produce",
+      unit: "lb",
+      current_quantity: 1,
+      par_level: 4,
+      reorder_threshold: 2,
+      estimated_unit_cost: 1,
+      supplier_name: "Forged Supplier"
+    },
+    p_recommendations: [],
+    p_insights: []
+  },
+  "inventory item create rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
   "service_begin_inventory_count_session",
   {
     p_actor_user_id: managerA.id,

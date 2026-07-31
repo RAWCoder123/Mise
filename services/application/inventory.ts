@@ -1,4 +1,4 @@
-import type { InventoryItemPatch } from "../../types/mise";
+import type { InventoryItemCreateInput, InventoryItemPatch } from "../../types/mise";
 import {
   buildInventoryControlSummary,
   buildInventoryOutlooks,
@@ -8,6 +8,11 @@ import {
 } from "../domain/miseDomain";
 import { planInventoryWaste } from "../domain/inventoryWaste";
 import {
+  assertInventoryItemCreateCapacity,
+  findDuplicateInventoryItemName,
+  planInventoryItemCreate
+} from "../domain/inventoryItemCreate";
+import {
   applyCountApprovalsToInventory,
   planCountSessionApprovals,
   summarizeCountSessionProgress
@@ -16,6 +21,7 @@ import { buildInsightsFromData, buildRecommendationInserts } from "../domain/ope
 import {
   requireInventoryCountLineUpdates,
   requireInventoryCountSessionNote,
+  requireInventoryItemCreateInput,
   requireInventoryItemPatch,
   requireInventoryWasteNote,
   requireInventoryWasteQuantity,
@@ -210,6 +216,70 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
     status: "pending",
     supplier_order_id: null
   });
+}
+
+export async function createInventoryItem(restaurantId: string, input: InventoryItemCreateInput) {
+  const normalized = requireInventoryItemCreateInput(input);
+  const planned = planInventoryItemCreate(normalized);
+  const [data, recommendationHistory] = await Promise.all([
+    repository.fetchPlanningData(restaurantId),
+    repository.fetchPurchaseRecommendations(restaurantId, "all")
+  ]);
+  assertInventoryItemCreateCapacity(data.inventoryItems.length);
+  const duplicate = findDuplicateInventoryItemName(
+    data.inventoryItems.map((item) => item.item_name),
+    planned.item_name
+  );
+  if (duplicate) {
+    throw new Error(`An inventory item named "${duplicate}" already exists.`);
+  }
+
+  const createdForPlanning = {
+    id: `pending_inventory_${planned.item_name}`,
+    restaurant_id: restaurantId,
+    item_name: planned.item_name,
+    category: planned.category,
+    unit: planned.unit,
+    current_quantity: planned.current_quantity,
+    par_level: planned.par_level,
+    reorder_threshold: planned.reorder_threshold,
+    estimated_unit_cost: planned.estimated_unit_cost,
+    supplier_name: planned.supplier_name,
+    last_updated: new Date().toISOString()
+  };
+  const planningInventory = [...data.inventoryItems, createdForPlanning];
+  const recommendations = buildRecommendationInserts(
+    restaurantId,
+    planningInventory,
+    data.sales,
+    data.menuItemIngredients,
+    recommendationHistory,
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
+  );
+  const insights = buildInsightsFromData(
+    restaurantId,
+    planningInventory,
+    data.sales,
+    data.menuItemIngredients,
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
+  );
+  return repository.createInventoryItemAndSignals(
+    restaurantId,
+    {
+      item_name: planned.item_name,
+      category: planned.category,
+      unit: planned.unit,
+      current_quantity: planned.current_quantity,
+      par_level: planned.par_level,
+      reorder_threshold: planned.reorder_threshold,
+      estimated_unit_cost: planned.estimated_unit_cost,
+      supplier_name: planned.supplier_name
+    },
+    recommendations,
+    insights
+  );
 }
 
 export async function updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch) {

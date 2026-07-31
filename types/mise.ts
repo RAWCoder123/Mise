@@ -591,4 +591,16 @@ export type InventoryItemPatch = Partial<
   Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold" | "supplier_name">
 >;
 
+export type InventoryItemCreateInput = Pick<
+  InventoryItem,
+  | "item_name"
+  | "category"
+  | "unit"
+  | "current_quantity"
+  | "par_level"
+  | "reorder_threshold"
+  | "estimated_unit_cost"
+  | "supplier_name"
+>;
+
 export type PosProvider = "Toast" | "Square" | "Clover" | "Lightspeed" | "Manual CSV Upload";

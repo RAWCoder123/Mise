@@ -51,6 +51,11 @@ import {
 } from "../domain/miseDomain";
 import { planInventoryWaste } from "../domain/inventoryWaste";
 import {
+  assertInventoryItemCreateCapacity,
+  findDuplicateInventoryItemName,
+  planInventoryItemCreate
+} from "../domain/inventoryItemCreate";
+import {
   applyPlannedReceiveToInventory,
   planSupplierOrderReceive
 } from "../domain/supplierOrderReceiving";
@@ -283,6 +288,12 @@ export interface MiseRepository {
     unmappedSaleCount?: number;
   }>;
   upsertInventoryItem(input: InventoryItemInput): Promise<InventoryItem>;
+  createInventoryItemAndSignals(
+    restaurantId: string,
+    input: Omit<InventoryItemInput, "restaurant_id">,
+    recommendations: PurchaseRecommendationInput[],
+    insights: Insight[]
+  ): Promise<InventoryItem>;
   createPosSale(input: PosSaleInput): Promise<PosSale>;
   updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch): Promise<InventoryItem>;
   updateInventoryItemAndSignals(
@@ -1263,6 +1274,49 @@ function createLocalDemoRepository(): MiseRepository {
           last_updated: now
         };
         state.inventoryItems.push(item);
+        return normalizeInventoryItem(item);
+      });
+    },
+
+    async createInventoryItemAndSignals(restaurantId, input, _recommendations, _insights) {
+      return mutateDemoState((state) => {
+        const planned = planInventoryItemCreate(input);
+        const restaurantItems = state.inventoryItems.filter((item) => item.restaurant_id === restaurantId);
+        assertInventoryItemCreateCapacity(restaurantItems.length);
+        const duplicate = findDuplicateInventoryItemName(
+          restaurantItems.map((item) => item.item_name),
+          planned.item_name
+        );
+        if (duplicate) {
+          throw new Error(`An inventory item named "${duplicate}" already exists.`);
+        }
+
+        const now = new Date().toISOString();
+        const item: InventoryItem = {
+          id: createId("item"),
+          restaurant_id: restaurantId,
+          item_name: planned.item_name,
+          category: planned.category,
+          unit: planned.unit,
+          current_quantity: planned.current_quantity,
+          par_level: planned.par_level,
+          reorder_threshold: planned.reorder_threshold,
+          estimated_unit_cost: planned.estimated_unit_cost,
+          supplier_name: planned.supplier_name,
+          last_updated: now
+        };
+        state.inventoryItems.push(item);
+        appendDemoInventoryMovement(state, {
+          restaurantId,
+          itemId: item.id,
+          quantityBefore: 0,
+          quantityAfter: item.current_quantity,
+          reason: planned.reason,
+          sourceWorkflow: planned.sourceWorkflow,
+          metadata: planned.metadata
+        });
+        rebuildPurchaseRecommendations(state, restaurantId);
+        rebuildInsights(state, restaurantId);
         return normalizeInventoryItem(item);
       });
     },
@@ -2616,6 +2670,24 @@ function createSupabaseRepository(): MiseRepository {
       throw new Error(
         "Direct inventory upserts are disabled. Use setup or operational inventory workflows."
       );
+    },
+
+    async createInventoryItemAndSignals(restaurantId, input, _recommendations, _insights) {
+      const response = await invokeOperationalWorkflow({
+        action: "create_inventory_item",
+        restaurantId,
+        item: {
+          item_name: input.item_name,
+          category: input.category,
+          unit: input.unit,
+          current_quantity: input.current_quantity,
+          par_level: input.par_level,
+          reorder_threshold: input.reorder_threshold,
+          estimated_unit_cost: input.estimated_unit_cost,
+          supplier_name: input.supplier_name
+        }
+      });
+      return normalizeInventoryItem(response.result as InventoryItem);
     },
 
     async createPosSale(_input) {
