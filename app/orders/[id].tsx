@@ -24,7 +24,10 @@ import {
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import {
+  SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS,
+  buildReceiveLinesFromFormInputs,
   defaultReceiveLinesFromRecommendations,
+  isReceiveQuantityInputReady,
   linkedOrderedRecommendationsForOrder
 } from "../../services/domain/supplierOrderReceiving";
 import type { PurchaseRecommendation, RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
@@ -41,12 +44,13 @@ interface OrderNotice {
 export default function OrderDraftDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
-  const { formatDate, formatNumber, t } = useLocale();
+  const { formatDate, formatNumber, parseNumber, t } = useLocale();
   const { memberships, restaurant, usingLocalDemo } = useMiseSession();
   const [order, setOrder] = useState<SupplierOrder | null>(null);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [linkedRecommendations, setLinkedRecommendations] = useState<PurchaseRecommendation[]>([]);
   const [receiveQuantities, setReceiveQuantities] = useState<Record<string, string>>({});
+  const [receiveNotes, setReceiveNotes] = useState<Record<string, string>>({});
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -84,13 +88,20 @@ export default function OrderDraftDetailScreen() {
         throw new Error(t("orders.detail.connectionMismatch"));
       }
       const linked = linkedOrderedRecommendationsForOrder(orderId, recommendations);
-      const defaults = defaultReceiveLinesFromRecommendations(linked);
       setOrder(nextOrder);
       setEmailConnection(nextEmailConnection);
       setLinkedRecommendations(linked);
       setReceiveQuantities(
         Object.fromEntries(
-          defaults.map((line) => [line.inventoryItemId, String(line.quantityReceived)])
+          defaultReceiveLinesFromRecommendations(linked).map((line) => [
+            line.inventoryItemId,
+            formatNumber(line.quantityReceived, { maximumFractionDigits: 2, useGrouping: false })
+          ])
+        )
+      );
+      setReceiveNotes(
+        Object.fromEntries(
+          linked.map((recommendation) => [recommendation.inventory_item_id, ""])
         )
       );
       setLoadedRestaurantId(restaurantId);
@@ -110,7 +121,7 @@ export default function OrderDraftDetailScreen() {
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
-  }, [id, restaurant?.id, t]);
+  }, [formatNumber, id, restaurant?.id, t]);
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -120,12 +131,28 @@ export default function OrderDraftDetailScreen() {
     setEmailConnection(null);
     setLinkedRecommendations([]);
     setReceiveQuantities({});
+    setReceiveNotes({});
     setOperatorNote("");
     setBusy(false);
     setNotice(null);
     setLoading(Boolean(restaurant && id));
     void load();
   }, [id, load, restaurant?.id]);
+
+  function seedReceiveForm(
+    recommendations: readonly PurchaseRecommendation[]
+  ): void {
+    const defaults = defaultReceiveLinesFromRecommendations(recommendations);
+    setReceiveQuantities(
+      Object.fromEntries(
+        defaults.map((line) => [
+          line.inventoryItemId,
+          formatNumber(line.quantityReceived, { maximumFractionDigits: 2, useGrouping: false })
+        ])
+      )
+    );
+    setReceiveNotes(Object.fromEntries(defaults.map((line) => [line.inventoryItemId, ""])));
+  }
 
   async function persistNote(): Promise<SupplierOrder> {
     if (!restaurant || !order) throw new Error(t("orders.detail.unavailable"));
@@ -223,14 +250,7 @@ export default function OrderDraftDetailScreen() {
       setOrder(result.order);
       setOperatorNote(result.order.operator_note ?? "");
       setLinkedRecommendations(result.orderedRecommendations);
-      setReceiveQuantities(
-        Object.fromEntries(
-          defaultReceiveLinesFromRecommendations(result.orderedRecommendations).map((line) => [
-            line.inventoryItemId,
-            String(line.quantityReceived)
-          ])
-        )
-      );
+      seedReceiveForm(result.orderedRecommendations);
       setNotice({
         title: t("orders.detail.notice.placedTitle"),
         message: t("orders.detail.notice.placedBody"),
@@ -275,14 +295,7 @@ export default function OrderDraftDetailScreen() {
       setOrder(result.order);
       setOperatorNote(result.order.operator_note ?? "");
       setLinkedRecommendations(result.orderedRecommendations);
-      setReceiveQuantities(
-        Object.fromEntries(
-          defaultReceiveLinesFromRecommendations(result.orderedRecommendations).map((line) => [
-            line.inventoryItemId,
-            String(line.quantityReceived)
-          ])
-        )
-      );
+      seedReceiveForm(result.orderedRecommendations);
       setNotice({
         title: usingLocalDemo
           ? t("orders.detail.notice.demoSentTitle")
@@ -311,21 +324,31 @@ export default function OrderDraftDetailScreen() {
       setNotice(viewOnlyNotice(t));
       return;
     }
+    const drafted = buildReceiveLinesFromFormInputs({
+      inventoryItemIds: linkedRecommendations.map((recommendation) => recommendation.inventory_item_id),
+      quantitiesByItemId: receiveQuantities,
+      notesByItemId: receiveNotes,
+      parseNumber
+    });
+    if (!drafted.ok) {
+      setNotice({
+        title: t("orders.detail.notice.receiveInvalidTitle"),
+        message:
+          drafted.error === "note_too_long"
+            ? t("orders.detail.receive.noteTooLong", {
+                count: formatNumber(SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS)
+              })
+            : t("orders.detail.receive.invalidQuantity"),
+        tone: "warning"
+      });
+      return;
+    }
     const restaurantId = restaurant.id;
     actionLockRef.current = true;
     setBusy(true);
     setNotice(null);
     try {
-      const lines = linkedRecommendations.map((recommendation) => {
-        const raw = receiveQuantities[recommendation.inventory_item_id] ?? "";
-        const quantityReceived = Number(raw);
-        return {
-          inventoryItemId: recommendation.inventory_item_id,
-          quantityReceived,
-          note: null
-        };
-      });
-      const result = await receiveSupplierOrder(restaurantId, order.id, lines);
+      const result = await receiveSupplierOrder(restaurantId, order.id, drafted.lines);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(result.order);
       setNotice({
@@ -366,10 +389,14 @@ export default function OrderDraftDetailScreen() {
       isSent &&
       linkedRecommendations.length > 0 &&
       linkedRecommendations.every((recommendation) => {
-        const value = Number(receiveQuantities[recommendation.inventory_item_id]);
-        return Number.isFinite(value) && value >= 0;
+        const quantityReady = isReceiveQuantityInputReady(
+          receiveQuantities[recommendation.inventory_item_id] ?? "",
+          parseNumber
+        );
+        const note = receiveNotes[recommendation.inventory_item_id] ?? "";
+        return quantityReady && note.trim().length <= SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS;
       }),
-    [isSent, linkedRecommendations, receiveQuantities]
+    [isSent, linkedRecommendations, parseNumber, receiveNotes, receiveQuantities]
   );
 
   function goBackToOrders() {
@@ -511,10 +538,13 @@ export default function OrderDraftDetailScreen() {
               <Text style={styles.sectionBody}>{t("orders.detail.receive.body")}</Text>
               {linkedRecommendations.map((recommendation) => {
                 const raw = receiveQuantities[recommendation.inventory_item_id] ?? "";
-                const received = Number(raw);
-                const discrepancy = Number.isFinite(received)
-                  ? received - recommendation.recommended_quantity
-                  : 0;
+                const note = receiveNotes[recommendation.inventory_item_id] ?? "";
+                const received = parseNumber(raw);
+                const discrepancy =
+                  received != null && Number.isFinite(received)
+                    ? received - recommendation.recommended_quantity
+                    : 0;
+                const showDiscrepancy = received != null && Number.isFinite(received) && discrepancy !== 0;
                 return (
                   <View key={recommendation.id} style={styles.receiveRow}>
                     <Text style={styles.receiveName}>{recommendation.item_name}</Text>
@@ -539,7 +569,7 @@ export default function OrderDraftDetailScreen() {
                       }
                       style={styles.receiveInput}
                     />
-                    {Number.isFinite(received) && discrepancy !== 0 ? (
+                    {showDiscrepancy ? (
                       <Text style={styles.receiveDiscrepancy}>
                         {t("orders.detail.receive.discrepancy", {
                           delta: formatNumber(discrepancy),
@@ -547,6 +577,26 @@ export default function OrderDraftDetailScreen() {
                         })}
                       </Text>
                     ) : null}
+                    <TextInput
+                      accessibilityLabel={t("orders.detail.receive.noteLabel", {
+                        item: recommendation.item_name
+                      })}
+                      accessibilityHint={t("orders.detail.receive.noteHint", {
+                        count: formatNumber(SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS)
+                      })}
+                      value={note}
+                      editable={!busy}
+                      onChangeText={(value) =>
+                        setReceiveNotes((current) => ({
+                          ...current,
+                          [recommendation.inventory_item_id]: value
+                        }))
+                      }
+                      maxLength={SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS}
+                      placeholder={t("orders.detail.receive.notePlaceholder")}
+                      placeholderTextColor={colors.faint}
+                      style={styles.receiveNoteInput}
+                    />
                   </View>
                 );
               })}
@@ -852,6 +902,19 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.body,
     fontSize: 14,
     lineHeight: 21,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  receiveNoteInput: {
+    minHeight: 44,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceWarm,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 13,
+    lineHeight: 19,
     paddingHorizontal: 12,
     paddingVertical: 10
   },

@@ -101,3 +101,24 @@ test("order list uses Gmail when connected and explicit external placement other
   assert.match(screen, /orders\.notice\.send\.demo\.(?:already|zero|one|other)/);
   assert.doesNotMatch(card, /Send email/i);
 });
+
+test("order receive uses locale-aware quantities and optional line notes", () => {
+  const detail = readFileSync("app/orders/[id].tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const domain = readFileSync("services/domain/supplierOrderReceiving.ts", "utf8");
+
+  assert.match(detail, /parseNumber/);
+  assert.match(detail, /buildReceiveLinesFromFormInputs/);
+  assert.match(detail, /isReceiveQuantityInputReady/);
+  assert.match(detail, /receiveNotes/);
+  assert.match(detail, /notesByItemId:\s*receiveNotes/);
+  assert.match(detail, /t\("orders\.detail\.receive\.noteLabel"/);
+  assert.match(detail, /t\("orders\.detail\.receive\.notePlaceholder"\)/);
+  assert.match(detail, /t\("orders\.detail\.notice\.receiveInvalidTitle"\)/);
+  assert.doesNotMatch(detail, /quantityReceived:\s*Number\(raw\)/);
+  assert.doesNotMatch(detail, /note:\s*null\s*\n\s*\}/);
+  assert.match(domain, /export function buildReceiveLinesFromFormInputs/);
+  assert.match(catalog, /"orders\.detail\.receive\.noteLabel"/);
+  assert.match(catalog, /"orders\.detail\.receive\.invalidQuantity"/);
+  assert.match(catalog, /"orders\.detail\.notice\.receiveInvalidTitle"/);
+});
