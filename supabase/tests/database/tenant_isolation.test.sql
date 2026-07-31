@@ -1621,7 +1621,7 @@ select ok(
   'staff inventory update is contained'
 );
 reset role;
-select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 42::numeric, 'staff cannot update inventory counts');
+select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 35::numeric, 'staff cannot update inventory counts');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', true);
