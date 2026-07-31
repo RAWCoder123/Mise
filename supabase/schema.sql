@@ -1,5 +1,8 @@
--- Legacy reference snapshot. For beta/staging/production databases, apply
--- supabase/migrations/*.sql in order so later tenant-integrity hardening runs.
+-- Legacy reference snapshot. DO NOT apply this file to beta/staging/production.
+-- Apply supabase/migrations/*.sql in lexicographic order instead.
+-- This snapshot intentionally omits later tables such as inventory_movements,
+-- inventory_count_sessions, account_deletion_requests, and Gmail/outreach objects.
+-- SCHEMA_SQL_IS_LEGACY_SNAPSHOT=1
 
 create extension if not exists "pgcrypto";
 create schema if not exists private;

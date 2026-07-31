@@ -1100,6 +1100,16 @@ select is(
   '22222222-2222-4222-8222-222222222222'::uuid,
   'inventory movement records the authorizing actor'
 );
+select is(
+  (select reason from public.inventory_movements where inventory_item_id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa' order by created_at desc limit 1),
+  'manager_correction',
+  'single-item inventory update writes a manager_correction ledger reason'
+);
+select is(
+  (select source_workflow from public.inventory_movements where inventory_item_id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa' order by created_at desc limit 1),
+  'update_inventory',
+  'single-item inventory update tags the update_inventory workflow'
+);
 
 set local role service_role;
 select lives_ok(

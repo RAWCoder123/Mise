@@ -365,7 +365,7 @@ test("already-current demo state does not report a migration", () => {
   );
 });
 
-test("demo inventory quantity changes append an auditable movement", () => {
+test("demo inventory quantity changes append an auditable manager_correction movement", () => {
   const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
   const item = state.inventoryItems[0]!;
   const before = item.current_quantity;
@@ -378,7 +378,7 @@ test("demo inventory quantity changes append an auditable movement", () => {
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: item.id,
       actor_user_id: state.users[0]!.id,
-      reason: "manual_count",
+      reason: "manager_correction",
       quantity_before: before,
       quantity_after: after,
       delta: after - before,
@@ -392,7 +392,8 @@ test("demo inventory quantity changes append an auditable movement", () => {
   assert.equal(state.inventoryMovements.length, 1);
   assert.equal(state.inventoryMovements[0]?.quantity_before, before);
   assert.equal(state.inventoryMovements[0]?.quantity_after, after);
-  assert.equal(state.inventoryMovements[0]?.reason, "manual_count");
+  assert.equal(state.inventoryMovements[0]?.reason, "manager_correction");
+  assert.equal(state.inventoryMovements[0]?.source_workflow, "update_inventory");
 });
 
 test("demo waste recording deducts on-hand stock with a waste ledger reason", () => {

@@ -1353,7 +1353,9 @@ function createLocalDemoRepository(): MiseRepository {
             restaurantId,
             itemId,
             quantityBefore,
-            quantityAfter: item.current_quantity
+            quantityAfter: item.current_quantity,
+            reason: "manager_correction",
+            sourceWorkflow: "update_inventory"
           });
         }
         return normalizeInventoryItem(item);
@@ -1383,7 +1385,9 @@ function createLocalDemoRepository(): MiseRepository {
             restaurantId,
             itemId,
             quantityBefore,
-            quantityAfter: item.current_quantity
+            quantityAfter: item.current_quantity,
+            reason: "manager_correction",
+            sourceWorkflow: "update_inventory"
           });
         }
         state.purchaseRecommendations = [
@@ -2728,17 +2732,10 @@ function createSupabaseRepository(): MiseRepository {
       );
     },
 
-    async updateInventoryItem(restaurantId, itemId, patch) {
-      const payload = { ...patch, last_updated: new Date().toISOString() };
-      const { data, error } = await client
-        .from("inventory_items")
-        .update(payload)
-        .eq("restaurant_id", restaurantId)
-        .eq("id", itemId)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizeInventoryItem(data as InventoryItem);
+    async updateInventoryItem(_restaurantId, _itemId, _patch) {
+      throw new Error(
+        "Direct inventory updates are disabled. Use operational inventory workflows."
+      );
     },
 
     async updateInventoryItemAndSignals(

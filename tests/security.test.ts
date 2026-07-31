@@ -167,6 +167,11 @@ test("Supabase schema and migration replace broad RLS with membership-scoped pol
     .join("\n");
   const combined = `${schema}\n${migrations}`;
 
+  assert.match(schema, /SCHEMA_SQL_IS_LEGACY_SNAPSHOT=1/);
+  assert.match(schema, /DO NOT apply this file/i);
+  assert.doesNotMatch(schema, /create\s+table\s+if\s+not\s+exists\s+public\.inventory_movements/i);
+  assert.match(migrations, /create\s+table\s+if\s+not\s+exists\s+public\.inventory_movements/i);
+
   assert.equal(/\busing\s*\(\s*true\s*\)/i.test(combined), false);
   assert.equal(/\bwith\s+check\s*\(\s*true\s*\)/i.test(combined), false);
   assert.match(combined, /create\s+schema\s+if\s+not\s+exists\s+private/i);
@@ -347,7 +352,16 @@ test("inventory counts and regenerated guidance commit through one optimistic wo
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const migration = readFileSync("supabase/migrations/20260714183310_secure_operational_workflows.sql", "utf8");
+  const correctionMigration = readFileSync(
+    "supabase/migrations/20260731080000_manager_correction_ledger_reason.sql",
+    "utf8"
+  );
   const updateWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+updateInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
+  const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
+  const hostedUpdateMethod =
+    hostedRepository.match(
+      /async updateInventoryItem\([\s\S]*?\n\s*\},[\s\S]*?async updateInventoryItemAndSignals/
+    )?.[0] ?? "";
 
   assert.match(updateWorkflow, /fetchPlanningData[\s\S]*fetchPurchaseRecommendations/i);
   assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);
@@ -355,10 +369,20 @@ test("inventory counts and regenerated guidance commit through one optimistic wo
   assert.doesNotMatch(updateWorkflow, /repository\.updateInventoryItem\(/i);
   assert.match(repository, /action:\s*"update_inventory"/i);
   assert.match(repository, /functions\.invoke\("operational-workflows"/i);
+  assert.match(hostedUpdateMethod, /Direct inventory updates are disabled/i);
+  assert.doesNotMatch(hostedUpdateMethod, /\.from\(\s*["']inventory_items["']\s*\)\s*\.update/i);
+  assert.doesNotMatch(hostedRepository, /\.from\(\s*["']inventory_items["']\s*\)\s*\.update/i);
   assert.match(migration, /create\s+or\s+replace\s+function\s+private\.service_update_inventory_and_signals/i);
   assert.match(migration, /planning_revision[\s\S]*p_expected_revision/i);
   assert.match(migration, /update\s+public\.inventory_items[\s\S]*commit_operational_signals/i);
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.update_inventory_item_and_signals[\s\S]*authenticated/i);
+  assert.match(correctionMigration, /create\s+or\s+replace\s+function\s+private\.service_update_inventory_and_signals/i);
+  assert.match(correctionMigration, /'manager_correction'/i);
+  assert.match(correctionMigration, /source_workflow,\s*[\s\S]*'update_inventory'/i);
+  assert.doesNotMatch(
+    correctionMigration.match(/insert into public\.inventory_movements[\s\S]*?;/i)?.[0] ?? "",
+    /'manual_count'/i
+  );
 });
 
 test("supplier order receiving is service-owned, ledgered, and distinct from Gmail mark-sent", () => {
