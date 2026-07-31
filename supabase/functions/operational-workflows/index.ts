@@ -26,6 +26,11 @@ const actions = [
   "create_storage_location",
   "record_waste",
   "transfer_inventory",
+  "approve_purchase_recommendation",
+  "dismiss_purchase_recommendation",
+  "undo_purchase_recommendation_action",
+  "update_supplier_order_draft",
+  "mark_supplier_order_sent",
   "confirm_supplier_order_placed",
   "receive_supplier_order",
   "upsert_recipe",
@@ -164,6 +169,47 @@ Deno.serve(async (req) => {
         p_actor_user_id: user.id,
         p_restaurant_id: restaurantId,
         p_name: requireBoundedString(body.name, "name", 80)
+      });
+    } else if (action === "approve_purchase_recommendation") {
+      result = await serviceRpc(securitySupabase, "service_approve_purchase_recommendation", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_recommendation_id: requireUuid(body.recommendationId, "recommendationId"),
+        p_recommended_quantity: body.recommendedQuantity == null
+          ? null
+          : requireBoundedNumber(body.recommendedQuantity, "recommendedQuantity", Number.EPSILON, 1_000_000)
+      });
+    } else if (action === "dismiss_purchase_recommendation") {
+      result = await serviceRpc(securitySupabase, "service_dismiss_purchase_recommendation", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_recommendation_id: requireUuid(body.recommendationId, "recommendationId")
+      });
+    } else if (action === "undo_purchase_recommendation_action") {
+      result = await serviceRpc(securitySupabase, "service_undo_purchase_recommendation_action", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_recommendation_id: requireUuid(body.recommendationId, "recommendationId")
+      });
+    } else if (action === "update_supplier_order_draft") {
+      result = await serviceRpc(securitySupabase, "service_update_supplier_order_draft", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_order_id: requireUuid(body.orderId, "orderId"),
+        p_operator_note: body.operatorNote == null || body.operatorNote === ""
+          ? null
+          : requireBoundedString(body.operatorNote, "operatorNote", 2000),
+        p_set_operator_note: Boolean(body.setOperatorNote),
+        p_delivery_date: body.deliveryDate == null || body.deliveryDate === ""
+          ? null
+          : requireBoundedString(body.deliveryDate, "deliveryDate", 32),
+        p_set_delivery_date: Boolean(body.setDeliveryDate)
+      });
+    } else if (action === "mark_supplier_order_sent") {
+      result = await serviceRpc(securitySupabase, "service_mark_supplier_order_sent", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_order_id: requireUuid(body.orderId, "orderId")
       });
     } else if (action === "confirm_supplier_order_placed") {
       result = await serviceRpc(securitySupabase, "service_confirm_supplier_order_placed", {
@@ -740,6 +786,11 @@ function auditAction(action: OperationalAction) {
   if (action === "create_storage_location") return "storage_location_created";
   if (action === "record_waste") return "inventory_waste_recorded";
   if (action === "transfer_inventory") return "inventory_transfer_recorded";
+  if (action === "approve_purchase_recommendation") return "recommendation_approved";
+  if (action === "dismiss_purchase_recommendation") return "recommendation_dismissed";
+  if (action === "undo_purchase_recommendation_action") return "recommendation_undo";
+  if (action === "update_supplier_order_draft") return "supplier_order_draft_updated";
+  if (action === "mark_supplier_order_sent") return "supplier_order_sent_observed";
   if (action === "confirm_supplier_order_placed") return "supplier_order_placed_externally";
   if (action === "receive_supplier_order") return "supplier_order_received";
   if (action === "begin_count_session") return "inventory_count_session_started";
@@ -764,7 +815,19 @@ function auditEntityTable(action: OperationalAction) {
     return "inventory_items";
   }
   if (action === "create_storage_location") return "storage_locations";
-  if (action === "confirm_supplier_order_placed" || action === "receive_supplier_order") {
+  if (
+    action === "approve_purchase_recommendation" ||
+    action === "dismiss_purchase_recommendation" ||
+    action === "undo_purchase_recommendation_action"
+  ) {
+    return "purchase_recommendations";
+  }
+  if (
+    action === "update_supplier_order_draft" ||
+    action === "mark_supplier_order_sent" ||
+    action === "confirm_supplier_order_placed" ||
+    action === "receive_supplier_order"
+  ) {
     return "supplier_orders";
   }
   if (
@@ -794,7 +857,19 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>,
     }
     return null;
   }
-  if (action === "confirm_supplier_order_placed" || action === "receive_supplier_order") {
+  if (
+    action === "approve_purchase_recommendation" ||
+    action === "dismiss_purchase_recommendation" ||
+    action === "undo_purchase_recommendation_action"
+  ) {
+    return requireUuid(body.recommendationId, "recommendationId");
+  }
+  if (
+    action === "update_supplier_order_draft" ||
+    action === "mark_supplier_order_sent" ||
+    action === "confirm_supplier_order_placed" ||
+    action === "receive_supplier_order"
+  ) {
     return requireUuid(body.orderId, "orderId");
   }
   if (
@@ -852,6 +927,51 @@ function auditMetadata(
   if (action === "create_storage_location" && result && typeof result === "object") {
     const row = result as Record<string, unknown>;
     if (typeof row.name === "string") metadata.location_name = row.name;
+    return metadata;
+  }
+  if (
+    (
+      action === "approve_purchase_recommendation" ||
+      action === "dismiss_purchase_recommendation" ||
+      action === "undo_purchase_recommendation_action"
+    ) &&
+    result &&
+    typeof result === "object"
+  ) {
+    const row = result as Record<string, unknown>;
+    if (typeof row.outcome === "string") metadata.outcome = row.outcome;
+    if (typeof row.previous_status === "string") metadata.previous_status = row.previous_status;
+    const recommendation = row.recommendation && typeof row.recommendation === "object"
+      ? row.recommendation as Record<string, unknown>
+      : null;
+    if (recommendation && typeof recommendation.supplier_name === "string") {
+      metadata.supplier_name = recommendation.supplier_name;
+    }
+    if (recommendation && typeof recommendation.urgency === "string") {
+      metadata.urgency = recommendation.urgency;
+    }
+    const order = row.order && typeof row.order === "object"
+      ? row.order as Record<string, unknown>
+      : null;
+    if (order && typeof order.id === "string") metadata.supplier_order_id = order.id;
+    return metadata;
+  }
+  if (action === "update_supplier_order_draft" && result && typeof result === "object") {
+    const order = result as Record<string, unknown>;
+    if (typeof order.supplier_name === "string") metadata.supplier_name = order.supplier_name;
+    if (typeof order.status === "string") metadata.order_status = order.status;
+    return metadata;
+  }
+  if (action === "mark_supplier_order_sent" && result && typeof result === "object") {
+    const row = result as Record<string, unknown>;
+    if (typeof row.outcome === "string") metadata.outcome = row.outcome;
+    const order = row.order && typeof row.order === "object"
+      ? row.order as Record<string, unknown>
+      : null;
+    if (order && typeof order.supplier_name === "string") {
+      metadata.supplier_name = order.supplier_name;
+    }
+    metadata.observation_channel = "gmail_provider_acceptance";
     return metadata;
   }
   if (action === "confirm_supplier_order_placed" && result && typeof result === "object") {

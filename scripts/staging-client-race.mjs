@@ -497,7 +497,10 @@ async function main() {
     await clickAria(cdp, "Orders");
     await waitFor(cdp, "document.body?.innerText.includes('Fresh Produce Co.')", "Tenant A order did not render before mutation race");
     const mutationPause = hold.holdNext(
-      (requestUrl, method) => method === "POST" && requestUrl.includes("/rest/v1/rpc/approve_purchase_recommendation"),
+      (requestUrl, method) =>
+        method === "POST" &&
+        requestUrl.includes("/functions/v1/operational-workflows") &&
+        !requestUrl.includes("refresh_signals"),
       "tenant A recommendation approval mutation"
     );
     await clickAria(cdp, "Approve Chicken Breast");

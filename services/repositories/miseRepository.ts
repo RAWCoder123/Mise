@@ -3241,31 +3241,31 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async approvePurchaseRecommendation(restaurantId, recommendationId, recommendedQuantity) {
-      const { data, error } = await client.rpc("approve_purchase_recommendation", {
-        p_restaurant_id: restaurantId,
-        p_recommendation_id: recommendationId,
-        p_recommended_quantity: recommendedQuantity ?? null
+      const response = await invokeOperationalWorkflow({
+        action: "approve_purchase_recommendation",
+        restaurantId,
+        recommendationId,
+        recommendedQuantity: recommendedQuantity ?? null
       });
-      if (error) throw error;
-      return parseRecommendationWorkflowResponse(data);
+      return parseRecommendationWorkflowResponse(response.result);
     },
 
     async dismissPurchaseRecommendation(restaurantId, recommendationId) {
-      const { data, error } = await client.rpc("dismiss_purchase_recommendation", {
-        p_restaurant_id: restaurantId,
-        p_recommendation_id: recommendationId
+      const response = await invokeOperationalWorkflow({
+        action: "dismiss_purchase_recommendation",
+        restaurantId,
+        recommendationId
       });
-      if (error) throw error;
-      return parseRecommendationWorkflowResponse(data);
+      return parseRecommendationWorkflowResponse(response.result);
     },
 
     async undoPurchaseRecommendationAction(restaurantId, recommendationId) {
-      const { data, error } = await client.rpc("undo_purchase_recommendation_action", {
-        p_restaurant_id: restaurantId,
-        p_recommendation_id: recommendationId
+      const response = await invokeOperationalWorkflow({
+        action: "undo_purchase_recommendation_action",
+        restaurantId,
+        recommendationId
       });
-      if (error) throw error;
-      return parseRecommendationWorkflowResponse(data);
+      return parseRecommendationWorkflowResponse(response.result);
     },
 
     async replacePendingRecommendations(restaurantId, _inserts) {
@@ -3324,25 +3324,25 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async updateSupplierOrder(restaurantId, orderId, patch) {
-      const { data, error } = await client.rpc("update_supplier_order_draft", {
-        p_restaurant_id: restaurantId,
-        p_order_id: orderId,
-        p_operator_note: patch.operator_note ?? null,
-        p_set_operator_note: Object.prototype.hasOwnProperty.call(patch, "operator_note"),
-        p_delivery_date: patch.delivery_date ?? null,
-        p_set_delivery_date: Object.prototype.hasOwnProperty.call(patch, "delivery_date")
+      const response = await invokeOperationalWorkflow({
+        action: "update_supplier_order_draft",
+        restaurantId,
+        orderId,
+        operatorNote: patch.operator_note ?? null,
+        setOperatorNote: Object.prototype.hasOwnProperty.call(patch, "operator_note"),
+        deliveryDate: patch.delivery_date ?? null,
+        setDeliveryDate: Object.prototype.hasOwnProperty.call(patch, "delivery_date")
       });
-      if (error) throw error;
-      return normalizeSupplierOrder(data as SupplierOrder);
+      return normalizeSupplierOrder(response.result as SupplierOrder);
     },
 
     async markSupplierOrderSent(restaurantId, orderId) {
-      const { data, error } = await client.rpc("mark_supplier_order_sent", {
-        p_restaurant_id: restaurantId,
-        p_order_id: orderId
+      const response = await invokeOperationalWorkflow({
+        action: "mark_supplier_order_sent",
+        restaurantId,
+        orderId
       });
-      if (error) throw error;
-      return parseSupplierOrderSentWorkflowResponse(data);
+      return parseSupplierOrderSentWorkflowResponse(response.result);
     },
 
     async confirmSupplierOrderPlaced(restaurantId, orderId) {

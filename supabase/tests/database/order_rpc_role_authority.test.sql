@@ -103,47 +103,60 @@ select is(
     'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000101', 5
   )$sql$),
   false,
-  'staff cannot approve a purchase recommendation'
+  'authenticated staff cannot execute the legacy approval RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.dismiss_purchase_recommendation(
+  pg_temp.try_execute($sql$select public.service_approve_purchase_recommendation(
+    'a2222222-2222-4222-8222-222222222222',
+    'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000101', 5
+  )$sql$),
+  false,
+  'authenticated staff cannot execute the approval service RPC directly'
+);
+reset role;
+
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_approve_purchase_recommendation(
+    'a2222222-2222-4222-8222-222222222222',
+    'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000101', 5
+  )$sql$),
+  false,
+  'staff actor cannot approve a purchase recommendation through the service RPC'
+);
+select is(
+  pg_temp.try_execute($sql$select public.service_dismiss_purchase_recommendation(
+    'a2222222-2222-4222-8222-222222222222',
     'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000102'
   )$sql$),
   false,
-  'staff cannot dismiss a purchase recommendation'
+  'staff actor cannot dismiss a purchase recommendation through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.undo_purchase_recommendation_action(
+  pg_temp.try_execute($sql$select public.service_undo_purchase_recommendation_action(
+    'a2222222-2222-4222-8222-222222222222',
     'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000103'
   )$sql$),
   false,
-  'staff cannot undo a handled purchase recommendation'
+  'staff actor cannot undo a handled purchase recommendation through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_supplier_order_draft(
+  pg_temp.try_execute($sql$select public.service_update_supplier_order_draft(
+    'a2222222-2222-4222-8222-222222222222',
     'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000201',
     'forged staff note', true, current_date + 9, true
   )$sql$),
   false,
-  'staff cannot update a supplier order draft'
+  'staff actor cannot update a supplier order draft through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.mark_supplier_order_sent(
+  pg_temp.try_execute($sql$select public.service_mark_supplier_order_sent(
+    'a2222222-2222-4222-8222-222222222222',
     'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000201'
   )$sql$),
   false,
-  'staff cannot invoke the legacy mark-sent observation RPC'
+  'staff actor cannot invoke the mark-sent observation service RPC'
 );
-reset role;
-
-select is((select status from public.purchase_recommendations where id = 'a0000000-0000-4000-8000-000000000101'), 'pending', 'staff approval denial leaves its recommendation pending');
-select is((select status from public.purchase_recommendations where id = 'a0000000-0000-4000-8000-000000000102'), 'pending', 'staff dismissal denial leaves its recommendation pending');
-select is((select status from public.purchase_recommendations where id = 'a0000000-0000-4000-8000-000000000103'), 'dismissed', 'staff undo denial leaves its recommendation dismissed');
-select is((select status from public.supplier_orders where id = 'a0000000-0000-4000-8000-000000000201'), 'draft', 'staff mark-sent denial leaves the order draft');
-select is((select operator_note from public.supplier_orders where id = 'a0000000-0000-4000-8000-000000000201'), null::text, 'staff draft-update denial leaves the operator note unchanged');
-select is((select delivery_date from public.supplier_orders where id = 'a0000000-0000-4000-8000-000000000201'), current_date + 1, 'staff draft-update denial leaves the delivery date unchanged');
-
-set local role service_role;
 select is(
   pg_temp.try_execute($sql$select public.service_claim_supplier_email_send(
     'a2222222-2222-4222-8222-222222222222',
@@ -156,47 +169,57 @@ select is(
   'backend provider claim rejects a staff actor'
 );
 reset role;
+
+select is((select status from public.purchase_recommendations where id = 'a0000000-0000-4000-8000-000000000101'), 'pending', 'staff approval denial leaves its recommendation pending');
+select is((select status from public.purchase_recommendations where id = 'a0000000-0000-4000-8000-000000000102'), 'pending', 'staff dismissal denial leaves its recommendation pending');
+select is((select status from public.purchase_recommendations where id = 'a0000000-0000-4000-8000-000000000103'), 'dismissed', 'staff undo denial leaves its recommendation dismissed');
+select is((select status from public.supplier_orders where id = 'a0000000-0000-4000-8000-000000000201'), 'draft', 'staff mark-sent denial leaves the order draft');
+select is((select operator_note from public.supplier_orders where id = 'a0000000-0000-4000-8000-000000000201'), null::text, 'staff draft-update denial leaves the operator note unchanged');
+select is((select delivery_date from public.supplier_orders where id = 'a0000000-0000-4000-8000-000000000201'), current_date + 1, 'staff draft-update denial leaves the delivery date unchanged');
 select is((select count(*) from private.supplier_email_deliveries where restaurant_id = 'a0000000-0000-4000-8000-000000000001'), 0::bigint, 'staff provider-claim denial creates no delivery state');
 select is((select count(*) from public.audit_logs where restaurant_id = 'a0000000-0000-4000-8000-000000000001'), 0::bigint, 'staff denials create no workflow audit events');
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', true);
-select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role service_role;
 select is(
-  pg_temp.try_execute($sql$select public.approve_purchase_recommendation(
+  pg_temp.try_execute($sql$select public.service_approve_purchase_recommendation(
+    'a1111111-1111-4111-8111-111111111111',
     'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000101', 5
   )$sql$),
   false,
-  'manager cannot approve another restaurant recommendation'
+  'manager cannot approve another restaurant recommendation through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.dismiss_purchase_recommendation(
+  pg_temp.try_execute($sql$select public.service_dismiss_purchase_recommendation(
+    'a1111111-1111-4111-8111-111111111111',
     'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000102'
   )$sql$),
   false,
-  'manager cannot dismiss another restaurant recommendation'
+  'manager cannot dismiss another restaurant recommendation through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.undo_purchase_recommendation_action(
+  pg_temp.try_execute($sql$select public.service_undo_purchase_recommendation_action(
+    'a1111111-1111-4111-8111-111111111111',
     'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000103'
   )$sql$),
   false,
-  'manager cannot undo another restaurant recommendation'
+  'manager cannot undo another restaurant recommendation through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_supplier_order_draft(
+  pg_temp.try_execute($sql$select public.service_update_supplier_order_draft(
+    'a1111111-1111-4111-8111-111111111111',
     'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000201',
     'forged cross-tenant note', true, current_date + 9, true
   )$sql$),
   false,
-  'manager cannot update another restaurant order draft'
+  'manager cannot update another restaurant order draft through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.mark_supplier_order_sent(
+  pg_temp.try_execute($sql$select public.service_mark_supplier_order_sent(
+    'a1111111-1111-4111-8111-111111111111',
     'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000201'
   )$sql$),
   false,
-  'manager cannot invoke mark-sent for another restaurant'
+  'manager cannot invoke mark-sent for another restaurant through the service RPC'
 );
 reset role;
 

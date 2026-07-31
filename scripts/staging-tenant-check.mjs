@@ -425,13 +425,22 @@ const directRecipientUpdate = await managerA.client
   .select("email");
 assertDenied(directRecipientUpdate, "setup supplier writes are RPC-only");
 
+const directApproveRpc = await managerA.client.rpc("approve_purchase_recommendation", {
+  p_restaurant_id: tenantA,
+  p_recommendation_id: tenantARecommendationId,
+  p_recommended_quantity: 12
+});
+assertDenied(directApproveRpc, "authenticated clients cannot call the legacy approval RPC directly");
+
 for (const invalidQuantity of [-1, 0, 1_000_001]) {
-  const rejected = await managerA.client.rpc("approve_purchase_recommendation", {
-    p_restaurant_id: tenantA,
-    p_recommendation_id: tenantARecommendationId,
-    p_recommended_quantity: invalidQuantity
+  const rejected = await invokeOperationalWorkflow(managerA, {
+    action: "approve_purchase_recommendation",
+    restaurantId: tenantA,
+    recommendationId: tenantARecommendationId,
+    recommendedQuantity: invalidQuantity
   });
-  assertDenied(rejected, `approval quantity ${invalidQuantity} is rejected server-side`);
+  assert.notEqual(rejected.error, null, `approval quantity ${invalidQuantity} is rejected server-side`);
+  assert.equal(rejected.data, null, `approval quantity ${invalidQuantity} returns no workflow payload`);
 }
 
 const pendingAfterInvalid = await managerA.client
@@ -442,30 +451,41 @@ const pendingAfterInvalid = await managerA.client
 if (pendingAfterInvalid.error) throw pendingAfterInvalid.error;
 assert.equal(pendingAfterInvalid.data.status, "pending", "invalid approval quantities do not mutate workflow state");
 
-const approved = await managerA.client.rpc("approve_purchase_recommendation", {
-  p_restaurant_id: tenantA,
-  p_recommendation_id: tenantARecommendationId,
-  p_recommended_quantity: 12
+const approved = await invokeOperationalWorkflow(managerA, {
+  action: "approve_purchase_recommendation",
+  restaurantId: tenantA,
+  recommendationId: tenantARecommendationId,
+  recommendedQuantity: 12
 });
-if (approved.error) throw approved.error;
-assert.equal(approved.data.recommendation.status, "approved", "guarded approval workflow succeeds");
-assert.equal(approved.data.order.id, tenantAOrderId, "approval attaches to the existing tenant draft");
+if (approved.error) await throwInvocationFailure("approval workflow", approved.error);
+assert.equal(approved.data.result.recommendation.status, "approved", "guarded approval workflow succeeds");
+assert.equal(approved.data.result.order.id, tenantAOrderId, "approval attaches to the existing tenant draft");
 
-const sentWithoutProviderAcceptance = await managerA.client.rpc("mark_supplier_order_sent", {
+const directMarkSentRpc = await managerA.client.rpc("mark_supplier_order_sent", {
   p_restaurant_id: tenantA,
   p_order_id: tenantAOrderId
 });
-assertDenied(
-  sentWithoutProviderAcceptance,
+assertDenied(directMarkSentRpc, "authenticated clients cannot call the legacy mark-sent RPC directly");
+
+const sentWithoutProviderAcceptance = await invokeOperationalWorkflow(managerA, {
+  action: "mark_supplier_order_sent",
+  restaurantId: tenantA,
+  orderId: tenantAOrderId
+});
+assert.notEqual(
+  sentWithoutProviderAcceptance.error,
+  null,
   "supplier order cannot become sent without persisted provider acceptance"
 );
 
-const repeatedSentWithoutProviderAcceptance = await managerA.client.rpc("mark_supplier_order_sent", {
-  p_restaurant_id: tenantA,
-  p_order_id: tenantAOrderId
+const repeatedSentWithoutProviderAcceptance = await invokeOperationalWorkflow(managerA, {
+  action: "mark_supplier_order_sent",
+  restaurantId: tenantA,
+  orderId: tenantAOrderId
 });
-assertDenied(
-  repeatedSentWithoutProviderAcceptance,
+assert.notEqual(
+  repeatedSentWithoutProviderAcceptance.error,
+  null,
   "replaying an unaccepted supplier send cannot bypass provider evidence"
 );
 
@@ -573,7 +593,7 @@ const workflowAudit = await ownerA.client
   .eq("action", "recommendation_approved")
   .single();
 if (workflowAudit.error) throw workflowAudit.error;
-assert.equal(workflowAudit.data.actor_user_id, managerA.user.id, "workflow audit actor is derived from auth.uid()");
+assert.equal(workflowAudit.data.actor_user_id, managerA.user.id, "workflow audit actor is derived from the Edge-authenticated user");
 
 const directOwnerProfileUpdate = await ownerA.client
   .from("restaurants")

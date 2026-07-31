@@ -963,42 +963,77 @@ reset role;
 select is((select status from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'), 'pending', 'direct recommendation update did not persist');
 
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 select is(
   pg_temp.try_execute($sql$select public.approve_purchase_recommendation(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
+    12
+  )$sql$),
+  false,
+  'authenticated clients cannot execute the legacy approval RPC directly'
+);
+select is(
+  pg_temp.try_execute($sql$select public.mark_supplier_order_sent(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
+  )$sql$),
+  false,
+  'authenticated clients cannot execute the legacy mark-sent RPC directly'
+);
+select is(
+  pg_temp.try_execute($sql$select public.update_supplier_order_draft(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa',
+    'forged note',
+    true,
+    current_date + 2,
+    true
+  )$sql$),
+  false,
+  'authenticated clients cannot execute the legacy order-draft RPC directly'
+);
+reset role;
+
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_approve_purchase_recommendation(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
     -1
   )$sql$),
   false,
-  'approval RPC rejects negative supplier quantities'
+  'approval service RPC rejects negative supplier quantities'
 );
 select is(
-  pg_temp.try_execute($sql$select public.approve_purchase_recommendation(
+  pg_temp.try_execute($sql$select public.service_approve_purchase_recommendation(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
     0
   )$sql$),
   false,
-  'approval RPC rejects zero supplier quantities'
+  'approval service RPC rejects zero supplier quantities'
 );
 select is(
-  pg_temp.try_execute($sql$select public.approve_purchase_recommendation(
+  pg_temp.try_execute($sql$select public.service_approve_purchase_recommendation(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
     'NaN'::numeric
   )$sql$),
   false,
-  'approval RPC rejects non-finite supplier quantities'
+  'approval service RPC rejects non-finite supplier quantities'
 );
 select is(
-  pg_temp.try_execute($sql$select public.approve_purchase_recommendation(
+  pg_temp.try_execute($sql$select public.service_approve_purchase_recommendation(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
     1000001
   )$sql$),
   false,
-  'approval RPC rejects over-limit supplier quantities'
+  'approval service RPC rejects over-limit supplier quantities'
 );
 select is(
   (select status from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'),
@@ -1006,65 +1041,60 @@ select is(
   'invalid approval quantities leave workflow state unchanged'
 );
 select lives_ok(
-  $sql$select public.approve_purchase_recommendation(
+  $sql$select public.service_approve_purchase_recommendation(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
     12
   )$sql$,
-  'manager can approve through the guarded workflow RPC'
-);
-reset role;
-select is((select status from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'), 'approved', 'guarded recommendation approval persisted');
-
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
-select lives_ok(
-  $sql$select public.mark_supplier_order_sent(
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
-  )$sql$,
-  'manager can send an approved supplier order through the guarded workflow RPC'
-);
-select is(
-  (select status from public.supplier_orders where id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'),
-  'sent',
-  'guarded supplier-order transition persisted'
+  'manager can approve through the service-owned workflow RPC'
 );
 select is(
   (select status from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'),
-  'ordered',
-  'sending an order transitions its approved recommendation atomically'
+  'approved',
+  'guarded recommendation approval persisted'
 );
 select is(
-  public.mark_supplier_order_sent(
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
-  )->>'outcome',
-  'already_applied',
-  'replaying a sent transition is explicitly idempotent'
+  (select supplier_order_id from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'),
+  'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'::uuid,
+  'approval attaches the recommendation to the existing draft supplier order'
 );
-select is(
-  pg_temp.try_execute($sql$select public.update_supplier_order_draft(
+select lives_ok(
+  $sql$select public.service_update_supplier_order_draft(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa',
-    'forged after send',
+    'Leave at back door',
     true,
     current_date + 2,
     true
+  )$sql$,
+  'manager can edit a draft supplier order through the service-owned draft RPC'
+);
+select is(
+  (select operator_note from public.supplier_orders where id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'),
+  'Leave at back door',
+  'draft order note update persisted'
+);
+select is(
+  pg_temp.try_execute($sql$select public.service_mark_supplier_order_sent(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
   )$sql$),
   false,
-  'sent supplier orders cannot be edited through the draft RPC'
+  'mark-sent observation requires provider acceptance before Gmail finalize'
+);
+select is(
+  (select status from public.supplier_orders where id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'),
+  'draft',
+  'rejected mark-sent observation leaves the supplier order draft for Gmail or external place'
 );
 reset role;
 select is(
-  (select count(*) from public.audit_logs where action = 'supplier_order_sent' and entity_id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'),
-  1::bigint,
-  'supplier-order replay creates one semantic audit event'
-);
-select is(
-  (select actor_user_id from public.audit_logs where action = 'supplier_order_sent' and entity_id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'),
-  '22222222-2222-4222-8222-222222222222'::uuid,
-  'supplier-order audit actor is derived from the authenticated manager'
+  (select count(*) from public.audit_logs where action in ('supplier_order_sent', 'supplier_order_placed_externally', 'recommendation_approved') and entity_id in ('aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa', 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa')),
+  0::bigint,
+  'service RPCs defer domain audit to operational-workflows Edge logging'
 );
 
 set local role service_role;
@@ -2814,7 +2844,18 @@ select is(
     'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
   )$sql$),
   false,
-  'legacy order transition cannot forge sent state before provider acceptance'
+  'authenticated clients cannot call the legacy mark-sent RPC before provider acceptance'
+);
+reset role;
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_mark_supplier_order_sent(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
+  )$sql$),
+  false,
+  'service mark-sent observation still requires provider acceptance before Gmail finalize'
 );
 reset role;
 

@@ -463,6 +463,74 @@ test("supplier order receiving is service-owned, ledgered, and distinct from Gma
   assert.match(detail, /receiveSupplierOrder/);
 });
 
+test("purchase recommendation and order draft mutations are Edge-routed and service-owned", () => {
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const migration = readFileSync(
+    "supabase/migrations/20260731230000_edge_purchase_recommendation_workflows.sql",
+    "utf8"
+  );
+  const stagingTenant = readFileSync("scripts/staging-tenant-check.mjs", "utf8");
+  const stagingRace = readFileSync("scripts/staging-client-race.mjs", "utf8");
+
+  for (const action of [
+    "approve_purchase_recommendation",
+    "dismiss_purchase_recommendation",
+    "undo_purchase_recommendation_action",
+    "update_supplier_order_draft",
+    "mark_supplier_order_sent"
+  ]) {
+    assert.match(edge, new RegExp(`"${action}"`));
+    assert.match(repository, new RegExp(`action:\\s*"${action}"`));
+  }
+
+  assert.doesNotMatch(
+    repository.match(/async approvePurchaseRecommendation[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']approve_purchase_recommendation["']/i
+  );
+  assert.doesNotMatch(
+    repository.match(/async dismissPurchaseRecommendation[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']dismiss_purchase_recommendation["']/i
+  );
+  assert.doesNotMatch(
+    repository.match(/async undoPurchaseRecommendationAction[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']undo_purchase_recommendation_action["']/i
+  );
+  assert.doesNotMatch(
+    repository.match(/async updateSupplierOrder[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']update_supplier_order_draft["']/i
+  );
+  assert.doesNotMatch(
+    repository.match(/async markSupplierOrderSent[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']mark_supplier_order_sent["']/i
+  );
+
+  assert.match(edge, /service_approve_purchase_recommendation/);
+  assert.match(edge, /service_dismiss_purchase_recommendation/);
+  assert.match(edge, /service_undo_purchase_recommendation_action/);
+  assert.match(edge, /service_update_supplier_order_draft/);
+  assert.match(edge, /service_mark_supplier_order_sent/);
+  assert.match(edge, /recommendation_approved/);
+  assert.match(edge, /supplier_order_draft_updated/);
+  assert.match(edge, /supplier_order_sent_observed/);
+
+  assert.match(migration, /private\.service_approve_purchase_recommendation/i);
+  assert.match(migration, /private\.service_dismiss_purchase_recommendation/i);
+  assert.match(migration, /private\.service_undo_purchase_recommendation_action/i);
+  assert.match(migration, /private\.service_update_supplier_order_draft/i);
+  assert.match(migration, /private\.service_mark_supplier_order_sent/i);
+  assert.match(migration, /grant execute on function public\.service_approve_purchase_recommendation[\s\S]*service_role/i);
+  assert.match(migration, /revoke all on function public\.approve_purchase_recommendation/i);
+  assert.match(migration, /revoke all on function public\.dismiss_purchase_recommendation/i);
+  assert.match(migration, /revoke all on function public\.undo_purchase_recommendation_action/i);
+  assert.match(migration, /revoke all on function public\.update_supplier_order_draft/i);
+  assert.match(migration, /revoke all on function public\.mark_supplier_order_sent/i);
+
+  assert.match(stagingTenant, /action:\s*"approve_purchase_recommendation"/);
+  assert.match(stagingTenant, /action:\s*"mark_supplier_order_sent"/);
+  assert.match(stagingRace, /functions\/v1\/operational-workflows/);
+});
+
 test("inventory waste writes are service-owned, ledgered, and separate from count saves", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
@@ -1189,7 +1257,7 @@ test("rendered staging races cover every tenant-sensitive operational surface", 
     "Cafe Supply",
     "Back to inventory",
     "Back to orders",
-    "approve_purchase_recommendation"
+    "functions/v1/operational-workflows"
   ]) {
     assert.match(script, new RegExp(marker));
   }
