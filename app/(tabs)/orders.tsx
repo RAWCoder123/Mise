@@ -19,6 +19,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   approvePurchaseRecommendation,
+  confirmSupplierOrderPlaced,
   dismissPurchaseRecommendation,
   fetchEmailConnectionState,
   fetchPurchaseRecommendations,
@@ -453,6 +454,34 @@ export default function OrdersScreen() {
     }
   }
 
+  async function markOrderPlaced(order: SupplierOrder) {
+    if (!restaurant || sendingLocksRef.current.has(order.id)) return;
+    if (!canManage) {
+      showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
+      return;
+    }
+    const restaurantId = restaurant.id;
+    setOrderBusy(order.id, true);
+    try {
+      await confirmSupplierOrderPlaced(restaurantId, order.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setUndoAction((current) =>
+        current?.recommendation.supplier_name === order.supplier_name ? null : current
+      );
+      showMessage(t("orders.notice.placed", { supplier: order.supplier_name }), restaurantId);
+      setLane("sent");
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        showMessage(t("orders.detail.notice.placeFailedBody"), restaurantId, "danger");
+      }
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setOrderBusy(order.id, false);
+        await load(false);
+      }
+    }
+  }
+
   async function sendOrder(order: SupplierOrder) {
     if (!restaurant || sendingLocksRef.current.has(order.id)) return;
     if (!canManage) {
@@ -619,15 +648,31 @@ export default function OrdersScreen() {
                     onOpen={() =>
                       router.push({ pathname: "/orders/[id]", params: { id: order.id } })
                     }
-                    onSend={() => void sendOrder(order)}
+                    onSend={canSendOrders ? () => void sendOrder(order) : undefined}
+                    onMarkSent={canManage && !canSendOrders ? () => void markOrderPlaced(order) : undefined}
                     showSend={canManage}
-                    canSend={canSendOrders}
-                    sendLabel={t(usingLocalDemo ? "orders.action.simulateSend" : "orders.action.gmailSend")}
-                    busyLabel={t(usingLocalDemo ? "orders.action.simulating" : "orders.action.gmailSending")}
+                    canSend={canSendOrders || canManage}
+                    canMarkSent={canManage && !canSendOrders}
+                    sendLabel={t(
+                      canSendOrders
+                        ? usingLocalDemo
+                          ? "orders.action.simulateSend"
+                          : "orders.action.gmailSend"
+                        : "orders.card.action.markPlaced"
+                    )}
+                    busyLabel={t(
+                      canSendOrders
+                        ? usingLocalDemo
+                          ? "orders.action.simulating"
+                          : "orders.action.gmailSending"
+                        : "orders.card.action.markingPlaced"
+                    )}
                     sendAccessibilityLabel={t(
-                      usingLocalDemo
-                        ? "orders.card.simulateSendAccessibility"
-                        : "orders.card.gmailSendAccessibility",
+                      canSendOrders
+                        ? usingLocalDemo
+                          ? "orders.card.simulateSendAccessibility"
+                          : "orders.card.gmailSendAccessibility"
+                        : "orders.card.markPlacedAccessibility",
                       { supplier: order.supplier_name }
                     )}
                     sendDisabledHint={

@@ -40,7 +40,7 @@ test("orders keeps staff read-only while preserving review, copy, and detail acc
   assert.match(screen, /canDeleteRestaurantData\(memberships, restaurant\?\.id\)/);
   assert.match(screen, /readOnly=\{!canManage\}/);
   assert.match(screen, /showSend=\{canManage\}/);
-  assert.match(screen, /canSend=\{canSendOrders\}/);
+  assert.match(screen, /canSend=\{canSendOrders \|\| canManage\}/);
   assert.match(screen, /t\("orders\.readOnly\.title"\)/);
   assert.ok((screen.match(/if \(!canManage\)/g) ?? []).length >= 4);
   assert.match(screen, /onCopy=\{\(\) => void copyOrder\(order\)\}/);
@@ -75,24 +75,29 @@ test("recommendation actions validate quantity, lock locally, and reload authori
   assert.match(row, /accessibilityState=\{\{ expanded \}\}/);
 });
 
-test("order list uses the Gmail delivery adapter and never fabricates hosted sends", () => {
+test("order list uses Gmail when connected and explicit external placement otherwise", () => {
   const screen = readFileSync("app/(tabs)/orders.tsx", "utf8");
   const detail = readFileSync("app/orders/[id].tsx", "utf8");
   const card = readFileSync("components/SupplierDraftCard.tsx", "utf8");
   const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
   assert.match(screen, /await sendSupplierOrderEmail\(restaurantId, order\.id\)/);
+  assert.match(screen, /confirmSupplierOrderPlaced/);
   assert.doesNotMatch(screen, /markSupplierOrderSent/);
   assert.match(detail, /await sendSupplierOrderEmail\(restaurantId, savedOrder\.id\)/);
+  assert.match(detail, /confirmSupplierOrderPlaced/);
+  assert.match(detail, /receiveSupplierOrder/);
   assert.doesNotMatch(detail, /markSupplierOrderSent/);
   assert.match(detail, /t\("orders\.detail\.action\.simulate"\)/);
   assert.match(detail, /t\("orders\.detail\.gmail\.send"\)/);
+  assert.match(detail, /t\("orders\.detail\.action\.markPlaced"\)/);
+  assert.match(detail, /t\("orders\.detail\.action\.receive"\)/);
   assert.match(detail, /t\("orders\.detail\.notice\.demoSentBody"\)/);
   assert.match(catalog, /Mise updated the demo workflow\. No email was sent\./);
   assert.match(detail, /operator_note: operatorNote\.trim\(\) \|\| null/);
   assert.match(detail, /order\.status !== "draft"/);
   assert.match(card, /title=\{busy \? resolvedBusyLabel : resolvedSendLabel\}/);
-  assert.match(screen, /sendLabel=\{t\(usingLocalDemo \? "orders\.action\.simulateSend" : "orders\.action\.gmailSend"\)\}/);
+  assert.match(screen, /orders\.card\.action\.markPlaced/);
   assert.match(screen, /orders\.notice\.send\.demo\.(?:already|zero|one|other)/);
   assert.doesNotMatch(card, /Send email/i);
 });

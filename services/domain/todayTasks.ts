@@ -36,6 +36,7 @@ export type OperationalTodayTaskActionIntent =
   | "review_recommendation"
   | "prepare_supplier_draft"
   | "send_supplier_order"
+  | "receive_supplier_order"
   | "finish_setup"
   | "connect_pos"
   | "manage_pos_connection"
@@ -293,7 +294,13 @@ export function deriveOperationalTodayTasks(
   }
 
   for (const order of orders) {
-    const isComplete = order.status === "sent" || order.status === "completed";
+    const isComplete = order.status === "completed";
+    const awaitingReceive = order.status === "sent";
+    const presentationCode = isComplete
+      ? "today.order.review"
+      : awaitingReceive
+        ? "today.order.receive"
+        : "today.order.send";
     pushIfVisible(
       tasks,
       buildTask({
@@ -301,30 +308,40 @@ export function deriveOperationalTodayTasks(
         sourceKind: "order",
         sourceId: order.id,
         sourceStatus: order.status,
-        title: `${isComplete ? "Review" : "Send"} ${order.supplier_name} order`,
-        detail: order.delivery_date
-          ? `Supplier delivery is scheduled for ${order.delivery_date}.`
-          : "Review the approved draft before it leaves the restaurant.",
+        title: awaitingReceive
+          ? `Receive ${order.supplier_name} delivery`
+          : isComplete
+            ? `Review ${order.supplier_name} order`
+            : `Send ${order.supplier_name} order`,
+        detail: awaitingReceive
+          ? order.delivery_date
+            ? `Confirm received quantities for the ${order.delivery_date} delivery.`
+            : "Confirm received quantities so Mise updates on-hand inventory."
+          : order.delivery_date
+            ? `Supplier delivery is scheduled for ${order.delivery_date}.`
+            : "Review the approved draft before it leaves the restaurant.",
         presentation: {
-          code: isComplete ? "today.order.review" : "today.order.send",
+          code: presentationCode,
           values: {
             supplierName: order.supplier_name,
             deliveryDate: validDateKey(order.delivery_date) ? order.delivery_date : null
           }
         },
-        priority: "high",
+        priority: awaitingReceive ? "urgent" : "high",
         dueDate: validDateKey(order.delivery_date) ? order.delivery_date : null,
         action: {
-          intent: "send_supplier_order",
-          label: isComplete ? "View order" : "Review and send",
+          intent: awaitingReceive ? "receive_supplier_order" : "send_supplier_order",
+          label: awaitingReceive ? "Receive delivery" : isComplete ? "View order" : "Review and send",
           route: `/orders/${encodeURIComponent(order.id)}`,
           entityId: order.id
         },
         requiredRole: "manager",
         isComplete,
         completionReason: isComplete
-          ? `Supplier order is ${order.status}.`
-          : "Supplier order remains a draft and has not been represented as sent."
+          ? "Supplier order was received and inventory was updated."
+          : awaitingReceive
+            ? "Supplier order is marked placed/sent and still needs receiving."
+            : "Supplier order remains a draft and has not been represented as placed or sent."
       }),
       includeCompleted
     );

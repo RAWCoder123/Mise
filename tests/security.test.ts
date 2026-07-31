@@ -350,6 +350,36 @@ test("inventory counts and regenerated guidance commit through one optimistic wo
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.update_inventory_item_and_signals[\s\S]*authenticated/i);
 });
 
+test("supplier order receiving is service-owned, ledgered, and distinct from Gmail mark-sent", () => {
+  const ordersWorkflow = readFileSync("services/application/orders.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const migration = readFileSync("supabase/migrations/20260731030516_receive_supplier_order.sql", "utf8");
+  const detail = readFileSync("app/orders/[id].tsx", "utf8");
+  const receiveWorkflow = ordersWorkflow.match(/export\s+async\s+function\s+receiveSupplierOrder[\s\S]*?\n\}/)?.[0] ?? "";
+
+  assert.match(ordersWorkflow, /confirmSupplierOrderPlaced/);
+  assert.match(receiveWorkflow, /requireSupplierOrderReceiveLines/);
+  assert.match(receiveWorkflow, /planSupplierOrderReceive/);
+  assert.match(receiveWorkflow, /receiveSupplierOrderAndSignals/);
+  assert.match(repository, /action:\s*"receive_supplier_order"/i);
+  assert.match(repository, /confirm_supplier_order_placed/);
+  assert.match(repository, /Direct POS sale inserts are disabled/);
+  assert.match(repository, /Direct supplier draft writes are disabled/);
+  assert.match(edge, /"receive_supplier_order"/);
+  assert.match(edge, /service_receive_supplier_order_and_signals/);
+  assert.match(edge, /supplier_order_received/);
+  assert.match(migration, /create\s+or\s+replace\s+function\s+public\.confirm_supplier_order_placed/i);
+  assert.match(migration, /placement_channel',\s*'manual_external'/i);
+  assert.match(migration, /create\s+or\s+replace\s+function\s+private\.service_receive_supplier_order_and_signals/i);
+  assert.match(migration, /reason,\s*[\s\S]*'receiving'/i);
+  assert.match(migration, /source_workflow,\s*[\s\S]*'receive_supplier_order'/i);
+  assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_receive_supplier_order_and_signals[\s\S]*authenticated/i);
+  assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_receive_supplier_order_and_signals[\s\S]*service_role/i);
+  assert.match(detail, /confirmSupplierOrderPlaced/);
+  assert.match(detail, /receiveSupplierOrder/);
+});
+
 test("inventory waste writes are service-owned, ledgered, and separate from count saves", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
@@ -437,16 +467,16 @@ test("supplier draft undo cleanup is tenant-scoped", () => {
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const orderWorkflow = readFileSync("services/application/orders.ts", "utf8");
   const workflowMigration = readFileSync("supabase/migrations/20260712121557_stabilize_order_workflow.sql", "utf8");
-  const deleteDraftBlock =
+  const hostedDeleteDraftBlock =
     [...repository.matchAll(/async deleteSupplierOrderDraft\([\s\S]*?\n    \},/g)]
       .map((match) => match[0])
-      .find((block) => block.includes(".from(\"supplier_orders\")")) ?? "";
+      .find((block) => block.includes("Direct supplier draft deletes are disabled")) ?? "";
 
-  assert.match(deleteDraftBlock, /\.from\("supplier_orders"\)[\s\S]*\.delete\(\)[\s\S]*\.eq\("restaurant_id",\s*restaurantId\)/i);
-  assert.match(deleteDraftBlock, /\.eq\("supplier_name",\s*supplierName\)/i);
-  assert.match(deleteDraftBlock, /\.eq\("status",\s*"draft"\)/i);
+  assert.match(hostedDeleteDraftBlock, /Direct supplier draft deletes are disabled/i);
+  assert.doesNotMatch(hostedDeleteDraftBlock, /\.from\("supplier_orders"\)[\s\S]*\.delete\(/i);
   assert.match(orderWorkflow, /undoPurchaseRecommendationAction/i);
   assert.match(orderWorkflow, /repository\.undoPurchaseRecommendationAction/i);
+  assert.match(orderWorkflow, /Direct draft writes are disabled/i);
   assert.match(workflowMigration, /action[\s\S]*recommendation_undo/i);
   assert.doesNotMatch(orderWorkflow, /actor_user_id/i);
 });

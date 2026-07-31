@@ -31,6 +31,7 @@ test("every allowlisted Today presentation code renders in all locales and prese
     { code: "today.inventory_count_session.continue", values: { status: "in_progress" } },
     { code: "today.inventory_count_session.approve", values: { status: "submitted" } },
     { code: "today.order.send", values: { supplierName, deliveryDate: null } },
+    { code: "today.order.receive", values: { supplierName, deliveryDate: null } },
     { code: "today.order.review", values: { supplierName, deliveryDate: "2026-07-20" } },
     { code: "today.setup.profile.open", values: { rawEvidence: "Raw setup evidence" } },
     { code: "today.setup.profile.complete", values: { rawEvidence: "Raw setup evidence" } },

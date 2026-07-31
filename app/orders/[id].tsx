@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
-import { ArrowLeft, CheckCircle2, Copy, FileText, Save, Send } from "lucide-react-native";
+import { ArrowLeft, CheckCircle2, ClipboardCheck, Copy, FileText, Save, Send } from "lucide-react-native";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -12,15 +12,22 @@ import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
+  confirmSupplierOrderPlaced,
+  fetchPurchaseRecommendations,
   fetchEmailConnectionState,
   fetchSupplierOrder,
   isGmailIntegrationError,
+  receiveSupplierOrder,
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
-import type { RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
+import {
+  defaultReceiveLinesFromRecommendations,
+  linkedOrderedRecommendationsForOrder
+} from "../../services/domain/supplierOrderReceiving";
+import type { PurchaseRecommendation, RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
 
 type Translate = ReturnType<typeof useLocale>["t"];
 
@@ -38,6 +45,8 @@ export default function OrderDraftDetailScreen() {
   const { memberships, restaurant, usingLocalDemo } = useMiseSession();
   const [order, setOrder] = useState<SupplierOrder | null>(null);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
+  const [linkedRecommendations, setLinkedRecommendations] = useState<PurchaseRecommendation[]>([]);
+  const [receiveQuantities, setReceiveQuantities] = useState<Record<string, string>>({});
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -65,21 +74,31 @@ export default function OrderDraftDetailScreen() {
     if (showLoading) setLoading(true);
     setNotice(null);
     try {
-      const [nextOrder, nextEmailConnection] = await Promise.all([
+      const [nextOrder, nextEmailConnection, recommendations] = await Promise.all([
         fetchSupplierOrder(restaurantId, orderId),
-        fetchEmailConnectionState(restaurantId)
+        fetchEmailConnectionState(restaurantId),
+        fetchPurchaseRecommendations(restaurantId, "all")
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       if (nextEmailConnection && nextEmailConnection.restaurant_id !== restaurantId) {
         throw new Error(t("orders.detail.connectionMismatch"));
       }
+      const linked = linkedOrderedRecommendationsForOrder(orderId, recommendations);
+      const defaults = defaultReceiveLinesFromRecommendations(linked);
       setOrder(nextOrder);
       setEmailConnection(nextEmailConnection);
+      setLinkedRecommendations(linked);
+      setReceiveQuantities(
+        Object.fromEntries(
+          defaults.map((line) => [line.inventoryItemId, String(line.quantityReceived)])
+        )
+      );
       setLoadedRestaurantId(restaurantId);
       setOperatorNote(nextOrder.operator_note ?? "");
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
+      setLinkedRecommendations([]);
       setNotice({
         title: t("orders.detail.load.title"),
         message:
@@ -99,6 +118,8 @@ export default function OrderDraftDetailScreen() {
     setLoadedRestaurantId(null);
     setOrder(null);
     setEmailConnection(null);
+    setLinkedRecommendations([]);
+    setReceiveQuantities({});
     setOperatorNote("");
     setBusy(false);
     setNotice(null);
@@ -184,6 +205,54 @@ export default function OrderDraftDetailScreen() {
     }
   }
 
+  async function markPlaced() {
+    if (!restaurant || !order || order.status !== "draft" || actionLockRef.current) return;
+    if (!canManage) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    actionLockRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      await persistNote();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      const result = await confirmSupplierOrderPlaced(restaurantId, order.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setOrder(result.order);
+      setOperatorNote(result.order.operator_note ?? "");
+      setLinkedRecommendations(result.orderedRecommendations);
+      setReceiveQuantities(
+        Object.fromEntries(
+          defaultReceiveLinesFromRecommendations(result.orderedRecommendations).map((line) => [
+            line.inventoryItemId,
+            String(line.quantityReceived)
+          ])
+        )
+      );
+      setNotice({
+        title: t("orders.detail.notice.placedTitle"),
+        message: t("orders.detail.notice.placedBody"),
+        tone: "success"
+      });
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        await load(false);
+        if (activeRestaurantIdRef.current === restaurantId) {
+          setNotice({
+            title: t("orders.detail.notice.placeFailedTitle"),
+            message: t("orders.detail.notice.placeFailedBody"),
+            tone: "danger"
+          });
+        }
+      }
+    } finally {
+      actionLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
+    }
+  }
+
   async function sendOrder() {
     if (!restaurant || !order || order.status !== "draft" || actionLockRef.current) return;
     if (!canManage) {
@@ -205,6 +274,15 @@ export default function OrderDraftDetailScreen() {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(result.order);
       setOperatorNote(result.order.operator_note ?? "");
+      setLinkedRecommendations(result.orderedRecommendations);
+      setReceiveQuantities(
+        Object.fromEntries(
+          defaultReceiveLinesFromRecommendations(result.orderedRecommendations).map((line) => [
+            line.inventoryItemId,
+            String(line.quantityReceived)
+          ])
+        )
+      );
       setNotice({
         title: usingLocalDemo
           ? t("orders.detail.notice.demoSentTitle")
@@ -227,14 +305,72 @@ export default function OrderDraftDetailScreen() {
     }
   }
 
+  async function receiveDelivery() {
+    if (!restaurant || !order || order.status !== "sent" || actionLockRef.current) return;
+    if (!canManage) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    actionLockRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const lines = linkedRecommendations.map((recommendation) => {
+        const raw = receiveQuantities[recommendation.inventory_item_id] ?? "";
+        const quantityReceived = Number(raw);
+        return {
+          inventoryItemId: recommendation.inventory_item_id,
+          quantityReceived,
+          note: null
+        };
+      });
+      const result = await receiveSupplierOrder(restaurantId, order.id, lines);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setOrder(result.order);
+      setNotice({
+        title: t("orders.detail.notice.receivedTitle"),
+        message: result.discrepancyCount > 0
+          ? t("orders.detail.notice.receivedWithDiscrepancyBody", {
+              count: formatNumber(result.discrepancyCount)
+            })
+          : t("orders.detail.notice.receivedBody"),
+        tone: "success"
+      });
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setNotice({
+          title: t("orders.detail.notice.receiveFailedTitle"),
+          message: t("orders.detail.notice.receiveFailedBody"),
+          tone: "danger"
+        });
+      }
+    } finally {
+      actionLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
+    }
+  }
+
   const visibleOrder = loadedRestaurantId === restaurant?.id ? order : null;
   const isDraft = visibleOrder?.status === "draft";
+  const isSent = visibleOrder?.status === "sent";
+  const isCompleted = visibleOrder?.status === "completed";
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canManageGmail = canDeleteRestaurantData(memberships, restaurant?.id);
   const canEditDraft = Boolean(isDraft && canManage);
   const visibleEmailConnection = loadedRestaurantId === restaurant?.id ? emailConnection : null;
   const gmailReady = visibleEmailConnection?.status === "connected";
   const generatedMessage = visibleOrder ? generatedOrderMessage(visibleOrder) : "";
+  const receiveReady = useMemo(
+    () =>
+      isSent &&
+      linkedRecommendations.length > 0 &&
+      linkedRecommendations.every((recommendation) => {
+        const value = Number(receiveQuantities[recommendation.inventory_item_id]);
+        return Number.isFinite(value) && value >= 0;
+      }),
+    [isSent, linkedRecommendations, receiveQuantities]
+  );
 
   function goBackToOrders() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -250,7 +386,11 @@ export default function OrderDraftDetailScreen() {
               ? t("orders.detail.subtitle.editable")
               : isDraft
                 ? t("orders.detail.subtitle.readOnlyDraft")
-                : t("orders.detail.subtitle.sent"))
+                : isSent
+                  ? t("orders.detail.subtitle.receive")
+                  : isCompleted
+                    ? t("orders.detail.subtitle.completed")
+                    : t("orders.detail.subtitle.sent"))
           : t("orders.detail.subtitle.default")
       }
       loading={loading}
@@ -303,7 +443,11 @@ export default function OrderDraftDetailScreen() {
             </View>
             <View style={styles.statusCopy}>
               <Text style={styles.statusTitle}>
-                {isDraft ? t("orders.detail.status.draft") : t("orders.detail.status.sent")}
+                {isDraft
+                  ? t("orders.detail.status.draft")
+                  : isCompleted
+                    ? t("orders.detail.status.completed")
+                    : t("orders.detail.status.sent")}
               </Text>
               <Text style={styles.statusMeta}>
                 {visibleOrder.delivery_date
@@ -361,6 +505,54 @@ export default function OrderDraftDetailScreen() {
             )}
           </View>
 
+          {isSent && canManage ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.receive.title")}</Text>
+              <Text style={styles.sectionBody}>{t("orders.detail.receive.body")}</Text>
+              {linkedRecommendations.map((recommendation) => {
+                const raw = receiveQuantities[recommendation.inventory_item_id] ?? "";
+                const received = Number(raw);
+                const discrepancy = Number.isFinite(received)
+                  ? received - recommendation.recommended_quantity
+                  : 0;
+                return (
+                  <View key={recommendation.id} style={styles.receiveRow}>
+                    <Text style={styles.receiveName}>{recommendation.item_name}</Text>
+                    <Text style={styles.receiveOrdered}>
+                      {t("orders.detail.receive.ordered", {
+                        quantity: formatNumber(recommendation.recommended_quantity),
+                        unit: recommendation.unit
+                      })}
+                    </Text>
+                    <TextInput
+                      accessibilityLabel={t("orders.detail.receive.receivedLabel", {
+                        item: recommendation.item_name
+                      })}
+                      keyboardType="decimal-pad"
+                      value={raw}
+                      editable={!busy}
+                      onChangeText={(value) =>
+                        setReceiveQuantities((current) => ({
+                          ...current,
+                          [recommendation.inventory_item_id]: value
+                        }))
+                      }
+                      style={styles.receiveInput}
+                    />
+                    {Number.isFinite(received) && discrepancy !== 0 ? (
+                      <Text style={styles.receiveDiscrepancy}>
+                        {t("orders.detail.receive.discrepancy", {
+                          delta: formatNumber(discrepancy),
+                          unit: recommendation.unit
+                        })}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
           {notice ? (
             <StatusNotice
               tone={notice.tone}
@@ -406,6 +598,25 @@ export default function OrderDraftDetailScreen() {
             ) : null}
           </View>
 
+          {canEditDraft ? (
+            <>
+              <Text style={styles.placedHint}>{t("orders.detail.placed.body")}</Text>
+              <Button
+                title={busy
+                  ? t("orders.detail.action.markingPlaced")
+                  : t("orders.detail.action.markPlaced")}
+                accessibilityLabel={t("orders.detail.action.markPlacedAccessibility", {
+                  supplier: visibleOrder.supplier_name
+                })}
+                variant="secondary"
+                icon={<ClipboardCheck size={17} color={colors.text} strokeWidth={2.25} />}
+                onPress={() => void markPlaced()}
+                disabled={busy}
+                fullWidth
+              />
+            </>
+          ) : null}
+
           {canEditDraft && gmailReady ? (
             <Button
               title={busy
@@ -421,6 +632,21 @@ export default function OrderDraftDetailScreen() {
               icon={<Send size={17} color={colors.surface} strokeWidth={2.25} />}
               onPress={() => void sendOrder()}
               disabled={busy}
+              fullWidth
+            />
+          ) : null}
+
+          {isSent && canManage ? (
+            <Button
+              title={busy
+                ? t("orders.detail.action.receiving")
+                : t("orders.detail.action.receive")}
+              accessibilityLabel={t("orders.detail.action.receiveAccessibility", {
+                supplier: visibleOrder.supplier_name
+              })}
+              icon={<ClipboardCheck size={17} color={colors.surface} strokeWidth={2.25} />}
+              onPress={() => void receiveDelivery()}
+              disabled={busy || !receiveReady}
               fullWidth
             />
           ) : null}
@@ -601,6 +827,39 @@ const styles = StyleSheet.create({
     color: colors.muted,
     ...typography.body
   },
+  receiveRow: {
+    gap: 6,
+    paddingTop: 10,
+    marginTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
+  },
+  receiveName: {
+    color: colors.text,
+    ...typography.cardTitle
+  },
+  receiveOrdered: {
+    color: colors.muted,
+    ...typography.caption
+  },
+  receiveInput: {
+    minHeight: 44,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 14,
+    lineHeight: 21,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  receiveDiscrepancy: {
+    color: colors.danger,
+    ...typography.caption,
+    fontWeight: "600"
+  },
   notice: {
     color: colors.text,
     ...typography.caption,
@@ -614,5 +873,9 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1
+  },
+  placedHint: {
+    color: colors.muted,
+    ...typography.caption
   }
 });

@@ -162,7 +162,7 @@ test("completed tasks are projections of changed source state and keep stable ID
     restaurantTimeZone: "UTC",
     inventoryOutlooks: [],
     recommendations: [recommendation({ id: "rec_transition", status: "dismissed" })],
-    orders: [order({ id: "order_transition", status: "sent" })],
+    orders: [order({ id: "order_transition", status: "completed" })],
     setupReadiness: setupReadiness({ complete: true }),
     posIntegrations: [integration({ id: "pos_transition", status: "connected" })],
     insights: [],
@@ -181,12 +181,25 @@ test("completed tasks are projections of changed source state and keep stable ID
     assert.equal(after.completion.canToggleDirectly, false);
   }
 
+  const awaitingReceive = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [order({ id: "order_transition", status: "sent" })],
+    insights: [],
+    now
+  });
+  assert.equal(awaitingReceive[0]?.action.intent, "receive_supplier_order");
+  assert.equal(awaitingReceive[0]?.presentation?.code, "today.order.receive");
+  assert.equal(awaitingReceive[0]?.status, "open");
+
   const defaultQueue = deriveOperationalTodayTasks({
     restaurantId,
     restaurantTimeZone: "UTC",
     inventoryOutlooks: [],
     recommendations: [recommendation({ id: "rec_transition", status: "dismissed" })],
-    orders: [order({ id: "order_transition", status: "sent" })],
+    orders: [order({ id: "order_transition", status: "completed" })],
     setupReadiness: setupReadiness({ complete: true }),
     posIntegrations: [integration({ id: "pos_transition", status: "connected" })],
     insights: [],
