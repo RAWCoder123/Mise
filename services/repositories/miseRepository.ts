@@ -4,6 +4,8 @@ import type {
   AiInsight,
   AuditLog,
   Insight,
+  InventoryCountLine,
+  InventoryCountSessionDetail,
   InventoryItem,
   InventoryItemPatch,
   InventoryMovement,
@@ -48,6 +50,14 @@ import {
   type SupplierOrderSentWorkflowResult
 } from "../domain/miseDomain";
 import { planInventoryWaste } from "../domain/inventoryWaste";
+import {
+  assertSessionMutable,
+  buildCountSessionLinesFromInventory,
+  isOpenCountSessionStatus,
+  mergeCountLineUpdates,
+  planCountSessionApprovals,
+  summarizeCountSessionProgress
+} from "../domain/inventoryCountSessions";
 import { buildAppliedTodayConsumptionByItemId } from "../domain/posConsumption";
 import {
   findSupplierRecipientCatalogName,
@@ -70,6 +80,7 @@ import {
   normalizeAiInsight,
   normalizeAuditLog,
   normalizeRestaurantEmailConnection,
+  normalizeInventoryCountSessionDetail,
   normalizeInventoryItem,
   normalizeInventoryMovement,
   normalizeMenuItemIngredient,
@@ -288,6 +299,22 @@ export interface MiseRepository {
     insights: Insight[]
   ): Promise<InventoryItem>;
   fetchInventoryMovements(restaurantId: string, itemId: string, limit?: number): Promise<InventoryMovement[]>;
+  fetchOpenInventoryCountSession(restaurantId: string): Promise<InventoryCountSessionDetail | null>;
+  fetchInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
+  beginInventoryCountSession(restaurantId: string, note: string | null): Promise<InventoryCountSessionDetail>;
+  saveInventoryCountLines(
+    restaurantId: string,
+    sessionId: string,
+    lines: Array<{ inventoryItemId: string; countedQuantity: number }>
+  ): Promise<InventoryCountSessionDetail>;
+  submitInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
+  cancelInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
+  approveInventoryCountSession(
+    restaurantId: string,
+    sessionId: string,
+    recommendations: PurchaseRecommendationInput[],
+    insights: Insight[]
+  ): Promise<InventoryCountSessionDetail>;
   requestAccountDeletion(confirmation: string): Promise<{ status: string; requestId?: string }>;
   updateMenuItemIngredientQuantity(
     restaurantId: string,
@@ -615,6 +642,57 @@ function appendDemoInventoryMovement(
 function prepareResetDemoState(state: DemoState) {
   rebuildPurchaseRecommendations(state, state.currentRestaurantId);
   rebuildInsights(state, state.currentRestaurantId);
+}
+
+function findDemoCountSession(
+  state: DemoState,
+  restaurantId: string,
+  sessionId?: string
+): InventoryCountSessionDetail | null {
+  const sessions = state.inventoryCountSessions ?? [];
+  if (sessionId) {
+    return (
+      sessions.find(
+        (entry) => entry.session.restaurant_id === restaurantId && entry.session.id === sessionId
+      ) ?? null
+    );
+  }
+  return (
+    sessions.find(
+      (entry) =>
+        entry.session.restaurant_id === restaurantId && isOpenCountSessionStatus(entry.session.status)
+    ) ?? null
+  );
+}
+
+function replaceDemoCountSession(state: DemoState, detail: InventoryCountSessionDetail) {
+  const normalized = normalizeInventoryCountSessionDetail(detail);
+  const sessions = state.inventoryCountSessions ?? [];
+  const index = sessions.findIndex((entry) => entry.session.id === normalized.session.id);
+  if (index >= 0) {
+    sessions[index] = normalized;
+  } else {
+    sessions.unshift(normalized);
+  }
+  state.inventoryCountSessions = sessions.slice(0, 25);
+  return normalized;
+}
+
+function parseCountSessionWorkflowResult(result: unknown): InventoryCountSessionDetail {
+  if (!result || typeof result !== "object") {
+    throw new Error("Count session workflow returned an invalid response.");
+  }
+  const payload = result as InventoryCountSessionDetail & {
+    session?: InventoryCountSessionDetail["session"];
+    lines?: InventoryCountLine[];
+  };
+  if (!payload.session || !Array.isArray(payload.lines)) {
+    throw new Error("Count session workflow returned an invalid response.");
+  }
+  return normalizeInventoryCountSessionDetail({
+    session: payload.session,
+    lines: payload.lines
+  });
 }
 
 function parseRecommendationWorkflowResponse(data: unknown): RecommendationWorkflowResult {
@@ -1273,6 +1351,169 @@ function createLocalDemoRepository(): MiseRepository {
         .sort((left, right) => right.created_at.localeCompare(left.created_at))
         .slice(0, Math.max(1, Math.min(limit, 50)))
         .map(normalizeInventoryMovement);
+    },
+
+    async fetchOpenInventoryCountSession(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      const detail = findDemoCountSession(state, restaurantId);
+      return detail ? normalizeInventoryCountSessionDetail(detail) : null;
+    },
+
+    async fetchInventoryCountSession(restaurantId, sessionId) {
+      const state = await readReadyDemoState(restaurantId);
+      const detail = findDemoCountSession(state, restaurantId, sessionId);
+      if (!detail) throw new Error("Count session not found");
+      return normalizeInventoryCountSessionDetail(detail);
+    },
+
+    async beginInventoryCountSession(restaurantId, note) {
+      return mutateDemoState((state) => {
+        if (findDemoCountSession(state, restaurantId)) {
+          throw new Error("A count session is already open for this restaurant");
+        }
+        const now = new Date().toISOString();
+        const sessionId = createId("count_session");
+        const inventoryItems = state.inventoryItems.filter((item) => item.restaurant_id === restaurantId);
+        const detail: InventoryCountSessionDetail = {
+          session: {
+            id: sessionId,
+            restaurant_id: restaurantId,
+            status: "in_progress",
+            started_by: DEMO_USER_ID,
+            submitted_by: null,
+            approved_by: null,
+            cancelled_by: null,
+            started_at: now,
+            submitted_at: null,
+            approved_at: null,
+            cancelled_at: null,
+            note,
+            created_at: now,
+            updated_at: now
+          },
+          lines: buildCountSessionLinesFromInventory(restaurantId, sessionId, inventoryItems, now)
+        };
+        return replaceDemoCountSession(state, detail);
+      });
+    },
+
+    async saveInventoryCountLines(restaurantId, sessionId, lines) {
+      return mutateDemoState((state) => {
+        const detail = findDemoCountSession(state, restaurantId, sessionId);
+        if (!detail) throw new Error("Count session not found");
+        assertSessionMutable(detail.session, "save");
+        const next: InventoryCountSessionDetail = {
+          session: { ...detail.session, updated_at: new Date().toISOString() },
+          lines: mergeCountLineUpdates(detail.lines, lines)
+        };
+        return replaceDemoCountSession(state, next);
+      });
+    },
+
+    async submitInventoryCountSession(restaurantId, sessionId) {
+      return mutateDemoState((state) => {
+        const detail = findDemoCountSession(state, restaurantId, sessionId);
+        if (!detail) throw new Error("Count session not found");
+        assertSessionMutable(detail.session, "submit");
+        const progress = summarizeCountSessionProgress(detail.lines);
+        if (!progress.canSubmit) {
+          throw new Error("Count every item before submitting the session");
+        }
+        const now = new Date().toISOString();
+        return replaceDemoCountSession(state, {
+          session: {
+            ...detail.session,
+            status: "submitted",
+            submitted_by: DEMO_USER_ID,
+            submitted_at: now,
+            updated_at: now
+          },
+          lines: detail.lines
+        });
+      });
+    },
+
+    async cancelInventoryCountSession(restaurantId, sessionId) {
+      return mutateDemoState((state) => {
+        const detail = findDemoCountSession(state, restaurantId, sessionId);
+        if (!detail) throw new Error("Count session not found");
+        assertSessionMutable(detail.session, "cancel");
+        const now = new Date().toISOString();
+        return replaceDemoCountSession(state, {
+          session: {
+            ...detail.session,
+            status: "cancelled",
+            cancelled_by: DEMO_USER_ID,
+            cancelled_at: now,
+            updated_at: now
+          },
+          lines: detail.lines
+        });
+      });
+    },
+
+    async approveInventoryCountSession(restaurantId, sessionId, recommendations, insights) {
+      return mutateDemoState((state) => {
+        const detail = findDemoCountSession(state, restaurantId, sessionId);
+        if (!detail) throw new Error("Count session not found");
+        assertSessionMutable(detail.session, "approve");
+        const progress = summarizeCountSessionProgress(detail.lines);
+        if (!progress.canApprove) {
+          throw new Error("Count every item before approving the session");
+        }
+        const inventoryItems = state.inventoryItems.filter((item) => item.restaurant_id === restaurantId);
+        const approvals = planCountSessionApprovals({
+          inventoryItems,
+          lines: detail.lines
+        });
+        const now = new Date().toISOString();
+        for (const approval of approvals) {
+          const item = state.inventoryItems.find(
+            (entry) => entry.restaurant_id === restaurantId && entry.id === approval.inventoryItemId
+          );
+          if (!item || !approval.changed) continue;
+          const quantityBefore = item.current_quantity;
+          item.current_quantity = approval.quantityAfter;
+          item.last_updated = now;
+          appendDemoInventoryMovement(state, {
+            restaurantId,
+            itemId: item.id,
+            quantityBefore,
+            quantityAfter: approval.quantityAfter,
+            reason: "manual_count",
+            sourceWorkflow: "approve_count_session",
+            metadata: {
+              session_id: sessionId,
+              system_quantity_at_start: approval.systemQuantityAtStart,
+              variance_from_system: approval.quantityAfter - approval.systemQuantityAtStart
+            }
+          });
+        }
+        state.purchaseRecommendations = [
+          ...state.purchaseRecommendations.filter(
+            (recommendation) => recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
+          ),
+          ...recommendations.map((recommendation) => ({
+            ...recommendation,
+            id: createId("rec"),
+            created_at: now
+          }))
+        ];
+        state.insights = [
+          ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),
+          ...insights
+        ];
+        return replaceDemoCountSession(state, {
+          session: {
+            ...detail.session,
+            status: "approved",
+            approved_by: DEMO_USER_ID,
+            approved_at: now,
+            updated_at: now
+          },
+          lines: detail.lines
+        });
+      });
     },
 
     async requestAccountDeletion(confirmation) {
@@ -2312,6 +2553,98 @@ function createSupabaseRepository(): MiseRepository {
         .limit(Math.max(1, Math.min(limit ?? 8, 50)));
       if (error) throw error;
       return ((data ?? []) as InventoryMovement[]).map(normalizeInventoryMovement);
+    },
+
+    async fetchOpenInventoryCountSession(restaurantId) {
+      const { data: session, error } = await client
+        .from("inventory_count_sessions")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .in("status", ["in_progress", "submitted"])
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (!session) return null;
+      const { data: lines, error: linesError } = await client
+        .from("inventory_count_lines")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("session_id", session.id)
+        .order("item_name", { ascending: true });
+      if (linesError) throw linesError;
+      return normalizeInventoryCountSessionDetail({
+        session: session as InventoryCountSessionDetail["session"],
+        lines: (lines ?? []) as InventoryCountLine[]
+      });
+    },
+
+    async fetchInventoryCountSession(restaurantId, sessionId) {
+      const { data: session, error } = await client
+        .from("inventory_count_sessions")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", sessionId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!session) throw new Error("Count session not found");
+      const { data: lines, error: linesError } = await client
+        .from("inventory_count_lines")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("session_id", sessionId)
+        .order("item_name", { ascending: true });
+      if (linesError) throw linesError;
+      return normalizeInventoryCountSessionDetail({
+        session: session as InventoryCountSessionDetail["session"],
+        lines: (lines ?? []) as InventoryCountLine[]
+      });
+    },
+
+    async beginInventoryCountSession(restaurantId, note) {
+      const response = await invokeOperationalWorkflow({
+        action: "begin_count_session",
+        restaurantId,
+        note
+      });
+      return parseCountSessionWorkflowResult(response.result);
+    },
+
+    async saveInventoryCountLines(restaurantId, sessionId, lines) {
+      const response = await invokeOperationalWorkflow({
+        action: "save_count_lines",
+        restaurantId,
+        sessionId,
+        lines
+      });
+      return parseCountSessionWorkflowResult(response.result);
+    },
+
+    async submitInventoryCountSession(restaurantId, sessionId) {
+      const response = await invokeOperationalWorkflow({
+        action: "submit_count_session",
+        restaurantId,
+        sessionId
+      });
+      return parseCountSessionWorkflowResult(response.result);
+    },
+
+    async cancelInventoryCountSession(restaurantId, sessionId) {
+      const response = await invokeOperationalWorkflow({
+        action: "cancel_count_session",
+        restaurantId,
+        sessionId
+      });
+      return parseCountSessionWorkflowResult(response.result);
+    },
+
+    async approveInventoryCountSession(restaurantId, sessionId, _recommendations, _insights) {
+      const response = await invokeOperationalWorkflow({
+        action: "approve_count_session",
+        restaurantId,
+        sessionId
+      });
+      return parseCountSessionWorkflowResult(response.result);
     },
 
     async requestAccountDeletion(confirmation) {

@@ -11,6 +11,7 @@ import {
 } from "../services/domain/todayTasks";
 import type {
   Insight,
+  InventoryCountSession,
   InventoryOutlookItem,
   PosIntegration,
   PurchaseRecommendation,
@@ -106,6 +107,41 @@ test("derives a stable, tenant-scoped operational queue without duplicating inve
     now
   });
   assert.deepEqual(tasks.map((task) => task.id), secondPass.map((task) => task.id));
+});
+
+test("open inventory count sessions become manager Today tasks", () => {
+  const session: InventoryCountSession = {
+    id: "count_session_1",
+    restaurant_id: restaurantId,
+    status: "submitted",
+    started_by: "user_a",
+    submitted_by: "user_a",
+    approved_by: null,
+    cancelled_by: null,
+    started_at: "2026-07-31T01:00:00.000Z",
+    submitted_at: "2026-07-31T02:00:00.000Z",
+    approved_at: null,
+    cancelled_at: null,
+    note: null,
+    created_at: "2026-07-31T01:00:00.000Z",
+    updated_at: "2026-07-31T02:00:00.000Z"
+  };
+  const tasks = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    openCountSession: session,
+    now
+  });
+  const countTask = tasks.find((task) => task.source.kind === "inventory_count_session");
+  assert.equal(countTask?.action.intent, "continue_inventory_count_session");
+  assert.equal(countTask?.action.route, "/inventory/count");
+  assert.equal(countTask?.requiredRole, "manager");
+  assert.equal(countTask?.priority, "high");
+  assert.equal(countTask?.status, "open");
 });
 
 test("completed tasks are projections of changed source state and keep stable IDs", () => {

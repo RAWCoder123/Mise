@@ -5,6 +5,9 @@ import type {
   Insight,
   EmailConnectionStatus,
   IntegrationStatus,
+  InventoryCountLine,
+  InventoryCountSession,
+  InventoryCountSessionDetail,
   InventoryItem,
   InventoryItemPatch,
   InventoryMovement,
@@ -201,6 +204,64 @@ export function normalizeInventoryMovement(value: InventoryMovement): InventoryM
   };
 }
 
+const inventoryCountSessionStatuses = new Set([
+  "in_progress",
+  "submitted",
+  "approved",
+  "cancelled"
+]);
+
+export function normalizeInventoryCountSession(value: InventoryCountSession): InventoryCountSession {
+  const status = inventoryCountSessionStatuses.has(value.status)
+    ? value.status
+    : "cancelled";
+  return {
+    id: asString(value.id),
+    restaurant_id: asString(value.restaurant_id),
+    status,
+    started_by: asNullableString(value.started_by),
+    submitted_by: asNullableString(value.submitted_by),
+    approved_by: asNullableString(value.approved_by),
+    cancelled_by: asNullableString(value.cancelled_by),
+    started_at: asString(value.started_at),
+    submitted_at: asNullableString(value.submitted_at),
+    approved_at: asNullableString(value.approved_at),
+    cancelled_at: asNullableString(value.cancelled_at),
+    note: asNullableString(value.note),
+    created_at: asString(value.created_at),
+    updated_at: asString(value.updated_at)
+  };
+}
+
+export function normalizeInventoryCountLine(value: InventoryCountLine): InventoryCountLine {
+  return {
+    id: asString(value.id),
+    restaurant_id: asString(value.restaurant_id),
+    session_id: asString(value.session_id),
+    inventory_item_id: asString(value.inventory_item_id),
+    item_name: asString(value.item_name),
+    unit: asString(value.unit),
+    system_quantity_at_start: asBoundedNonNegativeNumber(
+      value.system_quantity_at_start,
+      operatingLimits.inventoryQuantity
+    ),
+    counted_quantity:
+      value.counted_quantity == null
+        ? null
+        : asBoundedNonNegativeNumber(value.counted_quantity, operatingLimits.inventoryQuantity),
+    note: asNullableString(value.note),
+    created_at: asString(value.created_at),
+    updated_at: asString(value.updated_at)
+  };
+}
+
+export function normalizeInventoryCountSessionDetail(value: InventoryCountSessionDetail): InventoryCountSessionDetail {
+  return {
+    session: normalizeInventoryCountSession(value.session),
+    lines: (value.lines ?? []).map(normalizeInventoryCountLine)
+  };
+}
+
 export function normalizeMenuItemIngredient(value: MenuItemIngredient): MenuItemIngredient {
   return {
     ...value,
@@ -272,6 +333,51 @@ export function requireInventoryWasteNote(value: string | null | undefined) {
     throw new Error("Waste note is limited to 240 characters.");
   }
   return normalized || null;
+}
+
+export function requireInventoryCountSessionNote(value: string | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Count session note must be text.");
+  const normalized = value.trim();
+  if (normalized.length > 240) {
+    throw new Error("Count session note is limited to 240 characters.");
+  }
+  return normalized || null;
+}
+
+export function requireInventoryCountLineUpdates(
+  value: unknown
+): Array<{ inventoryItemId: string; countedQuantity: number }> {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 250) {
+    throw new Error("Provide between 1 and 250 count lines to save.");
+  }
+  const seen = new Set<string>();
+  return value.map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(`Count line ${index + 1} is invalid.`);
+    }
+    const row = entry as Record<string, unknown>;
+    const inventoryItemId = String(row.inventoryItemId ?? row.inventory_item_id ?? "").trim();
+    if (!inventoryItemId) {
+      throw new Error(`Count line ${index + 1} is missing an inventory item.`);
+    }
+    if (seen.has(inventoryItemId)) {
+      throw new Error(`Count line ${index + 1} duplicates an inventory item.`);
+    }
+    seen.add(inventoryItemId);
+    const countedQuantity = Number(row.countedQuantity ?? row.counted_quantity);
+    if (
+      typeof countedQuantity !== "number" ||
+      !Number.isFinite(countedQuantity) ||
+      countedQuantity < 0 ||
+      countedQuantity > operatingLimits.inventoryQuantity
+    ) {
+      throw new Error(
+        `Counted quantity must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
+      );
+    }
+    return { inventoryItemId, countedQuantity };
+  });
 }
 
 export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryItemPatch {

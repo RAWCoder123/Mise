@@ -375,6 +375,36 @@ test("inventory waste writes are service-owned, ledgered, and separate from coun
   assert.match(detail, /inventory\.detail\.recordWaste/);
 });
 
+test("inventory count sessions are service-owned with draft progress and approve-time ledger writes", () => {
+  const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const migration = readFileSync("supabase/migrations/20260731023000_inventory_count_sessions.sql", "utf8");
+  const screen = readFileSync("app/inventory/count.tsx", "utf8");
+  const list = readFileSync("app/(tabs)/inventory.tsx", "utf8");
+
+  assert.match(inventoryWorkflow, /beginInventoryCountSession/);
+  assert.match(inventoryWorkflow, /approveInventoryCountSession[\s\S]*planCountSessionApprovals/);
+  assert.match(repository, /action:\s*"begin_count_session"/i);
+  assert.match(repository, /action:\s*"approve_count_session"/i);
+  assert.match(edge, /"begin_count_session"/);
+  assert.match(edge, /"approve_count_session"/);
+  assert.match(edge, /service_approve_inventory_count_session/);
+  assert.match(edge, /inventory_count_session_approved/);
+  assert.match(migration, /create table if not exists public\.inventory_count_sessions/i);
+  assert.match(migration, /create table if not exists public\.inventory_count_lines/i);
+  assert.match(migration, /inventory_count_sessions_one_open_per_restaurant_idx/i);
+  assert.match(migration, /source_workflow,\s*[\s\S]*'approve_count_session'/i);
+  assert.match(migration, /reason,\s*[\s\S]*'manual_count'/i);
+  assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_approve_inventory_count_session[\s\S]*authenticated/i);
+  assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_approve_inventory_count_session[\s\S]*service_role/i);
+  assert.match(migration, /grant select on table public\.inventory_count_sessions to authenticated/i);
+  assert.doesNotMatch(migration, /grant insert on table public\.inventory_count_sessions to authenticated/i);
+  assert.match(screen, /beginInventoryCountSession/);
+  assert.match(screen, /approveInventoryCountSession/);
+  assert.match(list, /\/inventory\/count/);
+});
+
 test("recipe baseline edits and regenerated guidance commit through one optimistic workflow", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
@@ -796,6 +826,8 @@ test("hosted Edge and service RPC checks forge every privileged tenant boundary"
     "service_commit_operational_signals",
     "service_update_inventory_and_signals",
     "service_record_inventory_waste_and_signals",
+    "service_begin_inventory_count_session",
+    "service_approve_inventory_count_session",
     "service_save_recipe_and_signals",
     "service_create_rules_engine_ai_insight",
     "service_record_edge_audit_log"

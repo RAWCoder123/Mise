@@ -34,13 +34,15 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const [data, ordersResult, emailConnectionResult, posIntegrationsResult, planning] = await Promise.all([
-    repository.fetchRestaurantData(normalizedRestaurantId),
-    repository.fetchSupplierOrders(normalizedRestaurantId),
-    repository.fetchEmailConnectionState(normalizedRestaurantId),
-    repository.fetchPosIntegrations(normalizedRestaurantId),
-    repository.fetchPlanningData(normalizedRestaurantId)
-  ]);
+  const [data, ordersResult, emailConnectionResult, posIntegrationsResult, planning, openCountSession] =
+    await Promise.all([
+      repository.fetchRestaurantData(normalizedRestaurantId),
+      repository.fetchSupplierOrders(normalizedRestaurantId),
+      repository.fetchEmailConnectionState(normalizedRestaurantId),
+      repository.fetchPosIntegrations(normalizedRestaurantId),
+      repository.fetchPlanningData(normalizedRestaurantId),
+      repository.fetchOpenInventoryCountSession(normalizedRestaurantId)
+    ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
     throw new Error("Today data failed restaurant scope validation.");
@@ -98,7 +100,8 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       orders,
       setupReadiness,
       posIntegrations,
-      insights
+      insights,
+      openCountSession: openCountSession?.session ?? null
     }),
     operatingDate,
     restaurantTimeZone: data.restaurant.timezone,

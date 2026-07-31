@@ -3,6 +3,7 @@ import type {
   AiInsight,
   AuditLog,
   Insight,
+  InventoryCountSessionDetail,
   InventoryItem,
   InventoryMovement,
   MenuItemIngredient,
@@ -44,13 +45,14 @@ const itemIds = {
 };
 
 export interface DemoState {
-  schema_version: 4;
+  schema_version: 5;
   restaurants: Restaurant[];
   users: AppUser[];
   memberships: RestaurantMembership[];
   posSales: PosSale[];
   inventoryItems: InventoryItem[];
   inventoryMovements: InventoryMovement[];
+  inventoryCountSessions: InventoryCountSessionDetail[];
   menuItemIngredients: MenuItemIngredient[];
   purchaseRecommendations: PurchaseRecommendation[];
   supplierOrders: SupplierOrder[];
@@ -303,13 +305,14 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 4,
+    schema_version: 5,
     restaurants: [restaurant],
     users: [user, managerUser, staffUser],
     memberships,
     posSales,
     inventoryItems,
     inventoryMovements: [],
+    inventoryCountSessions: [],
     menuItemIngredients,
     purchaseRecommendations: [
       {
@@ -542,13 +545,16 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 4,
+    schema_version: 5,
     restaurants,
     users,
     memberships,
     posSales: raw.posSales ?? seeded.posSales,
     inventoryItems: raw.inventoryItems ?? seeded.inventoryItems,
     inventoryMovements: Array.isArray(raw.inventoryMovements) ? raw.inventoryMovements : seeded.inventoryMovements,
+    inventoryCountSessions: Array.isArray(raw.inventoryCountSessions)
+      ? raw.inventoryCountSessions
+      : seeded.inventoryCountSessions,
     menuItemIngredients: raw.menuItemIngredients ?? seeded.menuItemIngredients,
     purchaseRecommendations,
     supplierOrders,
@@ -569,11 +575,12 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 4 ||
+      raw.schema_version !== 5 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
       !Array.isArray(raw.inventoryMovements) ||
+      !Array.isArray(raw.inventoryCountSessions) ||
       !Array.isArray(raw.memberships) ||
       (raw.memberships?.length ?? 0) === 0
   };

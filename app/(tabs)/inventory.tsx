@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, Package, Search } from "lucide-react-native";
+import { AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, Clock3, Package, Search } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -16,15 +16,22 @@ import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, typogr
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
-import { fetchInventoryOutlookItems, summarizeInventoryOutlooks } from "../../services/miseService";
+import {
+  fetchInventoryOutlookItems,
+  fetchOpenInventoryCountSession,
+  summarizeInventoryOutlooks
+} from "../../services/miseService";
+import { canManageRestaurantData } from "../../services/tenantAccess";
 import type { InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
 
 export default function InventoryScreen() {
   const { formatNumber, t } = useLocale();
-  const { restaurant } = useMiseSession();
+  const { restaurant, memberships } = useMiseSession();
+  const canManage = canManageRestaurantData(memberships, restaurant?.id ?? "");
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
+  const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InventoryFilter>("All");
   const [loading, setLoading] = useState(true);
@@ -38,6 +45,7 @@ export default function InventoryScreen() {
     requestIdRef.current += 1;
     setLoadedRestaurantId(null);
     setOutlooks([]);
+    setOpenCountSessionId(null);
     setQuery("");
     setFilter("All");
     setError(false);
@@ -55,9 +63,13 @@ export default function InventoryScreen() {
     setLoading(true);
     setError(false);
     try {
-      const nextOutlooks = await fetchInventoryOutlookItems(restaurantId);
+      const [nextOutlooks, openSession] = await Promise.all([
+        fetchInventoryOutlookItems(restaurantId),
+        fetchOpenInventoryCountSession(restaurantId)
+      ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlooks(nextOutlooks);
+      setOpenCountSessionId(openSession?.session.id ?? null);
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -162,6 +174,35 @@ export default function InventoryScreen() {
             />
           </SectionSurface>
         </MotionView>
+
+        {canManage || openCountSessionId ? (
+          <MotionView delay={20} distance={3} duration={240}>
+            <SectionSurface
+              title={t("inventory.count.cardTitle")}
+              subtitle={
+                openCountSessionId
+                  ? t("inventory.count.cardOpenSubtitle")
+                  : t("inventory.count.cardSubtitle")
+              }
+            >
+              <Button
+                title={
+                  openCountSessionId
+                    ? t("inventory.count.resumeAction")
+                    : t("inventory.count.startAction")
+                }
+                onPress={() => router.push("/inventory/count")}
+                fullWidth
+                accessibilityLabel={
+                  openCountSessionId
+                    ? t("inventory.count.resumeAccessibility")
+                    : t("inventory.count.startAccessibility")
+                }
+                icon={<ClipboardList size={18} color={colors.cream} strokeWidth={2.25} />}
+              />
+            </SectionSurface>
+          </MotionView>
+        ) : null}
 
         <MotionView delay={40} distance={3} duration={240}>
           <SectionSurface

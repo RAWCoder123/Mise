@@ -129,6 +129,27 @@ await assertDeniedRpc(
   "inventory waste workflow rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
+  "service_begin_inventory_count_session",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_note: "forged count"
+  },
+  "count session begin rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_approve_inventory_count_session",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_session_id: "00000000-0000-4000-8000-00000000c001",
+    p_expected_revision: 0,
+    p_recommendations: [],
+    p_insights: []
+  },
+  "count session approve rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
   "service_ingest_manual_pos_sales",
   {
     p_actor_user_id: managerA.id,

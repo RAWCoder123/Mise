@@ -7,6 +7,7 @@ const routes = [
   "/setup",
   "/today",
   "/inventory",
+  "/inventory/count",
   "/orders",
   "/insights",
   "/settings",

@@ -125,6 +125,44 @@ export interface InventoryMovement {
   created_at: string;
 }
 
+export type InventoryCountSessionStatus = "in_progress" | "submitted" | "approved" | "cancelled";
+
+export interface InventoryCountSession {
+  id: string;
+  restaurant_id: string;
+  status: InventoryCountSessionStatus;
+  started_by: string | null;
+  submitted_by: string | null;
+  approved_by: string | null;
+  cancelled_by: string | null;
+  started_at: string;
+  submitted_at: string | null;
+  approved_at: string | null;
+  cancelled_at: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InventoryCountLine {
+  id: string;
+  restaurant_id: string;
+  session_id: string;
+  inventory_item_id: string;
+  item_name: string;
+  unit: string;
+  system_quantity_at_start: number;
+  counted_quantity: number | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InventoryCountSessionDetail {
+  session: InventoryCountSession;
+  lines: InventoryCountLine[];
+}
+
 export interface MenuItemIngredient {
   id: string;
   restaurant_id: string;

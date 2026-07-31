@@ -1,5 +1,6 @@
 import type {
   Insight,
+  InventoryCountSession,
   InventoryOutlookItem,
   PosIntegration,
   PurchaseRecommendation,
@@ -17,6 +18,7 @@ import type { TodayTaskPresentationDescriptor } from "../../types/presentation";
  */
 export type OperationalTodayTaskSourceKind =
   | "inventory"
+  | "inventory_count_session"
   | "recommendation"
   | "order"
   | "setup"
@@ -30,6 +32,7 @@ export type OperationalTodayTaskTiming = "overdue" | "due_soon" | "today" | "lat
 
 export type OperationalTodayTaskActionIntent =
   | "update_inventory_count"
+  | "continue_inventory_count_session"
   | "review_recommendation"
   | "prepare_supplier_draft"
   | "send_supplier_order"
@@ -42,6 +45,7 @@ export type OperationalTodayTaskActionIntent =
 export type OperationalTodayTaskRoute =
   | "/inventory"
   | `/inventory/${string}`
+  | "/inventory/count"
   | "/orders"
   | `/orders/${string}`
   | "/insights"
@@ -94,6 +98,7 @@ export interface DeriveOperationalTodayTasksInput {
   /** Undefined means integration readiness was not loaded; [] means no POS connection exists. */
   posIntegrations?: readonly PosIntegration[];
   insights: readonly Insight[];
+  openCountSession?: InventoryCountSession | null;
   now?: Date;
   includeCompleted?: boolean;
 }
@@ -123,6 +128,50 @@ export function deriveOperationalTodayTasks(
       .filter((recommendation) => recommendation.status === "pending" || recommendation.status === "approved")
       .map((recommendation) => recommendation.inventory_item_id)
   );
+
+  const openCountSession =
+    input.openCountSession &&
+    input.openCountSession.restaurant_id === restaurantId &&
+    (input.openCountSession.status === "in_progress" || input.openCountSession.status === "submitted")
+      ? input.openCountSession
+      : null;
+  if (openCountSession) {
+    const awaitingApproval = openCountSession.status === "submitted";
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "inventory_count_session",
+        sourceId: openCountSession.id,
+        sourceStatus: openCountSession.status,
+        title: awaitingApproval ? "Approve inventory count" : "Continue inventory count",
+        detail: awaitingApproval
+          ? "A submitted multi-item count is waiting for manager approval before stock is updated."
+          : "An inventory count session is in progress. Finish counting items and submit for approval.",
+        presentation: {
+          code: awaitingApproval
+            ? "today.inventory_count_session.approve"
+            : "today.inventory_count_session.continue",
+          values: {
+            status: openCountSession.status
+          }
+        },
+        priority: awaitingApproval ? "high" : "normal",
+        action: {
+          intent: "continue_inventory_count_session",
+          label: awaitingApproval ? "Review count" : "Continue count",
+          route: "/inventory/count",
+          entityId: openCountSession.id
+        },
+        requiredRole: "manager",
+        isComplete: false,
+        completionReason: awaitingApproval
+          ? "Count session is submitted and awaiting approval."
+          : "Count session is still in progress."
+      }),
+      includeCompleted
+    );
+  }
 
   for (const recommendation of recommendations) {
     const reviewComplete = recommendation.status !== "pending";
