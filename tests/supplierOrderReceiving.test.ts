@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS,
   applyPlannedReceiveToInventory,
+  buildReceiveLinesFromFormInputs,
   defaultReceiveLinesFromRecommendations,
+  isReceiveQuantityInputReady,
   linkedOrderedRecommendationsForOrder,
   planSupplierOrderReceive
 } from "../services/domain/supplierOrderReceiving";
+import { parseLocalizedNumber } from "../i18n/formatters";
 import type { InventoryItem, PurchaseRecommendation, SupplierOrder } from "../types/mise";
 
 const restaurantId = "rest_1";
@@ -101,6 +105,39 @@ test("defaults receive quantities from ordered recommendations", () => {
   assert.deepEqual(defaults, [
     { inventoryItemId: "item_1", quantityReceived: 10, note: null }
   ]);
+});
+
+test("builds receive lines from locale-aware quantity strings and optional notes", () => {
+  const spanish = buildReceiveLinesFromFormInputs({
+    inventoryItemIds: ["item_1", "item_2"],
+    quantitiesByItemId: { item_1: "9,5", item_2: "5" },
+    notesByItemId: { item_1: "  Short case  ", item_2: "   " },
+    parseNumber: (value) => parseLocalizedNumber("es", value)
+  });
+  assert.equal(spanish.ok, true);
+  if (!spanish.ok) return;
+  assert.deepEqual(spanish.lines, [
+    { inventoryItemId: "item_1", quantityReceived: 9.5, note: "Short case" },
+    { inventoryItemId: "item_2", quantityReceived: 5, note: null }
+  ]);
+
+  assert.equal(isReceiveQuantityInputReady("1.234,5", (value) => parseLocalizedNumber("es", value)), true);
+  assert.equal(isReceiveQuantityInputReady("abc", (value) => parseLocalizedNumber("en", value)), false);
+
+  const tooLong = buildReceiveLinesFromFormInputs({
+    inventoryItemIds: ["item_1"],
+    quantitiesByItemId: { item_1: "3" },
+    notesByItemId: { item_1: "x".repeat(SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS + 1) },
+    parseNumber: (value) => parseLocalizedNumber("en", value)
+  });
+  assert.deepEqual(tooLong, { ok: false, error: "note_too_long" });
+
+  const invalid = buildReceiveLinesFromFormInputs({
+    inventoryItemIds: ["item_1"],
+    quantitiesByItemId: { item_1: "" },
+    parseNumber: (value) => parseLocalizedNumber("en", value)
+  });
+  assert.deepEqual(invalid, { ok: false, error: "invalid_quantity" });
 });
 
 test("rejects receive when the order is not sent or lines are incomplete", () => {

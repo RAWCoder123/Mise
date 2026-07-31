@@ -64,6 +64,68 @@ export function defaultReceiveLinesFromRecommendations(
   }));
 }
 
+export type ReceiveFormLineBuildResult =
+  | { ok: true; lines: SupplierOrderReceiveLineInput[] }
+  | { ok: false; error: "invalid_quantity" | "note_too_long" };
+
+export function isReceiveQuantityInputReady(
+  raw: string,
+  parseNumber: (value: string) => number | null
+): boolean {
+  const parsed = parseNumber(raw.trim());
+  return (
+    parsed != null &&
+    Number.isFinite(parsed) &&
+    parsed >= 0 &&
+    parsed <= SUPPLIER_ORDER_RECEIVE_QUANTITY_MAX
+  );
+}
+
+export function normalizeReceiveNoteInput(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  const note = raw.trim();
+  return note ? note : null;
+}
+
+/**
+ * Builds validated receive payloads from locale-aware quantity strings and optional line notes.
+ * Keeps Number() out of the UI path so Spanish/Chinese decimal input stays trustworthy.
+ */
+export function buildReceiveLinesFromFormInputs(input: {
+  inventoryItemIds: readonly string[];
+  quantitiesByItemId: Readonly<Record<string, string>>;
+  notesByItemId?: Readonly<Record<string, string>>;
+  parseNumber: (value: string) => number | null;
+}): ReceiveFormLineBuildResult {
+  const lines: SupplierOrderReceiveLineInput[] = [];
+
+  for (const inventoryItemId of input.inventoryItemIds) {
+    const rawQuantity = input.quantitiesByItemId[inventoryItemId] ?? "";
+    const quantityReceived = input.parseNumber(rawQuantity.trim());
+    if (
+      quantityReceived == null ||
+      !Number.isFinite(quantityReceived) ||
+      quantityReceived < 0 ||
+      quantityReceived > SUPPLIER_ORDER_RECEIVE_QUANTITY_MAX
+    ) {
+      return { ok: false, error: "invalid_quantity" };
+    }
+
+    const note = normalizeReceiveNoteInput(input.notesByItemId?.[inventoryItemId]);
+    if (note && note.length > SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS) {
+      return { ok: false, error: "note_too_long" };
+    }
+
+    lines.push({
+      inventoryItemId,
+      quantityReceived,
+      note
+    });
+  }
+
+  return { ok: true, lines };
+}
+
 export function planSupplierOrderReceive(input: {
   order: SupplierOrder;
   recommendations: readonly PurchaseRecommendation[];
