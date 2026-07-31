@@ -24,7 +24,9 @@ import type {
 } from "../../types/mise";
 import type { SetupPosSaleDraft } from "../domain/setupDrafts";
 import {
+  assertNoConsumedPosSaleCorrections,
   buildRecipeConsumptionPlan,
+  collectConsumedPosSourceRecordIds,
   hasAppliedConsumptionLine
 } from "../domain/posConsumption";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
@@ -1161,6 +1163,26 @@ export function applyManualPosSalesIngestToDemoState(
   sourceFileName: string | null = null,
   now = new Date().toISOString()
 ) {
+  assertNoConsumedPosSaleCorrections({
+    incoming: sales.map((sale) => ({
+      source_record_id: sale.source_record_id,
+      quantity_sold: sale.quantity_sold,
+      item_name: sale.item_name,
+      category: sale.category,
+      sale_date: sale.sale_date
+    })),
+    existing: state.posSales
+      .filter((sale) => sale.restaurant_id === restaurantId)
+      .map((sale) => ({
+        source_record_id: sale.source_record_id ?? "",
+        quantity_sold: sale.quantity_sold,
+        item_name: sale.item_name,
+        category: sale.category,
+        sale_date: sale.sale_date
+      })),
+    consumedSourceRecordIds: collectConsumedPosSourceRecordIds(state.inventoryMovements ?? [])
+  });
+
   const keptSales = state.posSales.filter(
     (sale) => sale.restaurant_id !== restaurantId || sale.source_pos !== "Manual CSV Upload"
   );

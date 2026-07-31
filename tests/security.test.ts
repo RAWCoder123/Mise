@@ -326,6 +326,10 @@ test("manual CSV POS ingest is service-owned, bounded, and keeps live sync fail-
     "supabase/migrations/20260731001500_apply_pos_recipe_consumption.sql",
     "utf8"
   );
+  const correctionGuardMigration = readFileSync(
+    "supabase/migrations/20260731210000_reject_consumed_pos_sale_corrections.sql",
+    "utf8"
+  );
 
   assert.match(application, /buildManualPosSalesIngestPayload|assertManualPosSalesIngestReady/);
   assert.match(repository, /action:\s*"ingest_pos_csv"/i);
@@ -343,6 +347,10 @@ test("manual CSV POS ingest is service-owned, bounded, and keeps live sync fail-
   assert.match(consumptionMigration, /appliedTodayConsumptionByItemId/i);
   assert.match(consumptionMigration, /revoke\s+all\s+on\s+function\s+private\.apply_recipe_consumption_for_sales[\s\S]*authenticated/i);
   assert.match(consumptionMigration, /grant\s+execute\s+on\s+function\s+private\.apply_recipe_consumption_for_sales[\s\S]*service_role/i);
+  assert.match(correctionGuardMigration, /already drove inventory consumption/i);
+  assert.match(correctionGuardMigration, /has_consumption/i);
+  assert.match(correctionGuardMigration, /revoke\s+all\s+on\s+function\s+private\.service_ingest_manual_pos_sales[\s\S]*authenticated/i);
+  assert.match(correctionGuardMigration, /grant\s+execute\s+on\s+function\s+private\.service_ingest_manual_pos_sales[\s\S]*service_role/i);
   assert.match(syncPos, /provider_not_enabled/);
   assert.doesNotMatch(syncPos, /service_ingest_manual_pos_sales/);
   assert.doesNotMatch(application, /\.from\("pos_sales"\)\.insert/);

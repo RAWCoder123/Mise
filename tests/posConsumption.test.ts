@@ -11,7 +11,11 @@ import {
   buildManualPosSalesIngestPayload
 } from "../services/domain/posCsvIngest";
 import {
+  assertNoConsumedPosSaleCorrections,
   buildRecipeConsumptionPlan,
+  collectConsumedPosSourceRecordIds,
+  CONSUMED_POS_SALE_CORRECTION_ERROR,
+  findConsumedPosSaleCorrectionConflicts,
   projectedQuantityAfterSales,
   sumAppliedRecipeConsumption
 } from "../services/domain/posConsumption";
@@ -112,6 +116,123 @@ test("projected quantity subtracts only unapplied POS usage", () => {
   });
 });
 
+test("consumed POS sale correction conflicts reject quantity and fingerprint changes", () => {
+  const movements: InventoryMovement[] = [
+    {
+      id: "m1",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      inventory_item_id: chickenId,
+      actor_user_id: null,
+      reason: "recipe_consumption",
+      quantity_before: 80,
+      quantity_after: 75.8,
+      delta: -4.2,
+      source_workflow: "manual_pos_csv_ingest",
+      metadata: { source_record_id: "csv_1", sale_date: "2026-07-28" },
+      created_at: "2026-07-28T16:01:00.000Z"
+    }
+  ];
+  const consumed = collectConsumedPosSourceRecordIds(movements);
+  assert.deepEqual([...consumed], ["csv_1"]);
+  assert.deepEqual(
+    findConsumedPosSaleCorrectionConflicts({
+      incoming: [
+        {
+          source_record_id: "csv_1",
+          quantity_sold: 12,
+          item_name: "General Tso Chicken",
+          category: "Entrees",
+          sale_date: "2026-07-28"
+        }
+      ],
+      existing: [
+        {
+          source_record_id: "csv_1",
+          quantity_sold: 10,
+          item_name: "General Tso Chicken",
+          category: "Entrees",
+          sale_date: "2026-07-28"
+        }
+      ],
+      consumedSourceRecordIds: consumed
+    }),
+    [{ sourceRecordId: "csv_1", field: "quantity_sold" }]
+  );
+  assert.deepEqual(
+    findConsumedPosSaleCorrectionConflicts({
+      incoming: [
+        {
+          source_record_id: "csv_1_corrected",
+          quantity_sold: 12,
+          item_name: "General Tso Chicken",
+          category: "Entrees",
+          sale_date: "2026-07-28"
+        }
+      ],
+      existing: [
+        {
+          source_record_id: "csv_1",
+          quantity_sold: 10,
+          item_name: "General Tso Chicken",
+          category: "Entrees",
+          sale_date: "2026-07-28"
+        }
+      ],
+      consumedSourceRecordIds: consumed
+    }),
+    [{ sourceRecordId: "csv_1_corrected", field: "quantity_sold" }]
+  );
+  assert.throws(
+    () =>
+      assertNoConsumedPosSaleCorrections({
+        incoming: [
+          {
+            source_record_id: "csv_1",
+            quantity_sold: 10,
+            item_name: "Dumplings",
+            category: "Entrees",
+            sale_date: "2026-07-28"
+          }
+        ],
+        existing: [
+          {
+            source_record_id: "csv_1",
+            quantity_sold: 10,
+            item_name: "General Tso Chicken",
+            category: "Entrees",
+            sale_date: "2026-07-28"
+          }
+        ],
+        consumedSourceRecordIds: consumed
+      }),
+    (error: unknown) =>
+      error instanceof Error && error.message === CONSUMED_POS_SALE_CORRECTION_ERROR
+  );
+  assert.doesNotThrow(() =>
+    assertNoConsumedPosSaleCorrections({
+      incoming: [
+        {
+          source_record_id: "csv_1",
+          quantity_sold: 10,
+          item_name: "General  Tso Chicken",
+          category: "Entrees",
+          sale_date: "2026-07-28"
+        }
+      ],
+      existing: [
+        {
+          source_record_id: "csv_1",
+          quantity_sold: 10,
+          item_name: "General Tso Chicken",
+          category: "Entrees",
+          sale_date: "2026-07-28"
+        }
+      ],
+      consumedSourceRecordIds: consumed
+    })
+  );
+});
+
 test("sumAppliedRecipeConsumption aggregates ledger rows for an item", () => {
   const movements: InventoryMovement[] = [
     {
@@ -208,5 +329,24 @@ test("demo CSV ingest deducts mapped recipe usage once and writes ledger rows", 
   assert.equal(
     state.inventoryMovements.filter((movement) => movement.reason === "recipe_consumption").length,
     5
+  );
+
+  const corrected = assertManualPosSalesIngestReady(
+    buildManualPosSalesIngestPayload(
+      [
+        "date,item_name,category,quantity,gross_sales",
+        "2026-07-28,General Tso Chicken,Entrees,12,180",
+        "2026-07-28,Dumplings,Appetizers,6,54"
+      ].join("\n")
+    )
+  );
+  assert.throws(
+    () => applyManualPosSalesIngestToDemoState(state, DEMO_RESTAURANT_ID, corrected, "corrected.csv"),
+    /already drove inventory consumption/i
+  );
+  assert.equal(state.inventoryItems.find((item) => item.id === chickenId)?.current_quantity, chickenAfter);
+  assert.equal(
+    state.posSales.find((sale) => sale.source_record_id === rows[0]?.source_record_id)?.quantity_sold,
+    10
   );
 });

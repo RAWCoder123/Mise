@@ -214,6 +214,142 @@ export function hasAppliedConsumptionLine(
   });
 }
 
+export const CONSUMED_POS_SALE_CORRECTION_ERROR =
+  "This POS CSV row already drove inventory consumption. Correct stock with a count, waste, or manager adjustment instead of re-importing a changed sale.";
+
+export type PosSaleConsumptionIdentity = {
+  source_record_id: string;
+  quantity_sold: number;
+  item_name: string;
+  category: string;
+  sale_date: string;
+};
+
+export type ConsumedPosSaleCorrectionConflict = {
+  sourceRecordId: string;
+  field: "quantity_sold" | "item_name" | "sale_date" | "category" | "source_record_id" | "missing_original";
+};
+
+export function collectConsumedPosSourceRecordIds(
+  movements: AppliedConsumptionMovement[]
+): Set<string> {
+  const ids = new Set<string>();
+  for (const movement of movements) {
+    if (movement.reason !== "recipe_consumption" && movement.reason !== "pos_consumption") {
+      continue;
+    }
+    const sourceRecordId =
+      typeof movement.metadata?.source_record_id === "string"
+        ? movement.metadata.source_record_id.trim()
+        : "";
+    if (sourceRecordId) ids.add(sourceRecordId);
+  }
+  return ids;
+}
+
+function sameSaleDate(left: string, right: string) {
+  return left.trim() === right.trim();
+}
+
+function sameSaleQuantity(left: number, right: number) {
+  return roundQuantity(finiteNonNegative(left)) === roundQuantity(finiteNonNegative(right));
+}
+
+function normalizeCategoryKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function posSaleBusinessKey(sale: Pick<PosSaleConsumptionIdentity, "sale_date" | "item_name" | "category">) {
+  return [
+    sale.sale_date.trim(),
+    normalizeMenuItemKey(sale.item_name),
+    normalizeCategoryKey(sale.category)
+  ].join("\u001f");
+}
+
+export function findConsumedPosSaleCorrectionConflicts(input: {
+  incoming: PosSaleConsumptionIdentity[];
+  existing: PosSaleConsumptionIdentity[];
+  consumedSourceRecordIds: ReadonlySet<string>;
+}): ConsumedPosSaleCorrectionConflict[] {
+  if (input.consumedSourceRecordIds.size === 0) return [];
+
+  const consumedExisting = input.existing.filter((sale) =>
+    input.consumedSourceRecordIds.has(sale.source_record_id.trim())
+  );
+  if (consumedExisting.length === 0) return [];
+
+  const existingBySource = new Map(
+    consumedExisting.map((sale) => [sale.source_record_id.trim(), sale])
+  );
+  const existingByBusinessKey = new Map<string, PosSaleConsumptionIdentity[]>();
+  for (const sale of consumedExisting) {
+    const key = posSaleBusinessKey(sale);
+    const group = existingByBusinessKey.get(key) ?? [];
+    group.push(sale);
+    existingByBusinessKey.set(key, group);
+  }
+
+  const conflicts: ConsumedPosSaleCorrectionConflict[] = [];
+  const seen = new Set<string>();
+
+  for (const sale of input.incoming) {
+    const sourceRecordId = sale.source_record_id.trim();
+    if (!sourceRecordId || seen.has(sourceRecordId)) continue;
+
+    const sameSourceOriginal = existingBySource.get(sourceRecordId);
+    if (sameSourceOriginal) {
+      if (!sameSaleQuantity(sameSourceOriginal.quantity_sold, sale.quantity_sold)) {
+        conflicts.push({ sourceRecordId, field: "quantity_sold" });
+        seen.add(sourceRecordId);
+        continue;
+      }
+      if (normalizeMenuItemKey(sameSourceOriginal.item_name) !== normalizeMenuItemKey(sale.item_name)) {
+        conflicts.push({ sourceRecordId, field: "item_name" });
+        seen.add(sourceRecordId);
+        continue;
+      }
+      if (normalizeCategoryKey(sameSourceOriginal.category) !== normalizeCategoryKey(sale.category)) {
+        conflicts.push({ sourceRecordId, field: "category" });
+        seen.add(sourceRecordId);
+        continue;
+      }
+      if (!sameSaleDate(sameSourceOriginal.sale_date, sale.sale_date)) {
+        conflicts.push({ sourceRecordId, field: "sale_date" });
+        seen.add(sourceRecordId);
+      }
+      continue;
+    }
+
+    const businessMatches = existingByBusinessKey.get(posSaleBusinessKey(sale)) ?? [];
+    if (businessMatches.length === 0) continue;
+
+    // CSV fingerprints include quantity, so corrections mint a new source_record_id.
+    // Treat same-date/item/category rows that already consumed inventory as corrections.
+    const quantityChanged = businessMatches.some(
+      (original) => !sameSaleQuantity(original.quantity_sold, sale.quantity_sold)
+    );
+    conflicts.push({
+      sourceRecordId,
+      field: quantityChanged ? "quantity_sold" : "source_record_id"
+    });
+    seen.add(sourceRecordId);
+  }
+
+  return conflicts;
+}
+
+export function assertNoConsumedPosSaleCorrections(input: {
+  incoming: PosSaleConsumptionIdentity[];
+  existing: PosSaleConsumptionIdentity[];
+  consumedSourceRecordIds: ReadonlySet<string>;
+}) {
+  const conflicts = findConsumedPosSaleCorrectionConflicts(input);
+  if (conflicts.length > 0) {
+    throw new Error(CONSUMED_POS_SALE_CORRECTION_ERROR);
+  }
+}
+
 export function buildAppliedTodayConsumptionByItemId(
   movements: AppliedConsumptionMovement[],
   operatingDate: string
