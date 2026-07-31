@@ -34,11 +34,12 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const [data, ordersResult, emailConnectionResult, posIntegrationsResult] = await Promise.all([
+  const [data, ordersResult, emailConnectionResult, posIntegrationsResult, planning] = await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
     repository.fetchSupplierOrders(normalizedRestaurantId),
     repository.fetchEmailConnectionState(normalizedRestaurantId),
-    repository.fetchPosIntegrations(normalizedRestaurantId)
+    repository.fetchPosIntegrations(normalizedRestaurantId),
+    repository.fetchPlanningData(normalizedRestaurantId)
   ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
@@ -58,13 +59,14 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
   const emailConnection = emailConnectionResult
     ? requireRestaurantScoped([emailConnectionResult], normalizedRestaurantId)[0] ?? null
     : null;
-  const operatingDate = toDateKeyInTimeZone(new Date(), data.restaurant.timezone);
+  const operatingDate = planning.operatingDate || toDateKeyInTimeZone(new Date(), data.restaurant.timezone);
   const outlooks = buildInventoryOutlooks(
     normalizedRestaurantId,
     inventoryItems,
     sales,
     mappings,
-    operatingDate
+    operatingDate,
+    planning.appliedTodayConsumptionByItemId
   );
   const setupReadiness = buildSetupReadinessSummary({
     restaurant: data.restaurant,
@@ -81,7 +83,8 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
     recommendations,
     insights,
     mappings,
-    operatingDate
+    operatingDate,
+    planning.appliedTodayConsumptionByItemId
   );
 
   return {

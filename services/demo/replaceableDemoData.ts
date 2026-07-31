@@ -20,6 +20,10 @@ import type {
   SupplierRecipient
 } from "../../types/mise";
 import type { SetupPosSaleDraft } from "../domain/setupDrafts";
+import {
+  buildRecipeConsumptionPlan,
+  hasAppliedConsumptionLine
+} from "../domain/posConsumption";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
 import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
 
@@ -1119,6 +1123,47 @@ export function applyManualPosSalesIngestToDemoState(
     imported_at: now
   });
 
+  const plan = buildRecipeConsumptionPlan({
+    restaurantId,
+    sales: importedSales,
+    mappings: state.menuItemIngredients,
+    inventoryItems: state.inventoryItems
+  });
+  let consumptionMovementsWritten = 0;
+  for (const line of plan.lines) {
+    if (hasAppliedConsumptionLine(state.inventoryMovements ?? [], line)) continue;
+    const item = state.inventoryItems.find(
+      (entry) => entry.restaurant_id === restaurantId && entry.id === line.inventoryItemId
+    );
+    if (!item) continue;
+    const quantityBefore = item.current_quantity;
+    const quantityAfter = Math.round(Math.max(0, quantityBefore - line.quantityUsed) * 10000) / 10000;
+    item.current_quantity = quantityAfter;
+    item.last_updated = now;
+    const movement: InventoryMovement = {
+      id: `manual_csv_consumption_${line.sourceRecordId}_${line.inventoryItemId}`,
+      restaurant_id: restaurantId,
+      inventory_item_id: line.inventoryItemId,
+      actor_user_id: DEMO_USER_ID,
+      reason: "recipe_consumption",
+      quantity_before: quantityBefore,
+      quantity_after: quantityAfter,
+      delta: quantityAfter - quantityBefore,
+      source_workflow: "manual_pos_csv_ingest",
+      metadata: {
+        source_record_id: line.sourceRecordId,
+        pos_sale_id: line.posSaleId,
+        menu_item_name: line.menuItemName,
+        mapping_id: line.mappingId,
+        sale_date: line.saleDate,
+        quantity_used: line.quantityUsed
+      },
+      created_at: now
+    };
+    state.inventoryMovements = [movement, ...(state.inventoryMovements ?? [])].slice(0, 200);
+    consumptionMovementsWritten += 1;
+  }
+
   state.auditLogs.unshift({
     id: `manual_csv_audit_${Date.parse(now) || 0}`,
     restaurant_id: restaurantId,
@@ -1129,12 +1174,19 @@ export function applyManualPosSalesIngestToDemoState(
     metadata: {
       pos_sales_rows_saved: importedSales.length,
       pos_integration_id: integrationId,
-      source_file_name: sourceFileName
+      source_file_name: sourceFileName,
+      consumption_movements_written: consumptionMovementsWritten,
+      unmapped_sale_count: plan.unmappedSales.length
     },
     created_at: now
   });
 
-  return { posSalesRowsSaved: importedSales.length, salesImportId };
+  return {
+    posSalesRowsSaved: importedSales.length,
+    salesImportId,
+    consumptionMovementsWritten,
+    unmappedSaleCount: plan.unmappedSales.length
+  };
 }
 
 function normalizeSetupList(values?: string[]) {

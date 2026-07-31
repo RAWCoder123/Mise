@@ -1,0 +1,236 @@
+import { inventoryUnitsAreCompatible } from "./inventoryUnits";
+
+export type RecipeConsumptionSaleInput = {
+  id: string;
+  restaurant_id: string;
+  source_record_id?: string | null;
+  sale_date: string;
+  item_name: string;
+  quantity_sold: number;
+};
+
+export type RecipeConsumptionMappingInput = {
+  id: string;
+  restaurant_id: string;
+  menu_item_name: string;
+  inventory_item_id: string;
+  quantity_used_per_sale: number;
+  unit: string;
+};
+
+export type RecipeConsumptionInventoryInput = {
+  id: string;
+  restaurant_id: string;
+  unit: string;
+  current_quantity: number;
+};
+
+export type RecipeConsumptionLine = {
+  inventoryItemId: string;
+  restaurantId: string;
+  quantityUsed: number;
+  menuItemName: string;
+  mappingId: string;
+  posSaleId: string;
+  sourceRecordId: string;
+  saleDate: string;
+  unit: string;
+};
+
+export type RecipeConsumptionPlan = {
+  lines: RecipeConsumptionLine[];
+  itemDeltas: Map<string, number>;
+  unmappedSales: Array<{ saleId: string; itemName: string; quantitySold: number }>;
+  skippedIncompatible: Array<{
+    saleId: string;
+    mappingId: string;
+    menuItemName: string;
+    inventoryItemId: string;
+  }>;
+};
+
+export type AppliedConsumptionMovement = {
+  reason: string;
+  inventory_item_id: string;
+  quantity_before: number;
+  quantity_after: number;
+  metadata?: Record<string, unknown> | null;
+};
+
+function normalizeMenuItemKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function finiteNonNegative(value: number) {
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return value;
+}
+
+function roundQuantity(value: number) {
+  return Math.round(value * 10000) / 10000;
+}
+
+export function buildRecipeConsumptionPlan(input: {
+  restaurantId: string;
+  sales: RecipeConsumptionSaleInput[];
+  mappings: RecipeConsumptionMappingInput[];
+  inventoryItems: RecipeConsumptionInventoryInput[];
+}): RecipeConsumptionPlan {
+  const restaurantId = input.restaurantId;
+  const inventoryById = new Map(
+    input.inventoryItems
+      .filter((item) => item.restaurant_id === restaurantId)
+      .map((item) => [item.id, item])
+  );
+  const mappings = input.mappings.filter((mapping) => mapping.restaurant_id === restaurantId);
+  const lines: RecipeConsumptionLine[] = [];
+  const itemDeltas = new Map<string, number>();
+  const unmappedSales: RecipeConsumptionPlan["unmappedSales"] = [];
+  const skippedIncompatible: RecipeConsumptionPlan["skippedIncompatible"] = [];
+
+  for (const sale of input.sales) {
+    if (sale.restaurant_id !== restaurantId) continue;
+    const sold = finiteNonNegative(sale.quantity_sold);
+    if (sold <= 0) continue;
+    const sourceRecordId = sale.source_record_id?.trim() ?? "";
+    if (!sourceRecordId) continue;
+
+    const saleKey = normalizeMenuItemKey(sale.item_name);
+    const matched = mappings.filter(
+      (mapping) => normalizeMenuItemKey(mapping.menu_item_name) === saleKey
+    );
+    if (matched.length === 0) {
+      unmappedSales.push({
+        saleId: sale.id,
+        itemName: sale.item_name,
+        quantitySold: sold
+      });
+      continue;
+    }
+
+    let wroteCompatible = false;
+    for (const recipe of matched) {
+      const inventoryItem = inventoryById.get(recipe.inventory_item_id);
+      if (!inventoryItem || !inventoryUnitsAreCompatible(inventoryItem.unit, recipe.unit)) {
+        skippedIncompatible.push({
+          saleId: sale.id,
+          mappingId: recipe.id,
+          menuItemName: recipe.menu_item_name,
+          inventoryItemId: recipe.inventory_item_id
+        });
+        continue;
+      }
+      const quantityUsed = roundQuantity(sold * finiteNonNegative(recipe.quantity_used_per_sale));
+      if (quantityUsed <= 0) continue;
+      wroteCompatible = true;
+      lines.push({
+        inventoryItemId: recipe.inventory_item_id,
+        restaurantId,
+        quantityUsed,
+        menuItemName: recipe.menu_item_name,
+        mappingId: recipe.id,
+        posSaleId: sale.id,
+        sourceRecordId,
+        saleDate: sale.sale_date,
+        unit: inventoryItem.unit
+      });
+      itemDeltas.set(
+        recipe.inventory_item_id,
+        roundQuantity((itemDeltas.get(recipe.inventory_item_id) ?? 0) + quantityUsed)
+      );
+    }
+    if (!wroteCompatible && matched.length > 0) {
+      unmappedSales.push({
+        saleId: sale.id,
+        itemName: sale.item_name,
+        quantitySold: sold
+      });
+    }
+  }
+
+  return { lines, itemDeltas, unmappedSales, skippedIncompatible };
+}
+
+export function projectedQuantityAfterSales(
+  currentQuantity: number,
+  theoreticalTodayUsage: number,
+  appliedTodayConsumption: number
+) {
+  const onHand = finiteNonNegative(currentQuantity);
+  const theoretical = finiteNonNegative(theoreticalTodayUsage);
+  const applied = Math.min(theoretical, finiteNonNegative(appliedTodayConsumption));
+  const unappliedUsage = roundQuantity(Math.max(0, theoretical - applied));
+  return {
+    projectedQuantity: roundQuantity(Math.max(0, onHand - unappliedUsage)),
+    unappliedUsage
+  };
+}
+
+export function sumAppliedRecipeConsumption(
+  movements: AppliedConsumptionMovement[],
+  inventoryItemId: string,
+  options?: { saleDate?: string; sourceRecordIds?: ReadonlySet<string> }
+) {
+  return roundQuantity(
+    movements.reduce((sum, movement) => {
+      if (movement.inventory_item_id !== inventoryItemId) return sum;
+      if (movement.reason !== "recipe_consumption" && movement.reason !== "pos_consumption") {
+        return sum;
+      }
+      const metadata = movement.metadata ?? {};
+      if (options?.saleDate) {
+        const saleDate = typeof metadata.sale_date === "string" ? metadata.sale_date : null;
+        if (saleDate !== options.saleDate) return sum;
+      }
+      if (options?.sourceRecordIds) {
+        const sourceRecordId =
+          typeof metadata.source_record_id === "string" ? metadata.source_record_id : null;
+        if (!sourceRecordId || !options.sourceRecordIds.has(sourceRecordId)) return sum;
+      }
+      const consumed = Math.max(0, movement.quantity_before - movement.quantity_after);
+      return sum + consumed;
+    }, 0)
+  );
+}
+
+export function consumptionLineKey(line: Pick<RecipeConsumptionLine, "sourceRecordId" | "inventoryItemId">) {
+  return `${line.sourceRecordId}\u001f${line.inventoryItemId}`;
+}
+
+export function hasAppliedConsumptionLine(
+  movements: AppliedConsumptionMovement[],
+  line: Pick<RecipeConsumptionLine, "sourceRecordId" | "inventoryItemId">
+) {
+  return movements.some((movement) => {
+    if (movement.reason !== "recipe_consumption" && movement.reason !== "pos_consumption") {
+      return false;
+    }
+    if (movement.inventory_item_id !== line.inventoryItemId) return false;
+    const sourceRecordId =
+      typeof movement.metadata?.source_record_id === "string"
+        ? movement.metadata.source_record_id
+        : null;
+    return sourceRecordId === line.sourceRecordId;
+  });
+}
+
+export function buildAppliedTodayConsumptionByItemId(
+  movements: AppliedConsumptionMovement[],
+  operatingDate: string
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const movement of movements) {
+    if (movement.reason !== "recipe_consumption" && movement.reason !== "pos_consumption") {
+      continue;
+    }
+    const saleDate =
+      typeof movement.metadata?.sale_date === "string" ? movement.metadata.sale_date : null;
+    if (saleDate !== operatingDate) continue;
+    const consumed = Math.max(0, movement.quantity_before - movement.quantity_after);
+    if (consumed <= 0) continue;
+    result[movement.inventory_item_id] = roundQuantity(
+      (result[movement.inventory_item_id] ?? 0) + consumed
+    );
+  }
+  return result;
+}

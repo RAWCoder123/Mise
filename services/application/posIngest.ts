@@ -11,6 +11,8 @@ const repository = getMiseRepository();
 export interface ImportManualPosSalesCsvResult {
   posSalesRowsSaved: number;
   salesImportId?: string;
+  consumptionMovementsWritten?: number;
+  unmappedSaleCount?: number;
   provider: "manual_csv";
   preview: Pick<ManualPosSalesIngestPayload, "acceptedRowCount" | "rejectedRowCount" | "issues">;
 }
@@ -39,6 +41,8 @@ export async function importManualPosSalesCsv(
   return {
     posSalesRowsSaved: summary.posSalesRowsSaved,
     salesImportId: summary.salesImportId,
+    consumptionMovementsWritten: summary.consumptionMovementsWritten ?? 0,
+    unmappedSaleCount: summary.unmappedSaleCount ?? 0,
     provider: "manual_csv",
     preview: {
       acceptedRowCount: payload.acceptedRowCount,

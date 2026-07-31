@@ -1,4 +1,5 @@
 import { canonicalInventoryUnit, inventoryUnitsAreCompatible } from "./inventoryUnits";
+import { projectedQuantityAfterSales } from "./posConsumption";
 import type { InsightPresentationDescriptor } from "../../types/presentation";
 
 export interface OperationalInventoryItem {
@@ -69,6 +70,8 @@ export interface OperationalPlanningSnapshot {
   sales: OperationalSale[];
   menuItemIngredients: OperationalRecipeMapping[];
   recommendationHistory: OperationalRecommendationHistory[];
+  /** Quantity already deducted from on-hand for today's mapped POS usage, by inventory item. */
+  appliedTodayConsumptionByItemId?: Record<string, number>;
 }
 
 export function calculateOperationalSignals(snapshot: OperationalPlanningSnapshot) {
@@ -98,7 +101,12 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const baselineUsage = mappings.reduce((sum, mapping) => {
       return sum + (demand.get(normalizeKey(mapping.menu_item_name)) ?? 0) * finiteNonNegative(mapping.quantity_used_per_sale);
     }, 0);
-    const projectedQuantity = Math.max(0, finiteNonNegative(item.current_quantity) - todayUsage);
+    const appliedToday = finiteNonNegative(snapshot.appliedTodayConsumptionByItemId?.[item.id] ?? 0);
+    const { projectedQuantity } = projectedQuantityAfterSales(
+      item.current_quantity,
+      todayUsage,
+      appliedToday
+    );
     const threshold = finiteNonNegative(item.reorder_threshold);
     const isCritical = projectedQuantity <= 0;
     const isLow = !isCritical && projectedQuantity <= threshold;
@@ -209,7 +217,8 @@ export function buildRecommendationInserts(
   sales: OperationalSale[],
   menuItemIngredients: OperationalRecipeMapping[],
   recommendationHistory: OperationalRecommendationHistory[] = [],
-  operatingDate = new Date().toISOString().slice(0, 10)
+  operatingDate = new Date().toISOString().slice(0, 10),
+  appliedTodayConsumptionByItemId: Record<string, number> = {}
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -217,7 +226,8 @@ export function buildRecommendationInserts(
     inventoryItems,
     sales,
     menuItemIngredients,
-    recommendationHistory
+    recommendationHistory,
+    appliedTodayConsumptionByItemId
   }).recommendations;
 }
 
@@ -226,7 +236,8 @@ export function buildInsightsFromData(
   inventoryItems: OperationalInventoryItem[],
   sales: OperationalSale[],
   menuItemIngredients: OperationalRecipeMapping[],
-  operatingDate = new Date().toISOString().slice(0, 10)
+  operatingDate = new Date().toISOString().slice(0, 10),
+  appliedTodayConsumptionByItemId: Record<string, number> = {}
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -234,7 +245,8 @@ export function buildInsightsFromData(
     inventoryItems,
     sales,
     menuItemIngredients,
-    recommendationHistory: []
+    recommendationHistory: [],
+    appliedTodayConsumptionByItemId
   }).insights;
 }
 

@@ -35,6 +35,10 @@ import { formatQuantity, nextDateKeyInTimeZone, toDateKey, toDateKeyInTimeZone }
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
+import {
+  buildAppliedTodayConsumptionByItemId,
+  projectedQuantityAfterSales
+} from "./posConsumption";
 import { buildRecordedSalesTrend } from "./salesTrends";
 import {
   DEMO_DATASET,
@@ -250,14 +254,21 @@ export function buildInventoryOutlooks(
   inventoryItems: InventoryItem[],
   sales: PosSale[],
   mappings: MenuItemIngredient[],
-  operatingDate = defaultOperatingDate(restaurantId)
+  operatingDate = defaultOperatingDate(restaurantId),
+  appliedTodayConsumptionByItemId: ReadonlyMap<string, number> | Record<string, number> = {}
 ): InventoryOutlookItem[] {
   const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
+  const appliedLookup =
+    appliedTodayConsumptionByItemId instanceof Map
+      ? appliedTodayConsumptionByItemId
+      : new Map(Object.entries(appliedTodayConsumptionByItemId));
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .map((item) => ({
       item,
-      prediction: buildInventoryPrediction(item, sales, mappings, operatingDate, historicalBaselines)
+      prediction: buildInventoryPrediction(item, sales, mappings, operatingDate, historicalBaselines, {
+        appliedTodayConsumption: appliedLookup.get(item.id) ?? 0
+      })
     }))
     .sort((a, b) => {
       const rankDelta = predictionRank(b.prediction) - predictionRank(a.prediction);
@@ -340,7 +351,8 @@ export function buildInventoryPrediction(
   sales: PosSale[],
   mappings: MenuItemIngredient[],
   operatingDate = defaultOperatingDate(item.restaurant_id),
-  historicalBaselines = buildHistoricalDemandBaselines(item.restaurant_id, sales, operatingDate)
+  historicalBaselines = buildHistoricalDemandBaselines(item.restaurant_id, sales, operatingDate),
+  options?: { appliedTodayConsumption?: number }
 ): InventoryPrediction {
   const safeItem: InventoryItem = {
     ...item,
@@ -383,7 +395,12 @@ export function buildInventoryPrediction(
     recentUsage > 0 && baselineUsage > 0
       ? recentUsage * 0.35 + baselineUsage * 0.65
       : recentUsage || baselineUsage;
-  const projectedQuantity = Math.max(0, safeItem.current_quantity - recentUsage);
+  const appliedTodayConsumption = finiteNonNegative(options?.appliedTodayConsumption ?? 0);
+  const { projectedQuantity } = projectedQuantityAfterSales(
+    safeItem.current_quantity,
+    recentUsage,
+    appliedTodayConsumption
+  );
   const daysCoverage = averageDailyUsage > 0 ? projectedQuantity / averageDailyUsage : null;
   const projectedStatus = getInventoryStatusForQuantity(safeItem, projectedQuantity);
   const demandTrend = getDemandTrend(recentUsage, baselineUsage);
@@ -691,11 +708,18 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
   const now = new Date().toISOString();
   const recommendationHistory = [...state.purchaseRecommendations];
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
+  const operatingDate = defaultOperatingDate(restaurantId);
+  const appliedTodayConsumptionByItemId = buildAppliedTodayConsumptionByItemId(
+    state.inventoryMovements ?? [],
+    operatingDate
+  );
   const lowOutlooks = buildInventoryOutlooks(
     restaurantId,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    operatingDate,
+    appliedTodayConsumptionByItemId
   ).filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low");
   const lowItemIds = new Set(lowOutlooks.map(({ item }) => item.id));
   const kept = state.purchaseRecommendations.filter((recommendation) => {
@@ -904,7 +928,8 @@ export function buildTodaySummary(
   recommendations: PurchaseRecommendation[],
   insights: Insight[],
   mappings: MenuItemIngredient[] = [],
-  operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone)
+  operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone),
+  appliedTodayConsumptionByItemId: ReadonlyMap<string, number> | Record<string, number> = {}
 ): TodaySummary {
   const todaySales = sales.filter(
     (sale) => sale.restaurant_id === restaurant.id && isToday(sale, operatingDate)
@@ -913,7 +938,14 @@ export function buildTodaySummary(
   const netSalesToday = todaySales.reduce((sum, sale) => sum + sale.net_sales, 0);
   const itemsSold = todaySales.reduce((sum, sale) => sum + sale.quantity_sold, 0);
   const topItems = [...todaySales].sort((a, b) => b.quantity_sold - a.quantity_sold).slice(0, 3);
-  const outlooks = buildInventoryOutlooks(restaurant.id, inventoryItems, sales, mappings, operatingDate);
+  const outlooks = buildInventoryOutlooks(
+    restaurant.id,
+    inventoryItems,
+    sales,
+    mappings,
+    operatingDate,
+    appliedTodayConsumptionByItemId
+  );
   const recipeBaseline = buildRecipeBaselineSummary(restaurant.id, sales, mappings, inventoryItems, operatingDate);
   const workflow = {
     posMenuItemsCovered: recipeBaseline.posItemsCovered,
