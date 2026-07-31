@@ -15,7 +15,8 @@ const routes = [
   "/settings/language",
   "/settings/gmail",
   "/settings/suppliers",
-  "/settings/team"
+  "/settings/team",
+  "/invite/0000000000000000000000000000000000000000000000000000000000000000"
 ];
 const port = Number(process.env.MISE_ROUTE_SMOKE_PORT ?? 8083);
 const existingBaseUrl = process.env.MISE_ROUTE_SMOKE_URL;

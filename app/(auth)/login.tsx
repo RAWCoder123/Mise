@@ -13,8 +13,10 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import { getInitialLoginCredentials } from "../../lib/appConfig";
+import { readPendingInviteToken } from "../../lib/pendingInvite";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { DEMO_DATASET } from "../../services/demoData";
+import { buildInviteClaimPath } from "../../services/domain/teamInvites";
 import { captureMiseError } from "../../services/telemetry";
 
 export default function LoginScreen() {
@@ -54,7 +56,12 @@ export default function LoginScreen() {
     setErrorKey(null);
     try {
       await signIn(normalizedEmail, password);
-      router.replace("/");
+      const pendingInviteToken = await readPendingInviteToken();
+      if (pendingInviteToken) {
+        router.replace(buildInviteClaimPath(pendingInviteToken));
+      } else {
+        router.replace("/");
+      }
     } catch (signInError) {
       captureMiseError(signInError, { flow: "login", operation: "sign_in" });
       setErrorKey("login.error.signIn");

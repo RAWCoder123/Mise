@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
-import { ArrowLeft, ShieldCheck, UserPlus, Users } from "lucide-react-native";
+import * as Clipboard from "expo-clipboard";
+import { ArrowLeft, Copy, Link2, ShieldCheck, UserPlus, Users } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -18,8 +19,11 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
   addRestaurantMemberByEmail,
+  createRestaurantMemberInvite,
+  fetchRestaurantMemberInvites,
   fetchRestaurantTeamMembers,
   removeRestaurantMember,
+  revokeRestaurantMemberInvite,
   updateRestaurantMember
 } from "../../services/miseService";
 import {
@@ -30,9 +34,10 @@ import {
   rolesAssignableBy,
   type AssignableRestaurantRole
 } from "../../services/domain/teamMembership";
+import { buildInviteClaimPath, isInvitePending } from "../../services/domain/teamInvites";
 import { canManageTeamForRestaurant, canViewTeamForRestaurant } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
-import type { RestaurantRole, RestaurantTeamMember } from "../../types/mise";
+import type { CreatedRestaurantMemberInvite, RestaurantMemberInvite, RestaurantRole, RestaurantTeamMember } from "../../types/mise";
 
 type TeamNotice = { tone: StatusNoticeTone; key: MessageKey };
 
@@ -41,11 +46,13 @@ export default function TeamSettingsScreen() {
   const { formatNumber, t } = useLocale();
   const { memberships, restaurant, role, user } = useMiseSession();
   const [members, setMembers] = useState<RestaurantTeamMember[]>([]);
+  const [invites, setInvites] = useState<RestaurantMemberInvite[]>([]);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<TeamNotice | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<AssignableRestaurantRole>("staff");
+  const [createdInvite, setCreatedInvite] = useState<CreatedRestaurantMemberInvite | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
@@ -65,15 +72,20 @@ export default function TeamSettingsScreen() {
     if (!restaurant || !canView) {
       setLoading(false);
       setMembers([]);
+      setInvites([]);
       return;
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      const nextMembers = await fetchRestaurantTeamMembers(restaurantId);
+      const [nextMembers, nextInvites] = await Promise.all([
+        fetchRestaurantTeamMembers(restaurantId),
+        canManage ? fetchRestaurantMemberInvites(restaurantId) : Promise.resolve([])
+      ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setMembers(nextMembers);
+      setInvites(nextInvites);
       setLoadedRestaurantId(restaurantId);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -84,14 +96,16 @@ export default function TeamSettingsScreen() {
         setLoading(false);
       }
     }
-  }, [canView, restaurant?.id]);
+  }, [canManage, canView, restaurant?.id]);
 
   useEffect(() => {
     requestIdRef.current += 1;
     setMembers([]);
+    setInvites([]);
     setLoadedRestaurantId(null);
     setNotice(null);
     setBusyKey(null);
+    setCreatedInvite(null);
     setLoading(Boolean(restaurant) && canView);
   }, [canView, restaurant?.id]);
 
@@ -106,23 +120,79 @@ export default function TeamSettingsScreen() {
     else router.replace("/settings");
   }
 
-  async function inviteMember() {
+  async function addExistingMember() {
     if (!restaurant || !canManage || busyKey) return;
     const restaurantId = restaurant.id;
     if (!isValidMemberEmail(inviteEmail)) {
       setNotice({ tone: "caution", key: "settings.team.notice.invalidEmail" });
       return;
     }
-    setBusyKey("invite");
+    setBusyKey("add");
     setNotice(null);
     try {
       await addRestaurantMemberByEmail(restaurantId, inviteEmail, inviteRole);
       setInviteEmail("");
+      setCreatedInvite(null);
       await load();
       setNotice({ tone: "success", key: "settings.team.notice.added" });
     } catch (inviteError) {
       captureMiseError(inviteError, { flow: "settings_team", operation: "add", restaurant_id: restaurantId });
       setNotice({ tone: "danger", key: "settings.team.notice.addError" });
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function createInviteLink() {
+    if (!restaurant || !canManage || busyKey) return;
+    const restaurantId = restaurant.id;
+    if (!isValidMemberEmail(inviteEmail)) {
+      setNotice({ tone: "caution", key: "settings.team.notice.invalidEmail" });
+      return;
+    }
+    setBusyKey("create-invite");
+    setNotice(null);
+    try {
+      const invite = await createRestaurantMemberInvite(restaurantId, inviteEmail, inviteRole);
+      setCreatedInvite(invite);
+      setInviteEmail("");
+      await load();
+      setNotice({ tone: "success", key: "settings.team.notice.inviteCreated" });
+    } catch (inviteError) {
+      captureMiseError(inviteError, {
+        flow: "settings_team",
+        operation: "create_invite",
+        restaurant_id: restaurantId
+      });
+      setNotice({ tone: "danger", key: "settings.team.notice.inviteCreateError" });
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function copyCreatedInvite() {
+    if (!createdInvite) return;
+    await Clipboard.setStringAsync(buildInviteClaimPath(createdInvite.claim_token));
+    setNotice({ tone: "success", key: "settings.team.notice.inviteCopied" });
+  }
+
+  async function revokeInvite(invite: RestaurantMemberInvite) {
+    if (!restaurant || !canManage || busyKey) return;
+    const restaurantId = restaurant.id;
+    setBusyKey(`revoke:${invite.id}`);
+    setNotice(null);
+    try {
+      await revokeRestaurantMemberInvite(restaurantId, invite.id);
+      if (createdInvite?.id === invite.id) setCreatedInvite(null);
+      await load();
+      setNotice({ tone: "success", key: "settings.team.notice.inviteRevoked" });
+    } catch (revokeError) {
+      captureMiseError(revokeError, {
+        flow: "settings_team",
+        operation: "revoke_invite",
+        restaurant_id: restaurantId
+      });
+      setNotice({ tone: "danger", key: "settings.team.notice.inviteRevokeError" });
     } finally {
       setBusyKey(null);
     }
@@ -191,6 +261,10 @@ export default function TeamSettingsScreen() {
   }
 
   const visibleMembers = loadedRestaurantId === restaurant?.id ? members : [];
+  const pendingInvites =
+    loadedRestaurantId === restaurant?.id
+      ? invites.filter((invite) => isInvitePending(invite.status, invite.expires_at))
+      : [];
 
   return (
     <Screen
@@ -323,54 +397,121 @@ export default function TeamSettingsScreen() {
             </SectionSurface>
 
             {canManage ? (
-              <SectionSurface>
-                <View style={styles.sectionHeading}>
-                  <IconBadge tone="brand">
-                    <UserPlus size={20} color={colors.accentDark} strokeWidth={2.25} />
-                  </IconBadge>
-                  <View style={styles.sectionCopy}>
-                    <Text style={styles.sectionTitle}>{t("settings.team.inviteTitle")}</Text>
-                    <Text style={styles.sectionBody}>{t("settings.team.inviteBody")}</Text>
+              <>
+                <SectionSurface>
+                  <View style={styles.sectionHeading}>
+                    <IconBadge tone="brand">
+                      <Link2 size={20} color={colors.accentDark} strokeWidth={2.25} />
+                    </IconBadge>
+                    <View style={styles.sectionCopy}>
+                      <Text style={styles.sectionTitle}>{t("settings.team.shareInviteTitle")}</Text>
+                      <Text style={styles.sectionBody}>{t("settings.team.shareInviteBody")}</Text>
+                    </View>
                   </View>
-                </View>
 
-                <Text style={styles.label}>{t("settings.team.emailLabel")}</Text>
-                <TextInput
-                  accessibilityLabel={t("settings.team.emailLabel")}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  placeholder={t("settings.team.emailPlaceholder")}
-                  placeholderTextColor={colors.muted}
-                  style={styles.input}
-                  value={inviteEmail}
-                  onChangeText={setInviteEmail}
-                />
-
-                {assignableRoles.length > 0 ? (
-                  <SegmentedControl
-                    accessibilityLabel={t("settings.team.inviteRoleAccessibility")}
-                    options={assignableRoles.map((entry) => ({
-                      value: entry,
-                      label: roleLabel(entry, t)
-                    }))}
-                    value={inviteRole}
-                    onValueChange={setInviteRole}
-                    variant="pills"
-                    scrollable
-                    style={styles.roleControl}
+                  <Text style={styles.label}>{t("settings.team.emailLabel")}</Text>
+                  <TextInput
+                    accessibilityLabel={t("settings.team.emailLabel")}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    placeholder={t("settings.team.emailPlaceholder")}
+                    placeholderTextColor={colors.muted}
+                    style={styles.input}
+                    value={inviteEmail}
+                    onChangeText={setInviteEmail}
                   />
-                ) : null}
 
-                <Button
-                  title={t(busyKey === "invite" ? "settings.team.adding" : "settings.team.add")}
-                  icon={<UserPlus size={18} color={colors.surface} strokeWidth={2.25} />}
-                  onPress={() => void inviteMember()}
-                  disabled={Boolean(busyKey) || assignableRoles.length === 0}
-                  fullWidth
-                />
-                <Text style={styles.helper}>{t("settings.team.inviteHelper")}</Text>
-              </SectionSurface>
+                  {assignableRoles.length > 0 ? (
+                    <SegmentedControl
+                      accessibilityLabel={t("settings.team.inviteRoleAccessibility")}
+                      options={assignableRoles.map((entry) => ({
+                        value: entry,
+                        label: roleLabel(entry, t)
+                      }))}
+                      value={inviteRole}
+                      onValueChange={setInviteRole}
+                      variant="pills"
+                      scrollable
+                      style={styles.roleControl}
+                    />
+                  ) : null}
+
+                  <View style={styles.actionRow}>
+                    <Button
+                      title={t(
+                        busyKey === "create-invite" ? "settings.team.creatingInvite" : "settings.team.createInvite"
+                      )}
+                      icon={<Link2 size={18} color={colors.surface} strokeWidth={2.25} />}
+                      onPress={() => void createInviteLink()}
+                      disabled={Boolean(busyKey) || assignableRoles.length === 0}
+                    />
+                    <Button
+                      title={t(busyKey === "add" ? "settings.team.adding" : "settings.team.add")}
+                      icon={<UserPlus size={18} color={colors.text} strokeWidth={2.25} />}
+                      variant="secondary"
+                      onPress={() => void addExistingMember()}
+                      disabled={Boolean(busyKey) || assignableRoles.length === 0}
+                    />
+                  </View>
+                  <Text style={styles.helper}>{t("settings.team.inviteHelper")}</Text>
+
+                  {createdInvite ? (
+                    <View style={styles.createdInvite}>
+                      <Text style={styles.memberName}>{t("settings.team.createdInviteTitle")}</Text>
+                      <Text style={styles.memberEmail}>{createdInvite.email}</Text>
+                      <Text style={styles.path}>{buildInviteClaimPath(createdInvite.claim_token)}</Text>
+                      <Button
+                        title={t("settings.team.copyInvite")}
+                        icon={<Copy size={18} color={colors.surface} strokeWidth={2.25} />}
+                        onPress={() => void copyCreatedInvite()}
+                        fullWidth
+                      />
+                      <Text style={styles.helper}>{t("settings.team.createdInviteHelper")}</Text>
+                    </View>
+                  ) : null}
+                </SectionSurface>
+
+                <SectionSurface>
+                  <View style={styles.sectionHeading}>
+                    <IconBadge tone="neutral">
+                      <UserPlus size={20} color={colors.text} strokeWidth={2.25} />
+                    </IconBadge>
+                    <View style={styles.sectionCopy}>
+                      <Text style={styles.sectionTitle}>{t("settings.team.pendingInvitesTitle")}</Text>
+                      <Text style={styles.sectionBody}>
+                        {t("settings.team.pendingInvitesBody", { count: formatNumber(pendingInvites.length) })}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {pendingInvites.length === 0 ? (
+                    <Text style={styles.helper}>{t("settings.team.pendingInvitesEmpty")}</Text>
+                  ) : (
+                    <View style={styles.memberList}>
+                      {pendingInvites.map((invite) => (
+                        <View key={invite.id} style={styles.memberCard}>
+                          <View style={styles.memberHeader}>
+                            <View style={styles.memberCopy}>
+                              <Text style={styles.memberName}>{invite.email}</Text>
+                              <Text style={styles.memberMeta}>
+                                {t("settings.team.status.invited")} · {roleLabel(invite.role, t)}
+                              </Text>
+                            </View>
+                            <Badge label={t("settings.team.status.invited")} tone="caution" />
+                          </View>
+                          <Button
+                            title={t("settings.team.action.revokeInvite")}
+                            variant="secondary"
+                            onPress={() => void revokeInvite(invite)}
+                            disabled={Boolean(busyKey)}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </SectionSurface>
+              </>
             ) : (
               <Pressable accessibilityRole="text" style={styles.readOnlyNote}>
                 <Text style={styles.helper}>{t("settings.team.readOnlyHelper")}</Text>
@@ -482,5 +623,18 @@ const styles = StyleSheet.create({
   },
   readOnlyNote: {
     paddingHorizontal: spacing.xs
+  },
+  createdInvite: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+    backgroundColor: colors.surface
+  },
+  path: {
+    ...typography.caption,
+    color: colors.text
   }
 });
