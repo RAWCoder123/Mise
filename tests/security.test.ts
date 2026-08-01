@@ -504,12 +504,48 @@ test("supplier order receiving is service-owned, ledgered, and distinct from Gma
     "supabase/migrations/20260801110000_receive_supplier_order_storage_location.sql",
     "utf8"
   );
+  const receivePutAwayDatabaseTests = readFileSync(
+    "supabase/tests/database/receive_supplier_order_putaway.test.sql",
+    "utf8"
+  );
   assert.match(receivePutAwayMigration, /private\.apply_inventory_receive_putaway/i);
   assert.match(receivePutAwayMigration, /storage_location_id/i);
   assert.match(receivePutAwayMigration, /storage_location_name/i);
   assert.match(edge, /storage_location_id/);
   assert.match(detail, /fetchStorageLocations/);
   assert.match(detail, /receiveStorageLocationId|putAway/);
+  assert.match(
+    receivePutAwayDatabaseTests,
+    /authenticated clients cannot execute the receive supplier-order service RPC/i
+  );
+  assert.match(
+    receivePutAwayDatabaseTests,
+    /service_role can execute the receive supplier-order service RPC/i
+  );
+  assert.match(
+    receivePutAwayDatabaseTests,
+    /staff cannot receive a supplier order through the service RPC/i
+  );
+  assert.match(
+    receivePutAwayDatabaseTests,
+    /Walk-in put-away lands the received quantity on the chosen station/i
+  );
+  assert.match(
+    receivePutAwayDatabaseTests,
+    /Walk-in put-away returns Main station balance to the pre-receive on-hand amount/i
+  );
+  assert.match(
+    receivePutAwayDatabaseTests,
+    /receive rejects a cross-tenant storage location id/i
+  );
+  assert.match(
+    receivePutAwayDatabaseTests,
+    /re-receiving a completed order is idempotent/i
+  );
+  assert.match(
+    receivePutAwayDatabaseTests,
+    /manager can receive onto Main when storage_location_id is omitted/i
+  );
   const edgePlaceMigration = readFileSync(
     "supabase/migrations/20260731220000_edge_storage_location_and_external_place.sql",
     "utf8"

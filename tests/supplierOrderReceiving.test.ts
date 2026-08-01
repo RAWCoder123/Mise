@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
@@ -229,4 +230,25 @@ test("plans receive put-away onto a non-Main storage location", () => {
   assert.equal(planned.lines[0]?.storageLocationName, "Walk-in");
   assert.equal(planned.lines[0]?.metadata.storage_location_id, "loc_walkin");
   assert.equal(planned.lines[0]?.metadata.storage_location_name, "Walk-in");
+});
+
+test("receive put-away has pgTAP coverage for service RPC station balances", () => {
+  const databaseTests = readFileSync(
+    "supabase/tests/database/receive_supplier_order_putaway.test.sql",
+    "utf8"
+  );
+  const migration = readFileSync(
+    "supabase/migrations/20260801110000_receive_supplier_order_storage_location.sql",
+    "utf8"
+  );
+
+  assert.match(migration, /private\.apply_inventory_receive_putaway/i);
+  assert.match(migration, /service_receive_supplier_order_and_signals/i);
+  assert.match(databaseTests, /service_receive_supplier_order_and_signals/i);
+  assert.match(databaseTests, /Walk-in put-away lands the received quantity on the chosen station/i);
+  assert.match(databaseTests, /Walk-in put-away returns Main station balance to the pre-receive on-hand amount/i);
+  assert.match(databaseTests, /service_role can execute the receive supplier-order service RPC/i);
+  assert.match(databaseTests, /staff cannot receive a supplier order through the service RPC/i);
+  assert.match(databaseTests, /receive rejects a cross-tenant storage location id/i);
+  assert.match(databaseTests, /re-receiving a completed order is idempotent/i);
 });
