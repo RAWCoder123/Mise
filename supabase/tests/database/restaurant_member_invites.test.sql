@@ -1,6 +1,6 @@
 begin;
 
-select plan(14);
+select plan(16);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -67,8 +67,26 @@ values
 
 select is(
   has_function_privilege('authenticated', 'public.create_restaurant_member_invite(uuid,text,text,integer)', 'execute'),
+  false,
+  'authenticated clients cannot execute legacy create_restaurant_member_invite'
+);
+select is(
+  has_function_privilege(
+    'authenticated',
+    'public.service_create_restaurant_member_invite(uuid,uuid,text,text,integer)',
+    'execute'
+  ),
+  false,
+  'authenticated clients cannot execute service_create_restaurant_member_invite'
+);
+select is(
+  has_function_privilege(
+    'service_role',
+    'public.service_create_restaurant_member_invite(uuid,uuid,text,text,integer)',
+    'execute'
+  ),
   true,
-  'authenticated users can execute create_restaurant_member_invite'
+  'service role can execute service_create_restaurant_member_invite'
 );
 select is(
   has_function_privilege('anon', 'public.claim_restaurant_member_invite(text)', 'execute'),
@@ -76,41 +94,51 @@ select is(
   'anon cannot execute claim_restaurant_member_invite'
 );
 select is(
+  has_function_privilege('authenticated', 'public.claim_restaurant_member_invite(text)', 'execute'),
+  true,
+  'authenticated invitees can still claim through the token RPC'
+);
+select is(
   has_table_privilege('authenticated', 'public.restaurant_member_invites', 'select'),
   false,
   'authenticated cannot select restaurant_member_invites via Data API'
 );
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '81818181-8181-4811-8811-818181818181', true);
-
+set local role service_role;
 create temporary table pg_temp.created_invite as
-select * from public.create_restaurant_member_invite(
+select * from public.service_create_restaurant_member_invite(
+  '81818181-8181-4811-8811-818181818181',
   'e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1',
   'invite-join@mise.test',
   'staff',
   24
 );
+reset role;
 
 select is(
   (select count(*)::integer from pg_temp.created_invite),
   1,
-  'owner can create a member invite'
+  'owner actor can create a member invite through the service RPC'
 );
 select ok(
   (select char_length(claim_token) = 64 from pg_temp.created_invite),
   'create invite returns a 64-char claim token once'
 );
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '81818181-8181-4811-8811-818181818181', true);
 select is(
   (select count(*)::integer from public.list_restaurant_member_invites('e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1') where status = 'pending'),
   1,
   'owner can list pending invites'
 );
+reset role;
 
-select set_config('request.jwt.claim.sub', '84848484-8484-4844-8844-848484848484', true);
+set local role service_role;
 select is(
   pg_temp.try_execute($sql$
-    select * from public.create_restaurant_member_invite(
+    select * from public.service_create_restaurant_member_invite(
+      '84848484-8484-4844-8844-848484848484',
       'e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1',
       'cross@mise.test',
       'staff',
@@ -118,9 +146,11 @@ select is(
     )
   $sql$),
   false,
-  'cross-tenant owner cannot create invites for another restaurant'
+  'cross-tenant owner actor cannot create invites for another restaurant'
 );
+reset role;
 
+set local role authenticated;
 select set_config('request.jwt.claim.sub', '83838383-8383-4833-8833-838383838383', true);
 select is(
   pg_temp.try_execute($sql$
@@ -129,7 +159,9 @@ select is(
   false,
   'wrong-email account cannot claim invite'
 );
+reset role;
 
+set local role authenticated;
 select set_config('request.jwt.claim.sub', '82828282-8282-4822-8822-828282828282', true);
 select lives_ok(
   $sql$
@@ -156,10 +188,12 @@ select is(
   false,
   'claimed invite cannot be reused'
 );
+reset role;
 
-select set_config('request.jwt.claim.sub', '81818181-8181-4811-8811-818181818181', true);
+set local role service_role;
 create temporary table pg_temp.revocable_invite as
-select * from public.create_restaurant_member_invite(
+select * from public.service_create_restaurant_member_invite(
+  '81818181-8181-4811-8811-818181818181',
   'e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1',
   'invite-other@mise.test',
   'manager',
@@ -167,14 +201,17 @@ select * from public.create_restaurant_member_invite(
 );
 select lives_ok(
   $sql$
-    select public.revoke_restaurant_member_invite(
+    select public.service_revoke_restaurant_member_invite(
+      '81818181-8181-4811-8811-818181818181',
       'e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1',
       (select id from pg_temp.revocable_invite)
     )
   $sql$,
-  'owner can revoke a pending invite'
+  'owner actor can revoke a pending invite through the service RPC'
 );
+reset role;
 
+set local role authenticated;
 select set_config('request.jwt.claim.sub', '83838383-8383-4833-8833-838383838383', true);
 select is(
   pg_temp.try_execute($sql$
@@ -183,6 +220,7 @@ select is(
   false,
   'revoked invite cannot be claimed'
 );
+reset role;
 
 select * from finish();
 rollback;

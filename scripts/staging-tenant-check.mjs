@@ -672,13 +672,22 @@ const directOwnerMembershipUpdate = await ownerA.client
   .select("status");
 assertDenied(directOwnerMembershipUpdate, "owner membership writes are guarded RPC-only");
 
-const selfMembershipUpdate = await ownerA.client.rpc("update_restaurant_member", {
-  p_restaurant_id: tenantA,
-  p_target_user_id: ownerA.user.id,
-  p_role: "staff",
-  p_status: null
+const selfMembershipUpdate = await invokeOperationalWorkflow(ownerA, {
+  action: "update_restaurant_member",
+  restaurantId: tenantA,
+  targetUserId: ownerA.user.id,
+  role: "staff",
+  status: null
 });
-assertDenied(selfMembershipUpdate, "owner cannot demote their own membership");
+assert.notEqual(selfMembershipUpdate.error, null, "owner cannot demote their own membership through Edge");
+
+const legacyMembershipRpc = await ownerA.client.rpc("update_restaurant_member", {
+  p_restaurant_id: tenantA,
+  p_target_user_id: staffA.user.id,
+  p_role: null,
+  p_status: "disabled"
+});
+assertDenied(legacyMembershipRpc, "authenticated clients cannot call the legacy membership update RPC");
 
 const managerMembershipUpdate = await managerA.client
   .from("restaurant_memberships")
@@ -688,14 +697,28 @@ const managerMembershipUpdate = await managerA.client
   .select("status");
 assertDenied(managerMembershipUpdate, "manager cannot manage memberships directly");
 
-const adminDisableStaff = await adminA.client.rpc("update_restaurant_member", {
-  p_restaurant_id: tenantA,
-  p_target_user_id: staffA.user.id,
-  p_role: null,
-  p_status: "disabled"
+const managerMembershipEdge = await invokeOperationalWorkflow(managerA, {
+  action: "update_restaurant_member",
+  restaurantId: tenantA,
+  targetUserId: staffA.user.id,
+  role: null,
+  status: "disabled"
 });
-if (adminDisableStaff.error) throw adminDisableStaff.error;
-assert.equal(adminDisableStaff.data.status, "disabled", "admin can disable staff through the guarded RPC");
+assert.notEqual(managerMembershipEdge.error, null, "manager cannot manage memberships through Edge");
+
+const adminDisableStaff = await invokeOperationalWorkflow(adminA, {
+  action: "update_restaurant_member",
+  restaurantId: tenantA,
+  targetUserId: staffA.user.id,
+  role: null,
+  status: "disabled"
+});
+if (adminDisableStaff.error) await throwInvocationFailure("admin disable staff membership", adminDisableStaff.error);
+assert.equal(
+  adminDisableStaff.data?.result?.status,
+  "disabled",
+  "admin can disable staff through the Edge-guarded membership workflow"
+);
 
 await assertTenantCount(staffA.client, "inventory_items", tenantA, 0, "disabled staff token immediately loses tenant Data API access");
 const disabledStaffEdge = await invokeOperationalWorkflow(staffA, {
@@ -704,14 +727,21 @@ const disabledStaffEdge = await invokeOperationalWorkflow(staffA, {
 });
 assert.notEqual(disabledStaffEdge.error, null, "disabled staff token immediately loses tenant Edge access");
 
-const ownerReactivateStaff = await ownerA.client.rpc("update_restaurant_member", {
-  p_restaurant_id: tenantA,
-  p_target_user_id: staffA.user.id,
-  p_role: null,
-  p_status: "active"
+const ownerReactivateStaff = await invokeOperationalWorkflow(ownerA, {
+  action: "update_restaurant_member",
+  restaurantId: tenantA,
+  targetUserId: staffA.user.id,
+  role: null,
+  status: "active"
 });
-if (ownerReactivateStaff.error) throw ownerReactivateStaff.error;
-assert.equal(ownerReactivateStaff.data.status, "active", "owner can reactivate non-owner staff through the guarded RPC");
+if (ownerReactivateStaff.error) {
+  await throwInvocationFailure("owner reactivate staff membership", ownerReactivateStaff.error);
+}
+assert.equal(
+  ownerReactivateStaff.data?.result?.status,
+  "active",
+  "owner can reactivate non-owner staff through the Edge-guarded membership workflow"
+);
 
 const concurrentResults = await Promise.all(
   [0, 1].map(() => invokeOperationalWorkflow(managerA, {

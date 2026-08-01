@@ -315,6 +315,10 @@ test("tenant reinforcement makes membership and profile authority RPC-only", () 
     "supabase/migrations/20260716204112_reinforce_tenant_isolation.sql",
     "utf8"
   );
+  const edgeTeamMigration = readFileSync(
+    "supabase/migrations/20260801012000_edge_team_membership_workflows.sql",
+    "utf8"
+  );
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const edgeShared = readFileSync("supabase/functions/_shared/mise.ts", "utf8");
 
@@ -329,9 +333,14 @@ test("tenant reinforcement makes membership and profile authority RPC-only", () 
   assert.match(migration, /create or replace function public\.update_my_profile/i);
   assert.match(migration, /edge_function_security_events_reservation_tenant_fkey/i);
   assert.match(migration, /service_record_edge_audit_log[\s\S]*actor_has_restaurant_role/i);
-  assert.match(repository, /rpc\("add_restaurant_member"/i);
-  assert.match(repository, /rpc\("update_restaurant_member"/i);
-  assert.match(repository, /rpc\("remove_restaurant_member"/i);
+  assert.match(edgeTeamMigration, /private\.service_add_restaurant_member/i);
+  assert.match(edgeTeamMigration, /revoke all on function public\.add_restaurant_member/i);
+  assert.match(repository, /action:\s*"add_restaurant_member"/i);
+  assert.match(repository, /action:\s*"update_restaurant_member"/i);
+  assert.match(repository, /action:\s*"remove_restaurant_member"/i);
+  assert.doesNotMatch(repository, /rpc\("add_restaurant_member"/i);
+  assert.doesNotMatch(repository, /rpc\("update_restaurant_member"/i);
+  assert.doesNotMatch(repository, /rpc\("remove_restaurant_member"/i);
   assert.match(edgeShared, /rpc\("service_record_edge_audit_log"/i);
   assert.doesNotMatch(edgeShared, /securitySupabase\.from\("audit_logs"\)\.insert/i);
 });

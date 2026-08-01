@@ -42,7 +42,13 @@ const actions = [
   "save_count_lines",
   "submit_count_session",
   "cancel_count_session",
-  "approve_count_session"
+  "approve_count_session",
+  "add_restaurant_member",
+  "add_restaurant_member_by_email",
+  "create_restaurant_member_invite",
+  "revoke_restaurant_member_invite",
+  "update_restaurant_member",
+  "remove_restaurant_member"
 ] as const;
 type OperationalAction = (typeof actions)[number];
 const countSessionDraftActions = new Set<OperationalAction>([
@@ -61,6 +67,18 @@ const staffOperationalActions = new Set<OperationalAction>([
   "submit_count_session",
   "record_waste",
   "transfer_inventory"
+]);
+/**
+ * Team roster mutations stay owner/admin only. Managers may view the roster
+ * through list RPCs but cannot invite, promote, disable, or remove members.
+ */
+const ownerAdminOperationalActions = new Set<OperationalAction>([
+  "add_restaurant_member",
+  "add_restaurant_member_by_email",
+  "create_restaurant_member_invite",
+  "revoke_restaurant_member_invite",
+  "update_restaurant_member",
+  "remove_restaurant_member"
 ]);
 
 Deno.serve(async (req) => {
@@ -96,6 +114,8 @@ Deno.serve(async (req) => {
         "manager",
         "staff"
       ]);
+    } else if (ownerAdminOperationalActions.has(action)) {
+      await requireRestaurantRole(supabase, user.id, restaurantId, ["owner", "admin"]);
     } else {
       await requireRestaurantRole(supabase, user.id, restaurantId, ["owner", "admin", "manager"]);
     }
@@ -231,6 +251,63 @@ Deno.serve(async (req) => {
         p_actor_user_id: user.id,
         p_restaurant_id: restaurantId,
         p_order_id: requireUuid(body.orderId, "orderId")
+      });
+    } else if (action === "add_restaurant_member") {
+      result = await serviceRpc(securitySupabase, "service_add_restaurant_member", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_target_user_id: requireUuid(body.targetUserId, "targetUserId"),
+        p_role: requireEnum(body.role, "role", ["admin", "manager", "staff"] as const)
+      });
+    } else if (action === "add_restaurant_member_by_email") {
+      result = await serviceRpc(securitySupabase, "service_add_restaurant_member_by_email", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_email: requireBoundedString(body.email, "email", 254),
+        p_role: requireEnum(body.role, "role", ["admin", "manager", "staff"] as const)
+      });
+    } else if (action === "create_restaurant_member_invite") {
+      const inviteRows = await serviceRpc(securitySupabase, "service_create_restaurant_member_invite", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_email: requireBoundedString(body.email, "email", 254),
+        p_role: requireEnum(body.role, "role", ["admin", "manager", "staff"] as const),
+        p_expires_in_hours: body.expiresInHours == null
+          ? null
+          : requireBoundedInteger(body.expiresInHours, "expiresInHours", 1, 720)
+      });
+      result = Array.isArray(inviteRows) ? inviteRows[0] ?? null : inviteRows;
+      if (!result || typeof result !== "object") {
+        throw new HttpError(500, "Invite could not be created.");
+      }
+    } else if (action === "revoke_restaurant_member_invite") {
+      result = await serviceRpc(securitySupabase, "service_revoke_restaurant_member_invite", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_invite_id: requireUuid(body.inviteId, "inviteId")
+      });
+    } else if (action === "update_restaurant_member") {
+      const roleValue = body.role == null
+        ? null
+        : requireEnum(body.role, "role", ["owner", "admin", "manager", "staff"] as const);
+      const statusValue = body.status == null
+        ? null
+        : requireEnum(body.status, "status", ["active", "disabled"] as const);
+      if (roleValue == null && statusValue == null) {
+        throw new HttpError(400, "A membership role or status change is required.");
+      }
+      result = await serviceRpc(securitySupabase, "service_update_restaurant_member", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_target_user_id: requireUuid(body.targetUserId, "targetUserId"),
+        p_role: roleValue,
+        p_status: statusValue
+      });
+    } else if (action === "remove_restaurant_member") {
+      result = await serviceRpc(securitySupabase, "service_remove_restaurant_member", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_target_user_id: requireUuid(body.targetUserId, "targetUserId")
       });
     } else if (countSessionDraftActions.has(action)) {
       result = await runCountSessionDraftAction(securitySupabase, user.id, restaurantId, action, body);
@@ -818,6 +895,13 @@ function auditAction(action: OperationalAction) {
   if (action === "delete_recipe") return "recipe_baseline_deleted";
   if (action === "save_setup") return "setup_signals_completed";
   if (action === "ingest_pos_csv") return "manual_pos_csv_signals_completed";
+  if (action === "add_restaurant_member" || action === "add_restaurant_member_by_email") {
+    return "restaurant_member_added";
+  }
+  if (action === "update_restaurant_member") return "restaurant_member_updated";
+  if (action === "remove_restaurant_member") return "restaurant_member_removed";
+  if (action === "create_restaurant_member_invite") return "restaurant_member_invite_created";
+  if (action === "revoke_restaurant_member_invite") return "restaurant_member_invite_revoked";
   return "operational_signals_refreshed";
 }
 
@@ -858,6 +942,17 @@ function auditEntityTable(action: OperationalAction) {
   }
   if (action === "upsert_recipe" || action === "delete_recipe") return "menu_item_ingredients";
   if (action === "ingest_pos_csv") return "sales_imports";
+  if (
+    action === "add_restaurant_member" ||
+    action === "add_restaurant_member_by_email" ||
+    action === "update_restaurant_member" ||
+    action === "remove_restaurant_member"
+  ) {
+    return "restaurant_memberships";
+  }
+  if (action === "create_restaurant_member_invite" || action === "revoke_restaurant_member_invite") {
+    return "restaurant_member_invites";
+  }
   return "restaurants";
 }
 
@@ -908,6 +1003,22 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>,
   }
   if ((action === "upsert_recipe" || action === "delete_recipe") && body.mappingId != null) {
     return requireUuid(body.mappingId, "mappingId");
+  }
+  if (
+    action === "add_restaurant_member" ||
+    action === "add_restaurant_member_by_email" ||
+    action === "update_restaurant_member" ||
+    action === "remove_restaurant_member" ||
+    action === "create_restaurant_member_invite" ||
+    action === "revoke_restaurant_member_invite"
+  ) {
+    if (result && typeof result === "object" && typeof (result as { id?: unknown }).id === "string") {
+      return requireUuid((result as { id: string }).id, "result.id");
+    }
+    if (action === "revoke_restaurant_member_invite") {
+      return requireUuid(body.inviteId, "inviteId");
+    }
+    return null;
   }
   return null;
 }
@@ -1021,6 +1132,37 @@ function auditMetadata(
       metadata.supplier_name = order.supplier_name;
     }
     metadata.placement_channel = "manual_external";
+    return metadata;
+  }
+  if (
+    action === "add_restaurant_member" ||
+    action === "add_restaurant_member_by_email" ||
+    action === "update_restaurant_member" ||
+    action === "remove_restaurant_member"
+  ) {
+    if (typeof body.targetUserId === "string") metadata.target_user_id = body.targetUserId;
+    if (typeof body.email === "string") metadata.email = body.email;
+    if (result && typeof result === "object") {
+      const membership = result as Record<string, unknown>;
+      if (typeof membership.user_id === "string") metadata.target_user_id = membership.user_id;
+      if (typeof membership.role === "string") metadata.role = membership.role;
+      if (typeof membership.status === "string") metadata.status = membership.status;
+    } else {
+      if (typeof body.role === "string") metadata.role = body.role;
+      if (typeof body.status === "string") metadata.status = body.status;
+    }
+    return metadata;
+  }
+  if (action === "create_restaurant_member_invite" || action === "revoke_restaurant_member_invite") {
+    if (typeof body.email === "string") metadata.email = body.email;
+    if (typeof body.role === "string") metadata.role = body.role;
+    if (result && typeof result === "object") {
+      const invite = result as Record<string, unknown>;
+      if (typeof invite.email === "string") metadata.email = invite.email;
+      if (typeof invite.role === "string") metadata.role = invite.role;
+      if (typeof invite.status === "string") metadata.invite_status = invite.status;
+      // Never persist one-time claim tokens in Edge audit metadata.
+    }
     return metadata;
   }
   if (

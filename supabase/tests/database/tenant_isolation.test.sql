@@ -1,6 +1,6 @@
 begin;
 
-select plan(379);
+select plan(386);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -738,10 +738,16 @@ select is(
 );
 select is(has_table_privilege('authenticated', 'public.inventory_items', 'TRUNCATE'), false, 'authenticated cannot truncate tenant tables');
 select is(has_table_privilege('service_role', 'public.inventory_items', 'TRUNCATE'), false, 'service role does not inherit truncate authority');
-select is(has_function_privilege('authenticated', 'public.add_restaurant_member(uuid,uuid,text)', 'execute'), true, 'authenticated owners and admins can use the guarded member-add RPC');
+select is(has_function_privilege('authenticated', 'public.add_restaurant_member(uuid,uuid,text)', 'execute'), false, 'authenticated clients cannot execute the legacy member-add RPC');
 select is(has_function_privilege('anon', 'public.add_restaurant_member(uuid,uuid,text)', 'execute'), false, 'anon cannot invoke member administration');
-select is(has_function_privilege('authenticated', 'public.update_restaurant_member(uuid,uuid,text,text)', 'execute'), true, 'authenticated owners and admins can use the guarded member-update RPC');
-select is(has_function_privilege('authenticated', 'public.remove_restaurant_member(uuid,uuid)', 'execute'), true, 'authenticated owners and admins can use the guarded member-remove RPC');
+select is(has_function_privilege('authenticated', 'public.update_restaurant_member(uuid,uuid,text,text)', 'execute'), false, 'authenticated clients cannot execute the legacy member-update RPC');
+select is(has_function_privilege('authenticated', 'public.remove_restaurant_member(uuid,uuid)', 'execute'), false, 'authenticated clients cannot execute the legacy member-remove RPC');
+select is(has_function_privilege('authenticated', 'public.service_add_restaurant_member(uuid,uuid,uuid,text)', 'execute'), false, 'authenticated clients cannot execute the member-add service RPC');
+select is(has_function_privilege('service_role', 'public.service_add_restaurant_member(uuid,uuid,uuid,text)', 'execute'), true, 'service role can execute the member-add service RPC');
+select is(has_function_privilege('authenticated', 'public.service_update_restaurant_member(uuid,uuid,uuid,text,text)', 'execute'), false, 'authenticated clients cannot execute the member-update service RPC');
+select is(has_function_privilege('service_role', 'public.service_update_restaurant_member(uuid,uuid,uuid,text,text)', 'execute'), true, 'service role can execute the member-update service RPC');
+select is(has_function_privilege('authenticated', 'public.service_remove_restaurant_member(uuid,uuid,uuid)', 'execute'), false, 'authenticated clients cannot execute the member-remove service RPC');
+select is(has_function_privilege('service_role', 'public.service_remove_restaurant_member(uuid,uuid,uuid)', 'execute'), true, 'service role can execute the member-remove service RPC');
 select is(has_function_privilege('authenticated', 'public.update_my_profile(text)', 'execute'), true, 'authenticated users can use the bounded profile RPC');
 select is(has_function_privilege('authenticated', 'public.service_record_edge_audit_log(uuid,uuid,text,text,uuid,jsonb)', 'execute'), false, 'authenticated clients cannot invoke service audit persistence');
 select is(has_function_privilege('service_role', 'public.service_record_edge_audit_log(uuid,uuid,text,text,uuid,jsonb)', 'execute'), true, 'service role can invoke actor-bound audit persistence');
@@ -1841,15 +1847,15 @@ select ok(
 reset role;
 select is((select name from public.restaurants where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), 'Tenant A Updated', 'manager cannot update restaurant profile');
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.add_restaurant_member(
+  $sql$select public.service_add_restaurant_member(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '55555555-5555-4555-8555-555555555555',
     'staff'
   )$sql$,
-  'owner can add a restaurant member through the guarded RPC'
+  'owner can add a restaurant member through the guarded service RPC'
 );
 reset role;
 select is(
@@ -1872,59 +1878,68 @@ select is(
   'owner cannot bypass membership authority with direct DML'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_member(
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    '11111111-1111-4111-8111-111111111111',
-    'staff',
-    null
-  )$sql$),
-  false,
-  'owner cannot change their own membership through the RPC'
-);
-reset role;
-
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
-select is(
   pg_temp.try_execute($sql$select public.add_restaurant_member(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'abababab-abab-4aba-8aba-abababababab',
     'staff'
   )$sql$),
   false,
-  'manager cannot administer memberships'
+  'authenticated clients cannot call the legacy member-add RPC'
 );
 reset role;
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '88888888-8888-4888-8888-888888888888', true);
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_member(
+    '11111111-1111-4111-8111-111111111111',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '11111111-1111-4111-8111-111111111111',
+    'staff',
+    null
+  )$sql$),
+  false,
+  'owner cannot change their own membership through the service RPC'
+);
+select is(
+  pg_temp.try_execute($sql$select public.service_add_restaurant_member(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'abababab-abab-4aba-8aba-abababababab',
+    'staff'
+  )$sql$),
+  false,
+  'manager cannot administer memberships through the service RPC'
+);
 select lives_ok(
-  $sql$select public.update_restaurant_member(
+  $sql$select public.service_update_restaurant_member(
+    '88888888-8888-4888-8888-888888888888',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '55555555-5555-4555-8555-555555555555',
     'manager',
     null
   )$sql$,
-  'admin can promote staff to manager'
+  'admin can promote staff to manager through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_member(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_member(
+    '88888888-8888-4888-8888-888888888888',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '55555555-5555-4555-8555-555555555555',
     'owner',
     null
   )$sql$),
   false,
-  'admin cannot promote a member to owner'
+  'admin cannot promote a member to owner through the service RPC'
 );
 select lives_ok(
-  $sql$select public.update_restaurant_member(
+  $sql$select public.service_update_restaurant_member(
+    '88888888-8888-4888-8888-888888888888',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '55555555-5555-4555-8555-555555555555',
     null,
     'disabled'
   )$sql$,
-  'admin can disable a manager'
+  'admin can disable a manager through the service RPC'
 );
 reset role;
 
@@ -1933,88 +1948,83 @@ select set_config('request.jwt.claim.sub', '55555555-5555-4555-8555-555555555555
 select is((select count(*) from public.inventory_items), 0::bigint, 'disabled membership loses Data API access with the same JWT subject');
 reset role;
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.update_restaurant_member(
+  $sql$select public.service_update_restaurant_member(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '55555555-5555-4555-8555-555555555555',
     null,
     'active'
   )$sql$,
-  'owner can reactivate a non-owner member'
+  'owner can reactivate a non-owner member through the service RPC'
 );
-reset role;
-
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '88888888-8888-4888-8888-888888888888', true);
 select lives_ok(
-  $sql$select public.remove_restaurant_member(
+  $sql$select public.service_remove_restaurant_member(
+    '88888888-8888-4888-8888-888888888888',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '55555555-5555-4555-8555-555555555555'
   )$sql$,
-  'admin can remove a manager'
+  'admin can remove a manager through the service RPC'
 );
-reset role;
-
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 select lives_ok(
-  $sql$select public.add_restaurant_member(
+  $sql$select public.service_add_restaurant_member(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '55555555-5555-4555-8555-555555555555',
     'staff'
   )$sql$,
-  'owner can restore a removed staff membership'
+  'owner can restore a removed staff membership through the service RPC'
 );
 select lives_ok(
-  $sql$select public.update_restaurant_member(
+  $sql$select public.service_update_restaurant_member(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '55555555-5555-4555-8555-555555555555',
     'owner',
     null
   )$sql$,
-  'owner can promote another active member to owner'
+  'owner can promote another active member to owner through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_member(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_member(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '55555555-5555-4555-8555-555555555555',
     'staff',
     null
   )$sql$),
   false,
-  'no client can demote an owner'
+  'no client can demote an owner through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.remove_restaurant_member(
+  pg_temp.try_execute($sql$select public.service_remove_restaurant_member(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '55555555-5555-4555-8555-555555555555'
   )$sql$),
   false,
-  'no client can remove an owner'
+  'no client can remove an owner through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_member(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_member(
+    '11111111-1111-4111-8111-111111111111',
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     '44444444-4444-4444-8444-444444444444',
     null,
     'disabled'
   )$sql$),
   false,
-  'owner cannot administer an unrelated tenant membership'
+  'owner cannot administer an unrelated tenant membership through the service RPC'
 );
-reset role;
-
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', true);
 select is(
-  pg_temp.try_execute($sql$select public.remove_restaurant_member(
+  pg_temp.try_execute($sql$select public.service_remove_restaurant_member(
+    '33333333-3333-4333-8333-333333333333',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '22222222-2222-4222-8222-222222222222'
   )$sql$),
   false,
-  'staff cannot administer memberships'
+  'staff cannot administer memberships through the service RPC'
 );
 reset role;
 
@@ -2035,16 +2045,16 @@ select is((select count(*) from public.inventory_items), 3::bigint, 'dual-tenant
 select is((select count(*) from public.inventory_items where restaurant_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'), 0::bigint, 'dual-tenant user cannot read unrelated tenant C');
 reset role;
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '88888888-8888-4888-8888-888888888888', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.update_restaurant_member(
+  $sql$select public.service_update_restaurant_member(
+    '88888888-8888-4888-8888-888888888888',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '99999999-9999-4999-8999-999999999999',
     null,
     'disabled'
   )$sql$,
-  'admin can revoke the dual-tenant manager membership'
+  'admin can revoke the dual-tenant manager membership through the service RPC'
 );
 reset role;
 

@@ -155,6 +155,10 @@ test("demo schema includes member invite storage", () => {
 
 test("member invite migration and client wiring are present", () => {
   const migration = readFileSync("supabase/migrations/20260731152000_restaurant_member_invites.sql", "utf8");
+  const edgeMigration = readFileSync(
+    "supabase/migrations/20260801012000_edge_team_membership_workflows.sql",
+    "utf8"
+  );
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const demoInvites = readFileSync("services/demo/memberInvites.ts", "utf8");
   const screen = readFileSync("app/settings/team.tsx", "utf8");
@@ -167,8 +171,11 @@ test("member invite migration and client wiring are present", () => {
   assert.match(migration, /create or replace function public\.claim_restaurant_member_invite/i);
   assert.match(migration, /revoke all on public\.restaurant_member_invites from anon, authenticated/i);
   assert.match(migration, /restaurant_member_invite_created/i);
+  assert.match(edgeMigration, /private\.service_create_restaurant_member_invite/i);
+  assert.match(edgeMigration, /revoke all on function public\.create_restaurant_member_invite/i);
   assert.match(securityBackend, /restaurant_member_invites/);
-  assert.match(repository, /rpc\("create_restaurant_member_invite"/i);
+  assert.match(repository, /action:\s*"create_restaurant_member_invite"/i);
+  assert.doesNotMatch(repository, /rpc\("create_restaurant_member_invite"/i);
   assert.match(repository, /rpc\("claim_restaurant_member_invite"/i);
   assert.match(demoInvites, /export async function createDemoMemberInvite/i);
   assert.match(screen, /createRestaurantMemberInvite/i);

@@ -1,6 +1,6 @@
 begin;
 
-select plan(18);
+select plan(20);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -88,8 +88,26 @@ select is(
 );
 select is(
   has_function_privilege('authenticated', 'public.add_restaurant_member_by_email(uuid,text,text)', 'execute'),
+  false,
+  'authenticated clients cannot execute legacy add_restaurant_member_by_email'
+);
+select is(
+  has_function_privilege(
+    'authenticated',
+    'public.service_add_restaurant_member_by_email(uuid,uuid,text,text)',
+    'execute'
+  ),
+  false,
+  'authenticated clients cannot execute service_add_restaurant_member_by_email'
+);
+select is(
+  has_function_privilege(
+    'service_role',
+    'public.service_add_restaurant_member_by_email(uuid,uuid,text,text)',
+    'execute'
+  ),
   true,
-  'authenticated users can execute add_restaurant_member_by_email'
+  'service role can execute service_add_restaurant_member_by_email'
 );
 
 set local role authenticated;
@@ -128,15 +146,15 @@ select is(
 );
 reset role;
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '71717171-7171-4711-8711-717171717171', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.add_restaurant_member_by_email(
+  $sql$select public.service_add_restaurant_member_by_email(
+    '71717171-7171-4711-8711-717171717171',
     'c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1',
     'team-join@mise.test',
     'staff'
   )$sql$,
-  'owner can add an existing auth user by email'
+  'owner actor can add an existing auth user by email through the service RPC'
 );
 reset role;
 
@@ -153,19 +171,8 @@ select is(
   'email-added membership persisted'
 );
 
-select is(
-  (
-    select count(*)
-    from public.audit_logs
-    where restaurant_id = 'c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1'
-      and action = 'restaurant_member_added'
-  ),
-  1::bigint,
-  'member add writes an audit log'
-);
-
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '72727272-7272-4722-8722-727272727272', true);
+select set_config('request.jwt.claim.sub', '71717171-7171-4711-8711-717171717171', true);
 select is(
   pg_temp.try_execute($sql$select public.add_restaurant_member_by_email(
     'c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1',
@@ -173,20 +180,33 @@ select is(
     'staff'
   )$sql$),
   false,
-  'manager cannot add members by email'
+  'authenticated clients cannot call the legacy add-by-email RPC'
 );
 reset role;
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '71717171-7171-4711-8711-717171717171', true);
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_add_restaurant_member_by_email(
+    '72727272-7272-4722-8722-727272727272',
+    'c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1',
+    'team-owner-b@mise.test',
+    'staff'
+  )$sql$),
+  false,
+  'manager actor cannot add members by email through the service RPC'
+);
+reset role;
+
+set local role service_role;
 select lives_ok(
-  $sql$select public.update_restaurant_member(
+  $sql$select public.service_update_restaurant_member(
+    '71717171-7171-4711-8711-717171717171',
     'c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1',
     '74747474-7474-4744-8744-747474747474',
     'manager',
     null
   )$sql$,
-  'owner can update an added member role'
+  'owner actor can update an added member role through the service RPC'
 );
 reset role;
 
@@ -201,25 +221,28 @@ select is(
   'role update persisted'
 );
 
+set local role service_role;
 select is(
-  (
-    select count(*)
-    from public.audit_logs
-    where restaurant_id = 'c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1'
-      and action = 'restaurant_member_updated'
-  ),
-  1::bigint,
-  'member update writes an audit log'
+  pg_temp.try_execute($sql$select public.service_update_restaurant_member(
+    '75757575-7575-4755-8755-757575757575',
+    'c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1',
+    '74747474-7474-4744-8744-747474747474',
+    'staff',
+    null
+  )$sql$),
+  false,
+  'cross-tenant owner actor cannot update another restaurant membership'
 );
+reset role;
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '71717171-7171-4711-8711-717171717171', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.remove_restaurant_member(
+  $sql$select public.service_remove_restaurant_member(
+    '71717171-7171-4711-8711-717171717171',
     'c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1',
     '74747474-7474-4744-8744-747474747474'
   )$sql$,
-  'owner can remove an added member'
+  'owner actor can remove an added member through the service RPC'
 );
 reset role;
 
@@ -235,14 +258,14 @@ select is(
 );
 
 select is(
-  (
-    select count(*)
-    from public.audit_logs
-    where restaurant_id = 'c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1'
-      and action = 'restaurant_member_removed'
-  ),
-  1::bigint,
-  'member removal writes an audit log'
+  has_function_privilege('authenticated', 'public.update_restaurant_member(uuid,uuid,text,text)', 'execute'),
+  false,
+  'authenticated clients cannot execute legacy update_restaurant_member'
+);
+select is(
+  has_function_privilege('authenticated', 'public.remove_restaurant_member(uuid,uuid)', 'execute'),
+  false,
+  'authenticated clients cannot execute legacy remove_restaurant_member'
 );
 
 select * from finish();

@@ -698,6 +698,71 @@ test("storage locations and inventory transfer are RLS-readable and service-muta
   assert.match(edgePlaceMigration, /revoke all on function public\.create_storage_location/i);
 });
 
+test("team membership mutations are Edge-routed with service-owned RPCs and claim stays token RPC", () => {
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const migration = readFileSync(
+    "supabase/migrations/20260801012000_edge_team_membership_workflows.sql",
+    "utf8"
+  );
+  const teamDirectoryTests = readFileSync("supabase/tests/database/restaurant_team_directory.test.sql", "utf8");
+  const inviteTests = readFileSync("supabase/tests/database/restaurant_member_invites.test.sql", "utf8");
+  const tenantTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
+  const ownerAdminActions =
+    edge.match(/const ownerAdminOperationalActions = new Set<OperationalAction>\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+
+  assert.match(edge, /"add_restaurant_member_by_email"/);
+  assert.match(edge, /"create_restaurant_member_invite"/);
+  assert.match(edge, /"revoke_restaurant_member_invite"/);
+  assert.match(edge, /"update_restaurant_member"/);
+  assert.match(edge, /"remove_restaurant_member"/);
+  assert.match(edge, /service_add_restaurant_member_by_email/);
+  assert.match(edge, /service_create_restaurant_member_invite/);
+  assert.match(edge, /restaurant_member_added/);
+  assert.match(edge, /restaurant_member_invite_created/);
+  assert.match(edge, /Never persist one-time claim tokens/);
+  assert.match(ownerAdminActions, /"add_restaurant_member_by_email"/);
+  assert.match(ownerAdminActions, /"update_restaurant_member"/);
+  assert.doesNotMatch(ownerAdminActions, /"claim_restaurant_member_invite"/);
+
+  assert.match(
+    hostedRepository.match(/async addRestaurantMemberByEmail[\s\S]*?\n    \},/)?.[0] ?? "",
+    /action:\s*"add_restaurant_member_by_email"/
+  );
+  assert.match(
+    hostedRepository.match(/async createRestaurantMemberInvite[\s\S]*?\n    \},/)?.[0] ?? "",
+    /action:\s*"create_restaurant_member_invite"/
+  );
+  assert.match(
+    hostedRepository.match(/async updateRestaurantMember[\s\S]*?\n    \},/)?.[0] ?? "",
+    /action:\s*"update_restaurant_member"/
+  );
+  assert.match(
+    hostedRepository.match(/async removeRestaurantMember[\s\S]*?\n    \},/)?.[0] ?? "",
+    /action:\s*"remove_restaurant_member"/
+  );
+  assert.match(
+    hostedRepository.match(/async claimRestaurantMemberInvite[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']claim_restaurant_member_invite["']/
+  );
+  assert.doesNotMatch(
+    hostedRepository.match(/async addRestaurantMemberByEmail[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']add_restaurant_member_by_email["']/
+  );
+
+  assert.match(migration, /private\.service_add_restaurant_member_by_email/i);
+  assert.match(migration, /private\.service_create_restaurant_member_invite/i);
+  assert.match(migration, /revoke all on function public\.add_restaurant_member_by_email/i);
+  assert.match(migration, /revoke all on function public\.create_restaurant_member_invite/i);
+  assert.match(migration, /grant execute on function public\.service_add_restaurant_member_by_email[\s\S]*service_role/i);
+  assert.match(migration, /grant execute on function public\.service_create_restaurant_member_invite[\s\S]*service_role/i);
+  assert.match(teamDirectoryTests, /authenticated clients cannot execute legacy add_restaurant_member_by_email/i);
+  assert.match(inviteTests, /authenticated invitees can still claim through the token RPC/i);
+  assert.match(tenantTests, /authenticated clients cannot execute the legacy member-add RPC/i);
+  assert.match(tenantTests, /service role can execute the member-add service RPC/i);
+});
+
 test("inventory item create is service-owned with opening ledger movement and manager UI", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");

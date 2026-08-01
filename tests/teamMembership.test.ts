@@ -97,12 +97,19 @@ test("restaurant team directory migration and client wiring are present", () => 
   const settings = readFileSync("app/(tabs)/settings.tsx", "utf8");
   const routes = readFileSync("scripts/mobile-route-smoke.mjs", "utf8");
 
+  const edgeMigration = readFileSync(
+    "supabase/migrations/20260801012000_edge_team_membership_workflows.sql",
+    "utf8"
+  );
   assert.match(migration, /create or replace function public\.list_restaurant_members/i);
   assert.match(migration, /create or replace function public\.add_restaurant_member_by_email/i);
   assert.match(migration, /restaurant_member_added/i);
   assert.match(migration, /grant execute on function public\.list_restaurant_members\(uuid\) to authenticated/i);
+  assert.match(edgeMigration, /private\.service_add_restaurant_member_by_email/i);
+  assert.match(edgeMigration, /revoke all on function public\.add_restaurant_member_by_email/i);
   assert.match(repository, /rpc\("list_restaurant_members"/i);
-  assert.match(repository, /rpc\("add_restaurant_member_by_email"/i);
+  assert.match(repository, /action:\s*"add_restaurant_member_by_email"/i);
+  assert.doesNotMatch(repository, /rpc\("add_restaurant_member_by_email"/i);
   assert.match(repository, /listDemoTeamMembers/i);
   assert.match(screen, /fetchRestaurantTeamMembers/i);
   assert.match(screen, /canManageTeamForRestaurant/i);

@@ -2607,38 +2607,37 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async addRestaurantMember(restaurantId, targetUserId, role) {
-      const { data, error } = await client.rpc("add_restaurant_member", {
-        p_restaurant_id: restaurantId,
-        p_target_user_id: targetUserId,
-        p_role: role
+      const response = await invokeOperationalWorkflow({
+        action: "add_restaurant_member",
+        restaurantId,
+        targetUserId,
+        role
       });
-      if (error) throwRepositoryError(error, restaurantId);
-      return normalizeRestaurantMembership(data as RestaurantMembership);
+      return normalizeRestaurantMembership(response.result as RestaurantMembership);
     },
 
     async addRestaurantMemberByEmail(restaurantId, email, role) {
-      const { data, error } = await client.rpc("add_restaurant_member_by_email", {
-        p_restaurant_id: restaurantId,
-        p_email: email,
-        p_role: role
+      const response = await invokeOperationalWorkflow({
+        action: "add_restaurant_member_by_email",
+        restaurantId,
+        email,
+        role
       });
-      if (error) throwRepositoryError(error, restaurantId);
-      return normalizeRestaurantMembership(data as RestaurantMembership);
+      return normalizeRestaurantMembership(response.result as RestaurantMembership);
     },
 
     async createRestaurantMemberInvite(restaurantId, email, role, expiresInHours) {
-      const { data, error } = await client.rpc("create_restaurant_member_invite", {
-        p_restaurant_id: restaurantId,
-        p_email: email,
-        p_role: role,
-        p_expires_in_hours: expiresInHours ?? null
+      const response = await invokeOperationalWorkflow({
+        action: "create_restaurant_member_invite",
+        restaurantId,
+        email,
+        role,
+        expiresInHours: expiresInHours ?? null
       });
-      if (error) throwRepositoryError(error, restaurantId);
-      const row = Array.isArray(data) ? data[0] : data;
-      if (!row || typeof row !== "object") {
+      const invite = response.result as CreatedRestaurantMemberInvite;
+      if (!invite || typeof invite !== "object") {
         throw new Error("Invite could not be created.");
       }
-      const invite = row as CreatedRestaurantMemberInvite;
       return {
         id: String(invite.id),
         restaurant_id: String(invite.restaurant_id),
@@ -2672,12 +2671,12 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async revokeRestaurantMemberInvite(restaurantId, inviteId) {
-      const { data, error } = await client.rpc("revoke_restaurant_member_invite", {
-        p_restaurant_id: restaurantId,
-        p_invite_id: inviteId
+      const response = await invokeOperationalWorkflow({
+        action: "revoke_restaurant_member_invite",
+        restaurantId,
+        inviteId
       });
-      if (error) throwRepositoryError(error, restaurantId);
-      const invite = data as RestaurantMemberInvite;
+      const invite = response.result as RestaurantMemberInvite;
       return {
         id: String(invite.id),
         restaurant_id: String(invite.restaurant_id),
@@ -2692,6 +2691,8 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async claimRestaurantMemberInvite(claimToken) {
+      // Claim stays a direct authenticated RPC: the invitee is not yet a member
+      // and cannot reserve operational-workflows for the target restaurant.
       const { data, error } = await client.rpc("claim_restaurant_member_invite", {
         p_claim_token: claimToken
       });
@@ -2700,23 +2701,23 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async updateRestaurantMember(restaurantId, targetUserId, patch) {
-      const { data, error } = await client.rpc("update_restaurant_member", {
-        p_restaurant_id: restaurantId,
-        p_target_user_id: targetUserId,
-        p_role: patch.role ?? null,
-        p_status: patch.status ?? null
+      const response = await invokeOperationalWorkflow({
+        action: "update_restaurant_member",
+        restaurantId,
+        targetUserId,
+        role: patch.role ?? null,
+        status: patch.status ?? null
       });
-      if (error) throwRepositoryError(error, restaurantId);
-      return normalizeRestaurantMembership(data as RestaurantMembership);
+      return normalizeRestaurantMembership(response.result as RestaurantMembership);
     },
 
     async removeRestaurantMember(restaurantId, targetUserId) {
-      const { data, error } = await client.rpc("remove_restaurant_member", {
-        p_restaurant_id: restaurantId,
-        p_target_user_id: targetUserId
+      const response = await invokeOperationalWorkflow({
+        action: "remove_restaurant_member",
+        restaurantId,
+        targetUserId
       });
-      if (error) throwRepositoryError(error, restaurantId);
-      return normalizeRestaurantMembership(data as RestaurantMembership);
+      return normalizeRestaurantMembership(response.result as RestaurantMembership);
     },
 
     async updateMyProfile(name) {
