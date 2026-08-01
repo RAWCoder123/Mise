@@ -2877,19 +2877,8 @@ function createSupabaseRepository(): MiseRepository {
       return normalizeAiInsight(insight as AiInsight);
     },
 
-    async recordAuditLog(input) {
-      if (
-        input.action !== "setup_completed" ||
-        input.entity_table !== "restaurants" ||
-        input.entity_id !== input.restaurant_id
-      ) {
-        throw new Error("This client audit event must be recorded by a server-owned workflow.");
-      }
-      const { error } = await client.rpc("record_setup_completion_audit", {
-        p_restaurant_id: input.restaurant_id,
-        p_metadata: input.metadata ?? {}
-      });
-      if (error) throw error;
+    async recordAuditLog(_input) {
+      throw new Error("This client audit event must be recorded by a server-owned workflow.");
     },
 
     async fetchRestaurantData(restaurantId) {

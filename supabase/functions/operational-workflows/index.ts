@@ -138,7 +138,8 @@ Deno.serve(async (req) => {
         p_actor_user_id: user.id,
         p_restaurant_id: restaurantId
       });
-      const { data, error } = await supabase.rpc("save_restaurant_setup", {
+      const data = await serviceRpc(securitySupabase, "service_save_restaurant_setup", {
+        p_actor_user_id: user.id,
         p_restaurant_id: restaurantId,
         p_inventory_items: requireArray(setup.inventoryItems, "setup.inventoryItems", 250),
         p_suppliers: requireArray(setup.suppliers, "setup.suppliers", 100),
@@ -152,7 +153,6 @@ Deno.serve(async (req) => {
           1000
         )
       });
-      if (error) throw error;
       setupSummary = data;
       result = await refreshWithRetry(
         securitySupabase,
