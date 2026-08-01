@@ -44,6 +44,29 @@ test("translations interpolate values without changing restaurant-entered conten
   assert.equal(translate("zh-Hans", "relative.dueIn", { duration: "2小时" }), "2小时后到期");
 });
 
+test("Today command-center copy lives in the shared catalog with locale parity", async () => {
+  const { readFileSync } = await import("node:fs");
+  const todayScreen = readFileSync("app/(tabs)/today.tsx", "utf8");
+  assert.match(todayScreen, /function buildTodayCopy\(/);
+  assert.doesNotMatch(todayScreen, /const todayCopy:\s*Readonly<Record<AppLocale/);
+  assert.match(todayScreen, /t\("today\.commandSubtitle"\)/);
+  assert.match(todayScreen, /t\("today\.service\.stockItemsNeedAttention"/);
+  assert.match(todayScreen, /t\("inventory\.health\.title"\)/);
+
+  for (const locale of SUPPORTED_LOCALES) {
+    assert.equal(
+      translate(locale, "today.service.stockItemsNeedAttention", { count: "3" }).includes("3"),
+      true
+    );
+    assert.equal(
+      translate(locale, "today.salesMovement.itemsRecorded", { count: "12" }).includes("12"),
+      true
+    );
+    assert.ok(catalogs[locale]["today.tasks.title"].length > 0);
+    assert.ok(catalogs[locale]["today.salesMovement.empty"].length > 0);
+  }
+});
+
 test("number, currency, and date helpers honor locale and restaurant settings", () => {
   assert.equal(formatLocalizedNumber("en", 1234.5), "1,234.5");
   assert.equal(formatLocalizedNumber("es", 1234.5), "1234,5");

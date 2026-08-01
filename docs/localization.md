@@ -27,3 +27,11 @@ screen. The repository integration follows these boundaries:
 When Supabase is not configured, the hosted adapter is `null`; demo mode retains
 AsyncStorage persistence and unauthenticated sessions use the supported device
 locale.
+
+## Today command center
+
+The Today tab builds operator-facing copy through `buildTodayCopy(t)` from
+`i18n/catalog.ts` (`today.*` keys, plus shared `inventory.health.*` and
+`common.viewAll` / `common.showLess`). Locale parity is enforced by the typed
+catalog and `tests/localization.test.ts`; do not reintroduce a screen-local
+`todayCopy` map.

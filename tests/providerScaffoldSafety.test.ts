@@ -47,3 +47,13 @@ test("unimplemented model generation fails closed without persisting an insight"
   assert.doesNotMatch(generateAi, /service_create_rules_engine_ai_insight|\.from\("ai_insights"\)/);
   assert.doesNotMatch(generateAi, /generated_placeholder|ready_not_executed|ai_insight_generated/);
 });
+
+test("hosted createAiInsight surfaces fail-closed Edge statuses instead of inventing an insight", () => {
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const hostedCreate = repository.match(/async createAiInsight\(input\) \{[\s\S]*?async recordAuditLog\(/)?.[0] ?? "";
+  assert.ok(hostedCreate.includes('functions.invoke("generate-ai-insights"'));
+  assert.match(hostedCreate, /provider_not_enabled/);
+  assert.match(hostedCreate, /server_configuration_required/);
+  assert.match(hostedCreate, /Live AI insight generation is unavailable/);
+  assert.doesNotMatch(hostedCreate, /service_create_rules_engine_ai_insight/);
+});

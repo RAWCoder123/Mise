@@ -2962,9 +2962,30 @@ function createSupabaseRepository(): MiseRepository {
       const { data, error } = await client.functions.invoke("generate-ai-insights", {
         body: { restaurantId: input.restaurant_id }
       });
+      const payload = data as
+        | {
+            insight?: unknown;
+            status?: unknown;
+            message?: unknown;
+            retryable?: unknown;
+          }
+        | null;
+      if (payload && typeof payload === "object" && typeof payload.status === "string") {
+        const blocked =
+          payload.status === "provider_not_enabled" || payload.status === "server_configuration_required";
+        if (blocked) {
+          const detail =
+            typeof payload.message === "string" && payload.message.trim().length > 0
+              ? payload.message.trim()
+              : "Live AI insight generation is unavailable.";
+          throw new Error(detail);
+        }
+      }
       if (error) throw error;
-      const insight = (data as { insight?: unknown } | null)?.insight;
-      if (!insight || typeof insight !== "object") throw new Error("AI insight workflow returned an invalid response.");
+      const insight = payload?.insight;
+      if (!insight || typeof insight !== "object") {
+        throw new Error("AI insight workflow returned an invalid response.");
+      }
       return normalizeAiInsight(insight as AiInsight);
     },
 

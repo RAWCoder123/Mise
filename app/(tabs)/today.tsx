@@ -50,14 +50,128 @@ import {
 import { buildConciseTrendDateLabels } from "../../services/presentation/salesTrendLabels";
 import { canRecordInventoryWaste } from "../../services/tenantAccess";
 import type { RestaurantRole } from "../../types/mise";
-import type { AppLocale } from "../../i18n/catalog";
+import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 
 const COMPACT_TASK_COUNT = 3;
+
+interface TodayCopy {
+  commandSubtitle: string;
+  noRestaurantTitle: string;
+  noRestaurantDemoBody: string;
+  noRestaurantBody: string;
+  openDemo: string;
+  openSetup: string;
+  loadError: string;
+  refreshErrorTitle: string;
+  retryAccessibilityLabel: string;
+  salesToday: string;
+  itemsSold: string;
+  stockRisk: string;
+  orderReview: string;
+  serviceMetricsAccessibilityLabel: string;
+  serviceNeedsAttention: string;
+  serviceReady: string;
+  serviceReadyDetail: string;
+  stockItemsNeedAttention: (count: string) => string;
+  recommendationsAwaitingReview: (count: string) => string;
+  reviewOrders: string;
+  reviewOrdersAccessibilityLabel: string;
+  inventoryHealthTitle: string;
+  viewInventory: string;
+  viewInventoryAccessibilityLabel: string;
+  inventoryHealthLabels: {
+    good: string;
+    watch: string;
+    low: string;
+    critical: string;
+    wellStocked: string;
+    empty: string;
+  };
+  tasksTitle: string;
+  tasksSubtitle: string;
+  tasksSubtitleRoleAware: string;
+  taskCount: (count: string) => string;
+  viewAll: string;
+  showLess: string;
+  expandTasksAccessibilityLabel: string;
+  collapseTasksAccessibilityLabel: string;
+  clearTitle: string;
+  clearDetail: string;
+  noDeadline: string;
+  ownerAdminOnly: string;
+  managerOnly: string;
+  salesMovementTitle: string;
+  viewInsights: string;
+  viewInsightsAccessibilityLabel: string;
+  itemsRecorded: (count: string) => string;
+  vsPreviousDay: (change: string) => string;
+  salesChartAccessibilityLabel: string;
+  todayShort: string;
+  emptySalesTrend: string;
+}
+
+function buildTodayCopy(t: (key: MessageKey, values?: MessageValues) => string): TodayCopy {
+  return {
+    commandSubtitle: t("today.commandSubtitle"),
+    noRestaurantTitle: t("today.noRestaurant.title"),
+    noRestaurantDemoBody: t("today.noRestaurant.demoBody"),
+    noRestaurantBody: t("today.noRestaurant.body"),
+    openDemo: t("today.noRestaurant.openDemo"),
+    openSetup: t("today.noRestaurant.openSetup"),
+    loadError: t("today.loadError"),
+    refreshErrorTitle: t("today.refreshErrorTitle"),
+    retryAccessibilityLabel: t("today.retryAccessibilityLabel"),
+    salesToday: t("today.metrics.salesToday"),
+    itemsSold: t("today.metrics.itemsSold"),
+    stockRisk: t("today.metrics.stockRisk"),
+    orderReview: t("today.metrics.orderReview"),
+    serviceMetricsAccessibilityLabel: t("today.metrics.accessibility"),
+    serviceNeedsAttention: t("today.service.needsAttention"),
+    serviceReady: t("today.service.ready"),
+    serviceReadyDetail: t("today.service.readyDetail"),
+    stockItemsNeedAttention: (count) => t("today.service.stockItemsNeedAttention", { count }),
+    recommendationsAwaitingReview: (count) => t("today.service.recommendationsAwaitingReview", { count }),
+    reviewOrders: t("today.service.reviewOrders"),
+    reviewOrdersAccessibilityLabel: t("today.service.reviewOrdersAccessibility"),
+    inventoryHealthTitle: t("inventory.health.title"),
+    viewInventory: t("today.viewInventory"),
+    viewInventoryAccessibilityLabel: t("today.viewInventoryAccessibility"),
+    inventoryHealthLabels: {
+      good: t("inventory.health.good"),
+      watch: t("inventory.health.watch"),
+      low: t("inventory.health.low"),
+      critical: t("inventory.health.critical"),
+      wellStocked: t("inventory.health.wellStocked"),
+      empty: t("inventory.health.empty")
+    },
+    tasksTitle: t("today.tasks.title"),
+    tasksSubtitle: t("today.tasks.subtitle"),
+    tasksSubtitleRoleAware: t("today.tasks.subtitleRoleAware"),
+    taskCount: (count) => t("today.tasks.count", { count }),
+    viewAll: t("common.viewAll"),
+    showLess: t("common.showLess"),
+    expandTasksAccessibilityLabel: t("today.tasks.expandAccessibility"),
+    collapseTasksAccessibilityLabel: t("today.tasks.collapseAccessibility"),
+    clearTitle: t("today.tasks.clearTitle"),
+    clearDetail: t("today.tasks.clearDetail"),
+    noDeadline: t("today.tasks.noDeadline"),
+    ownerAdminOnly: t("today.tasks.ownerAdminOnly"),
+    managerOnly: t("today.tasks.managerOnly"),
+    salesMovementTitle: t("today.salesMovement.title"),
+    viewInsights: t("today.salesMovement.viewInsights"),
+    viewInsightsAccessibilityLabel: t("today.salesMovement.viewInsightsAccessibility"),
+    itemsRecorded: (count) => t("today.salesMovement.itemsRecorded", { count }),
+    vsPreviousDay: (change) => t("today.salesMovement.vsPreviousDay", { change }),
+    salesChartAccessibilityLabel: t("today.salesMovement.chartAccessibility"),
+    todayShort: t("today.salesMovement.todayShort"),
+    emptySalesTrend: t("today.salesMovement.empty")
+  };
+}
 
 export default function TodayScreen() {
   const { canUseDemoMode, memberships, restaurant, role, continueWithDemo } = useMiseSession();
   const { locale, t, formatCompactCurrency, formatDate, formatNumber } = useLocale();
-  const copy = todayCopy[locale];
+  const copy = useMemo(() => buildTodayCopy(t), [t]);
   const showStaffWasteTip =
     role === "staff" && canRecordInventoryWaste(memberships, restaurant?.id ?? "");
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
@@ -622,230 +736,6 @@ function taskIcon(task: OperationalTodayTask, color: string): ReactNode {
   if (task.source.kind === "recipe") return <BookOpen {...props} />;
   return <Lightbulb {...props} />;
 }
-
-interface TodayCopy {
-  commandSubtitle: string;
-  noRestaurantTitle: string;
-  noRestaurantDemoBody: string;
-  noRestaurantBody: string;
-  openDemo: string;
-  openSetup: string;
-  loadError: string;
-  refreshErrorTitle: string;
-  retryAccessibilityLabel: string;
-  salesToday: string;
-  itemsSold: string;
-  stockRisk: string;
-  orderReview: string;
-  serviceMetricsAccessibilityLabel: string;
-  serviceNeedsAttention: string;
-  serviceReady: string;
-  serviceReadyDetail: string;
-  stockItemsNeedAttention: (count: string) => string;
-  recommendationsAwaitingReview: (count: string) => string;
-  reviewOrders: string;
-  reviewOrdersAccessibilityLabel: string;
-  inventoryHealthTitle: string;
-  viewInventory: string;
-  viewInventoryAccessibilityLabel: string;
-  inventoryHealthLabels: {
-    good: string;
-    watch: string;
-    low: string;
-    critical: string;
-    wellStocked: string;
-    empty: string;
-  };
-  tasksTitle: string;
-  tasksSubtitle: string;
-  tasksSubtitleRoleAware: string;
-  taskCount: (count: string) => string;
-  viewAll: string;
-  showLess: string;
-  expandTasksAccessibilityLabel: string;
-  collapseTasksAccessibilityLabel: string;
-  clearTitle: string;
-  clearDetail: string;
-  noDeadline: string;
-  ownerAdminOnly: string;
-  managerOnly: string;
-  salesMovementTitle: string;
-  viewInsights: string;
-  viewInsightsAccessibilityLabel: string;
-  itemsRecorded: (count: string) => string;
-  vsPreviousDay: (change: string) => string;
-  salesChartAccessibilityLabel: string;
-  todayShort: string;
-  emptySalesTrend: string;
-}
-
-const todayCopy: Readonly<Record<AppLocale, TodayCopy>> = {
-  en: {
-    commandSubtitle: "Your restaurant command board starts here.",
-    noRestaurantTitle: "No restaurant selected",
-    noRestaurantDemoBody: "Open the demo data to explore a complete shift with sample sales and inventory.",
-    noRestaurantBody: "Create or select a restaurant workspace to view today’s operations.",
-    openDemo: "Open demo kitchen",
-    openSetup: "Open setup",
-    loadError: "Could not load today.",
-    refreshErrorTitle: "Today could not refresh",
-    retryAccessibilityLabel: "Retry loading today",
-    salesToday: "Sales today",
-    itemsSold: "Items sold",
-    stockRisk: "Stock risk",
-    orderReview: "Order review",
-    serviceMetricsAccessibilityLabel: "Today’s service metrics",
-    serviceNeedsAttention: "Service needs attention",
-    serviceReady: "Service is on track",
-    serviceReadyDetail: "No immediate stock or supplier work is waiting right now.",
-    stockItemsNeedAttention: (count) => `${count} stock-risk items need an operator review.`,
-    recommendationsAwaitingReview: (count) => `${count} supplier recommendations are waiting for review.`,
-    reviewOrders: "Review orders",
-    reviewOrdersAccessibilityLabel: "Open supplier order review",
-    inventoryHealthTitle: "Inventory Health",
-    viewInventory: "View inventory",
-    viewInventoryAccessibilityLabel: "Open inventory",
-    inventoryHealthLabels: {
-      good: "Good",
-      watch: "Watch",
-      low: "Low",
-      critical: "Critical",
-      wellStocked: "Well stocked",
-      empty: "No items"
-    },
-    tasksTitle: "Today’s Tasks",
-    tasksSubtitle: "Generated from current restaurant operations",
-    tasksSubtitleRoleAware: "Your actionable work first · manager follow-ups below",
-    taskCount: (count) => `${count} open`,
-    viewAll: "View all",
-    showLess: "Show less",
-    expandTasksAccessibilityLabel: "Show all of today’s tasks",
-    collapseTasksAccessibilityLabel: "Show fewer of today’s tasks",
-    clearTitle: "No operational work is waiting",
-    clearDetail: "Mise will surface inventory, supplier, setup, and integration work here.",
-    noDeadline: "No set time",
-    ownerAdminOnly: "Owner or admin",
-    managerOnly: "Manager only",
-    salesMovementTitle: "Sales Movement",
-    viewInsights: "View insights",
-    viewInsightsAccessibilityLabel: "Open sales insights",
-    itemsRecorded: (count) => `${count} items sold today`,
-    vsPreviousDay: (change) => `${change} vs previous recorded service day`,
-    salesChartAccessibilityLabel: "Observed gross sales across the latest recorded service days",
-    todayShort: "Today",
-    emptySalesTrend: "No recorded sales are available yet."
-  },
-  es: {
-    commandSubtitle: "Tu panel de operaciones del restaurante comienza aquí.",
-    noRestaurantTitle: "Ningún restaurante seleccionado",
-    noRestaurantDemoBody: "Abre los datos de demostración para explorar un turno con ventas e inventario de ejemplo.",
-    noRestaurantBody: "Crea o selecciona un restaurante para ver las operaciones de hoy.",
-    openDemo: "Abrir cocina de demostración",
-    openSetup: "Abrir configuración",
-    loadError: "No se pudo cargar el día de hoy.",
-    refreshErrorTitle: "No se pudo actualizar el día de hoy",
-    retryAccessibilityLabel: "Reintentar la carga de hoy",
-    salesToday: "Ventas de hoy",
-    itemsSold: "Artículos vendidos",
-    stockRisk: "Riesgo de inventario",
-    orderReview: "Pedidos por revisar",
-    serviceMetricsAccessibilityLabel: "Métricas del servicio de hoy",
-    serviceNeedsAttention: "El servicio necesita atención",
-    serviceReady: "El servicio está en orden",
-    serviceReadyDetail: "No hay trabajo inmediato de inventario o proveedores pendiente.",
-    stockItemsNeedAttention: (count) => `${count} artículos con riesgo de inventario necesitan revisión.`,
-    recommendationsAwaitingReview: (count) => `${count} recomendaciones de proveedores esperan revisión.`,
-    reviewOrders: "Revisar pedidos",
-    reviewOrdersAccessibilityLabel: "Abrir revisión de pedidos de proveedores",
-    inventoryHealthTitle: "Estado del inventario",
-    viewInventory: "Ver inventario",
-    viewInventoryAccessibilityLabel: "Abrir inventario",
-    inventoryHealthLabels: {
-      good: "Bien",
-      watch: "Vigilar",
-      low: "Bajo",
-      critical: "Crítico",
-      wellStocked: "Bien abastecido",
-      empty: "Sin artículos"
-    },
-    tasksTitle: "Tareas de hoy",
-    tasksSubtitle: "Generadas a partir de las operaciones actuales",
-    tasksSubtitleRoleAware: "Primero lo que puedes hacer · luego lo del gerente",
-    taskCount: (count) => `${count} pendientes`,
-    viewAll: "Ver todo",
-    showLess: "Ver menos",
-    expandTasksAccessibilityLabel: "Mostrar todas las tareas de hoy",
-    collapseTasksAccessibilityLabel: "Mostrar menos tareas de hoy",
-    clearTitle: "No hay trabajo operativo pendiente",
-    clearDetail: "Mise mostrará aquí el trabajo de inventario, proveedores, configuración e integraciones.",
-    noDeadline: "Sin hora fijada",
-    ownerAdminOnly: "Propietario o admin",
-    managerOnly: "Solo gerente",
-    salesMovementTitle: "Movimiento de ventas",
-    viewInsights: "Ver análisis",
-    viewInsightsAccessibilityLabel: "Abrir análisis de ventas",
-    itemsRecorded: (count) => `${count} artículos vendidos hoy`,
-    vsPreviousDay: (change) => `${change} frente al día de servicio registrado anterior`,
-    salesChartAccessibilityLabel: "Ventas brutas observadas en los días de servicio registrados más recientes",
-    todayShort: "Hoy",
-    emptySalesTrend: "Todavía no hay ventas registradas disponibles."
-  },
-  "zh-Hans": {
-    commandSubtitle: "从这里开始查看餐厅运营面板。",
-    noRestaurantTitle: "未选择餐厅",
-    noRestaurantDemoBody: "打开演示数据，查看包含示例销售和库存的完整班次。",
-    noRestaurantBody: "创建或选择餐厅工作区以查看今日运营。",
-    openDemo: "打开演示厨房",
-    openSetup: "打开设置",
-    loadError: "无法加载今日数据。",
-    refreshErrorTitle: "无法刷新今日数据",
-    retryAccessibilityLabel: "重试加载今日数据",
-    salesToday: "今日销售额",
-    itemsSold: "已售商品",
-    stockRisk: "库存风险",
-    orderReview: "待审核订单",
-    serviceMetricsAccessibilityLabel: "今日服务指标",
-    serviceNeedsAttention: "服务需要关注",
-    serviceReady: "服务运行正常",
-    serviceReadyDetail: "目前没有需要立即处理的库存或供应商工作。",
-    stockItemsNeedAttention: (count) => `${count} 项库存风险需要操作员检查。`,
-    recommendationsAwaitingReview: (count) => `${count} 项供应商建议等待审核。`,
-    reviewOrders: "审核订单",
-    reviewOrdersAccessibilityLabel: "打开供应商订单审核",
-    inventoryHealthTitle: "库存健康度",
-    viewInventory: "查看库存",
-    viewInventoryAccessibilityLabel: "打开库存",
-    inventoryHealthLabels: {
-      good: "良好",
-      watch: "关注",
-      low: "偏低",
-      critical: "紧急",
-      wellStocked: "库存充足",
-      empty: "暂无商品"
-    },
-    tasksTitle: "今日任务",
-    tasksSubtitle: "根据当前餐厅运营生成",
-    tasksSubtitleRoleAware: "先显示你可处理的事项 · 经理跟进在后",
-    taskCount: (count) => `${count} 项待处理`,
-    viewAll: "查看全部",
-    showLess: "收起",
-    expandTasksAccessibilityLabel: "显示所有今日任务",
-    collapseTasksAccessibilityLabel: "显示较少今日任务",
-    clearTitle: "暂无待处理运营工作",
-    clearDetail: "Mise 会在此显示库存、供应商、设置和集成工作。",
-    noDeadline: "未设时间",
-    ownerAdminOnly: "仅所有者或管理员",
-    managerOnly: "仅经理",
-    salesMovementTitle: "销售趋势",
-    viewInsights: "查看洞察",
-    viewInsightsAccessibilityLabel: "打开销售洞察",
-    itemsRecorded: (count) => `今日售出 ${count} 件商品`,
-    vsPreviousDay: (change) => `较上一个有记录营业日 ${change}`,
-    salesChartAccessibilityLabel: "最近有记录营业日的实际销售总额",
-    todayShort: "今天",
-    emptySalesTrend: "目前还没有可用的销售记录。"
-  }
-};
 
 const styles = StyleSheet.create({
   stack: {
