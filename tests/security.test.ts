@@ -1564,7 +1564,7 @@ test("secondary operational tables lose authenticated DML and inventory movement
   assert.match(migration, /create or replace function public\.request_my_account_deletion/i);
   assert.match(migration, /subject_user_id uuid not null/i);
   assert.match(config, /\[functions\.request-account-deletion\][\s\S]*verify_jwt\s*=\s*true/i);
-  assert.match(edge, /request_my_account_deletion/);
+  assert.match(edge, /service_request_my_account_deletion/);
   assert.match(edge, /auth\.admin\.deleteUser/);
   assert.match(settings, /requestAccountDeletion/);
   assert.match(settings, /EXPO_PUBLIC_PRIVACY_POLICY_URL|privacyPolicyUrl/);
@@ -1575,10 +1575,15 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
     "supabase/migrations/20260801050742_sole_owner_account_deletion.sql",
     "utf8"
   );
+  const edgeMigration = readFileSync(
+    "supabase/migrations/20260801084500_edge_request_account_deletion.sql",
+    "utf8"
+  );
   const edge = readFileSync("supabase/functions/request-account-deletion/index.ts", "utf8");
   const settings = readFileSync("app/(tabs)/settings.tsx", "utf8");
   const catalog = readFileSync("i18n/catalog.ts", "utf8");
   const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+  const accountDeletionTests = readFileSync("supabase/tests/database/account_deletion.test.sql", "utf8");
 
   assert.match(migration, /add column if not exists archived_at timestamptz/i);
   assert.match(migration, /restaurant\.archived_at is null/i);
@@ -1594,12 +1599,22 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
     /revoke all on function public\.service_rollback_failed_account_deletion\(uuid\)[\s\S]*from public, anon, authenticated, service_role/i
   );
   assert.match(migration, /status in \('requested', 'processing', 'completed', 'cancelled', 'failed'\)/i);
+  assert.match(edgeMigration, /private\.service_request_my_account_deletion\(\s*p_actor_user_id uuid/i);
+  assert.match(
+    edgeMigration,
+    /grant execute on function public\.service_request_my_account_deletion[\s\S]*service_role/i
+  );
+  assert.match(edgeMigration, /revoke all on function public\.request_my_account_deletion/i);
+  assert.match(edge, /service_request_my_account_deletion/);
+  assert.doesNotMatch(edge, /\.rpc\(\s*["']request_my_account_deletion["']/);
   assert.match(edge, /service_rollback_failed_account_deletion/);
   assert.match(edge, /Restaurant access was restored/i);
   assert.match(
     securityBackend,
     /globalServiceOnlyPublicFunctions[\s\S]*service_rollback_failed_account_deletion/
   );
+  assert.match(accountDeletionTests, /authenticated clients cannot execute the legacy account deletion request RPC/i);
+  assert.match(accountDeletionTests, /service role can execute the account deletion request service RPC/i);
   assert.match(catalog, /Restaurants you solely own are closed/);
   assert.match(settings, /requestAccountDeletion/);
 });

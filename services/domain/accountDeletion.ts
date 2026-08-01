@@ -53,7 +53,7 @@ export function buildAccountDeletionRequestMetadata(input: {
   archivedRestaurantCount?: number;
 }): Record<string, unknown> {
   return {
-    source: "request_my_account_deletion",
+    source: "service_request_my_account_deletion",
     archived_restaurant_ids: [...input.soleOwnedRestaurantIds].sort(),
     archived_restaurant_count:
       input.archivedRestaurantCount ?? input.soleOwnedRestaurantIds.length,

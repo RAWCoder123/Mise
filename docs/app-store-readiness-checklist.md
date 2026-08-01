@@ -10,7 +10,7 @@ Classification guidance uses evidence, not polish. Current overall status: **not
 | App icon / splash | complete | Assets present; validated by `qa:ios-prereq` when Xcode is available |
 | Version / build number | complete | `0.1.0` / iOS build `2` |
 | Encryption export compliance flag | complete | `ITSAppUsesNonExemptEncryption = false` |
-| In-app account deletion | tested (code) | Settings → Delete account; sole-owned restaurants archive; memberships revoke; Auth delete; Edge rolls back on Auth failure |
+| In-app account deletion | tested (code) | Settings → Delete account; Edge `request-account-deletion` → `service_request_my_account_deletion`; sole-owned restaurants archive; memberships revoke; Auth delete; Edge rolls back on Auth failure; legacy authenticated request RPC revoked |
 | Password reset | tested (code) | Login → Forgot password; `/reset-password` after recovery deep link; requires Supabase Auth redirect allowlist for `mise://reset-password` |
 | Privacy policy URL | requires founder decision | Wire `EXPO_PUBLIC_PRIVACY_POLICY_URL` (HTTPS) once legal copy is published |
 | Support URL | requires founder decision | Wire `EXPO_PUBLIC_SUPPORT_URL` (HTTPS) once support page exists |

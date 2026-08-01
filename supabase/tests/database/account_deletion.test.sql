@@ -1,6 +1,6 @@
 begin;
 
-select plan(14);
+select plan(17);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -63,8 +63,18 @@ values
 
 select is(
   has_function_privilege('authenticated', 'public.request_my_account_deletion(text)', 'execute'),
+  false,
+  'authenticated clients cannot execute the legacy account deletion request RPC'
+);
+select is(
+  has_function_privilege('authenticated', 'public.service_request_my_account_deletion(uuid,text)', 'execute'),
+  false,
+  'authenticated clients cannot execute the account deletion request service RPC'
+);
+select is(
+  has_function_privilege('service_role', 'public.service_request_my_account_deletion(uuid,text)', 'execute'),
   true,
-  'authenticated users can request their own account deletion'
+  'service role can execute the account deletion request service RPC'
 );
 select is(
   has_function_privilege('authenticated', 'public.service_rollback_failed_account_deletion(uuid)', 'execute'),
@@ -90,12 +100,22 @@ select ok(
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
-
 select ok(
-  pg_temp.try_execute('select public.request_my_account_deletion(''DELETE'')'),
-  'sole owner can request account deletion without last-owner guard failure'
+  not pg_temp.try_execute('select public.request_my_account_deletion(''DELETE'')'),
+  'authenticated clients cannot bypass Edge with the legacy account deletion RPC'
 );
+reset role;
 
+set local role service_role;
+select ok(
+  pg_temp.try_execute(
+    $sql$select public.service_request_my_account_deletion(
+      'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+      'DELETE'
+    )$sql$
+  ),
+  'sole owner can request account deletion through the guarded service RPC'
+);
 reset role;
 
 select is(

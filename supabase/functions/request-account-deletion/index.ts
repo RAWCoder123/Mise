@@ -13,16 +13,20 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);
 
   try {
-    const { supabase, securitySupabase, user } = await requireAuthenticatedContext(req);
+    const { securitySupabase, user } = await requireAuthenticatedContext(req);
     const body = await readJsonObject(req);
     const confirmation = requireString(body.confirmation, "confirmation");
     if (confirmation.trim().toUpperCase() !== "DELETE") {
       throw new HttpError(400, "Type DELETE to confirm account deletion.");
     }
 
-    const { data: requestRow, error: requestError } = await supabase.rpc("request_my_account_deletion", {
-      p_confirmation: "DELETE"
-    });
+    const { data: requestRow, error: requestError } = await securitySupabase.rpc(
+      "service_request_my_account_deletion",
+      {
+        p_actor_user_id: user.id,
+        p_confirmation: "DELETE"
+      }
+    );
     if (requestError) throw requestError;
     if (!requestRow || typeof requestRow !== "object") {
       throw new HttpError(500, "Account deletion request could not be recorded.");

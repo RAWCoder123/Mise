@@ -256,7 +256,7 @@ for (const functionName of userScopedEdgeFunctionNames) {
   if (!/requireAuthenticatedContext\s*\(/.test(source)) {
     failures.push(`${functionPath}: missing requireAuthenticatedContext guard.`);
   }
-  if (!/auth\.admin\.deleteUser|request_my_account_deletion/.test(source)) {
+  if (!/auth\.admin\.deleteUser/.test(source) || !/service_request_my_account_deletion|request_my_account_deletion/.test(source)) {
     failures.push(`${functionPath}: must revoke memberships and delete or queue Auth account removal.`);
   }
   if (!/service_rollback_failed_account_deletion/.test(source)) {
