@@ -55,7 +55,12 @@ async function loadRestaurantRows(
   ] = await Promise.all([
     securitySupabase.from("restaurants").select("*").eq("id", restaurantId),
     securitySupabase.from("restaurant_memberships").select("*").eq("restaurant_id", restaurantId),
-    securitySupabase.from("restaurant_member_invites").select("*").eq("restaurant_id", restaurantId),
+    securitySupabase
+      .from("restaurant_member_invites")
+      .select(
+        "id,restaurant_id,email,role,status,created_by,claimed_by,expires_at,created_at,claimed_at,revoked_at"
+      )
+      .eq("restaurant_id", restaurantId),
     securitySupabase.from("inventory_items").select("*").eq("restaurant_id", restaurantId),
     securitySupabase.from("inventory_movements").select("*").eq("restaurant_id", restaurantId),
     securitySupabase.from("inventory_count_sessions").select("*").eq("restaurant_id", restaurantId),

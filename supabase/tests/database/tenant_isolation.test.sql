@@ -1038,6 +1038,26 @@ select is(
   'restaurant membership has no direct authenticated write policies'
 );
 select is(
+  (select count(*) from pg_policies where schemaname = 'public' and tablename = 'inventory_items' and cmd in ('INSERT', 'UPDATE', 'DELETE')),
+  0::bigint,
+  'inventory_items has no direct authenticated write policies'
+);
+select is(
+  (select count(*) from pg_policies where schemaname = 'public' and tablename = 'menu_item_ingredients' and cmd in ('INSERT', 'UPDATE', 'DELETE')),
+  0::bigint,
+  'menu_item_ingredients has no direct authenticated write policies'
+);
+select is(
+  (select count(*) from pg_policies where schemaname = 'public' and tablename = 'pos_sales' and cmd in ('INSERT', 'UPDATE', 'DELETE')),
+  0::bigint,
+  'pos_sales has no direct authenticated write policies'
+);
+select is(
+  (select count(*) from pg_policies where schemaname = 'public' and tablename = 'setup_attachments' and cmd in ('INSERT', 'UPDATE', 'DELETE')),
+  0::bigint,
+  'setup_attachments has no direct authenticated write policies'
+);
+select is(
   (
     select count(*)
     from pg_class view_row

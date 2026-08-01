@@ -86,11 +86,30 @@ function runRequired(label, command, args) {
   }
 }
 
-function extractPolicyBlocks(sql) {
-  return [...sql.matchAll(/create\s+policy\s+"[^"]+"\s+on\s+public\.([a-z_]+)[\s\S]*?;/gi)].map((match) => ({
-    table: match[1],
-    block: match[0]
-  }));
+function buildFinalAuthenticatedPolicies(sql) {
+  const policies = new Map();
+  const statementPattern =
+    /(?:create\s+policy\s+"([^"]+)"\s+on\s+public\.([a-z_]+)([\s\S]*?);|drop\s+policy\s+if\s+exists\s+"([^"]+)"\s+on\s+public\.([a-z_]+)\s*;)/gi;
+
+  for (const match of sql.matchAll(statementPattern)) {
+    if (match[1]) {
+      const name = match[1];
+      const table = match[2];
+      const body = match[3] ?? "";
+      const cmd = (body.match(/\bfor\s+(select|insert|update|delete|all)\b/i)?.[1] ?? "all").toUpperCase();
+      policies.set(`${table}\0${name}`, {
+        table,
+        name,
+        cmd,
+        block: match[0]
+      });
+      continue;
+    }
+
+    policies.delete(`${match[5]}\0${match[4]}`);
+  }
+
+  return [...policies.values()];
 }
 
 runRequired("Running existing static security checks...", process.execPath, ["scripts/security-static.mjs"]);
@@ -138,23 +157,36 @@ for (const table of restaurantOwnedTables) {
   }
 }
 
-const policyBlocks = extractPolicyBlocks(combinedSql);
-for (const { table, block } of policyBlocks) {
+const finalAuthenticatedPolicies = buildFinalAuthenticatedPolicies(combinedSql);
+const selectOnlyTenantTables = new Set([
+  ...restaurantOwnedTables,
+  ...tenantAuthorizationTables,
+  ...tenantRootTables,
+  ...publicUserScopedTables
+]);
+
+for (const { table, name, cmd, block } of finalAuthenticatedPolicies) {
   if (!/\bto\s+authenticated\b/i.test(block)) {
-    failures.push(`supabase: public.${table} policy must target TO authenticated explicitly.`);
+    failures.push(`supabase: public.${table} policy "${name}" must target TO authenticated explicitly.`);
   }
 
   const requiresTenantPredicate =
     restaurantOwnedTables.has(table) || tenantAuthorizationTables.has(table) || tenantRootTables.has(table);
   if (requiresTenantPredicate && !/private\.(is_restaurant_member|has_restaurant_role)\s*\(/i.test(block)) {
-    failures.push(`supabase: public.${table} policy is missing a private membership/role predicate.`);
+    failures.push(`supabase: public.${table} policy "${name}" is missing a private membership/role predicate.`);
   }
 
   if (
     publicUserScopedTables.has(table) &&
     !/\b(id|user_id|subject_user_id)\s*=\s*auth\.uid\(\)/i.test(block)
   ) {
-    failures.push(`supabase: public.${table} policy must be scoped to auth.uid().`);
+    failures.push(`supabase: public.${table} policy "${name}" must be scoped to auth.uid().`);
+  }
+
+  if (selectOnlyTenantTables.has(table) && cmd !== "SELECT") {
+    failures.push(
+      `supabase: public.${table} must not retain authenticated write policies after service/Edge ownership (found "${name}" for ${cmd}).`
+    );
   }
 }
 

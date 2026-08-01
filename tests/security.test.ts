@@ -1888,6 +1888,42 @@ test("membership and profile tables lose residual authenticated DML grants", () 
   assert.match(localeTests, /authenticated clients cannot update preferred_locale directly/i);
 });
 
+test("orphan authenticated write RLS policies are dropped on service-owned operational tables", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260801230000_drop_orphan_operational_write_policies.sql",
+    "utf8"
+  );
+  const tenantTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+
+  for (const policy of [
+    "Managers can insert inventory",
+    "Managers can update inventory",
+    "Owners and admins can delete inventory",
+    "Managers can insert menu mappings",
+    "Managers can update menu mappings",
+    "Owners and admins can delete menu mappings",
+    "Managers can insert sales",
+    "Managers can update sales",
+    "Owners and admins can delete sales",
+    "Managers can insert setup attachments",
+    "Managers can update setup attachments",
+    "Owners and admins can delete setup attachments"
+  ]) {
+    assert.match(
+      migration,
+      new RegExp(`drop policy if exists "${policy}" on public\\.(inventory_items|menu_item_ingredients|pos_sales|setup_attachments)`, "i")
+    );
+  }
+
+  assert.match(tenantTests, /inventory_items has no direct authenticated write policies/i);
+  assert.match(tenantTests, /menu_item_ingredients has no direct authenticated write policies/i);
+  assert.match(tenantTests, /pos_sales has no direct authenticated write policies/i);
+  assert.match(tenantTests, /setup_attachments has no direct authenticated write policies/i);
+  assert.match(securityBackend, /function buildFinalAuthenticatedPolicies\s*\(/);
+  assert.match(securityBackend, /must not retain authenticated write policies/i);
+});
+
 test("secondary operational tables lose authenticated DML and inventory movements are ledgered", () => {
   const migration = readFileSync(
     "supabase/migrations/20260730211800_close_secondary_dml_and_inventory_movements.sql",
@@ -2010,6 +2046,14 @@ test("restaurant data export is owner/admin Edge-routed with secret redaction", 
   assert.match(edge, /recordFunctionSecurityEvent/);
   assert.match(edge, /buildRestaurantDataExport/);
   assert.match(edge, /from\("restaurant_member_invites"\)/);
+  assert.match(
+    edge,
+    /from\("restaurant_member_invites"\)[\s\S]*select\(\s*"id,restaurant_id,email,role,status,created_by,claimed_by,expires_at,created_at,claimed_at,revoked_at"\s*\)/
+  );
+  assert.doesNotMatch(
+    edge.match(/from\("restaurant_member_invites"\)[\s\S]*?\.eq\("restaurant_id"/)?.[0] ?? "",
+    /token_hash/
+  );
   assert.doesNotMatch(edge, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(domain, /token_hash/);
   assert.match(domain, /SECRET_SETTING_KEY_PATTERN/);
