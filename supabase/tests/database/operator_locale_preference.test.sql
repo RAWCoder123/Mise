@@ -1,6 +1,6 @@
 begin;
 
-select plan(22);
+select plan(25);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -48,8 +48,18 @@ select is(
 );
 select is(
   has_function_privilege('authenticated', 'public.update_my_preferred_locale(text)', 'EXECUTE'),
+  false,
+  'authenticated clients cannot execute the legacy locale update RPC'
+);
+select is(
+  has_function_privilege('authenticated', 'public.service_update_my_preferred_locale(uuid,text)', 'EXECUTE'),
+  false,
+  'authenticated clients cannot execute the locale update service RPC'
+);
+select is(
+  has_function_privilege('service_role', 'public.service_update_my_preferred_locale(uuid,text)', 'EXECUTE'),
   true,
-  'authenticated operators can execute the identity-free locale update RPC'
+  'service role can execute the locale update service RPC'
 );
 select is(
   (select pronargs from pg_proc where oid = 'public.get_my_preferred_locale()'::regprocedure),
@@ -75,10 +85,12 @@ select is(
   'en',
   'operator A reads only their current locale through auth.uid()'
 );
+reset role;
+set local role service_role;
 select is(
-  public.update_my_preferred_locale('es'),
+  public.service_update_my_preferred_locale('10101010-1010-4010-8010-101010101010', 'es'),
   'es',
-  'operator A updates their own locale through auth.uid()'
+  'service-owned locale update writes only the Edge actor profile'
 );
 reset role;
 
@@ -88,12 +100,19 @@ select is(
   'operator A locale update persists on operator A only'
 );
 
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_update_my_preferred_locale('10101010-1010-4010-8010-101010101010', 'fr')$sql$),
+  false,
+  'unsupported locale updates are denied'
+);
+reset role;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '10101010-1010-4010-8010-101010101010', true);
 select is(
-  pg_temp.try_execute($sql$select public.update_my_preferred_locale('fr')$sql$),
+  pg_temp.try_execute($sql$select public.update_my_preferred_locale('en')$sql$),
   false,
-  'unsupported locale updates are denied'
+  'authenticated clients cannot execute the legacy locale update RPC'
 );
 reset role;
 select is(
@@ -154,11 +173,6 @@ select is(
   'switching users reads operator B locale rather than stale operator A data'
 );
 select is(
-  public.update_my_preferred_locale('en'),
-  'en',
-  'operator B update remains bound to operator B auth.uid()'
-);
-select is(
   (select count(*) from public.users),
   1::bigint,
   'operator B can read only their own profile row'
@@ -167,6 +181,13 @@ select is(
   (select count(*) from public.users where id = '10101010-1010-4010-8010-101010101010'),
   0::bigint,
   'operator B cannot read operator A profile metadata'
+);
+reset role;
+set local role service_role;
+select is(
+  public.service_update_my_preferred_locale('20202020-2020-4020-8020-202020202020', 'en'),
+  'en',
+  'operator B update remains bound to the Edge actor profile'
 );
 reset role;
 

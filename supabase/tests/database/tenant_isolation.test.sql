@@ -1,6 +1,6 @@
 begin;
 
-select plan(386);
+select plan(393);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -748,7 +748,12 @@ select is(has_function_privilege('authenticated', 'public.service_update_restaur
 select is(has_function_privilege('service_role', 'public.service_update_restaurant_member(uuid,uuid,uuid,text,text)', 'execute'), true, 'service role can execute the member-update service RPC');
 select is(has_function_privilege('authenticated', 'public.service_remove_restaurant_member(uuid,uuid,uuid)', 'execute'), false, 'authenticated clients cannot execute the member-remove service RPC');
 select is(has_function_privilege('service_role', 'public.service_remove_restaurant_member(uuid,uuid,uuid)', 'execute'), true, 'service role can execute the member-remove service RPC');
-select is(has_function_privilege('authenticated', 'public.update_my_profile(text)', 'execute'), true, 'authenticated users can use the bounded profile RPC');
+select is(has_function_privilege('authenticated', 'public.update_my_profile(text)', 'execute'), false, 'authenticated clients cannot execute the legacy operator profile RPC');
+select is(has_function_privilege('authenticated', 'public.update_restaurant_profile(uuid,jsonb)', 'execute'), false, 'authenticated clients cannot execute the legacy restaurant profile RPC');
+select is(has_function_privilege('authenticated', 'public.service_update_my_profile(uuid,text)', 'execute'), false, 'authenticated clients cannot execute the operator profile service RPC');
+select is(has_function_privilege('service_role', 'public.service_update_my_profile(uuid,text)', 'execute'), true, 'service role can execute the operator profile service RPC');
+select is(has_function_privilege('authenticated', 'public.service_update_restaurant_profile(uuid,uuid,jsonb)', 'execute'), false, 'authenticated clients cannot execute the restaurant profile service RPC');
+select is(has_function_privilege('service_role', 'public.service_update_restaurant_profile(uuid,uuid,jsonb)', 'execute'), true, 'service role can execute the restaurant profile service RPC');
 select is(has_function_privilege('authenticated', 'public.service_record_edge_audit_log(uuid,uuid,text,text,uuid,jsonb)', 'execute'), false, 'authenticated clients cannot invoke service audit persistence');
 select is(has_function_privilege('service_role', 'public.service_record_edge_audit_log(uuid,uuid,text,text,uuid,jsonb)', 'execute'), true, 'service role can invoke actor-bound audit persistence');
 select is(has_function_privilege('authenticated', 'public.set_updated_at()', 'execute'), false, 'trigger helpers are not exposed as Data API RPCs');
@@ -1942,14 +1947,14 @@ select ok(
 reset role;
 select is((select count(*) from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 1::bigint, 'manager cannot delete inventory items');
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.update_restaurant_profile(
+  $sql$select public.service_update_restaurant_profile(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '{"name":"Tenant A Updated"}'::jsonb
   )$sql$,
-  'owner can update restaurant profile through the guarded RPC'
+  'owner can update restaurant profile through the service-owned RPC'
 );
 reset role;
 select is((select name from public.restaurants where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), 'Tenant A Updated', 'owner profile update persisted');
@@ -2197,11 +2202,17 @@ select is(
   false,
   'client cannot mutate the legacy profile role directly'
 );
-select lives_ok($sql$select public.update_my_profile('Owner A Display')$sql$, 'bounded profile RPC creates or updates display metadata');
+reset role;
+set local role service_role;
+select lives_ok($sql$select public.service_update_my_profile('11111111-1111-4111-8111-111111111111', 'Owner A Display')$sql$, 'service-owned profile RPC creates or updates display metadata');
 select is((select name from public.users where id = '11111111-1111-4111-8111-111111111111'), 'Owner A Display', 'profile RPC persists the display name');
 select is((select role from public.users where id = '11111111-1111-4111-8111-111111111111'), 'staff', 'profile RPC cannot create authorization-bearing role state');
-select is(pg_temp.try_execute($sql$select public.update_my_profile('')$sql$), false, 'profile RPC rejects an empty display name');
-select is(pg_temp.try_execute($sql$select public.update_my_profile(repeat('N', 121))$sql$), false, 'profile RPC rejects a display name over 120 characters');
+select is(pg_temp.try_execute($sql$select public.service_update_my_profile('11111111-1111-4111-8111-111111111111', '')$sql$), false, 'profile RPC rejects an empty display name');
+select is(pg_temp.try_execute($sql$select public.service_update_my_profile('11111111-1111-4111-8111-111111111111', repeat('N', 121))$sql$), false, 'profile RPC rejects a display name over 120 characters');
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+select is(pg_temp.try_execute($sql$select public.update_my_profile('Bypass Display')$sql$), false, 'authenticated clients cannot execute the legacy operator profile RPC');
 reset role;
 
 set local role authenticated;
@@ -2608,10 +2619,10 @@ select is(
   'denied direct profile DML leaves the restaurant unchanged'
 );
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.update_restaurant_profile(
+  $sql$select public.service_update_restaurant_profile(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     jsonb_build_object('address', repeat('A', 500))
   )$sql$,
@@ -2624,38 +2635,42 @@ select is(
   'exact-boundary profile update persists'
 );
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+set local role service_role;
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_profile(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_profile(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', jsonb_build_object('address', repeat('A', 501))
   )$sql$),
   false,
   'profile RPC rejects a 501-character address'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_profile(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_profile(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '{"logo_url":"http://example.test/logo.png"}'::jsonb
   )$sql$),
   false,
   'profile RPC rejects a non-HTTPS logo URL'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_profile(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_profile(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '{"timezone":"Mars/Olympus_Mons"}'::jsonb
   )$sql$),
   false,
   'profile RPC rejects an unknown timezone'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_profile(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_profile(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '{"unknown_field":true}'::jsonb
   )$sql$),
   false,
   'profile RPC rejects unknown patch fields'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_profile(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_profile(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     jsonb_build_object('operational_profile', jsonb_build_object('notes', repeat('N', 2001)))
   )$sql$),
@@ -2663,22 +2678,30 @@ select is(
   'profile RPC rejects operational notes over 2,000 characters'
 );
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_profile(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_profile(
+    '11111111-1111-4111-8111-111111111111',
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '{"name":"Cross tenant rewrite"}'::jsonb
   )$sql$),
   false,
   'profile RPC rejects cross-tenant owner calls'
 );
-reset role;
-
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 select is(
-  pg_temp.try_execute($sql$select public.update_restaurant_profile(
+  pg_temp.try_execute($sql$select public.service_update_restaurant_profile(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '{"name":"Manager rewrite"}'::jsonb
   )$sql$),
   false,
   'profile RPC rejects manager calls'
+);
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+select is(
+  pg_temp.try_execute($sql$select public.update_restaurant_profile(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '{"name":"Legacy bypass"}'::jsonb
+  )$sql$),
+  false,
+  'authenticated clients cannot execute the legacy restaurant profile RPC'
 );
 reset role;
 

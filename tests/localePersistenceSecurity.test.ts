@@ -6,8 +6,15 @@ const migration = readFileSync(
   "supabase/migrations/20260719062921_add_operator_locale_preference.sql",
   "utf8"
 );
+const edgeMigration = readFileSync(
+  "supabase/migrations/20260801072000_edge_profile_and_locale_mutations.sql",
+  "utf8"
+);
 const adapter = readFileSync("services/localePreferences.ts", "utf8");
+const localeContext = readFileSync("contexts/LocaleContext.tsx", "utf8");
 const rootLayout = readFileSync("app/_layout.tsx", "utf8");
+const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
 
 test("operator locale schema is allowlisted metadata with no direct mutation grant", () => {
   assert.match(migration, /add column if not exists preferred_locale text/i);
@@ -20,30 +27,38 @@ test("operator locale schema is allowlisted metadata with no direct mutation gra
   assert.doesNotMatch(migration, /grant update[^;]*preferred_locale[^;]*authenticated/i);
 });
 
-test("locale RPCs are identity-free, authenticated, and pinned to an empty search path", () => {
+test("locale reads stay identity-free while writes are service-owned Edge mutations", () => {
   assert.match(migration, /function public\.get_my_preferred_locale\(\)/i);
   assert.match(migration, /function public\.update_my_preferred_locale\(p_locale text\)/i);
   assert.doesNotMatch(migration, /preferred_locale\([^)]*(user|restaurant).*uuid/i);
 
-  assert.equal((migration.match(/security definer/gi) ?? []).length, 2);
-  assert.equal((migration.match(/set search_path = ''/gi) ?? []).length, 2);
-  assert.equal((migration.match(/actor_user_id uuid := auth\.uid\(\)/gi) ?? []).length, 2);
-  assert.match(migration, /where profile\.id = actor_user_id/i);
-  assert.match(migration, /p_locale not in \('en', 'es', 'zh-Hans'\)/i);
-
-  assert.match(migration, /revoke all on function public\.get_my_preferred_locale\(\) from public, anon, authenticated, service_role/i);
-  assert.match(migration, /revoke all on function public\.update_my_preferred_locale\(text\) from public, anon, authenticated, service_role/i);
-  assert.match(migration, /grant execute on function public\.get_my_preferred_locale\(\) to authenticated/i);
-  assert.match(migration, /grant execute on function public\.update_my_preferred_locale\(text\) to authenticated/i);
-  const executeGrants = migration.match(/grant execute on function [^;]+;/gi) ?? [];
-  assert.ok(executeGrants.every((statement) => / to authenticated;$/i.test(statement.trim())));
+  assert.match(edgeMigration, /private\.service_update_my_preferred_locale/i);
+  assert.match(edgeMigration, /grant execute on function public\.service_update_my_preferred_locale[\s\S]*service_role/i);
+  assert.match(edgeMigration, /revoke all on function public\.update_my_preferred_locale\(text\)/i);
+  assert.match(
+    edgeMigration,
+    /Preference row identity always[\s\S]*comes from the Edge-authenticated actor/i
+  );
 });
 
-test("Expo uses only current-session locale RPCs through one stable hosted adapter", () => {
-  assert.match(adapter, /export const hostedLocalePreferenceAdapter/);
-  assert.match(adapter, /configuredSupabase\.rpc\("get_my_preferred_locale"\)/);
-  assert.match(adapter, /configuredSupabase\.rpc\("update_my_preferred_locale", \{\s*p_locale: locale\s*\}\)/);
-  assert.doesNotMatch(adapter, /p_(user|restaurant)_id/);
-  assert.match(adapter, /isAppLocale\(value\)/);
-  assert.match(rootLayout, /<LocaleProvider hostedPreferenceAdapter=\{hostedLocalePreferenceAdapter\}>/);
+test("Expo locale persistence loads identity-free and saves through Edge with session restaurant scope", () => {
+  assert.match(adapter, /export function createHostedLocalePreferenceAdapter/);
+  assert.doesNotMatch(adapter, /p_user_id/);
+  assert.doesNotMatch(adapter, /hostedLocalePreferenceAdapter/);
+  assert.match(localeContext, /createHostedLocalePreferenceAdapter/);
+  assert.match(localeContext, /fetchMyPreferredLocale/);
+  assert.match(localeContext, /updateMyPreferredLocale\(restaurantId, nextLocale\)/);
+  assert.match(rootLayout, /<LocaleProvider>/);
+  assert.doesNotMatch(rootLayout, /hostedLocalePreferenceAdapter/);
+
+  const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
+  const hostedSave =
+    hostedRepository.match(/async updateMyPreferredLocale\([\s\S]*?\n    \},/)?.[0] ?? "";
+  const hostedLoad =
+    hostedRepository.match(/async fetchMyPreferredLocale\([\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(hostedLoad, /\.rpc\(\s*["']get_my_preferred_locale["']/);
+  assert.match(hostedSave, /action:\s*"update_my_preferred_locale"/);
+  assert.doesNotMatch(hostedSave, /\.rpc\(\s*["']update_my_preferred_locale["']/);
+  assert.match(edge, /"update_my_preferred_locale"/);
+  assert.match(edge, /service_update_my_preferred_locale/);
 });

@@ -602,18 +602,33 @@ const directOwnerProfileUpdate = await ownerA.client
   .select("id,cuisine_type");
 assertDenied(directOwnerProfileUpdate, "owner profile writes are guarded RPC-only");
 
-const ownerProfileUpdate = await ownerA.client.rpc("update_restaurant_profile", {
-  p_restaurant_id: tenantA,
-  p_patch: { cuisine_type: "Fast casual Mediterranean - staging verified" }
+const ownerProfileUpdate = await invokeOperationalWorkflow(ownerA, {
+  action: "update_restaurant_profile",
+  restaurantId: tenantA,
+  patch: { cuisine_type: "Fast casual Mediterranean - staging verified" }
 });
-if (ownerProfileUpdate.error) throw ownerProfileUpdate.error;
-assert.match(ownerProfileUpdate.data.cuisine_type, /staging verified/, "owner A can update tenant A restaurant profile");
+if (ownerProfileUpdate.error) {
+  await throwInvocationFailure("owner profile workflow", ownerProfileUpdate.error);
+}
+assert.match(
+  String(ownerProfileUpdate.data?.result?.cuisine_type ?? ""),
+  /staging verified/,
+  "owner A can update tenant A restaurant profile through Edge"
+);
 
-const crossTenantProfileUpdate = await ownerA.client.rpc("update_restaurant_profile", {
-  p_restaurant_id: tenantB,
-  p_patch: { cuisine_type: "Cross tenant bypass" }
+const crossTenantProfileUpdate = await invokeOperationalWorkflow(ownerA, {
+  action: "update_restaurant_profile",
+  restaurantId: tenantB,
+  patch: { cuisine_type: "Cross tenant bypass" }
 });
-assertDenied(crossTenantProfileUpdate, "owner A cannot update tenant B restaurant profile");
+assert.notEqual(crossTenantProfileUpdate.error, null, "owner A cannot update tenant B restaurant profile through Edge");
+assert.equal(crossTenantProfileUpdate.data, null, "cross-tenant profile workflow returns no protected data");
+
+const legacyProfileRpc = await ownerA.client.rpc("update_restaurant_profile", {
+  p_restaurant_id: tenantA,
+  p_patch: { cuisine_type: "Legacy Data API bypass" }
+});
+assertDenied(legacyProfileRpc, "authenticated clients cannot execute the legacy restaurant profile RPC");
 
 const forgedAiInsert = await managerA.client.from("ai_insights").insert({
   restaurant_id: tenantA,

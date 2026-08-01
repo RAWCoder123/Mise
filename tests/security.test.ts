@@ -753,6 +753,60 @@ test("supplier recipient upsert is Edge-routed with service-owned RPCs", () => {
   assert.match(databaseTests, /service_upsert_supplier_recipient/i);
 });
 
+test("restaurant and operator profile mutations are Edge-routed with service-owned RPCs", () => {
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const migration = readFileSync(
+    "supabase/migrations/20260801072000_edge_profile_and_locale_mutations.sql",
+    "utf8"
+  );
+  const tenantTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
+  const ownerAdminActions =
+    edge.match(/const ownerAdminOperationalActions = new Set<OperationalAction>\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+  const staffActions =
+    edge.match(/const staffOperationalActions = new Set<OperationalAction>\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+
+  assert.match(edge, /"update_restaurant_profile"/);
+  assert.match(edge, /"update_my_profile"/);
+  assert.match(edge, /"update_my_preferred_locale"/);
+  assert.match(edge, /service_update_restaurant_profile/);
+  assert.match(edge, /service_update_my_profile/);
+  assert.match(edge, /restaurant_profile_updated/);
+  assert.match(edge, /operator_profile_updated/);
+  assert.match(edge, /operator_locale_updated/);
+  assert.match(ownerAdminActions, /"update_restaurant_profile"/);
+  assert.match(staffActions, /"update_my_profile"/);
+  assert.match(staffActions, /"update_my_preferred_locale"/);
+  assert.doesNotMatch(staffActions, /"update_restaurant_profile"/);
+
+  assert.match(
+    hostedRepository.match(/async updateRestaurantProfile\([\s\S]*?\n    \},/)?.[0] ?? "",
+    /action:\s*"update_restaurant_profile"/
+  );
+  assert.match(
+    hostedRepository.match(/async updateMyProfile\([\s\S]*?\n    \},/)?.[0] ?? "",
+    /action:\s*"update_my_profile"/
+  );
+  assert.doesNotMatch(
+    hostedRepository.match(/async updateRestaurantProfile\([\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']update_restaurant_profile["']/
+  );
+  assert.doesNotMatch(
+    hostedRepository.match(/async updateMyProfile\([\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']update_my_profile["']/
+  );
+
+  assert.match(migration, /private\.update_restaurant_profile\(\s*p_actor_user_id uuid/i);
+  assert.match(migration, /grant execute on function public\.service_update_restaurant_profile[\s\S]*service_role/i);
+  assert.match(migration, /grant execute on function public\.service_update_my_profile[\s\S]*service_role/i);
+  assert.match(migration, /revoke all on function public\.update_restaurant_profile/i);
+  assert.match(migration, /revoke all on function public\.update_my_profile/i);
+  assert.match(tenantTests, /authenticated clients cannot execute the legacy restaurant profile RPC/i);
+  assert.match(tenantTests, /service role can execute the restaurant profile service RPC/i);
+  assert.match(tenantTests, /authenticated clients cannot execute the legacy operator profile RPC/i);
+});
+
 test("team membership mutations are Edge-routed with service-owned RPCs and claim stays token RPC", () => {
   const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
