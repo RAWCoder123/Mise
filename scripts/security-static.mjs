@@ -249,6 +249,9 @@ for (const file of functionSources) {
       if (!/request_my_account_deletion/.test(contents) || !/auth\.admin\.deleteUser/.test(contents)) {
         failures.push(`${file}: account deletion must revoke memberships and delete the Auth user`);
       }
+      if (!/service_rollback_failed_account_deletion/.test(contents)) {
+        failures.push(`${file}: Auth delete failures must roll back membership/restaurant revocation`);
+      }
     } else if (!/reserveFunctionInvocation\s*\(/.test(contents)) {
       failures.push(`${file}: Edge Function must reserve a firewall/rate-limit invocation before sensitive work`);
     }

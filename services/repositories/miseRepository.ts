@@ -87,6 +87,7 @@ import {
   rolesAssignableBy,
   type AssignableRestaurantRole
 } from "../domain/teamMembership";
+import { isConfirmedAccountDeletion } from "../domain/accountDeletion";
 import {
   claimDemoMemberInvite,
   createDemoMemberInvite,
@@ -1811,7 +1812,7 @@ function createLocalDemoRepository(): MiseRepository {
     },
 
     async requestAccountDeletion(confirmation) {
-      if (confirmation.trim().toUpperCase() !== "DELETE") {
+      if (!isConfirmedAccountDeletion(confirmation)) {
         throw new Error("Type DELETE to confirm account deletion.");
       }
       await resetDemoStore();
@@ -3192,6 +3193,9 @@ function createSupabaseRepository(): MiseRepository {
 
     async requestAccountDeletion(confirmation) {
       if (!client) throw new Error("Supabase is not configured.");
+      if (!isConfirmedAccountDeletion(confirmation)) {
+        throw new Error("Type DELETE to confirm account deletion.");
+      }
       const { data, error } = await client.functions.invoke("request-account-deletion", {
         body: { confirmation }
       });

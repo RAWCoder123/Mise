@@ -1473,3 +1473,32 @@ test("secondary operational tables lose authenticated DML and inventory movement
   assert.match(settings, /requestAccountDeletion/);
   assert.match(settings, /EXPO_PUBLIC_PRIVACY_POLICY_URL|privacyPolicyUrl/);
 });
+
+test("sole-owner account deletion archives restaurants and rolls back Auth failures", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260801050742_sole_owner_account_deletion.sql",
+    "utf8"
+  );
+  const edge = readFileSync("supabase/functions/request-account-deletion/index.ts", "utf8");
+  const settings = readFileSync("app/(tabs)/settings.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(migration, /add column if not exists archived_at timestamptz/i);
+  assert.match(migration, /restaurant\.archived_at is null/i);
+  assert.match(migration, /sole_owned_restaurant_ids/i);
+  assert.match(migration, /disabled_membership_ids/i);
+  assert.match(migration, /create or replace function public\.service_rollback_failed_account_deletion/i);
+  assert.match(
+    migration,
+    /grant execute on function public\.service_rollback_failed_account_deletion\(uuid\)[\s\S]*to service_role/i
+  );
+  assert.match(
+    migration,
+    /revoke all on function public\.service_rollback_failed_account_deletion\(uuid\)[\s\S]*from public, anon, authenticated, service_role/i
+  );
+  assert.match(migration, /status in \('requested', 'processing', 'completed', 'cancelled', 'failed'\)/i);
+  assert.match(edge, /service_rollback_failed_account_deletion/);
+  assert.match(edge, /Restaurant access was restored/i);
+  assert.match(catalog, /Restaurants you solely own are closed/);
+  assert.match(settings, /requestAccountDeletion/);
+});

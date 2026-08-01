@@ -126,7 +126,8 @@ export function normalizeRestaurant(value: Restaurant): Restaurant {
     service_style: normalizeServiceStyle(value.service_style),
     timezone: asString(value.timezone, "America/New_York"),
     currency: asString(value.currency, "USD"),
-    operational_profile: normalizeRestaurantOperationalProfile(value.operational_profile)
+    operational_profile: normalizeRestaurantOperationalProfile(value.operational_profile),
+    archived_at: asNullableString(value.archived_at)
   };
 }
 

@@ -46,6 +46,7 @@ export interface Restaurant {
   timezone: string;
   currency: string;
   operational_profile: RestaurantOperationalProfile;
+  archived_at?: string | null;
   created_at: string;
 }
 

@@ -33,11 +33,20 @@ Deno.serve(async (req) => {
       throw new HttpError(500, "Account deletion request is missing an identifier.");
     }
 
+    const existingMetadata =
+      requestRow && typeof requestRow === "object" && "metadata" in requestRow
+        && requestRow.metadata
+        && typeof requestRow.metadata === "object"
+        && !Array.isArray(requestRow.metadata)
+        ? (requestRow.metadata as Record<string, unknown>)
+        : {};
+
     await securitySupabase
       .from("account_deletion_requests")
       .update({
         status: "processing",
         metadata: {
+          ...existingMetadata,
           source: "request-account-deletion",
           processed_at: new Date().toISOString()
         }
@@ -47,19 +56,20 @@ Deno.serve(async (req) => {
 
     const { error: deleteError } = await securitySupabase.auth.admin.deleteUser(user.id);
     if (deleteError) {
-      await securitySupabase
-        .from("account_deletion_requests")
-        .update({
-          status: "requested",
-          metadata: {
-            source: "request-account-deletion",
-            auth_delete_failed: true,
-            failed_at: new Date().toISOString()
-          }
-        })
-        .eq("id", requestId)
-        .eq("subject_user_id", user.id);
-      throw new HttpError(500, "Account access was revoked, but final account removal needs support follow-up.");
+      const { error: rollbackError } = await securitySupabase.rpc(
+        "service_rollback_failed_account_deletion",
+        { p_request_id: requestId }
+      );
+      if (rollbackError) {
+        throw new HttpError(
+          500,
+          "Account removal failed and automatic access restore needs support follow-up."
+        );
+      }
+      throw new HttpError(
+        500,
+        "Account removal failed. Restaurant access was restored so you can retry or contact support."
+      );
     }
 
     await securitySupabase
@@ -68,6 +78,7 @@ Deno.serve(async (req) => {
         status: "completed",
         completed_at: new Date().toISOString(),
         metadata: {
+          ...existingMetadata,
           source: "request-account-deletion",
           completed_via: "auth_admin_delete_user"
         }

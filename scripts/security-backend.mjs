@@ -258,6 +258,9 @@ for (const functionName of userScopedEdgeFunctionNames) {
   if (!/auth\.admin\.deleteUser|request_my_account_deletion/.test(source)) {
     failures.push(`${functionPath}: must revoke memberships and delete or queue Auth account removal.`);
   }
+  if (!/service_rollback_failed_account_deletion/.test(source)) {
+    failures.push(`${functionPath}: Auth delete failures must roll back membership/restaurant revocation.`);
+  }
   if (/requireRestaurantRole\s*\(/.test(source)) {
     failures.push(`${functionPath}: account deletion is user-scoped and must not require a restaurant role.`);
   }
