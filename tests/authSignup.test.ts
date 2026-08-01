@@ -44,6 +44,7 @@ test("signup and invite claim wiring expose create-account path", () => {
   const session = readFileSync("contexts/MiseSessionContext.tsx", "utf8");
   const routes = readFileSync("scripts/mobile-route-smoke.mjs", "utf8");
   const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const setup = readFileSync("app/(auth)/setup.tsx", "utf8");
 
   assert.match(session, /signUp:\s*\(email:\s*string,\s*password:\s*string\)/);
   assert.match(session, /supabase\.auth\.signUp/);
@@ -57,7 +58,10 @@ test("signup and invite claim wiring expose create-account path", () => {
   assert.match(invite, /invite\.claim\.createAccount/);
   assert.match(invite, /router\.replace\("\/signup"\)/);
   assert.match(invite, /autoClaimStarted/);
+  assert.match(setup, /setup\.access\.createAccountAction/);
+  assert.match(setup, /router\.replace\("\/signup"\)/);
   assert.match(routes, /\/signup/);
   assert.match(catalog, /"signup\.title"/);
   assert.match(catalog, /"invite\.claim\.createAccount"/);
+  assert.match(catalog, /"setup\.access\.createAccountAction"/);
 });
