@@ -105,6 +105,38 @@ export function isInvitePending(status: RestaurantMemberInviteStatus, expiresAt:
   return expiresMs > now.getTime();
 }
 
+/** Effective invite status for read paths that must not mutate stored rows. */
+export function effectiveInviteStatus(
+  status: RestaurantMemberInviteStatus,
+  expiresAt: string,
+  now = new Date()
+): RestaurantMemberInviteStatus {
+  if (status === "pending" && !isInvitePending(status, expiresAt, now)) {
+    return "expired";
+  }
+  return status;
+}
+
+export type InviteClaimFailureKind =
+  | "expired"
+  | "revoked"
+  | "alreadyClaimed"
+  | "emailMismatch"
+  | "error";
+
+export function classifyInviteClaimFailure(message: string): InviteClaimFailureKind {
+  if (/expired/i.test(message)) return "expired";
+  if (/revoked/i.test(message)) return "revoked";
+  if (/already been claimed|already exists/i.test(message)) return "alreadyClaimed";
+  if (/email does not match/i.test(message)) return "emailMismatch";
+  return "error";
+}
+
+/** Failures where retrying the same pending token cannot succeed. */
+export function isTerminalInviteClaimFailure(kind: InviteClaimFailureKind): boolean {
+  return kind === "expired" || kind === "revoked" || kind === "alreadyClaimed";
+}
+
 function defaultRandomBytes(size: number): Uint8Array {
   const bytes = new Uint8Array(size);
   if (!globalThis.crypto?.getRandomValues) {

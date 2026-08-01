@@ -1017,10 +1017,21 @@ test("team membership mutations are Edge-routed with service-owned RPCs and clai
   );
   const teamDirectoryTests = readFileSync("supabase/tests/database/restaurant_team_directory.test.sql", "utf8");
   const inviteTests = readFileSync("supabase/tests/database/restaurant_member_invites.test.sql", "utf8");
+  const inviteListReadPathMigration = readFileSync(
+    "supabase/migrations/20260801182000_member_invite_list_read_path_purity.sql",
+    "utf8"
+  );
   const tenantTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
   const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
   const ownerAdminActions =
     edge.match(/const ownerAdminOperationalActions = new Set<OperationalAction>\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+
+  assert.match(inviteListReadPathMigration, /create or replace function public\.list_restaurant_member_invites/i);
+  assert.doesNotMatch(inviteListReadPathMigration, /update public\.restaurant_member_invites/i);
+  assert.match(inviteListReadPathMigration, /effective status expired/i);
+  assert.match(inviteListReadPathMigration, /grant execute on function public\.list_restaurant_member_invites[\s\S]*to authenticated/i);
+  assert.match(inviteTests, /list returns effective expired status for past-due pending invites/i);
+  assert.match(inviteTests, /list does not persist expiry onto the invite row/i);
 
   assert.match(edge, /"add_restaurant_member_by_email"/);
   assert.match(edge, /"create_restaurant_member_invite"/);

@@ -8,6 +8,7 @@ import {
   canActorCreateMemberInvite,
   canActorRevokeMemberInvite,
   canViewMemberInvites,
+  effectiveInviteStatus,
   generateInviteToken,
   hashInviteToken,
   isInvitePending,
@@ -75,28 +76,22 @@ function appendInviteAuditLog(
   });
 }
 
-function toPublicMemberInvite(invite: DemoMemberInviteRecord): RestaurantMemberInvite {
+function toPublicMemberInvite(
+  invite: DemoMemberInviteRecord,
+  now = new Date()
+): RestaurantMemberInvite {
   return {
     id: invite.id,
     restaurant_id: invite.restaurant_id,
     email: invite.email,
     role: invite.role,
-    status: invite.status,
+    // Read-only: do not persist expiry here; claim/revoke write paths mutate.
+    status: effectiveInviteStatus(invite.status, invite.expires_at, now),
     expires_at: invite.expires_at,
     created_at: invite.created_at,
     claimed_at: invite.claimed_at,
     revoked_at: invite.revoked_at
   };
-}
-
-function expireDemoMemberInvites(state: DemoState, restaurantId: string, now = new Date()) {
-  ensureDemoMemberInvites(state);
-  for (const invite of state.memberInvites) {
-    if (invite.restaurant_id !== restaurantId) continue;
-    if (invite.status === "pending" && !isInvitePending(invite.status, invite.expires_at, now)) {
-      invite.status = "expired";
-    }
-  }
 }
 
 export async function createDemoMemberInvite(
@@ -185,11 +180,11 @@ export function listDemoMemberInvites(
   if (!actor || !canViewMemberInvites(actor.role)) {
     throw new Error("Membership access denied.");
   }
-  expireDemoMemberInvites(state, restaurantId);
+  const now = new Date();
   return state.memberInvites
     .filter((invite) => invite.restaurant_id === restaurantId)
     .slice(0, 100)
-    .map(toPublicMemberInvite);
+    .map((invite) => toPublicMemberInvite(invite, now));
 }
 
 export function revokeDemoMemberInvite(

@@ -20,12 +20,26 @@ import {
 import { claimRestaurantMemberInvite } from "../../services/miseService";
 import {
   buildInviteClaimPath,
+  classifyInviteClaimFailure,
+  isTerminalInviteClaimFailure,
   isValidInviteToken,
-  normalizeInviteToken
+  normalizeInviteToken,
+  type InviteClaimFailureKind
 } from "../../services/domain/teamInvites";
 import { captureMiseError } from "../../services/telemetry";
 
 type InviteNotice = { tone: StatusNoticeTone; key: MessageKey };
+
+const CLAIM_FAILURE_NOTICE: Record<
+  InviteClaimFailureKind,
+  { tone: StatusNoticeTone; key: MessageKey }
+> = {
+  expired: { tone: "caution", key: "invite.claim.notice.expired" },
+  revoked: { tone: "caution", key: "invite.claim.notice.revoked" },
+  alreadyClaimed: { tone: "caution", key: "invite.claim.notice.alreadyClaimed" },
+  emailMismatch: { tone: "danger", key: "invite.claim.notice.emailMismatch" },
+  error: { tone: "danger", key: "invite.claim.notice.error" }
+};
 
 export default function ClaimInviteScreen() {
   const { t } = useLocale();
@@ -37,15 +51,25 @@ export default function ClaimInviteScreen() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<InviteNotice | null>(null);
   const [claimed, setClaimed] = useState(false);
+  const [claimFailureKind, setClaimFailureKind] = useState<InviteClaimFailureKind | null>(null);
   const autoClaimStarted = useRef(false);
 
   useEffect(() => {
-    if (!tokenValid) return;
+    if (!tokenValid) {
+      void clearPendingInviteToken();
+      return;
+    }
     void savePendingInviteToken(token);
   }, [token, tokenValid]);
 
+  const dismissPendingInvite = useCallback(async () => {
+    await clearPendingInviteToken();
+    router.replace(restaurant ? "/today" : "/");
+  }, [restaurant]);
+
   const claimInvite = useCallback(async () => {
-    if (!tokenValid || busy || !user) return;
+    if (!tokenValid || busy || !user || claimed) return;
+    if (claimFailureKind && isTerminalInviteClaimFailure(claimFailureKind)) return;
     setBusy(true);
     setNotice(null);
     try {
@@ -53,31 +77,37 @@ export default function ClaimInviteScreen() {
       await clearPendingInviteToken();
       await refreshSession();
       setClaimed(true);
+      setClaimFailureKind(null);
       setNotice({ tone: "success", key: "invite.claim.notice.success" });
     } catch (claimError) {
       captureMiseError(claimError, { flow: "invite_claim", operation: "claim" });
       const message = claimError instanceof Error ? claimError.message : "";
-      if (/expired/i.test(message)) {
-        setNotice({ tone: "caution", key: "invite.claim.notice.expired" });
-      } else if (/revoked/i.test(message)) {
-        setNotice({ tone: "caution", key: "invite.claim.notice.revoked" });
-      } else if (/already been claimed|already exists/i.test(message)) {
-        setNotice({ tone: "caution", key: "invite.claim.notice.alreadyClaimed" });
-      } else if (/email does not match/i.test(message)) {
-        setNotice({ tone: "danger", key: "invite.claim.notice.emailMismatch" });
-      } else {
-        setNotice({ tone: "danger", key: "invite.claim.notice.error" });
+      const kind = classifyInviteClaimFailure(message);
+      setClaimFailureKind(kind);
+      setNotice(CLAIM_FAILURE_NOTICE[kind]);
+      if (isTerminalInviteClaimFailure(kind)) {
+        await clearPendingInviteToken();
       }
     } finally {
       setBusy(false);
     }
-  }, [busy, refreshSession, token, tokenValid, user]);
+  }, [busy, claimFailureKind, claimed, refreshSession, token, tokenValid, user]);
 
   useEffect(() => {
-    if (!ready || !tokenValid || !user || claimed || busy || autoClaimStarted.current) return;
+    if (
+      !ready ||
+      !tokenValid ||
+      !user ||
+      claimed ||
+      busy ||
+      claimFailureKind ||
+      autoClaimStarted.current
+    ) {
+      return;
+    }
     autoClaimStarted.current = true;
     void claimInvite();
-  }, [busy, claimInvite, claimed, ready, tokenValid, user]);
+  }, [busy, claimFailureKind, claimInvite, claimed, ready, tokenValid, user]);
 
   if (!ready) {
     return <Screen title={t("boot.title")} subtitle={t("boot.subtitle")} loading />;
@@ -91,7 +121,7 @@ export default function ClaimInviteScreen() {
           title={t("invite.claim.invalidTitle")}
           body={t("invite.claim.invalidBody")}
         />
-        <Button title={t("invite.claim.goHome")} onPress={() => router.replace("/")} fullWidth />
+        <Button title={t("invite.claim.goHome")} onPress={() => void dismissPendingInvite()} fullWidth />
       </Screen>
     );
   }
@@ -141,13 +171,30 @@ export default function ClaimInviteScreen() {
             onPress={() => router.replace(restaurant ? "/today" : "/")}
             fullWidth
           />
-        ) : (
+        ) : claimFailureKind && isTerminalInviteClaimFailure(claimFailureKind) ? (
           <Button
-            title={t(busy ? "invite.claim.claiming" : "invite.claim.claim")}
-            onPress={() => void claimInvite()}
-            disabled={busy}
+            title={t("invite.claim.dismiss")}
+            onPress={() => void dismissPendingInvite()}
             fullWidth
           />
+        ) : (
+          <>
+            <Button
+              title={t(busy ? "invite.claim.claiming" : "invite.claim.claim")}
+              onPress={() => void claimInvite()}
+              disabled={busy}
+              fullWidth
+            />
+            {claimFailureKind === "emailMismatch" ? (
+              <Button
+                title={t("invite.claim.dismiss")}
+                variant="secondary"
+                onPress={() => void dismissPendingInvite()}
+                disabled={busy}
+                fullWidth
+              />
+            ) : null}
+          </>
         )}
       </View>
     </Screen>

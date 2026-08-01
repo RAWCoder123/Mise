@@ -1,6 +1,6 @@
 begin;
 
-select plan(16);
+select plan(18);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -151,6 +151,53 @@ select is(
   'owner can list pending invites'
 );
 reset role;
+
+-- Seed a pending invite that has already passed expires_at without mutating via claim.
+insert into public.restaurant_member_invites (
+  id,
+  restaurant_id,
+  email,
+  role,
+  status,
+  token_hash,
+  created_by,
+  expires_at,
+  created_at
+)
+values (
+  'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+  'e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1',
+  'stale-invite@mise.test',
+  'staff',
+  'pending',
+  repeat('ab', 32),
+  '81818181-8181-4811-8811-818181818181',
+  now() - interval '1 day',
+  now() - interval '2 days'
+);
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '81818181-8181-4811-8811-818181818181', true);
+select is(
+  (
+    select status
+    from public.list_restaurant_member_invites('e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1')
+    where id = 'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1'
+  ),
+  'expired',
+  'list returns effective expired status for past-due pending invites'
+);
+reset role;
+
+select is(
+  (
+    select status
+    from public.restaurant_member_invites
+    where id = 'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1'
+  ),
+  'pending',
+  'list does not persist expiry onto the invite row'
+);
 
 set local role service_role;
 select is(

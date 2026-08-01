@@ -8,9 +8,12 @@ import {
   canActorCreateMemberInvite,
   canActorRevokeMemberInvite,
   canViewMemberInvites,
+  classifyInviteClaimFailure,
+  effectiveInviteStatus,
   generateInviteToken,
   hashInviteToken,
   isInvitePending,
+  isTerminalInviteClaimFailure,
   isValidInviteToken,
   normalizeInviteToken,
   resolveInviteExpiryHours
@@ -72,6 +75,49 @@ test("pending invite expiry helper treats past timestamps as inactive", () => {
   assert.equal(
     isInvitePending("revoked", "2026-08-01T00:00:00.000Z", new Date("2026-07-31T12:00:00.000Z")),
     false
+  );
+  assert.equal(
+    effectiveInviteStatus("pending", "2026-07-30T00:00:00.000Z", new Date("2026-07-31T12:00:00.000Z")),
+    "expired"
+  );
+  assert.equal(
+    effectiveInviteStatus("pending", "2026-08-01T00:00:00.000Z", new Date("2026-07-31T12:00:00.000Z")),
+    "pending"
+  );
+  assert.equal(classifyInviteClaimFailure("Invite has expired."), "expired");
+  assert.equal(classifyInviteClaimFailure("Invite has been revoked."), "revoked");
+  assert.equal(classifyInviteClaimFailure("Invite has already been claimed."), "alreadyClaimed");
+  assert.equal(
+    classifyInviteClaimFailure("Invite email does not match the signed-in account."),
+    "emailMismatch"
+  );
+  assert.equal(classifyInviteClaimFailure("network down"), "error");
+  assert.equal(isTerminalInviteClaimFailure("expired"), true);
+  assert.equal(isTerminalInviteClaimFailure("emailMismatch"), false);
+});
+
+test("demo invite list is read-only for expired pending invites", async () => {
+  const state = createInitialDemoState("Toast");
+  const created = await createDemoMemberInvite(
+    state,
+    DEMO_RESTAURANT_ID,
+    "stale.cook@mise.test",
+    "staff",
+    DEMO_USER_ID,
+    24
+  );
+  const stored = state.memberInvites.find((invite) => invite.id === created.id);
+  assert.ok(stored);
+  stored!.expires_at = "2020-01-01T00:00:00.000Z";
+  stored!.status = "pending";
+
+  const listed = listDemoMemberInvites(state, DEMO_RESTAURANT_ID, DEMO_USER_ID);
+  const listedInvite = listed.find((invite) => invite.id === created.id);
+  assert.equal(listedInvite?.status, "expired");
+  assert.equal(
+    state.memberInvites.find((invite) => invite.id === created.id)?.status,
+    "pending",
+    "listing must not persist expiry on the stored demo invite row"
   );
 });
 
@@ -161,6 +207,10 @@ test("demo schema includes member invite storage", () => {
 
 test("member invite migration and client wiring are present", () => {
   const migration = readFileSync("supabase/migrations/20260731152000_restaurant_member_invites.sql", "utf8");
+  const readPathMigration = readFileSync(
+    "supabase/migrations/20260801182000_member_invite_list_read_path_purity.sql",
+    "utf8"
+  );
   const edgeMigration = readFileSync(
     "supabase/migrations/20260801012000_edge_team_membership_workflows.sql",
     "utf8"
@@ -171,12 +221,16 @@ test("member invite migration and client wiring are present", () => {
   const claimScreen = readFileSync("app/invite/[token].tsx", "utf8");
   const routes = readFileSync("scripts/mobile-route-smoke.mjs", "utf8");
   const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
   assert.match(migration, /create table if not exists public\.restaurant_member_invites/i);
   assert.match(migration, /create or replace function public\.create_restaurant_member_invite/i);
   assert.match(migration, /create or replace function public\.claim_restaurant_member_invite/i);
   assert.match(migration, /revoke all on public\.restaurant_member_invites from anon, authenticated/i);
   assert.match(migration, /restaurant_member_invite_created/i);
+  assert.match(readPathMigration, /create or replace function public\.list_restaurant_member_invites/i);
+  assert.match(readPathMigration, /effective status expired/i);
+  assert.doesNotMatch(readPathMigration, /update public\.restaurant_member_invites/i);
   assert.match(edgeMigration, /private\.service_create_restaurant_member_invite/i);
   assert.match(edgeMigration, /revoke all on function public\.create_restaurant_member_invite/i);
   assert.match(securityBackend, /restaurant_member_invites/);
@@ -186,12 +240,21 @@ test("member invite migration and client wiring are present", () => {
   assert.match(repository, /action:\s*"claim_restaurant_member_invite"/i);
   assert.doesNotMatch(repository, /rpc\("claim_restaurant_member_invite"/i);
   assert.match(demoInvites, /export async function createDemoMemberInvite/i);
+  assert.match(demoInvites, /Read-only: do not persist expiry here/i);
+  assert.doesNotMatch(
+    demoInvites.match(/export function listDemoMemberInvites[\s\S]*?\n\}/)?.[0] ?? "",
+    /expireDemoMemberInvites/
+  );
   assert.match(screen, /createRestaurantMemberInvite/i);
   assert.match(screen, /revokeRestaurantMemberInvite/i);
   assert.match(screen, /buildInviteClaimUrl/);
   assert.match(screen, /Linking\.createURL/);
   assert.match(claimScreen, /claimRestaurantMemberInvite/i);
   assert.match(claimScreen, /invite\.claim\.createAccount/);
+  assert.match(claimScreen, /invite\.claim\.dismiss/);
+  assert.match(claimScreen, /isTerminalInviteClaimFailure/);
+  assert.match(claimScreen, /clearPendingInviteToken/);
   assert.match(claimScreen, /autoClaimStarted/);
+  assert.match(catalog, /"invite\.claim\.dismiss"/);
   assert.match(routes, /\/invite\//);
 });
