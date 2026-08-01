@@ -72,7 +72,7 @@ test("account deletion metadata records archive and membership rollback ids", ()
     soleOwnedRestaurantIds: soleOwned,
     disabledMembershipIds: disabled
   }), {
-    source: "request_my_account_deletion",
+    source: "service_request_my_account_deletion",
     archived_restaurant_ids: ["rest-a"],
     archived_restaurant_count: 1,
     disabled_membership_ids: ["m-owner-a", "m-owner-b-1", "m-staff-a"],
