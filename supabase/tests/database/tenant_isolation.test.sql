@@ -1408,6 +1408,131 @@ select is((select count(*) from public.supplier_recipients where restaurant_id =
 select is((select count(*) from public.menu_item_ingredients where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and menu_item_name = 'Atomic Bowl'), 1::bigint, 'setup replay keeps one recipe mapping');
 select is((select count(*) from public.pos_sales where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and source_record_id = 'atomic-row-1'), 1::bigint, 'setup replay keeps one imported POS sale');
 select is((select count(*) from public.audit_logs where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and action = 'setup_saved' and metadata ? 'setup_fingerprint'), 1::bigint, 'setup replay keeps one fingerprinted pending audit event until signals are current');
+select is(
+  (
+    select count(*)
+    from public.inventory_movements movement
+    join public.inventory_items item on item.id = movement.inventory_item_id
+    where item.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and item.item_name = 'Atomic Rice'
+      and movement.source_workflow = 'save_restaurant_setup'
+  ),
+  1::bigint,
+  'setup create writes one opening save_restaurant_setup ledger row and replay keeps it unique'
+);
+select is(
+  (
+    select movement.reason
+    from public.inventory_movements movement
+    join public.inventory_items item on item.id = movement.inventory_item_id
+    where item.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and item.item_name = 'Atomic Rice'
+      and movement.source_workflow = 'save_restaurant_setup'
+    order by movement.created_at desc
+    limit 1
+  ),
+  'manual_count',
+  'setup inventory ledger uses manual_count for opening quantity'
+);
+select is(
+  (
+    select movement.quantity_before
+    from public.inventory_movements movement
+    join public.inventory_items item on item.id = movement.inventory_item_id
+    where item.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and item.item_name = 'Atomic Rice'
+      and movement.source_workflow = 'save_restaurant_setup'
+    order by movement.created_at asc
+    limit 1
+  ),
+  0::numeric,
+  'setup opening ledger starts from zero on-hand'
+);
+select is(
+  (
+    select movement.quantity_after
+    from public.inventory_movements movement
+    join public.inventory_items item on item.id = movement.inventory_item_id
+    where item.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and item.item_name = 'Atomic Rice'
+      and movement.source_workflow = 'save_restaurant_setup'
+    order by movement.created_at asc
+    limit 1
+  ),
+  12::numeric,
+  'setup opening ledger records the setup quantity'
+);
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+select lives_ok(
+  $sql$select public.save_restaurant_setup(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '[{"item_name":"Atomic Rice","category":"Setup baseline","unit":"lb","current_quantity":18,"par_level":30,"reorder_threshold":10,"estimated_unit_cost":0,"supplier_name":"Atomic Supply"}]'::jsonb,
+    '[{"supplier_name":"Atomic Supply","email":"orders@atomic.test"}]'::jsonb,
+    '[{"menu_item_name":"Atomic Bowl","inventory_item_name":"Atomic Rice","quantity_used_per_sale":0.5,"unit":"lb"}]'::jsonb,
+    jsonb_build_array(jsonb_build_object('source_record_id', 'atomic-row-1', 'sale_date', pg_temp.restaurant_operating_date('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), 'item_name', 'Atomic Bowl', 'category', 'Entree', 'quantity_sold', 5, 'gross_sales', 50, 'net_sales', 46.5, 'source_pos', 'Manual CSV Upload')),
+    '[]'::jsonb,
+    0
+  )$sql$,
+  'setup quantity change persists through the guarded RPC'
+);
+reset role;
+select is((select current_quantity from public.inventory_items where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and item_name = 'Atomic Rice'), 18::numeric, 'setup quantity change updates on-hand stock');
+select is(
+  (
+    select count(*)
+    from public.inventory_movements movement
+    join public.inventory_items item on item.id = movement.inventory_item_id
+    where item.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and item.item_name = 'Atomic Rice'
+      and movement.source_workflow = 'save_restaurant_setup'
+  ),
+  2::bigint,
+  'setup quantity change appends a second ledger row'
+);
+select is(
+  (
+    select movement.quantity_before
+    from public.inventory_movements movement
+    join public.inventory_items item on item.id = movement.inventory_item_id
+    where item.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and item.item_name = 'Atomic Rice'
+      and movement.source_workflow = 'save_restaurant_setup'
+    order by movement.created_at desc
+    limit 1
+  ),
+  12::numeric,
+  'setup quantity-change ledger records the previous on-hand amount'
+);
+select is(
+  (
+    select movement.quantity_after
+    from public.inventory_movements movement
+    join public.inventory_items item on item.id = movement.inventory_item_id
+    where item.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and item.item_name = 'Atomic Rice'
+      and movement.source_workflow = 'save_restaurant_setup'
+    order by movement.created_at desc
+    limit 1
+  ),
+  18::numeric,
+  'setup quantity-change ledger records the new on-hand amount'
+);
+select is(
+  (
+    select movement.metadata->>'created'
+    from public.inventory_movements movement
+    join public.inventory_items item on item.id = movement.inventory_item_id
+    where item.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and item.item_name = 'Atomic Rice'
+      and movement.source_workflow = 'save_restaurant_setup'
+    order by movement.created_at desc
+    limit 1
+  ),
+  'false',
+  'setup quantity-change ledger marks the row as an update rather than create'
+);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);

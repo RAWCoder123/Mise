@@ -74,7 +74,7 @@ There are no application views. Any future authenticated view must use `security
 | `add_restaurant_member`, `update_restaurant_member`, `remove_restaurant_member` | Live actor membership; self-mutation denied; owner/admin hierarchy enforced under tenant advisory lock |
 | `update_my_profile` | Auth-derived user; name only, 1–120 characters |
 | `update_restaurant_profile` | Active owner/admin; bounded allowlisted patch |
-| `save_restaurant_setup`, `record_setup_completion_audit` | Active manager role; bounded atomic setup and fixed audit semantics |
+| `save_restaurant_setup`, `record_setup_completion_audit` | Active manager role; bounded atomic setup and fixed audit semantics; inventory quantity creates/deltas append `inventory_movements` (`manual_count` / `save_restaurant_setup`) |
 | `fetch_planning_sales` | Active membership; bounded aggregate |
 | `create_pending_purchase_recommendation`, `approve_purchase_recommendation`, `dismiss_purchase_recommendation`, `undo_purchase_recommendation_action` | Active manager role; guarded recommendation state machine |
 | `update_supplier_order_draft`, `mark_supplier_order_sent` | Active manager role; guarded supplier-order state machine |

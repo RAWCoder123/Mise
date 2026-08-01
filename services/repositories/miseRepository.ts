@@ -1241,8 +1241,25 @@ function createLocalDemoRepository(): MiseRepository {
             (item) => item.restaurant_id === restaurantId && item.item_name.trim().toLowerCase() === key
           );
           if (existing) {
+            const quantityBefore = existing.current_quantity;
             Object.assign(existing, inventoryInput, { last_updated: now });
             reconcileDemoLocationBalancesToOnHand(state, restaurantId, existing, now);
+            if (existing.current_quantity !== quantityBefore) {
+              appendDemoInventoryMovement(state, {
+                restaurantId,
+                itemId: existing.id,
+                quantityBefore,
+                quantityAfter: existing.current_quantity,
+                reason: "manual_count",
+                sourceWorkflow: "save_restaurant_setup",
+                metadata: {
+                  created: false,
+                  item_name: existing.item_name,
+                  par_level: existing.par_level,
+                  reorder_threshold: existing.reorder_threshold
+                }
+              });
+            }
             inventoryByName.set(key, existing);
           } else {
             const item: InventoryItem = {
@@ -1252,6 +1269,21 @@ function createLocalDemoRepository(): MiseRepository {
             };
             state.inventoryItems.push(item);
             reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
+            appendDemoInventoryMovement(state, {
+              restaurantId,
+              itemId: item.id,
+              quantityBefore: 0,
+              quantityAfter: item.current_quantity,
+              reason: "manual_count",
+              sourceWorkflow: "save_restaurant_setup",
+              metadata: {
+                created: true,
+                item_name: item.item_name,
+                category: item.category,
+                unit: item.unit,
+                supplier_name: item.supplier_name
+              }
+            });
             inventoryByName.set(key, item);
           }
         });

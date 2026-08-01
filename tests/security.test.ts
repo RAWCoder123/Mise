@@ -316,6 +316,34 @@ test("tenant setup completion uses one bounded replay-safe database workflow", (
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.replace_operational_signals[\s\S]*authenticated/i);
 });
 
+test("setup inventory quantity creates and deltas write append-only ledger movements", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260801030000_setup_inventory_ledger_movements.sql",
+    "utf8"
+  );
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const tenantTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const demoSetup = repository.match(
+    /async saveRestaurantSetupSnapshot\(restaurantId, input\) \{[\s\S]*?async createInventoryItemAndSignals/
+  )?.[0] ?? "";
+
+  assert.match(migration, /create\s+or\s+replace\s+function\s+public\.save_restaurant_setup/i);
+  assert.match(migration, /insert into public\.inventory_movements/i);
+  assert.match(migration, /source_workflow,\s*[\s\S]*'save_restaurant_setup'/i);
+  assert.match(migration, /reason,\s*[\s\S]*'manual_count'/i);
+  assert.match(migration, /quantity_after is distinct from quantity_before/i);
+  assert.match(migration, /'created',\s*true/i);
+  assert.match(migration, /'created',\s*false/i);
+  assert.match(migration, /grant execute on function public\.save_restaurant_setup[\s\S]*authenticated/i);
+  assert.match(demoSetup, /sourceWorkflow:\s*"save_restaurant_setup"/);
+  assert.match(demoSetup, /reason:\s*"manual_count"/);
+  assert.match(demoSetup, /created:\s*true/);
+  assert.match(demoSetup, /created:\s*false/);
+  assert.match(tenantTests, /setup create writes one opening save_restaurant_setup ledger row/i);
+  assert.match(tenantTests, /setup quantity change appends a second ledger row/i);
+  assert.match(tenantTests, /setup replay with unchanged quantity does not duplicate ledger rows|setup create writes one opening save_restaurant_setup ledger row and replay keeps it unique/i);
+});
+
 test("manual CSV POS ingest is service-owned, bounded, and keeps live sync fail-closed", () => {
   const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
   const syncPos = readFileSync("supabase/functions/sync-pos-sales/index.ts", "utf8");
