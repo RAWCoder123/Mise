@@ -759,11 +759,16 @@ test("staff waste recording is authorized in SQL, Edge, and inventory detail UI"
     "supabase/migrations/20260731060925_staff_inventory_waste_roles.sql",
     "utf8"
   );
+  const authorityMigration = readFileSync(
+    "supabase/migrations/20260801201000_staff_edge_audit_and_signal_authority.sql",
+    "utf8"
+  );
   const detail = readFileSync("app/inventory/[id].tsx", "utf8");
   const list = readFileSync("app/(tabs)/inventory.tsx", "utf8");
   const catalog = readFileSync("i18n/catalog.ts", "utf8");
   const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
   const domain = readFileSync("services/domain/inventoryWaste.ts", "utf8");
+  const databaseTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
 
   assert.match(domain, /INVENTORY_WASTE_RECORD_ROLES/);
   assert.match(domain, /canRecordInventoryWaste/);
@@ -774,6 +779,22 @@ test("staff waste recording is authorized in SQL, Edge, and inventory detail UI"
     migration,
     /service_record_inventory_waste_and_signals[\s\S]*array\['owner', 'admin', 'manager', 'staff'\]/i
   );
+  assert.match(
+    authorityMigration,
+    /fetch_operational_planning_snapshot[\s\S]*array\['owner', 'admin', 'manager', 'staff'\]/i
+  );
+  assert.match(
+    authorityMigration,
+    /commit_operational_signals[\s\S]*array\['owner', 'admin', 'manager', 'staff'\]/i
+  );
+  assert.match(
+    authorityMigration,
+    /inventory_waste_recorded[\s\S]*array\['owner', 'admin', 'manager', 'staff'\]/i
+  );
+  assert.match(authorityMigration, /inventory_updated/);
+  assert.match(databaseTests, /service audit RPC accepts staff actors for staff-authorized waste audits/i);
+  assert.match(databaseTests, /service audit RPC rejects staff actors for manager-only audit actions/i);
+  assert.match(databaseTests, /active staff can fetch planning snapshots required for waste signal refresh/i);
   assert.match(detail, /canRecordWaste/);
   assert.match(detail, /inventory\.detail\.limitedAccess/);
   assert.match(detail, /showWasteBeforeCountSettings/);

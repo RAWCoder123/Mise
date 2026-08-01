@@ -1413,7 +1413,7 @@ select lives_ok(
 reset role;
 select is(
   (select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
-  35::numeric,
+  33::numeric,
   'staff waste recording deducts on-hand stock'
 );
 select is(
@@ -1506,7 +1506,7 @@ select is(
   'invalid regenerated signals roll back the inventory count change'
 );
 reset role;
-select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 35::numeric, 'rolled-back signal refresh preserves the prior count');
+select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 33::numeric, 'rolled-back signal refresh preserves the prior count');
 
 set local role service_role;
 select is(
@@ -2105,7 +2105,7 @@ select ok(
   'staff inventory update is contained'
 );
 reset role;
-select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 35::numeric, 'staff cannot update inventory counts');
+select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 33::numeric, 'staff cannot update inventory counts');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', true);
@@ -3088,7 +3088,42 @@ select is(
   false,
   'service audit RPC rechecks live membership after revocation'
 );
+select lives_ok(
+  $sql$select public.service_record_edge_audit_log(
+    '33333333-3333-4333-8333-333333333333',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'inventory_waste_recorded',
+    'inventory_items',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    '{"source":"pgTAP","workflow":"record_waste"}'::jsonb
+  )$sql$,
+  'service audit RPC accepts staff actors for staff-authorized waste audits'
+);
+select is(
+  pg_temp.try_execute($sql$select public.service_record_edge_audit_log(
+    '33333333-3333-4333-8333-333333333333',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'inventory_updated',
+    'inventory_items',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    '{}'::jsonb
+  )$sql$),
+  false,
+  'service audit RPC rejects staff actors for manager-only audit actions'
+);
+select lives_ok(
+  $sql$select public.service_fetch_operational_planning_snapshot(
+    '33333333-3333-4333-8333-333333333333',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  )$sql$,
+  'active staff can fetch planning snapshots required for waste signal refresh'
+);
 reset role;
+select is(
+  (select actor_user_id from public.audit_logs where action = 'inventory_waste_recorded' order by created_at desc limit 1),
+  '33333333-3333-4333-8333-333333333333'::uuid,
+  'staff-authorized Edge audit persists the staff actor'
+);
 
 select is(
   has_table_privilege('authenticated', 'public.restaurant_email_connections', 'INSERT'),
