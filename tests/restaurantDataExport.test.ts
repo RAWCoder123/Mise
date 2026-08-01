@@ -164,11 +164,19 @@ test("buildRestaurantDataExport packages tenant tables and redacts secrets", () 
   assert.equal(document.exported_at, exportedAt);
   assert.equal(document.tables.inventory_items.length, 1);
   assert.equal(document.tables.pos_sales.length, 1);
-  assert.equal(document.tables.pos_sales[0].id, "sale-new");
-  assert.equal("token_hash" in document.tables.restaurant_member_invites[0], false);
-  assert.deepEqual(document.tables.pos_integrations[0].settings, { note: "ok" });
-  assert.equal("refresh_token" in document.tables.restaurant_email_connections[0], false);
-  assert.equal(document.tables.restaurant_email_connections[0].sender_email, "ops@demo.mise");
+  const exportedSale = document.tables.pos_sales[0];
+  const exportedInvite = document.tables.restaurant_member_invites[0];
+  const exportedIntegration = document.tables.pos_integrations[0];
+  const exportedEmail = document.tables.restaurant_email_connections[0];
+  assert.ok(exportedSale);
+  assert.ok(exportedInvite);
+  assert.ok(exportedIntegration);
+  assert.ok(exportedEmail);
+  assert.equal(exportedSale.id, "sale-new");
+  assert.equal("token_hash" in exportedInvite, false);
+  assert.deepEqual(exportedIntegration.settings, { note: "ok" });
+  assert.equal("refresh_token" in exportedEmail, false);
+  assert.equal(exportedEmail.sender_email, "ops@demo.mise");
   assert.deepEqual(document.summary, {
     table_count: 24,
     pos_sales_exported: 1,
