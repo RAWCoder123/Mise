@@ -25,7 +25,7 @@ import { canApproveInventoryCount, canDraftInventoryCount } from "../../services
 import type { InventoryCountSessionDetail } from "../../types/mise";
 
 export default function InventoryCountSessionScreen() {
-  const { formatNumber, t } = useLocale();
+  const { formatNumber, parseNumber, t } = useLocale();
   const { restaurant, memberships } = useMiseSession();
   const canDraft = canDraftInventoryCount(memberships, restaurant?.id ?? "");
   const canApprove = canApproveInventoryCount(memberships, restaurant?.id ?? "");
@@ -130,7 +130,9 @@ export default function InventoryCountSessionScreen() {
       Object.fromEntries(
         next.lines.map((line) => [
           line.inventory_item_id,
-          line.counted_quantity == null ? "" : String(line.counted_quantity)
+          line.counted_quantity == null
+            ? ""
+            : formatNumber(line.counted_quantity, { useGrouping: false })
         ])
       )
     );
@@ -145,8 +147,14 @@ export default function InventoryCountSessionScreen() {
       .map((line) => {
         const raw = draftCounts[line.inventory_item_id]?.trim() ?? "";
         if (!raw) return null;
-        const countedQuantity = Number(raw);
-        if (!Number.isFinite(countedQuantity)) return null;
+        const countedQuantity = parseNumber(raw);
+        if (countedQuantity == null || !Number.isFinite(countedQuantity) || countedQuantity < 0) {
+          throw new Error(
+            t("inventory.count.invalidQuantity", {
+              item: line.item_name
+            })
+          );
+        }
         const noteRaw = draftNotes[line.inventory_item_id] ?? "";
         if (noteRaw.trim().length > 240) {
           throw new Error(t("inventory.count.noteTooLong"));
@@ -363,7 +371,8 @@ export default function InventoryCountSessionScreen() {
                   {visibleDetail.lines.map((line, index) => {
                     const countedRaw = draftCounts[line.inventory_item_id] ?? "";
                     const noteRaw = draftNotes[line.inventory_item_id] ?? "";
-                    const counted = countedRaw.trim() === "" ? null : Number(countedRaw);
+                    const counted =
+                      countedRaw.trim() === "" ? null : parseNumber(countedRaw);
                     const variance =
                       counted == null || !Number.isFinite(counted)
                         ? null
@@ -411,7 +420,7 @@ export default function InventoryCountSessionScreen() {
                                 [line.inventory_item_id]: value
                               }))
                             }
-                            placeholder="0"
+                            placeholder={formatNumber(0, { useGrouping: false })}
                             placeholderTextColor={colors.faint}
                             style={styles.countInput}
                           />

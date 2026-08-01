@@ -18,6 +18,8 @@ const routes = [
   "/settings/gmail",
   "/settings/suppliers",
   "/settings/team",
+  "/settings/pos",
+  "/settings/recipes",
   "/invite/0000000000000000000000000000000000000000000000000000000000000000"
 ];
 const port = Number(process.env.MISE_ROUTE_SMOKE_PORT ?? 8083);
