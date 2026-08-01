@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { router, useFocusEffect } from "expo-router";
 import {
   BarChart3,
+  BookOpen,
   CheckCircle2,
   ChevronRight,
   ClipboardList,
@@ -430,7 +431,16 @@ function TaskRow({
       accessibilityLabel={`${presentation.title}. ${timingLabel}. ${accessibleAction}`}
       accessibilityState={{ disabled: !canAct }}
       disabled={!canAct}
-      onPress={() => router.push(task.action.route)}
+      onPress={() => {
+        if (task.action.intent === "map_unmapped_pos_items" && task.action.entityId) {
+          router.push({
+            pathname: "/settings/recipes",
+            params: { menuItem: task.action.entityId }
+          } as never);
+          return;
+        }
+        router.push(task.action.route);
+      }}
       style={({ pressed }) => [
         styles.taskRow,
         divided && styles.dividedRow,
@@ -605,6 +615,7 @@ function taskIcon(task: OperationalTodayTask, color: string): ReactNode {
   if (task.source.kind === "recommendation" || task.source.kind === "order") return <ShoppingCart {...props} />;
   if (task.source.kind === "integration") return <PlugZap {...props} />;
   if (task.source.kind === "setup") return <Settings {...props} />;
+  if (task.source.kind === "recipe") return <BookOpen {...props} />;
   return <Lightbulb {...props} />;
 }
 

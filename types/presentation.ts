@@ -36,7 +36,8 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.integration.connect",
   "today.integration.connected",
   "today.integration.repair",
-  "today.insight.review"
+  "today.insight.review",
+  "today.recipe.map_unmapped"
 ] as const;
 
 export const INSIGHT_PRESENTATION_CODES = [
@@ -122,6 +123,14 @@ export type TodayTaskPresentationDescriptor =
         /** Opaque/manual or already-rendered source copy is retained as evidence. */
         rawTitle: string;
         rawEvidence: string;
+      };
+    }
+  | {
+      code: "today.recipe.map_unmapped";
+      values: {
+        unmappedCount: number;
+        /** First sold menu item needing a recipe baseline; never translated. */
+        sampleItemName: string | null;
       };
     };
 

@@ -23,7 +23,8 @@ export type OperationalTodayTaskSourceKind =
   | "order"
   | "setup"
   | "integration"
-  | "insight";
+  | "insight"
+  | "recipe";
 
 export type OperationalTodayTaskPriority = "urgent" | "high" | "normal";
 export type OperationalTodayTaskStatus = "open" | "completed";
@@ -42,7 +43,8 @@ export type OperationalTodayTaskActionIntent =
   | "connect_pos"
   | "manage_pos_connection"
   | "repair_pos_connection"
-  | "review_insight";
+  | "review_insight"
+  | "map_unmapped_pos_items";
 
 /** Exhaustive list for presentation and contract tests. Keep in sync with the union above. */
 export const OPERATIONAL_TODAY_TASK_ACTION_INTENTS = [
@@ -57,11 +59,15 @@ export const OPERATIONAL_TODAY_TASK_ACTION_INTENTS = [
   "connect_pos",
   "manage_pos_connection",
   "repair_pos_connection",
-  "review_insight"
+  "review_insight",
+  "map_unmapped_pos_items"
 ] as const satisfies readonly OperationalTodayTaskActionIntent[];
 
 /** Stable synthetic source id for the suggested begin-count task (not a DB session id). */
 export const SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID = "suggested_begin";
+
+/** Stable synthetic source id for the unmapped POS recipe repair task. */
+export const UNMAPPED_POS_RECIPE_SOURCE_ID = "unmapped_pos_items";
 
 export type OperationalTodayTaskRoute =
   | "/inventory"
@@ -118,6 +124,8 @@ export interface DeriveOperationalTodayTasksInput {
   setupReadiness?: SetupReadinessSummary | null;
   /** Undefined means integration readiness was not loaded; [] means no POS connection exists. */
   posIntegrations?: readonly PosIntegration[];
+  /** Sold POS menu item names that still lack recipe baselines. */
+  unmappedPosMenuItems?: readonly string[];
   insights: readonly Insight[];
   openCountSession?: InventoryCountSession | null;
   now?: Date;
@@ -407,8 +415,52 @@ export function deriveOperationalTodayTasks(
     );
   }
 
+  const unmappedPosMenuItems = normalizeUnmappedPosMenuItems(input.unmappedPosMenuItems);
+  if (unmappedPosMenuItems.length > 0) {
+    const sampleItemName = unmappedPosMenuItems[0] ?? null;
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "recipe",
+        sourceId: UNMAPPED_POS_RECIPE_SOURCE_ID,
+        sourceStatus: "unmapped",
+        title:
+          unmappedPosMenuItems.length === 1
+            ? `Map ${sampleItemName ?? "POS item"} to ingredients`
+            : `Map ${unmappedPosMenuItems.length} unmapped POS menu items`,
+        detail:
+          unmappedPosMenuItems.length === 1
+            ? `${sampleItemName ?? "This POS menu item"} sold without a recipe baseline, so Mise cannot deplete inventory from those sales.`
+            : `${unmappedPosMenuItems.length} sold POS menu items lack recipe baselines, so Mise cannot deplete inventory from those sales.`,
+        presentation: {
+          code: "today.recipe.map_unmapped",
+          values: {
+            unmappedCount: unmappedPosMenuItems.length,
+            sampleItemName
+          }
+        },
+        priority: unmappedPosMenuItems.length >= 3 ? "high" : "normal",
+        action: {
+          intent: "map_unmapped_pos_items",
+          label: "Map recipes",
+          route: "/settings/recipes",
+          entityId: sampleItemName
+        },
+        requiredRole: "manager",
+        isComplete: false,
+        completionReason: "Sold POS menu items remain without recipe baselines."
+      }),
+      includeCompleted
+    );
+  }
+
   if (input.setupReadiness) {
     for (const step of input.setupReadiness.steps) {
+      // Prefer the dedicated unmapped-POS repair task over the generic setup recipes step.
+      if (step.id === "recipes" && step.status !== "complete" && unmappedPosMenuItems.length > 0) {
+        continue;
+      }
       pushIfVisible(tasks, buildSetupTask(restaurantId, step, input.setupReadiness), includeCompleted);
     }
   }
@@ -799,6 +851,21 @@ function integrationDetail(integration: PosIntegration) {
   if (integration.status === "error") return "The provider reports an error. Review it before relying on current sales.";
   if (integration.status === "paused") return "Sales synchronization is paused.";
   return "This sales source is not connected.";
+}
+
+function normalizeUnmappedPosMenuItems(items: readonly string[] | undefined): string[] {
+  if (!items?.length) return [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const item of items) {
+    const name = item.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(name);
+  }
+  return normalized.sort((left, right) => compareStrings(left, right));
 }
 
 function validNow(value: Date | undefined) {

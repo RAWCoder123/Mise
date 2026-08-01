@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { router, useFocusEffect, useNavigation } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
 import { AlertTriangle, ArrowLeft, BookOpen, Link2, Package, PackageCheck, Plus, Save, ShoppingBag, Unlink } from "lucide-react-native";
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -31,11 +31,16 @@ import type { InventoryItem, RecipeBaselineItem, RecipeBaselineSummary } from ".
 
 export default function RecipeBaselinesScreen() {
   const navigation = useNavigation();
+  const params = useLocalSearchParams<{ menuItem?: string | string[] }>();
+  const prefillsMenuItem = useMemo(() => {
+    const raw = Array.isArray(params.menuItem) ? params.menuItem[0] : params.menuItem;
+    return typeof raw === "string" ? raw.trim() : "";
+  }, [params.menuItem]);
   const { formatNumber, parseNumber, t } = useLocale();
   const { memberships, restaurant } = useMiseSession();
   const [summary, setSummary] = useState<RecipeBaselineSummary | null>(null);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
-  const [newMenuItemName, setNewMenuItemName] = useState("");
+  const [newMenuItemName, setNewMenuItemName] = useState(prefillsMenuItem);
   const [newInventoryItemName, setNewInventoryItemName] = useState("");
   const [newQuantity, setNewQuantity] = useState("1");
   const [loading, setLoading] = useState(true);
@@ -53,7 +58,7 @@ export default function RecipeBaselinesScreen() {
     setLoadedRestaurantId(null);
     setSummary(null);
     setInventoryItems([]);
-    setNewMenuItemName("");
+    setNewMenuItemName(prefillsMenuItem);
     setNewInventoryItemName("");
     setNewQuantity("1");
     setSavingMappingId(null);
@@ -61,7 +66,12 @@ export default function RecipeBaselinesScreen() {
     setError(null);
     setNotice(null);
     setLoading(Boolean(restaurant));
-  }, [restaurant?.id]);
+  }, [restaurant?.id, prefillsMenuItem]);
+
+  useEffect(() => {
+    if (!prefillsMenuItem) return;
+    setNewMenuItemName((current) => (current.trim() ? current : prefillsMenuItem));
+  }, [prefillsMenuItem]);
 
   const load = useCallback(async () => {
     if (!restaurant) {

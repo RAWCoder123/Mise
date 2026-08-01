@@ -1,6 +1,7 @@
 import {
   buildInventoryOutlooks,
   buildDemoReadinessSummary,
+  buildRecipeBaselineSummary,
   buildSetupReadinessSummary,
   buildTodaySummary
 } from "../domain/miseDomain";
@@ -78,6 +79,13 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
     orders,
     emailConnection
   });
+  const recipeBaseline = buildRecipeBaselineSummary(
+    normalizedRestaurantId,
+    sales,
+    mappings,
+    inventoryItems,
+    operatingDate
+  );
   const summary = buildTodaySummary(
     data.restaurant,
     sales,
@@ -100,6 +108,7 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       orders,
       setupReadiness,
       posIntegrations,
+      unmappedPosMenuItems: recipeBaseline.posItemsMissingRecipes,
       insights,
       openCountSession: openCountSession?.session ?? null
     }),

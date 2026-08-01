@@ -25,7 +25,7 @@ const supplierName = "Proveedor Ñ";
 const providerName = "Square 企业";
 
 test("every Today task action intent has a localized non-fallback label", () => {
-  assert.equal(OPERATIONAL_TODAY_TASK_ACTION_INTENTS.length, 12);
+  assert.equal(OPERATIONAL_TODAY_TASK_ACTION_INTENTS.length, 13);
 
   for (const locale of locales) {
     for (const intent of OPERATIONAL_TODAY_TASK_ACTION_INTENTS) {
@@ -127,6 +127,10 @@ test("every allowlisted Today presentation code renders in all locales and prese
         rawTitle: "Opaque source title",
         rawEvidence: "Opaque source evidence"
       }
+    },
+    {
+      code: "today.recipe.map_unmapped",
+      values: { unmappedCount: 2, sampleItemName: itemName }
     }
   ];
 

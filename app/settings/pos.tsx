@@ -19,6 +19,8 @@ import type { PosProvider } from "../../types/mise";
 const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Manual CSV Upload"];
 type PosMessage =
   | { key: "pos.message.csvImported"; values: { count: string } }
+  | { key: "pos.message.csvImportedWithUnmapped"; values: { count: string; unmapped: string } }
+  | { key: "pos.message.csvImportedMapped"; values: { count: string } }
   | { key: "pos.message.demoLoaded"; values: { provider: string } }
   | { key: "pos.error.demoLoad" }
   | { key: "pos.error.csvImport" }
@@ -32,6 +34,7 @@ export default function POSConnectionScreen() {
   const [importingCsv, setImportingCsv] = useState(false);
   const [csvText, setCsvText] = useState("");
   const [message, setMessage] = useState<PosMessage | null>(null);
+  const [unmappedAfterImport, setUnmappedAfterImport] = useState(0);
   const csvPreview = useMemo(() => previewManualPosSalesCsv(csvText), [csvText]);
   const posProviderLabel =
     posProvider === "Manual CSV Upload" ? t("pos.provider.manualCsv") : posProvider;
@@ -68,15 +71,29 @@ export default function POSConnectionScreen() {
     }
     setImportingCsv(true);
     setMessage(null);
+    setUnmappedAfterImport(0);
     try {
       const result = await importManualPosSalesCsv(restaurant.id, csvText, "settings_manual_csv.txt");
       await refreshPosStatus();
-      setMessage({
-        key: "pos.message.csvImported",
-        values: { count: formatNumber(result.posSalesRowsSaved) }
-      });
+      const unmappedCount = Math.max(0, Math.trunc(result.unmappedSaleCount ?? 0));
+      setUnmappedAfterImport(unmappedCount);
+      if (unmappedCount > 0) {
+        setMessage({
+          key: "pos.message.csvImportedWithUnmapped",
+          values: {
+            count: formatNumber(result.posSalesRowsSaved),
+            unmapped: formatNumber(unmappedCount)
+          }
+        });
+      } else {
+        setMessage({
+          key: "pos.message.csvImportedMapped",
+          values: { count: formatNumber(result.posSalesRowsSaved) }
+        });
+      }
     } catch {
       setMessage({ key: "pos.error.csvImport" });
+      setUnmappedAfterImport(0);
     } finally {
       setImportingCsv(false);
     }
@@ -154,6 +171,17 @@ export default function POSConnectionScreen() {
             {t(message.key, "values" in message ? message.values : undefined)}
           </Text>
         )}
+
+        {unmappedAfterImport > 0 ? (
+          <Pressable
+            onPress={() => router.push("/settings/recipes" as never)}
+            accessibilityRole="button"
+            accessibilityLabel={t("pos.action.mapUnmappedAccessibility")}
+            style={({ pressed }) => [styles.repairButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.repairButtonText}>{t("pos.action.mapUnmapped")}</Text>
+          </Pressable>
+        ) : null}
 
         <SectionHeader
           title={t("pos.csv.title")}
@@ -455,6 +483,21 @@ const styles = StyleSheet.create({
   },
   importButtonText: {
     color: colors.surface,
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  repairButton: {
+    minHeight: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.caution,
+    backgroundColor: colors.surfaceWarm,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14
+  },
+  repairButtonText: {
+    color: colors.accentDark,
     fontSize: 14,
     fontWeight: "900"
   }

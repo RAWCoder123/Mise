@@ -77,6 +77,8 @@ interface OperationsCopy {
     repairSalesDisconnectedDetail: string;
     reviewInsightTitle: (typeLabel: string) => string;
     reviewInsightDetail: string;
+    mapUnmappedRecipesTitle: (unmappedCount: number, unmappedCountLabel: string, sampleItemName: string | null) => string;
+    mapUnmappedRecipesDetail: (unmappedCount: number, unmappedCountLabel: string, sampleItemName: string | null) => string;
     actions: {
       updateInventoryCount: string;
       beginCountSession: string;
@@ -91,6 +93,7 @@ interface OperationsCopy {
       managePosConnection: string;
       repairPosConnection: string;
       reviewInsight: string;
+      mapUnmappedPosItems: string;
     };
   };
   insight: {
@@ -207,6 +210,14 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesDisconnectedDetail: "This sales source is not connected.",
       reviewInsightTitle: (typeLabel) => `Review ${typeLabel}`,
       reviewInsightDetail: "Open the evidence and recommended action before the next service window.",
+      mapUnmappedRecipesTitle: (unmappedCount, unmappedCountLabel, sampleItemName) =>
+        unmappedCount === 1 && sampleItemName
+          ? `Map ${sampleItemName} to ingredients`
+          : `Map ${unmappedCountLabel} unmapped POS menu items`,
+      mapUnmappedRecipesDetail: (unmappedCount, unmappedCountLabel, sampleItemName) =>
+        unmappedCount === 1 && sampleItemName
+          ? `${sampleItemName} sold without a recipe baseline, so Mise cannot deplete inventory from those sales.`
+          : `${unmappedCountLabel} sold POS menu items lack recipe baselines, so Mise cannot deplete inventory from those sales.`,
       actions: {
         updateInventoryCount: "Review count",
         beginCountSession: "Start count",
@@ -220,7 +231,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         connectPos: "Connect POS",
         managePosConnection: "Manage connection",
         repairPosConnection: "Repair connection",
-        reviewInsight: "Review insight"
+        reviewInsight: "Review insight",
+        mapUnmappedPosItems: "Map recipes"
       }
     },
     insight: {
@@ -336,6 +348,14 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesDisconnectedDetail: "Esta fuente de ventas no está conectada.",
       reviewInsightTitle: (typeLabel) => `Revisar ${typeLabel}`,
       reviewInsightDetail: "Abre la evidencia y la acción recomendada antes del próximo servicio.",
+      mapUnmappedRecipesTitle: (unmappedCount, unmappedCountLabel, sampleItemName) =>
+        unmappedCount === 1 && sampleItemName
+          ? `Vincular ${sampleItemName} con ingredientes`
+          : `Vincular ${unmappedCountLabel} artículos POS sin receta`,
+      mapUnmappedRecipesDetail: (unmappedCount, unmappedCountLabel, sampleItemName) =>
+        unmappedCount === 1 && sampleItemName
+          ? `${sampleItemName} se vendió sin una receta base, así que Mise no puede descontar inventario de esas ventas.`
+          : `${unmappedCountLabel} artículos POS vendidos no tienen receta base, así que Mise no puede descontar inventario de esas ventas.`,
       actions: {
         updateInventoryCount: "Revisar conteo",
         beginCountSession: "Iniciar conteo",
@@ -349,7 +369,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         connectPos: "Conectar POS",
         managePosConnection: "Gestionar conexión",
         repairPosConnection: "Reparar conexión",
-        reviewInsight: "Revisar análisis"
+        reviewInsight: "Revisar análisis",
+        mapUnmappedPosItems: "Vincular recetas"
       }
     },
     insight: {
@@ -463,6 +484,14 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesDisconnectedDetail: "此销售数据源尚未连接。",
       reviewInsightTitle: (typeLabel) => `查看${typeLabel}`,
       reviewInsightDetail: "请在下一个营业时段前查看依据和建议操作。",
+      mapUnmappedRecipesTitle: (unmappedCount, unmappedCountLabel, sampleItemName) =>
+        unmappedCount === 1 && sampleItemName
+          ? `将 ${sampleItemName} 关联到原料`
+          : `关联 ${unmappedCountLabel} 个未映射的 POS 菜品`,
+      mapUnmappedRecipesDetail: (unmappedCount, unmappedCountLabel, sampleItemName) =>
+        unmappedCount === 1 && sampleItemName
+          ? `${sampleItemName} 已售出但没有配方基线，因此 Mise 无法根据这些销售扣减库存。`
+          : `有 ${unmappedCountLabel} 个已售 POS 菜品缺少配方基线，因此 Mise 无法根据这些销售扣减库存。`,
       actions: {
         updateInventoryCount: "检查盘点",
         beginCountSession: "开始盘点",
@@ -476,7 +505,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         connectPos: "连接 POS",
         managePosConnection: "管理连接",
         repairPosConnection: "修复连接",
-        reviewInsight: "查看洞察"
+        reviewInsight: "查看洞察",
+        mapUnmappedPosItems: "关联配方"
       }
     },
     insight: {
@@ -562,6 +592,8 @@ export function presentOperationalTodayTaskAction(
       return actions.repairPosConnection;
     case "review_insight":
       return actions.reviewInsight;
+    case "map_unmapped_pos_items":
+      return actions.mapUnmappedPosItems;
     default: {
       const _exhaustive: never = intent;
       throw new Error(`Unsupported Today task action intent: ${String(_exhaustive)}`);
@@ -657,6 +689,20 @@ export function presentOperationalTodayTask(
     return result(
       copy.today.reviewInsightTitle(copy.insightType[values.insightType]),
       copy.today.reviewInsightDetail
+    );
+  }
+  if (code === "today.recipe.map_unmapped") {
+    return result(
+      copy.today.mapUnmappedRecipesTitle(
+        values.unmappedCount,
+        quantity(values.unmappedCount),
+        values.sampleItemName
+      ),
+      copy.today.mapUnmappedRecipesDetail(
+        values.unmappedCount,
+        quantity(values.unmappedCount),
+        values.sampleItemName
+      )
     );
   }
 

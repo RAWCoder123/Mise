@@ -37,6 +37,7 @@ import { readPublicAppConfig } from "../../lib/appConfig";
 import {
   fetchDemoReadinessSummary,
   fetchEmailConnectionState,
+  fetchRecipeBaselineSummary,
   fetchRestaurantOpsProfile,
   fetchSuppliers,
   requestAccountDeletion
@@ -44,6 +45,7 @@ import {
 import { captureMiseError } from "../../services/telemetry";
 import type {
   DemoReadinessSummary,
+  RecipeBaselineSummary,
   RestaurantEmailConnection,
   RestaurantOpsProfile,
   RestaurantRole,
@@ -69,6 +71,7 @@ export default function SettingsScreen() {
   const [suppliers, setSuppliers] = useState<string[]>([]);
   const [opsProfile, setOpsProfile] = useState<RestaurantOpsProfile | null>(null);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
+  const [recipeBaseline, setRecipeBaseline] = useState<RecipeBaselineSummary | null>(null);
   const [readiness, setReadiness] = useState<DemoReadinessSummary | null>(null);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [message, setMessage] = useState<SettingsNotice | null>(null);
@@ -90,6 +93,7 @@ export default function SettingsScreen() {
     setSuppliers([]);
     setOpsProfile(null);
     setEmailConnection(null);
+    setRecipeBaseline(null);
     setReadiness(null);
     setDiagnosticsOpen(false);
     setMessage(null);
@@ -100,6 +104,7 @@ export default function SettingsScreen() {
       setSuppliers([]);
       setOpsProfile(null);
       setEmailConnection(null);
+      setRecipeBaseline(null);
       setReadiness(null);
       return;
     }
@@ -107,16 +112,19 @@ export default function SettingsScreen() {
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
     try {
-      const [nextSuppliers, nextOpsProfile, nextEmailConnection, nextReadiness] = await Promise.all([
-        fetchSuppliers(restaurantId),
-        fetchRestaurantOpsProfile(restaurantId),
-        fetchEmailConnectionState(restaurantId),
-        __DEV__ && isDemoMode ? fetchDemoReadinessSummary(restaurantId) : Promise.resolve(null)
-      ]);
+      const [nextSuppliers, nextOpsProfile, nextEmailConnection, nextRecipeBaseline, nextReadiness] =
+        await Promise.all([
+          fetchSuppliers(restaurantId),
+          fetchRestaurantOpsProfile(restaurantId),
+          fetchEmailConnectionState(restaurantId),
+          fetchRecipeBaselineSummary(restaurantId),
+          __DEV__ && isDemoMode ? fetchDemoReadinessSummary(restaurantId) : Promise.resolve(null)
+        ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSuppliers(nextSuppliers);
       setOpsProfile(nextOpsProfile);
       setEmailConnection(nextEmailConnection);
+      setRecipeBaseline(nextRecipeBaseline);
       setReadiness(nextReadiness);
       setLoadedRestaurantId(restaurantId);
     } catch (loadError) {
@@ -208,13 +216,26 @@ export default function SettingsScreen() {
   const visibleSuppliers = loadedRestaurantId === restaurant?.id ? suppliers : [];
   const visibleOpsProfile = loadedRestaurantId === restaurant?.id ? opsProfile : null;
   const visibleEmailConnection = loadedRestaurantId === restaurant?.id ? emailConnection : null;
+  const visibleRecipeBaseline = loadedRestaurantId === restaurant?.id ? recipeBaseline : null;
   const visibleReadiness = loadedRestaurantId === restaurant?.id ? readiness : null;
   const gmailConnected = visibleEmailConnection?.status === "connected";
   const gmailNeedsAttention = visibleEmailConnection?.status === "needs_reauth" || visibleEmailConnection?.status === "restricted";
+  const unmappedRecipeCount = visibleRecipeBaseline?.posItemsMissingRecipes.length ?? 0;
+  const recipesSubtitle =
+    unmappedRecipeCount === 1
+      ? t("settings.operations.recipes.unmappedOneBody")
+      : unmappedRecipeCount > 1
+        ? t("settings.operations.recipes.unmappedBody", { count: formatNumber(unmappedRecipeCount) })
+        : t("settings.operations.recipes.body");
   const localizedRole = role ? roleLabel(role, t) : null;
   const profileLine = restaurant
     ? `${restaurant.cuisine_type?.trim() || t("settings.profile.cuisineFallback")} · ${serviceStyleLabel(restaurant.service_style, t)}`
     : t("settings.workspace.metaFallback");
+  const posConnectedLabel = posProvider
+    ? posProvider === "Manual CSV Upload"
+      ? t("settings.integration.pos.manualCsv")
+      : posProviderLabel(posProvider, t)
+    : null;
 
   return (
     <Screen title={t("settings.title")} subtitle={t("settings.subtitle")}>
@@ -281,29 +302,33 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.integrations")}>
-          {isDemoMode ? (
-            <OperationalRow
-              title={t("settings.integration.pos.title")}
-              subtitle={posProvider
-                ? t("settings.integration.pos.connectedSubtitle", { provider: posProviderLabel(posProvider, t) })
-                : t("settings.integration.pos.notConnectedSubtitle")}
-              icon={<PlugZap size={20} color={posProvider ? colors.success : colors.muted} strokeWidth={2.25} />}
-              iconTone={posProvider ? "leaf" : "neutral"}
-              badgeLabel={t(posProvider ? "settings.integration.pos.connected" : "settings.integration.pos.notConnected")}
-              badgeTone={posProvider ? "success" : "neutral"}
-              onPress={() => router.push("/settings/pos")}
-            />
-          ) : (
-            <View style={styles.quietRow}>
-              <IconBadge tone="neutral">
-                <PlugZap size={20} color={colors.muted} strokeWidth={2.25} />
-              </IconBadge>
-              <View style={styles.quietCopy}>
-                <Text style={styles.rowTitle}>{t("settings.integration.noPos.title")}</Text>
-                <Text style={styles.rowBody}>{t("settings.integration.noPos.body")}</Text>
-              </View>
-            </View>
-          )}
+          <OperationalRow
+            title={t("settings.integration.pos.title")}
+            subtitle={
+              posConnectedLabel
+                ? t("settings.integration.pos.connectedSubtitle", { provider: posConnectedLabel })
+                : isDemoMode
+                  ? t("settings.integration.pos.notConnectedSubtitle")
+                  : t("settings.integration.pos.csvSubtitle")
+            }
+            icon={
+              <PlugZap
+                size={20}
+                color={posConnectedLabel ? colors.success : colors.muted}
+                strokeWidth={2.25}
+              />
+            }
+            iconTone={posConnectedLabel ? "leaf" : "neutral"}
+            badgeLabel={
+              posConnectedLabel
+                ? t("settings.integration.pos.connected")
+                : isDemoMode
+                  ? t("settings.integration.pos.notConnected")
+                  : t("settings.integration.pos.csvReady")
+            }
+            badgeTone={posConnectedLabel ? "success" : "neutral"}
+            onPress={() => router.push("/settings/pos")}
+          />
           <OperationalRow
             title={t("settings.integration.gmail.title")}
             titleLines={2}
@@ -325,9 +350,17 @@ export default function SettingsScreen() {
         <SettingsSection title={t("settings.section.operations")}>
           <OperationalRow
             title={t("settings.operations.recipes.title")}
-            subtitle={t("settings.operations.recipes.body")}
-            icon={<BookOpen size={20} color={colors.caution} strokeWidth={2.25} />}
-            iconTone="caution"
+            subtitle={recipesSubtitle}
+            icon={
+              <BookOpen
+                size={20}
+                color={unmappedRecipeCount > 0 ? colors.caution : colors.text}
+                strokeWidth={2.25}
+              />
+            }
+            iconTone={unmappedRecipeCount > 0 ? "caution" : "neutral"}
+            badgeLabel={unmappedRecipeCount > 0 ? formatNumber(unmappedRecipeCount) : undefined}
+            badgeTone={unmappedRecipeCount > 0 ? "caution" : undefined}
             onPress={() => router.push("/settings/recipes" as never)}
           />
           <OperationalRow

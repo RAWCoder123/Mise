@@ -8,6 +8,7 @@ import {
   operationalTodayTaskId,
   prioritizeOperationalTodayTasksForRole,
   SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID,
+  UNMAPPED_POS_RECIPE_SOURCE_ID,
   sortOperationalTodayTasks,
   type OperationalTodayTask
 } from "../services/domain/todayTasks";
@@ -109,6 +110,52 @@ test("derives a stable, tenant-scoped operational queue without duplicating inve
     now
   });
   assert.deepEqual(tasks.map((task) => task.id), secondPass.map((task) => task.id));
+});
+
+test("unmapped POS menu items create a recipe repair task and suppress duplicate setup recipes", () => {
+  const incompleteRecipes = setupReadiness();
+  incompleteRecipes.currentStep = "recipes";
+  incompleteRecipes.steps = incompleteRecipes.steps.map((step) =>
+    step.id === "recipes"
+      ? {
+          ...step,
+          status: "active",
+          missing: ["2 unmapped POS menu items"],
+          detail: "Ingredient-per-dish links"
+        }
+      : step
+  );
+
+  const tasks = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "America/New_York",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [],
+    setupReadiness: incompleteRecipes,
+    unmappedPosMenuItems: [" Veggie Bowl ", "Veggie Bowl", "House Salad"],
+    insights: [],
+    now
+  });
+
+  const recipeTask = tasks.find((task) => task.source.kind === "recipe");
+  assert.equal(recipeTask?.source.id, UNMAPPED_POS_RECIPE_SOURCE_ID);
+  assert.equal(recipeTask?.action.intent, "map_unmapped_pos_items");
+  assert.equal(recipeTask?.action.route, "/settings/recipes");
+  assert.equal(recipeTask?.action.entityId, "House Salad");
+  assert.equal(recipeTask?.requiredRole, "manager");
+  assert.equal(recipeTask?.priority, "normal");
+  assert.equal(recipeTask?.presentation?.code, "today.recipe.map_unmapped");
+  if (recipeTask?.presentation?.code === "today.recipe.map_unmapped") {
+    assert.equal(recipeTask.presentation.values.unmappedCount, 2);
+    assert.equal(recipeTask.presentation.values.sampleItemName, "House Salad");
+  }
+
+  assert.equal(
+    tasks.some((task) => task.source.kind === "setup" && task.source.id === "recipes"),
+    false,
+    "dedicated unmapped POS repair replaces the incomplete setup recipes step"
+  );
 });
 
 test("open inventory count sessions become manager Today tasks", () => {
