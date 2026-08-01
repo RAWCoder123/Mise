@@ -4,6 +4,7 @@ import { publicQaEnv } from "./safe-env.mjs";
 const routes = [
   "/",
   "/login",
+  "/signup",
   "/reset-password",
   "/setup",
   "/today",

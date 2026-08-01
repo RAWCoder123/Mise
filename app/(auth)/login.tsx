@@ -16,7 +16,7 @@ import { getInitialLoginCredentials } from "../../lib/appConfig";
 import { readPendingInviteToken } from "../../lib/pendingInvite";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { DEMO_DATASET } from "../../services/demoData";
-import { buildInviteClaimPath } from "../../services/domain/teamInvites";
+import { resolvePostAuthPath } from "../../services/domain/authSignup";
 import { captureMiseError } from "../../services/telemetry";
 
 export default function LoginScreen() {
@@ -41,17 +41,22 @@ export default function LoginScreen() {
   const [noticeKey, setNoticeKey] = useState<MessageKey | null>(null);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || loading) return;
     if (passwordRecoveryPending) {
       router.replace("/reset-password");
       return;
     }
-    if (restaurant) {
-      router.replace("/today");
-    } else if (user) {
-      router.replace("/setup");
-    }
-  }, [passwordRecoveryPending, ready, restaurant, user]);
+    if (!user) return;
+    void (async () => {
+      const pendingInviteToken = await readPendingInviteToken();
+      router.replace(
+        resolvePostAuthPath({
+          pendingInviteToken,
+          hasRestaurant: Boolean(restaurant)
+        })
+      );
+    })();
+  }, [loading, passwordRecoveryPending, ready, restaurant, user]);
 
   if (!ready) {
     return <Screen title={t("boot.title")} subtitle={t("boot.subtitle")} loading />;
@@ -74,11 +79,12 @@ export default function LoginScreen() {
     try {
       await signIn(normalizedEmail, password);
       const pendingInviteToken = await readPendingInviteToken();
-      if (pendingInviteToken) {
-        router.replace(buildInviteClaimPath(pendingInviteToken));
-      } else {
-        router.replace("/");
-      }
+      router.replace(
+        resolvePostAuthPath({
+          pendingInviteToken,
+          hasRestaurant: Boolean(restaurant)
+        })
+      );
     } catch (signInError) {
       captureMiseError(signInError, { flow: "login", operation: "sign_in" });
       setErrorKey("login.error.signIn");
@@ -205,19 +211,28 @@ export default function LoginScreen() {
               fullWidth
             />
             {isSupabaseConfigured ? (
-              <Button
-                title={
-                  loading
-                    ? t("login.action.sendingReset")
-                    : resetSent
-                      ? t("login.action.resendReset")
-                      : t("login.action.forgotPassword")
-                }
-                variant="ghost"
-                onPress={() => void handleForgotPassword()}
-                disabled={loading}
-                fullWidth
-              />
+              <>
+                <Button
+                  title={t("login.action.createAccount")}
+                  variant="secondary"
+                  onPress={() => router.replace("/signup")}
+                  disabled={loading}
+                  fullWidth
+                />
+                <Button
+                  title={
+                    loading
+                      ? t("login.action.sendingReset")
+                      : resetSent
+                        ? t("login.action.resendReset")
+                        : t("login.action.forgotPassword")
+                  }
+                  variant="ghost"
+                  onPress={() => void handleForgotPassword()}
+                  disabled={loading}
+                  fullWidth
+                />
+              </>
             ) : null}
             {canUseDemoMode && (
               <View style={styles.demoPanel}>

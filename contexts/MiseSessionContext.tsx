@@ -15,6 +15,15 @@ import {
   PASSWORD_RESET_PATH,
   validateNewPassword
 } from "../services/domain/authRecovery";
+import {
+  isDuplicateAuthIdentity,
+  isValidSignupEmail,
+  normalizeSignupEmail,
+  type SignUpOutcome,
+  validateSignupPassword
+} from "../services/domain/authSignup";
+import { buildInviteClaimPath } from "../services/domain/teamInvites";
+import { readPendingInviteToken } from "../lib/pendingInvite";
 import type {
   AppUser,
   PosProvider,
@@ -67,6 +76,7 @@ interface MiseSessionContextValue {
   canUseDemoMode: boolean;
   passwordRecoveryPending: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<SignUpOutcome>;
   requestPasswordReset: (email: string) => Promise<void>;
   completePasswordReset: (password: string) => Promise<void>;
   clearPasswordRecovery: () => void;
@@ -550,6 +560,45 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     [clearPasswordRecovery, hydrateSupabaseUser]
   );
 
+  const signUp = useCallback(
+    async (email: string, password: string): Promise<SignUpOutcome> => {
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error("Supabase is not configured. Enable local demo mode for device-only testing.");
+      }
+      clearPasswordRecovery();
+      const normalizedEmail = normalizeSignupEmail(email);
+      if (!isValidSignupEmail(normalizedEmail)) {
+        throw new Error("Enter a valid email address.");
+      }
+      const passwordError = validateSignupPassword(password);
+      if (passwordError) throw new Error(passwordError);
+
+      const pendingInviteToken = await readPendingInviteToken();
+      const emailRedirectTo = Linking.createURL(
+        (pendingInviteToken ? buildInviteClaimPath(pendingInviteToken) : "/").replace(/^\//, "")
+      );
+
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: { emailRedirectTo }
+      });
+      if (error) throw error;
+      if (!data.user) throw new Error("Could not create account.");
+      if (isDuplicateAuthIdentity(data.user)) {
+        throw new Error("An account with this email already exists. Sign in instead.");
+      }
+
+      if (data.session?.user) {
+        await hydrateSupabaseUser(data.session.user);
+        return { status: "signed_in" };
+      }
+
+      return { status: "confirm_email", email: normalizedEmail };
+    },
+    [clearPasswordRecovery, hydrateSupabaseUser]
+  );
+
   const requestPasswordReset = useCallback(async (email: string) => {
     if (!isSupabaseConfigured || !supabase) {
       throw new Error("Supabase is not configured. Password reset requires cloud auth.");
@@ -680,6 +729,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       canUseDemoMode: demoModeAvailable,
       passwordRecoveryPending,
       signIn,
+      signUp,
       requestPasswordReset,
       completePasswordReset,
       clearPasswordRecovery,
@@ -715,6 +765,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       resetDemoData,
       role,
       signIn,
+      signUp,
       signOut,
       switchRestaurant,
       user

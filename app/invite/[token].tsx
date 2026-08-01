@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
-import { KeyRound, LogIn, ShieldCheck } from "lucide-react-native";
+import { KeyRound, LogIn, ShieldCheck, UserPlus } from "lucide-react-native";
 import { StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -37,6 +37,7 @@ export default function ClaimInviteScreen() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<InviteNotice | null>(null);
   const [claimed, setClaimed] = useState(false);
+  const autoClaimStarted = useRef(false);
 
   useEffect(() => {
     if (!tokenValid) return;
@@ -71,6 +72,12 @@ export default function ClaimInviteScreen() {
       setBusy(false);
     }
   }, [busy, refreshSession, token, tokenValid, user]);
+
+  useEffect(() => {
+    if (!ready || !tokenValid || !user || claimed || busy || autoClaimStarted.current) return;
+    autoClaimStarted.current = true;
+    void claimInvite();
+  }, [busy, claimInvite, claimed, ready, tokenValid, user]);
 
   if (!ready) {
     return <Screen title={t("boot.title")} subtitle={t("boot.subtitle")} loading />;
@@ -113,12 +120,21 @@ export default function ClaimInviteScreen() {
         </SectionSurface>
 
         {!user ? (
-          <Button
-            title={t("invite.claim.signIn")}
-            icon={<LogIn size={18} color={colors.surface} strokeWidth={2.25} />}
-            onPress={() => router.replace("/login")}
-            fullWidth
-          />
+          <>
+            <Button
+              title={t("invite.claim.createAccount")}
+              icon={<UserPlus size={18} color={colors.surface} strokeWidth={2.25} />}
+              onPress={() => router.replace("/signup")}
+              fullWidth
+            />
+            <Button
+              title={t("invite.claim.signIn")}
+              variant="secondary"
+              icon={<LogIn size={18} color={colors.text} strokeWidth={2.25} />}
+              onPress={() => router.replace("/login")}
+              fullWidth
+            />
+          </>
         ) : claimed ? (
           <Button
             title={t(restaurant ? "invite.claim.openToday" : "invite.claim.goHome")}

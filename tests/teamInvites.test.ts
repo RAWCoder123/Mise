@@ -191,5 +191,7 @@ test("member invite migration and client wiring are present", () => {
   assert.match(screen, /buildInviteClaimUrl/);
   assert.match(screen, /Linking\.createURL/);
   assert.match(claimScreen, /claimRestaurantMemberInvite/i);
+  assert.match(claimScreen, /invite\.claim\.createAccount/);
+  assert.match(claimScreen, /autoClaimStarted/);
   assert.match(routes, /\/invite\//);
 });
