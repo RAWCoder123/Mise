@@ -81,10 +81,15 @@ test("derives a stable, tenant-scoped operational queue without duplicating inve
     "the pending recommendation is the authoritative action for this inventory risk"
   );
 
-  const inventoryTask = tasks.find((task) => task.source.kind === "inventory" && task.source.id === "watch_item");
-  assert.equal(inventoryTask?.priority, "normal");
-  assert.equal(inventoryTask?.action.route, "/inventory/watch_item");
-  assert.equal(inventoryTask?.dueAt, null);
+  assert.equal(
+    tasks.some((task) => task.source.kind === "inventory" && task.source.id === "watch_item"),
+    false,
+    "stock-risk items route through the inventory count session instead of per-item shortcuts"
+  );
+  assert.equal(
+    tasks.some((task) => task.action.intent === "begin_inventory_count_session"),
+    true
+  );
 
   const approvedTask = tasks.find((task) => task.action.intent === "prepare_supplier_draft");
   assert.equal(approvedTask?.source.id, "rec_approved");
@@ -396,6 +401,34 @@ test("open count sessions suppress the suggested begin-count task", () => {
   assert.equal(
     tasks.some((entry) => entry.action.intent === "continue_inventory_count_session"),
     true
+  );
+  assert.equal(
+    tasks.some((entry) => entry.action.intent === "update_inventory_count"),
+    false
+  );
+});
+
+test("stock-risk outlooks prefer count sessions over per-item inventory shortcuts", () => {
+  const tasks = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [
+      outlook("critical_item", "Critical"),
+      outlook("watch_item", "Watch")
+    ],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    openCountSession: null,
+    now
+  });
+  assert.equal(
+    tasks.some((entry) => entry.action.intent === "begin_inventory_count_session"),
+    true
+  );
+  assert.equal(
+    tasks.some((entry) => entry.action.intent === "update_inventory_count"),
+    false
   );
 });
 

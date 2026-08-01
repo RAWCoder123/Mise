@@ -312,7 +312,17 @@ export function deriveOperationalTodayTasks(
     }
   }
 
+  // Stock-risk items are handled by the inventory count session path above
+  // (begin / continue / approve). Do not also emit per-item detail shortcuts
+  // that bypass submit → approve → ledger adjustment.
+  const suppressPerItemInventoryOutlookTasks = Boolean(openCountSession)
+    || input.inventoryOutlooks.some(
+      (outlook) =>
+        outlook.item.restaurant_id === restaurantId && outlook.prediction.projectedStatus !== "Good"
+    );
+
   for (const outlook of input.inventoryOutlooks) {
+    if (suppressPerItemInventoryOutlookTasks) break;
     const { item, prediction } = outlook;
     if (item.restaurant_id !== restaurantId) continue;
     if (prediction.projectedStatus === "Good") continue;
