@@ -754,6 +754,12 @@ select is(has_function_privilege('authenticated', 'public.service_update_my_prof
 select is(has_function_privilege('service_role', 'public.service_update_my_profile(uuid,text)', 'execute'), true, 'service role can execute the operator profile service RPC');
 select is(has_function_privilege('authenticated', 'public.service_update_restaurant_profile(uuid,uuid,jsonb)', 'execute'), false, 'authenticated clients cannot execute the restaurant profile service RPC');
 select is(has_function_privilege('service_role', 'public.service_update_restaurant_profile(uuid,uuid,jsonb)', 'execute'), true, 'service role can execute the restaurant profile service RPC');
+select is(has_function_privilege('authenticated', 'public.save_restaurant_setup(uuid,jsonb,jsonb,jsonb,jsonb,jsonb,integer)', 'execute'), false, 'authenticated clients cannot execute the legacy setup persistence RPC');
+select is(has_function_privilege('authenticated', 'public.service_save_restaurant_setup(uuid,uuid,jsonb,jsonb,jsonb,jsonb,jsonb,integer)', 'execute'), false, 'authenticated clients cannot execute the setup persistence service RPC');
+select is(has_function_privilege('service_role', 'public.service_save_restaurant_setup(uuid,uuid,jsonb,jsonb,jsonb,jsonb,jsonb,integer)', 'execute'), true, 'service role can execute the setup persistence service RPC');
+select is(has_function_privilege('authenticated', 'public.record_setup_completion_audit(uuid,jsonb)', 'execute'), false, 'authenticated clients cannot execute the legacy setup audit RPC');
+select is(has_function_privilege('authenticated', 'public.service_record_setup_completion_audit(uuid,uuid,jsonb)', 'execute'), false, 'authenticated clients cannot execute the setup audit service RPC');
+select is(has_function_privilege('service_role', 'public.service_record_setup_completion_audit(uuid,uuid,jsonb)', 'execute'), true, 'service role can execute the setup audit service RPC');
 select is(has_function_privilege('authenticated', 'public.service_record_edge_audit_log(uuid,uuid,text,text,uuid,jsonb)', 'execute'), false, 'authenticated clients cannot invoke service audit persistence');
 select is(has_function_privilege('service_role', 'public.service_record_edge_audit_log(uuid,uuid,text,text,uuid,jsonb)', 'execute'), true, 'service role can invoke actor-bound audit persistence');
 select is(has_function_privilege('authenticated', 'public.set_updated_at()', 'execute'), false, 'trigger helpers are not exposed as Data API RPCs');
@@ -1381,10 +1387,10 @@ select is(
 reset role;
 select is((select email from public.supplier_recipients where id = 'aaaaaaaa-9999-4999-8999-aaaaaaaaaaaa'), 'fresh@tenant-a.test', 'direct supplier recipient update did not persist');
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.save_restaurant_setup(
+  $sql$select public.service_save_restaurant_setup(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '[{"item_name":"Atomic Rice","category":"Setup baseline","unit":"lb","current_quantity":12,"par_level":30,"reorder_threshold":10,"estimated_unit_cost":0,"supplier_name":"Atomic Supply"}]'::jsonb,
     '[{"supplier_name":"Atomic Supply","email":"orders@atomic.test"}]'::jsonb,
@@ -1393,10 +1399,11 @@ select lives_ok(
     '[]'::jsonb,
     0
   )$sql$,
-  'manager can persist a complete setup snapshot through the guarded RPC'
+  'manager can persist a complete setup snapshot through the guarded service RPC'
 );
 select lives_ok(
-  $sql$select public.save_restaurant_setup(
+  $sql$select public.service_save_restaurant_setup(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '[{"item_name":"Atomic Rice","category":"Setup baseline","unit":"lb","current_quantity":12,"par_level":30,"reorder_threshold":10,"estimated_unit_cost":0,"supplier_name":"Atomic Supply"}]'::jsonb,
     '[{"supplier_name":"Atomic Supply","email":"orders@atomic.test"}]'::jsonb,
@@ -1468,10 +1475,10 @@ select is(
   'setup opening ledger records the setup quantity'
 );
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.save_restaurant_setup(
+  $sql$select public.service_save_restaurant_setup(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '[{"item_name":"Atomic Rice","category":"Setup baseline","unit":"lb","current_quantity":18,"par_level":30,"reorder_threshold":10,"estimated_unit_cost":0,"supplier_name":"Atomic Supply"}]'::jsonb,
     '[{"supplier_name":"Atomic Supply","email":"orders@atomic.test"}]'::jsonb,
@@ -1480,7 +1487,7 @@ select lives_ok(
     '[]'::jsonb,
     0
   )$sql$,
-  'setup quantity change persists through the guarded RPC'
+  'setup quantity change persists through the guarded service RPC'
 );
 reset role;
 select is((select current_quantity from public.inventory_items where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and item_name = 'Atomic Rice'), 18::numeric, 'setup quantity change updates on-hand stock');
@@ -1539,10 +1546,10 @@ select is(
   'setup quantity-change ledger marks the row as an update rather than create'
 );
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+set local role service_role;
 select is(
-  pg_temp.try_execute($sql$select public.save_restaurant_setup(
+  pg_temp.try_execute($sql$select public.service_save_restaurant_setup(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     (select jsonb_agg(jsonb_build_object(
       'item_name', 'Bounded item ' || item_number,
@@ -1561,10 +1568,11 @@ select is(
     0
   )$sql$),
   false,
-  'setup RPC rejects more than 250 inventory rows'
+  'setup service RPC rejects more than 250 inventory rows'
 );
 select is(
-  pg_temp.try_execute($sql$select public.save_restaurant_setup(
+  pg_temp.try_execute($sql$select public.service_save_restaurant_setup(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '[]'::jsonb,
     '[]'::jsonb,
@@ -1579,10 +1587,11 @@ select is(
     0
   )$sql$),
   false,
-  'setup RPC rejects more than 1000 recipe mappings'
+  'setup service RPC rejects more than 1000 recipe mappings'
 );
 select is(
-  pg_temp.try_execute($sql$select public.save_restaurant_setup(
+  pg_temp.try_execute($sql$select public.service_save_restaurant_setup(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '[]'::jsonb,
     '[]'::jsonb,
@@ -1601,10 +1610,11 @@ select is(
     0
   )$sql$),
   false,
-  'setup RPC rejects more than 1000 imported sales rows'
+  'setup service RPC rejects more than 1000 imported sales rows'
 );
 select is(
-  pg_temp.try_execute($sql$select public.save_restaurant_setup(
+  pg_temp.try_execute($sql$select public.service_save_restaurant_setup(
+    '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '[{"item_name":"Must Roll Back","category":"Test","unit":"lb","current_quantity":-1,"par_level":2,"reorder_threshold":1,"estimated_unit_cost":1,"supplier_name":"Bounded Supplier"}]'::jsonb,
     '[]'::jsonb,
@@ -1614,7 +1624,7 @@ select is(
     0
   )$sql$),
   false,
-  'setup RPC rejects an invalid numeric row atomically'
+  'setup service RPC rejects an invalid numeric row atomically'
 );
 reset role;
 select is(
@@ -1846,14 +1856,23 @@ select is(
 );
 reset role;
 
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_save_restaurant_setup(
+    '33333333-3333-4333-8333-333333333333',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 0
+  )$sql$),
+  false,
+  'staff cannot invoke the manager-owned setup persistence workflow'
+);
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', true);
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 select is(
   pg_temp.try_execute($sql$select public.save_restaurant_setup(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 0
   )$sql$),
   false,
-  'staff cannot invoke the manager-owned setup persistence workflow'
+  'authenticated clients cannot execute the legacy setup persistence RPC'
 );
 reset role;
 
@@ -2229,13 +2248,27 @@ select is(
   false,
   'client cannot insert even a self-attributed semantic audit event directly'
 );
+select is(
+  pg_temp.try_execute($sql$select public.record_setup_completion_audit(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '{"inventory_items_saved":1,"supplier_recipients_saved":1}'::jsonb
+  )$sql$),
+  false,
+  'authenticated clients cannot execute the legacy setup audit RPC'
+);
+reset role;
+set local role service_role;
 select lives_ok(
-  $sql$select public.record_setup_completion_audit(
+  $sql$select public.service_record_setup_completion_audit(
+    '11111111-1111-4111-8111-111111111111',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '{"inventory_items_saved":1,"supplier_recipients_saved":1}'::jsonb
   )$sql$,
-  'fixed-semantic setup audit RPC records a server-derived event'
+  'fixed-semantic setup audit service RPC records a server-derived event'
 );
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 select is(
   pg_temp.try_execute($sql$insert into public.audit_logs (restaurant_id, actor_user_id, action, entity_table)
        values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '44444444-4444-4444-8444-444444444444', 'forged', 'inventory_items')$sql$),

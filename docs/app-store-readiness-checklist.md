@@ -26,7 +26,7 @@ Classification guidance uses evidence, not polish. Current overall status: **not
 | Inventory count role split | tested (code) | Staff may draft/submit multi-item counts; manager+ approve ledger writes |
 | Staff waste recording | tested (code) | Staff+ may record spoilage to the ledger; count/par edits stay manager+; Inventory list + staff detail elevate the waste path |
 | Post-setup inventory item create | tested (code) | Manager+ Add item flow; service-owned create + opening ledger movement |
-| Setup inventory quantity ledger | tested (code) | `save_restaurant_setup` writes opening/`manual_count` movements; identical-quantity replay stays idempotent; demo path mirrors |
+| Setup inventory quantity ledger | tested (code) | Edge `save_setup` → `service_save_restaurant_setup`; opening/`manual_count` movements; identical-quantity replay stays idempotent; legacy authenticated setup/audit RPCs revoked; demo path mirrors |
 | Manager inventory corrections | tested (code) | Single-item quantity edits ledger `manager_correction`; count sessions keep `manual_count`; hosted direct inventory updates disabled |
 | Purchase approve / dismiss / draft / mark-sent | tested (code) | Edge-routed through `operational-workflows` with service-owned RPCs; legacy authenticated RPCs revoked |
 | Manual pending recommendation create | tested (code) | Inventory “add to order” uses Edge `create_pending_purchase_recommendation`; legacy authenticated create RPC revoked |

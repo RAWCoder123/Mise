@@ -242,13 +242,17 @@ test("beta hardening migration closes profile, tenant reference, and audit forge
   assert.match(migration, /actor_user_id\s+=\s+auth\.uid\(\)/i);
 });
 
-test("audit client API uses the fixed-semantic setup RPC and does not accept caller-controlled actor_user_id", () => {
+test("audit client API rejects hosted writes and does not accept caller-controlled actor_user_id", () => {
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
+  const hostedRecordAudit =
+    hostedRepository.match(/async recordAuditLog\([\s\S]*?\n    \},/)?.[0] ?? "";
 
   assert.match(repository, /export\s+type\s+AuditLogInput\s*=\s*Pick<AuditLog,\s*"restaurant_id"\s*\|\s*"action"\s*\|\s*"entity_table">/i);
   assert.doesNotMatch(repository, /type\s+AuditLogInput\s*=\s*Omit<AuditLog,[^;]*actor_user_id/i);
   assert.match(repository, /actor_user_id:\s*DEMO_USER_ID/i);
-  assert.match(repository, /rpc\("record_setup_completion_audit"/i);
+  assert.match(hostedRecordAudit, /must be recorded by a server-owned workflow/i);
+  assert.doesNotMatch(hostedRecordAudit, /rpc\("record_setup_completion_audit"/i);
   assert.doesNotMatch(repository, /from\("audit_logs"\)\.insert\(input\)/i);
   assert.doesNotMatch(repository, /actor_user_id:\s*input\.actor_user_id|actor_user_id\s*=\s*input\.actor_user_id/i);
 });
@@ -309,6 +313,7 @@ test("tenant setup completion uses one bounded replay-safe database workflow", (
   assert.doesNotMatch(setupWorkflow, /await\s+repository\.(?:upsertInventoryItem|createPosSale|upsertSupplierRecipient|createSetupAttachment)\(/i);
   assert.match(repository, /action:\s*"save_setup"/i);
   assert.match(repository, /functions\.invoke\("operational-workflows"/i);
+  assert.doesNotMatch(repository, /rpc\("save_restaurant_setup"/i);
   assert.match(migration, /restaurant_signal_state/i);
   assert.match(migration, /service_mark_operational_signals_pending/i);
   assert.match(migration, /p_complete_setup/i);
@@ -317,8 +322,12 @@ test("tenant setup completion uses one bounded replay-safe database workflow", (
 });
 
 test("setup inventory quantity creates and deltas write append-only ledger movements", () => {
-  const migration = readFileSync(
+  const ledgerMigration = readFileSync(
     "supabase/migrations/20260801030000_setup_inventory_ledger_movements.sql",
+    "utf8"
+  );
+  const edgeMigration = readFileSync(
+    "supabase/migrations/20260801083000_edge_save_restaurant_setup.sql",
     "utf8"
   );
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
@@ -327,14 +336,16 @@ test("setup inventory quantity creates and deltas write append-only ledger movem
     /async saveRestaurantSetupSnapshot\(restaurantId, input\) \{[\s\S]*?async createInventoryItemAndSignals/
   )?.[0] ?? "";
 
-  assert.match(migration, /create\s+or\s+replace\s+function\s+public\.save_restaurant_setup/i);
-  assert.match(migration, /insert into public\.inventory_movements/i);
-  assert.match(migration, /source_workflow,\s*[\s\S]*'save_restaurant_setup'/i);
-  assert.match(migration, /reason,\s*[\s\S]*'manual_count'/i);
-  assert.match(migration, /quantity_after is distinct from quantity_before/i);
-  assert.match(migration, /'created',\s*true/i);
-  assert.match(migration, /'created',\s*false/i);
-  assert.match(migration, /grant execute on function public\.save_restaurant_setup[\s\S]*authenticated/i);
+  assert.match(ledgerMigration, /create\s+or\s+replace\s+function\s+public\.save_restaurant_setup/i);
+  assert.match(ledgerMigration, /insert into public\.inventory_movements/i);
+  assert.match(ledgerMigration, /source_workflow,\s*[\s\S]*'save_restaurant_setup'/i);
+  assert.match(ledgerMigration, /reason,\s*[\s\S]*'manual_count'/i);
+  assert.match(ledgerMigration, /quantity_after is distinct from quantity_before/i);
+  assert.match(ledgerMigration, /'created',\s*true/i);
+  assert.match(ledgerMigration, /'created',\s*false/i);
+  assert.match(edgeMigration, /private\.service_save_restaurant_setup\(\s*p_actor_user_id uuid/i);
+  assert.match(edgeMigration, /grant execute on function public\.service_save_restaurant_setup[\s\S]*service_role/i);
+  assert.match(edgeMigration, /revoke all on function public\.save_restaurant_setup/i);
   assert.match(demoSetup, /sourceWorkflow:\s*"save_restaurant_setup"/);
   assert.match(demoSetup, /reason:\s*"manual_count"/);
   assert.match(demoSetup, /created:\s*true/);
@@ -751,6 +762,37 @@ test("supplier recipient upsert is Edge-routed with service-owned RPCs", () => {
   assert.doesNotMatch(hostedUpsert, /\.rpc\(\s*["']upsert_supplier_recipient["']/i);
   assert.match(databaseTests, /authenticated clients cannot execute the legacy supplier recipient RPC/i);
   assert.match(databaseTests, /service_upsert_supplier_recipient/i);
+});
+
+test("restaurant setup persistence is Edge-routed with a service-owned RPC", () => {
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const migration = readFileSync(
+    "supabase/migrations/20260801083000_edge_save_restaurant_setup.sql",
+    "utf8"
+  );
+  const tenantTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
+  const saveSetupBranch = edge.match(/if \(action === "save_setup"\) \{[\s\S]*?\} else if \(action === "ingest_pos_csv"\)/)?.[0] ?? "";
+
+  assert.match(saveSetupBranch, /service_save_restaurant_setup/);
+  assert.doesNotMatch(saveSetupBranch, /\.rpc\(\s*["']save_restaurant_setup["']/);
+  assert.match(
+    hostedRepository.match(/async saveRestaurantSetupSnapshot\([\s\S]*?\n    \},/)?.[0] ?? "",
+    /action:\s*"save_setup"/
+  );
+  assert.doesNotMatch(
+    hostedRepository.match(/async saveRestaurantSetupSnapshot\([\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']save_restaurant_setup["']/
+  );
+  assert.match(migration, /private\.service_save_restaurant_setup\(\s*p_actor_user_id uuid/i);
+  assert.match(migration, /grant execute on function public\.service_save_restaurant_setup[\s\S]*service_role/i);
+  assert.match(migration, /revoke all on function public\.save_restaurant_setup/i);
+  assert.match(migration, /revoke all on function public\.record_setup_completion_audit/i);
+  assert.match(migration, /grant execute on function public\.service_record_setup_completion_audit[\s\S]*service_role/i);
+  assert.match(tenantTests, /authenticated clients cannot execute the legacy setup persistence RPC/i);
+  assert.match(tenantTests, /service role can execute the setup persistence service RPC/i);
+  assert.match(tenantTests, /authenticated clients cannot execute the legacy setup audit RPC/i);
 });
 
 test("restaurant and operator profile mutations are Edge-routed with service-owned RPCs", () => {
