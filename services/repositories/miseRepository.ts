@@ -102,6 +102,8 @@ import {
   transferDemoInventory
 } from "../demo/storageLocations";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
+import { demoLocalePreferenceAdapter } from "../localePreferences";
+import { isAppLocale } from "../../i18n/catalog";
 import {
   normalizeAppUser,
   normalizeInsight,
@@ -277,7 +279,9 @@ export interface MiseRepository {
     patch: Partial<Pick<RestaurantMembership, "role" | "status">>
   ): Promise<RestaurantMembership>;
   removeRestaurantMember(restaurantId: string, targetUserId: string): Promise<RestaurantMembership>;
-  updateMyProfile(name: string): Promise<AppUser>;
+  updateMyProfile(restaurantId: string, name: string): Promise<AppUser>;
+  fetchMyPreferredLocale(): Promise<string | null>;
+  updateMyPreferredLocale(restaurantId: string, locale: string): Promise<string>;
   createRestaurantWithOwner(name: string, cuisineType?: string | null): Promise<Restaurant>;
   fetchRestaurant(restaurantId: string): Promise<Restaurant>;
   updateRestaurantProfile(
@@ -1092,13 +1096,28 @@ function createLocalDemoRepository(): MiseRepository {
       });
     },
 
-    async updateMyProfile(name) {
+    async updateMyProfile(restaurantId, name) {
       return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
         const user = state.users[0];
         if (!user) throw new Error("Demo user missing");
         user.name = name;
         return normalizeAppUser(user);
       });
+    },
+
+    async fetchMyPreferredLocale() {
+      const stored = await demoLocalePreferenceAdapter.load();
+      return stored;
+    },
+
+    async updateMyPreferredLocale(restaurantId, locale) {
+      requireActiveDemoRestaurant(await readReadyDemoState(restaurantId), restaurantId);
+      if (!isAppLocale(locale)) {
+        throw new Error("Preferred locale is not supported.");
+      }
+      await demoLocalePreferenceAdapter.save(locale);
+      return locale;
     },
 
     async createRestaurantWithOwner(name, cuisineType) {
@@ -2753,10 +2772,31 @@ function createSupabaseRepository(): MiseRepository {
       return normalizeRestaurantMembership(response.result as RestaurantMembership);
     },
 
-    async updateMyProfile(name) {
-      const { data, error } = await client.rpc("update_my_profile", { p_name: name });
+    async updateMyProfile(restaurantId, name) {
+      const response = await invokeOperationalWorkflow({
+        action: "update_my_profile",
+        restaurantId,
+        name
+      });
+      return normalizeAppUser(response.result as AppUser);
+    },
+
+    async fetchMyPreferredLocale() {
+      const { data, error } = await client.rpc("get_my_preferred_locale");
       if (error) throwRepositoryError(error);
-      return normalizeAppUser(data as AppUser);
+      return typeof data === "string" ? data : null;
+    },
+
+    async updateMyPreferredLocale(restaurantId, locale) {
+      const response = await invokeOperationalWorkflow({
+        action: "update_my_preferred_locale",
+        restaurantId,
+        locale
+      });
+      if (typeof response.result !== "string") {
+        throw new Error("Locale preference update was not confirmed.");
+      }
+      return response.result;
     },
 
     async createRestaurantWithOwner(name, cuisineType) {
@@ -2775,12 +2815,12 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async updateRestaurantProfile(restaurantId, patch) {
-      const { data, error } = await client.rpc("update_restaurant_profile", {
-        p_restaurant_id: restaurantId,
-        p_patch: patch
+      const response = await invokeOperationalWorkflow({
+        action: "update_restaurant_profile",
+        restaurantId,
+        patch
       });
-      if (error) throwRepositoryError(error, restaurantId);
-      return normalizeRestaurant(data as Restaurant);
+      return normalizeRestaurant(response.result as Restaurant);
     },
 
     async fetchRestaurantOpsProfile(restaurantId) {

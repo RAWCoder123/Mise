@@ -49,7 +49,10 @@ const actions = [
   "create_restaurant_member_invite",
   "revoke_restaurant_member_invite",
   "update_restaurant_member",
-  "remove_restaurant_member"
+  "remove_restaurant_member",
+  "update_restaurant_profile",
+  "update_my_profile",
+  "update_my_preferred_locale"
 ] as const;
 type OperationalAction = (typeof actions)[number];
 const countSessionDraftActions = new Set<OperationalAction>([
@@ -59,19 +62,23 @@ const countSessionDraftActions = new Set<OperationalAction>([
   "cancel_count_session"
 ]);
 /**
- * Staff may draft/submit counts, record observed waste, and transfer stock
- * between storage locations. Approve/cancel counts and other mutations stay manager+.
+ * Staff may draft/submit counts, record observed waste, transfer stock, and
+ * update their own display name / locale. Approve/cancel counts and other
+ * mutations stay manager+.
  */
 const staffOperationalActions = new Set<OperationalAction>([
   "begin_count_session",
   "save_count_lines",
   "submit_count_session",
   "record_waste",
-  "transfer_inventory"
+  "transfer_inventory",
+  "update_my_profile",
+  "update_my_preferred_locale"
 ]);
 /**
- * Team roster mutations stay owner/admin only. Managers may view the roster
- * through list RPCs but cannot invite, promote, disable, or remove members.
+ * Team roster and restaurant identity mutations stay owner/admin only.
+ * Managers may view the roster through list RPCs but cannot invite, promote,
+ * disable, or remove members, and cannot edit restaurant profile fields.
  */
 const ownerAdminOperationalActions = new Set<OperationalAction>([
   "add_restaurant_member",
@@ -79,7 +86,8 @@ const ownerAdminOperationalActions = new Set<OperationalAction>([
   "create_restaurant_member_invite",
   "revoke_restaurant_member_invite",
   "update_restaurant_member",
-  "remove_restaurant_member"
+  "remove_restaurant_member",
+  "update_restaurant_profile"
 ]);
 
 Deno.serve(async (req) => {
@@ -316,6 +324,22 @@ Deno.serve(async (req) => {
         p_actor_user_id: user.id,
         p_restaurant_id: restaurantId,
         p_target_user_id: requireUuid(body.targetUserId, "targetUserId")
+      });
+    } else if (action === "update_restaurant_profile") {
+      result = await serviceRpc(securitySupabase, "service_update_restaurant_profile", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_patch: requireRecord(body.patch, "patch")
+      });
+    } else if (action === "update_my_profile") {
+      result = await serviceRpc(securitySupabase, "service_update_my_profile", {
+        p_actor_user_id: user.id,
+        p_name: requireBoundedString(body.name, "name", 120)
+      });
+    } else if (action === "update_my_preferred_locale") {
+      result = await serviceRpc(securitySupabase, "service_update_my_preferred_locale", {
+        p_actor_user_id: user.id,
+        p_locale: requireEnum(body.locale, "locale", ["en", "es", "zh-Hans"] as const)
       });
     } else if (countSessionDraftActions.has(action)) {
       result = await runCountSessionDraftAction(securitySupabase, user.id, restaurantId, action, body);
@@ -911,6 +935,9 @@ function auditAction(action: OperationalAction) {
   if (action === "remove_restaurant_member") return "restaurant_member_removed";
   if (action === "create_restaurant_member_invite") return "restaurant_member_invite_created";
   if (action === "revoke_restaurant_member_invite") return "restaurant_member_invite_revoked";
+  if (action === "update_restaurant_profile") return "restaurant_profile_updated";
+  if (action === "update_my_profile") return "operator_profile_updated";
+  if (action === "update_my_preferred_locale") return "operator_locale_updated";
   return "operational_signals_refreshed";
 }
 
@@ -962,6 +989,9 @@ function auditEntityTable(action: OperationalAction) {
   }
   if (action === "create_restaurant_member_invite" || action === "revoke_restaurant_member_invite") {
     return "restaurant_member_invites";
+  }
+  if (action === "update_my_profile" || action === "update_my_preferred_locale") {
+    return "users";
   }
   return "restaurants";
 }
@@ -1034,6 +1064,20 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>,
     if (action === "revoke_restaurant_member_invite") {
       return requireUuid(body.inviteId, "inviteId");
     }
+    return null;
+  }
+  if (action === "update_restaurant_profile") {
+    return requireUuid(body.restaurantId, "restaurantId");
+  }
+  if (
+    (action === "update_my_profile" || action === "update_my_preferred_locale") &&
+    result &&
+    typeof result === "object" &&
+    typeof (result as { id?: unknown }).id === "string"
+  ) {
+    return requireUuid((result as { id: string }).id, "result.id");
+  }
+  if (action === "update_my_preferred_locale" && typeof result === "string") {
     return null;
   }
   return null;

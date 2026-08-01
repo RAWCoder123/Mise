@@ -18,7 +18,6 @@ import { AppErrorBoundary } from "../components/AppErrorBoundary";
 import { colors, fontFamilies } from "../constants/theme";
 import { LocaleProvider } from "../contexts/LocaleContext";
 import { MiseSessionProvider } from "../contexts/MiseSessionContext";
-import { hostedLocalePreferenceAdapter } from "../services/localePreferences";
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -37,7 +36,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AppErrorBoundary>
         <MiseSessionProvider>
-          <LocaleProvider hostedPreferenceAdapter={hostedLocalePreferenceAdapter}>
+          <LocaleProvider>
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="(tabs)" />

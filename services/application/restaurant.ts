@@ -104,12 +104,20 @@ export async function removeRestaurantMember(restaurantId: string, targetUserId:
   return repository.removeRestaurantMember(restaurantId, targetUserId);
 }
 
-export async function updateMyProfile(name: string) {
+export async function updateMyProfile(restaurantId: string, name: string) {
   const normalizedName = name.trim();
   if (normalizedName.length < 1 || normalizedName.length > 120) {
     throw new Error("Profile name must be between 1 and 120 characters.");
   }
-  return repository.updateMyProfile(normalizedName);
+  return repository.updateMyProfile(restaurantId, normalizedName);
+}
+
+export async function fetchMyPreferredLocale() {
+  return repository.fetchMyPreferredLocale();
+}
+
+export async function updateMyPreferredLocale(restaurantId: string, locale: "en" | "es" | "zh-Hans") {
+  return repository.updateMyPreferredLocale(restaurantId, locale);
 }
 
 export async function createRestaurantWithOwner(name: string, cuisineType?: string | null) {

@@ -35,11 +35,13 @@ import {
 } from "../i18n/formatters";
 import { syncDocumentLanguage } from "../i18n/documentLanguage";
 import {
+  createHostedLocalePreferenceAdapter,
   demoLocalePreferenceAdapter,
   type HostedLocalePreferenceAdapter,
   type LocalePersistenceMode,
   type LocalePreferenceAdapter
 } from "../services/localePreferences";
+import { fetchMyPreferredLocale, updateMyPreferredLocale } from "../services/miseService";
 import { useMiseSession } from "./MiseSessionContext";
 
 type CurrencyFormatOptions = Omit<Intl.NumberFormatOptions, "style" | "currency"> & {
@@ -68,8 +70,9 @@ interface LocaleContextValue {
 interface LocaleProviderProps {
   children: ReactNode;
   /**
-   * Inject the authenticated profile adapter here once the hosted repository
-   * exposes identity-free read/update RPC hooks. Demo persistence works without it.
+   * Optional test override. Production builds derive the hosted adapter from
+   * the active session restaurant so locale writes can reserve
+   * operational-workflows without letting screens pick a preference identity.
    */
   hostedPreferenceAdapter?: HostedLocalePreferenceAdapter | null;
 }
@@ -85,19 +88,35 @@ export function LocaleProvider({ children, hostedPreferenceAdapter = null }: Loc
   const [error, setError] = useState<Error | null>(null);
   const requestIdRef = useRef(0);
   const activeScopeRef = useRef("boot");
+  const restaurantId = restaurant?.id ?? null;
+
+  const sessionHostedAdapter = useMemo<HostedLocalePreferenceAdapter | null>(() => {
+    if (!authUser || !restaurantId) return null;
+    return createHostedLocalePreferenceAdapter({
+      loadCurrentOperatorLocale: () => fetchMyPreferredLocale(),
+      async saveCurrentOperatorLocale(nextLocale) {
+        await updateMyPreferredLocale(restaurantId, nextLocale);
+      }
+    });
+  }, [authUser, restaurantId]);
+  const resolvedHostedAdapter = hostedPreferenceAdapter ?? sessionHostedAdapter;
 
   const persistenceMode: LocalePersistenceMode = isDemoMode
     ? "demo"
-    : authUser && hostedPreferenceAdapter
+    : authUser && resolvedHostedAdapter
       ? "hosted"
       : "session";
   const preferenceAdapter: LocalePreferenceAdapter | null =
     persistenceMode === "demo"
       ? demoLocalePreferenceAdapter
       : persistenceMode === "hosted"
-        ? hostedPreferenceAdapter
+        ? resolvedHostedAdapter
         : null;
-  const scopeKey = isDemoMode ? "demo" : authUser ? `hosted:${authUser.id}` : "session";
+  const scopeKey = isDemoMode
+    ? "demo"
+    : authUser
+      ? `hosted:${authUser.id}:${restaurantId ?? "none"}`
+      : "session";
   activeScopeRef.current = scopeKey;
 
   useEffect(() => {
