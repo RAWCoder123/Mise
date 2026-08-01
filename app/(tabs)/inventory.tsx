@@ -5,7 +5,11 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { InventoryHealth, type InventoryHealthCounts } from "../../components/ui/InventoryHealth";
+import {
+  InventoryHealth,
+  InventoryHealthBar,
+  type InventoryHealthCounts
+} from "../../components/ui/InventoryHealth";
 import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
 import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
@@ -17,10 +21,12 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import {
+  fetchInventoryLocationHealthBreakdown,
   fetchInventoryOutlookItems,
   fetchOpenInventoryCountSession,
   summarizeInventoryOutlooks
 } from "../../services/miseService";
+import type { InventoryLocationHealthBreakdown } from "../../services/presentation/inventoryHealthPresentation";
 import { canDraftInventoryCount, canManageRestaurantData, canRecordInventoryWaste } from "../../services/tenantAccess";
 import type { InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
@@ -33,6 +39,7 @@ export default function InventoryScreen() {
   const canManageInventory = canManageRestaurantData(memberships, restaurant?.id ?? "");
   const canRecordWaste = canRecordInventoryWaste(memberships, restaurant?.id ?? "");
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
+  const [locationHealth, setLocationHealth] = useState<InventoryLocationHealthBreakdown | null>(null);
   const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InventoryFilter>("All");
@@ -48,6 +55,7 @@ export default function InventoryScreen() {
     requestIdRef.current += 1;
     setLoadedRestaurantId(null);
     setOutlooks([]);
+    setLocationHealth(null);
     setOpenCountSessionId(null);
     setQuery("");
     setFilter("All");
@@ -66,12 +74,14 @@ export default function InventoryScreen() {
     setLoading(true);
     setError(false);
     try {
-      const [nextOutlooks, openSession] = await Promise.all([
+      const [nextOutlooks, openSession, nextLocationHealth] = await Promise.all([
         fetchInventoryOutlookItems(restaurantId),
-        fetchOpenInventoryCountSession(restaurantId)
+        fetchOpenInventoryCountSession(restaurantId),
+        fetchInventoryLocationHealthBreakdown(restaurantId).catch(() => null)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlooks(nextOutlooks);
+      setLocationHealth(nextLocationHealth);
       setOpenCountSessionId(openSession?.session.id ?? null);
       setLoadedRestaurantId(restaurantId);
     } catch {
@@ -89,6 +99,8 @@ export default function InventoryScreen() {
   );
 
   const visibleOutlooks = loadedRestaurantId === restaurant?.id ? outlooks : [];
+  const visibleLocationHealth =
+    loadedRestaurantId === restaurant?.id ? locationHealth : null;
 
   const filterOptions = useMemo<readonly SegmentOption<InventoryFilter>[]>(() => {
     const options: readonly SegmentOption<InventoryFilter>[] = [
@@ -175,6 +187,51 @@ export default function InventoryScreen() {
                 empty: t("inventory.health.empty")
               }}
             />
+            {visibleLocationHealth && visibleLocationHealth.stationCount > 1 ? (
+              <View
+                accessible
+                accessibilityLabel={t("inventory.health.stationsAccessibility")}
+                style={styles.stationBlock}
+              >
+                <Text style={styles.stationTitle}>{t("inventory.health.stationsTitle")}</Text>
+                <View style={styles.stationList}>
+                  {visibleLocationHealth.locations.map((station) => (
+                    <View key={station.locationId} style={styles.stationRow}>
+                      <View style={styles.stationCopy}>
+                        <Text numberOfLines={1} style={styles.stationName}>
+                          {station.name}
+                        </Text>
+                        <Text numberOfLines={1} style={styles.stationMeta}>
+                          {station.itemCount === 0
+                            ? t("inventory.health.stationEmpty")
+                            : [
+                                t(
+                                  station.itemCount === 1
+                                    ? "inventory.health.stationItems.one"
+                                    : "inventory.health.stationItems.other",
+                                  { count: formatNumber(station.itemCount) }
+                                ),
+                                station.atRiskCount > 0
+                                  ? t(
+                                      station.atRiskCount === 1
+                                        ? "inventory.health.stationAtRisk.one"
+                                        : "inventory.health.stationAtRisk.other",
+                                      { count: formatNumber(station.atRiskCount) }
+                                    )
+                                  : null
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                        </Text>
+                      </View>
+                      <View style={styles.stationBar}>
+                        <InventoryHealthBar counts={station.counts} />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
           </SectionSurface>
         </MotionView>
 
@@ -403,6 +460,48 @@ const styles = StyleSheet.create({
   },
   emptyButton: {
     marginTop: 12
+  },
+  stationBlock: {
+    marginTop: 14,
+    gap: 8
+  },
+  stationTitle: {
+    color: colors.muted,
+    fontFamily: typography.families.semibold,
+    fontSize: 11.5,
+    lineHeight: 15,
+    letterSpacing: 0.2,
+    textTransform: "uppercase"
+  },
+  stationList: {
+    gap: 8
+  },
+  stationRow: {
+    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10
+  },
+  stationCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1
+  },
+  stationName: {
+    color: colors.text,
+    fontFamily: typography.families.semibold,
+    fontSize: 13,
+    lineHeight: 17
+  },
+  stationMeta: {
+    color: colors.muted,
+    fontFamily: typography.families.body,
+    fontSize: 11.5,
+    lineHeight: 15
+  },
+  stationBar: {
+    width: 72,
+    flexShrink: 0
   },
   controls: {
     gap: 8,

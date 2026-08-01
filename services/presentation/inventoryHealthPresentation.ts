@@ -17,6 +17,23 @@ export interface InventoryHealthLabels {
   empty: string;
 }
 
+export type InventoryLocationHealthStatus = "Good" | "Watch" | "Low" | "Critical";
+
+export interface InventoryLocationHealthRow {
+  locationId: string;
+  name: string;
+  sortOrder: number;
+  itemCount: number;
+  counts: InventoryHealthCounts;
+  atRiskCount: number;
+}
+
+export interface InventoryLocationHealthBreakdown {
+  locations: InventoryLocationHealthRow[];
+  stationCount: number;
+  stockedStationCount: number;
+}
+
 export const inventoryHealthStatusOrder: readonly InventoryHealthStatusKey[] = [
   "good",
   "watch",
@@ -74,6 +91,111 @@ export function buildInventoryHealthAccessibilityLabel({
   if (total === 0) return labels.empty;
 
   return `${labels.wellStocked}: ${formatPercentage(getWellStockedPercentage(normalized))}. ${labels.good}: ${formatCount(normalized.good)}. ${labels.watch}: ${formatCount(normalized.watch)}. ${labels.low}: ${formatCount(normalized.low)}. ${labels.critical}: ${formatCount(normalized.critical)}.`;
+}
+
+/**
+ * Break restaurant-wide projected item status down by storage station.
+ * An item contributes to every location where it has positive quantity.
+ * Empty stations are retained so operators can see inactive lines.
+ */
+export function buildInventoryLocationHealthBreakdown(input: {
+  locations: ReadonlyArray<{ id: string; name: string; sortOrder?: number }>;
+  balances: ReadonlyArray<{
+    inventoryItemId: string;
+    storageLocationId: string;
+    quantity: number;
+  }>;
+  itemStatuses: ReadonlyArray<{ itemId: string; status: InventoryLocationHealthStatus }>;
+}): InventoryLocationHealthBreakdown {
+  const statusByItemId = new Map<string, InventoryLocationHealthStatus>();
+  for (const entry of input.itemStatuses) {
+    const itemId = String(entry.itemId ?? "").trim();
+    if (!itemId) continue;
+    statusByItemId.set(itemId, normalizeStatus(entry.status));
+  }
+
+  const countsByLocation = new Map<string, InventoryHealthCounts>();
+  for (const balance of input.balances) {
+    const locationId = String(balance.storageLocationId ?? "").trim();
+    const itemId = String(balance.inventoryItemId ?? "").trim();
+    const quantity = Number(balance.quantity);
+    if (!locationId || !itemId || !Number.isFinite(quantity) || quantity <= 1e-9) continue;
+    const status = statusByItemId.get(itemId);
+    if (!status) continue;
+    const counts = countsByLocation.get(locationId) ?? emptyHealthCounts();
+    bumpHealthCount(counts, status);
+    countsByLocation.set(locationId, counts);
+  }
+
+  const locations = input.locations
+    .map((location, index) => {
+      const locationId = String(location.id ?? "").trim();
+      const name = String(location.name ?? "").trim();
+      if (!locationId || !name) return null;
+      const counts = normalizeInventoryHealthCounts(
+        countsByLocation.get(locationId) ?? emptyHealthCounts()
+      );
+      const itemCount = getInventoryHealthTotal(counts);
+      const sortOrder = Number.isFinite(Number(location.sortOrder))
+        ? Number(location.sortOrder)
+        : index;
+      return {
+        locationId,
+        name,
+        sortOrder,
+        itemCount,
+        counts,
+        atRiskCount: counts.low + counts.critical
+      } satisfies InventoryLocationHealthRow;
+    })
+    .filter((row): row is InventoryLocationHealthRow => row != null)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+
+  return {
+    locations,
+    stationCount: locations.length,
+    stockedStationCount: locations.filter((row) => row.itemCount > 0).length
+  };
+}
+
+export function buildInventoryLocationHealthAccessibilityLabel(input: {
+  breakdown: InventoryLocationHealthBreakdown;
+  labels: {
+    stations: string;
+    emptyStation: string;
+    items: (count: number) => string;
+    atRisk: (count: number) => string;
+  };
+}) {
+  if (input.breakdown.stationCount === 0) return input.labels.stations;
+  return input.breakdown.locations
+    .map((row) => {
+      if (row.itemCount === 0) {
+        return `${row.name}: ${input.labels.emptyStation}`;
+      }
+      const risk =
+        row.atRiskCount > 0 ? ` ${input.labels.atRisk(row.atRiskCount)}` : "";
+      return `${row.name}: ${input.labels.items(row.itemCount)}.${risk}`;
+    })
+    .join(" ");
+}
+
+function emptyHealthCounts(): InventoryHealthCounts {
+  return { good: 0, watch: 0, low: 0, critical: 0 };
+}
+
+function bumpHealthCount(counts: InventoryHealthCounts, status: InventoryLocationHealthStatus) {
+  if (status === "Good") counts.good += 1;
+  else if (status === "Watch") counts.watch += 1;
+  else if (status === "Low") counts.low += 1;
+  else counts.critical += 1;
+}
+
+function normalizeStatus(status: InventoryLocationHealthStatus): InventoryLocationHealthStatus {
+  if (status === "Good" || status === "Watch" || status === "Low" || status === "Critical") {
+    return status;
+  }
+  return "Watch";
 }
 
 function normalizeCount(value: number) {

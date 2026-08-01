@@ -9,6 +9,7 @@ import {
   type StoredDemoState
 } from "../services/demoData";
 import {
+  listDemoInventoryLocationBalances,
   reconcileDemoLocationBalancesToOnHand,
   transferDemoInventory
 } from "../services/demo/storageLocations";
@@ -448,6 +449,10 @@ test("demo state seeds Main location balances and migrates older stores", () => 
   assert.ok(seed.storageLocations.some((location) => location.name === "Main"));
   assert.ok(seed.storageLocations.some((location) => location.name === "Walk-in"));
   assert.equal(seed.inventoryLocationBalances.length, seed.inventoryItems.length);
+  assert.equal(
+    listDemoInventoryLocationBalances(seed, DEMO_RESTAURANT_ID).length,
+    seed.inventoryLocationBalances.length
+  );
   assert.ok(
     seed.inventoryItems.every((item) => {
       const sum = seed.inventoryLocationBalances

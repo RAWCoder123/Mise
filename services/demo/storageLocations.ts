@@ -87,15 +87,22 @@ export function createDemoStorageLocation(
 export function listDemoInventoryLocationBalances(
   state: DemoState,
   restaurantId: string,
-  itemId: string
+  itemId?: string
 ): InventoryLocationBalance[] {
   ensureDemoLocationBalances(state);
+  const normalizedItemId = typeof itemId === "string" ? itemId.trim() : "";
   return state.inventoryLocationBalances
     .filter(
-      (balance) => balance.restaurant_id === restaurantId && balance.inventory_item_id === itemId
+      (balance) =>
+        balance.restaurant_id === restaurantId &&
+        (!normalizedItemId || balance.inventory_item_id === normalizedItemId)
     )
     .slice()
-    .sort((a, b) => a.storage_location_id.localeCompare(b.storage_location_id));
+    .sort(
+      (a, b) =>
+        a.inventory_item_id.localeCompare(b.inventory_item_id) ||
+        a.storage_location_id.localeCompare(b.storage_location_id)
+    );
 }
 
 function upsertDemoBalance(

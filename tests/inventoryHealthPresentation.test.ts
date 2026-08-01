@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   buildInventoryHealthAccessibilityLabel,
+  buildInventoryLocationHealthAccessibilityLabel,
+  buildInventoryLocationHealthBreakdown,
   getInventoryHealthPercentages,
   getInventoryHealthTotal,
   getWellStockedPercentage,
@@ -63,5 +65,88 @@ test("inventory health accessibility keeps exact counts while announcing the agg
       formatPercentage
     }),
     "No items"
+  );
+});
+
+test("inventory location health attributes each stocked item to every station holding it", () => {
+  const breakdown = buildInventoryLocationHealthBreakdown({
+    locations: [
+      { id: "loc_main", name: "Main", sortOrder: 0 },
+      { id: "loc_line", name: "Line", sortOrder: 20 },
+      { id: "loc_walk", name: "Walk-in", sortOrder: 10 }
+    ],
+    balances: [
+      { inventoryItemId: "item_a", storageLocationId: "loc_main", quantity: 4 },
+      { inventoryItemId: "item_a", storageLocationId: "loc_line", quantity: 1 },
+      { inventoryItemId: "item_b", storageLocationId: "loc_walk", quantity: 2 },
+      { inventoryItemId: "item_c", storageLocationId: "loc_main", quantity: 0 },
+      { inventoryItemId: "item_unknown", storageLocationId: "loc_main", quantity: 3 }
+    ],
+    itemStatuses: [
+      { itemId: "item_a", status: "Critical" },
+      { itemId: "item_b", status: "Good" },
+      { itemId: "item_c", status: "Watch" }
+    ]
+  });
+
+  assert.equal(breakdown.stationCount, 3);
+  assert.equal(breakdown.stockedStationCount, 3);
+  assert.deepEqual(
+    breakdown.locations.map((row) => row.name),
+    ["Main", "Walk-in", "Line"]
+  );
+  assert.deepEqual(breakdown.locations[0], {
+    locationId: "loc_main",
+    name: "Main",
+    sortOrder: 0,
+    itemCount: 1,
+    counts: { good: 0, watch: 0, low: 0, critical: 1 },
+    atRiskCount: 1
+  });
+  assert.deepEqual(breakdown.locations[1], {
+    locationId: "loc_walk",
+    name: "Walk-in",
+    sortOrder: 10,
+    itemCount: 1,
+    counts: { good: 1, watch: 0, low: 0, critical: 0 },
+    atRiskCount: 0
+  });
+  assert.deepEqual(breakdown.locations[2], {
+    locationId: "loc_line",
+    name: "Line",
+    sortOrder: 20,
+    itemCount: 1,
+    counts: { good: 0, watch: 0, low: 0, critical: 1 },
+    atRiskCount: 1
+  });
+});
+
+test("inventory location health keeps empty stations and ignores invalid balance rows", () => {
+  const breakdown = buildInventoryLocationHealthBreakdown({
+    locations: [
+      { id: "loc_main", name: "Main", sortOrder: 0 },
+      { id: "loc_line", name: "Line", sortOrder: 1 }
+    ],
+    balances: [
+      { inventoryItemId: "item_a", storageLocationId: "loc_main", quantity: Number.NaN },
+      { inventoryItemId: "", storageLocationId: "loc_main", quantity: 2 },
+      { inventoryItemId: "item_a", storageLocationId: "loc_main", quantity: -1 }
+    ],
+    itemStatuses: [{ itemId: "item_a", status: "Low" }]
+  });
+
+  assert.equal(breakdown.stockedStationCount, 0);
+  assert.deepEqual(breakdown.locations.map((row) => row.itemCount), [0, 0]);
+  assert.equal(
+    buildInventoryLocationHealthAccessibilityLabel({
+      breakdown,
+      labels: {
+        stations: "Stations",
+        emptyStation: "empty",
+        items: (count) => `${count} items`,
+        atRisk: (count) => `${count} at risk.`
+      }
+    }),
+    "Main: empty Line: empty"
   );
 });

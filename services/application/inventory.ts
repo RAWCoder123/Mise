@@ -33,6 +33,7 @@ import {
   requireStorageLocationName
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
+import { buildInventoryLocationHealthBreakdown } from "../presentation/inventoryHealthPresentation";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -513,8 +514,33 @@ export async function createStorageLocation(restaurantId: string, name: string) 
   return repository.createStorageLocation(restaurantId, planned.name);
 }
 
-export async function fetchInventoryLocationBalances(restaurantId: string, itemId: string) {
+export async function fetchInventoryLocationBalances(restaurantId: string, itemId?: string) {
   return repository.fetchInventoryLocationBalances(restaurantId, itemId);
+}
+
+/** Restaurant-wide station breakdown for Inventory Health (status of items stocked at each location). */
+export async function fetchInventoryLocationHealthBreakdown(restaurantId: string) {
+  const [outlooks, locations, balances] = await Promise.all([
+    fetchInventoryOutlookItems(restaurantId),
+    repository.fetchStorageLocations(restaurantId),
+    repository.fetchInventoryLocationBalances(restaurantId)
+  ]);
+  return buildInventoryLocationHealthBreakdown({
+    locations: locations.map((location) => ({
+      id: location.id,
+      name: location.name,
+      sortOrder: location.sort_order
+    })),
+    balances: balances.map((balance) => ({
+      inventoryItemId: balance.inventory_item_id,
+      storageLocationId: balance.storage_location_id,
+      quantity: balance.quantity
+    })),
+    itemStatuses: outlooks.map(({ item, prediction }) => ({
+      itemId: item.id,
+      status: prediction.projectedStatus
+    }))
+  });
 }
 
 export async function transferInventory(

@@ -359,7 +359,7 @@ export interface MiseRepository {
   createStorageLocation(restaurantId: string, name: string): Promise<StorageLocation>;
   fetchInventoryLocationBalances(
     restaurantId: string,
-    itemId: string
+    itemId?: string
   ): Promise<InventoryLocationBalance[]>;
   transferInventory(
     restaurantId: string,
@@ -3051,12 +3051,17 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async fetchInventoryLocationBalances(restaurantId, itemId) {
-      const { data, error } = await client
+      let query = client
         .from("inventory_location_balances")
         .select("*")
         .eq("restaurant_id", restaurantId)
-        .eq("inventory_item_id", itemId)
+        .order("inventory_item_id", { ascending: true })
         .order("storage_location_id", { ascending: true });
+      const normalizedItemId = typeof itemId === "string" ? itemId.trim() : "";
+      if (normalizedItemId) {
+        query = query.eq("inventory_item_id", normalizedItemId);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return ((data ?? []) as InventoryLocationBalance[]).map(normalizeInventoryLocationBalance);
     },
