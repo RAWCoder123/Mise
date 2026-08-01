@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { ArrowLeft, CheckCircle2, ClipboardCheck, Copy, FileText, Save, Send } from "lucide-react-native";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Button } from "../../components/ui/Button";
@@ -15,12 +15,14 @@ import {
   confirmSupplierOrderPlaced,
   fetchPurchaseRecommendations,
   fetchEmailConnectionState,
+  fetchStorageLocations,
   fetchSupplierOrder,
   isGmailIntegrationError,
   receiveSupplierOrder,
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
+import { MAIN_STORAGE_LOCATION_NAME } from "../../services/domain/inventoryTransfer";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import {
@@ -30,7 +32,12 @@ import {
   isReceiveQuantityInputReady,
   linkedOrderedRecommendationsForOrder
 } from "../../services/domain/supplierOrderReceiving";
-import type { PurchaseRecommendation, RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
+import type {
+  PurchaseRecommendation,
+  RestaurantEmailConnection,
+  StorageLocation,
+  SupplierOrder
+} from "../../types/mise";
 
 type Translate = ReturnType<typeof useLocale>["t"];
 
@@ -51,6 +58,8 @@ export default function OrderDraftDetailScreen() {
   const [linkedRecommendations, setLinkedRecommendations] = useState<PurchaseRecommendation[]>([]);
   const [receiveQuantities, setReceiveQuantities] = useState<Record<string, string>>({});
   const [receiveNotes, setReceiveNotes] = useState<Record<string, string>>({});
+  const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
+  const [receiveStorageLocationId, setReceiveStorageLocationId] = useState("");
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -78,19 +87,29 @@ export default function OrderDraftDetailScreen() {
     if (showLoading) setLoading(true);
     setNotice(null);
     try {
-      const [nextOrder, nextEmailConnection, recommendations] = await Promise.all([
+      const [nextOrder, nextEmailConnection, recommendations, nextLocations] = await Promise.all([
         fetchSupplierOrder(restaurantId, orderId),
         fetchEmailConnectionState(restaurantId),
-        fetchPurchaseRecommendations(restaurantId, "all")
+        fetchPurchaseRecommendations(restaurantId, "all"),
+        fetchStorageLocations(restaurantId).catch(() => [] as StorageLocation[])
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       if (nextEmailConnection && nextEmailConnection.restaurant_id !== restaurantId) {
         throw new Error(t("orders.detail.connectionMismatch"));
       }
       const linked = linkedOrderedRecommendationsForOrder(orderId, recommendations);
+      const main = nextLocations.find(
+        (location) => location.name.toLowerCase() === MAIN_STORAGE_LOCATION_NAME.toLowerCase()
+      );
       setOrder(nextOrder);
       setEmailConnection(nextEmailConnection);
       setLinkedRecommendations(linked);
+      setStorageLocations(nextLocations);
+      setReceiveStorageLocationId((current) =>
+        current && nextLocations.some((location) => location.id === current)
+          ? current
+          : main?.id ?? nextLocations[0]?.id ?? ""
+      );
       setReceiveQuantities(
         Object.fromEntries(
           defaultReceiveLinesFromRecommendations(linked).map((line) => [
@@ -110,6 +129,8 @@ export default function OrderDraftDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setLinkedRecommendations([]);
+      setStorageLocations([]);
+      setReceiveStorageLocationId("");
       setNotice({
         title: t("orders.detail.load.title"),
         message:
@@ -132,6 +153,8 @@ export default function OrderDraftDetailScreen() {
     setLinkedRecommendations([]);
     setReceiveQuantities({});
     setReceiveNotes({});
+    setStorageLocations([]);
+    setReceiveStorageLocationId("");
     setOperatorNote("");
     setBusy(false);
     setNotice(null);
@@ -142,7 +165,10 @@ export default function OrderDraftDetailScreen() {
   function seedReceiveForm(
     recommendations: readonly PurchaseRecommendation[]
   ): void {
-    const defaults = defaultReceiveLinesFromRecommendations(recommendations);
+    const defaults = defaultReceiveLinesFromRecommendations(
+      recommendations,
+      receiveStorageLocationId || null
+    );
     setReceiveQuantities(
       Object.fromEntries(
         defaults.map((line) => [
@@ -324,10 +350,23 @@ export default function OrderDraftDetailScreen() {
       setNotice(viewOnlyNotice(t));
       return;
     }
+    if (
+      storageLocations.length > 0 &&
+      (!receiveStorageLocationId ||
+        !storageLocations.some((location) => location.id === receiveStorageLocationId))
+    ) {
+      setNotice({
+        title: t("orders.detail.notice.receiveInvalidTitle"),
+        message: t("orders.detail.receive.storageRequired"),
+        tone: "warning"
+      });
+      return;
+    }
     const drafted = buildReceiveLinesFromFormInputs({
       inventoryItemIds: linkedRecommendations.map((recommendation) => recommendation.inventory_item_id),
       quantitiesByItemId: receiveQuantities,
       notesByItemId: receiveNotes,
+      storageLocationId: receiveStorageLocationId || null,
       parseNumber
     });
     if (!drafted.ok) {
@@ -536,6 +575,39 @@ export default function OrderDraftDetailScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("orders.detail.receive.title")}</Text>
               <Text style={styles.sectionBody}>{t("orders.detail.receive.body")}</Text>
+              {storageLocations.length > 0 ? (
+                <View style={styles.receivePutAway}>
+                  <Text style={styles.receivePutAwayLabel}>{t("orders.detail.receive.putAway")}</Text>
+                  <Text style={styles.receivePutAwayHelp}>{t("orders.detail.receive.putAwayHelp")}</Text>
+                  <View style={styles.locationChips}>
+                    {storageLocations.map((location) => {
+                      const selected = location.id === receiveStorageLocationId;
+                      return (
+                        <Pressable
+                          key={location.id}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected, disabled: busy }}
+                          accessibilityLabel={t("orders.detail.receive.putAwayOption", {
+                            location: location.name
+                          })}
+                          disabled={busy}
+                          onPress={() => setReceiveStorageLocationId(location.id)}
+                          style={[styles.locationChip, selected && styles.locationChipSelected]}
+                        >
+                          <Text
+                            style={[
+                              styles.locationChipText,
+                              selected && styles.locationChipTextSelected
+                            ]}
+                          >
+                            {location.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
               {linkedRecommendations.map((recommendation) => {
                 const raw = receiveQuantities[recommendation.inventory_item_id] ?? "";
                 const note = receiveNotes[recommendation.inventory_item_id] ?? "";
@@ -876,6 +948,49 @@ const styles = StyleSheet.create({
   sentNoteText: {
     color: colors.muted,
     ...typography.body
+  },
+  receivePutAway: {
+    gap: 6,
+    marginTop: 8
+  },
+  receivePutAwayLabel: {
+    color: colors.text,
+    ...typography.cardTitle,
+    fontSize: 15,
+    lineHeight: 20
+  },
+  receivePutAwayHelp: {
+    color: colors.muted,
+    ...typography.caption
+  },
+  locationChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 2
+  },
+  locationChip: {
+    minHeight: 44,
+    minWidth: 44,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    justifyContent: "center"
+  },
+  locationChipSelected: {
+    borderColor: colors.accentDark,
+    backgroundColor: colors.accentSoft ?? colors.surface
+  },
+  locationChipText: {
+    color: colors.text,
+    ...typography.caption,
+    fontWeight: "600"
+  },
+  locationChipTextSelected: {
+    color: colors.accentDark
   },
   receiveRow: {
     gap: 6,

@@ -3,6 +3,7 @@ import {
   MAIN_STORAGE_LOCATION_NAME,
   planInventoryTransfer,
   planLocationBalanceReconcile,
+  planReceiveLocationPutaway,
   planStorageLocationCreate
 } from "../domain/inventoryTransfer";
 import type { DemoState } from "./replaceableDemoData";
@@ -157,6 +158,48 @@ export function reconcileDemoLocationBalancesToOnHand(
     mainStorageLocationId: main.id
   });
   if (!planned.changed) return;
+  for (const update of planned.balanceUpdates) {
+    upsertDemoBalance(
+      state,
+      restaurantId,
+      item.id,
+      update.storageLocationId,
+      update.quantityAfter,
+      now
+    );
+  }
+}
+
+/** Move a just-received increase from Main onto the chosen put-away station. */
+export function applyDemoReceiveLocationPutaway(
+  state: DemoState,
+  restaurantId: string,
+  item: InventoryItem,
+  storageLocationId: string | null | undefined,
+  quantityReceived: number,
+  now = new Date().toISOString()
+): void {
+  const main = ensureDemoMainStorageLocation(state, restaurantId, now);
+  const targetId = typeof storageLocationId === "string" ? storageLocationId.trim() : "";
+  if (!targetId || targetId === main.id || quantityReceived <= 0) return;
+
+  const locations = listDemoStorageLocations(state, restaurantId);
+  const target = locations.find((location) => location.id === targetId);
+  if (!target) {
+    throw new Error("Storage location not found.");
+  }
+
+  const balances = listDemoInventoryLocationBalances(state, restaurantId, item.id);
+  const planned = planReceiveLocationPutaway({
+    mainStorageLocationId: main.id,
+    storageLocationId: target.id,
+    quantityReceived,
+    balances: balances.map((balance) => ({
+      storageLocationId: balance.storage_location_id,
+      quantity: balance.quantity
+    }))
+  });
+  if (!planned) return;
   for (const update of planned.balanceUpdates) {
     upsertDemoBalance(
       state,

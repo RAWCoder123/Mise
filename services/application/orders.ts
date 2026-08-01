@@ -211,18 +211,30 @@ export async function receiveSupplierOrder(
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
   const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
   const normalizedLines = requireSupplierOrderReceiveLines(receiveLines);
-  const [order, recommendations, data, recommendationHistory] = await Promise.all([
+  const [order, recommendations, data, recommendationHistory, storageLocations] = await Promise.all([
     repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
     repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
     repository.fetchPlanningData(normalizedRestaurantId),
-    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all")
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
+    repository.fetchStorageLocations(normalizedRestaurantId)
   ]);
   const planned = planSupplierOrderReceive({
     order,
     recommendations,
     inventoryItems: data.inventoryItems,
-    receiveLines: normalizedLines
+    receiveLines: normalizedLines,
+    // Hosted reads are pure and may be empty before the first write seeds Main.
+    // SQL receiving still defaults omitted locations to Main.
+    storageLocations: storageLocations.length > 0 ? storageLocations : undefined
   });
+  const resolvedLines = planned.lines.map((line) => ({
+    inventoryItemId: line.inventoryItemId,
+    quantityReceived: line.quantityReceived,
+    note: line.note ?? null,
+    storageLocationId: line.storageLocationId ?? normalizedLines.find(
+      (entry) => entry.inventoryItemId === line.inventoryItemId
+    )?.storageLocationId ?? null
+  }));
   const planningInventory = data.inventoryItems.map((item) => {
     const line = planned.lines.find((entry) => entry.inventoryItemId === item.id);
     return line
@@ -249,7 +261,7 @@ export async function receiveSupplierOrder(
   return repository.receiveSupplierOrderAndSignals(
     normalizedRestaurantId,
     normalizedOrderId,
-    normalizedLines,
+    resolvedLines,
     nextRecommendations,
     nextInsights
   );

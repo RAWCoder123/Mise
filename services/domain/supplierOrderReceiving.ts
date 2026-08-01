@@ -1,4 +1,5 @@
-import type { InventoryItem, PurchaseRecommendation, SupplierOrder } from "../../types/mise";
+import type { InventoryItem, PurchaseRecommendation, StorageLocation, SupplierOrder } from "../../types/mise";
+import { MAIN_STORAGE_LOCATION_NAME } from "./inventoryTransfer";
 
 export const SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS = 240;
 export const SUPPLIER_ORDER_RECEIVE_QUANTITY_MAX = 1_000_000;
@@ -7,6 +8,8 @@ export type SupplierOrderReceiveLineInput = {
   inventoryItemId: string;
   quantityReceived: number;
   note?: string | null;
+  /** Optional put-away station. Omitted/null resolves to Main when locations are supplied. */
+  storageLocationId?: string | null;
 };
 
 export type PlannedSupplierOrderReceiveLine = {
@@ -19,6 +22,8 @@ export type PlannedSupplierOrderReceiveLine = {
   quantityAfter: number;
   discrepancy: number;
   hasDiscrepancy: boolean;
+  storageLocationId?: string;
+  storageLocationName?: string;
   note?: string;
   reason: "receiving";
   sourceWorkflow: "receive_supplier_order";
@@ -29,6 +34,8 @@ export type PlannedSupplierOrderReceiveLine = {
     quantity_received: number;
     discrepancy: number;
     note?: string;
+    storage_location_id?: string;
+    storage_location_name?: string;
   };
 };
 
@@ -55,13 +62,41 @@ export function linkedOrderedRecommendationsForOrder(
 }
 
 export function defaultReceiveLinesFromRecommendations(
-  recommendations: readonly PurchaseRecommendation[]
+  recommendations: readonly PurchaseRecommendation[],
+  storageLocationId?: string | null
 ): SupplierOrderReceiveLineInput[] {
+  const resolvedStorageLocationId =
+    typeof storageLocationId === "string" && storageLocationId.trim()
+      ? storageLocationId.trim()
+      : null;
   return recommendations.map((recommendation) => ({
     inventoryItemId: recommendation.inventory_item_id,
     quantityReceived: recommendation.recommended_quantity,
-    note: null
+    note: null,
+    storageLocationId: resolvedStorageLocationId
   }));
+}
+
+export function resolveReceiveStorageLocation(
+  storageLocations: readonly StorageLocation[],
+  storageLocationId?: string | null
+): StorageLocation {
+  const active = storageLocations.filter((location) => location.is_active);
+  const main = active.find(
+    (location) => location.name.toLowerCase() === MAIN_STORAGE_LOCATION_NAME.toLowerCase()
+  );
+  const requested = typeof storageLocationId === "string" ? storageLocationId.trim() : "";
+  if (!requested) {
+    if (!main) {
+      throw new Error(`"${MAIN_STORAGE_LOCATION_NAME}" storage location is required.`);
+    }
+    return main;
+  }
+  const match = active.find((location) => location.id === requested);
+  if (!match) {
+    throw new Error("Storage location not found.");
+  }
+  return match;
 }
 
 export type ReceiveFormLineBuildResult =
@@ -95,9 +130,14 @@ export function buildReceiveLinesFromFormInputs(input: {
   inventoryItemIds: readonly string[];
   quantitiesByItemId: Readonly<Record<string, string>>;
   notesByItemId?: Readonly<Record<string, string>>;
+  storageLocationId?: string | null;
   parseNumber: (value: string) => number | null;
 }): ReceiveFormLineBuildResult {
   const lines: SupplierOrderReceiveLineInput[] = [];
+  const storageLocationId =
+    typeof input.storageLocationId === "string" && input.storageLocationId.trim()
+      ? input.storageLocationId.trim()
+      : null;
 
   for (const inventoryItemId of input.inventoryItemIds) {
     const rawQuantity = input.quantitiesByItemId[inventoryItemId] ?? "";
@@ -119,7 +159,8 @@ export function buildReceiveLinesFromFormInputs(input: {
     lines.push({
       inventoryItemId,
       quantityReceived,
-      note
+      note,
+      storageLocationId
     });
   }
 
@@ -131,6 +172,7 @@ export function planSupplierOrderReceive(input: {
   recommendations: readonly PurchaseRecommendation[];
   inventoryItems: readonly InventoryItem[];
   receiveLines: readonly SupplierOrderReceiveLineInput[];
+  storageLocations?: readonly StorageLocation[];
 }): PlannedSupplierOrderReceive {
   if (input.order.status !== "sent") {
     throw new Error("Only sent supplier orders can be received.");
@@ -159,6 +201,8 @@ export function planSupplierOrderReceive(input: {
       throw new Error(`Missing received quantity for ${recommendation.item_name}.`);
     }
   }
+
+  const storageLocations = input.storageLocations ?? null;
 
   const lines: PlannedSupplierOrderReceiveLine[] = [];
   for (const recommendation of linked) {
@@ -192,6 +236,10 @@ export function planSupplierOrderReceive(input: {
       throw new Error("Receive note is outside supported limits.");
     }
 
+    const putAway = storageLocations
+      ? resolveReceiveStorageLocation(storageLocations, receiveLine.storageLocationId)
+      : null;
+
     const quantityAfter = quantityBefore + quantityReceived;
     const discrepancy = quantityReceived - quantityOrdered;
     lines.push({
@@ -204,6 +252,9 @@ export function planSupplierOrderReceive(input: {
       quantityAfter,
       discrepancy,
       hasDiscrepancy: discrepancy !== 0,
+      ...(putAway
+        ? { storageLocationId: putAway.id, storageLocationName: putAway.name }
+        : {}),
       ...(note ? { note } : {}),
       reason: "receiving",
       sourceWorkflow: "receive_supplier_order",
@@ -213,6 +264,12 @@ export function planSupplierOrderReceive(input: {
         quantity_ordered: quantityOrdered,
         quantity_received: quantityReceived,
         discrepancy,
+        ...(putAway
+          ? {
+              storage_location_id: putAway.id,
+              storage_location_name: putAway.name
+            }
+          : {}),
         ...(note ? { note } : {})
       }
     });

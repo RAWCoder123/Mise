@@ -8,6 +8,7 @@ import {
   canTransferInventory,
   planInventoryTransfer,
   planLocationBalanceReconcile,
+  planReceiveLocationPutaway,
   planStorageLocationCreate,
   reconcileLocationBalancesForDisplay
 } from "../services/domain/inventoryTransfer";
@@ -184,6 +185,44 @@ test("planLocationBalanceReconcile is a no-op when balances already match on-han
   });
   assert.equal(planned.changed, false);
   assert.equal(planned.balanceUpdates.length, 0);
+});
+
+test("planReceiveLocationPutaway moves received quantity from Main to the chosen station", () => {
+  assert.equal(
+    planReceiveLocationPutaway({
+      mainStorageLocationId: "loc_main",
+      storageLocationId: "loc_main",
+      quantityReceived: 4,
+      balances: [{ storageLocationId: "loc_main", quantity: 12 }]
+    }),
+    null
+  );
+
+  const planned = planReceiveLocationPutaway({
+    mainStorageLocationId: "loc_main",
+    storageLocationId: "loc_walkin",
+    quantityReceived: 4,
+    balances: [
+      { storageLocationId: "loc_main", quantity: 12 },
+      { storageLocationId: "loc_walkin", quantity: 1 }
+    ]
+  });
+  assert.ok(planned);
+  assert.deepEqual(planned?.balanceUpdates, [
+    { storageLocationId: "loc_main", quantityBefore: 12, quantityAfter: 8 },
+    { storageLocationId: "loc_walkin", quantityBefore: 1, quantityAfter: 5 }
+  ]);
+
+  assert.throws(
+    () =>
+      planReceiveLocationPutaway({
+        mainStorageLocationId: "loc_main",
+        storageLocationId: "loc_walkin",
+        quantityReceived: 5,
+        balances: [{ storageLocationId: "loc_main", quantity: 2 }]
+      }),
+    /Insufficient Main/i
+  );
 });
 
 test("transfer quantity and location name validators bound operator input", () => {

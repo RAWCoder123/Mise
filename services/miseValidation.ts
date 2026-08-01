@@ -422,7 +422,12 @@ export function requireManagerCorrectionNote(value: string | null | undefined) {
 
 export function requireSupplierOrderReceiveLines(
   value: unknown
-): Array<{ inventoryItemId: string; quantityReceived: number; note: string | null }> {
+): Array<{
+  inventoryItemId: string;
+  quantityReceived: number;
+  note: string | null;
+  storageLocationId: string | null;
+}> {
   if (!Array.isArray(value) || value.length < 1 || value.length > 250) {
     throw new Error("Provide between 1 and 250 receive lines.");
   }
@@ -454,7 +459,15 @@ export function requireSupplierOrderReceiveLines(
     const note = requireInventoryWasteNote(
       row.note === undefined || row.note === null ? null : String(row.note)
     );
-    return { inventoryItemId, quantityReceived, note };
+    const rawStorageLocationId = row.storageLocationId ?? row.storage_location_id;
+    let storageLocationId: string | null = null;
+    if (rawStorageLocationId !== undefined && rawStorageLocationId !== null && rawStorageLocationId !== "") {
+      storageLocationId = String(rawStorageLocationId).trim();
+      if (!storageLocationId || storageLocationId.length > 128) {
+        throw new Error(`Receive line ${index + 1} storage location is invalid.`);
+      }
+    }
+    return { inventoryItemId, quantityReceived, note, storageLocationId };
   });
 }
 

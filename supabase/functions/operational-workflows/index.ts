@@ -886,6 +886,7 @@ function requireReceiveLines(value: unknown) {
     }
     seen.add(inventoryItemId);
     const noteValue = row.note;
+    const storageLocationValue = row.storageLocationId ?? row.storage_location_id;
     return {
       inventory_item_id: inventoryItemId,
       quantity_received: requireBoundedNumber(
@@ -894,7 +895,11 @@ function requireReceiveLines(value: unknown) {
         0,
         1_000_000
       ),
-      note: noteValue == null ? null : requireBoundedString(noteValue, `receiveLines[${index}].note`, 240)
+      note: noteValue == null ? null : requireBoundedString(noteValue, `receiveLines[${index}].note`, 240),
+      storage_location_id:
+        storageLocationValue == null || storageLocationValue === ""
+          ? null
+          : requireUuid(storageLocationValue, `receiveLines[${index}].storageLocationId`)
     };
   });
 }

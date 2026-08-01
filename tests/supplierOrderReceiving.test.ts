@@ -8,10 +8,11 @@ import {
   defaultReceiveLinesFromRecommendations,
   isReceiveQuantityInputReady,
   linkedOrderedRecommendationsForOrder,
-  planSupplierOrderReceive
+  planSupplierOrderReceive,
+  resolveReceiveStorageLocation
 } from "../services/domain/supplierOrderReceiving";
 import { parseLocalizedNumber } from "../i18n/formatters";
-import type { InventoryItem, PurchaseRecommendation, SupplierOrder } from "../types/mise";
+import type { InventoryItem, PurchaseRecommendation, StorageLocation, SupplierOrder } from "../types/mise";
 
 const restaurantId = "rest_1";
 const orderId = "order_1";
@@ -100,10 +101,28 @@ test("plans receiving with ordered-versus-received discrepancies", () => {
   assert.equal(planned.discrepancyCount, 1);
 });
 
+function storageLocation(overrides: Partial<StorageLocation> = {}): StorageLocation {
+  return {
+    id: "loc_main",
+    restaurant_id: restaurantId,
+    name: "Main",
+    sort_order: 0,
+    is_active: true,
+    created_at: "2026-07-30T10:00:00.000Z",
+    updated_at: "2026-07-30T10:00:00.000Z",
+    ...overrides
+  };
+}
+
 test("defaults receive quantities from ordered recommendations", () => {
-  const defaults = defaultReceiveLinesFromRecommendations([recommendation()]);
+  const defaults = defaultReceiveLinesFromRecommendations([recommendation()], "loc_walkin");
   assert.deepEqual(defaults, [
-    { inventoryItemId: "item_1", quantityReceived: 10, note: null }
+    {
+      inventoryItemId: "item_1",
+      quantityReceived: 10,
+      note: null,
+      storageLocationId: "loc_walkin"
+    }
   ]);
 });
 
@@ -112,13 +131,24 @@ test("builds receive lines from locale-aware quantity strings and optional notes
     inventoryItemIds: ["item_1", "item_2"],
     quantitiesByItemId: { item_1: "9,5", item_2: "5" },
     notesByItemId: { item_1: "  Short case  ", item_2: "   " },
+    storageLocationId: "loc_walkin",
     parseNumber: (value) => parseLocalizedNumber("es", value)
   });
   assert.equal(spanish.ok, true);
   if (!spanish.ok) return;
   assert.deepEqual(spanish.lines, [
-    { inventoryItemId: "item_1", quantityReceived: 9.5, note: "Short case" },
-    { inventoryItemId: "item_2", quantityReceived: 5, note: null }
+    {
+      inventoryItemId: "item_1",
+      quantityReceived: 9.5,
+      note: "Short case",
+      storageLocationId: "loc_walkin"
+    },
+    {
+      inventoryItemId: "item_2",
+      quantityReceived: 5,
+      note: null,
+      storageLocationId: "loc_walkin"
+    }
   ]);
 
   assert.equal(isReceiveQuantityInputReady("1.234,5", (value) => parseLocalizedNumber("es", value)), true);
@@ -174,4 +204,29 @@ test("applies planned receive quantities to inventory snapshots", () => {
   const next = applyPlannedReceiveToInventory([inventory()], planned, "2026-07-31T15:00:00.000Z");
   assert.equal(next[0]?.current_quantity, 10);
   assert.equal(next[0]?.last_updated, "2026-07-31T15:00:00.000Z");
+});
+
+test("plans receive put-away onto a non-Main storage location", () => {
+  const locations = [
+    storageLocation(),
+    storageLocation({ id: "loc_walkin", name: "Walk-in", sort_order: 10 })
+  ];
+  assert.equal(resolveReceiveStorageLocation(locations, null).id, "loc_main");
+  assert.equal(resolveReceiveStorageLocation(locations, "loc_walkin").name, "Walk-in");
+  assert.throws(() => resolveReceiveStorageLocation(locations, "missing"), /not found/i);
+
+  const planned = planSupplierOrderReceive({
+    order: order(),
+    recommendations: [recommendation()],
+    inventoryItems: [inventory()],
+    receiveLines: [
+      { inventoryItemId: "item_1", quantityReceived: 8, storageLocationId: "loc_walkin" }
+    ],
+    storageLocations: locations
+  });
+
+  assert.equal(planned.lines[0]?.storageLocationId, "loc_walkin");
+  assert.equal(planned.lines[0]?.storageLocationName, "Walk-in");
+  assert.equal(planned.lines[0]?.metadata.storage_location_id, "loc_walkin");
+  assert.equal(planned.lines[0]?.metadata.storage_location_name, "Walk-in");
 });

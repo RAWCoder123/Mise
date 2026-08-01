@@ -96,6 +96,8 @@ import {
 } from "../demo/memberInvites";
 import {
   createDemoStorageLocation,
+  applyDemoReceiveLocationPutaway,
+  ensureDemoMainStorageLocation,
   listDemoInventoryLocationBalances,
   listDemoStorageLocations,
   reconcileDemoLocationBalancesToOnHand,
@@ -441,7 +443,12 @@ export interface MiseRepository {
   receiveSupplierOrderAndSignals(
     restaurantId: string,
     orderId: string,
-    receiveLines: Array<{ inventoryItemId: string; quantityReceived: number; note: string | null }>,
+    receiveLines: Array<{
+      inventoryItemId: string;
+      quantityReceived: number;
+      note: string | null;
+      storageLocationId?: string | null;
+    }>,
     recommendations: PurchaseRecommendationInput[],
     insights: Insight[]
   ): Promise<SupplierOrderReceiveWorkflowResult>;
@@ -2249,13 +2256,15 @@ function createLocalDemoRepository(): MiseRepository {
             discrepancyCount: 0
           };
         }
+        const now = new Date().toISOString();
+        ensureDemoMainStorageLocation(state, restaurantId, now);
         const planned = planSupplierOrderReceive({
           order,
           recommendations: state.purchaseRecommendations,
           inventoryItems: state.inventoryItems,
-          receiveLines
+          receiveLines,
+          storageLocations: listDemoStorageLocations(state, restaurantId)
         });
-        const now = new Date().toISOString();
         state.inventoryItems = applyPlannedReceiveToInventory(state.inventoryItems, planned, now);
         for (const line of planned.lines) {
           const item = state.inventoryItems.find(
@@ -2263,6 +2272,14 @@ function createLocalDemoRepository(): MiseRepository {
           );
           if (item) {
             reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
+            applyDemoReceiveLocationPutaway(
+              state,
+              restaurantId,
+              item,
+              line.storageLocationId,
+              line.quantityReceived,
+              now
+            );
           }
           appendDemoInventoryMovement(state, {
             restaurantId,
@@ -3450,7 +3467,8 @@ function createSupabaseRepository(): MiseRepository {
         receiveLines: receiveLines.map((line) => ({
           inventoryItemId: line.inventoryItemId,
           quantityReceived: line.quantityReceived,
-          note: line.note
+          note: line.note,
+          storageLocationId: line.storageLocationId ?? null
         }))
       });
       return parseSupplierOrderReceiveWorkflowResponse(response.result);

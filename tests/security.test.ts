@@ -500,6 +500,16 @@ test("supplier order receiving is service-owned, ledgered, and distinct from Gma
   assert.match(migration, /source_workflow,\s*[\s\S]*'receive_supplier_order'/i);
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_receive_supplier_order_and_signals[\s\S]*authenticated/i);
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_receive_supplier_order_and_signals[\s\S]*service_role/i);
+  const receivePutAwayMigration = readFileSync(
+    "supabase/migrations/20260801110000_receive_supplier_order_storage_location.sql",
+    "utf8"
+  );
+  assert.match(receivePutAwayMigration, /private\.apply_inventory_receive_putaway/i);
+  assert.match(receivePutAwayMigration, /storage_location_id/i);
+  assert.match(receivePutAwayMigration, /storage_location_name/i);
+  assert.match(edge, /storage_location_id/);
+  assert.match(detail, /fetchStorageLocations/);
+  assert.match(detail, /receiveStorageLocationId|putAway/);
   const edgePlaceMigration = readFileSync(
     "supabase/migrations/20260731220000_edge_storage_location_and_external_place.sql",
     "utf8"

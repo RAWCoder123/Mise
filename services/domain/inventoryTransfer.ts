@@ -291,3 +291,75 @@ export function planLocationBalanceReconcile(input: {
     balanceUpdates
   };
 }
+
+export type PlannedReceiveLocationPutaway = {
+  mainStorageLocationId: string;
+  storageLocationId: string;
+  quantityReceived: number;
+  balanceUpdates: Array<{
+    storageLocationId: string;
+    quantityBefore: number;
+    quantityAfter: number;
+  }>;
+};
+
+/**
+ * After on-hand reconcile lands receive increases on Main, move the received
+ * quantity onto the chosen put-away station without changing restaurant on-hand.
+ */
+export function planReceiveLocationPutaway(input: {
+  mainStorageLocationId: string;
+  storageLocationId: string;
+  quantityReceived: number;
+  balances: LocationBalanceInput[];
+}): PlannedReceiveLocationPutaway | null {
+  const mainStorageLocationId = String(input.mainStorageLocationId ?? "").trim();
+  const storageLocationId = String(input.storageLocationId ?? "").trim();
+  const quantityReceived = Number(input.quantityReceived);
+
+  if (!mainStorageLocationId || !storageLocationId) {
+    throw new Error("Storage location is required for receive put-away.");
+  }
+  if (!Number.isFinite(quantityReceived) || quantityReceived < 0) {
+    throw new Error("Received quantity must be zero or greater.");
+  }
+  if (quantityReceived === 0 || storageLocationId === mainStorageLocationId) {
+    return null;
+  }
+
+  const working = new Map<string, number>();
+  for (const balance of input.balances) {
+    const locationId = String(balance.storageLocationId ?? "").trim();
+    const quantity = Number(balance.quantity);
+    if (!locationId || !Number.isFinite(quantity) || quantity < 0) {
+      throw new Error("Location balance data is invalid.");
+    }
+    working.set(locationId, quantity);
+  }
+
+  const mainBefore = working.get(mainStorageLocationId) ?? 0;
+  if (mainBefore + 1e-12 < quantityReceived) {
+    throw new Error("Insufficient Main quantity available for receive put-away.");
+  }
+  const targetBefore = working.get(storageLocationId) ?? 0;
+  const mainAfter = mainBefore - quantityReceived;
+  const targetAfter = targetBefore + quantityReceived;
+
+  return {
+    mainStorageLocationId,
+    storageLocationId,
+    quantityReceived,
+    balanceUpdates: [
+      {
+        storageLocationId: mainStorageLocationId,
+        quantityBefore: mainBefore,
+        quantityAfter: mainAfter
+      },
+      {
+        storageLocationId,
+        quantityBefore: targetBefore,
+        quantityAfter: targetAfter
+      }
+    ]
+  };
+}
