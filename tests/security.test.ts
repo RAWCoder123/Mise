@@ -8,6 +8,7 @@ import {
   canApproveInventoryCount,
   canDeleteRestaurantData,
   canDraftInventoryCount,
+  canExportRestaurantData,
   canManageRestaurantData,
   canReadRestaurantData,
   canRecordInventoryWaste,
@@ -59,18 +60,22 @@ test("tenant role helper keeps staff out of manager edits while allowing count d
   assert.equal(canReadRestaurantData(staff, "restaurant_a"), true);
   assert.equal(canManageRestaurantData(staff, "restaurant_a"), false);
   assert.equal(canDeleteRestaurantData(staff, "restaurant_a"), false);
+  assert.equal(canExportRestaurantData(staff, "restaurant_a"), false);
   assert.equal(canDraftInventoryCount(staff, "restaurant_a"), true);
   assert.equal(canApproveInventoryCount(staff, "restaurant_a"), false);
   assert.equal(canRecordInventoryWaste(staff, "restaurant_a"), true);
 
   assert.equal(canManageRestaurantData(manager, "restaurant_a"), true);
   assert.equal(canDeleteRestaurantData(manager, "restaurant_a"), false);
+  assert.equal(canExportRestaurantData(manager, "restaurant_a"), false);
   assert.equal(canDraftInventoryCount(manager, "restaurant_a"), true);
   assert.equal(canApproveInventoryCount(manager, "restaurant_a"), true);
   assert.equal(canRecordInventoryWaste(manager, "restaurant_a"), true);
 
   assert.equal(canUpdateRestaurantProfile(owner, "restaurant_a"), true);
   assert.equal(canUpdateRestaurantProfile(admin, "restaurant_a"), true);
+  assert.equal(canExportRestaurantData(owner, "restaurant_a"), true);
+  assert.equal(canExportRestaurantData(admin, "restaurant_a"), true);
   assert.equal(canApproveInventoryCount(owner, "restaurant_a"), true);
   assert.equal(canRecordInventoryWaste(owner, "restaurant_a"), true);
 });
@@ -1921,4 +1926,45 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
   assert.match(accountDeletionTests, /actors can reserve user-scoped request-account-deletion invocations/i);
   assert.match(catalog, /Restaurants you solely own are closed/);
   assert.match(settings, /requestAccountDeletion/);
+});
+
+test("restaurant data export is owner/admin Edge-routed with secret redaction", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260801193000_edge_export_restaurant_data.sql",
+    "utf8"
+  );
+  const edge = readFileSync("supabase/functions/export-restaurant-data/index.ts", "utf8");
+  const shared = readFileSync("supabase/functions/_shared/mise.ts", "utf8");
+  const config = readFileSync("supabase/config.toml", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const settings = readFileSync("app/(tabs)/settings.tsx", "utf8");
+  const domain = readFileSync("services/domain/restaurantDataExport.ts", "utf8");
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(migration, /'export-restaurant-data'/);
+  assert.match(
+    migration,
+    /'export-restaurant-data',\s*4,\s*300,\s*array\['owner',\s*'admin'\]/i
+  );
+  assert.match(shared, /EdgeFunctionName[\s\S]*export-restaurant-data/);
+  assert.match(config, /\[functions\.export-restaurant-data\][\s\S]*verify_jwt\s*=\s*true/i);
+  assert.match(edge, /requireAuthenticatedContext/);
+  assert.match(edge, /reserveFunctionInvocation/);
+  assert.match(edge, /requireRestaurantRole\([\s\S]*\["owner",\s*"admin"\]/);
+  assert.match(edge, /recordFunctionAuditLog/);
+  assert.match(edge, /recordFunctionSecurityEvent/);
+  assert.match(edge, /buildRestaurantDataExport/);
+  assert.match(edge, /from\("restaurant_member_invites"\)/);
+  assert.doesNotMatch(edge, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(domain, /token_hash/);
+  assert.match(domain, /SECRET_SETTING_KEY_PATTERN/);
+  assert.match(domain, /DEFAULT_POS_SALES_EXPORT_DAYS\s*=\s*90/);
+  assert.match(repository, /functions\.invoke\("export-restaurant-data"/);
+  assert.match(repository, /demo_export_restaurant_data/);
+  assert.match(settings, /exportRestaurantData/);
+  assert.match(settings, /canExportRestaurantData/);
+  assert.match(settings, /Clipboard\.setStringAsync/);
+  assert.match(catalog, /settings\.account\.export/);
+  assert.match(securityBackend, /export-restaurant-data/);
 });

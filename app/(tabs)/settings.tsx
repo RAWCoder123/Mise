@@ -8,6 +8,7 @@ import {
   ChevronUp,
   CircleUserRound,
   Database,
+  Download,
   ExternalLink,
   Languages,
   LogOut,
@@ -20,6 +21,7 @@ import {
   Truck,
   Users
 } from "lucide-react-native";
+import * as Clipboard from "expo-clipboard";
 import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Badge } from "../../components/ui/Badge";
@@ -35,6 +37,7 @@ import { LANGUAGE_OPTIONS, type MessageKey, type MessageValues } from "../../i18
 import { DEMO_DATASET } from "../../services/demoData";
 import { readPublicAppConfig } from "../../lib/appConfig";
 import {
+  exportRestaurantData,
   fetchDemoReadinessSummary,
   fetchEmailConnectionState,
   fetchRecipeBaselineSummary,
@@ -42,6 +45,7 @@ import {
   fetchSuppliers,
   requestAccountDeletion
 } from "../../services/miseService";
+import { canExportRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type {
   DemoReadinessSummary,
@@ -60,6 +64,7 @@ export default function SettingsScreen() {
   const {
     availableRestaurants,
     isDemoMode,
+    memberships,
     restaurant,
     posProvider,
     resetDemoData,
@@ -77,6 +82,7 @@ export default function SettingsScreen() {
   const [message, setMessage] = useState<SettingsNotice | null>(null);
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [exportingData, setExportingData] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -199,6 +205,30 @@ export default function SettingsScreen() {
     }
   }
 
+  async function exportCurrentRestaurantData() {
+    if (!restaurant || exportingData || deletingAccount || signingOut) return;
+    if (!canExportRestaurantData(memberships, restaurant.id)) {
+      setMessage({ key: "settings.account.exportForbidden", tone: "caution" });
+      return;
+    }
+    setExportingData(true);
+    setMessage(null);
+    try {
+      const result = await exportRestaurantData(restaurant.id);
+      await Clipboard.setStringAsync(result.serialized);
+      setMessage({ key: "settings.account.exportSuccess", tone: "success" });
+    } catch (exportError) {
+      captureMiseError(exportError, {
+        flow: "settings",
+        operation: "export_restaurant_data",
+        restaurant_id: restaurant.id
+      });
+      setMessage({ key: "settings.account.exportError", tone: "danger" });
+    } finally {
+      setExportingData(false);
+    }
+  }
+
   async function chooseRestaurant(restaurantId: string) {
     if (restaurantId === restaurant?.id || switchingRestaurantId) return;
     setSwitchingRestaurantId(restaurantId);
@@ -233,6 +263,7 @@ export default function SettingsScreen() {
             ? t("settings.operations.recipes.unmappedBody", { count: formatNumber(unmappedRecipeCount) })
             : t("settings.operations.recipes.body");
   const localizedRole = role ? roleLabel(role, t) : null;
+  const canExportCurrentRestaurant = canExportRestaurantData(memberships, restaurant?.id);
   const profileLine = restaurant
     ? `${restaurant.cuisine_type?.trim() || t("settings.profile.cuisineFallback")} · ${serviceStyleLabel(restaurant.service_style, t)}`
     : t("settings.workspace.metaFallback");
@@ -518,6 +549,21 @@ export default function SettingsScreen() {
             iconTone="neutral"
             onPress={() => void openExternalUrl(appConfig.supportUrl, "settings.account.supportMissing")}
           />
+          {canExportCurrentRestaurant ? (
+            <View style={styles.sectionAction}>
+              <Text style={styles.rowBody}>
+                {t(usingLocalDemo ? "settings.account.exportDemoBody" : "settings.account.exportBody")}
+              </Text>
+              <Button
+                title={t(exportingData ? "settings.account.exporting" : "settings.account.export")}
+                variant="secondary"
+                icon={<Download size={18} color={colors.text} strokeWidth={2.25} />}
+                onPress={() => void exportCurrentRestaurantData()}
+                disabled={exportingData || signingOut || deletingAccount || !restaurant}
+                fullWidth
+              />
+            </View>
+          ) : null}
           {deleteConfirmOpen ? (
             <View style={styles.deletePanel}>
               <Text style={styles.rowTitle}>{t("settings.account.deleteConfirmTitle")}</Text>

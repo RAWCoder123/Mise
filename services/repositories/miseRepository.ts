@@ -89,6 +89,11 @@ import {
 } from "../domain/teamMembership";
 import { isConfirmedAccountDeletion } from "../domain/accountDeletion";
 import {
+  buildRestaurantDataExport,
+  serializeRestaurantDataExport,
+  type RestaurantDataExportDocument
+} from "../domain/restaurantDataExport";
+import {
   claimDemoMemberInvite,
   createDemoMemberInvite,
   listDemoMemberInvites,
@@ -395,6 +400,11 @@ export interface MiseRepository {
     insights: Insight[]
   ): Promise<InventoryCountSessionDetail>;
   requestAccountDeletion(confirmation: string): Promise<{ status: string; requestId?: string }>;
+  exportRestaurantData(restaurantId: string): Promise<{
+    status: string;
+    export: RestaurantDataExportDocument;
+    serialized: string;
+  }>;
   updateMenuItemIngredientQuantity(
     restaurantId: string,
     mappingId: string,
@@ -1845,6 +1855,58 @@ function createLocalDemoRepository(): MiseRepository {
       return { status: "completed", requestId: createId("account_deletion") };
     },
 
+    async exportRestaurantData(restaurantId) {
+      const state = await readDemoState();
+      const restaurant = state.restaurants.find((entry) => entry.id === restaurantId);
+      if (!restaurant) throw new Error("Restaurant not found");
+      const memberships = state.memberships.filter((entry) => entry.restaurant_id === restaurantId);
+      const memberUserIds = new Set(memberships.map((entry) => entry.user_id));
+      const document = buildRestaurantDataExport({
+        restaurantId,
+        exportedAt: new Date().toISOString(),
+        source: "demo_export_restaurant_data",
+        restaurants: [restaurant],
+        users: state.users.filter((entry) => memberUserIds.has(entry.id)),
+        memberships,
+        memberInvites: state.memberInvites.filter((entry) => entry.restaurant_id === restaurantId),
+        inventoryItems: state.inventoryItems.filter((entry) => entry.restaurant_id === restaurantId),
+        inventoryMovements: state.inventoryMovements.filter(
+          (entry) => entry.restaurant_id === restaurantId
+        ),
+        inventoryCountSessions: state.inventoryCountSessions.filter(
+          (entry) => entry.session.restaurant_id === restaurantId
+        ),
+        storageLocations: state.storageLocations.filter((entry) => entry.restaurant_id === restaurantId),
+        inventoryLocationBalances: state.inventoryLocationBalances.filter(
+          (entry) => entry.restaurant_id === restaurantId
+        ),
+        menuItemIngredients: state.menuItemIngredients.filter(
+          (entry) => entry.restaurant_id === restaurantId
+        ),
+        posSales: state.posSales.filter((entry) => entry.restaurant_id === restaurantId),
+        posIntegrations: state.posIntegrations.filter((entry) => entry.restaurant_id === restaurantId),
+        salesImports: state.salesImports.filter((entry) => entry.restaurant_id === restaurantId),
+        purchaseRecommendations: state.purchaseRecommendations.filter(
+          (entry) => entry.restaurant_id === restaurantId
+        ),
+        supplierOrders: state.supplierOrders.filter((entry) => entry.restaurant_id === restaurantId),
+        purchaseOrders: state.purchaseOrders.filter((entry) => entry.restaurant_id === restaurantId),
+        supplierItems: state.supplierItems.filter((entry) => entry.restaurant_id === restaurantId),
+        supplierRecipients: state.supplierRecipients.filter(
+          (entry) => entry.restaurant_id === restaurantId
+        ),
+        insights: state.insights.filter((entry) => entry.restaurant_id === restaurantId),
+        aiInsights: state.aiInsights.filter((entry) => entry.restaurant_id === restaurantId),
+        emailConnections: state.emailConnections.filter((entry) => entry.restaurant_id === restaurantId),
+        auditLogs: state.auditLogs.filter((entry) => entry.restaurant_id === restaurantId)
+      });
+      return {
+        status: "completed",
+        export: document,
+        serialized: serializeRestaurantDataExport(document)
+      };
+    },
+
     async updateMenuItemIngredientQuantity(restaurantId, mappingId, quantityUsedPerSale) {
       return mutateDemoState((state) => {
         const mapping = state.menuItemIngredients.find(
@@ -3265,6 +3327,30 @@ function createSupabaseRepository(): MiseRepository {
         throw new Error(payload?.message ?? "Account deletion could not be completed.");
       }
       return { status: payload.status, requestId: payload.requestId };
+    },
+
+    async exportRestaurantData(restaurantId) {
+      if (!client) throw new Error("Supabase is not configured.");
+      const { data, error } = await client.functions.invoke("export-restaurant-data", {
+        body: { restaurantId }
+      });
+      if (error) throw error;
+      const payload = data as {
+        status?: string;
+        export?: RestaurantDataExportDocument;
+        message?: string;
+        error?: string;
+      } | null;
+      if (!payload?.status || !payload.export) {
+        throw new Error(
+          payload?.message ?? payload?.error ?? "Restaurant data export could not be completed."
+        );
+      }
+      return {
+        status: payload.status,
+        export: payload.export,
+        serialized: serializeRestaurantDataExport(payload.export)
+      };
     },
 
     async updateMenuItemIngredientQuantity(_restaurantId, _mappingId, _quantityUsedPerSale) {

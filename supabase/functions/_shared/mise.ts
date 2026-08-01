@@ -17,7 +17,8 @@ export type EdgeFunctionName =
   | "link-gmail"
   | "gmail-oauth-callback"
   | "send-supplier-email"
-  | "operational-workflows";
+  | "operational-workflows"
+  | "export-restaurant-data";
 export type UserScopedEdgeFunctionName = "account-onboarding" | "request-account-deletion";
 export type EdgeFunctionSecurityEventType = "blocked" | "completed" | "error";
 

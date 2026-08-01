@@ -57,6 +57,9 @@ verify_jwt = true
 [functions.operational-workflows]
 verify_jwt = true
 
+[functions.export-restaurant-data]
+verify_jwt = true
+
 [functions.request-account-deletion]
 verify_jwt = true
 

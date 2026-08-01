@@ -49,6 +49,13 @@ export function canDeleteRestaurantData(
   return Boolean(membership && ownerAdminRoles.includes(membership.role));
 }
 
+export function canExportRestaurantData(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  return canDeleteRestaurantData(memberships, restaurantId);
+}
+
 export function canUpdateRestaurantProfile(
   memberships: RestaurantMembership[],
   restaurantId: string | null | undefined
