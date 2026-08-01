@@ -179,11 +179,20 @@ test("Supabase schema and migration replace broad RLS with membership-scoped pol
   assert.match(combined, /create\s+or\s+replace\s+function\s+private\.has_restaurant_role/i);
   assert.match(combined, /create\s+or\s+replace\s+function\s+private\.create_restaurant_with_owner/i);
   assert.match(combined, /create\s+or\s+replace\s+function\s+public\.create_restaurant_with_owner/i);
+  assert.match(combined, /create\s+or\s+replace\s+function\s+private\.service_create_restaurant_with_owner/i);
+  assert.match(combined, /create\s+or\s+replace\s+function\s+public\.service_create_restaurant_with_owner/i);
   assert.match(combined, /references\s+auth\.users\(id\)/i);
   assert.match(combined, /private\.is_restaurant_member\(restaurant_id\)/i);
   assert.match(combined, /private\.has_restaurant_role\(restaurant_id,\s*array\['owner',\s*'admin',\s*'manager'\]\)/i);
   assert.match(combined, /revoke\s+all\s+on\s+function\s+private\.is_restaurant_member\(uuid\)\s+from\s+public,\s+anon/i);
-  assert.match(combined, /grant\s+execute\s+on\s+function\s+public\.create_restaurant_with_owner\(text,\s*text\)\s+to\s+authenticated/i);
+  assert.match(
+    combined,
+    /revoke\s+all\s+on\s+function\s+public\.create_restaurant_with_owner\(text,\s*text\)\s+from\s+public,\s+anon,\s+authenticated,\s+service_role/i
+  );
+  assert.match(
+    combined,
+    /grant\s+execute\s+on\s+function\s+public\.service_create_restaurant_with_owner\(uuid,\s*text,\s*text\)\s+to\s+service_role/i
+  );
   assert.doesNotMatch(combined, /grant\s+select,\s+update\s+on\s+public\.users\s+to\s+authenticated/i);
   const anonGrants = combined.match(/grant\s+[^;]+\s+to\s+anon[^;]*;/gi) ?? [];
   assert.deepEqual(
@@ -849,11 +858,16 @@ test("restaurant and operator profile mutations are Edge-routed with service-own
   assert.match(tenantTests, /authenticated clients cannot execute the legacy operator profile RPC/i);
 });
 
-test("team membership mutations are Edge-routed with service-owned RPCs and claim stays token RPC", () => {
+test("team membership mutations are Edge-routed with service-owned RPCs and claim uses account-onboarding", () => {
   const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const onboardingEdge = readFileSync("supabase/functions/account-onboarding/index.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const migration = readFileSync(
     "supabase/migrations/20260801012000_edge_team_membership_workflows.sql",
+    "utf8"
+  );
+  const onboardingMigration = readFileSync(
+    "supabase/migrations/20260801090525_edge_account_onboarding_workflows.sql",
     "utf8"
   );
   const teamDirectoryTests = readFileSync("supabase/tests/database/restaurant_team_directory.test.sql", "utf8");
@@ -876,6 +890,9 @@ test("team membership mutations are Edge-routed with service-owned RPCs and clai
   assert.match(ownerAdminActions, /"add_restaurant_member_by_email"/);
   assert.match(ownerAdminActions, /"update_restaurant_member"/);
   assert.doesNotMatch(ownerAdminActions, /"claim_restaurant_member_invite"/);
+  assert.match(onboardingEdge, /"claim_restaurant_member_invite"/);
+  assert.match(onboardingEdge, /service_claim_restaurant_member_invite/);
+  assert.match(onboardingEdge, /reserveUserScopedFunctionInvocation/);
 
   assert.match(
     hostedRepository.match(/async addRestaurantMemberByEmail[\s\S]*?\n    \},/)?.[0] ?? "",
@@ -895,6 +912,10 @@ test("team membership mutations are Edge-routed with service-owned RPCs and clai
   );
   assert.match(
     hostedRepository.match(/async claimRestaurantMemberInvite[\s\S]*?\n    \},/)?.[0] ?? "",
+    /functions\.invoke\(\s*["']account-onboarding["']/
+  );
+  assert.doesNotMatch(
+    hostedRepository.match(/async claimRestaurantMemberInvite[\s\S]*?\n    \},/)?.[0] ?? "",
     /\.rpc\(\s*["']claim_restaurant_member_invite["']/
   );
   assert.doesNotMatch(
@@ -908,10 +929,52 @@ test("team membership mutations are Edge-routed with service-owned RPCs and clai
   assert.match(migration, /revoke all on function public\.create_restaurant_member_invite/i);
   assert.match(migration, /grant execute on function public\.service_add_restaurant_member_by_email[\s\S]*service_role/i);
   assert.match(migration, /grant execute on function public\.service_create_restaurant_member_invite[\s\S]*service_role/i);
+  assert.match(onboardingMigration, /private\.service_claim_restaurant_member_invite/i);
+  assert.match(onboardingMigration, /revoke all on function public\.claim_restaurant_member_invite/i);
   assert.match(teamDirectoryTests, /authenticated clients cannot execute legacy add_restaurant_member_by_email/i);
-  assert.match(inviteTests, /authenticated invitees can still claim through the token RPC/i);
+  assert.match(inviteTests, /authenticated clients cannot execute legacy claim_restaurant_member_invite/i);
   assert.match(tenantTests, /authenticated clients cannot execute the legacy member-add RPC/i);
   assert.match(tenantTests, /service role can execute the member-add service RPC/i);
+});
+
+test("pre-membership create and claim are user-scoped Edge workflows with service RPCs", () => {
+  const edge = readFileSync("supabase/functions/account-onboarding/index.ts", "utf8");
+  const shared = readFileSync("supabase/functions/_shared/mise.ts", "utf8");
+  const migration = readFileSync(
+    "supabase/migrations/20260801090525_edge_account_onboarding_workflows.sql",
+    "utf8"
+  );
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const config = readFileSync("supabase/config.toml", "utf8");
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+  const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
+
+  assert.match(config, /\[functions\.account-onboarding\][\s\S]*verify_jwt\s*=\s*true/i);
+  assert.match(edge, /reserveUserScopedFunctionInvocation/);
+  assert.match(edge, /recordUserScopedFunctionSecurityEvent/);
+  assert.match(edge, /"create_restaurant_with_owner"/);
+  assert.match(edge, /"claim_restaurant_member_invite"/);
+  assert.match(edge, /service_create_restaurant_with_owner/);
+  assert.match(edge, /service_claim_restaurant_member_invite/);
+  assert.doesNotMatch(edge, /requireRestaurantRole/);
+  assert.match(shared, /reserve_user_scoped_edge_function_invocation/);
+  assert.match(shared, /record_user_scoped_edge_function_security_event/);
+  assert.match(migration, /'account-onboarding'/);
+  assert.match(migration, /reserve_user_scoped_edge_function_invocation/i);
+  assert.match(migration, /private\.service_create_restaurant_with_owner/i);
+  assert.match(migration, /private\.service_claim_restaurant_member_invite/i);
+  assert.match(migration, /revoke all on function public\.create_restaurant_with_owner/i);
+  assert.match(migration, /revoke all on function public\.claim_restaurant_member_invite/i);
+  assert.match(
+    hostedRepository.match(/async createRestaurantWithOwner[\s\S]*?\n    \},/)?.[0] ?? "",
+    /functions\.invoke\(\s*["']account-onboarding["']/
+  );
+  assert.doesNotMatch(
+    hostedRepository.match(/async createRestaurantWithOwner[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']create_restaurant_with_owner["']/
+  );
+  assert.match(securityBackend, /accountOnboardingEdgeFunctionNames/);
+  assert.match(securityBackend, /reserve_user_scoped_edge_function_invocation/);
 });
 
 test("inventory item create is service-owned with opening ledger movement and manager UI", () => {

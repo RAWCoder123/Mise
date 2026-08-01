@@ -95,8 +95,26 @@ select is(
 );
 select is(
   has_function_privilege('authenticated', 'public.claim_restaurant_member_invite(text)', 'execute'),
+  false,
+  'authenticated clients cannot execute legacy claim_restaurant_member_invite'
+);
+select is(
+  has_function_privilege(
+    'authenticated',
+    'public.service_claim_restaurant_member_invite(uuid,text)',
+    'execute'
+  ),
+  false,
+  'authenticated clients cannot execute service_claim_restaurant_member_invite'
+);
+select is(
+  has_function_privilege(
+    'service_role',
+    'public.service_claim_restaurant_member_invite(uuid,text)',
+    'execute'
+  ),
   true,
-  'authenticated invitees can still claim through the token RPC'
+  'service role can execute service_claim_restaurant_member_invite'
 );
 select is(
   has_table_privilege('authenticated', 'public.restaurant_member_invites', 'select'),
@@ -150,24 +168,25 @@ select is(
 );
 reset role;
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '83838383-8383-4833-8833-838383838383', true);
+set local role service_role;
 select is(
   pg_temp.try_execute($sql$
-    select public.claim_restaurant_member_invite((select claim_token from pg_temp.created_invite))
+    select public.service_claim_restaurant_member_invite(
+      '83838383-8383-4833-8833-838383838383',
+      (select claim_token from pg_temp.created_invite)
+    )
   $sql$),
   false,
   'wrong-email account cannot claim invite'
 );
-reset role;
-
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '82828282-8282-4822-8822-828282828282', true);
 select lives_ok(
   $sql$
-    select public.claim_restaurant_member_invite((select claim_token from pg_temp.created_invite))
+    select public.service_claim_restaurant_member_invite(
+      '82828282-8282-4822-8822-828282828282',
+      (select claim_token from pg_temp.created_invite)
+    )
   $sql$,
-  'matching Auth email can claim invite'
+  'matching Auth email can claim invite through the service RPC'
 );
 select is(
   (
@@ -183,7 +202,10 @@ select is(
 );
 select is(
   pg_temp.try_execute($sql$
-    select public.claim_restaurant_member_invite((select claim_token from pg_temp.created_invite))
+    select public.service_claim_restaurant_member_invite(
+      '82828282-8282-4822-8822-828282828282',
+      (select claim_token from pg_temp.created_invite)
+    )
   $sql$),
   false,
   'claimed invite cannot be reused'
@@ -211,11 +233,13 @@ select lives_ok(
 );
 reset role;
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '83838383-8383-4833-8833-838383838383', true);
+set local role service_role;
 select is(
   pg_temp.try_execute($sql$
-    select public.claim_restaurant_member_invite((select claim_token from pg_temp.revocable_invite))
+    select public.service_claim_restaurant_member_invite(
+      '83838383-8383-4833-8833-838383838383',
+      (select claim_token from pg_temp.revocable_invite)
+    )
   $sql$),
   false,
   'revoked invite cannot be claimed'

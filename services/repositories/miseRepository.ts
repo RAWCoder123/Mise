@@ -2743,13 +2743,18 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async claimRestaurantMemberInvite(claimToken) {
-      // Claim stays a direct authenticated RPC: the invitee is not yet a member
-      // and cannot reserve operational-workflows for the target restaurant.
-      const { data, error } = await client.rpc("claim_restaurant_member_invite", {
-        p_claim_token: claimToken
+      // Pre-membership claim uses user-scoped account-onboarding Edge reservation.
+      const { data, error } = await client.functions.invoke("account-onboarding", {
+        body: {
+          action: "claim_restaurant_member_invite",
+          claimToken
+        }
       });
       if (error) throwRepositoryError(error);
-      return normalizeRestaurantMembership(data as RestaurantMembership);
+      if (!data || data.status !== "completed") {
+        throw new Error("Invite claim did not complete.");
+      }
+      return normalizeRestaurantMembership(data.result as RestaurantMembership);
     },
 
     async updateRestaurantMember(restaurantId, targetUserId, patch) {
@@ -2800,12 +2805,19 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async createRestaurantWithOwner(name, cuisineType) {
-      const { data, error } = await client.rpc("create_restaurant_with_owner", {
-        restaurant_name: name,
-        restaurant_cuisine_type: cuisineType ?? null
+      // Pre-membership create uses user-scoped account-onboarding Edge reservation.
+      const { data, error } = await client.functions.invoke("account-onboarding", {
+        body: {
+          action: "create_restaurant_with_owner",
+          name,
+          cuisineType: cuisineType ?? null
+        }
       });
       if (error) throw error;
-      return normalizeRestaurant(data as Restaurant);
+      if (!data || data.status !== "completed") {
+        throw new Error("Restaurant create did not complete.");
+      }
+      return normalizeRestaurant(data.result as Restaurant);
     },
 
     async fetchRestaurant(restaurantId) {

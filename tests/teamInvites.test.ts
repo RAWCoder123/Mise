@@ -176,7 +176,9 @@ test("member invite migration and client wiring are present", () => {
   assert.match(securityBackend, /restaurant_member_invites/);
   assert.match(repository, /action:\s*"create_restaurant_member_invite"/i);
   assert.doesNotMatch(repository, /rpc\("create_restaurant_member_invite"/i);
-  assert.match(repository, /rpc\("claim_restaurant_member_invite"/i);
+  assert.match(repository, /functions\.invoke\(\s*"account-onboarding"/i);
+  assert.match(repository, /action:\s*"claim_restaurant_member_invite"/i);
+  assert.doesNotMatch(repository, /rpc\("claim_restaurant_member_invite"/i);
   assert.match(demoInvites, /export async function createDemoMemberInvite/i);
   assert.match(screen, /createRestaurantMemberInvite/i);
   assert.match(screen, /revokeRestaurantMemberInvite/i);

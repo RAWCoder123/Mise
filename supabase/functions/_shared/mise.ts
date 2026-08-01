@@ -18,6 +18,7 @@ export type EdgeFunctionName =
   | "gmail-oauth-callback"
   | "send-supplier-email"
   | "operational-workflows";
+export type UserScopedEdgeFunctionName = "account-onboarding";
 export type EdgeFunctionSecurityEventType = "blocked" | "completed" | "error";
 
 export interface FunctionInvocationReservation {
@@ -203,6 +204,93 @@ export function firewallBlockedResponse(reservation: FunctionInvocationReservati
     },
     403
   );
+}
+
+export async function reserveUserScopedFunctionInvocation(
+  securitySupabase: SupabaseClient,
+  actorUserId: string,
+  functionName: UserScopedEdgeFunctionName,
+  actionName: string,
+  metadata: Record<string, unknown> = {}
+): Promise<FunctionInvocationReservation> {
+  const { data, error } = await securitySupabase.rpc("reserve_user_scoped_edge_function_invocation", {
+    p_actor_user_id: actorUserId,
+    p_function_name: functionName,
+    action_name: actionName,
+    metadata: safeFunctionMetadata(metadata)
+  });
+
+  if (error) {
+    captureFunctionError(error, { functionName, actionName, scope: "user" });
+    throw new HttpError(500, "Unable to verify this function request.");
+  }
+
+  const reservation = data as FunctionInvocationReservation | null;
+  if (
+    !reservation ||
+    typeof reservation.allowed !== "boolean" ||
+    (reservation.allowed && typeof reservation.reservation_id !== "string")
+  ) {
+    throw new HttpError(500, "Unable to verify this function request.");
+  }
+
+  return reservation;
+}
+
+export async function recordUserScopedFunctionSecurityEvent(
+  securitySupabase: SupabaseClient,
+  actorUserId: string,
+  reservationId: string,
+  functionName: UserScopedEdgeFunctionName,
+  eventType: EdgeFunctionSecurityEventType,
+  actionName: string,
+  metadata: Record<string, unknown> = {}
+) {
+  const { error } = await securitySupabase.rpc("record_user_scoped_edge_function_security_event", {
+    p_actor_user_id: actorUserId,
+    p_reservation_id: reservationId,
+    p_function_name: functionName,
+    p_event_type: eventType,
+    action_name: actionName,
+    metadata: safeFunctionMetadata(metadata)
+  });
+
+  if (error) {
+    captureFunctionError(error, { functionName, eventType, actionName, scope: "user" });
+    throw new HttpError(500, "Unable to finalize this function request.");
+  }
+}
+
+export interface UserScopedInvocationTerminalContext {
+  securitySupabase: SupabaseClient;
+  actorUserId: string;
+  reservationId: string;
+  functionName: UserScopedEdgeFunctionName;
+}
+
+export async function recordUserScopedFunctionTerminalError(
+  context: UserScopedInvocationTerminalContext | null
+) {
+  if (!context) return;
+  const { error } = await context.securitySupabase.rpc(
+    "record_user_scoped_edge_function_security_event",
+    {
+      p_actor_user_id: context.actorUserId,
+      p_reservation_id: context.reservationId,
+      p_function_name: context.functionName,
+      p_event_type: "error",
+      action_name: "function_error",
+      metadata: { reason: "unexpected_function_error", scope: "user" }
+    }
+  );
+  if (error) {
+    captureFunctionError(error, {
+      functionName: context.functionName,
+      eventType: "error",
+      actionName: "function_error",
+      scope: "user"
+    });
+  }
 }
 
 export async function recordFunctionSecurityEvent(

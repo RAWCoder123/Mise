@@ -29,9 +29,14 @@ function runPsql(sql, allowFailure = false) {
 function runConcurrentCreate(index) {
   const sql = `
     begin;
-    set local role authenticated;
-    select set_config('request.jwt.claim.sub', '${actorUserId}', true);
-    select (public.create_restaurant_with_owner('Concurrent quota ${index}', 'Test')).id;
+    set local role service_role;
+    select (
+      public.service_create_restaurant_with_owner(
+        '${actorUserId}',
+        'Concurrent quota ${index}',
+        'Test'
+      )
+    ).id;
     commit;
   `;
   return new Promise((resolve) => {

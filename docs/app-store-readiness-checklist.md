@@ -22,7 +22,7 @@ Classification guidance uses evidence, not polish. Current overall status: **not
 | Tenant isolation / RLS | blocked | Latest migration chain must re-pass Docker pgTAP + hosted staging |
 | Live POS provider | blocked | Fail-closed until provider credentials and server adapter exist |
 | Manual CSV POS ingest | tested (code) | Bounded Settings/setup CSV path; live providers remain fail-closed |
-| Team roster / role management | tested (code) | Settings → Team; list RPCs remain authenticated; add/invite/update/remove Edge-routed via service RPCs; invite claim stays token RPC; demo roster seeded |
+| Team roster / role management | tested (code) | Settings → Team; list RPCs remain authenticated; add/invite/update/remove Edge-routed via service RPCs; create restaurant + invite claim Edge-routed via user-scoped `account-onboarding`; demo roster seeded |
 | Inventory count role split | tested (code) | Staff may draft/submit multi-item counts; manager+ approve ledger writes |
 | Staff waste recording | tested (code) | Staff+ may record spoilage to the ledger; count/par edits stay manager+; Inventory list + staff detail elevate the waste path |
 | Post-setup inventory item create | tested (code) | Manager+ Add item flow; service-owned create + opening ledger movement |

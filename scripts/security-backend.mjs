@@ -44,6 +44,7 @@ const serviceOnlyPublicTables = new Set([
 ]);
 const edgeFunctionNames = ["sync-pos-sales", "generate-ai-insights", "link-gmail", "send-supplier-email", "operational-workflows"];
 const userScopedEdgeFunctionNames = ["request-account-deletion"];
+const accountOnboardingEdgeFunctionNames = ["account-onboarding"];
 
 const failures = [];
 
@@ -165,6 +166,8 @@ for (const privileged of functionInventory.unrecognizedPrivilegedStatements) {
 const serviceOnlyPublicFunctions = new Set([
   "public.reserve_edge_function_invocation",
   "public.record_edge_function_security_event",
+  "public.reserve_user_scoped_edge_function_invocation",
+  "public.record_user_scoped_edge_function_security_event",
   "public.service_create_rules_engine_ai_insight"
 ]);
 const globalServiceOnlyPublicFunctions = new Set([
@@ -264,6 +267,35 @@ for (const functionName of userScopedEdgeFunctionNames) {
   }
   if (/requireRestaurantRole\s*\(/.test(source)) {
     failures.push(`${functionPath}: account deletion is user-scoped and must not require a restaurant role.`);
+  }
+}
+
+for (const functionName of accountOnboardingEdgeFunctionNames) {
+  const functionPath = `supabase/functions/${functionName}/index.ts`;
+  const source = read(functionPath);
+  const escapedFunctionName = escapeRegExp(functionName);
+  const configBlock = config.match(new RegExp(`\\[functions\\.${escapedFunctionName}\\]([\\s\\S]*?)(?=\\n\\[|$)`, "i"))?.[1] ?? "";
+
+  if (!/verify_jwt\s*=\s*true/i.test(configBlock)) {
+    failures.push(`supabase/config.toml: ${functionName} must set verify_jwt = true.`);
+  }
+  if (!/requireAuthenticatedContext\s*\(/.test(source)) {
+    failures.push(`${functionPath}: missing requireAuthenticatedContext guard.`);
+  }
+  if (!/reserveUserScopedFunctionInvocation\s*\(/.test(source)) {
+    failures.push(`${functionPath}: must reserve a user-scoped firewall invocation before onboarding work.`);
+  }
+  if (!/recordUserScopedFunctionSecurityEvent\s*\(/.test(source)) {
+    failures.push(`${functionPath}: must finalize user-scoped firewall security events.`);
+  }
+  if (!/service_create_restaurant_with_owner/.test(source) || !/service_claim_restaurant_member_invite/.test(source)) {
+    failures.push(`${functionPath}: must call service-owned create/claim RPCs.`);
+  }
+  if (/requireRestaurantRole\s*\(/.test(source)) {
+    failures.push(`${functionPath}: pre-membership onboarding must not require a restaurant role.`);
+  }
+  if (!/create_restaurant_with_owner/.test(source) || !/claim_restaurant_member_invite/.test(source)) {
+    failures.push(`${functionPath}: must expose create_restaurant_with_owner and claim_restaurant_member_invite actions.`);
   }
 }
 

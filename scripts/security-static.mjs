@@ -252,6 +252,19 @@ for (const file of functionSources) {
       if (!/service_rollback_failed_account_deletion/.test(contents)) {
         failures.push(`${file}: Auth delete failures must roll back membership/restaurant revocation`);
       }
+    } else if (functionName === "account-onboarding") {
+      if (!/requireAuthenticatedContext\s*\(/.test(contents)) {
+        failures.push(`${file}: account onboarding must authenticate the caller before create/claim work`);
+      }
+      if (!/reserveUserScopedFunctionInvocation\s*\(/.test(contents)) {
+        failures.push(`${file}: account onboarding must reserve a user-scoped firewall invocation`);
+      }
+      if (!/recordUserScopedFunctionSecurityEvent\s*\(/.test(contents)) {
+        failures.push(`${file}: account onboarding must finalize user-scoped firewall security events`);
+      }
+      if (!/service_create_restaurant_with_owner/.test(contents) || !/service_claim_restaurant_member_invite/.test(contents)) {
+        failures.push(`${file}: account onboarding must call service-owned create/claim RPCs`);
+      }
     } else if (!/reserveFunctionInvocation\s*\(/.test(contents)) {
       failures.push(`${file}: Edge Function must reserve a firewall/rate-limit invocation before sensitive work`);
     }

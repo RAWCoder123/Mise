@@ -2571,15 +2571,42 @@ select is(
   'authenticated clients cannot read the private workspace allocation ledger'
 );
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '66666666-6666-4666-8666-666666666666', true);
+select is(
+  has_function_privilege('authenticated', 'public.create_restaurant_with_owner(text, text)', 'execute'),
+  false,
+  'authenticated clients cannot execute legacy create_restaurant_with_owner'
+);
+select is(
+  has_function_privilege(
+    'authenticated',
+    'public.service_create_restaurant_with_owner(uuid, text, text)',
+    'execute'
+  ),
+  false,
+  'authenticated clients cannot execute service_create_restaurant_with_owner'
+);
+select is(
+  has_function_privilege(
+    'service_role',
+    'public.service_create_restaurant_with_owner(uuid, text, text)',
+    'execute'
+  ),
+  true,
+  'service role can execute service_create_restaurant_with_owner'
+);
+
+set local role service_role;
 select lives_ok(
   $sql$create temp table quota_workspaces on commit drop as
     select (
-      public.create_restaurant_with_owner('Quota workspace ' || sequence_number::text, 'Test')
+      public.service_create_restaurant_with_owner(
+        '66666666-6666-4666-8666-666666666666',
+        'Quota workspace ' || sequence_number::text,
+        'Test'
+      )
     ).id as restaurant_id
     from generate_series(1, 5) sequence_number$sql$,
-  'quota owner can create five lifetime workspaces'
+  'quota owner can create five lifetime workspaces through the service RPC'
 );
 select is((select count(*) from quota_workspaces), 5::bigint, 'five quota workspaces were created');
 reset role;
@@ -2597,12 +2624,26 @@ select lives_ok(
   'trusted administration can disable creators after replacement owners exist'
 );
 reset role;
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '66666666-6666-4666-8666-666666666666', true);
+set local role service_role;
 select is(
-  pg_temp.try_execute($sql$select public.create_restaurant_with_owner('Quota bypass attempt', 'Test')$sql$),
+  pg_temp.try_execute($sql$
+    select public.service_create_restaurant_with_owner(
+      '66666666-6666-4666-8666-666666666666',
+      'Quota bypass attempt',
+      'Test'
+    )
+  $sql$),
   false,
   'membership churn does not release the lifetime workspace quota'
+);
+select ok(
+  (public.reserve_user_scoped_edge_function_invocation(
+    '66666666-6666-4666-8666-666666666666',
+    'account-onboarding',
+    'create_restaurant_with_owner',
+    '{"source":"pgTAP"}'::jsonb
+  )->>'allowed')::boolean,
+  'authenticated actors can reserve user-scoped account-onboarding invocations'
 );
 reset role;
 select is(
