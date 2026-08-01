@@ -1,17 +1,45 @@
 import {
+  firewallBlockedResponse,
   handleError,
   HttpError,
   jsonResponse,
   optionsResponse,
   readJsonObject,
+  recordUserScopedFunctionSecurityEvent,
+  recordUserScopedFunctionTerminalError,
   requireAuthenticatedContext,
-  requireString
+  requireString,
+  reserveUserScopedFunctionInvocation,
+  type UserScopedInvocationTerminalContext
 } from "../_shared/mise.ts";
+
+const ACTION = "request_account_deletion";
+const FUNCTION_NAME = "request-account-deletion" as const;
+
+async function updateDeletionRequestStatus(
+  securitySupabase: Awaited<ReturnType<typeof requireAuthenticatedContext>>["securitySupabase"],
+  requestId: string,
+  subjectUserId: string,
+  patch: Record<string, unknown>
+) {
+  const { data, error } = await securitySupabase
+    .from("account_deletion_requests")
+    .update(patch)
+    .eq("id", requestId)
+    .eq("subject_user_id", subjectUserId)
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) {
+    throw new HttpError(500, "Account deletion request status could not be updated.");
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);
 
+  let terminalContext: UserScopedInvocationTerminalContext | null = null;
   try {
     const { securitySupabase, user } = await requireAuthenticatedContext(req);
     const body = await readJsonObject(req);
@@ -19,6 +47,20 @@ Deno.serve(async (req) => {
     if (confirmation.trim().toUpperCase() !== "DELETE") {
       throw new HttpError(400, "Type DELETE to confirm account deletion.");
     }
+
+    const reservation = await reserveUserScopedFunctionInvocation(
+      securitySupabase,
+      user.id,
+      FUNCTION_NAME,
+      ACTION
+    );
+    if (!reservation.allowed) return firewallBlockedResponse(reservation);
+    terminalContext = {
+      securitySupabase,
+      actorUserId: user.id,
+      reservationId: reservation.reservation_id!,
+      functionName: FUNCTION_NAME
+    };
 
     const { data: requestRow, error: requestError } = await securitySupabase.rpc(
       "service_request_my_account_deletion",
@@ -45,18 +87,14 @@ Deno.serve(async (req) => {
         ? (requestRow.metadata as Record<string, unknown>)
         : {};
 
-    await securitySupabase
-      .from("account_deletion_requests")
-      .update({
-        status: "processing",
-        metadata: {
-          ...existingMetadata,
-          source: "request-account-deletion",
-          processed_at: new Date().toISOString()
-        }
-      })
-      .eq("id", requestId)
-      .eq("subject_user_id", user.id);
+    await updateDeletionRequestStatus(securitySupabase, requestId, user.id, {
+      status: "processing",
+      metadata: {
+        ...existingMetadata,
+        source: FUNCTION_NAME,
+        processed_at: new Date().toISOString()
+      }
+    });
 
     const { error: deleteError } = await securitySupabase.auth.admin.deleteUser(user.id);
     if (deleteError) {
@@ -76,19 +114,28 @@ Deno.serve(async (req) => {
       );
     }
 
-    await securitySupabase
-      .from("account_deletion_requests")
-      .update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-        metadata: {
-          ...existingMetadata,
-          source: "request-account-deletion",
-          completed_via: "auth_admin_delete_user"
-        }
-      })
-      .eq("id", requestId)
-      .eq("subject_user_id", user.id);
+    await updateDeletionRequestStatus(securitySupabase, requestId, user.id, {
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      metadata: {
+        ...existingMetadata,
+        source: FUNCTION_NAME,
+        completed_via: "auth_admin_delete_user"
+      }
+    });
+
+    await recordUserScopedFunctionSecurityEvent(
+      securitySupabase,
+      user.id,
+      reservation.reservation_id!,
+      FUNCTION_NAME,
+      "completed",
+      ACTION,
+      {
+        result_entity: "account_deletion_requests",
+        request_id: requestId
+      }
+    );
 
     return jsonResponse({
       status: "completed",
@@ -96,6 +143,7 @@ Deno.serve(async (req) => {
       message: "Account deletion completed."
     });
   } catch (error) {
+    await recordUserScopedFunctionTerminalError(terminalContext);
     return handleError(error);
   }
 });

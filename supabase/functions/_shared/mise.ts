@@ -18,7 +18,7 @@ export type EdgeFunctionName =
   | "gmail-oauth-callback"
   | "send-supplier-email"
   | "operational-workflows";
-export type UserScopedEdgeFunctionName = "account-onboarding";
+export type UserScopedEdgeFunctionName = "account-onboarding" | "request-account-deletion";
 export type EdgeFunctionSecurityEventType = "blocked" | "completed" | "error";
 
 export interface FunctionInvocationReservation {
@@ -200,7 +200,7 @@ export function firewallBlockedResponse(reservation: FunctionInvocationReservati
   return jsonResponse(
     {
       status: "blocked",
-      message: "This request is not allowed for the current restaurant session."
+      message: "This request is not allowed for the current session."
     },
     403
   );

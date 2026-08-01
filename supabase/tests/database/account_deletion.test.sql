@@ -1,6 +1,6 @@
 begin;
 
-select plan(17);
+select plan(19);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -107,6 +107,26 @@ select ok(
 reset role;
 
 set local role service_role;
+select ok(
+  (public.reserve_user_scoped_edge_function_invocation(
+    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+    'request-account-deletion',
+    'request_account_deletion',
+    '{"source":"pgTAP"}'::jsonb
+  )->>'allowed')::boolean,
+  'actors can reserve user-scoped request-account-deletion invocations'
+);
+select ok(
+  not pg_temp.try_execute(
+    $sql$select public.reserve_user_scoped_edge_function_invocation(
+      'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+      'operational-workflows',
+      'request_account_deletion',
+      '{"source":"pgTAP"}'::jsonb
+    )$sql$
+  ),
+  'restaurant-scoped Edge functions cannot use the user-scoped reservation RPC'
+);
 select ok(
   pg_temp.try_execute(
     $sql$select public.service_request_my_account_deletion(

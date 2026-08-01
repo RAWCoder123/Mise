@@ -246,7 +246,13 @@ for (const file of functionSources) {
       if (!/requireAuthenticatedContext\s*\(/.test(contents)) {
         failures.push(`${file}: account deletion must authenticate the caller before mutating memberships`);
       }
-      if (!/request_my_account_deletion/.test(contents) || !/auth\.admin\.deleteUser/.test(contents)) {
+      if (!/reserveUserScopedFunctionInvocation\s*\(/.test(contents)) {
+        failures.push(`${file}: account deletion must reserve a user-scoped firewall invocation`);
+      }
+      if (!/recordUserScopedFunctionSecurityEvent\s*\(/.test(contents)) {
+        failures.push(`${file}: account deletion must finalize user-scoped firewall security events`);
+      }
+      if (!/service_request_my_account_deletion/.test(contents) || !/auth\.admin\.deleteUser/.test(contents)) {
         failures.push(`${file}: account deletion must revoke memberships and delete the Auth user`);
       }
       if (!/service_rollback_failed_account_deletion/.test(contents)) {

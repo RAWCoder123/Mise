@@ -259,6 +259,12 @@ for (const functionName of userScopedEdgeFunctionNames) {
   if (!/requireAuthenticatedContext\s*\(/.test(source)) {
     failures.push(`${functionPath}: missing requireAuthenticatedContext guard.`);
   }
+  if (!/reserveUserScopedFunctionInvocation\s*\(/.test(source)) {
+    failures.push(`${functionPath}: must reserve a user-scoped firewall invocation before deletion work.`);
+  }
+  if (!/recordUserScopedFunctionSecurityEvent\s*\(/.test(source)) {
+    failures.push(`${functionPath}: must finalize user-scoped firewall security events.`);
+  }
   if (!/auth\.admin\.deleteUser/.test(source) || !/service_request_my_account_deletion|request_my_account_deletion/.test(source)) {
     failures.push(`${functionPath}: must revoke memberships and delete or queue Auth account removal.`);
   }
@@ -268,6 +274,10 @@ for (const functionName of userScopedEdgeFunctionNames) {
   if (/requireRestaurantRole\s*\(/.test(source)) {
     failures.push(`${functionPath}: account deletion is user-scoped and must not require a restaurant role.`);
   }
+}
+
+if (!/request-account-deletion/.test(read("supabase/migrations/20260801101000_edge_request_account_deletion_firewall.sql"))) {
+  failures.push("supabase/migrations/20260801101000_edge_request_account_deletion_firewall.sql: must allowlist request-account-deletion in the user-scoped firewall.");
 }
 
 for (const functionName of accountOnboardingEdgeFunctionNames) {
