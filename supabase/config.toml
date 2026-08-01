@@ -19,7 +19,17 @@ port = 54323
 [auth]
 enabled = true
 site_url = "http://localhost:8081"
-additional_redirect_urls = ["http://localhost:8081", "http://127.0.0.1:8081"]
+# Keep local Auth redirects aligned with Expo Linking recovery/invite deep links.
+# Hosted Supabase projects must allowlist the same schemes in the Auth settings UI.
+additional_redirect_urls = [
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
+  "mise://",
+  "mise://reset-password",
+  "mise://invite",
+  "exp://127.0.0.1:8081",
+  "exp://localhost:8081"
+]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10

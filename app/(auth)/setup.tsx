@@ -94,6 +94,7 @@ export default function SetupScreen() {
   const [selectedDays, setSelectedDays] = useState<string[]>(["Mon", "Thu"]);
   const [orderingStyle, setOrderingStyle] = useState<(typeof stylesOptions)[number]>("Balanced");
   const [readyName, setReadyName] = useState<string | null>(null);
+  const [skippedRecipeIngredients, setSkippedRecipeIngredients] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seededSetupKeyRef = useRef<string | null>(null);
@@ -172,6 +173,7 @@ export default function SetupScreen() {
       const inventoryItemNames = normalizedInventoryItems.map((item) => item.name.trim()).filter(Boolean);
       const recipeBaselineText = recipeDraftsToBaselineText(normalizedRecipes);
       const posSales = posSalesImport.rows;
+      let skippedRecipeIngredientCount = 0;
 
       if (isDemoSetup) {
         const useDefaultDemoDataset = isDemoDatasetRestaurantName(restaurantName);
@@ -210,13 +212,15 @@ export default function SetupScreen() {
               cuisine_type: cuisineType,
               operational_profile: operationalProfile
             });
-        await saveRestaurantSetup(nextRestaurant.id, {
+        const setupSummary = await saveRestaurantSetup(nextRestaurant.id, {
           inventoryItems: normalizedInventoryItems,
           suppliers,
           recipes: normalizedRecipes,
           posSales,
           attachments: []
         });
+        skippedRecipeIngredientCount = setupSummary.skippedRecipeIngredients;
+        setSkippedRecipeIngredients(skippedRecipeIngredientCount);
       }
       trackMiseEvent("setup_completed", {
         mode: isDemoSetup ? "demo" : "tenant",
@@ -224,6 +228,7 @@ export default function SetupScreen() {
         supplier_count: suppliers.filter((supplier) => supplier.name.trim()).length,
         recipe_count: recipes.filter((recipe) => recipe.dishName.trim()).length,
         pos_sales_rows: posSalesImport.rows.length,
+        skipped_recipe_ingredients: skippedRecipeIngredientCount,
         attachment_count: 0
       });
       setReadyName(restaurantName);
@@ -328,7 +333,24 @@ export default function SetupScreen() {
                   count: formatNumber(importedRows)
                 })}`
               : ""}
+            {skippedRecipeIngredients > 0
+              ? ` ${t(
+                  skippedRecipeIngredients === 1
+                    ? "setup.ready.skippedRecipes.one"
+                    : "setup.ready.skippedRecipes.other",
+                  { count: formatNumber(skippedRecipeIngredients) }
+                )}`
+              : ""}
           </Text>
+          {skippedRecipeIngredients > 0 ? (
+            <Button
+              title={t("setup.ready.reviewRecipes")}
+              variant="secondary"
+              onPress={() => router.replace("/settings/recipes")}
+              fullWidth
+              style={styles.button}
+            />
+          ) : null}
           <Button title={t("setup.ready.openToday")} onPress={() => router.replace("/today")} fullWidth style={styles.button} />
         </Card>
       </Screen>

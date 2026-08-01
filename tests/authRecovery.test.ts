@@ -49,6 +49,7 @@ test("password reset UI and session wiring are present", () => {
   const session = readFileSync("contexts/MiseSessionContext.tsx", "utf8");
   const routes = readFileSync("scripts/mobile-route-smoke.mjs", "utf8");
   const supabase = readFileSync("lib/supabase.ts", "utf8");
+  const config = readFileSync("supabase/config.toml", "utf8");
 
   assert.match(login, /requestPasswordReset/);
   assert.match(login, /login\.action\.forgotPassword/);
@@ -59,4 +60,7 @@ test("password reset UI and session wiring are present", () => {
   assert.match(session, /completePasswordReset/);
   assert.match(supabase, /flowType:\s*["']pkce["']/);
   assert.match(routes, /\/reset-password/);
+  assert.match(config, /mise:\/\/reset-password/);
+  assert.match(config, /mise:\/\/invite/);
+  assert.match(config, /exp:\/\/127\.0\.0\.1:8081/);
 });
