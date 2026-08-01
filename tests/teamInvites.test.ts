@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 import {
   buildInviteClaimPath,
+  buildInviteClaimUrl,
   canActorCreateMemberInvite,
   canActorRevokeMemberInvite,
   canViewMemberInvites,
@@ -35,6 +36,11 @@ test("invite tokens are opaque 64-char hex values", async () => {
   assert.equal(hash.length, 64);
   assert.notEqual(hash, token);
   assert.equal(buildInviteClaimPath(token), `/invite/${token}`);
+  assert.equal(
+    buildInviteClaimUrl(token, (path) => `mise://${path}`),
+    `mise://invite/${token}`
+  );
+  assert.throws(() => buildInviteClaimUrl(token, () => "   "), /could not be created/i);
   assert.equal(resolveInviteExpiryHours(null), 168);
   assert.throws(() => resolveInviteExpiryHours(0));
 });
@@ -182,6 +188,8 @@ test("member invite migration and client wiring are present", () => {
   assert.match(demoInvites, /export async function createDemoMemberInvite/i);
   assert.match(screen, /createRestaurantMemberInvite/i);
   assert.match(screen, /revokeRestaurantMemberInvite/i);
+  assert.match(screen, /buildInviteClaimUrl/);
+  assert.match(screen, /Linking\.createURL/);
   assert.match(claimScreen, /claimRestaurantMemberInvite/i);
   assert.match(routes, /\/invite\//);
 });

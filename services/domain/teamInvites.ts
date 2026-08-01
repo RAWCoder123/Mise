@@ -82,6 +82,22 @@ export function buildInviteClaimPath(token: string): string {
   return `/invite/${normalized}`;
 }
 
+/**
+ * Absolute share URL for clipboard/handoff. Pass Expo Linking.createURL (or equivalent)
+ * so web/native schemes stay environment-correct. In-app navigation still uses the path.
+ */
+export function buildInviteClaimUrl(
+  token: string,
+  createAbsoluteUrl: (pathWithoutLeadingSlash: string) => string
+): string {
+  const path = buildInviteClaimPath(token).replace(/^\//, "");
+  const absolute = createAbsoluteUrl(path);
+  if (typeof absolute !== "string" || !absolute.trim()) {
+    throw new Error("Invite share URL could not be created.");
+  }
+  return absolute.trim();
+}
+
 export function isInvitePending(status: RestaurantMemberInviteStatus, expiresAt: string, now = new Date()): boolean {
   if (status !== "pending") return false;
   const expiresMs = Date.parse(expiresAt);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
 import * as Clipboard from "expo-clipboard";
+import * as Linking from "expo-linking";
 import { ArrowLeft, Copy, Link2, ShieldCheck, UserPlus, Users } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -35,7 +36,7 @@ import {
   type AssignableRestaurantRole
 } from "../../services/domain/teamMembership";
 import {
-  buildInviteClaimPath,
+  buildInviteClaimUrl,
   canActorRevokeMemberInvite,
   isInvitePending
 } from "../../services/domain/teamInvites";
@@ -179,9 +180,13 @@ export default function TeamSettingsScreen() {
     }
   }
 
+  function inviteShareUrl(token: string) {
+    return buildInviteClaimUrl(token, (path) => Linking.createURL(path));
+  }
+
   async function copyCreatedInvite() {
     if (!createdInvite) return;
-    await Clipboard.setStringAsync(buildInviteClaimPath(createdInvite.claim_token));
+    await Clipboard.setStringAsync(inviteShareUrl(createdInvite.claim_token));
     setNotice({ tone: "success", key: "settings.team.notice.inviteCopied" });
   }
 
@@ -468,7 +473,7 @@ export default function TeamSettingsScreen() {
                   <View style={styles.createdInvite}>
                     <Text style={styles.memberName}>{t("settings.team.createdInviteTitle")}</Text>
                     <Text style={styles.memberEmail}>{createdInvite.email}</Text>
-                    <Text style={styles.path}>{buildInviteClaimPath(createdInvite.claim_token)}</Text>
+                    <Text style={styles.path}>{inviteShareUrl(createdInvite.claim_token)}</Text>
                     <Button
                       title={t("settings.team.copyInvite")}
                       icon={<Copy size={18} color={colors.surface} strokeWidth={2.25} />}
