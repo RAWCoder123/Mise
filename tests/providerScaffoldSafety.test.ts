@@ -50,8 +50,11 @@ test("unimplemented model generation fails closed without persisting an insight"
 
 test("hosted createAiInsight surfaces fail-closed Edge statuses instead of inventing an insight", () => {
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
-  const hostedCreate = repository.match(/async createAiInsight\(input\) \{[\s\S]*?async recordAuditLog\(/)?.[0] ?? "";
-  assert.ok(hostedCreate.includes('functions.invoke("generate-ai-insights"'));
+  const hostedCreate =
+    repository.match(
+      /async createAiInsight\(input\) \{\s*const \{ data, error \} = await client\.functions\.invoke\("generate-ai-insights"[\s\S]*?async recordAuditLog\(/
+    )?.[0] ?? "";
+  assert.ok(hostedCreate.length > 0, "hosted createAiInsight Edge invoke path must exist");
   assert.match(hostedCreate, /provider_not_enabled/);
   assert.match(hostedCreate, /server_configuration_required/);
   assert.match(hostedCreate, /Live AI insight generation is unavailable/);
