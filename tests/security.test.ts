@@ -1145,6 +1145,8 @@ test("inventory count sessions are service-owned with draft progress and approve
   assert.match(screen, /staffAwaitingApproval/);
   assert.match(screen, /draftNotes/);
   assert.match(screen, /inventory\.count\.notePlaceholder/);
+  assert.match(screen, /parseNumber\(raw\)/);
+  assert.match(screen, /inventory\.count\.invalidQuantity/);
   assert.match(list, /canDraftInventoryCount/);
   assert.match(list, /\/inventory\/count/);
   assert.match(tenantAccess, /canDraftInventoryCount/);
@@ -1198,6 +1200,7 @@ test("recipe baseline unlink is service-owned, manager-only, and preserves histo
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_delete_recipe_and_signals[\s\S]*service_role/i);
   assert.match(migration, /Historical inventory movements are retained/i);
   assert.match(screen, /deleteRecipeBaselineIngredient/);
+  assert.match(screen, /fetchRecipeBaselineSummary\(restaurantId,\s*\{\s*itemLimit:\s*null\s*\}/);
   assert.match(screen, /recipes\.unlink\.confirmTitle/);
   assert.match(screen, /onUnlink/);
   assert.match(catalog, /"recipes\.action\.unlink"/);
@@ -1326,6 +1329,7 @@ test("workflow authority hardening removes direct writes and makes Edge telemetr
   assert.match(migration, /reservation_id[\s\S]*unique\s+index/i);
   assert.match(migration, /grant\s+execute[\s\S]*reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)\s+to\s+service_role/i);
   assert.match(migration, /revoke\s+all[\s\S]*reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)[\s\S]*authenticated/i);
+  assert.match(migration, /drop\s+function\s+public\.reserve_edge_function_invocation\(uuid,\s*text,\s*text,\s*jsonb\)/i);
 
   assert.match(repository, /action:\s*"create_pending_purchase_recommendation"/i);
   assert.doesNotMatch(repository, /rpc\("create_pending_purchase_recommendation"/i);
@@ -1337,6 +1341,42 @@ test("workflow authority hardening removes direct writes and makes Edge telemetr
   assert.doesNotMatch(repository, /from\("purchase_recommendations"\)\.insert\(inserts\)/i);
   assert.match(shared, /SUPABASE_SERVICE_ROLE_KEY/i);
   assert.match(shared, /p_reservation_id:\s*reservationId/i);
+});
+
+test("final security posture keeps Edge reservation and setup attachments off authenticated DML", () => {
+  const authority = readFileSync("supabase/migrations/20260713100023_harden_workflow_authority.sql", "utf8");
+  const atomicSetup = readFileSync(
+    "supabase/migrations/20260713103021_atomic_setup_and_operational_signals.sql",
+    "utf8"
+  );
+  const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
+
+  assert.match(authority, /drop\s+function\s+public\.reserve_edge_function_invocation\(uuid,\s*text,\s*text,\s*jsonb\)/i);
+  assert.match(
+    authority,
+    /grant\s+execute\s+on\s+function\s+public\.reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)\s+to\s+service_role/i
+  );
+  assert.match(
+    authority,
+    /revoke\s+all\s+on\s+function\s+public\.reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)\s+from\s+public,\s+anon,\s+authenticated/i
+  );
+  assert.match(atomicSetup, /revoke\s+insert,\s*update,\s*delete\s+on\s+public\.setup_attachments\s+from\s+authenticated/i);
+  assert.match(
+    securityStatic,
+    /legacy reserve_edge_function_invocation\(uuid,text,text,jsonb\) must be dropped/i
+  );
+  assert.match(
+    securityStatic,
+    /reservation-bound reserve_edge_function_invocation must be executable by service_role/i
+  );
+  assert.match(
+    securityStatic,
+    /setup_attachments DML must be revoked from authenticated clients/i
+  );
+  assert.doesNotMatch(
+    securityStatic,
+    /reserve_edge_function_invocation must be executable by authenticated users only/i
+  );
 });
 
 test("operational constraints keep public tables structured and token-free", () => {

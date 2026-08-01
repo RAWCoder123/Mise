@@ -297,8 +297,22 @@ if (!/create\s+or\s+replace\s+function\s+public\.reserve_edge_function_invocatio
   failures.push("supabase: missing reserve_edge_function_invocation firewall RPC");
 }
 
-if (!/grant\s+execute\s+on\s+function\s+public\.reserve_edge_function_invocation\(uuid,\s*text,\s*text,\s*jsonb\)\s+to\s+authenticated/i.test(combinedSql)) {
-  failures.push("supabase: reserve_edge_function_invocation must be executable by authenticated users only");
+// Final posture: the legacy authenticated 4-arg reserve helper is dropped; Edge uses the
+// reservation-bound 5-arg service_role signature only.
+if (!/drop\s+function\s+public\.reserve_edge_function_invocation\(uuid,\s*text,\s*text,\s*jsonb\)/i.test(combinedSql)) {
+  failures.push("supabase: legacy reserve_edge_function_invocation(uuid,text,text,jsonb) must be dropped");
+}
+
+if (!/grant\s+execute\s+on\s+function\s+public\.reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)\s+to\s+service_role/i.test(combinedSql)) {
+  failures.push("supabase: reservation-bound reserve_edge_function_invocation must be executable by service_role");
+}
+
+if (!/revoke\s+all\s+on\s+function\s+public\.reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)[\s\S]*authenticated/i.test(combinedSql)) {
+  failures.push("supabase: reservation-bound reserve_edge_function_invocation must not be executable by authenticated clients");
+}
+
+if (!/revoke\s+insert,\s*update,\s*delete\s+on\s+public\.setup_attachments\s+from\s+authenticated/i.test(combinedSql)) {
+  failures.push("supabase: setup_attachments DML must be revoked from authenticated clients");
 }
 
 const publicEnvLines = read(".env.example")
