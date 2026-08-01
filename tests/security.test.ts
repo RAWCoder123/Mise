@@ -791,10 +791,12 @@ test("staff waste recording is authorized in SQL, Edge, and inventory detail UI"
     authorityMigration,
     /inventory_waste_recorded[\s\S]*array\['owner', 'admin', 'manager', 'staff'\]/i
   );
-  assert.match(authorityMigration, /inventory_updated/);
+  assert.match(authorityMigration, /staff_audit_actions text\[] := array\[/);
+  assert.doesNotMatch(authorityMigration, /staff_audit_actions text\[] := array\[[\s\S]*inventory_updated/);
   assert.match(databaseTests, /service audit RPC accepts staff actors for staff-authorized waste audits/i);
   assert.match(databaseTests, /service audit RPC rejects staff actors for manager-only audit actions/i);
   assert.match(databaseTests, /active staff can fetch planning snapshots required for waste signal refresh/i);
+  assert.match(databaseTests, /'inventory_updated'/);
   assert.match(detail, /canRecordWaste/);
   assert.match(detail, /inventory\.detail\.limitedAccess/);
   assert.match(detail, /showWasteBeforeCountSettings/);
