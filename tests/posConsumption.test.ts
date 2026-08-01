@@ -351,3 +351,40 @@ test("demo CSV ingest deducts mapped recipe usage once and writes ledger rows", 
     10
   );
 });
+
+test("demo CSV ingest reports skipped incompatible recipe units separately from unmapped sales", () => {
+  const state = createInitialDemoState(
+    "Toast",
+    { preset: "default" },
+    new Date("2026-07-28T16:00:00.000Z")
+  );
+  const riceMapping = state.menuItemIngredients.find(
+    (recipe) =>
+      recipe.inventory_item_id === riceId &&
+      recipe.menu_item_name.toLowerCase().includes("general tso")
+  );
+  assert.ok(riceMapping);
+  riceMapping.unit = "kg";
+
+  const rows = assertManualPosSalesIngestReady(
+    buildManualPosSalesIngestPayload(
+      [
+        "sale_date,item_name,category,quantity_sold,gross_sales",
+        "2026-07-28,General Tso Chicken,Entrees,10,150",
+        "2026-07-28,Unknown Special,Entrees,2,30"
+      ].join("\n")
+    )
+  );
+
+  const summary = applyManualPosSalesIngestToDemoState(
+    state,
+    DEMO_RESTAURANT_ID,
+    rows,
+    "incompatible.csv"
+  );
+
+  assert.equal(summary.skippedIncompatibleCount, 1);
+  assert.equal(summary.unmappedSaleCount, 1);
+  assert.ok(summary.consumptionMovementsWritten >= 1);
+  assert.equal(state.auditLogs[0]?.metadata?.skipped_incompatible_count, 1);
+});

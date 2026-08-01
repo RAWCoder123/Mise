@@ -378,9 +378,19 @@ test("manual CSV POS ingest is service-owned, bounded, and keeps live sync fail-
     "supabase/migrations/20260731210000_reject_consumed_pos_sale_corrections.sql",
     "utf8"
   );
+  const skippedIncompatibleMigration = readFileSync(
+    "supabase/migrations/20260801160341_pos_consumption_skipped_incompatible_count.sql",
+    "utf8"
+  );
+  const skippedIncompatiblePgTap = readFileSync(
+    "supabase/tests/database/pos_consumption_skipped_incompatible.test.sql",
+    "utf8"
+  );
 
   assert.match(application, /buildManualPosSalesIngestPayload|assertManualPosSalesIngestReady/);
   assert.match(repository, /action:\s*"ingest_pos_csv"/i);
+  assert.match(repository, /skipped_incompatible_count/);
+  assert.match(repository, /skippedIncompatibleCount/);
   assert.match(edge, /"ingest_pos_csv"/);
   assert.match(edge, /service_ingest_manual_pos_sales/);
   assert.match(edge, /Manual CSV Upload/);
@@ -399,6 +409,33 @@ test("manual CSV POS ingest is service-owned, bounded, and keeps live sync fail-
   assert.match(correctionGuardMigration, /has_consumption/i);
   assert.match(correctionGuardMigration, /revoke\s+all\s+on\s+function\s+private\.service_ingest_manual_pos_sales[\s\S]*authenticated/i);
   assert.match(correctionGuardMigration, /grant\s+execute\s+on\s+function\s+private\.service_ingest_manual_pos_sales[\s\S]*service_role/i);
+  assert.match(skippedIncompatibleMigration, /skipped_incompatible_count/i);
+  assert.match(
+    skippedIncompatibleMigration,
+    /create\s+or\s+replace\s+function\s+private\.apply_recipe_consumption_for_sales/i
+  );
+  assert.match(
+    skippedIncompatibleMigration,
+    /create\s+or\s+replace\s+function\s+private\.service_ingest_manual_pos_sales/i
+  );
+  assert.match(
+    skippedIncompatibleMigration,
+    /revoke\s+all\s+on\s+function\s+private\.apply_recipe_consumption_for_sales[\s\S]*authenticated/i
+  );
+  assert.match(
+    skippedIncompatibleMigration,
+    /grant\s+execute\s+on\s+function\s+private\.apply_recipe_consumption_for_sales[\s\S]*service_role/i
+  );
+  assert.match(
+    skippedIncompatibleMigration,
+    /revoke\s+all\s+on\s+function\s+private\.service_ingest_manual_pos_sales[\s\S]*authenticated/i
+  );
+  assert.match(
+    skippedIncompatibleMigration,
+    /grant\s+execute\s+on\s+function\s+private\.service_ingest_manual_pos_sales[\s\S]*service_role/i
+  );
+  assert.match(skippedIncompatiblePgTap, /skipped_incompatible_count/);
+  assert.match(skippedIncompatiblePgTap, /unit-incompatible mapping skips/i);
   assert.match(syncPos, /provider_not_enabled/);
   assert.doesNotMatch(syncPos, /service_ingest_manual_pos_sales/);
   assert.doesNotMatch(application, /\.from\("pos_sales"\)\.insert/);

@@ -21,7 +21,7 @@ Classification guidance uses evidence, not polish. Current overall status: **not
 | No embedded test credentials in production | complete | Demo credentials hidden when `EXPO_PUBLIC_APP_ENV=production` |
 | Tenant isolation / RLS | blocked | Latest migration chain must re-pass Docker pgTAP + hosted staging |
 | Live POS provider | blocked | Fail-closed until provider credentials and server adapter exist |
-| Manual CSV POS ingest | tested (code) | Bounded Settings/setup CSV path; live providers remain fail-closed |
+| Manual CSV POS ingest | tested (code) | Bounded Settings/setup CSV path; hosted ingest returns `skipped_incompatible_count` alongside unmapped sales; live providers remain fail-closed; pgTAP suite authored (`pos_consumption_skipped_incompatible.test.sql`) awaiting Docker execution |
 | Recipe coverage / settings list | tested (code) | Coverage matches normalized POS menu keys; Settings → Recipes loads full mapped list; incompatible recipe/inventory units surface as a distinct repair path (Today/Settings/POS/Recipes); Save aligns recipe unit to inventory; count drafts parse locale decimals |
 | Team roster / role management | tested (code) | Settings → Team; list RPCs remain authenticated; add/invite/update/remove Edge-routed via service RPCs; create restaurant + invite claim Edge-routed via user-scoped `account-onboarding`; demo roster seeded |
 | Inventory count role split | tested (code) | Staff may draft/submit multi-item counts; manager+ approve ledger writes |
