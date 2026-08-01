@@ -1610,9 +1610,8 @@ function createLocalDemoRepository(): MiseRepository {
     },
 
     async fetchStorageLocations(restaurantId) {
-      return mutateDemoState((state) =>
-        listDemoStorageLocations(state, restaurantId).map(normalizeStorageLocation)
-      );
+      const state = await readReadyDemoState(restaurantId);
+      return listDemoStorageLocations(state, restaurantId).map(normalizeStorageLocation);
     },
 
     async createStorageLocation(restaurantId, name) {
@@ -3076,7 +3075,7 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async fetchStorageLocations(restaurantId) {
-      const { data, error } = await client.rpc("ensure_restaurant_storage_locations", {
+      const { data, error } = await client.rpc("list_restaurant_storage_locations", {
         p_restaurant_id: restaurantId
       });
       if (error) throw error;

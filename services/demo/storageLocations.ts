@@ -48,7 +48,8 @@ export function ensureDemoMainStorageLocation(
 }
 
 export function listDemoStorageLocations(state: DemoState, restaurantId: string): StorageLocation[] {
-  ensureDemoMainStorageLocation(state, restaurantId);
+  // Read-only: do not seed Main here. Writes call ensureDemoMainStorageLocation.
+  ensureDemoStorageLocations(state);
   return state.storageLocations
     .filter((location) => location.restaurant_id === restaurantId && location.is_active)
     .slice()

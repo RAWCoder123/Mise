@@ -703,8 +703,13 @@ test("storage locations and inventory transfer are RLS-readable and service-muta
     "supabase/migrations/20260731163000_storage_locations_and_transfer.sql",
     "utf8"
   );
+  const readPathMigration = readFileSync(
+    "supabase/migrations/20260801090819_storage_location_read_path_purity.sql",
+    "utf8"
+  );
   const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const demoStorage = readFileSync("services/demo/storageLocations.ts", "utf8");
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
   const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
@@ -717,6 +722,10 @@ test("storage locations and inventory transfer are RLS-readable and service-muta
   assert.match(migration, /grant select on public\.inventory_location_balances to authenticated/i);
   assert.match(migration, /create or replace function public\.create_storage_location/i);
   assert.match(migration, /create or replace function public\.ensure_restaurant_storage_locations/i);
+  assert.match(readPathMigration, /create or replace function public\.list_restaurant_storage_locations/i);
+  assert.match(readPathMigration, /revoke all on function public\.ensure_restaurant_storage_locations/i);
+  assert.match(readPathMigration, /grant execute on function public\.list_restaurant_storage_locations[\s\S]*to authenticated/i);
+  assert.match(readPathMigration, /perform private\.ensure_main_storage_location\(new_restaurant\.id\)/i);
   assert.match(migration, /private\.service_transfer_inventory/i);
   assert.match(migration, /'transfer_inventory'/);
   assert.match(migration, /array\['owner', 'admin', 'manager', 'staff'\]/);
@@ -727,6 +736,16 @@ test("storage locations and inventory transfer are RLS-readable and service-muta
   assert.match(edge, /storage_location_created/);
   assert.match(repository, /action:\s*"transfer_inventory"/);
   assert.match(repository, /action:\s*"create_storage_location"/);
+  const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
+  const hostedFetchStorage =
+    hostedRepository.match(/async fetchStorageLocations[\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(hostedFetchStorage, /list_restaurant_storage_locations/);
+  assert.doesNotMatch(hostedFetchStorage, /ensure_restaurant_storage_locations/);
+  assert.match(demoStorage, /Read-only: do not seed Main here/);
+  assert.doesNotMatch(
+    demoStorage.match(/export function listDemoStorageLocations[\s\S]*?\n\}/)?.[0] ?? "",
+    /^\s*ensureDemoMainStorageLocation\s*\(/m
+  );
   assert.doesNotMatch(
     repository.match(/async createStorageLocation[\s\S]*?\n    \},/)?.[0] ?? "",
     /\.rpc\(\s*["']create_storage_location["']/i
