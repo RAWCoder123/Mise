@@ -104,6 +104,11 @@ for (const table of [
   "pos_sales",
   "supplier_items",
   "purchase_orders",
+  "inventory_count_lines",
+  "inventory_count_sessions",
+  "inventory_location_balances",
+  "storage_locations",
+  "inventory_movements",
   "inventory_items"
 ]) {
   await clearFixtureTable(table);
@@ -518,6 +523,114 @@ await upsert("setup_attachments", [
     status: "queued",
     metadata: { source: "staging_seed", storage_status: "metadata_only" },
     created_by: users.ownerB.id
+  }
+]);
+
+await upsert("storage_locations", [
+  {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa101",
+    restaurant_id: tenantA,
+    name: "Main",
+    sort_order: 0,
+    is_active: true
+  },
+  {
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb101",
+    restaurant_id: tenantB,
+    name: "Main",
+    sort_order: 0,
+    is_active: true
+  },
+  {
+    id: "cccccccc-cccc-4ccc-8ccc-ccccccccc101",
+    restaurant_id: tenantC,
+    name: "Main",
+    sort_order: 0,
+    is_active: true
+  }
+]);
+
+await upsert("inventory_location_balances", [
+  {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa201",
+    restaurant_id: tenantA,
+    inventory_item_id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+    storage_location_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa101",
+    quantity: 20
+  },
+  {
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb201",
+    restaurant_id: tenantB,
+    inventory_item_id: "bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb",
+    storage_location_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb101",
+    quantity: 10
+  }
+]);
+
+await upsert("inventory_movements", [
+  {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa501",
+    restaurant_id: tenantA,
+    inventory_item_id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+    actor_user_id: users.ownerA.id,
+    reason: "manual_count",
+    quantity_before: 0,
+    quantity_after: 20,
+    source_workflow: "staging_seed"
+  },
+  {
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb501",
+    restaurant_id: tenantB,
+    inventory_item_id: "bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb",
+    actor_user_id: users.ownerB.id,
+    reason: "manual_count",
+    quantity_before: 0,
+    quantity_after: 10,
+    source_workflow: "staging_seed"
+  }
+]);
+
+await upsert("inventory_count_sessions", [
+  {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa301",
+    restaurant_id: tenantA,
+    status: "cancelled",
+    started_by: users.ownerA.id,
+    cancelled_by: users.ownerA.id,
+    started_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    cancelled_at: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  },
+  {
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb301",
+    restaurant_id: tenantB,
+    status: "cancelled",
+    started_by: users.ownerB.id,
+    cancelled_by: users.ownerB.id,
+    started_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    cancelled_at: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  }
+]);
+
+await upsert("inventory_count_lines", [
+  {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa401",
+    restaurant_id: tenantA,
+    session_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa301",
+    inventory_item_id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+    item_name: "Chicken Breast",
+    unit: "lb",
+    system_quantity_at_start: 20,
+    counted_quantity: 19
+  },
+  {
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb401",
+    restaurant_id: tenantB,
+    session_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb301",
+    inventory_item_id: "bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb",
+    item_name: "Espresso Beans",
+    unit: "lb",
+    system_quantity_at_start: 10,
+    counted_quantity: 9
   }
 ]);
 

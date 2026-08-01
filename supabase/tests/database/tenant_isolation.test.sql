@@ -1,6 +1,6 @@
 begin;
 
-select plan(393);
+select plan(443);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -288,7 +288,8 @@ insert into public.inventory_items (
 values
   ('aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Chicken Breast', 'Protein', 'lb', 20, 30, 10, 4.25, 'Fresh Produce Co.'),
   ('bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Espresso Beans', 'Beverage', 'lb', 10, 16, 6, 7.5, 'Cafe Supply'),
-  ('cccccccc-1111-4111-8111-cccccccccccc', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Bread Flour', 'Dry goods', 'lb', 25, 40, 12, 1.5, 'Bakery Supply');
+  ('cccccccc-1111-4111-8111-cccccccccccc', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Bread Flour', 'Dry goods', 'lb', 25, 40, 12, 1.5, 'Bakery Supply'),
+  ('cccccccc-1112-4112-8112-cccccccccccc', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Cake Flour', 'Dry goods', 'lb', 8, 12, 4, 1.75, 'Bakery Supply');
 
 insert into public.inventory_movements (
   id,
@@ -426,6 +427,107 @@ values
   ('aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaa01', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'screenshot', 'Tenant A inventory screenshot', 'review_needed', '{"storage_status":"metadata_only"}'::jsonb, '11111111-1111-4111-8111-111111111111'),
   ('bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbb01', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'csv', 'Tenant B inventory CSV', 'queued', '{"storage_status":"metadata_only"}'::jsonb, '44444444-4444-4444-8444-444444444444');
 
+insert into public.storage_locations (id, restaurant_id, name, sort_order, is_active)
+values
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa101', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Main', 0, true),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb101', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Main', 0, true),
+  ('cccccccc-cccc-4ccc-8ccc-ccccccccc101', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Main', 0, true);
+
+insert into public.inventory_location_balances (
+  id,
+  restaurant_id,
+  inventory_item_id,
+  storage_location_id,
+  quantity
+)
+values
+  (
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa201',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa101',
+    20
+  ),
+  (
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb201',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb101',
+    10
+  );
+
+insert into public.inventory_count_sessions (
+  id,
+  restaurant_id,
+  status,
+  started_by,
+  started_at
+)
+values
+  (
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa301',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'in_progress',
+    '11111111-1111-4111-8111-111111111111',
+    now()
+  ),
+  (
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb301',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    'in_progress',
+    '44444444-4444-4444-8444-444444444444',
+    now()
+  ),
+  (
+    'cccccccc-cccc-4ccc-8ccc-ccccccccc301',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'in_progress',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    now()
+  );
+
+insert into public.inventory_count_lines (
+  id,
+  restaurant_id,
+  session_id,
+  inventory_item_id,
+  item_name,
+  unit,
+  system_quantity_at_start,
+  counted_quantity
+)
+values
+  (
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa401',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa301',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    'Chicken Breast',
+    'lb',
+    20,
+    null
+  ),
+  (
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb401',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb301',
+    'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb',
+    'Espresso Beans',
+    'lb',
+    10,
+    null
+  ),
+  (
+    'cccccccc-cccc-4ccc-8ccc-ccccccccc401',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'cccccccc-cccc-4ccc-8ccc-ccccccccc301',
+    'cccccccc-1111-4111-8111-cccccccccccc',
+    'Bread Flour',
+    'lb',
+    25,
+    null
+  );
+
 create temporary table tenant_insert_probes (
   table_name text primary key,
   statement text not null
@@ -447,6 +549,34 @@ values
     'inventory_movements',
     $probe$insert into public.inventory_movements (id, restaurant_id, inventory_item_id, actor_user_id, reason, quantity_before, quantity_after, source_workflow)
       values ('dddddddd-1016-4016-8016-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'cccccccc-1111-4111-8111-cccccccccccc', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'manual_count', 1, 2, 'cross-tenant-probe')$probe$
+  ),
+  (
+    'inventory_count_sessions',
+    $probe$insert into public.inventory_count_sessions (id, restaurant_id, status, started_by, cancelled_by, started_at, cancelled_at)
+      values (
+        'dddddddd-1017-4017-8017-dddddddddddd',
+        'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        'cancelled',
+        'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        now() - interval '1 hour',
+        now() - interval '30 minutes'
+      )$probe$
+  ),
+  (
+    'inventory_count_lines',
+    $probe$insert into public.inventory_count_lines (id, restaurant_id, session_id, inventory_item_id, item_name, unit, system_quantity_at_start, counted_quantity)
+      values ('dddddddd-1018-4018-8018-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'cccccccc-cccc-4ccc-8ccc-ccccccccc301', 'cccccccc-1112-4112-8112-cccccccccccc', 'Cake Flour', 'lb', 8, 7)$probe$
+  ),
+  (
+    'storage_locations',
+    $probe$insert into public.storage_locations (id, restaurant_id, name, sort_order, is_active)
+      values ('dddddddd-1019-4019-8019-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Forged station', 50, true)$probe$
+  ),
+  (
+    'inventory_location_balances',
+    $probe$insert into public.inventory_location_balances (id, restaurant_id, inventory_item_id, storage_location_id, quantity)
+      values ('dddddddd-1020-4020-8020-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'cccccccc-1111-4111-8111-cccccccccccc', 'cccccccc-cccc-4ccc-8ccc-ccccccccc101', 3)$probe$
   ),
   (
     'menu_item_ingredients',
@@ -604,10 +734,36 @@ select is(has_table_privilege('authenticated', 'public.menu_item_ingredients', '
 select is(has_table_privilege('authenticated', 'public.pos_integrations', 'INSERT'), false, 'POS integration writes are service-owned');
 select is(has_table_privilege('authenticated', 'public.pos_integrations', 'UPDATE'), false, 'POS integration updates are service-owned');
 select is(has_table_privilege('authenticated', 'public.sales_imports', 'INSERT'), false, 'sales import writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.sales_imports', 'UPDATE'), false, 'sales import updates are service-owned');
+select is(has_table_privilege('authenticated', 'public.sales_imports', 'DELETE'), false, 'sales import deletes are service-owned');
 select is(has_table_privilege('authenticated', 'public.supplier_items', 'INSERT'), false, 'supplier catalog writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.supplier_items', 'UPDATE'), false, 'supplier catalog updates are service-owned');
+select is(has_table_privilege('authenticated', 'public.supplier_items', 'DELETE'), false, 'supplier catalog deletes are service-owned');
 select is(has_table_privilege('authenticated', 'public.purchase_orders', 'INSERT'), false, 'purchase order writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.purchase_orders', 'UPDATE'), false, 'purchase order updates are service-owned');
+select is(has_table_privilege('authenticated', 'public.purchase_orders', 'DELETE'), false, 'purchase order deletes are service-owned');
 select is(has_table_privilege('authenticated', 'public.inventory_movements', 'INSERT'), false, 'inventory movements are append-only via service workflows');
 select is(has_table_privilege('authenticated', 'public.inventory_movements', 'SELECT'), true, 'members can read inventory movements');
+select is(has_table_privilege('authenticated', 'public.inventory_count_sessions', 'SELECT'), true, 'members can read inventory count sessions');
+select is(has_table_privilege('authenticated', 'public.inventory_count_sessions', 'INSERT'), false, 'inventory count session writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.inventory_count_sessions', 'UPDATE'), false, 'inventory count session updates are service-owned');
+select is(has_table_privilege('authenticated', 'public.inventory_count_sessions', 'DELETE'), false, 'inventory count session deletes are service-owned');
+select is(has_table_privilege('authenticated', 'public.inventory_count_lines', 'SELECT'), true, 'members can read inventory count lines');
+select is(has_table_privilege('authenticated', 'public.inventory_count_lines', 'INSERT'), false, 'inventory count line writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.inventory_count_lines', 'UPDATE'), false, 'inventory count line updates are service-owned');
+select is(has_table_privilege('authenticated', 'public.inventory_count_lines', 'DELETE'), false, 'inventory count line deletes are service-owned');
+select is(has_table_privilege('authenticated', 'public.storage_locations', 'SELECT'), true, 'members can read storage locations');
+select is(has_table_privilege('authenticated', 'public.storage_locations', 'INSERT'), false, 'storage location writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.storage_locations', 'UPDATE'), false, 'storage location updates are service-owned');
+select is(has_table_privilege('authenticated', 'public.storage_locations', 'DELETE'), false, 'storage location deletes are service-owned');
+select is(has_table_privilege('authenticated', 'public.inventory_location_balances', 'SELECT'), true, 'members can read inventory location balances');
+select is(has_table_privilege('authenticated', 'public.inventory_location_balances', 'INSERT'), false, 'inventory location balance writes are service-owned');
+select is(has_table_privilege('authenticated', 'public.inventory_location_balances', 'UPDATE'), false, 'inventory location balance updates are service-owned');
+select is(has_table_privilege('authenticated', 'public.inventory_location_balances', 'DELETE'), false, 'inventory location balance deletes are service-owned');
+select is(has_table_privilege('authenticated', 'public.restaurant_member_invites', 'SELECT'), false, 'member invites are not readable via Data API');
+select is(has_table_privilege('authenticated', 'public.restaurant_member_invites', 'INSERT'), false, 'member invite writes are RPC or service-owned');
+select is(has_table_privilege('authenticated', 'public.restaurant_member_invites', 'UPDATE'), false, 'member invite updates are RPC or service-owned');
+select is(has_table_privilege('authenticated', 'public.restaurant_member_invites', 'DELETE'), false, 'member invite deletes are RPC or service-owned');
 select is(has_table_privilege('authenticated', 'public.account_deletion_requests', 'INSERT'), false, 'account deletion requests are RPC or Edge owned');
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'INSERT'), false, 'membership inserts are RPC-only');
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'UPDATE'), false, 'membership updates are RPC-only');
@@ -629,7 +785,10 @@ select is(
     'ai_insights',
     'audit_logs',
     'insights',
+    'inventory_count_lines',
+    'inventory_count_sessions',
     'inventory_items',
+    'inventory_location_balances',
     'inventory_movements',
     'menu_item_ingredients',
     'outreach_agent_runs',
@@ -644,10 +803,12 @@ select is(
     'purchase_orders',
     'purchase_recommendations',
     'restaurant_email_connections',
+    'restaurant_member_invites',
     'restaurant_memberships',
     'restaurants',
     'sales_imports',
     'setup_attachments',
+    'storage_locations',
     'supplier_items',
     'supplier_orders',
     'supplier_recipients',
@@ -731,8 +892,11 @@ select is(
   array[
     'edge_function_security_events',
     'environment_identity',
+    'gmail_credentials',
+    'gmail_oauth_flows',
     'restaurant_signal_state',
-    'restaurant_workspace_allocations'
+    'restaurant_workspace_allocations',
+    'supplier_email_deliveries'
   ]::text[],
   'private table inventory is an exact reviewed allowlist'
 );
@@ -779,10 +943,12 @@ select is(
     from information_schema.columns column_row
     where column_row.table_schema = 'public'
       and column_row.table_name in (
-        'pos_sales', 'inventory_items', 'inventory_movements', 'menu_item_ingredients', 'purchase_recommendations',
+        'pos_sales', 'inventory_items', 'inventory_movements', 'inventory_count_sessions',
+        'inventory_count_lines', 'storage_locations', 'inventory_location_balances',
+        'menu_item_ingredients', 'purchase_recommendations',
         'supplier_orders', 'insights', 'pos_integrations', 'sales_imports', 'supplier_items',
         'purchase_orders', 'ai_insights', 'audit_logs', 'restaurant_email_connections',
-        'supplier_recipients', 'setup_attachments'
+        'supplier_recipients', 'setup_attachments', 'restaurant_member_invites'
       )
       and column_row.column_name = 'restaurant_id'
       and column_row.is_nullable <> 'NO'
@@ -794,7 +960,9 @@ select is(
   (
     select count(*)
     from unnest(array[
-      'pos_sales', 'inventory_items', 'inventory_movements', 'menu_item_ingredients', 'purchase_recommendations',
+      'pos_sales', 'inventory_items', 'inventory_movements', 'inventory_count_sessions',
+      'inventory_count_lines', 'storage_locations', 'inventory_location_balances',
+      'menu_item_ingredients', 'purchase_recommendations',
       'supplier_orders', 'insights', 'pos_integrations', 'sales_imports', 'supplier_items',
       'purchase_orders', 'ai_insights', 'audit_logs', 'restaurant_email_connections',
       'supplier_recipients', 'setup_attachments'

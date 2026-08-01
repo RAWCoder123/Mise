@@ -21,6 +21,11 @@ const tenantBOrderId = "bbbbbbbb-3333-4333-8333-bbbbbbbbbbbb";
 const tenantScopedTables = [
   "pos_sales",
   "inventory_items",
+  "inventory_movements",
+  "inventory_count_sessions",
+  "inventory_count_lines",
+  "storage_locations",
+  "inventory_location_balances",
   "menu_item_ingredients",
   "purchase_recommendations",
   "supplier_orders",
@@ -34,6 +39,8 @@ const tenantScopedTables = [
   "supplier_recipients",
   "setup_attachments"
 ];
+
+const tenantCFixtureTables = new Set(["inventory_items", "pos_integrations", "storage_locations"]);
 
 if (!url || !anonKey || !password || !process.env.SUPABASE_STAGING_PROJECT_REF || !process.env.MISE_STAGING_MARKER) {
   console.error(
@@ -353,6 +360,74 @@ const crossTenantMutationProbes = [
       metadata: { storage_status: "metadata_only" },
       created_by: managerA.user.id
     }
+  },
+  {
+    table: "inventory_movements",
+    fixtureId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb501",
+    insertId: "dddddddd-1016-4016-8016-dddddddddddd",
+    row: {
+      id: "dddddddd-1016-4016-8016-dddddddddddd",
+      restaurant_id: tenantC,
+      inventory_item_id: tenantCInventoryId,
+      actor_user_id: managerA.user.id,
+      reason: "manual_count",
+      quantity_before: 1,
+      quantity_after: 2,
+      source_workflow: "staging_cross_tenant_probe"
+    }
+  },
+  {
+    table: "inventory_count_sessions",
+    fixtureId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb301",
+    insertId: "dddddddd-1017-4017-8017-dddddddddddd",
+    row: {
+      id: "dddddddd-1017-4017-8017-dddddddddddd",
+      restaurant_id: tenantC,
+      status: "cancelled",
+      started_by: managerA.user.id,
+      cancelled_by: managerA.user.id,
+      started_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      cancelled_at: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+    }
+  },
+  {
+    table: "inventory_count_lines",
+    fixtureId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb401",
+    insertId: "dddddddd-1018-4018-8018-dddddddddddd",
+    row: {
+      id: "dddddddd-1018-4018-8018-dddddddddddd",
+      restaurant_id: tenantC,
+      session_id: "cccccccc-cccc-4ccc-8ccc-ccccccccc301",
+      inventory_item_id: tenantCInventoryId,
+      item_name: "Fixture Flour",
+      unit: "lb",
+      system_quantity_at_start: 5,
+      counted_quantity: 4
+    }
+  },
+  {
+    table: "storage_locations",
+    fixtureId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb101",
+    insertId: "dddddddd-1019-4019-8019-dddddddddddd",
+    row: {
+      id: "dddddddd-1019-4019-8019-dddddddddddd",
+      restaurant_id: tenantC,
+      name: "Forged station",
+      sort_order: 50,
+      is_active: true
+    }
+  },
+  {
+    table: "inventory_location_balances",
+    fixtureId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb201",
+    insertId: "dddddddd-1020-4020-8020-dddddddddddd",
+    row: {
+      id: "dddddddd-1020-4020-8020-dddddddddddd",
+      restaurant_id: tenantC,
+      inventory_item_id: tenantCInventoryId,
+      storage_location_id: "cccccccc-cccc-4ccc-8ccc-ccccccccc101",
+      quantity: 3
+    }
   }
 ];
 
@@ -363,7 +438,7 @@ for (const probe of crossTenantMutationProbes) {
     ownerB.client,
     probe.table,
     tenantC,
-    probe.table === "inventory_items" || probe.table === "pos_integrations" ? 1 : 0,
+    tenantCFixtureTables.has(probe.table) ? 1 : 0,
     `denied ${probe.table} insert leaves tenant C unchanged`
   );
 

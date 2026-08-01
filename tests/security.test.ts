@@ -288,11 +288,50 @@ test("email scaffolding is tenant-scoped and keeps Gmail tokens out of client-re
 test("setup keeps file imports disabled and persists no raw attachment content", () => {
   const setupScreen = readFileSync("app/(auth)/setup.tsx", "utf8");
   const packageJson = readFileSync("package.json", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
   assert.match(setupScreen, /attachments:\s*\[\]/i);
   assert.match(setupScreen, /attachment_count:\s*0/i);
+  assert.match(setupScreen, /skippedRecipeIngredients/);
+  assert.match(setupScreen, /setup\.ready\.skippedRecipes/);
+  assert.match(setupScreen, /setup\.ready\.reviewRecipes/);
+  assert.match(setupScreen, /skipped_recipe_ingredients/);
+  assert.match(catalog, /"setup\.ready\.skippedRecipes\.one"/);
+  assert.match(catalog, /"setup\.ready\.reviewRecipes"/);
   assert.doesNotMatch(setupScreen, /EXPO_PUBLIC_.*(OPENAI|GMAIL|GOOGLE|OCR|TOKEN|SECRET)/i);
   assert.doesNotMatch(packageJson, /expo-image-picker|expo-document-picker/i);
+});
+
+test("tenant isolation pgTAP allowlists cover July/August restaurant-owned tables", () => {
+  const tenantTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+
+  assert.match(tenantTests, /select plan\(443\);/);
+  assert.match(tenantTests, /'inventory_count_sessions'/);
+  assert.match(tenantTests, /'inventory_count_lines'/);
+  assert.match(tenantTests, /'storage_locations'/);
+  assert.match(tenantTests, /'inventory_location_balances'/);
+  assert.match(tenantTests, /'restaurant_member_invites'/);
+  assert.match(tenantTests, /'gmail_oauth_flows'/);
+  assert.match(tenantTests, /'gmail_credentials'/);
+  assert.match(tenantTests, /'supplier_email_deliveries'/);
+  assert.match(tenantTests, /sales import updates are service-owned/i);
+  assert.match(tenantTests, /purchase order deletes are service-owned/i);
+  assert.match(tenantTests, /members can read inventory count sessions/i);
+  assert.match(tenantTests, /member invites are not readable via Data API/i);
+  assert.match(
+    tenantTests,
+    /insert into public\.inventory_count_sessions[\s\S]*bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb301/
+  );
+  assert.match(
+    tenantTests,
+    /'inventory_location_balances',\s*\$probe\$insert into public\.inventory_location_balances/
+  );
+  assert.match(securityStatic, /"inventory_count_sessions"/);
+  assert.match(securityStatic, /"inventory_count_lines"/);
+  assert.match(securityBackend, /"inventory_count_sessions"/);
+  assert.match(securityBackend, /"inventory_count_lines"/);
 });
 
 test("setup attachment migration is tenant-scoped and metadata-only", () => {
@@ -837,8 +876,12 @@ test("storage locations and inventory transfer are RLS-readable and service-muta
   assert.match(inventoryWorkflow, /export async function createStorageLocation/);
   assert.match(securityStatic, /"storage_locations"/);
   assert.match(securityStatic, /"inventory_location_balances"/);
+  assert.match(securityStatic, /"inventory_count_sessions"/);
+  assert.match(securityStatic, /"inventory_count_lines"/);
   assert.match(securityBackend, /"storage_locations"/);
   assert.match(securityBackend, /"inventory_location_balances"/);
+  assert.match(securityBackend, /"inventory_count_sessions"/);
+  assert.match(securityBackend, /"inventory_count_lines"/);
   const edgePlaceMigration = readFileSync(
     "supabase/migrations/20260731220000_edge_storage_location_and_external_place.sql",
     "utf8"
@@ -1620,6 +1663,11 @@ test("staging tenant check covers private-beta restaurant data and role boundari
   const tenantTables = [
     "pos_sales",
     "inventory_items",
+    "inventory_movements",
+    "inventory_count_sessions",
+    "inventory_count_lines",
+    "storage_locations",
+    "inventory_location_balances",
     "menu_item_ingredients",
     "purchase_recommendations",
     "supplier_orders",
@@ -1645,6 +1693,9 @@ test("staging tenant check covers private-beta restaurant data and role boundari
     assert.match(seed, new RegExp(`upsert\\(["']${table}["']`));
     assert.match(mutationMatrix, new RegExp(`table: ["']${table}["']`));
   });
+  assert.match(seed, /inventory_count_lines/);
+  assert.match(seed, /storage_locations/);
+  assert.match(script, /tenantCFixtureTables/);
 
   assert.match(script, /unauthenticated users cannot read restaurant inventory/i);
   assert.match(script, /manager A cannot read tenant B/i);
