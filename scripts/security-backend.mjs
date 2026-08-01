@@ -176,6 +176,54 @@ const globalServiceOnlyPublicFunctions = new Set([
   "public.service_unsubscribe_outreach",
   "public.service_rollback_failed_account_deletion"
 ]);
+// Legacy auth.uid() wrappers kept for SQL compatibility but must stay
+// unexecutable by authenticated clients after Edge ownership migrations.
+const revokedAuthenticatedMutators = [
+  "public.create_restaurant_with_owner",
+  "public.claim_restaurant_member_invite",
+  "public.request_my_account_deletion",
+  "public.save_restaurant_setup",
+  "public.record_setup_completion_audit",
+  "public.update_restaurant_profile",
+  "public.update_my_profile",
+  "public.update_my_preferred_locale",
+  "public.approve_purchase_recommendation",
+  "public.dismiss_purchase_recommendation",
+  "public.create_pending_purchase_recommendation",
+  "public.create_storage_location",
+  "public.confirm_supplier_order_placed",
+  "public.add_restaurant_member",
+  "public.add_restaurant_member_by_email",
+  "public.update_restaurant_member",
+  "public.remove_restaurant_member",
+  "public.create_restaurant_member_invite",
+  "public.revoke_restaurant_member_invite",
+  "public.upsert_supplier_recipient",
+  "public.ensure_restaurant_storage_locations"
+];
+const edgeOwnedServicePublicFunctions = [
+  "public.service_create_restaurant_with_owner",
+  "public.service_claim_restaurant_member_invite",
+  "public.service_request_my_account_deletion",
+  "public.service_save_restaurant_setup",
+  "public.service_record_setup_completion_audit",
+  "public.service_update_restaurant_profile",
+  "public.service_update_my_profile",
+  "public.service_update_my_preferred_locale",
+  "public.service_approve_purchase_recommendation",
+  "public.service_dismiss_purchase_recommendation",
+  "public.service_create_pending_purchase_recommendation",
+  "public.service_create_storage_location",
+  "public.service_confirm_supplier_order_placed",
+  "public.service_add_restaurant_member",
+  "public.service_add_restaurant_member_by_email",
+  "public.service_update_restaurant_member",
+  "public.service_remove_restaurant_member",
+  "public.service_create_restaurant_member_invite",
+  "public.service_revoke_restaurant_member_invite",
+  "public.service_upsert_supplier_recipient",
+  "public.service_transfer_inventory"
+];
 for (const fn of functionInventory.functions.values()) {
   if (fn.securityMode !== "definer") continue;
   if (!fn.hasEmptySearchPath) {
@@ -209,6 +257,31 @@ for (const fn of functionInventory.functions.values()) {
         failures.push(`supabase: ${fn.identity} must grant EXECUTE only to authenticated.`);
       }
     }
+  }
+}
+
+for (const identity of revokedAuthenticatedMutators) {
+  const fn = functionInventory.functions.get(identity);
+  if (!fn) {
+    failures.push(`supabase: expected revoked mutator ${identity} is missing from the final function inventory.`);
+    continue;
+  }
+  if (fn.executeRoles.has("authenticated") || fn.executeRoles.has("anon") || fn.executeRoles.has("public")) {
+    failures.push(`supabase: ${identity} must remain revoked from authenticated/anon/public after Edge ownership.`);
+  }
+}
+
+for (const identity of edgeOwnedServicePublicFunctions) {
+  const fn = functionInventory.functions.get(identity);
+  if (!fn) {
+    failures.push(`supabase: expected Edge-owned service RPC ${identity} is missing from the final function inventory.`);
+    continue;
+  }
+  if (!fn.executeRoles.has("service_role") || fn.executeRoles.has("authenticated") || fn.executeRoles.has("anon") || fn.executeRoles.has("public")) {
+    failures.push(`supabase: ${identity} must grant EXECUTE only to service_role.`);
+  }
+  if (!/p_actor_user_id/i.test(fn.definition)) {
+    failures.push(`supabase: ${identity} must be actor-bound via p_actor_user_id.`);
   }
 }
 

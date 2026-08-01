@@ -996,6 +996,24 @@ test("pre-membership create and claim are user-scoped Edge workflows with servic
   assert.match(securityBackend, /reserve_user_scoped_edge_function_invocation/);
 });
 
+test("security backend denylists revoked mutators and Edge-owned service RPCs", () => {
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+  const stagingServiceRpc = readFileSync("scripts/staging-service-rpc-check.mjs", "utf8");
+
+  assert.match(securityBackend, /revokedAuthenticatedMutators/);
+  assert.match(securityBackend, /edgeOwnedServicePublicFunctions/);
+  assert.match(securityBackend, /public\.create_restaurant_with_owner/);
+  assert.match(securityBackend, /public\.request_my_account_deletion/);
+  assert.match(securityBackend, /public\.save_restaurant_setup/);
+  assert.match(securityBackend, /public\.service_request_my_account_deletion/);
+  assert.match(securityBackend, /public\.service_save_restaurant_setup/);
+  assert.match(securityBackend, /must remain revoked from authenticated/);
+  assert.match(stagingServiceRpc, /service_save_restaurant_setup/);
+  assert.match(stagingServiceRpc, /service_request_my_account_deletion/);
+  assert.match(stagingServiceRpc, /service_create_restaurant_with_owner/);
+  assert.match(stagingServiceRpc, /service_transfer_inventory/);
+});
+
 test("inventory item create is service-owned with opening ledger movement and manager UI", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");

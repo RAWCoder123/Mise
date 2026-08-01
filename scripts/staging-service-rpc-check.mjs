@@ -268,6 +268,146 @@ await assertDeniedRpc(
   },
   "service audit persistence rejects a forged actor/tenant binding"
 );
+await assertDeniedRpc(
+  "service_save_restaurant_setup",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_inventory_items: [],
+    p_suppliers: [],
+    p_recipe_mappings: [],
+    p_pos_sales: [],
+    p_attachments: [],
+    p_skipped_recipe_ingredients: 0
+  },
+  "setup persistence rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_approve_purchase_recommendation",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_recommendation_id: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+    p_recommended_quantity: 1
+  },
+  "purchase approval rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_create_pending_purchase_recommendation",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_inventory_item_id: tenantBInventoryId,
+    p_recommended_quantity: 1,
+    p_reason: "staging_cross_tenant_probe",
+    p_urgency: "soon"
+  },
+  "pending purchase create rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_create_storage_location",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_name: "Forged Station"
+  },
+  "storage location create rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_confirm_supplier_order_placed",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_order_id: "bbbbbbbb-3333-4333-8333-bbbbbbbbbbbb"
+  },
+  "external place confirmation rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_add_restaurant_member",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_target_user_id: managerA.id,
+    p_role: "staff"
+  },
+  "team membership add rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_create_restaurant_member_invite",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_email: "forged-invite@mise-staging.test",
+    p_role: "staff",
+    p_expires_in_hours: 24
+  },
+  "team invite create rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_upsert_supplier_recipient",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_supplier_name: "Forged Supplier",
+    p_email: "forged-supplier@mise-staging.test"
+  },
+  "supplier recipient upsert rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_update_restaurant_profile",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_patch: { name: "Forged Tenant Rename" }
+  },
+  "restaurant profile update rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_transfer_inventory",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_inventory_item_id: tenantBInventoryId,
+    p_from_storage_location_id: "bbbbbbbb-4444-4444-8444-bbbbbbbbbbbb",
+    p_to_storage_location_id: "bbbbbbbb-5555-4555-8555-bbbbbbbbbbbb",
+    p_quantity: 1,
+    p_note: "staging_cross_tenant_probe"
+  },
+  "inventory transfer rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_create_restaurant_with_owner",
+  {
+    p_actor_user_id: "00000000-0000-4000-8000-000000000000",
+    restaurant_name: "Forged Create",
+    restaurant_cuisine_type: "Test"
+  },
+  "restaurant create rejects a forged actor binding"
+);
+await assertDeniedRpc(
+  "service_claim_restaurant_member_invite",
+  {
+    p_actor_user_id: "00000000-0000-4000-8000-000000000000",
+    p_claim_token: "0".repeat(64)
+  },
+  "invite claim rejects a forged actor binding"
+);
+await assertDeniedRpc(
+  "service_request_my_account_deletion",
+  {
+    p_actor_user_id: "00000000-0000-4000-8000-000000000000",
+    p_confirmation: "DELETE"
+  },
+  "account deletion request rejects a forged actor binding"
+);
+await assertDeniedRpc(
+  "service_update_my_preferred_locale",
+  {
+    p_actor_user_id: "00000000-0000-4000-8000-000000000000",
+    p_locale: "es"
+  },
+  "locale update rejects a forged actor binding"
+);
 
 const closeReservation = await admin.rpc("record_edge_function_security_event", {
   target_restaurant_id: tenantA,
