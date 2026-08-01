@@ -213,11 +213,15 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       mapUnmappedRecipesTitle: (unmappedCount, unmappedCountLabel, sampleItemName) =>
         unmappedCount === 1 && sampleItemName
           ? `Map ${sampleItemName} to ingredients`
-          : `Map ${unmappedCountLabel} unmapped POS menu items`,
+          : sampleItemName
+            ? `Map ${unmappedCountLabel} unmapped POS menu items, starting with ${sampleItemName}`
+            : `Map ${unmappedCountLabel} unmapped POS menu items`,
       mapUnmappedRecipesDetail: (unmappedCount, unmappedCountLabel, sampleItemName) =>
         unmappedCount === 1 && sampleItemName
           ? `${sampleItemName} sold without a recipe baseline, so Mise cannot deplete inventory from those sales.`
-          : `${unmappedCountLabel} sold POS menu items lack recipe baselines, so Mise cannot deplete inventory from those sales.`,
+          : sampleItemName
+            ? `${unmappedCountLabel} sold POS menu items lack recipe baselines, including ${sampleItemName}, so Mise cannot deplete inventory from those sales.`
+            : `${unmappedCountLabel} sold POS menu items lack recipe baselines, so Mise cannot deplete inventory from those sales.`,
       actions: {
         updateInventoryCount: "Review count",
         beginCountSession: "Start count",
@@ -351,11 +355,15 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       mapUnmappedRecipesTitle: (unmappedCount, unmappedCountLabel, sampleItemName) =>
         unmappedCount === 1 && sampleItemName
           ? `Vincular ${sampleItemName} con ingredientes`
-          : `Vincular ${unmappedCountLabel} artículos POS sin receta`,
+          : sampleItemName
+            ? `Vincular ${unmappedCountLabel} artículos POS sin receta, empezando por ${sampleItemName}`
+            : `Vincular ${unmappedCountLabel} artículos POS sin receta`,
       mapUnmappedRecipesDetail: (unmappedCount, unmappedCountLabel, sampleItemName) =>
         unmappedCount === 1 && sampleItemName
           ? `${sampleItemName} se vendió sin una receta base, así que Mise no puede descontar inventario de esas ventas.`
-          : `${unmappedCountLabel} artículos POS vendidos no tienen receta base, así que Mise no puede descontar inventario de esas ventas.`,
+          : sampleItemName
+            ? `${unmappedCountLabel} artículos POS vendidos no tienen receta base, incluido ${sampleItemName}, así que Mise no puede descontar inventario de esas ventas.`
+            : `${unmappedCountLabel} artículos POS vendidos no tienen receta base, así que Mise no puede descontar inventario de esas ventas.`,
       actions: {
         updateInventoryCount: "Revisar conteo",
         beginCountSession: "Iniciar conteo",
@@ -487,11 +495,15 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       mapUnmappedRecipesTitle: (unmappedCount, unmappedCountLabel, sampleItemName) =>
         unmappedCount === 1 && sampleItemName
           ? `将 ${sampleItemName} 关联到原料`
-          : `关联 ${unmappedCountLabel} 个未映射的 POS 菜品`,
+          : sampleItemName
+            ? `关联 ${unmappedCountLabel} 个未映射的 POS 菜品，先从 ${sampleItemName} 开始`
+            : `关联 ${unmappedCountLabel} 个未映射的 POS 菜品`,
       mapUnmappedRecipesDetail: (unmappedCount, unmappedCountLabel, sampleItemName) =>
         unmappedCount === 1 && sampleItemName
           ? `${sampleItemName} 已售出但没有配方基线，因此 Mise 无法根据这些销售扣减库存。`
-          : `有 ${unmappedCountLabel} 个已售 POS 菜品缺少配方基线，因此 Mise 无法根据这些销售扣减库存。`,
+          : sampleItemName
+            ? `有 ${unmappedCountLabel} 个已售 POS 菜品缺少配方基线（包括 ${sampleItemName}），因此 Mise 无法根据这些销售扣减库存。`
+            : `有 ${unmappedCountLabel} 个已售 POS 菜品缺少配方基线，因此 Mise 无法根据这些销售扣减库存。`,
       actions: {
         updateInventoryCount: "检查盘点",
         beginCountSession: "开始盘点",
