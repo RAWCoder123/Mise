@@ -289,6 +289,15 @@ export default function SetupScreen() {
           fullWidth
           style={styles.accessButton}
         />
+        {needsSignIn ? (
+          <Button
+            title={t("setup.access.createAccountAction")}
+            variant="secondary"
+            onPress={() => router.replace("/signup")}
+            fullWidth
+            style={styles.accessButton}
+          />
+        ) : null}
       </Screen>
     );
   }
