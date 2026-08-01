@@ -1482,6 +1482,7 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
   const edge = readFileSync("supabase/functions/request-account-deletion/index.ts", "utf8");
   const settings = readFileSync("app/(tabs)/settings.tsx", "utf8");
   const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
 
   assert.match(migration, /add column if not exists archived_at timestamptz/i);
   assert.match(migration, /restaurant\.archived_at is null/i);
@@ -1499,6 +1500,10 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
   assert.match(migration, /status in \('requested', 'processing', 'completed', 'cancelled', 'failed'\)/i);
   assert.match(edge, /service_rollback_failed_account_deletion/);
   assert.match(edge, /Restaurant access was restored/i);
+  assert.match(
+    securityBackend,
+    /globalServiceOnlyPublicFunctions[\s\S]*service_rollback_failed_account_deletion/
+  );
   assert.match(catalog, /Restaurants you solely own are closed/);
   assert.match(settings, /requestAccountDeletion/);
 });
