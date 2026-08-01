@@ -28,6 +28,7 @@ Classification guidance uses evidence, not polish. Current overall status: **not
 | Post-setup inventory item create | tested (code) | Manager+ Add item flow; service-owned create + opening ledger movement |
 | Manager inventory corrections | tested (code) | Single-item quantity edits ledger `manager_correction`; count sessions keep `manual_count`; hosted direct inventory updates disabled |
 | Purchase approve / dismiss / draft / mark-sent | tested (code) | Edge-routed through `operational-workflows` with service-owned RPCs; legacy authenticated RPCs revoked |
+| Manual pending recommendation create | tested (code) | Inventory “add to order” uses Edge `create_pending_purchase_recommendation`; legacy authenticated create RPC revoked |
 | Live Gmail send | requires external credentials | Implemented; keep `GMAIL_SEND_ENABLED=false` until approved test |
 | Real-device iPhone QA | requires Apple Developer account action | Needs physical device / TestFlight |
 | Crash reporting | requires founder decision | Optional public Sentry DSN |

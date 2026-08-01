@@ -3211,15 +3211,15 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async createPurchaseRecommendation(input) {
-      const { data, error } = await client.rpc("create_pending_purchase_recommendation", {
-        p_restaurant_id: input.restaurant_id,
-        p_inventory_item_id: input.inventory_item_id,
-        p_recommended_quantity: input.recommended_quantity,
-        p_reason: input.reason,
-        p_urgency: input.urgency
+      const response = await invokeOperationalWorkflow({
+        action: "create_pending_purchase_recommendation",
+        restaurantId: input.restaurant_id,
+        inventoryItemId: input.inventory_item_id,
+        recommendedQuantity: input.recommended_quantity,
+        reason: input.reason,
+        urgency: input.urgency
       });
-      if (error) throw error;
-      return normalizePurchaseRecommendation(data as PurchaseRecommendation);
+      return normalizePurchaseRecommendation(response.result as PurchaseRecommendation);
     },
 
     async fetchPurchaseRecommendations(restaurantId, status = "pending") {

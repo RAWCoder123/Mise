@@ -26,6 +26,7 @@ const actions = [
   "create_storage_location",
   "record_waste",
   "transfer_inventory",
+  "create_pending_purchase_recommendation",
   "approve_purchase_recommendation",
   "dismiss_purchase_recommendation",
   "undo_purchase_recommendation_action",
@@ -169,6 +170,20 @@ Deno.serve(async (req) => {
         p_actor_user_id: user.id,
         p_restaurant_id: restaurantId,
         p_name: requireBoundedString(body.name, "name", 80)
+      });
+    } else if (action === "create_pending_purchase_recommendation") {
+      result = await serviceRpc(securitySupabase, "service_create_pending_purchase_recommendation", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_inventory_item_id: requireUuid(body.inventoryItemId, "inventoryItemId"),
+        p_recommended_quantity: requireBoundedNumber(
+          body.recommendedQuantity,
+          "recommendedQuantity",
+          Number.EPSILON,
+          1_000_000
+        ),
+        p_reason: requireBoundedString(body.reason, "reason", 2000),
+        p_urgency: requireEnum(body.urgency, "urgency", ["low", "medium", "high"] as const)
       });
     } else if (action === "approve_purchase_recommendation") {
       result = await serviceRpc(securitySupabase, "service_approve_purchase_recommendation", {
@@ -786,6 +801,7 @@ function auditAction(action: OperationalAction) {
   if (action === "create_storage_location") return "storage_location_created";
   if (action === "record_waste") return "inventory_waste_recorded";
   if (action === "transfer_inventory") return "inventory_transfer_recorded";
+  if (action === "create_pending_purchase_recommendation") return "recommendation_created";
   if (action === "approve_purchase_recommendation") return "recommendation_approved";
   if (action === "dismiss_purchase_recommendation") return "recommendation_dismissed";
   if (action === "undo_purchase_recommendation_action") return "recommendation_undo";
@@ -816,6 +832,7 @@ function auditEntityTable(action: OperationalAction) {
   }
   if (action === "create_storage_location") return "storage_locations";
   if (
+    action === "create_pending_purchase_recommendation" ||
     action === "approve_purchase_recommendation" ||
     action === "dismiss_purchase_recommendation" ||
     action === "undo_purchase_recommendation_action"
@@ -856,6 +873,12 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>,
       return requireUuid(body.itemId, "itemId");
     }
     return null;
+  }
+  if (action === "create_pending_purchase_recommendation") {
+    if (result && typeof result === "object" && typeof (result as { id?: unknown }).id === "string") {
+      return requireUuid((result as { id: string }).id, "result.id");
+    }
+    return requireUuid(body.inventoryItemId, "inventoryItemId");
   }
   if (
     action === "approve_purchase_recommendation" ||
@@ -927,6 +950,20 @@ function auditMetadata(
   if (action === "create_storage_location" && result && typeof result === "object") {
     const row = result as Record<string, unknown>;
     if (typeof row.name === "string") metadata.location_name = row.name;
+    return metadata;
+  }
+  if (action === "create_pending_purchase_recommendation" && result && typeof result === "object") {
+    const recommendation = result as Record<string, unknown>;
+    if (typeof recommendation.inventory_item_id === "string") {
+      metadata.inventory_item_id = recommendation.inventory_item_id;
+    }
+    if (typeof recommendation.supplier_name === "string") {
+      metadata.supplier_name = recommendation.supplier_name;
+    }
+    if (typeof recommendation.urgency === "string") metadata.urgency = recommendation.urgency;
+    if (typeof recommendation.recommended_quantity === "number") {
+      metadata.recommended_quantity = recommendation.recommended_quantity;
+    }
     return metadata;
   }
   if (

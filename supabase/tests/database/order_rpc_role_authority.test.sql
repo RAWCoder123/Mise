@@ -1,6 +1,6 @@
 begin;
 
-select plan(29);
+select plan(35);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -62,9 +62,11 @@ values
   ('a0000000-0000-4000-8000-000000000011', 'a0000000-0000-4000-8000-000000000001', 'A approve item', 'Produce', 'case', 1, 4, 2, 8, 'Supplier A'),
   ('a0000000-0000-4000-8000-000000000012', 'a0000000-0000-4000-8000-000000000001', 'A dismiss item', 'Produce', 'case', 1, 4, 2, 8, 'Supplier A'),
   ('a0000000-0000-4000-8000-000000000013', 'a0000000-0000-4000-8000-000000000001', 'A undo item', 'Produce', 'case', 1, 4, 2, 8, 'Supplier A'),
+  ('a0000000-0000-4000-8000-000000000014', 'a0000000-0000-4000-8000-000000000001', 'A create item', 'Produce', 'case', 1, 4, 2, 8, 'Supplier A'),
   ('b0000000-0000-4000-8000-000000000011', 'b0000000-0000-4000-8000-000000000001', 'B approve item', 'Beverage', 'case', 1, 4, 2, 8, 'Supplier B'),
   ('b0000000-0000-4000-8000-000000000012', 'b0000000-0000-4000-8000-000000000001', 'B dismiss item', 'Beverage', 'case', 1, 4, 2, 8, 'Supplier B'),
-  ('b0000000-0000-4000-8000-000000000013', 'b0000000-0000-4000-8000-000000000001', 'B undo item', 'Beverage', 'case', 1, 4, 2, 8, 'Supplier B');
+  ('b0000000-0000-4000-8000-000000000013', 'b0000000-0000-4000-8000-000000000001', 'B undo item', 'Beverage', 'case', 1, 4, 2, 8, 'Supplier B'),
+  ('b0000000-0000-4000-8000-000000000014', 'b0000000-0000-4000-8000-000000000001', 'B create item', 'Beverage', 'case', 1, 4, 2, 8, 'Supplier B');
 
 insert into public.purchase_recommendations (
   id, restaurant_id, inventory_item_id, item_name, supplier_name,
@@ -93,6 +95,24 @@ select is(
   ),
   false,
   'authenticated clients cannot invoke the backend-only provider send claim'
+);
+select is(
+  has_function_privilege(
+    'authenticated',
+    'public.create_pending_purchase_recommendation(uuid,uuid,numeric,text,text)',
+    'EXECUTE'
+  ),
+  false,
+  'authenticated clients cannot execute the legacy create-pending recommendation RPC'
+);
+select is(
+  has_function_privilege(
+    'authenticated',
+    'public.service_create_pending_purchase_recommendation(uuid,uuid,uuid,numeric,text,text)',
+    'EXECUTE'
+  ),
+  false,
+  'authenticated clients cannot execute the create-pending recommendation service RPC'
 );
 
 set local role authenticated;
@@ -158,6 +178,16 @@ select is(
   'staff actor cannot invoke the mark-sent observation service RPC'
 );
 select is(
+  pg_temp.try_execute($sql$select public.service_create_pending_purchase_recommendation(
+    'a2222222-2222-4222-8222-222222222222',
+    'a0000000-0000-4000-8000-000000000001',
+    'a0000000-0000-4000-8000-000000000014',
+    4, 'Staff forged create', 'high'
+  )$sql$),
+  false,
+  'staff actor cannot create a pending purchase recommendation through the service RPC'
+);
+select is(
   pg_temp.try_execute($sql$select public.service_claim_supplier_email_send(
     'a2222222-2222-4222-8222-222222222222',
     'a0000000-0000-4000-8000-000000000001',
@@ -221,7 +251,40 @@ select is(
   false,
   'manager cannot invoke mark-sent for another restaurant through the service RPC'
 );
+select is(
+  pg_temp.try_execute($sql$select public.service_create_pending_purchase_recommendation(
+    'a1111111-1111-4111-8111-111111111111',
+    'b0000000-0000-4000-8000-000000000001',
+    'b0000000-0000-4000-8000-000000000014',
+    4, 'Cross-tenant forged create', 'high'
+  )$sql$),
+  false,
+  'manager cannot create a pending recommendation for another restaurant through the service RPC'
+);
 reset role;
+
+set local role service_role;
+select lives_ok(
+  $sql$select public.service_create_pending_purchase_recommendation(
+    'a1111111-1111-4111-8111-111111111111',
+    'a0000000-0000-4000-8000-000000000001',
+    'a0000000-0000-4000-8000-000000000014',
+    4, 'Manager create path', 'medium'
+  )$sql$,
+  'manager can create a pending purchase recommendation through the service RPC'
+);
+reset role;
+select is(
+  (
+    select count(*)::integer
+    from public.purchase_recommendations
+    where restaurant_id = 'a0000000-0000-4000-8000-000000000001'
+      and inventory_item_id = 'a0000000-0000-4000-8000-000000000014'
+      and status = 'pending'
+  ),
+  1,
+  'manager create-pending service RPC inserts one pending recommendation'
+);
 
 select is((select status from public.purchase_recommendations where id = 'b0000000-0000-4000-8000-000000000101'), 'pending', 'cross-tenant approval denial leaves its recommendation pending');
 select is((select status from public.purchase_recommendations where id = 'b0000000-0000-4000-8000-000000000102'), 'pending', 'cross-tenant dismissal denial leaves its recommendation pending');

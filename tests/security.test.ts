@@ -470,10 +470,15 @@ test("purchase recommendation and order draft mutations are Edge-routed and serv
     "supabase/migrations/20260731230000_edge_purchase_recommendation_workflows.sql",
     "utf8"
   );
+  const createPendingMigration = readFileSync(
+    "supabase/migrations/20260801001000_edge_create_pending_purchase_recommendation.sql",
+    "utf8"
+  );
   const stagingTenant = readFileSync("scripts/staging-tenant-check.mjs", "utf8");
   const stagingRace = readFileSync("scripts/staging-client-race.mjs", "utf8");
 
   for (const action of [
+    "create_pending_purchase_recommendation",
     "approve_purchase_recommendation",
     "dismiss_purchase_recommendation",
     "undo_purchase_recommendation_action",
@@ -484,6 +489,10 @@ test("purchase recommendation and order draft mutations are Edge-routed and serv
     assert.match(repository, new RegExp(`action:\\s*"${action}"`));
   }
 
+  assert.doesNotMatch(
+    repository.match(/async createPurchaseRecommendation[\s\S]*?\n    \},/)?.[0] ?? "",
+    /\.rpc\(\s*["']create_pending_purchase_recommendation["']/i
+  );
   assert.doesNotMatch(
     repository.match(/async approvePurchaseRecommendation[\s\S]*?\n    \},/)?.[0] ?? "",
     /\.rpc\(\s*["']approve_purchase_recommendation["']/i
@@ -505,11 +514,13 @@ test("purchase recommendation and order draft mutations are Edge-routed and serv
     /\.rpc\(\s*["']mark_supplier_order_sent["']/i
   );
 
+  assert.match(edge, /service_create_pending_purchase_recommendation/);
   assert.match(edge, /service_approve_purchase_recommendation/);
   assert.match(edge, /service_dismiss_purchase_recommendation/);
   assert.match(edge, /service_undo_purchase_recommendation_action/);
   assert.match(edge, /service_update_supplier_order_draft/);
   assert.match(edge, /service_mark_supplier_order_sent/);
+  assert.match(edge, /recommendation_created/);
   assert.match(edge, /recommendation_approved/);
   assert.match(edge, /supplier_order_draft_updated/);
   assert.match(edge, /supplier_order_sent_observed/);
@@ -525,6 +536,15 @@ test("purchase recommendation and order draft mutations are Edge-routed and serv
   assert.match(migration, /revoke all on function public\.undo_purchase_recommendation_action/i);
   assert.match(migration, /revoke all on function public\.update_supplier_order_draft/i);
   assert.match(migration, /revoke all on function public\.mark_supplier_order_sent/i);
+  assert.match(createPendingMigration, /private\.service_create_pending_purchase_recommendation/i);
+  assert.match(
+    createPendingMigration,
+    /grant execute on function public\.service_create_pending_purchase_recommendation[\s\S]*service_role/i
+  );
+  assert.match(
+    createPendingMigration,
+    /revoke all on function public\.create_pending_purchase_recommendation/i
+  );
 
   assert.match(stagingTenant, /action:\s*"approve_purchase_recommendation"/);
   assert.match(stagingTenant, /action:\s*"mark_supplier_order_sent"/);
@@ -945,7 +965,8 @@ test("workflow authority hardening removes direct writes and makes Edge telemetr
   assert.match(migration, /grant\s+execute[\s\S]*reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)\s+to\s+service_role/i);
   assert.match(migration, /revoke\s+all[\s\S]*reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)[\s\S]*authenticated/i);
 
-  assert.match(repository, /rpc\("create_pending_purchase_recommendation"/i);
+  assert.match(repository, /action:\s*"create_pending_purchase_recommendation"/i);
+  assert.doesNotMatch(repository, /rpc\("create_pending_purchase_recommendation"/i);
   assert.doesNotMatch(repository, /rpc\("replace_pending_purchase_recommendations"/i);
   assert.doesNotMatch(repository, /rpc\("replace_operational_insights"/i);
   assert.match(repository, /functions\.invoke\("operational-workflows"/i);
