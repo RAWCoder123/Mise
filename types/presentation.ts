@@ -37,7 +37,8 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.integration.connected",
   "today.integration.repair",
   "today.insight.review",
-  "today.recipe.map_unmapped"
+  "today.recipe.map_unmapped",
+  "today.recipe.repair_incompatible_units"
 ] as const;
 
 export const INSIGHT_PRESENTATION_CODES = [
@@ -130,6 +131,14 @@ export type TodayTaskPresentationDescriptor =
       values: {
         unmappedCount: number;
         /** First sold menu item needing a recipe baseline; never translated. */
+        sampleItemName: string | null;
+      };
+    }
+  | {
+      code: "today.recipe.repair_incompatible_units";
+      values: {
+        incompatibleCount: number;
+        /** First menu item with a unit-incompatible recipe link; never translated. */
         sampleItemName: string | null;
       };
     };

@@ -432,7 +432,11 @@ function TaskRow({
       accessibilityState={{ disabled: !canAct }}
       disabled={!canAct}
       onPress={() => {
-        if (task.action.intent === "map_unmapped_pos_items" && task.action.entityId) {
+        if (
+          (task.action.intent === "map_unmapped_pos_items" ||
+            task.action.intent === "repair_incompatible_recipe_units") &&
+          task.action.entityId
+        ) {
           router.push({
             pathname: "/settings/recipes",
             params: { menuItem: task.action.entityId }

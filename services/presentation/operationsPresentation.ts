@@ -79,6 +79,16 @@ interface OperationsCopy {
     reviewInsightDetail: string;
     mapUnmappedRecipesTitle: (unmappedCount: number, unmappedCountLabel: string, sampleItemName: string | null) => string;
     mapUnmappedRecipesDetail: (unmappedCount: number, unmappedCountLabel: string, sampleItemName: string | null) => string;
+    repairIncompatibleRecipesTitle: (
+      incompatibleCount: number,
+      incompatibleCountLabel: string,
+      sampleItemName: string | null
+    ) => string;
+    repairIncompatibleRecipesDetail: (
+      incompatibleCount: number,
+      incompatibleCountLabel: string,
+      sampleItemName: string | null
+    ) => string;
     actions: {
       updateInventoryCount: string;
       beginCountSession: string;
@@ -94,6 +104,7 @@ interface OperationsCopy {
       repairPosConnection: string;
       reviewInsight: string;
       mapUnmappedPosItems: string;
+      repairIncompatibleRecipeUnits: string;
     };
   };
   insight: {
@@ -222,6 +233,18 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
           : sampleItemName
             ? `${unmappedCountLabel} sold POS menu items lack recipe baselines, including ${sampleItemName}, so Mise cannot deplete inventory from those sales.`
             : `${unmappedCountLabel} sold POS menu items lack recipe baselines, so Mise cannot deplete inventory from those sales.`,
+      repairIncompatibleRecipesTitle: (incompatibleCount, incompatibleCountLabel, sampleItemName) =>
+        incompatibleCount === 1 && sampleItemName
+          ? `Fix recipe units for ${sampleItemName}`
+          : sampleItemName
+            ? `Fix units on ${incompatibleCountLabel} recipe mappings, starting with ${sampleItemName}`
+            : `Fix units on ${incompatibleCountLabel} recipe mappings`,
+      repairIncompatibleRecipesDetail: (incompatibleCount, incompatibleCountLabel, sampleItemName) =>
+        incompatibleCount === 1 && sampleItemName
+          ? `${sampleItemName} has a recipe unit that does not match its inventory item, so Mise cannot deplete stock from those sales.`
+          : sampleItemName
+            ? `${incompatibleCountLabel} recipe mappings use units that do not match inventory, including ${sampleItemName}, so Mise cannot deplete stock from those sales.`
+            : `${incompatibleCountLabel} recipe mappings use units that do not match inventory, so Mise cannot deplete stock from those sales.`,
       actions: {
         updateInventoryCount: "Review count",
         beginCountSession: "Start count",
@@ -236,7 +259,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         managePosConnection: "Manage connection",
         repairPosConnection: "Repair connection",
         reviewInsight: "Review insight",
-        mapUnmappedPosItems: "Map recipes"
+        mapUnmappedPosItems: "Map recipes",
+        repairIncompatibleRecipeUnits: "Fix recipe units"
       }
     },
     insight: {
@@ -364,6 +388,18 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
           : sampleItemName
             ? `${unmappedCountLabel} artículos POS vendidos no tienen receta base, incluido ${sampleItemName}, así que Mise no puede descontar inventario de esas ventas.`
             : `${unmappedCountLabel} artículos POS vendidos no tienen receta base, así que Mise no puede descontar inventario de esas ventas.`,
+      repairIncompatibleRecipesTitle: (incompatibleCount, incompatibleCountLabel, sampleItemName) =>
+        incompatibleCount === 1 && sampleItemName
+          ? `Corregir unidades de receta de ${sampleItemName}`
+          : sampleItemName
+            ? `Corregir unidades en ${incompatibleCountLabel} vínculos de receta, empezando por ${sampleItemName}`
+            : `Corregir unidades en ${incompatibleCountLabel} vínculos de receta`,
+      repairIncompatibleRecipesDetail: (incompatibleCount, incompatibleCountLabel, sampleItemName) =>
+        incompatibleCount === 1 && sampleItemName
+          ? `${sampleItemName} tiene una unidad de receta que no coincide con su artículo de inventario, así que Mise no puede descontar existencias de esas ventas.`
+          : sampleItemName
+            ? `${incompatibleCountLabel} vínculos de receta usan unidades que no coinciden con el inventario, incluido ${sampleItemName}, así que Mise no puede descontar existencias de esas ventas.`
+            : `${incompatibleCountLabel} vínculos de receta usan unidades que no coinciden con el inventario, así que Mise no puede descontar existencias de esas ventas.`,
       actions: {
         updateInventoryCount: "Revisar conteo",
         beginCountSession: "Iniciar conteo",
@@ -378,7 +414,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         managePosConnection: "Gestionar conexión",
         repairPosConnection: "Reparar conexión",
         reviewInsight: "Revisar análisis",
-        mapUnmappedPosItems: "Vincular recetas"
+        mapUnmappedPosItems: "Vincular recetas",
+        repairIncompatibleRecipeUnits: "Corregir unidades"
       }
     },
     insight: {
@@ -504,6 +541,18 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
           : sampleItemName
             ? `有 ${unmappedCountLabel} 个已售 POS 菜品缺少配方基线（包括 ${sampleItemName}），因此 Mise 无法根据这些销售扣减库存。`
             : `有 ${unmappedCountLabel} 个已售 POS 菜品缺少配方基线，因此 Mise 无法根据这些销售扣减库存。`,
+      repairIncompatibleRecipesTitle: (incompatibleCount, incompatibleCountLabel, sampleItemName) =>
+        incompatibleCount === 1 && sampleItemName
+          ? `修复 ${sampleItemName} 的配方单位`
+          : sampleItemName
+            ? `修复 ${incompatibleCountLabel} 个配方单位，先从 ${sampleItemName} 开始`
+            : `修复 ${incompatibleCountLabel} 个配方单位`,
+      repairIncompatibleRecipesDetail: (incompatibleCount, incompatibleCountLabel, sampleItemName) =>
+        incompatibleCount === 1 && sampleItemName
+          ? `${sampleItemName} 的配方单位与库存单位不一致，因此 Mise 无法根据这些销售扣减库存。`
+          : sampleItemName
+            ? `有 ${incompatibleCountLabel} 个配方单位与库存不一致（包括 ${sampleItemName}），因此 Mise 无法根据这些销售扣减库存。`
+            : `有 ${incompatibleCountLabel} 个配方单位与库存不一致，因此 Mise 无法根据这些销售扣减库存。`,
       actions: {
         updateInventoryCount: "检查盘点",
         beginCountSession: "开始盘点",
@@ -518,7 +567,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         managePosConnection: "管理连接",
         repairPosConnection: "修复连接",
         reviewInsight: "查看洞察",
-        mapUnmappedPosItems: "关联配方"
+        mapUnmappedPosItems: "关联配方",
+        repairIncompatibleRecipeUnits: "修复配方单位"
       }
     },
     insight: {
@@ -606,6 +656,8 @@ export function presentOperationalTodayTaskAction(
       return actions.reviewInsight;
     case "map_unmapped_pos_items":
       return actions.mapUnmappedPosItems;
+    case "repair_incompatible_recipe_units":
+      return actions.repairIncompatibleRecipeUnits;
     default: {
       const _exhaustive: never = intent;
       throw new Error(`Unsupported Today task action intent: ${String(_exhaustive)}`);
@@ -713,6 +765,20 @@ export function presentOperationalTodayTask(
       copy.today.mapUnmappedRecipesDetail(
         values.unmappedCount,
         quantity(values.unmappedCount),
+        values.sampleItemName
+      )
+    );
+  }
+  if (code === "today.recipe.repair_incompatible_units") {
+    return result(
+      copy.today.repairIncompatibleRecipesTitle(
+        values.incompatibleCount,
+        quantity(values.incompatibleCount),
+        values.sampleItemName
+      ),
+      copy.today.repairIncompatibleRecipesDetail(
+        values.incompatibleCount,
+        quantity(values.incompatibleCount),
         values.sampleItemName
       )
     );

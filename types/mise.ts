@@ -463,6 +463,10 @@ export interface RecipeBaselineIngredient {
   itemName: string;
   quantityUsedPerSale: number;
   unit: string;
+  /** Canonical inventory unit for the linked stock item. */
+  inventoryUnit: string;
+  /** False when the recipe unit cannot drive POS consumption for this stock item. */
+  unitCompatible: boolean;
 }
 
 export interface RecipeBaselineSummary {
@@ -471,6 +475,8 @@ export interface RecipeBaselineSummary {
   inventoryItemsLinked: number;
   posItemsCovered: number;
   posItemsMissingRecipes: string[];
+  /** Sold or mapped menu items that have at least one unit-incompatible recipe link. */
+  posItemsWithIncompatibleUnits: string[];
   coveragePercent: number;
   credibilityLabel: string;
   operatorCopy: string;

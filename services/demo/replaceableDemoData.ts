@@ -1300,7 +1300,8 @@ export function applyManualPosSalesIngestToDemoState(
       pos_integration_id: integrationId,
       source_file_name: sourceFileName,
       consumption_movements_written: consumptionMovementsWritten,
-      unmapped_sale_count: plan.unmappedSales.length
+      unmapped_sale_count: plan.unmappedSales.length,
+      skipped_incompatible_count: plan.skippedIncompatible.length
     },
     created_at: now
   });
@@ -1309,7 +1310,8 @@ export function applyManualPosSalesIngestToDemoState(
     posSalesRowsSaved: importedSales.length,
     salesImportId,
     consumptionMovementsWritten,
-    unmappedSaleCount: plan.unmappedSales.length
+    unmappedSaleCount: plan.unmappedSales.length,
+    skippedIncompatibleCount: plan.skippedIncompatible.length
   };
 }
 

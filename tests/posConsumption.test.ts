@@ -308,6 +308,7 @@ test("demo CSV ingest deducts mapped recipe usage once and writes ledger rows", 
   assert.equal(first.posSalesRowsSaved, 2);
   assert.equal(first.consumptionMovementsWritten, 5);
   assert.equal(first.unmappedSaleCount, 0);
+  assert.equal(first.skippedIncompatibleCount, 0);
 
   const chickenAfter = state.inventoryItems.find((item) => item.id === chickenId)?.current_quantity;
   const riceAfter = state.inventoryItems.find((item) => item.id === riceId)?.current_quantity;

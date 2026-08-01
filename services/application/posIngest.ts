@@ -13,6 +13,7 @@ export interface ImportManualPosSalesCsvResult {
   salesImportId?: string;
   consumptionMovementsWritten?: number;
   unmappedSaleCount?: number;
+  skippedIncompatibleCount?: number;
   provider: "manual_csv";
   preview: Pick<ManualPosSalesIngestPayload, "acceptedRowCount" | "rejectedRowCount" | "issues">;
 }
@@ -47,6 +48,7 @@ export async function importManualPosSalesCsv(
     salesImportId: summary.salesImportId,
     consumptionMovementsWritten: summary.consumptionMovementsWritten ?? 0,
     unmappedSaleCount: summary.unmappedSaleCount ?? 0,
+    skippedIncompatibleCount: summary.skippedIncompatibleCount ?? 0,
     provider: "manual_csv",
     preview: {
       acceptedRowCount: payload.acceptedRowCount,

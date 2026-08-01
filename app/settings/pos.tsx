@@ -20,6 +20,11 @@ const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Ma
 type PosMessage =
   | { key: "pos.message.csvImported"; values: { count: string } }
   | { key: "pos.message.csvImportedWithUnmapped"; values: { count: string; unmapped: string } }
+  | { key: "pos.message.csvImportedWithIncompatible"; values: { count: string; incompatible: string } }
+  | {
+      key: "pos.message.csvImportedWithUnmappedAndIncompatible";
+      values: { count: string; unmapped: string; incompatible: string };
+    }
   | { key: "pos.message.csvImportedMapped"; values: { count: string } }
   | { key: "pos.message.demoLoaded"; values: { provider: string } }
   | { key: "pos.error.demoLoad" }
@@ -35,6 +40,7 @@ export default function POSConnectionScreen() {
   const [csvText, setCsvText] = useState("");
   const [message, setMessage] = useState<PosMessage | null>(null);
   const [unmappedAfterImport, setUnmappedAfterImport] = useState(0);
+  const [incompatibleAfterImport, setIncompatibleAfterImport] = useState(0);
   const csvPreview = useMemo(() => previewManualPosSalesCsv(csvText), [csvText]);
   const posProviderLabel =
     posProvider === "Manual CSV Upload" ? t("pos.provider.manualCsv") : posProvider;
@@ -72,17 +78,37 @@ export default function POSConnectionScreen() {
     setImportingCsv(true);
     setMessage(null);
     setUnmappedAfterImport(0);
+    setIncompatibleAfterImport(0);
     try {
       const result = await importManualPosSalesCsv(restaurant.id, csvText, "settings_manual_csv.txt");
       await refreshPosStatus();
       const unmappedCount = Math.max(0, Math.trunc(result.unmappedSaleCount ?? 0));
+      const incompatibleCount = Math.max(0, Math.trunc(result.skippedIncompatibleCount ?? 0));
       setUnmappedAfterImport(unmappedCount);
-      if (unmappedCount > 0) {
+      setIncompatibleAfterImport(incompatibleCount);
+      if (unmappedCount > 0 && incompatibleCount > 0) {
+        setMessage({
+          key: "pos.message.csvImportedWithUnmappedAndIncompatible",
+          values: {
+            count: formatNumber(result.posSalesRowsSaved),
+            unmapped: formatNumber(unmappedCount),
+            incompatible: formatNumber(incompatibleCount)
+          }
+        });
+      } else if (unmappedCount > 0) {
         setMessage({
           key: "pos.message.csvImportedWithUnmapped",
           values: {
             count: formatNumber(result.posSalesRowsSaved),
             unmapped: formatNumber(unmappedCount)
+          }
+        });
+      } else if (incompatibleCount > 0) {
+        setMessage({
+          key: "pos.message.csvImportedWithIncompatible",
+          values: {
+            count: formatNumber(result.posSalesRowsSaved),
+            incompatible: formatNumber(incompatibleCount)
           }
         });
       } else {
@@ -94,6 +120,7 @@ export default function POSConnectionScreen() {
     } catch {
       setMessage({ key: "pos.error.csvImport" });
       setUnmappedAfterImport(0);
+      setIncompatibleAfterImport(0);
     } finally {
       setImportingCsv(false);
     }
@@ -172,14 +199,28 @@ export default function POSConnectionScreen() {
           </Text>
         )}
 
-        {unmappedAfterImport > 0 ? (
+        {unmappedAfterImport > 0 || incompatibleAfterImport > 0 ? (
           <Pressable
             onPress={() => router.push("/settings/recipes" as never)}
             accessibilityRole="button"
-            accessibilityLabel={t("pos.action.mapUnmappedAccessibility")}
+            accessibilityLabel={t(
+              unmappedAfterImport > 0 && incompatibleAfterImport > 0
+                ? "pos.action.repairRecipesAccessibility"
+                : incompatibleAfterImport > 0
+                  ? "pos.action.fixIncompatibleAccessibility"
+                  : "pos.action.mapUnmappedAccessibility"
+            )}
             style={({ pressed }) => [styles.repairButton, pressed && styles.pressed]}
           >
-            <Text style={styles.repairButtonText}>{t("pos.action.mapUnmapped")}</Text>
+            <Text style={styles.repairButtonText}>
+              {t(
+                unmappedAfterImport > 0 && incompatibleAfterImport > 0
+                  ? "pos.action.repairRecipes"
+                  : incompatibleAfterImport > 0
+                    ? "pos.action.fixIncompatible"
+                    : "pos.action.mapUnmapped"
+              )}
+            </Text>
           </Pressable>
         ) : null}
 

@@ -44,7 +44,8 @@ export type OperationalTodayTaskActionIntent =
   | "manage_pos_connection"
   | "repair_pos_connection"
   | "review_insight"
-  | "map_unmapped_pos_items";
+  | "map_unmapped_pos_items"
+  | "repair_incompatible_recipe_units";
 
 /** Exhaustive list for presentation and contract tests. Keep in sync with the union above. */
 export const OPERATIONAL_TODAY_TASK_ACTION_INTENTS = [
@@ -60,7 +61,8 @@ export const OPERATIONAL_TODAY_TASK_ACTION_INTENTS = [
   "manage_pos_connection",
   "repair_pos_connection",
   "review_insight",
-  "map_unmapped_pos_items"
+  "map_unmapped_pos_items",
+  "repair_incompatible_recipe_units"
 ] as const satisfies readonly OperationalTodayTaskActionIntent[];
 
 /** Stable synthetic source id for the suggested begin-count task (not a DB session id). */
@@ -68,6 +70,9 @@ export const SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID = "suggested_begin";
 
 /** Stable synthetic source id for the unmapped POS recipe repair task. */
 export const UNMAPPED_POS_RECIPE_SOURCE_ID = "unmapped_pos_items";
+
+/** Stable synthetic source id for unit-incompatible recipe repair task. */
+export const INCOMPATIBLE_RECIPE_UNITS_SOURCE_ID = "incompatible_recipe_units";
 
 export type OperationalTodayTaskRoute =
   | "/inventory"
@@ -126,6 +131,8 @@ export interface DeriveOperationalTodayTasksInput {
   posIntegrations?: readonly PosIntegration[];
   /** Sold POS menu item names that still lack recipe baselines. */
   unmappedPosMenuItems?: readonly string[];
+  /** Menu item names with recipe links that cannot drive POS consumption due to unit mismatch. */
+  incompatibleRecipeMenuItems?: readonly string[];
   insights: readonly Insight[];
   openCountSession?: InventoryCountSession | null;
   now?: Date;
@@ -425,7 +432,7 @@ export function deriveOperationalTodayTasks(
     );
   }
 
-  const unmappedPosMenuItems = normalizeUnmappedPosMenuItems(input.unmappedPosMenuItems);
+  const unmappedPosMenuItems = normalizeRecipeMenuItemNames(input.unmappedPosMenuItems, { sort: true });
   if (unmappedPosMenuItems.length > 0) {
     const sampleItemName = unmappedPosMenuItems[0] ?? null;
     pushIfVisible(
@@ -465,10 +472,57 @@ export function deriveOperationalTodayTasks(
     );
   }
 
+  // Preserve caller order (baseline already prefers sold dishes first).
+  const incompatibleRecipeMenuItems = normalizeRecipeMenuItemNames(input.incompatibleRecipeMenuItems, {
+    sort: false
+  });
+  if (incompatibleRecipeMenuItems.length > 0) {
+    const sampleItemName = incompatibleRecipeMenuItems[0] ?? null;
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "recipe",
+        sourceId: INCOMPATIBLE_RECIPE_UNITS_SOURCE_ID,
+        sourceStatus: "incompatible_units",
+        title:
+          incompatibleRecipeMenuItems.length === 1
+            ? `Fix recipe units for ${sampleItemName ?? "POS item"}`
+            : `Fix units on ${incompatibleRecipeMenuItems.length} recipe mappings`,
+        detail:
+          incompatibleRecipeMenuItems.length === 1
+            ? `${sampleItemName ?? "This POS menu item"} has a recipe unit that does not match its inventory item, so Mise cannot deplete stock from those sales.`
+            : `${incompatibleRecipeMenuItems.length} recipe mappings use units that do not match inventory, so Mise cannot deplete stock from those sales.`,
+        presentation: {
+          code: "today.recipe.repair_incompatible_units",
+          values: {
+            incompatibleCount: incompatibleRecipeMenuItems.length,
+            sampleItemName
+          }
+        },
+        priority: incompatibleRecipeMenuItems.length >= 3 ? "high" : "normal",
+        action: {
+          intent: "repair_incompatible_recipe_units",
+          label: "Fix recipe units",
+          route: "/settings/recipes",
+          entityId: sampleItemName
+        },
+        requiredRole: "manager",
+        isComplete: false,
+        completionReason: "Recipe mappings remain with units that cannot drive POS consumption."
+      }),
+      includeCompleted
+    );
+  }
+
   if (input.setupReadiness) {
     for (const step of input.setupReadiness.steps) {
-      // Prefer the dedicated unmapped-POS repair task over the generic setup recipes step.
-      if (step.id === "recipes" && step.status !== "complete" && unmappedPosMenuItems.length > 0) {
+      // Prefer dedicated recipe repair tasks over the generic setup recipes step.
+      if (
+        step.id === "recipes" &&
+        step.status !== "complete" &&
+        (unmappedPosMenuItems.length > 0 || incompatibleRecipeMenuItems.length > 0)
+      ) {
         continue;
       }
       pushIfVisible(tasks, buildSetupTask(restaurantId, step, input.setupReadiness), includeCompleted);
@@ -863,7 +917,10 @@ function integrationDetail(integration: PosIntegration) {
   return "This sales source is not connected.";
 }
 
-function normalizeUnmappedPosMenuItems(items: readonly string[] | undefined): string[] {
+function normalizeRecipeMenuItemNames(
+  items: readonly string[] | undefined,
+  options?: { sort?: boolean }
+): string[] {
   if (!items?.length) return [];
   const seen = new Set<string>();
   const normalized: string[] = [];
@@ -875,6 +932,7 @@ function normalizeUnmappedPosMenuItems(items: readonly string[] | undefined): st
     seen.add(key);
     normalized.push(name);
   }
+  if (options?.sort === false) return normalized;
   return normalized.sort((left, right) => compareStrings(left, right));
 }
 

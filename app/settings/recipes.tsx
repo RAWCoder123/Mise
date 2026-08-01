@@ -357,6 +357,21 @@ export default function RecipeBaselinesScreen() {
             </Card>
           )}
 
+          {visibleSummary.posItemsWithIncompatibleUnits.length > 0 && (
+            <Card style={styles.warningCard}>
+              <View style={styles.warningHeader}>
+                <AlertTriangle size={19} color={colors.caution} strokeWidth={2.4} />
+                <Text style={styles.warningTitle}>{t("recipes.warning.incompatibleTitle")}</Text>
+              </View>
+              <Text style={styles.warningCopy}>{t("recipes.warning.incompatibleBody")}</Text>
+              <View style={styles.missingList}>
+                {visibleSummary.posItemsWithIncompatibleUnits.map((itemName) => (
+                  <Badge key={`incompatible-${itemName}`} label={itemName} tone="warning" />
+                ))}
+              </View>
+            </Card>
+          )}
+
           {canManage ? (
             <RecipeBaselineBuilder
               menuItemName={newMenuItemName}
@@ -580,6 +595,7 @@ function RecipeRow({
 }) {
   const { formatNumber, t } = useLocale();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const hasIncompatibleUnits = item.ingredients.some((ingredient) => !ingredient.unitCompatible);
 
   useEffect(() => {
     setDrafts(
@@ -589,10 +605,14 @@ function RecipeRow({
 
   return (
     <View style={styles.recipeRow}>
-      <View style={styles.statusRail} />
+      <View style={[styles.statusRail, hasIncompatibleUnits && styles.statusRailCaution]} />
       <View style={styles.recipeLead}>
-        <IconBadge tone="leaf">
-          <Link2 size={18} color={colors.success} strokeWidth={2.4} />
+        <IconBadge tone={hasIncompatibleUnits ? "caution" : "leaf"}>
+          {hasIncompatibleUnits ? (
+            <AlertTriangle size={18} color={colors.caution} strokeWidth={2.4} />
+          ) : (
+            <Link2 size={18} color={colors.success} strokeWidth={2.4} />
+          )}
         </IconBadge>
         <View style={styles.recipeText}>
           <View style={styles.recipeTop}>
@@ -613,12 +633,28 @@ function RecipeRow({
               const draftValue = drafts[ingredient.mappingId] ?? formatNumber(ingredient.quantityUsedPerSale);
               const isSaving = savingMappingId === ingredient.mappingId;
               const isBusy = savingMappingId !== null;
+              const displayUnit = ingredient.unitCompatible
+                ? ingredient.unit
+                : ingredient.inventoryUnit || ingredient.unit;
 
               return (
-                <View key={ingredient.mappingId} style={styles.ingredientEditor}>
+                <View
+                  key={ingredient.mappingId}
+                  style={[
+                    styles.ingredientEditor,
+                    !ingredient.unitCompatible && styles.ingredientEditorCaution
+                  ]}
+                >
                   <View style={styles.ingredientTextBlock}>
                     <Text style={styles.ingredientName}>{ingredient.itemName}</Text>
-                    <Text style={styles.ingredientUnit}>{t("recipes.row.perSale")}</Text>
+                    <Text style={styles.ingredientUnit}>
+                      {ingredient.unitCompatible
+                        ? t("recipes.row.perSale")
+                        : t("recipes.row.unitMismatch", {
+                            recipeUnit: ingredient.unit,
+                            inventoryUnit: ingredient.inventoryUnit || "--"
+                          })}
+                    </Text>
                   </View>
                   <View style={styles.ingredientControls}>
                     <View style={styles.quantityEdit}>
@@ -638,7 +674,7 @@ function RecipeRow({
                           accessibilityLabel={t("recipes.row.readOnlyAccessibility", {
                             ingredient: ingredient.itemName,
                             quantity: draftValue,
-                            unit: ingredient.unit
+                            unit: displayUnit
                           })}
                           style={styles.readOnlyQuantity}
                         >
@@ -646,14 +682,25 @@ function RecipeRow({
                         </Text>
                       )}
                       <Text style={styles.quantityUnit} numberOfLines={1}>
-                        {ingredient.unit}
+                        {displayUnit}
                       </Text>
                     </View>
                     {canManage ? (
                       <View style={styles.ingredientActions}>
                         <Button
-                          title={t(isSaving ? "recipes.action.saving" : "recipes.action.save")}
-                          accessibilityLabel={t("recipes.action.saveAccessibility", { ingredient: ingredient.itemName })}
+                          title={t(
+                            isSaving
+                              ? "recipes.action.saving"
+                              : ingredient.unitCompatible
+                                ? "recipes.action.save"
+                                : "recipes.action.fixUnit"
+                          )}
+                          accessibilityLabel={t(
+                            ingredient.unitCompatible
+                              ? "recipes.action.saveAccessibility"
+                              : "recipes.action.fixUnitAccessibility",
+                            { ingredient: ingredient.itemName }
+                          )}
                           variant="secondary"
                           icon={<Save size={15} color={colors.text} strokeWidth={2.5} />}
                           disabled={isBusy}
@@ -836,6 +883,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: 13
+  },
+  statusRailCaution: {
+    backgroundColor: colors.caution
+  },
+  ingredientEditorCaution: {
+    borderColor: colors.caution,
+    backgroundColor: colors.surfaceWarm
   },
   statusRail: {
     position: "absolute",

@@ -669,6 +669,7 @@ export function buildRecipeBaselineSummary(
   for (const [key, mappedName] of mappedMenuItems) {
     if (soldMenuItems.has(key)) soldMenuItems.set(key, mappedName);
   }
+  const inventoryById = new Map(restaurantInventory.map((item) => [item.id, item]));
   const inventoryItemsLinked = new Set(restaurantMappings.map((mapping) => mapping.inventory_item_id));
   const posItemsCovered = [...soldMenuItems.keys()].filter((menuItemKey) => mappedMenuItems.has(menuItemKey)).length;
   const posItemsMissingRecipes = [...soldMenuItems.entries()]
@@ -681,6 +682,7 @@ export function buildRecipeBaselineSummary(
       : mappedMenuItems.size > 0
         ? 100
         : 0;
+  const incompatibleMenuItems = new Map<string, string>();
   const items = [...mappedMenuItems.entries()]
     .map(([menuItemKey, menuItemName]) => {
       const linkedMappings = restaurantMappings.filter(
@@ -689,19 +691,32 @@ export function buildRecipeBaselineSummary(
       const todayQuantitySold = todaySales
         .filter((sale) => normalizeMenuItemKey(sale.item_name) === menuItemKey)
         .reduce((sum, sale) => sum + sale.quantity_sold, 0);
-
-      return {
-        menu_item_name: menuItemName,
-        ingredientCount: linkedMappings.length,
-        ingredients: linkedMappings
-          .map((mapping) => ({
+      const ingredients = linkedMappings
+        .map((mapping) => {
+          const inventoryItem = inventoryById.get(mapping.inventory_item_id);
+          const inventoryUnit = inventoryItem?.unit?.trim() || "";
+          const unitCompatible = Boolean(
+            inventoryItem && inventoryUnitsAreCompatible(inventoryItem.unit, mapping.unit)
+          );
+          if (!unitCompatible) {
+            incompatibleMenuItems.set(menuItemKey, menuItemName);
+          }
+          return {
             mappingId: mapping.id,
             inventoryItemId: mapping.inventory_item_id,
             itemName: itemNames.get(mapping.inventory_item_id) ?? "Inventory item",
             quantityUsedPerSale: mapping.quantity_used_per_sale,
-            unit: mapping.unit
-          }))
-          .sort((a, b) => a.itemName.localeCompare(b.itemName)),
+            unit: mapping.unit,
+            inventoryUnit: inventoryUnit || mapping.unit,
+            unitCompatible
+          };
+        })
+        .sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+      return {
+        menu_item_name: menuItemName,
+        ingredientCount: linkedMappings.length,
+        ingredients,
         linkedInventoryItems: linkedMappings
           .map((mapping) => itemNames.get(mapping.inventory_item_id) ?? "Inventory item")
           .sort((a, b) => a.localeCompare(b)),
@@ -709,6 +724,15 @@ export function buildRecipeBaselineSummary(
       };
     })
     .sort((a, b) => b.todayQuantitySold - a.todayQuantitySold || a.menu_item_name.localeCompare(b.menu_item_name));
+
+  // Prefer sold dishes so Today/Settings repair CTAs start with operational impact.
+  const posItemsWithIncompatibleUnits = [...incompatibleMenuItems.entries()]
+    .sort(([leftKey, leftName], [rightKey, rightName]) => {
+      const leftSold = soldMenuItems.has(leftKey) ? 0 : 1;
+      const rightSold = soldMenuItems.has(rightKey) ? 0 : 1;
+      return leftSold - rightSold || leftName.localeCompare(rightName);
+    })
+    .map(([, menuItemName]) => menuItemName);
 
   const credibilityLabel =
     coveragePercent >= 85
@@ -728,6 +752,7 @@ export function buildRecipeBaselineSummary(
     inventoryItemsLinked: inventoryItemsLinked.size,
     posItemsCovered,
     posItemsMissingRecipes,
+    posItemsWithIncompatibleUnits,
     coveragePercent,
     credibilityLabel,
     operatorCopy,

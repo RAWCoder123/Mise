@@ -221,12 +221,17 @@ export default function SettingsScreen() {
   const gmailConnected = visibleEmailConnection?.status === "connected";
   const gmailNeedsAttention = visibleEmailConnection?.status === "needs_reauth" || visibleEmailConnection?.status === "restricted";
   const unmappedRecipeCount = visibleRecipeBaseline?.posItemsMissingRecipes.length ?? 0;
+  const incompatibleRecipeCount = visibleRecipeBaseline?.posItemsWithIncompatibleUnits.length ?? 0;
   const recipesSubtitle =
-    unmappedRecipeCount === 1
-      ? t("settings.operations.recipes.unmappedOneBody")
-      : unmappedRecipeCount > 1
-        ? t("settings.operations.recipes.unmappedBody", { count: formatNumber(unmappedRecipeCount) })
-        : t("settings.operations.recipes.body");
+    incompatibleRecipeCount === 1
+      ? t("settings.operations.recipes.incompatibleOneBody")
+      : incompatibleRecipeCount > 1
+        ? t("settings.operations.recipes.incompatibleBody", { count: formatNumber(incompatibleRecipeCount) })
+        : unmappedRecipeCount === 1
+          ? t("settings.operations.recipes.unmappedOneBody")
+          : unmappedRecipeCount > 1
+            ? t("settings.operations.recipes.unmappedBody", { count: formatNumber(unmappedRecipeCount) })
+            : t("settings.operations.recipes.body");
   const localizedRole = role ? roleLabel(role, t) : null;
   const profileLine = restaurant
     ? `${restaurant.cuisine_type?.trim() || t("settings.profile.cuisineFallback")} · ${serviceStyleLabel(restaurant.service_style, t)}`
@@ -354,13 +359,23 @@ export default function SettingsScreen() {
             icon={
               <BookOpen
                 size={20}
-                color={unmappedRecipeCount > 0 ? colors.caution : colors.text}
+                color={
+                  incompatibleRecipeCount > 0 || unmappedRecipeCount > 0 ? colors.caution : colors.text
+                }
                 strokeWidth={2.25}
               />
             }
-            iconTone={unmappedRecipeCount > 0 ? "caution" : "neutral"}
-            badgeLabel={unmappedRecipeCount > 0 ? formatNumber(unmappedRecipeCount) : undefined}
-            badgeTone={unmappedRecipeCount > 0 ? "caution" : undefined}
+            iconTone={incompatibleRecipeCount > 0 || unmappedRecipeCount > 0 ? "caution" : "neutral"}
+            badgeLabel={
+              incompatibleRecipeCount > 0
+                ? formatNumber(incompatibleRecipeCount)
+                : unmappedRecipeCount > 0
+                  ? formatNumber(unmappedRecipeCount)
+                  : undefined
+            }
+            badgeTone={
+              incompatibleRecipeCount > 0 || unmappedRecipeCount > 0 ? "caution" : undefined
+            }
             onPress={() => router.push("/settings/recipes" as never)}
           />
           <OperationalRow

@@ -334,6 +334,7 @@ export interface MiseRepository {
     salesImportId?: string;
     consumptionMovementsWritten?: number;
     unmappedSaleCount?: number;
+    skippedIncompatibleCount?: number;
   }>;
   upsertInventoryItem(input: InventoryItemInput): Promise<InventoryItem>;
   createInventoryItemAndSignals(
@@ -3008,12 +3009,14 @@ function createSupabaseRepository(): MiseRepository {
         sales_import_id?: string;
         consumption_movements_written?: number;
         unmapped_sale_count?: number;
+        skipped_incompatible_count?: number;
       };
       return {
         posSalesRowsSaved: Number(summary.pos_sales_rows_saved ?? sales.length),
         salesImportId: typeof summary.sales_import_id === "string" ? summary.sales_import_id : undefined,
         consumptionMovementsWritten: Number(summary.consumption_movements_written ?? 0),
-        unmappedSaleCount: Number(summary.unmapped_sale_count ?? 0)
+        unmappedSaleCount: Number(summary.unmapped_sale_count ?? 0),
+        skippedIncompatibleCount: Number(summary.skipped_incompatible_count ?? 0)
       };
     },
 

@@ -109,6 +109,7 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       setupReadiness,
       posIntegrations,
       unmappedPosMenuItems: recipeBaseline.posItemsMissingRecipes,
+      incompatibleRecipeMenuItems: recipeBaseline.posItemsWithIncompatibleUnits,
       insights,
       openCountSession: openCountSession?.session ?? null
     }),

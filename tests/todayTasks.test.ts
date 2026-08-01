@@ -8,6 +8,7 @@ import {
   operationalTodayTaskId,
   prioritizeOperationalTodayTasksForRole,
   SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID,
+  INCOMPATIBLE_RECIPE_UNITS_SOURCE_ID,
   UNMAPPED_POS_RECIPE_SOURCE_ID,
   sortOperationalTodayTasks,
   type OperationalTodayTask
@@ -160,6 +161,50 @@ test("unmapped POS menu items create a recipe repair task and suppress duplicate
     tasks.some((task) => task.source.kind === "setup" && task.source.id === "recipes"),
     false,
     "dedicated unmapped POS repair replaces the incomplete setup recipes step"
+  );
+});
+
+test("incompatible recipe units create a distinct Today repair task", () => {
+  const incompleteRecipes = setupReadiness();
+  incompleteRecipes.currentStep = "recipes";
+  incompleteRecipes.steps = incompleteRecipes.steps.map((step) =>
+    step.id === "recipes"
+      ? {
+          ...step,
+          status: "active",
+          missing: ["1 incompatible recipe unit"],
+          detail: "Ingredient-per-dish links"
+        }
+      : step
+  );
+
+  const tasks = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "America/New_York",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [],
+    setupReadiness: incompleteRecipes,
+    incompatibleRecipeMenuItems: ["Chicken Bowl", " Veggie Bowl ", "Chicken Bowl"],
+    insights: [],
+    now
+  });
+
+  const recipeTask = tasks.find((task) => task.source.id === INCOMPATIBLE_RECIPE_UNITS_SOURCE_ID);
+  assert.equal(recipeTask?.action.intent, "repair_incompatible_recipe_units");
+  assert.equal(recipeTask?.action.route, "/settings/recipes");
+  assert.equal(recipeTask?.action.entityId, "Chicken Bowl");
+  assert.equal(recipeTask?.requiredRole, "manager");
+  assert.equal(recipeTask?.presentation?.code, "today.recipe.repair_incompatible_units");
+  if (recipeTask?.presentation?.code === "today.recipe.repair_incompatible_units") {
+    assert.equal(recipeTask.presentation.values.incompatibleCount, 2);
+    assert.equal(recipeTask.presentation.values.sampleItemName, "Chicken Bowl");
+  }
+
+  assert.equal(
+    tasks.some((task) => task.source.kind === "setup" && task.source.id === "recipes"),
+    false,
+    "dedicated incompatible-unit repair replaces the incomplete setup recipes step"
   );
 });
 
