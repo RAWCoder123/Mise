@@ -801,6 +801,86 @@ test("demo setup profile can replace POS sales with guided imported rows", () =>
   assert.equal(state.salesImports[0]?.metadata.raw_file_stored, false);
 });
 
+test("recipe baseline coverage matches POS menu names after normalization", () => {
+  const state = createInitialDemoState("Toast");
+  const chicken = state.inventoryItems.find((item) => item.item_name === "Chicken breast");
+  assert.ok(chicken);
+
+  state.posSales.push({
+    id: "sale_chicken_bowl_variant",
+    restaurant_id: DEMO_RESTAURANT_ID,
+    sale_date: state.posSales[0]!.sale_date,
+    item_name: "  CHICKEN   BOWL ",
+    category: "Bowls",
+    quantity_sold: 4,
+    gross_sales: 48,
+    net_sales: 44,
+    source_pos: "Toast",
+    created_at: new Date().toISOString()
+  });
+
+  const summary = buildRecipeBaselineSummary(
+    DEMO_RESTAURANT_ID,
+    state.posSales,
+    state.menuItemIngredients,
+    state.inventoryItems
+  );
+
+  assert.equal(summary.posItemsMissingRecipes.includes("CHICKEN BOWL"), false);
+  assert.equal(summary.coveragePercent, 100);
+  assert.ok(summary.items.some((item) => item.menu_item_name === "Chicken Bowl"));
+});
+
+test("recipe baseline settings can return more than six mapped menu items", () => {
+  const state = createInitialDemoState("Toast");
+  const tomatoes = state.inventoryItems.find((item) => item.item_name === "Tomatoes");
+  assert.ok(tomatoes);
+
+  for (let index = 0; index < 4; index += 1) {
+    const menuItemName = `Special Bowl ${index + 1}`;
+    state.posSales.push({
+      id: `sale_special_bowl_${index}`,
+      restaurant_id: DEMO_RESTAURANT_ID,
+      sale_date: state.posSales[0]!.sale_date,
+      item_name: menuItemName,
+      category: "Bowls",
+      quantity_sold: 2 + index,
+      gross_sales: 24 + index,
+      net_sales: 20 + index,
+      source_pos: "Toast",
+      created_at: new Date().toISOString()
+    });
+    state.menuItemIngredients.push({
+      id: `mapping_special_bowl_${index}`,
+      restaurant_id: DEMO_RESTAURANT_ID,
+      menu_item_name: menuItemName,
+      inventory_item_id: tomatoes.id,
+      quantity_used_per_sale: 0.1,
+      unit: tomatoes.unit
+    });
+  }
+
+  const compact = buildRecipeBaselineSummary(
+    DEMO_RESTAURANT_ID,
+    state.posSales,
+    state.menuItemIngredients,
+    state.inventoryItems
+  );
+  const full = buildRecipeBaselineSummary(
+    DEMO_RESTAURANT_ID,
+    state.posSales,
+    state.menuItemIngredients,
+    state.inventoryItems,
+    undefined,
+    { itemLimit: null }
+  );
+
+  assert.equal(compact.menuItemsTracked, 9);
+  assert.equal(compact.items.length, 6);
+  assert.equal(full.items.length, 9);
+  assert.ok(full.items.some((item) => item.menu_item_name === "Special Bowl 1"));
+});
+
 test("adding a recipe baseline mapping closes a POS coverage gap", () => {
   const state = createInitialDemoState("Toast");
   const tomatoes = state.inventoryItems.find((item) => item.item_name === "Tomatoes");

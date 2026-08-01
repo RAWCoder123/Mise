@@ -628,24 +628,52 @@ function estimateUsage(
   return usage;
 }
 
+export type RecipeBaselineSummaryOptions = {
+  /**
+   * Max mapped menu items returned in `items`.
+   * Defaults to 6 for compact surfaces; pass `null` for the full settings list.
+   */
+  itemLimit?: number | null;
+};
+
+function displayMenuItemName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
 export function buildRecipeBaselineSummary(
   restaurantId: string,
   sales: PosSale[],
   mappings: MenuItemIngredient[],
   inventoryItems: InventoryItem[],
-  operatingDate = defaultOperatingDate(restaurantId)
+  operatingDate = defaultOperatingDate(restaurantId),
+  options: RecipeBaselineSummaryOptions = {}
 ): RecipeBaselineSummary {
   const restaurantSales = sales.filter((sale) => sale.restaurant_id === restaurantId);
   const todaySales = restaurantSales.filter((sale) => isToday(sale, operatingDate));
   const restaurantMappings = mappings.filter((mapping) => mapping.restaurant_id === restaurantId);
   const restaurantInventory = inventoryItems.filter((item) => item.restaurant_id === restaurantId);
   const itemNames = new Map(restaurantInventory.map((item) => [item.id, item.item_name]));
-  const soldMenuItems = new Set(restaurantSales.map((sale) => sale.item_name));
-  const mappedMenuItems = new Set(restaurantMappings.map((mapping) => mapping.menu_item_name));
+  const soldMenuItems = new Map<string, string>();
+  for (const sale of restaurantSales) {
+    const key = normalizeMenuItemKey(sale.item_name);
+    if (!key || soldMenuItems.has(key)) continue;
+    soldMenuItems.set(key, displayMenuItemName(sale.item_name));
+  }
+  const mappedMenuItems = new Map<string, string>();
+  for (const mapping of restaurantMappings) {
+    const key = normalizeMenuItemKey(mapping.menu_item_name);
+    if (!key || mappedMenuItems.has(key)) continue;
+    mappedMenuItems.set(key, displayMenuItemName(mapping.menu_item_name));
+  }
+  // Prefer recipe mapping labels for covered dishes so casing/spacing variants collapse cleanly.
+  for (const [key, mappedName] of mappedMenuItems) {
+    if (soldMenuItems.has(key)) soldMenuItems.set(key, mappedName);
+  }
   const inventoryItemsLinked = new Set(restaurantMappings.map((mapping) => mapping.inventory_item_id));
-  const posItemsCovered = [...soldMenuItems].filter((menuItemName) => mappedMenuItems.has(menuItemName)).length;
-  const posItemsMissingRecipes = [...soldMenuItems]
-    .filter((menuItemName) => !mappedMenuItems.has(menuItemName))
+  const posItemsCovered = [...soldMenuItems.keys()].filter((menuItemKey) => mappedMenuItems.has(menuItemKey)).length;
+  const posItemsMissingRecipes = [...soldMenuItems.entries()]
+    .filter(([menuItemKey]) => !mappedMenuItems.has(menuItemKey))
+    .map(([, menuItemName]) => menuItemName)
     .sort((a, b) => a.localeCompare(b));
   const coveragePercent =
     soldMenuItems.size > 0
@@ -653,11 +681,13 @@ export function buildRecipeBaselineSummary(
       : mappedMenuItems.size > 0
         ? 100
         : 0;
-  const items = [...mappedMenuItems]
-    .map((menuItemName) => {
-      const linkedMappings = restaurantMappings.filter((mapping) => mapping.menu_item_name === menuItemName);
+  const items = [...mappedMenuItems.entries()]
+    .map(([menuItemKey, menuItemName]) => {
+      const linkedMappings = restaurantMappings.filter(
+        (mapping) => normalizeMenuItemKey(mapping.menu_item_name) === menuItemKey
+      );
       const todayQuantitySold = todaySales
-        .filter((sale) => sale.item_name === menuItemName)
+        .filter((sale) => normalizeMenuItemKey(sale.item_name) === menuItemKey)
         .reduce((sum, sale) => sum + sale.quantity_sold, 0);
 
       return {
@@ -690,6 +720,7 @@ export function buildRecipeBaselineSummary(
     soldMenuItems.size > 0
       ? `Mise can translate ${posItemsCovered} of ${soldMenuItems.size} POS menu items into ingredient movement.`
       : `${mappedMenuItems.size} menu item${mappedMenuItems.size === 1 ? "" : "s"} mapped to inventory usage.`;
+  const itemLimit = options.itemLimit === undefined ? 6 : options.itemLimit;
 
   return {
     menuItemsTracked: mappedMenuItems.size,
@@ -700,7 +731,7 @@ export function buildRecipeBaselineSummary(
     coveragePercent,
     credibilityLabel,
     operatorCopy,
-    items: items.slice(0, 6)
+    items: itemLimit == null ? items : items.slice(0, itemLimit)
   };
 }
 

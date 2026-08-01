@@ -4,7 +4,8 @@ import {
   buildInventoryOutlooks,
   buildRecipeBaselineSummary,
   recommendationReason,
-  shouldSuppressRecommendationForItem
+  shouldSuppressRecommendationForItem,
+  type RecipeBaselineSummaryOptions
 } from "../domain/miseDomain";
 import { planInventoryWaste } from "../domain/inventoryWaste";
 import { planInventoryTransfer, planStorageLocationCreate } from "../domain/inventoryTransfer";
@@ -68,14 +69,18 @@ export async function fetchInventoryItemOutlook(restaurantId: string, itemId: st
   return outlook;
 }
 
-export async function fetchRecipeBaselineSummary(restaurantId: string) {
+export async function fetchRecipeBaselineSummary(
+  restaurantId: string,
+  options?: RecipeBaselineSummaryOptions
+) {
   const data = await repository.fetchPlanningData(restaurantId);
   return buildRecipeBaselineSummary(
     restaurantId,
     data.sales,
     data.menuItemIngredients,
     data.inventoryItems,
-    data.operatingDate
+    data.operatingDate,
+    options
   );
 }
 

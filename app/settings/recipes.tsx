@@ -84,7 +84,7 @@ export default function RecipeBaselinesScreen() {
     setError(null);
     try {
       const [nextSummary, nextInventoryItems] = await Promise.all([
-        fetchRecipeBaselineSummary(restaurantId),
+        fetchRecipeBaselineSummary(restaurantId, { itemLimit: null }),
         fetchInventoryItems(restaurantId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
