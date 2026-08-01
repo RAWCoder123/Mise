@@ -1039,6 +1039,10 @@ test("team membership mutations are Edge-routed with service-owned RPCs and clai
     "supabase/migrations/20260801012000_edge_team_membership_workflows.sql",
     "utf8"
   );
+  const membershipPrivilegeMigration = readFileSync(
+    "supabase/migrations/20260801211000_revoke_membership_and_profile_dml.sql",
+    "utf8"
+  );
   const onboardingMigration = readFileSync(
     "supabase/migrations/20260801090525_edge_account_onboarding_workflows.sql",
     "utf8"
@@ -1113,12 +1117,21 @@ test("team membership mutations are Edge-routed with service-owned RPCs and clai
   assert.match(migration, /revoke all on function public\.create_restaurant_member_invite/i);
   assert.match(migration, /grant execute on function public\.service_add_restaurant_member_by_email[\s\S]*service_role/i);
   assert.match(migration, /grant execute on function public\.service_create_restaurant_member_invite[\s\S]*service_role/i);
+  assert.match(
+    membershipPrivilegeMigration,
+    /revoke insert, update, delete on table public\.restaurant_memberships from authenticated/i
+  );
+  assert.match(membershipPrivilegeMigration, /revoke update on table public\.users from authenticated/i);
   assert.match(onboardingMigration, /private\.service_claim_restaurant_member_invite/i);
   assert.match(onboardingMigration, /revoke all on function public\.claim_restaurant_member_invite/i);
   assert.match(teamDirectoryTests, /authenticated clients cannot execute legacy add_restaurant_member_by_email/i);
   assert.match(inviteTests, /authenticated clients cannot execute legacy claim_restaurant_member_invite/i);
   assert.match(tenantTests, /authenticated clients cannot execute the legacy member-add RPC/i);
   assert.match(tenantTests, /service role can execute the member-add service RPC/i);
+  assert.match(tenantTests, /membership inserts are RPC-only/i);
+  assert.match(tenantTests, /membership updates are RPC-only/i);
+  assert.match(tenantTests, /membership deletes are RPC-only/i);
+  assert.match(tenantTests, /legacy user profile updates are RPC-only/i);
 });
 
 test("pre-membership create and claim are user-scoped Edge workflows with service RPCs", () => {
@@ -1855,6 +1868,24 @@ test("security readiness document defines private-beta backend rules and public 
   assert.match(doc, /Provider credentials belong in backend-only Supabase Edge Function secrets/);
   assert.match(doc, /Do not use real restaurant data until all are true/);
   assert.match(doc, /Public-Launch Blockers/);
+});
+
+test("membership and profile tables lose residual authenticated DML grants", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260801211000_revoke_membership_and_profile_dml.sql",
+    "utf8"
+  );
+  const tenantTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const localeTests = readFileSync("supabase/tests/database/operator_locale_preference.test.sql", "utf8");
+
+  assert.match(
+    migration,
+    /revoke insert, update, delete on table public\.restaurant_memberships from authenticated/i
+  );
+  assert.match(migration, /revoke update on table public\.users from authenticated/i);
+  assert.match(tenantTests, /membership inserts are RPC-only/i);
+  assert.match(tenantTests, /legacy user profile updates are RPC-only/i);
+  assert.match(localeTests, /authenticated clients cannot update preferred_locale directly/i);
 });
 
 test("secondary operational tables lose authenticated DML and inventory movements are ledgered", () => {
