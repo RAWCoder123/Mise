@@ -177,7 +177,9 @@ test("supplier recipient upsert is Edge-routed with manager+ service ownership",
   assert.match(edge, /service_upsert_supplier_recipient/);
   assert.match(edge, /supplier_recipient_upserted/);
   assert.match(edge, /email_configured/);
-  assert.doesNotMatch(edge, /staffOperationalActions[\s\S]*"upsert_supplier_recipient"/);
+  const staffActions =
+    edge.match(/const staffOperationalActions = new Set<OperationalAction>\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+  assert.doesNotMatch(staffActions, /"upsert_supplier_recipient"/);
   assert.match(databaseTests, /authenticated clients cannot execute the legacy supplier recipient RPC/i);
   assert.match(databaseTests, /authenticated clients cannot execute the supplier recipient service RPC/i);
   assert.match(databaseTests, /service_upsert_supplier_recipient/i);
