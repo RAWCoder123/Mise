@@ -34,6 +34,7 @@ const actions = [
   "mark_supplier_order_sent",
   "confirm_supplier_order_placed",
   "receive_supplier_order",
+  "upsert_supplier_recipient",
   "upsert_recipe",
   "delete_recipe",
   "save_setup",
@@ -251,6 +252,13 @@ Deno.serve(async (req) => {
         p_actor_user_id: user.id,
         p_restaurant_id: restaurantId,
         p_order_id: requireUuid(body.orderId, "orderId")
+      });
+    } else if (action === "upsert_supplier_recipient") {
+      result = await serviceRpc(securitySupabase, "service_upsert_supplier_recipient", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_supplier_name: requireBoundedString(body.supplierName, "supplierName", 160),
+        p_email: requireBoundedString(body.email, "email", 254)
       });
     } else if (action === "add_restaurant_member") {
       result = await serviceRpc(securitySupabase, "service_add_restaurant_member", {
@@ -886,6 +894,7 @@ function auditAction(action: OperationalAction) {
   if (action === "mark_supplier_order_sent") return "supplier_order_sent_observed";
   if (action === "confirm_supplier_order_placed") return "supplier_order_placed_externally";
   if (action === "receive_supplier_order") return "supplier_order_received";
+  if (action === "upsert_supplier_recipient") return "supplier_recipient_upserted";
   if (action === "begin_count_session") return "inventory_count_session_started";
   if (action === "save_count_lines") return "inventory_count_lines_saved";
   if (action === "submit_count_session") return "inventory_count_session_submitted";
@@ -931,6 +940,7 @@ function auditEntityTable(action: OperationalAction) {
   ) {
     return "supplier_orders";
   }
+  if (action === "upsert_supplier_recipient") return "supplier_recipients";
   if (
     action === "begin_count_session" ||
     action === "save_count_lines" ||
@@ -989,6 +999,12 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>,
     action === "receive_supplier_order"
   ) {
     return requireUuid(body.orderId, "orderId");
+  }
+  if (action === "upsert_supplier_recipient") {
+    if (result && typeof result === "object" && typeof (result as { id?: unknown }).id === "string") {
+      return requireUuid((result as { id: string }).id, "result.id");
+    }
+    return null;
   }
   if (
     action === "save_count_lines" ||
@@ -1061,6 +1077,12 @@ function auditMetadata(
   if (action === "create_storage_location" && result && typeof result === "object") {
     const row = result as Record<string, unknown>;
     if (typeof row.name === "string") metadata.location_name = row.name;
+    return metadata;
+  }
+  if (action === "upsert_supplier_recipient" && result && typeof result === "object") {
+    const row = result as Record<string, unknown>;
+    if (typeof row.supplier_name === "string") metadata.supplier_name = row.supplier_name;
+    metadata.email_configured = typeof row.email === "string" && row.email.length > 0;
     return metadata;
   }
   if (action === "create_pending_purchase_recommendation" && result && typeof result === "object") {

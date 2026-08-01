@@ -698,6 +698,33 @@ test("storage locations and inventory transfer are RLS-readable and service-muta
   assert.match(edgePlaceMigration, /revoke all on function public\.create_storage_location/i);
 });
 
+test("supplier recipient upsert is Edge-routed with service-owned RPCs", () => {
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const migration = readFileSync(
+    "supabase/migrations/20260801020000_edge_upsert_supplier_recipient.sql",
+    "utf8"
+  );
+  const databaseTests = readFileSync(
+    "supabase/tests/database/supplier_recipient_management.test.sql",
+    "utf8"
+  );
+  const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
+  const hostedUpsert =
+    hostedRepository.match(/async upsertSupplierRecipient\([\s\S]*?\n    \},/)?.[0] ?? "";
+
+  assert.match(edge, /"upsert_supplier_recipient"/);
+  assert.match(edge, /service_upsert_supplier_recipient/);
+  assert.match(edge, /supplier_recipient_upserted/);
+  assert.match(migration, /private\.service_upsert_supplier_recipient/i);
+  assert.match(migration, /grant execute on function public\.service_upsert_supplier_recipient[\s\S]*service_role/i);
+  assert.match(migration, /revoke all on function public\.upsert_supplier_recipient/i);
+  assert.match(hostedUpsert, /action:\s*"upsert_supplier_recipient"/);
+  assert.doesNotMatch(hostedUpsert, /\.rpc\(\s*["']upsert_supplier_recipient["']/i);
+  assert.match(databaseTests, /authenticated clients cannot execute the legacy supplier recipient RPC/i);
+  assert.match(databaseTests, /service_upsert_supplier_recipient/i);
+});
+
 test("team membership mutations are Edge-routed with service-owned RPCs and claim stays token RPC", () => {
   const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");

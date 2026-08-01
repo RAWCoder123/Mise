@@ -1,6 +1,6 @@
 begin;
 
-select plan(24);
+select plan(27);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -100,19 +100,37 @@ select is(
 );
 select is(
   has_function_privilege('authenticated', 'public.upsert_supplier_recipient(uuid,text,text)', 'EXECUTE'),
+  false,
+  'authenticated clients cannot execute the legacy supplier recipient RPC'
+);
+select is(
+  has_function_privilege(
+    'authenticated',
+    'public.service_upsert_supplier_recipient(uuid,uuid,text,text)',
+    'EXECUTE'
+  ),
+  false,
+  'authenticated clients cannot execute the supplier recipient service RPC'
+);
+select is(
+  has_function_privilege(
+    'service_role',
+    'public.service_upsert_supplier_recipient(uuid,uuid,text,text)',
+    'EXECUTE'
+  ),
   true,
-  'authenticated clients can execute the guarded supplier recipient RPC'
+  'service role can execute the supplier recipient service RPC'
 );
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '21212121-2121-4121-8121-212121212121', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.upsert_supplier_recipient(
+  $sql$select public.service_upsert_supplier_recipient(
+    '21212121-2121-4121-8121-212121212121',
     'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
     '  fresh   produce co. ',
     ' MANAGER@FRESH.TEST '
   )$sql$,
-  'manager can save an allowlisted supplier recipient'
+  'manager can save an allowlisted supplier recipient through the service RPC'
 );
 reset role;
 
@@ -132,15 +150,20 @@ select is(
   'case-insensitive upsert preserves one restaurant supplier identity'
 );
 select is(
-  (select count(*) from public.audit_logs where action = 'supplier_recipient_updated' and entity_id = 'a3a3a3a3-a3a3-43a3-83a3-a3a3a3a3a3a3'),
-  1::bigint,
-  'recipient change is audited once'
+  (
+    select count(*)
+    from public.audit_logs
+    where action in ('supplier_recipient_updated', 'supplier_recipient_created', 'supplier_recipient_upserted')
+      and entity_id = 'a3a3a3a3-a3a3-43a3-83a3-a3a3a3a3a3a3'
+  ),
+  0::bigint,
+  'service RPC leaves Edge/domain audit to operational-workflows'
 );
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '21212121-2121-4121-8121-212121212121', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.upsert_supplier_recipient(
+  $sql$select public.service_upsert_supplier_recipient(
+    '21212121-2121-4121-8121-212121212121',
     'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
     'Fresh Produce Co.',
     'manager@fresh.test'
@@ -149,19 +172,21 @@ select lives_ok(
 );
 reset role;
 select is(
-  (select count(*) from public.audit_logs where action = 'supplier_recipient_updated' and entity_id = 'a3a3a3a3-a3a3-43a3-83a3-a3a3a3a3a3a3'),
-  1::bigint,
-  'idempotent replay does not forge another audit change'
+  (select email from public.supplier_recipients where id = 'a3a3a3a3-a3a3-43a3-83a3-a3a3a3a3a3a3'),
+  'manager@fresh.test',
+  'idempotent replay leaves the recipient unchanged'
 );
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '31313131-3131-4131-8131-313131313131', true);
+set local role service_role;
 select is(
-  pg_temp.try_execute($sql$select public.upsert_supplier_recipient(
-    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', 'Fresh Produce Co.', 'staff@fresh.test'
+  pg_temp.try_execute($sql$select public.service_upsert_supplier_recipient(
+    '31313131-3131-4131-8131-313131313131',
+    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+    'Fresh Produce Co.',
+    'staff@fresh.test'
   )$sql$),
   false,
-  'staff cannot mutate a supplier recipient through the RPC'
+  'staff cannot mutate a supplier recipient through the service RPC'
 );
 reset role;
 select is(
@@ -177,47 +202,67 @@ select is(
   1::bigint,
   'staff can read only their active restaurant recipient directory'
 );
-reset role;
-
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '21212121-2121-4121-8121-212121212121', true);
 select is(
   pg_temp.try_execute($sql$select public.upsert_supplier_recipient(
-    'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1', 'Cafe Supply', 'forged@cafe.test'
+    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', 'Fresh Produce Co.', 'staff@fresh.test'
   )$sql$),
   false,
-  'manager cannot write another restaurant recipient'
+  'staff cannot call the revoked legacy supplier recipient RPC'
+);
+reset role;
+
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_upsert_supplier_recipient(
+    '21212121-2121-4121-8121-212121212121',
+    'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1',
+    'Cafe Supply',
+    'forged@cafe.test'
+  )$sql$),
+  false,
+  'manager cannot write another restaurant recipient through the service RPC'
 );
 select is(
-  pg_temp.try_execute($sql$select public.upsert_supplier_recipient(
-    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', 'Invented Supplier', 'orders@invented.test'
+  pg_temp.try_execute($sql$select public.service_upsert_supplier_recipient(
+    '21212121-2121-4121-8121-212121212121',
+    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+    'Invented Supplier',
+    'orders@invented.test'
   )$sql$),
   false,
   'manager cannot inject a supplier outside the restaurant catalog'
 );
 select is(
-  pg_temp.try_execute($sql$select public.upsert_supplier_recipient(
-    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', 'Fresh Produce Co.', 'not-an-email'
+  pg_temp.try_execute($sql$select public.service_upsert_supplier_recipient(
+    '21212121-2121-4121-8121-212121212121',
+    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+    'Fresh Produce Co.',
+    'not-an-email'
   )$sql$),
   false,
   'manager cannot save an invalid supplier email'
 );
 select is(
-  pg_temp.try_execute($sql$select public.upsert_supplier_recipient(
-    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', E'Fresh\nProduce Co.', 'orders@fresh.test'
+  pg_temp.try_execute($sql$select public.service_upsert_supplier_recipient(
+    '21212121-2121-4121-8121-212121212121',
+    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+    E'Fresh\nProduce Co.',
+    'orders@fresh.test'
   )$sql$),
   false,
   'manager cannot save a control-character supplier identity'
 );
 reset role;
 
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '41414141-4141-4141-8141-414141414141', true);
+set local role service_role;
 select lives_ok(
-  $sql$select public.upsert_supplier_recipient(
-    'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1', 'Cafe Supply', 'OWNER@CAFE.TEST'
+  $sql$select public.service_upsert_supplier_recipient(
+    '41414141-4141-4141-8141-414141414141',
+    'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1',
+    'Cafe Supply',
+    'OWNER@CAFE.TEST'
   )$sql$,
-  'owner can save their own restaurant supplier recipient'
+  'owner can save their own restaurant supplier recipient through the service RPC'
 );
 reset role;
 select is(

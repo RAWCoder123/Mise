@@ -3457,13 +3457,13 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async upsertSupplierRecipient(input) {
-      const { data, error } = await client.rpc("upsert_supplier_recipient", {
-        p_restaurant_id: input.restaurant_id,
-        p_supplier_name: input.supplier_name,
-        p_email: input.email
+      const response = await invokeOperationalWorkflow({
+        action: "upsert_supplier_recipient",
+        restaurantId: input.restaurant_id,
+        supplierName: input.supplier_name,
+        email: input.email
       });
-      if (error) throwRepositoryError(error, input.restaurant_id);
-      const recipient = Array.isArray(data) ? data[0] : data;
+      const recipient = response.result;
       if (!recipient || typeof recipient !== "object") {
         throw new Error("Supplier recipient workflow returned an invalid response.");
       }

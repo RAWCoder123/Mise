@@ -128,8 +128,11 @@ test("hosted supplier recipient writes use only the guarded RPC while demo write
   assert.match(localMethod, /supplier_recipient_(?:created|updated)/);
   assert.match(localMethod, /appendDemoAuditLog/);
 
-  assert.match(hostedMethod, /client\.rpc\("upsert_supplier_recipient"/);
-  assert.match(hostedMethod, /throwRepositoryError\(error, input\.restaurant_id\)/);
+  assert.match(hostedMethod, /action:\s*"upsert_supplier_recipient"/);
+  assert.match(hostedMethod, /invokeOperationalWorkflow/);
+  assert.match(hostedMethod, /supplierName:\s*input\.supplier_name/);
+  assert.match(hostedMethod, /email:\s*input\.email/);
+  assert.doesNotMatch(hostedMethod, /client\.rpc\("upsert_supplier_recipient"/);
   assert.doesNotMatch(hostedMethod, /\.from\("supplier_recipients"\)/);
   assert.doesNotMatch(hostedMethod, /\.(?:insert|update|upsert|delete)\(/);
 });
@@ -137,6 +140,10 @@ test("hosted supplier recipient writes use only the guarded RPC while demo write
 test("supplier recipient migration preserves the tenant-role invariant and direct-DML revocation", () => {
   const migration = readFileSync(
     "supabase/migrations/20260719214822_supplier_recipient_management.sql",
+    "utf8"
+  );
+  const edgeMigration = readFileSync(
+    "supabase/migrations/20260801020000_edge_upsert_supplier_recipient.sql",
     "utf8"
   );
   assert.match(migration, /create or replace function public\.upsert_supplier_recipient/i);
@@ -151,6 +158,30 @@ test("supplier recipient migration preserves the tenant-role invariant and direc
   assert.match(migration, /revoke insert, update, delete on table public\.supplier_recipients from authenticated/i);
   assert.match(migration, /revoke all on function public\.upsert_supplier_recipient[^;]+from public, anon, authenticated, service_role/is);
   assert.match(migration, /grant execute on function public\.upsert_supplier_recipient[^;]+to authenticated/is);
+
+  assert.match(edgeMigration, /private\.service_upsert_supplier_recipient/i);
+  assert.match(edgeMigration, /private\.actor_has_restaurant_role\(/i);
+  assert.match(edgeMigration, /grant execute on function public\.service_upsert_supplier_recipient[\s\S]*service_role/i);
+  assert.match(edgeMigration, /revoke all on function public\.upsert_supplier_recipient/i);
+  assert.match(edgeMigration, /Domain audit is recorded by operational-workflows/i);
+});
+
+test("supplier recipient upsert is Edge-routed with manager+ service ownership", () => {
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const databaseTests = readFileSync(
+    "supabase/tests/database/supplier_recipient_management.test.sql",
+    "utf8"
+  );
+
+  assert.match(edge, /"upsert_supplier_recipient"/);
+  assert.match(edge, /service_upsert_supplier_recipient/);
+  assert.match(edge, /supplier_recipient_upserted/);
+  assert.match(edge, /email_configured/);
+  assert.doesNotMatch(edge, /staffOperationalActions[\s\S]*"upsert_supplier_recipient"/);
+  assert.match(databaseTests, /authenticated clients cannot execute the legacy supplier recipient RPC/i);
+  assert.match(databaseTests, /authenticated clients cannot execute the supplier recipient service RPC/i);
+  assert.match(databaseTests, /service_upsert_supplier_recipient/i);
+  assert.match(databaseTests, /staff cannot mutate a supplier recipient through the service RPC/i);
 });
 
 test("supplier recipient route is stale-response guarded and staff read-only", () => {
