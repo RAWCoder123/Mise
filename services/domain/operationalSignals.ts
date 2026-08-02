@@ -8,6 +8,17 @@ import {
   type ReceiveDiscrepancySample,
   type ReceiveFillBias
 } from "./receiveDiscrepancyLearning";
+import {
+  applyLossBias,
+  buildChronicCountShrinkInsightInput,
+  buildChronicWasteInsightInput,
+  buildCountShrinkBiasByItem,
+  buildWasteBiasByItem,
+  lossBiasReasonFragment,
+  type CountVarianceSample,
+  type LossBias,
+  type WasteSample
+} from "./wasteVarianceLearning";
 import type { InsightPresentationDescriptor } from "../../types/presentation";
 
 export interface OperationalInventoryItem {
@@ -85,6 +96,10 @@ export interface OperationalPlanningSnapshot {
   appliedTodayConsumptionByItemId?: Record<string, number>;
   /** Receiving ledger samples (ordered vs received) for short-ship fill-rate learning. */
   receivingHistory?: ReceiveDiscrepancySample[];
+  /** Waste ledger samples for chronic spoilage/loss learning. */
+  wasteHistory?: WasteSample[];
+  /** Manual count variance samples for chronic shrink learning. */
+  countVarianceHistory?: CountVarianceSample[];
 }
 
 export function calculateOperationalSignals(snapshot: OperationalPlanningSnapshot) {
@@ -96,9 +111,12 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   const handled = latestHandledByItem(snapshot.recommendationHistory);
   const learned = learnedQuantities(snapshot.recommendationHistory);
   const receiveBiasByItem = buildReceiveFillBiasByItem(snapshot.receivingHistory ?? []);
+  const wasteBiasByItem = buildWasteBiasByItem(snapshot.wasteHistory ?? []);
+  const countShrinkBiasByItem = buildCountShrinkBiasByItem(snapshot.countVarianceHistory ?? []);
   const recommendations: OperationalRecommendation[] = [];
   const insights: OperationalInsight[] = [];
   const chronicShortShipInsights: OperationalInsight[] = [];
+  const chronicLossInsights: OperationalInsight[] = [];
 
   for (const item of snapshot.inventoryItems.filter((entry) => entry.restaurant_id === snapshot.restaurantId)) {
     const mappings = snapshot.menuItemIngredients.filter(
@@ -131,8 +149,14 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       ? Date.parse(item.last_updated) > Date.parse(recentHandled.created_at)
       : false;
     const receiveBias = receiveBiasByItem.get(item.id);
+    const wasteBias = wasteBiasByItem.get(item.id);
+    const countShrinkBias = countShrinkBiasByItem.get(item.id);
     const chronicInsight = buildChronicShortShipInsight(item, receiveBias, now, snapshot.restaurantId);
     if (chronicInsight) chronicShortShipInsights.push(chronicInsight);
+    const wasteInsight = buildChronicWasteInsight(item, wasteBias, now, snapshot.restaurantId);
+    if (wasteInsight) chronicLossInsights.push(wasteInsight);
+    const shrinkInsight = buildChronicCountShrinkInsight(item, countShrinkBias, now, snapshot.restaurantId);
+    if (shrinkInsight) chronicLossInsights.push(shrinkInsight);
 
     if ((isCritical || isLow) && (!recentHandled || changedAfterHandling)) {
       const learnedQuantity = boundedLearnedQuantity(
@@ -141,17 +165,31 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         item.par_level
       );
       const afterApprovalLearning = learnedQuantity ?? suggested;
-      const paddedQuantity = applyReceiveFillBias(afterApprovalLearning, receiveBias, {
-        calculated: suggested,
-        par: item.par_level
-      });
-      const quantity = paddedQuantity ?? afterApprovalLearning;
+      const bounds = { calculated: suggested, par: item.par_level };
+      const afterReceive = applyReceiveFillBias(afterApprovalLearning, receiveBias, bounds);
+      const afterWaste = applyLossBias(afterReceive ?? afterApprovalLearning, wasteBias, bounds);
+      const afterShrink = applyLossBias(afterWaste ?? afterReceive ?? afterApprovalLearning, countShrinkBias, bounds);
+      const quantity = afterShrink ?? afterWaste ?? afterReceive ?? afterApprovalLearning;
       const coverage = baselineUsage > 0 ? projectedQuantity / baselineUsage : null;
       const baseReason = coverage === null
         ? `${item.item_name} is at or below its reorder level. Mise recommends restoring it to par.`
         : `${item.item_name} has about ${round(coverage)} service days of projected coverage based on mapped demand.`;
-      const reason = receiveBias?.isChronic && paddedQuantity != null && paddedQuantity !== afterApprovalLearning
-        ? `${baseReason} ${receiveFillBiasReasonFragment(receiveBias)}`
+      const reasonFragments: string[] = [];
+      if (receiveBias?.isChronic && afterReceive != null && afterReceive !== afterApprovalLearning) {
+        reasonFragments.push(receiveFillBiasReasonFragment(receiveBias));
+      }
+      if (wasteBias?.isChronic && afterWaste != null && afterWaste !== (afterReceive ?? afterApprovalLearning)) {
+        reasonFragments.push(lossBiasReasonFragment(wasteBias));
+      }
+      if (
+        countShrinkBias?.isChronic &&
+        afterShrink != null &&
+        afterShrink !== (afterWaste ?? afterReceive ?? afterApprovalLearning)
+      ) {
+        reasonFragments.push(lossBiasReasonFragment(countShrinkBias));
+      }
+      const reason = reasonFragments.length
+        ? `${baseReason} ${reasonFragments.join(" ")}`
         : baseReason;
       recommendations.push({
         restaurant_id: snapshot.restaurantId,
@@ -212,7 +250,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     }
   }
 
-  // Prefer chronic short-ship insights ahead of lower-priority sales spikes inside the insight cap.
+  // Prefer chronic short-ship / loss insights ahead of lower-priority sales spikes inside the insight cap.
+  insights.unshift(...chronicLossInsights.slice(0, 2));
   insights.unshift(...chronicShortShipInsights.slice(0, 2));
 
   for (const sale of todaySales) {
@@ -250,7 +289,9 @@ export function buildRecommendationInserts(
   recommendationHistory: OperationalRecommendationHistory[] = [],
   operatingDate = new Date().toISOString().slice(0, 10),
   appliedTodayConsumptionByItemId: Record<string, number> = {},
-  receivingHistory: ReceiveDiscrepancySample[] = []
+  receivingHistory: ReceiveDiscrepancySample[] = [],
+  wasteHistory: WasteSample[] = [],
+  countVarianceHistory: CountVarianceSample[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -260,7 +301,9 @@ export function buildRecommendationInserts(
     menuItemIngredients,
     recommendationHistory,
     appliedTodayConsumptionByItemId,
-    receivingHistory
+    receivingHistory,
+    wasteHistory,
+    countVarianceHistory
   }).recommendations;
 }
 
@@ -271,7 +314,9 @@ export function buildInsightsFromData(
   menuItemIngredients: OperationalRecipeMapping[],
   operatingDate = new Date().toISOString().slice(0, 10),
   appliedTodayConsumptionByItemId: Record<string, number> = {},
-  receivingHistory: ReceiveDiscrepancySample[] = []
+  receivingHistory: ReceiveDiscrepancySample[] = [],
+  wasteHistory: WasteSample[] = [],
+  countVarianceHistory: CountVarianceSample[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -281,7 +326,9 @@ export function buildInsightsFromData(
     menuItemIngredients,
     recommendationHistory: [],
     appliedTodayConsumptionByItemId,
-    receivingHistory
+    receivingHistory,
+    wasteHistory,
+    countVarianceHistory
   }).insights;
 }
 
@@ -311,6 +358,66 @@ function buildChronicShortShipInsight(
         itemName: item.item_name,
         supplierName: item.supplier_name,
         fillPercent,
+        sampleCount: bias.sampleCount
+      }
+    }
+  };
+}
+
+function buildChronicWasteInsight(
+  item: OperationalInventoryItem,
+  bias: LossBias | undefined,
+  createdAt: string,
+  restaurantId: string
+): OperationalInsight | null {
+  if (!bias) return null;
+  const marker = buildChronicWasteInsightInput(bias);
+  if (!marker) return null;
+  return {
+    id: `insight_waste_${item.id}`,
+    restaurant_id: restaurantId,
+    insight_type: "waste",
+    title: `${item.item_name} has a chronic waste pattern`,
+    description: `Recent waste records for ${item.item_name} averaged about ${marker.lossPercent}% of on-hand across ${bias.sampleCount} events.`,
+    why_it_matters: "Repeated waste silently reduces usable stock and can make par-based orders too light.",
+    recommended_action: `Review prep and storage for ${item.item_name}, and confirm the next order covers expected loss.`,
+    severity: "warning",
+    created_at: createdAt,
+    presentation: {
+      code: "insight.rule.waste.chronic_waste",
+      values: {
+        itemName: item.item_name,
+        lossPercent: marker.lossPercent,
+        sampleCount: bias.sampleCount
+      }
+    }
+  };
+}
+
+function buildChronicCountShrinkInsight(
+  item: OperationalInventoryItem,
+  bias: LossBias | undefined,
+  createdAt: string,
+  restaurantId: string
+): OperationalInsight | null {
+  if (!bias) return null;
+  const marker = buildChronicCountShrinkInsightInput(bias);
+  if (!marker) return null;
+  return {
+    id: `insight_count_shrink_${item.id}`,
+    restaurant_id: restaurantId,
+    insight_type: "inventory",
+    title: `${item.item_name} often shrinks between counts`,
+    description: `Recent inventory counts for ${item.item_name} averaged about ${marker.lossPercent}% below system across ${bias.sampleCount} counts.`,
+    why_it_matters: "Unexplained shrink means Mise’s on-hand is drifting high and orders may understock the next service.",
+    recommended_action: `Investigate count process and theft/spoilage risk for ${item.item_name}, then recount before ordering.`,
+    severity: "warning",
+    created_at: createdAt,
+    presentation: {
+      code: "insight.rule.inventory.chronic_count_shrink",
+      values: {
+        itemName: item.item_name,
+        lossPercent: marker.lossPercent,
         sampleCount: bias.sampleCount
       }
     }

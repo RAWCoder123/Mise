@@ -77,6 +77,12 @@ export const INCOMPATIBLE_RECIPE_UNITS_SOURCE_ID = "incompatible_recipe_units";
 /** Stable synthetic source id prefix for chronic short-ship ordering tasks. */
 export const CHRONIC_SHORT_SHIP_SOURCE_ID_PREFIX = "chronic_short_ship_";
 
+/** Stable synthetic source id prefix for chronic waste tasks. */
+export const CHRONIC_WASTE_SOURCE_ID_PREFIX = "chronic_waste_";
+
+/** Stable synthetic source id prefix for chronic count-shrink tasks. */
+export const CHRONIC_COUNT_SHRINK_SOURCE_ID_PREFIX = "chronic_count_shrink_";
+
 export type OperationalTodayTaskRoute =
   | "/inventory"
   | `/inventory/${string}`
@@ -138,6 +144,10 @@ export interface DeriveOperationalTodayTasksInput {
   incompatibleRecipeMenuItems?: readonly string[];
   /** Chronic supplier short-ship patterns derived from receiving history. */
   chronicShortShipItems?: readonly ChronicShortShipTodayItem[];
+  /** Chronic waste patterns derived from waste ledger history. */
+  chronicWasteItems?: readonly ChronicLossTodayItem[];
+  /** Chronic unexplained count-shrink patterns derived from manual counts. */
+  chronicCountShrinkItems?: readonly ChronicLossTodayItem[];
   insights: readonly Insight[];
   openCountSession?: InventoryCountSession | null;
   now?: Date;
@@ -149,6 +159,13 @@ export type ChronicShortShipTodayItem = {
   itemName: string;
   supplierName: string;
   fillPercent: number;
+  sampleCount: number;
+};
+
+export type ChronicLossTodayItem = {
+  inventoryItemId: string;
+  itemName: string;
+  lossPercent: number;
   sampleCount: number;
 };
 
@@ -651,11 +668,85 @@ export function deriveOperationalTodayTasks(
     );
   }
 
+  const chronicWasteItems = (input.chronicWasteItems ?? [])
+    .filter((item) => item.inventoryItemId.trim() && item.itemName.trim())
+    .slice(0, 2);
+  for (const item of chronicWasteItems) {
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "insight",
+        sourceId: `${CHRONIC_WASTE_SOURCE_ID_PREFIX}${item.inventoryItemId}`,
+        sourceStatus: "chronic_waste",
+        title: `${item.itemName} has a chronic waste pattern`,
+        detail: `Recent waste averaged about ${item.lossPercent}% of on-hand across ${item.sampleCount} records.`,
+        presentation: {
+          code: "today.waste.chronic_waste",
+          values: {
+            itemName: item.itemName,
+            lossPercent: item.lossPercent,
+            sampleCount: item.sampleCount
+          }
+        },
+        priority: "high",
+        action: {
+          intent: "review_insight",
+          label: "Review waste",
+          route: "/inventory",
+          entityId: item.inventoryItemId
+        },
+        requiredRole: "manager",
+        isComplete: false,
+        completionReason: "Waste history still shows a chronic loss pattern."
+      }),
+      includeCompleted
+    );
+  }
+
+  const chronicCountShrinkItems = (input.chronicCountShrinkItems ?? [])
+    .filter((item) => item.inventoryItemId.trim() && item.itemName.trim())
+    .slice(0, 2);
+  for (const item of chronicCountShrinkItems) {
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "insight",
+        sourceId: `${CHRONIC_COUNT_SHRINK_SOURCE_ID_PREFIX}${item.inventoryItemId}`,
+        sourceStatus: "chronic_count_shrink",
+        title: `${item.itemName} often shrinks between counts`,
+        detail: `Recent counts averaged about ${item.lossPercent}% below system across ${item.sampleCount} counts.`,
+        presentation: {
+          code: "today.inventory.chronic_count_shrink",
+          values: {
+            itemName: item.itemName,
+            lossPercent: item.lossPercent,
+            sampleCount: item.sampleCount
+          }
+        },
+        priority: "high",
+        action: {
+          intent: "begin_inventory_count_session",
+          label: "Start recount",
+          route: "/inventory/count",
+          entityId: item.inventoryItemId
+        },
+        requiredRole: "manager",
+        isComplete: false,
+        completionReason: "Count history still shows a chronic shrink pattern."
+      }),
+      includeCompleted
+    );
+  }
+
   for (const insight of input.insights) {
     if (insight.restaurant_id !== restaurantId) continue;
     if (insight.severity === "info") continue;
     // Inventory and ordering risks already have authoritative workflow tasks above.
     if (insight.insight_type === "inventory" || insight.insight_type === "ordering") continue;
+    // Chronic waste has a dedicated manager task above.
+    if (insight.presentation?.code === "insight.rule.waste.chronic_waste") continue;
     pushIfVisible(
       tasks,
       buildTask({

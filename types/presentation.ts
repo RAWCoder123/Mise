@@ -39,7 +39,9 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.insight.review",
   "today.recipe.map_unmapped",
   "today.recipe.repair_incompatible_units",
-  "today.ordering.chronic_short_ship"
+  "today.ordering.chronic_short_ship",
+  "today.waste.chronic_waste",
+  "today.inventory.chronic_count_shrink"
 ] as const;
 
 export const INSIGHT_PRESENTATION_CODES = [
@@ -47,6 +49,8 @@ export const INSIGHT_PRESENTATION_CODES = [
   "insight.rule.sales.demand_rising",
   "insight.rule.prep.low_stock",
   "insight.rule.waste.overstock",
+  "insight.rule.waste.chronic_waste",
+  "insight.rule.inventory.chronic_count_shrink",
   "insight.rule.ordering.chronic_short_ship",
   "insight.evidence.opaque"
 ] as const;
@@ -152,6 +156,22 @@ export type TodayTaskPresentationDescriptor =
         fillPercent: number;
         sampleCount: number;
       };
+    }
+  | {
+      code: "today.waste.chronic_waste";
+      values: {
+        itemName: string;
+        lossPercent: number;
+        sampleCount: number;
+      };
+    }
+  | {
+      code: "today.inventory.chronic_count_shrink";
+      values: {
+        itemName: string;
+        lossPercent: number;
+        sampleCount: number;
+      };
     };
 
 export type InsightPresentationDescriptor =
@@ -177,6 +197,22 @@ export type InsightPresentationDescriptor =
   | {
       code: "insight.rule.waste.overstock";
       values: { itemName: string; quantity: number; unit: string };
+    }
+  | {
+      code: "insight.rule.waste.chronic_waste";
+      values: {
+        itemName: string;
+        lossPercent: number;
+        sampleCount: number;
+      };
+    }
+  | {
+      code: "insight.rule.inventory.chronic_count_shrink";
+      values: {
+        itemName: string;
+        lossPercent: number;
+        sampleCount: number;
+      };
     }
   | {
       code: "insight.rule.ordering.chronic_short_ship";
