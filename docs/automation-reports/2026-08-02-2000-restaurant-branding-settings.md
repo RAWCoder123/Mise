@@ -16,12 +16,12 @@ Restaurant identity settings covered name/address/cuisine/service style/timezone
 4. Demo mode persists through the local repository and session snapshot.
 
 ## Verification
-- `npm run typecheck`
-- `npm test`
-- `npm run security:static`
-- `npm run security:backend`
-- `npm run design:static`
-- `npm run qa:routes`
+- `npm run typecheck` ✅
+- `npm test` ✅ (393)
+- `npm run security:static` ✅
+- `npm run security:backend` ✅
+- `npm run design:static` ✅
+- `npm run qa:routes` ✅ (includes `/settings/restaurant`)
 - Docker `supabase:test` still pending in this environment
 
 ## Classification
