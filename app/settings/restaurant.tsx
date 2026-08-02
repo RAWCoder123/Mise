@@ -649,8 +649,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm
   },
   swatch: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
