@@ -1443,6 +1443,9 @@ test("transfer put-away and orders review reuse ranked location and recommendati
   assert.match(detailScreen, /inventory\.detail\.transferLocationSearch\.accessibility/);
   assert.match(orderDetailScreen, /filterStorageLocationsBySearch/);
   assert.match(orderDetailScreen, /orders\.detail\.receive\.putAwaySearch\.accessibility/);
+  assert.match(orderDetailScreen, /receiveStorageLocationIds/);
+  assert.match(orderDetailScreen, /orders\.detail\.receive\.putAwayDefault/);
+  assert.match(orderDetailScreen, /orders\.detail\.receive\.putAwayLine/);
   assert.match(orderDetailScreen, /filterInventoryItemsBySearch/);
   assert.match(orderDetailScreen, /receiveLineQuery/);
   assert.match(orderDetailScreen, /visibleReceiveLines/);

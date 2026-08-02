@@ -129,3 +129,21 @@ test("order receive uses locale-aware quantities and optional line notes", () =>
   assert.match(catalog, /"orders\.detail\.receive\.invalidQuantity"/);
   assert.match(catalog, /"orders\.detail\.notice\.receiveInvalidTitle"/);
 });
+
+test("order receive supports per-line put-away stations with a shared default", () => {
+  const detail = readFileSync("app/orders/[id].tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const domain = readFileSync("services/domain/supplierOrderReceiving.ts", "utf8");
+
+  assert.match(domain, /storageLocationIdsByItemId/);
+  assert.match(detail, /receiveStorageLocationIds/);
+  assert.match(detail, /storageLocationIdsByItemId:\s*receiveStorageLocationIds/);
+  assert.match(detail, /t\("orders\.detail\.receive\.putAwayDefault"\)/);
+  assert.match(detail, /t\("orders\.detail\.receive\.putAwayLine"/);
+  assert.match(detail, /t\("orders\.detail\.receive\.putAwayLineOption"/);
+  assert.match(detail, /setReceiveStorageLocationIds/);
+  assert.match(catalog, /"orders\.detail\.receive\.putAwayDefault"/);
+  assert.match(catalog, /"orders\.detail\.receive\.putAwayLine"/);
+  assert.match(catalog, /"orders\.detail\.receive\.putAwayLineOption"/);
+  assert.match(catalog, /"orders\.detail\.receive\.putAwayHelp"/);
+});

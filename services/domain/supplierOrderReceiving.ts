@@ -130,11 +130,14 @@ export function buildReceiveLinesFromFormInputs(input: {
   inventoryItemIds: readonly string[];
   quantitiesByItemId: Readonly<Record<string, string>>;
   notesByItemId?: Readonly<Record<string, string>>;
+  /** Shared default put-away station when a line does not override. */
   storageLocationId?: string | null;
+  /** Optional per-line put-away stations; blank/missing falls back to storageLocationId. */
+  storageLocationIdsByItemId?: Readonly<Record<string, string | null | undefined>>;
   parseNumber: (value: string) => number | null;
 }): ReceiveFormLineBuildResult {
   const lines: SupplierOrderReceiveLineInput[] = [];
-  const storageLocationId =
+  const defaultStorageLocationId =
     typeof input.storageLocationId === "string" && input.storageLocationId.trim()
       ? input.storageLocationId.trim()
       : null;
@@ -156,11 +159,17 @@ export function buildReceiveLinesFromFormInputs(input: {
       return { ok: false, error: "note_too_long" };
     }
 
+    const rawLineLocation = input.storageLocationIdsByItemId?.[inventoryItemId];
+    const lineStorageLocationId =
+      typeof rawLineLocation === "string" && rawLineLocation.trim()
+        ? rawLineLocation.trim()
+        : null;
+
     lines.push({
       inventoryItemId,
       quantityReceived,
       note,
-      storageLocationId
+      storageLocationId: lineStorageLocationId ?? defaultStorageLocationId
     });
   }
 

@@ -171,6 +171,40 @@ test("builds receive lines from locale-aware quantity strings and optional notes
   assert.deepEqual(invalid, { ok: false, error: "invalid_quantity" });
 });
 
+test("builds receive lines with per-item put-away stations over a shared default", () => {
+  const mixed = buildReceiveLinesFromFormInputs({
+    inventoryItemIds: ["item_1", "item_2", "item_3"],
+    quantitiesByItemId: { item_1: "4", item_2: "6", item_3: "2" },
+    storageLocationId: "loc_main",
+    storageLocationIdsByItemId: {
+      item_1: "loc_walkin",
+      item_2: "  ",
+      item_3: "loc_line"
+    },
+    parseNumber: (value) => parseLocalizedNumber("en", value)
+  });
+  assert.equal(mixed.ok, true);
+  if (!mixed.ok) return;
+  assert.deepEqual(
+    mixed.lines.map((line) => [line.inventoryItemId, line.storageLocationId]),
+    [
+      ["item_1", "loc_walkin"],
+      ["item_2", "loc_main"],
+      ["item_3", "loc_line"]
+    ]
+  );
+
+  const onlyPerLine = buildReceiveLinesFromFormInputs({
+    inventoryItemIds: ["item_1"],
+    quantitiesByItemId: { item_1: "3" },
+    storageLocationIdsByItemId: { item_1: "loc_walkin" },
+    parseNumber: (value) => parseLocalizedNumber("en", value)
+  });
+  assert.equal(onlyPerLine.ok, true);
+  if (!onlyPerLine.ok) return;
+  assert.equal(onlyPerLine.lines[0]?.storageLocationId, "loc_walkin");
+});
+
 test("rejects receive when the order is not sent or lines are incomplete", () => {
   assert.throws(
     () =>

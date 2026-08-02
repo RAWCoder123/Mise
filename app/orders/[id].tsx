@@ -76,6 +76,7 @@ export default function OrderDraftDetailScreen() {
   const [receiveNotes, setReceiveNotes] = useState<Record<string, string>>({});
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
   const [receiveStorageLocationId, setReceiveStorageLocationId] = useState("");
+  const [receiveStorageLocationIds, setReceiveStorageLocationIds] = useState<Record<string, string>>({});
   const [putAwayLocationQuery, setPutAwayLocationQuery] = useState("");
   const [receiveLineQuery, setReceiveLineQuery] = useState("");
   const [operatorNote, setOperatorNote] = useState("");
@@ -123,11 +124,31 @@ export default function OrderDraftDetailScreen() {
       setEmailConnection(nextEmailConnection);
       setLinkedRecommendations(linked);
       setStorageLocations(nextLocations);
-      setReceiveStorageLocationId((current) =>
-        current && nextLocations.some((location) => location.id === current)
-          ? current
-          : main?.id ?? nextLocations[0]?.id ?? ""
-      );
+      const fallbackLocationId = main?.id ?? nextLocations[0]?.id ?? "";
+      setReceiveStorageLocationId((currentDefault) => {
+        const nextDefault =
+          currentDefault && nextLocations.some((location) => location.id === currentDefault)
+            ? currentDefault
+            : fallbackLocationId;
+        return nextDefault;
+      });
+      setReceiveStorageLocationIds((currentLineIds) => {
+        const preservedDefault = Object.values(currentLineIds).find((id) =>
+          nextLocations.some((location) => location.id === id)
+        );
+        const nextDefault = preservedDefault ?? fallbackLocationId;
+        return Object.fromEntries(
+          linked.map((recommendation) => {
+            const existing = currentLineIds[recommendation.inventory_item_id];
+            return [
+              recommendation.inventory_item_id,
+              existing && nextLocations.some((location) => location.id === existing)
+                ? existing
+                : nextDefault
+            ];
+          })
+        );
+      });
       setReceiveQuantities(
         Object.fromEntries(
           defaultReceiveLinesFromRecommendations(linked).map((line) => [
@@ -149,6 +170,7 @@ export default function OrderDraftDetailScreen() {
       setLinkedRecommendations([]);
       setStorageLocations([]);
       setReceiveStorageLocationId("");
+      setReceiveStorageLocationIds({});
       setNotice({
         title: t("orders.detail.load.title"),
         message:
@@ -173,6 +195,7 @@ export default function OrderDraftDetailScreen() {
     setReceiveNotes({});
     setStorageLocations([]);
     setReceiveStorageLocationId("");
+    setReceiveStorageLocationIds({});
     setPutAwayLocationQuery("");
     setReceiveLineQuery("");
     setOperatorNote("");
@@ -181,6 +204,17 @@ export default function OrderDraftDetailScreen() {
     setLoading(Boolean(restaurant && id));
     void load();
   }, [id, load, restaurant?.id]);
+
+  function applyDefaultPutAwayLocation(locationId: string): void {
+    setReceiveStorageLocationId(locationId);
+    setReceiveStorageLocationIds((current) => {
+      const next: Record<string, string> = { ...current };
+      for (const recommendation of linkedRecommendations) {
+        next[recommendation.inventory_item_id] = locationId;
+      }
+      return next;
+    });
+  }
 
   function seedReceiveForm(
     recommendations: readonly PurchaseRecommendation[]
@@ -198,6 +232,14 @@ export default function OrderDraftDetailScreen() {
       )
     );
     setReceiveNotes(Object.fromEntries(defaults.map((line) => [line.inventoryItemId, ""])));
+    setReceiveStorageLocationIds(
+      Object.fromEntries(
+        defaults.map((line) => [
+          line.inventoryItemId,
+          line.storageLocationId ?? receiveStorageLocationId
+        ])
+      )
+    );
   }
 
   async function persistNote(): Promise<SupplierOrder> {
@@ -372,8 +414,12 @@ export default function OrderDraftDetailScreen() {
     }
     if (
       storageLocations.length > 0 &&
-      (!receiveStorageLocationId ||
-        !storageLocations.some((location) => location.id === receiveStorageLocationId))
+      linkedRecommendations.some((recommendation) => {
+        const locationId = receiveStorageLocationIds[recommendation.inventory_item_id] ?? "";
+        return (
+          !locationId || !storageLocations.some((location) => location.id === locationId)
+        );
+      })
     ) {
       setNotice({
         title: t("orders.detail.notice.receiveInvalidTitle"),
@@ -387,6 +433,7 @@ export default function OrderDraftDetailScreen() {
       quantitiesByItemId: receiveQuantities,
       notesByItemId: receiveNotes,
       storageLocationId: receiveStorageLocationId || null,
+      storageLocationIdsByItemId: receiveStorageLocationIds,
       parseNumber
     });
     if (!drafted.ok) {
@@ -453,9 +500,26 @@ export default function OrderDraftDetailScreen() {
           parseNumber
         );
         const note = receiveNotes[recommendation.inventory_item_id] ?? "";
-        return quantityReady && note.trim().length <= SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS;
+        const locationId = receiveStorageLocationIds[recommendation.inventory_item_id] ?? "";
+        const locationReady =
+          storageLocations.length === 0 ||
+          (Boolean(locationId) &&
+            storageLocations.some((location) => location.id === locationId));
+        return (
+          quantityReady &&
+          locationReady &&
+          note.trim().length <= SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS
+        );
       }),
-    [isSent, linkedRecommendations, parseNumber, receiveNotes, receiveQuantities]
+    [
+      isSent,
+      linkedRecommendations,
+      parseNumber,
+      receiveNotes,
+      receiveQuantities,
+      receiveStorageLocationIds,
+      storageLocations
+    ]
   );
   const showPutAwayLocationSearch =
     storageLocations.length >= STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD;
@@ -636,7 +700,9 @@ export default function OrderDraftDetailScreen() {
               <Text style={styles.sectionBody}>{t("orders.detail.receive.body")}</Text>
               {storageLocations.length > 0 ? (
                 <View style={styles.receivePutAway}>
-                  <Text style={styles.receivePutAwayLabel}>{t("orders.detail.receive.putAway")}</Text>
+                  <Text style={styles.receivePutAwayLabel}>
+                    {t("orders.detail.receive.putAwayDefault")}
+                  </Text>
                   <Text style={styles.receivePutAwayHelp}>{t("orders.detail.receive.putAwayHelp")}</Text>
                   {showPutAwayLocationSearch ? (
                     <View style={styles.locationSearchBox}>
@@ -666,7 +732,7 @@ export default function OrderDraftDetailScreen() {
                             location: location.name
                           })}
                           disabled={busy}
-                          onPress={() => setReceiveStorageLocationId(location.id)}
+                          onPress={() => applyDefaultPutAwayLocation(location.id)}
                           style={[styles.locationChip, selected && styles.locationChipSelected]}
                         >
                           <Text
@@ -716,6 +782,14 @@ export default function OrderDraftDetailScreen() {
               {visibleReceiveLines.map((recommendation) => {
                 const raw = receiveQuantities[recommendation.inventory_item_id] ?? "";
                 const note = receiveNotes[recommendation.inventory_item_id] ?? "";
+                const linePutAwayId =
+                  receiveStorageLocationIds[recommendation.inventory_item_id] ??
+                  receiveStorageLocationId;
+                const linePutAwayLocations = showPutAwayLocationSearch
+                  ? filterStorageLocationsBySearch(storageLocations, putAwayLocationQuery, {
+                      selectedId: linePutAwayId
+                    })
+                  : storageLocations;
                 const received = parseNumber(raw);
                 const discrepancy =
                   received != null && Number.isFinite(received)
@@ -753,6 +827,48 @@ export default function OrderDraftDetailScreen() {
                           unit: recommendation.unit
                         })}
                       </Text>
+                    ) : null}
+                    {storageLocations.length > 0 ? (
+                      <View style={styles.receiveLinePutAway}>
+                        <Text style={styles.receiveLinePutAwayLabel}>
+                          {t("orders.detail.receive.putAwayLine", {
+                            item: recommendation.item_name
+                          })}
+                        </Text>
+                        <View style={styles.locationChips}>
+                          {linePutAwayLocations.map((location) => {
+                            const selected = location.id === linePutAwayId;
+                            return (
+                              <Pressable
+                                key={`${recommendation.id}-${location.id}`}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected, disabled: busy }}
+                                accessibilityLabel={t("orders.detail.receive.putAwayLineOption", {
+                                  item: recommendation.item_name,
+                                  location: location.name
+                                })}
+                                disabled={busy}
+                                onPress={() =>
+                                  setReceiveStorageLocationIds((current) => ({
+                                    ...current,
+                                    [recommendation.inventory_item_id]: location.id
+                                  }))
+                                }
+                                style={[styles.locationChip, selected && styles.locationChipSelected]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.locationChipText,
+                                    selected && styles.locationChipTextSelected
+                                  ]}
+                                >
+                                  {location.name}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </View>
                     ) : null}
                     <TextInput
                       accessibilityLabel={t("orders.detail.receive.noteLabel", {
@@ -1067,6 +1183,15 @@ const styles = StyleSheet.create({
   receivePutAwayHelp: {
     color: colors.muted,
     ...typography.caption
+  },
+  receiveLinePutAway: {
+    gap: 4,
+    marginTop: 2
+  },
+  receiveLinePutAwayLabel: {
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "600"
   },
   receiveLineSearchBox: {
     minHeight: 44,
