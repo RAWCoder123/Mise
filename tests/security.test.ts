@@ -312,7 +312,7 @@ test("tenant isolation pgTAP allowlists cover July/August restaurant-owned table
   const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
   const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
 
-  assert.match(tenantTests, /select plan\(443\);/);
+  assert.match(tenantTests, /select plan\(445\);/);
   assert.match(tenantTests, /'inventory_count_sessions'/);
   assert.match(tenantTests, /'inventory_count_lines'/);
   assert.match(tenantTests, /'storage_locations'/);
