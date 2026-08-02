@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  assertWasteStationAvailability,
   canRecordInventoryWaste,
-  planInventoryWaste
+  planInventoryWaste,
+  planWasteLocationDeduction
 } from "../services/domain/inventoryWaste";
 import {
   operatingLimits,
@@ -106,4 +108,99 @@ test("inventory list and staff detail surface waste recording without manager co
   assert.match(catalog, /"today\.waste\.openInventoryAction": "Open inventory"/);
   assert.match(catalog, /"today\.waste\.openInventoryAction": "Abrir inventario"/);
   assert.match(catalog, /"today\.waste\.openInventoryAction": "打开库存"/);
+});
+
+test("assertWasteStationAvailability rejects waste beyond the selected station balance", () => {
+  assert.throws(
+    () =>
+      assertWasteStationAvailability({
+        onHandQuantity: 30,
+        quantityRemovedApplied: 8,
+        storageLocationId: "walk-in",
+        mainStorageLocationId: "main",
+        balancesBefore: [
+          { storageLocationId: "main", quantity: 5 },
+          { storageLocationId: "walk-in", quantity: 3 }
+        ]
+      }),
+    /insufficient quantity at the selected storage location/i
+  );
+
+  assert.doesNotThrow(() =>
+    assertWasteStationAvailability({
+      onHandQuantity: 30,
+      quantityRemovedApplied: 8,
+      storageLocationId: "walk-in",
+      mainStorageLocationId: "main",
+      balancesBefore: [
+        { storageLocationId: "main", quantity: 5 },
+        { storageLocationId: "walk-in", quantity: 20 }
+      ]
+    })
+  );
+});
+
+test("planWasteLocationDeduction restores Main after reconcile and takes waste from the chosen station", () => {
+  // Before: Main=5, Walk-in=20. Waste 8 from Walk-in.
+  // After Main-first reconcile: Main=0, Walk-in=17.
+  const planned = planWasteLocationDeduction({
+    mainStorageLocationId: "main",
+    storageLocationId: "walk-in",
+    quantityRemoved: 8,
+    mainQuantityBefore: 5,
+    balancesAfterReconcile: [
+      { storageLocationId: "main", quantity: 0 },
+      { storageLocationId: "walk-in", quantity: 17 }
+    ]
+  });
+
+  assert.ok(planned);
+  assert.equal(planned?.quantityMovedToMain, 5);
+  assert.deepEqual(planned?.balanceUpdates, [
+    { storageLocationId: "main", quantityBefore: 0, quantityAfter: 5 },
+    { storageLocationId: "walk-in", quantityBefore: 17, quantityAfter: 12 }
+  ]);
+});
+
+test("planWasteLocationDeduction is a no-op when waste is attributed to Main", () => {
+  assert.equal(
+    planWasteLocationDeduction({
+      mainStorageLocationId: "main",
+      storageLocationId: "main",
+      quantityRemoved: 4,
+      mainQuantityBefore: 10,
+      balancesAfterReconcile: [
+        { storageLocationId: "main", quantity: 6 },
+        { storageLocationId: "walk-in", quantity: 20 }
+      ]
+    }),
+    null
+  );
+});
+
+test("inventory detail waste form attributes spoilage to a storage station", () => {
+  const detail = readFileSync("app/inventory/[id].tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const application = readFileSync("services/application/inventory.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const migration = readFileSync(
+    "supabase/migrations/20260802160000_waste_station_attribution.sql",
+    "utf8"
+  );
+
+  assert.match(detail, /wasteStorageLocationId/);
+  assert.match(detail, /inventory\.detail\.wasteLocation/);
+  assert.match(detail, /recordInventoryWaste\([\s\S]*wasteStorageLocationId/);
+  assert.match(application, /assertWasteStationAvailability/);
+  assert.match(application, /wasteLocation\.id/);
+  assert.match(repository, /applyDemoWasteLocationDeduction/);
+  assert.match(repository, /storageLocationId/);
+  assert.match(edge, /p_storage_location_id/);
+  assert.match(migration, /apply_inventory_waste_station_deduction/);
+  assert.match(migration, /p_storage_location_id uuid default null/);
+  assert.match(catalog, /"inventory\.detail\.wasteLocation": "Waste location"/);
+  assert.match(catalog, /"inventory\.detail\.wasteLocation": "Ubicación de merma"/);
+  assert.match(catalog, /"inventory\.detail\.wasteLocation": "损耗位置"/);
+  assert.match(catalog, /"inventory\.detail\.wasteLocationInsufficient"/);
 });

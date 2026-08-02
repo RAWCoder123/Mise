@@ -759,23 +759,77 @@ test("inventory waste writes are service-owned, ledgered, and separate from coun
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
   const migration = readFileSync("supabase/migrations/20260731012000_record_inventory_waste.sql", "utf8");
+  const stationMigration = readFileSync(
+    "supabase/migrations/20260802160000_waste_station_attribution.sql",
+    "utf8"
+  );
   const detail = readFileSync("app/inventory/[id].tsx", "utf8");
   const wasteWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+recordInventoryWaste[\s\S]*?\n\}/)?.[0] ?? "";
 
   assert.match(wasteWorkflow, /requireInventoryWasteQuantity/);
   assert.match(wasteWorkflow, /planInventoryWaste/);
+  assert.match(wasteWorkflow, /assertWasteStationAvailability/);
   assert.match(wasteWorkflow, /recordInventoryWasteAndSignals\([\s\S]*existing\.last_updated/i);
   assert.doesNotMatch(wasteWorkflow, /updateInventoryItemAndSignals/);
   assert.match(repository, /action:\s*"record_waste"/i);
+  assert.match(repository, /storageLocationId/);
   assert.match(edge, /"record_waste"/);
   assert.match(edge, /service_record_inventory_waste_and_signals/);
+  assert.match(edge, /p_storage_location_id/);
   assert.match(edge, /inventory_waste_recorded/);
   assert.match(migration, /create\s+or\s+replace\s+function\s+private\.service_record_inventory_waste_and_signals/i);
   assert.match(migration, /reason,\s*[\s\S]*'waste'/i);
   assert.match(migration, /source_workflow,\s*[\s\S]*'record_waste'/i);
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_record_inventory_waste_and_signals[\s\S]*authenticated/i);
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_record_inventory_waste_and_signals[\s\S]*service_role/i);
+  assert.match(stationMigration, /apply_inventory_waste_station_deduction/);
+  assert.match(stationMigration, /p_storage_location_id uuid default null/);
+  assert.match(
+    stationMigration,
+    /revoke\s+all\s+on\s+function\s+public\.service_record_inventory_waste_and_signals[\s\S]*authenticated/i
+  );
+  assert.match(
+    stationMigration,
+    /grant\s+execute\s+on\s+function\s+public\.service_record_inventory_waste_and_signals[\s\S]*service_role/i
+  );
+  const wasteStationDatabaseTests = readFileSync(
+    "supabase/tests/database/waste_station_attribution.test.sql",
+    "utf8"
+  );
+  assert.match(
+    wasteStationDatabaseTests,
+    /authenticated clients cannot execute the waste service RPC with station attribution/i
+  );
+  assert.match(
+    wasteStationDatabaseTests,
+    /service_role can execute the waste service RPC with station attribution/i
+  );
+  assert.match(
+    wasteStationDatabaseTests,
+    /staff can record waste onto Walk-in through the service RPC/i
+  );
+  assert.match(
+    wasteStationDatabaseTests,
+    /Walk-in waste reduces the chosen station balance/i
+  );
+  assert.match(
+    wasteStationDatabaseTests,
+    /Walk-in waste leaves Main station balance unchanged/i
+  );
+  assert.match(
+    wasteStationDatabaseTests,
+    /waste rejects quantity above the selected station balance/i
+  );
+  assert.match(
+    wasteStationDatabaseTests,
+    /waste rejects a cross-tenant storage location id/i
+  );
+  assert.match(
+    wasteStationDatabaseTests,
+    /manager can record waste onto Main when storage_location_id is omitted/i
+  );
   assert.match(detail, /recordInventoryWaste/);
+  assert.match(detail, /wasteStorageLocationId/);
   assert.match(detail, /inventory\.detail\.recordWaste/);
   assert.match(detail, /canRecordInventoryWaste/);
   assert.match(detail, /canRecordWaste/);
