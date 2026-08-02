@@ -89,6 +89,12 @@ interface OperationsCopy {
       incompatibleCountLabel: string,
       sampleItemName: string | null
     ) => string;
+    chronicShortShipTitle: (itemName: string) => string;
+    chronicShortShipDetail: (
+      supplierName: string,
+      fillPercentLabel: string,
+      sampleCountLabel: string
+    ) => string;
     actions: {
       updateInventoryCount: string;
       beginCountSession: string;
@@ -105,6 +111,7 @@ interface OperationsCopy {
       reviewInsight: string;
       mapUnmappedPosItems: string;
       repairIncompatibleRecipeUnits: string;
+      reviewShortShips: string;
     };
   };
   insight: {
@@ -125,6 +132,15 @@ interface OperationsCopy {
     wasteDescription: (itemName: string, quantity: string, unit: string) => string;
     wasteWhy: string;
     wasteAction: (itemName: string) => string;
+    shortShipTitle: (itemName: string) => string;
+    shortShipDescription: (
+      supplierName: string,
+      itemName: string,
+      fillPercentLabel: string,
+      sampleCountLabel: string
+    ) => string;
+    shortShipWhy: string;
+    shortShipAction: (supplierName: string) => string;
   };
   memory: {
     reliableLabel: string;
@@ -245,6 +261,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
           : sampleItemName
             ? `${incompatibleCountLabel} recipe mappings use units that do not match inventory, including ${sampleItemName}, so Mise cannot deplete stock from those sales.`
             : `${incompatibleCountLabel} recipe mappings use units that do not match inventory, so Mise cannot deplete stock from those sales.`,
+      chronicShortShipTitle: (itemName) => `${itemName} is often short-shipped`,
+      chronicShortShipDetail: (supplierName, fillPercentLabel, sampleCountLabel) =>
+        `Recent ${supplierName} deliveries averaged about ${fillPercentLabel} of ordered across ${sampleCountLabel} receives.`,
       actions: {
         updateInventoryCount: "Review count",
         beginCountSession: "Start count",
@@ -260,7 +279,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         repairPosConnection: "Repair connection",
         reviewInsight: "Review insight",
         mapUnmappedPosItems: "Map recipes",
-        repairIncompatibleRecipeUnits: "Fix recipe units"
+        repairIncompatibleRecipeUnits: "Fix recipe units",
+        reviewShortShips: "Review short-ships"
       }
     },
     insight: {
@@ -280,7 +300,13 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       wasteTitle: (itemName) => `${itemName} may be overstocked`,
       wasteDescription: (itemName, quantity, unit) => `${itemName} has about ${quantity} ${unit}, more than projected use.`,
       wasteWhy: "Excess stock can tie up cash or increase waste risk.",
-      wasteAction: (itemName) => `Delay the next ${itemName} order unless sales increase.`
+      wasteAction: (itemName) => `Delay the next ${itemName} order unless sales increase.`,
+      shortShipTitle: (itemName) => `${itemName} is often short-shipped`,
+      shortShipDescription: (supplierName, itemName, fillPercentLabel, sampleCountLabel) =>
+        `Recent ${supplierName} deliveries for ${itemName} averaged about ${fillPercentLabel} of the ordered quantity across ${sampleCountLabel} receives.`,
+      shortShipWhy: "Chronic short-ships leave less on hand than Mise ordered and can create avoidable stockouts.",
+      shortShipAction: (supplierName) =>
+        `Order slightly more from ${supplierName}, or confirm counts carefully when receiving.`
     },
     memory: {
       reliableLabel: "Mise memory is reliable",
@@ -400,6 +426,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
           : sampleItemName
             ? `${incompatibleCountLabel} vínculos de receta usan unidades que no coinciden con el inventario, incluido ${sampleItemName}, así que Mise no puede descontar existencias de esas ventas.`
             : `${incompatibleCountLabel} vínculos de receta usan unidades que no coinciden con el inventario, así que Mise no puede descontar existencias de esas ventas.`,
+      chronicShortShipTitle: (itemName) => `${itemName} suele llegar incompleto`,
+      chronicShortShipDetail: (supplierName, fillPercentLabel, sampleCountLabel) =>
+        `Las entregas recientes de ${supplierName} promedian cerca del ${fillPercentLabel} de lo pedido en ${sampleCountLabel} recepciones.`,
       actions: {
         updateInventoryCount: "Revisar conteo",
         beginCountSession: "Iniciar conteo",
@@ -415,7 +444,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         repairPosConnection: "Reparar conexión",
         reviewInsight: "Revisar análisis",
         mapUnmappedPosItems: "Vincular recetas",
-        repairIncompatibleRecipeUnits: "Corregir unidades"
+        repairIncompatibleRecipeUnits: "Corregir unidades",
+        reviewShortShips: "Revisar faltantes"
       }
     },
     insight: {
@@ -435,7 +465,13 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       wasteTitle: (itemName) => `${itemName} podría tener exceso de existencias`,
       wasteDescription: (itemName, quantity, unit) => `Hay cerca de ${quantity} ${unit} de ${itemName}, más que el uso proyectado.`,
       wasteWhy: "El exceso de existencias puede inmovilizar efectivo o aumentar el riesgo de desperdicio.",
-      wasteAction: (itemName) => `Retrasa el próximo pedido de ${itemName} salvo que aumenten las ventas.`
+      wasteAction: (itemName) => `Retrasa el próximo pedido de ${itemName} salvo que aumenten las ventas.`,
+      shortShipTitle: (itemName) => `${itemName} suele llegar incompleto`,
+      shortShipDescription: (supplierName, itemName, fillPercentLabel, sampleCountLabel) =>
+        `Las entregas recientes de ${supplierName} para ${itemName} promedian cerca del ${fillPercentLabel} de lo pedido en ${sampleCountLabel} recepciones.`,
+      shortShipWhy: "Los faltantes crónicos dejan menos existencias de las pedidas y pueden causar quiebres evitables.",
+      shortShipAction: (supplierName) =>
+        `Pide un poco más a ${supplierName}, o confirma con cuidado las cantidades al recibir.`
     },
     memory: {
       reliableLabel: "La memoria de Mise es confiable",
@@ -553,6 +589,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
           : sampleItemName
             ? `有 ${incompatibleCountLabel} 个配方单位与库存不一致（包括 ${sampleItemName}），因此 Mise 无法根据这些销售扣减库存。`
             : `有 ${incompatibleCountLabel} 个配方单位与库存不一致，因此 Mise 无法根据这些销售扣减库存。`,
+      chronicShortShipTitle: (itemName) => `${itemName} 经常短交`,
+      chronicShortShipDetail: (supplierName, fillPercentLabel, sampleCountLabel) =>
+        `最近 ${supplierName} 的到货量约为订购量的 ${fillPercentLabel}（基于 ${sampleCountLabel} 次收货）。`,
       actions: {
         updateInventoryCount: "检查盘点",
         beginCountSession: "开始盘点",
@@ -568,7 +607,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         repairPosConnection: "修复连接",
         reviewInsight: "查看洞察",
         mapUnmappedPosItems: "关联配方",
-        repairIncompatibleRecipeUnits: "修复配方单位"
+        repairIncompatibleRecipeUnits: "修复配方单位",
+        reviewShortShips: "查看短交"
       }
     },
     insight: {
@@ -588,7 +628,13 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       wasteTitle: (itemName) => `${itemName} 可能库存过多`,
       wasteDescription: (itemName, quantity, unit) => `${itemName} 约有 ${quantity} ${unit}，高于预计用量。`,
       wasteWhy: "库存过多可能占用现金或增加损耗风险。",
-      wasteAction: (itemName) => `除非销量上升，否则请推迟下一次 ${itemName} 订货。`
+      wasteAction: (itemName) => `除非销量上升，否则请推迟下一次 ${itemName} 订货。`,
+      shortShipTitle: (itemName) => `${itemName} 经常短交`,
+      shortShipDescription: (supplierName, itemName, fillPercentLabel, sampleCountLabel) =>
+        `最近 ${supplierName} 的 ${itemName} 到货量约为订购量的 ${fillPercentLabel}（基于 ${sampleCountLabel} 次收货）。`,
+      shortShipWhy: "长期短交会让实际库存低于订购量，并可能导致可避免的缺货。",
+      shortShipAction: (supplierName) =>
+        `可适当增加向 ${supplierName} 的订货量，或在收货时仔细核对数量。`
     },
     memory: {
       reliableLabel: "Mise 运营记忆可靠",
@@ -653,7 +699,9 @@ export function presentOperationalTodayTaskAction(
     case "repair_pos_connection":
       return actions.repairPosConnection;
     case "review_insight":
-      return actions.reviewInsight;
+      return task.presentation?.code === "today.ordering.chronic_short_ship"
+        ? actions.reviewShortShips
+        : actions.reviewInsight;
     case "map_unmapped_pos_items":
       return actions.mapUnmappedPosItems;
     case "repair_incompatible_recipe_units":
@@ -783,6 +831,16 @@ export function presentOperationalTodayTask(
       )
     );
   }
+  if (code === "today.ordering.chronic_short_ship") {
+    return result(
+      copy.today.chronicShortShipTitle(values.itemName),
+      copy.today.chronicShortShipDetail(
+        values.supplierName,
+        formatPercent(locale, values.fillPercent),
+        quantity(values.sampleCount)
+      )
+    );
+  }
 
   throw new Error(`Unsupported Today task presentation code: ${String(code)}`);
 }
@@ -853,6 +911,20 @@ export function presentInsight(locale: AppLocale, insight: Insight): PresentedIn
       ),
       whyItMatters: copy.insight.wasteWhy,
       recommendedAction: copy.insight.wasteAction(values.itemName),
+      evidenceOnly: false
+    };
+  }
+  if (code === "insight.rule.ordering.chronic_short_ship") {
+    return {
+      title: copy.insight.shortShipTitle(values.itemName),
+      description: copy.insight.shortShipDescription(
+        values.supplierName,
+        values.itemName,
+        formatPercent(locale, values.fillPercent),
+        formatQuantity(locale, values.sampleCount)
+      ),
+      whyItMatters: copy.insight.shortShipWhy,
+      recommendedAction: copy.insight.shortShipAction(values.supplierName),
       evidenceOnly: false
     };
   }

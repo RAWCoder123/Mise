@@ -671,6 +671,7 @@ function applyRequestedMutation(
     };
   }
   if (action === "receive_supplier_order") {
+    const orderId = requireUuid(body.orderId, "orderId");
     const receiveLines = requireReceiveLines(body.receiveLines);
     const quantityByItemId = new Map(
       receiveLines.map((line) => [line.inventory_item_id as string, Number(line.quantity_received)] as const)
@@ -680,6 +681,28 @@ function applyRequestedMutation(
         throw new HttpError(404, "Inventory item not found.");
       }
     }
+    const now = new Date().toISOString();
+    const inFlightReceives = receiveLines.flatMap((line) => {
+      const inventoryItemId = line.inventory_item_id as string;
+      const quantityReceived = Number(line.quantity_received);
+      const ordered = snapshot.recommendationHistory.find(
+        (entry) =>
+          entry.supplier_order_id === orderId &&
+          entry.status === "ordered" &&
+          entry.inventory_item_id === inventoryItemId &&
+          Number.isFinite(entry.recommended_quantity) &&
+          entry.recommended_quantity > 0
+      );
+      if (!ordered) return [];
+      return [{
+        inventoryItemId,
+        quantityOrdered: ordered.recommended_quantity,
+        quantityReceived,
+        discrepancy: quantityReceived - ordered.recommended_quantity,
+        createdAt: now,
+        supplierOrderId: orderId
+      }];
+    });
     return {
       ...snapshot,
       inventoryItems: snapshot.inventoryItems.map((item) =>
@@ -687,10 +710,11 @@ function applyRequestedMutation(
           ? {
               ...item,
               current_quantity: item.current_quantity + (quantityByItemId.get(item.id) as number),
-              last_updated: new Date().toISOString()
+              last_updated: now
             }
           : item
-      )
+      ),
+      receivingHistory: [...inFlightReceives, ...(snapshot.receivingHistory ?? [])]
     };
   }
   if (action === "upsert_recipe") {

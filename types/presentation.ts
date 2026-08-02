@@ -38,7 +38,8 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.integration.repair",
   "today.insight.review",
   "today.recipe.map_unmapped",
-  "today.recipe.repair_incompatible_units"
+  "today.recipe.repair_incompatible_units",
+  "today.ordering.chronic_short_ship"
 ] as const;
 
 export const INSIGHT_PRESENTATION_CODES = [
@@ -46,6 +47,7 @@ export const INSIGHT_PRESENTATION_CODES = [
   "insight.rule.sales.demand_rising",
   "insight.rule.prep.low_stock",
   "insight.rule.waste.overstock",
+  "insight.rule.ordering.chronic_short_ship",
   "insight.evidence.opaque"
 ] as const;
 
@@ -141,6 +143,15 @@ export type TodayTaskPresentationDescriptor =
         /** First menu item with a unit-incompatible recipe link; never translated. */
         sampleItemName: string | null;
       };
+    }
+  | {
+      code: "today.ordering.chronic_short_ship";
+      values: {
+        itemName: string;
+        supplierName: string;
+        fillPercent: number;
+        sampleCount: number;
+      };
     };
 
 export type InsightPresentationDescriptor =
@@ -166,6 +177,15 @@ export type InsightPresentationDescriptor =
   | {
       code: "insight.rule.waste.overstock";
       values: { itemName: string; quantity: number; unit: string };
+    }
+  | {
+      code: "insight.rule.ordering.chronic_short_ship";
+      values: {
+        itemName: string;
+        supplierName: string;
+        fillPercent: number;
+        sampleCount: number;
+      };
     }
   | {
       code: "insight.evidence.opaque";

@@ -1886,6 +1886,34 @@ test("recommendation acceptance integrity preserves originals and optional dismi
   assert.match(pgTap, /dismiss stores a trimmed reason/);
 });
 
+test("receive discrepancy learning exposes bounded receivingHistory without client write authority", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260802010000_receive_discrepancy_learning_snapshot.sql",
+    "utf8"
+  );
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const domain = readFileSync("services/domain/receiveDiscrepancyLearning.ts", "utf8");
+  const signals = readFileSync("services/domain/operationalSignals.ts", "utf8");
+  const pgTap = readFileSync(
+    "supabase/tests/database/receive_discrepancy_learning.test.sql",
+    "utf8"
+  );
+
+  assert.match(migration, /'receivingHistory'/);
+  assert.match(migration, /reason = 'receiving'/);
+  assert.match(migration, /inventory_movements_restaurant_receiving_created_at_idx/);
+  assert.match(migration, /limit 500/);
+  assert.match(edge, /receivingHistory:\s*\[\.\.\.inFlightReceives/);
+  assert.match(edge, /supplier_order_id === orderId/);
+  assert.match(domain, /RECEIVE_FILL_MULTIPLIER_MAX = 1\.25/);
+  assert.match(domain, /RECEIVE_FILL_LEARNING_MIN_SAMPLES = 3/);
+  assert.match(signals, /buildReceiveFillBiasByItem/);
+  assert.match(signals, /insight\.rule\.ordering\.chronic_short_ship/);
+  assert.match(pgTap, /planning snapshot includes receivingHistory key/);
+  assert.match(pgTap, /staff cannot receive supplier orders/);
+  assert.match(pgTap, /receivingHistory quantityOrdered matches accepted ordered qty/);
+});
+
 test("security readiness document defines private-beta backend rules and public launch blockers", () => {
   const doc = readFileSync("docs/security-readiness.md", "utf8");
 

@@ -244,12 +244,22 @@ export async function receiveSupplierOrder(
       (entry) => entry.inventoryItemId === line.inventoryItemId
     )?.storageLocationId ?? null
   }));
+  const now = new Date().toISOString();
   const planningInventory = data.inventoryItems.map((item) => {
     const line = planned.lines.find((entry) => entry.inventoryItemId === item.id);
     return line
-      ? { ...item, current_quantity: line.quantityAfter, last_updated: new Date().toISOString() }
+      ? { ...item, current_quantity: line.quantityAfter, last_updated: now }
       : item;
   });
+  const inFlightReceivingHistory = planned.lines.map((line) => ({
+    inventoryItemId: line.inventoryItemId,
+    quantityOrdered: line.quantityOrdered,
+    quantityReceived: line.quantityReceived,
+    discrepancy: line.discrepancy,
+    createdAt: now,
+    supplierOrderId: normalizedOrderId
+  }));
+  const receivingHistory = [...inFlightReceivingHistory, ...(data.receivingHistory ?? [])];
   const nextRecommendations = buildRecommendationInserts(
     normalizedRestaurantId,
     planningInventory,
@@ -257,7 +267,8 @@ export async function receiveSupplierOrder(
     data.menuItemIngredients,
     recommendationHistory,
     data.operatingDate,
-    data.appliedTodayConsumptionByItemId
+    data.appliedTodayConsumptionByItemId,
+    receivingHistory
   );
   const nextInsights = buildInsightsFromData(
     normalizedRestaurantId,
@@ -265,7 +276,8 @@ export async function receiveSupplierOrder(
     data.sales,
     data.menuItemIngredients,
     data.operatingDate,
-    data.appliedTodayConsumptionByItemId
+    data.appliedTodayConsumptionByItemId,
+    receivingHistory
   );
   return repository.receiveSupplierOrderAndSignals(
     normalizedRestaurantId,

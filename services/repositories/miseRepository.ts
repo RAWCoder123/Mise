@@ -74,6 +74,10 @@ import {
 } from "../domain/inventoryCountSessions";
 import { buildAppliedTodayConsumptionByItemId } from "../domain/posConsumption";
 import {
+  extractReceiveSamplesFromMovements,
+  type ReceiveDiscrepancySample
+} from "../domain/receiveDiscrepancyLearning";
+import {
   findSupplierRecipientCatalogName,
   supplierRecipientDirectoryKey
 } from "../domain/supplierRecipients";
@@ -255,6 +259,8 @@ export interface PlanningData {
   menuItemIngredients: MenuItemIngredient[];
   operatingDate: string;
   appliedTodayConsumptionByItemId: Record<string, number>;
+  /** Receiving ledger samples for short-ship fill-rate learning. */
+  receivingHistory: ReceiveDiscrepancySample[];
 }
 
 export interface MiseRepository {
@@ -1235,6 +1241,9 @@ function createLocalDemoRepository(): MiseRepository {
       const state = await readReadyDemoState(restaurantId);
       const restaurant = fetchRestaurantFromState(state, restaurantId);
       const operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone);
+      const restaurantMovements = (state.inventoryMovements ?? []).filter(
+        (movement) => movement.restaurant_id === restaurantId
+      );
       return {
         inventoryItems: state.inventoryItems.filter((item) => item.restaurant_id === restaurantId).map(normalizeInventoryItem),
         sales: state.posSales.filter((sale) => sale.restaurant_id === restaurantId).map(normalizePosSale),
@@ -1243,9 +1252,10 @@ function createLocalDemoRepository(): MiseRepository {
           .map(normalizeMenuItemIngredient),
         operatingDate,
         appliedTodayConsumptionByItemId: buildAppliedTodayConsumptionByItemId(
-          state.inventoryMovements ?? [],
+          restaurantMovements,
           operatingDate
-        )
+        ),
+        receivingHistory: extractReceiveSamplesFromMovements(restaurantMovements)
       };
     },
 
@@ -3044,16 +3054,24 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async fetchPlanningData(restaurantId) {
-      const [inventoryResult, sales, mappingResult, restaurantResult, movementsResult] = await Promise.all([
+      const [inventoryResult, sales, mappingResult, restaurantResult, movementsResult, receivingResult] =
+        await Promise.all([
         client.from("inventory_items").select("*").eq("restaurant_id", restaurantId).order("item_name"),
         fetchBoundedPlanningSales(restaurantId),
         client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
         client.from("restaurants").select("timezone").eq("id", restaurantId).single(),
         client
           .from("inventory_movements")
-          .select("reason,inventory_item_id,quantity_before,quantity_after,metadata")
+          .select("reason,inventory_item_id,quantity_before,quantity_after,metadata,created_at")
           .eq("restaurant_id", restaurantId)
           .in("reason", ["recipe_consumption", "pos_consumption"])
+          .order("created_at", { ascending: false })
+          .limit(500),
+        client
+          .from("inventory_movements")
+          .select("reason,inventory_item_id,metadata,created_at")
+          .eq("restaurant_id", restaurantId)
+          .eq("reason", "receiving")
           .order("created_at", { ascending: false })
           .limit(500)
       ]);
@@ -3061,6 +3079,7 @@ function createSupabaseRepository(): MiseRepository {
       if (mappingResult.error) throw mappingResult.error;
       if (restaurantResult.error) throw restaurantResult.error;
       if (movementsResult.error) throw movementsResult.error;
+      if (receivingResult.error) throw receivingResult.error;
       const operatingDate = toDateKeyInTimeZone(
         new Date(),
         (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
@@ -3073,6 +3092,14 @@ function createSupabaseRepository(): MiseRepository {
         appliedTodayConsumptionByItemId: buildAppliedTodayConsumptionByItemId(
           (movementsResult.data ?? []) as InventoryMovement[],
           operatingDate
+        ),
+        receivingHistory: extractReceiveSamplesFromMovements(
+          (receivingResult.data ?? []) as Array<{
+            reason: string;
+            inventory_item_id: string;
+            metadata: Record<string, unknown>;
+            created_at: string;
+          }>
         )
       };
     },
@@ -3776,5 +3803,13 @@ function normalizePosProvider(value: unknown): PosProvider | null {
 }
 
 export function buildLocalInsightsForTest(data: PlanningData & { restaurantId: string }) {
-  return buildInsightsFromData(data.restaurantId, data.inventoryItems, data.sales, data.menuItemIngredients);
+  return buildInsightsFromData(
+    data.restaurantId,
+    data.inventoryItems,
+    data.sales,
+    data.menuItemIngredients,
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId,
+    data.receivingHistory
+  );
 }

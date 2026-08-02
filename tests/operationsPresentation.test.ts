@@ -135,6 +135,10 @@ test("every allowlisted Today presentation code renders in all locales and prese
     {
       code: "today.recipe.repair_incompatible_units",
       values: { incompatibleCount: 2, sampleItemName: itemName }
+    },
+    {
+      code: "today.ordering.chronic_short_ship",
+      values: { itemName, supplierName, fillPercent: 88, sampleCount: 5 }
     }
   ];
 
@@ -182,6 +186,10 @@ test("rules-based Insight codes localize structured values while opaque copy is 
     },
     { code: "insight.rule.waste.overstock", values: { itemName, quantity: 44.5, unit: "lb" } },
     {
+      code: "insight.rule.ordering.chronic_short_ship",
+      values: { itemName, supplierName, fillPercent: 88, sampleCount: 5 }
+    },
+    {
       code: "insight.evidence.opaque",
       values: {
         insightType: "cost",
@@ -207,7 +215,9 @@ test("rules-based Insight codes localize structured values while opaque copy is 
               ? "sales"
               : presentation.code.includes("prep")
                 ? "prep"
-                : "waste",
+                : presentation.code.includes("ordering")
+                  ? "ordering"
+                  : "waste",
         title: "Raw title remains unchanged",
         description: "Raw description remains unchanged",
         why_it_matters: "Raw why remains unchanged",

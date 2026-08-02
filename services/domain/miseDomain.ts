@@ -39,6 +39,13 @@ import {
   buildAppliedTodayConsumptionByItemId,
   projectedQuantityAfterSales
 } from "./posConsumption";
+import {
+  applyReceiveFillBias,
+  buildChronicShortShipInsightInput,
+  buildReceiveFillBiasByItem,
+  extractReceiveSamplesFromMovements,
+  receiveFillBiasReasonFragment
+} from "./receiveDiscrepancyLearning";
 import { buildRecordedSalesTrend } from "./salesTrends";
 import {
   DEMO_DATASET,
@@ -150,13 +157,15 @@ export function recommendationReason(item: InventoryItem, prediction?: Inventory
 function learnedRecommendationReason(
   item: InventoryItem,
   prediction: InventoryPrediction,
-  learnedQuantity: number | undefined
+  learnedQuantity: number | undefined,
+  receiveBiasReason?: string
 ) {
   const reason = recommendationReason(item, prediction);
-  if (learnedQuantity === undefined || learnedQuantity === prediction.suggestedOrderQuantity) {
-    return reason;
-  }
-  return `${reason} Mise is using a stable median from recent approved orders: ${formatQuantity(learnedQuantity)} ${item.unit}.`;
+  const withApprovalLearning =
+    learnedQuantity === undefined || learnedQuantity === prediction.suggestedOrderQuantity
+      ? reason
+      : `${reason} Mise is using a stable median from recent approved orders: ${formatQuantity(learnedQuantity)} ${item.unit}.`;
+  return receiveBiasReason ? `${withApprovalLearning} ${receiveBiasReason}` : withApprovalLearning;
 }
 
 function buildLearnedOrderQuantities(restaurantId: string, history: PurchaseRecommendation[] = []) {
@@ -765,9 +774,15 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
   const recommendationHistory = [...state.purchaseRecommendations];
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
   const operatingDate = defaultOperatingDate(restaurantId);
+  const restaurantMovements = (state.inventoryMovements ?? []).filter(
+    (movement) => movement.restaurant_id === restaurantId
+  );
   const appliedTodayConsumptionByItemId = buildAppliedTodayConsumptionByItemId(
-    state.inventoryMovements ?? [],
+    restaurantMovements,
     operatingDate
+  );
+  const receiveBiasByItem = buildReceiveFillBiasByItem(
+    extractReceiveSamplesFromMovements(restaurantMovements)
   );
   const lowOutlooks = buildInventoryOutlooks(
     restaurantId,
@@ -794,8 +809,18 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
     if (!pending && shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory)) return;
 
     const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
-    const recommendedQuantity = learnedQuantity ?? prediction.suggestedOrderQuantity;
-    const reason = learnedRecommendationReason(item, prediction, learnedQuantity);
+    const afterApprovalLearning = learnedQuantity ?? prediction.suggestedOrderQuantity;
+    const receiveBias = receiveBiasByItem.get(item.id);
+    const paddedQuantity = applyReceiveFillBias(afterApprovalLearning, receiveBias, {
+      calculated: prediction.suggestedOrderQuantity,
+      par: item.par_level
+    });
+    const recommendedQuantity = paddedQuantity ?? afterApprovalLearning;
+    const receiveBiasReason =
+      receiveBias?.isChronic && paddedQuantity != null && paddedQuantity !== afterApprovalLearning
+        ? receiveFillBiasReasonFragment(receiveBias)
+        : undefined;
+    const reason = learnedRecommendationReason(item, prediction, learnedQuantity, receiveBiasReason);
 
     if (pending) {
       pending.item_name = item.item_name;
@@ -833,7 +858,8 @@ export function buildInsightsFromData(
   inventoryItems: InventoryItem[],
   sales: PosSale[],
   mappings: MenuItemIngredient[],
-  operatingDate = defaultOperatingDate(restaurantId)
+  operatingDate = defaultOperatingDate(restaurantId),
+  receivingHistory: Parameters<typeof buildReceiveFillBiasByItem>[0] = []
 ) {
   const now = new Date().toISOString();
   const todaySales = sales.filter(
@@ -843,6 +869,36 @@ export function buildInsightsFromData(
   const insights: Insight[] = [];
   const usage = estimateUsage(todaySales, mappings, inventoryItems);
   const outlooks = buildInventoryOutlooks(restaurantId, inventoryItems, sales, mappings, operatingDate);
+  const receiveBiasByItem = buildReceiveFillBiasByItem(receivingHistory);
+  const chronicShortShipInsights = inventoryItems
+    .filter((item) => item.restaurant_id === restaurantId)
+    .flatMap((item) => {
+      const bias = receiveBiasByItem.get(item.id);
+      const marker = bias ? buildChronicShortShipInsightInput(bias) : null;
+      if (!bias || !marker) return [];
+      return [{
+        id: `insight_shortship_${item.id}`,
+        restaurant_id: restaurantId,
+        insight_type: "ordering" as const,
+        title: `${item.item_name} is often short-shipped`,
+        description: `Recent ${item.supplier_name} deliveries for ${item.item_name} averaged about ${marker.fillPercent}% of the ordered quantity across ${bias.sampleCount} receives.`,
+        why_it_matters: "Chronic short-ships leave less on hand than Mise ordered and can create avoidable stockouts.",
+        recommended_action: `Order slightly more from ${item.supplier_name}, or confirm counts carefully when receiving.`,
+        severity: "warning" as const,
+        created_at: now,
+        presentation: {
+          code: "insight.rule.ordering.chronic_short_ship" as const,
+          values: {
+            itemName: item.item_name,
+            supplierName: item.supplier_name,
+            fillPercent: marker.fillPercent,
+            sampleCount: bias.sampleCount
+          }
+        }
+      }];
+    })
+    .slice(0, 2);
+  insights.push(...chronicShortShipInsights);
 
   outlooks
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
@@ -967,11 +1023,16 @@ export function buildInsightsFromData(
 }
 
 export function rebuildInsights(state: DemoState, restaurantId: string) {
+  const receivingHistory = extractReceiveSamplesFromMovements(
+    (state.inventoryMovements ?? []).filter((movement) => movement.restaurant_id === restaurantId)
+  );
   const generated = buildInsightsFromData(
     restaurantId,
     state.inventoryItems,
     state.posSales,
-    state.menuItemIngredients
+    state.menuItemIngredients,
+    defaultOperatingDate(restaurantId),
+    receivingHistory
   );
   state.insights = [
     ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),
@@ -2166,9 +2227,11 @@ export function buildRecommendationInserts(
   sales: PosSale[],
   mappings: MenuItemIngredient[],
   recommendationHistory: PurchaseRecommendation[] = [],
-  operatingDate = defaultOperatingDate(restaurantId)
+  operatingDate = defaultOperatingDate(restaurantId),
+  receivingHistory: Parameters<typeof buildReceiveFillBiasByItem>[0] = []
 ) {
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
+  const receiveBiasByItem = buildReceiveFillBiasByItem(receivingHistory);
 
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
@@ -2180,16 +2243,27 @@ export function buildRecommendationInserts(
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
     .map(({ item, prediction }) => {
       const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
+      const afterApprovalLearning = learnedQuantity ?? prediction.suggestedOrderQuantity;
+      const receiveBias = receiveBiasByItem.get(item.id);
+      const paddedQuantity = applyReceiveFillBias(afterApprovalLearning, receiveBias, {
+        calculated: prediction.suggestedOrderQuantity,
+        par: item.par_level
+      });
+      const recommendedQuantity = paddedQuantity ?? afterApprovalLearning;
+      const receiveBiasReason =
+        receiveBias?.isChronic && paddedQuantity != null && paddedQuantity !== afterApprovalLearning
+          ? receiveFillBiasReasonFragment(receiveBias)
+          : undefined;
       return {
         restaurant_id: restaurantId,
         inventory_item_id: item.id,
         item_name: item.item_name,
         supplier_name: item.supplier_name,
-        recommended_quantity: learnedQuantity ?? prediction.suggestedOrderQuantity,
+        recommended_quantity: recommendedQuantity,
         original_recommended_quantity: null,
         dismiss_reason: null,
         unit: item.unit,
-        reason: learnedRecommendationReason(item, prediction, learnedQuantity),
+        reason: learnedRecommendationReason(item, prediction, learnedQuantity, receiveBiasReason),
         urgency: prediction.urgency,
         status: "pending" as RecommendationStatus,
         supplier_order_id: null

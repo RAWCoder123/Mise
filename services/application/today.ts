@@ -9,6 +9,10 @@ import {
   deriveOperationalTodayTasks,
   type OperationalTodayTask
 } from "../domain/todayTasks";
+import {
+  buildChronicShortShipInsightInput,
+  buildReceiveFillBiasByItem
+} from "../domain/receiveDiscrepancyLearning";
 import type { InventoryStatus, TodaySummary } from "../../types/mise";
 import { toDateKeyInTimeZone } from "../../utils/format";
 import { getMiseRepository } from "./repository";
@@ -96,6 +100,19 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
     operatingDate,
     planning.appliedTodayConsumptionByItemId
   );
+  const receiveBiasByItem = buildReceiveFillBiasByItem(planning.receivingHistory ?? []);
+  const chronicShortShipItems = inventoryItems.flatMap((item) => {
+    const bias = receiveBiasByItem.get(item.id);
+    const marker = bias ? buildChronicShortShipInsightInput(bias) : null;
+    if (!bias || !marker) return [];
+    return [{
+      inventoryItemId: item.id,
+      itemName: item.item_name,
+      supplierName: item.supplier_name,
+      fillPercent: marker.fillPercent,
+      sampleCount: bias.sampleCount
+    }];
+  });
 
   return {
     ...summary,
@@ -110,6 +127,7 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       posIntegrations,
       unmappedPosMenuItems: recipeBaseline.posItemsMissingRecipes,
       incompatibleRecipeMenuItems: recipeBaseline.posItemsWithIncompatibleUnits,
+      chronicShortShipItems,
       insights,
       openCountSession: openCountSession?.session ?? null
     }),
