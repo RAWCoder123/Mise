@@ -11,41 +11,24 @@ import {
   type OperatorNotificationPreferences
 } from "../services/domain/notificationPreferences";
 import type { OperationalTodayTask } from "../services/domain/todayTasks";
+import type { TodayTaskPresentationDescriptor } from "../types/presentation";
 
 function task(partial: {
   id: string;
-  code: string;
+  code: TodayTaskPresentationDescriptor["code"];
   sourceKind?: OperationalTodayTask["source"]["kind"];
-}): OperationalTodayTask {
+}): Pick<OperationalTodayTask, "id" | "presentation" | "source"> {
   return {
     id: partial.id,
-    restaurantId: "restaurant_a",
     source: {
       kind: partial.sourceKind ?? "insight",
       id: partial.id,
       status: "open"
     },
-    title: partial.id,
-    detail: partial.id,
     presentation: {
-      code: partial.code as OperationalTodayTask["presentation"]["code"],
+      code: partial.code,
       values: {}
-    },
-    priority: "normal",
-    dueDate: null,
-    createdAt: "2026-08-02T12:00:00.000Z",
-    action: {
-      intent: "review_insight",
-      label: "Review",
-      route: "/insights",
-      entityId: null
-    },
-    requiredRole: "manager",
-    completion: {
-      isComplete: false,
-      canToggleDirectly: false,
-      reason: "open"
-    }
+    } as TodayTaskPresentationDescriptor
   };
 }
 
