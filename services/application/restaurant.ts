@@ -2,6 +2,7 @@ import type { AiInsight, PosProvider, Restaurant, RestaurantMembership } from ".
 import { buildAiInsightInput, parseStructuredInsightOutput } from "../ai/structuredInsights";
 import { DEMO_DATASET, type DemoSetupProfile } from "../demoData";
 import type { OperatorNotificationPreferences } from "../domain/notificationPreferences";
+import { normalizeOperatorDisplayName } from "../domain/operatorDisplayName";
 import {
   isValidMemberEmail,
   normalizeMemberEmail,
@@ -105,11 +106,12 @@ export async function removeRestaurantMember(restaurantId: string, targetUserId:
   return repository.removeRestaurantMember(restaurantId, targetUserId);
 }
 
+export async function fetchMyDisplayName() {
+  return repository.fetchMyDisplayName();
+}
+
 export async function updateMyProfile(restaurantId: string, name: string) {
-  const normalizedName = name.trim();
-  if (normalizedName.length < 1 || normalizedName.length > 120) {
-    throw new Error("Profile name must be between 1 and 120 characters.");
-  }
+  const normalizedName = normalizeOperatorDisplayName(name);
   return repository.updateMyProfile(restaurantId, normalizedName);
 }
 

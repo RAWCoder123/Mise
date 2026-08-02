@@ -22,6 +22,7 @@ import {
   type SignUpOutcome,
   validateSignupPassword
 } from "../services/domain/authSignup";
+import { resolveOperatorDisplayName } from "../services/domain/operatorDisplayName";
 import { buildInviteClaimPath } from "../services/domain/teamInvites";
 import { readPendingInviteToken } from "../lib/pendingInvite";
 import type {
@@ -42,6 +43,7 @@ import {
 import {
   createRestaurantWithOwner,
   fetchMembershipsForAuthUser,
+  fetchMyDisplayName,
   fetchPOSStatus,
   fetchRestaurant,
   loadDemoPOSData,
@@ -90,6 +92,7 @@ interface MiseSessionContextValue {
   connectDemoPOS: (provider: PosProvider) => Promise<void>;
   refreshPosStatus: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  applyOperatorDisplayName: (name: string) => Promise<void>;
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -105,13 +108,14 @@ const MiseSessionContext = createContext<MiseSessionContextValue | null>(null);
 function appUserFromAuth(
   authUser: SupabaseUser,
   restaurantId: string | null,
-  role: RestaurantRole | null
+  role: RestaurantRole | null,
+  displayName?: string | null
 ): AppUser {
   const email = authUser.email ?? "";
   return {
     id: authUser.id,
     restaurant_id: restaurantId,
-    name: email.split("@")[0] || "Restaurant Operator",
+    name: resolveOperatorDisplayName(displayName, email),
     email,
     role: role ?? "staff",
     created_at: authUser.created_at ?? new Date().toISOString()
@@ -202,7 +206,10 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       setAuthUser(nextAuthUser);
       setIsDemoMode(false);
 
-      const nextMemberships = await fetchMembershipsForAuthUser(nextAuthUser.id);
+      const [nextMemberships, storedDisplayName] = await Promise.all([
+        fetchMembershipsForAuthUser(nextAuthUser.id),
+        fetchMyDisplayName().catch(() => null)
+      ]);
       if (sessionRequestId !== sessionRequestIdRef.current) return;
       setMemberships(nextMemberships);
 
@@ -211,7 +218,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
         setRestaurant(null);
         setAvailableRestaurants([]);
         setRole(null);
-        setUser(appUserFromAuth(nextAuthUser, null, null));
+        setUser(appUserFromAuth(nextAuthUser, null, null, storedDisplayName));
         await refreshPOS(null);
         if (sessionRequestId !== sessionRequestIdRef.current) return;
         await saveSnapshot({ activeRestaurantId: null, isDemoMode: false });
@@ -236,7 +243,14 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       activeRestaurantIdRef.current = activeRestaurant?.id ?? null;
       setRestaurant(activeRestaurant);
       setRole(activeMembership.role);
-      setUser(appUserFromAuth(nextAuthUser, activeRestaurant?.id ?? null, activeMembership.role));
+      setUser(
+        appUserFromAuth(
+          nextAuthUser,
+          activeRestaurant?.id ?? null,
+          activeMembership.role,
+          storedDisplayName
+        )
+      );
       await refreshPOS(activeRestaurant?.id ?? null);
       if (sessionRequestId !== sessionRequestIdRef.current) return;
       await saveSnapshot({ activeRestaurantId: activeRestaurant?.id ?? null, isDemoMode: false });
@@ -256,17 +270,27 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       }
 
       const restaurantId = snapshot?.activeRestaurantId ?? DEMO_RESTAURANT_ID;
-      const nextRestaurant = await fetchRestaurant(restaurantId);
+      const [nextRestaurant, storedDisplayName] = await Promise.all([
+        fetchRestaurant(restaurantId),
+        fetchMyDisplayName().catch(() => null)
+      ]);
       if (sessionRequestId !== sessionRequestIdRef.current) return;
-      const demoUser: AppUser =
-        snapshot?.user ?? {
-          id: DEMO_USER_ID,
-          restaurant_id: DEMO_RESTAURANT_ID,
-          name: DEMO_DATASET.user.name,
-          email: DEMO_DATASET.user.email,
-          role: "owner",
-          created_at: new Date().toISOString()
-        };
+      const fallbackUser: AppUser = snapshot?.user ?? {
+        id: DEMO_USER_ID,
+        restaurant_id: DEMO_RESTAURANT_ID,
+        name: DEMO_DATASET.user.name,
+        email: DEMO_DATASET.user.email,
+        role: "owner",
+        created_at: new Date().toISOString()
+      };
+      const demoUser: AppUser = {
+        ...fallbackUser,
+        restaurant_id: nextRestaurant.id,
+        name: resolveOperatorDisplayName(
+          storedDisplayName ?? fallbackUser.name,
+          fallbackUser.email
+        )
+      };
       const demoMembership: RestaurantMembership = {
         id: `membership_${DEMO_USER_ID}`,
         restaurant_id: nextRestaurant.id,
@@ -639,7 +663,16 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       activeRestaurantIdRef.current = nextRestaurant.id;
       setRestaurant(nextRestaurant);
       setRole(membership?.role ?? null);
-      if (authUser) setUser(appUserFromAuth(authUser, nextRestaurant.id, membership?.role ?? null));
+      if (authUser) {
+        setUser(
+          appUserFromAuth(
+            authUser,
+            nextRestaurant.id,
+            membership?.role ?? null,
+            user?.name
+          )
+        );
+      }
       await refreshPOS(nextRestaurant.id);
       if (requestId !== switchRequestIdRef.current) return;
       await saveSnapshot({ user, activeRestaurantId: nextRestaurant.id, isDemoMode });
@@ -684,6 +717,36 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       });
     }
   }, [authUser, hydrateLocalDemo, hydrateSupabaseUser, isDemoMode, user]);
+
+  const applyOperatorDisplayName = useCallback(
+    async (name: string) => {
+      const normalized = resolveOperatorDisplayName(name, user?.email ?? null);
+      if (!user) {
+        setUser({
+          id: authUser?.id ?? DEMO_USER_ID,
+          restaurant_id: activeRestaurantIdRef.current,
+          name: normalized,
+          email: authUser?.email ?? DEMO_DATASET.user.email,
+          role: role ?? "staff",
+          created_at: authUser?.created_at ?? new Date().toISOString()
+        });
+        return;
+      }
+
+      const nextUser: AppUser = {
+        ...user,
+        restaurant_id: activeRestaurantIdRef.current,
+        name: normalized
+      };
+      setUser(nextUser);
+      await saveSnapshot({
+        user: isDemoMode ? nextUser : undefined,
+        activeRestaurantId: activeRestaurantIdRef.current,
+        isDemoMode
+      });
+    },
+    [authUser, isDemoMode, role, saveSnapshot, user]
+  );
 
   const resetDemoData = useCallback(async (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => {
     if (!isDemoMode) {
@@ -739,11 +802,13 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       connectDemoPOS,
       refreshPosStatus,
       refreshSession,
+      applyOperatorDisplayName,
       resetDemoData,
       signOut
     }),
     [
       activeRestaurantId,
+      applyOperatorDisplayName,
       authUser,
       availableRestaurants,
       clearPasswordRecovery,

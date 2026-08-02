@@ -75,6 +75,7 @@ export default function SettingsScreen() {
     role,
     signOut,
     switchRestaurant,
+    user,
     usingLocalDemo
   } = useMiseSession();
   const [suppliers, setSuppliers] = useState<string[]>([]);
@@ -332,6 +333,17 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.preferences")}>
+          <OperationalRow
+            title={t("settings.preference.profile")}
+            subtitle={
+              user?.name?.trim()
+                ? user.name.trim()
+                : t("settings.preference.profile.empty")
+            }
+            icon={<CircleUserRound size={20} color={colors.caution} strokeWidth={2.25} />}
+            iconTone="caution"
+            onPress={() => router.push("/settings/profile" as never)}
+          />
           <OperationalRow
             title={t("settings.preference.language")}
             subtitle={LANGUAGE_OPTIONS.find((option) => option.locale === locale)?.nativeName ?? locale}

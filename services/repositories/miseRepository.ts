@@ -312,6 +312,7 @@ export interface MiseRepository {
   ): Promise<RestaurantMembership>;
   removeRestaurantMember(restaurantId: string, targetUserId: string): Promise<RestaurantMembership>;
   updateMyProfile(restaurantId: string, name: string): Promise<AppUser>;
+  fetchMyDisplayName(): Promise<string | null>;
   fetchMyPreferredLocale(): Promise<string | null>;
   updateMyPreferredLocale(restaurantId: string, locale: string): Promise<string>;
   fetchMyNotificationPreferences(): Promise<OperatorNotificationPreferences | null>;
@@ -1159,6 +1160,13 @@ function createLocalDemoRepository(): MiseRepository {
         user.name = name;
         return normalizeAppUser(user);
       });
+    },
+
+    async fetchMyDisplayName() {
+      const state = await readReadyDemoState();
+      const user = state.users[0];
+      const name = typeof user?.name === "string" ? user.name.trim() : "";
+      return name.length > 0 ? name : null;
     },
 
     async fetchMyPreferredLocale() {
@@ -2966,6 +2974,12 @@ function createSupabaseRepository(): MiseRepository {
         name
       });
       return normalizeAppUser(response.result as AppUser);
+    },
+
+    async fetchMyDisplayName() {
+      const { data, error } = await client.rpc("get_my_display_name");
+      if (error) throwRepositoryError(error);
+      return typeof data === "string" && data.trim() ? data.trim() : null;
     },
 
     async fetchMyPreferredLocale() {
