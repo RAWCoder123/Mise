@@ -25,6 +25,7 @@ import {
   buildRecipeBaselineSummary,
   buildSetupReadinessSummary,
   buildTodaySummary,
+  planManualPendingRecommendation,
   rebuildPurchaseRecommendations,
   shouldSuppressRecommendationForItem
 } from "../services/domain/miseDomain";
@@ -330,6 +331,123 @@ test("purchase recommendations learn a bounded median from repeated approved qua
 
   assert.equal(pancakeRecommendation?.recommended_quantity, 50);
   assert.match(pancakeRecommendation?.reason ?? "", /stable median/i);
+});
+
+test("manual add-to-order planning uses the same approval-median learning as inserts", () => {
+  const state = createInitialDemoState("Toast");
+  const pancakeMix = state.inventoryItems.find((item) => item.item_name === "Pancake mix");
+  assert.ok(pancakeMix);
+
+  const history = [
+    {
+      id: "rec_old",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      inventory_item_id: pancakeMix.id,
+      item_name: pancakeMix.item_name,
+      supplier_name: pancakeMix.supplier_name,
+      recommended_quantity: 32,
+      unit: pancakeMix.unit,
+      reason: "Earlier approved order",
+      urgency: "medium" as const,
+      status: "approved" as const,
+      supplier_order_id: null,
+      created_at: isoDaysAgo(12)
+    },
+    {
+      id: "rec_latest",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      inventory_item_id: pancakeMix.id,
+      item_name: pancakeMix.item_name,
+      supplier_name: pancakeMix.supplier_name,
+      recommended_quantity: 54,
+      unit: pancakeMix.unit,
+      reason: "Latest approved order",
+      urgency: "medium" as const,
+      status: "approved" as const,
+      supplier_order_id: null,
+      created_at: isoDaysAgo(2)
+    },
+    {
+      id: "rec_middle",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      inventory_item_id: pancakeMix.id,
+      item_name: pancakeMix.item_name,
+      supplier_name: pancakeMix.supplier_name,
+      recommended_quantity: 50,
+      unit: pancakeMix.unit,
+      reason: "Repeated approved order",
+      urgency: "medium" as const,
+      status: "ordered" as const,
+      supplier_order_id: null,
+      created_at: isoDaysAgo(7)
+    }
+  ];
+
+  const prediction = buildInventoryPrediction(
+    pancakeMix,
+    state.posSales,
+    state.menuItemIngredients
+  );
+  const planned = planManualPendingRecommendation({
+    restaurantId: DEMO_RESTAURANT_ID,
+    item: pancakeMix,
+    prediction,
+    recommendationHistory: history
+  });
+  const inserts = buildRecommendationInserts(
+    DEMO_RESTAURANT_ID,
+    state.inventoryItems,
+    state.posSales,
+    state.menuItemIngredients,
+    history
+  );
+  const generated = inserts.find((insert) => insert.inventory_item_id === pancakeMix.id);
+
+  assert.equal(planned.recommended_quantity, 50);
+  assert.equal(planned.recommended_quantity, generated?.recommended_quantity);
+  assert.match(planned.reason, /stable median/i);
+  assert.notEqual(planned.recommended_quantity, prediction.suggestedOrderQuantity);
+});
+
+test("manual add-to-order planning pads for chronic waste like generated inserts", () => {
+  const state = createInitialDemoState("Toast");
+  const pancakeMix = state.inventoryItems.find((item) => item.item_name === "Pancake mix");
+  assert.ok(pancakeMix);
+
+  const wasteHistory = [1, 2, 3].map((daysAgo) => ({
+    inventoryItemId: pancakeMix.id,
+    quantityRemoved: 4,
+    quantityBefore: 20,
+    createdAt: isoDaysAgo(daysAgo)
+  }));
+
+  const prediction = buildInventoryPrediction(
+    pancakeMix,
+    state.posSales,
+    state.menuItemIngredients
+  );
+  const planned = planManualPendingRecommendation({
+    restaurantId: DEMO_RESTAURANT_ID,
+    item: pancakeMix,
+    prediction,
+    wasteHistory
+  });
+  const inserts = buildRecommendationInserts(
+    DEMO_RESTAURANT_ID,
+    state.inventoryItems,
+    state.posSales,
+    state.menuItemIngredients,
+    [],
+    undefined,
+    [],
+    wasteHistory
+  );
+  const generated = inserts.find((insert) => insert.inventory_item_id === pancakeMix.id);
+
+  assert.ok(generated);
+  assert.equal(planned.recommended_quantity, generated.recommended_quantity);
+  assert.ok(planned.recommended_quantity > prediction.suggestedOrderQuantity);
+  assert.match(planned.reason, /waste pattern/i);
 });
 
 test("one anomalous approval does not override the calculated recommendation", () => {

@@ -3,7 +3,7 @@ import {
   buildInventoryControlSummary,
   buildInventoryOutlooks,
   buildRecipeBaselineSummary,
-  recommendationReason,
+  planManualPendingRecommendation,
   shouldSuppressRecommendationForItem,
   type RecipeBaselineSummaryOptions
 } from "../domain/miseDomain";
@@ -269,22 +269,43 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
   const existing = await repository.findPendingRecommendation(restaurantId, itemId);
   if (existing) return existing;
 
-  const { item, prediction } = await fetchInventoryItemOutlook(restaurantId, itemId);
-  const history = await repository.fetchPurchaseRecommendations(restaurantId, "all");
+  const [data, history] = await Promise.all([
+    repository.fetchPlanningData(restaurantId),
+    repository.fetchPurchaseRecommendations(restaurantId, "all")
+  ]);
+  const outlook = buildInventoryOutlooks(
+    restaurantId,
+    data.inventoryItems,
+    data.sales,
+    data.menuItemIngredients,
+    data.operatingDate,
+    data.appliedTodayConsumptionByItemId
+  ).find(({ item }) => item.id === itemId);
+  if (!outlook) throw new Error("Inventory item not found");
+  const { item, prediction } = outlook;
   if (shouldSuppressRecommendationForItem(restaurantId, item, history)) {
     throw new Error("Update the inventory count first. This item was already handled.");
   }
+  const planned = planManualPendingRecommendation({
+    restaurantId,
+    item,
+    prediction,
+    recommendationHistory: history,
+    receivingHistory: data.receivingHistory,
+    wasteHistory: data.wasteHistory,
+    countVarianceHistory: data.countVarianceHistory
+  });
   return repository.createPurchaseRecommendation({
     restaurant_id: restaurantId,
     inventory_item_id: item.id,
     item_name: item.item_name,
     supplier_name: item.supplier_name,
-    recommended_quantity: prediction.suggestedOrderQuantity,
+    recommended_quantity: planned.recommended_quantity,
     original_recommended_quantity: null,
     dismiss_reason: null,
     unit: item.unit,
-    reason: recommendationReason(item, prediction),
-    urgency: prediction.urgency,
+    reason: planned.reason,
+    urgency: planned.urgency,
     status: "pending",
     supplier_order_id: null
   });

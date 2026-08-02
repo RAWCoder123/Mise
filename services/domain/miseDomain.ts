@@ -178,6 +178,116 @@ function learnedRecommendationReason(
   return receiveBiasReason ? `${withApprovalLearning} ${receiveBiasReason}` : withApprovalLearning;
 }
 
+export type StackedOrderLearningResult = {
+  recommendedQuantity: number;
+  learnedQuantity: number | undefined;
+  reasonFragments: string[];
+};
+
+/**
+ * Apply approval-median, receive-fill, waste, and count-shrink learning in the same
+ * order used by generated recommendation rebuilds. Manual "Add to order" must use
+ * this so operator-initiated drafts match restaurant-learning behavior.
+ */
+export function applyStackedOrderLearning(input: {
+  item: InventoryItem;
+  prediction: InventoryPrediction;
+  learnedQuantities: Map<string, number>;
+  receiveBias?: ReturnType<typeof buildReceiveFillBiasByItem> extends Map<string, infer V> ? V : never;
+  wasteBias?: ReturnType<typeof buildWasteBiasByItem> extends Map<string, infer V> ? V : never;
+  countShrinkBias?: ReturnType<typeof buildCountShrinkBiasByItem> extends Map<string, infer V>
+    ? V
+    : never;
+}): StackedOrderLearningResult {
+  const learnedQuantity = boundedLearnedQuantity(
+    input.item,
+    input.prediction,
+    input.learnedQuantities
+  );
+  const afterApprovalLearning = learnedQuantity ?? input.prediction.suggestedOrderQuantity;
+  const bounds = {
+    calculated: input.prediction.suggestedOrderQuantity,
+    par: input.item.par_level
+  };
+  const afterReceive = applyReceiveFillBias(afterApprovalLearning, input.receiveBias, bounds);
+  const afterWaste = applyLossBias(afterReceive ?? afterApprovalLearning, input.wasteBias, bounds);
+  const afterShrink = applyLossBias(
+    afterWaste ?? afterReceive ?? afterApprovalLearning,
+    input.countShrinkBias,
+    bounds
+  );
+  const recommendedQuantity = afterShrink ?? afterWaste ?? afterReceive ?? afterApprovalLearning;
+  const reasonFragments: string[] = [];
+  if (
+    input.receiveBias?.isChronic &&
+    afterReceive != null &&
+    afterReceive !== afterApprovalLearning
+  ) {
+    reasonFragments.push(receiveFillBiasReasonFragment(input.receiveBias));
+  }
+  if (
+    input.wasteBias?.isChronic &&
+    afterWaste != null &&
+    afterWaste !== (afterReceive ?? afterApprovalLearning)
+  ) {
+    reasonFragments.push(lossBiasReasonFragment(input.wasteBias));
+  }
+  if (
+    input.countShrinkBias?.isChronic &&
+    afterShrink != null &&
+    afterShrink !== (afterWaste ?? afterReceive ?? afterApprovalLearning)
+  ) {
+    reasonFragments.push(lossBiasReasonFragment(input.countShrinkBias));
+  }
+  return { recommendedQuantity, learnedQuantity, reasonFragments };
+}
+
+/**
+ * Plan a single pending recommendation for an explicit operator "Add to order"
+ * action. Unlike rebuild filters, this does not require Critical/Low status.
+ */
+export function planManualPendingRecommendation(input: {
+  restaurantId: string;
+  item: InventoryItem;
+  prediction: InventoryPrediction;
+  recommendationHistory?: PurchaseRecommendation[];
+  receivingHistory?: Parameters<typeof buildReceiveFillBiasByItem>[0];
+  wasteHistory?: Parameters<typeof buildWasteBiasByItem>[0];
+  countVarianceHistory?: Parameters<typeof buildCountShrinkBiasByItem>[0];
+}): {
+  recommended_quantity: number;
+  reason: string;
+  urgency: Urgency;
+} {
+  const learnedQuantities = buildLearnedOrderQuantities(
+    input.restaurantId,
+    input.recommendationHistory ?? []
+  );
+  const receiveBias = buildReceiveFillBiasByItem(input.receivingHistory ?? []).get(input.item.id);
+  const wasteBias = buildWasteBiasByItem(input.wasteHistory ?? []).get(input.item.id);
+  const countShrinkBias = buildCountShrinkBiasByItem(input.countVarianceHistory ?? []).get(
+    input.item.id
+  );
+  const learned = applyStackedOrderLearning({
+    item: input.item,
+    prediction: input.prediction,
+    learnedQuantities,
+    receiveBias,
+    wasteBias,
+    countShrinkBias
+  });
+  return {
+    recommended_quantity: learned.recommendedQuantity,
+    reason: learnedRecommendationReason(
+      input.item,
+      input.prediction,
+      learned.learnedQuantity,
+      learned.reasonFragments.length ? learned.reasonFragments.join(" ") : undefined
+    ),
+    urgency: input.prediction.urgency
+  };
+}
+
 function buildLearnedOrderQuantities(restaurantId: string, history: PurchaseRecommendation[] = []) {
   const samples = new Map<string, Array<{ quantity: number; createdAt: string }>>();
   history
@@ -822,48 +932,25 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
     );
     if (!pending && shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory)) return;
 
-    const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
-    const afterApprovalLearning = learnedQuantity ?? prediction.suggestedOrderQuantity;
-    const bounds = {
-      calculated: prediction.suggestedOrderQuantity,
-      par: item.par_level
-    };
-    const receiveBias = receiveBiasByItem.get(item.id);
-    const wasteBias = wasteBiasByItem.get(item.id);
-    const countShrinkBias = countShrinkBiasByItem.get(item.id);
-    const afterReceive = applyReceiveFillBias(afterApprovalLearning, receiveBias, bounds);
-    const afterWaste = applyLossBias(afterReceive ?? afterApprovalLearning, wasteBias, bounds);
-    const afterShrink = applyLossBias(
-      afterWaste ?? afterReceive ?? afterApprovalLearning,
-      countShrinkBias,
-      bounds
-    );
-    const recommendedQuantity = afterShrink ?? afterWaste ?? afterReceive ?? afterApprovalLearning;
-    const reasonFragments: string[] = [];
-    if (receiveBias?.isChronic && afterReceive != null && afterReceive !== afterApprovalLearning) {
-      reasonFragments.push(receiveFillBiasReasonFragment(receiveBias));
-    }
-    if (wasteBias?.isChronic && afterWaste != null && afterWaste !== (afterReceive ?? afterApprovalLearning)) {
-      reasonFragments.push(lossBiasReasonFragment(wasteBias));
-    }
-    if (
-      countShrinkBias?.isChronic &&
-      afterShrink != null &&
-      afterShrink !== (afterWaste ?? afterReceive ?? afterApprovalLearning)
-    ) {
-      reasonFragments.push(lossBiasReasonFragment(countShrinkBias));
-    }
+    const learned = applyStackedOrderLearning({
+      item,
+      prediction,
+      learnedQuantities,
+      receiveBias: receiveBiasByItem.get(item.id),
+      wasteBias: wasteBiasByItem.get(item.id),
+      countShrinkBias: countShrinkBiasByItem.get(item.id)
+    });
     const reason = learnedRecommendationReason(
       item,
       prediction,
-      learnedQuantity,
-      reasonFragments.length ? reasonFragments.join(" ") : undefined
+      learned.learnedQuantity,
+      learned.reasonFragments.length ? learned.reasonFragments.join(" ") : undefined
     );
 
     if (pending) {
       pending.item_name = item.item_name;
       pending.supplier_name = item.supplier_name;
-      pending.recommended_quantity = recommendedQuantity;
+      pending.recommended_quantity = learned.recommendedQuantity;
       pending.unit = item.unit;
       pending.reason = reason;
       pending.urgency = prediction.urgency;
@@ -876,7 +963,7 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
       inventory_item_id: item.id,
       item_name: item.item_name,
       supplier_name: item.supplier_name,
-      recommended_quantity: recommendedQuantity,
+      recommended_quantity: learned.recommendedQuantity,
       original_recommended_quantity: null,
       dismiss_reason: null,
       unit: item.unit,
@@ -2347,51 +2434,28 @@ export function buildRecommendationInserts(
     }))
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
     .map(({ item, prediction }) => {
-      const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
-      const afterApprovalLearning = learnedQuantity ?? prediction.suggestedOrderQuantity;
-      const bounds = {
-        calculated: prediction.suggestedOrderQuantity,
-        par: item.par_level
-      };
-      const receiveBias = receiveBiasByItem.get(item.id);
-      const wasteBias = wasteBiasByItem.get(item.id);
-      const countShrinkBias = countShrinkBiasByItem.get(item.id);
-      const afterReceive = applyReceiveFillBias(afterApprovalLearning, receiveBias, bounds);
-      const afterWaste = applyLossBias(afterReceive ?? afterApprovalLearning, wasteBias, bounds);
-      const afterShrink = applyLossBias(
-        afterWaste ?? afterReceive ?? afterApprovalLearning,
-        countShrinkBias,
-        bounds
-      );
-      const recommendedQuantity = afterShrink ?? afterWaste ?? afterReceive ?? afterApprovalLearning;
-      const reasonFragments: string[] = [];
-      if (receiveBias?.isChronic && afterReceive != null && afterReceive !== afterApprovalLearning) {
-        reasonFragments.push(receiveFillBiasReasonFragment(receiveBias));
-      }
-      if (wasteBias?.isChronic && afterWaste != null && afterWaste !== (afterReceive ?? afterApprovalLearning)) {
-        reasonFragments.push(lossBiasReasonFragment(wasteBias));
-      }
-      if (
-        countShrinkBias?.isChronic &&
-        afterShrink != null &&
-        afterShrink !== (afterWaste ?? afterReceive ?? afterApprovalLearning)
-      ) {
-        reasonFragments.push(lossBiasReasonFragment(countShrinkBias));
-      }
+      const learned = applyStackedOrderLearning({
+        item,
+        prediction,
+        learnedQuantities,
+        receiveBias: receiveBiasByItem.get(item.id),
+        wasteBias: wasteBiasByItem.get(item.id),
+        countShrinkBias: countShrinkBiasByItem.get(item.id)
+      });
       return {
         restaurant_id: restaurantId,
         inventory_item_id: item.id,
         item_name: item.item_name,
         supplier_name: item.supplier_name,
-        recommended_quantity: recommendedQuantity,
+        recommended_quantity: learned.recommendedQuantity,
         original_recommended_quantity: null,
         dismiss_reason: null,
         unit: item.unit,
         reason: learnedRecommendationReason(
           item,
           prediction,
-          learnedQuantity,
-          reasonFragments.length ? reasonFragments.join(" ") : undefined
+          learned.learnedQuantity,
+          learned.reasonFragments.length ? learned.reasonFragments.join(" ") : undefined
         ),
         urgency: prediction.urgency,
         status: "pending" as RecommendationStatus,
