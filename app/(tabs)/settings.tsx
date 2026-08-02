@@ -30,7 +30,7 @@ import { Button } from "../../components/ui/Button";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
-import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, fontFamilies, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -48,6 +48,12 @@ import {
   fetchSuppliers,
   requestAccountDeletion
 } from "../../services/miseService";
+import {
+  presentSettingsHubGmailCopy,
+  presentSettingsHubRecipesCopy,
+  presentSettingsHubSupplierCopy,
+  resolveSettingsHubLoadState
+} from "../../services/presentation/settingsHubPresentation";
 import { canExportRestaurantData, canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type {
@@ -59,7 +65,6 @@ import type {
   RestaurantServiceStyle
 } from "../../types/mise";
 
-type Translator = (key: MessageKey, values?: MessageValues) => string;
 type SettingsNotice = { key: MessageKey; tone: StatusNoticeTone };
 
 export default function SettingsScreen() {
@@ -85,7 +90,9 @@ export default function SettingsScreen() {
   const [readiness, setReadiness] = useState<DemoReadinessSummary | null>(null);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [message, setMessage] = useState<SettingsNotice | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [hubLoading, setHubLoading] = useState(Boolean(restaurant));
+  const [hubLoadError, setHubLoadError] = useState(false);
+  const [restoringDemo, setRestoringDemo] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [exportingData, setExportingData] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -94,12 +101,14 @@ export default function SettingsScreen() {
   const [switchingRestaurantId, setSwitchingRestaurantId] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
   const appConfig = readPublicAppConfig();
 
   useEffect(() => {
     requestIdRef.current += 1;
+    loadedRestaurantRef.current = null;
     setLoadedRestaurantId(null);
     setSuppliers([]);
     setOpsProfile(null);
@@ -108,64 +117,82 @@ export default function SettingsScreen() {
     setReadiness(null);
     setDiagnosticsOpen(false);
     setMessage(null);
+    setHubLoadError(false);
+    setHubLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
-  const load = useCallback(async () => {
-    if (!restaurant) {
-      setSuppliers([]);
-      setOpsProfile(null);
-      setEmailConnection(null);
-      setRecipeBaseline(null);
-      setReadiness(null);
-      return;
-    }
+  const load = useCallback(
+    async (showLoading = false) => {
+      if (!restaurant) {
+        setSuppliers([]);
+        setOpsProfile(null);
+        setEmailConnection(null);
+        setRecipeBaseline(null);
+        setReadiness(null);
+        setHubLoadError(false);
+        setHubLoading(false);
+        return;
+      }
 
-    const restaurantId = restaurant.id;
-    const requestId = ++requestIdRef.current;
-    try {
-      const [nextSuppliers, nextOpsProfile, nextEmailConnection, nextRecipeBaseline, nextReadiness] =
-        await Promise.all([
-          fetchSuppliers(restaurantId),
-          fetchRestaurantOpsProfile(restaurantId),
-          fetchEmailConnectionState(restaurantId),
-          fetchRecipeBaselineSummary(restaurantId),
-          __DEV__ && isDemoMode ? fetchDemoReadinessSummary(restaurantId) : Promise.resolve(null)
-        ]);
-      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      setSuppliers(nextSuppliers);
-      setOpsProfile(nextOpsProfile);
-      setEmailConnection(nextEmailConnection);
-      setRecipeBaseline(nextRecipeBaseline);
-      setReadiness(nextReadiness);
-      setLoadedRestaurantId(restaurantId);
-    } catch (loadError) {
-      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      captureMiseError(loadError, { flow: "settings", operation: "load", restaurant_id: restaurantId });
-      setMessage({ key: "settings.notice.loadError", tone: "danger" });
-    }
-  }, [isDemoMode, restaurant?.id]);
+      const restaurantId = restaurant.id;
+      const requestId = ++requestIdRef.current;
+      if (showLoading || loadedRestaurantRef.current !== restaurantId) {
+        setHubLoading(true);
+      }
+      setHubLoadError(false);
+
+      try {
+        const [nextSuppliers, nextOpsProfile, nextEmailConnection, nextRecipeBaseline, nextReadiness] =
+          await Promise.all([
+            fetchSuppliers(restaurantId),
+            fetchRestaurantOpsProfile(restaurantId),
+            fetchEmailConnectionState(restaurantId),
+            fetchRecipeBaselineSummary(restaurantId),
+            __DEV__ && isDemoMode ? fetchDemoReadinessSummary(restaurantId) : Promise.resolve(null)
+          ]);
+        if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+        setSuppliers(nextSuppliers);
+        setOpsProfile(nextOpsProfile);
+        setEmailConnection(nextEmailConnection);
+        setRecipeBaseline(nextRecipeBaseline);
+        setReadiness(nextReadiness);
+        loadedRestaurantRef.current = restaurantId;
+        setLoadedRestaurantId(restaurantId);
+        setHubLoadError(false);
+      } catch (loadError) {
+        if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+        captureMiseError(loadError, { flow: "settings", operation: "load", restaurant_id: restaurantId });
+        setHubLoadError(true);
+      } finally {
+        if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+          setHubLoading(false);
+        }
+      }
+    },
+    [isDemoMode, restaurant]
+  );
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(false);
     }, [load])
   );
 
   async function reset() {
-    setLoading(true);
+    setRestoringDemo(true);
     setMessage(null);
     try {
       await resetDemoData({
         preset: DEMO_DATASET.id,
         posProvider: posProvider ?? DEMO_DATASET.defaultPosProvider
       });
-      await load();
+      await load(true);
       setMessage({ key: "settings.notice.demoRestored", tone: "success" });
     } catch (resetError) {
       captureMiseError(resetError, { flow: "settings", operation: "restore_demo", restaurant_id: restaurant?.id });
       setMessage({ key: "settings.notice.demoRestoreError", tone: "danger" });
     } finally {
-      setLoading(false);
+      setRestoringDemo(false);
     }
   }
 
@@ -248,25 +275,62 @@ export default function SettingsScreen() {
     }
   }
 
-  const visibleSuppliers = loadedRestaurantId === restaurant?.id ? suppliers : [];
-  const visibleOpsProfile = loadedRestaurantId === restaurant?.id ? opsProfile : null;
-  const visibleEmailConnection = loadedRestaurantId === restaurant?.id ? emailConnection : null;
-  const visibleRecipeBaseline = loadedRestaurantId === restaurant?.id ? recipeBaseline : null;
-  const visibleReadiness = loadedRestaurantId === restaurant?.id ? readiness : null;
-  const gmailConnected = visibleEmailConnection?.status === "connected";
-  const gmailNeedsAttention = visibleEmailConnection?.status === "needs_reauth" || visibleEmailConnection?.status === "restricted";
-  const unmappedRecipeCount = visibleRecipeBaseline?.posItemsMissingRecipes.length ?? 0;
-  const incompatibleRecipeCount = visibleRecipeBaseline?.posItemsWithIncompatibleUnits.length ?? 0;
-  const recipesSubtitle =
-    incompatibleRecipeCount === 1
-      ? t("settings.operations.recipes.incompatibleOneBody")
-      : incompatibleRecipeCount > 1
-        ? t("settings.operations.recipes.incompatibleBody", { count: formatNumber(incompatibleRecipeCount) })
-        : unmappedRecipeCount === 1
-          ? t("settings.operations.recipes.unmappedOneBody")
-          : unmappedRecipeCount > 1
-            ? t("settings.operations.recipes.unmappedBody", { count: formatNumber(unmappedRecipeCount) })
-            : t("settings.operations.recipes.body");
+  const hubLoadState = resolveSettingsHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: hubLoadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleSuppliers = hubReady ? suppliers : [];
+  const visibleOpsProfile = hubReady ? opsProfile : null;
+  const visibleEmailConnection = hubReady ? emailConnection : null;
+  const visibleRecipeBaseline = hubReady ? recipeBaseline : null;
+  const visibleReadiness = hubReady ? readiness : null;
+  const gmailPresentation = presentSettingsHubGmailCopy(hubLoadState, visibleEmailConnection, {
+    loading: t("settings.integration.gmail.loading"),
+    unavailable: t("settings.integration.gmail.unavailable"),
+    connectedWithSender: (sender) => t("settings.integration.gmail.connectedWithSender", { sender }),
+    connected: t("settings.integration.gmail.connected"),
+    reconnect: t("settings.integration.gmail.reconnect"),
+    restricted: t("settings.integration.gmail.restricted"),
+    notConnected: t("settings.integration.gmail.notConnected"),
+    statusLoading: t("settings.gmail.status.loading"),
+    statusUnavailable: t("settings.gmail.status.unavailable"),
+    statusConnected: t("settings.gmail.status.connected"),
+    statusNeedsReauth: t("settings.gmail.status.needsReauth"),
+    statusRestricted: t("settings.gmail.status.restricted"),
+    statusNotConnected: t("settings.gmail.status.notConnected")
+  });
+  const supplierPresentation = presentSettingsHubSupplierCopy(
+    hubLoadState,
+    visibleSuppliers,
+    {
+      loading: t("settings.operations.suppliers.loading"),
+      unavailable: t("settings.operations.suppliers.unavailable"),
+      empty: t("settings.operations.suppliers.empty"),
+      list: (values) => formatList(values),
+      more: (listed, remainingCount) =>
+        t("settings.operations.suppliers.more", { suppliers: listed, count: remainingCount })
+    },
+    (value) => formatNumber(value)
+  );
+  const recipesPresentation = presentSettingsHubRecipesCopy(
+    hubLoadState,
+    {
+      unmapped: visibleRecipeBaseline?.posItemsMissingRecipes.length ?? 0,
+      incompatible: visibleRecipeBaseline?.posItemsWithIncompatibleUnits.length ?? 0
+    },
+    {
+      loading: t("settings.operations.recipes.loading"),
+      unavailable: t("settings.operations.recipes.unavailable"),
+      body: t("settings.operations.recipes.body"),
+      unmappedOne: t("settings.operations.recipes.unmappedOneBody"),
+      unmapped: (count) => t("settings.operations.recipes.unmappedBody", { count }),
+      incompatibleOne: t("settings.operations.recipes.incompatibleOneBody"),
+      incompatible: (count) => t("settings.operations.recipes.incompatibleBody", { count })
+    },
+    (value) => formatNumber(value)
+  );
   const localizedRole = role ? roleLabel(role, t) : null;
   const canEditRestaurantIdentity = canUpdateRestaurantProfile(memberships, restaurant?.id);
   const canExportCurrentRestaurant = canExportRestaurantData(memberships, restaurant?.id);
@@ -280,8 +344,17 @@ export default function SettingsScreen() {
     : null;
 
   return (
-    <Screen title={t("settings.title")} subtitle={t("settings.subtitle")}>
+    <Screen title={t("settings.title")} subtitle={t("settings.subtitle")} loading={hubLoading}>
       <View style={styles.stack}>
+        {hubLoadError ? (
+          <RetryNotice
+            title={t("settings.retry.title")}
+            message={t("settings.notice.loadError")}
+            retryLabel={t("common.retry")}
+            accessibilityLabel={t("settings.retry.accessibility")}
+            onRetry={() => void load(true)}
+          />
+        ) : null}
         {message ? <StatusNotice title={t(message.key)} tone={message.tone} /> : null}
 
         <SettingsSection title={t("settings.section.restaurant")}>
@@ -415,17 +488,29 @@ export default function SettingsScreen() {
           <OperationalRow
             title={t("settings.integration.gmail.title")}
             titleLines={2}
-            subtitle={gmailConnectionSubtitle(visibleEmailConnection, t)}
+            subtitle={gmailPresentation.subtitle}
             icon={
               <Mail
                 size={20}
-                color={gmailConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
+                color={
+                  gmailPresentation.tone === "leaf"
+                    ? colors.success
+                    : gmailPresentation.tone === "caution"
+                      ? colors.caution
+                      : colors.muted
+                }
                 strokeWidth={2.25}
               />
             }
-            iconTone={gmailConnected ? "leaf" : gmailNeedsAttention ? "caution" : "neutral"}
-            badgeLabel={gmailConnectionBadge(visibleEmailConnection, t)}
-            badgeTone={gmailConnected ? "success" : gmailNeedsAttention ? "caution" : "neutral"}
+            iconTone={gmailPresentation.tone}
+            badgeLabel={gmailPresentation.badgeLabel}
+            badgeTone={
+              gmailPresentation.tone === "leaf"
+                ? "success"
+                : gmailPresentation.tone === "caution"
+                  ? "caution"
+                  : "neutral"
+            }
             onPress={() => router.push("/settings/gmail" as never)}
           />
         </SettingsSection>
@@ -433,35 +518,25 @@ export default function SettingsScreen() {
         <SettingsSection title={t("settings.section.operations")}>
           <OperationalRow
             title={t("settings.operations.recipes.title")}
-            subtitle={recipesSubtitle}
+            subtitle={recipesPresentation.subtitle}
             icon={
               <BookOpen
                 size={20}
-                color={
-                  incompatibleRecipeCount > 0 || unmappedRecipeCount > 0 ? colors.caution : colors.text
-                }
+                color={recipesPresentation.caution ? colors.caution : colors.text}
                 strokeWidth={2.25}
               />
             }
-            iconTone={incompatibleRecipeCount > 0 || unmappedRecipeCount > 0 ? "caution" : "neutral"}
-            badgeLabel={
-              incompatibleRecipeCount > 0
-                ? formatNumber(incompatibleRecipeCount)
-                : unmappedRecipeCount > 0
-                  ? formatNumber(unmappedRecipeCount)
-                  : undefined
-            }
-            badgeTone={
-              incompatibleRecipeCount > 0 || unmappedRecipeCount > 0 ? "caution" : undefined
-            }
+            iconTone={recipesPresentation.caution ? "caution" : "neutral"}
+            badgeLabel={recipesPresentation.badgeLabel}
+            badgeTone={recipesPresentation.caution ? "caution" : undefined}
             onPress={() => router.push("/settings/recipes" as never)}
           />
           <OperationalRow
             title={t("settings.operations.suppliers.title")}
-            subtitle={supplierSummary(visibleSuppliers, t, formatList, formatNumber)}
+            subtitle={supplierPresentation.subtitle}
             icon={<Truck size={20} color={colors.text} strokeWidth={2.25} />}
             iconTone="neutral"
-            value={formatNumber(visibleSuppliers.length)}
+            value={supplierPresentation.value}
             onPress={() => router.push("/settings/suppliers" as never)}
           />
           <OperationalRow
@@ -498,11 +573,11 @@ export default function SettingsScreen() {
           {isDemoMode ? (
             <View style={styles.sectionAction}>
               <Button
-                title={t(loading ? "settings.data.restoring" : "settings.data.restore")}
+                title={t(restoringDemo ? "settings.data.restoring" : "settings.data.restore")}
                 variant="secondary"
                 icon={<RefreshCw size={18} color={colors.text} strokeWidth={2.25} />}
                 onPress={reset}
-                disabled={loading}
+                disabled={restoringDemo || hubLoading}
                 fullWidth
               />
             </View>
@@ -687,43 +762,14 @@ function SettingsSection({ title, children }: { title: string; children: ReactNo
   );
 }
 
-function gmailConnectionSubtitle(connection: RestaurantEmailConnection | null, t: Translator) {
-  if (connection?.status === "connected") {
-    return connection.sender_email
-      ? t("settings.integration.gmail.connectedWithSender", { sender: connection.sender_email })
-      : t("settings.integration.gmail.connected");
-  }
-  if (connection?.status === "needs_reauth") return t("settings.integration.gmail.reconnect");
-  if (connection?.status === "restricted") return t("settings.integration.gmail.restricted");
-  return t("settings.integration.gmail.notConnected");
-}
-
-function gmailConnectionBadge(connection: RestaurantEmailConnection | null, t: Translator) {
-  if (connection?.status === "connected") return t("settings.gmail.status.connected");
-  if (connection?.status === "needs_reauth") return t("settings.gmail.status.needsReauth");
-  if (connection?.status === "restricted") return t("settings.gmail.status.restricted");
-  return t("settings.gmail.status.notConnected");
-}
-
-function supplierSummary(
-  suppliers: string[],
-  t: Translator,
-  formatList: (values: readonly string[], options?: Intl.ListFormatOptions) => string,
-  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string
-) {
-  if (suppliers.length === 0) return t("settings.operations.suppliers.empty");
-  if (suppliers.length <= 2) return formatList(suppliers);
-  return t("settings.operations.suppliers.more", {
-    suppliers: formatList(suppliers.slice(0, 2)),
-    count: formatNumber(suppliers.length - 2)
-  });
-}
-
-function roleLabel(role: RestaurantRole, t: Translator) {
+function roleLabel(role: RestaurantRole, t: (key: MessageKey, values?: MessageValues) => string) {
   return t(`settings.role.${role}` as MessageKey);
 }
 
-function serviceStyleLabel(style: RestaurantServiceStyle, t: Translator) {
+function serviceStyleLabel(
+  style: RestaurantServiceStyle,
+  t: (key: MessageKey, values?: MessageValues) => string
+) {
   const keyByStyle: Record<RestaurantServiceStyle, MessageKey> = {
     quick_service: "settings.serviceStyle.quickService",
     fast_casual: "settings.serviceStyle.fastCasual",
@@ -735,13 +781,13 @@ function serviceStyleLabel(style: RestaurantServiceStyle, t: Translator) {
   return t(keyByStyle[style]);
 }
 
-function posProviderLabel(provider: string, t: Translator) {
+function posProviderLabel(provider: string, t: (key: MessageKey, values?: MessageValues) => string) {
   if (provider === "manual_csv") return t("settings.integration.pos.manualCsv");
   if (provider === "demo") return t("common.demo");
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
-function readinessCheckLabel(checkId: string, t: Translator) {
+function readinessCheckLabel(checkId: string, t: (key: MessageKey, values?: MessageValues) => string) {
   const keyById: Record<string, MessageKey> = {
     profile: "settings.diagnostics.check.profile",
     pos: "settings.diagnostics.check.pos",
