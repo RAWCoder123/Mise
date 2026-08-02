@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
+  classifyTodayServicePulse,
   deriveOperationalTodayTasks,
   operationalTodayTaskId,
   prioritizeOperationalTodayTasksForRole,
@@ -657,6 +658,49 @@ function insight(patch: Partial<Insight> = {}): Insight {
     ...patch
   };
 }
+
+test("classifyTodayServicePulse keeps open operational tasks from claiming service is on track", () => {
+  assert.deepEqual(
+    classifyTodayServicePulse({
+      inventoryHealth: { low: 0, critical: 2 },
+      pendingRecommendations: 4,
+      openOperationalTaskCount: 3
+    }),
+    { kind: "stock_risk", tone: "danger", count: 2 }
+  );
+  assert.deepEqual(
+    classifyTodayServicePulse({
+      inventoryHealth: { low: 1, critical: 0 },
+      pendingRecommendations: 0,
+      openOperationalTaskCount: 0
+    }),
+    { kind: "stock_risk", tone: "warning", count: 1 }
+  );
+  assert.deepEqual(
+    classifyTodayServicePulse({
+      inventoryHealth: { low: 0, critical: 0 },
+      pendingRecommendations: 3,
+      openOperationalTaskCount: 5
+    }),
+    { kind: "order_review", tone: "warning", count: 3 }
+  );
+  assert.deepEqual(
+    classifyTodayServicePulse({
+      inventoryHealth: { low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      openOperationalTaskCount: 2
+    }),
+    { kind: "open_tasks", tone: "warning", count: 2 }
+  );
+  assert.deepEqual(
+    classifyTodayServicePulse({
+      inventoryHealth: { low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      openOperationalTaskCount: 0
+    }),
+    { kind: "ready", tone: "success", count: 0 }
+  );
+});
 
 function task(
   sourceId: string,

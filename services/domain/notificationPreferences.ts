@@ -115,3 +115,25 @@ export function filterOperationalTodayTasksByNotificationPreferences<T extends P
     return normalized[category];
   });
 }
+
+/**
+ * Count tasks present in restaurant state but hidden by the operator's mute
+ * preferences. Used so Today can distinguish "all clear" from "work is muted."
+ */
+export function countHiddenOperationalTodayTasksByNotificationPreferences<T extends Pick<
+  OperationalTodayTask,
+  "presentation" | "source"
+>>(tasks: readonly T[], preferences: OperatorNotificationPreferences): number {
+  const visibleCount = filterOperationalTodayTasksByNotificationPreferences(tasks, preferences).length;
+  return Math.max(0, tasks.length - visibleCount);
+}
+
+export function areOperationalTodayTasksHiddenByNotificationPreferences<T extends Pick<
+  OperationalTodayTask,
+  "presentation" | "source"
+>>(tasks: readonly T[], preferences: OperatorNotificationPreferences): boolean {
+  return (
+    tasks.length > 0 &&
+    filterOperationalTodayTasksByNotificationPreferences(tasks, preferences).length === 0
+  );
+}

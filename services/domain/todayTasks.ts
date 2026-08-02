@@ -1291,3 +1291,50 @@ function sortableDueValue(task: Pick<OperationalTodayTask, "dueAt" | "dueDate">)
 function compareStrings(left: string, right: string) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
+
+export type TodayServicePulseKind = "stock_risk" | "order_review" | "open_tasks" | "ready";
+export type TodayServicePulseTone = "danger" | "warning" | "success";
+
+export interface TodayServicePulseClassification {
+  kind: TodayServicePulseKind;
+  tone: TodayServicePulseTone;
+  /** Count for the primary risk signal (stock items, recommendations, or open tasks). */
+  count: number;
+}
+
+/**
+ * Classify the Today service pulse from restaurant operational state.
+ * Open setup/POS/recipe/inventory tasks keep the pulse from claiming "on track."
+ */
+export function classifyTodayServicePulse(input: {
+  inventoryHealth: { low: number; critical: number };
+  pendingRecommendations: number;
+  openOperationalTaskCount: number;
+}): TodayServicePulseClassification {
+  const stockRisk = Math.max(0, input.inventoryHealth.low) + Math.max(0, input.inventoryHealth.critical);
+  const pendingRecommendations = Math.max(0, input.pendingRecommendations);
+  const openTasks = Math.max(0, input.openOperationalTaskCount);
+
+  if (input.inventoryHealth.critical > 0 || stockRisk > 0) {
+    return {
+      kind: "stock_risk",
+      tone: input.inventoryHealth.critical > 0 ? "danger" : "warning",
+      count: stockRisk
+    };
+  }
+  if (pendingRecommendations > 0) {
+    return {
+      kind: "order_review",
+      tone: "warning",
+      count: pendingRecommendations
+    };
+  }
+  if (openTasks > 0) {
+    return {
+      kind: "open_tasks",
+      tone: "warning",
+      count: openTasks
+    };
+  }
+  return { kind: "ready", tone: "success", count: 0 };
+}

@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   NOTIFICATION_CATEGORIES,
+  areOperationalTodayTasksHiddenByNotificationPreferences,
+  countHiddenOperationalTodayTasksByNotificationPreferences,
   filterOperationalTodayTasksByNotificationPreferences,
   normalizeNotificationPreferences,
   notificationCategoryForTodayTask,
@@ -109,4 +111,27 @@ test("toggleNotificationCategory flips one category without mutating input", () 
   assert.equal(current.orders, true);
   assert.equal(next.orders, false);
   assert.equal(next.inventory, true);
+});
+
+test("countHiddenOperationalTodayTasksByNotificationPreferences separates muted work from all-clear", () => {
+  const muted: OperatorNotificationPreferences = {
+    inventory: false,
+    orders: false,
+    waste: false,
+    recipes_pos: false,
+    insights: false,
+    setup: false
+  };
+  const tasks = [
+    task({ id: "setup", code: "today.setup.inventory.open" }),
+    task({ id: "pos", code: "today.integration.connect" })
+  ];
+
+  assert.equal(countHiddenOperationalTodayTasksByNotificationPreferences(tasks, muted), 2);
+  assert.equal(areOperationalTodayTasksHiddenByNotificationPreferences(tasks, muted), true);
+  assert.equal(
+    areOperationalTodayTasksHiddenByNotificationPreferences(tasks, DEFAULT_NOTIFICATION_PREFERENCES),
+    false
+  );
+  assert.equal(areOperationalTodayTasksHiddenByNotificationPreferences([], muted), false);
 });
