@@ -1076,14 +1076,18 @@ test("restaurant and operator profile mutations are Edge-routed with service-own
   assert.match(edge, /"update_restaurant_profile"/);
   assert.match(edge, /"update_my_profile"/);
   assert.match(edge, /"update_my_preferred_locale"/);
+  assert.match(edge, /"update_my_notification_preferences"/);
   assert.match(edge, /service_update_restaurant_profile/);
   assert.match(edge, /service_update_my_profile/);
+  assert.match(edge, /service_update_my_notification_preferences/);
   assert.match(edge, /restaurant_profile_updated/);
   assert.match(edge, /operator_profile_updated/);
   assert.match(edge, /operator_locale_updated/);
+  assert.match(edge, /operator_notification_preferences_updated/);
   assert.match(ownerAdminActions, /"update_restaurant_profile"/);
   assert.match(staffActions, /"update_my_profile"/);
   assert.match(staffActions, /"update_my_preferred_locale"/);
+  assert.match(staffActions, /"update_my_notification_preferences"/);
   assert.doesNotMatch(staffActions, /"update_restaurant_profile"/);
 
   assert.match(

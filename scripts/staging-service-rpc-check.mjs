@@ -402,6 +402,7 @@ await assertDeniedRpc(
 );
 await assertDeniedRpc(
   "service_update_my_preferred_locale",
+  "service_update_my_notification_preferences",
   {
     p_actor_user_id: "00000000-0000-4000-8000-000000000000",
     p_locale: "es"

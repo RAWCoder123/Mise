@@ -122,6 +122,11 @@ import {
 } from "../demo/storageLocations";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
 import { demoLocalePreferenceAdapter } from "../localePreferences";
+import { demoNotificationPreferenceAdapter } from "../notificationPreferences";
+import {
+  normalizeNotificationPreferences,
+  type OperatorNotificationPreferences
+} from "../domain/notificationPreferences";
 import { isAppLocale } from "../../i18n/catalog";
 import {
   normalizeAppUser,
@@ -309,6 +314,11 @@ export interface MiseRepository {
   updateMyProfile(restaurantId: string, name: string): Promise<AppUser>;
   fetchMyPreferredLocale(): Promise<string | null>;
   updateMyPreferredLocale(restaurantId: string, locale: string): Promise<string>;
+  fetchMyNotificationPreferences(): Promise<OperatorNotificationPreferences | null>;
+  updateMyNotificationPreferences(
+    restaurantId: string,
+    preferences: OperatorNotificationPreferences
+  ): Promise<OperatorNotificationPreferences>;
   createRestaurantWithOwner(name: string, cuisineType?: string | null): Promise<Restaurant>;
   fetchRestaurant(restaurantId: string): Promise<Restaurant>;
   updateRestaurantProfile(
@@ -1163,6 +1173,17 @@ function createLocalDemoRepository(): MiseRepository {
       }
       await demoLocalePreferenceAdapter.save(locale);
       return locale;
+    },
+
+    async fetchMyNotificationPreferences() {
+      return demoNotificationPreferenceAdapter.load();
+    },
+
+    async updateMyNotificationPreferences(restaurantId, preferences) {
+      requireActiveDemoRestaurant(await readReadyDemoState(restaurantId), restaurantId);
+      const normalized = normalizeNotificationPreferences(preferences);
+      await demoNotificationPreferenceAdapter.save(normalized);
+      return normalized;
     },
 
     async createRestaurantWithOwner(name, cuisineType) {
@@ -2963,6 +2984,21 @@ function createSupabaseRepository(): MiseRepository {
         throw new Error("Locale preference update was not confirmed.");
       }
       return response.result;
+    },
+
+    async fetchMyNotificationPreferences() {
+      const { data, error } = await client.rpc("get_my_notification_preferences");
+      if (error) throwRepositoryError(error);
+      return data == null ? null : normalizeNotificationPreferences(data);
+    },
+
+    async updateMyNotificationPreferences(restaurantId, preferences) {
+      const response = await invokeOperationalWorkflow({
+        action: "update_my_notification_preferences",
+        restaurantId,
+        preferences: normalizeNotificationPreferences(preferences)
+      });
+      return normalizeNotificationPreferences(response.result);
     },
 
     async createRestaurantWithOwner(name, cuisineType) {

@@ -30,7 +30,9 @@ import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../componen
 import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { useNotificationPreferences } from "../../contexts/NotificationPreferencesContext";
 import { DEMO_DATASET } from "../../services/demoData";
+import { filterOperationalTodayTasksByNotificationPreferences } from "../../services/domain/notificationPreferences";
 import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
@@ -171,6 +173,7 @@ function buildTodayCopy(t: (key: MessageKey, values?: MessageValues) => string):
 export default function TodayScreen() {
   const { canUseDemoMode, memberships, restaurant, role, continueWithDemo } = useMiseSession();
   const { locale, t, formatCompactCurrency, formatDate, formatNumber } = useLocale();
+  const { preferences: notificationPreferences } = useNotificationPreferences();
   const copy = useMemo(() => buildTodayCopy(t), [t]);
   const showStaffWasteTip =
     role === "staff" && canRecordInventoryWaste(memberships, restaurant?.id ?? "");
@@ -244,6 +247,14 @@ export default function TodayScreen() {
   }
 
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
+  const visibleTasks = useMemo(
+    () =>
+      filterOperationalTodayTasksByNotificationPreferences(
+        visibleSummary?.operationalTasks ?? [],
+        notificationPreferences
+      ),
+    [notificationPreferences, visibleSummary?.operationalTasks]
+  );
 
   if (!restaurant) {
     return (
@@ -315,7 +326,7 @@ export default function TodayScreen() {
             ) : null}
             <MotionView delay={125} distance={5} duration={300}>
               <TaskSection
-                tasks={visibleSummary.operationalTasks}
+                tasks={visibleTasks}
                 restaurantTimeZone={visibleSummary.restaurantTimeZone}
                 role={role ?? "staff"}
                 showAll={showAllTasks}

@@ -18,6 +18,7 @@ import { AppErrorBoundary } from "../components/AppErrorBoundary";
 import { colors, fontFamilies } from "../constants/theme";
 import { LocaleProvider } from "../contexts/LocaleContext";
 import { MiseSessionProvider } from "../contexts/MiseSessionContext";
+import { NotificationPreferencesProvider } from "../contexts/NotificationPreferencesContext";
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -37,21 +38,24 @@ export default function RootLayout() {
       <AppErrorBoundary>
         <MiseSessionProvider>
           <LocaleProvider>
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="inventory/[id]" />
-              <Stack.Screen name="inventory/count" />
-              <Stack.Screen name="orders/[id]" />
-              <Stack.Screen name="settings/pos" />
-              <Stack.Screen name="settings/recipes" />
-              <Stack.Screen name="settings/language" />
-              <Stack.Screen name="settings/gmail" />
-              <Stack.Screen name="settings/suppliers" />
-              <Stack.Screen name="settings/team" />
-              <Stack.Screen name="invite/[token]" />
-            </Stack>
-            <StatusBar style="dark" />
+            <NotificationPreferencesProvider>
+              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="inventory/[id]" />
+                <Stack.Screen name="inventory/count" />
+                <Stack.Screen name="orders/[id]" />
+                <Stack.Screen name="settings/pos" />
+                <Stack.Screen name="settings/recipes" />
+                <Stack.Screen name="settings/language" />
+                <Stack.Screen name="settings/notifications" />
+                <Stack.Screen name="settings/gmail" />
+                <Stack.Screen name="settings/suppliers" />
+                <Stack.Screen name="settings/team" />
+                <Stack.Screen name="invite/[token]" />
+              </Stack>
+              <StatusBar style="dark" />
+            </NotificationPreferencesProvider>
           </LocaleProvider>
         </MiseSessionProvider>
       </AppErrorBoundary>

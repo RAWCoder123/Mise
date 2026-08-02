@@ -1,6 +1,7 @@
 import type { AiInsight, PosProvider, Restaurant, RestaurantMembership } from "../../types/mise";
 import { buildAiInsightInput, parseStructuredInsightOutput } from "../ai/structuredInsights";
 import { DEMO_DATASET, type DemoSetupProfile } from "../demoData";
+import type { OperatorNotificationPreferences } from "../domain/notificationPreferences";
 import {
   isValidMemberEmail,
   normalizeMemberEmail,
@@ -118,6 +119,17 @@ export async function fetchMyPreferredLocale() {
 
 export async function updateMyPreferredLocale(restaurantId: string, locale: "en" | "es" | "zh-Hans") {
   return repository.updateMyPreferredLocale(restaurantId, locale);
+}
+
+export async function fetchMyNotificationPreferences() {
+  return repository.fetchMyNotificationPreferences();
+}
+
+export async function updateMyNotificationPreferences(
+  restaurantId: string,
+  preferences: OperatorNotificationPreferences
+) {
+  return repository.updateMyNotificationPreferences(restaurantId, preferences);
 }
 
 export async function createRestaurantWithOwner(name: string, cuisineType?: string | null) {

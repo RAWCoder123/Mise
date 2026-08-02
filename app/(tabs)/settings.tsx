@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { router, useFocusEffect } from "expo-router";
 import {
+  Bell,
   BookOpen,
   Building2,
   Check,
@@ -33,8 +34,10 @@ import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusN
 import { colors, fontFamilies, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { useNotificationPreferences } from "../../contexts/NotificationPreferencesContext";
 import { LANGUAGE_OPTIONS, type MessageKey, type MessageValues } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
+import { NOTIFICATION_CATEGORIES } from "../../services/domain/notificationPreferences";
 import { readPublicAppConfig } from "../../lib/appConfig";
 import {
   exportRestaurantData,
@@ -61,6 +64,7 @@ type SettingsNotice = { key: MessageKey; tone: StatusNoticeTone };
 
 export default function SettingsScreen() {
   const { formatList, formatNumber, locale, t } = useLocale();
+  const { preferences: notificationPreferences } = useNotificationPreferences();
   const {
     availableRestaurants,
     isDemoMode,
@@ -334,6 +338,22 @@ export default function SettingsScreen() {
             icon={<Languages size={20} color={colors.caution} strokeWidth={2.25} />}
             iconTone="caution"
             onPress={() => router.push("/settings/language" as never)}
+          />
+          <OperationalRow
+            title={t("settings.preference.notifications")}
+            subtitle={
+              NOTIFICATION_CATEGORIES.every((category) => notificationPreferences[category])
+                ? t("settings.preference.notifications.allOn")
+                : t("settings.preference.notifications.muted", {
+                    count: String(
+                      NOTIFICATION_CATEGORIES.filter((category) => !notificationPreferences[category])
+                        .length
+                    )
+                  })
+            }
+            icon={<Bell size={20} color={colors.caution} strokeWidth={2.25} />}
+            iconTone="caution"
+            onPress={() => router.push("/settings/notifications" as never)}
           />
         </SettingsSection>
 

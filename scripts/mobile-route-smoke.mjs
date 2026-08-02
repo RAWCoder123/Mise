@@ -15,6 +15,7 @@ const routes = [
   "/insights",
   "/settings",
   "/settings/language",
+  "/settings/notifications",
   "/settings/gmail",
   "/settings/suppliers",
   "/settings/team",

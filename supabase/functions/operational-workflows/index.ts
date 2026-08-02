@@ -52,7 +52,8 @@ const actions = [
   "remove_restaurant_member",
   "update_restaurant_profile",
   "update_my_profile",
-  "update_my_preferred_locale"
+  "update_my_preferred_locale",
+  "update_my_notification_preferences"
 ] as const;
 type OperationalAction = (typeof actions)[number];
 const countSessionDraftActions = new Set<OperationalAction>([
@@ -73,7 +74,8 @@ const staffOperationalActions = new Set<OperationalAction>([
   "record_waste",
   "transfer_inventory",
   "update_my_profile",
-  "update_my_preferred_locale"
+  "update_my_preferred_locale",
+  "update_my_notification_preferences"
 ]);
 /**
  * Team roster and restaurant identity mutations stay owner/admin only.
@@ -343,6 +345,11 @@ Deno.serve(async (req) => {
       result = await serviceRpc(securitySupabase, "service_update_my_preferred_locale", {
         p_actor_user_id: user.id,
         p_locale: requireEnum(body.locale, "locale", ["en", "es", "zh-Hans"] as const)
+      });
+    } else if (action === "update_my_notification_preferences") {
+      result = await serviceRpc(securitySupabase, "service_update_my_notification_preferences", {
+        p_actor_user_id: user.id,
+        p_preferences: requireNotificationPreferences(body.preferences)
       });
     } else if (countSessionDraftActions.has(action)) {
       result = await runCountSessionDraftAction(securitySupabase, user.id, restaurantId, action, body);
@@ -821,6 +828,42 @@ function requireRecord(value: unknown, fieldName: string) {
   return value as Record<string, unknown>;
 }
 
+const NOTIFICATION_PREFERENCE_CATEGORIES = [
+  "inventory",
+  "orders",
+  "waste",
+  "recipes_pos",
+  "insights",
+  "setup"
+] as const;
+
+function requireNotificationPreferences(value: unknown) {
+  const preferences = requireRecord(value, "preferences");
+  const allowed = new Set<string>(NOTIFICATION_PREFERENCE_CATEGORIES);
+  for (const key of Object.keys(preferences)) {
+    if (!allowed.has(key)) {
+      throw new HttpError(400, "preferences contains an unsupported category.");
+    }
+  }
+  const normalized: Record<string, boolean> = {
+    inventory: true,
+    orders: true,
+    waste: true,
+    recipes_pos: true,
+    insights: true,
+    setup: true
+  };
+  for (const category of NOTIFICATION_PREFERENCE_CATEGORIES) {
+    const entry = preferences[category];
+    if (entry === undefined) continue;
+    if (typeof entry !== "boolean") {
+      throw new HttpError(400, `preferences.${category} must be a boolean.`);
+    }
+    normalized[category] = entry;
+  }
+  return normalized;
+}
+
 function requireArray(value: unknown, fieldName: string, maximumLength: number) {
   if (!Array.isArray(value) || value.length > maximumLength) {
     throw new HttpError(400, `${fieldName} must be an array with at most ${maximumLength} entries.`);
@@ -1021,6 +1064,9 @@ function auditAction(action: OperationalAction) {
   if (action === "update_restaurant_profile") return "restaurant_profile_updated";
   if (action === "update_my_profile") return "operator_profile_updated";
   if (action === "update_my_preferred_locale") return "operator_locale_updated";
+  if (action === "update_my_notification_preferences") {
+    return "operator_notification_preferences_updated";
+  }
   return "operational_signals_refreshed";
 }
 
@@ -1073,7 +1119,11 @@ function auditEntityTable(action: OperationalAction) {
   if (action === "create_restaurant_member_invite" || action === "revoke_restaurant_member_invite") {
     return "restaurant_member_invites";
   }
-  if (action === "update_my_profile" || action === "update_my_preferred_locale") {
+  if (
+    action === "update_my_profile" ||
+    action === "update_my_preferred_locale" ||
+    action === "update_my_notification_preferences"
+  ) {
     return "users";
   }
   return "restaurants";
@@ -1153,7 +1203,9 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>,
     return requireUuid(body.restaurantId, "restaurantId");
   }
   if (
-    (action === "update_my_profile" || action === "update_my_preferred_locale") &&
+    (action === "update_my_profile" ||
+      action === "update_my_preferred_locale" ||
+      action === "update_my_notification_preferences") &&
     result &&
     typeof result === "object" &&
     typeof (result as { id?: unknown }).id === "string"
@@ -1161,6 +1213,14 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>,
     return requireUuid((result as { id: string }).id, "result.id");
   }
   if (action === "update_my_preferred_locale" && typeof result === "string") {
+    return null;
+  }
+  if (
+    action === "update_my_notification_preferences" &&
+    result &&
+    typeof result === "object" &&
+    !Array.isArray(result)
+  ) {
     return null;
   }
   return null;
