@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { router, useFocusEffect } from "expo-router";
 import {
   BarChart3,
+  BellOff,
   BookOpen,
   CheckCircle2,
   ChevronRight,
@@ -26,16 +27,20 @@ import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations"
 import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
-import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { useNotificationPreferences } from "../../contexts/NotificationPreferencesContext";
 import { DEMO_DATASET } from "../../services/demoData";
-import { filterOperationalTodayTasksByNotificationPreferences } from "../../services/domain/notificationPreferences";
+import {
+  countHiddenOperationalTodayTasksByNotificationPreferences,
+  filterOperationalTodayTasksByNotificationPreferences
+} from "../../services/domain/notificationPreferences";
 import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
+  classifyTodayServicePulse,
   prioritizeOperationalTodayTasksForRole,
   type OperationalTodayTask,
   type OperationalTodayTaskTiming
@@ -76,6 +81,7 @@ interface TodayCopy {
   serviceReadyDetail: string;
   stockItemsNeedAttention: (count: string) => string;
   recommendationsAwaitingReview: (count: string) => string;
+  openTasksNeedAttention: (count: string) => string;
   reviewOrders: string;
   reviewOrdersAccessibilityLabel: string;
   inventoryHealthTitle: string;
@@ -99,6 +105,10 @@ interface TodayCopy {
   collapseTasksAccessibilityLabel: string;
   clearTitle: string;
   clearDetail: string;
+  mutedTitle: string;
+  mutedDetail: (count: string) => string;
+  openAlertPreferences: string;
+  openAlertPreferencesAccessibilityLabel: string;
   noDeadline: string;
   ownerAdminOnly: string;
   managerOnly: string;
@@ -133,6 +143,7 @@ function buildTodayCopy(t: (key: MessageKey, values?: MessageValues) => string):
     serviceReadyDetail: t("today.service.readyDetail"),
     stockItemsNeedAttention: (count) => t("today.service.stockItemsNeedAttention", { count }),
     recommendationsAwaitingReview: (count) => t("today.service.recommendationsAwaitingReview", { count }),
+    openTasksNeedAttention: (count) => t("today.service.openTasksNeedAttention", { count }),
     reviewOrders: t("today.service.reviewOrders"),
     reviewOrdersAccessibilityLabel: t("today.service.reviewOrdersAccessibility"),
     inventoryHealthTitle: t("inventory.health.title"),
@@ -156,6 +167,10 @@ function buildTodayCopy(t: (key: MessageKey, values?: MessageValues) => string):
     collapseTasksAccessibilityLabel: t("today.tasks.collapseAccessibility"),
     clearTitle: t("today.tasks.clearTitle"),
     clearDetail: t("today.tasks.clearDetail"),
+    mutedTitle: t("today.tasks.mutedTitle"),
+    mutedDetail: (count) => t("today.tasks.mutedDetail", { count }),
+    openAlertPreferences: t("today.tasks.openAlertPreferences"),
+    openAlertPreferencesAccessibilityLabel: t("today.tasks.openAlertPreferencesAccessibility"),
     noDeadline: t("today.tasks.noDeadline"),
     ownerAdminOnly: t("today.tasks.ownerAdminOnly"),
     managerOnly: t("today.tasks.managerOnly"),
@@ -247,13 +262,14 @@ export default function TodayScreen() {
   }
 
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
+  const operationalTasks = visibleSummary?.operationalTasks ?? [];
   const visibleTasks = useMemo(
-    () =>
-      filterOperationalTodayTasksByNotificationPreferences(
-        visibleSummary?.operationalTasks ?? [],
-        notificationPreferences
-      ),
-    [notificationPreferences, visibleSummary?.operationalTasks]
+    () => filterOperationalTodayTasksByNotificationPreferences(operationalTasks, notificationPreferences),
+    [notificationPreferences, operationalTasks]
+  );
+  const hiddenTaskCount = useMemo(
+    () => countHiddenOperationalTodayTasksByNotificationPreferences(operationalTasks, notificationPreferences),
+    [notificationPreferences, operationalTasks]
   );
 
   if (!restaurant) {
@@ -327,6 +343,7 @@ export default function TodayScreen() {
             <MotionView delay={125} distance={5} duration={300}>
               <TaskSection
                 tasks={visibleTasks}
+                hiddenTaskCount={hiddenTaskCount}
                 restaurantTimeZone={visibleSummary.restaurantTimeZone}
                 role={role ?? "staff"}
                 showAll={showAllTasks}
@@ -354,31 +371,45 @@ function ServicePulse({
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   copy: TodayCopy;
 }) {
-  const stockRisk = summary.inventoryHealth.low + summary.inventoryHealth.critical;
-  const hasOrderReview = summary.pendingRecommendations > 0;
-  const hasRisk = stockRisk > 0 || hasOrderReview;
-  const tone: StatusNoticeTone = summary.inventoryHealth.critical > 0
-    ? "danger"
-    : hasRisk
-      ? "warning"
-      : "success";
-  const message = stockRisk > 0
-    ? copy.stockItemsNeedAttention(formatNumber(stockRisk))
-    : hasOrderReview
-      ? copy.recommendationsAwaitingReview(formatNumber(summary.pendingRecommendations))
-      : copy.serviceReadyDetail;
-  const actionLabel = stockRisk > 0 ? copy.viewInventory : hasOrderReview ? copy.reviewOrders : copy.viewInventory;
+  const pulse = classifyTodayServicePulse({
+    inventoryHealth: summary.inventoryHealth,
+    pendingRecommendations: summary.pendingRecommendations,
+    openOperationalTaskCount: summary.operationalTasks.length
+  });
+  const countLabel = formatNumber(pulse.count);
+  const message =
+    pulse.kind === "stock_risk"
+      ? copy.stockItemsNeedAttention(countLabel)
+      : pulse.kind === "order_review"
+        ? copy.recommendationsAwaitingReview(countLabel)
+        : pulse.kind === "open_tasks"
+          ? copy.openTasksNeedAttention(countLabel)
+          : copy.serviceReadyDetail;
+  const actionLabel =
+    pulse.kind === "stock_risk"
+      ? copy.viewInventory
+      : pulse.kind === "order_review"
+        ? copy.reviewOrders
+        : pulse.kind === "ready"
+          ? copy.viewInventory
+          : undefined;
+  const actionAccessibilityLabel =
+    pulse.kind === "order_review"
+      ? copy.reviewOrdersAccessibilityLabel
+      : pulse.kind === "stock_risk" || pulse.kind === "ready"
+        ? copy.viewInventoryAccessibilityLabel
+        : undefined;
+  const actionRoute =
+    pulse.kind === "order_review" ? "/orders" : pulse.kind === "stock_risk" || pulse.kind === "ready" ? "/inventory" : null;
 
   return (
     <StatusNotice
-      title={hasRisk ? copy.serviceNeedsAttention : copy.serviceReady}
+      title={pulse.kind === "ready" ? copy.serviceReady : copy.serviceNeedsAttention}
       message={message}
-      tone={tone}
+      tone={pulse.tone}
       actionLabel={actionLabel}
-      actionAccessibilityLabel={hasOrderReview && stockRisk === 0
-        ? copy.reviewOrdersAccessibilityLabel
-        : copy.viewInventoryAccessibilityLabel}
-      onAction={() => router.push(stockRisk > 0 ? "/inventory" : hasOrderReview ? "/orders" : "/inventory")}
+      actionAccessibilityLabel={actionAccessibilityLabel}
+      onAction={actionRoute ? () => router.push(actionRoute) : undefined}
     />
   );
 }
@@ -451,6 +482,7 @@ function ServiceMetrics({
 
 function TaskSection({
   tasks,
+  hiddenTaskCount,
   restaurantTimeZone,
   role,
   showAll,
@@ -459,6 +491,7 @@ function TaskSection({
   locale
 }: {
   tasks: OperationalTodayTask[];
+  hiddenTaskCount: number;
   restaurantTimeZone: string;
   role: RestaurantRole;
   showAll: boolean;
@@ -471,11 +504,14 @@ function TaskSection({
   const hasRestrictedFollowUps = actionableCount < prioritizedTasks.length;
   const hasMore = prioritizedTasks.length > COMPACT_TASK_COUNT;
   const visibleTasks = showAll ? prioritizedTasks : prioritizedTasks.slice(0, COMPACT_TASK_COUNT);
+  const tasksAreMuted = prioritizedTasks.length === 0 && hiddenTaskCount > 0;
   const action = hasMore
     ? showAll
       ? copy.showLess
       : copy.viewAll
-    : copy.taskCount(String(prioritizedTasks.length));
+    : tasksAreMuted
+      ? copy.openAlertPreferences
+      : copy.taskCount(String(prioritizedTasks.length));
   const subtitle =
     hasRestrictedFollowUps && actionableCount > 0
       ? copy.tasksSubtitleRoleAware
@@ -486,18 +522,48 @@ function TaskSection({
       title={copy.tasksTitle}
       subtitle={subtitle}
       action={action}
-      onAction={hasMore ? onToggle : undefined}
-      actionAccessibilityLabel={showAll ? copy.collapseTasksAccessibilityLabel : copy.expandTasksAccessibilityLabel}
+      onAction={
+        hasMore
+          ? onToggle
+          : tasksAreMuted
+            ? () => router.push("/settings/notifications")
+            : undefined
+      }
+      actionAccessibilityLabel={
+        hasMore
+          ? showAll
+            ? copy.collapseTasksAccessibilityLabel
+            : copy.expandTasksAccessibilityLabel
+          : tasksAreMuted
+            ? copy.openAlertPreferencesAccessibilityLabel
+            : copy.expandTasksAccessibilityLabel
+      }
       padding="none"
     >
       {visibleTasks.length === 0 ? (
-        <View style={styles.clearRow}>
-          <CheckCircle2 size={21} color={colors.success} strokeWidth={2.2} />
-          <View style={styles.rowCopy}>
-            <Text style={styles.rowTitle}>{copy.clearTitle}</Text>
-            <Text style={styles.rowDetail}>{copy.clearDetail}</Text>
+        tasksAreMuted ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={copy.openAlertPreferencesAccessibilityLabel}
+            onPress={() => router.push("/settings/notifications")}
+            style={({ pressed }) => [styles.clearRow, pressed && styles.rowPressed]}
+          >
+            <BellOff size={21} color={colors.caution} strokeWidth={2.2} />
+            <View style={styles.rowCopy}>
+              <Text style={styles.rowTitle}>{copy.mutedTitle}</Text>
+              <Text style={styles.rowDetail}>{copy.mutedDetail(String(hiddenTaskCount))}</Text>
+            </View>
+            <ChevronRight size={18} color={colors.muted} strokeWidth={2.1} />
+          </Pressable>
+        ) : (
+          <View style={styles.clearRow}>
+            <CheckCircle2 size={21} color={colors.success} strokeWidth={2.2} />
+            <View style={styles.rowCopy}>
+              <Text style={styles.rowTitle}>{copy.clearTitle}</Text>
+              <Text style={styles.rowDetail}>{copy.clearDetail}</Text>
+            </View>
           </View>
-        </View>
+        )
       ) : (
         <MotionView key={showAll ? "expanded" : "compact"} distance={4} duration={180}>
           {visibleTasks.map((task, index) => (

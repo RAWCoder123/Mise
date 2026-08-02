@@ -75,6 +75,10 @@ test("settings and today wire notification categories without push provider secr
   assert.match(settingsHub, /\/settings\/notifications/);
   assert.match(notificationsScreen, /NOTIFICATION_CATEGORIES/);
   assert.match(todayScreen, /filterOperationalTodayTasksByNotificationPreferences/);
+  assert.match(todayScreen, /countHiddenOperationalTodayTasksByNotificationPreferences/);
+  assert.match(todayScreen, /classifyTodayServicePulse/);
+  assert.match(todayScreen, /\/settings\/notifications/);
+  assert.match(todayScreen, /today\.tasks\.mutedTitle/);
   assert.doesNotMatch(notificationsScreen, /expo-notifications|FCM|APNs|push.?token/i);
   assert.doesNotMatch(adapter, /expo-notifications|FCM|APNs|push.?token/i);
 });
