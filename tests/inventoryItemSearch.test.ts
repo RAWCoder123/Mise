@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   filterInventoryItemsBySearch,
   filterMenuItemsForPicker,
+  filterRecipeBaselineItemsBySearch,
   filterStorageLocationsBySearch,
   resolveInventoryItemForRecipeLink,
   searchInventoryItemsForPicker
@@ -151,4 +152,58 @@ test("filterStorageLocationsBySearch ranks matches and pins selected when unmatc
   });
   assert.equal(selectedMatch[0]?.id, "loc-line");
   assert.ok(selectedMatch.some((location) => location.id === "loc-prep"));
+});
+
+const recipeBaselines = [
+  {
+    menu_item_name: "Chicken Bowl",
+    linkedInventoryItems: ["Chicken Thighs", "Jasmine Rice"],
+    ingredients: [{ itemName: "Chicken Thighs" }, { itemName: "Jasmine Rice" }]
+  },
+  {
+    menu_item_name: "Tomato Salad",
+    linkedInventoryItems: ["Roma Tomatoes"],
+    ingredients: [{ itemName: "Roma Tomatoes" }]
+  },
+  {
+    menu_item_name: "Tofu Bowl",
+    linkedInventoryItems: ["Firm Tofu", "Jasmine Rice"],
+    ingredients: [{ itemName: "Firm Tofu" }, { itemName: "Jasmine Rice" }]
+  },
+  {
+    menu_item_name: "Caesar Salad",
+    linkedInventoryItems: ["Romaine", "Parmesan"],
+    ingredients: [{ itemName: "Romaine" }, { itemName: "Parmesan" }]
+  },
+  {
+    menu_item_name: "Cherry Tomato Special",
+    linkedInventoryItems: ["Cherry Tomatoes"],
+    ingredients: [{ itemName: "Cherry Tomatoes" }]
+  }
+] as const;
+
+test("filterRecipeBaselineItemsBySearch ranks dishes and linked ingredients", () => {
+  const empty = filterRecipeBaselineItemsBySearch(recipeBaselines, " ");
+  assert.deepEqual(
+    empty.map((item) => item.menu_item_name),
+    recipeBaselines.map((item) => item.menu_item_name)
+  );
+
+  const bowls = filterRecipeBaselineItemsBySearch(recipeBaselines, "bowl");
+  assert.deepEqual(
+    bowls.map((item) => item.menu_item_name),
+    ["Chicken Bowl", "Tofu Bowl"]
+  );
+
+  const byIngredient = filterRecipeBaselineItemsBySearch(recipeBaselines, "jasmine");
+  assert.deepEqual(
+    byIngredient.map((item) => item.menu_item_name),
+    ["Chicken Bowl", "Tofu Bowl"]
+  );
+
+  const tomatoes = filterRecipeBaselineItemsBySearch(recipeBaselines, "tomato");
+  assert.deepEqual(
+    tomatoes.map((item) => item.menu_item_name),
+    ["Tomato Salad", "Cherry Tomato Special"]
+  );
 });

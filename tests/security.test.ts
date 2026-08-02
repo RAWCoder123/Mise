@@ -1366,6 +1366,23 @@ test("recipe baseline builder resolves inventory items through searchable picker
   assert.doesNotMatch(catalog, /type exact inventory item/i);
 });
 
+test("mapped recipe dishes reuse ranked baseline search helpers", () => {
+  const screen = readFileSync("app/settings/recipes.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const searchDomain = readFileSync("services/domain/inventoryItemSearch.ts", "utf8");
+
+  assert.match(searchDomain, /export\s+function\s+filterRecipeBaselineItemsBySearch/);
+  assert.match(searchDomain, /RECIPE_BASELINE_SEARCH_THRESHOLD/);
+  assert.match(screen, /filterRecipeBaselineItemsBySearch/);
+  assert.match(screen, /RECIPE_BASELINE_SEARCH_THRESHOLD/);
+  assert.match(screen, /mappedDishQuery/);
+  assert.match(screen, /filteredMappedDishes/);
+  assert.match(screen, /recipes\.section\.search\.accessibility/);
+  assert.match(catalog, /"recipes\.section\.search\.placeholder"/);
+  assert.match(catalog, /"recipes\.section\.search\.emptyTitle"/);
+  assert.match(catalog, /"recipes\.section\.search\.emptyBody"/);
+});
+
 test("inventory list and count sheet reuse ranked inventory search helpers", () => {
   const inventoryScreen = readFileSync("app/(tabs)/inventory.tsx", "utf8");
   const countScreen = readFileSync("app/inventory/count.tsx", "utf8");

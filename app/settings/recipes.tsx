@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
-import { AlertTriangle, ArrowLeft, BookOpen, Link2, Package, PackageCheck, Plus, Save, ShoppingBag, Unlink } from "lucide-react-native";
+import { AlertTriangle, ArrowLeft, BookOpen, Link2, Package, PackageCheck, Plus, Save, Search, ShoppingBag, Unlink } from "lucide-react-native";
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -15,11 +15,13 @@ import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors } from "../../constants/theme";
+import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   filterMenuItemsForPicker,
+  filterRecipeBaselineItemsBySearch,
+  RECIPE_BASELINE_SEARCH_THRESHOLD,
   resolveInventoryItemForRecipeLink,
   searchInventoryItemsForPicker
 } from "../../services/domain/inventoryItemSearch";
@@ -54,6 +56,7 @@ export default function RecipeBaselinesScreen() {
   const [savingNewLink, setSavingNewLink] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [mappedDishQuery, setMappedDishQuery] = useState("");
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
@@ -72,6 +75,7 @@ export default function RecipeBaselinesScreen() {
     setSavingNewLink(false);
     setError(null);
     setNotice(null);
+    setMappedDishQuery("");
     setLoading(Boolean(restaurant));
   }, [restaurant?.id, prefillsMenuItem]);
 
@@ -109,6 +113,15 @@ export default function RecipeBaselinesScreen() {
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
   const visibleInventoryItems = loadedRestaurantId === restaurant?.id ? inventoryItems : [];
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
+  const mappedDishes = visibleSummary?.items;
+  const showMappedDishSearch = (mappedDishes?.length ?? 0) >= RECIPE_BASELINE_SEARCH_THRESHOLD;
+  const filteredMappedDishes = useMemo(() => {
+    if (!mappedDishes) return [];
+    if (!showMappedDishSearch) return mappedDishes;
+    return filterRecipeBaselineItemsBySearch(mappedDishes, mappedDishQuery);
+  }, [mappedDishQuery, mappedDishes, showMappedDishSearch]);
+  const mappedDishSearchNoMatches =
+    showMappedDishSearch && mappedDishQuery.trim().length > 0 && filteredMappedDishes.length === 0;
 
   const selectedInventoryItem = useMemo(() => {
     return resolveInventoryItemForRecipeLink(
@@ -419,8 +432,29 @@ export default function RecipeBaselinesScreen() {
           <SectionHeader
             title={t("recipes.section.title")}
             eyebrow={t("recipes.section.eyebrow")}
-            action={t("recipes.section.shown", { count: formatNumber(visibleSummary.items.length) })}
+            action={t("recipes.section.shown", {
+              count: formatNumber(
+                showMappedDishSearch ? filteredMappedDishes.length : visibleSummary.items.length
+              )
+            })}
           />
+          {showMappedDishSearch ? (
+            <View style={styles.mappedSearchBox}>
+              <Search size={18} color={colors.faint} strokeWidth={2.25} />
+              <TextInput
+                accessibilityLabel={t("recipes.section.search.accessibility")}
+                accessibilityHint={t("recipes.section.search.hint")}
+                value={mappedDishQuery}
+                onChangeText={setMappedDishQuery}
+                placeholder={t("recipes.section.search.placeholder")}
+                placeholderTextColor={colors.faint}
+                returnKeyType="search"
+                autoCorrect={false}
+                autoCapitalize="none"
+                style={styles.mappedSearchInput}
+              />
+            </View>
+          ) : null}
           <View style={styles.recipeList}>
             {visibleSummary.items.length === 0 ? (
               <EmptyState
@@ -428,8 +462,14 @@ export default function RecipeBaselinesScreen() {
                 body={t("recipes.empty.body")}
                 illustration={<InsightChartIllustration />}
               />
+            ) : mappedDishSearchNoMatches ? (
+              <EmptyState
+                compact
+                title={t("recipes.section.search.emptyTitle")}
+                body={t("recipes.section.search.emptyBody")}
+              />
             ) : (
-              visibleSummary.items.map((item) => (
+              filteredMappedDishes.map((item) => (
                 <RecipeRow
                   key={item.menu_item_name}
                   item={item}
@@ -792,6 +832,26 @@ function RecipeRow({
 const styles = StyleSheet.create({
   stack: {
     gap: 14
+  },
+  mappedSearchBox: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  mappedSearchInput: {
+    flex: 1,
+    minHeight: 42,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 15,
+    lineHeight: 20,
+    paddingVertical: 0
   },
   warningCard: {
     borderColor: colors.caution,

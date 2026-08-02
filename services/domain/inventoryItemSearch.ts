@@ -264,3 +264,37 @@ export function filterStorageLocationsBySearch<T extends StorageLocationSearchFi
 
 /** Show recommendation find once the review queue is long enough to hunt through. */
 export const PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD = 5;
+
+/** Show mapped-dish find once recipe baselines are long enough to hunt through. */
+export const RECIPE_BASELINE_SEARCH_THRESHOLD = 5;
+
+export type RecipeBaselineSearchFields = {
+  menu_item_name: string;
+  linkedInventoryItems?: readonly string[] | null;
+  ingredients?: readonly { itemName: string }[] | null;
+};
+
+function recipeBaselineExtraSearchText(item: RecipeBaselineSearchFields): string {
+  const linked = item.linkedInventoryItems ?? [];
+  const ingredientNames = (item.ingredients ?? []).map((ingredient) => ingredient.itemName);
+  return [...linked, ...ingredientNames].filter(Boolean).join(" ");
+}
+
+/**
+ * Rank mapped recipe baselines for Settings → Recipes dish find.
+ * Empty query preserves caller order. Non-empty query matches dish name or linked ingredients.
+ */
+export function filterRecipeBaselineItemsBySearch<T extends RecipeBaselineSearchFields>(
+  items: readonly T[],
+  query: string
+): T[] {
+  const adapted = items.map((item, index) => ({
+    id: `recipe-baseline-${index}`,
+    item_name: item.menu_item_name,
+    source: item
+  }));
+
+  return filterInventoryItemsBySearch(adapted, query, {
+    getExtraSearchText: (row) => recipeBaselineExtraSearchText(row.source)
+  }).map((row) => row.source);
+}
