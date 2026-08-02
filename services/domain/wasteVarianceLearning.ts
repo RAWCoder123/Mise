@@ -35,7 +35,7 @@ export type LossBias = {
   medianLossRatio: number;
   multiplier: number;
   isChronic: boolean;
-  source: "waste" | "count_variance";
+  source: "waste" | "count_variance" | "manager_correction";
 };
 
 export type InventoryMovementLossSnippet = {
@@ -152,6 +152,51 @@ export function buildCountShrinkBiasByItem(
   );
 }
 
+export function extractManagerCorrectionSamplesFromMovements(
+  movements: readonly InventoryMovementLossSnippet[]
+): CountVarianceSample[] {
+  const samples: CountVarianceSample[] = [];
+  for (const movement of movements) {
+    if (movement.reason !== "manager_correction") continue;
+    const quantityBefore = finiteNumber(movement.quantity_before);
+    const quantityAfter = finiteNumber(movement.quantity_after);
+    if (quantityBefore == null || quantityAfter == null) continue;
+    if (!(quantityBefore > 0)) continue;
+    const variance = quantityAfter - quantityBefore;
+    // Learning cares about downward manager corrections (system was high).
+    if (!(variance < 0)) continue;
+    const createdAt =
+      typeof movement.created_at === "string" && movement.created_at.trim()
+        ? movement.created_at
+        : "";
+    if (!createdAt) continue;
+    samples.push({
+      inventoryItemId: movement.inventory_item_id,
+      quantityBefore,
+      quantityAfter,
+      variance,
+      createdAt
+    });
+  }
+  return samples;
+}
+
+export function buildManagerCorrectionBiasByItem(
+  samples: readonly CountVarianceSample[],
+  nowMs = Date.now()
+): Map<string, LossBias> {
+  return buildLossBiasByItem(
+    samples.map((sample) => ({
+      inventoryItemId: sample.inventoryItemId,
+      lossAmount: Math.max(0, -sample.variance),
+      baseline: sample.quantityBefore,
+      createdAt: sample.createdAt
+    })),
+    "manager_correction",
+    nowMs
+  );
+}
+
 /**
  * Inflate a base recommended quantity for chronic waste/shrink, then re-apply the
  * same absolute bounds used by other learning layers so stacked learning cannot explode.
@@ -176,6 +221,9 @@ export function lossBiasReasonFragment(bias: LossBias): string {
   if (bias.source === "waste") {
     return `Mise is padding for a stable waste pattern: recent waste averaged ~${lossPercent}% of on-hand (median of ${bias.sampleCount} records).`;
   }
+  if (bias.source === "manager_correction") {
+    return `Mise is padding for a stable manager correction pattern: recent corrections averaged ~${lossPercent}% below system (median of ${bias.sampleCount} edits).`;
+  }
   return `Mise is padding for a stable count shrink pattern: recent counts averaged ~${lossPercent}% below system (median of ${bias.sampleCount} counts).`;
 }
 
@@ -198,6 +246,19 @@ export function buildChronicCountShrinkInsightInput(bias: LossBias): {
   lossPercent: number;
 } | null {
   if (!bias.isChronic || bias.source !== "count_variance") return null;
+  return {
+    insightType: "inventory",
+    severity: "warning",
+    lossPercent: Math.round(bias.medianLossRatio * 100)
+  };
+}
+
+export function buildChronicManagerCorrectionInsightInput(bias: LossBias): {
+  insightType: "inventory";
+  severity: "warning";
+  lossPercent: number;
+} | null {
+  if (!bias.isChronic || bias.source !== "manager_correction") return null;
   return {
     insightType: "inventory",
     severity: "warning",

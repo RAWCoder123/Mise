@@ -626,12 +626,30 @@ function applyRequestedMutation(
   if (action === "update_inventory") {
     const itemId = requireUuid(body.itemId, "itemId");
     const patch = requireInventoryPatch(body.patch);
-    if (!snapshot.inventoryItems.some((item) => item.id === itemId)) throw new HttpError(404, "Inventory item not found.");
+    const existing = snapshot.inventoryItems.find((item) => item.id === itemId);
+    if (!existing) throw new HttpError(404, "Inventory item not found.");
+    const now = new Date().toISOString();
+    const inFlightManagerCorrection =
+      typeof patch.current_quantity === "number" &&
+      patch.current_quantity < existing.current_quantity &&
+      existing.current_quantity > 0
+        ? [{
+            inventoryItemId: itemId,
+            quantityBefore: existing.current_quantity,
+            quantityAfter: patch.current_quantity,
+            variance: patch.current_quantity - existing.current_quantity,
+            createdAt: now
+          }]
+        : [];
     return {
       ...snapshot,
       inventoryItems: snapshot.inventoryItems.map((item) => item.id === itemId
-        ? { ...item, ...patch, last_updated: new Date().toISOString() }
-        : item)
+        ? { ...item, ...patch, last_updated: now }
+        : item),
+      managerCorrectionHistory: [
+        ...inFlightManagerCorrection,
+        ...(snapshot.managerCorrectionHistory ?? [])
+      ]
     };
   }
   if (action === "create_inventory_item") {

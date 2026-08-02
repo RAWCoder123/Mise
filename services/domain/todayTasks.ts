@@ -83,6 +83,9 @@ export const CHRONIC_WASTE_SOURCE_ID_PREFIX = "chronic_waste_";
 /** Stable synthetic source id prefix for chronic count-shrink tasks. */
 export const CHRONIC_COUNT_SHRINK_SOURCE_ID_PREFIX = "chronic_count_shrink_";
 
+/** Stable synthetic source id prefix for chronic manager-correction tasks. */
+export const CHRONIC_MANAGER_CORRECTION_SOURCE_ID_PREFIX = "chronic_manager_correction_";
+
 export type OperationalTodayTaskRoute =
   | "/inventory"
   | `/inventory/${string}`
@@ -148,6 +151,8 @@ export interface DeriveOperationalTodayTasksInput {
   chronicWasteItems?: readonly ChronicLossTodayItem[];
   /** Chronic unexplained count-shrink patterns derived from manual counts. */
   chronicCountShrinkItems?: readonly ChronicLossTodayItem[];
+  /** Chronic downward manager-correction patterns derived from inventory edits. */
+  chronicManagerCorrectionItems?: readonly ChronicLossTodayItem[];
   insights: readonly Insight[];
   openCountSession?: InventoryCountSession | null;
   now?: Date;
@@ -735,6 +740,42 @@ export function deriveOperationalTodayTasks(
         requiredRole: "manager",
         isComplete: false,
         completionReason: "Count history still shows a chronic shrink pattern."
+      }),
+      includeCompleted
+    );
+  }
+
+  const chronicManagerCorrectionItems = (input.chronicManagerCorrectionItems ?? [])
+    .filter((item) => item.inventoryItemId.trim() && item.itemName.trim())
+    .slice(0, 2);
+  for (const item of chronicManagerCorrectionItems) {
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "insight",
+        sourceId: `${CHRONIC_MANAGER_CORRECTION_SOURCE_ID_PREFIX}${item.inventoryItemId}`,
+        sourceStatus: "chronic_manager_correction",
+        title: `${item.itemName} is often corrected down`,
+        detail: `Recent manager corrections averaged about ${item.lossPercent}% below system across ${item.sampleCount} edits.`,
+        presentation: {
+          code: "today.inventory.chronic_manager_correction",
+          values: {
+            itemName: item.itemName,
+            lossPercent: item.lossPercent,
+            sampleCount: item.sampleCount
+          }
+        },
+        priority: "high",
+        action: {
+          intent: "review_insight",
+          label: "Review corrections",
+          route: "/inventory",
+          entityId: item.inventoryItemId
+        },
+        requiredRole: "manager",
+        isComplete: false,
+        completionReason: "Manager correction history still shows a chronic downward pattern."
       }),
       includeCompleted
     );

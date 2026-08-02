@@ -147,6 +147,10 @@ test("every allowlisted Today presentation code renders in all locales and prese
     {
       code: "today.inventory.chronic_count_shrink",
       values: { itemName, lossPercent: 18, sampleCount: 4 }
+    },
+    {
+      code: "today.inventory.chronic_manager_correction",
+      values: { itemName, lossPercent: 16, sampleCount: 3 }
     }
   ];
 
@@ -200,6 +204,10 @@ test("rules-based Insight codes localize structured values while opaque copy is 
     {
       code: "insight.rule.inventory.chronic_count_shrink",
       values: { itemName, lossPercent: 18, sampleCount: 4 }
+    },
+    {
+      code: "insight.rule.inventory.chronic_manager_correction",
+      values: { itemName, lossPercent: 16, sampleCount: 3 }
     },
     {
       code: "insight.rule.ordering.chronic_short_ship",

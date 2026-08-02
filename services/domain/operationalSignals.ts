@@ -11,8 +11,10 @@ import {
 import {
   applyLossBias,
   buildChronicCountShrinkInsightInput,
+  buildChronicManagerCorrectionInsightInput,
   buildChronicWasteInsightInput,
   buildCountShrinkBiasByItem,
+  buildManagerCorrectionBiasByItem,
   buildWasteBiasByItem,
   lossBiasReasonFragment,
   type CountVarianceSample,
@@ -100,6 +102,8 @@ export interface OperationalPlanningSnapshot {
   wasteHistory?: WasteSample[];
   /** Manual count variance samples for chronic shrink learning. */
   countVarianceHistory?: CountVarianceSample[];
+  /** Downward manager correction samples for chronic on-hand drift learning. */
+  managerCorrectionHistory?: CountVarianceSample[];
 }
 
 export function calculateOperationalSignals(snapshot: OperationalPlanningSnapshot) {
@@ -113,6 +117,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   const receiveBiasByItem = buildReceiveFillBiasByItem(snapshot.receivingHistory ?? []);
   const wasteBiasByItem = buildWasteBiasByItem(snapshot.wasteHistory ?? []);
   const countShrinkBiasByItem = buildCountShrinkBiasByItem(snapshot.countVarianceHistory ?? []);
+  const managerCorrectionBiasByItem = buildManagerCorrectionBiasByItem(snapshot.managerCorrectionHistory ?? []);
   const recommendations: OperationalRecommendation[] = [];
   const insights: OperationalInsight[] = [];
   const chronicShortShipInsights: OperationalInsight[] = [];
@@ -151,12 +156,20 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const receiveBias = receiveBiasByItem.get(item.id);
     const wasteBias = wasteBiasByItem.get(item.id);
     const countShrinkBias = countShrinkBiasByItem.get(item.id);
+    const managerCorrectionBias = managerCorrectionBiasByItem.get(item.id);
     const chronicInsight = buildChronicShortShipInsight(item, receiveBias, now, snapshot.restaurantId);
     if (chronicInsight) chronicShortShipInsights.push(chronicInsight);
     const wasteInsight = buildChronicWasteInsight(item, wasteBias, now, snapshot.restaurantId);
     if (wasteInsight) chronicLossInsights.push(wasteInsight);
     const shrinkInsight = buildChronicCountShrinkInsight(item, countShrinkBias, now, snapshot.restaurantId);
     if (shrinkInsight) chronicLossInsights.push(shrinkInsight);
+    const managerCorrectionInsight = buildChronicManagerCorrectionInsight(
+      item,
+      managerCorrectionBias,
+      now,
+      snapshot.restaurantId
+    );
+    if (managerCorrectionInsight) chronicLossInsights.push(managerCorrectionInsight);
 
     if ((isCritical || isLow) && (!recentHandled || changedAfterHandling)) {
       const learnedQuantity = boundedLearnedQuantity(
@@ -169,7 +182,17 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       const afterReceive = applyReceiveFillBias(afterApprovalLearning, receiveBias, bounds);
       const afterWaste = applyLossBias(afterReceive ?? afterApprovalLearning, wasteBias, bounds);
       const afterShrink = applyLossBias(afterWaste ?? afterReceive ?? afterApprovalLearning, countShrinkBias, bounds);
-      const quantity = afterShrink ?? afterWaste ?? afterReceive ?? afterApprovalLearning;
+      const afterManagerCorrection = applyLossBias(
+        afterShrink ?? afterWaste ?? afterReceive ?? afterApprovalLearning,
+        managerCorrectionBias,
+        bounds
+      );
+      const quantity =
+        afterManagerCorrection ??
+        afterShrink ??
+        afterWaste ??
+        afterReceive ??
+        afterApprovalLearning;
       const coverage = baselineUsage > 0 ? projectedQuantity / baselineUsage : null;
       const baseReason = coverage === null
         ? `${item.item_name} is at or below its reorder level. Mise recommends restoring it to par.`
@@ -187,6 +210,13 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         afterShrink !== (afterWaste ?? afterReceive ?? afterApprovalLearning)
       ) {
         reasonFragments.push(lossBiasReasonFragment(countShrinkBias));
+      }
+      if (
+        managerCorrectionBias?.isChronic &&
+        afterManagerCorrection != null &&
+        afterManagerCorrection !== (afterShrink ?? afterWaste ?? afterReceive ?? afterApprovalLearning)
+      ) {
+        reasonFragments.push(lossBiasReasonFragment(managerCorrectionBias));
       }
       const reason = reasonFragments.length
         ? `${baseReason} ${reasonFragments.join(" ")}`
@@ -291,7 +321,8 @@ export function buildRecommendationInserts(
   appliedTodayConsumptionByItemId: Record<string, number> = {},
   receivingHistory: ReceiveDiscrepancySample[] = [],
   wasteHistory: WasteSample[] = [],
-  countVarianceHistory: CountVarianceSample[] = []
+  countVarianceHistory: CountVarianceSample[] = [],
+  managerCorrectionHistory: CountVarianceSample[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -303,7 +334,8 @@ export function buildRecommendationInserts(
     appliedTodayConsumptionByItemId,
     receivingHistory,
     wasteHistory,
-    countVarianceHistory
+    countVarianceHistory,
+    managerCorrectionHistory
   }).recommendations;
 }
 
@@ -316,7 +348,8 @@ export function buildInsightsFromData(
   appliedTodayConsumptionByItemId: Record<string, number> = {},
   receivingHistory: ReceiveDiscrepancySample[] = [],
   wasteHistory: WasteSample[] = [],
-  countVarianceHistory: CountVarianceSample[] = []
+  countVarianceHistory: CountVarianceSample[] = [],
+  managerCorrectionHistory: CountVarianceSample[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -328,7 +361,8 @@ export function buildInsightsFromData(
     appliedTodayConsumptionByItemId,
     receivingHistory,
     wasteHistory,
-    countVarianceHistory
+    countVarianceHistory,
+    managerCorrectionHistory
   }).insights;
 }
 
@@ -415,6 +449,36 @@ function buildChronicCountShrinkInsight(
     created_at: createdAt,
     presentation: {
       code: "insight.rule.inventory.chronic_count_shrink",
+      values: {
+        itemName: item.item_name,
+        lossPercent: marker.lossPercent,
+        sampleCount: bias.sampleCount
+      }
+    }
+  };
+}
+
+function buildChronicManagerCorrectionInsight(
+  item: OperationalInventoryItem,
+  bias: LossBias | undefined,
+  createdAt: string,
+  restaurantId: string
+): OperationalInsight | null {
+  if (!bias) return null;
+  const marker = buildChronicManagerCorrectionInsightInput(bias);
+  if (!marker) return null;
+  return {
+    id: `insight_manager_correction_${item.id}`,
+    restaurant_id: restaurantId,
+    insight_type: "inventory",
+    title: `${item.item_name} is often corrected down`,
+    description: `Recent manager corrections for ${item.item_name} averaged about ${marker.lossPercent}% below system across ${bias.sampleCount} edits.`,
+    why_it_matters: "Repeated downward corrections mean Mise's on-hand is drifting high and orders may understock the next service.",
+    recommended_action: `Review receiving, transfers, and counts for ${item.item_name}, then adjust par or recount before ordering.`,
+    severity: "warning",
+    created_at: createdAt,
+    presentation: {
+      code: "insight.rule.inventory.chronic_manager_correction",
       values: {
         itemName: item.item_name,
         lossPercent: marker.lossPercent,

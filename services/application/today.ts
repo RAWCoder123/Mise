@@ -15,8 +15,10 @@ import {
 } from "../domain/receiveDiscrepancyLearning";
 import {
   buildChronicCountShrinkInsightInput,
+  buildChronicManagerCorrectionInsightInput,
   buildChronicWasteInsightInput,
   buildCountShrinkBiasByItem,
+  buildManagerCorrectionBiasByItem,
   buildWasteBiasByItem
 } from "../domain/wasteVarianceLearning";
 import type { InventoryStatus, TodaySummary } from "../../types/mise";
@@ -143,6 +145,20 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       sampleCount: bias.sampleCount
     }];
   });
+  const managerCorrectionBiasByItem = buildManagerCorrectionBiasByItem(
+    planning.managerCorrectionHistory ?? []
+  );
+  const chronicManagerCorrectionItems = inventoryItems.flatMap((item) => {
+    const bias = managerCorrectionBiasByItem.get(item.id);
+    const marker = bias ? buildChronicManagerCorrectionInsightInput(bias) : null;
+    if (!bias || !marker) return [];
+    return [{
+      inventoryItemId: item.id,
+      itemName: item.item_name,
+      lossPercent: marker.lossPercent,
+      sampleCount: bias.sampleCount
+    }];
+  });
 
   return {
     ...summary,
@@ -160,6 +176,7 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       chronicShortShipItems,
       chronicWasteItems,
       chronicCountShrinkItems,
+      chronicManagerCorrectionItems,
       insights,
       openCountSession: openCountSession?.session ?? null
     }),

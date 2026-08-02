@@ -1969,6 +1969,40 @@ test("waste and count-variance learning exposes bounded ledger history without c
   assert.match(pgTap, /countVarianceHistory variance matches shrink amount/);
 });
 
+test("manager-correction learning exposes bounded ledger history without client write authority", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260802040930_manager_correction_learning_snapshot.sql",
+    "utf8"
+  );
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const domain = readFileSync("services/domain/wasteVarianceLearning.ts", "utf8");
+  const signals = readFileSync("services/domain/operationalSignals.ts", "utf8");
+  const today = readFileSync("services/domain/todayTasks.ts", "utf8");
+  const pgTap = readFileSync(
+    "supabase/tests/database/manager_correction_learning.test.sql",
+    "utf8"
+  );
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const inventory = readFileSync("services/application/inventory.ts", "utf8");
+
+  assert.match(migration, /'managerCorrectionHistory'/);
+  assert.match(migration, /reason = 'manager_correction'/);
+  assert.match(migration, /inventory_movements_restaurant_manager_correction_created_at_idx/);
+  assert.match(migration, /movement\.quantity_after < movement\.quantity_before/);
+  assert.match(migration, /limit 500/);
+  assert.match(edge, /managerCorrectionHistory:\s*\[\s*\.\.\.inFlightManagerCorrection/);
+  assert.match(domain, /extractManagerCorrectionSamplesFromMovements/);
+  assert.match(domain, /buildManagerCorrectionBiasByItem/);
+  assert.match(signals, /buildManagerCorrectionBiasByItem/);
+  assert.match(signals, /insight\.rule\.inventory\.chronic_manager_correction/);
+  assert.match(today, /today\.inventory\.chronic_manager_correction/);
+  assert.match(repository, /extractManagerCorrectionSamplesFromMovements/);
+  assert.match(inventory, /managerCorrectionHistory:\s*data\.managerCorrectionHistory/);
+  assert.match(pgTap, /planning snapshot includes managerCorrectionHistory key/);
+  assert.match(pgTap, /managerCorrectionHistory variance matches downward correction/);
+  assert.match(pgTap, /managerCorrectionHistory ignores upward corrections/);
+});
+
 test("security readiness document defines private-beta backend rules and public launch blockers", () => {
   const doc = readFileSync("docs/security-readiness.md", "utf8");
 

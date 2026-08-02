@@ -41,7 +41,8 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.recipe.repair_incompatible_units",
   "today.ordering.chronic_short_ship",
   "today.waste.chronic_waste",
-  "today.inventory.chronic_count_shrink"
+  "today.inventory.chronic_count_shrink",
+  "today.inventory.chronic_manager_correction"
 ] as const;
 
 export const INSIGHT_PRESENTATION_CODES = [
@@ -51,6 +52,7 @@ export const INSIGHT_PRESENTATION_CODES = [
   "insight.rule.waste.overstock",
   "insight.rule.waste.chronic_waste",
   "insight.rule.inventory.chronic_count_shrink",
+  "insight.rule.inventory.chronic_manager_correction",
   "insight.rule.ordering.chronic_short_ship",
   "insight.evidence.opaque"
 ] as const;
@@ -166,7 +168,9 @@ export type TodayTaskPresentationDescriptor =
       };
     }
   | {
-      code: "today.inventory.chronic_count_shrink";
+      code:
+        | "today.inventory.chronic_count_shrink"
+        | "today.inventory.chronic_manager_correction";
       values: {
         itemName: string;
         lossPercent: number;
@@ -207,7 +211,9 @@ export type InsightPresentationDescriptor =
       };
     }
   | {
-      code: "insight.rule.inventory.chronic_count_shrink";
+      code:
+        | "insight.rule.inventory.chronic_count_shrink"
+        | "insight.rule.inventory.chronic_manager_correction";
       values: {
         itemName: string;
         lossPercent: number;

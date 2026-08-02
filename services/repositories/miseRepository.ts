@@ -79,6 +79,7 @@ import {
 } from "../domain/receiveDiscrepancyLearning";
 import {
   extractCountVarianceSamplesFromMovements,
+  extractManagerCorrectionSamplesFromMovements,
   extractWasteSamplesFromMovements,
   type CountVarianceSample,
   type WasteSample
@@ -271,6 +272,8 @@ export interface PlanningData {
   wasteHistory: WasteSample[];
   /** Manual count variance samples for chronic shrink learning. */
   countVarianceHistory: CountVarianceSample[];
+  /** Downward manager correction samples for chronic on-hand drift learning. */
+  managerCorrectionHistory: CountVarianceSample[];
 }
 
 export interface MiseRepository {
@@ -1267,7 +1270,8 @@ function createLocalDemoRepository(): MiseRepository {
         ),
         receivingHistory: extractReceiveSamplesFromMovements(restaurantMovements),
         wasteHistory: extractWasteSamplesFromMovements(restaurantMovements),
-        countVarianceHistory: extractCountVarianceSamplesFromMovements(restaurantMovements)
+        countVarianceHistory: extractCountVarianceSamplesFromMovements(restaurantMovements),
+        managerCorrectionHistory: extractManagerCorrectionSamplesFromMovements(restaurantMovements)
       };
     },
 
@@ -3074,7 +3078,8 @@ function createSupabaseRepository(): MiseRepository {
         movementsResult,
         receivingResult,
         wasteResult,
-        countVarianceResult
+        countVarianceResult,
+        managerCorrectionResult
       ] =
         await Promise.all([
         client.from("inventory_items").select("*").eq("restaurant_id", restaurantId).order("item_name"),
@@ -3108,6 +3113,13 @@ function createSupabaseRepository(): MiseRepository {
           .eq("restaurant_id", restaurantId)
           .eq("reason", "manual_count")
           .order("created_at", { ascending: false })
+          .limit(500),
+        client
+          .from("inventory_movements")
+          .select("reason,inventory_item_id,quantity_before,quantity_after,metadata,created_at")
+          .eq("restaurant_id", restaurantId)
+          .eq("reason", "manager_correction")
+          .order("created_at", { ascending: false })
           .limit(500)
       ]);
       if (inventoryResult.error) throw inventoryResult.error;
@@ -3117,6 +3129,7 @@ function createSupabaseRepository(): MiseRepository {
       if (receivingResult.error) throw receivingResult.error;
       if (wasteResult.error) throw wasteResult.error;
       if (countVarianceResult.error) throw countVarianceResult.error;
+      if (managerCorrectionResult.error) throw managerCorrectionResult.error;
       const operatingDate = toDateKeyInTimeZone(
         new Date(),
         (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
@@ -3150,6 +3163,16 @@ function createSupabaseRepository(): MiseRepository {
         ),
         countVarianceHistory: extractCountVarianceSamplesFromMovements(
           (countVarianceResult.data ?? []) as Array<{
+            reason: string;
+            inventory_item_id: string;
+            quantity_before: number;
+            quantity_after: number;
+            metadata: Record<string, unknown>;
+            created_at: string;
+          }>
+        ),
+        managerCorrectionHistory: extractManagerCorrectionSamplesFromMovements(
+          (managerCorrectionResult.data ?? []) as Array<{
             reason: string;
             inventory_item_id: string;
             quantity_before: number;
@@ -3868,6 +3891,7 @@ export function buildLocalInsightsForTest(data: PlanningData & { restaurantId: s
     data.operatingDate,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
 }

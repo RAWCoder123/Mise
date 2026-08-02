@@ -117,7 +117,8 @@ export async function updateRecipeBaselineIngredient(
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -128,7 +129,8 @@ export async function updateRecipeBaselineIngredient(
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -200,7 +202,8 @@ export async function addRecipeBaselineIngredient(
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -211,7 +214,8 @@ export async function addRecipeBaselineIngredient(
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -244,7 +248,8 @@ export async function deleteRecipeBaselineIngredient(restaurantId: string, mappi
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -255,7 +260,8 @@ export async function deleteRecipeBaselineIngredient(restaurantId: string, mappi
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
   await repository.deleteRecipeMappingAndSignals({
     restaurantId,
@@ -293,7 +299,8 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
     recommendationHistory: history,
     receivingHistory: data.receivingHistory,
     wasteHistory: data.wasteHistory,
-    countVarianceHistory: data.countVarianceHistory
+    countVarianceHistory: data.countVarianceHistory,
+    managerCorrectionHistory: data.managerCorrectionHistory
   });
   return repository.createPurchaseRecommendation({
     restaurant_id: restaurantId,
@@ -351,7 +358,8 @@ export async function createInventoryItem(restaurantId: string, input: Inventory
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -362,7 +370,8 @@ export async function createInventoryItem(restaurantId: string, input: Inventory
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
   return repository.createInventoryItemAndSignals(
     restaurantId,
@@ -401,6 +410,21 @@ export async function updateInventoryItem(
     last_updated: new Date().toISOString()
   };
   const planningInventory = data.inventoryItems.map((item) => item.id === itemId ? updatedForPlanning : item);
+  const managerCorrectionHistory =
+    typeof normalizedPatch.current_quantity === "number" &&
+    normalizedPatch.current_quantity < existing.current_quantity &&
+    existing.current_quantity > 0
+      ? [
+          {
+            inventoryItemId: itemId,
+            quantityBefore: existing.current_quantity,
+            quantityAfter: normalizedPatch.current_quantity,
+            variance: normalizedPatch.current_quantity - existing.current_quantity,
+            createdAt: updatedForPlanning.last_updated
+          },
+          ...(data.managerCorrectionHistory ?? [])
+        ]
+      : data.managerCorrectionHistory;
   const recommendations = buildRecommendationInserts(
     restaurantId,
     planningInventory,
@@ -411,7 +435,8 @@ export async function updateInventoryItem(
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    managerCorrectionHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -422,7 +447,8 @@ export async function updateInventoryItem(
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    managerCorrectionHistory
   );
   return repository.updateInventoryItemAndSignals(
     restaurantId,
@@ -512,7 +538,8 @@ export async function approveInventoryCountSession(restaurantId: string, session
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    countVarianceHistory
+    countVarianceHistory,
+    data.managerCorrectionHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -523,7 +550,8 @@ export async function approveInventoryCountSession(restaurantId: string, session
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     data.wasteHistory,
-    countVarianceHistory
+    countVarianceHistory,
+    data.managerCorrectionHistory
   );
   return repository.approveInventoryCountSession(
     restaurantId,
@@ -584,7 +612,8 @@ export async function recordInventoryWaste(
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -595,7 +624,8 @@ export async function recordInventoryWaste(
     data.appliedTodayConsumptionByItemId,
     data.receivingHistory,
     wasteHistory,
-    data.countVarianceHistory
+    data.countVarianceHistory,
+    data.managerCorrectionHistory
   );
   return repository.recordInventoryWasteAndSignals(
     restaurantId,

@@ -99,6 +99,8 @@ interface OperationsCopy {
     chronicWasteDetail: (lossPercentLabel: string, sampleCountLabel: string) => string;
     chronicCountShrinkTitle: (itemName: string) => string;
     chronicCountShrinkDetail: (lossPercentLabel: string, sampleCountLabel: string) => string;
+    chronicManagerCorrectionTitle: (itemName: string) => string;
+    chronicManagerCorrectionDetail: (lossPercentLabel: string, sampleCountLabel: string) => string;
     actions: {
       updateInventoryCount: string;
       beginCountSession: string;
@@ -118,6 +120,7 @@ interface OperationsCopy {
       reviewShortShips: string;
       reviewWaste: string;
       startRecount: string;
+      reviewCorrections: string;
     };
   };
   insight: {
@@ -163,6 +166,14 @@ interface OperationsCopy {
     ) => string;
     chronicCountShrinkWhy: string;
     chronicCountShrinkAction: (itemName: string) => string;
+    chronicManagerCorrectionTitle: (itemName: string) => string;
+    chronicManagerCorrectionDescription: (
+      itemName: string,
+      lossPercentLabel: string,
+      sampleCountLabel: string
+    ) => string;
+    chronicManagerCorrectionWhy: string;
+    chronicManagerCorrectionAction: (itemName: string) => string;
   };
   memory: {
     reliableLabel: string;
@@ -292,6 +303,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicCountShrinkTitle: (itemName) => `${itemName} often shrinks between counts`,
       chronicCountShrinkDetail: (lossPercentLabel, sampleCountLabel) =>
         `Recent counts averaged about ${lossPercentLabel} below system across ${sampleCountLabel} counts.`,
+      chronicManagerCorrectionTitle: (itemName) => `${itemName} is often corrected down`,
+      chronicManagerCorrectionDetail: (lossPercentLabel, sampleCountLabel) =>
+        `Recent manager corrections averaged about ${lossPercentLabel} below system across ${sampleCountLabel} edits.`,
       actions: {
         updateInventoryCount: "Review count",
         beginCountSession: "Start count",
@@ -310,7 +324,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         repairIncompatibleRecipeUnits: "Fix recipe units",
         reviewShortShips: "Review short-ships",
         reviewWaste: "Review waste",
-        startRecount: "Start recount"
+        startRecount: "Start recount",
+        reviewCorrections: "Review corrections"
       }
     },
     insight: {
@@ -349,7 +364,14 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicCountShrinkWhy:
         "Unexplained shrink means Mise’s on-hand is drifting high and orders may understock the next service.",
       chronicCountShrinkAction: (itemName) =>
-        `Investigate count process and theft/spoilage risk for ${itemName}, then recount before ordering.`
+        `Investigate count process and theft/spoilage risk for ${itemName}, then recount before ordering.`,
+      chronicManagerCorrectionTitle: (itemName) => `${itemName} is often corrected down`,
+      chronicManagerCorrectionDescription: (itemName, lossPercentLabel, sampleCountLabel) =>
+        `Recent manager corrections for ${itemName} averaged about ${lossPercentLabel} below system across ${sampleCountLabel} edits.`,
+      chronicManagerCorrectionWhy:
+        "Repeated downward corrections mean Mise’s on-hand is drifting high and orders may understock the next service.",
+      chronicManagerCorrectionAction: (itemName) =>
+        `Review receiving, transfers, and counts for ${itemName}, then adjust par or recount before ordering.`
     },
     memory: {
       reliableLabel: "Mise memory is reliable",
@@ -478,6 +500,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicCountShrinkTitle: (itemName) => `${itemName} suele bajar entre conteos`,
       chronicCountShrinkDetail: (lossPercentLabel, sampleCountLabel) =>
         `Los conteos recientes promedian cerca de ${lossPercentLabel} por debajo del sistema en ${sampleCountLabel} conteos.`,
+      chronicManagerCorrectionTitle: (itemName) => `${itemName} suele corregirse hacia abajo`,
+      chronicManagerCorrectionDetail: (lossPercentLabel, sampleCountLabel) =>
+        `Las correcciones recientes de gerencia promedian cerca de ${lossPercentLabel} por debajo del sistema en ${sampleCountLabel} ediciones.`,
       actions: {
         updateInventoryCount: "Revisar conteo",
         beginCountSession: "Iniciar conteo",
@@ -496,7 +521,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         repairIncompatibleRecipeUnits: "Corregir unidades",
         reviewShortShips: "Revisar faltantes",
         reviewWaste: "Revisar merma",
-        startRecount: "Iniciar reconteo"
+        startRecount: "Iniciar reconteo",
+        reviewCorrections: "Revisar correcciones"
       }
     },
     insight: {
@@ -535,7 +561,14 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicCountShrinkWhy:
         "Una merma sin explicación indica que el stock en sistema está alto y los pedidos pueden quedar cortos.",
       chronicCountShrinkAction: (itemName) =>
-        `Investiga el proceso de conteo y el riesgo de merma o robo de ${itemName}, luego recontea antes de pedir.`
+        `Investiga el proceso de conteo y el riesgo de merma o robo de ${itemName}, luego recontea antes de pedir.`,
+      chronicManagerCorrectionTitle: (itemName) => `${itemName} suele corregirse hacia abajo`,
+      chronicManagerCorrectionDescription: (itemName, lossPercentLabel, sampleCountLabel) =>
+        `Las correcciones recientes de gerencia de ${itemName} promedian cerca de ${lossPercentLabel} por debajo del sistema en ${sampleCountLabel} ediciones.`,
+      chronicManagerCorrectionWhy:
+        "Las correcciones repetidas hacia abajo indican que el stock en Mise está alto y los pedidos pueden quedar cortos.",
+      chronicManagerCorrectionAction: (itemName) =>
+        `Revisa recepción, traslados y conteos de ${itemName}; luego ajusta el par o recontea antes de pedir.`
     },
     memory: {
       reliableLabel: "La memoria de Mise es confiable",
@@ -662,6 +695,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicCountShrinkTitle: (itemName) => `${itemName} 在盘点间经常缩水`,
       chronicCountShrinkDetail: (lossPercentLabel, sampleCountLabel) =>
         `最近盘点平均低于系统约 ${lossPercentLabel}（基于 ${sampleCountLabel} 次盘点）。`,
+      chronicManagerCorrectionTitle: (itemName) => `${itemName} 经常被向下修正`,
+      chronicManagerCorrectionDetail: (lossPercentLabel, sampleCountLabel) =>
+        `最近经理修正平均低于系统约 ${lossPercentLabel}（基于 ${sampleCountLabel} 次编辑）。`,
       actions: {
         updateInventoryCount: "检查盘点",
         beginCountSession: "开始盘点",
@@ -680,7 +716,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         repairIncompatibleRecipeUnits: "修复配方单位",
         reviewShortShips: "查看短交",
         reviewWaste: "查看损耗",
-        startRecount: "开始复盘"
+        startRecount: "开始复盘",
+        reviewCorrections: "查看修正"
       }
     },
 
@@ -719,7 +756,13 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         `最近 ${itemName} 的盘点平均低于系统约 ${lossPercentLabel}（基于 ${sampleCountLabel} 次盘点）。`,
       chronicCountShrinkWhy: "无法解释的缩水意味着系统库存偏高，订单可能不足以支撑下一营业时段。",
       chronicCountShrinkAction: (itemName) =>
-        `请排查 ${itemName} 的盘点流程与损耗/失窃风险，并在订货前重新盘点。`
+        `请排查 ${itemName} 的盘点流程与损耗/失窃风险，并在订货前重新盘点。`,
+      chronicManagerCorrectionTitle: (itemName) => `${itemName} 经常被向下修正`,
+      chronicManagerCorrectionDescription: (itemName, lossPercentLabel, sampleCountLabel) =>
+        `最近 ${itemName} 的经理修正平均低于系统约 ${lossPercentLabel}（基于 ${sampleCountLabel} 次编辑）。`,
+      chronicManagerCorrectionWhy: "反复向下修正意味着 Mise 的在手库存偏高，订单可能不足以支撑下一营业时段。",
+      chronicManagerCorrectionAction: (itemName) =>
+        `请检查 ${itemName} 的收货、转移和盘点，然后在订货前调整安全库存或重新盘点。`
     },
     memory: {
       reliableLabel: "Mise 运营记忆可靠",
@@ -791,6 +834,9 @@ export function presentOperationalTodayTaskAction(
       }
       if (task.presentation?.code === "today.waste.chronic_waste") {
         return actions.reviewWaste;
+      }
+      if (task.presentation?.code === "today.inventory.chronic_manager_correction") {
+        return actions.reviewCorrections;
       }
       return actions.reviewInsight;
     case "map_unmapped_pos_items":
@@ -950,6 +996,15 @@ export function presentOperationalTodayTask(
       )
     );
   }
+  if (code === "today.inventory.chronic_manager_correction") {
+    return result(
+      copy.today.chronicManagerCorrectionTitle(values.itemName),
+      copy.today.chronicManagerCorrectionDetail(
+        formatPercent(locale, values.lossPercent),
+        quantity(values.sampleCount)
+      )
+    );
+  }
 
   throw new Error(`Unsupported Today task presentation code: ${String(code)}`);
 }
@@ -1060,6 +1115,19 @@ export function presentInsight(locale: AppLocale, insight: Insight): PresentedIn
       ),
       whyItMatters: copy.insight.chronicCountShrinkWhy,
       recommendedAction: copy.insight.chronicCountShrinkAction(values.itemName),
+      evidenceOnly: false
+    };
+  }
+  if (code === "insight.rule.inventory.chronic_manager_correction") {
+    return {
+      title: copy.insight.chronicManagerCorrectionTitle(values.itemName),
+      description: copy.insight.chronicManagerCorrectionDescription(
+        values.itemName,
+        formatPercent(locale, values.lossPercent),
+        formatQuantity(locale, values.sampleCount)
+      ),
+      whyItMatters: copy.insight.chronicManagerCorrectionWhy,
+      recommendedAction: copy.insight.chronicManagerCorrectionAction(values.itemName),
       evidenceOnly: false
     };
   }

@@ -49,10 +49,13 @@ import {
 import {
   applyLossBias,
   buildChronicCountShrinkInsightInput,
+  buildChronicManagerCorrectionInsightInput,
   buildChronicWasteInsightInput,
   buildCountShrinkBiasByItem,
+  buildManagerCorrectionBiasByItem,
   buildWasteBiasByItem,
   extractCountVarianceSamplesFromMovements,
+  extractManagerCorrectionSamplesFromMovements,
   extractWasteSamplesFromMovements,
   lossBiasReasonFragment
 } from "./wasteVarianceLearning";
@@ -198,6 +201,12 @@ export function applyStackedOrderLearning(input: {
   countShrinkBias?: ReturnType<typeof buildCountShrinkBiasByItem> extends Map<string, infer V>
     ? V
     : never;
+  managerCorrectionBias?: ReturnType<typeof buildManagerCorrectionBiasByItem> extends Map<
+    string,
+    infer V
+  >
+    ? V
+    : never;
 }): StackedOrderLearningResult {
   const learnedQuantity = boundedLearnedQuantity(
     input.item,
@@ -216,7 +225,17 @@ export function applyStackedOrderLearning(input: {
     input.countShrinkBias,
     bounds
   );
-  const recommendedQuantity = afterShrink ?? afterWaste ?? afterReceive ?? afterApprovalLearning;
+  const afterManagerCorrection = applyLossBias(
+    afterShrink ?? afterWaste ?? afterReceive ?? afterApprovalLearning,
+    input.managerCorrectionBias,
+    bounds
+  );
+  const recommendedQuantity =
+    afterManagerCorrection ??
+    afterShrink ??
+    afterWaste ??
+    afterReceive ??
+    afterApprovalLearning;
   const reasonFragments: string[] = [];
   if (
     input.receiveBias?.isChronic &&
@@ -239,6 +258,14 @@ export function applyStackedOrderLearning(input: {
   ) {
     reasonFragments.push(lossBiasReasonFragment(input.countShrinkBias));
   }
+  if (
+    input.managerCorrectionBias?.isChronic &&
+    afterManagerCorrection != null &&
+    afterManagerCorrection !==
+      (afterShrink ?? afterWaste ?? afterReceive ?? afterApprovalLearning)
+  ) {
+    reasonFragments.push(lossBiasReasonFragment(input.managerCorrectionBias));
+  }
   return { recommendedQuantity, learnedQuantity, reasonFragments };
 }
 
@@ -254,6 +281,7 @@ export function planManualPendingRecommendation(input: {
   receivingHistory?: Parameters<typeof buildReceiveFillBiasByItem>[0];
   wasteHistory?: Parameters<typeof buildWasteBiasByItem>[0];
   countVarianceHistory?: Parameters<typeof buildCountShrinkBiasByItem>[0];
+  managerCorrectionHistory?: Parameters<typeof buildManagerCorrectionBiasByItem>[0];
 }): {
   recommended_quantity: number;
   reason: string;
@@ -268,13 +296,17 @@ export function planManualPendingRecommendation(input: {
   const countShrinkBias = buildCountShrinkBiasByItem(input.countVarianceHistory ?? []).get(
     input.item.id
   );
+  const managerCorrectionBias = buildManagerCorrectionBiasByItem(
+    input.managerCorrectionHistory ?? []
+  ).get(input.item.id);
   const learned = applyStackedOrderLearning({
     item: input.item,
     prediction: input.prediction,
     learnedQuantities,
     receiveBias,
     wasteBias,
-    countShrinkBias
+    countShrinkBias,
+    managerCorrectionBias
   });
   return {
     recommended_quantity: learned.recommendedQuantity,
@@ -908,6 +940,9 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
   const countShrinkBiasByItem = buildCountShrinkBiasByItem(
     extractCountVarianceSamplesFromMovements(restaurantMovements)
   );
+  const managerCorrectionBiasByItem = buildManagerCorrectionBiasByItem(
+    extractManagerCorrectionSamplesFromMovements(restaurantMovements)
+  );
   const lowOutlooks = buildInventoryOutlooks(
     restaurantId,
     state.inventoryItems,
@@ -938,7 +973,8 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
       learnedQuantities,
       receiveBias: receiveBiasByItem.get(item.id),
       wasteBias: wasteBiasByItem.get(item.id),
-      countShrinkBias: countShrinkBiasByItem.get(item.id)
+      countShrinkBias: countShrinkBiasByItem.get(item.id),
+      managerCorrectionBias: managerCorrectionBiasByItem.get(item.id)
     });
     const reason = learnedRecommendationReason(
       item,
@@ -986,7 +1022,8 @@ export function buildInsightsFromData(
   operatingDate = defaultOperatingDate(restaurantId),
   receivingHistory: Parameters<typeof buildReceiveFillBiasByItem>[0] = [],
   wasteHistory: Parameters<typeof buildWasteBiasByItem>[0] = [],
-  countVarianceHistory: Parameters<typeof buildCountShrinkBiasByItem>[0] = []
+  countVarianceHistory: Parameters<typeof buildCountShrinkBiasByItem>[0] = [],
+  managerCorrectionHistory: Parameters<typeof buildManagerCorrectionBiasByItem>[0] = []
 ) {
   const now = new Date().toISOString();
   const todaySales = sales.filter(
@@ -999,6 +1036,7 @@ export function buildInsightsFromData(
   const receiveBiasByItem = buildReceiveFillBiasByItem(receivingHistory);
   const wasteBiasByItem = buildWasteBiasByItem(wasteHistory);
   const countShrinkBiasByItem = buildCountShrinkBiasByItem(countVarianceHistory);
+  const managerCorrectionBiasByItem = buildManagerCorrectionBiasByItem(managerCorrectionHistory);
   const chronicShortShipInsights = inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .flatMap((item) => {
@@ -1074,6 +1112,31 @@ export function buildInsightsFromData(
               itemName: item.item_name,
               lossPercent: shrinkMarker.lossPercent,
               sampleCount: shrinkBias.sampleCount
+            }
+          }
+        });
+      }
+      const managerBias = managerCorrectionBiasByItem.get(item.id);
+      const managerMarker = managerBias
+        ? buildChronicManagerCorrectionInsightInput(managerBias)
+        : null;
+      if (managerBias && managerMarker) {
+        entries.push({
+          id: `insight_manager_correction_${item.id}`,
+          restaurant_id: restaurantId,
+          insight_type: "inventory",
+          title: `${item.item_name} is often corrected downward`,
+          description: `Recent manager corrections for ${item.item_name} averaged about ${managerMarker.lossPercent}% below system across ${managerBias.sampleCount} edits.`,
+          why_it_matters: "Repeated downward corrections mean on-hand is drifting high and Mise may under-order for the next service.",
+          recommended_action: `Review why ${item.item_name} keeps needing corrections, then confirm the next count before ordering.`,
+          severity: "warning",
+          created_at: now,
+          presentation: {
+            code: "insight.rule.inventory.chronic_manager_correction",
+            values: {
+              itemName: item.item_name,
+              lossPercent: managerMarker.lossPercent,
+              sampleCount: managerBias.sampleCount
             }
           }
         });
@@ -1212,6 +1275,8 @@ export function rebuildInsights(state: DemoState, restaurantId: string) {
   const receivingHistory = extractReceiveSamplesFromMovements(restaurantMovements);
   const wasteHistory = extractWasteSamplesFromMovements(restaurantMovements);
   const countVarianceHistory = extractCountVarianceSamplesFromMovements(restaurantMovements);
+  const managerCorrectionHistory =
+    extractManagerCorrectionSamplesFromMovements(restaurantMovements);
   const generated = buildInsightsFromData(
     restaurantId,
     state.inventoryItems,
@@ -1220,7 +1285,8 @@ export function rebuildInsights(state: DemoState, restaurantId: string) {
     defaultOperatingDate(restaurantId),
     receivingHistory,
     wasteHistory,
-    countVarianceHistory
+    countVarianceHistory,
+    managerCorrectionHistory
   );
   state.insights = [
     ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),
@@ -2418,12 +2484,14 @@ export function buildRecommendationInserts(
   operatingDate = defaultOperatingDate(restaurantId),
   receivingHistory: Parameters<typeof buildReceiveFillBiasByItem>[0] = [],
   wasteHistory: Parameters<typeof buildWasteBiasByItem>[0] = [],
-  countVarianceHistory: Parameters<typeof buildCountShrinkBiasByItem>[0] = []
+  countVarianceHistory: Parameters<typeof buildCountShrinkBiasByItem>[0] = [],
+  managerCorrectionHistory: Parameters<typeof buildManagerCorrectionBiasByItem>[0] = []
 ) {
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
   const receiveBiasByItem = buildReceiveFillBiasByItem(receivingHistory);
   const wasteBiasByItem = buildWasteBiasByItem(wasteHistory);
   const countShrinkBiasByItem = buildCountShrinkBiasByItem(countVarianceHistory);
+  const managerCorrectionBiasByItem = buildManagerCorrectionBiasByItem(managerCorrectionHistory);
 
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
@@ -2440,7 +2508,8 @@ export function buildRecommendationInserts(
         learnedQuantities,
         receiveBias: receiveBiasByItem.get(item.id),
         wasteBias: wasteBiasByItem.get(item.id),
-        countShrinkBias: countShrinkBiasByItem.get(item.id)
+        countShrinkBias: countShrinkBiasByItem.get(item.id),
+        managerCorrectionBias: managerCorrectionBiasByItem.get(item.id)
       });
       return {
         restaurant_id: restaurantId,
