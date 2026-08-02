@@ -10,11 +10,11 @@ Inventory Health showed per-station risk bars, but operators could not tap a sta
 - Tests: presentation unit coverage + security static contract.
 
 ## Proof
-- `npm run typecheck`
-- `npm test`
-- `npm run security:backend`
-- `npm run security:static`
-- `npm run design:static`
+- `npm run typecheck` (pass)
+- `npm test` (359 pass / 0 fail)
+- `npm run security:backend` (pass)
+- `npm run security:static` (pass)
+- `npm run design:static` (pass)
 - Docker `supabase:test` still unavailable in this environment.
 
 ## Follow-ups
