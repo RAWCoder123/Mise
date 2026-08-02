@@ -113,6 +113,7 @@ import {
 import {
   createDemoStorageLocation,
   applyDemoReceiveLocationPutaway,
+  applyDemoWasteLocationDeduction,
   ensureDemoMainStorageLocation,
   listDemoInventoryLocationBalances,
   listDemoStorageLocations,
@@ -385,7 +386,8 @@ export interface MiseRepository {
     quantityRemoved: number,
     note: string | null,
     recommendations: PurchaseRecommendationInput[],
-    insights: Insight[]
+    insights: Insight[],
+    storageLocationId?: string | null
   ): Promise<InventoryItem>;
   fetchStorageLocations(restaurantId: string): Promise<StorageLocation[]>;
   createStorageLocation(restaurantId: string, name: string): Promise<StorageLocation>;
@@ -1610,7 +1612,8 @@ function createLocalDemoRepository(): MiseRepository {
       quantityRemoved,
       note,
       recommendations,
-      insights
+      insights,
+      storageLocationId = null
     ) {
       return mutateDemoState((state) => {
         const item = state.inventoryItems.find(
@@ -1623,15 +1626,27 @@ function createLocalDemoRepository(): MiseRepository {
         if (item.current_quantity <= 0) {
           throw new Error("Nothing on hand to record as waste. Update the count first.");
         }
+        const now = new Date().toISOString();
+        ensureDemoMainStorageLocation(state, restaurantId, now);
+        const onHandQuantityBefore = item.current_quantity;
+        const balancesBefore = listDemoInventoryLocationBalances(state, restaurantId, itemId);
         const planned = planInventoryWaste({
-          quantityBefore: item.current_quantity,
+          quantityBefore: onHandQuantityBefore,
           quantityRemoved,
           note
         });
-        const now = new Date().toISOString();
         item.current_quantity = planned.quantityAfter;
         item.last_updated = now;
-        reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
+        const wasteLocation = applyDemoWasteLocationDeduction(
+          state,
+          restaurantId,
+          item,
+          storageLocationId,
+          planned.quantityRemovedApplied,
+          onHandQuantityBefore,
+          balancesBefore,
+          now
+        );
         appendDemoInventoryMovement(state, {
           restaurantId,
           itemId,
@@ -1639,7 +1654,11 @@ function createLocalDemoRepository(): MiseRepository {
           quantityAfter: planned.quantityAfter,
           reason: planned.reason,
           sourceWorkflow: planned.sourceWorkflow,
-          metadata: planned.metadata
+          metadata: {
+            ...planned.metadata,
+            storage_location_id: wasteLocation.id,
+            storage_location_name: wasteLocation.name
+          }
         });
         state.purchaseRecommendations = [
           ...state.purchaseRecommendations.filter(
@@ -3309,14 +3328,16 @@ function createSupabaseRepository(): MiseRepository {
       quantityRemoved,
       note,
       _recommendations,
-      _insights
+      _insights,
+      storageLocationId = null
     ) {
       const response = await invokeOperationalWorkflow({
         action: "record_waste",
         restaurantId,
         itemId,
         quantityRemoved,
-        note
+        note,
+        storageLocationId
       });
       return normalizeInventoryItem(response.result as InventoryItem);
     },

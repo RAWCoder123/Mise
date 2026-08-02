@@ -68,6 +68,7 @@ export default function InventoryDetailScreen() {
   const [reorderThreshold, setReorderThreshold] = useState("");
   const [wasteQuantity, setWasteQuantity] = useState("");
   const [wasteNote, setWasteNote] = useState("");
+  const [wasteStorageLocationId, setWasteStorageLocationId] = useState("");
   const [correctionNote, setCorrectionNote] = useState("");
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
   const [locationBalances, setLocationBalances] = useState<InventoryLocationBalance[]>([]);
@@ -124,6 +125,9 @@ export default function InventoryDetailScreen() {
       setFromStorageLocationId((current) =>
         current && nextLocations.some((location) => location.id === current) ? current : main?.id ?? ""
       );
+      setWasteStorageLocationId((current) =>
+        current && nextLocations.some((location) => location.id === current) ? current : main?.id ?? ""
+      );
       setToStorageLocationId((current) =>
         current && nextLocations.some((location) => location.id === current) && current !== (main?.id ?? "")
           ? current
@@ -151,6 +155,7 @@ export default function InventoryDetailScreen() {
     setReorderThreshold("");
     setWasteQuantity("");
     setWasteNote("");
+    setWasteStorageLocationId("");
     setCorrectionNote("");
     setStorageLocations([]);
     setLocationBalances([]);
@@ -308,9 +313,25 @@ export default function InventoryDetailScreen() {
       setMessageIsError(true);
       return;
     }
+    if (storageLocations.length > 0 && !wasteStorageLocationId) {
+      setFieldErrors((current) => ({
+        ...current,
+        wasteLocation: t("inventory.detail.fieldRequired", {
+          field: t("inventory.detail.wasteLocation")
+        })
+      }));
+      setMessage(t("inventory.detail.reviewWaste"));
+      setMessageIsError(true);
+      return;
+    }
 
     const restaurantId = restaurant.id;
-    setFieldErrors((current) => ({ ...current, wasteQuantity: undefined, wasteNote: undefined }));
+    setFieldErrors((current) => ({
+      ...current,
+      wasteQuantity: undefined,
+      wasteNote: undefined,
+      wasteLocation: undefined
+    }));
     setSaving(true);
     setMessage(null);
     setMessageIsError(false);
@@ -319,7 +340,8 @@ export default function InventoryDetailScreen() {
         restaurantId,
         item.id,
         parseNumber(wasteQuantity) ?? 0,
-        wasteNote.trim() || null
+        wasteNote.trim() || null,
+        wasteStorageLocationId || null
       );
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setWasteQuantity("");
@@ -327,9 +349,14 @@ export default function InventoryDetailScreen() {
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setMessage(t("inventory.detail.wasteRecorded"));
-    } catch {
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
-        setMessage(t("inventory.detail.wasteError"));
+        const detail = error instanceof Error ? error.message : "";
+        setMessage(
+          /insufficient quantity at the selected storage location/i.test(detail)
+            ? t("inventory.detail.wasteLocationInsufficient")
+            : t("inventory.detail.wasteError")
+        );
         setMessageIsError(true);
       }
     } finally {
@@ -566,10 +593,13 @@ export default function InventoryDetailScreen() {
               t={t}
               itemName={item.item_name}
               unit={item.unit}
+              locations={storageLocations}
+              wasteStorageLocationId={wasteStorageLocationId}
               wasteQuantity={wasteQuantity}
               wasteNote={wasteNote}
               fieldErrors={fieldErrors}
               saving={saving}
+              setWasteStorageLocationId={setWasteStorageLocationId}
               setWasteQuantity={setWasteQuantity}
               setWasteNote={setWasteNote}
               setFieldErrors={setFieldErrors}
@@ -675,10 +705,13 @@ export default function InventoryDetailScreen() {
               t={t}
               itemName={item.item_name}
               unit={item.unit}
+              locations={storageLocations}
+              wasteStorageLocationId={wasteStorageLocationId}
               wasteQuantity={wasteQuantity}
               wasteNote={wasteNote}
               fieldErrors={fieldErrors}
               saving={saving}
+              setWasteStorageLocationId={setWasteStorageLocationId}
               setWasteQuantity={setWasteQuantity}
               setWasteNote={setWasteNote}
               setFieldErrors={setFieldErrors}
@@ -731,6 +764,7 @@ interface InventoryFieldErrors {
   correctionNote?: string;
   wasteQuantity?: string;
   wasteNote?: string;
+  wasteLocation?: string;
   transferQuantity?: string;
   transferNote?: string;
   transferFrom?: string;
@@ -741,10 +775,13 @@ function WasteRecordingCard({
   t,
   itemName,
   unit,
+  locations,
+  wasteStorageLocationId,
   wasteQuantity,
   wasteNote,
   fieldErrors,
   saving,
+  setWasteStorageLocationId,
   setWasteQuantity,
   setWasteNote,
   setFieldErrors,
@@ -753,10 +790,13 @@ function WasteRecordingCard({
   t: ReturnType<typeof useLocale>["t"];
   itemName: string;
   unit: string;
+  locations: StorageLocation[];
+  wasteStorageLocationId: string;
   wasteQuantity: string;
   wasteNote: string;
   fieldErrors: InventoryFieldErrors;
   saving: boolean;
+  setWasteStorageLocationId: (value: string) => void;
   setWasteQuantity: (value: string) => void;
   setWasteNote: (value: string) => void;
   setFieldErrors: Dispatch<SetStateAction<InventoryFieldErrors>>;
@@ -766,6 +806,19 @@ function WasteRecordingCard({
     <Card>
       <Text style={styles.cardTitle}>{t("inventory.detail.recordWaste")}</Text>
       <Text style={styles.copy}>{t("inventory.detail.wasteHelp")}</Text>
+      {locations.length > 0 ? (
+        <LocationChooser
+          label={t("inventory.detail.wasteLocation")}
+          locations={locations}
+          selectedId={wasteStorageLocationId}
+          error={fieldErrors.wasteLocation}
+          disabled={saving}
+          onSelect={(value) => {
+            setWasteStorageLocationId(value);
+            setFieldErrors((current) => ({ ...current, wasteLocation: undefined }));
+          }}
+        />
+      ) : null}
       <Field
         label={t("inventory.detail.wasteQuantity", { unit })}
         value={wasteQuantity}
@@ -1095,10 +1148,17 @@ function movementReasonLabel(t: ReturnType<typeof useLocale>["t"], reason: Inven
 
 function movementNoteText(metadata: InventoryMovement["metadata"] | null | undefined) {
   if (!metadata || typeof metadata !== "object") return null;
-  const note = (metadata as Record<string, unknown>).note;
-  if (typeof note !== "string") return null;
-  const trimmed = note.trim();
-  return trimmed || null;
+  const record = metadata as Record<string, unknown>;
+  const parts: string[] = [];
+  const station = record.storage_location_name;
+  if (typeof station === "string" && station.trim()) {
+    parts.push(station.trim());
+  }
+  const note = record.note;
+  if (typeof note === "string" && note.trim()) {
+    parts.push(note.trim());
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 function validateInventoryNumber(

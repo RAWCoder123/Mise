@@ -471,7 +471,11 @@ async function refreshWithRetry(
           p_quantity_removed: requireBoundedNumber(body.quantityRemoved, "quantityRemoved", Number.EPSILON, 1_000_000),
           p_note: body.note == null ? null : requireBoundedString(body.note, "note", 240),
           p_recommendations: recommendations,
-          p_insights: insights
+          p_insights: insights,
+          p_storage_location_id:
+            body.storageLocationId == null || body.storageLocationId === ""
+              ? null
+              : requireUuid(body.storageLocationId, "storageLocationId")
         });
       }
       if (action === "receive_supplier_order") {
@@ -1360,6 +1364,17 @@ function auditMetadata(
   }
   if (action === "record_waste" && typeof body.quantityRemoved === "number") {
     metadata.quantity_removed = body.quantityRemoved;
+  }
+  if (action === "record_waste") {
+    if (typeof row.storage_location_id === "string") {
+      metadata.storage_location_id = row.storage_location_id;
+    }
+    if (typeof row.storage_location_name === "string") {
+      metadata.storage_location_name = row.storage_location_name;
+    }
+    if (typeof body.storageLocationId === "string" && body.storageLocationId.trim()) {
+      metadata.storage_location_id = body.storageLocationId.trim();
+    }
   }
   if (action === "transfer_inventory") {
     if (typeof row.quantity_moved === "number") metadata.quantity_moved = row.quantity_moved;

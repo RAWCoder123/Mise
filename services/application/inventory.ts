@@ -7,7 +7,10 @@ import {
   shouldSuppressRecommendationForItem,
   type RecipeBaselineSummaryOptions
 } from "../domain/miseDomain";
-import { planInventoryWaste } from "../domain/inventoryWaste";
+import {
+  assertWasteStationAvailability,
+  planInventoryWaste
+} from "../domain/inventoryWaste";
 import { planInventoryTransfer, planStorageLocationCreate } from "../domain/inventoryTransfer";
 import {
   assertInventoryItemCreateCapacity,
@@ -571,13 +574,16 @@ export async function recordInventoryWaste(
   restaurantId: string,
   itemId: string,
   quantityRemoved: number,
-  note?: string | null
+  note?: string | null,
+  storageLocationId?: string | null
 ) {
   const normalizedQuantity = requireInventoryWasteQuantity(quantityRemoved);
   const normalizedNote = requireInventoryWasteNote(note);
-  const [data, recommendationHistory] = await Promise.all([
+  const [data, recommendationHistory, locations, balances] = await Promise.all([
     repository.fetchPlanningData(restaurantId),
-    repository.fetchPurchaseRecommendations(restaurantId, "all")
+    repository.fetchPurchaseRecommendations(restaurantId, "all"),
+    repository.fetchStorageLocations(restaurantId),
+    repository.fetchInventoryLocationBalances(restaurantId, itemId)
   ]);
   const existing = data.inventoryItems.find((item) => item.id === itemId);
   if (!existing) throw new Error("Inventory item not found");
@@ -585,10 +591,35 @@ export async function recordInventoryWaste(
     throw new Error("Nothing on hand to record as waste. Update the count first.");
   }
 
+  const main = locations.find((location) => location.name.toLowerCase() === "main") ?? locations[0];
+  const requestedLocationId =
+    typeof storageLocationId === "string" && storageLocationId.trim()
+      ? storageLocationId.trim()
+      : null;
+  const wasteLocation =
+    (requestedLocationId
+      ? locations.find((location) => location.id === requestedLocationId)
+      : null) ?? main;
+  if (!wasteLocation || !main) {
+    throw new Error("Create a storage location before recording waste.");
+  }
+
   const planned = planInventoryWaste({
     quantityBefore: existing.current_quantity,
     quantityRemoved: normalizedQuantity,
-    note: normalizedNote
+    note: normalizedNote,
+    storageLocationId: wasteLocation.id,
+    storageLocationName: wasteLocation.name
+  });
+  assertWasteStationAvailability({
+    onHandQuantity: existing.current_quantity,
+    quantityRemovedApplied: planned.quantityRemovedApplied,
+    storageLocationId: wasteLocation.id,
+    mainStorageLocationId: main.id,
+    balancesBefore: balances.map((balance) => ({
+      storageLocationId: balance.storage_location_id,
+      quantity: balance.quantity
+    }))
   });
   const now = new Date().toISOString();
   const updatedForPlanning = {
@@ -641,7 +672,8 @@ export async function recordInventoryWaste(
     planned.quantityRemovedRequested,
     normalizedNote,
     recommendations,
-    insights
+    insights,
+    wasteLocation.id
   );
 }
 
