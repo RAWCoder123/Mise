@@ -11,10 +11,11 @@ Inventory list search used naive substring matching, and count sessions had no l
 
 ## Proof
 - `npm run typecheck`
-- `npm test`
+- `npm test` (357 pass)
 - `npm run security:backend`
 - `npm run security:static`
 - `npm run design:static`
+- Docker `supabase:test` still unavailable in this environment.
 
 ## Follow-ups
 - Docker/hosted re-proof after July/Aug migrations.
