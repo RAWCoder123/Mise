@@ -51,8 +51,7 @@ export async function fetchInventoryOutlookItems(restaurantId: string) {
     data.sales,
     data.menuItemIngredients,
     data.operatingDate,
-    data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.appliedTodayConsumptionByItemId
   );
 }
 

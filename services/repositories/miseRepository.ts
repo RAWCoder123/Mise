@@ -3809,7 +3809,6 @@ export function buildLocalInsightsForTest(data: PlanningData & { restaurantId: s
     data.sales,
     data.menuItemIngredients,
     data.operatingDate,
-    data.appliedTodayConsumptionByItemId,
     data.receivingHistory
   );
 }
