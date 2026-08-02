@@ -40,6 +40,10 @@ import {
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
 import {
+  resolveSetupRecipeIngredient,
+  searchSetupInventoryForPicker
+} from "../../services/domain/setupRecipeLinking";
+import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
   DEMO_SETUP_POS_SALES_PLACEHOLDER,
@@ -469,6 +473,7 @@ export default function SetupScreen() {
                 <RecipeDraftEditor
                   key={recipe.id}
                   recipe={recipe}
+                  inventoryItems={inventoryItems}
                   onChange={(patch) => updateRecipe(recipe.id, patch, setRecipes)}
                   onRemove={() => removeDraft(recipe.id, setRecipes)}
                 />
@@ -667,19 +672,45 @@ function SupplierDraftRow({
 
 function RecipeDraftEditor({
   recipe,
+  inventoryItems,
   onChange,
   onRemove
 }: {
   recipe: SetupRecipeDraft;
+  inventoryItems: SetupInventoryDraftItem[];
   onChange: (patch: Partial<SetupRecipeDraft>) => void;
   onRemove: () => void;
 }) {
   const { t } = useLocale();
+  const namedInventoryCount = inventoryItems.filter((item) => item.name.trim()).length;
+
   function updateIngredient(id: string, patch: Partial<SetupRecipeIngredientDraft>) {
     onChange({
       ingredients: recipe.ingredients.map((ingredient) =>
         ingredient.id === id ? { ...ingredient, ...patch } : ingredient
       )
+    });
+  }
+
+  function handleIngredientNameChange(ingredient: SetupRecipeIngredientDraft, itemName: string) {
+    const resolved = resolveSetupRecipeIngredient(inventoryItems, {
+      itemName,
+      inventoryItemId: null
+    });
+    updateIngredient(ingredient.id, {
+      itemName,
+      inventoryItemId: resolved?.id ?? null,
+      ...(resolved && resolved.id !== ingredient.inventoryItemId
+        ? { unit: resolved.unit.trim() || ingredient.unit || "unit" }
+        : {})
+    });
+  }
+
+  function handleIngredientSelect(ingredient: SetupRecipeIngredientDraft, item: SetupInventoryDraftItem) {
+    updateIngredient(ingredient.id, {
+      itemName: item.name.trim(),
+      inventoryItemId: item.id,
+      unit: item.unit.trim() || ingredient.unit || "unit"
     });
   }
 
@@ -700,41 +731,102 @@ function RecipeDraftEditor({
           onPress={onRemove}
         />
       </View>
-      {recipe.ingredients.map((ingredient) => (
-        <View key={ingredient.id} style={styles.ingredientRow}>
-          <TextInput
-            accessibilityLabel={t("setup.field.recipeIngredientAccessibility", {
-              recipe: recipe.dishName || t("setup.fallback.recipe")
-            })}
-            value={ingredient.itemName}
-            onChangeText={(itemName) => updateIngredient(ingredient.id, { itemName })}
-            style={[styles.ingredientInput, styles.ingredientNameInput]}
-            placeholder={t("setup.field.ingredient")}
-            placeholderTextColor={colors.faint}
-          />
-          <TextInput
-            accessibilityLabel={t("setup.field.quantityAccessibility", {
-              ingredient: ingredient.itemName || t("setup.fallback.ingredient")
-            })}
-            value={ingredient.quantity}
-            onChangeText={(quantity) => updateIngredient(ingredient.id, { quantity })}
-            style={styles.ingredientInput}
-            placeholder={t("setup.field.quantityShort")}
-            placeholderTextColor={colors.faint}
-            keyboardType="decimal-pad"
-          />
-          <TextInput
-            accessibilityLabel={t("setup.field.unitAccessibility", {
-              ingredient: ingredient.itemName || t("setup.fallback.ingredient")
-            })}
-            value={ingredient.unit}
-            onChangeText={(unit) => updateIngredient(ingredient.id, { unit })}
-            style={styles.ingredientInput}
-            placeholder={t("setup.field.unit")}
-            placeholderTextColor={colors.faint}
-          />
-        </View>
-      ))}
+      {recipe.ingredients.map((ingredient) => {
+        const matches = searchSetupInventoryForPicker(inventoryItems, ingredient.itemName);
+        const selected = resolveSetupRecipeIngredient(inventoryItems, ingredient);
+        const queryActive = ingredient.itemName.trim().length > 0;
+        const hint = selected
+          ? t("setup.recipes.inventorySelected", {
+              item: selected.name.trim(),
+              unit: selected.unit.trim() || "unit"
+            })
+          : queryActive && matches.length === 0 && namedInventoryCount > 0
+            ? t("setup.recipes.inventoryNoMatches")
+            : queryActive && namedInventoryCount > 0
+              ? t("setup.recipes.inventoryPickOne")
+              : namedInventoryCount > 0
+                ? t("setup.recipes.inventoryBrowse")
+                : t("setup.recipes.inventoryEmpty");
+
+        return (
+          <View key={ingredient.id} style={styles.ingredientBlock}>
+            <View style={styles.ingredientRow}>
+              <TextInput
+                accessibilityLabel={t("setup.field.recipeIngredientAccessibility", {
+                  recipe: recipe.dishName || t("setup.fallback.recipe")
+                })}
+                accessibilityHint={t("setup.field.ingredientSearchHint")}
+                value={ingredient.itemName}
+                onChangeText={(itemName) => handleIngredientNameChange(ingredient, itemName)}
+                style={[styles.ingredientInput, styles.ingredientNameInput]}
+                placeholder={t("setup.field.ingredient")}
+                placeholderTextColor={colors.faint}
+                autoCorrect={false}
+                autoCapitalize="words"
+              />
+              <TextInput
+                accessibilityLabel={t("setup.field.quantityAccessibility", {
+                  ingredient: ingredient.itemName || t("setup.fallback.ingredient")
+                })}
+                value={ingredient.quantity}
+                onChangeText={(quantity) => updateIngredient(ingredient.id, { quantity })}
+                style={styles.ingredientInput}
+                placeholder={t("setup.field.quantityShort")}
+                placeholderTextColor={colors.faint}
+                keyboardType="decimal-pad"
+              />
+              <TextInput
+                accessibilityLabel={t("setup.field.unitAccessibility", {
+                  ingredient: ingredient.itemName || t("setup.fallback.ingredient")
+                })}
+                value={ingredient.unit}
+                onChangeText={(unit) => updateIngredient(ingredient.id, { unit })}
+                style={styles.ingredientInput}
+                placeholder={t("setup.field.unit")}
+                placeholderTextColor={colors.faint}
+              />
+            </View>
+            {namedInventoryCount > 0 ? (
+              <>
+                <Text style={styles.ingredientHint} accessibilityLiveRegion="polite">
+                  {hint}
+                </Text>
+                <View style={styles.ingredientChipRow}>
+                  {matches.map((match) => {
+                    const active = selected?.id === match.item.draft.id;
+                    return (
+                      <Pressable
+                        key={match.item.draft.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${match.item.item_name} · ${match.item.unit}`}
+                        accessibilityState={{ selected: active }}
+                        onPress={() => handleIngredientSelect(ingredient, match.item.draft)}
+                        style={({ pressed }) => [
+                          styles.ingredientChip,
+                          active && styles.ingredientChipActive,
+                          pressed && styles.pressed
+                        ]}
+                      >
+                        <Package
+                          size={13}
+                          color={active ? colors.surface : colors.text}
+                          strokeWidth={2.4}
+                        />
+                        <Text
+                          style={[styles.ingredientChipText, active && styles.ingredientChipTextActive]}
+                          numberOfLines={1}
+                        >
+                          {`${match.item.item_name} · ${match.item.unit}`}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            ) : null}
+          </View>
+        );
+      })}
       <Pressable
         accessibilityLabel={t("setup.addIngredientAccessibility", {
           recipe: recipe.dishName || t("setup.fallback.recipe")
@@ -869,7 +961,13 @@ function createRecipeDraft(): SetupRecipeDraft {
 }
 
 function createRecipeIngredientDraft(): SetupRecipeIngredientDraft {
-  return { id: makeLocalId("ingredient"), itemName: "", quantity: "", unit: "lb" };
+  return {
+    id: makeLocalId("ingredient"),
+    itemName: "",
+    quantity: "",
+    unit: "lb",
+    inventoryItemId: null
+  };
 }
 
 function validateSetupDrafts({
@@ -1204,6 +1302,9 @@ const styles = StyleSheet.create({
     ...typography.body,
     paddingHorizontal: 10
   },
+  ingredientBlock: {
+    gap: 6
+  },
   ingredientRow: {
     flexDirection: "row",
     gap: 7
@@ -1222,6 +1323,40 @@ const styles = StyleSheet.create({
   },
   ingredientNameInput: {
     flex: 1.55
+  },
+  ingredientHint: {
+    color: colors.muted,
+    ...typography.caption
+  },
+  ingredientChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7
+  },
+  ingredientChip: {
+    maxWidth: "100%",
+    minHeight: 36,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
+  },
+  ingredientChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accent
+  },
+  ingredientChipText: {
+    color: colors.text,
+    ...typography.caption,
+    fontFamily: fontFamilies.medium,
+    maxWidth: 180
+  },
+  ingredientChipTextActive: {
+    color: colors.surface
   },
   inlineAdd: {
     minHeight: 44,

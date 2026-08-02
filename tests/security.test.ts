@@ -1365,6 +1365,33 @@ test("recipe baseline builder resolves inventory items through searchable picker
   assert.doesNotMatch(catalog, /type exact inventory item/i);
 });
 
+test("setup recipe drafts resolve inventory through searchable picker helpers", () => {
+  const screen = readFileSync("app/(auth)/setup.tsx", "utf8");
+  const setupService = readFileSync("services/application/setup.ts", "utf8");
+  const linkingDomain = readFileSync("services/domain/setupRecipeLinking.ts", "utf8");
+  const drafts = readFileSync("services/domain/setupDrafts.ts", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(linkingDomain, /export\s+function\s+resolveSetupRecipeIngredient/);
+  assert.match(linkingDomain, /export\s+function\s+searchSetupInventoryForPicker/);
+  assert.match(linkingDomain, /resolveInventoryItemForRecipeLink/);
+  assert.match(drafts, /inventoryItemId\?:/);
+  assert.match(screen, /searchSetupInventoryForPicker/);
+  assert.match(screen, /resolveSetupRecipeIngredient/);
+  assert.match(screen, /handleIngredientSelect/);
+  assert.match(screen, /inventoryItemId/);
+  assert.match(setupService, /resolveSetupRecipeIngredient/);
+  assert.match(setupService, /resolveSetupRecipeIngredientAgainstCatalog/);
+  assert.match(setupService, /setupInventoryCatalogId/);
+  assert.match(setupService, /inventory_item_name:\s*linkedInventoryItem\.item_name/);
+  assert.doesNotMatch(
+    setupService,
+    /inventoryItemsByName\.has\(ingredientName\.toLowerCase\(\)\)/
+  );
+  assert.match(catalog, /"setup\.recipes\.inventoryPickOne"/);
+  assert.match(catalog, /"setup\.field\.ingredientSearchHint"/);
+});
+
 test("Supabase repository keeps demo seed and reset local-only", () => {
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const supabaseRepository = repository.match(/function createSupabaseRepository\(\): MiseRepository \{[\s\S]*$/)?.[0] ?? "";
