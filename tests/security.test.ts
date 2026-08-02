@@ -1389,6 +1389,26 @@ test("inventory list and count sheet reuse ranked inventory search helpers", () 
   assert.match(catalog, /"inventory\.count\.emptyMatches\.title"/);
 });
 
+test("inventory station health rows filter the stock list through presentation helpers", () => {
+  const inventoryScreen = readFileSync("app/(tabs)/inventory.tsx", "utf8");
+  const presentation = readFileSync(
+    "services/presentation/inventoryHealthPresentation.ts",
+    "utf8"
+  );
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(presentation, /stockedItemIds/);
+  assert.match(presentation, /export\s+function\s+resolveStationStockedItemIds/);
+  assert.match(presentation, /export\s+function\s+filterItemsByStationStock/);
+  assert.match(inventoryScreen, /resolveStationStockedItemIds/);
+  assert.match(inventoryScreen, /filterItemsByStationStock/);
+  assert.match(inventoryScreen, /selectedStationId/);
+  assert.match(inventoryScreen, /inventory\.health\.stationFilter\.selectAccessibility/);
+  assert.match(catalog, /"inventory\.health\.stationFilter\.active"/);
+  assert.match(catalog, /"inventory\.health\.stationFilter\.clear"/);
+  assert.match(catalog, /"inventory\.emptyMatches\.stationBody"/);
+});
+
 test("setup recipe drafts resolve inventory through searchable picker helpers", () => {
   const screen = readFileSync("app/(auth)/setup.tsx", "utf8");
   const setupService = readFileSync("services/application/setup.ts", "utf8");

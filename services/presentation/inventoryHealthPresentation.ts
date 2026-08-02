@@ -24,6 +24,8 @@ export interface InventoryLocationHealthRow {
   name: string;
   sortOrder: number;
   itemCount: number;
+  /** Inventory item ids with positive quantity at this station (stable sorted). */
+  stockedItemIds: string[];
   counts: InventoryHealthCounts;
   atRiskCount: number;
 }
@@ -115,6 +117,7 @@ export function buildInventoryLocationHealthBreakdown(input: {
   }
 
   const countsByLocation = new Map<string, InventoryHealthCounts>();
+  const stockedItemIdsByLocation = new Map<string, Set<string>>();
   for (const balance of input.balances) {
     const locationId = String(balance.storageLocationId ?? "").trim();
     const itemId = String(balance.inventoryItemId ?? "").trim();
@@ -125,6 +128,9 @@ export function buildInventoryLocationHealthBreakdown(input: {
     const counts = countsByLocation.get(locationId) ?? emptyHealthCounts();
     bumpHealthCount(counts, status);
     countsByLocation.set(locationId, counts);
+    const stocked = stockedItemIdsByLocation.get(locationId) ?? new Set<string>();
+    stocked.add(itemId);
+    stockedItemIdsByLocation.set(locationId, stocked);
   }
 
   const locations = input.locations
@@ -135,6 +141,9 @@ export function buildInventoryLocationHealthBreakdown(input: {
       const counts = normalizeInventoryHealthCounts(
         countsByLocation.get(locationId) ?? emptyHealthCounts()
       );
+      const stockedItemIds = [...(stockedItemIdsByLocation.get(locationId) ?? [])].sort((left, right) =>
+        left.localeCompare(right)
+      );
       const itemCount = getInventoryHealthTotal(counts);
       const sortOrder = Number.isFinite(Number(location.sortOrder))
         ? Number(location.sortOrder)
@@ -144,6 +153,7 @@ export function buildInventoryLocationHealthBreakdown(input: {
         name,
         sortOrder,
         itemCount,
+        stockedItemIds,
         counts,
         atRiskCount: counts.low + counts.critical
       } satisfies InventoryLocationHealthRow;
@@ -156,6 +166,31 @@ export function buildInventoryLocationHealthBreakdown(input: {
     stationCount: locations.length,
     stockedStationCount: locations.filter((row) => row.itemCount > 0).length
   };
+}
+
+/**
+ * Resolve stocked inventory item ids for a selected station filter.
+ * Returns null when no station is selected (caller should leave the list unfiltered by station).
+ */
+export function resolveStationStockedItemIds(
+  breakdown: InventoryLocationHealthBreakdown | null | undefined,
+  locationId: string | null | undefined
+): string[] | null {
+  const normalizedLocationId = String(locationId ?? "").trim();
+  if (!normalizedLocationId || !breakdown) return null;
+  const row = breakdown.locations.find((location) => location.locationId === normalizedLocationId);
+  if (!row) return null;
+  return row.stockedItemIds;
+}
+
+/** Keep items that have positive quantity at the selected station. */
+export function filterItemsByStationStock<T extends { id: string }>(
+  items: readonly T[],
+  stockedItemIds: readonly string[] | null | undefined
+): T[] {
+  if (stockedItemIds == null) return [...items];
+  const allowed = new Set(stockedItemIds);
+  return items.filter((item) => allowed.has(item.id));
 }
 
 export function buildInventoryLocationHealthAccessibilityLabel(input: {

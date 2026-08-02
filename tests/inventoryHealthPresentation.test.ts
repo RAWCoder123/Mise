@@ -5,11 +5,13 @@ import {
   buildInventoryHealthAccessibilityLabel,
   buildInventoryLocationHealthAccessibilityLabel,
   buildInventoryLocationHealthBreakdown,
+  filterItemsByStationStock,
   getInventoryHealthPercentages,
   getInventoryHealthTotal,
   getWellStockedPercentage,
   inventoryHealthStatusOrder,
-  normalizeInventoryHealthCounts
+  normalizeInventoryHealthCounts,
+  resolveStationStockedItemIds
 } from "../services/presentation/inventoryHealthPresentation";
 
 const labels = {
@@ -100,6 +102,7 @@ test("inventory location health attributes each stocked item to every station ho
     name: "Main",
     sortOrder: 0,
     itemCount: 1,
+    stockedItemIds: ["item_a"],
     counts: { good: 0, watch: 0, low: 0, critical: 1 },
     atRiskCount: 1
   });
@@ -108,6 +111,7 @@ test("inventory location health attributes each stocked item to every station ho
     name: "Walk-in",
     sortOrder: 10,
     itemCount: 1,
+    stockedItemIds: ["item_b"],
     counts: { good: 1, watch: 0, low: 0, critical: 0 },
     atRiskCount: 0
   });
@@ -116,9 +120,53 @@ test("inventory location health attributes each stocked item to every station ho
     name: "Line",
     sortOrder: 20,
     itemCount: 1,
+    stockedItemIds: ["item_a"],
     counts: { good: 0, watch: 0, low: 0, critical: 1 },
     atRiskCount: 1
   });
+});
+
+test("station stock filter resolves selected station item ids and leaves null when cleared", () => {
+  const breakdown = buildInventoryLocationHealthBreakdown({
+    locations: [
+      { id: "loc_main", name: "Main", sortOrder: 0 },
+      { id: "loc_line", name: "Line", sortOrder: 1 }
+    ],
+    balances: [
+      { inventoryItemId: "item_b", storageLocationId: "loc_main", quantity: 2 },
+      { inventoryItemId: "item_a", storageLocationId: "loc_main", quantity: 1 },
+      { inventoryItemId: "item_a", storageLocationId: "loc_line", quantity: 3 }
+    ],
+    itemStatuses: [
+      { itemId: "item_a", status: "Watch" },
+      { itemId: "item_b", status: "Good" }
+    ]
+  });
+
+  assert.deepEqual(resolveStationStockedItemIds(breakdown, "loc_main"), ["item_a", "item_b"]);
+  assert.deepEqual(resolveStationStockedItemIds(breakdown, "loc_line"), ["item_a"]);
+  assert.equal(resolveStationStockedItemIds(breakdown, null), null);
+  assert.equal(resolveStationStockedItemIds(breakdown, "missing"), null);
+  assert.equal(resolveStationStockedItemIds(null, "loc_main"), null);
+
+  const items = [{ id: "item_a" }, { id: "item_b" }, { id: "item_c" }];
+  assert.deepEqual(
+    filterItemsByStationStock(items, resolveStationStockedItemIds(breakdown, "loc_main")).map(
+      (item) => item.id
+    ),
+    ["item_a", "item_b"]
+  );
+  assert.deepEqual(
+    filterItemsByStationStock(items, resolveStationStockedItemIds(breakdown, "loc_line")).map(
+      (item) => item.id
+    ),
+    ["item_a"]
+  );
+  assert.deepEqual(
+    filterItemsByStationStock(items, null).map((item) => item.id),
+    ["item_a", "item_b", "item_c"]
+  );
+  assert.deepEqual(filterItemsByStationStock(items, []).map((item) => item.id), []);
 });
 
 test("inventory location health keeps empty stations and ignores invalid balance rows", () => {

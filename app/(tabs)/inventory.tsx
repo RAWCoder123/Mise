@@ -27,7 +27,11 @@ import {
   fetchOpenInventoryCountSession,
   summarizeInventoryOutlooks
 } from "../../services/miseService";
-import type { InventoryLocationHealthBreakdown } from "../../services/presentation/inventoryHealthPresentation";
+import {
+  filterItemsByStationStock,
+  resolveStationStockedItemIds,
+  type InventoryLocationHealthBreakdown
+} from "../../services/presentation/inventoryHealthPresentation";
 import { canDraftInventoryCount, canManageRestaurantData, canRecordInventoryWaste } from "../../services/tenantAccess";
 import type { InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
@@ -44,6 +48,7 @@ export default function InventoryScreen() {
   const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InventoryFilter>("All");
+  const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -60,6 +65,7 @@ export default function InventoryScreen() {
     setOpenCountSessionId(null);
     setQuery("");
     setFilter("All");
+    setSelectedStationId(null);
     setError(false);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
@@ -85,6 +91,12 @@ export default function InventoryScreen() {
       setLocationHealth(nextLocationHealth);
       setOpenCountSessionId(openSession?.session.id ?? null);
       setLoadedRestaurantId(restaurantId);
+      setSelectedStationId((current) => {
+        if (!current || !nextLocationHealth || nextLocationHealth.stationCount <= 1) return null;
+        return nextLocationHealth.locations.some((station) => station.locationId === current)
+          ? current
+          : null;
+      });
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setError(true);
@@ -102,6 +114,9 @@ export default function InventoryScreen() {
   const visibleOutlooks = loadedRestaurantId === restaurant?.id ? outlooks : [];
   const visibleLocationHealth =
     loadedRestaurantId === restaurant?.id ? locationHealth : null;
+  const selectedStation =
+    visibleLocationHealth?.locations.find((station) => station.locationId === selectedStationId) ??
+    null;
 
   const filterOptions = useMemo<readonly SegmentOption<InventoryFilter>[]>(() => {
     const options: readonly SegmentOption<InventoryFilter>[] = [
@@ -129,7 +144,16 @@ export default function InventoryScreen() {
   };
 
   const filtered = useMemo(() => {
-    const statusFiltered = visibleOutlooks.filter(({ prediction }) =>
+    const stationItemIds = resolveStationStockedItemIds(visibleLocationHealth, selectedStationId);
+    const outlookByItemId = new Map(visibleOutlooks.map((outlook) => [outlook.item.id, outlook]));
+    const stationFilteredItems = filterItemsByStationStock(
+      visibleOutlooks.map(({ item }) => item),
+      stationItemIds
+    );
+    const stationOutlooks = stationFilteredItems
+      .map((item) => outlookByItemId.get(item.id))
+      .filter((outlook): outlook is InventoryOutlookItem => outlook != null);
+    const statusFiltered = stationOutlooks.filter(({ prediction }) =>
       matchesInventoryFilter(prediction.projectedStatus, filter)
     );
     const outlookById = new Map(statusFiltered.map((outlook) => [outlook.item.id, outlook]));
@@ -143,7 +167,7 @@ export default function InventoryScreen() {
     return rankedItems
       .map((item) => outlookById.get(item.id))
       .filter((outlook): outlook is InventoryOutlookItem => outlook != null);
-  }, [filter, query, visibleOutlooks]);
+  }, [filter, query, selectedStationId, visibleLocationHealth, visibleOutlooks]);
 
   if (!restaurant) {
     return (
@@ -192,47 +216,77 @@ export default function InventoryScreen() {
               }}
             />
             {visibleLocationHealth && visibleLocationHealth.stationCount > 1 ? (
-              <View
-                accessible
-                accessibilityLabel={t("inventory.health.stationsAccessibility")}
-                style={styles.stationBlock}
-              >
-                <Text style={styles.stationTitle}>{t("inventory.health.stationsTitle")}</Text>
-                <View style={styles.stationList}>
-                  {visibleLocationHealth.locations.map((station) => (
-                    <View key={station.locationId} style={styles.stationRow}>
-                      <View style={styles.stationCopy}>
-                        <Text numberOfLines={1} style={styles.stationName}>
-                          {station.name}
-                        </Text>
-                        <Text numberOfLines={1} style={styles.stationMeta}>
-                          {station.itemCount === 0
-                            ? t("inventory.health.stationEmpty")
-                            : [
-                                t(
-                                  station.itemCount === 1
-                                    ? "inventory.health.stationItems.one"
-                                    : "inventory.health.stationItems.other",
-                                  { count: formatNumber(station.itemCount) }
-                                ),
-                                station.atRiskCount > 0
-                                  ? t(
-                                      station.atRiskCount === 1
-                                        ? "inventory.health.stationAtRisk.one"
-                                        : "inventory.health.stationAtRisk.other",
-                                      { count: formatNumber(station.atRiskCount) }
-                                    )
-                                  : null
-                              ]
-                                .filter(Boolean)
-                                .join(" · ")}
-                        </Text>
-                      </View>
-                      <View style={styles.stationBar}>
-                        <InventoryHealthBar counts={station.counts} />
-                      </View>
-                    </View>
-                  ))}
+              <View style={styles.stationBlock}>
+                <Text
+                  accessibilityRole="header"
+                  style={styles.stationTitle}
+                >
+                  {t("inventory.health.stationsTitle")}
+                </Text>
+                <View
+                  accessibilityLabel={t("inventory.health.stationsAccessibility")}
+                  style={styles.stationList}
+                >
+                  {visibleLocationHealth.locations.map((station) => {
+                    const selected = station.locationId === selectedStationId;
+                    return (
+                      <Pressable
+                        key={station.locationId}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={
+                          selected
+                            ? t("inventory.health.stationFilter.clearAccessibility", {
+                                station: station.name
+                              })
+                            : t("inventory.health.stationFilter.selectAccessibility", {
+                                station: station.name
+                              })
+                        }
+                        onPress={() =>
+                          setSelectedStationId((current) =>
+                            current === station.locationId ? null : station.locationId
+                          )
+                        }
+                        style={({ pressed }) => [
+                          styles.stationRow,
+                          selected && styles.stationRowSelected,
+                          pressed && styles.stationRowPressed
+                        ]}
+                      >
+                        <View style={styles.stationCopy}>
+                          <Text numberOfLines={1} style={styles.stationName}>
+                            {station.name}
+                          </Text>
+                          <Text numberOfLines={1} style={styles.stationMeta}>
+                            {station.itemCount === 0
+                              ? t("inventory.health.stationEmpty")
+                              : [
+                                  t(
+                                    station.itemCount === 1
+                                      ? "inventory.health.stationItems.one"
+                                      : "inventory.health.stationItems.other",
+                                    { count: formatNumber(station.itemCount) }
+                                  ),
+                                  station.atRiskCount > 0
+                                    ? t(
+                                        station.atRiskCount === 1
+                                          ? "inventory.health.stationAtRisk.one"
+                                          : "inventory.health.stationAtRisk.other",
+                                        { count: formatNumber(station.atRiskCount) }
+                                      )
+                                    : null
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                          </Text>
+                        </View>
+                        <View style={styles.stationBar}>
+                          <InventoryHealthBar counts={station.counts} />
+                        </View>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </View>
             ) : null}
@@ -327,6 +381,26 @@ export default function InventoryScreen() {
                   style={styles.searchInput}
                 />
               </View>
+              {selectedStation ? (
+                <View style={styles.stationFilterChipRow}>
+                  <Text style={styles.stationFilterChipLabel} numberOfLines={1}>
+                    {t("inventory.health.stationFilter.active", { station: selectedStation.name })}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t("inventory.health.stationFilter.clearActionAccessibility")}
+                    onPress={() => setSelectedStationId(null)}
+                    style={({ pressed }) => [
+                      styles.stationFilterClear,
+                      pressed && styles.stationRowPressed
+                    ]}
+                  >
+                    <Text style={styles.stationFilterClearText}>
+                      {t("inventory.health.stationFilter.clear")}
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
               <FilterRow
                 accessibilityLabel={t("inventory.filter.accessibility")}
                 options={filterOptions}
@@ -339,7 +413,11 @@ export default function InventoryScreen() {
               <View style={styles.emptyList}>
                 <Package size={24} color={colors.faint} strokeWidth={2.25} />
                 <Text style={styles.emptyListTitle}>{t("inventory.emptyMatches.title")}</Text>
-                <Text style={styles.emptyListCopy}>{t("inventory.emptyMatches.body")}</Text>
+                <Text style={styles.emptyListCopy}>
+                  {selectedStation
+                    ? t("inventory.emptyMatches.stationBody")
+                    : t("inventory.emptyMatches.body")}
+                </Text>
               </View>
             ) : (
               <View style={styles.inventoryList}>
@@ -479,13 +557,26 @@ const styles = StyleSheet.create({
     textTransform: "uppercase"
   },
   stationList: {
-    gap: 8
+    gap: 6
   },
   stationRow: {
-    minHeight: 36,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: colors.surface
+  },
+  stationRowSelected: {
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceWarm
+  },
+  stationRowPressed: {
+    opacity: 0.86
   },
   stationCopy: {
     flex: 1,
@@ -507,6 +598,37 @@ const styles = StyleSheet.create({
   stationBar: {
     width: 72,
     flexShrink: 0
+  },
+  stationFilterChipRow: {
+    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  stationFilterChipLabel: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontFamily: typography.families.semibold,
+    fontSize: 13,
+    lineHeight: 17
+  },
+  stationFilterClear: {
+    minHeight: 36,
+    minWidth: 44,
+    paddingHorizontal: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  stationFilterClearText: {
+    color: colors.text,
+    fontFamily: typography.families.semibold,
+    fontSize: 12.5,
+    lineHeight: 16
   },
   controls: {
     gap: 8,
