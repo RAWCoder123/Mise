@@ -24,7 +24,7 @@ import type {
   PosSale,
   PurchaseRecommendation
 } from "../types/mise";
-import { nextDateKeyInTimeZone } from "../utils/format";
+import { addDays, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../utils/format";
 
 const operatingDate = "2026-07-14";
 const fixedNow = "2026-07-14T12:00:00.000Z";
@@ -153,9 +153,22 @@ test("default demo presents a balanced kitchen, a real reorder, and healthy sale
   const movement = previousSales > 0 ? (currentSales - previousSales) / previousSales : 0;
   assert.ok(movement >= 0.07 && movement <= 0.1, `expected +7% to +10%, received ${movement}`);
 
+  assert.equal(state.supplierOrders.filter((order) => order.status === "completed").length, 1);
+  assert.ok(
+    state.inventoryMovements.some(
+      (movement) =>
+        movement.reason === "receiving" &&
+        movement.metadata?.supplier_order_id === "00000000-0000-4000-8000-000000000603" &&
+        Number(movement.metadata?.discrepancy) < 0
+    )
+  );
   assert.deepEqual(
     state.supplierOrders.map((order) => order.delivery_date).sort(),
-    [operatingDate, nextDateKeyInTimeZone(now, restaurant.timezone)].sort()
+    [
+      toDateKeyInTimeZone(addDays(now, -2), restaurant.timezone),
+      operatingDate,
+      nextDateKeyInTimeZone(now, restaurant.timezone)
+    ].sort()
   );
 });
 
