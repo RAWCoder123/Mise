@@ -18,7 +18,7 @@
 
 ## Verification
 - `npm run typecheck`
-- `npm test`
+- `npm test` (391)
 - `npm run security:static`
 - `npm run security:backend`
 - `npm run design:static`
