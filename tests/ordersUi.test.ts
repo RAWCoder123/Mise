@@ -147,3 +147,26 @@ test("order receive supports per-line put-away stations with a shared default", 
   assert.match(catalog, /"orders\.detail\.receive\.putAwayLineOption"/);
   assert.match(catalog, /"orders\.detail\.receive\.putAwayHelp"/);
 });
+
+test("completed orders show a read-only receive discrepancy summary from ledger movements", () => {
+  const detail = readFileSync("app/orders/[id].tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const ordersWorkflow = readFileSync("services/application/orders.ts", "utf8");
+  const domain = readFileSync("services/domain/supplierOrderReceiving.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+
+  assert.match(domain, /export function buildCompletedSupplierOrderReceiveSummary/);
+  assert.match(ordersWorkflow, /export async function fetchSupplierOrderReceiveSummary/);
+  assert.match(repository, /fetchSupplierOrderReceiveMovements/);
+  assert.match(repository, /metadata->>supplier_order_id/);
+  assert.match(detail, /fetchSupplierOrderReceiveSummary/);
+  assert.match(detail, /visibleReceiveSummary/);
+  assert.match(detail, /isCompleted \? \(/);
+  assert.match(detail, /t\("orders\.detail\.receivedSummary\.title"\)/);
+  assert.match(detail, /t\("orders\.detail\.receivedSummary\.bodyWithDiscrepancy"/);
+  assert.match(detail, /t\("orders\.detail\.receivedSummary\.matched"\)/);
+  assert.doesNotMatch(detail, /setReceiveSummary\(\{[\s\S]*quantityReceived:\s*Number/);
+  assert.match(catalog, /"orders\.detail\.receivedSummary\.title"/);
+  assert.match(catalog, /"orders\.detail\.receivedSummary\.bodyWithDiscrepancy"/);
+  assert.match(catalog, /"orders\.detail\.receivedSummary\.emptyBody"/);
+});

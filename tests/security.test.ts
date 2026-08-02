@@ -638,6 +638,34 @@ test("supplier order receiving is service-owned, ledgered, and distinct from Gma
   assert.match(detail, /receiveSupplierOrder/);
 });
 
+test("completed-order receive summary is a bounded tenant-scoped ledger read without client write authority", () => {
+  const ordersWorkflow = readFileSync("services/application/orders.ts", "utf8");
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const domain = readFileSync("services/domain/supplierOrderReceiving.ts", "utf8");
+  const detail = readFileSync("app/orders/[id].tsx", "utf8");
+  const summaryWorkflow =
+    ordersWorkflow.match(/export\s+async\s+function\s+fetchSupplierOrderReceiveSummary[\s\S]*?\n\}/)?.[0] ??
+    "";
+  const demoFetch =
+    repository.match(/async fetchSupplierOrderReceiveMovements[\s\S]*?\n    \},/)?.[0] ?? "";
+  const hostedFetch = repository.includes("metadata->>supplier_order_id")
+    ? repository
+    : "";
+
+  assert.match(domain, /buildCompletedSupplierOrderReceiveSummary/);
+  assert.match(domain, /SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX/);
+  assert.match(summaryWorkflow, /fetchSupplierOrderReceiveMovements/);
+  assert.match(summaryWorkflow, /buildCompletedSupplierOrderReceiveSummary/);
+  assert.doesNotMatch(summaryWorkflow, /\.insert\(/);
+  assert.doesNotMatch(summaryWorkflow, /receiveSupplierOrderAndSignals/);
+  assert.match(demoFetch, /reason !== "receiving"/);
+  assert.match(demoFetch, /Math\.min\(limit \?\? 100, 100\)/);
+  assert.match(hostedFetch, /metadata->>supplier_order_id/);
+  assert.match(hostedFetch, /\.eq\("reason", "receiving"\)/);
+  assert.match(detail, /fetchSupplierOrderReceiveSummary/);
+  assert.doesNotMatch(detail, /from\("inventory_movements"\)/);
+});
+
 test("purchase recommendation and order draft mutations are Edge-routed and service-owned", () => {
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");

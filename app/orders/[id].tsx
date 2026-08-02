@@ -27,6 +27,7 @@ import {
   fetchEmailConnectionState,
   fetchStorageLocations,
   fetchSupplierOrder,
+  fetchSupplierOrderReceiveSummary,
   isGmailIntegrationError,
   receiveSupplierOrder,
   sendSupplierOrderEmail,
@@ -46,7 +47,8 @@ import {
   buildReceiveLinesFromFormInputs,
   defaultReceiveLinesFromRecommendations,
   isReceiveQuantityInputReady,
-  linkedOrderedRecommendationsForOrder
+  linkedOrderedRecommendationsForOrder,
+  type CompletedSupplierOrderReceiveSummary
 } from "../../services/domain/supplierOrderReceiving";
 import type {
   PurchaseRecommendation,
@@ -72,6 +74,7 @@ export default function OrderDraftDetailScreen() {
   const [order, setOrder] = useState<SupplierOrder | null>(null);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [linkedRecommendations, setLinkedRecommendations] = useState<PurchaseRecommendation[]>([]);
+  const [receiveSummary, setReceiveSummary] = useState<CompletedSupplierOrderReceiveSummary | null>(null);
   const [receiveQuantities, setReceiveQuantities] = useState<Record<string, string>>({});
   const [receiveNotes, setReceiveNotes] = useState<Record<string, string>>({});
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
@@ -117,12 +120,20 @@ export default function OrderDraftDetailScreen() {
         throw new Error(t("orders.detail.connectionMismatch"));
       }
       const linked = linkedOrderedRecommendationsForOrder(orderId, recommendations);
+      const completedSummary =
+        nextOrder.status === "completed"
+          ? (
+              await fetchSupplierOrderReceiveSummary(restaurantId, orderId).catch(() => null)
+            )?.summary ?? null
+          : null;
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       const main = nextLocations.find(
         (location) => location.name.toLowerCase() === MAIN_STORAGE_LOCATION_NAME.toLowerCase()
       );
       setOrder(nextOrder);
       setEmailConnection(nextEmailConnection);
       setLinkedRecommendations(linked);
+      setReceiveSummary(completedSummary);
       setStorageLocations(nextLocations);
       const fallbackLocationId = main?.id ?? nextLocations[0]?.id ?? "";
       setReceiveStorageLocationId((currentDefault) => {
@@ -168,6 +179,7 @@ export default function OrderDraftDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setLinkedRecommendations([]);
+      setReceiveSummary(null);
       setStorageLocations([]);
       setReceiveStorageLocationId("");
       setReceiveStorageLocationIds({});
@@ -191,6 +203,7 @@ export default function OrderDraftDetailScreen() {
     setOrder(null);
     setEmailConnection(null);
     setLinkedRecommendations([]);
+    setReceiveSummary(null);
     setReceiveQuantities({});
     setReceiveNotes({});
     setStorageLocations([]);
@@ -457,6 +470,11 @@ export default function OrderDraftDetailScreen() {
       const result = await receiveSupplierOrder(restaurantId, order.id, drafted.lines);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(result.order);
+      const summaryResult = await fetchSupplierOrderReceiveSummary(restaurantId, order.id).catch(
+        () => null
+      );
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setReceiveSummary(summaryResult?.summary ?? null);
       setNotice({
         title: t("orders.detail.notice.receivedTitle"),
         message: result.discrepancyCount > 0
@@ -481,6 +499,7 @@ export default function OrderDraftDetailScreen() {
   }
 
   const visibleOrder = loadedRestaurantId === restaurant?.id ? order : null;
+  const visibleReceiveSummary = loadedRestaurantId === restaurant?.id ? receiveSummary : null;
   const isDraft = visibleOrder?.status === "draft";
   const isSent = visibleOrder?.status === "sent";
   const isCompleted = visibleOrder?.status === "completed";
@@ -662,6 +681,77 @@ export default function OrderDraftDetailScreen() {
               </Text>
             </View>
           </View>
+
+          {isCompleted ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.receivedSummary.title")}</Text>
+              <Text style={styles.sectionBody}>
+                {visibleReceiveSummary && visibleReceiveSummary.discrepancyCount > 0
+                  ? t("orders.detail.receivedSummary.bodyWithDiscrepancy", {
+                      count: formatNumber(visibleReceiveSummary.discrepancyCount)
+                    })
+                  : visibleReceiveSummary && visibleReceiveSummary.lines.length > 0
+                    ? t("orders.detail.receivedSummary.bodyMatched")
+                    : t("orders.detail.receivedSummary.bodyUnavailable")}
+              </Text>
+              {visibleReceiveSummary && visibleReceiveSummary.lines.length > 0 ? (
+                visibleReceiveSummary.lines.map((line) => (
+                  <View key={line.inventoryItemId} style={styles.receiveRow}>
+                    <Text style={styles.receiveName}>{line.itemName}</Text>
+                    <Text style={styles.receiveOrdered}>
+                      {t("orders.detail.receive.ordered", {
+                        quantity: formatNumber(line.quantityOrdered),
+                        unit: line.unit
+                      })}
+                    </Text>
+                    <Text style={styles.receiveOrdered}>
+                      {t("orders.detail.receivedSummary.received", {
+                        quantity: formatNumber(line.quantityReceived),
+                        unit: line.unit
+                      })}
+                    </Text>
+                    {line.hasDiscrepancy ? (
+                      <Text
+                        style={[
+                          styles.receiveDiscrepancy,
+                          line.discrepancy < 0
+                            ? styles.receiveDiscrepancyShort
+                            : styles.receiveDiscrepancyOver
+                        ]}
+                      >
+                        {t("orders.detail.receive.discrepancy", {
+                          delta: formatNumber(line.discrepancy),
+                          unit: line.unit
+                        })}
+                      </Text>
+                    ) : (
+                      <Text style={styles.receiveMatched}>
+                        {t("orders.detail.receivedSummary.matched")}
+                      </Text>
+                    )}
+                    {line.storageLocationName ? (
+                      <Text style={styles.receiveOrdered}>
+                        {t("orders.detail.receivedSummary.putAway", {
+                          location: line.storageLocationName
+                        })}
+                      </Text>
+                    ) : null}
+                    {line.note ? (
+                      <Text style={styles.receiveOrdered}>
+                        {t("orders.detail.receivedSummary.note", { note: line.note })}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))
+              ) : (
+                <EmptyState
+                  compact
+                  title={t("orders.detail.receivedSummary.emptyTitle")}
+                  body={t("orders.detail.receivedSummary.emptyBody")}
+                />
+              )}
+            </View>
+          ) : null}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("orders.detail.note.title")}</Text>
@@ -1312,6 +1402,17 @@ const styles = StyleSheet.create({
   },
   receiveDiscrepancy: {
     color: colors.danger,
+    ...typography.caption,
+    fontWeight: "600"
+  },
+  receiveDiscrepancyShort: {
+    color: colors.danger
+  },
+  receiveDiscrepancyOver: {
+    color: colors.warning
+  },
+  receiveMatched: {
+    color: colors.success,
     ...typography.caption,
     fontWeight: "600"
   },

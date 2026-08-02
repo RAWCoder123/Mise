@@ -1,8 +1,16 @@
-import type { InventoryItem, PurchaseRecommendation, StorageLocation, SupplierOrder } from "../../types/mise";
+import type {
+  InventoryItem,
+  InventoryMovement,
+  PurchaseRecommendation,
+  StorageLocation,
+  SupplierOrder
+} from "../../types/mise";
 import { MAIN_STORAGE_LOCATION_NAME } from "./inventoryTransfer";
 
 export const SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS = 240;
 export const SUPPLIER_ORDER_RECEIVE_QUANTITY_MAX = 1_000_000;
+/** Cap completed-order receive ledger reads so one oversized delivery cannot blow the client. */
+export const SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX = 100;
 
 export type SupplierOrderReceiveLineInput = {
   inventoryItemId: string;
@@ -311,4 +319,148 @@ export function applyPlannedReceiveToInventory(
         }
       : item
   );
+}
+
+export type CompletedSupplierOrderReceiveLine = {
+  inventoryItemId: string;
+  itemName: string;
+  unit: string;
+  quantityOrdered: number;
+  quantityReceived: number;
+  discrepancy: number;
+  hasDiscrepancy: boolean;
+  note?: string;
+  storageLocationName?: string;
+  receivedAt: string;
+};
+
+export type CompletedSupplierOrderReceiveSummary = {
+  orderId: string;
+  lines: CompletedSupplierOrderReceiveLine[];
+  discrepancyCount: number;
+  shortShipCount: number;
+  overReceiveCount: number;
+  receivedAt: string | null;
+};
+
+type ReceiveMovementSnippet = Pick<
+  InventoryMovement,
+  "inventory_item_id" | "reason" | "created_at" | "metadata"
+>;
+
+/**
+ * Builds a read-only ordered-vs-received summary for a completed supplier order
+ * from append-only receiving ledger movements. Item names/units prefer the
+ * linked recommendations, then inventory rows, then a safe fallback.
+ */
+export function buildCompletedSupplierOrderReceiveSummary(input: {
+  orderId: string;
+  movements: readonly ReceiveMovementSnippet[];
+  recommendations?: readonly PurchaseRecommendation[];
+  inventoryItems?: readonly InventoryItem[];
+}): CompletedSupplierOrderReceiveSummary {
+  const orderId = input.orderId.trim();
+  const recommendationByItemId = new Map(
+    (input.recommendations ?? [])
+      .filter(
+        (recommendation) =>
+          recommendation.supplier_order_id === orderId && recommendation.status === "ordered"
+      )
+      .map((recommendation) => [recommendation.inventory_item_id, recommendation] as const)
+  );
+  const inventoryById = new Map((input.inventoryItems ?? []).map((item) => [item.id, item] as const));
+
+  const linesByItem = new Map<string, CompletedSupplierOrderReceiveLine>();
+  const sortedMovements = input.movements
+    .slice()
+    .sort((left, right) => left.created_at.localeCompare(right.created_at));
+
+  for (const movement of sortedMovements) {
+    if (movement.reason !== "receiving") continue;
+    const metadata =
+      movement.metadata && typeof movement.metadata === "object" ? movement.metadata : null;
+    if (!metadata) continue;
+    const movementOrderId =
+      typeof metadata.supplier_order_id === "string" ? metadata.supplier_order_id.trim() : "";
+    if (!orderId || movementOrderId !== orderId) continue;
+
+    const quantityOrdered = finiteNonNegativeNumber(metadata.quantity_ordered);
+    const quantityReceived = finiteNonNegativeNumber(metadata.quantity_received);
+    if (
+      quantityOrdered == null ||
+      quantityReceived == null ||
+      quantityOrdered <= 0 ||
+      quantityReceived < 0 ||
+      quantityReceived > SUPPLIER_ORDER_RECEIVE_QUANTITY_MAX
+    ) {
+      continue;
+    }
+
+    const discrepancy =
+      finiteNumber(metadata.discrepancy) ?? quantityReceived - quantityOrdered;
+    const note =
+      typeof metadata.note === "string" && metadata.note.trim()
+        ? metadata.note.trim().slice(0, SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS)
+        : undefined;
+    const storageLocationName =
+      typeof metadata.storage_location_name === "string" && metadata.storage_location_name.trim()
+        ? metadata.storage_location_name.trim()
+        : undefined;
+    const recommendation = recommendationByItemId.get(movement.inventory_item_id);
+    const inventoryItem = inventoryById.get(movement.inventory_item_id);
+    const itemName =
+      recommendation?.item_name?.trim() ||
+      inventoryItem?.item_name?.trim() ||
+      "Inventory item";
+    const unit = recommendation?.unit?.trim() || inventoryItem?.unit?.trim() || "";
+    const receivedAt =
+      typeof movement.created_at === "string" && movement.created_at.trim()
+        ? movement.created_at
+        : "";
+    if (!receivedAt) continue;
+
+    // Latest movement for an item wins if a delivery was retried/idempotently replayed.
+    linesByItem.set(movement.inventory_item_id, {
+      inventoryItemId: movement.inventory_item_id,
+      itemName,
+      unit,
+      quantityOrdered,
+      quantityReceived,
+      discrepancy,
+      hasDiscrepancy: discrepancy !== 0,
+      ...(note ? { note } : {}),
+      ...(storageLocationName ? { storageLocationName } : {}),
+      receivedAt
+    });
+
+    if (linesByItem.size >= SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX) break;
+  }
+
+  const lines = Array.from(linesByItem.values()).sort((left, right) => {
+    const byName = left.itemName.localeCompare(right.itemName);
+    if (byName !== 0) return byName;
+    return left.inventoryItemId.localeCompare(right.inventoryItemId);
+  });
+
+  return {
+    orderId,
+    lines,
+    discrepancyCount: lines.filter((line) => line.hasDiscrepancy).length,
+    shortShipCount: lines.filter((line) => line.discrepancy < 0).length,
+    overReceiveCount: lines.filter((line) => line.discrepancy > 0).length,
+    receivedAt: lines.reduce<string | null>((latest, line) => {
+      if (!latest || line.receivedAt.localeCompare(latest) > 0) return line.receivedAt;
+      return latest;
+    }, null)
+  };
+}
+
+function finiteNumber(value: unknown): number | null {
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(number) ? number : null;
+}
+
+function finiteNonNegativeNumber(value: unknown): number | null {
+  const number = finiteNumber(value);
+  return number != null && number >= 0 ? number : null;
 }

@@ -4,6 +4,8 @@ import {
   buildSupplierEmailPayload
 } from "../domain/miseDomain";
 import {
+  SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX,
+  buildCompletedSupplierOrderReceiveSummary,
   defaultReceiveLinesFromRecommendations,
   linkedOrderedRecommendationsForOrder,
   planSupplierOrderReceive
@@ -210,6 +212,29 @@ export async function fetchSupplierOrderReceivePreview(restaurantId: string, ord
     receiveLines: defaultReceiveLinesFromRecommendations(linked)
   });
   return { order, linkedRecommendations: linked, planned };
+}
+
+export async function fetchSupplierOrderReceiveSummary(restaurantId: string, orderId: string) {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
+  const [order, recommendations, inventoryItems, movements] = await Promise.all([
+    repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
+    repository.fetchInventoryItems(normalizedRestaurantId),
+    repository.fetchSupplierOrderReceiveMovements(
+      normalizedRestaurantId,
+      normalizedOrderId,
+      SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX
+    )
+  ]);
+  const linked = linkedOrderedRecommendationsForOrder(normalizedOrderId, recommendations);
+  const summary = buildCompletedSupplierOrderReceiveSummary({
+    orderId: normalizedOrderId,
+    movements,
+    recommendations: linked,
+    inventoryItems
+  });
+  return { order, linkedRecommendations: linked, summary };
 }
 
 export async function receiveSupplierOrder(

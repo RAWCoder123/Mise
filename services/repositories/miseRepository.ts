@@ -402,6 +402,11 @@ export interface MiseRepository {
     note: string | null
   ): Promise<InventoryItem>;
   fetchInventoryMovements(restaurantId: string, itemId: string, limit?: number): Promise<InventoryMovement[]>;
+  fetchSupplierOrderReceiveMovements(
+    restaurantId: string,
+    orderId: string,
+    limit?: number
+  ): Promise<InventoryMovement[]>;
   fetchOpenInventoryCountSession(restaurantId: string): Promise<InventoryCountSessionDetail | null>;
   fetchInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
   beginInventoryCountSession(restaurantId: string, note: string | null): Promise<InventoryCountSessionDetail>;
@@ -1706,6 +1711,25 @@ function createLocalDemoRepository(): MiseRepository {
         .filter((movement) => movement.restaurant_id === restaurantId && movement.inventory_item_id === itemId)
         .sort((left, right) => right.created_at.localeCompare(left.created_at))
         .slice(0, Math.max(1, Math.min(limit, 50)))
+        .map(normalizeInventoryMovement);
+    },
+
+    async fetchSupplierOrderReceiveMovements(restaurantId, orderId, limit = 100) {
+      const state = await readReadyDemoState(restaurantId);
+      const normalizedOrderId = typeof orderId === "string" ? orderId.trim() : "";
+      const capped = Math.max(1, Math.min(limit ?? 100, 100));
+      if (!normalizedOrderId) return [];
+      return state.inventoryMovements
+        .filter((movement) => {
+          if (movement.restaurant_id !== restaurantId || movement.reason !== "receiving") return false;
+          const metadata =
+            movement.metadata && typeof movement.metadata === "object" ? movement.metadata : null;
+          const movementOrderId =
+            typeof metadata?.supplier_order_id === "string" ? metadata.supplier_order_id.trim() : "";
+          return movementOrderId === normalizedOrderId;
+        })
+        .sort((left, right) => left.created_at.localeCompare(right.created_at))
+        .slice(0, capped)
         .map(normalizeInventoryMovement);
     },
 
@@ -3358,6 +3382,22 @@ function createSupabaseRepository(): MiseRepository {
         .eq("inventory_item_id", itemId)
         .order("created_at", { ascending: false })
         .limit(Math.max(1, Math.min(limit ?? 8, 50)));
+      if (error) throw error;
+      return ((data ?? []) as InventoryMovement[]).map(normalizeInventoryMovement);
+    },
+
+    async fetchSupplierOrderReceiveMovements(restaurantId, orderId, limit = 100) {
+      const normalizedOrderId = typeof orderId === "string" ? orderId.trim() : "";
+      const capped = Math.max(1, Math.min(limit ?? 100, 100));
+      if (!normalizedOrderId) return [];
+      const { data, error } = await client
+        .from("inventory_movements")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("reason", "receiving")
+        .filter("metadata->>supplier_order_id", "eq", normalizedOrderId)
+        .order("created_at", { ascending: true })
+        .limit(capped);
       if (error) throw error;
       return ((data ?? []) as InventoryMovement[]).map(normalizeInventoryMovement);
     },

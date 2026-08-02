@@ -5,6 +5,7 @@ import { test } from "node:test";
 import {
   SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS,
   applyPlannedReceiveToInventory,
+  buildCompletedSupplierOrderReceiveSummary,
   buildReceiveLinesFromFormInputs,
   defaultReceiveLinesFromRecommendations,
   isReceiveQuantityInputReady,
@@ -13,7 +14,13 @@ import {
   resolveReceiveStorageLocation
 } from "../services/domain/supplierOrderReceiving";
 import { parseLocalizedNumber } from "../i18n/formatters";
-import type { InventoryItem, PurchaseRecommendation, StorageLocation, SupplierOrder } from "../types/mise";
+import type {
+  InventoryItem,
+  InventoryMovement,
+  PurchaseRecommendation,
+  StorageLocation,
+  SupplierOrder
+} from "../types/mise";
 
 const restaurantId = "rest_1";
 const orderId = "order_1";
@@ -264,6 +271,116 @@ test("plans receive put-away onto a non-Main storage location", () => {
   assert.equal(planned.lines[0]?.storageLocationName, "Walk-in");
   assert.equal(planned.lines[0]?.metadata.storage_location_id, "loc_walkin");
   assert.equal(planned.lines[0]?.metadata.storage_location_name, "Walk-in");
+});
+
+test("builds completed-order receive discrepancy summary from ledger movements", () => {
+  const movements: InventoryMovement[] = [
+    {
+      id: "mov_1",
+      restaurant_id: restaurantId,
+      inventory_item_id: "item_1",
+      actor_user_id: "user_1",
+      reason: "receiving",
+      quantity_before: 4,
+      quantity_after: 13,
+      delta: 9,
+      source_workflow: "receive_supplier_order",
+      metadata: {
+        supplier_order_id: orderId,
+        quantity_ordered: 10,
+        quantity_received: 9,
+        discrepancy: -1,
+        note: "Short one pound",
+        storage_location_name: "Main"
+      },
+      created_at: "2026-07-31T15:00:00.000Z"
+    },
+    {
+      id: "mov_2",
+      restaurant_id: restaurantId,
+      inventory_item_id: "item_2",
+      actor_user_id: "user_1",
+      reason: "receiving",
+      quantity_before: 2,
+      quantity_after: 7,
+      delta: 5,
+      source_workflow: "receive_supplier_order",
+      metadata: {
+        supplier_order_id: orderId,
+        quantity_ordered: 5,
+        quantity_received: 5,
+        discrepancy: 0,
+        storage_location_name: "Walk-in"
+      },
+      created_at: "2026-07-31T15:00:01.000Z"
+    },
+    {
+      id: "mov_other",
+      restaurant_id: restaurantId,
+      inventory_item_id: "item_1",
+      actor_user_id: "user_1",
+      reason: "receiving",
+      quantity_before: 0,
+      quantity_after: 3,
+      delta: 3,
+      source_workflow: "receive_supplier_order",
+      metadata: {
+        supplier_order_id: "other_order",
+        quantity_ordered: 3,
+        quantity_received: 3,
+        discrepancy: 0
+      },
+      created_at: "2026-07-30T15:00:00.000Z"
+    },
+    {
+      id: "mov_waste",
+      restaurant_id: restaurantId,
+      inventory_item_id: "item_1",
+      actor_user_id: "user_1",
+      reason: "waste",
+      quantity_before: 13,
+      quantity_after: 12,
+      delta: -1,
+      source_workflow: "record_waste",
+      metadata: {},
+      created_at: "2026-07-31T16:00:00.000Z"
+    }
+  ];
+
+  const summary = buildCompletedSupplierOrderReceiveSummary({
+    orderId,
+    movements,
+    recommendations: [
+      recommendation(),
+      recommendation({
+        id: "rec_2",
+        inventory_item_id: "item_2",
+        item_name: "Onions",
+        recommended_quantity: 5,
+        unit: "lb"
+      })
+    ]
+  });
+
+  assert.equal(summary.lines.length, 2);
+  assert.equal(summary.discrepancyCount, 1);
+  assert.equal(summary.shortShipCount, 1);
+  assert.equal(summary.overReceiveCount, 0);
+  assert.equal(summary.receivedAt, "2026-07-31T15:00:01.000Z");
+  assert.equal(summary.lines[0]?.itemName, "Onions");
+  assert.equal(summary.lines[1]?.itemName, "Tomatoes");
+  assert.equal(summary.lines[1]?.quantityReceived, 9);
+  assert.equal(summary.lines[1]?.note, "Short one pound");
+  assert.equal(summary.lines[1]?.storageLocationName, "Main");
+  assert.equal(summary.lines[0]?.hasDiscrepancy, false);
+
+  const empty = buildCompletedSupplierOrderReceiveSummary({
+    orderId: "missing",
+    movements
+  });
+  assert.equal(empty.lines.length, 0);
+  assert.equal(empty.discrepancyCount, 0);
+  assert.equal(empty.receivedAt, null);
 });
 
 test("receive put-away has pgTAP coverage for service RPC station balances", () => {

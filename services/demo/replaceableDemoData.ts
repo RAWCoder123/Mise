@@ -946,10 +946,23 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       status: "sent",
       delivery_date: today,
       created_at: addDays(nowDate, -1).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000603",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_name: "Regional Protein Co.",
+      order_message:
+        "Order for Regional Protein Co.\n\nChicken Thigh - 40 lb\nBeef Strips - 20 lb\n\nDelivery requested: Yesterday morning\n\nNotes:\nProtein restock from weekend dinner pace.",
+      operator_note: "Ask about short-ships on chicken.",
+      status: "completed",
+      delivery_date: toDateKeyInTimeZone(addDays(nowDate, -2), timeZone),
+      created_at: addDays(nowDate, -3).toISOString()
     }
   ];
 
   const sentOrderCreatedAt = addDays(nowDate, -1).toISOString();
+  const completedOrderCreatedAt = addDays(nowDate, -3).toISOString();
+  const completedOrderReceivedAt = addDays(nowDate, -2).toISOString();
   state.purchaseRecommendations = [
     {
       id: "00000000-0000-4000-8000-000000000501",
@@ -1014,7 +1027,87 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       status: "ordered",
       supplier_order_id: "00000000-0000-4000-8000-000000000602",
       created_at: sentOrderCreatedAt
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000505",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      inventory_item_id: itemIds.chicken,
+      item_name: "Chicken thigh",
+      supplier_name: "Regional Protein Co.",
+      recommended_quantity: 40,
+      original_recommended_quantity: 40,
+      dismiss_reason: null,
+      unit: "lbs",
+      reason: "Included in the completed protein delivery.",
+      urgency: "high",
+      status: "ordered",
+      supplier_order_id: "00000000-0000-4000-8000-000000000603",
+      created_at: completedOrderCreatedAt
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000506",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      inventory_item_id: itemIds.beef,
+      item_name: "Beef strips",
+      supplier_name: "Regional Protein Co.",
+      recommended_quantity: 20,
+      original_recommended_quantity: 20,
+      dismiss_reason: null,
+      unit: "lbs",
+      reason: "Included in the completed protein delivery.",
+      urgency: "medium",
+      status: "ordered",
+      supplier_order_id: "00000000-0000-4000-8000-000000000603",
+      created_at: completedOrderCreatedAt
     }
+  ];
+
+  // Historical receiving ledger for the completed protein order (short chicken, exact beef).
+  state.inventoryMovements = [
+    {
+      id: "00000000-0000-4000-8000-000000000a01",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      inventory_item_id: itemIds.chicken,
+      actor_user_id: DEMO_USER_ID,
+      reason: "receiving",
+      quantity_before: 12,
+      quantity_after: 48,
+      delta: 36,
+      source_workflow: "receive_supplier_order",
+      metadata: {
+        supplier_order_id: "00000000-0000-4000-8000-000000000603",
+        recommendation_id: "00000000-0000-4000-8000-000000000505",
+        quantity_ordered: 40,
+        quantity_received: 36,
+        discrepancy: -4,
+        note: "Short four pounds",
+        storage_location_id: DEMO_MAIN_STORAGE_LOCATION_ID,
+        storage_location_name: "Main"
+      },
+      created_at: completedOrderReceivedAt
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000a02",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      inventory_item_id: itemIds.beef,
+      actor_user_id: DEMO_USER_ID,
+      reason: "receiving",
+      quantity_before: 60,
+      quantity_after: 80,
+      delta: 20,
+      source_workflow: "receive_supplier_order",
+      metadata: {
+        supplier_order_id: "00000000-0000-4000-8000-000000000603",
+        recommendation_id: "00000000-0000-4000-8000-000000000506",
+        quantity_ordered: 20,
+        quantity_received: 20,
+        discrepancy: 0,
+        storage_location_id: "00000000-0000-4000-8000-000000000702",
+        storage_location_name: "Walk-in"
+      },
+      created_at: completedOrderReceivedAt
+    },
+    ...(state.inventoryMovements ?? [])
   ];
 
   state.supplierItems = state.inventoryItems.map((item, index) => ({
