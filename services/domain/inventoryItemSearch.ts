@@ -146,3 +146,48 @@ export function filterMenuItemsForPicker(menuItems: readonly string[], query: st
     .slice(0, limit)
     .map((match) => match.item);
 }
+
+function scoreExtraSearchText(extraSearchText: string | null | undefined, query: string): number | null {
+  const normalizedQuery = inventoryItemNameKey(query);
+  if (!normalizedQuery) return null;
+  const extraKey = inventoryItemNameKey(extraSearchText ?? "");
+  if (!extraKey) return null;
+  if (extraKey === normalizedQuery) return 550;
+  if (extraKey.startsWith(normalizedQuery)) return 450;
+  if (extraKey.includes(normalizedQuery)) return 400;
+  return null;
+}
+
+/**
+ * Filter inventory rows for list, waste find, and count-sheet search.
+ * Empty query preserves the caller's order. Non-empty query ranks matches with no picker limit.
+ */
+export function filterInventoryItemsBySearch<T extends InventoryItemSearchFields>(
+  items: readonly T[],
+  query: string,
+  options?: { getExtraSearchText?: (item: T) => string | null | undefined }
+): T[] {
+  const normalizedQuery = inventoryItemNameKey(query);
+  if (!normalizedQuery) {
+    return [...items];
+  }
+
+  return items
+    .map((item) => {
+      const baseScore = scoreInventoryItemMatch(item, query);
+      const extraScore = scoreExtraSearchText(options?.getExtraSearchText?.(item), query);
+      if (baseScore == null && extraScore == null) return null;
+      return {
+        item,
+        score: Math.max(baseScore ?? 0, extraScore ?? 0)
+      };
+    })
+    .filter((match): match is { item: T; score: number } => match != null)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return inventoryItemNameKey(left.item.item_name).localeCompare(
+        inventoryItemNameKey(right.item.item_name)
+      );
+    })
+    .map((match) => match.item);
+}

@@ -20,6 +20,7 @@ import { colors, inventoryStatusColors, inventoryStatusSoftColors, radii, typogr
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
+import { filterInventoryItemsBySearch } from "../../services/domain/inventoryItemSearch";
 import {
   fetchInventoryLocationHealthBreakdown,
   fetchInventoryOutlookItems,
@@ -128,17 +129,20 @@ export default function InventoryScreen() {
   };
 
   const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return visibleOutlooks.filter(({ item, prediction }) => {
-      const matchesFilter = matchesInventoryFilter(prediction.projectedStatus, filter);
-      const matchesQuery =
-        !normalized ||
-        item.item_name.toLowerCase().includes(normalized) ||
-        item.supplier_name.toLowerCase().includes(normalized) ||
-        item.category.toLowerCase().includes(normalized) ||
-        prediction.coverageLabel.toLowerCase().includes(normalized);
-      return matchesFilter && matchesQuery;
-    });
+    const statusFiltered = visibleOutlooks.filter(({ prediction }) =>
+      matchesInventoryFilter(prediction.projectedStatus, filter)
+    );
+    const outlookById = new Map(statusFiltered.map((outlook) => [outlook.item.id, outlook]));
+    const rankedItems = filterInventoryItemsBySearch(
+      statusFiltered.map(({ item }) => item),
+      query,
+      {
+        getExtraSearchText: (item) => outlookById.get(item.id)?.prediction.coverageLabel ?? null
+      }
+    );
+    return rankedItems
+      .map((item) => outlookById.get(item.id))
+      .filter((outlook): outlook is InventoryOutlookItem => outlook != null);
   }, [filter, query, visibleOutlooks]);
 
   if (!restaurant) {
@@ -314,6 +318,7 @@ export default function InventoryScreen() {
                 <TextInput
                   ref={searchInputRef}
                   accessibilityLabel={t("inventory.search.accessibility")}
+                  accessibilityHint={t("inventory.search.hint")}
                   value={query}
                   onChangeText={setQuery}
                   placeholder={t("inventory.search.placeholder")}

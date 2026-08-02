@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  filterInventoryItemsBySearch,
   filterMenuItemsForPicker,
   resolveInventoryItemForRecipeLink,
   searchInventoryItemsForPicker
@@ -89,4 +90,27 @@ test("filterMenuItemsForPicker filters unmapped POS dishes by query", () => {
   assert.deepEqual(filterMenuItemsForPicker(menuItems, "", 2), ["Chicken Bowl", "Tofu Bowl"]);
   assert.deepEqual(filterMenuItemsForPicker(menuItems, "chicken"), ["Chicken Bowl", "Chicken Sandwich"]);
   assert.deepEqual(filterMenuItemsForPicker(menuItems, "salad"), ["Caesar Salad"]);
+});
+
+test("filterInventoryItemsBySearch preserves order when empty and ranks full lists", () => {
+  const empty = filterInventoryItemsBySearch(items, " ");
+  assert.deepEqual(
+    empty.map((item) => item.id),
+    ["inv-chicken", "inv-rice", "inv-roma", "inv-cherry"]
+  );
+
+  const tomatoes = filterInventoryItemsBySearch(items, "tomato");
+  assert.deepEqual(
+    tomatoes.map((item) => item.id),
+    ["inv-cherry", "inv-roma"]
+  );
+
+  const byExtra = filterInventoryItemsBySearch(items, "run out today", {
+    getExtraSearchText: (item) =>
+      item.id === "inv-roma" ? "May run out today" : "Likely enough for several days"
+  });
+  assert.deepEqual(
+    byExtra.map((item) => item.id),
+    ["inv-roma"]
+  );
 });

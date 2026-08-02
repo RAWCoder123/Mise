@@ -1349,6 +1349,7 @@ test("recipe baseline builder resolves inventory items through searchable picker
   assert.match(searchDomain, /export\s+function\s+searchInventoryItemsForPicker/);
   assert.match(searchDomain, /export\s+function\s+resolveInventoryItemForRecipeLink/);
   assert.match(searchDomain, /export\s+function\s+filterMenuItemsForPicker/);
+  assert.match(searchDomain, /export\s+function\s+filterInventoryItemsBySearch/);
   assert.match(screen, /searchInventoryItemsForPicker/);
   assert.match(screen, /resolveInventoryItemForRecipeLink/);
   assert.match(screen, /filterMenuItemsForPicker/);
@@ -1363,6 +1364,29 @@ test("recipe baseline builder resolves inventory items through searchable picker
   assert.match(catalog, /"recipes\.builder\.inventoryPickOne"/);
   assert.match(catalog, /"recipes\.field\.inventorySearchHint"/);
   assert.doesNotMatch(catalog, /type exact inventory item/i);
+});
+
+test("inventory list and count sheet reuse ranked inventory search helpers", () => {
+  const inventoryScreen = readFileSync("app/(tabs)/inventory.tsx", "utf8");
+  const countScreen = readFileSync("app/inventory/count.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const searchDomain = readFileSync("services/domain/inventoryItemSearch.ts", "utf8");
+
+  assert.match(searchDomain, /export\s+function\s+filterInventoryItemsBySearch/);
+  assert.match(inventoryScreen, /filterInventoryItemsBySearch/);
+  assert.match(inventoryScreen, /getExtraSearchText/);
+  assert.match(inventoryScreen, /coverageLabel/);
+  assert.doesNotMatch(
+    inventoryScreen,
+    /item\.item_name\.toLowerCase\(\)\.includes\(normalized\)/
+  );
+  assert.match(countScreen, /filterInventoryItemsBySearch/);
+  assert.match(countScreen, /lineQuery/);
+  assert.match(countScreen, /visibleLines/);
+  assert.match(countScreen, /inventory\.count\.search\.accessibility/);
+  assert.match(catalog, /"inventory\.search\.hint"/);
+  assert.match(catalog, /"inventory\.count\.search\.placeholder"/);
+  assert.match(catalog, /"inventory\.count\.emptyMatches\.title"/);
 });
 
 test("setup recipe drafts resolve inventory through searchable picker helpers", () => {
