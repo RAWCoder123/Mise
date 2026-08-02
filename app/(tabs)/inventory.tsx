@@ -32,6 +32,11 @@ import {
   resolveStationStockedItemIds,
   type InventoryLocationHealthBreakdown
 } from "../../services/presentation/inventoryHealthPresentation";
+import {
+  presentInventoryHubHealthCopy,
+  presentInventoryHubListEmptyCopy,
+  resolveInventoryHubLoadState
+} from "../../services/presentation/inventoryHubPresentation";
 import { canDraftInventoryCount, canManageRestaurantData, canRecordInventoryWaste } from "../../services/tenantAccess";
 import type { InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
@@ -53,12 +58,14 @@ export default function InventoryScreen() {
   const [error, setError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
   const searchInputRef = useRef<TextInput>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   useEffect(() => {
     requestIdRef.current += 1;
+    loadedRestaurantRef.current = null;
     setLoadedRestaurantId(null);
     setOutlooks([]);
     setLocationHealth(null);
@@ -70,7 +77,7 @@ export default function InventoryScreen() {
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading = false) => {
     if (!restaurant) {
       setLoading(false);
       return;
@@ -78,7 +85,9 @@ export default function InventoryScreen() {
 
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
+    if (showLoading || loadedRestaurantRef.current !== restaurantId) {
+      setLoading(true);
+    }
     setError(false);
     try {
       const [nextOutlooks, openSession, nextLocationHealth] = await Promise.all([
@@ -90,6 +99,7 @@ export default function InventoryScreen() {
       setOutlooks(nextOutlooks);
       setLocationHealth(nextLocationHealth);
       setOpenCountSessionId(openSession?.session.id ?? null);
+      loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
       setSelectedStationId((current) => {
         if (!current || !nextLocationHealth || nextLocationHealth.stationCount <= 1) return null;
@@ -107,13 +117,35 @@ export default function InventoryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(false);
     }, [load])
   );
 
-  const visibleOutlooks = loadedRestaurantId === restaurant?.id ? outlooks : [];
-  const visibleLocationHealth =
-    loadedRestaurantId === restaurant?.id ? locationHealth : null;
+  const hubLoadState = resolveInventoryHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleOutlooks = hubReady ? outlooks : [];
+  const visibleLocationHealth = hubReady ? locationHealth : null;
+  const healthPresentation = presentInventoryHubHealthCopy(hubLoadState, {
+    loading: t("inventory.health.loading"),
+    unavailable: t("inventory.health.unavailable")
+  });
+  const listEmptyPresentation = presentInventoryHubListEmptyCopy(
+    hubLoadState,
+    { hasStationFilter: Boolean(selectedStationId) },
+    {
+      loadingTitle: t("inventory.emptyMatches.loadingTitle"),
+      loadingBody: t("inventory.emptyMatches.loadingBody"),
+      unavailableTitle: t("inventory.emptyMatches.unavailableTitle"),
+      unavailableBody: t("inventory.emptyMatches.unavailableBody"),
+      emptyTitle: t("inventory.emptyMatches.title"),
+      emptyBody: t("inventory.emptyMatches.body"),
+      stationEmptyBody: t("inventory.emptyMatches.stationBody")
+    }
+  );
   const selectedStation =
     visibleLocationHealth?.locations.find((station) => station.locationId === selectedStationId) ??
     null;
@@ -193,7 +225,7 @@ export default function InventoryScreen() {
           <RetryNotice
             title={t("inventory.retry.title")}
             message={t("inventory.loadError")}
-            onRetry={() => void load()}
+            onRetry={() => void load(true)}
             retryLabel={t("common.retry")}
             accessibilityLabel={t("inventory.retry.accessibility")}
           />
@@ -204,17 +236,21 @@ export default function InventoryScreen() {
             title={t("inventory.health.title")}
             separatedHeader={false}
           >
-            <InventoryHealth
-              counts={healthCounts}
-              labels={{
-                good: t("inventory.health.good"),
-                watch: t("inventory.health.watch"),
-                low: t("inventory.health.low"),
-                critical: t("inventory.health.critical"),
-                wellStocked: t("inventory.health.wellStocked"),
-                empty: t("inventory.health.empty")
-              }}
-            />
+            {healthPresentation.ready ? (
+              <InventoryHealth
+                counts={healthCounts}
+                labels={{
+                  good: t("inventory.health.good"),
+                  watch: t("inventory.health.watch"),
+                  low: t("inventory.health.low"),
+                  critical: t("inventory.health.critical"),
+                  wellStocked: t("inventory.health.wellStocked"),
+                  empty: t("inventory.health.empty")
+                }}
+              />
+            ) : (
+              <Text style={styles.hubStateCopy}>{healthPresentation.message}</Text>
+            )}
             {visibleLocationHealth && visibleLocationHealth.stationCount > 1 ? (
               <View style={styles.stationBlock}>
                 <Text
@@ -412,12 +448,8 @@ export default function InventoryScreen() {
             {filtered.length === 0 ? (
               <View style={styles.emptyList}>
                 <Package size={24} color={colors.faint} strokeWidth={2.25} />
-                <Text style={styles.emptyListTitle}>{t("inventory.emptyMatches.title")}</Text>
-                <Text style={styles.emptyListCopy}>
-                  {selectedStation
-                    ? t("inventory.emptyMatches.stationBody")
-                    : t("inventory.emptyMatches.body")}
-                </Text>
+                <Text style={styles.emptyListTitle}>{listEmptyPresentation.title}</Text>
+                <Text style={styles.emptyListCopy}>{listEmptyPresentation.body}</Text>
               </View>
             ) : (
               <View style={styles.inventoryList}>
@@ -799,6 +831,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     marginTop: 3
+  },
+  hubStateCopy: {
+    color: colors.muted,
+    fontFamily: typography.families.body,
+    fontSize: 13,
+    lineHeight: 19,
+    paddingVertical: 8
   },
   emptyList: {
     minHeight: 150,

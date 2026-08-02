@@ -18,7 +18,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
-import { StatusNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, inventoryStatusColors } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -750,6 +750,14 @@ export default function InventoryDetailScreen() {
             )}
           </Card>
         </View>
+      ) : messageIsError && message ? (
+        <RetryNotice
+          title={t("inventory.detail.retry.title")}
+          message={message}
+          onRetry={() => void load()}
+          retryLabel={t("common.retry")}
+          accessibilityLabel={t("inventory.detail.retry.accessibility")}
+        />
       ) : (
         <Text style={[styles.message, messageIsError && styles.error]}>{message ?? t("inventory.detail.notFound")}</Text>
       )}
