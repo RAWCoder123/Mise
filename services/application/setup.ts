@@ -1,3 +1,4 @@
+import { inventoryItemNameKey } from "../domain/inventoryItemCreate";
 import { setupImportLimits } from "../domain/setupDrafts";
 import type {
   SetupAttachmentDraft,
@@ -5,8 +6,14 @@ import type {
   SetupPersistenceSummary,
   SetupPosSaleDraft,
   SetupRecipeDraft,
+  SetupRecipeIngredientDraft,
   SetupSupplierDraft
 } from "../domain/setupDrafts";
+import {
+  resolveSetupRecipeIngredient,
+  resolveSetupRecipeIngredientAgainstCatalog,
+  setupInventoryCatalogId
+} from "../domain/setupRecipeLinking";
 import {
   normalizeRecipeBaselineQuantity,
   normalizeRecommendedQuantity,
@@ -55,7 +62,7 @@ export async function saveRestaurantSetup(
   for (const supplier of input.suppliers) {
     const supplierName = supplier.name.trim();
     if (!supplierName) continue;
-    supplierNames.set(supplierName.toLowerCase(), {
+    supplierNames.set(inventoryItemNameKey(supplierName), {
       supplier_name: supplierName,
       email: normalizeOptionalEmail(supplier.email)
     });
@@ -68,10 +75,10 @@ export async function saveRestaurantSetup(
     const parLevel = normalizeRecommendedQuantity(draft.parLevel || currentQuantity);
     const unit = draft.unit.trim() || "unit";
     const supplierName = draft.supplier.trim() || firstSupplierName(supplierNames.values()) || "Supplier";
-    if (!supplierNames.has(supplierName.toLowerCase())) {
-      supplierNames.set(supplierName.toLowerCase(), { supplier_name: supplierName, email: null });
+    if (!supplierNames.has(inventoryItemNameKey(supplierName))) {
+      supplierNames.set(inventoryItemNameKey(supplierName), { supplier_name: supplierName, email: null });
     }
-    inventoryItemsByName.set(itemName.toLowerCase(), {
+    inventoryItemsByName.set(setupInventoryCatalogId(itemName), {
       restaurant_id: normalizedRestaurantId,
       item_name: itemName,
       category: "Setup baseline",
@@ -103,12 +110,15 @@ export async function saveRestaurantSetup(
         continue;
       }
 
-      if (!inventoryItemsByName.has(ingredientName.toLowerCase())) {
+      let linkedInventoryItem =
+        resolveLinkedSetupInventoryItem(input.inventoryItems, inventoryItemsByName, ingredient) ?? null;
+
+      if (!linkedInventoryItem) {
         const supplierName = firstSupplierName(supplierNames.values()) || "Supplier";
-        if (!supplierNames.has(supplierName.toLowerCase())) {
-          supplierNames.set(supplierName.toLowerCase(), { supplier_name: supplierName, email: null });
+        if (!supplierNames.has(inventoryItemNameKey(supplierName))) {
+          supplierNames.set(inventoryItemNameKey(supplierName), { supplier_name: supplierName, email: null });
         }
-        inventoryItemsByName.set(ingredientName.toLowerCase(), {
+        const created = {
           restaurant_id: normalizedRestaurantId,
           item_name: ingredientName,
           category: "Recipe baseline",
@@ -118,10 +128,11 @@ export async function saveRestaurantSetup(
           reorder_threshold: 0,
           estimated_unit_cost: 0,
           supplier_name: supplierName
-        });
+        };
+        inventoryItemsByName.set(setupInventoryCatalogId(ingredientName), created);
+        linkedInventoryItem = created;
       }
 
-      const linkedInventoryItem = inventoryItemsByName.get(ingredientName.toLowerCase());
       if (!linkedInventoryItem || !inventoryUnitsAreCompatible(linkedInventoryItem.unit, unit)) {
         skippedRecipeIngredients += 1;
         continue;
@@ -129,7 +140,7 @@ export async function saveRestaurantSetup(
 
       recipeMappings.push({
         menu_item_name: menuItemName,
-        inventory_item_name: ingredientName,
+        inventory_item_name: linkedInventoryItem.item_name,
         quantity_used_per_sale: quantityUsedPerSale,
         unit: linkedInventoryItem.unit
       });
@@ -216,4 +227,42 @@ function normalizeOptionalEmail(value: string) {
 
 function firstSupplierName(suppliers: IterableIterator<{ supplier_name: string }>) {
   return suppliers.next().value?.supplier_name;
+}
+
+type SetupInventoryCatalogRow = {
+  restaurant_id: string;
+  item_name: string;
+  category: string;
+  unit: string;
+  current_quantity: number;
+  par_level: number;
+  reorder_threshold: number;
+  estimated_unit_cost: number;
+  supplier_name: string;
+};
+
+function resolveLinkedSetupInventoryItem(
+  inventoryDrafts: SetupInventoryDraftItem[],
+  inventoryItemsByName: Map<string, SetupInventoryCatalogRow>,
+  ingredient: SetupRecipeIngredientDraft
+): SetupInventoryCatalogRow | null {
+  const draftMatch = resolveSetupRecipeIngredient(inventoryDrafts, ingredient);
+  if (draftMatch) {
+    return inventoryItemsByName.get(setupInventoryCatalogId(draftMatch.name)) ?? null;
+  }
+
+  const catalog = [...inventoryItemsByName.entries()].map(([id, item]) => ({
+    id,
+    item_name: item.item_name,
+    category: item.category,
+    supplier_name: item.supplier_name,
+    unit: item.unit,
+    row: item
+  }));
+  const catalogMatch = resolveSetupRecipeIngredientAgainstCatalog(
+    catalog,
+    ingredient.itemName,
+    null
+  );
+  return catalogMatch?.row ?? null;
 }

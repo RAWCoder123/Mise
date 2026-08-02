@@ -27,6 +27,8 @@ export interface SetupRecipeIngredientDraft {
   itemName: string;
   quantity: string;
   unit: string;
+  /** Optional link to a setup inventory draft id when the operator picked a match. */
+  inventoryItemId?: string | null;
 }
 
 export interface SetupRecipeDraft {
