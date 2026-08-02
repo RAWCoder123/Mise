@@ -48,7 +48,7 @@ import {
   fetchSuppliers,
   requestAccountDeletion
 } from "../../services/miseService";
-import { canExportRestaurantData } from "../../services/tenantAccess";
+import { canExportRestaurantData, canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type {
   DemoReadinessSummary,
@@ -268,6 +268,7 @@ export default function SettingsScreen() {
             ? t("settings.operations.recipes.unmappedBody", { count: formatNumber(unmappedRecipeCount) })
             : t("settings.operations.recipes.body");
   const localizedRole = role ? roleLabel(role, t) : null;
+  const canEditRestaurantIdentity = canUpdateRestaurantProfile(memberships, restaurant?.id);
   const canExportCurrentRestaurant = canExportRestaurantData(memberships, restaurant?.id);
   const profileLine = restaurant
     ? `${restaurant.cuisine_type?.trim() || t("settings.profile.cuisineFallback")} · ${serviceStyleLabel(restaurant.service_style, t)}`
@@ -329,6 +330,20 @@ export default function SettingsScreen() {
                 );
               })}
             </View>
+          ) : null}
+
+          {restaurant ? (
+            <OperationalRow
+              title={t("settings.restaurant.entryTitle")}
+              subtitle={
+                canEditRestaurantIdentity
+                  ? t("settings.restaurant.entryBody")
+                  : t("settings.restaurant.entryReadOnlyBody")
+              }
+              icon={<Store size={20} color={colors.accentDark} strokeWidth={2.25} />}
+              iconTone="brand"
+              onPress={() => router.push("/settings/restaurant" as never)}
+            />
           ) : null}
         </SettingsSection>
 
@@ -457,17 +472,13 @@ export default function SettingsScreen() {
             onPress={() => router.push("/settings/team" as never)}
           />
           {restaurant ? (
-            <View style={styles.quietRow}>
-              <IconBadge tone="leaf">
-                <ShieldCheck size={20} color={colors.success} strokeWidth={2.25} />
-              </IconBadge>
-              <View style={styles.quietCopy}>
-                <Text style={styles.rowTitle}>{t("settings.operations.service.title")}</Text>
-                <Text style={styles.rowBody}>
-                  {serviceStyleLabel(restaurant.service_style, t)} · {restaurant.timezone} · {restaurant.currency}
-                </Text>
-              </View>
-            </View>
+            <OperationalRow
+              title={t("settings.operations.service.title")}
+              subtitle={`${serviceStyleLabel(restaurant.service_style, t)} · ${restaurant.timezone} · ${restaurant.currency}`}
+              icon={<ShieldCheck size={20} color={colors.success} strokeWidth={2.25} />}
+              iconTone="leaf"
+              onPress={() => router.push("/settings/restaurant" as never)}
+            />
           ) : null}
         </SettingsSection>
 

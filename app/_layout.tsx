@@ -50,6 +50,7 @@ export default function RootLayout() {
                 <Stack.Screen name="settings/language" />
                 <Stack.Screen name="settings/notifications" />
                 <Stack.Screen name="settings/profile" />
+                <Stack.Screen name="settings/restaurant" />
                 <Stack.Screen name="settings/gmail" />
                 <Stack.Screen name="settings/suppliers" />
                 <Stack.Screen name="settings/team" />

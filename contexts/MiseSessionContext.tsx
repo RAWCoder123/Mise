@@ -93,6 +93,7 @@ interface MiseSessionContextValue {
   refreshPosStatus: () => Promise<void>;
   refreshSession: () => Promise<void>;
   applyOperatorDisplayName: (name: string) => Promise<void>;
+  applyRestaurantProfile: (restaurant: Restaurant) => Promise<void>;
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -748,6 +749,37 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     [authUser, isDemoMode, role, saveSnapshot, user]
   );
 
+  const applyRestaurantProfile = useCallback(
+    async (nextRestaurant: Restaurant) => {
+      activeRestaurantIdRef.current = nextRestaurant.id;
+      setRestaurant(nextRestaurant);
+      setAvailableRestaurants((current) => {
+        const exists = current.some((entry) => entry.id === nextRestaurant.id);
+        if (!exists) return [nextRestaurant, ...current];
+        return current.map((entry) => (entry.id === nextRestaurant.id ? nextRestaurant : entry));
+      });
+      if (user) {
+        const nextUser: AppUser = {
+          ...user,
+          restaurant_id: nextRestaurant.id
+        };
+        setUser(nextUser);
+        await saveSnapshot({
+          user: isDemoMode ? nextUser : undefined,
+          activeRestaurantId: nextRestaurant.id,
+          isDemoMode
+        });
+        return;
+      }
+      await saveSnapshot({
+        user: undefined,
+        activeRestaurantId: nextRestaurant.id,
+        isDemoMode
+      });
+    },
+    [isDemoMode, saveSnapshot, user]
+  );
+
   const resetDemoData = useCallback(async (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => {
     if (!isDemoMode) {
       throw new Error("Demo reset is only available in local demo mode.");
@@ -803,12 +835,14 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       refreshPosStatus,
       refreshSession,
       applyOperatorDisplayName,
+      applyRestaurantProfile,
       resetDemoData,
       signOut
     }),
     [
       activeRestaurantId,
       applyOperatorDisplayName,
+      applyRestaurantProfile,
       authUser,
       availableRestaurants,
       clearPasswordRecovery,
