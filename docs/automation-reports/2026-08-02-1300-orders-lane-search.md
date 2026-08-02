@@ -10,9 +10,9 @@
 - Recommendation find query now also clears on restaurant change (tenant hygiene).
 - i18n EN / ES / zh-Hans; security static contract extended.
 
-## Verification
+## Verification (passed on 17a5)
 - `npm run typecheck`
-- `npm test`
+- `npm test` — 364 passed
 - `npm run security:static`
 - `npm run security:backend`
 - `npm run design:static`

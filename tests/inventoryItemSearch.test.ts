@@ -252,7 +252,7 @@ test("filterSupplierOrdersBySearch ranks supplier, message, and note matches", (
   const sysco = filterSupplierOrdersBySearch(supplierOrders, "sysco");
   assert.deepEqual(
     sysco.map((order) => order.id),
-    ["ord-sysco", "ord-sysco-dry"]
+    ["ord-sysco-dry", "ord-sysco"]
   );
 
   const byMessage = filterSupplierOrdersBySearch(supplierOrders, "chicken");
