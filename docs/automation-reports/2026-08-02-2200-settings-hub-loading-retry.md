@@ -13,7 +13,7 @@ Settings hub treated unloaded supplier, Gmail, and recipe coverage as empty/not-
 
 ## Verification
 - `npm run typecheck`
-- `npm test`
+- `npm test` — 399 passed
 - `npm run security:static`
 - `npm run security:backend`
 - `npm run design:static`
