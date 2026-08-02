@@ -1914,6 +1914,24 @@ test("receive discrepancy learning exposes bounded receivingHistory without clie
   assert.match(pgTap, /receivingHistory quantityOrdered matches accepted ordered qty/);
 });
 
+test("manual add-to-order uses stacked restaurant learning instead of raw suggested quantities", () => {
+  const application = readFileSync("services/application/inventory.ts", "utf8");
+  const domain = readFileSync("services/domain/miseDomain.ts", "utf8");
+
+  assert.match(application, /planManualPendingRecommendation/);
+  assert.match(application, /receivingHistory:\s*data\.receivingHistory/);
+  assert.match(application, /wasteHistory:\s*data\.wasteHistory/);
+  assert.match(application, /countVarianceHistory:\s*data\.countVarianceHistory/);
+  assert.doesNotMatch(
+    application.match(/export async function addInventoryItemToOrder[\s\S]*?\n\}/)?.[0] ?? "",
+    /recommended_quantity:\s*prediction\.suggestedOrderQuantity/
+  );
+  assert.match(domain, /export function planManualPendingRecommendation/);
+  assert.match(domain, /export function applyStackedOrderLearning/);
+  assert.match(domain, /applyReceiveFillBias/);
+  assert.match(domain, /applyLossBias/);
+});
+
 test("waste and count-variance learning exposes bounded ledger history without client write authority", () => {
   const migration = readFileSync(
     "supabase/migrations/20260802030000_waste_count_variance_learning_snapshot.sql",
