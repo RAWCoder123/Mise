@@ -15,6 +15,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Button } from "../../components/ui/Button";
+import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, radii, typography } from "../../constants/theme";
@@ -32,7 +33,9 @@ import {
   updateSupplierOrder
 } from "../../services/miseService";
 import {
+  filterInventoryItemsBySearch,
   filterStorageLocationsBySearch,
+  PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD,
   STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD
 } from "../../services/domain/inventoryItemSearch";
 import { MAIN_STORAGE_LOCATION_NAME } from "../../services/domain/inventoryTransfer";
@@ -74,6 +77,7 @@ export default function OrderDraftDetailScreen() {
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
   const [receiveStorageLocationId, setReceiveStorageLocationId] = useState("");
   const [putAwayLocationQuery, setPutAwayLocationQuery] = useState("");
+  const [receiveLineQuery, setReceiveLineQuery] = useState("");
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -169,6 +173,8 @@ export default function OrderDraftDetailScreen() {
     setReceiveNotes({});
     setStorageLocations([]);
     setReceiveStorageLocationId("");
+    setPutAwayLocationQuery("");
+    setReceiveLineQuery("");
     setOperatorNote("");
     setBusy(false);
     setNotice(null);
@@ -453,6 +459,18 @@ export default function OrderDraftDetailScreen() {
   );
   const showPutAwayLocationSearch =
     storageLocations.length >= STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD;
+  const showReceiveLineSearch =
+    linkedRecommendations.length >= PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD;
+  const visibleReceiveLines = useMemo(() => {
+    if (!showReceiveLineSearch) return linkedRecommendations;
+    return filterInventoryItemsBySearch(linkedRecommendations, receiveLineQuery, {
+      getExtraSearchText: (recommendation) => recommendation.supplier_name
+    });
+  }, [linkedRecommendations, receiveLineQuery, showReceiveLineSearch]);
+  const receiveLineSearchNoMatches =
+    showReceiveLineSearch &&
+    receiveLineQuery.trim().length > 0 &&
+    visibleReceiveLines.length === 0;
   const matchedPutAwayLocations = useMemo(
     () =>
       showPutAwayLocationSearch
@@ -670,7 +688,32 @@ export default function OrderDraftDetailScreen() {
                   ) : null}
                 </View>
               ) : null}
-              {linkedRecommendations.map((recommendation) => {
+              {showReceiveLineSearch ? (
+                <View style={styles.receiveLineSearchBox}>
+                  <Search size={18} color={colors.faint} strokeWidth={2.25} />
+                  <TextInput
+                    accessibilityLabel={t("orders.detail.receive.lineSearch.accessibility")}
+                    accessibilityHint={t("orders.detail.receive.lineSearch.hint")}
+                    value={receiveLineQuery}
+                    onChangeText={setReceiveLineQuery}
+                    placeholder={t("orders.detail.receive.lineSearch.placeholder")}
+                    placeholderTextColor={colors.faint}
+                    returnKeyType="search"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    editable={!busy}
+                    style={styles.receiveLineSearchInput}
+                  />
+                </View>
+              ) : null}
+              {receiveLineSearchNoMatches ? (
+                <EmptyState
+                  compact
+                  title={t("orders.detail.receive.lineSearch.emptyTitle")}
+                  body={t("orders.detail.receive.lineSearch.emptyBody")}
+                />
+              ) : null}
+              {visibleReceiveLines.map((recommendation) => {
                 const raw = receiveQuantities[recommendation.inventory_item_id] ?? "";
                 const note = receiveNotes[recommendation.inventory_item_id] ?? "";
                 const received = parseNumber(raw);
@@ -1024,6 +1067,27 @@ const styles = StyleSheet.create({
   receivePutAwayHelp: {
     color: colors.muted,
     ...typography.caption
+  },
+  receiveLineSearchBox: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8
+  },
+  receiveLineSearchInput: {
+    flex: 1,
+    minHeight: 42,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 15,
+    lineHeight: 20,
+    paddingVertical: 0
   },
   locationSearchBox: {
     minHeight: 44,
