@@ -113,8 +113,9 @@ export function resolveInventoryItemForRecipeLink<T extends InventoryItemSearchF
   if (exact) return exact;
 
   const matches = searchInventoryItemsForPicker(items, query, { limit: 2 });
-  if (matches.length === 1 && matches[0].score >= 600) {
-    return matches[0].item;
+  const onlyMatch = matches.length === 1 ? matches[0] : undefined;
+  if (onlyMatch && onlyMatch.score >= 600) {
+    return onlyMatch.item;
   }
 
   return null;
