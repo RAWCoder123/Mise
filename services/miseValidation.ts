@@ -39,11 +39,16 @@ import {
   RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS,
   RESTAURANT_PROFILE_ARRAY_MAX_ITEMS,
   RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS,
+  RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS,
   SUPPLIER_NOTE_MAX_CHARACTERS,
   utf8ByteLength
 } from "./domain/securityLimits";
 
-export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
+export {
+  RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS,
+  RESTAURANT_NAME_MAX_CHARACTERS,
+  SUPPLIER_NOTE_MAX_CHARACTERS
+} from "./domain/securityLimits";
 
 function asNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -314,10 +319,38 @@ export function normalizeMenuItemIngredient(value: MenuItemIngredient): MenuItem
   };
 }
 
+export function normalizeOptionalDismissReason(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS);
+}
+
+export function requireOptionalDismissReason(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string") {
+    throw new Error("Enter a shorter dismiss reason.");
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS) {
+    throw new Error(
+      `Dismiss reason must be ${RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS} characters or fewer.`
+    );
+  }
+  return trimmed;
+}
+
 export function normalizePurchaseRecommendation(value: PurchaseRecommendation): PurchaseRecommendation {
   return {
     ...value,
-    recommended_quantity: normalizeRecommendedQuantity(value.recommended_quantity)
+    recommended_quantity: normalizeRecommendedQuantity(value.recommended_quantity),
+    original_recommended_quantity:
+      value.original_recommended_quantity == null
+        ? null
+        : normalizeRecommendedQuantity(value.original_recommended_quantity),
+    dismiss_reason: normalizeOptionalDismissReason(value.dismiss_reason)
   };
 }
 

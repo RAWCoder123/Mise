@@ -1,6 +1,6 @@
 begin;
 
-select plan(443);
+select plan(445);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -1258,6 +1258,16 @@ select is(
   (select status from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'),
   'approved',
   'guarded recommendation approval persisted'
+);
+select is(
+  (select original_recommended_quantity from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'),
+  12::numeric,
+  'approval captures original recommended quantity before any operator edit'
+);
+select is(
+  (select recommended_quantity from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'),
+  12::numeric,
+  'approval without an edit keeps the accepted quantity equal to the original'
 );
 select is(
   (select supplier_order_id from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'),

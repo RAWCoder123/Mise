@@ -29,7 +29,11 @@ import {
   undoPurchaseRecommendationAction
 } from "../../services/miseService";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
-import { operatingLimits } from "../../services/miseValidation";
+import { buildRecommendationDecisionTelemetry } from "../../services/domain/recommendationFeedback";
+import {
+  operatingLimits,
+  RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS
+} from "../../services/miseValidation";
 import { trackMiseEvent } from "../../services/telemetry";
 import type { PurchaseRecommendation, RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
 
@@ -56,6 +60,8 @@ export default function OrdersScreen() {
   const [lane, setLane] = useState<OrderLane>("drafts");
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [quantityErrors, setQuantityErrors] = useState<Record<string, string | undefined>>({});
+  const [dismissReasons, setDismissReasons] = useState<Record<string, string>>({});
+  const [dismissReasonErrors, setDismissReasonErrors] = useState<Record<string, string | undefined>>({});
   const [recommendationActions, setRecommendationActions] =
     useState<Record<string, RecommendationAction | undefined>>(EMPTY_ACTIONS);
   const [sendingOrderIds, setSendingOrderIds] = useState<Record<string, boolean>>({});
@@ -118,6 +124,13 @@ export default function OrdersScreen() {
           });
           return next;
         });
+        setDismissReasons((current) => {
+          const next: Record<string, string> = {};
+          nextRecommendations.forEach((recommendation) => {
+            next[recommendation.id] = current[recommendation.id] ?? "";
+          });
+          return next;
+        });
         loadedRestaurantRef.current = restaurantId;
       } catch {
         if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
@@ -141,6 +154,8 @@ export default function OrdersScreen() {
     setEmailConnection(null);
     setQuantities({});
     setQuantityErrors({});
+    setDismissReasons({});
+    setDismissReasonErrors({});
     setRecommendationActions(EMPTY_ACTIONS);
     setSendingOrderIds({});
     setUndoAction(null);
@@ -352,7 +367,11 @@ export default function OrdersScreen() {
       trackMiseEvent("recommendation_approved", {
         restaurant_id: restaurantId,
         supplier_name: recommendation.supplier_name,
-        urgency: recommendation.urgency
+        urgency: recommendation.urgency,
+        ...buildRecommendationDecisionTelemetry({
+          originalQuantity: approved.original_recommended_quantity ?? recommendation.recommended_quantity,
+          acceptedQuantity: approved.recommended_quantity
+        })
       });
       setRecommendations((current) =>
         current.filter((item) => item.id !== recommendation.id)
@@ -377,17 +396,35 @@ export default function OrdersScreen() {
       return;
     }
     const restaurantId = restaurant.id;
+    const dismissReasonRaw = dismissReasons[recommendation.id] ?? "";
+    if (dismissReasonRaw.trim().length > RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS) {
+      setDismissReasonErrors((current) => ({
+        ...current,
+        [recommendation.id]: t("orders.validation.dismissReasonTooLong", {
+          maximum: formatNumber(RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS)
+        })
+      }));
+      return;
+    }
 
+    setDismissReasonErrors((current) => ({ ...current, [recommendation.id]: undefined }));
     setRecommendationBusy(recommendation.id, "dismiss");
 
     try {
-      const dismissed = await dismissPurchaseRecommendation(restaurantId, recommendation.id);
+      const dismissed = await dismissPurchaseRecommendation(
+        restaurantId,
+        recommendation.id,
+        dismissReasonRaw.trim() || null
+      );
       if (activeRestaurantIdRef.current !== restaurantId) return;
       registerUndo(dismissed, "dismissed");
       trackMiseEvent("recommendation_dismissed", {
         restaurant_id: restaurantId,
         supplier_name: recommendation.supplier_name,
-        urgency: recommendation.urgency
+        urgency: recommendation.urgency,
+        ...buildRecommendationDecisionTelemetry({
+          dismissReasonPresent: Boolean(dismissed.dismiss_reason)
+        })
       });
       setRecommendations((current) =>
         current.filter((item) => item.id !== recommendation.id)
@@ -728,10 +765,19 @@ export default function OrdersScreen() {
                             setQuantities((current) => ({ ...current, [recommendation.id]: value }));
                             setQuantityErrors((current) => ({ ...current, [recommendation.id]: undefined }));
                           }}
+                          dismissReason={dismissReasons[recommendation.id] ?? ""}
+                          onDismissReasonChange={(value) => {
+                            setDismissReasons((current) => ({ ...current, [recommendation.id]: value }));
+                            setDismissReasonErrors((current) => ({
+                              ...current,
+                              [recommendation.id]: undefined
+                            }));
+                          }}
                           onApprove={() => void approve(recommendation)}
                           onDismiss={() => void dismiss(recommendation)}
                           action={recommendationActions[recommendation.id]}
                           error={quantityErrors[recommendation.id]}
+                          dismissReasonError={dismissReasonErrors[recommendation.id]}
                           readOnly={!canManage}
                           showDivider={index < supplierRecommendations.length - 1}
                         />

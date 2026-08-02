@@ -1856,6 +1856,36 @@ test("approval quantity bounds are enforced at service, demo, and RPC boundaries
   assert.match(migration, /revoke\s+all[\s\S]*from\s+public,\s*anon/i);
 });
 
+test("recommendation acceptance integrity preserves originals and optional dismiss reasons", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260802001000_recommendation_acceptance_integrity.sql",
+    "utf8"
+  );
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const demo = readFileSync("services/domain/miseDomain.ts", "utf8");
+  const service = readFileSync("services/application/orders.ts", "utf8");
+  const pgTap = readFileSync(
+    "supabase/tests/database/recommendation_acceptance_integrity.test.sql",
+    "utf8"
+  );
+
+  assert.match(migration, /original_recommended_quantity/);
+  assert.match(migration, /dismiss_reason/);
+  assert.match(migration, /char_length\(safe_dismiss_reason\) > 240/);
+  assert.match(migration, /when previous_status = 'pending' then recommendation_row\.recommended_quantity/);
+  assert.match(migration, /original_recommended_quantity is not null/);
+  assert.match(edge, /p_dismiss_reason/);
+  assert.match(edge, /dismissReason/);
+  assert.match(edge, /original_recommended_quantity/);
+  assert.match(edge, /quantity_edited/);
+  assert.match(demo, /original_recommended_quantity = recommendation\.recommended_quantity/);
+  assert.match(demo, /Dismiss reason is outside supported limits/);
+  assert.match(service, /requireOptionalDismissReason\(dismissReason\)/);
+  assert.match(pgTap, /edited approval preserves the original Mise quantity/);
+  assert.match(pgTap, /undo restores the original Mise quantity/);
+  assert.match(pgTap, /dismiss stores a trimmed reason/);
+});
+
 test("security readiness document defines private-beta backend rules and public launch blockers", () => {
   const doc = readFileSync("docs/security-readiness.md", "utf8");
 

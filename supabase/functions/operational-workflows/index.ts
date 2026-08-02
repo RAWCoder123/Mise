@@ -227,7 +227,10 @@ Deno.serve(async (req) => {
       result = await serviceRpc(securitySupabase, "service_dismiss_purchase_recommendation", {
         p_actor_user_id: user.id,
         p_restaurant_id: restaurantId,
-        p_recommendation_id: requireUuid(body.recommendationId, "recommendationId")
+        p_recommendation_id: requireUuid(body.recommendationId, "recommendationId"),
+        p_dismiss_reason: body.dismissReason == null || body.dismissReason === ""
+          ? null
+          : requireBoundedString(body.dismissReason, "dismissReason", 240)
       });
     } else if (action === "undo_purchase_recommendation_action") {
       result = await serviceRpc(securitySupabase, "service_undo_purchase_recommendation_action", {
@@ -1168,6 +1171,20 @@ function auditMetadata(
     }
     if (recommendation && typeof recommendation.urgency === "string") {
       metadata.urgency = recommendation.urgency;
+    }
+    if (recommendation && typeof recommendation.recommended_quantity === "number") {
+      metadata.accepted_quantity = recommendation.recommended_quantity;
+    }
+    if (recommendation && typeof recommendation.original_recommended_quantity === "number") {
+      metadata.original_recommended_quantity = recommendation.original_recommended_quantity;
+      if (typeof recommendation.recommended_quantity === "number") {
+        metadata.quantity_edited =
+          Math.abs(recommendation.recommended_quantity - recommendation.original_recommended_quantity) > 1e-9;
+      }
+    }
+    if (action === "dismiss_purchase_recommendation") {
+      metadata.dismiss_reason_present =
+        typeof recommendation?.dismiss_reason === "string" && recommendation.dismiss_reason.length > 0;
     }
     const order = row.order && typeof row.order === "object"
       ? row.order as Record<string, unknown>

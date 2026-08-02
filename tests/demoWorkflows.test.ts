@@ -41,6 +41,8 @@ function recommendation(
     item_name: `Item ${id}`,
     supplier_name: "Neighborhood Produce",
     recommended_quantity: 5,
+    original_recommended_quantity: null,
+    dismiss_reason: null,
     unit: "cases",
     reason: "Projected below par.",
     urgency: "medium",
@@ -66,6 +68,7 @@ test("approving recommendations reuses one supplier draft and is replay-safe", (
 
   assert.equal(first.outcome, "applied");
   assert.equal(first.previousStatus, "pending");
+  assert.equal(zucchini.original_recommended_quantity, 5);
   assert.equal(zucchini.recommended_quantity, 7.5);
   assert.equal(zucchini.status, "approved");
   assert.ok(first.order);
@@ -81,9 +84,52 @@ test("approving recommendations reuses one supplier draft and is replay-safe", (
 
   const replay = approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, apples.id, 99);
   assert.equal(replay.outcome, "already_applied");
+  assert.equal(apples.original_recommended_quantity, 5);
   assert.equal(apples.recommended_quantity, 5);
   assert.equal(state.supplierOrders.length, 1);
   assert.equal(first.order.order_message.match(/Apples/g)?.length, 1);
+});
+
+test("approval preserves original quantity and undo restores it after an edit", () => {
+  const state = emptyWorkflowState();
+  const carrots = recommendation("carrots_edit", { recommended_quantity: 12 });
+  state.purchaseRecommendations.push(carrots);
+
+  approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, carrots.id, 9);
+  assert.equal(carrots.original_recommended_quantity, 12);
+  assert.equal(carrots.recommended_quantity, 9);
+
+  const restored = undoRecommendationInDemoState(state, DEMO_RESTAURANT_ID, carrots.id);
+  assert.equal(restored.outcome, "applied");
+  assert.equal(carrots.status, "pending");
+  assert.equal(carrots.recommended_quantity, 12);
+  assert.equal(carrots.original_recommended_quantity, null);
+});
+
+test("dismiss accepts an optional reason and clears it on undo", () => {
+  const state = emptyWorkflowState();
+  const peppers = recommendation("peppers_dismiss");
+  state.purchaseRecommendations.push(peppers);
+
+  assert.throws(
+    () => dismissRecommendationInDemoState(state, DEMO_RESTAURANT_ID, peppers.id, "x".repeat(241)),
+    /outside supported limits/
+  );
+  assert.equal(peppers.status, "pending");
+
+  const dismissed = dismissRecommendationInDemoState(
+    state,
+    DEMO_RESTAURANT_ID,
+    peppers.id,
+    "  Already covered by walk-in  "
+  );
+  assert.equal(dismissed.outcome, "applied");
+  assert.equal(peppers.status, "dismissed");
+  assert.equal(peppers.dismiss_reason, "Already covered by walk-in");
+
+  undoRecommendationInDemoState(state, DEMO_RESTAURANT_ID, peppers.id);
+  assert.equal(peppers.status, "pending");
+  assert.equal(peppers.dismiss_reason, null);
 });
 
 test("recommendation decisions reject invalid quantities, tenants, and handled states", () => {

@@ -225,7 +225,12 @@ export interface PurchaseRecommendation {
   inventory_item_id: string;
   item_name: string;
   supplier_name: string;
+  /** Accepted / order quantity after approval; learning uses this value. */
   recommended_quantity: number;
+  /** Mise quantity at first approval; null while pending or after undo. */
+  original_recommended_quantity?: number | null;
+  /** Optional operator reason when dismissed. */
+  dismiss_reason?: string | null;
   unit: string;
   reason: string;
   urgency: Urgency;

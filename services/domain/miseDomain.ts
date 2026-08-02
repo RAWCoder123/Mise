@@ -814,6 +814,8 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
       item_name: item.item_name,
       supplier_name: item.supplier_name,
       recommended_quantity: recommendedQuantity,
+      original_recommended_quantity: null,
+      dismiss_reason: null,
       unit: item.unit,
       reason,
       urgency: prediction.urgency,
@@ -1232,15 +1234,19 @@ export function approveRecommendationInDemoState(
   if (recommendation.status === "dismissed" || recommendation.status === "ordered") {
     throw new Error("Already handled.");
   }
-  if (recommendation.status === "pending" && recommendedQuantity !== undefined) {
-    if (
-      !Number.isFinite(recommendedQuantity) ||
-      recommendedQuantity <= 0 ||
-      recommendedQuantity > 1_000_000
-    ) {
-      throw new Error("Enter a valid order quantity.");
+  if (recommendation.status === "pending") {
+    recommendation.original_recommended_quantity = recommendation.recommended_quantity;
+    recommendation.dismiss_reason = null;
+    if (recommendedQuantity !== undefined) {
+      if (
+        !Number.isFinite(recommendedQuantity) ||
+        recommendedQuantity <= 0 ||
+        recommendedQuantity > 1_000_000
+      ) {
+        throw new Error("Enter a valid order quantity.");
+      }
+      recommendation.recommended_quantity = recommendedQuantity;
     }
-    recommendation.recommended_quantity = recommendedQuantity;
   }
 
   let order = recommendation.supplier_order_id
@@ -1293,7 +1299,8 @@ export function approveRecommendationInDemoState(
 export function dismissRecommendationInDemoState(
   state: DemoState,
   restaurantId: string,
-  recommendationId: string
+  recommendationId: string,
+  dismissReason?: string | null
 ): RecommendationWorkflowResult {
   const recommendation = findRecommendationForWorkflow(state, restaurantId, recommendationId);
   const previousStatus = recommendation.status;
@@ -1301,8 +1308,14 @@ export function dismissRecommendationInDemoState(
     throw new Error("Already handled.");
   }
   if (recommendation.status === "pending") {
+    const trimmed =
+      typeof dismissReason === "string" ? dismissReason.trim() : dismissReason == null ? "" : "";
+    if (trimmed.length > 240) {
+      throw new Error("Dismiss reason is outside supported limits.");
+    }
     recommendation.status = "dismissed";
     recommendation.supplier_order_id = null;
+    recommendation.dismiss_reason = trimmed ? trimmed : null;
   }
   return {
     outcome: previousStatus === "dismissed" ? "already_applied" : "applied",
@@ -1343,6 +1356,13 @@ export function undoRecommendationInDemoState(
     throw new Error("This recommendation is already in supplier history and cannot be undone.");
   }
 
+  if (previousStatus === "approved" && recommendation.original_recommended_quantity != null) {
+    recommendation.recommended_quantity = recommendation.original_recommended_quantity;
+    recommendation.original_recommended_quantity = null;
+  }
+  if (previousStatus === "dismissed") {
+    recommendation.dismiss_reason = null;
+  }
   recommendation.status = "pending";
   recommendation.supplier_order_id = null;
   if (previousStatus === "approved" && order) {
@@ -2166,6 +2186,8 @@ export function buildRecommendationInserts(
         item_name: item.item_name,
         supplier_name: item.supplier_name,
         recommended_quantity: learnedQuantity ?? prediction.suggestedOrderQuantity,
+        original_recommended_quantity: null,
+        dismiss_reason: null,
         unit: item.unit,
         reason: learnedRecommendationReason(item, prediction, learnedQuantity),
         urgency: prediction.urgency,

@@ -262,6 +262,8 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
     item_name: item.item_name,
     supplier_name: item.supplier_name,
     recommended_quantity: prediction.suggestedOrderQuantity,
+    original_recommended_quantity: null,
+    dismiss_reason: null,
     unit: item.unit,
     reason: recommendationReason(item, prediction),
     urgency: prediction.urgency,

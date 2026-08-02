@@ -431,7 +431,8 @@ export interface MiseRepository {
   ): Promise<RecommendationWorkflowResult>;
   dismissPurchaseRecommendation(
     restaurantId: string,
-    recommendationId: string
+    recommendationId: string,
+    dismissReason?: string | null
   ): Promise<RecommendationWorkflowResult>;
   undoPurchaseRecommendationAction(
     restaurantId: string,
@@ -2084,6 +2085,8 @@ function createLocalDemoRepository(): MiseRepository {
           recommendedQuantity
         );
         if (result.outcome === "applied") {
+          const original = result.recommendation.original_recommended_quantity;
+          const accepted = result.recommendation.recommended_quantity;
           appendDemoAuditLog(state, {
             restaurant_id: restaurantId,
             action: "recommendation_approved",
@@ -2092,7 +2095,11 @@ function createLocalDemoRepository(): MiseRepository {
             metadata: {
               supplier_name: result.recommendation.supplier_name,
               urgency: result.recommendation.urgency,
-              supplier_order_id: result.order?.id ?? null
+              supplier_order_id: result.order?.id ?? null,
+              quantity_edited:
+                original != null && Number.isFinite(original) && Math.abs(accepted - original) > 1e-9,
+              original_recommended_quantity: original,
+              accepted_quantity: accepted
             }
           });
         }
@@ -2104,9 +2111,14 @@ function createLocalDemoRepository(): MiseRepository {
       });
     },
 
-    async dismissPurchaseRecommendation(restaurantId, recommendationId) {
+    async dismissPurchaseRecommendation(restaurantId, recommendationId, dismissReason) {
       return mutateDemoState((state) => {
-        const result = dismissRecommendationInDemoState(state, restaurantId, recommendationId);
+        const result = dismissRecommendationInDemoState(
+          state,
+          restaurantId,
+          recommendationId,
+          dismissReason
+        );
         if (result.outcome === "applied") {
           appendDemoAuditLog(state, {
             restaurant_id: restaurantId,
@@ -2115,7 +2127,8 @@ function createLocalDemoRepository(): MiseRepository {
             entity_id: result.recommendation.id,
             metadata: {
               supplier_name: result.recommendation.supplier_name,
-              urgency: result.recommendation.urgency
+              urgency: result.recommendation.urgency,
+              dismiss_reason_present: Boolean(result.recommendation.dismiss_reason)
             }
           });
         }
@@ -3459,11 +3472,12 @@ function createSupabaseRepository(): MiseRepository {
       return parseRecommendationWorkflowResponse(response.result);
     },
 
-    async dismissPurchaseRecommendation(restaurantId, recommendationId) {
+    async dismissPurchaseRecommendation(restaurantId, recommendationId, dismissReason) {
       const response = await invokeOperationalWorkflow({
         action: "dismiss_purchase_recommendation",
         restaurantId,
-        recommendationId
+        recommendationId,
+        dismissReason: dismissReason ?? null
       });
       return parseRecommendationWorkflowResponse(response.result);
     },

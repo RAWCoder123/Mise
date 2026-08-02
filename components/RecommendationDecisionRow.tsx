@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors, radii, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
+import { RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS } from "../services/miseValidation";
 import type { PurchaseRecommendation } from "../types/mise";
 import { Button } from "./ui/Button";
 
@@ -11,10 +12,13 @@ interface RecommendationDecisionRowProps {
   recommendation: PurchaseRecommendation;
   quantity: string;
   onQuantityChange: (value: string) => void;
+  dismissReason?: string;
+  onDismissReasonChange?: (value: string) => void;
   onApprove: () => void;
   onDismiss: () => void;
   action?: "approve" | "dismiss";
   error?: string;
+  dismissReasonError?: string;
   showDivider?: boolean;
   readOnly?: boolean;
 }
@@ -23,10 +27,13 @@ export function RecommendationDecisionRow({
   recommendation,
   quantity,
   onQuantityChange,
+  dismissReason = "",
+  onDismissReasonChange,
   onApprove,
   onDismiss,
   action,
   error,
+  dismissReasonError,
   showDivider,
   readOnly = false
 }: RecommendationDecisionRowProps) {
@@ -140,6 +147,30 @@ export function RecommendationDecisionRow({
         <Text style={styles.error} accessibilityLiveRegion="polite">
           {error}
         </Text>
+      ) : null}
+
+      {!readOnly && onDismissReasonChange ? (
+        <View style={styles.dismissReasonBlock}>
+          <Text style={styles.dismissReasonLabel}>{t("orders.recommendation.dismissReason")}</Text>
+          <TextInput
+            accessibilityLabel={t("orders.recommendation.dismissReasonAccessibility", {
+              item: recommendation.item_name
+            })}
+            accessibilityState={{ disabled: busy }}
+            value={dismissReason}
+            onChangeText={onDismissReasonChange}
+            editable={!busy}
+            maxLength={RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS}
+            placeholder={t("orders.recommendation.dismissReasonPlaceholder")}
+            placeholderTextColor={colors.muted}
+            style={[styles.dismissReasonInput, dismissReasonError && styles.inputWrapError]}
+          />
+          {dismissReasonError ? (
+            <Text style={styles.error} accessibilityLiveRegion="polite">
+              {dismissReasonError}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
 
       {!readOnly ? (
@@ -322,6 +353,27 @@ const styles = StyleSheet.create({
     color: colors.danger,
     ...typography.caption,
     fontWeight: "600"
+  },
+  dismissReasonBlock: {
+    gap: 6
+  },
+  dismissReasonLabel: {
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "500"
+  },
+  dismissReasonInput: {
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.background,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 15,
+    lineHeight: 20
   },
   actions: {
     flexDirection: "row",

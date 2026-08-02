@@ -58,6 +58,7 @@ test("orders keeps staff read-only while preserving review, copy, and detail acc
 test("recommendation actions validate quantity, lock locally, and reload authoritative state", () => {
   const screen = readFileSync("app/(tabs)/orders.tsx", "utf8");
   const row = readFileSync("components/RecommendationDecisionRow.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
   assert.match(screen, /nextQuantity <= 0/);
   assert.match(screen, /operatingLimits\.recommendationQuantity/);
@@ -67,12 +68,18 @@ test("recommendation actions validate quantity, lock locally, and reload authori
   assert.match(screen, /sendingLocksRef\.current\.has\(order\.id\)/);
   assert.match(screen, /undoLockRef\.current/);
   assert.match(screen, /await load\(false\)/);
+  assert.match(screen, /buildRecommendationDecisionTelemetry/);
+  assert.match(screen, /dismissPurchaseRecommendation\(\s*restaurantId,\s*recommendation\.id,\s*dismissReasonRaw/);
   assert.doesNotMatch(screen, /setRecommendations\(\(current\) => \[recommendation/);
 
   assert.match(row, /t\("orders\.recommendation\.quantityAccessibility"/);
+  assert.match(row, /t\("orders\.recommendation\.dismissReason"/);
+  assert.match(row, /onDismissReasonChange/);
   assert.match(row, /minHeight: 44/);
   assert.match(row, /action\?: "approve" \| "dismiss"/);
   assert.match(row, /accessibilityState=\{\{ expanded \}\}/);
+  assert.match(catalog, /"orders\.recommendation\.dismissReason"/);
+  assert.match(catalog, /"orders\.validation\.dismissReasonTooLong"/);
 });
 
 test("order list uses Gmail when connected and explicit external placement otherwise", () => {

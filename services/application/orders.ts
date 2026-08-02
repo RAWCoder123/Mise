@@ -11,6 +11,7 @@ import {
 import { buildSupplierRecipientDirectory } from "../domain/supplierRecipients";
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
 import {
+  requireOptionalDismissReason,
   requireRecommendationApprovalQuantity,
   requireSupplierOperatorNote,
   requireSupplierOrderReceiveLines,
@@ -57,8 +58,16 @@ export async function approvePurchaseRecommendation(
   return result.recommendation;
 }
 
-export async function dismissPurchaseRecommendation(restaurantId: string, recommendationId: string) {
-  const result = await repository.dismissPurchaseRecommendation(restaurantId, recommendationId);
+export async function dismissPurchaseRecommendation(
+  restaurantId: string,
+  recommendationId: string,
+  dismissReason?: string | null
+) {
+  const result = await repository.dismissPurchaseRecommendation(
+    restaurantId,
+    recommendationId,
+    requireOptionalDismissReason(dismissReason)
+  );
   return result.recommendation;
 }
 

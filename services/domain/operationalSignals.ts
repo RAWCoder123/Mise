@@ -43,6 +43,8 @@ export interface OperationalRecommendation {
   item_name: string;
   supplier_name: string;
   recommended_quantity: number;
+  original_recommended_quantity: null;
+  dismiss_reason: null;
   unit: string;
   reason: string;
   urgency: "low" | "medium" | "high";
@@ -133,6 +135,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         item_name: item.item_name,
         supplier_name: item.supplier_name,
         recommended_quantity: quantity,
+        original_recommended_quantity: null,
+        dismiss_reason: null,
         unit: item.unit,
         reason,
         urgency: isCritical ? "high" : "medium",
