@@ -9,9 +9,11 @@ Sent-order receive UI listed every linked recommendation without find. Large del
 - Reset receive-line and put-away queries on restaurant/order change.
 - i18n EN / ES / zh-Hans; security static contract extended.
 
-## Verification
+## Verification (passed on a8f6)
 - `npm run typecheck`
-- `npm test`
+- `npm test` — 363 passed
 - `npm run security:static`
 - `npm run security:backend`
 - `npm run design:static`
+
+Docker `supabase:test` and hosted staging re-proof remain environment-blocked in this run.

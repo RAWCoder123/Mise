@@ -10,9 +10,9 @@ Settings → Recipes loaded the full mapped-dish list (`itemLimit: null`) but of
 - i18n: EN / ES / zh-Hans for accessibility, hint, placeholder, and empty copy.
 - Tests: unit coverage in `inventoryItemSearch.test.ts`; security static contract for screen + domain + catalog wiring.
 
-## Verification
+## Verification (passed on a8f6)
 - `npm run typecheck`
-- `npm test`
+- `npm test` — 363 passed
 - `npm run security:static`
 - `npm run security:backend`
 - `npm run design:static`
