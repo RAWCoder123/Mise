@@ -31,7 +31,9 @@ import {
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import {
   filterInventoryItemsBySearch,
-  PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD
+  filterSupplierOrdersBySearch,
+  PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD,
+  SUPPLIER_ORDER_LANE_SEARCH_THRESHOLD
 } from "../../services/domain/inventoryItemSearch";
 import { buildRecommendationDecisionTelemetry } from "../../services/domain/recommendationFeedback";
 import {
@@ -63,6 +65,7 @@ export default function OrdersScreen() {
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [lane, setLane] = useState<OrderLane>("drafts");
   const [recommendationQuery, setRecommendationQuery] = useState("");
+  const [orderLaneQuery, setOrderLaneQuery] = useState("");
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [quantityErrors, setQuantityErrors] = useState<Record<string, string | undefined>>({});
   const [dismissReasons, setDismissReasons] = useState<Record<string, string>>({});
@@ -169,7 +172,13 @@ export default function OrdersScreen() {
     setMessageRestaurantId(null);
     setLoadError(null);
     setLane("drafts");
+    setRecommendationQuery("");
+    setOrderLaneQuery("");
   }, [restaurant?.id]);
+
+  useEffect(() => {
+    setOrderLaneQuery("");
+  }, [lane]);
 
   useEffect(() => {
     if (!canManage) setUndoAction(null);
@@ -245,6 +254,29 @@ export default function OrdersScreen() {
     () => visibleOrders.filter((order) => order.status === "completed"),
     [visibleOrders]
   );
+  const activeLaneOrders =
+    lane === "drafts" ? draftOrders : lane === "sent" ? sentOrders : completedOrders;
+  const showOrderLaneSearch = activeLaneOrders.length >= SUPPLIER_ORDER_LANE_SEARCH_THRESHOLD;
+  const filteredDraftOrders = useMemo(() => {
+    if (lane !== "drafts" || !showOrderLaneSearch) return draftOrders;
+    return filterSupplierOrdersBySearch(draftOrders, orderLaneQuery);
+  }, [draftOrders, lane, orderLaneQuery, showOrderLaneSearch]);
+  const filteredSentOrders = useMemo(() => {
+    if (lane !== "sent" || !showOrderLaneSearch) return sentOrders;
+    return filterSupplierOrdersBySearch(sentOrders, orderLaneQuery);
+  }, [lane, orderLaneQuery, sentOrders, showOrderLaneSearch]);
+  const filteredCompletedOrders = useMemo(() => {
+    if (lane !== "history" || !showOrderLaneSearch) return completedOrders;
+    return filterSupplierOrdersBySearch(completedOrders, orderLaneQuery);
+  }, [completedOrders, lane, orderLaneQuery, showOrderLaneSearch]);
+  const orderLaneSearchNoMatches =
+    showOrderLaneSearch &&
+    orderLaneQuery.trim().length > 0 &&
+    (lane === "drafts"
+      ? filteredDraftOrders.length === 0
+      : lane === "sent"
+        ? filteredSentOrders.length === 0
+        : filteredCompletedOrders.length === 0);
   const laneOptions = useMemo<readonly SegmentOption<OrderLane>[]>(
     () => {
       const draftsLabel = t("orders.lane.drafts");
@@ -688,14 +720,36 @@ export default function OrdersScreen() {
                 </View>
               </SectionSurface>
 
+              {showOrderLaneSearch ? (
+                <View style={styles.orderLaneSearchBox}>
+                  <Search size={18} color={colors.faint} strokeWidth={2.25} />
+                  <TextInput
+                    accessibilityLabel={t("orders.lane.search.accessibility")}
+                    accessibilityHint={t("orders.lane.search.hint")}
+                    value={orderLaneQuery}
+                    onChangeText={setOrderLaneQuery}
+                    placeholder={t("orders.lane.search.placeholder")}
+                    placeholderTextColor={colors.faint}
+                    returnKeyType="search"
+                    style={styles.orderLaneSearchInput}
+                  />
+                </View>
+              ) : null}
+
               {draftOrders.length === 0 ? (
                 <EmptyState
                   compact
                   title={t("orders.empty.drafts.title")}
                   body={t("orders.empty.drafts.body")}
                 />
+              ) : orderLaneSearchNoMatches ? (
+                <EmptyState
+                  compact
+                  title={t("orders.lane.search.emptyTitle")}
+                  body={t("orders.lane.search.emptyBody")}
+                />
               ) : (
-                draftOrders.map((order) => (
+                filteredDraftOrders.map((order) => (
                   <SupplierDraftCard
                     key={order.id}
                     order={order}
@@ -830,45 +884,91 @@ export default function OrdersScreen() {
           ) : null}
 
           {lane === "sent" ? (
-            sentOrders.length === 0 ? (
-              <EmptyState
-                compact
-                title={t("orders.empty.sent.title")}
-                body={t("orders.empty.sent.body")}
-              />
-            ) : (
-              sentOrders.map((order) => (
-                <SupplierDraftCard
-                  key={order.id}
-                  order={order}
-                  onCopy={() => void copyOrder(order)}
-                  onOpen={() =>
-                    router.push({ pathname: "/orders/[id]", params: { id: order.id } })
-                  }
+            <>
+              {showOrderLaneSearch ? (
+                <View style={styles.orderLaneSearchBox}>
+                  <Search size={18} color={colors.faint} strokeWidth={2.25} />
+                  <TextInput
+                    accessibilityLabel={t("orders.lane.search.accessibility")}
+                    accessibilityHint={t("orders.lane.search.hint")}
+                    value={orderLaneQuery}
+                    onChangeText={setOrderLaneQuery}
+                    placeholder={t("orders.lane.search.placeholder")}
+                    placeholderTextColor={colors.faint}
+                    returnKeyType="search"
+                    style={styles.orderLaneSearchInput}
+                  />
+                </View>
+              ) : null}
+              {sentOrders.length === 0 ? (
+                <EmptyState
+                  compact
+                  title={t("orders.empty.sent.title")}
+                  body={t("orders.empty.sent.body")}
                 />
-              ))
-            )
+              ) : orderLaneSearchNoMatches ? (
+                <EmptyState
+                  compact
+                  title={t("orders.lane.search.emptyTitle")}
+                  body={t("orders.lane.search.emptyBody")}
+                />
+              ) : (
+                filteredSentOrders.map((order) => (
+                  <SupplierDraftCard
+                    key={order.id}
+                    order={order}
+                    onCopy={() => void copyOrder(order)}
+                    onOpen={() =>
+                      router.push({ pathname: "/orders/[id]", params: { id: order.id } })
+                    }
+                  />
+                ))
+              )}
+            </>
           ) : null}
 
           {lane === "history" ? (
-            completedOrders.length === 0 ? (
-              <EmptyState
-                compact
-                title={t("orders.empty.history.title")}
-                body={t("orders.empty.history.body")}
-              />
-            ) : (
-              completedOrders.map((order) => (
-                <SupplierDraftCard
-                  key={order.id}
-                  order={order}
-                  onCopy={() => void copyOrder(order)}
-                  onOpen={() =>
-                    router.push({ pathname: "/orders/[id]", params: { id: order.id } })
-                  }
+            <>
+              {showOrderLaneSearch ? (
+                <View style={styles.orderLaneSearchBox}>
+                  <Search size={18} color={colors.faint} strokeWidth={2.25} />
+                  <TextInput
+                    accessibilityLabel={t("orders.lane.search.accessibility")}
+                    accessibilityHint={t("orders.lane.search.hint")}
+                    value={orderLaneQuery}
+                    onChangeText={setOrderLaneQuery}
+                    placeholder={t("orders.lane.search.placeholder")}
+                    placeholderTextColor={colors.faint}
+                    returnKeyType="search"
+                    style={styles.orderLaneSearchInput}
+                  />
+                </View>
+              ) : null}
+              {completedOrders.length === 0 ? (
+                <EmptyState
+                  compact
+                  title={t("orders.empty.history.title")}
+                  body={t("orders.empty.history.body")}
                 />
-              ))
-            )
+              ) : orderLaneSearchNoMatches ? (
+                <EmptyState
+                  compact
+                  title={t("orders.lane.search.emptyTitle")}
+                  body={t("orders.lane.search.emptyBody")}
+                />
+              ) : (
+                filteredCompletedOrders.map((order) => (
+                  <SupplierDraftCard
+                    key={order.id}
+                    order={order}
+                    onCopy={() => void copyOrder(order)}
+                    onOpen={() =>
+                      router.push({ pathname: "/orders/[id]", params: { id: order.id } })
+                    }
+                  />
+                ))
+              )}
+            </>
           ) : null}
         </MotionView>
       </View>
@@ -993,6 +1093,26 @@ const styles = StyleSheet.create({
     gap: 8
   },
   recommendationSearchInput: {
+    flex: 1,
+    minHeight: 42,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 15,
+    lineHeight: 20,
+    paddingVertical: 0
+  },
+  orderLaneSearchBox: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  orderLaneSearchInput: {
     flex: 1,
     minHeight: 42,
     color: colors.text,

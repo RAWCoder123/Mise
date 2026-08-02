@@ -1436,6 +1436,8 @@ test("transfer put-away and orders review reuse ranked location and recommendati
   assert.match(searchDomain, /export\s+function\s+filterStorageLocationsBySearch/);
   assert.match(searchDomain, /STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD/);
   assert.match(searchDomain, /PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD/);
+  assert.match(searchDomain, /export\s+function\s+filterSupplierOrdersBySearch/);
+  assert.match(searchDomain, /SUPPLIER_ORDER_LANE_SEARCH_THRESHOLD/);
   assert.match(detailScreen, /filterStorageLocationsBySearch/);
   assert.match(detailScreen, /STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD/);
   assert.match(detailScreen, /inventory\.detail\.transferLocationSearch\.accessibility/);
@@ -1448,12 +1450,17 @@ test("transfer put-away and orders review reuse ranked location and recommendati
   assert.match(ordersScreen, /filterInventoryItemsBySearch/);
   assert.match(ordersScreen, /PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD/);
   assert.match(ordersScreen, /orders\.review\.search\.accessibility/);
+  assert.match(ordersScreen, /filterSupplierOrdersBySearch/);
+  assert.match(ordersScreen, /SUPPLIER_ORDER_LANE_SEARCH_THRESHOLD/);
+  assert.match(ordersScreen, /orders\.lane\.search\.accessibility/);
   assert.match(catalog, /"inventory\.detail\.transferLocationSearch\.placeholder"/);
   assert.match(catalog, /"orders\.detail\.receive\.putAwaySearch\.placeholder"/);
   assert.match(catalog, /"orders\.detail\.receive\.lineSearch\.placeholder"/);
   assert.match(catalog, /"orders\.detail\.receive\.lineSearch\.emptyTitle"/);
   assert.match(catalog, /"orders\.review\.search\.placeholder"/);
   assert.match(catalog, /"orders\.review\.search\.emptyTitle"/);
+  assert.match(catalog, /"orders\.lane\.search\.placeholder"/);
+  assert.match(catalog, /"orders\.lane\.search\.emptyTitle"/);
 });
 
 test("setup recipe drafts resolve inventory through searchable picker helpers", () => {

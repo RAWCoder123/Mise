@@ -6,6 +6,7 @@ import {
   filterMenuItemsForPicker,
   filterRecipeBaselineItemsBySearch,
   filterStorageLocationsBySearch,
+  filterSupplierOrdersBySearch,
   resolveInventoryItemForRecipeLink,
   searchInventoryItemsForPicker
 } from "../services/domain/inventoryItemSearch";
@@ -205,5 +206,64 @@ test("filterRecipeBaselineItemsBySearch ranks dishes and linked ingredients", ()
   assert.deepEqual(
     tomatoes.map((item) => item.menu_item_name),
     ["Tomato Salad", "Cherry Tomato Special"]
+  );
+});
+
+const supplierOrders = [
+  {
+    id: "ord-sysco",
+    supplier_name: "Sysco Produce",
+    order_message: "Tomatoes x12\nLettuce x6",
+    operator_note: "Deliver before lunch"
+  },
+  {
+    id: "ord-farm",
+    supplier_name: "Local Farm",
+    order_message: "Chicken thighs 20 lb",
+    operator_note: null
+  },
+  {
+    id: "ord-dairy",
+    supplier_name: "Dairy Direct",
+    order_message: "Cream and butter",
+    operator_note: "Ask for cold pack"
+  },
+  {
+    id: "ord-sysco-dry",
+    supplier_name: "Sysco Dry Goods",
+    order_message: "Rice and oil",
+    operator_note: "Weekly standing"
+  },
+  {
+    id: "ord-seafood",
+    supplier_name: "Harbor Seafood",
+    order_message: "Salmon portions",
+    operator_note: "Hold if late"
+  }
+] as const;
+
+test("filterSupplierOrdersBySearch ranks supplier, message, and note matches", () => {
+  const empty = filterSupplierOrdersBySearch(supplierOrders, " ");
+  assert.deepEqual(
+    empty.map((order) => order.id),
+    supplierOrders.map((order) => order.id)
+  );
+
+  const sysco = filterSupplierOrdersBySearch(supplierOrders, "sysco");
+  assert.deepEqual(
+    sysco.map((order) => order.id),
+    ["ord-sysco", "ord-sysco-dry"]
+  );
+
+  const byMessage = filterSupplierOrdersBySearch(supplierOrders, "chicken");
+  assert.deepEqual(
+    byMessage.map((order) => order.id),
+    ["ord-farm"]
+  );
+
+  const byNote = filterSupplierOrdersBySearch(supplierOrders, "cold pack");
+  assert.deepEqual(
+    byNote.map((order) => order.id),
+    ["ord-dairy"]
   );
 });

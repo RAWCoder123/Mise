@@ -268,6 +268,56 @@ export const PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD = 5;
 /** Show mapped-dish find once recipe baselines are long enough to hunt through. */
 export const RECIPE_BASELINE_SEARCH_THRESHOLD = 5;
 
+/** Show supplier-order lane find once drafts/sent/history lists are long enough to hunt through. */
+export const SUPPLIER_ORDER_LANE_SEARCH_THRESHOLD = 5;
+
+export type SupplierOrderSearchFields = {
+  id: string;
+  supplier_name: string;
+  order_message?: string | null;
+  operator_note?: string | null;
+};
+
+function scoreSupplierOrderMatch(
+  order: SupplierOrderSearchFields,
+  query: string
+): number | null {
+  const supplierScore = scoreStorageLocationMatch(order.supplier_name, query);
+  const messageScore = scoreExtraSearchText(order.order_message, query);
+  const noteScore = scoreExtraSearchText(order.operator_note, query);
+  if (supplierScore == null && messageScore == null && noteScore == null) return null;
+  return Math.max(supplierScore ?? 0, messageScore ?? 0, noteScore ?? 0);
+}
+
+/**
+ * Rank supplier orders for drafts / sent / history lane find.
+ * Empty query preserves caller order. Non-empty query matches supplier, message, or note.
+ */
+export function filterSupplierOrdersBySearch<T extends SupplierOrderSearchFields>(
+  orders: readonly T[],
+  query: string
+): T[] {
+  const normalizedQuery = inventoryItemNameKey(query);
+  if (!normalizedQuery) {
+    return [...orders];
+  }
+
+  return orders
+    .map((order) => {
+      const score = scoreSupplierOrderMatch(order, query);
+      if (score == null) return null;
+      return { order, score };
+    })
+    .filter((match): match is { order: T; score: number } => match != null)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return inventoryItemNameKey(left.order.supplier_name).localeCompare(
+        inventoryItemNameKey(right.order.supplier_name)
+      );
+    })
+    .map((match) => match.order);
+}
+
 export type RecipeBaselineSearchFields = {
   menu_item_name: string;
   linkedInventoryItems?: readonly string[] | null;
