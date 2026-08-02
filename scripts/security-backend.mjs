@@ -376,6 +376,9 @@ for (const functionName of userScopedEdgeFunctionNames) {
   if (!/service_rollback_failed_account_deletion/.test(source)) {
     failures.push(`${functionPath}: Auth delete failures must roll back membership/restaurant revocation.`);
   }
+  if (!/authUserDeleted/.test(source)) {
+    failures.push(`${functionPath}: must treat Auth hard-delete as the success boundary so secondary finalize failures do not falsely fail deletion.`);
+  }
   if (/requireRestaurantRole\s*\(/.test(source)) {
     failures.push(`${functionPath}: account deletion is user-scoped and must not require a restaurant role.`);
   }
@@ -383,6 +386,17 @@ for (const functionName of userScopedEdgeFunctionNames) {
 
 if (!/request-account-deletion/.test(read("supabase/migrations/20260801101000_edge_request_account_deletion_firewall.sql"))) {
   failures.push("supabase/migrations/20260801101000_edge_request_account_deletion_firewall.sql: must allowlist request-account-deletion in the user-scoped firewall.");
+}
+
+const postDeleteSecurityEventsMigration = read(
+  "supabase/migrations/20260802020000_account_deletion_post_delete_security_events.sql"
+);
+if (!/reserved_actor_user_id/.test(postDeleteSecurityEventsMigration)
+  || !/deleted_actor_user_id/.test(postDeleteSecurityEventsMigration)
+  || !/actor_user_id is null/.test(postDeleteSecurityEventsMigration)) {
+  failures.push(
+    "supabase/migrations/20260802020000_account_deletion_post_delete_security_events.sql: must finalize request-account-deletion security events after Auth hard-delete."
+  );
 }
 
 for (const functionName of accountOnboardingEdgeFunctionNames) {

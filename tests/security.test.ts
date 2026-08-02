@@ -2021,6 +2021,10 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
     "supabase/migrations/20260801101000_edge_request_account_deletion_firewall.sql",
     "utf8"
   );
+  const postDeleteMigration = readFileSync(
+    "supabase/migrations/20260802020000_account_deletion_post_delete_security_events.sql",
+    "utf8"
+  );
   const edge = readFileSync("supabase/functions/request-account-deletion/index.ts", "utf8");
   const shared = readFileSync("supabase/functions/_shared/mise.ts", "utf8");
   const settings = readFileSync("app/(tabs)/settings.tsx", "utf8");
@@ -2055,6 +2059,12 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
     firewallMigration,
     /p_function_name not in \('account-onboarding', 'request-account-deletion'\)/i
   );
+  assert.match(postDeleteMigration, /reserved_actor_user_id/);
+  assert.match(postDeleteMigration, /deleted_actor_user_id/);
+  assert.match(
+    postDeleteMigration,
+    /p_function_name = 'request-account-deletion'[\s\S]*actor_user_id is null[\s\S]*reserved_actor_user_id/
+  );
   assert.match(shared, /UserScopedEdgeFunctionName[\s\S]*request-account-deletion/);
   assert.match(edge, /reserveUserScopedFunctionInvocation/);
   assert.match(edge, /recordUserScopedFunctionSecurityEvent/);
@@ -2063,6 +2073,7 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
   assert.match(edge, /service_rollback_failed_account_deletion/);
   assert.match(edge, /Restaurant access was restored/i);
   assert.match(edge, /Account deletion request status could not be updated/);
+  assert.match(edge, /authUserDeleted/);
   assert.match(
     securityBackend,
     /globalServiceOnlyPublicFunctions[\s\S]*service_rollback_failed_account_deletion/
@@ -2072,6 +2083,8 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
   assert.match(accountDeletionTests, /authenticated clients cannot execute the legacy account deletion request RPC/i);
   assert.match(accountDeletionTests, /service role can execute the account deletion request service RPC/i);
   assert.match(accountDeletionTests, /actors can reserve user-scoped request-account-deletion invocations/i);
+  assert.match(accountDeletionTests, /terminal security events finalize after Auth hard-delete/i);
+  assert.match(accountDeletionTests, /deleted_actor_user_id/i);
   assert.match(catalog, /Restaurants you solely own are closed/);
   assert.match(settings, /requestAccountDeletion/);
 });

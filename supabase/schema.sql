@@ -3,7 +3,7 @@
 -- This snapshot intentionally omits later tables such as inventory_movements,
 -- inventory_count_sessions, account_deletion_requests, Gmail/outreach objects,
 -- and user-scoped Edge firewall policies for account-onboarding /
--- request-account-deletion (see migrations through 20260801101000_*).
+-- request-account-deletion (see migrations through 20260802020000_*).
 -- SCHEMA_SQL_IS_LEGACY_SNAPSHOT=1
 
 create extension if not exists "pgcrypto";

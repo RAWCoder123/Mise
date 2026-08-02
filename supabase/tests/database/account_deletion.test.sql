@@ -1,6 +1,6 @@
 begin;
 
-select plan(19);
+select plan(24);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -188,6 +188,70 @@ select ok(
   (select archived_at is null from public.restaurants where id = 'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1'),
   'rollback unarchives the sole-owned restaurant'
 );
+
+-- Post-Auth-delete terminal security events must still finalize.
+set local role service_role;
+select ok(
+  pg_temp.try_execute(
+    $sql$select public.service_request_my_account_deletion(
+      'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+      'DELETE'
+    )$sql$
+  ),
+  'sole owner can re-request deletion after rollback for post-delete audit proof'
+);
+
+create temporary table pg_temp.deletion_reservation as
+select (public.reserve_user_scoped_edge_function_invocation(
+  'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+  'request-account-deletion',
+  'request_account_deletion',
+  '{"source":"pgTAP-post-delete"}'::jsonb
+)->>'reservation_id')::uuid as reservation_id;
+
+select ok(
+  (select reservation_id is not null from pg_temp.deletion_reservation),
+  'post-delete proof reserves a request-account-deletion invocation'
+);
+
+select ok(
+  (
+    select metadata ? 'reserved_actor_user_id'
+    from private.edge_function_security_events
+    where id = (select reservation_id from pg_temp.deletion_reservation)
+  ),
+  'user-scoped reservations store immutable reserved_actor_user_id metadata'
+);
+
+-- Simulate Auth hard-delete: FK nulls actor_user_id on the reservation row.
+delete from auth.users where id = 'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1';
+
+select ok(
+  (
+    select public.record_user_scoped_edge_function_security_event(
+      'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+      (select reservation_id from pg_temp.deletion_reservation),
+      'request-account-deletion',
+      'completed',
+      'request_account_deletion',
+      '{"result_entity":"account_deletion_requests"}'::jsonb
+    )
+  ),
+  'terminal security events finalize after Auth hard-delete nulls reservation actor'
+);
+
+select ok(
+  exists (
+    select 1
+    from private.edge_function_security_events terminal
+    where terminal.reservation_id = (select reservation_id from pg_temp.deletion_reservation)
+      and terminal.event_type = 'completed'
+      and terminal.actor_user_id is null
+      and terminal.metadata->>'deleted_actor_user_id' = 'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1'
+  ),
+  'completed deletion audit retains deleted_actor_user_id without auth.users FK'
+);
+reset role;
 
 select * from finish();
 rollback;

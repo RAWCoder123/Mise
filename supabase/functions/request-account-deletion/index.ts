@@ -40,6 +40,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);
 
   let terminalContext: UserScopedInvocationTerminalContext | null = null;
+  let authUserDeleted = false;
   try {
     const { securitySupabase, user } = await requireAuthenticatedContext(req);
     const body = await readJsonObject(req);
@@ -113,29 +114,41 @@ Deno.serve(async (req) => {
         "Account removal failed. Restaurant access was restored so you can retry or contact support."
       );
     }
+    authUserDeleted = true;
 
-    await updateDeletionRequestStatus(securitySupabase, requestId, user.id, {
-      status: "completed",
-      completed_at: new Date().toISOString(),
-      metadata: {
-        ...existingMetadata,
-        source: FUNCTION_NAME,
-        completed_via: "auth_admin_delete_user"
-      }
-    });
+    // After Auth hard-delete, prefer completing the audit trail over surfacing
+    // secondary status/finalize failures as a false "deletion failed" to the client.
+    try {
+      await updateDeletionRequestStatus(securitySupabase, requestId, user.id, {
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        metadata: {
+          ...existingMetadata,
+          source: FUNCTION_NAME,
+          completed_via: "auth_admin_delete_user"
+        }
+      });
+    } catch {
+      // Request row remains the durable subject_user_id audit key for support.
+    }
 
-    await recordUserScopedFunctionSecurityEvent(
-      securitySupabase,
-      user.id,
-      reservation.reservation_id!,
-      FUNCTION_NAME,
-      "completed",
-      ACTION,
-      {
-        result_entity: "account_deletion_requests",
-        request_id: requestId
-      }
-    );
+    try {
+      await recordUserScopedFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        FUNCTION_NAME,
+        "completed",
+        ACTION,
+        {
+          result_entity: "account_deletion_requests",
+          request_id: requestId
+        }
+      );
+    } catch {
+      // SQL path allows null-actor finalization; if finalize still fails, Auth is already gone.
+    }
+    terminalContext = null;
 
     return jsonResponse({
       status: "completed",
@@ -143,7 +156,16 @@ Deno.serve(async (req) => {
       message: "Account deletion completed."
     });
   } catch (error) {
+    if (!authUserDeleted) {
+      await recordUserScopedFunctionTerminalError(terminalContext);
+      return handleError(error);
+    }
+
+    // Auth user is already deleted; best-effort error audit then report completion.
     await recordUserScopedFunctionTerminalError(terminalContext);
-    return handleError(error);
+    return jsonResponse({
+      status: "completed",
+      message: "Account deletion completed."
+    });
   }
 });
