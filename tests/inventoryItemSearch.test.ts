@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   filterInventoryItemsBySearch,
   filterMenuItemsForPicker,
+  filterStorageLocationsBySearch,
   resolveInventoryItemForRecipeLink,
   searchInventoryItemsForPicker
 } from "../services/domain/inventoryItemSearch";
@@ -113,4 +114,41 @@ test("filterInventoryItemsBySearch preserves order when empty and ranks full lis
     byExtra.map((item) => item.id),
     ["inv-roma"]
   );
+});
+
+const locations = [
+  { id: "loc-main", name: "Main" },
+  { id: "loc-walk", name: "Walk-in Cooler" },
+  { id: "loc-line", name: "Line Fridge" },
+  { id: "loc-dry", name: "Dry Storage" },
+  { id: "loc-bar", name: "Bar Cooler" },
+  { id: "loc-prep", name: "Prep Fridge" }
+] as const;
+
+test("filterStorageLocationsBySearch ranks matches and pins selected when unmatched", () => {
+  const empty = filterStorageLocationsBySearch(locations, " ");
+  assert.deepEqual(
+    empty.map((location) => location.id),
+    ["loc-main", "loc-walk", "loc-line", "loc-dry", "loc-bar", "loc-prep"]
+  );
+
+  const coolers = filterStorageLocationsBySearch(locations, "cooler");
+  assert.deepEqual(
+    coolers.map((location) => location.id),
+    ["loc-bar", "loc-walk"]
+  );
+
+  const pinned = filterStorageLocationsBySearch(locations, "prep", {
+    selectedId: "loc-main"
+  });
+  assert.deepEqual(
+    pinned.map((location) => location.id),
+    ["loc-main", "loc-prep"]
+  );
+
+  const selectedMatch = filterStorageLocationsBySearch(locations, "fridge", {
+    selectedId: "loc-line"
+  });
+  assert.equal(selectedMatch[0]?.id, "loc-line");
+  assert.ok(selectedMatch.some((location) => location.id === "loc-prep"));
 });

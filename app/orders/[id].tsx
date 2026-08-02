@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
-import { ArrowLeft, CheckCircle2, ClipboardCheck, Copy, FileText, Save, Send } from "lucide-react-native";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ClipboardCheck,
+  Copy,
+  FileText,
+  Save,
+  Search,
+  Send
+} from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -22,6 +31,10 @@ import {
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
+import {
+  filterStorageLocationsBySearch,
+  STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD
+} from "../../services/domain/inventoryItemSearch";
 import { MAIN_STORAGE_LOCATION_NAME } from "../../services/domain/inventoryTransfer";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
@@ -60,6 +73,7 @@ export default function OrderDraftDetailScreen() {
   const [receiveNotes, setReceiveNotes] = useState<Record<string, string>>({});
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
   const [receiveStorageLocationId, setReceiveStorageLocationId] = useState("");
+  const [putAwayLocationQuery, setPutAwayLocationQuery] = useState("");
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -437,6 +451,33 @@ export default function OrderDraftDetailScreen() {
       }),
     [isSent, linkedRecommendations, parseNumber, receiveNotes, receiveQuantities]
   );
+  const showPutAwayLocationSearch =
+    storageLocations.length >= STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD;
+  const matchedPutAwayLocations = useMemo(
+    () =>
+      showPutAwayLocationSearch
+        ? filterStorageLocationsBySearch(storageLocations, putAwayLocationQuery)
+        : storageLocations,
+    [putAwayLocationQuery, showPutAwayLocationSearch, storageLocations]
+  );
+  const visiblePutAwayLocations = useMemo(
+    () =>
+      showPutAwayLocationSearch
+        ? filterStorageLocationsBySearch(storageLocations, putAwayLocationQuery, {
+            selectedId: receiveStorageLocationId
+          })
+        : storageLocations,
+    [
+      putAwayLocationQuery,
+      receiveStorageLocationId,
+      showPutAwayLocationSearch,
+      storageLocations
+    ]
+  );
+  const putAwayLocationNoMatches =
+    showPutAwayLocationSearch &&
+    putAwayLocationQuery.trim().length > 0 &&
+    matchedPutAwayLocations.length === 0;
 
   function goBackToOrders() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -579,8 +620,24 @@ export default function OrderDraftDetailScreen() {
                 <View style={styles.receivePutAway}>
                   <Text style={styles.receivePutAwayLabel}>{t("orders.detail.receive.putAway")}</Text>
                   <Text style={styles.receivePutAwayHelp}>{t("orders.detail.receive.putAwayHelp")}</Text>
+                  {showPutAwayLocationSearch ? (
+                    <View style={styles.locationSearchBox}>
+                      <Search size={18} color={colors.faint} strokeWidth={2.25} />
+                      <TextInput
+                        accessibilityLabel={t("orders.detail.receive.putAwaySearch.accessibility")}
+                        accessibilityHint={t("orders.detail.receive.putAwaySearch.hint")}
+                        value={putAwayLocationQuery}
+                        onChangeText={setPutAwayLocationQuery}
+                        editable={!busy}
+                        placeholder={t("orders.detail.receive.putAwaySearch.placeholder")}
+                        placeholderTextColor={colors.faint}
+                        returnKeyType="search"
+                        style={styles.locationSearchInput}
+                      />
+                    </View>
+                  ) : null}
                   <View style={styles.locationChips}>
-                    {storageLocations.map((location) => {
+                    {visiblePutAwayLocations.map((location) => {
                       const selected = location.id === receiveStorageLocationId;
                       return (
                         <Pressable
@@ -606,6 +663,11 @@ export default function OrderDraftDetailScreen() {
                       );
                     })}
                   </View>
+                  {putAwayLocationNoMatches ? (
+                    <Text style={styles.locationSearchEmpty} accessibilityLiveRegion="polite">
+                      {t("orders.detail.receive.putAwaySearch.empty")}
+                    </Text>
+                  ) : null}
                 </View>
               ) : null}
               {linkedRecommendations.map((recommendation) => {
@@ -962,6 +1024,32 @@ const styles = StyleSheet.create({
   receivePutAwayHelp: {
     color: colors.muted,
     ...typography.caption
+  },
+  locationSearchBox: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4
+  },
+  locationSearchInput: {
+    flex: 1,
+    minHeight: 42,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 15,
+    lineHeight: 20,
+    paddingVertical: 0
+  },
+  locationSearchEmpty: {
+    color: colors.muted,
+    ...typography.caption,
+    marginTop: 2
   },
   locationChips: {
     flexDirection: "row",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import {
   ArrowDownRight,
@@ -7,6 +7,7 @@ import {
   ClipboardList,
   PackageCheck,
   Save,
+  Search,
   Trash2
 } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -33,6 +34,10 @@ import {
   transferInventory,
   updateInventoryItem
 } from "../../services/miseService";
+import {
+  filterStorageLocationsBySearch,
+  STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD
+} from "../../services/domain/inventoryItemSearch";
 import { reconcileLocationBalancesForDisplay } from "../../services/domain/inventoryTransfer";
 import {
   canManageRestaurantData,
@@ -974,11 +979,45 @@ function LocationChooser({
   disabled: boolean;
   onSelect: (value: string) => void;
 }) {
+  const { t } = useLocale();
+  const [locationQuery, setLocationQuery] = useState("");
+  const showSearch = locations.length >= STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD;
+  const matchedLocations = useMemo(
+    () => (showSearch ? filterStorageLocationsBySearch(locations, locationQuery) : locations),
+    [locationQuery, locations, showSearch]
+  );
+  const visibleLocations = useMemo(
+    () =>
+      showSearch
+        ? filterStorageLocationsBySearch(locations, locationQuery, { selectedId })
+        : locations,
+    [locationQuery, locations, selectedId, showSearch]
+  );
+  const noMatches = showSearch && locationQuery.trim().length > 0 && matchedLocations.length === 0;
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
+      {showSearch ? (
+        <View style={styles.locationSearchBox}>
+          <Search size={18} color={colors.faint} strokeWidth={2.25} />
+          <TextInput
+            accessibilityLabel={t("inventory.detail.transferLocationSearch.accessibility", {
+              field: label
+            })}
+            accessibilityHint={t("inventory.detail.transferLocationSearch.hint")}
+            value={locationQuery}
+            onChangeText={setLocationQuery}
+            editable={!disabled}
+            placeholder={t("inventory.detail.transferLocationSearch.placeholder")}
+            placeholderTextColor={colors.faint}
+            returnKeyType="search"
+            style={styles.locationSearchInput}
+          />
+        </View>
+      ) : null}
       <View style={styles.locationChips}>
-        {locations.map((location) => {
+        {visibleLocations.map((location) => {
           const selected = location.id === selectedId;
           return (
             <Pressable
@@ -997,6 +1036,11 @@ function LocationChooser({
           );
         })}
       </View>
+      {noMatches ? (
+        <Text style={styles.locationSearchEmpty} accessibilityLiveRegion="polite">
+          {t("inventory.detail.transferLocationSearch.empty")}
+        </Text>
+      ) : null}
       {error ? <Text style={styles.fieldError} accessibilityLiveRegion="polite">{error}</Text> : null}
     </View>
   );
@@ -1105,6 +1149,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8
+  },
+  locationSearchBox: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10
+  },
+  locationSearchInput: {
+    flex: 1,
+    minHeight: 42,
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "600",
+    paddingVertical: 0
+  },
+  locationSearchEmpty: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 6
   },
   locationChip: {
     minHeight: 44,

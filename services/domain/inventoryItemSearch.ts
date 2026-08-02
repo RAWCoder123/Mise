@@ -191,3 +191,76 @@ export function filterInventoryItemsBySearch<T extends InventoryItemSearchFields
     })
     .map((match) => match.item);
 }
+
+/** Show location chip search once a restaurant has enough stations to hunt through. */
+export const STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD = 5;
+
+export type StorageLocationSearchFields = {
+  id: string;
+  name: string;
+};
+
+function scoreStorageLocationMatch(name: string, query: string): number | null {
+  const normalizedQuery = inventoryItemNameKey(query);
+  if (!normalizedQuery) return 0;
+
+  const nameKey = inventoryItemNameKey(name);
+  if (!nameKey) return null;
+
+  if (nameKey === normalizedQuery) return 1000;
+  if (nameKey.startsWith(normalizedQuery)) return 800;
+  if (nameKey.includes(normalizedQuery)) return 600;
+
+  const tokens = tokenize(query);
+  if (tokens.length > 1) {
+    const allTokensPresent = tokens.every((token) => nameKey.includes(token));
+    if (allTokensPresent) return 700;
+  }
+
+  return null;
+}
+
+/**
+ * Rank storage locations for transfer / receive put-away chip pickers.
+ * Empty query preserves caller order. Selected location stays visible even when it
+ * does not match the query so operators cannot lose their current choice.
+ */
+export function filterStorageLocationsBySearch<T extends StorageLocationSearchFields>(
+  locations: readonly T[],
+  query: string,
+  options?: { selectedId?: string | null }
+): T[] {
+  const normalizedQuery = inventoryItemNameKey(query);
+  const selectedId = String(options?.selectedId ?? "").trim() || null;
+  const selected = selectedId
+    ? locations.find((location) => location.id === selectedId) ?? null
+    : null;
+
+  if (!normalizedQuery) {
+    return [...locations];
+  }
+
+  const ranked = locations
+    .map((location) => {
+      const score = scoreStorageLocationMatch(location.name, query);
+      if (score == null) return null;
+      return { location, score };
+    })
+    .filter((match): match is { location: T; score: number } => match != null)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return inventoryItemNameKey(left.location.name).localeCompare(
+        inventoryItemNameKey(right.location.name)
+      );
+    })
+    .map((match) => match.location);
+
+  if (!selected) return ranked;
+  if (ranked.some((location) => location.id === selected.id)) {
+    return ranked;
+  }
+  return [selected, ...ranked];
+}
+
+/** Show recommendation find once the review queue is long enough to hunt through. */
+export const PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD = 5;

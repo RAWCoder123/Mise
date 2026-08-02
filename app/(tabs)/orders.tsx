@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
-import { LockKeyhole, Mail, RotateCcw, Truck } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { LockKeyhole, Mail, RotateCcw, Search, Truck } from "lucide-react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { RecommendationDecisionRow } from "../../components/RecommendationDecisionRow";
 import { SupplierDraftCard } from "../../components/SupplierDraftCard";
@@ -29,6 +29,10 @@ import {
   undoPurchaseRecommendationAction
 } from "../../services/miseService";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
+import {
+  filterInventoryItemsBySearch,
+  PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD
+} from "../../services/domain/inventoryItemSearch";
 import { buildRecommendationDecisionTelemetry } from "../../services/domain/recommendationFeedback";
 import {
   operatingLimits,
@@ -58,6 +62,7 @@ export default function OrdersScreen() {
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [lane, setLane] = useState<OrderLane>("drafts");
+  const [recommendationQuery, setRecommendationQuery] = useState("");
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [quantityErrors, setQuantityErrors] = useState<Record<string, string | undefined>>({});
   const [dismissReasons, setDismissReasons] = useState<Record<string, string>>({});
@@ -205,15 +210,28 @@ export default function OrdersScreen() {
   const visibleMessage = messageRestaurantId === restaurant?.id ? message : null;
   const visibleUndoAction = dataMatchesActiveRestaurant && canManage ? undoAction : null;
 
+  const showRecommendationSearch =
+    visibleRecommendations.length >= PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD;
+  const filteredRecommendations = useMemo(() => {
+    if (!showRecommendationSearch) return visibleRecommendations;
+    return filterInventoryItemsBySearch(visibleRecommendations, recommendationQuery, {
+      getExtraSearchText: (recommendation) => recommendation.reason
+    });
+  }, [recommendationQuery, showRecommendationSearch, visibleRecommendations]);
+  const recommendationSearchNoMatches =
+    showRecommendationSearch &&
+    recommendationQuery.trim().length > 0 &&
+    filteredRecommendations.length === 0;
+
   const groupedRecommendations = useMemo(() => {
     const groups = new Map<string, PurchaseRecommendation[]>();
-    visibleRecommendations.forEach((recommendation) => {
+    filteredRecommendations.forEach((recommendation) => {
       const current = groups.get(recommendation.supplier_name) ?? [];
       current.push(recommendation);
       groups.set(recommendation.supplier_name, current);
     });
     return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
-  }, [visibleRecommendations]);
+  }, [filteredRecommendations]);
 
   const draftOrders = useMemo(
     () => visibleOrders.filter((order) => order.status === "draft"),
@@ -735,6 +753,28 @@ export default function OrdersScreen() {
                     )}
                     size="compact"
                   />
+                  {showRecommendationSearch ? (
+                    <View style={styles.recommendationSearchBox}>
+                      <Search size={18} color={colors.faint} strokeWidth={2.25} />
+                      <TextInput
+                        accessibilityLabel={t("orders.review.search.accessibility")}
+                        accessibilityHint={t("orders.review.search.hint")}
+                        value={recommendationQuery}
+                        onChangeText={setRecommendationQuery}
+                        placeholder={t("orders.review.search.placeholder")}
+                        placeholderTextColor={colors.faint}
+                        returnKeyType="search"
+                        style={styles.recommendationSearchInput}
+                      />
+                    </View>
+                  ) : null}
+                  {recommendationSearchNoMatches ? (
+                    <EmptyState
+                      compact
+                      title={t("orders.review.search.emptyTitle")}
+                      body={t("orders.review.search.emptyBody")}
+                    />
+                  ) : null}
                   {groupedRecommendations.map(([supplierName, supplierRecommendations]) => (
                     <SectionSurface key={supplierName} padding="none">
                       <View style={styles.supplierHeader}>
@@ -940,6 +980,26 @@ const styles = StyleSheet.create({
   reviewQueue: {
     gap: 10,
     paddingTop: 4
+  },
+  recommendationSearchBox: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  recommendationSearchInput: {
+    flex: 1,
+    minHeight: 42,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 15,
+    lineHeight: 20,
+    paddingVertical: 0
   },
   supplierHeader: {
     minHeight: 60,

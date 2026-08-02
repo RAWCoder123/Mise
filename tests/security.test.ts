@@ -1409,6 +1409,30 @@ test("inventory station health rows filter the stock list through presentation h
   assert.match(catalog, /"inventory\.emptyMatches\.stationBody"/);
 });
 
+test("transfer put-away and orders review reuse ranked location and recommendation search", () => {
+  const detailScreen = readFileSync("app/inventory/[id].tsx", "utf8");
+  const orderDetailScreen = readFileSync("app/orders/[id].tsx", "utf8");
+  const ordersScreen = readFileSync("app/(tabs)/orders.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const searchDomain = readFileSync("services/domain/inventoryItemSearch.ts", "utf8");
+
+  assert.match(searchDomain, /export\s+function\s+filterStorageLocationsBySearch/);
+  assert.match(searchDomain, /STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD/);
+  assert.match(searchDomain, /PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD/);
+  assert.match(detailScreen, /filterStorageLocationsBySearch/);
+  assert.match(detailScreen, /STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD/);
+  assert.match(detailScreen, /inventory\.detail\.transferLocationSearch\.accessibility/);
+  assert.match(orderDetailScreen, /filterStorageLocationsBySearch/);
+  assert.match(orderDetailScreen, /orders\.detail\.receive\.putAwaySearch\.accessibility/);
+  assert.match(ordersScreen, /filterInventoryItemsBySearch/);
+  assert.match(ordersScreen, /PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD/);
+  assert.match(ordersScreen, /orders\.review\.search\.accessibility/);
+  assert.match(catalog, /"inventory\.detail\.transferLocationSearch\.placeholder"/);
+  assert.match(catalog, /"orders\.detail\.receive\.putAwaySearch\.placeholder"/);
+  assert.match(catalog, /"orders\.review\.search\.placeholder"/);
+  assert.match(catalog, /"orders\.review\.search\.emptyTitle"/);
+});
+
 test("setup recipe drafts resolve inventory through searchable picker helpers", () => {
   const screen = readFileSync("app/(auth)/setup.tsx", "utf8");
   const setupService = readFileSync("services/application/setup.ts", "utf8");
