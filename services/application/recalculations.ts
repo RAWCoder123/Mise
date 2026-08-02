@@ -12,7 +12,9 @@ export async function generateInsightsFromSalesAndInventory(restaurantId: string
     data.menuItemIngredients,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   await repository.replaceInsights(restaurantId, insights);
   return insights;
@@ -29,7 +31,9 @@ export async function generatePurchaseRecommendations(restaurantId: string) {
     recommendationHistory,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   await repository.replacePendingRecommendations(restaurantId, inserts);
 }
@@ -47,7 +51,9 @@ export async function regenerateOperationalSignals(restaurantId: string) {
     recommendationHistory,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -56,7 +62,9 @@ export async function regenerateOperationalSignals(restaurantId: string) {
     data.menuItemIngredients,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   await repository.replaceOperationalSignals(restaurantId, recommendations, insights);
 }

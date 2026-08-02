@@ -13,6 +13,12 @@ import {
   buildChronicShortShipInsightInput,
   buildReceiveFillBiasByItem
 } from "../domain/receiveDiscrepancyLearning";
+import {
+  buildChronicCountShrinkInsightInput,
+  buildChronicWasteInsightInput,
+  buildCountShrinkBiasByItem,
+  buildWasteBiasByItem
+} from "../domain/wasteVarianceLearning";
 import type { InventoryStatus, TodaySummary } from "../../types/mise";
 import { toDateKeyInTimeZone } from "../../utils/format";
 import { getMiseRepository } from "./repository";
@@ -113,6 +119,30 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       sampleCount: bias.sampleCount
     }];
   });
+  const wasteBiasByItem = buildWasteBiasByItem(planning.wasteHistory ?? []);
+  const chronicWasteItems = inventoryItems.flatMap((item) => {
+    const bias = wasteBiasByItem.get(item.id);
+    const marker = bias ? buildChronicWasteInsightInput(bias) : null;
+    if (!bias || !marker) return [];
+    return [{
+      inventoryItemId: item.id,
+      itemName: item.item_name,
+      lossPercent: marker.lossPercent,
+      sampleCount: bias.sampleCount
+    }];
+  });
+  const countShrinkBiasByItem = buildCountShrinkBiasByItem(planning.countVarianceHistory ?? []);
+  const chronicCountShrinkItems = inventoryItems.flatMap((item) => {
+    const bias = countShrinkBiasByItem.get(item.id);
+    const marker = bias ? buildChronicCountShrinkInsightInput(bias) : null;
+    if (!bias || !marker) return [];
+    return [{
+      inventoryItemId: item.id,
+      itemName: item.item_name,
+      lossPercent: marker.lossPercent,
+      sampleCount: bias.sampleCount
+    }];
+  });
 
   return {
     ...summary,
@@ -128,6 +158,8 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       unmappedPosMenuItems: recipeBaseline.posItemsMissingRecipes,
       incompatibleRecipeMenuItems: recipeBaseline.posItemsWithIncompatibleUnits,
       chronicShortShipItems,
+      chronicWasteItems,
+      chronicCountShrinkItems,
       insights,
       openCountSession: openCountSession?.session ?? null
     }),

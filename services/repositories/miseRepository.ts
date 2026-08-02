@@ -78,6 +78,12 @@ import {
   type ReceiveDiscrepancySample
 } from "../domain/receiveDiscrepancyLearning";
 import {
+  extractCountVarianceSamplesFromMovements,
+  extractWasteSamplesFromMovements,
+  type CountVarianceSample,
+  type WasteSample
+} from "../domain/wasteVarianceLearning";
+import {
   findSupplierRecipientCatalogName,
   supplierRecipientDirectoryKey
 } from "../domain/supplierRecipients";
@@ -261,6 +267,10 @@ export interface PlanningData {
   appliedTodayConsumptionByItemId: Record<string, number>;
   /** Receiving ledger samples for short-ship fill-rate learning. */
   receivingHistory: ReceiveDiscrepancySample[];
+  /** Waste ledger samples for chronic spoilage/loss learning. */
+  wasteHistory: WasteSample[];
+  /** Manual count variance samples for chronic shrink learning. */
+  countVarianceHistory: CountVarianceSample[];
 }
 
 export interface MiseRepository {
@@ -1255,7 +1265,9 @@ function createLocalDemoRepository(): MiseRepository {
           restaurantMovements,
           operatingDate
         ),
-        receivingHistory: extractReceiveSamplesFromMovements(restaurantMovements)
+        receivingHistory: extractReceiveSamplesFromMovements(restaurantMovements),
+        wasteHistory: extractWasteSamplesFromMovements(restaurantMovements),
+        countVarianceHistory: extractCountVarianceSamplesFromMovements(restaurantMovements)
       };
     },
 
@@ -3054,7 +3066,16 @@ function createSupabaseRepository(): MiseRepository {
     },
 
     async fetchPlanningData(restaurantId) {
-      const [inventoryResult, sales, mappingResult, restaurantResult, movementsResult, receivingResult] =
+      const [
+        inventoryResult,
+        sales,
+        mappingResult,
+        restaurantResult,
+        movementsResult,
+        receivingResult,
+        wasteResult,
+        countVarianceResult
+      ] =
         await Promise.all([
         client.from("inventory_items").select("*").eq("restaurant_id", restaurantId).order("item_name"),
         fetchBoundedPlanningSales(restaurantId),
@@ -3073,6 +3094,20 @@ function createSupabaseRepository(): MiseRepository {
           .eq("restaurant_id", restaurantId)
           .eq("reason", "receiving")
           .order("created_at", { ascending: false })
+          .limit(500),
+        client
+          .from("inventory_movements")
+          .select("reason,inventory_item_id,quantity_before,quantity_after,metadata,created_at")
+          .eq("restaurant_id", restaurantId)
+          .eq("reason", "waste")
+          .order("created_at", { ascending: false })
+          .limit(500),
+        client
+          .from("inventory_movements")
+          .select("reason,inventory_item_id,quantity_before,quantity_after,metadata,created_at")
+          .eq("restaurant_id", restaurantId)
+          .eq("reason", "manual_count")
+          .order("created_at", { ascending: false })
           .limit(500)
       ]);
       if (inventoryResult.error) throw inventoryResult.error;
@@ -3080,6 +3115,8 @@ function createSupabaseRepository(): MiseRepository {
       if (restaurantResult.error) throw restaurantResult.error;
       if (movementsResult.error) throw movementsResult.error;
       if (receivingResult.error) throw receivingResult.error;
+      if (wasteResult.error) throw wasteResult.error;
+      if (countVarianceResult.error) throw countVarianceResult.error;
       const operatingDate = toDateKeyInTimeZone(
         new Date(),
         (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
@@ -3097,6 +3134,26 @@ function createSupabaseRepository(): MiseRepository {
           (receivingResult.data ?? []) as Array<{
             reason: string;
             inventory_item_id: string;
+            metadata: Record<string, unknown>;
+            created_at: string;
+          }>
+        ),
+        wasteHistory: extractWasteSamplesFromMovements(
+          (wasteResult.data ?? []) as Array<{
+            reason: string;
+            inventory_item_id: string;
+            quantity_before: number;
+            quantity_after: number;
+            metadata: Record<string, unknown>;
+            created_at: string;
+          }>
+        ),
+        countVarianceHistory: extractCountVarianceSamplesFromMovements(
+          (countVarianceResult.data ?? []) as Array<{
+            reason: string;
+            inventory_item_id: string;
+            quantity_before: number;
+            quantity_after: number;
             metadata: Record<string, unknown>;
             created_at: string;
           }>
@@ -3809,6 +3866,8 @@ export function buildLocalInsightsForTest(data: PlanningData & { restaurantId: s
     data.sales,
     data.menuItemIngredients,
     data.operatingDate,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
 }

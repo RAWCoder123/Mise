@@ -139,6 +139,14 @@ test("every allowlisted Today presentation code renders in all locales and prese
     {
       code: "today.ordering.chronic_short_ship",
       values: { itemName, supplierName, fillPercent: 88, sampleCount: 5 }
+    },
+    {
+      code: "today.waste.chronic_waste",
+      values: { itemName, lossPercent: 12, sampleCount: 5 }
+    },
+    {
+      code: "today.inventory.chronic_count_shrink",
+      values: { itemName, lossPercent: 18, sampleCount: 4 }
     }
   ];
 
@@ -185,6 +193,14 @@ test("rules-based Insight codes localize structured values while opaque copy is 
       values: { menuItemName: itemName, inventoryItemName: "Crème fraîche", supplierName }
     },
     { code: "insight.rule.waste.overstock", values: { itemName, quantity: 44.5, unit: "lb" } },
+    {
+      code: "insight.rule.waste.chronic_waste",
+      values: { itemName, lossPercent: 12, sampleCount: 5 }
+    },
+    {
+      code: "insight.rule.inventory.chronic_count_shrink",
+      values: { itemName, lossPercent: 18, sampleCount: 4 }
+    },
     {
       code: "insight.rule.ordering.chronic_short_ship",
       values: { itemName, supplierName, fillPercent: 88, sampleCount: 5 }

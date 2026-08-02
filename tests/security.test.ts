@@ -1914,6 +1914,43 @@ test("receive discrepancy learning exposes bounded receivingHistory without clie
   assert.match(pgTap, /receivingHistory quantityOrdered matches accepted ordered qty/);
 });
 
+test("waste and count-variance learning exposes bounded ledger history without client write authority", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260802030000_waste_count_variance_learning_snapshot.sql",
+    "utf8"
+  );
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const domain = readFileSync("services/domain/wasteVarianceLearning.ts", "utf8");
+  const signals = readFileSync("services/domain/operationalSignals.ts", "utf8");
+  const today = readFileSync("services/domain/todayTasks.ts", "utf8");
+  const pgTap = readFileSync(
+    "supabase/tests/database/waste_count_variance_learning.test.sql",
+    "utf8"
+  );
+
+  assert.match(migration, /'wasteHistory'/);
+  assert.match(migration, /'countVarianceHistory'/);
+  assert.match(migration, /reason = 'waste'/);
+  assert.match(migration, /reason = 'manual_count'/);
+  assert.match(migration, /inventory_movements_restaurant_waste_created_at_idx/);
+  assert.match(migration, /inventory_movements_restaurant_manual_count_created_at_idx/);
+  assert.match(migration, /limit 500/);
+  assert.match(edge, /wasteHistory:\s*\[\.\.\.inFlightWaste/);
+  assert.match(edge, /countVarianceHistory:\s*\[\.\.\.inFlightCountVariance/);
+  assert.match(domain, /LOSS_MULTIPLIER_MAX = 1\.2/);
+  assert.match(domain, /LOSS_LEARNING_MIN_SAMPLES = 3/);
+  assert.match(signals, /buildWasteBiasByItem/);
+  assert.match(signals, /buildCountShrinkBiasByItem/);
+  assert.match(signals, /insight\.rule\.waste\.chronic_waste/);
+  assert.match(signals, /insight\.rule\.inventory\.chronic_count_shrink/);
+  assert.match(today, /today\.waste\.chronic_waste/);
+  assert.match(today, /today\.inventory\.chronic_count_shrink/);
+  assert.match(pgTap, /planning snapshot includes wasteHistory key/);
+  assert.match(pgTap, /planning snapshot includes countVarianceHistory key/);
+  assert.match(pgTap, /wasteHistory quantityRemoved matches applied waste qty/);
+  assert.match(pgTap, /countVarianceHistory variance matches shrink amount/);
+});
+
 test("security readiness document defines private-beta backend rules and public launch blockers", () => {
   const doc = readFileSync("docs/security-readiness.md", "utf8");
 

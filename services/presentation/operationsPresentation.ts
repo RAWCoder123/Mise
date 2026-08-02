@@ -95,6 +95,10 @@ interface OperationsCopy {
       fillPercentLabel: string,
       sampleCountLabel: string
     ) => string;
+    chronicWasteTitle: (itemName: string) => string;
+    chronicWasteDetail: (lossPercentLabel: string, sampleCountLabel: string) => string;
+    chronicCountShrinkTitle: (itemName: string) => string;
+    chronicCountShrinkDetail: (lossPercentLabel: string, sampleCountLabel: string) => string;
     actions: {
       updateInventoryCount: string;
       beginCountSession: string;
@@ -112,6 +116,8 @@ interface OperationsCopy {
       mapUnmappedPosItems: string;
       repairIncompatibleRecipeUnits: string;
       reviewShortShips: string;
+      reviewWaste: string;
+      startRecount: string;
     };
   };
   insight: {
@@ -141,6 +147,22 @@ interface OperationsCopy {
     ) => string;
     shortShipWhy: string;
     shortShipAction: (supplierName: string) => string;
+    chronicWasteTitle: (itemName: string) => string;
+    chronicWasteDescription: (
+      itemName: string,
+      lossPercentLabel: string,
+      sampleCountLabel: string
+    ) => string;
+    chronicWasteWhy: string;
+    chronicWasteAction: (itemName: string) => string;
+    chronicCountShrinkTitle: (itemName: string) => string;
+    chronicCountShrinkDescription: (
+      itemName: string,
+      lossPercentLabel: string,
+      sampleCountLabel: string
+    ) => string;
+    chronicCountShrinkWhy: string;
+    chronicCountShrinkAction: (itemName: string) => string;
   };
   memory: {
     reliableLabel: string;
@@ -264,6 +286,12 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicShortShipTitle: (itemName) => `${itemName} is often short-shipped`,
       chronicShortShipDetail: (supplierName, fillPercentLabel, sampleCountLabel) =>
         `Recent ${supplierName} deliveries averaged about ${fillPercentLabel} of ordered across ${sampleCountLabel} receives.`,
+      chronicWasteTitle: (itemName) => `${itemName} has a chronic waste pattern`,
+      chronicWasteDetail: (lossPercentLabel, sampleCountLabel) =>
+        `Recent waste averaged about ${lossPercentLabel} of on-hand across ${sampleCountLabel} records.`,
+      chronicCountShrinkTitle: (itemName) => `${itemName} often shrinks between counts`,
+      chronicCountShrinkDetail: (lossPercentLabel, sampleCountLabel) =>
+        `Recent counts averaged about ${lossPercentLabel} below system across ${sampleCountLabel} counts.`,
       actions: {
         updateInventoryCount: "Review count",
         beginCountSession: "Start count",
@@ -280,7 +308,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         reviewInsight: "Review insight",
         mapUnmappedPosItems: "Map recipes",
         repairIncompatibleRecipeUnits: "Fix recipe units",
-        reviewShortShips: "Review short-ships"
+        reviewShortShips: "Review short-ships",
+        reviewWaste: "Review waste",
+        startRecount: "Start recount"
       }
     },
     insight: {
@@ -306,7 +336,20 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         `Recent ${supplierName} deliveries for ${itemName} averaged about ${fillPercentLabel} of the ordered quantity across ${sampleCountLabel} receives.`,
       shortShipWhy: "Chronic short-ships leave less on hand than Mise ordered and can create avoidable stockouts.",
       shortShipAction: (supplierName) =>
-        `Order slightly more from ${supplierName}, or confirm counts carefully when receiving.`
+        `Order slightly more from ${supplierName}, or confirm counts carefully when receiving.`,
+      chronicWasteTitle: (itemName) => `${itemName} has a chronic waste pattern`,
+      chronicWasteDescription: (itemName, lossPercentLabel, sampleCountLabel) =>
+        `Recent waste records for ${itemName} averaged about ${lossPercentLabel} of on-hand across ${sampleCountLabel} events.`,
+      chronicWasteWhy: "Repeated waste silently reduces usable stock and can make par-based orders too light.",
+      chronicWasteAction: (itemName) =>
+        `Review prep and storage for ${itemName}, and confirm the next order covers expected loss.`,
+      chronicCountShrinkTitle: (itemName) => `${itemName} often shrinks between counts`,
+      chronicCountShrinkDescription: (itemName, lossPercentLabel, sampleCountLabel) =>
+        `Recent inventory counts for ${itemName} averaged about ${lossPercentLabel} below system across ${sampleCountLabel} counts.`,
+      chronicCountShrinkWhy:
+        "Unexplained shrink means Mise’s on-hand is drifting high and orders may understock the next service.",
+      chronicCountShrinkAction: (itemName) =>
+        `Investigate count process and theft/spoilage risk for ${itemName}, then recount before ordering.`
     },
     memory: {
       reliableLabel: "Mise memory is reliable",
@@ -429,6 +472,12 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicShortShipTitle: (itemName) => `${itemName} suele llegar incompleto`,
       chronicShortShipDetail: (supplierName, fillPercentLabel, sampleCountLabel) =>
         `Las entregas recientes de ${supplierName} promedian cerca del ${fillPercentLabel} de lo pedido en ${sampleCountLabel} recepciones.`,
+      chronicWasteTitle: (itemName) => `${itemName} tiene un patrón crónico de merma`,
+      chronicWasteDetail: (lossPercentLabel, sampleCountLabel) =>
+        `La merma reciente promedió cerca de ${lossPercentLabel} del stock en ${sampleCountLabel} registros.`,
+      chronicCountShrinkTitle: (itemName) => `${itemName} suele bajar entre conteos`,
+      chronicCountShrinkDetail: (lossPercentLabel, sampleCountLabel) =>
+        `Los conteos recientes promedian cerca de ${lossPercentLabel} por debajo del sistema en ${sampleCountLabel} conteos.`,
       actions: {
         updateInventoryCount: "Revisar conteo",
         beginCountSession: "Iniciar conteo",
@@ -445,7 +494,9 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         reviewInsight: "Revisar análisis",
         mapUnmappedPosItems: "Vincular recetas",
         repairIncompatibleRecipeUnits: "Corregir unidades",
-        reviewShortShips: "Revisar faltantes"
+        reviewShortShips: "Revisar faltantes",
+        reviewWaste: "Revisar merma",
+        startRecount: "Iniciar reconteo"
       }
     },
     insight: {
@@ -471,7 +522,20 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         `Las entregas recientes de ${supplierName} para ${itemName} promedian cerca del ${fillPercentLabel} de lo pedido en ${sampleCountLabel} recepciones.`,
       shortShipWhy: "Los faltantes crónicos dejan menos existencias de las pedidas y pueden causar quiebres evitables.",
       shortShipAction: (supplierName) =>
-        `Pide un poco más a ${supplierName}, o confirma con cuidado las cantidades al recibir.`
+        `Pide un poco más a ${supplierName}, o confirma con cuidado las cantidades al recibir.`,
+      chronicWasteTitle: (itemName) => `${itemName} tiene un patrón crónico de merma`,
+      chronicWasteDescription: (itemName, lossPercentLabel, sampleCountLabel) =>
+        `Los registros recientes de merma de ${itemName} promedian cerca del ${lossPercentLabel} del stock en ${sampleCountLabel} eventos.`,
+      chronicWasteWhy: "La merma repetida reduce el stock usable y puede hacer que los pedidos por par sean demasiado bajos.",
+      chronicWasteAction: (itemName) =>
+        `Revisa la preparación y el almacenamiento de ${itemName}, y confirma que el próximo pedido cubra la pérdida esperada.`,
+      chronicCountShrinkTitle: (itemName) => `${itemName} suele bajar entre conteos`,
+      chronicCountShrinkDescription: (itemName, lossPercentLabel, sampleCountLabel) =>
+        `Los conteos recientes de ${itemName} promedian cerca del ${lossPercentLabel} por debajo del sistema en ${sampleCountLabel} conteos.`,
+      chronicCountShrinkWhy:
+        "Una merma sin explicación indica que el stock en sistema está alto y los pedidos pueden quedar cortos.",
+      chronicCountShrinkAction: (itemName) =>
+        `Investiga el proceso de conteo y el riesgo de merma o robo de ${itemName}, luego recontea antes de pedir.`
     },
     memory: {
       reliableLabel: "La memoria de Mise es confiable",
@@ -592,6 +656,12 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicShortShipTitle: (itemName) => `${itemName} 经常短交`,
       chronicShortShipDetail: (supplierName, fillPercentLabel, sampleCountLabel) =>
         `最近 ${supplierName} 的到货量约为订购量的 ${fillPercentLabel}（基于 ${sampleCountLabel} 次收货）。`,
+      chronicWasteTitle: (itemName) => `${itemName} 存在长期损耗模式`,
+      chronicWasteDetail: (lossPercentLabel, sampleCountLabel) =>
+        `最近损耗约占在手库存的 ${lossPercentLabel}（基于 ${sampleCountLabel} 条记录）。`,
+      chronicCountShrinkTitle: (itemName) => `${itemName} 在盘点间经常缩水`,
+      chronicCountShrinkDetail: (lossPercentLabel, sampleCountLabel) =>
+        `最近盘点平均低于系统约 ${lossPercentLabel}（基于 ${sampleCountLabel} 次盘点）。`,
       actions: {
         updateInventoryCount: "检查盘点",
         beginCountSession: "开始盘点",
@@ -608,9 +678,12 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         reviewInsight: "查看洞察",
         mapUnmappedPosItems: "关联配方",
         repairIncompatibleRecipeUnits: "修复配方单位",
-        reviewShortShips: "查看短交"
+        reviewShortShips: "查看短交",
+        reviewWaste: "查看损耗",
+        startRecount: "开始复盘"
       }
     },
+
     insight: {
       inventoryCriticalTitle: (itemName) => `${itemName} 今天可能用完`,
       inventoryLowTitle: (itemName) => `${itemName} 低于正常库存水平`,
@@ -634,7 +707,19 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         `最近 ${supplierName} 的 ${itemName} 到货量约为订购量的 ${fillPercentLabel}（基于 ${sampleCountLabel} 次收货）。`,
       shortShipWhy: "长期短交会让实际库存低于订购量，并可能导致可避免的缺货。",
       shortShipAction: (supplierName) =>
-        `可适当增加向 ${supplierName} 的订货量，或在收货时仔细核对数量。`
+        `可适当增加向 ${supplierName} 的订货量，或在收货时仔细核对数量。`,
+      chronicWasteTitle: (itemName) => `${itemName} 存在长期损耗模式`,
+      chronicWasteDescription: (itemName, lossPercentLabel, sampleCountLabel) =>
+        `最近 ${itemName} 的损耗约占在手库存的 ${lossPercentLabel}（基于 ${sampleCountLabel} 次记录）。`,
+      chronicWasteWhy: "反复损耗会悄然降低可用库存，并可能让按安全库存下的订单偏少。",
+      chronicWasteAction: (itemName) =>
+        `请检查 ${itemName} 的备餐与储存，并确认下次订货覆盖预期损耗。`,
+      chronicCountShrinkTitle: (itemName) => `${itemName} 在盘点间经常缩水`,
+      chronicCountShrinkDescription: (itemName, lossPercentLabel, sampleCountLabel) =>
+        `最近 ${itemName} 的盘点平均低于系统约 ${lossPercentLabel}（基于 ${sampleCountLabel} 次盘点）。`,
+      chronicCountShrinkWhy: "无法解释的缩水意味着系统库存偏高，订单可能不足以支撑下一营业时段。",
+      chronicCountShrinkAction: (itemName) =>
+        `请排查 ${itemName} 的盘点流程与损耗/失窃风险，并在订货前重新盘点。`
     },
     memory: {
       reliableLabel: "Mise 运营记忆可靠",
@@ -675,7 +760,9 @@ export function presentOperationalTodayTaskAction(
     case "update_inventory_count":
       return actions.updateInventoryCount;
     case "begin_inventory_count_session":
-      return actions.beginCountSession;
+      return task.presentation?.code === "today.inventory.chronic_count_shrink"
+        ? actions.startRecount
+        : actions.beginCountSession;
     case "continue_inventory_count_session":
       return task.presentation?.code === "today.inventory_count_session.approve"
         ? actions.reviewCountSession
@@ -699,9 +786,13 @@ export function presentOperationalTodayTaskAction(
     case "repair_pos_connection":
       return actions.repairPosConnection;
     case "review_insight":
-      return task.presentation?.code === "today.ordering.chronic_short_ship"
-        ? actions.reviewShortShips
-        : actions.reviewInsight;
+      if (task.presentation?.code === "today.ordering.chronic_short_ship") {
+        return actions.reviewShortShips;
+      }
+      if (task.presentation?.code === "today.waste.chronic_waste") {
+        return actions.reviewWaste;
+      }
+      return actions.reviewInsight;
     case "map_unmapped_pos_items":
       return actions.mapUnmappedPosItems;
     case "repair_incompatible_recipe_units":
@@ -841,6 +932,24 @@ export function presentOperationalTodayTask(
       )
     );
   }
+  if (code === "today.waste.chronic_waste") {
+    return result(
+      copy.today.chronicWasteTitle(values.itemName),
+      copy.today.chronicWasteDetail(
+        formatPercent(locale, values.lossPercent),
+        quantity(values.sampleCount)
+      )
+    );
+  }
+  if (code === "today.inventory.chronic_count_shrink") {
+    return result(
+      copy.today.chronicCountShrinkTitle(values.itemName),
+      copy.today.chronicCountShrinkDetail(
+        formatPercent(locale, values.lossPercent),
+        quantity(values.sampleCount)
+      )
+    );
+  }
 
   throw new Error(`Unsupported Today task presentation code: ${String(code)}`);
 }
@@ -925,6 +1034,32 @@ export function presentInsight(locale: AppLocale, insight: Insight): PresentedIn
       ),
       whyItMatters: copy.insight.shortShipWhy,
       recommendedAction: copy.insight.shortShipAction(values.supplierName),
+      evidenceOnly: false
+    };
+  }
+  if (code === "insight.rule.waste.chronic_waste") {
+    return {
+      title: copy.insight.chronicWasteTitle(values.itemName),
+      description: copy.insight.chronicWasteDescription(
+        values.itemName,
+        formatPercent(locale, values.lossPercent),
+        formatQuantity(locale, values.sampleCount)
+      ),
+      whyItMatters: copy.insight.chronicWasteWhy,
+      recommendedAction: copy.insight.chronicWasteAction(values.itemName),
+      evidenceOnly: false
+    };
+  }
+  if (code === "insight.rule.inventory.chronic_count_shrink") {
+    return {
+      title: copy.insight.chronicCountShrinkTitle(values.itemName),
+      description: copy.insight.chronicCountShrinkDescription(
+        values.itemName,
+        formatPercent(locale, values.lossPercent),
+        formatQuantity(locale, values.sampleCount)
+      ),
+      whyItMatters: copy.insight.chronicCountShrinkWhy,
+      recommendedAction: copy.insight.chronicCountShrinkAction(values.itemName),
       evidenceOnly: false
     };
   }

@@ -268,7 +268,9 @@ export async function receiveSupplierOrder(
     recommendationHistory,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    receivingHistory
+    receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   const nextInsights = buildInsightsFromData(
     normalizedRestaurantId,
@@ -277,7 +279,9 @@ export async function receiveSupplierOrder(
     data.menuItemIngredients,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    receivingHistory
+    receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   return repository.receiveSupplierOrderAndSignals(
     normalizedRestaurantId,

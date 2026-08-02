@@ -115,7 +115,9 @@ export async function updateRecipeBaselineIngredient(
     recommendationHistory,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -124,7 +126,9 @@ export async function updateRecipeBaselineIngredient(
     planningMappings,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -194,7 +198,9 @@ export async function addRecipeBaselineIngredient(
     recommendationHistory,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -203,7 +209,9 @@ export async function addRecipeBaselineIngredient(
     planningMappings,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -234,7 +242,9 @@ export async function deleteRecipeBaselineIngredient(restaurantId: string, mappi
     recommendationHistory,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -243,7 +253,9 @@ export async function deleteRecipeBaselineIngredient(restaurantId: string, mappi
     planningMappings,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   await repository.deleteRecipeMappingAndSignals({
     restaurantId,
@@ -316,7 +328,9 @@ export async function createInventoryItem(restaurantId: string, input: Inventory
     recommendationHistory,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -325,7 +339,9 @@ export async function createInventoryItem(restaurantId: string, input: Inventory
     data.menuItemIngredients,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   return repository.createInventoryItemAndSignals(
     restaurantId,
@@ -372,7 +388,9 @@ export async function updateInventoryItem(
     recommendationHistory,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -381,7 +399,9 @@ export async function updateInventoryItem(
     data.menuItemIngredients,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    data.countVarianceHistory
   );
   return repository.updateInventoryItemAndSignals(
     restaurantId,
@@ -441,11 +461,26 @@ export async function approveInventoryCountSession(restaurantId: string, session
     inventoryItems: data.inventoryItems,
     lines: detail.lines
   });
+  const now = new Date().toISOString();
   const planningInventory = applyCountApprovalsToInventory(
     data.inventoryItems,
     approvals,
-    new Date().toISOString()
+    now
   );
+  const inFlightCountVariance = approvals
+    .filter((approval) => approval.variance < 0)
+    .map((approval) => ({
+      inventoryItemId: approval.inventoryItemId,
+      quantityBefore: approval.quantityBefore,
+      quantityAfter: approval.quantityAfter,
+      variance: approval.variance,
+      createdAt: now,
+      sessionId
+    }));
+  const countVarianceHistory = [
+    ...inFlightCountVariance,
+    ...(data.countVarianceHistory ?? [])
+  ];
   const recommendations = buildRecommendationInserts(
     restaurantId,
     planningInventory,
@@ -454,7 +489,9 @@ export async function approveInventoryCountSession(restaurantId: string, session
     recommendationHistory,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    countVarianceHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -463,7 +500,9 @@ export async function approveInventoryCountSession(restaurantId: string, session
     data.menuItemIngredients,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    data.wasteHistory,
+    countVarianceHistory
   );
   return repository.approveInventoryCountSession(
     restaurantId,
@@ -496,14 +535,24 @@ export async function recordInventoryWaste(
     quantityRemoved: normalizedQuantity,
     note: normalizedNote
   });
+  const now = new Date().toISOString();
   const updatedForPlanning = {
     ...existing,
     current_quantity: planned.quantityAfter,
-    last_updated: new Date().toISOString()
+    last_updated: now
   };
   const planningInventory = data.inventoryItems.map((item) =>
     item.id === itemId ? updatedForPlanning : item
   );
+  const wasteHistory = [
+    {
+      inventoryItemId: itemId,
+      quantityRemoved: planned.quantityRemovedApplied,
+      quantityBefore: planned.quantityBefore,
+      createdAt: now
+    },
+    ...(data.wasteHistory ?? [])
+  ];
   const recommendations = buildRecommendationInserts(
     restaurantId,
     planningInventory,
@@ -512,7 +561,9 @@ export async function recordInventoryWaste(
     recommendationHistory,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    wasteHistory,
+    data.countVarianceHistory
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -521,7 +572,9 @@ export async function recordInventoryWaste(
     data.menuItemIngredients,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
-    data.receivingHistory
+    data.receivingHistory,
+    wasteHistory,
+    data.countVarianceHistory
   );
   return repository.recordInventoryWasteAndSignals(
     restaurantId,

@@ -592,6 +592,23 @@ function applyRequestedMutation(
       );
       quantityByItemId.set(itemId, counted);
     }
+    const now = new Date().toISOString();
+    const sessionId =
+      typeof body.sessionId === "string" && body.sessionId.trim() ? body.sessionId.trim() : null;
+    const inFlightCountVariance = snapshot.inventoryItems.flatMap((item) => {
+      if (!quantityByItemId.has(item.id)) return [];
+      const quantityAfter = quantityByItemId.get(item.id) as number;
+      const variance = quantityAfter - item.current_quantity;
+      if (!(variance < 0) || !(item.current_quantity > 0)) return [];
+      return [{
+        inventoryItemId: item.id,
+        quantityBefore: item.current_quantity,
+        quantityAfter,
+        variance,
+        createdAt: now,
+        sessionId
+      }];
+    });
     return {
       ...snapshot,
       inventoryItems: snapshot.inventoryItems.map((item) =>
@@ -599,10 +616,11 @@ function applyRequestedMutation(
           ? {
               ...item,
               current_quantity: quantityByItemId.get(item.id) as number,
-              last_updated: new Date().toISOString()
+              last_updated: now
             }
           : item
-      )
+      ),
+      countVarianceHistory: [...inFlightCountVariance, ...(snapshot.countVarianceHistory ?? [])]
     };
   }
   if (action === "update_inventory") {
@@ -662,12 +680,23 @@ function applyRequestedMutation(
     if (existing.current_quantity <= 0) {
       throw new HttpError(400, "Nothing on hand to record as waste. Update the count first.");
     }
-    const quantityAfter = Math.max(0, existing.current_quantity - Math.min(quantityRemoved, existing.current_quantity));
+    const quantityRemovedApplied = Math.min(quantityRemoved, existing.current_quantity);
+    const quantityAfter = Math.max(0, existing.current_quantity - quantityRemovedApplied);
+    const now = new Date().toISOString();
+    const inFlightWaste = quantityRemovedApplied > 0
+      ? [{
+          inventoryItemId: itemId,
+          quantityRemoved: quantityRemovedApplied,
+          quantityBefore: existing.current_quantity,
+          createdAt: now
+        }]
+      : [];
     return {
       ...snapshot,
       inventoryItems: snapshot.inventoryItems.map((item) => item.id === itemId
-        ? { ...item, current_quantity: quantityAfter, last_updated: new Date().toISOString() }
-        : item)
+        ? { ...item, current_quantity: quantityAfter, last_updated: now }
+        : item),
+      wasteHistory: [...inFlightWaste, ...(snapshot.wasteHistory ?? [])]
     };
   }
   if (action === "receive_supplier_order") {
