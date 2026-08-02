@@ -10,6 +10,11 @@ import {
   type OperationalTodayTask
 } from "../domain/todayTasks";
 import {
+  buildChronicAcceptanceEditInsightInput,
+  buildAcceptanceEditBiasByItem,
+  extractAcceptanceEditSamplesFromRecommendations
+} from "../domain/acceptanceEditLearning";
+import {
   buildChronicShortShipInsightInput,
   buildReceiveFillBiasByItem
 } from "../domain/receiveDiscrepancyLearning";
@@ -159,6 +164,21 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       sampleCount: bias.sampleCount
     }];
   });
+  const acceptanceEditBiasByItem = buildAcceptanceEditBiasByItem(
+    extractAcceptanceEditSamplesFromRecommendations(recommendations)
+  );
+  const chronicAcceptanceEditItems = inventoryItems.flatMap((item) => {
+    const bias = acceptanceEditBiasByItem.get(item.id);
+    const marker = bias ? buildChronicAcceptanceEditInsightInput(bias) : null;
+    if (!bias || !marker) return [];
+    return [{
+      inventoryItemId: item.id,
+      itemName: item.item_name,
+      acceptPercent: marker.acceptPercent,
+      direction: marker.direction,
+      sampleCount: bias.sampleCount
+    }];
+  });
 
   return {
     ...summary,
@@ -177,6 +197,7 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       chronicWasteItems,
       chronicCountShrinkItems,
       chronicManagerCorrectionItems,
+      chronicAcceptanceEditItems,
       insights,
       openCountSession: openCountSession?.session ?? null
     }),

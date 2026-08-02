@@ -101,6 +101,8 @@ interface OperationsCopy {
     chronicCountShrinkDetail: (lossPercentLabel: string, sampleCountLabel: string) => string;
     chronicManagerCorrectionTitle: (itemName: string) => string;
     chronicManagerCorrectionDetail: (lossPercentLabel: string, sampleCountLabel: string) => string;
+    chronicAcceptanceEditTitle: (itemName: string, direction: "increase" | "decrease") => string;
+    chronicAcceptanceEditDetail: (acceptPercentLabel: string, sampleCountLabel: string) => string;
     actions: {
       updateInventoryCount: string;
       beginCountSession: string;
@@ -121,6 +123,7 @@ interface OperationsCopy {
       reviewWaste: string;
       startRecount: string;
       reviewCorrections: string;
+      reviewApprovals: string;
     };
   };
   insight: {
@@ -174,6 +177,14 @@ interface OperationsCopy {
     ) => string;
     chronicManagerCorrectionWhy: string;
     chronicManagerCorrectionAction: (itemName: string) => string;
+    chronicAcceptanceEditTitle: (itemName: string, direction: "increase" | "decrease") => string;
+    chronicAcceptanceEditDescription: (
+      itemName: string,
+      acceptPercentLabel: string,
+      sampleCountLabel: string
+    ) => string;
+    chronicAcceptanceEditWhy: (direction: "increase" | "decrease") => string;
+    chronicAcceptanceEditAction: (itemName: string, direction: "increase" | "decrease") => string;
   };
   memory: {
     reliableLabel: string;
@@ -306,6 +317,12 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicManagerCorrectionTitle: (itemName) => `${itemName} is often corrected down`,
       chronicManagerCorrectionDetail: (lossPercentLabel, sampleCountLabel) =>
         `Recent manager corrections averaged about ${lossPercentLabel} below system across ${sampleCountLabel} edits.`,
+      chronicAcceptanceEditTitle: (itemName, direction) =>
+        direction === "increase"
+          ? `${itemName} orders are often increased on approve`
+          : `${itemName} orders are often decreased on approve`,
+      chronicAcceptanceEditDetail: (acceptPercentLabel, sampleCountLabel) =>
+        `Managers recently approved about ${acceptPercentLabel} of Mise's original suggestion across ${sampleCountLabel} decisions.`,
       actions: {
         updateInventoryCount: "Review count",
         beginCountSession: "Start count",
@@ -325,7 +342,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         reviewShortShips: "Review short-ships",
         reviewWaste: "Review waste",
         startRecount: "Start recount",
-        reviewCorrections: "Review corrections"
+        reviewCorrections: "Review corrections",
+        reviewApprovals: "Review approvals"
       }
     },
     insight: {
@@ -371,7 +389,21 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicManagerCorrectionWhy:
         "Repeated downward corrections mean Mise’s on-hand is drifting high and orders may understock the next service.",
       chronicManagerCorrectionAction: (itemName) =>
-        `Review receiving, transfers, and counts for ${itemName}, then adjust par or recount before ordering.`
+        `Review receiving, transfers, and counts for ${itemName}, then adjust par or recount before ordering.`,
+      chronicAcceptanceEditTitle: (itemName, direction) =>
+        direction === "increase"
+          ? `${itemName} orders are often increased on approve`
+          : `${itemName} orders are often decreased on approve`,
+      chronicAcceptanceEditDescription: (itemName, acceptPercentLabel, sampleCountLabel) =>
+        `Managers recently approved about ${acceptPercentLabel} of Mise's original ${itemName} suggestion across ${sampleCountLabel} decisions.`,
+      chronicAcceptanceEditWhy: (direction) =>
+        direction === "increase"
+          ? "Chronic upward edits mean Mise under-suggests and stockouts can persist until recommendations catch up."
+          : "Chronic downward edits mean Mise over-suggests and can lock cash in excess inventory.",
+      chronicAcceptanceEditAction: (itemName, direction) =>
+        direction === "increase"
+          ? `Keep approving the adjusted quantity for ${itemName}; Mise will bias future suggestions upward.`
+          : `Keep approving the adjusted quantity for ${itemName}; Mise will bias future suggestions downward.`
     },
     memory: {
       reliableLabel: "Mise memory is reliable",
@@ -503,6 +535,12 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicManagerCorrectionTitle: (itemName) => `${itemName} suele corregirse hacia abajo`,
       chronicManagerCorrectionDetail: (lossPercentLabel, sampleCountLabel) =>
         `Las correcciones recientes de gerencia promedian cerca de ${lossPercentLabel} por debajo del sistema en ${sampleCountLabel} ediciones.`,
+      chronicAcceptanceEditTitle: (itemName, direction) =>
+        direction === "increase"
+          ? `Los pedidos de ${itemName} suelen aumentarse al aprobar`
+          : `Los pedidos de ${itemName} suelen reducirse al aprobar`,
+      chronicAcceptanceEditDetail: (acceptPercentLabel, sampleCountLabel) =>
+        `La gerencia aprobó recientemente cerca del ${acceptPercentLabel} de la sugerencia original de Mise en ${sampleCountLabel} decisiones.`,
       actions: {
         updateInventoryCount: "Revisar conteo",
         beginCountSession: "Iniciar conteo",
@@ -522,7 +560,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         reviewShortShips: "Revisar faltantes",
         reviewWaste: "Revisar merma",
         startRecount: "Iniciar reconteo",
-        reviewCorrections: "Revisar correcciones"
+        reviewCorrections: "Revisar correcciones",
+        reviewApprovals: "Revisar aprobaciones"
       }
     },
     insight: {
@@ -568,7 +607,21 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicManagerCorrectionWhy:
         "Las correcciones repetidas hacia abajo indican que el stock en Mise está alto y los pedidos pueden quedar cortos.",
       chronicManagerCorrectionAction: (itemName) =>
-        `Revisa recepción, traslados y conteos de ${itemName}; luego ajusta el par o recontea antes de pedir.`
+        `Revisa recepción, traslados y conteos de ${itemName}; luego ajusta el par o recontea antes de pedir.`,
+      chronicAcceptanceEditTitle: (itemName, direction) =>
+        direction === "increase"
+          ? `Los pedidos de ${itemName} suelen aumentarse al aprobar`
+          : `Los pedidos de ${itemName} suelen reducirse al aprobar`,
+      chronicAcceptanceEditDescription: (itemName, acceptPercentLabel, sampleCountLabel) =>
+        `La gerencia aprobó recientemente cerca del ${acceptPercentLabel} de la sugerencia original de Mise para ${itemName} en ${sampleCountLabel} decisiones.`,
+      chronicAcceptanceEditWhy: (direction) =>
+        direction === "increase"
+          ? "Las ediciones crónicas al alza indican que Mise sugiere de menos y los quiebres pueden continuar hasta que las recomendaciones se ajusten."
+          : "Las ediciones crónicas a la baja indican que Mise sugiere de más y puede inmovilizar efectivo en exceso de inventario.",
+      chronicAcceptanceEditAction: (itemName, direction) =>
+        direction === "increase"
+          ? `Sigue aprobando la cantidad ajustada de ${itemName}; Mise inclinará futuras sugerencias al alza.`
+          : `Sigue aprobando la cantidad ajustada de ${itemName}; Mise inclinará futuras sugerencias a la baja.`
     },
     memory: {
       reliableLabel: "La memoria de Mise es confiable",
@@ -698,6 +751,12 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicManagerCorrectionTitle: (itemName) => `${itemName} 经常被向下修正`,
       chronicManagerCorrectionDetail: (lossPercentLabel, sampleCountLabel) =>
         `最近经理修正平均低于系统约 ${lossPercentLabel}（基于 ${sampleCountLabel} 次编辑）。`,
+      chronicAcceptanceEditTitle: (itemName, direction) =>
+        direction === "increase"
+          ? `${itemName} 的订单在批准时经常被上调`
+          : `${itemName} 的订单在批准时经常被下调`,
+      chronicAcceptanceEditDetail: (acceptPercentLabel, sampleCountLabel) =>
+        `经理最近批准的数量约为 Mise 原始建议的 ${acceptPercentLabel}（基于 ${sampleCountLabel} 次决策）。`,
       actions: {
         updateInventoryCount: "检查盘点",
         beginCountSession: "开始盘点",
@@ -717,7 +776,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         reviewShortShips: "查看短交",
         reviewWaste: "查看损耗",
         startRecount: "开始复盘",
-        reviewCorrections: "查看修正"
+        reviewCorrections: "查看修正",
+        reviewApprovals: "查看批准"
       }
     },
 
@@ -762,7 +822,21 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         `最近 ${itemName} 的经理修正平均低于系统约 ${lossPercentLabel}（基于 ${sampleCountLabel} 次编辑）。`,
       chronicManagerCorrectionWhy: "反复向下修正意味着 Mise 的在手库存偏高，订单可能不足以支撑下一营业时段。",
       chronicManagerCorrectionAction: (itemName) =>
-        `请检查 ${itemName} 的收货、转移和盘点，然后在订货前调整安全库存或重新盘点。`
+        `请检查 ${itemName} 的收货、转移和盘点，然后在订货前调整安全库存或重新盘点。`,
+      chronicAcceptanceEditTitle: (itemName, direction) =>
+        direction === "increase"
+          ? `${itemName} 的订单在批准时经常被上调`
+          : `${itemName} 的订单在批准时经常被下调`,
+      chronicAcceptanceEditDescription: (itemName, acceptPercentLabel, sampleCountLabel) =>
+        `经理最近批准的 ${itemName} 数量约为 Mise 原始建议的 ${acceptPercentLabel}（基于 ${sampleCountLabel} 次决策）。`,
+      chronicAcceptanceEditWhy: (direction) =>
+        direction === "increase"
+          ? "长期上调说明 Mise 建议偏低，缺货可能持续到建议量追上实际需求。"
+          : "长期下调说明 Mise 建议偏高，可能把现金锁在过多库存中。",
+      chronicAcceptanceEditAction: (itemName, direction) =>
+        direction === "increase"
+          ? `请继续批准调整后的 ${itemName} 数量；Mise 会把未来建议向上偏移。`
+          : `请继续批准调整后的 ${itemName} 数量；Mise 会把未来建议向下偏移。`
     },
     memory: {
       reliableLabel: "Mise 运营记忆可靠",
@@ -837,6 +911,9 @@ export function presentOperationalTodayTaskAction(
       }
       if (task.presentation?.code === "today.inventory.chronic_manager_correction") {
         return actions.reviewCorrections;
+      }
+      if (task.presentation?.code === "today.ordering.chronic_acceptance_edit") {
+        return actions.reviewApprovals;
       }
       return actions.reviewInsight;
     case "map_unmapped_pos_items":
@@ -996,6 +1073,15 @@ export function presentOperationalTodayTask(
       )
     );
   }
+  if (code === "today.ordering.chronic_acceptance_edit") {
+    return result(
+      copy.today.chronicAcceptanceEditTitle(values.itemName, values.direction),
+      copy.today.chronicAcceptanceEditDetail(
+        formatPercent(locale, values.acceptPercent),
+        quantity(values.sampleCount)
+      )
+    );
+  }
   if (code === "today.inventory.chronic_manager_correction") {
     return result(
       copy.today.chronicManagerCorrectionTitle(values.itemName),
@@ -1115,6 +1201,19 @@ export function presentInsight(locale: AppLocale, insight: Insight): PresentedIn
       ),
       whyItMatters: copy.insight.chronicCountShrinkWhy,
       recommendedAction: copy.insight.chronicCountShrinkAction(values.itemName),
+      evidenceOnly: false
+    };
+  }
+  if (code === "insight.rule.ordering.chronic_acceptance_edit") {
+    return {
+      title: copy.insight.chronicAcceptanceEditTitle(values.itemName, values.direction),
+      description: copy.insight.chronicAcceptanceEditDescription(
+        values.itemName,
+        formatPercent(locale, values.acceptPercent),
+        formatQuantity(locale, values.sampleCount)
+      ),
+      whyItMatters: copy.insight.chronicAcceptanceEditWhy(values.direction),
+      recommendedAction: copy.insight.chronicAcceptanceEditAction(values.itemName, values.direction),
       evidenceOnly: false
     };
   }

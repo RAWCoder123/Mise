@@ -1,6 +1,14 @@
 import { canonicalInventoryUnit, inventoryUnitsAreCompatible } from "./inventoryUnits";
 import { projectedQuantityAfterSales } from "./posConsumption";
 import {
+  acceptanceEditBiasReasonFragment,
+  applyAcceptanceEditBias,
+  buildAcceptanceEditBiasByItem,
+  buildChronicAcceptanceEditInsightInput,
+  extractAcceptanceEditSamplesFromRecommendations,
+  type AcceptanceEditBias
+} from "./acceptanceEditLearning";
+import {
   applyReceiveFillBias,
   buildChronicShortShipInsightInput,
   buildReceiveFillBiasByItem,
@@ -53,6 +61,8 @@ export interface OperationalRecipeMapping {
 export interface OperationalRecommendationHistory {
   inventory_item_id: string;
   recommended_quantity: number;
+  /** Mise quantity at first approval; used for acceptance-edit learning. */
+  original_recommended_quantity?: number | null;
   unit: string;
   status: string;
   created_at: string;
@@ -114,6 +124,9 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   );
   const handled = latestHandledByItem(snapshot.recommendationHistory);
   const learned = learnedQuantities(snapshot.recommendationHistory);
+  const acceptanceEditBiasByItem = buildAcceptanceEditBiasByItem(
+    extractAcceptanceEditSamplesFromRecommendations(snapshot.recommendationHistory)
+  );
   const receiveBiasByItem = buildReceiveFillBiasByItem(snapshot.receivingHistory ?? []);
   const wasteBiasByItem = buildWasteBiasByItem(snapshot.wasteHistory ?? []);
   const countShrinkBiasByItem = buildCountShrinkBiasByItem(snapshot.countVarianceHistory ?? []);
@@ -121,6 +134,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   const recommendations: OperationalRecommendation[] = [];
   const insights: OperationalInsight[] = [];
   const chronicShortShipInsights: OperationalInsight[] = [];
+  const chronicAcceptanceEditInsights: OperationalInsight[] = [];
   const chronicLossInsights: OperationalInsight[] = [];
 
   for (const item of snapshot.inventoryItems.filter((entry) => entry.restaurant_id === snapshot.restaurantId)) {
@@ -153,12 +167,20 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const changedAfterHandling = recentHandled && item.last_updated
       ? Date.parse(item.last_updated) > Date.parse(recentHandled.created_at)
       : false;
+    const acceptanceEditBias = acceptanceEditBiasByItem.get(item.id);
     const receiveBias = receiveBiasByItem.get(item.id);
     const wasteBias = wasteBiasByItem.get(item.id);
     const countShrinkBias = countShrinkBiasByItem.get(item.id);
     const managerCorrectionBias = managerCorrectionBiasByItem.get(item.id);
     const chronicInsight = buildChronicShortShipInsight(item, receiveBias, now, snapshot.restaurantId);
     if (chronicInsight) chronicShortShipInsights.push(chronicInsight);
+    const acceptanceEditInsight = buildChronicAcceptanceEditInsight(
+      item,
+      acceptanceEditBias,
+      now,
+      snapshot.restaurantId
+    );
+    if (acceptanceEditInsight) chronicAcceptanceEditInsights.push(acceptanceEditInsight);
     const wasteInsight = buildChronicWasteInsight(item, wasteBias, now, snapshot.restaurantId);
     if (wasteInsight) chronicLossInsights.push(wasteInsight);
     const shrinkInsight = buildChronicCountShrinkInsight(item, countShrinkBias, now, snapshot.restaurantId);
@@ -172,13 +194,17 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     if (managerCorrectionInsight) chronicLossInsights.push(managerCorrectionInsight);
 
     if ((isCritical || isLow) && (!recentHandled || changedAfterHandling)) {
-      const learnedQuantity = boundedLearnedQuantity(
-        learned.get(`${item.id}\u001f${canonicalInventoryUnit(item.unit)}`),
-        suggested,
-        item.par_level
-      );
-      const afterApprovalLearning = learnedQuantity ?? suggested;
       const bounds = { calculated: suggested, par: item.par_level };
+      const afterAcceptanceEdit = applyAcceptanceEditBias(suggested, acceptanceEditBias, bounds);
+      const learnedQuantity =
+        afterAcceptanceEdit == null
+          ? boundedLearnedQuantity(
+              learned.get(`${item.id}\u001f${canonicalInventoryUnit(item.unit)}`),
+              suggested,
+              item.par_level
+            )
+          : undefined;
+      const afterApprovalLearning = afterAcceptanceEdit ?? learnedQuantity ?? suggested;
       const afterReceive = applyReceiveFillBias(afterApprovalLearning, receiveBias, bounds);
       const afterWaste = applyLossBias(afterReceive ?? afterApprovalLearning, wasteBias, bounds);
       const afterShrink = applyLossBias(afterWaste ?? afterReceive ?? afterApprovalLearning, countShrinkBias, bounds);
@@ -198,6 +224,13 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         ? `${item.item_name} is at or below its reorder level. Mise recommends restoring it to par.`
         : `${item.item_name} has about ${round(coverage)} service days of projected coverage based on mapped demand.`;
       const reasonFragments: string[] = [];
+      if (
+        acceptanceEditBias?.isChronic &&
+        afterAcceptanceEdit != null &&
+        afterAcceptanceEdit !== suggested
+      ) {
+        reasonFragments.push(acceptanceEditBiasReasonFragment(acceptanceEditBias));
+      }
       if (receiveBias?.isChronic && afterReceive != null && afterReceive !== afterApprovalLearning) {
         reasonFragments.push(receiveFillBiasReasonFragment(receiveBias));
       }
@@ -280,8 +313,9 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     }
   }
 
-  // Prefer chronic short-ship / loss insights ahead of lower-priority sales spikes inside the insight cap.
+  // Prefer chronic short-ship / acceptance-edit / loss insights ahead of lower-priority sales spikes.
   insights.unshift(...chronicLossInsights.slice(0, 2));
+  insights.unshift(...chronicAcceptanceEditInsights.slice(0, 2));
   insights.unshift(...chronicShortShipInsights.slice(0, 2));
 
   for (const sale of todaySales) {
@@ -392,6 +426,44 @@ function buildChronicShortShipInsight(
         itemName: item.item_name,
         supplierName: item.supplier_name,
         fillPercent,
+        sampleCount: bias.sampleCount
+      }
+    }
+  };
+}
+
+function buildChronicAcceptanceEditInsight(
+  item: OperationalInventoryItem,
+  bias: AcceptanceEditBias | undefined,
+  createdAt: string,
+  restaurantId: string
+): OperationalInsight | null {
+  if (!bias) return null;
+  const marker = buildChronicAcceptanceEditInsightInput(bias);
+  if (!marker) return null;
+  const directionLabel = marker.direction === "increase" ? "increased" : "decreased";
+  return {
+    id: `insight_acceptance_edit_${item.id}`,
+    restaurant_id: restaurantId,
+    insight_type: "ordering",
+    title: `${item.item_name} orders are often ${directionLabel} on approve`,
+    description: `Managers recently approved about ${marker.acceptPercent}% of Mise's original ${item.item_name} suggestion across ${bias.sampleCount} decisions.`,
+    why_it_matters:
+      marker.direction === "increase"
+        ? "Chronic upward edits mean Mise under-suggests and stockouts can persist until recommendations catch up."
+        : "Chronic downward edits mean Mise over-suggests and can lock cash in excess inventory.",
+    recommended_action:
+      marker.direction === "increase"
+        ? `Keep approving the adjusted quantity for ${item.item_name}; Mise will bias future suggestions upward.`
+        : `Keep approving the adjusted quantity for ${item.item_name}; Mise will bias future suggestions downward.`,
+    severity: "warning",
+    created_at: createdAt,
+    presentation: {
+      code: "insight.rule.ordering.chronic_acceptance_edit",
+      values: {
+        itemName: item.item_name,
+        acceptPercent: marker.acceptPercent,
+        direction: marker.direction,
         sampleCount: bias.sampleCount
       }
     }

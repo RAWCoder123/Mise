@@ -141,6 +141,10 @@ test("every allowlisted Today presentation code renders in all locales and prese
       values: { itemName, supplierName, fillPercent: 88, sampleCount: 5 }
     },
     {
+      code: "today.ordering.chronic_acceptance_edit",
+      values: { itemName, acceptPercent: 120, direction: "increase", sampleCount: 4 }
+    },
+    {
       code: "today.waste.chronic_waste",
       values: { itemName, lossPercent: 12, sampleCount: 5 }
     },
@@ -212,6 +216,10 @@ test("rules-based Insight codes localize structured values while opaque copy is 
     {
       code: "insight.rule.ordering.chronic_short_ship",
       values: { itemName, supplierName, fillPercent: 88, sampleCount: 5 }
+    },
+    {
+      code: "insight.rule.ordering.chronic_acceptance_edit",
+      values: { itemName, acceptPercent: 120, direction: "increase", sampleCount: 4 }
     },
     {
       code: "insight.evidence.opaque",

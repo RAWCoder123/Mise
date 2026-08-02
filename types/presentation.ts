@@ -40,6 +40,7 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.recipe.map_unmapped",
   "today.recipe.repair_incompatible_units",
   "today.ordering.chronic_short_ship",
+  "today.ordering.chronic_acceptance_edit",
   "today.waste.chronic_waste",
   "today.inventory.chronic_count_shrink",
   "today.inventory.chronic_manager_correction"
@@ -54,6 +55,7 @@ export const INSIGHT_PRESENTATION_CODES = [
   "insight.rule.inventory.chronic_count_shrink",
   "insight.rule.inventory.chronic_manager_correction",
   "insight.rule.ordering.chronic_short_ship",
+  "insight.rule.ordering.chronic_acceptance_edit",
   "insight.evidence.opaque"
 ] as const;
 
@@ -160,6 +162,15 @@ export type TodayTaskPresentationDescriptor =
       };
     }
   | {
+      code: "today.ordering.chronic_acceptance_edit";
+      values: {
+        itemName: string;
+        acceptPercent: number;
+        direction: "increase" | "decrease";
+        sampleCount: number;
+      };
+    }
+  | {
       code: "today.waste.chronic_waste";
       values: {
         itemName: string;
@@ -226,6 +237,15 @@ export type InsightPresentationDescriptor =
         itemName: string;
         supplierName: string;
         fillPercent: number;
+        sampleCount: number;
+      };
+    }
+  | {
+      code: "insight.rule.ordering.chronic_acceptance_edit";
+      values: {
+        itemName: string;
+        acceptPercent: number;
+        direction: "increase" | "decrease";
         sampleCount: number;
       };
     }

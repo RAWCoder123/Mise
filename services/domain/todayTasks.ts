@@ -86,6 +86,9 @@ export const CHRONIC_COUNT_SHRINK_SOURCE_ID_PREFIX = "chronic_count_shrink_";
 /** Stable synthetic source id prefix for chronic manager-correction tasks. */
 export const CHRONIC_MANAGER_CORRECTION_SOURCE_ID_PREFIX = "chronic_manager_correction_";
 
+/** Stable synthetic source id prefix for chronic acceptance-edit ordering tasks. */
+export const CHRONIC_ACCEPTANCE_EDIT_SOURCE_ID_PREFIX = "chronic_acceptance_edit_";
+
 export type OperationalTodayTaskRoute =
   | "/inventory"
   | `/inventory/${string}`
@@ -153,6 +156,8 @@ export interface DeriveOperationalTodayTasksInput {
   chronicCountShrinkItems?: readonly ChronicLossTodayItem[];
   /** Chronic downward manager-correction patterns derived from inventory edits. */
   chronicManagerCorrectionItems?: readonly ChronicLossTodayItem[];
+  /** Chronic acceptance-edit patterns derived from original vs accepted recommendation quantities. */
+  chronicAcceptanceEditItems?: readonly ChronicAcceptanceEditTodayItem[];
   insights: readonly Insight[];
   openCountSession?: InventoryCountSession | null;
   now?: Date;
@@ -164,6 +169,14 @@ export type ChronicShortShipTodayItem = {
   itemName: string;
   supplierName: string;
   fillPercent: number;
+  sampleCount: number;
+};
+
+export type ChronicAcceptanceEditTodayItem = {
+  inventoryItemId: string;
+  itemName: string;
+  acceptPercent: number;
+  direction: "increase" | "decrease";
   sampleCount: number;
 };
 
@@ -776,6 +789,44 @@ export function deriveOperationalTodayTasks(
         requiredRole: "manager",
         isComplete: false,
         completionReason: "Manager correction history still shows a chronic downward pattern."
+      }),
+      includeCompleted
+    );
+  }
+
+  const chronicAcceptanceEditItems = (input.chronicAcceptanceEditItems ?? [])
+    .filter((item) => item.inventoryItemId.trim() && item.itemName.trim())
+    .slice(0, 2);
+  for (const item of chronicAcceptanceEditItems) {
+    const directionLabel = item.direction === "increase" ? "increased" : "decreased";
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "insight",
+        sourceId: `${CHRONIC_ACCEPTANCE_EDIT_SOURCE_ID_PREFIX}${item.inventoryItemId}`,
+        sourceStatus: "chronic_acceptance_edit",
+        title: `${item.itemName} orders are often ${directionLabel} on approve`,
+        detail: `Managers recently approved about ${item.acceptPercent}% of Mise's original suggestion across ${item.sampleCount} decisions.`,
+        presentation: {
+          code: "today.ordering.chronic_acceptance_edit",
+          values: {
+            itemName: item.itemName,
+            acceptPercent: item.acceptPercent,
+            direction: item.direction,
+            sampleCount: item.sampleCount
+          }
+        },
+        priority: "normal",
+        action: {
+          intent: "review_insight",
+          label: "Review approvals",
+          route: "/orders",
+          entityId: item.inventoryItemId
+        },
+        requiredRole: "manager",
+        isComplete: false,
+        completionReason: "Approval history still shows a chronic acceptance-edit pattern."
       }),
       includeCompleted
     );

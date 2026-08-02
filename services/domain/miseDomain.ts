@@ -40,6 +40,13 @@ import {
   projectedQuantityAfterSales
 } from "./posConsumption";
 import {
+  acceptanceEditBiasReasonFragment,
+  applyAcceptanceEditBias,
+  buildAcceptanceEditBiasByItem,
+  buildChronicAcceptanceEditInsightInput,
+  extractAcceptanceEditSamplesFromRecommendations
+} from "./acceptanceEditLearning";
+import {
   applyReceiveFillBias,
   buildChronicShortShipInsightInput,
   buildReceiveFillBiasByItem,
@@ -196,6 +203,9 @@ export function applyStackedOrderLearning(input: {
   item: InventoryItem;
   prediction: InventoryPrediction;
   learnedQuantities: Map<string, number>;
+  acceptanceEditBias?: ReturnType<typeof buildAcceptanceEditBiasByItem> extends Map<string, infer V>
+    ? V
+    : never;
   receiveBias?: ReturnType<typeof buildReceiveFillBiasByItem> extends Map<string, infer V> ? V : never;
   wasteBias?: ReturnType<typeof buildWasteBiasByItem> extends Map<string, infer V> ? V : never;
   countShrinkBias?: ReturnType<typeof buildCountShrinkBiasByItem> extends Map<string, infer V>
@@ -208,16 +218,23 @@ export function applyStackedOrderLearning(input: {
     ? V
     : never;
 }): StackedOrderLearningResult {
-  const learnedQuantity = boundedLearnedQuantity(
-    input.item,
-    input.prediction,
-    input.learnedQuantities
-  );
-  const afterApprovalLearning = learnedQuantity ?? input.prediction.suggestedOrderQuantity;
   const bounds = {
     calculated: input.prediction.suggestedOrderQuantity,
     par: input.item.par_level
   };
+  // Prefer edit-ratio learning over absolute accepted medians when chronic —
+  // ratios transfer better across changing baselines and avoid double-counting.
+  const afterAcceptanceEdit = applyAcceptanceEditBias(
+    input.prediction.suggestedOrderQuantity,
+    input.acceptanceEditBias,
+    bounds
+  );
+  const learnedQuantity =
+    afterAcceptanceEdit == null
+      ? boundedLearnedQuantity(input.item, input.prediction, input.learnedQuantities)
+      : undefined;
+  const afterApprovalLearning =
+    afterAcceptanceEdit ?? learnedQuantity ?? input.prediction.suggestedOrderQuantity;
   const afterReceive = applyReceiveFillBias(afterApprovalLearning, input.receiveBias, bounds);
   const afterWaste = applyLossBias(afterReceive ?? afterApprovalLearning, input.wasteBias, bounds);
   const afterShrink = applyLossBias(
@@ -237,6 +254,13 @@ export function applyStackedOrderLearning(input: {
     afterReceive ??
     afterApprovalLearning;
   const reasonFragments: string[] = [];
+  if (
+    input.acceptanceEditBias?.isChronic &&
+    afterAcceptanceEdit != null &&
+    afterAcceptanceEdit !== input.prediction.suggestedOrderQuantity
+  ) {
+    reasonFragments.push(acceptanceEditBiasReasonFragment(input.acceptanceEditBias));
+  }
   if (
     input.receiveBias?.isChronic &&
     afterReceive != null &&
@@ -291,6 +315,9 @@ export function planManualPendingRecommendation(input: {
     input.restaurantId,
     input.recommendationHistory ?? []
   );
+  const acceptanceEditBias = buildAcceptanceEditBiasByItem(
+    extractAcceptanceEditSamplesFromRecommendations(input.recommendationHistory ?? [])
+  ).get(input.item.id);
   const receiveBias = buildReceiveFillBiasByItem(input.receivingHistory ?? []).get(input.item.id);
   const wasteBias = buildWasteBiasByItem(input.wasteHistory ?? []).get(input.item.id);
   const countShrinkBias = buildCountShrinkBiasByItem(input.countVarianceHistory ?? []).get(
@@ -303,6 +330,7 @@ export function planManualPendingRecommendation(input: {
     item: input.item,
     prediction: input.prediction,
     learnedQuantities,
+    acceptanceEditBias,
     receiveBias,
     wasteBias,
     countShrinkBias,
@@ -943,6 +971,9 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
   const managerCorrectionBiasByItem = buildManagerCorrectionBiasByItem(
     extractManagerCorrectionSamplesFromMovements(restaurantMovements)
   );
+  const acceptanceEditBiasByItem = buildAcceptanceEditBiasByItem(
+    extractAcceptanceEditSamplesFromRecommendations(recommendationHistory)
+  );
   const lowOutlooks = buildInventoryOutlooks(
     restaurantId,
     state.inventoryItems,
@@ -971,6 +1002,7 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
       item,
       prediction,
       learnedQuantities,
+      acceptanceEditBias: acceptanceEditBiasByItem.get(item.id),
       receiveBias: receiveBiasByItem.get(item.id),
       wasteBias: wasteBiasByItem.get(item.id),
       countShrinkBias: countShrinkBiasByItem.get(item.id),
@@ -1023,7 +1055,8 @@ export function buildInsightsFromData(
   receivingHistory: Parameters<typeof buildReceiveFillBiasByItem>[0] = [],
   wasteHistory: Parameters<typeof buildWasteBiasByItem>[0] = [],
   countVarianceHistory: Parameters<typeof buildCountShrinkBiasByItem>[0] = [],
-  managerCorrectionHistory: Parameters<typeof buildManagerCorrectionBiasByItem>[0] = []
+  managerCorrectionHistory: Parameters<typeof buildManagerCorrectionBiasByItem>[0] = [],
+  recommendationHistory: PurchaseRecommendation[] = []
 ) {
   const now = new Date().toISOString();
   const todaySales = sales.filter(
@@ -1037,6 +1070,45 @@ export function buildInsightsFromData(
   const wasteBiasByItem = buildWasteBiasByItem(wasteHistory);
   const countShrinkBiasByItem = buildCountShrinkBiasByItem(countVarianceHistory);
   const managerCorrectionBiasByItem = buildManagerCorrectionBiasByItem(managerCorrectionHistory);
+  const acceptanceEditBiasByItem = buildAcceptanceEditBiasByItem(
+    extractAcceptanceEditSamplesFromRecommendations(recommendationHistory)
+  );
+  const chronicAcceptanceEditInsights = inventoryItems
+    .filter((item) => item.restaurant_id === restaurantId)
+    .flatMap((item) => {
+      const bias = acceptanceEditBiasByItem.get(item.id);
+      const marker = bias ? buildChronicAcceptanceEditInsightInput(bias) : null;
+      if (!bias || !marker) return [];
+      const directionLabel = marker.direction === "increase" ? "increased" : "decreased";
+      return [{
+        id: `insight_acceptance_edit_${item.id}`,
+        restaurant_id: restaurantId,
+        insight_type: "ordering" as const,
+        title: `${item.item_name} orders are often ${directionLabel} on approve`,
+        description: `Managers recently approved about ${marker.acceptPercent}% of Mise's original ${item.item_name} suggestion across ${bias.sampleCount} decisions.`,
+        why_it_matters:
+          marker.direction === "increase"
+            ? "Chronic upward edits mean Mise under-suggests and stockouts can persist until recommendations catch up."
+            : "Chronic downward edits mean Mise over-suggests and can lock cash in excess inventory.",
+        recommended_action:
+          marker.direction === "increase"
+            ? `Keep approving the adjusted quantity for ${item.item_name}; Mise will bias future suggestions upward.`
+            : `Keep approving the adjusted quantity for ${item.item_name}; Mise will bias future suggestions downward.`,
+        severity: "warning" as const,
+        created_at: now,
+        presentation: {
+          code: "insight.rule.ordering.chronic_acceptance_edit" as const,
+          values: {
+            itemName: item.item_name,
+            acceptPercent: marker.acceptPercent,
+            direction: marker.direction,
+            sampleCount: bias.sampleCount
+          }
+        }
+      }];
+    })
+    .slice(0, 2);
+  insights.push(...chronicAcceptanceEditInsights);
   const chronicShortShipInsights = inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .flatMap((item) => {
@@ -1286,7 +1358,8 @@ export function rebuildInsights(state: DemoState, restaurantId: string) {
     receivingHistory,
     wasteHistory,
     countVarianceHistory,
-    managerCorrectionHistory
+    managerCorrectionHistory,
+    state.purchaseRecommendations.filter((recommendation) => recommendation.restaurant_id === restaurantId)
   );
   state.insights = [
     ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),
@@ -2488,6 +2561,9 @@ export function buildRecommendationInserts(
   managerCorrectionHistory: Parameters<typeof buildManagerCorrectionBiasByItem>[0] = []
 ) {
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
+  const acceptanceEditBiasByItem = buildAcceptanceEditBiasByItem(
+    extractAcceptanceEditSamplesFromRecommendations(recommendationHistory)
+  );
   const receiveBiasByItem = buildReceiveFillBiasByItem(receivingHistory);
   const wasteBiasByItem = buildWasteBiasByItem(wasteHistory);
   const countShrinkBiasByItem = buildCountShrinkBiasByItem(countVarianceHistory);
@@ -2506,6 +2582,7 @@ export function buildRecommendationInserts(
         item,
         prediction,
         learnedQuantities,
+        acceptanceEditBias: acceptanceEditBiasByItem.get(item.id),
         receiveBias: receiveBiasByItem.get(item.id),
         wasteBias: wasteBiasByItem.get(item.id),
         countShrinkBias: countShrinkBiasByItem.get(item.id),

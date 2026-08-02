@@ -2003,6 +2003,46 @@ test("manager-correction learning exposes bounded ledger history without client 
   assert.match(pgTap, /managerCorrectionHistory ignores upward corrections/);
 });
 
+test("acceptance-edit learning uses original vs accepted quantities without client write authority", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260802050000_acceptance_edit_learning_index.sql",
+    "utf8"
+  );
+  const domain = readFileSync("services/domain/acceptanceEditLearning.ts", "utf8");
+  const signals = readFileSync("services/domain/operationalSignals.ts", "utf8");
+  const miseDomain = readFileSync("services/domain/miseDomain.ts", "utf8");
+  const today = readFileSync("services/domain/todayTasks.ts", "utf8");
+  const todayApp = readFileSync("services/application/today.ts", "utf8");
+  const presentation = readFileSync("services/presentation/operationsPresentation.ts", "utf8");
+  const pgTap = readFileSync(
+    "supabase/tests/database/acceptance_edit_learning.test.sql",
+    "utf8"
+  );
+
+  assert.match(migration, /purchase_recommendations_restaurant_acceptance_edit_created_at_idx/);
+  assert.match(migration, /original_recommended_quantity is not null/);
+  assert.match(migration, /status in \('approved', 'ordered'\)/);
+  assert.match(domain, /ACCEPTANCE_EDIT_MULTIPLIER_MAX = 1\.25/);
+  assert.match(domain, /ACCEPTANCE_EDIT_MULTIPLIER_MIN = 0\.8/);
+  assert.match(domain, /ACCEPTANCE_EDIT_LEARNING_MIN_SAMPLES = 3/);
+  assert.match(domain, /extractAcceptanceEditSamplesFromRecommendations/);
+  assert.match(domain, /buildAcceptanceEditBiasByItem/);
+  assert.match(signals, /buildAcceptanceEditBiasByItem/);
+  assert.match(signals, /applyAcceptanceEditBias/);
+  assert.match(signals, /insight\.rule\.ordering\.chronic_acceptance_edit/);
+  assert.match(signals, /original_recommended_quantity\?:/);
+  assert.match(miseDomain, /acceptanceEditBias/);
+  assert.match(miseDomain, /applyAcceptanceEditBias/);
+  assert.match(today, /today\.ordering\.chronic_acceptance_edit/);
+  assert.match(todayApp, /extractAcceptanceEditSamplesFromRecommendations/);
+  assert.match(todayApp, /chronicAcceptanceEditItems/);
+  assert.match(presentation, /chronicAcceptanceEditTitle/);
+  assert.match(presentation, /reviewApprovals/);
+  assert.match(pgTap, /acceptance-edit learning index exists/);
+  assert.match(pgTap, /planning recommendationHistory exposes original vs accepted/);
+  assert.match(pgTap, /authenticated clients cannot rewrite accepted recommendation quantities/);
+});
+
 test("security readiness document defines private-beta backend rules and public launch blockers", () => {
   const doc = readFileSync("docs/security-readiness.md", "utf8");
 
