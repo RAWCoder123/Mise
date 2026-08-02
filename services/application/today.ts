@@ -15,6 +15,11 @@ import {
   extractAcceptanceEditSamplesFromRecommendations
 } from "../domain/acceptanceEditLearning";
 import {
+  buildChronicDismissalInsightInput,
+  buildDismissalFeedbackByItem,
+  extractDismissalSamplesFromRecommendations
+} from "../domain/recommendationDismissalLearning";
+import {
   buildChronicShortShipInsightInput,
   buildReceiveFillBiasByItem
 } from "../domain/receiveDiscrepancyLearning";
@@ -179,6 +184,21 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       sampleCount: bias.sampleCount
     }];
   });
+  const dismissalFeedbackByItem = buildDismissalFeedbackByItem(
+    extractDismissalSamplesFromRecommendations(recommendations)
+  );
+  const chronicDismissalItems = inventoryItems.flatMap((item) => {
+    const feedback = dismissalFeedbackByItem.get(item.id);
+    const marker = feedback ? buildChronicDismissalInsightInput(feedback) : null;
+    if (!feedback || !marker) return [];
+    return [{
+      inventoryItemId: item.id,
+      itemName: item.item_name,
+      category: marker.category,
+      sampleCount: marker.sampleCount,
+      categoryCount: marker.categoryCount
+    }];
+  });
 
   return {
     ...summary,
@@ -198,6 +218,7 @@ export async function fetchTodaySummary(restaurantId: string): Promise<TodayComm
       chronicCountShrinkItems,
       chronicManagerCorrectionItems,
       chronicAcceptanceEditItems,
+      chronicDismissalItems,
       insights,
       openCountSession: openCountSession?.session ?? null
     }),

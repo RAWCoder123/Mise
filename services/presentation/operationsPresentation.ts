@@ -103,6 +103,16 @@ interface OperationsCopy {
     chronicManagerCorrectionDetail: (lossPercentLabel: string, sampleCountLabel: string) => string;
     chronicAcceptanceEditTitle: (itemName: string, direction: "increase" | "decrease") => string;
     chronicAcceptanceEditDetail: (acceptPercentLabel: string, sampleCountLabel: string) => string;
+    chronicDismissalTitle: (itemName: string) => string;
+    chronicDismissalDetail: (
+      itemName: string,
+      categoryLabel: string,
+      categoryCountLabel: string,
+      sampleCountLabel: string
+    ) => string;
+    chronicDismissalCategory: (
+      category: "too_much_stock" | "already_ordered" | "wrong_timing" | "wrong_item"
+    ) => string;
     actions: {
       updateInventoryCount: string;
       beginCountSession: string;
@@ -124,6 +134,7 @@ interface OperationsCopy {
       startRecount: string;
       reviewCorrections: string;
       reviewApprovals: string;
+      reviewDismissals: string;
     };
   };
   insight: {
@@ -185,6 +196,18 @@ interface OperationsCopy {
     ) => string;
     chronicAcceptanceEditWhy: (direction: "increase" | "decrease") => string;
     chronicAcceptanceEditAction: (itemName: string, direction: "increase" | "decrease") => string;
+    chronicDismissalTitle: (itemName: string) => string;
+    chronicDismissalDescription: (
+      itemName: string,
+      categoryLabel: string,
+      categoryCountLabel: string,
+      sampleCountLabel: string
+    ) => string;
+    chronicDismissalWhy: string;
+    chronicDismissalAction: (itemName: string) => string;
+    chronicDismissalCategory: (
+      category: "too_much_stock" | "already_ordered" | "wrong_timing" | "wrong_item"
+    ) => string;
   };
   memory: {
     reliableLabel: string;
@@ -323,6 +346,21 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
           : `${itemName} orders are often decreased on approve`,
       chronicAcceptanceEditDetail: (acceptPercentLabel, sampleCountLabel) =>
         `Managers recently approved about ${acceptPercentLabel} of Mise's original suggestion across ${sampleCountLabel} decisions.`,
+      chronicDismissalTitle: (itemName) => `${itemName} recommendations are often dismissed`,
+      chronicDismissalDetail: (itemName, categoryLabel, categoryCountLabel, sampleCountLabel) =>
+        `Managers recently dismissed ${itemName} for ${categoryLabel} in ${categoryCountLabel} of ${sampleCountLabel} dismissals with reasons.`,
+      chronicDismissalCategory: (category) => {
+        switch (category) {
+          case "too_much_stock":
+            return "too much stock";
+          case "already_ordered":
+            return "already ordered";
+          case "wrong_timing":
+            return "wrong timing";
+          case "wrong_item":
+            return "wrong item";
+        }
+      },
       actions: {
         updateInventoryCount: "Review count",
         beginCountSession: "Start count",
@@ -343,7 +381,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         reviewWaste: "Review waste",
         startRecount: "Start recount",
         reviewCorrections: "Review corrections",
-        reviewApprovals: "Review approvals"
+        reviewApprovals: "Review approvals",
+        reviewDismissals: "Review dismissals"
       }
     },
     insight: {
@@ -403,7 +442,26 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicAcceptanceEditAction: (itemName, direction) =>
         direction === "increase"
           ? `Keep approving the adjusted quantity for ${itemName}; Mise will bias future suggestions upward.`
-          : `Keep approving the adjusted quantity for ${itemName}; Mise will bias future suggestions downward.`
+          : `Keep approving the adjusted quantity for ${itemName}; Mise will bias future suggestions downward.`,
+      chronicDismissalTitle: (itemName) => `${itemName} recommendations are often dismissed`,
+      chronicDismissalDescription: (itemName, categoryLabel, categoryCountLabel, sampleCountLabel) =>
+        `Managers recently dismissed ${itemName} for ${categoryLabel} in ${categoryCountLabel} of ${sampleCountLabel} dismissals with reasons.`,
+      chronicDismissalWhy:
+        "Repeated dismissals for the same reason mean Mise’s suggestion timing, mapping, or par assumptions may not match how the kitchen orders.",
+      chronicDismissalAction: (itemName) =>
+        `Review the next ${itemName} recommendation carefully and adjust par, timing, or mapping if the pattern is still valid.`,
+      chronicDismissalCategory: (category) => {
+        switch (category) {
+          case "too_much_stock":
+            return "too much stock";
+          case "already_ordered":
+            return "already ordered";
+          case "wrong_timing":
+            return "wrong timing";
+          case "wrong_item":
+            return "wrong item";
+        }
+      }
     },
     memory: {
       reliableLabel: "Mise memory is reliable",
@@ -541,6 +599,21 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
           : `Los pedidos de ${itemName} suelen reducirse al aprobar`,
       chronicAcceptanceEditDetail: (acceptPercentLabel, sampleCountLabel) =>
         `La gerencia aprobó recientemente cerca del ${acceptPercentLabel} de la sugerencia original de Mise en ${sampleCountLabel} decisiones.`,
+      chronicDismissalTitle: (itemName) => `Las recomendaciones de ${itemName} suelen descartarse`,
+      chronicDismissalDetail: (itemName, categoryLabel, categoryCountLabel, sampleCountLabel) =>
+        `La gerencia descartó recientemente ${itemName} por ${categoryLabel} en ${categoryCountLabel} de ${sampleCountLabel} descartes con motivo.`,
+      chronicDismissalCategory: (category) => {
+        switch (category) {
+          case "too_much_stock":
+            return "exceso de stock";
+          case "already_ordered":
+            return "ya pedido";
+          case "wrong_timing":
+            return "mal momento";
+          case "wrong_item":
+            return "artículo incorrecto";
+        }
+      },
       actions: {
         updateInventoryCount: "Revisar conteo",
         beginCountSession: "Iniciar conteo",
@@ -561,7 +634,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         reviewWaste: "Revisar merma",
         startRecount: "Iniciar reconteo",
         reviewCorrections: "Revisar correcciones",
-        reviewApprovals: "Revisar aprobaciones"
+        reviewApprovals: "Revisar aprobaciones",
+        reviewDismissals: "Revisar descartes"
       }
     },
     insight: {
@@ -621,7 +695,26 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicAcceptanceEditAction: (itemName, direction) =>
         direction === "increase"
           ? `Sigue aprobando la cantidad ajustada de ${itemName}; Mise inclinará futuras sugerencias al alza.`
-          : `Sigue aprobando la cantidad ajustada de ${itemName}; Mise inclinará futuras sugerencias a la baja.`
+          : `Sigue aprobando la cantidad ajustada de ${itemName}; Mise inclinará futuras sugerencias a la baja.`,
+      chronicDismissalTitle: (itemName) => `Las recomendaciones de ${itemName} suelen descartarse`,
+      chronicDismissalDescription: (itemName, categoryLabel, categoryCountLabel, sampleCountLabel) =>
+        `La gerencia descartó recientemente ${itemName} por ${categoryLabel} en ${categoryCountLabel} de ${sampleCountLabel} descartes con motivo.`,
+      chronicDismissalWhy:
+        "Los descartes repetidos por el mismo motivo indican que el momento, el mapeo o el par sugeridos por Mise no coinciden con cómo pide la cocina.",
+      chronicDismissalAction: (itemName) =>
+        `Revisa con cuidado la próxima recomendación de ${itemName} y ajusta el par, el momento o el mapeo si el patrón sigue siendo válido.`,
+      chronicDismissalCategory: (category) => {
+        switch (category) {
+          case "too_much_stock":
+            return "exceso de stock";
+          case "already_ordered":
+            return "ya pedido";
+          case "wrong_timing":
+            return "mal momento";
+          case "wrong_item":
+            return "artículo incorrecto";
+        }
+      }
     },
     memory: {
       reliableLabel: "La memoria de Mise es confiable",
@@ -757,6 +850,21 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
           : `${itemName} 的订单在批准时经常被下调`,
       chronicAcceptanceEditDetail: (acceptPercentLabel, sampleCountLabel) =>
         `经理最近批准的数量约为 Mise 原始建议的 ${acceptPercentLabel}（基于 ${sampleCountLabel} 次决策）。`,
+      chronicDismissalTitle: (itemName) => `${itemName} 的建议经常被驳回`,
+      chronicDismissalDetail: (itemName, categoryLabel, categoryCountLabel, sampleCountLabel) =>
+        `经理最近因${categoryLabel}驳回 ${itemName} 的次数为 ${categoryCountLabel}/${sampleCountLabel}（含原因）。`,
+      chronicDismissalCategory: (category) => {
+        switch (category) {
+          case "too_much_stock":
+            return "库存过多";
+          case "already_ordered":
+            return "已下单";
+          case "wrong_timing":
+            return "时机不对";
+          case "wrong_item":
+            return "品项错误";
+        }
+      },
       actions: {
         updateInventoryCount: "检查盘点",
         beginCountSession: "开始盘点",
@@ -777,7 +885,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         reviewWaste: "查看损耗",
         startRecount: "开始复盘",
         reviewCorrections: "查看修正",
-        reviewApprovals: "查看批准"
+        reviewApprovals: "查看批准",
+        reviewDismissals: "查看驳回"
       }
     },
 
@@ -836,7 +945,26 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       chronicAcceptanceEditAction: (itemName, direction) =>
         direction === "increase"
           ? `请继续批准调整后的 ${itemName} 数量；Mise 会把未来建议向上偏移。`
-          : `请继续批准调整后的 ${itemName} 数量；Mise 会把未来建议向下偏移。`
+          : `请继续批准调整后的 ${itemName} 数量；Mise 会把未来建议向下偏移。`,
+      chronicDismissalTitle: (itemName) => `${itemName} 的建议经常被驳回`,
+      chronicDismissalDescription: (itemName, categoryLabel, categoryCountLabel, sampleCountLabel) =>
+        `经理最近因${categoryLabel}驳回 ${itemName} 的次数为 ${categoryCountLabel}/${sampleCountLabel}（含原因）。`,
+      chronicDismissalWhy:
+        "反复因同一原因驳回，说明 Mise 的建议时机、映射或安全库存假设可能与厨房实际订货方式不符。",
+      chronicDismissalAction: (itemName) =>
+        `请仔细审核下一次 ${itemName} 建议；若该模式仍然成立，请调整安全库存、时机或映射。`,
+      chronicDismissalCategory: (category) => {
+        switch (category) {
+          case "too_much_stock":
+            return "库存过多";
+          case "already_ordered":
+            return "已下单";
+          case "wrong_timing":
+            return "时机不对";
+          case "wrong_item":
+            return "品项错误";
+        }
+      }
     },
     memory: {
       reliableLabel: "Mise 运营记忆可靠",
@@ -914,6 +1042,9 @@ export function presentOperationalTodayTaskAction(
       }
       if (task.presentation?.code === "today.ordering.chronic_acceptance_edit") {
         return actions.reviewApprovals;
+      }
+      if (task.presentation?.code === "today.ordering.chronic_dismissal") {
+        return actions.reviewDismissals;
       }
       return actions.reviewInsight;
     case "map_unmapped_pos_items":
@@ -1082,6 +1213,17 @@ export function presentOperationalTodayTask(
       )
     );
   }
+  if (code === "today.ordering.chronic_dismissal") {
+    return result(
+      copy.today.chronicDismissalTitle(values.itemName),
+      copy.today.chronicDismissalDetail(
+        values.itemName,
+        copy.today.chronicDismissalCategory(values.category),
+        quantity(values.categoryCount),
+        quantity(values.sampleCount)
+      )
+    );
+  }
   if (code === "today.inventory.chronic_manager_correction") {
     return result(
       copy.today.chronicManagerCorrectionTitle(values.itemName),
@@ -1214,6 +1356,20 @@ export function presentInsight(locale: AppLocale, insight: Insight): PresentedIn
       ),
       whyItMatters: copy.insight.chronicAcceptanceEditWhy(values.direction),
       recommendedAction: copy.insight.chronicAcceptanceEditAction(values.itemName, values.direction),
+      evidenceOnly: false
+    };
+  }
+  if (code === "insight.rule.ordering.chronic_dismissal") {
+    return {
+      title: copy.insight.chronicDismissalTitle(values.itemName),
+      description: copy.insight.chronicDismissalDescription(
+        values.itemName,
+        copy.insight.chronicDismissalCategory(values.category),
+        formatQuantity(locale, values.categoryCount),
+        formatQuantity(locale, values.sampleCount)
+      ),
+      whyItMatters: copy.insight.chronicDismissalWhy,
+      recommendedAction: copy.insight.chronicDismissalAction(values.itemName),
       evidenceOnly: false
     };
   }

@@ -2043,6 +2043,47 @@ test("acceptance-edit learning uses original vs accepted quantities without clie
   assert.match(pgTap, /authenticated clients cannot rewrite accepted recommendation quantities/);
 });
 
+test("dismissal-reason clustering learns category patterns without client write authority", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260802060000_recommendation_dismissal_learning_index.sql",
+    "utf8"
+  );
+  const domain = readFileSync("services/domain/recommendationDismissalLearning.ts", "utf8");
+  const signals = readFileSync("services/domain/operationalSignals.ts", "utf8");
+  const miseDomain = readFileSync("services/domain/miseDomain.ts", "utf8");
+  const today = readFileSync("services/domain/todayTasks.ts", "utf8");
+  const todayApp = readFileSync("services/application/today.ts", "utf8");
+  const presentation = readFileSync("services/presentation/operationsPresentation.ts", "utf8");
+  const pgTap = readFileSync(
+    "supabase/tests/database/recommendation_dismissal_learning.test.sql",
+    "utf8"
+  );
+
+  assert.match(migration, /purchase_recommendations_restaurant_dismissal_learning_created_at_idx/);
+  assert.match(migration, /status = 'dismissed'/);
+  assert.match(migration, /dismiss_reason is not null/);
+  assert.match(domain, /DISMISSAL_LEARNING_MIN_SAMPLES = 3/);
+  assert.match(domain, /DISMISSAL_DOMINANT_SHARE = 0\.6/);
+  assert.match(domain, /classifyDismissReason/);
+  assert.match(domain, /extractDismissalSamplesFromRecommendations/);
+  assert.match(domain, /buildDismissalFeedbackByItem/);
+  assert.match(domain, /never auto-suppressed|never suppresses/i);
+  assert.match(signals, /buildDismissalFeedbackByItem/);
+  assert.match(signals, /dismissalFeedbackReasonFragment/);
+  assert.match(signals, /insight\.rule\.ordering\.chronic_dismissal/);
+  assert.match(signals, /dismiss_reason\?:/);
+  assert.match(miseDomain, /dismissalFeedback/);
+  assert.match(miseDomain, /extractDismissalSamplesFromRecommendations/);
+  assert.match(today, /today\.ordering\.chronic_dismissal/);
+  assert.match(todayApp, /extractDismissalSamplesFromRecommendations/);
+  assert.match(todayApp, /chronicDismissalItems/);
+  assert.match(presentation, /chronicDismissalTitle/);
+  assert.match(presentation, /reviewDismissals/);
+  assert.match(pgTap, /dismissal learning index exists/);
+  assert.match(pgTap, /planning recommendationHistory exposes dismiss_reason/);
+  assert.match(pgTap, /authenticated clients cannot rewrite dismiss_reason/);
+});
+
 test("security readiness document defines private-beta backend rules and public launch blockers", () => {
   const doc = readFileSync("docs/security-readiness.md", "utf8");
 

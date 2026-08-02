@@ -17,6 +17,14 @@ import {
   type ReceiveFillBias
 } from "./receiveDiscrepancyLearning";
 import {
+  buildChronicDismissalInsightInput,
+  buildDismissalFeedbackByItem,
+  dismissalCategoryLabel,
+  dismissalFeedbackReasonFragment,
+  extractDismissalSamplesFromRecommendations,
+  type DismissalFeedback
+} from "./recommendationDismissalLearning";
+import {
   applyLossBias,
   buildChronicCountShrinkInsightInput,
   buildChronicManagerCorrectionInsightInput,
@@ -63,6 +71,8 @@ export interface OperationalRecommendationHistory {
   recommended_quantity: number;
   /** Mise quantity at first approval; used for acceptance-edit learning. */
   original_recommended_quantity?: number | null;
+  /** Optional manager dismiss note; used for dismissal-reason clustering. */
+  dismiss_reason?: string | null;
   unit: string;
   status: string;
   created_at: string;
@@ -127,6 +137,9 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   const acceptanceEditBiasByItem = buildAcceptanceEditBiasByItem(
     extractAcceptanceEditSamplesFromRecommendations(snapshot.recommendationHistory)
   );
+  const dismissalFeedbackByItem = buildDismissalFeedbackByItem(
+    extractDismissalSamplesFromRecommendations(snapshot.recommendationHistory)
+  );
   const receiveBiasByItem = buildReceiveFillBiasByItem(snapshot.receivingHistory ?? []);
   const wasteBiasByItem = buildWasteBiasByItem(snapshot.wasteHistory ?? []);
   const countShrinkBiasByItem = buildCountShrinkBiasByItem(snapshot.countVarianceHistory ?? []);
@@ -135,6 +148,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   const insights: OperationalInsight[] = [];
   const chronicShortShipInsights: OperationalInsight[] = [];
   const chronicAcceptanceEditInsights: OperationalInsight[] = [];
+  const chronicDismissalInsights: OperationalInsight[] = [];
   const chronicLossInsights: OperationalInsight[] = [];
 
   for (const item of snapshot.inventoryItems.filter((entry) => entry.restaurant_id === snapshot.restaurantId)) {
@@ -168,6 +182,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       ? Date.parse(item.last_updated) > Date.parse(recentHandled.created_at)
       : false;
     const acceptanceEditBias = acceptanceEditBiasByItem.get(item.id);
+    const dismissalFeedback = dismissalFeedbackByItem.get(item.id);
     const receiveBias = receiveBiasByItem.get(item.id);
     const wasteBias = wasteBiasByItem.get(item.id);
     const countShrinkBias = countShrinkBiasByItem.get(item.id);
@@ -181,6 +196,13 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       snapshot.restaurantId
     );
     if (acceptanceEditInsight) chronicAcceptanceEditInsights.push(acceptanceEditInsight);
+    const dismissalInsight = buildChronicDismissalInsight(
+      item,
+      dismissalFeedback,
+      now,
+      snapshot.restaurantId
+    );
+    if (dismissalInsight) chronicDismissalInsights.push(dismissalInsight);
     const wasteInsight = buildChronicWasteInsight(item, wasteBias, now, snapshot.restaurantId);
     if (wasteInsight) chronicLossInsights.push(wasteInsight);
     const shrinkInsight = buildChronicCountShrinkInsight(item, countShrinkBias, now, snapshot.restaurantId);
@@ -251,6 +273,10 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       ) {
         reasonFragments.push(lossBiasReasonFragment(managerCorrectionBias));
       }
+      // Dismissal feedback explains manager patterns but never suppresses or rescales quantity.
+      if (dismissalFeedback?.isChronic) {
+        reasonFragments.push(dismissalFeedbackReasonFragment(dismissalFeedback));
+      }
       const reason = reasonFragments.length
         ? `${baseReason} ${reasonFragments.join(" ")}`
         : baseReason;
@@ -313,8 +339,9 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     }
   }
 
-  // Prefer chronic short-ship / acceptance-edit / loss insights ahead of lower-priority sales spikes.
+  // Prefer chronic short-ship / acceptance-edit / dismissal / loss insights ahead of lower-priority sales spikes.
   insights.unshift(...chronicLossInsights.slice(0, 2));
+  insights.unshift(...chronicDismissalInsights.slice(0, 2));
   insights.unshift(...chronicAcceptanceEditInsights.slice(0, 2));
   insights.unshift(...chronicShortShipInsights.slice(0, 2));
 
@@ -465,6 +492,39 @@ function buildChronicAcceptanceEditInsight(
         acceptPercent: marker.acceptPercent,
         direction: marker.direction,
         sampleCount: bias.sampleCount
+      }
+    }
+  };
+}
+
+function buildChronicDismissalInsight(
+  item: OperationalInventoryItem,
+  feedback: DismissalFeedback | undefined,
+  createdAt: string,
+  restaurantId: string
+): OperationalInsight | null {
+  if (!feedback) return null;
+  const marker = buildChronicDismissalInsightInput(feedback);
+  if (!marker) return null;
+  const categoryLabel = dismissalCategoryLabel(marker.category);
+  return {
+    id: `insight_dismissal_${item.id}`,
+    restaurant_id: restaurantId,
+    insight_type: "ordering",
+    title: `${item.item_name} recommendations are often dismissed`,
+    description: `Managers recently dismissed ${item.item_name} for ${categoryLabel} in ${marker.categoryCount} of ${marker.sampleCount} dismissals with reasons.`,
+    why_it_matters:
+      "Repeated dismissals for the same reason mean Mise’s suggestion timing, mapping, or par assumptions may not match how the kitchen orders.",
+    recommended_action: `Review the next ${item.item_name} recommendation carefully and adjust par, timing, or mapping if the pattern is still valid.`,
+    severity: "warning",
+    created_at: createdAt,
+    presentation: {
+      code: "insight.rule.ordering.chronic_dismissal",
+      values: {
+        itemName: item.item_name,
+        category: marker.category,
+        sampleCount: marker.sampleCount,
+        categoryCount: marker.categoryCount
       }
     }
   };

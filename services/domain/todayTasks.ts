@@ -89,6 +89,9 @@ export const CHRONIC_MANAGER_CORRECTION_SOURCE_ID_PREFIX = "chronic_manager_corr
 /** Stable synthetic source id prefix for chronic acceptance-edit ordering tasks. */
 export const CHRONIC_ACCEPTANCE_EDIT_SOURCE_ID_PREFIX = "chronic_acceptance_edit_";
 
+/** Stable synthetic source id prefix for chronic dismissal-reason ordering tasks. */
+export const CHRONIC_DISMISSAL_SOURCE_ID_PREFIX = "chronic_dismissal_";
+
 export type OperationalTodayTaskRoute =
   | "/inventory"
   | `/inventory/${string}`
@@ -158,6 +161,8 @@ export interface DeriveOperationalTodayTasksInput {
   chronicManagerCorrectionItems?: readonly ChronicLossTodayItem[];
   /** Chronic acceptance-edit patterns derived from original vs accepted recommendation quantities. */
   chronicAcceptanceEditItems?: readonly ChronicAcceptanceEditTodayItem[];
+  /** Chronic dismissal-reason patterns derived from manager dismiss notes. */
+  chronicDismissalItems?: readonly ChronicDismissalTodayItem[];
   insights: readonly Insight[];
   openCountSession?: InventoryCountSession | null;
   now?: Date;
@@ -178,6 +183,14 @@ export type ChronicAcceptanceEditTodayItem = {
   acceptPercent: number;
   direction: "increase" | "decrease";
   sampleCount: number;
+};
+
+export type ChronicDismissalTodayItem = {
+  inventoryItemId: string;
+  itemName: string;
+  category: "too_much_stock" | "already_ordered" | "wrong_timing" | "wrong_item";
+  sampleCount: number;
+  categoryCount: number;
 };
 
 export type ChronicLossTodayItem = {
@@ -827,6 +840,51 @@ export function deriveOperationalTodayTasks(
         requiredRole: "manager",
         isComplete: false,
         completionReason: "Approval history still shows a chronic acceptance-edit pattern."
+      }),
+      includeCompleted
+    );
+  }
+
+  const chronicDismissalItems = (input.chronicDismissalItems ?? [])
+    .filter((item) => item.inventoryItemId.trim() && item.itemName.trim())
+    .slice(0, 2);
+  for (const item of chronicDismissalItems) {
+    const categoryLabel =
+      item.category === "too_much_stock"
+        ? "too much stock"
+        : item.category === "already_ordered"
+          ? "already ordered"
+          : item.category === "wrong_timing"
+            ? "wrong timing"
+            : "wrong item";
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "insight",
+        sourceId: `${CHRONIC_DISMISSAL_SOURCE_ID_PREFIX}${item.inventoryItemId}`,
+        sourceStatus: "chronic_dismissal",
+        title: `${item.itemName} recommendations are often dismissed`,
+        detail: `Managers recently dismissed ${item.itemName} for ${categoryLabel} in ${item.categoryCount} of ${item.sampleCount} dismissals with reasons.`,
+        presentation: {
+          code: "today.ordering.chronic_dismissal",
+          values: {
+            itemName: item.itemName,
+            category: item.category,
+            sampleCount: item.sampleCount,
+            categoryCount: item.categoryCount
+          }
+        },
+        priority: "normal",
+        action: {
+          intent: "review_insight",
+          label: "Review dismissals",
+          route: "/orders",
+          entityId: item.inventoryItemId
+        },
+        requiredRole: "manager",
+        isComplete: false,
+        completionReason: "Dismissal history still shows a chronic reason pattern."
       }),
       includeCompleted
     );

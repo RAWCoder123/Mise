@@ -47,6 +47,13 @@ import {
   extractAcceptanceEditSamplesFromRecommendations
 } from "./acceptanceEditLearning";
 import {
+  buildChronicDismissalInsightInput,
+  buildDismissalFeedbackByItem,
+  dismissalCategoryLabel,
+  dismissalFeedbackReasonFragment,
+  extractDismissalSamplesFromRecommendations
+} from "./recommendationDismissalLearning";
+import {
   applyReceiveFillBias,
   buildChronicShortShipInsightInput,
   buildReceiveFillBiasByItem,
@@ -217,6 +224,9 @@ export function applyStackedOrderLearning(input: {
   >
     ? V
     : never;
+  dismissalFeedback?: ReturnType<typeof buildDismissalFeedbackByItem> extends Map<string, infer V>
+    ? V
+    : never;
 }): StackedOrderLearningResult {
   const bounds = {
     calculated: input.prediction.suggestedOrderQuantity,
@@ -290,6 +300,10 @@ export function applyStackedOrderLearning(input: {
   ) {
     reasonFragments.push(lossBiasReasonFragment(input.managerCorrectionBias));
   }
+  // Dismissal clustering explains patterns only — never suppresses stockout quantity.
+  if (input.dismissalFeedback?.isChronic) {
+    reasonFragments.push(dismissalFeedbackReasonFragment(input.dismissalFeedback));
+  }
   return { recommendedQuantity, learnedQuantity, reasonFragments };
 }
 
@@ -326,6 +340,9 @@ export function planManualPendingRecommendation(input: {
   const managerCorrectionBias = buildManagerCorrectionBiasByItem(
     input.managerCorrectionHistory ?? []
   ).get(input.item.id);
+  const dismissalFeedback = buildDismissalFeedbackByItem(
+    extractDismissalSamplesFromRecommendations(input.recommendationHistory ?? [])
+  ).get(input.item.id);
   const learned = applyStackedOrderLearning({
     item: input.item,
     prediction: input.prediction,
@@ -334,7 +351,8 @@ export function planManualPendingRecommendation(input: {
     receiveBias,
     wasteBias,
     countShrinkBias,
-    managerCorrectionBias
+    managerCorrectionBias,
+    dismissalFeedback
   });
   return {
     recommended_quantity: learned.recommendedQuantity,
@@ -974,6 +992,9 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
   const acceptanceEditBiasByItem = buildAcceptanceEditBiasByItem(
     extractAcceptanceEditSamplesFromRecommendations(recommendationHistory)
   );
+  const dismissalFeedbackByItem = buildDismissalFeedbackByItem(
+    extractDismissalSamplesFromRecommendations(recommendationHistory)
+  );
   const lowOutlooks = buildInventoryOutlooks(
     restaurantId,
     state.inventoryItems,
@@ -1006,7 +1027,8 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
       receiveBias: receiveBiasByItem.get(item.id),
       wasteBias: wasteBiasByItem.get(item.id),
       countShrinkBias: countShrinkBiasByItem.get(item.id),
-      managerCorrectionBias: managerCorrectionBiasByItem.get(item.id)
+      managerCorrectionBias: managerCorrectionBiasByItem.get(item.id),
+      dismissalFeedback: dismissalFeedbackByItem.get(item.id)
     });
     const reason = learnedRecommendationReason(
       item,
@@ -1073,6 +1095,9 @@ export function buildInsightsFromData(
   const acceptanceEditBiasByItem = buildAcceptanceEditBiasByItem(
     extractAcceptanceEditSamplesFromRecommendations(recommendationHistory)
   );
+  const dismissalFeedbackByItem = buildDismissalFeedbackByItem(
+    extractDismissalSamplesFromRecommendations(recommendationHistory)
+  );
   const chronicAcceptanceEditInsights = inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .flatMap((item) => {
@@ -1109,6 +1134,37 @@ export function buildInsightsFromData(
     })
     .slice(0, 2);
   insights.push(...chronicAcceptanceEditInsights);
+  const chronicDismissalInsights = inventoryItems
+    .filter((item) => item.restaurant_id === restaurantId)
+    .flatMap((item) => {
+      const feedback = dismissalFeedbackByItem.get(item.id);
+      const marker = feedback ? buildChronicDismissalInsightInput(feedback) : null;
+      if (!feedback || !marker) return [];
+      const categoryLabel = dismissalCategoryLabel(marker.category);
+      return [{
+        id: `insight_dismissal_${item.id}`,
+        restaurant_id: restaurantId,
+        insight_type: "ordering" as const,
+        title: `${item.item_name} recommendations are often dismissed`,
+        description: `Managers recently dismissed ${item.item_name} for ${categoryLabel} in ${marker.categoryCount} of ${marker.sampleCount} dismissals with reasons.`,
+        why_it_matters:
+          "Repeated dismissals for the same reason mean Mise’s suggestion timing, mapping, or par assumptions may not match how the kitchen orders.",
+        recommended_action: `Review the next ${item.item_name} recommendation carefully and adjust par, timing, or mapping if the pattern is still valid.`,
+        severity: "warning" as const,
+        created_at: now,
+        presentation: {
+          code: "insight.rule.ordering.chronic_dismissal" as const,
+          values: {
+            itemName: item.item_name,
+            category: marker.category,
+            sampleCount: marker.sampleCount,
+            categoryCount: marker.categoryCount
+          }
+        }
+      }];
+    })
+    .slice(0, 2);
+  insights.push(...chronicDismissalInsights);
   const chronicShortShipInsights = inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .flatMap((item) => {
@@ -2564,6 +2620,9 @@ export function buildRecommendationInserts(
   const acceptanceEditBiasByItem = buildAcceptanceEditBiasByItem(
     extractAcceptanceEditSamplesFromRecommendations(recommendationHistory)
   );
+  const dismissalFeedbackByItem = buildDismissalFeedbackByItem(
+    extractDismissalSamplesFromRecommendations(recommendationHistory)
+  );
   const receiveBiasByItem = buildReceiveFillBiasByItem(receivingHistory);
   const wasteBiasByItem = buildWasteBiasByItem(wasteHistory);
   const countShrinkBiasByItem = buildCountShrinkBiasByItem(countVarianceHistory);
@@ -2586,7 +2645,8 @@ export function buildRecommendationInserts(
         receiveBias: receiveBiasByItem.get(item.id),
         wasteBias: wasteBiasByItem.get(item.id),
         countShrinkBias: countShrinkBiasByItem.get(item.id),
-        managerCorrectionBias: managerCorrectionBiasByItem.get(item.id)
+        managerCorrectionBias: managerCorrectionBiasByItem.get(item.id),
+        dismissalFeedback: dismissalFeedbackByItem.get(item.id)
       });
       return {
         restaurant_id: restaurantId,
