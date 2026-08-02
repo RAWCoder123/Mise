@@ -19,6 +19,11 @@ import { colors } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
+  filterMenuItemsForPicker,
+  resolveInventoryItemForRecipeLink,
+  searchInventoryItemsForPicker
+} from "../../services/domain/inventoryItemSearch";
+import {
   addRecipeBaselineIngredient,
   deleteRecipeBaselineIngredient,
   fetchInventoryItems,
@@ -42,6 +47,7 @@ export default function RecipeBaselinesScreen() {
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [newMenuItemName, setNewMenuItemName] = useState(prefillsMenuItem);
   const [newInventoryItemName, setNewInventoryItemName] = useState("");
+  const [selectedInventoryItemId, setSelectedInventoryItemId] = useState<string | null>(null);
   const [newQuantity, setNewQuantity] = useState("1");
   const [loading, setLoading] = useState(true);
   const [savingMappingId, setSavingMappingId] = useState<string | null>(null);
@@ -60,6 +66,7 @@ export default function RecipeBaselinesScreen() {
     setInventoryItems([]);
     setNewMenuItemName(prefillsMenuItem);
     setNewInventoryItemName("");
+    setSelectedInventoryItemId(null);
     setNewQuantity("1");
     setSavingMappingId(null);
     setSavingNewLink(false);
@@ -104,10 +111,28 @@ export default function RecipeBaselinesScreen() {
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
 
   const selectedInventoryItem = useMemo(() => {
-    const normalized = newInventoryItemName.trim().toLowerCase();
-    if (!normalized) return null;
-    return visibleInventoryItems.find((item) => item.item_name.toLowerCase() === normalized) ?? null;
-  }, [newInventoryItemName, visibleInventoryItems]);
+    return resolveInventoryItemForRecipeLink(
+      visibleInventoryItems,
+      newInventoryItemName,
+      selectedInventoryItemId
+    );
+  }, [newInventoryItemName, selectedInventoryItemId, visibleInventoryItems]);
+
+  const inventorySearchMatches = useMemo(
+    () => searchInventoryItemsForPicker(visibleInventoryItems, newInventoryItemName),
+    [newInventoryItemName, visibleInventoryItems]
+  );
+
+  function handleInventoryItemNameChange(value: string) {
+    setNewInventoryItemName(value);
+    const resolved = resolveInventoryItemForRecipeLink(visibleInventoryItems, value, null);
+    setSelectedInventoryItemId(resolved?.id ?? null);
+  }
+
+  function handleInventoryItemSelect(item: InventoryItem) {
+    setNewInventoryItemName(item.item_name);
+    setSelectedInventoryItemId(item.id);
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -239,6 +264,7 @@ export default function RecipeBaselinesScreen() {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice(t("recipes.notice.linked", { ingredient: selectedInventoryItem.item_name, dish: menuItemName }));
       setNewInventoryItemName("");
+      setSelectedInventoryItemId(null);
       setNewQuantity("1");
       await load();
     } catch {
@@ -379,10 +405,12 @@ export default function RecipeBaselinesScreen() {
               quantity={newQuantity}
               selectedInventoryItem={selectedInventoryItem}
               missingMenuItems={visibleSummary.posItemsMissingRecipes}
-              inventoryItems={visibleInventoryItems}
+              inventorySearchMatches={inventorySearchMatches.map((match) => match.item)}
+              inventoryItemCount={visibleInventoryItems.length}
               saving={savingNewLink}
               onMenuItemNameChange={setNewMenuItemName}
-              onInventoryItemNameChange={setNewInventoryItemName}
+              onInventoryItemNameChange={handleInventoryItemNameChange}
+              onInventoryItemSelect={handleInventoryItemSelect}
               onQuantityChange={setNewQuantity}
               onAdd={addBaselineLink}
             />
@@ -425,10 +453,12 @@ function RecipeBaselineBuilder({
   quantity,
   selectedInventoryItem,
   missingMenuItems,
-  inventoryItems,
+  inventorySearchMatches,
+  inventoryItemCount,
   saving,
   onMenuItemNameChange,
   onInventoryItemNameChange,
+  onInventoryItemSelect,
   onQuantityChange,
   onAdd
 }: {
@@ -437,14 +467,32 @@ function RecipeBaselineBuilder({
   quantity: string;
   selectedInventoryItem: InventoryItem | null;
   missingMenuItems: string[];
-  inventoryItems: InventoryItem[];
+  inventorySearchMatches: InventoryItem[];
+  inventoryItemCount: number;
   saving: boolean;
   onMenuItemNameChange: (value: string) => void;
   onInventoryItemNameChange: (value: string) => void;
+  onInventoryItemSelect: (item: InventoryItem) => void;
   onQuantityChange: (value: string) => void;
   onAdd: () => void;
 }) {
-  const { t } = useLocale();
+  const { formatNumber, t } = useLocale();
+  const filteredMissingMenuItems = useMemo(
+    () => filterMenuItemsForPicker(missingMenuItems, menuItemName),
+    [menuItemName, missingMenuItems]
+  );
+  const inventoryQueryActive = inventoryItemName.trim().length > 0;
+  const inventoryHint = selectedInventoryItem
+    ? t("recipes.builder.inventorySelected", {
+        item: selectedInventoryItem.item_name,
+        unit: selectedInventoryItem.unit
+      })
+    : inventoryQueryActive && inventorySearchMatches.length === 0
+      ? t("recipes.builder.inventoryNoMatches")
+      : inventoryQueryActive
+        ? t("recipes.builder.inventoryPickOne")
+        : t("recipes.builder.inventoryBrowse", { count: formatNumber(inventoryItemCount) });
+
   return (
     <Card style={styles.builderCard}>
       <View style={styles.builderHeader}>
@@ -461,7 +509,7 @@ function RecipeBaselineBuilder({
         <View style={styles.suggestionBlock}>
           <Text style={styles.inputLabel}>{t("recipes.builder.missing")}</Text>
           <View style={styles.chipRow}>
-            {missingMenuItems.slice(0, 5).map((itemName) => (
+            {filteredMissingMenuItems.map((itemName) => (
               <SuggestionChip
                 key={itemName}
                 label={itemName}
@@ -490,28 +538,40 @@ function RecipeBaselineBuilder({
 
       <View style={styles.suggestionBlock}>
         <Text style={styles.inputLabel}>{t("recipes.field.inventoryItem")}</Text>
-        <View style={styles.chipRow}>
-          {inventoryItems.slice(0, 7).map((item) => (
-            <SuggestionChip
-              key={item.id}
-              label={item.item_name}
-              active={selectedInventoryItem?.id === item.id}
-              disabled={saving}
-              icon={<Package size={13} color={selectedInventoryItem?.id === item.id ? colors.surface : colors.text} strokeWidth={2.4} />}
-              onPress={() => onInventoryItemNameChange(item.item_name)}
-            />
-          ))}
-        </View>
         <TextInput
           accessibilityLabel={t("recipes.field.inventoryItem")}
+          accessibilityHint={t("recipes.field.inventorySearchHint")}
           accessibilityState={{ disabled: saving }}
           value={inventoryItemName}
           onChangeText={onInventoryItemNameChange}
           editable={!saving}
+          autoCorrect={false}
+          autoCapitalize="words"
           placeholder={t("recipes.field.inventoryPlaceholder")}
           placeholderTextColor={colors.faint}
-          style={[styles.builderInput, styles.inventoryInput]}
+          style={styles.builderInput}
         />
+        <Text style={styles.inventoryHint} accessibilityLiveRegion="polite">
+          {inventoryHint}
+        </Text>
+        <View style={styles.chipRow}>
+          {inventorySearchMatches.map((item) => (
+            <SuggestionChip
+              key={item.id}
+              label={`${item.item_name} · ${item.unit}`}
+              active={selectedInventoryItem?.id === item.id}
+              disabled={saving}
+              icon={
+                <Package
+                  size={13}
+                  color={selectedInventoryItem?.id === item.id ? colors.surface : colors.text}
+                  strokeWidth={2.4}
+                />
+              }
+              onPress={() => onInventoryItemSelect(item)}
+            />
+          ))}
+        </View>
       </View>
 
       <View style={styles.quantityBuilderRow}>
@@ -837,8 +897,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     paddingHorizontal: 12
   },
-  inventoryInput: {
-    marginTop: 1
+  inventoryHint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700"
   },
   quantityBuilderRow: {
     flexDirection: "row",

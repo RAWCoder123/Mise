@@ -1341,6 +1341,30 @@ test("recipe baseline unlink is service-owned, manager-only, and preserves histo
   assert.doesNotMatch(inventoryWorkflow, /\.from\("menu_item_ingredients"\)\.delete\(/i);
 });
 
+test("recipe baseline builder resolves inventory items through searchable picker helpers", () => {
+  const screen = readFileSync("app/settings/recipes.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+  const searchDomain = readFileSync("services/domain/inventoryItemSearch.ts", "utf8");
+
+  assert.match(searchDomain, /export\s+function\s+searchInventoryItemsForPicker/);
+  assert.match(searchDomain, /export\s+function\s+resolveInventoryItemForRecipeLink/);
+  assert.match(searchDomain, /export\s+function\s+filterMenuItemsForPicker/);
+  assert.match(screen, /searchInventoryItemsForPicker/);
+  assert.match(screen, /resolveInventoryItemForRecipeLink/);
+  assert.match(screen, /filterMenuItemsForPicker/);
+  assert.match(screen, /onInventoryItemSelect/);
+  assert.match(screen, /selectedInventoryItemId/);
+  assert.match(screen, /selectedInventoryItem\.restaurant_id !== restaurantId/);
+  assert.doesNotMatch(
+    screen,
+    /visibleInventoryItems\.find\(\(item\) => item\.item_name\.toLowerCase\(\) === normalized\)/
+  );
+  assert.match(catalog, /"recipes\.field\.inventoryPlaceholder"/);
+  assert.match(catalog, /"recipes\.builder\.inventoryPickOne"/);
+  assert.match(catalog, /"recipes\.field\.inventorySearchHint"/);
+  assert.doesNotMatch(catalog, /type exact inventory item/i);
+});
+
 test("Supabase repository keeps demo seed and reset local-only", () => {
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const supabaseRepository = repository.match(/function createSupabaseRepository\(\): MiseRepository \{[\s\S]*$/)?.[0] ?? "";
