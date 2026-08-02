@@ -283,7 +283,8 @@ export async function receiveSupplierOrder(
     receivingHistory,
     data.wasteHistory,
     data.countVarianceHistory,
-    data.managerCorrectionHistory
+    data.managerCorrectionHistory,
+    recommendationHistory
   );
   return repository.receiveSupplierOrderAndSignals(
     normalizedRestaurantId,

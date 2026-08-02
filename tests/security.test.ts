@@ -2072,6 +2072,12 @@ test("dismissal-reason clustering learns category patterns without client write 
   assert.match(signals, /dismissalFeedbackReasonFragment/);
   assert.match(signals, /insight\.rule\.ordering\.chronic_dismissal/);
   assert.match(signals, /dismiss_reason\?:/);
+  assert.match(signals, /recommendationHistory: OperationalRecommendationHistory\[] = \[\]/);
+  assert.match(signals, /recommendationHistory,/);
+  assert.doesNotMatch(
+    signals,
+    /buildInsightsFromData\([\s\S]*recommendationHistory: \[\]/
+  );
   assert.match(miseDomain, /dismissalFeedback/);
   assert.match(miseDomain, /extractDismissalSamplesFromRecommendations/);
   assert.match(today, /today\.ordering\.chronic_dismissal/);
@@ -2079,6 +2085,8 @@ test("dismissal-reason clustering learns category patterns without client write 
   assert.match(todayApp, /chronicDismissalItems/);
   assert.match(presentation, /chronicDismissalTitle/);
   assert.match(presentation, /reviewDismissals/);
+  const recalculations = readFileSync("services/application/recalculations.ts", "utf8");
+  assert.match(recalculations, /buildInsightsFromData\([\s\S]*recommendationHistory/);
   assert.match(pgTap, /dismissal learning index exists/);
   assert.match(pgTap, /planning recommendationHistory exposes dismiss_reason/);
   assert.match(pgTap, /authenticated clients cannot rewrite dismiss_reason/);

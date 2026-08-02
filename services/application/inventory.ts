@@ -130,7 +130,8 @@ export async function updateRecipeBaselineIngredient(
     data.receivingHistory,
     data.wasteHistory,
     data.countVarianceHistory,
-    data.managerCorrectionHistory
+    data.managerCorrectionHistory,
+    recommendationHistory
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -215,7 +216,8 @@ export async function addRecipeBaselineIngredient(
     data.receivingHistory,
     data.wasteHistory,
     data.countVarianceHistory,
-    data.managerCorrectionHistory
+    data.managerCorrectionHistory,
+    recommendationHistory
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -261,7 +263,8 @@ export async function deleteRecipeBaselineIngredient(restaurantId: string, mappi
     data.receivingHistory,
     data.wasteHistory,
     data.countVarianceHistory,
-    data.managerCorrectionHistory
+    data.managerCorrectionHistory,
+    recommendationHistory
   );
   await repository.deleteRecipeMappingAndSignals({
     restaurantId,
@@ -371,7 +374,8 @@ export async function createInventoryItem(restaurantId: string, input: Inventory
     data.receivingHistory,
     data.wasteHistory,
     data.countVarianceHistory,
-    data.managerCorrectionHistory
+    data.managerCorrectionHistory,
+    recommendationHistory
   );
   return repository.createInventoryItemAndSignals(
     restaurantId,
@@ -448,7 +452,8 @@ export async function updateInventoryItem(
     data.receivingHistory,
     data.wasteHistory,
     data.countVarianceHistory,
-    managerCorrectionHistory
+    managerCorrectionHistory,
+    recommendationHistory
   );
   return repository.updateInventoryItemAndSignals(
     restaurantId,
@@ -551,7 +556,8 @@ export async function approveInventoryCountSession(restaurantId: string, session
     data.receivingHistory,
     data.wasteHistory,
     countVarianceHistory,
-    data.managerCorrectionHistory
+    data.managerCorrectionHistory,
+    recommendationHistory
   );
   return repository.approveInventoryCountSession(
     restaurantId,
@@ -625,7 +631,8 @@ export async function recordInventoryWaste(
     data.receivingHistory,
     wasteHistory,
     data.countVarianceHistory,
-    data.managerCorrectionHistory
+    data.managerCorrectionHistory,
+    recommendationHistory
   );
   return repository.recordInventoryWasteAndSignals(
     restaurantId,

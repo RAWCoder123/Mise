@@ -4,7 +4,10 @@ import { getMiseRepository } from "./repository";
 const repository = getMiseRepository();
 
 export async function generateInsightsFromSalesAndInventory(restaurantId: string) {
-  const data = await repository.fetchPlanningData(restaurantId);
+  const [data, recommendationHistory] = await Promise.all([
+    repository.fetchPlanningData(restaurantId),
+    repository.fetchPurchaseRecommendations(restaurantId, "all")
+  ]);
   const insights = buildInsightsFromData(
     restaurantId,
     data.inventoryItems,
@@ -15,7 +18,8 @@ export async function generateInsightsFromSalesAndInventory(restaurantId: string
     data.receivingHistory,
     data.wasteHistory,
     data.countVarianceHistory,
-    data.managerCorrectionHistory
+    data.managerCorrectionHistory,
+    recommendationHistory
   );
   await repository.replaceInsights(restaurantId, insights);
   return insights;
@@ -68,7 +72,8 @@ export async function regenerateOperationalSignals(restaurantId: string) {
     data.receivingHistory,
     data.wasteHistory,
     data.countVarianceHistory,
-    data.managerCorrectionHistory
+    data.managerCorrectionHistory,
+    recommendationHistory
   );
   await repository.replaceOperationalSignals(restaurantId, recommendations, insights);
 }

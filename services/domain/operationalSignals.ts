@@ -410,7 +410,8 @@ export function buildInsightsFromData(
   receivingHistory: ReceiveDiscrepancySample[] = [],
   wasteHistory: WasteSample[] = [],
   countVarianceHistory: CountVarianceSample[] = [],
-  managerCorrectionHistory: CountVarianceSample[] = []
+  managerCorrectionHistory: CountVarianceSample[] = [],
+  recommendationHistory: OperationalRecommendationHistory[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -418,7 +419,7 @@ export function buildInsightsFromData(
     inventoryItems,
     sales,
     menuItemIngredients,
-    recommendationHistory: [],
+    recommendationHistory,
     appliedTodayConsumptionByItemId,
     receivingHistory,
     wasteHistory,

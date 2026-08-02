@@ -8,7 +8,10 @@ import {
   extractDismissalSamplesFromRecommendations,
   type DismissalSample
 } from "../services/domain/recommendationDismissalLearning";
-import { calculateOperationalSignals } from "../services/domain/operationalSignals";
+import {
+  buildInsightsFromData,
+  calculateOperationalSignals
+} from "../services/domain/operationalSignals";
 import { deriveOperationalTodayTasks } from "../services/domain/todayTasks";
 import {
   applyStackedOrderLearning,
@@ -208,6 +211,74 @@ test("manual add-to-order planning explains chronic dismissal without suppressin
 
   assert.equal(planned.recommended_quantity, prediction.suggestedOrderQuantity);
   assert.match(planned.reason, /too early|wrong timing|dismissed/i);
+});
+
+test("buildInsightsFromData uses recommendationHistory for chronic dismissal insights", () => {
+  const recommendationHistory = [1, 2, 3].map((daysAgo) => ({
+    inventory_item_id: itemId,
+    recommended_quantity: 10,
+    unit: "case",
+    status: "dismissed",
+    dismiss_reason: "Already have enough",
+    created_at: new Date(now - daysAgo * 86_400_000).toISOString()
+  }));
+
+  const withoutHistory = buildInsightsFromData(
+    "rest_1",
+    [
+      {
+        id: itemId,
+        restaurant_id: "rest_1",
+        item_name: "Avocados",
+        supplier_name: "Neighborhood Produce",
+        unit: "case",
+        current_quantity: 4,
+        par_level: 20,
+        reorder_threshold: 8,
+        last_updated: new Date(now).toISOString()
+      }
+    ],
+    [],
+    [],
+    "2026-08-02"
+  );
+  assert.equal(
+    withoutHistory.some(
+      (entry) => entry.presentation.code === "insight.rule.ordering.chronic_dismissal"
+    ),
+    false
+  );
+
+  const withHistory = buildInsightsFromData(
+    "rest_1",
+    [
+      {
+        id: itemId,
+        restaurant_id: "rest_1",
+        item_name: "Avocados",
+        supplier_name: "Neighborhood Produce",
+        unit: "case",
+        current_quantity: 4,
+        par_level: 20,
+        reorder_threshold: 8,
+        last_updated: new Date(now).toISOString()
+      }
+    ],
+    [],
+    [],
+    "2026-08-02",
+    {},
+    [],
+    [],
+    [],
+    [],
+    recommendationHistory
+  );
+  assert.ok(
+    withHistory.some(
+      (entry) => entry.presentation.code === "insight.rule.ordering.chronic_dismissal"
+    )
+  );
 });
 
 test("applyStackedOrderLearning appends dismissal fragment without changing quantity", () => {
