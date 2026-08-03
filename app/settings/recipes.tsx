@@ -14,7 +14,7 @@ import { InsightChartIllustration } from "../../components/ui/MiseIllustrations"
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
-import { StatusNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -32,6 +32,11 @@ import {
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
+import {
+  presentRecipesHubEmptyCopy,
+  presentRecipesHubSectionAction,
+  resolveRecipesHubLoadState
+} from "../../services/presentation/recipesHubPresentation";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { requireRecipeBaselineQuantity } from "../../services/miseValidation";
 import type { InventoryItem, RecipeBaselineItem, RecipeBaselineSummary } from "../../types/mise";
@@ -54,16 +59,19 @@ export default function RecipeBaselinesScreen() {
   const [loading, setLoading] = useState(true);
   const [savingMappingId, setSavingMappingId] = useState<string | null>(null);
   const [savingNewLink, setSavingNewLink] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [mappedDishQuery, setMappedDishQuery] = useState("");
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   useEffect(() => {
     requestIdRef.current += 1;
+    loadedRestaurantRef.current = null;
     setLoadedRestaurantId(null);
     setSummary(null);
     setInventoryItems([]);
@@ -73,6 +81,7 @@ export default function RecipeBaselinesScreen() {
     setNewQuantity("1");
     setSavingMappingId(null);
     setSavingNewLink(false);
+    setLoadError(false);
     setError(null);
     setNotice(null);
     setMappedDishQuery("");
@@ -84,14 +93,17 @@ export default function RecipeBaselinesScreen() {
     setNewMenuItemName((current) => (current.trim() ? current : prefillsMenuItem));
   }, [prefillsMenuItem]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading = false) => {
     if (!restaurant) {
       setLoading(false);
       return;
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
+    if (showLoading || loadedRestaurantRef.current !== restaurantId) {
+      setLoading(true);
+    }
+    setLoadError(false);
     setError(null);
     try {
       const [nextSummary, nextInventoryItems] = await Promise.all([
@@ -101,17 +113,25 @@ export default function RecipeBaselinesScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
       setInventoryItems(nextInventoryItems);
+      loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setLoadError(true);
       setError(t("recipes.error.load"));
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
   }, [restaurant?.id, t]);
 
-  const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
-  const visibleInventoryItems = loadedRestaurantId === restaurant?.id ? inventoryItems : [];
+  const hubLoadState = resolveRecipesHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleSummary = hubReady ? summary : null;
+  const visibleInventoryItems = hubReady ? inventoryItems : [];
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const mappedDishes = visibleSummary?.items;
   const showMappedDishSearch = (mappedDishes?.length ?? 0) >= RECIPE_BASELINE_SEARCH_THRESHOLD;
@@ -122,6 +142,32 @@ export default function RecipeBaselinesScreen() {
   }, [mappedDishQuery, mappedDishes, showMappedDishSearch]);
   const mappedDishSearchNoMatches =
     showMappedDishSearch && mappedDishQuery.trim().length > 0 && filteredMappedDishes.length === 0;
+  const emptyPresentation = presentRecipesHubEmptyCopy(
+    hubLoadState,
+    { searchNoMatches: mappedDishSearchNoMatches },
+    {
+      loadingTitle: t("recipes.empty.loadingTitle"),
+      loadingBody: t("recipes.empty.loadingBody"),
+      unavailableTitle: t("recipes.empty.unavailableTitle"),
+      unavailableBody: t("recipes.empty.unavailableBody"),
+      emptyTitle: t("recipes.empty.title"),
+      emptyBody: t("recipes.empty.body"),
+      searchEmptyTitle: t("recipes.section.search.emptyTitle"),
+      searchEmptyBody: t("recipes.section.search.emptyBody")
+    }
+  );
+  const sectionAction = presentRecipesHubSectionAction(
+    hubLoadState,
+    t("recipes.section.shown", {
+      count: formatNumber(
+        showMappedDishSearch ? filteredMappedDishes.length : visibleSummary?.items.length ?? 0
+      )
+    }),
+    {
+      loading: t("recipes.section.action.loading"),
+      unavailable: t("recipes.section.action.unavailable")
+    }
+  );
 
   const selectedInventoryItem = useMemo(() => {
     return resolveInventoryItemForRecipeLink(
@@ -149,7 +195,7 @@ export default function RecipeBaselinesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(false);
     }, [load])
   );
 
@@ -179,7 +225,7 @@ export default function RecipeBaselinesScreen() {
       await updateRecipeBaselineIngredient(restaurantId, mappingId, parsed);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice(t("recipes.notice.saved"));
-      await load();
+      await load(false);
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
         setError(t("recipes.error.save"));
@@ -225,7 +271,7 @@ export default function RecipeBaselinesScreen() {
       await deleteRecipeBaselineIngredient(restaurantId, mappingId);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice(t("recipes.notice.unlinked", { ingredient: ingredientName, dish: dishName }));
-      await load();
+      await load(false);
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
         setError(t("recipes.error.unlink"));
@@ -279,7 +325,7 @@ export default function RecipeBaselinesScreen() {
       setNewInventoryItemName("");
       setSelectedInventoryItemId(null);
       setNewQuantity("1");
-      await load();
+      await load(false);
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
         setError(t("recipes.error.add"));
@@ -321,168 +367,174 @@ export default function RecipeBaselinesScreen() {
         </ActionIcon>
       }
     >
-      {error && <Text style={styles.error} accessibilityLiveRegion="assertive">{error}</Text>}
+      {loadError ? (
+        <RetryNotice
+          title={t("recipes.retry.title")}
+          message={t("recipes.error.load")}
+          onRetry={() => void load(true)}
+          retryLabel={t("common.retry")}
+          accessibilityLabel={t("recipes.retry.accessibility")}
+        />
+      ) : null}
+      {!loadError && error ? (
+        <Text style={styles.error} accessibilityLiveRegion="assertive">
+          {error}
+        </Text>
+      ) : null}
       {notice && <Text style={styles.notice} accessibilityLiveRegion="polite">{notice}</Text>}
-      {visibleSummary && (
-        <View style={styles.stack}>
-          {!canManage ? (
-            <StatusNotice
-              title={t("recipes.readOnly.title")}
-              message={t("recipes.readOnly.body")}
-            />
-          ) : null}
-
-          <OperationalHero
-            eyebrow={t("recipes.hero.eyebrow")}
-            title={t("recipes.hero.title", { percent: formatNumber(visibleSummary.coveragePercent) })}
-            body={t("recipes.hero.body")}
-            meta={`${formatNumber(visibleSummary.coveragePercent)}% POS`}
-            tone={visibleSummary.coveragePercent >= 100 ? "leaf" : "caution"}
-            icon={
-              <BookOpen
-                size={21}
-                color={visibleSummary.coveragePercent >= 100 ? colors.success : colors.caution}
-                strokeWidth={2.6}
-              />
-            }
-            stats={[
-              { label: t("recipes.stat.dishes"), value: formatNumber(visibleSummary.menuItemsTracked), tone: "leaf" },
-              { label: t("recipes.stat.links"), value: formatNumber(visibleSummary.ingredientMappings), tone: "neutral" },
-              { label: t("recipes.stat.items"), value: formatNumber(visibleSummary.inventoryItemsLinked), tone: "neutral" }
-            ]}
+      <View style={styles.stack}>
+        {!canManage && hubReady ? (
+          <StatusNotice
+            title={t("recipes.readOnly.title")}
+            message={t("recipes.readOnly.body")}
           />
+        ) : null}
 
-          <OperationsFlow
-            title={t("recipes.flow.title")}
-            subtitle={t("recipes.flow.subtitle")}
-            steps={[
-              {
-                label: t("recipes.flow.posSale"),
-                value: formatNumber(visibleSummary.posItemsCovered),
-                detail: t("recipes.flow.coveredItems"),
-                icon: <ShoppingBag size={18} color={colors.success} strokeWidth={2.4} />,
-                tone: "leaf"
-              },
-              {
-                label: t("recipes.flow.ingredientMap"),
-                value: formatNumber(visibleSummary.ingredientMappings),
-                detail: t("recipes.flow.baselineQuantities"),
-                icon: <BookOpen size={18} color={colors.text} strokeWidth={2.4} />
-              },
-              {
-                label: t("recipes.flow.inventoryMovement"),
-                value: formatNumber(visibleSummary.inventoryItemsLinked),
-                detail: t("recipes.flow.stockAffected"),
-                icon: <PackageCheck size={18} color={colors.success} strokeWidth={2.4} />,
-                tone: "leaf"
-              }
-            ]}
-          />
-
-          {visibleSummary.posItemsMissingRecipes.length > 0 && (
-            <Card style={styles.warningCard}>
-              <View style={styles.warningHeader}>
-                <AlertTriangle size={19} color={colors.caution} strokeWidth={2.4} />
-                <Text style={styles.warningTitle}>{t("recipes.warning.title")}</Text>
-              </View>
-              <Text style={styles.warningCopy}>
-                {t("recipes.warning.body")}
-              </Text>
-              <View style={styles.missingList}>
-                {visibleSummary.posItemsMissingRecipes.map((itemName) => (
-                  <Badge key={itemName} label={itemName} tone="warning" />
-                ))}
-              </View>
-            </Card>
-          )}
-
-          {visibleSummary.posItemsWithIncompatibleUnits.length > 0 && (
-            <Card style={styles.warningCard}>
-              <View style={styles.warningHeader}>
-                <AlertTriangle size={19} color={colors.caution} strokeWidth={2.4} />
-                <Text style={styles.warningTitle}>{t("recipes.warning.incompatibleTitle")}</Text>
-              </View>
-              <Text style={styles.warningCopy}>{t("recipes.warning.incompatibleBody")}</Text>
-              <View style={styles.missingList}>
-                {visibleSummary.posItemsWithIncompatibleUnits.map((itemName) => (
-                  <Badge key={`incompatible-${itemName}`} label={itemName} tone="warning" />
-                ))}
-              </View>
-            </Card>
-          )}
-
-          {canManage ? (
-            <RecipeBaselineBuilder
-              menuItemName={newMenuItemName}
-              inventoryItemName={newInventoryItemName}
-              quantity={newQuantity}
-              selectedInventoryItem={selectedInventoryItem}
-              missingMenuItems={visibleSummary.posItemsMissingRecipes}
-              inventorySearchMatches={inventorySearchMatches.map((match) => match.item)}
-              inventoryItemCount={visibleInventoryItems.length}
-              saving={savingNewLink}
-              onMenuItemNameChange={setNewMenuItemName}
-              onInventoryItemNameChange={handleInventoryItemNameChange}
-              onInventoryItemSelect={handleInventoryItemSelect}
-              onQuantityChange={setNewQuantity}
-              onAdd={addBaselineLink}
-            />
-          ) : null}
-
-          <SectionHeader
-            title={t("recipes.section.title")}
-            eyebrow={t("recipes.section.eyebrow")}
-            action={t("recipes.section.shown", {
-              count: formatNumber(
-                showMappedDishSearch ? filteredMappedDishes.length : visibleSummary.items.length
-              )
-            })}
-          />
-          {showMappedDishSearch ? (
-            <View style={styles.mappedSearchBox}>
-              <Search size={18} color={colors.faint} strokeWidth={2.25} />
-              <TextInput
-                accessibilityLabel={t("recipes.section.search.accessibility")}
-                accessibilityHint={t("recipes.section.search.hint")}
-                value={mappedDishQuery}
-                onChangeText={setMappedDishQuery}
-                placeholder={t("recipes.section.search.placeholder")}
-                placeholderTextColor={colors.faint}
-                returnKeyType="search"
-                autoCorrect={false}
-                autoCapitalize="none"
-                style={styles.mappedSearchInput}
-              />
-            </View>
-          ) : null}
-          <View style={styles.recipeList}>
-            {visibleSummary.items.length === 0 ? (
-              <EmptyState
-                title={t("recipes.empty.title")}
-                body={t("recipes.empty.body")}
-                illustration={<InsightChartIllustration />}
-              />
-            ) : mappedDishSearchNoMatches ? (
-              <EmptyState
-                compact
-                title={t("recipes.section.search.emptyTitle")}
-                body={t("recipes.section.search.emptyBody")}
-              />
-            ) : (
-              filteredMappedDishes.map((item) => (
-                <RecipeRow
-                  key={item.menu_item_name}
-                  item={item}
-                  canManage={canManage}
-                  savingMappingId={savingMappingId}
-                  onSave={saveIngredient}
-                  onUnlink={confirmUnlinkIngredient}
+        {visibleSummary ? (
+          <>
+            <OperationalHero
+              eyebrow={t("recipes.hero.eyebrow")}
+              title={t("recipes.hero.title", { percent: formatNumber(visibleSummary.coveragePercent) })}
+              body={t("recipes.hero.body")}
+              meta={`${formatNumber(visibleSummary.coveragePercent)}% POS`}
+              tone={visibleSummary.coveragePercent >= 100 ? "leaf" : "caution"}
+              icon={
+                <BookOpen
+                  size={21}
+                  color={visibleSummary.coveragePercent >= 100 ? colors.success : colors.caution}
+                  strokeWidth={2.6}
                 />
-              ))
+              }
+              stats={[
+                { label: t("recipes.stat.dishes"), value: formatNumber(visibleSummary.menuItemsTracked), tone: "leaf" },
+                { label: t("recipes.stat.links"), value: formatNumber(visibleSummary.ingredientMappings), tone: "neutral" },
+                { label: t("recipes.stat.items"), value: formatNumber(visibleSummary.inventoryItemsLinked), tone: "neutral" }
+              ]}
+            />
+
+            <OperationsFlow
+              title={t("recipes.flow.title")}
+              subtitle={t("recipes.flow.subtitle")}
+              steps={[
+                {
+                  label: t("recipes.flow.posSale"),
+                  value: formatNumber(visibleSummary.posItemsCovered),
+                  detail: t("recipes.flow.coveredItems"),
+                  icon: <ShoppingBag size={18} color={colors.success} strokeWidth={2.4} />,
+                  tone: "leaf"
+                },
+                {
+                  label: t("recipes.flow.ingredientMap"),
+                  value: formatNumber(visibleSummary.ingredientMappings),
+                  detail: t("recipes.flow.baselineQuantities"),
+                  icon: <BookOpen size={18} color={colors.text} strokeWidth={2.4} />
+                },
+                {
+                  label: t("recipes.flow.inventoryMovement"),
+                  value: formatNumber(visibleSummary.inventoryItemsLinked),
+                  detail: t("recipes.flow.stockAffected"),
+                  icon: <PackageCheck size={18} color={colors.success} strokeWidth={2.4} />,
+                  tone: "leaf"
+                }
+              ]}
+            />
+
+            {visibleSummary.posItemsMissingRecipes.length > 0 && (
+              <Card style={styles.warningCard}>
+                <View style={styles.warningHeader}>
+                  <AlertTriangle size={19} color={colors.caution} strokeWidth={2.4} />
+                  <Text style={styles.warningTitle}>{t("recipes.warning.title")}</Text>
+                </View>
+                <Text style={styles.warningCopy}>
+                  {t("recipes.warning.body")}
+                </Text>
+                <View style={styles.missingList}>
+                  {visibleSummary.posItemsMissingRecipes.map((itemName) => (
+                    <Badge key={itemName} label={itemName} tone="warning" />
+                  ))}
+                </View>
+              </Card>
             )}
+
+            {visibleSummary.posItemsWithIncompatibleUnits.length > 0 && (
+              <Card style={styles.warningCard}>
+                <View style={styles.warningHeader}>
+                  <AlertTriangle size={19} color={colors.caution} strokeWidth={2.4} />
+                  <Text style={styles.warningTitle}>{t("recipes.warning.incompatibleTitle")}</Text>
+                </View>
+                <Text style={styles.warningCopy}>{t("recipes.warning.incompatibleBody")}</Text>
+                <View style={styles.missingList}>
+                  {visibleSummary.posItemsWithIncompatibleUnits.map((itemName) => (
+                    <Badge key={`incompatible-${itemName}`} label={itemName} tone="warning" />
+                  ))}
+                </View>
+              </Card>
+            )}
+
+            {canManage ? (
+              <RecipeBaselineBuilder
+                menuItemName={newMenuItemName}
+                inventoryItemName={newInventoryItemName}
+                quantity={newQuantity}
+                selectedInventoryItem={selectedInventoryItem}
+                missingMenuItems={visibleSummary.posItemsMissingRecipes}
+                inventorySearchMatches={inventorySearchMatches.map((match) => match.item)}
+                inventoryItemCount={visibleInventoryItems.length}
+                saving={savingNewLink}
+                onMenuItemNameChange={setNewMenuItemName}
+                onInventoryItemNameChange={handleInventoryItemNameChange}
+                onInventoryItemSelect={handleInventoryItemSelect}
+                onQuantityChange={setNewQuantity}
+                onAdd={addBaselineLink}
+              />
+            ) : null}
+          </>
+        ) : null}
+
+        <SectionHeader
+          title={t("recipes.section.title")}
+          eyebrow={t("recipes.section.eyebrow")}
+          action={sectionAction}
+        />
+        {showMappedDishSearch ? (
+          <View style={styles.mappedSearchBox}>
+            <Search size={18} color={colors.faint} strokeWidth={2.25} />
+            <TextInput
+              accessibilityLabel={t("recipes.section.search.accessibility")}
+              accessibilityHint={t("recipes.section.search.hint")}
+              value={mappedDishQuery}
+              onChangeText={setMappedDishQuery}
+              placeholder={t("recipes.section.search.placeholder")}
+              placeholderTextColor={colors.faint}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+              style={styles.mappedSearchInput}
+            />
           </View>
+        ) : null}
+        <View style={styles.recipeList}>
+          {!hubReady || !visibleSummary || visibleSummary.items.length === 0 || mappedDishSearchNoMatches ? (
+            <EmptyState
+              compact={emptyPresentation.compact}
+              title={emptyPresentation.title}
+              body={emptyPresentation.body}
+              illustration={emptyPresentation.compact ? undefined : <InsightChartIllustration />}
+            />
+          ) : (
+            filteredMappedDishes.map((item) => (
+              <RecipeRow
+                key={item.menu_item_name}
+                item={item}
+                canManage={canManage}
+                savingMappingId={savingMappingId}
+                onSave={saveIngredient}
+                onUnlink={confirmUnlinkIngredient}
+              />
+            ))
+          )}
         </View>
-      )}
+      </View>
     </Screen>
   );
 }
