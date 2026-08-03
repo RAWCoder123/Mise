@@ -6,7 +6,7 @@ import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } fro
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Screen } from "../../components/ui/Screen";
-import { StatusNotice } from "../../components/ui/StatusNotice";
+import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -19,7 +19,54 @@ import {
   resolvePostAuthPath,
   validateSignupPassword
 } from "../../services/domain/authSignup";
+import {
+  presentSignupFailureCopy,
+  presentSignupFormEditable,
+  resolveSignupCreateFailureReason,
+  resolveSignupFormFailureReason,
+  type SignupFailureReason
+} from "../../services/presentation/authSignupPresentation";
 import { captureMiseError } from "../../services/telemetry";
+
+type SignupNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
+
+const FAILURE_COPY_KEYS: Record<
+  SignupFailureReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  emailRequired: {
+    title: "signup.notice.emailRequiredTitle",
+    message: "signup.error.emailRequired"
+  },
+  emailInvalid: {
+    title: "signup.notice.emailInvalidTitle",
+    message: "signup.error.emailInvalid"
+  },
+  tooShort: {
+    title: "signup.notice.tooShortTitle",
+    message: "signup.error.tooShort"
+  },
+  invalidPassword: {
+    title: "signup.notice.invalidPasswordTitle",
+    message: "signup.error.invalidPassword"
+  },
+  mismatch: {
+    title: "signup.notice.mismatchTitle",
+    message: "signup.error.mismatch"
+  },
+  alreadyExists: {
+    title: "signup.notice.alreadyExistsTitle",
+    message: "signup.error.alreadyExists"
+  },
+  createFailed: {
+    title: "signup.notice.createFailedTitle",
+    message: "signup.error.createFailed"
+  }
+};
 
 export default function SignupScreen() {
   const { t } = useLocale();
@@ -34,9 +81,28 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
+  const [notice, setNotice] = useState<SignupNotice | null>(null);
   const [confirmEmailNotice, setConfirmEmailNotice] = useState(false);
   const [pendingInvitePath, setPendingInvitePath] = useState<string | null>(null);
+  const formEditable = presentSignupFormEditable(isSupabaseConfigured, loading);
+
+  function clearNotice() {
+    if (notice) setNotice(null);
+  }
+
+  function failureNotice(reason: SignupFailureReason): SignupNotice {
+    const localized = (Object.keys(FAILURE_COPY_KEYS) as SignupFailureReason[]).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(FAILURE_COPY_KEYS[key].title),
+          message: t(FAILURE_COPY_KEYS[key].message)
+        };
+        return acc;
+      },
+      {} as Record<SignupFailureReason, { title: string; message: string }>
+    );
+    return presentSignupFailureCopy(reason, localized);
+  }
 
   useEffect(() => {
     void readPendingInviteToken().then((token) => {
@@ -68,27 +134,22 @@ export default function SignupScreen() {
   }
 
   async function handleSignUp() {
-    const normalizedEmail = normalizeSignupEmail(email);
-    if (!normalizedEmail) {
-      setErrorKey("signup.error.emailRequired");
-      return;
-    }
-    if (!isValidSignupEmail(normalizedEmail)) {
-      setErrorKey("signup.error.emailInvalid");
-      return;
-    }
-    const passwordError = validateSignupPassword(password);
-    if (passwordError) {
-      setErrorKey(password.length < 8 ? "signup.error.tooShort" : "signup.error.invalidPassword");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setErrorKey("signup.error.mismatch");
+    const formFailure = resolveSignupFormFailureReason({
+      email,
+      password,
+      confirmPassword,
+      isValidEmail: isValidSignupEmail,
+      normalizeEmail: normalizeSignupEmail,
+      validatePassword: validateSignupPassword
+    });
+    if (formFailure) {
+      setNotice(failureNotice(formFailure));
       return;
     }
 
+    const normalizedEmail = normalizeSignupEmail(email);
     setLoading(true);
-    setErrorKey(null);
+    clearNotice();
     setConfirmEmailNotice(false);
     try {
       const outcome = await signUp(normalizedEmail, password);
@@ -105,12 +166,7 @@ export default function SignupScreen() {
       );
     } catch (signUpError) {
       captureMiseError(signUpError, { flow: "signup", operation: "sign_up" });
-      const message = signUpError instanceof Error ? signUpError.message : "";
-      if (/already exists|already registered|User already registered/i.test(message)) {
-        setErrorKey("signup.error.alreadyExists");
-      } else {
-        setErrorKey("signup.error.createFailed");
-      }
+      setNotice(failureNotice(resolveSignupCreateFailureReason(signUpError)));
     } finally {
       setLoading(false);
     }
@@ -149,12 +205,15 @@ export default function SignupScreen() {
                 <Text style={styles.label}>{t("signup.form.email")}</Text>
                 <TextInput
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(value) => {
+                    setEmail(value);
+                    clearNotice();
+                  }}
                   accessibilityLabel={t("signup.form.email")}
                   accessibilityHint={t("signup.form.emailHint")}
                   autoCapitalize="none"
                   autoComplete="email"
-                  editable={!loading && isSupabaseConfigured}
+                  editable={formEditable}
                   keyboardType="email-address"
                   returnKeyType="next"
                   style={styles.input}
@@ -168,11 +227,14 @@ export default function SignupScreen() {
                 <Text style={styles.label}>{t("signup.form.password")}</Text>
                 <TextInput
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    clearNotice();
+                  }}
                   accessibilityLabel={t("signup.form.password")}
                   accessibilityHint={t("signup.form.passwordHint")}
                   autoComplete="new-password"
-                  editable={!loading && isSupabaseConfigured}
+                  editable={formEditable}
                   secureTextEntry
                   style={styles.input}
                   placeholder={t("signup.form.passwordPlaceholder")}
@@ -185,10 +247,13 @@ export default function SignupScreen() {
                 <Text style={styles.label}>{t("signup.form.confirmPassword")}</Text>
                 <TextInput
                   value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  onChangeText={(value) => {
+                    setConfirmPassword(value);
+                    clearNotice();
+                  }}
                   accessibilityLabel={t("signup.form.confirmPassword")}
                   autoComplete="new-password"
-                  editable={!loading && isSupabaseConfigured}
+                  editable={formEditable}
                   onSubmitEditing={() => void handleSignUp()}
                   returnKeyType="go"
                   secureTextEntry
@@ -199,10 +264,13 @@ export default function SignupScreen() {
                 />
               </View>
 
-              {errorKey ? (
-                <Text accessibilityLiveRegion="assertive" accessibilityRole="alert" style={styles.error}>
-                  {t(errorKey)}
-                </Text>
+              {notice ? (
+                <StatusNotice
+                  tone={notice.tone}
+                  title={notice.title}
+                  message={notice.message}
+                  style={styles.notice}
+                />
               ) : null}
 
               <Button
@@ -267,10 +335,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16
   },
-  error: {
-    color: colors.danger,
-    fontSize: 13,
-    lineHeight: 19,
+  notice: {
     marginVertical: 12
   }
 });

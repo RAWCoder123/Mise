@@ -52,6 +52,8 @@ test("signup and invite claim wiring expose create-account path", () => {
   assert.match(session, /emailRedirectTo/);
   assert.match(signup, /signUp\(/);
   assert.match(signup, /resolvePostAuthPath/);
+  assert.match(signup, /StatusNotice/);
+  assert.match(signup, /resolveSignupCreateFailureReason/);
   assert.match(login, /login\.action\.createAccount/);
   assert.match(login, /router\.replace\("\/signup"\)/);
   assert.match(login, /resolvePostAuthPath/);
