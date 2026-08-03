@@ -17,10 +17,10 @@ Base tip: `origin/cursor/mise-product-inspection-b3cf`
 
 ## Verification
 
-- `npm run typecheck`
-- `npm test`
-- `npm run security:static`
-- `npm run security:backend`
-- `npm run design:static`
-- `npm run qa:routes`
+- `npm run typecheck` — passed
+- `npm test` — 433/433 passed
+- `npm run security:static` — passed
+- `npm run security:backend` — passed
+- `npm run design:static` — passed
+- `npm run qa:routes` — passed (includes `/settings/language` and `/settings/notifications`)
 - Docker `supabase:test` still unavailable in this environment
