@@ -99,7 +99,10 @@ test("order list uses Gmail when connected and explicit external placement other
   assert.match(detail, /t\("orders\.detail\.gmail\.send"\)/);
   assert.match(detail, /t\("orders\.detail\.action\.markPlaced"\)/);
   assert.match(detail, /t\("orders\.detail\.action\.receive"\)/);
-  assert.match(detail, /t\("orders\.detail\.notice\.demoSentBody"\)/);
+  assert.match(detail, /"orders\.detail\.notice\.demoSentBody"/);
+  assert.match(detail, /presentOrderDetailMutationNoticeCopy/);
+  assert.match(detail, /"demoSent"/);
+  assert.match(detail, /captureMiseError/);
   assert.match(catalog, /Mise updated the demo workflow\. No email was sent\./);
   assert.match(detail, /operator_note: operatorNote\.trim\(\) \|\| null/);
   assert.match(detail, /order\.status !== "draft"/);
@@ -121,7 +124,8 @@ test("order receive uses locale-aware quantities and optional line notes", () =>
   assert.match(detail, /notesByItemId:\s*receiveNotes/);
   assert.match(detail, /t\("orders\.detail\.receive\.noteLabel"/);
   assert.match(detail, /t\("orders\.detail\.receive\.notePlaceholder"\)/);
-  assert.match(detail, /t\("orders\.detail\.notice\.receiveInvalidTitle"\)/);
+  assert.match(detail, /"orders\.detail\.notice\.receiveInvalidTitle"/);
+  assert.match(detail, /mutationNotice\(\s*"receiveInvalid/);
   assert.doesNotMatch(detail, /quantityReceived:\s*Number\(raw\)/);
   assert.doesNotMatch(detail, /note:\s*null\s*\n\s*\}/);
   assert.match(domain, /export function buildReceiveLinesFromFormInputs/);
