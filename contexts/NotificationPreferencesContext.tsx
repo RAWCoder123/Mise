@@ -33,9 +33,11 @@ interface NotificationPreferencesContextValue {
   preferences: OperatorNotificationPreferences;
   ready: boolean;
   saving: boolean;
+  loadError: boolean;
   persistenceMode: NotificationPreferencePersistenceMode;
   error: Error | null;
   setCategoryEnabled: (category: NotificationCategory, enabled: boolean) => Promise<void>;
+  reload: (showLoading?: boolean) => void;
   clearError: () => void;
 }
 
@@ -63,9 +65,13 @@ export function NotificationPreferencesProvider({
   );
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const requestIdRef = useRef(0);
   const activeScopeRef = useRef("boot");
+  const loadedScopeRef = useRef<string | null>(null);
+  const forceHardReloadRef = useRef(false);
   const restaurantId = restaurant?.id ?? null;
 
   const sessionHostedAdapter = useMemo<HostedNotificationPreferenceAdapter | null>(() => {
@@ -102,31 +108,52 @@ export function NotificationPreferencesProvider({
 
     const requestId = ++requestIdRef.current;
     const expectedScope = scopeKey;
-    setPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
+    const soft = !forceHardReloadRef.current && loadedScopeRef.current === expectedScope;
+    forceHardReloadRef.current = false;
+
     setError(null);
+    setLoadError(false);
     setSaving(false);
 
     if (!preferenceAdapter) {
+      loadedScopeRef.current = expectedScope;
       setReady(true);
       return;
     }
 
-    setReady(false);
+    if (!soft) {
+      setPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
+      setReady(false);
+    }
+
     preferenceAdapter
       .load()
       .then((stored) => {
         if (requestId !== requestIdRef.current || activeScopeRef.current !== expectedScope) return;
         setPreferences(stored ?? DEFAULT_NOTIFICATION_PREFERENCES);
+        loadedScopeRef.current = expectedScope;
+        setLoadError(false);
+        setError(null);
       })
-      .catch((loadError: unknown) => {
+      .catch((loadFailure: unknown) => {
         if (requestId !== requestIdRef.current || activeScopeRef.current !== expectedScope) return;
-        setError(normalizeError(loadError));
+        setLoadError(true);
+        setError(normalizeError(loadFailure));
       })
       .finally(() => {
         if (requestId !== requestIdRef.current || activeScopeRef.current !== expectedScope) return;
         setReady(true);
       });
-  }, [preferenceAdapter, scopeKey, sessionReady]);
+  }, [preferenceAdapter, reloadNonce, scopeKey, sessionReady]);
+
+  const reload = useCallback((showLoading = false) => {
+    if (showLoading) {
+      loadedScopeRef.current = null;
+      forceHardReloadRef.current = true;
+      setReady(false);
+    }
+    setReloadNonce((value) => value + 1);
+  }, []);
 
   const setCategoryEnabled = useCallback(
     async (category: NotificationCategory, enabled: boolean) => {
@@ -139,9 +166,13 @@ export function NotificationPreferencesProvider({
       setPreferences(next);
       setSaving(true);
       setError(null);
+      setLoadError(false);
 
       try {
         await preferenceAdapter?.save(normalizeNotificationPreferences(next));
+        if (requestId === requestIdRef.current && activeScopeRef.current === expectedScope) {
+          loadedScopeRef.current = expectedScope;
+        }
       } catch (saveError) {
         if (requestId === requestIdRef.current && activeScopeRef.current === expectedScope) {
           setPreferences(previous);
@@ -158,19 +189,24 @@ export function NotificationPreferencesProvider({
     [preferenceAdapter, preferences, scopeKey]
   );
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => {
+    setError(null);
+    setLoadError(false);
+  }, []);
 
   const value = useMemo<NotificationPreferencesContextValue>(
     () => ({
       preferences,
       ready,
       saving,
+      loadError,
       persistenceMode,
       error,
       setCategoryEnabled,
+      reload,
       clearError
     }),
-    [clearError, error, persistenceMode, preferences, ready, saving, setCategoryEnabled]
+    [clearError, error, loadError, persistenceMode, preferences, ready, reload, saving, setCategoryEnabled]
   );
 
   return (

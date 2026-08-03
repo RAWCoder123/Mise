@@ -16,13 +16,21 @@ import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { usePressScale } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
+import { RetryNotice } from "../../components/ui/StatusNotice";
 import { colors, fontFamilies, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
+import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { useNotificationPreferences } from "../../contexts/NotificationPreferencesContext";
 import {
   NOTIFICATION_CATEGORIES,
   type NotificationCategory
 } from "../../services/domain/notificationPreferences";
+import {
+  presentNotificationSettingsSummary,
+  presentPreferenceSettingsInteractive,
+  presentPreferenceSettingsValuesVisible,
+  resolvePreferenceSettingsLoadState
+} from "../../services/presentation/preferenceSettingsPresentation";
 import type { MessageKey } from "../../i18n/catalog";
 
 const CATEGORY_COPY: Record<
@@ -60,13 +68,30 @@ type SaveStatus = { kind: "saved" | "error"; category: NotificationCategory } | 
 export default function NotificationSettingsScreen() {
   const navigation = useNavigation();
   const { t } = useLocale();
-  const { preferences, ready, saving, persistenceMode, setCategoryEnabled, clearError } =
-    useNotificationPreferences();
+  const { ready: sessionReady } = useMiseSession();
+  const {
+    preferences,
+    ready,
+    saving,
+    loadError,
+    persistenceMode,
+    setCategoryEnabled,
+    reload,
+    clearError
+  } = useNotificationPreferences();
   const [busyCategory, setBusyCategory] = useState<NotificationCategory | null>(null);
   const [status, setStatus] = useState<SaveStatus>(null);
 
+  const hubLoadState = resolvePreferenceSettingsLoadState({
+    sessionReady,
+    ready,
+    loadError
+  });
+  const valuesVisible = presentPreferenceSettingsValuesVisible(hubLoadState);
+  const interactive = presentPreferenceSettingsInteractive(hubLoadState);
+
   async function chooseCategory(category: NotificationCategory, enabled: boolean) {
-    if (saving || preferences[category] === enabled) return;
+    if (!interactive || saving || preferences[category] === enabled) return;
     setBusyCategory(category);
     setStatus(null);
     clearError();
@@ -99,12 +124,21 @@ export default function NotificationSettingsScreen() {
     else router.replace("/settings");
   }
 
-  const mutedCount = NOTIFICATION_CATEGORIES.filter((category) => !preferences[category]).length;
+  const mutedCount = valuesVisible
+    ? NOTIFICATION_CATEGORIES.filter((category) => !preferences[category]).length
+    : 0;
+  const persistenceNote = presentNotificationSettingsSummary(hubLoadState, mutedCount, {
+    loading: t("settings.notifications.status.loading"),
+    unavailable: t("settings.notifications.status.unavailable"),
+    muted: t("settings.notifications.mutedSummary", { count: String(mutedCount) }),
+    persistence: t(persistenceMessageKey)
+  });
 
   return (
     <Screen
       title={t("settings.notifications.title")}
       subtitle={t("settings.notifications.subtitle")}
+      loading={hubLoadState === "loading"}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={goBackToSettings}>
           <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
@@ -117,9 +151,19 @@ export default function NotificationSettingsScreen() {
           <Text style={styles.sectionBody}>{t("settings.notifications.sectionBody")}</Text>
         </View>
 
+        {loadError ? (
+          <RetryNotice
+            title={t("settings.notifications.retry.title")}
+            message={t("settings.notifications.retry.body")}
+            onRetry={() => reload(true)}
+            retryLabel={t("common.retry")}
+            accessibilityLabel={t("settings.notifications.retry.accessibility")}
+          />
+        ) : null}
+
         <Card style={styles.categoryCard} accessibilityLabel={t("settings.notifications.sectionTitle")}>
           {NOTIFICATION_CATEGORIES.map((category, index) => {
-            const enabled = preferences[category];
+            const enabled = valuesVisible ? preferences[category] : false;
             return (
               <CategoryOption
                 key={category}
@@ -127,7 +171,7 @@ export default function NotificationSettingsScreen() {
                 description={t(CATEGORY_COPY[category].bodyKey)}
                 enabled={enabled}
                 loading={saving && busyCategory === category}
-                disabled={!ready || saving}
+                disabled={!interactive || saving}
                 last={index === NOTIFICATION_CATEGORIES.length - 1}
                 accessibilityLabel={t("settings.notifications.toggleAccessibility", {
                   category: t(CATEGORY_COPY[category].titleKey),
@@ -139,14 +183,7 @@ export default function NotificationSettingsScreen() {
           })}
         </Card>
 
-        {!ready ? (
-          <View style={styles.loading} accessibilityLiveRegion="polite">
-            <ActivityIndicator size="small" color={colors.accent} />
-            <Text style={styles.loadingText}>{t("common.loading")}</Text>
-          </View>
-        ) : null}
-
-        {status ? (
+        {!loadError && status ? (
           <View
             style={[styles.status, status.kind === "error" ? styles.statusError : styles.statusSuccess]}
             accessibilityLiveRegion="polite"
@@ -171,11 +208,7 @@ export default function NotificationSettingsScreen() {
           <IconBadge tone="neutral">
             <Bell size={19} color={colors.text} strokeWidth={2.2} />
           </IconBadge>
-          <Text style={styles.persistenceText}>
-            {mutedCount > 0
-              ? t("settings.notifications.mutedSummary", { count: String(mutedCount) })
-              : t(persistenceMessageKey)}
-          </Text>
+          <Text style={styles.persistenceText}>{persistenceNote}</Text>
         </View>
       </View>
     </Screen>
@@ -297,17 +330,6 @@ const styles = StyleSheet.create({
   selectionEnabled: {
     borderColor: colors.accent,
     backgroundColor: colors.accent
-  },
-  loading: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  },
-  loadingText: {
-    color: colors.muted,
-    ...typography.body
   },
   status: {
     minHeight: 44,
