@@ -1375,7 +1375,8 @@ test("inventory count sessions are service-owned with draft progress and approve
   assert.match(screen, /staffAwaitingApproval/);
   assert.match(screen, /draftNotes/);
   assert.match(screen, /inventory\.count\.notePlaceholder/);
-  assert.match(screen, /parseNumber\(raw\)/);
+  assert.match(screen, /buildInventoryCountLinePayload/);
+  assert.match(screen, /parseNumber,/);
   assert.match(screen, /inventory\.count\.invalidQuantity/);
   assert.match(list, /canDraftInventoryCount/);
   assert.match(list, /\/inventory\/count/);
