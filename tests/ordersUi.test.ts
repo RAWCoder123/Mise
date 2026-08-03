@@ -108,7 +108,11 @@ test("order list uses Gmail when connected and explicit external placement other
   assert.match(detail, /order\.status !== "draft"/);
   assert.match(card, /title=\{busy \? resolvedBusyLabel : resolvedSendLabel\}/);
   assert.match(screen, /orders\.card\.action\.markPlaced/);
+  assert.match(screen, /resolveOrdersHubSendSuccessReason/);
+  assert.match(screen, /presentOrdersHubMutationNoticeCopy/);
   assert.match(screen, /orders\.notice\.send\.demo\.(?:already|zero|one|other)/);
+  assert.match(screen, /captureMiseError/);
+  assert.match(screen, /flow:\s*"orders_hub"/);
   assert.doesNotMatch(card, /Send email/i);
 });
 

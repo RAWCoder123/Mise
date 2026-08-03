@@ -17,6 +17,7 @@ import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../componen
 import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import type { MessageKey } from "../../i18n/catalog";
 import {
   approvePurchaseRecommendation,
   confirmSupplierOrderPlaced,
@@ -41,11 +42,20 @@ import {
   RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS
 } from "../../services/miseValidation";
 import {
+  presentOrderDetailSendErrorNotice,
+  resolveOrderDetailSendErrorReason,
+  type OrderDetailSendErrorReason
+} from "../../services/presentation/orderDetailPresentation";
+import {
   presentOrdersHubGmailCopy,
   presentOrdersHubLaneEmptyCopy,
-  resolveOrdersHubLoadState
+  presentOrdersHubMutationNoticeCopy,
+  resolveOrdersHubLoadState,
+  resolveOrdersHubSendSuccessReason,
+  type OrdersHubMutationNoticeReason,
+  type OrdersHubNoticeRecovery
 } from "../../services/presentation/ordersHubPresentation";
-import { trackMiseEvent } from "../../services/telemetry";
+import { captureMiseError, trackMiseEvent } from "../../services/telemetry";
 import type { PurchaseRecommendation, RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
 
 type OrderLane = "drafts" | "sent" | "history";
@@ -58,7 +68,135 @@ interface UndoAction {
   busy: boolean;
 }
 
+interface OrdersHubNotice {
+  title: string;
+  message: string;
+  tone: StatusNoticeTone;
+  recovery?: OrdersHubNoticeRecovery;
+  restaurantId: string | null;
+}
+
 const EMPTY_ACTIONS: Record<string, RecommendationAction | undefined> = {};
+
+const MUTATION_NOTICE_KEYS: Record<
+  OrdersHubMutationNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  viewOnly: {
+    title: "orders.notice.viewOnlyTitle",
+    message: "orders.error.viewOnly"
+  },
+  approved: {
+    title: "orders.notice.approvedTitle",
+    message: "orders.notice.approved"
+  },
+  approveFailed: {
+    title: "orders.notice.approveFailedTitle",
+    message: "orders.error.approve"
+  },
+  dismissed: {
+    title: "orders.notice.dismissedTitle",
+    message: "orders.notice.dismissed"
+  },
+  dismissFailed: {
+    title: "orders.notice.dismissFailedTitle",
+    message: "orders.error.dismiss"
+  },
+  undoRestored: {
+    title: "orders.notice.undoRestoredTitle",
+    message: "orders.notice.undoRestored"
+  },
+  undoFailed: {
+    title: "orders.notice.undoFailedTitle",
+    message: "orders.error.undo"
+  },
+  copied: {
+    title: "orders.notice.copiedTitle",
+    message: "orders.notice.copied"
+  },
+  copyFailed: {
+    title: "orders.notice.copyFailedTitle",
+    message: "orders.error.copy"
+  },
+  placed: {
+    title: "orders.notice.placedTitle",
+    message: "orders.notice.placed"
+  },
+  placeFailed: {
+    title: "orders.notice.placeFailedTitle",
+    message: "orders.detail.notice.placeFailedBody"
+  },
+  sendDemoAlready: {
+    title: "orders.notice.send.demoAlreadyTitle",
+    message: "orders.notice.send.demo.already"
+  },
+  sendDemoZero: {
+    title: "orders.notice.send.demoTitle",
+    message: "orders.notice.send.demo.zero"
+  },
+  sendDemoOne: {
+    title: "orders.notice.send.demoTitle",
+    message: "orders.notice.send.demo.one"
+  },
+  sendDemoOther: {
+    title: "orders.notice.send.demoTitle",
+    message: "orders.notice.send.demo.other"
+  },
+  sendGmailAlready: {
+    title: "orders.notice.send.gmailAlreadyTitle",
+    message: "orders.notice.send.gmail.already"
+  },
+  sendGmailZero: {
+    title: "orders.notice.send.gmailTitle",
+    message: "orders.notice.send.gmail.zero"
+  },
+  sendGmailOne: {
+    title: "orders.notice.send.gmailTitle",
+    message: "orders.notice.send.gmail.one"
+  },
+  sendGmailOther: {
+    title: "orders.notice.send.gmailTitle",
+    message: "orders.notice.send.gmail.other"
+  },
+  loadFailed: {
+    title: "orders.notice.loadFailedTitle",
+    message: "orders.error.load"
+  }
+};
+
+const SEND_ERROR_NOTICE_KEYS: Record<
+  OrderDetailSendErrorReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  gmailConnectRequired: {
+    title: "orders.detail.connection.connectTitle",
+    message: "orders.detail.gmail.notConnected"
+  },
+  gmailReconnectRequired: {
+    title: "orders.detail.connection.reconnectTitle",
+    message: "orders.detail.gmail.notConnected"
+  },
+  supplierEmailMissing: {
+    title: "orders.detail.error.supplierEmailTitle",
+    message: "orders.detail.error.supplierEmailBody"
+  },
+  deliveryReview: {
+    title: "settings.gmail.error.reviewTitle",
+    message: "orders.detail.gmail.review"
+  },
+  sendingDisabled: {
+    title: "orders.detail.error.sendingDisabledTitle",
+    message: "orders.detail.error.sendingDisabledBody"
+  },
+  sendFailed: {
+    title: "orders.detail.error.sendTitle",
+    message: "orders.error.send.demo"
+  },
+  sendFailedGmail: {
+    title: "orders.detail.error.sendTitle",
+    message: "orders.error.send.gmail"
+  }
+};
 
 export default function OrdersScreen() {
   const { formatNumber, locale, parseNumber, t } = useLocale();
@@ -79,9 +217,7 @@ export default function OrdersScreen() {
     useState<Record<string, RecommendationAction | undefined>>(EMPTY_ACTIONS);
   const [sendingOrderIds, setSendingOrderIds] = useState<Record<string, boolean>>({});
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [messageTone, setMessageTone] = useState<StatusNoticeTone>("neutral");
-  const [messageRestaurantId, setMessageRestaurantId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<OrdersHubNotice | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -95,14 +231,55 @@ export default function OrdersScreen() {
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
-  function showMessage(
-    nextMessage: string | null,
-    restaurantId = restaurant?.id ?? null,
-    tone: StatusNoticeTone = "success"
-  ) {
-    setMessage(nextMessage);
-    setMessageTone(nextMessage ? tone : "neutral");
-    setMessageRestaurantId(nextMessage ? restaurantId : null);
+  function mutationNotice(
+    reason: OrdersHubMutationNoticeReason,
+    restaurantId: string | null = restaurant?.id ?? null,
+    params?: Record<string, string>
+  ): OrdersHubNotice {
+    const localized = (
+      Object.keys(MUTATION_NOTICE_KEYS) as OrdersHubMutationNoticeReason[]
+    ).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(MUTATION_NOTICE_KEYS[key].title),
+          message: t(MUTATION_NOTICE_KEYS[key].message, params)
+        };
+        return acc;
+      },
+      {} as Record<OrdersHubMutationNoticeReason, { title: string; message: string }>
+    );
+    return {
+      ...presentOrdersHubMutationNoticeCopy(reason, localized),
+      restaurantId
+    };
+  }
+
+  function sendErrorNotice(
+    error: unknown,
+    restaurantId: string | null = restaurant?.id ?? null
+  ): OrdersHubNotice {
+    const status = isGmailIntegrationError(error) ? error.status : null;
+    const reason = resolveOrderDetailSendErrorReason(status);
+    const localized = (
+      Object.keys(SEND_ERROR_NOTICE_KEYS) as OrderDetailSendErrorReason[]
+    ).reduce(
+      (acc, key) => {
+        const messageKey =
+          key === "sendFailed" && !usingLocalDemo
+            ? "orders.error.send.gmail"
+            : SEND_ERROR_NOTICE_KEYS[key].message;
+        acc[key] = {
+          title: t(SEND_ERROR_NOTICE_KEYS[key].title),
+          message: t(messageKey)
+        };
+        return acc;
+      },
+      {} as Record<OrderDetailSendErrorReason, { title: string; message: string }>
+    );
+    return {
+      ...presentOrderDetailSendErrorNotice(reason, localized),
+      restaurantId
+    };
   }
 
   const load = useCallback(
@@ -147,8 +324,13 @@ export default function OrdersScreen() {
         });
         loadedRestaurantRef.current = restaurantId;
         setLoadedRestaurantId(restaurantId);
-      } catch {
+      } catch (error) {
         if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+          captureMiseError(error, {
+            flow: "orders_hub",
+            operation: "load",
+            restaurant_id: restaurantId
+          });
           setLoadError(t("orders.error.load"));
         }
       } finally {
@@ -174,9 +356,7 @@ export default function OrdersScreen() {
     setRecommendationActions(EMPTY_ACTIONS);
     setSendingOrderIds({});
     setUndoAction(null);
-    setMessage(null);
-    setMessageTone("neutral");
-    setMessageRestaurantId(null);
+    setNotice(null);
     setLoadError(null);
     setLoadedRestaurantId(null);
     setLane("drafts");
@@ -210,10 +390,10 @@ export default function OrdersScreen() {
   );
 
   useEffect(() => {
-    if (!message) return undefined;
-    const timeout = setTimeout(() => showMessage(null), 4200);
+    if (!notice || notice.tone === "danger" || notice.recovery) return undefined;
+    const timeout = setTimeout(() => setNotice(null), 4200);
     return () => clearTimeout(timeout);
-  }, [message]);
+  }, [notice]);
 
   useEffect(() => {
     if (!undoAction) return undefined;
@@ -230,7 +410,7 @@ export default function OrdersScreen() {
   const visibleRecommendations = hubReady ? recommendations : [];
   const visibleOrders = hubReady ? orders : [];
   const visibleEmailConnection = hubReady ? emailConnection : null;
-  const visibleMessage = messageRestaurantId === restaurant?.id ? message : null;
+  const visibleNotice = notice?.restaurantId === restaurant?.id ? notice : null;
   const visibleUndoAction = hubReady && canManage ? undoAction : null;
 
   const showRecommendationSearch =
@@ -451,7 +631,7 @@ export default function OrdersScreen() {
   async function approve(recommendation: PurchaseRecommendation) {
     if (!restaurant || recommendationLocksRef.current.has(recommendation.id)) return;
     if (!canManage) {
-      showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
+      setNotice(mutationNotice("viewOnly", restaurant.id));
       return;
     }
     const restaurantId = restaurant.id;
@@ -475,6 +655,7 @@ export default function OrdersScreen() {
 
     setQuantityErrors((current) => ({ ...current, [recommendation.id]: undefined }));
     setRecommendationBusy(recommendation.id, "approve");
+    setNotice(null);
 
     try {
       const approved = await approvePurchaseRecommendation(
@@ -496,10 +677,15 @@ export default function OrdersScreen() {
       setRecommendations((current) =>
         current.filter((item) => item.id !== recommendation.id)
       );
-      showMessage(t("orders.notice.approved", { item: approved.item_name }), restaurantId);
-    } catch {
+      setNotice(mutationNotice("approved", restaurantId, { item: approved.item_name }));
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "orders_hub",
+        operation: "approve",
+        restaurant_id: restaurantId
+      });
       if (activeRestaurantIdRef.current === restaurantId) {
-        showMessage(t("orders.error.approve"), restaurantId, "danger");
+        setNotice(mutationNotice("approveFailed", restaurantId));
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -512,7 +698,7 @@ export default function OrdersScreen() {
   async function dismiss(recommendation: PurchaseRecommendation) {
     if (!restaurant || recommendationLocksRef.current.has(recommendation.id)) return;
     if (!canManage) {
-      showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
+      setNotice(mutationNotice("viewOnly", restaurant.id));
       return;
     }
     const restaurantId = restaurant.id;
@@ -529,6 +715,7 @@ export default function OrdersScreen() {
 
     setDismissReasonErrors((current) => ({ ...current, [recommendation.id]: undefined }));
     setRecommendationBusy(recommendation.id, "dismiss");
+    setNotice(null);
 
     try {
       const dismissed = await dismissPurchaseRecommendation(
@@ -549,10 +736,15 @@ export default function OrdersScreen() {
       setRecommendations((current) =>
         current.filter((item) => item.id !== recommendation.id)
       );
-      showMessage(t("orders.notice.dismissed", { item: dismissed.item_name }), restaurantId);
-    } catch {
+      setNotice(mutationNotice("dismissed", restaurantId, { item: dismissed.item_name }));
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "orders_hub",
+        operation: "dismiss",
+        restaurant_id: restaurantId
+      });
       if (activeRestaurantIdRef.current === restaurantId) {
-        showMessage(t("orders.error.dismiss"), restaurantId, "danger");
+        setNotice(mutationNotice("dismissFailed", restaurantId));
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -565,7 +757,7 @@ export default function OrdersScreen() {
   async function undoLastAction() {
     if (!restaurant || !undoAction || undoLockRef.current) return;
     if (!canManage) {
-      showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
+      setNotice(mutationNotice("viewOnly", restaurant.id));
       setUndoAction(null);
       return;
     }
@@ -573,6 +765,7 @@ export default function OrdersScreen() {
 
     undoLockRef.current = true;
     setUndoAction((current) => (current ? { ...current, busy: true } : current));
+    setNotice(null);
     try {
       const restored = await undoPurchaseRecommendationAction(
         restaurantId,
@@ -584,11 +777,16 @@ export default function OrdersScreen() {
         supplier_name: restored.supplier_name,
         action: undoAction.action
       });
-      showMessage(t("orders.notice.undoRestored", { item: restored.item_name }), restaurantId);
+      setNotice(mutationNotice("undoRestored", restaurantId, { item: restored.item_name }));
       setUndoAction(null);
-    } catch {
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "orders_hub",
+        operation: "undo",
+        restaurant_id: restaurantId
+      });
       if (activeRestaurantIdRef.current === restaurantId) {
-        showMessage(t("orders.error.undo"), restaurantId, "danger");
+        setNotice(mutationNotice("undoFailed", restaurantId));
         setUndoAction(null);
       }
     } finally {
@@ -598,6 +796,7 @@ export default function OrdersScreen() {
   }
 
   async function copyOrder(order: SupplierOrder) {
+    setNotice(null);
     try {
       await Clipboard.setStringAsync(order.order_message);
       trackMiseEvent("order_copied", {
@@ -605,31 +804,46 @@ export default function OrdersScreen() {
         supplier_name: order.supplier_name,
         status: order.status
       });
-      showMessage(t("orders.notice.copied", { supplier: order.supplier_name }), order.restaurant_id);
-    } catch {
-      showMessage(t("orders.error.copy"), order.restaurant_id, "danger");
+      setNotice(
+        mutationNotice("copied", order.restaurant_id, { supplier: order.supplier_name })
+      );
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "orders_hub",
+        operation: "copy",
+        restaurant_id: order.restaurant_id
+      });
+      setNotice(mutationNotice("copyFailed", order.restaurant_id));
     }
   }
 
   async function markOrderPlaced(order: SupplierOrder) {
     if (!restaurant || sendingLocksRef.current.has(order.id)) return;
     if (!canManage) {
-      showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
+      setNotice(mutationNotice("viewOnly", restaurant.id));
       return;
     }
     const restaurantId = restaurant.id;
     setOrderBusy(order.id, true);
+    setNotice(null);
     try {
       await confirmSupplierOrderPlaced(restaurantId, order.id);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setUndoAction((current) =>
         current?.recommendation.supplier_name === order.supplier_name ? null : current
       );
-      showMessage(t("orders.notice.placed", { supplier: order.supplier_name }), restaurantId);
+      setNotice(
+        mutationNotice("placed", restaurantId, { supplier: order.supplier_name })
+      );
       setLane("sent");
-    } catch {
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "orders_hub",
+        operation: "place",
+        restaurant_id: restaurantId
+      });
       if (activeRestaurantIdRef.current === restaurantId) {
-        showMessage(t("orders.detail.notice.placeFailedBody"), restaurantId, "danger");
+        setNotice(mutationNotice("placeFailed", restaurantId));
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -642,12 +856,13 @@ export default function OrdersScreen() {
   async function sendOrder(order: SupplierOrder) {
     if (!restaurant || sendingLocksRef.current.has(order.id)) return;
     if (!canManage) {
-      showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
+      setNotice(mutationNotice("viewOnly", restaurant.id));
       return;
     }
     const restaurantId = restaurant.id;
 
     setOrderBusy(order.id, true);
+    setNotice(null);
     try {
       const result = await sendSupplierOrderEmail(restaurantId, order.id);
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -656,44 +871,26 @@ export default function OrdersScreen() {
       setUndoAction((current) =>
         current?.recommendation.supplier_name === order.supplier_name ? null : current
       );
-      const sendMessage = usingLocalDemo
-        ? wasAlreadySent
-          ? t("orders.notice.send.demo.already", { supplier: order.supplier_name })
-          : t(
-              movedCount === 0
-                ? "orders.notice.send.demo.zero"
-                : movedCount === 1
-                  ? "orders.notice.send.demo.one"
-                  : "orders.notice.send.demo.other",
-              { supplier: order.supplier_name, count: formatNumber(movedCount) }
-            )
-        : wasAlreadySent
-          ? t("orders.notice.send.gmail.already", { supplier: order.supplier_name })
-          : t(
-              movedCount === 0
-                ? "orders.notice.send.gmail.zero"
-                : movedCount === 1
-                  ? "orders.notice.send.gmail.one"
-                  : "orders.notice.send.gmail.other",
-              { supplier: order.supplier_name, count: formatNumber(movedCount) }
-            );
-      showMessage(sendMessage, restaurantId);
+      const sendReason = resolveOrdersHubSendSuccessReason({
+        usingLocalDemo,
+        alreadySent: wasAlreadySent,
+        movedCount
+      });
+      setNotice(
+        mutationNotice(sendReason, restaurantId, {
+          supplier: order.supplier_name,
+          count: formatNumber(movedCount)
+        })
+      );
       setLane("sent");
     } catch (error) {
+      captureMiseError(error, {
+        flow: "orders_hub",
+        operation: "send",
+        restaurant_id: restaurantId
+      });
       if (activeRestaurantIdRef.current === restaurantId) {
-        let detail = t(usingLocalDemo ? "orders.error.send.demo" : "orders.error.send.gmail");
-        if (isGmailIntegrationError(error)) {
-          if (error.status === "needs_reauth") detail = t("orders.error.send.reauth");
-          else if (error.status === "gmail_not_connected") detail = t("orders.error.send.notConnected");
-          else if (error.status === "supplier_email_missing" || error.status === "supplier_email_invalid") {
-            detail = t("orders.error.send.supplierEmail");
-          } else if (error.status === "delivery_requires_review" || error.status === "in_progress") {
-            detail = t("orders.error.send.review");
-          } else if (error.status === "live_sending_disabled" || error.status === "server_configuration_missing") {
-            detail = t("orders.error.send.disabled");
-          }
-        }
-        showMessage(detail, restaurantId, "danger");
+        setNotice(sendErrorNotice(error, restaurantId));
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -735,17 +932,25 @@ export default function OrdersScreen() {
           />
         ) : null}
 
-        {visibleMessage ? (
+        {visibleNotice ? (
           <StatusNotice
-            title={
-              messageTone === "danger"
-                ? t("orders.status.attention")
-                : messageTone === "success"
-                  ? t("orders.status.updated")
-                  : t("orders.status.neutral")
+            title={visibleNotice.title}
+            message={visibleNotice.message}
+            tone={visibleNotice.tone}
+            actionLabel={
+              visibleNotice.recovery === "gmail"
+                ? t("orders.detail.recovery.gmail")
+                : visibleNotice.recovery === "supplier"
+                  ? t("orders.detail.recovery.supplier")
+                  : undefined
             }
-            message={visibleMessage}
-            tone={messageTone}
+            onAction={
+              visibleNotice.recovery === "gmail"
+                ? () => router.push("/settings/gmail" as never)
+                : visibleNotice.recovery === "supplier"
+                  ? () => router.push("/settings/suppliers" as never)
+                  : undefined
+            }
           />
         ) : null}
 

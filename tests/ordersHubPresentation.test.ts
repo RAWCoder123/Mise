@@ -5,10 +5,39 @@ import test from "node:test";
 import {
   presentOrdersHubGmailCopy,
   presentOrdersHubLaneEmptyCopy,
-  resolveOrdersHubLoadState
+  presentOrdersHubMutationActionsEditable,
+  presentOrdersHubMutationBusy,
+  presentOrdersHubMutationNoticeCopy,
+  resolveOrdersHubLoadState,
+  resolveOrdersHubSendSuccessReason,
+  type OrdersHubMutationNoticeReason
 } from "../services/presentation/ordersHubPresentation";
 
 const ordersHub = readFileSync("app/(tabs)/orders.tsx", "utf8");
+const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+const NOTICE_COPY: Record<OrdersHubMutationNoticeReason, { title: string; message: string }> = {
+  viewOnly: { title: "View-only", message: "Managers send" },
+  approved: { title: "Approved", message: "Tomatoes drafted" },
+  approveFailed: { title: "Could not approve", message: "Retry approve" },
+  dismissed: { title: "Dismissed", message: "Tomatoes dismissed" },
+  dismissFailed: { title: "Could not dismiss", message: "Retry dismiss" },
+  undoRestored: { title: "Restored", message: "Tomatoes restored" },
+  undoFailed: { title: "Could not undo", message: "Retry undo" },
+  copied: { title: "Copied", message: "Sysco copied" },
+  copyFailed: { title: "Could not copy", message: "Retry copy" },
+  placed: { title: "Placed", message: "Sysco placed" },
+  placeFailed: { title: "Could not place", message: "Retry place" },
+  sendDemoAlready: { title: "Already simulated", message: "Already in history" },
+  sendDemoZero: { title: "Demo sent", message: "Simulated zero" },
+  sendDemoOne: { title: "Demo sent", message: "Simulated one" },
+  sendDemoOther: { title: "Demo sent", message: "Simulated other" },
+  sendGmailAlready: { title: "Already sent", message: "No duplicate" },
+  sendGmailZero: { title: "Gmail sent", message: "Sent zero" },
+  sendGmailOne: { title: "Gmail sent", message: "Sent one" },
+  sendGmailOther: { title: "Gmail sent", message: "Sent other" },
+  loadFailed: { title: "Load failed", message: "Retry load" }
+};
 
 test("orders hub load state stays loading until the active restaurant finishes loading", () => {
   assert.equal(
@@ -182,4 +211,129 @@ test("orders hub wires soft-refresh and RetryNotice instead of false empty lanes
   assert.match(ordersHub, /orders\.empty\.drafts\.unavailableTitle/);
   assert.match(ordersHub, /orders\.empty\.sent\.unavailableTitle/);
   assert.match(ordersHub, /orders\.empty\.history\.unavailableTitle/);
+});
+
+test("orders hub mutation busy and editable helpers gate actions while busy", () => {
+  assert.equal(presentOrdersHubMutationBusy(false), false);
+  assert.equal(presentOrdersHubMutationBusy(true), true);
+  assert.equal(presentOrdersHubMutationActionsEditable(true, false, true), true);
+  assert.equal(presentOrdersHubMutationActionsEditable(true, true, true), false);
+  assert.equal(presentOrdersHubMutationActionsEditable(false, false, true), false);
+  assert.equal(presentOrdersHubMutationActionsEditable(true, false, false), false);
+});
+
+test("orders hub send success reason covers demo and Gmail plural outcomes", () => {
+  assert.equal(
+    resolveOrdersHubSendSuccessReason({
+      usingLocalDemo: true,
+      alreadySent: true,
+      movedCount: 2
+    }),
+    "sendDemoAlready"
+  );
+  assert.equal(
+    resolveOrdersHubSendSuccessReason({
+      usingLocalDemo: true,
+      alreadySent: false,
+      movedCount: 0
+    }),
+    "sendDemoZero"
+  );
+  assert.equal(
+    resolveOrdersHubSendSuccessReason({
+      usingLocalDemo: true,
+      alreadySent: false,
+      movedCount: 1
+    }),
+    "sendDemoOne"
+  );
+  assert.equal(
+    resolveOrdersHubSendSuccessReason({
+      usingLocalDemo: true,
+      alreadySent: false,
+      movedCount: 3
+    }),
+    "sendDemoOther"
+  );
+  assert.equal(
+    resolveOrdersHubSendSuccessReason({
+      usingLocalDemo: false,
+      alreadySent: true,
+      movedCount: 0
+    }),
+    "sendGmailAlready"
+  );
+  assert.equal(
+    resolveOrdersHubSendSuccessReason({
+      usingLocalDemo: false,
+      alreadySent: false,
+      movedCount: 0
+    }),
+    "sendGmailZero"
+  );
+  assert.equal(
+    resolveOrdersHubSendSuccessReason({
+      usingLocalDemo: false,
+      alreadySent: false,
+      movedCount: 1
+    }),
+    "sendGmailOne"
+  );
+  assert.equal(
+    resolveOrdersHubSendSuccessReason({
+      usingLocalDemo: false,
+      alreadySent: false,
+      movedCount: 4
+    }),
+    "sendGmailOther"
+  );
+});
+
+test("orders hub mutation notice copy uses success, neutral, and danger tones", () => {
+  assert.equal(presentOrdersHubMutationNoticeCopy("approved", NOTICE_COPY).tone, "success");
+  assert.equal(presentOrdersHubMutationNoticeCopy("dismissed", NOTICE_COPY).tone, "success");
+  assert.equal(presentOrdersHubMutationNoticeCopy("undoRestored", NOTICE_COPY).tone, "success");
+  assert.equal(presentOrdersHubMutationNoticeCopy("copied", NOTICE_COPY).tone, "success");
+  assert.equal(presentOrdersHubMutationNoticeCopy("placed", NOTICE_COPY).tone, "success");
+  assert.equal(presentOrdersHubMutationNoticeCopy("sendDemoOne", NOTICE_COPY).tone, "success");
+  assert.equal(presentOrdersHubMutationNoticeCopy("sendGmailOther", NOTICE_COPY).tone, "success");
+  assert.equal(presentOrdersHubMutationNoticeCopy("viewOnly", NOTICE_COPY).tone, "neutral");
+  assert.equal(presentOrdersHubMutationNoticeCopy("approveFailed", NOTICE_COPY).tone, "danger");
+  assert.equal(presentOrdersHubMutationNoticeCopy("dismissFailed", NOTICE_COPY).tone, "danger");
+  assert.equal(presentOrdersHubMutationNoticeCopy("undoFailed", NOTICE_COPY).tone, "danger");
+  assert.equal(presentOrdersHubMutationNoticeCopy("copyFailed", NOTICE_COPY).tone, "danger");
+  assert.equal(presentOrdersHubMutationNoticeCopy("placeFailed", NOTICE_COPY).tone, "danger");
+  assert.equal(presentOrdersHubMutationNoticeCopy("loadFailed", NOTICE_COPY).tone, "danger");
+  assert.equal(presentOrdersHubMutationNoticeCopy("approved", NOTICE_COPY).title, "Approved");
+  assert.equal(
+    presentOrdersHubMutationNoticeCopy("approveFailed", NOTICE_COPY).message,
+    "Retry approve"
+  );
+});
+
+test("orders hub uses localized StatusNotice for mutation outcomes and captureMiseError", () => {
+  assert.match(ordersHub, /presentOrdersHubMutationNoticeCopy/);
+  assert.match(ordersHub, /resolveOrdersHubSendSuccessReason/);
+  assert.match(ordersHub, /presentOrderDetailSendErrorNotice/);
+  assert.match(ordersHub, /resolveOrderDetailSendErrorReason/);
+  assert.match(ordersHub, /StatusNotice/);
+  assert.match(ordersHub, /title=\{visibleNotice\.title\}/);
+  assert.match(ordersHub, /message=\{visibleNotice\.message\}/);
+  assert.match(ordersHub, /tone=\{visibleNotice\.tone\}/);
+  assert.match(ordersHub, /captureMiseError/);
+  assert.match(ordersHub, /flow:\s*"orders_hub"/);
+  assert.match(ordersHub, /operation:\s*"approve"/);
+  assert.match(ordersHub, /operation:\s*"dismiss"/);
+  assert.match(ordersHub, /operation:\s*"undo"/);
+  assert.match(ordersHub, /operation:\s*"place"/);
+  assert.match(ordersHub, /operation:\s*"send"/);
+  assert.match(ordersHub, /orders\.detail\.recovery\.gmail/);
+  assert.match(ordersHub, /orders\.detail\.recovery\.supplier/);
+  assert.doesNotMatch(ordersHub, /orders\.status\.attention/);
+  assert.doesNotMatch(ordersHub, /showMessage\(/);
+  assert.match(catalog, /"orders\.notice\.approvedTitle"/);
+  assert.match(catalog, /"orders\.notice\.approveFailedTitle"/);
+  assert.match(catalog, /"orders\.notice\.send\.gmailTitle"/);
+  assert.match(catalog, /"orders\.notice\.approvedTitle":\s*"Recomendación aprobada"/);
+  assert.match(catalog, /"orders\.notice\.send\.gmailTitle":\s*"已通过 Gmail 发送订单"/);
 });
