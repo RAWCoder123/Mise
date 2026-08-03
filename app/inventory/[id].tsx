@@ -40,6 +40,10 @@ import {
 } from "../../services/domain/inventoryItemSearch";
 import { reconcileLocationBalancesForDisplay } from "../../services/domain/inventoryTransfer";
 import {
+  presentInventoryDetailMissingCopy,
+  resolveInventoryDetailLoadState
+} from "../../services/presentation/inventoryDetailPresentation";
+import {
   canManageRestaurantData,
   canManageStorageLocations,
   canRecordInventoryWaste,
@@ -80,16 +84,20 @@ export default function InventoryDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<InventoryFieldErrors>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageIsError, setMessageIsError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
+  const loadedItemIdRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading = false) => {
     if (!restaurant || !id) {
       setLoading(false);
+      setLoadError(false);
       setMessage(t("inventory.detail.noWorkspace"));
       setMessageIsError(true);
       return;
@@ -97,9 +105,16 @@ export default function InventoryDetailScreen() {
     const restaurantId = restaurant.id;
     const itemId = id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
+    if (
+      showLoading ||
+      loadedRestaurantRef.current !== restaurantId ||
+      loadedItemIdRef.current !== itemId
+    ) {
+      setLoading(true);
+    }
     setMessage(null);
     setMessageIsError(false);
+    setLoadError(false);
     try {
       const [nextOutlook, nextMovements, nextLocations, nextBalances] = await Promise.all([
         fetchInventoryItemOutlook(restaurantId, itemId),
@@ -112,6 +127,8 @@ export default function InventoryDetailScreen() {
       setMovements(nextMovements);
       setStorageLocations(nextLocations);
       setLocationBalances(nextBalances);
+      loadedRestaurantRef.current = restaurantId;
+      loadedItemIdRef.current = itemId;
       setLoadedRestaurantId(restaurantId);
       if (nextOutlook) {
         setCurrentQuantity(formatNumber(nextOutlook.item.current_quantity, { maximumFractionDigits: 2, useGrouping: false }));
@@ -135,10 +152,15 @@ export default function InventoryDetailScreen() {
       );
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      setOutlook(null);
-      setMovements([]);
-      setStorageLocations([]);
-      setLocationBalances([]);
+      const keepPrior =
+        loadedRestaurantRef.current === restaurantId && loadedItemIdRef.current === itemId;
+      if (!keepPrior) {
+        setOutlook(null);
+        setMovements([]);
+        setStorageLocations([]);
+        setLocationBalances([]);
+      }
+      setLoadError(true);
       setMessage(t("inventory.detail.loadError"));
       setMessageIsError(true);
     } finally {
@@ -148,6 +170,8 @@ export default function InventoryDetailScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    loadedRestaurantRef.current = null;
+    loadedItemIdRef.current = null;
     setLoadedRestaurantId(null);
     setOutlook(null);
     setCurrentQuantity("");
@@ -168,11 +192,23 @@ export default function InventoryDetailScreen() {
     setFieldErrors({});
     setMessage(null);
     setMessageIsError(false);
+    setLoadError(false);
     setLoading(Boolean(restaurant && id));
-    void load();
+    void load(true);
   }, [id, load, restaurant?.id]);
 
-  const visibleOutlook = loadedRestaurantId === restaurant?.id ? outlook : null;
+  const hubLoadState = resolveInventoryDetailLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleOutlook = hubReady ? outlook : null;
+  const missingCopy = presentInventoryDetailMissingCopy(hubLoadState, {
+    loading: t("inventory.detail.loading"),
+    unavailable: t("inventory.detail.unavailable"),
+    notFound: t("inventory.detail.notFound")
+  });
   const item = visibleOutlook?.item ?? null;
   const prediction = visibleOutlook?.prediction ?? null;
   const localizedPrediction = item && prediction
@@ -473,6 +509,16 @@ export default function InventoryDetailScreen() {
     >
       {item && status && prediction && localizedPrediction ? (
         <View style={styles.stack}>
+          {loadError ? (
+            <RetryNotice
+              title={t("inventory.detail.retry.title")}
+              message={message ?? t("inventory.detail.loadError")}
+              onRetry={() => void load(true)}
+              retryLabel={t("common.retry")}
+              accessibilityLabel={t("inventory.detail.retry.accessibility")}
+            />
+          ) : null}
+
           <OperationalHero
             eyebrow={t("inventory.detail.intelligence")}
             title={localizedPrediction.coverage}
@@ -521,7 +567,7 @@ export default function InventoryDetailScreen() {
             />
           ) : null}
 
-          {message ? (
+          {!loadError && message ? (
             <Text style={[styles.message, messageIsError && styles.error]} accessibilityLiveRegion="polite">
               {message}
             </Text>
@@ -750,16 +796,16 @@ export default function InventoryDetailScreen() {
             )}
           </Card>
         </View>
-      ) : messageIsError && message ? (
+      ) : loadError || (messageIsError && message) ? (
         <RetryNotice
           title={t("inventory.detail.retry.title")}
-          message={message}
-          onRetry={() => void load()}
+          message={message ?? t("inventory.detail.loadError")}
+          onRetry={() => void load(true)}
           retryLabel={t("common.retry")}
           accessibilityLabel={t("inventory.detail.retry.accessibility")}
         />
       ) : (
-        <Text style={[styles.message, messageIsError && styles.error]}>{message ?? t("inventory.detail.notFound")}</Text>
+        <Text style={[styles.message, messageIsError && styles.error]}>{message ?? missingCopy}</Text>
       )}
     </Screen>
   );

@@ -85,8 +85,18 @@ test("operational screens reject late requests and render only active-restaurant
   );
   assert.match(screens.settings, /presentSettingsHubPosCopy/);
   assert.match(source("contexts/MiseSessionContext.tsx"), /posStatusRestaurantId/);
-  assert.match(screens.inventoryDetail, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*outlook\s*:\s*null/);
-  assert.match(screens.inventoryCount, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*detail\s*:\s*null/);
+  assert.match(screens.inventoryDetail, /resolveInventoryDetailLoadState/);
+  assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
+  assert.match(
+    source("services/presentation/inventoryDetailPresentation.ts"),
+    /loadedRestaurantId\s*===\s*input\.restaurantId/
+  );
+  assert.match(screens.inventoryCount, /resolveInventoryCountLoadState/);
+  assert.match(screens.inventoryCount, /hubReady\s*\?\s*detail\s*:\s*null/);
+  assert.match(
+    source("services/presentation/inventoryCountPresentation.ts"),
+    /loadedRestaurantId\s*===\s*input\.restaurantId/
+  );
   assert.match(screens.orderDetail, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*order\s*:\s*null/);
 });
 

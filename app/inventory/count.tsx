@@ -22,6 +22,10 @@ import {
   saveInventoryCountLines,
   submitInventoryCountSession
 } from "../../services/miseService";
+import {
+  presentInventoryCountStartCopy,
+  resolveInventoryCountLoadState
+} from "../../services/presentation/inventoryCountPresentation";
 import { canApproveInventoryCount, canDraftInventoryCount } from "../../services/tenantAccess";
 import type { InventoryCountLine, InventoryCountSessionDetail } from "../../types/mise";
 
@@ -37,21 +41,27 @@ export default function InventoryCountSessionScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading = false) => {
     if (!restaurant) {
       setLoading(false);
+      setLoadError(false);
       return;
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
+    if (showLoading || loadedRestaurantRef.current !== restaurantId) {
+      setLoading(true);
+    }
     setError(null);
+    setLoadError(false);
     try {
       const open = await fetchOpenInventoryCountSession(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -67,9 +77,11 @@ export default function InventoryCountSessionScreen() {
       setDraftNotes(
         Object.fromEntries((open?.lines ?? []).map((line) => [line.inventory_item_id, line.note ?? ""]))
       );
+      loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setLoadError(true);
       setError(t("inventory.count.loadError"));
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
@@ -80,6 +92,7 @@ export default function InventoryCountSessionScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    loadedRestaurantRef.current = null;
     setLoadedRestaurantId(null);
     setDetail(null);
     setDraftCounts({});
@@ -87,17 +100,32 @@ export default function InventoryCountSessionScreen() {
     setLineQuery("");
     setSaving(false);
     setError(null);
+    setLoadError(false);
     setNotice(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(false);
     }, [load])
   );
 
-  const visibleDetail = loadedRestaurantId === restaurant?.id ? detail : null;
+  const hubLoadState = resolveInventoryCountLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleDetail = hubReady ? detail : null;
+  const startPresentation = presentInventoryCountStartCopy(hubLoadState, {
+    loadingTitle: t("inventory.count.startLoadingTitle"),
+    loadingBody: t("inventory.count.startLoadingBody"),
+    unavailableTitle: t("inventory.count.startUnavailableTitle"),
+    unavailableBody: t("inventory.count.startUnavailableBody"),
+    startTitle: t("inventory.count.startTitle"),
+    startBody: t("inventory.count.startBody")
+  });
 
   const progress = useMemo(
     () => summarizeCountSessionProgress(visibleDetail?.lines ?? []),
@@ -329,33 +357,36 @@ export default function InventoryCountSessionScreen() {
       loading={loading}
     >
       <View style={styles.stack}>
-        {error ? (
+        {loadError || error ? (
           <RetryNotice
             title={t("inventory.count.retryTitle")}
-            message={error}
-            onRetry={() => void load()}
+            message={error ?? t("inventory.count.loadError")}
+            onRetry={() => void load(true)}
             retryLabel={t("common.retry")}
             accessibilityLabel={t("inventory.count.retryAccessibility")}
           />
         ) : null}
-        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+        {!loadError && notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
-        {!visibleDetail ||
+        {!hubReady ||
+        !visibleDetail ||
         visibleDetail.session.status === "approved" ||
         visibleDetail.session.status === "cancelled" ? (
           <MotionView distance={3} duration={240}>
             <SectionSurface
-              title={t("inventory.count.startTitle")}
-              subtitle={t("inventory.count.startBody")}
+              title={startPresentation.title}
+              subtitle={startPresentation.body}
             >
-              <Button
-                title={t("inventory.count.startAction")}
-                onPress={() => void startSession()}
-                disabled={!canDraft || saving}
-                fullWidth
-                accessibilityLabel={t("inventory.count.startAccessibility")}
-              />
-              {!canDraft ? (
+              {startPresentation.canStart ? (
+                <Button
+                  title={t("inventory.count.startAction")}
+                  onPress={() => void startSession()}
+                  disabled={!canDraft || saving}
+                  fullWidth
+                  accessibilityLabel={t("inventory.count.startAccessibility")}
+                />
+              ) : null}
+              {startPresentation.canStart && !canDraft ? (
                 <Text style={styles.help}>{t("inventory.count.staffReadonly")}</Text>
               ) : null}
               <Button
