@@ -13,6 +13,7 @@ import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../componen
 import { colors, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import type { MessageKey } from "../../i18n/catalog";
 import {
   connectRestaurantGmail,
   disconnectRestaurantGmail,
@@ -22,19 +23,59 @@ import {
 import {
   presentGmailHubSenderCopy,
   presentGmailHubStatusCopy,
-  resolveGmailHubLoadState
+  presentGmailMutationActionsEditable,
+  presentGmailMutationBusy,
+  presentGmailMutationErrorNotice,
+  presentGmailMutationNoticeCopy,
+  resolveGmailHubLoadState,
+  resolveGmailMutationErrorReason,
+  type GmailMutationAction,
+  type GmailMutationErrorReason,
+  type GmailMutationNoticeReason
 } from "../../services/presentation/gmailHubPresentation";
+import { captureMiseError } from "../../services/telemetry";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import type { RestaurantEmailConnection } from "../../types/mise";
-
-type GmailAction = "connect" | "disconnect" | "refresh";
-type Translate = ReturnType<typeof useLocale>["t"];
 
 interface GmailNotice {
   tone: StatusNoticeTone;
   title: string;
   message: string;
 }
+
+const MUTATION_NOTICE_KEYS: Record<
+  GmailMutationNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  ownerRequired: {
+    title: "settings.gmail.owner.title",
+    message: "settings.gmail.owner.body"
+  },
+  oauthStarted: {
+    title: "settings.gmail.oauth.title",
+    message: "settings.gmail.oauth.body"
+  },
+  callbackConnected: {
+    title: "settings.gmail.connected.title",
+    message: "settings.gmail.connected.body"
+  },
+  callbackFailed: {
+    title: "settings.gmail.failed.title",
+    message: "settings.gmail.failed.body"
+  },
+  demoConnected: {
+    title: "settings.gmail.demoConnected.title",
+    message: "settings.gmail.demoConnected.body"
+  },
+  disconnectedDemo: {
+    title: "settings.gmail.disconnected.title",
+    message: "settings.gmail.disconnected.demoBody"
+  },
+  disconnectedLive: {
+    title: "settings.gmail.disconnected.title",
+    message: "settings.gmail.disconnected.liveBody"
+  }
+};
 
 export default function GmailConnectionScreen() {
   const navigation = useNavigation();
@@ -45,7 +86,7 @@ export default function GmailConnectionScreen() {
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [busyAction, setBusyAction] = useState<GmailAction | null>(null);
+  const [busyAction, setBusyAction] = useState<GmailMutationAction | null>(null);
   const [notice, setNotice] = useState<GmailNotice | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const requestIdRef = useRef(0);
@@ -55,6 +96,50 @@ export default function GmailConnectionScreen() {
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   const canManageConnection = canDeleteRestaurantData(memberships, restaurant?.id);
+  const mutationBusy = presentGmailMutationBusy(busyAction);
+
+  function mutationNotice(reason: GmailMutationNoticeReason): GmailNotice {
+    const localized = (
+      Object.keys(MUTATION_NOTICE_KEYS) as GmailMutationNoticeReason[]
+    ).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(MUTATION_NOTICE_KEYS[key].title),
+          message: t(MUTATION_NOTICE_KEYS[key].message)
+        };
+        return acc;
+      },
+      {} as Record<GmailMutationNoticeReason, { title: string; message: string }>
+    );
+    return presentGmailMutationNoticeCopy(reason, localized);
+  }
+
+  function mutationErrorNotice(
+    error: unknown,
+    fallbackMessage: string
+  ): GmailNotice {
+    const status = isGmailIntegrationError(error) ? error.status : null;
+    const reason = resolveGmailMutationErrorReason(status);
+    const copy: Record<GmailMutationErrorReason, { title: string; message: string }> = {
+      notEnabled: {
+        title: t("settings.gmail.error.notEnabledTitle"),
+        message: fallbackMessage
+      },
+      reviewRequired: {
+        title: t("settings.gmail.error.reviewTitle"),
+        message: t("orders.detail.gmail.review")
+      },
+      reconnectRequired: {
+        title: t("settings.gmail.error.reconnectTitle"),
+        message: t("settings.gmail.failed.body")
+      },
+      actionFailed: {
+        title: t("settings.gmail.error.actionTitle"),
+        message: fallbackMessage
+      }
+    };
+    return presentGmailMutationErrorNotice(reason, copy);
+  }
 
   const load = useCallback(async (showLoading = false) => {
     if (!restaurant) {
@@ -77,8 +162,13 @@ export default function GmailConnectionScreen() {
       setConnection(nextConnection);
       loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
-    } catch {
+    } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "settings_gmail",
+        operation: "load",
+        restaurant_id: restaurantId
+      });
       setLoadError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
@@ -113,18 +203,10 @@ export default function GmailConnectionScreen() {
 
   useEffect(() => {
     if (gmail === "connected") {
-      setNotice({
-        tone: "success",
-        title: t("settings.gmail.connected.title"),
-        message: t("settings.gmail.connected.body")
-      });
+      setNotice(mutationNotice("callbackConnected"));
       void load(false);
     } else if (gmail === "connection_failed") {
-      setNotice({
-        tone: "warning",
-        title: t("settings.gmail.failed.title"),
-        message: t("settings.gmail.failed.body")
-      });
+      setNotice(mutationNotice("callbackFailed"));
       void load(false);
     }
   }, [gmail, load]);
@@ -137,11 +219,7 @@ export default function GmailConnectionScreen() {
   async function connect() {
     if (!restaurant || actionLockRef.current) return;
     if (!canManageConnection) {
-      setNotice({
-        tone: "warning",
-        title: t("settings.gmail.owner.title"),
-        message: t("settings.gmail.owner.body")
-      });
+      setNotice(mutationNotice("ownerRequired"));
       return;
     }
     const restaurantId = restaurant.id;
@@ -157,25 +235,22 @@ export default function GmailConnectionScreen() {
         loadedRestaurantRef.current = restaurantId;
         setLoadedRestaurantId(restaurantId);
         setLoadError(false);
-        setNotice({
-          tone: "success",
-          title: t("settings.gmail.demoConnected.title"),
-          message: t("settings.gmail.demoConnected.body")
-        });
+        setNotice(mutationNotice("demoConnected"));
         return;
       }
       const canOpen = await Linking.canOpenURL(result.authorizationUrl);
       if (!canOpen) throw new Error(t("settings.gmail.error.authorization"));
       await Linking.openURL(result.authorizationUrl);
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice({
-        tone: "neutral",
-        title: t("settings.gmail.oauth.title"),
-        message: t("settings.gmail.oauth.body")
-      });
+      setNotice(mutationNotice("oauthStarted"));
     } catch (connectError) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice(gmailErrorNotice(connectError, t("settings.gmail.error.authorization"), t));
+      captureMiseError(connectError, {
+        flow: "settings_gmail",
+        operation: "connect",
+        restaurant_id: restaurantId
+      });
+      setNotice(mutationErrorNotice(connectError, t("settings.gmail.error.authorization")));
     } finally {
       actionLockRef.current = false;
       if (activeRestaurantIdRef.current === restaurantId) setBusyAction(null);
@@ -199,16 +274,15 @@ export default function GmailConnectionScreen() {
         updated_at: new Date().toISOString()
       } : null);
       setConfirmDisconnect(false);
-      setNotice({
-        tone: "success",
-        title: t("settings.gmail.disconnected.title"),
-        message: isDemoMode
-          ? t("settings.gmail.disconnected.demoBody")
-          : t("settings.gmail.disconnected.liveBody")
-      });
+      setNotice(mutationNotice(isDemoMode ? "disconnectedDemo" : "disconnectedLive"));
     } catch (disconnectError) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice(gmailErrorNotice(disconnectError, t("settings.gmail.error.disconnect"), t));
+      captureMiseError(disconnectError, {
+        flow: "settings_gmail",
+        operation: "disconnect",
+        restaurant_id: restaurantId
+      });
+      setNotice(mutationErrorNotice(disconnectError, t("settings.gmail.error.disconnect")));
     } finally {
       actionLockRef.current = false;
       if (activeRestaurantIdRef.current === restaurantId) setBusyAction(null);
@@ -234,6 +308,11 @@ export default function GmailConnectionScreen() {
     loadError
   });
   const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentGmailMutationActionsEditable(
+    canManageConnection,
+    mutationBusy,
+    hubReady
+  );
   const visibleConnection = hubReady ? connection : null;
   const status = visibleConnection?.status ?? null;
   const statusPresentation = presentGmailHubStatusCopy(hubLoadState, status, {
@@ -342,7 +421,7 @@ export default function GmailConnectionScreen() {
                           title={t("common.cancel")}
                           variant="secondary"
                           onPress={() => setConfirmDisconnect(false)}
-                          disabled={busyAction !== null}
+                          disabled={mutationBusy}
                           style={styles.confirmButton}
                         />
                         <Button
@@ -351,7 +430,7 @@ export default function GmailConnectionScreen() {
                           variant="danger"
                           icon={<Unplug size={16} color={colors.surface} strokeWidth={2.3} />}
                           onPress={() => void disconnect()}
-                          disabled={busyAction !== null}
+                          disabled={!actionsEditable}
                           style={styles.confirmButton}
                         />
                       </View>
@@ -362,7 +441,7 @@ export default function GmailConnectionScreen() {
                       variant="secondary"
                       icon={<Unplug size={17} color={colors.text} strokeWidth={2.25} />}
                       onPress={() => setConfirmDisconnect(true)}
-                      disabled={busyAction !== null}
+                      disabled={mutationBusy}
                       fullWidth
                     />
                   )
@@ -371,7 +450,7 @@ export default function GmailConnectionScreen() {
                     title={busyAction === "connect" ? t("settings.gmail.action.openingGoogle") : connectLabel}
                     icon={<ExternalLink size={17} color={colors.surface} strokeWidth={2.25} />}
                     onPress={() => void connect()}
-                    disabled={busyAction !== null}
+                    disabled={!actionsEditable}
                     fullWidth
                   />
                 )}
@@ -401,7 +480,7 @@ export default function GmailConnectionScreen() {
             variant="ghost"
             icon={<RefreshCw size={17} color={colors.text} strokeWidth={2.2} />}
             onPress={() => void refresh()}
-            disabled={busyAction !== null}
+            disabled={mutationBusy}
             fullWidth
           />
         </View>
@@ -417,22 +496,6 @@ function ConnectionDetail({ label, value }: { label: string; value: string }) {
       <Text style={styles.detailValue} numberOfLines={2}>{value}</Text>
     </View>
   );
-}
-
-function gmailErrorNotice(error: unknown, fallback: string, t: Translate): GmailNotice {
-  if (!isGmailIntegrationError(error)) {
-    return { tone: "danger", title: t("settings.gmail.error.actionTitle"), message: fallback };
-  }
-  if (error.status === "server_configuration_missing" || error.status === "live_sending_disabled") {
-    return { tone: "warning", title: t("settings.gmail.error.notEnabledTitle"), message: fallback };
-  }
-  if (error.status === "delivery_requires_review" || error.status === "in_progress") {
-    return { tone: "warning", title: t("settings.gmail.error.reviewTitle"), message: t("orders.detail.gmail.review") };
-  }
-  if (error.status === "needs_reauth" || error.status === "gmail_not_connected") {
-    return { tone: "warning", title: t("settings.gmail.error.reconnectTitle"), message: t("settings.gmail.failed.body") };
-  }
-  return { tone: "danger", title: t("settings.gmail.error.actionTitle"), message: fallback };
 }
 
 const styles = StyleSheet.create({

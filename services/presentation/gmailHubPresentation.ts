@@ -61,3 +61,80 @@ export function presentGmailHubSenderCopy(
   if (state === "error") return copy.unavailable;
   return senderEmail ?? copy.notConnected;
 }
+
+export type GmailMutationAction = "connect" | "disconnect" | "refresh";
+
+export type GmailMutationNoticeReason =
+  | "ownerRequired"
+  | "oauthStarted"
+  | "callbackConnected"
+  | "callbackFailed"
+  | "demoConnected"
+  | "disconnectedDemo"
+  | "disconnectedLive";
+
+export type GmailMutationErrorReason =
+  | "notEnabled"
+  | "reviewRequired"
+  | "reconnectRequired"
+  | "actionFailed";
+
+export function presentGmailMutationBusy(
+  busyAction: GmailMutationAction | null
+): boolean {
+  return busyAction !== null;
+}
+
+export function presentGmailMutationActionsEditable(
+  canManage: boolean,
+  busy: boolean,
+  hubReady: boolean
+): boolean {
+  return canManage && !busy && hubReady;
+}
+
+export function presentGmailMutationNoticeCopy(
+  reason: GmailMutationNoticeReason,
+  copy: Record<GmailMutationNoticeReason, { title: string; message: string }>
+): { tone: "danger" | "success" | "warning" | "neutral" | "caution"; title: string; message: string } {
+  const selected = copy[reason] ?? copy.callbackFailed;
+  if (
+    reason === "demoConnected"
+    || reason === "callbackConnected"
+    || reason === "disconnectedDemo"
+    || reason === "disconnectedLive"
+  ) {
+    return { tone: "success", title: selected.title, message: selected.message };
+  }
+  if (reason === "oauthStarted") {
+    return { tone: "neutral", title: selected.title, message: selected.message };
+  }
+  return { tone: "warning", title: selected.title, message: selected.message };
+}
+
+export function resolveGmailMutationErrorReason(
+  status: string | null | undefined
+): GmailMutationErrorReason {
+  if (status === "server_configuration_missing" || status === "live_sending_disabled") {
+    return "notEnabled";
+  }
+  if (status === "delivery_requires_review" || status === "in_progress") {
+    return "reviewRequired";
+  }
+  if (status === "needs_reauth" || status === "gmail_not_connected") {
+    return "reconnectRequired";
+  }
+  return "actionFailed";
+}
+
+export function presentGmailMutationErrorNotice(
+  reason: GmailMutationErrorReason,
+  copy: Record<GmailMutationErrorReason, { title: string; message: string }>
+): { tone: "danger" | "warning"; title: string; message: string } {
+  const selected = copy[reason] ?? copy.actionFailed;
+  return {
+    tone: reason === "actionFailed" ? "danger" : "warning",
+    title: selected.title,
+    message: selected.message
+  };
+}
