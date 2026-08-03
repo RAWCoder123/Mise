@@ -8,6 +8,7 @@ import { Card } from "../../components/ui/Card";
 import { OperationsFlow } from "../../components/ui/OperationsFlow";
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
+import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -17,7 +18,47 @@ import { readPendingInviteToken } from "../../lib/pendingInvite";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { DEMO_DATASET } from "../../services/demoData";
 import { resolvePostAuthPath } from "../../services/domain/authSignup";
+import {
+  presentLoginFormEditable,
+  presentLoginNoticeCopy,
+  resolveLoginResetRequestFailureReason,
+  resolveLoginSignInFailureReason,
+  type LoginNoticeReason
+} from "../../services/presentation/authLoginPresentation";
 import { captureMiseError } from "../../services/telemetry";
+
+type LoginNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
+
+const NOTICE_COPY_KEYS: Record<LoginNoticeReason, { title: MessageKey; message: MessageKey }> = {
+  emailRequired: {
+    title: "login.notice.emailRequiredTitle",
+    message: "login.error.emailRequired"
+  },
+  passwordRequired: {
+    title: "login.notice.passwordRequiredTitle",
+    message: "login.error.passwordRequired"
+  },
+  signInFailed: {
+    title: "login.notice.signInFailedTitle",
+    message: "login.error.signIn"
+  },
+  demoFailed: {
+    title: "login.notice.demoFailedTitle",
+    message: "login.error.demo"
+  },
+  resetRequestFailed: {
+    title: "login.notice.resetRequestFailedTitle",
+    message: "login.reset.error.requestFailed"
+  },
+  resetSent: {
+    title: "login.notice.resetSentTitle",
+    message: "login.reset.sent"
+  }
+};
 
 export default function LoginScreen() {
   const { formatNumber, t } = useLocale();
@@ -37,8 +78,26 @@ export default function LoginScreen() {
   const [password, setPassword] = useState(initialCredentials.password);
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
-  const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
-  const [noticeKey, setNoticeKey] = useState<MessageKey | null>(null);
+  const [notice, setNotice] = useState<LoginNotice | null>(null);
+  const formEditable = presentLoginFormEditable(isSupabaseConfigured, loading);
+
+  function clearNotice() {
+    if (notice) setNotice(null);
+  }
+
+  function noticeFor(reason: LoginNoticeReason): LoginNotice {
+    const localized = (Object.keys(NOTICE_COPY_KEYS) as LoginNoticeReason[]).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(NOTICE_COPY_KEYS[key].title),
+          message: t(NOTICE_COPY_KEYS[key].message)
+        };
+        return acc;
+      },
+      {} as Record<LoginNoticeReason, { title: string; message: string }>
+    );
+    return presentLoginNoticeCopy(reason, localized);
+  }
 
   useEffect(() => {
     if (!ready || loading) return;
@@ -63,19 +122,15 @@ export default function LoginScreen() {
   }
 
   async function handleSignIn() {
-    const normalizedEmail = email.trim();
-    if (!normalizedEmail) {
-      setErrorKey("login.error.emailRequired");
-      return;
-    }
-    if (!password) {
-      setErrorKey("login.error.passwordRequired");
+    const formFailure = resolveLoginSignInFailureReason({ email, password });
+    if (formFailure) {
+      setNotice(noticeFor(formFailure));
       return;
     }
 
+    const normalizedEmail = email.trim();
     setLoading(true);
-    setErrorKey(null);
-    setNoticeKey(null);
+    clearNotice();
     try {
       await signIn(normalizedEmail, password);
       const pendingInviteToken = await readPendingInviteToken();
@@ -87,7 +142,7 @@ export default function LoginScreen() {
       );
     } catch (signInError) {
       captureMiseError(signInError, { flow: "login", operation: "sign_in" });
-      setErrorKey("login.error.signIn");
+      setNotice(noticeFor("signInFailed"));
     } finally {
       setLoading(false);
     }
@@ -95,8 +150,7 @@ export default function LoginScreen() {
 
   async function handleDemo() {
     setLoading(true);
-    setErrorKey(null);
-    setNoticeKey(null);
+    clearNotice();
     try {
       await continueWithDemo({
         preset: DEMO_DATASET.id,
@@ -107,31 +161,30 @@ export default function LoginScreen() {
       router.replace("/today");
     } catch (demoError) {
       captureMiseError(demoError, { flow: "login", operation: "open_demo" });
-      setErrorKey("login.error.demo");
+      setNotice(noticeFor("demoFailed"));
     } finally {
       setLoading(false);
     }
   }
 
   async function handleForgotPassword() {
-    const normalizedEmail = email.trim();
-    if (!normalizedEmail) {
-      setErrorKey("login.error.emailRequired");
-      setNoticeKey(null);
+    const formFailure = resolveLoginResetRequestFailureReason({ email });
+    if (formFailure) {
+      setNotice(noticeFor(formFailure));
       return;
     }
 
+    const normalizedEmail = email.trim();
     setLoading(true);
-    setErrorKey(null);
-    setNoticeKey(null);
+    clearNotice();
     setResetSent(false);
     try {
       await requestPasswordReset(normalizedEmail);
       setResetSent(true);
-      setNoticeKey("login.reset.sent");
+      setNotice(noticeFor("resetSent"));
     } catch (resetError) {
       captureMiseError(resetError, { flow: "login", operation: "password_reset" });
-      setErrorKey("login.reset.error.requestFailed");
+      setNotice(noticeFor("resetRequestFailed"));
     } finally {
       setLoading(false);
     }
@@ -161,12 +214,15 @@ export default function LoginScreen() {
               <Text style={styles.label}>{t("login.form.email")}</Text>
               <TextInput
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  clearNotice();
+                }}
                 accessibilityLabel={t("login.form.email")}
                 accessibilityHint={t("login.form.emailHint")}
                 autoCapitalize="none"
                 autoComplete="email"
-                editable={!loading}
+                editable={formEditable}
                 keyboardType="email-address"
                 returnKeyType="next"
                 style={styles.input}
@@ -179,11 +235,14 @@ export default function LoginScreen() {
               <Text style={styles.label}>{t("login.form.password")}</Text>
               <TextInput
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(value) => {
+                  setPassword(value);
+                  clearNotice();
+                }}
                 accessibilityLabel={t("login.form.password")}
                 accessibilityHint={t("login.form.passwordHint")}
                 autoComplete="current-password"
-                editable={!loading}
+                editable={formEditable}
                 onSubmitEditing={() => void handleSignIn()}
                 returnKeyType="go"
                 secureTextEntry
@@ -193,15 +252,13 @@ export default function LoginScreen() {
                 textContentType="password"
               />
             </View>
-            {errorKey ? (
-              <Text accessibilityLiveRegion="assertive" accessibilityRole="alert" style={styles.error}>
-                {t(errorKey)}
-              </Text>
-            ) : null}
-            {noticeKey ? (
-              <Text accessibilityLiveRegion="polite" style={styles.notice}>
-                {t(noticeKey)}
-              </Text>
+            {notice ? (
+              <StatusNotice
+                tone={notice.tone}
+                title={notice.title}
+                message={notice.message}
+                style={styles.statusNotice}
+              />
             ) : null}
             <Button
               title={!isSupabaseConfigured ? t("login.action.cloudUnavailable") : loading ? t("login.action.opening") : t("login.action.signIn")}
@@ -368,18 +425,8 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 6
   },
-  error: {
-    color: colors.danger,
-    fontSize: 13,
-    lineHeight: 19,
+  statusNotice: {
     marginVertical: 12
-  },
-  notice: {
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 19,
-    marginVertical: 12,
-    fontWeight: "600"
   },
   modeNote: {
     color: colors.muted,

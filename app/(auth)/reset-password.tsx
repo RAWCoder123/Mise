@@ -6,14 +6,45 @@ import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } fro
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Screen } from "../../components/ui/Screen";
-import { StatusNotice } from "../../components/ui/StatusNotice";
+import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import { validateNewPassword } from "../../services/domain/authRecovery";
 import { isSupabaseConfigured } from "../../lib/supabase";
+import {
+  presentResetFailureCopy,
+  presentResetFormEditable,
+  resolveResetFormFailureReason,
+  type ResetFailureReason
+} from "../../services/presentation/authResetPresentation";
 import { captureMiseError } from "../../services/telemetry";
+
+type ResetNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
+
+const FAILURE_COPY_KEYS: Record<ResetFailureReason, { title: MessageKey; message: MessageKey }> = {
+  tooShort: {
+    title: "login.reset.notice.tooShortTitle",
+    message: "login.reset.error.tooShort"
+  },
+  invalidPassword: {
+    title: "login.reset.notice.invalidPasswordTitle",
+    message: "login.reset.error.invalidPassword"
+  },
+  mismatch: {
+    title: "login.reset.notice.mismatchTitle",
+    message: "login.reset.error.mismatch"
+  },
+  updateFailed: {
+    title: "login.reset.notice.updateFailedTitle",
+    message: "login.reset.error.updateFailed"
+  }
+};
 
 export default function ResetPasswordScreen() {
   const { t } = useLocale();
@@ -28,8 +59,31 @@ export default function ResetPasswordScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
+  const [notice, setNotice] = useState<ResetNotice | null>(null);
   const [completed, setCompleted] = useState(false);
+  const formEditable = presentResetFormEditable(
+    isSupabaseConfigured,
+    loading,
+    passwordRecoveryPending
+  );
+
+  function clearNotice() {
+    if (notice) setNotice(null);
+  }
+
+  function failureNotice(reason: ResetFailureReason): ResetNotice {
+    const localized = (Object.keys(FAILURE_COPY_KEYS) as ResetFailureReason[]).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(FAILURE_COPY_KEYS[key].title),
+          message: t(FAILURE_COPY_KEYS[key].message)
+        };
+        return acc;
+      },
+      {} as Record<ResetFailureReason, { title: string; message: string }>
+    );
+    return presentResetFailureCopy(reason, localized);
+  }
 
   useEffect(() => {
     if (!ready || loading || completed) return;
@@ -45,26 +99,24 @@ export default function ResetPasswordScreen() {
   }
 
   async function handleSubmit() {
-    const validationError = validateNewPassword(password);
-    if (validationError) {
-      setErrorKey(
-        password.length < 8 ? "login.reset.error.tooShort" : "login.reset.error.invalidPassword"
-      );
-      return;
-    }
-    if (password !== confirmPassword) {
-      setErrorKey("login.reset.error.mismatch");
+    const formFailure = resolveResetFormFailureReason({
+      password,
+      confirmPassword,
+      validatePassword: validateNewPassword
+    });
+    if (formFailure) {
+      setNotice(failureNotice(formFailure));
       return;
     }
 
     setLoading(true);
-    setErrorKey(null);
+    clearNotice();
     try {
       await completePasswordReset(password);
       setCompleted(true);
     } catch (resetError) {
       captureMiseError(resetError, { flow: "password_recovery", operation: "complete" });
-      setErrorKey("login.reset.error.updateFailed");
+      setNotice(failureNotice("updateFailed"));
     } finally {
       setLoading(false);
     }
@@ -111,10 +163,13 @@ export default function ResetPasswordScreen() {
                 <Text style={styles.label}>{t("login.reset.newPassword")}</Text>
                 <TextInput
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    clearNotice();
+                  }}
                   accessibilityLabel={t("login.reset.newPassword")}
                   autoComplete="new-password"
-                  editable={!loading}
+                  editable={formEditable}
                   secureTextEntry
                   style={styles.input}
                   placeholder={t("login.reset.newPasswordPlaceholder")}
@@ -127,10 +182,13 @@ export default function ResetPasswordScreen() {
                 <Text style={styles.label}>{t("login.reset.confirmPassword")}</Text>
                 <TextInput
                   value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  onChangeText={(value) => {
+                    setConfirmPassword(value);
+                    clearNotice();
+                  }}
                   accessibilityLabel={t("login.reset.confirmPassword")}
                   autoComplete="new-password"
-                  editable={!loading}
+                  editable={formEditable}
                   onSubmitEditing={() => void handleSubmit()}
                   secureTextEntry
                   style={styles.input}
@@ -140,10 +198,13 @@ export default function ResetPasswordScreen() {
                 />
               </View>
 
-              {errorKey ? (
-                <Text accessibilityLiveRegion="assertive" accessibilityRole="alert" style={styles.error}>
-                  {t(errorKey)}
-                </Text>
+              {notice ? (
+                <StatusNotice
+                  tone={notice.tone}
+                  title={notice.title}
+                  message={notice.message}
+                  style={styles.statusNotice}
+                />
               ) : null}
 
               <Button
@@ -202,10 +263,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16
   },
-  error: {
-    color: colors.danger,
-    fontSize: 14,
-    fontWeight: "600",
-    marginTop: 8
+  statusNotice: {
+    marginTop: 8,
+    marginBottom: 4
   }
 });
