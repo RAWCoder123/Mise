@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { presentSettingsHubPosCopy } from "../services/presentation/posHubPresentation";
 import {
   presentSettingsHubGmailCopy,
   presentSettingsHubRecipesCopy,
@@ -159,9 +160,52 @@ test("recipe hub copy surfaces coverage only when the hub is ready", () => {
   assert.equal(ready.caution, true);
 });
 
+test("settings hub POS copy never claims disconnected while loading or failed", () => {
+  const loading = presentSettingsHubPosCopy(
+    "loading",
+    { providerLabel: null, isDemoMode: true },
+    {
+      loading: "Checking POS connection…",
+      unavailable: "POS status unavailable. Retry to refresh.",
+      connectedSubtitle: (provider) => `${provider} · sales source selected`,
+      notConnectedSubtitle: "Select a source for recorded sales.",
+      csvSubtitle: "Import sales CSV and repair unmapped menu items.",
+      statusLoading: "Loading",
+      statusUnavailable: "Unavailable",
+      statusConnected: "Connected",
+      statusNotConnected: "Not connected",
+      statusCsvReady: "CSV ready"
+    }
+  );
+  assert.equal(loading.subtitle, "Checking POS connection…");
+  assert.equal(loading.badgeLabel, "Loading");
+  assert.doesNotMatch(loading.subtitle, /not connected|select a source/i);
+
+  const ready = presentSettingsHubPosCopy(
+    "ready",
+    { providerLabel: "Toast", isDemoMode: true },
+    {
+      loading: "Checking POS connection…",
+      unavailable: "POS status unavailable. Retry to refresh.",
+      connectedSubtitle: (provider) => `${provider} · sales source selected`,
+      notConnectedSubtitle: "Select a source for recorded sales.",
+      csvSubtitle: "Import sales CSV and repair unmapped menu items.",
+      statusLoading: "Loading",
+      statusUnavailable: "Unavailable",
+      statusConnected: "Connected",
+      statusNotConnected: "Not connected",
+      statusCsvReady: "CSV ready"
+    }
+  );
+  assert.equal(ready.subtitle, "Toast · sales source selected");
+  assert.equal(ready.badgeLabel, "Connected");
+  assert.equal(ready.tone, "leaf");
+});
+
 test("settings hub wires Screen loading and RetryNotice instead of false empty flashes", () => {
   assert.match(settingsHub, /resolveSettingsHubLoadState/);
   assert.match(settingsHub, /presentSettingsHubGmailCopy/);
+  assert.match(settingsHub, /presentSettingsHubPosCopy/);
   assert.match(settingsHub, /presentSettingsHubSupplierCopy/);
   assert.match(settingsHub, /presentSettingsHubRecipesCopy/);
   assert.match(settingsHub, /loading=\{hubLoading\}/);

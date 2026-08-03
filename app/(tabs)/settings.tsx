@@ -49,6 +49,10 @@ import {
   requestAccountDeletion
 } from "../../services/miseService";
 import {
+  presentSettingsHubPosCopy,
+  resolvePosHubLoadState
+} from "../../services/presentation/posHubPresentation";
+import {
   presentSettingsHubGmailCopy,
   presentSettingsHubRecipesCopy,
   presentSettingsHubSupplierCopy,
@@ -76,6 +80,8 @@ export default function SettingsScreen() {
     memberships,
     restaurant,
     posProvider,
+    posStatusError,
+    posStatusRestaurantId,
     resetDemoData,
     role,
     signOut,
@@ -286,6 +292,34 @@ export default function SettingsScreen() {
   const visibleEmailConnection = hubReady ? emailConnection : null;
   const visibleRecipeBaseline = hubReady ? recipeBaseline : null;
   const visibleReadiness = hubReady ? readiness : null;
+  const posLoadState = resolvePosHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId: hubReady && !posStatusError ? posStatusRestaurantId : null,
+    loadError: hubLoadError || (hubReady && posStatusError)
+  });
+  const posConnectedLabel =
+    posLoadState === "ready" && posProvider
+      ? posProvider === "Manual CSV Upload"
+        ? t("settings.integration.pos.manualCsv")
+        : posProviderLabel(posProvider, t)
+      : null;
+  const posPresentation = presentSettingsHubPosCopy(
+    posLoadState,
+    { providerLabel: posConnectedLabel, isDemoMode },
+    {
+      loading: t("settings.integration.pos.loading"),
+      unavailable: t("settings.integration.pos.unavailable"),
+      connectedSubtitle: (provider) =>
+        t("settings.integration.pos.connectedSubtitle", { provider }),
+      notConnectedSubtitle: t("settings.integration.pos.notConnectedSubtitle"),
+      csvSubtitle: t("settings.integration.pos.csvSubtitle"),
+      statusLoading: t("settings.pos.status.loading"),
+      statusUnavailable: t("settings.pos.status.unavailable"),
+      statusConnected: t("settings.integration.pos.connected"),
+      statusNotConnected: t("settings.integration.pos.notConnected"),
+      statusCsvReady: t("settings.integration.pos.csvReady")
+    }
+  );
   const gmailPresentation = presentSettingsHubGmailCopy(hubLoadState, visibleEmailConnection, {
     loading: t("settings.integration.gmail.loading"),
     unavailable: t("settings.integration.gmail.unavailable"),
@@ -337,11 +371,6 @@ export default function SettingsScreen() {
   const profileLine = restaurant
     ? `${restaurant.cuisine_type?.trim() || t("settings.profile.cuisineFallback")} · ${serviceStyleLabel(restaurant.service_style, t)}`
     : t("settings.workspace.metaFallback");
-  const posConnectedLabel = posProvider
-    ? posProvider === "Manual CSV Upload"
-      ? t("settings.integration.pos.manualCsv")
-      : posProviderLabel(posProvider, t)
-    : null;
 
   return (
     <Screen title={t("settings.title")} subtitle={t("settings.subtitle")} loading={hubLoading}>
@@ -460,29 +489,29 @@ export default function SettingsScreen() {
         <SettingsSection title={t("settings.section.integrations")}>
           <OperationalRow
             title={t("settings.integration.pos.title")}
-            subtitle={
-              posConnectedLabel
-                ? t("settings.integration.pos.connectedSubtitle", { provider: posConnectedLabel })
-                : isDemoMode
-                  ? t("settings.integration.pos.notConnectedSubtitle")
-                  : t("settings.integration.pos.csvSubtitle")
-            }
+            subtitle={posPresentation.subtitle}
             icon={
               <PlugZap
                 size={20}
-                color={posConnectedLabel ? colors.success : colors.muted}
+                color={
+                  posPresentation.tone === "leaf"
+                    ? colors.success
+                    : posPresentation.tone === "caution"
+                      ? colors.caution
+                      : colors.muted
+                }
                 strokeWidth={2.25}
               />
             }
-            iconTone={posConnectedLabel ? "leaf" : "neutral"}
-            badgeLabel={
-              posConnectedLabel
-                ? t("settings.integration.pos.connected")
-                : isDemoMode
-                  ? t("settings.integration.pos.notConnected")
-                  : t("settings.integration.pos.csvReady")
+            iconTone={posPresentation.tone}
+            badgeLabel={posPresentation.badgeLabel}
+            badgeTone={
+              posPresentation.tone === "leaf"
+                ? "success"
+                : posPresentation.tone === "caution"
+                  ? "caution"
+                  : "neutral"
             }
-            badgeTone={posConnectedLabel ? "success" : "neutral"}
             onPress={() => router.push("/settings/pos")}
           />
           <OperationalRow

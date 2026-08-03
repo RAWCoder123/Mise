@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { router, useNavigation } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { router, useFocusEffect, useNavigation } from "expo-router";
 import { ArrowLeft, CheckCircle, PlugZap } from "lucide-react-native";
 import { Animated, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -9,11 +9,16 @@ import { usePressScale } from "../../components/ui/Motion";
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
+import { RetryNotice } from "../../components/ui/StatusNotice";
 import { colors } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { DEMO_SETUP_POS_SALES_PLACEHOLDER } from "../../services/demo/demoSetupData";
 import { importManualPosSalesCsv, previewManualPosSalesCsv } from "../../services/miseService";
+import {
+  presentPosHubHeroCopy,
+  resolvePosHubLoadState
+} from "../../services/presentation/posHubPresentation";
 import type { PosProvider } from "../../types/mise";
 
 const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Manual CSV Upload"];
@@ -35,16 +40,104 @@ export default function POSConnectionScreen() {
   const navigation = useNavigation();
   const { formatNumber, t } = useLocale();
   const { isDemoMode, restaurant, posProvider, connectDemoPOS, refreshPosStatus } = useMiseSession();
+  const [loading, setLoading] = useState(Boolean(restaurant));
+  const [loadError, setLoadError] = useState(false);
+  const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loadingProvider, setLoadingProvider] = useState<PosProvider | null>(null);
   const [importingCsv, setImportingCsv] = useState(false);
   const [csvText, setCsvText] = useState("");
   const [message, setMessage] = useState<PosMessage | null>(null);
   const [unmappedAfterImport, setUnmappedAfterImport] = useState(0);
   const [incompatibleAfterImport, setIncompatibleAfterImport] = useState(0);
+  const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
+  const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
+  activeRestaurantIdRef.current = restaurant?.id ?? null;
   const csvPreview = useMemo(() => previewManualPosSalesCsv(csvText), [csvText]);
+
+  useEffect(() => {
+    requestIdRef.current += 1;
+    loadedRestaurantRef.current = null;
+    setLoadedRestaurantId(null);
+    setLoadError(false);
+    setLoading(Boolean(restaurant));
+    setLoadingProvider(null);
+    setImportingCsv(false);
+    setCsvText("");
+    setMessage(null);
+    setUnmappedAfterImport(0);
+    setIncompatibleAfterImport(0);
+  }, [restaurant?.id]);
+
+  const load = useCallback(
+    async (showLoading = false) => {
+      if (!restaurant) {
+        setLoading(false);
+        setLoadError(false);
+        return;
+      }
+      const restaurantId = restaurant.id;
+      const requestId = ++requestIdRef.current;
+      if (showLoading || loadedRestaurantRef.current !== restaurantId) {
+        setLoading(true);
+      }
+      setLoadError(false);
+      try {
+        await refreshPosStatus();
+        if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+        loadedRestaurantRef.current = restaurantId;
+        setLoadedRestaurantId(restaurantId);
+      } catch {
+        if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+        setLoadError(true);
+      } finally {
+        if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+          setLoading(false);
+        }
+      }
+    },
+    [refreshPosStatus, restaurant]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void load(false);
+    }, [load])
+  );
+
+  const hubLoadState = resolvePosHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const visiblePosProvider = hubReady ? posProvider : null;
   const posProviderLabel =
-    posProvider === "Manual CSV Upload" ? t("pos.provider.manualCsv") : posProvider;
-  const csvConnected = posProvider === "Manual CSV Upload";
+    visiblePosProvider === "Manual CSV Upload"
+      ? t("pos.provider.manualCsv")
+      : visiblePosProvider;
+  const csvConnected = visiblePosProvider === "Manual CSV Upload";
+  const hero = presentPosHubHeroCopy(
+    hubLoadState,
+    {
+      providerLabel: posProviderLabel,
+      isDemoMode,
+      csvConnected
+    },
+    {
+      loadingTitle: t("pos.empty.loadingTitle"),
+      loadingBody: t("pos.empty.loadingBody"),
+      unavailableTitle: t("pos.empty.unavailableTitle"),
+      unavailableBody: t("pos.empty.unavailableBody"),
+      connectedTitle: (provider) => t("pos.hero.connected", { provider }),
+      connectSourceTitle: t("pos.hero.connectSource"),
+      csvReadyTitle: t("pos.hero.csvReady"),
+      connectedDemoBody: (provider) => t("pos.status.demoConnected", { provider }),
+      connectedCsvBody: t("pos.status.csvConnected"),
+      demoModeBody: t("pos.status.demoMode"),
+      liveCsvBody: t("pos.status.liveCsv")
+    }
+  );
 
   async function connect(provider: PosProvider) {
     if (provider === "Manual CSV Upload") {
@@ -58,6 +151,10 @@ export default function POSConnectionScreen() {
     setMessage(null);
     try {
       await connectDemoPOS(provider);
+      if (restaurant?.id) {
+        loadedRestaurantRef.current = restaurant.id;
+        setLoadedRestaurantId(restaurant.id);
+      }
       setMessage({ key: "pos.message.demoLoaded", values: { provider } });
     } catch {
       setMessage({ key: "pos.error.demoLoad" });
@@ -82,6 +179,9 @@ export default function POSConnectionScreen() {
     try {
       const result = await importManualPosSalesCsv(restaurant.id, csvText, "settings_manual_csv.txt");
       await refreshPosStatus();
+      if (activeRestaurantIdRef.current !== restaurant.id) return;
+      loadedRestaurantRef.current = restaurant.id;
+      setLoadedRestaurantId(restaurant.id);
       const unmappedCount = Math.max(0, Math.trunc(result.unmappedSaleCount ?? 0));
       const incompatibleCount = Math.max(0, Math.trunc(result.skippedIncompatibleCount ?? 0));
       setUnmappedAfterImport(unmappedCount);
@@ -118,11 +218,15 @@ export default function POSConnectionScreen() {
         });
       }
     } catch {
-      setMessage({ key: "pos.error.csvImport" });
-      setUnmappedAfterImport(0);
-      setIncompatibleAfterImport(0);
+      if (activeRestaurantIdRef.current === restaurant.id) {
+        setMessage({ key: "pos.error.csvImport" });
+        setUnmappedAfterImport(0);
+        setIncompatibleAfterImport(0);
+      }
     } finally {
-      setImportingCsv(false);
+      if (activeRestaurantIdRef.current === restaurant.id) {
+        setImportingCsv(false);
+      }
     }
   }
 
@@ -135,6 +239,7 @@ export default function POSConnectionScreen() {
     <Screen
       title={t("pos.title")}
       subtitle={isDemoMode ? t("pos.subtitle.demo") : t("pos.subtitle.liveCsv")}
+      loading={loading}
       action={
         <ActionIcon accessibilityLabel={t("pos.backToSettings")} onPress={goBackToSettings}>
           <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
@@ -142,44 +247,66 @@ export default function POSConnectionScreen() {
       }
     >
       <View style={styles.stack}>
+        {loadError ? (
+          <RetryNotice
+            title={t("pos.retry.title")}
+            message={t("pos.error.load")}
+            retryLabel={t("common.retry")}
+            accessibilityLabel={t("pos.retry.accessibility")}
+            onRetry={() => void load(true)}
+          />
+        ) : null}
+
         <OperationalHero
           eyebrow={t("pos.hero.eyebrow")}
-          title={
-            posProviderLabel
-              ? t("pos.hero.connected", { provider: posProviderLabel })
-              : isDemoMode
-                ? t("pos.hero.connectSource")
-                : t("pos.hero.csvReady")
+          title={hero.title}
+          body={hero.body}
+          meta={
+            hero.metaReady
+              ? isDemoMode
+                ? posProviderLabel ?? t("common.demo")
+                : t("pos.value.beta")
+              : hubLoadState === "error"
+                ? t("common.retry")
+                : t("common.loading")
           }
-          body={
-            posProviderLabel
-              ? csvConnected
-                ? t("pos.status.csvConnected")
-                : t("pos.status.demoConnected", { provider: posProviderLabel })
-              : isDemoMode
-                ? t("pos.status.demoMode")
-                : t("pos.status.liveCsv")
-          }
-          meta={isDemoMode ? posProviderLabel ?? t("common.demo") : t("pos.value.beta")}
-          tone={posProvider ? "leaf" : "caution"}
+          tone={hero.tone === "leaf" ? "leaf" : hero.tone === "caution" ? "caution" : "neutral"}
           icon={
             <PlugZap
               size={21}
-              color={posProvider ? colors.success : colors.caution}
+              color={
+                hero.tone === "leaf"
+                  ? colors.success
+                  : hero.tone === "caution"
+                    ? colors.caution
+                    : colors.muted
+              }
               strokeWidth={2.6}
             />
           }
           stats={[
             {
               label: t("pos.stat.provider"),
-              value: posProvider ? t("common.on") : t("common.none"),
-              tone: posProvider ? "leaf" : "caution"
+              value: !hero.metaReady
+                ? hubLoadState === "error"
+                  ? t("common.retry")
+                  : t("common.loading")
+                : visiblePosProvider
+                  ? t("common.on")
+                  : t("common.none"),
+              tone: !hero.metaReady ? "neutral" : visiblePosProvider ? "leaf" : "caution"
             },
             { label: t("pos.stat.mode"), value: isDemoMode ? t("common.demo") : t("common.live"), tone: "neutral" },
             {
               label: t("pos.stat.import"),
-              value: csvConnected ? t("common.on") : t("common.ready"),
-              tone: csvConnected ? "leaf" : "neutral"
+              value: !hero.metaReady
+                ? hubLoadState === "error"
+                  ? t("common.retry")
+                  : t("common.loading")
+                : csvConnected
+                  ? t("common.on")
+                  : t("common.ready"),
+              tone: !hero.metaReady ? "neutral" : csvConnected ? "leaf" : "neutral"
             }
           ]}
         />
@@ -199,7 +326,7 @@ export default function POSConnectionScreen() {
           </Text>
         )}
 
-        {unmappedAfterImport > 0 || incompatibleAfterImport > 0 ? (
+        {hubReady && (unmappedAfterImport > 0 || incompatibleAfterImport > 0) ? (
           <Pressable
             onPress={() => router.push("/settings/recipes" as never)}
             accessibilityRole="button"
@@ -254,14 +381,17 @@ export default function POSConnectionScreen() {
           ))}
           <Pressable
             onPress={() => void importCsv()}
-            disabled={importingCsv || csvPreview.status !== "ready"}
+            disabled={importingCsv || csvPreview.status !== "ready" || !hubReady}
             accessibilityRole="button"
             accessibilityLabel={t("pos.csv.importAction")}
-            accessibilityState={{ disabled: importingCsv || csvPreview.status !== "ready", busy: importingCsv }}
+            accessibilityState={{
+              disabled: importingCsv || csvPreview.status !== "ready" || !hubReady,
+              busy: importingCsv
+            }}
             style={({ pressed }) => [
               styles.importButton,
-              (importingCsv || csvPreview.status !== "ready") && styles.importButtonDisabled,
-              pressed && csvPreview.status === "ready" && !importingCsv && styles.pressed
+              (importingCsv || csvPreview.status !== "ready" || !hubReady) && styles.importButtonDisabled,
+              pressed && csvPreview.status === "ready" && hubReady && !importingCsv && styles.pressed
             ]}
           >
             <Text style={styles.importButtonText}>
@@ -275,20 +405,26 @@ export default function POSConnectionScreen() {
             <SectionHeader
               title={t("pos.providers.title")}
               eyebrow={t("pos.providers.eyebrow")}
-              action={posProviderLabel ?? t("common.none")}
+              action={
+                !hubReady
+                  ? hubLoadState === "error"
+                    ? t("pos.section.action.unavailable")
+                    : t("pos.section.action.loading")
+                  : posProviderLabel ?? t("common.none")
+              }
             />
             <View style={styles.providerList}>
               {providers
                 .filter((provider) => provider !== "Manual CSV Upload")
                 .map((provider) => {
-                  const selected = provider === posProvider;
+                  const selected = hubReady && provider === visiblePosProvider;
                   return (
                     <ProviderOption
                       key={provider}
                       provider={provider}
                       selected={selected}
                       loading={loadingProvider === provider}
-                      disabled={loadingProvider !== null || importingCsv}
+                      disabled={!hubReady || loadingProvider !== null || importingCsv}
                       onPress={() => void connect(provider)}
                     />
                   );

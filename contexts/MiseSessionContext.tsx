@@ -73,6 +73,8 @@ interface MiseSessionContextValue {
   role: RestaurantRole | null;
   posProvider: PosProvider | null;
   posStatusLabel: string;
+  posStatusRestaurantId: string | null;
+  posStatusError: boolean;
   isDemoMode: boolean;
   usingLocalDemo: boolean;
   canUseDemoMode: boolean;
@@ -135,9 +137,12 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [posProvider, setPosProvider] = useState<PosProvider | null>(null);
   const [posStatusLabel, setPosStatusLabel] = useState("Not connected");
+  const [posStatusRestaurantId, setPosStatusRestaurantId] = useState<string | null>(null);
+  const [posStatusError, setPosStatusError] = useState(false);
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
   const activeRestaurantIdRef = useRef<string | null>(null);
   const posRequestIdRef = useRef(0);
+  const posStatusRestaurantIdRef = useRef<string | null>(null);
   const switchRequestIdRef = useRef(0);
   const sessionRequestIdRef = useRef(0);
   const storageQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -145,17 +150,63 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   const activeRestaurantId = restaurant?.id ?? null;
   activeRestaurantIdRef.current = activeRestaurantId;
 
+  const clearPosStatus = useCallback(() => {
+    setPosProvider(null);
+    setPosStatusLabel("Not connected");
+    setPosStatusRestaurantId(null);
+    posStatusRestaurantIdRef.current = null;
+    setPosStatusError(false);
+  }, []);
+
+  const settlePosStatus = useCallback(
+    (
+      restaurantId: string | null,
+      next: { provider: PosProvider | null; label: string } | null,
+      failed = false
+    ) => {
+      setPosProvider(next?.provider ?? null);
+      setPosStatusLabel(next?.label ?? (failed ? "Unavailable" : "Not connected"));
+      setPosStatusRestaurantId(restaurantId);
+      posStatusRestaurantIdRef.current = restaurantId;
+      setPosStatusError(failed);
+    },
+    []
+  );
+
   const refreshPOS = useCallback(async (restaurantId?: string | null) => {
     const expectedRestaurantId = restaurantId ?? null;
     const requestId = ++posRequestIdRef.current;
-    const status = await fetchPOSStatus(expectedRestaurantId);
-    if (
-      requestId !== posRequestIdRef.current ||
-      activeRestaurantIdRef.current !== expectedRestaurantId
-    ) return;
-    setPosProvider(status.provider);
-    setPosStatusLabel(status.label);
-  }, []);
+    // Never keep another restaurant's POS provider visible while the next status loads.
+    if (posStatusRestaurantIdRef.current !== expectedRestaurantId) {
+      clearPosStatus();
+    }
+    try {
+      const status = await fetchPOSStatus(expectedRestaurantId);
+      if (
+        requestId !== posRequestIdRef.current ||
+        activeRestaurantIdRef.current !== expectedRestaurantId
+      ) {
+        return;
+      }
+      settlePosStatus(expectedRestaurantId, {
+        provider: status.provider,
+        label: status.label
+      });
+    } catch (error) {
+      if (
+        requestId !== posRequestIdRef.current ||
+        activeRestaurantIdRef.current !== expectedRestaurantId
+      ) {
+        return;
+      }
+      settlePosStatus(expectedRestaurantId, null, true);
+      captureMiseError(error, {
+        flow: "pos_status",
+        operation: "refresh",
+        restaurant_id: expectedRestaurantId
+      });
+    }
+  }, [clearPosStatus, settlePosStatus]);
 
   const saveSnapshot = useCallback(async (snapshot: SessionSnapshot) => {
     const write = storageQueueRef.current
@@ -184,6 +235,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     switchRequestIdRef.current += 1;
     posRequestIdRef.current += 1;
     activeRestaurantIdRef.current = null;
+    clearPosStatus();
     setUser(null);
     setAuthUser(null);
     setRestaurant(null);
@@ -191,14 +243,12 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     setMemberships([]);
     setRole(null);
     setIsDemoMode(false);
-    setPosProvider(null);
-    setPosStatusLabel("Not connected");
     const removal = storageQueueRef.current
       .catch(() => undefined)
       .then(() => AsyncStorage.removeItem(STORAGE_KEY));
     storageQueueRef.current = removal;
     await removal;
-  }, []);
+  }, [clearPosStatus]);
 
   const hydrateSupabaseUser = useCallback(
     async (nextAuthUser: SupabaseUser, preferredRestaurantId?: string | null) => {
@@ -465,8 +515,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
           setMemberships([]);
           setRole(null);
           setUser(appUserFromAuth(authUser, null, null));
-          setPosProvider(null);
-          setPosStatusLabel("Not connected");
+          clearPosStatus();
           await saveSnapshot({ activeRestaurantId: null, isDemoMode: false });
           if (!mounted) return;
         }
@@ -495,7 +544,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       appStateSubscription.remove();
       unsubscribeDenials();
     };
-  }, [authUser, hydrateSupabaseUser, memberships, saveSnapshot]);
+  }, [authUser, clearPosStatus, hydrateSupabaseUser, memberships, saveSnapshot]);
 
   const continueWithDemo = useCallback(
     async (profile?: { name?: string; cuisine_type?: string; posProvider?: PosProvider } & DemoSetupProfile) => {
@@ -702,8 +751,34 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const refreshPosStatus = useCallback(async () => {
-    await refreshPOS(activeRestaurantIdRef.current);
-  }, [refreshPOS]);
+    const expectedRestaurantId = activeRestaurantIdRef.current;
+    const requestId = ++posRequestIdRef.current;
+    if (posStatusRestaurantIdRef.current !== expectedRestaurantId) {
+      clearPosStatus();
+    }
+    try {
+      const status = await fetchPOSStatus(expectedRestaurantId);
+      if (
+        requestId !== posRequestIdRef.current ||
+        activeRestaurantIdRef.current !== expectedRestaurantId
+      ) {
+        return;
+      }
+      settlePosStatus(expectedRestaurantId, {
+        provider: status.provider,
+        label: status.label
+      });
+    } catch (error) {
+      if (
+        requestId !== posRequestIdRef.current ||
+        activeRestaurantIdRef.current !== expectedRestaurantId
+      ) {
+        return;
+      }
+      settlePosStatus(expectedRestaurantId, null, true);
+      throw error;
+    }
+  }, [clearPosStatus, settlePosStatus]);
 
   const refreshSession = useCallback(async () => {
     if (authUser && isSupabaseConfigured) {
@@ -819,6 +894,8 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       role,
       posProvider,
       posStatusLabel,
+      posStatusRestaurantId,
+      posStatusError,
       isDemoMode,
       usingLocalDemo: isDemoMode,
       canUseDemoMode: demoModeAvailable,
@@ -856,6 +933,8 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       passwordRecoveryPending,
       posProvider,
       posStatusLabel,
+      posStatusRestaurantId,
+      posStatusError,
       ready,
       refreshPosStatus,
       refreshSession,
