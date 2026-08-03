@@ -8,7 +8,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -23,11 +23,24 @@ import {
   submitInventoryCountSession
 } from "../../services/miseService";
 import {
+  buildInventoryCountLinePayload,
+  presentInventoryCountFailureCopy,
   presentInventoryCountStartCopy,
-  resolveInventoryCountLoadState
+  presentInventoryCountSuccessCopy,
+  resolveInventoryCountFailureReason,
+  resolveInventoryCountLoadState,
+  type InventoryCountFailureReason,
+  type InventoryCountMutation
 } from "../../services/presentation/inventoryCountPresentation";
 import { canApproveInventoryCount, canDraftInventoryCount } from "../../services/tenantAccess";
+import { captureMiseError } from "../../services/telemetry";
 import type { InventoryCountLine, InventoryCountSessionDetail } from "../../types/mise";
+
+type CountNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message?: string;
+};
 
 export default function InventoryCountSessionScreen() {
   const { formatNumber, parseNumber, t } = useLocale();
@@ -40,14 +53,133 @@ export default function InventoryCountSessionScreen() {
   const [lineQuery, setLineQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<CountNotice | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const loadedRestaurantRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
+
+  const failureCopy = useCallback(
+    (fallbackMessage: string): Record<InventoryCountFailureReason, { title: string; message: string }> => ({
+      alreadyOpen: {
+        title: t("inventory.count.notice.alreadyOpenTitle"),
+        message: t("inventory.count.notice.alreadyOpenBody")
+      },
+      noItems: {
+        title: t("inventory.count.notice.noItemsTitle"),
+        message: t("inventory.count.notice.noItemsBody")
+      },
+      capacity: {
+        title: t("inventory.count.notice.capacityTitle"),
+        message: t("inventory.count.notice.capacityBody")
+      },
+      notInProgress: {
+        title: t("inventory.count.notice.notInProgressTitle"),
+        message: t("inventory.count.notice.notInProgressBody")
+      },
+      notSubmitted: {
+        title: t("inventory.count.notice.notSubmittedTitle"),
+        message: t("inventory.count.notice.notSubmittedBody")
+      },
+      alreadyClosed: {
+        title: t("inventory.count.notice.alreadyClosedTitle"),
+        message: t("inventory.count.notice.alreadyClosedBody")
+      },
+      notFound: {
+        title: t("inventory.count.notice.notFoundTitle"),
+        message: t("inventory.count.notice.notFoundBody")
+      },
+      invalidLines: {
+        title: t("inventory.count.notice.invalidLinesTitle"),
+        message: t("inventory.count.notice.invalidLinesBody")
+      },
+      unknownLine: {
+        title: t("inventory.count.notice.unknownLineTitle"),
+        message: t("inventory.count.notice.unknownLineBody")
+      },
+      quantityBounds: {
+        title: t("inventory.count.notice.quantityBoundsTitle"),
+        message: t("inventory.count.notice.quantityBoundsBody")
+      },
+      noteBounds: {
+        title: t("inventory.count.notice.noteBoundsTitle"),
+        message: t("inventory.count.notice.noteBoundsBody")
+      },
+      incomplete: {
+        title: t("inventory.count.notice.incompleteTitle"),
+        message: t("inventory.count.incomplete")
+      },
+      saveEmpty: {
+        title: t("inventory.count.notice.saveEmptyTitle"),
+        message: t("inventory.count.saveEmpty")
+      },
+      invalidQuantity: {
+        title: t("inventory.count.notice.invalidQuantityTitle"),
+        message: t("inventory.count.notice.quantityBoundsBody")
+      },
+      permission: {
+        title: t("inventory.count.notice.permissionTitle"),
+        message: t("inventory.count.notice.permissionBody")
+      },
+      unknown: {
+        title: t("inventory.count.notice.actionTitle"),
+        message: fallbackMessage
+      }
+    }),
+    [t]
+  );
+
+  const mutationFallback = useCallback(
+    (mutation: InventoryCountMutation) => {
+      switch (mutation) {
+        case "start":
+          return t("inventory.count.startError");
+        case "save":
+          return t("inventory.count.saveError");
+        case "submit":
+          return t("inventory.count.submitError");
+        case "approve":
+          return t("inventory.count.approveError");
+        case "cancel":
+          return t("inventory.count.cancelError");
+      }
+    },
+    [t]
+  );
+
+  const setFailureNotice = useCallback(
+    (reason: InventoryCountFailureReason, mutation: InventoryCountMutation, itemName?: string) => {
+      if (reason === "invalidQuantity" && itemName) {
+        setNotice({
+          tone: "danger",
+          title: t("inventory.count.notice.invalidQuantityTitle"),
+          message: t("inventory.count.invalidQuantity", { item: itemName })
+        });
+        return;
+      }
+      setNotice(
+        presentInventoryCountFailureCopy(reason, failureCopy(mutationFallback(mutation)))
+      );
+    },
+    [failureCopy, mutationFallback, t]
+  );
+
+  const setSuccessNotice = useCallback(
+    (mutation: InventoryCountMutation) => {
+      setNotice(
+        presentInventoryCountSuccessCopy(mutation, {
+          start: t("inventory.count.started"),
+          save: t("inventory.count.saved"),
+          submit: t("inventory.count.submitted"),
+          approve: t("inventory.count.approved"),
+          cancel: t("inventory.count.cancelled")
+        })
+      );
+    },
+    [t]
+  );
 
   const load = useCallback(async (showLoading = false) => {
     if (!restaurant) {
@@ -60,7 +192,6 @@ export default function InventoryCountSessionScreen() {
     if (showLoading || loadedRestaurantRef.current !== restaurantId) {
       setLoading(true);
     }
-    setError(null);
     setLoadError(false);
     try {
       const open = await fetchOpenInventoryCountSession(restaurantId);
@@ -79,16 +210,20 @@ export default function InventoryCountSessionScreen() {
       );
       loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
-    } catch {
+    } catch (loadCaught) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(loadCaught, {
+        flow: "inventory_count",
+        operation: "load_open_session",
+        restaurant_id: restaurantId
+      });
       setLoadError(true);
-      setError(t("inventory.count.loadError"));
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
         setLoading(false);
       }
     }
-  }, [restaurant?.id, t]);
+  }, [restaurant?.id]);
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -99,7 +234,6 @@ export default function InventoryCountSessionScreen() {
     setDraftNotes({});
     setLineQuery("");
     setSaving(false);
-    setError(null);
     setLoadError(false);
     setNotice(null);
     setLoading(Boolean(restaurant));
@@ -153,7 +287,6 @@ export default function InventoryCountSessionScreen() {
     if (!restaurant || !canDraft) return;
     const restaurantId = restaurant.id;
     setSaving(true);
-    setError(null);
     setNotice(null);
     try {
       const next = await beginInventoryCountSession(restaurantId);
@@ -164,10 +297,15 @@ export default function InventoryCountSessionScreen() {
       );
       setDraftNotes(Object.fromEntries(next.lines.map((line) => [line.inventory_item_id, ""])));
       setLoadedRestaurantId(restaurantId);
-      setNotice(t("inventory.count.started"));
+      setSuccessNotice("start");
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.startError"));
+      captureMiseError(caught, {
+        flow: "inventory_count",
+        operation: "begin_count_session",
+        restaurant_id: restaurantId
+      });
+      setFailureNotice(resolveInventoryCountFailureReason(caught), "start");
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -187,70 +325,43 @@ export default function InventoryCountSessionScreen() {
     setDraftNotes(Object.fromEntries(next.lines.map((line) => [line.inventory_item_id, line.note ?? ""])));
   }
 
-  function buildCountLinePayload(
-    sessionDetail: InventoryCountSessionDetail,
-    requireComplete: boolean
-  ) {
-    const lines = sessionDetail.lines
-      .map((line) => {
-        const raw = draftCounts[line.inventory_item_id]?.trim() ?? "";
-        if (!raw) return null;
-        const countedQuantity = parseNumber(raw);
-        if (countedQuantity == null || !Number.isFinite(countedQuantity) || countedQuantity < 0) {
-          throw new Error(
-            t("inventory.count.invalidQuantity", {
-              item: line.item_name
-            })
-          );
-        }
-        const noteRaw = draftNotes[line.inventory_item_id] ?? "";
-        if (noteRaw.trim().length > 240) {
-          throw new Error(t("inventory.count.noteTooLong"));
-        }
-        return {
-          inventoryItemId: line.inventory_item_id,
-          countedQuantity,
-          note: noteRaw.trim() || null
-        };
-      })
-      .filter(
-        (
-          line
-        ): line is { inventoryItemId: string; countedQuantity: number; note: string | null } =>
-          Boolean(line)
-      );
-    if (requireComplete && lines.length !== sessionDetail.lines.length) {
-      throw new Error(t("inventory.count.incomplete"));
-    }
-    return lines;
-  }
-
   async function saveProgress() {
     if (!restaurant || !visibleDetail || !canDraft) return;
     const restaurantId = restaurant.id;
-    let lines: Array<{ inventoryItemId: string; countedQuantity: number; note: string | null }>;
-    try {
-      lines = buildCountLinePayload(visibleDetail, false);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : t("inventory.count.saveError"));
-      return;
-    }
-    if (lines.length < 1) {
-      setError(t("inventory.count.saveEmpty"));
+    const payload = buildInventoryCountLinePayload({
+      lines: visibleDetail.lines,
+      draftCounts,
+      draftNotes,
+      parseNumber,
+      requireComplete: false
+    });
+    if (!payload.ok) {
+      if (payload.reason === "invalidQuantity") {
+        setFailureNotice("invalidQuantity", "save", payload.item);
+      } else if (payload.reason === "noteTooLong") {
+        setFailureNotice("noteBounds", "save");
+      } else {
+        setFailureNotice(payload.reason, "save");
+      }
       return;
     }
     setSaving(true);
-    setError(null);
+    setNotice(null);
     try {
-      const next = await saveInventoryCountLines(restaurantId, visibleDetail.session.id, lines);
+      const next = await saveInventoryCountLines(restaurantId, visibleDetail.session.id, payload.lines);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(next);
       syncDraftsFromDetail(next);
       setLoadedRestaurantId(restaurantId);
-      setNotice(t("inventory.count.saved"));
+      setSuccessNotice("save");
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.saveError"));
+      captureMiseError(caught, {
+        flow: "inventory_count",
+        operation: "save_count_lines",
+        restaurant_id: restaurantId
+      });
+      setFailureNotice(resolveInventoryCountFailureReason(caught), "save");
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -259,21 +370,42 @@ export default function InventoryCountSessionScreen() {
   async function submitSession() {
     if (!restaurant || !visibleDetail || !canDraft) return;
     const restaurantId = restaurant.id;
+    const payload = buildInventoryCountLinePayload({
+      lines: visibleDetail.lines,
+      draftCounts,
+      draftNotes,
+      parseNumber,
+      requireComplete: true
+    });
+    if (!payload.ok) {
+      if (payload.reason === "invalidQuantity") {
+        setFailureNotice("invalidQuantity", "submit", payload.item);
+      } else if (payload.reason === "noteTooLong") {
+        setFailureNotice("noteBounds", "submit");
+      } else {
+        setFailureNotice(payload.reason === "saveEmpty" ? "incomplete" : payload.reason, "submit");
+      }
+      return;
+    }
     setSaving(true);
-    setError(null);
+    setNotice(null);
     try {
-      const lines = buildCountLinePayload(visibleDetail, true);
-      await saveInventoryCountLines(restaurantId, visibleDetail.session.id, lines);
+      await saveInventoryCountLines(restaurantId, visibleDetail.session.id, payload.lines);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       const next = await submitInventoryCountSession(restaurantId, visibleDetail.session.id);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(next);
       syncDraftsFromDetail(next);
       setLoadedRestaurantId(restaurantId);
-      setNotice(t("inventory.count.submitted"));
+      setSuccessNotice("submit");
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.submitError"));
+      captureMiseError(caught, {
+        flow: "inventory_count",
+        operation: "submit_count_session",
+        restaurant_id: restaurantId
+      });
+      setFailureNotice(resolveInventoryCountFailureReason(caught), "submit");
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -283,16 +415,21 @@ export default function InventoryCountSessionScreen() {
     if (!restaurant || !visibleDetail || !canApprove) return;
     const restaurantId = restaurant.id;
     setSaving(true);
-    setError(null);
+    setNotice(null);
     try {
       const next = await approveInventoryCountSession(restaurantId, visibleDetail.session.id);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(next);
       setLoadedRestaurantId(restaurantId);
-      setNotice(t("inventory.count.approved"));
+      setSuccessNotice("approve");
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.approveError"));
+      captureMiseError(caught, {
+        flow: "inventory_count",
+        operation: "approve_count_session",
+        restaurant_id: restaurantId
+      });
+      setFailureNotice(resolveInventoryCountFailureReason(caught), "approve");
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -310,16 +447,21 @@ export default function InventoryCountSessionScreen() {
         onPress: () => {
           void (async () => {
             setSaving(true);
-            setError(null);
+            setNotice(null);
             try {
               const next = await cancelInventoryCountSession(restaurantId, sessionId);
               if (activeRestaurantIdRef.current !== restaurantId) return;
               setDetail(next);
               setLoadedRestaurantId(restaurantId);
-              setNotice(t("inventory.count.cancelled"));
+              setSuccessNotice("cancel");
             } catch (caught) {
               if (activeRestaurantIdRef.current !== restaurantId) return;
-              setError(caught instanceof Error ? caught.message : t("inventory.count.cancelError"));
+              captureMiseError(caught, {
+                flow: "inventory_count",
+                operation: "cancel_count_session",
+                restaurant_id: restaurantId
+              });
+              setFailureNotice(resolveInventoryCountFailureReason(caught), "cancel");
             } finally {
               if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
             }
@@ -357,16 +499,18 @@ export default function InventoryCountSessionScreen() {
       loading={loading}
     >
       <View style={styles.stack}>
-        {loadError || error ? (
+        {loadError ? (
           <RetryNotice
             title={t("inventory.count.retryTitle")}
-            message={error ?? t("inventory.count.loadError")}
+            message={t("inventory.count.loadError")}
             onRetry={() => void load(true)}
             retryLabel={t("common.retry")}
             accessibilityLabel={t("inventory.count.retryAccessibility")}
           />
         ) : null}
-        {!loadError && notice ? <Text style={styles.notice}>{notice}</Text> : null}
+        {!loadError && notice ? (
+          <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
+        ) : null}
 
         {!hubReady ||
         !visibleDetail ||
@@ -581,16 +725,6 @@ export default function InventoryCountSessionScreen() {
 const styles = StyleSheet.create({
   stack: {
     gap: spacing.md
-  },
-  notice: {
-    ...typography.body,
-    color: colors.ink,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 14,
-    paddingVertical: 12
   },
   help: {
     ...typography.caption,

@@ -1342,6 +1342,11 @@ test("inventory count sessions are service-owned with draft progress and approve
   assert.match(edge, /requireCountLineUpdates[\s\S]*note/);
   assert.match(migration, /create table if not exists public\.inventory_count_sessions/i);
   assert.match(migration, /create table if not exists public\.inventory_count_lines/i);
+  assert.match(screen, /resolveInventoryCountFailureReason/);
+  assert.match(screen, /StatusNotice/);
+  assert.match(screen, /captureMiseError/);
+  assert.doesNotMatch(screen, /caught\.message/);
+
   assert.match(migration, /note text check \(note is null or char_length\(note\) <= 240\)/i);
   assert.match(migration, /inventory_count_sessions_one_open_per_restaurant_idx/i);
   assert.match(migration, /source_workflow,\s*[\s\S]*'approve_count_session'/i);
