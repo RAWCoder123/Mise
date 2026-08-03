@@ -18,7 +18,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
-import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, inventoryStatusColors } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -41,7 +41,12 @@ import {
 import { reconcileLocationBalancesForDisplay } from "../../services/domain/inventoryTransfer";
 import {
   presentInventoryDetailMissingCopy,
-  resolveInventoryDetailLoadState
+  presentInventoryDetailMutationNoticeCopy,
+  resolveInventoryDetailLoadState,
+  resolveInventoryDetailSaveFailureReason,
+  resolveInventoryDetailTransferFailureReason,
+  resolveInventoryDetailWasteFailureReason,
+  type InventoryDetailMutationNoticeReason
 } from "../../services/presentation/inventoryDetailPresentation";
 import {
   canManageRestaurantData,
@@ -50,6 +55,7 @@ import {
   canTransferInventory
 } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
+import { captureMiseError } from "../../services/telemetry";
 import type { MessageKey } from "../../i18n/catalog";
 import type {
   InventoryLocationBalance,
@@ -59,6 +65,110 @@ import type {
   StorageLocation
 } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
+
+type InventoryDetailNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
+
+const MUTATION_NOTICE_KEYS: Record<
+  InventoryDetailMutationNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  noWorkspace: {
+    title: "inventory.detail.notice.noWorkspaceTitle",
+    message: "inventory.detail.noWorkspace"
+  },
+  viewOnlyInventory: {
+    title: "inventory.detail.notice.viewOnlyInventoryTitle",
+    message: "inventory.detail.viewOnlyInventory"
+  },
+  viewOnlyOrdering: {
+    title: "inventory.detail.notice.viewOnlyOrderingTitle",
+    message: "inventory.detail.viewOnlyOrdering"
+  },
+  reviewFields: {
+    title: "inventory.detail.notice.reviewFieldsTitle",
+    message: "inventory.detail.reviewFields"
+  },
+  updated: {
+    title: "inventory.detail.notice.updatedTitle",
+    message: "inventory.detail.updated"
+  },
+  saveFailed: {
+    title: "inventory.detail.notice.saveFailedTitle",
+    message: "inventory.detail.saveError"
+  },
+  added: {
+    title: "inventory.detail.notice.addedTitle",
+    message: "inventory.detail.added"
+  },
+  addFailed: {
+    title: "inventory.detail.notice.addFailedTitle",
+    message: "inventory.detail.addError"
+  },
+  reviewWaste: {
+    title: "inventory.detail.notice.reviewWasteTitle",
+    message: "inventory.detail.reviewWaste"
+  },
+  wasteRecorded: {
+    title: "inventory.detail.notice.wasteRecordedTitle",
+    message: "inventory.detail.wasteRecorded"
+  },
+  wasteNothingOnHand: {
+    title: "inventory.detail.notice.wasteNothingOnHandTitle",
+    message: "inventory.detail.notice.wasteNothingOnHandBody"
+  },
+  wasteLocationMissing: {
+    title: "inventory.detail.notice.wasteLocationMissingTitle",
+    message: "inventory.detail.notice.wasteLocationMissingBody"
+  },
+  wasteLocationInsufficient: {
+    title: "inventory.detail.notice.wasteLocationInsufficientTitle",
+    message: "inventory.detail.wasteLocationInsufficient"
+  },
+  wasteFailed: {
+    title: "inventory.detail.notice.wasteFailedTitle",
+    message: "inventory.detail.wasteError"
+  },
+  reviewTransfer: {
+    title: "inventory.detail.notice.reviewTransferTitle",
+    message: "inventory.detail.reviewTransfer"
+  },
+  transferRecorded: {
+    title: "inventory.detail.notice.transferRecordedTitle",
+    message: "inventory.detail.transferRecorded"
+  },
+  transferInsufficient: {
+    title: "inventory.detail.notice.transferInsufficientTitle",
+    message: "inventory.detail.notice.transferInsufficientBody"
+  },
+  transferSameLocation: {
+    title: "inventory.detail.notice.transferSameLocationTitle",
+    message: "inventory.detail.notice.transferSameLocationBody"
+  },
+  transferLocationMissing: {
+    title: "inventory.detail.notice.transferLocationMissingTitle",
+    message: "inventory.detail.notice.transferLocationMissingBody"
+  },
+  transferFailed: {
+    title: "inventory.detail.notice.transferFailedTitle",
+    message: "inventory.detail.transferError"
+  },
+  locationAdded: {
+    title: "inventory.detail.notice.locationAddedTitle",
+    message: "inventory.detail.locationAdded"
+  },
+  locationFailed: {
+    title: "inventory.detail.notice.locationFailedTitle",
+    message: "inventory.detail.locationError"
+  },
+  loadFailed: {
+    title: "inventory.detail.notice.loadFailedTitle",
+    message: "inventory.detail.loadError"
+  }
+};
 
 export default function InventoryDetailScreen() {
   const { formatDate, formatNumber, formatRelativeTime, parseNumber, t } = useLocale();
@@ -85,8 +195,7 @@ export default function InventoryDetailScreen() {
   const [fieldErrors, setFieldErrors] = useState<InventoryFieldErrors>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [messageIsError, setMessageIsError] = useState(false);
+  const [notice, setNotice] = useState<InventoryDetailNotice | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const loadedRestaurantRef = useRef<string | null>(null);
@@ -94,12 +203,30 @@ export default function InventoryDetailScreen() {
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
+  const mutationNotice = useCallback(
+    (reason: InventoryDetailMutationNoticeReason): InventoryDetailNotice => {
+      const localized = (
+        Object.keys(MUTATION_NOTICE_KEYS) as InventoryDetailMutationNoticeReason[]
+      ).reduce(
+        (acc, key) => {
+          acc[key] = {
+            title: t(MUTATION_NOTICE_KEYS[key].title),
+            message: t(MUTATION_NOTICE_KEYS[key].message)
+          };
+          return acc;
+        },
+        {} as Record<InventoryDetailMutationNoticeReason, { title: string; message: string }>
+      );
+      return presentInventoryDetailMutationNoticeCopy(reason, localized);
+    },
+    [t]
+  );
+
   const load = useCallback(async (showLoading = false) => {
     if (!restaurant || !id) {
       setLoading(false);
       setLoadError(false);
-      setMessage(t("inventory.detail.noWorkspace"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("noWorkspace"));
       return;
     }
     const restaurantId = restaurant.id;
@@ -112,8 +239,7 @@ export default function InventoryDetailScreen() {
     ) {
       setLoading(true);
     }
-    setMessage(null);
-    setMessageIsError(false);
+    setNotice(null);
     setLoadError(false);
     try {
       const [nextOutlook, nextMovements, nextLocations, nextBalances] = await Promise.all([
@@ -150,8 +276,13 @@ export default function InventoryDetailScreen() {
           ? current
           : secondary?.id ?? ""
       );
-    } catch {
+    } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "inventory_detail",
+        operation: "load",
+        restaurant_id: restaurantId
+      });
       const keepPrior =
         loadedRestaurantRef.current === restaurantId && loadedItemIdRef.current === itemId;
       if (!keepPrior) {
@@ -161,12 +292,11 @@ export default function InventoryDetailScreen() {
         setLocationBalances([]);
       }
       setLoadError(true);
-      setMessage(t("inventory.detail.loadError"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("loadFailed"));
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
-  }, [formatNumber, id, restaurant?.id, t]);
+  }, [formatNumber, id, mutationNotice, restaurant]);
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -190,12 +320,17 @@ export default function InventoryDetailScreen() {
     setNewLocationName("");
     setSaving(false);
     setFieldErrors({});
-    setMessage(null);
-    setMessageIsError(false);
+    setNotice(null);
     setLoadError(false);
     setLoading(Boolean(restaurant && id));
     void load(true);
   }, [id, load, restaurant?.id]);
+
+  useEffect(() => {
+    if (!notice || notice.tone === "danger" || notice.tone === "caution") return undefined;
+    const timeout = setTimeout(() => setNotice(null), 4200);
+    return () => clearTimeout(timeout);
+  }, [notice]);
 
   const hubLoadState = resolveInventoryDetailLoadState({
     restaurantId: restaurant?.id,
@@ -243,8 +378,7 @@ export default function InventoryDetailScreen() {
   async function save() {
     if (!restaurant || !item) return;
     if (!canManage) {
-      setMessage(t("inventory.detail.viewOnlyInventory"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("viewOnlyInventory"));
       return;
     }
 
@@ -258,16 +392,14 @@ export default function InventoryDetailScreen() {
     }
     if (Object.values(nextFieldErrors).some(Boolean)) {
       setFieldErrors(nextFieldErrors);
-      setMessage(t("inventory.detail.reviewFields"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("reviewFields"));
       return;
     }
 
     const restaurantId = restaurant.id;
     setFieldErrors({});
     setSaving(true);
-    setMessage(null);
-    setMessageIsError(false);
+    setNotice(null);
     try {
       await updateInventoryItem(
         restaurantId,
@@ -283,11 +415,15 @@ export default function InventoryDetailScreen() {
       setCorrectionNote("");
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setMessage(t("inventory.detail.updated"));
-    } catch {
+      setNotice(mutationNotice("updated"));
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
-        setMessage(t("inventory.detail.saveError"));
-        setMessageIsError(true);
+        captureMiseError(error, {
+          flow: "inventory_detail",
+          operation: "update_inventory_item",
+          restaurant_id: restaurantId
+        });
+        setNotice(mutationNotice(resolveInventoryDetailSaveFailureReason(error)));
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
@@ -297,22 +433,24 @@ export default function InventoryDetailScreen() {
   async function addToOrder() {
     if (!restaurant || !item) return;
     if (!canManage) {
-      setMessage(t("inventory.detail.viewOnlyOrdering"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("viewOnlyOrdering"));
       return;
     }
     const restaurantId = restaurant.id;
     setSaving(true);
-    setMessage(null);
-    setMessageIsError(false);
+    setNotice(null);
     try {
       await addInventoryItemToOrder(restaurantId, item.id);
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setMessage(t("inventory.detail.added"));
-    } catch {
+      setNotice(mutationNotice("added"));
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
-        setMessage(t("inventory.detail.addError"));
-        setMessageIsError(true);
+        captureMiseError(error, {
+          flow: "inventory_detail",
+          operation: "add_to_order",
+          restaurant_id: restaurantId
+        });
+        setNotice(mutationNotice("addFailed"));
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
@@ -322,8 +460,7 @@ export default function InventoryDetailScreen() {
   async function recordWaste() {
     if (!restaurant || !item) return;
     if (!canRecordWaste) {
-      setMessage(t("inventory.detail.viewOnlyInventory"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("viewOnlyInventory"));
       return;
     }
 
@@ -336,8 +473,7 @@ export default function InventoryDetailScreen() {
     );
     if (wasteFieldError) {
       setFieldErrors((current) => ({ ...current, wasteQuantity: wasteFieldError }));
-      setMessage(t("inventory.detail.reviewWaste"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("reviewWaste"));
       return;
     }
     if (wasteNote.trim().length > 240) {
@@ -345,8 +481,7 @@ export default function InventoryDetailScreen() {
         ...current,
         wasteNote: t("inventory.detail.wasteNoteTooLong")
       }));
-      setMessage(t("inventory.detail.reviewWaste"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("reviewWaste"));
       return;
     }
     if (storageLocations.length > 0 && !wasteStorageLocationId) {
@@ -356,8 +491,7 @@ export default function InventoryDetailScreen() {
           field: t("inventory.detail.wasteLocation")
         })
       }));
-      setMessage(t("inventory.detail.reviewWaste"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("reviewWaste"));
       return;
     }
 
@@ -369,8 +503,7 @@ export default function InventoryDetailScreen() {
       wasteLocation: undefined
     }));
     setSaving(true);
-    setMessage(null);
-    setMessageIsError(false);
+    setNotice(null);
     try {
       await recordInventoryWaste(
         restaurantId,
@@ -384,16 +517,15 @@ export default function InventoryDetailScreen() {
       setWasteNote("");
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setMessage(t("inventory.detail.wasteRecorded"));
+      setNotice(mutationNotice("wasteRecorded"));
     } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
-        const detail = error instanceof Error ? error.message : "";
-        setMessage(
-          /insufficient quantity at the selected storage location/i.test(detail)
-            ? t("inventory.detail.wasteLocationInsufficient")
-            : t("inventory.detail.wasteError")
-        );
-        setMessageIsError(true);
+        captureMiseError(error, {
+          flow: "inventory_detail",
+          operation: "record_waste",
+          restaurant_id: restaurantId
+        });
+        setNotice(mutationNotice(resolveInventoryDetailWasteFailureReason(error)));
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
@@ -403,8 +535,7 @@ export default function InventoryDetailScreen() {
   async function submitTransfer() {
     if (!restaurant || !item) return;
     if (!canTransfer) {
-      setMessage(t("inventory.detail.viewOnlyInventory"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("viewOnlyInventory"));
       return;
     }
 
@@ -422,8 +553,7 @@ export default function InventoryDetailScreen() {
         transferFrom: !fromStorageLocationId ? t("inventory.detail.fieldRequired", { field: t("inventory.detail.transferFrom") }) : undefined,
         transferTo: !toStorageLocationId ? t("inventory.detail.fieldRequired", { field: t("inventory.detail.transferTo") }) : undefined
       }));
-      setMessage(t("inventory.detail.reviewTransfer"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("reviewTransfer"));
       return;
     }
     if (transferNote.trim().length > 240) {
@@ -431,8 +561,7 @@ export default function InventoryDetailScreen() {
         ...current,
         transferNote: t("inventory.detail.transferNoteTooLong")
       }));
-      setMessage(t("inventory.detail.reviewTransfer"));
-      setMessageIsError(true);
+      setNotice(mutationNotice("reviewTransfer"));
       return;
     }
 
@@ -445,8 +574,7 @@ export default function InventoryDetailScreen() {
       transferTo: undefined
     }));
     setSaving(true);
-    setMessage(null);
-    setMessageIsError(false);
+    setNotice(null);
     try {
       await transferInventory(
         restaurantId,
@@ -461,11 +589,15 @@ export default function InventoryDetailScreen() {
       setTransferNote("");
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setMessage(t("inventory.detail.transferRecorded"));
-    } catch {
+      setNotice(mutationNotice("transferRecorded"));
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
-        setMessage(t("inventory.detail.transferError"));
-        setMessageIsError(true);
+        captureMiseError(error, {
+          flow: "inventory_detail",
+          operation: "transfer_inventory",
+          restaurant_id: restaurantId
+        });
+        setNotice(mutationNotice(resolveInventoryDetailTransferFailureReason(error)));
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
@@ -476,19 +608,22 @@ export default function InventoryDetailScreen() {
     if (!restaurant || !canManageLocations) return;
     const restaurantId = restaurant.id;
     setSaving(true);
-    setMessage(null);
-    setMessageIsError(false);
+    setNotice(null);
     try {
       await createStorageLocation(restaurantId, newLocationName);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNewLocationName("");
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setMessage(t("inventory.detail.locationAdded"));
-    } catch {
+      setNotice(mutationNotice("locationAdded"));
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
-        setMessage(t("inventory.detail.locationError"));
-        setMessageIsError(true);
+        captureMiseError(error, {
+          flow: "inventory_detail",
+          operation: "create_storage_location",
+          restaurant_id: restaurantId
+        });
+        setNotice(mutationNotice("locationFailed"));
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
@@ -512,7 +647,7 @@ export default function InventoryDetailScreen() {
           {loadError ? (
             <RetryNotice
               title={t("inventory.detail.retry.title")}
-              message={message ?? t("inventory.detail.loadError")}
+              message={notice?.message ?? t("inventory.detail.loadError")}
               onRetry={() => void load(true)}
               retryLabel={t("common.retry")}
               accessibilityLabel={t("inventory.detail.retry.accessibility")}
@@ -567,10 +702,8 @@ export default function InventoryDetailScreen() {
             />
           ) : null}
 
-          {!loadError && message ? (
-            <Text style={[styles.message, messageIsError && styles.error]} accessibilityLiveRegion="polite">
-              {message}
-            </Text>
+          {!loadError && notice ? (
+            <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
           ) : null}
 
           <Card>
@@ -796,16 +929,18 @@ export default function InventoryDetailScreen() {
             )}
           </Card>
         </View>
-      ) : loadError || (messageIsError && message) ? (
+      ) : loadError ? (
         <RetryNotice
           title={t("inventory.detail.retry.title")}
-          message={message ?? t("inventory.detail.loadError")}
+          message={notice?.message ?? t("inventory.detail.loadError")}
           onRetry={() => void load(true)}
           retryLabel={t("common.retry")}
           accessibilityLabel={t("inventory.detail.retry.accessibility")}
         />
+      ) : notice ? (
+        <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
       ) : (
-        <Text style={[styles.message, messageIsError && styles.error]}>{message ?? missingCopy}</Text>
+        <Text style={styles.message}>{missingCopy}</Text>
       )}
     </Screen>
   );
@@ -1528,8 +1663,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     marginBottom: 12
-  },
-  error: {
-    color: colors.danger
   }
 });

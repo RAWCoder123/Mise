@@ -192,6 +192,10 @@ test("inventory detail waste form attributes spoilage to a storage station", () 
   assert.match(detail, /wasteStorageLocationId/);
   assert.match(detail, /inventory\.detail\.wasteLocation/);
   assert.match(detail, /recordInventoryWaste\([\s\S]*wasteStorageLocationId/);
+  assert.match(detail, /resolveInventoryDetailWasteFailureReason/);
+  assert.match(detail, /captureMiseError/);
+  assert.match(detail, /StatusNotice tone=\{notice\.tone\}/);
+  assert.doesNotMatch(detail, /error\s+instanceof\s+Error\s*\?\s*error\.message/);
   assert.match(application, /assertWasteStationAvailability/);
   assert.match(application, /wasteLocation\.id/);
   assert.match(repository, /applyDemoWasteLocationDeduction/);
