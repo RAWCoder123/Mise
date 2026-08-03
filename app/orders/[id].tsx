@@ -40,11 +40,20 @@ import {
   STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD
 } from "../../services/domain/inventoryItemSearch";
 import { MAIN_STORAGE_LOCATION_NAME } from "../../services/domain/inventoryTransfer";
+import type { MessageKey } from "../../i18n/catalog";
 import {
   presentOrderDetailMissingCopy,
-  resolveOrderDetailLoadState
+  presentOrderDetailMutationActionsEditable,
+  presentOrderDetailMutationBusy,
+  presentOrderDetailMutationNoticeCopy,
+  presentOrderDetailSendErrorNotice,
+  resolveOrderDetailLoadState,
+  resolveOrderDetailSendErrorReason,
+  type OrderDetailMutationNoticeReason,
+  type OrderDetailSendErrorReason
 } from "../../services/presentation/orderDetailPresentation";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
+import { captureMiseError } from "../../services/telemetry";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import {
   SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS,
@@ -61,14 +70,132 @@ import type {
   SupplierOrder
 } from "../../types/mise";
 
-type Translate = ReturnType<typeof useLocale>["t"];
-
 interface OrderNotice {
   title: string;
   message: string;
   tone: StatusNoticeTone;
   recovery?: "gmail" | "supplier";
 }
+
+const MUTATION_NOTICE_KEYS: Record<
+  OrderDetailMutationNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  viewOnly: {
+    title: "orders.detail.viewOnly.title",
+    message: "orders.detail.viewOnly.actionBody"
+  },
+  noteSaved: {
+    title: "orders.detail.notice.noteSavedTitle",
+    message: "orders.detail.notice.noteSavedBody"
+  },
+  noteSaveFailed: {
+    title: "orders.detail.notice.noteSaveFailedTitle",
+    message: "orders.detail.notice.noteSaveFailedBody"
+  },
+  copied: {
+    title: "orders.detail.notice.copiedTitle",
+    message: "orders.detail.notice.copiedBody"
+  },
+  copyFailed: {
+    title: "orders.detail.notice.copyFailedTitle",
+    message: "orders.detail.notice.copyFailedBody"
+  },
+  placed: {
+    title: "orders.detail.notice.placedTitle",
+    message: "orders.detail.notice.placedBody"
+  },
+  placeFailed: {
+    title: "orders.detail.notice.placeFailedTitle",
+    message: "orders.detail.notice.placeFailedBody"
+  },
+  demoSent: {
+    title: "orders.detail.notice.demoSentTitle",
+    message: "orders.detail.notice.demoSentBody"
+  },
+  alreadySent: {
+    title: "orders.detail.notice.alreadySentTitle",
+    message: "orders.detail.notice.acceptedBody"
+  },
+  accepted: {
+    title: "orders.detail.notice.acceptedTitle",
+    message: "orders.detail.notice.acceptedBody"
+  },
+  receiveInvalidStorage: {
+    title: "orders.detail.notice.receiveInvalidTitle",
+    message: "orders.detail.receive.storageRequired"
+  },
+  receiveInvalidNote: {
+    title: "orders.detail.notice.receiveInvalidTitle",
+    message: "orders.detail.receive.noteTooLong"
+  },
+  receiveInvalidQuantity: {
+    title: "orders.detail.notice.receiveInvalidTitle",
+    message: "orders.detail.receive.invalidQuantity"
+  },
+  received: {
+    title: "orders.detail.notice.receivedTitle",
+    message: "orders.detail.notice.receivedBody"
+  },
+  receivedWithDiscrepancy: {
+    title: "orders.detail.notice.receivedTitle",
+    message: "orders.detail.notice.receivedWithDiscrepancyBody"
+  },
+  receiveFailed: {
+    title: "orders.detail.notice.receiveFailedTitle",
+    message: "orders.detail.notice.receiveFailedBody"
+  },
+  gmailConnectRequired: {
+    title: "orders.detail.connection.connectTitle",
+    message: "orders.detail.gmail.notConnected"
+  },
+  gmailReconnectRequired: {
+    title: "orders.detail.connection.reconnectTitle",
+    message: "orders.detail.gmail.notConnected"
+  },
+  noRestaurant: {
+    title: "orders.detail.noRestaurant.title",
+    message: "orders.detail.noRestaurant.body"
+  },
+  loadFailed: {
+    title: "orders.detail.load.title",
+    message: "orders.detail.load.body"
+  }
+};
+
+const SEND_ERROR_NOTICE_KEYS: Record<
+  OrderDetailSendErrorReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  gmailConnectRequired: {
+    title: "orders.detail.connection.connectTitle",
+    message: "orders.detail.gmail.notConnected"
+  },
+  gmailReconnectRequired: {
+    title: "orders.detail.connection.reconnectTitle",
+    message: "orders.detail.gmail.notConnected"
+  },
+  supplierEmailMissing: {
+    title: "orders.detail.error.supplierEmailTitle",
+    message: "orders.detail.error.supplierEmailBody"
+  },
+  deliveryReview: {
+    title: "settings.gmail.error.reviewTitle",
+    message: "orders.detail.gmail.review"
+  },
+  sendingDisabled: {
+    title: "orders.detail.error.sendingDisabledTitle",
+    message: "orders.detail.error.sendingDisabledBody"
+  },
+  sendFailed: {
+    title: "orders.detail.error.sendTitle",
+    message: "orders.detail.error.sendBody"
+  },
+  sendFailedGmail: {
+    title: "orders.detail.error.sendTitle",
+    message: "orders.detail.gmail.failed"
+  }
+};
 
 export default function OrderDraftDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -99,15 +226,48 @@ export default function OrderDraftDetailScreen() {
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
+  function mutationNotice(
+    reason: OrderDetailMutationNoticeReason,
+    params?: Record<string, string>
+  ): OrderNotice {
+    const localized = (
+      Object.keys(MUTATION_NOTICE_KEYS) as OrderDetailMutationNoticeReason[]
+    ).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(MUTATION_NOTICE_KEYS[key].title),
+          message: t(MUTATION_NOTICE_KEYS[key].message, params)
+        };
+        return acc;
+      },
+      {} as Record<OrderDetailMutationNoticeReason, { title: string; message: string }>
+    );
+    return presentOrderDetailMutationNoticeCopy(reason, localized);
+  }
+
+  function sendErrorNotice(error: unknown): OrderNotice {
+    const status = isGmailIntegrationError(error) ? error.status : null;
+    const reason = resolveOrderDetailSendErrorReason(status);
+    const localized = (
+      Object.keys(SEND_ERROR_NOTICE_KEYS) as OrderDetailSendErrorReason[]
+    ).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(SEND_ERROR_NOTICE_KEYS[key].title),
+          message: t(SEND_ERROR_NOTICE_KEYS[key].message)
+        };
+        return acc;
+      },
+      {} as Record<OrderDetailSendErrorReason, { title: string; message: string }>
+    );
+    return presentOrderDetailSendErrorNotice(reason, localized);
+  }
+
   const load = useCallback(async (showLoading = false) => {
     if (!restaurant || !id) {
       setLoading(false);
       setLoadError(false);
-      setNotice({
-        title: t("orders.detail.noRestaurant.title"),
-        message: t("orders.detail.noRestaurant.body"),
-        tone: "warning"
-      });
+      setNotice(mutationNotice("noRestaurant"));
       return;
     }
 
@@ -194,6 +354,11 @@ export default function OrderDraftDetailScreen() {
       setOperatorNote(nextOrder.operator_note ?? "");
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "order_detail",
+        operation: "load",
+        restaurant_id: restaurantId
+      });
       const keepPrior =
         loadedRestaurantRef.current === restaurantId && loadedOrderIdRef.current === orderId;
       if (!keepPrior) {
@@ -206,14 +371,15 @@ export default function OrderDraftDetailScreen() {
         setReceiveStorageLocationIds({});
       }
       setLoadError(true);
-      setNotice({
-        title: t("orders.detail.load.title"),
-        message:
-          error instanceof Error && error.message === t("orders.detail.connectionMismatch")
-            ? error.message
-            : t("orders.detail.load.body"),
-        tone: "danger"
-      });
+      setNotice(
+        error instanceof Error && error.message === t("orders.detail.connectionMismatch")
+          ? {
+              title: t("orders.detail.load.title"),
+              message: error.message,
+              tone: "danger"
+            }
+          : mutationNotice("loadFailed")
+      );
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
@@ -300,7 +466,7 @@ export default function OrderDraftDetailScreen() {
   async function saveNote() {
     if (!restaurant || !order || actionLockRef.current) return;
     if (!canManage) {
-      setNotice(viewOnlyNotice(t));
+      setNotice(mutationNotice("viewOnly"));
       return;
     }
     const restaurantId = restaurant.id;
@@ -310,18 +476,15 @@ export default function OrderDraftDetailScreen() {
     try {
       await persistNote();
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice({
-        title: t("orders.detail.notice.noteSavedTitle"),
-        message: t("orders.detail.notice.noteSavedBody"),
-        tone: "success"
+      setNotice(mutationNotice("noteSaved"));
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "order_detail",
+        operation: "save_note",
+        restaurant_id: restaurantId
       });
-    } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
-        setNotice({
-          title: t("orders.detail.notice.noteSaveFailedTitle"),
-          message: t("orders.detail.notice.noteSaveFailedBody"),
-          tone: "danger"
-        });
+        setNotice(mutationNotice("noteSaveFailed"));
       }
     } finally {
       actionLockRef.current = false;
@@ -340,18 +503,15 @@ export default function OrderDraftDetailScreen() {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await Clipboard.setStringAsync(savedOrder.order_message);
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice({
-        title: t("orders.detail.notice.copiedTitle"),
-        message: t("orders.detail.notice.copiedBody"),
-        tone: "success"
+      setNotice(mutationNotice("copied"));
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "order_detail",
+        operation: "copy",
+        restaurant_id: restaurantId
       });
-    } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
-        setNotice({
-          title: t("orders.detail.notice.copyFailedTitle"),
-          message: t("orders.detail.notice.copyFailedBody"),
-          tone: "danger"
-        });
+        setNotice(mutationNotice("copyFailed"));
       }
     } finally {
       actionLockRef.current = false;
@@ -362,7 +522,7 @@ export default function OrderDraftDetailScreen() {
   async function markPlaced() {
     if (!restaurant || !order || order.status !== "draft" || actionLockRef.current) return;
     if (!canManage) {
-      setNotice(viewOnlyNotice(t));
+      setNotice(mutationNotice("viewOnly"));
       return;
     }
     const restaurantId = restaurant.id;
@@ -378,20 +538,17 @@ export default function OrderDraftDetailScreen() {
       setOperatorNote(result.order.operator_note ?? "");
       setLinkedRecommendations(result.orderedRecommendations);
       seedReceiveForm(result.orderedRecommendations);
-      setNotice({
-        title: t("orders.detail.notice.placedTitle"),
-        message: t("orders.detail.notice.placedBody"),
-        tone: "success"
+      setNotice(mutationNotice("placed"));
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "order_detail",
+        operation: "mark_placed",
+        restaurant_id: restaurantId
       });
-    } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
         await load(false);
         if (activeRestaurantIdRef.current === restaurantId) {
-          setNotice({
-            title: t("orders.detail.notice.placeFailedTitle"),
-            message: t("orders.detail.notice.placeFailedBody"),
-            tone: "danger"
-          });
+          setNotice(mutationNotice("placeFailed"));
         }
       }
     } finally {
@@ -403,11 +560,17 @@ export default function OrderDraftDetailScreen() {
   async function sendOrder() {
     if (!restaurant || !order || order.status !== "draft" || actionLockRef.current) return;
     if (!canManage) {
-      setNotice(viewOnlyNotice(t));
+      setNotice(mutationNotice("viewOnly"));
       return;
     }
     if (emailConnection?.status !== "connected") {
-      setNotice(gmailConnectionRequiredNotice(emailConnection?.status ?? "not_connected", t));
+      setNotice(
+        mutationNotice(
+          emailConnection?.status === "needs_reauth"
+            ? "gmailReconnectRequired"
+            : "gmailConnectRequired"
+        )
+      );
       return;
     }
     const restaurantId = restaurant.id;
@@ -423,21 +586,24 @@ export default function OrderDraftDetailScreen() {
       setOperatorNote(result.order.operator_note ?? "");
       setLinkedRecommendations(result.orderedRecommendations);
       seedReceiveForm(result.orderedRecommendations);
-      setNotice({
-        title: usingLocalDemo
-          ? t("orders.detail.notice.demoSentTitle")
-          : result.outcome === "already_sent"
-            ? t("orders.detail.notice.alreadySentTitle")
-            : t("orders.detail.notice.acceptedTitle"),
-        message: usingLocalDemo
-          ? t("orders.detail.notice.demoSentBody")
-          : t("orders.detail.notice.acceptedBody"),
-        tone: "success"
-      });
+      setNotice(
+        mutationNotice(
+          usingLocalDemo
+            ? "demoSent"
+            : result.outcome === "already_sent"
+              ? "alreadySent"
+              : "accepted"
+        )
+      );
     } catch (error) {
+      captureMiseError(error, {
+        flow: "order_detail",
+        operation: "send",
+        restaurant_id: restaurantId
+      });
       if (activeRestaurantIdRef.current === restaurantId) {
         await load(false);
-        if (activeRestaurantIdRef.current === restaurantId) setNotice(orderSendErrorNotice(error, t));
+        if (activeRestaurantIdRef.current === restaurantId) setNotice(sendErrorNotice(error));
       }
     } finally {
       actionLockRef.current = false;
@@ -448,7 +614,7 @@ export default function OrderDraftDetailScreen() {
   async function receiveDelivery() {
     if (!restaurant || !order || order.status !== "sent" || actionLockRef.current) return;
     if (!canManage) {
-      setNotice(viewOnlyNotice(t));
+      setNotice(mutationNotice("viewOnly"));
       return;
     }
     if (
@@ -460,11 +626,7 @@ export default function OrderDraftDetailScreen() {
         );
       })
     ) {
-      setNotice({
-        title: t("orders.detail.notice.receiveInvalidTitle"),
-        message: t("orders.detail.receive.storageRequired"),
-        tone: "warning"
-      });
+      setNotice(mutationNotice("receiveInvalidStorage"));
       return;
     }
     const drafted = buildReceiveLinesFromFormInputs({
@@ -476,16 +638,13 @@ export default function OrderDraftDetailScreen() {
       parseNumber
     });
     if (!drafted.ok) {
-      setNotice({
-        title: t("orders.detail.notice.receiveInvalidTitle"),
-        message:
-          drafted.error === "note_too_long"
-            ? t("orders.detail.receive.noteTooLong", {
-                count: formatNumber(SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS)
-              })
-            : t("orders.detail.receive.invalidQuantity"),
-        tone: "warning"
-      });
+      setNotice(
+        drafted.error === "note_too_long"
+          ? mutationNotice("receiveInvalidNote", {
+              count: formatNumber(SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS)
+            })
+          : mutationNotice("receiveInvalidQuantity")
+      );
       return;
     }
     const restaurantId = restaurant.id;
@@ -501,22 +660,21 @@ export default function OrderDraftDetailScreen() {
       );
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setReceiveSummary(summaryResult?.summary ?? null);
-      setNotice({
-        title: t("orders.detail.notice.receivedTitle"),
-        message: result.discrepancyCount > 0
-          ? t("orders.detail.notice.receivedWithDiscrepancyBody", {
+      setNotice(
+        result.discrepancyCount > 0
+          ? mutationNotice("receivedWithDiscrepancy", {
               count: formatNumber(result.discrepancyCount)
             })
-          : t("orders.detail.notice.receivedBody"),
-        tone: "success"
+          : mutationNotice("received")
+      );
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "order_detail",
+        operation: "receive",
+        restaurant_id: restaurantId
       });
-    } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
-        setNotice({
-          title: t("orders.detail.notice.receiveFailedTitle"),
-          message: t("orders.detail.notice.receiveFailedBody"),
-          tone: "danger"
-        });
+        setNotice(mutationNotice("receiveFailed"));
       }
     } finally {
       actionLockRef.current = false;
@@ -539,7 +697,13 @@ export default function OrderDraftDetailScreen() {
   const isCompleted = visibleOrder?.status === "completed";
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canManageGmail = canDeleteRestaurantData(memberships, restaurant?.id);
-  const canEditDraft = Boolean(isDraft && canManage);
+  const mutationBusy = presentOrderDetailMutationBusy(busy);
+  const mutationActionsEditable = presentOrderDetailMutationActionsEditable(
+    canManage,
+    mutationBusy,
+    hubReady
+  );
+  const canEditDraft = Boolean(isDraft && mutationActionsEditable);
   const visibleEmailConnection = hubReady ? emailConnection : null;
   const gmailReady = visibleEmailConnection?.status === "connected";
   const generatedMessage = visibleOrder ? generatedOrderMessage(visibleOrder) : "";
@@ -813,11 +977,11 @@ export default function OrderDraftDetailScreen() {
                 accessibilityHint={t("orders.detail.note.hint", {
                   count: formatNumber(SUPPLIER_NOTE_MAX_CHARACTERS)
                 })}
-                accessibilityState={{ disabled: busy }}
+                accessibilityState={{ disabled: mutationBusy }}
                 value={operatorNote}
                 onChangeText={setOperatorNote}
                 maxLength={SUPPLIER_NOTE_MAX_CHARACTERS}
-                editable={!busy}
+                editable={!mutationBusy}
                 multiline
                 textAlignVertical="top"
                 placeholder={t("orders.detail.note.placeholder")}
@@ -851,7 +1015,7 @@ export default function OrderDraftDetailScreen() {
                         accessibilityHint={t("orders.detail.receive.putAwaySearch.hint")}
                         value={putAwayLocationQuery}
                         onChangeText={setPutAwayLocationQuery}
-                        editable={!busy}
+                        editable={!mutationBusy}
                         placeholder={t("orders.detail.receive.putAwaySearch.placeholder")}
                         placeholderTextColor={colors.faint}
                         returnKeyType="search"
@@ -866,11 +1030,11 @@ export default function OrderDraftDetailScreen() {
                         <Pressable
                           key={location.id}
                           accessibilityRole="button"
-                          accessibilityState={{ selected, disabled: busy }}
+                          accessibilityState={{ selected, disabled: mutationBusy }}
                           accessibilityLabel={t("orders.detail.receive.putAwayOption", {
                             location: location.name
                           })}
-                          disabled={busy}
+                          disabled={mutationBusy}
                           onPress={() => applyDefaultPutAwayLocation(location.id)}
                           style={[styles.locationChip, selected && styles.locationChipSelected]}
                         >
@@ -906,7 +1070,7 @@ export default function OrderDraftDetailScreen() {
                     returnKeyType="search"
                     autoCorrect={false}
                     autoCapitalize="none"
-                    editable={!busy}
+                    editable={!mutationBusy}
                     style={styles.receiveLineSearchInput}
                   />
                 </View>
@@ -950,7 +1114,7 @@ export default function OrderDraftDetailScreen() {
                       })}
                       keyboardType="decimal-pad"
                       value={raw}
-                      editable={!busy}
+                      editable={!mutationBusy}
                       onChangeText={(value) =>
                         setReceiveQuantities((current) => ({
                           ...current,
@@ -981,12 +1145,12 @@ export default function OrderDraftDetailScreen() {
                               <Pressable
                                 key={`${recommendation.id}-${location.id}`}
                                 accessibilityRole="button"
-                                accessibilityState={{ selected, disabled: busy }}
+                                accessibilityState={{ selected, disabled: mutationBusy }}
                                 accessibilityLabel={t("orders.detail.receive.putAwayLineOption", {
                                   item: recommendation.item_name,
                                   location: location.name
                                 })}
-                                disabled={busy}
+                                disabled={mutationBusy}
                                 onPress={() =>
                                   setReceiveStorageLocationIds((current) => ({
                                     ...current,
@@ -1017,7 +1181,7 @@ export default function OrderDraftDetailScreen() {
                         count: formatNumber(SUPPLIER_ORDER_RECEIVE_NOTE_MAX_CHARACTERS)
                       })}
                       value={note}
-                      editable={!busy}
+                      editable={!mutationBusy}
                       onChangeText={(value) =>
                         setReceiveNotes((current) => ({
                           ...current,
@@ -1064,17 +1228,17 @@ export default function OrderDraftDetailScreen() {
               variant="secondary"
               icon={<Copy size={17} color={colors.text} strokeWidth={2.25} />}
               onPress={() => void copyOrder()}
-              disabled={busy}
+              disabled={mutationBusy}
               style={styles.actionButton}
             />
             {canEditDraft ? (
               <Button
-                title={busy ? t("orders.detail.action.saving") : t("orders.detail.action.save")}
+                title={mutationBusy ? t("orders.detail.action.saving") : t("orders.detail.action.save")}
                 accessibilityLabel={t("orders.detail.action.saveAccessibility")}
                 variant="secondary"
                 icon={<Save size={17} color={colors.text} strokeWidth={2.25} />}
                 onPress={() => void saveNote()}
-                disabled={busy}
+                disabled={mutationBusy}
                 style={styles.actionButton}
               />
             ) : null}
@@ -1084,7 +1248,7 @@ export default function OrderDraftDetailScreen() {
             <>
               <Text style={styles.placedHint}>{t("orders.detail.placed.body")}</Text>
               <Button
-                title={busy
+                title={mutationBusy
                   ? t("orders.detail.action.markingPlaced")
                   : t("orders.detail.action.markPlaced")}
                 accessibilityLabel={t("orders.detail.action.markPlacedAccessibility", {
@@ -1093,7 +1257,7 @@ export default function OrderDraftDetailScreen() {
                 variant="secondary"
                 icon={<ClipboardCheck size={17} color={colors.text} strokeWidth={2.25} />}
                 onPress={() => void markPlaced()}
-                disabled={busy}
+                disabled={mutationBusy}
                 fullWidth
               />
             </>
@@ -1101,7 +1265,7 @@ export default function OrderDraftDetailScreen() {
 
           {canEditDraft && gmailReady ? (
             <Button
-              title={busy
+              title={mutationBusy
                 ? (usingLocalDemo
                     ? t("orders.detail.action.simulating")
                     : t("orders.detail.gmail.sending"))
@@ -1113,14 +1277,14 @@ export default function OrderDraftDetailScreen() {
                 : t("orders.detail.action.sendAccessibility", { supplier: visibleOrder.supplier_name })}
               icon={<Send size={17} color={colors.surface} strokeWidth={2.25} />}
               onPress={() => void sendOrder()}
-              disabled={busy}
+              disabled={mutationBusy}
               fullWidth
             />
           ) : null}
 
           {isSent && canManage ? (
             <Button
-              title={busy
+              title={mutationBusy
                 ? t("orders.detail.action.receiving")
                 : t("orders.detail.action.receive")}
               accessibilityLabel={t("orders.detail.action.receiveAccessibility", {
@@ -1128,7 +1292,7 @@ export default function OrderDraftDetailScreen() {
               })}
               icon={<ClipboardCheck size={17} color={colors.surface} strokeWidth={2.25} />}
               onPress={() => void receiveDelivery()}
-              disabled={busy || !receiveReady}
+              disabled={!mutationActionsEditable || !receiveReady}
               fullWidth
             />
           ) : null}
@@ -1148,75 +1312,6 @@ export default function OrderDraftDetailScreen() {
       )}
     </Screen>
   );
-}
-
-function viewOnlyNotice(t: Translate): OrderNotice {
-  return {
-    title: t("orders.detail.viewOnly.title"),
-    message: t("orders.detail.viewOnly.actionBody"),
-    tone: "neutral"
-  };
-}
-
-function gmailConnectionRequiredNotice(
-  status: RestaurantEmailConnection["status"],
-  t: Translate
-): OrderNotice {
-  return {
-    title: status === "needs_reauth"
-      ? t("orders.detail.connection.reconnectTitle")
-      : t("orders.detail.connection.connectTitle"),
-    message: t("orders.detail.gmail.notConnected"),
-    tone: "warning",
-    recovery: "gmail"
-  };
-}
-
-function orderSendErrorNotice(error: unknown, t: Translate): OrderNotice {
-  if (!isGmailIntegrationError(error)) {
-    return {
-      title: t("orders.detail.error.sendTitle"),
-      message: t("orders.detail.error.sendBody"),
-      tone: "danger"
-    };
-  }
-  if (error.status === "gmail_not_connected" || error.status === "needs_reauth") {
-    return {
-      title: error.status === "needs_reauth"
-        ? t("orders.detail.connection.reconnectTitle")
-        : t("orders.detail.connection.connectTitle"),
-      message: t("orders.detail.gmail.notConnected"),
-      tone: "warning",
-      recovery: "gmail"
-    };
-  }
-  if (error.status === "supplier_email_missing" || error.status === "supplier_email_invalid") {
-    return {
-      title: t("orders.detail.error.supplierEmailTitle"),
-      message: t("orders.detail.error.supplierEmailBody"),
-      tone: "warning",
-      recovery: "supplier"
-    };
-  }
-  if (error.status === "delivery_requires_review" || error.status === "in_progress") {
-    return {
-      title: t("settings.gmail.error.reviewTitle"),
-      message: t("orders.detail.gmail.review"),
-      tone: "warning"
-    };
-  }
-  if (error.status === "live_sending_disabled" || error.status === "server_configuration_missing") {
-    return {
-      title: t("orders.detail.error.sendingDisabledTitle"),
-      message: t("orders.detail.error.sendingDisabledBody"),
-      tone: "warning"
-    };
-  }
-  return {
-    title: t("orders.detail.error.sendTitle"),
-    message: t("orders.detail.gmail.failed"),
-    tone: "danger"
-  };
 }
 
 function generatedOrderMessage(order: SupplierOrder) {
