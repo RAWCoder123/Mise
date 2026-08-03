@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { router, useNavigation } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { router, useFocusEffect, useNavigation } from "expo-router";
 import { ArrowLeft, Check, Store } from "lucide-react-native";
 import {
   AccessibilityInfo,
@@ -19,6 +19,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
+import { RetryNotice } from "../../components/ui/StatusNotice";
 import { colors, fontFamilies, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -35,10 +36,16 @@ import {
   restaurantIdentityOptions,
   type RestaurantIdentityDraft
 } from "../../services/domain/restaurantIdentity";
-import { updateRestaurantProfile } from "../../services/miseService";
+import { fetchRestaurant, updateRestaurantProfile } from "../../services/miseService";
+import {
+  presentIdentitySettingsInteractive,
+  presentIdentitySettingsNote,
+  presentIdentitySettingsValuesVisible,
+  resolveRestaurantIdentityLoadState
+} from "../../services/presentation/identitySettingsPresentation";
 import { canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
-import type { RestaurantServiceStyle } from "../../types/mise";
+import type { Restaurant, RestaurantServiceStyle } from "../../types/mise";
 import { restaurantInitials } from "../../utils/restaurantBranding";
 
 type SaveStatus = "saved" | "error" | null;
@@ -59,10 +66,11 @@ export default function RestaurantIdentitySettingsScreen() {
     applyRestaurantProfile,
     isDemoMode,
     memberships,
+    ready: sessionReady,
     restaurant,
     usingLocalDemo
   } = useMiseSession();
-  const canEdit = canUpdateRestaurantProfile(memberships, restaurant?.id);
+  const [identityRestaurant, setIdentityRestaurant] = useState<Restaurant | null>(restaurant);
   const [draft, setDraft] = useState<RestaurantIdentityDraft | null>(
     restaurant ? draftFromRestaurant(restaurant) : null
   );
@@ -70,32 +78,133 @@ export default function RestaurantIdentitySettingsScreen() {
   const [status, setStatus] = useState<SaveStatus>(null);
   const [validationKey, setValidationKey] = useState<MessageKey | null>(null);
   const [logoPreviewFailed, setLogoPreviewFailed] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
+  const dirtyRef = useRef(false);
+  const hasLocalIdentityRef = useRef(Boolean(restaurant));
+  const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
+  activeRestaurantIdRef.current = restaurant?.id ?? null;
+  hasLocalIdentityRef.current = Boolean(identityRestaurant || draft);
+
+  const canEdit = canUpdateRestaurantProfile(memberships, restaurant?.id);
+  const hubLoadState = resolveRestaurantIdentityLoadState({
+    sessionReady,
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const interactive = presentIdentitySettingsInteractive(hubLoadState);
+  const valuesVisible =
+    presentIdentitySettingsValuesVisible(hubLoadState) ||
+    (hubLoadState === "loading" && Boolean(draft && identityRestaurant));
+  const formEditable = canEdit && interactive && !saving;
 
   useEffect(() => {
-    setDraft(restaurant ? draftFromRestaurant(restaurant) : null);
-    setStatus(null);
-    setValidationKey(null);
-    setLogoPreviewFailed(false);
-  }, [
-    restaurant?.id,
-    restaurant?.name,
-    restaurant?.address,
-    restaurant?.cuisine_type,
-    restaurant?.service_style,
-    restaurant?.timezone,
-    restaurant?.currency,
-    restaurant?.brand_color,
-    restaurant?.accent_color,
-    restaurant?.logo_url
-  ]);
+    const restaurantId = restaurant?.id ?? null;
+    if (!restaurantId || !restaurant) {
+      loadedRestaurantRef.current = null;
+      dirtyRef.current = false;
+      setLoadedRestaurantId(null);
+      setLoadError(false);
+      setIdentityRestaurant(null);
+      setDraft(null);
+      return;
+    }
+    if (loadedRestaurantRef.current !== restaurantId) {
+      dirtyRef.current = false;
+      setLoadedRestaurantId(null);
+      setLoadError(false);
+      setIdentityRestaurant(restaurant);
+      setDraft(draftFromRestaurant(restaurant));
+      setStatus(null);
+      setValidationKey(null);
+      setLogoPreviewFailed(false);
+    }
+  }, [restaurant, restaurant?.id]);
 
-  const options = useMemo(() => restaurantIdentityOptions(restaurant), [restaurant]);
+  const load = useCallback(
+    async (showLoading = false) => {
+      if (!sessionReady) return;
+
+      if (!restaurant?.id) {
+        loadedRestaurantRef.current = null;
+        setLoadedRestaurantId(null);
+        setLoadError(false);
+        setIdentityRestaurant(null);
+        setDraft(null);
+        return;
+      }
+
+      const restaurantId = restaurant.id;
+      const requestId = ++requestIdRef.current;
+      const soft = !showLoading && loadedRestaurantRef.current === restaurantId;
+      if (showLoading || !soft) {
+        setLoadedRestaurantId(null);
+      }
+      setLoadError(false);
+
+      try {
+        const nextRestaurant = await fetchRestaurant(restaurantId);
+        if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+          return;
+        }
+        loadedRestaurantRef.current = restaurantId;
+        setIdentityRestaurant(nextRestaurant);
+        if (!dirtyRef.current || showLoading) {
+          setDraft(draftFromRestaurant(nextRestaurant));
+          setLogoPreviewFailed(false);
+        }
+        await applyRestaurantProfile(nextRestaurant);
+        if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+          return;
+        }
+        dirtyRef.current = false;
+        setLoadedRestaurantId(restaurantId);
+        setLoadError(false);
+      } catch (error) {
+        if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+          return;
+        }
+        captureMiseError(error, {
+          flow: "settings_restaurant",
+          operation: "load_restaurant_identity",
+          restaurant_id: restaurantId
+        });
+        if (!(soft && hasLocalIdentityRef.current)) {
+          loadedRestaurantRef.current = null;
+          setLoadedRestaurantId(null);
+        }
+        setLoadError(true);
+      }
+    },
+    [applyRestaurantProfile, restaurant, sessionReady]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void load(false);
+    }, [load])
+  );
+
+  const options = useMemo(
+    () => restaurantIdentityOptions(identityRestaurant ?? restaurant),
+    [identityRestaurant, restaurant]
+  );
 
   const persistenceMessageKey: MessageKey = usingLocalDemo || isDemoMode
     ? "settings.restaurant.demoPersistence"
     : restaurant
       ? "settings.restaurant.hostedPersistence"
       : "settings.restaurant.sessionPersistence";
+
+  const persistenceNote = presentIdentitySettingsNote(hubLoadState, {
+    loading: t("settings.restaurant.status.loading"),
+    unavailable: t("settings.restaurant.status.unavailable"),
+    missing: t("settings.profile.noRestaurant"),
+    ready: t(persistenceMessageKey)
+  });
 
   function goBackToSettings() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -106,6 +215,7 @@ export default function RestaurantIdentitySettingsScreen() {
     key: K,
     value: RestaurantIdentityDraft[K]
   ) {
+    dirtyRef.current = true;
     setDraft((current) => (current ? { ...current, [key]: value } : current));
     setStatus(null);
     setValidationKey(null);
@@ -113,7 +223,7 @@ export default function RestaurantIdentitySettingsScreen() {
   }
 
   async function handleSave() {
-    if (saving || !restaurant || !draft || !canEdit) return;
+    if (saving || !identityRestaurant || !draft || !canEdit || !interactive) return;
     setStatus(null);
 
     if (!isValidRestaurantHexColor(draft.brand_color)) {
@@ -125,9 +235,10 @@ export default function RestaurantIdentitySettingsScreen() {
       return;
     }
 
-    const patch = buildRestaurantIdentityPatch(restaurant, draft);
+    const patch = buildRestaurantIdentityPatch(identityRestaurant, draft);
     if (!restaurantIdentityChanged(patch)) {
       setStatus("saved");
+      dirtyRef.current = false;
       return;
     }
 
@@ -138,9 +249,13 @@ export default function RestaurantIdentitySettingsScreen() {
 
     setSaving(true);
     try {
-      const updated = await updateRestaurantProfile(restaurant.id, patch);
+      const updated = await updateRestaurantProfile(identityRestaurant.id, patch);
       await applyRestaurantProfile(updated);
+      setIdentityRestaurant(updated);
       setDraft(draftFromRestaurant(updated));
+      dirtyRef.current = false;
+      loadedRestaurantRef.current = updated.id;
+      setLoadedRestaurantId(updated.id);
       setStatus("saved");
       AccessibilityInfo.announceForAccessibility(
         t("settings.restaurant.savedAnnouncement", { name: updated.name })
@@ -171,7 +286,7 @@ export default function RestaurantIdentitySettingsScreen() {
       captureMiseError(error, {
         flow: "settings_restaurant",
         operation: "update_restaurant_profile",
-        restaurant_id: restaurant.id
+        restaurant_id: identityRestaurant.id
       });
       setStatus("error");
     } finally {
@@ -179,36 +294,22 @@ export default function RestaurantIdentitySettingsScreen() {
     }
   }
 
-  if (!restaurant || !draft) {
-    return (
-      <Screen
-        title={t("settings.restaurant.title")}
-        subtitle={t("settings.restaurant.subtitle")}
-        action={
-          <ActionIcon accessibilityLabel={t("common.back")} onPress={goBackToSettings}>
-            <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
-          </ActionIcon>
-        }
-      >
-        <Card style={styles.formCard}>
-          <Text style={styles.sectionBody}>{t("settings.profile.noRestaurant")}</Text>
-        </Card>
-      </Screen>
-    );
-  }
-
-  const previewBrand = isValidRestaurantHexColor(draft.brand_color)
-    ? draft.brand_color.trim().toUpperCase()
-    : restaurant.brand_color;
-  const previewAccent = isValidRestaurantHexColor(draft.accent_color)
-    ? draft.accent_color.trim().toUpperCase()
-    : restaurant.accent_color;
-  const logoPreviewUrl = draft.logo_url.trim();
+  const previewSource = identityRestaurant;
+  const previewBrand =
+    draft && isValidRestaurantHexColor(draft.brand_color)
+      ? draft.brand_color.trim().toUpperCase()
+      : previewSource?.brand_color ?? colors.accent;
+  const previewAccent =
+    draft && isValidRestaurantHexColor(draft.accent_color)
+      ? draft.accent_color.trim().toUpperCase()
+      : previewSource?.accent_color ?? colors.success;
+  const logoPreviewUrl = draft?.logo_url.trim() ?? "";
 
   return (
     <Screen
       title={t("settings.restaurant.title")}
       subtitle={t("settings.restaurant.subtitle")}
+      loading={hubLoadState === "loading" && !valuesVisible}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={goBackToSettings}>
           <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
@@ -224,6 +325,23 @@ export default function RestaurantIdentitySettingsScreen() {
             </Text>
           </View>
 
+          {loadError ? (
+            <RetryNotice
+              title={t("settings.restaurant.retry.title")}
+              message={t("settings.restaurant.retry.body")}
+              onRetry={() => void load(true)}
+              retryLabel={t("common.retry")}
+              accessibilityLabel={t("settings.restaurant.retry.accessibility")}
+            />
+          ) : null}
+
+          {hubLoadState === "missing" ? (
+            <Card style={styles.formCard}>
+              <Text style={styles.sectionBody}>{t("settings.profile.noRestaurant")}</Text>
+            </Card>
+          ) : null}
+
+          {valuesVisible && draft && previewSource ? (
           <Card style={styles.formCard}>
             <View style={styles.previewRow} accessibilityLabel={t("settings.restaurant.brandPreview")}>
               <View style={[styles.brandMark, { backgroundColor: previewBrand }]}>
@@ -235,11 +353,13 @@ export default function RestaurantIdentitySettingsScreen() {
                     style={styles.brandLogo}
                   />
                 ) : (
-                  <Text style={styles.brandInitials}>{restaurantInitials({ ...restaurant, name: draft.name || restaurant.name })}</Text>
+                  <Text style={styles.brandInitials}>
+                    {restaurantInitials({ ...previewSource, name: draft.name || previewSource.name })}
+                  </Text>
                 )}
               </View>
               <View style={styles.previewCopy}>
-                <Text style={styles.previewName}>{draft.name.trim() || restaurant.name}</Text>
+                <Text style={styles.previewName}>{draft.name.trim() || previewSource.name}</Text>
                 <View style={styles.previewAccentRow}>
                   <View style={[styles.previewAccentSwatch, { backgroundColor: previewAccent }]} />
                   <Text style={styles.previewMeta}>{t("settings.restaurant.accentPreview")}</Text>
@@ -255,11 +375,11 @@ export default function RestaurantIdentitySettingsScreen() {
                 accessibilityLabel={t("settings.restaurant.name")}
                 autoCapitalize="words"
                 autoCorrect
-                editable={canEdit && !saving}
+                editable={formEditable}
                 maxLength={RESTAURANT_NAME_MAX_CHARACTERS}
                 placeholder={t("settings.restaurant.namePlaceholder")}
                 placeholderTextColor={colors.faint}
-                style={[styles.input, !canEdit && styles.inputDisabled]}
+                style={[styles.input, !formEditable && styles.inputDisabled]}
               />
             </View>
 
@@ -271,11 +391,11 @@ export default function RestaurantIdentitySettingsScreen() {
                 accessibilityLabel={t("settings.restaurant.address")}
                 autoCapitalize="words"
                 autoCorrect
-                editable={canEdit && !saving}
+                editable={formEditable}
                 maxLength={RESTAURANT_ADDRESS_MAX_CHARACTERS}
                 placeholder={t("settings.restaurant.addressPlaceholder")}
                 placeholderTextColor={colors.faint}
-                style={[styles.input, !canEdit && styles.inputDisabled]}
+                style={[styles.input, !formEditable && styles.inputDisabled]}
               />
             </View>
 
@@ -287,11 +407,11 @@ export default function RestaurantIdentitySettingsScreen() {
                 accessibilityLabel={t("settings.restaurant.cuisine")}
                 autoCapitalize="words"
                 autoCorrect
-                editable={canEdit && !saving}
+                editable={formEditable}
                 maxLength={RESTAURANT_CUISINE_MAX_CHARACTERS}
                 placeholder={t("settings.restaurant.cuisinePlaceholder")}
                 placeholderTextColor={colors.faint}
-                style={[styles.input, !canEdit && styles.inputDisabled]}
+                style={[styles.input, !formEditable && styles.inputDisabled]}
               />
             </View>
 
@@ -304,15 +424,15 @@ export default function RestaurantIdentitySettingsScreen() {
                     <Pressable
                       key={`brand-${hex}`}
                       accessibilityRole="button"
-                      accessibilityState={{ selected, disabled: !canEdit || saving }}
+                      accessibilityState={{ selected, disabled: !formEditable }}
                       accessibilityLabel={t("settings.restaurant.brandColorOption", { color: hex })}
-                      disabled={!canEdit || saving}
+                      disabled={!formEditable}
                       onPress={() => updateDraft("brand_color", hex)}
                       style={({ pressed }) => [
                         styles.swatch,
                         { backgroundColor: hex },
                         selected && styles.swatchSelected,
-                        pressed && canEdit && styles.pressed
+                        pressed && formEditable && styles.pressed
                       ]}
                     >
                       {selected ? <Check size={14} color="#FFFFFF" strokeWidth={2.8} /> : null}
@@ -326,11 +446,11 @@ export default function RestaurantIdentitySettingsScreen() {
                 accessibilityLabel={t("settings.restaurant.brandColor")}
                 autoCapitalize="characters"
                 autoCorrect={false}
-                editable={canEdit && !saving}
+                editable={formEditable}
                 maxLength={7}
                 placeholder="#EF3F27"
                 placeholderTextColor={colors.faint}
-                style={[styles.input, !canEdit && styles.inputDisabled]}
+                style={[styles.input, !formEditable && styles.inputDisabled]}
               />
             </View>
 
@@ -343,15 +463,15 @@ export default function RestaurantIdentitySettingsScreen() {
                     <Pressable
                       key={`accent-${hex}`}
                       accessibilityRole="button"
-                      accessibilityState={{ selected, disabled: !canEdit || saving }}
+                      accessibilityState={{ selected, disabled: !formEditable }}
                       accessibilityLabel={t("settings.restaurant.accentColorOption", { color: hex })}
-                      disabled={!canEdit || saving}
+                      disabled={!formEditable}
                       onPress={() => updateDraft("accent_color", hex)}
                       style={({ pressed }) => [
                         styles.swatch,
                         { backgroundColor: hex },
                         selected && styles.swatchSelected,
-                        pressed && canEdit && styles.pressed
+                        pressed && formEditable && styles.pressed
                       ]}
                     >
                       {selected ? <Check size={14} color="#FFFFFF" strokeWidth={2.8} /> : null}
@@ -365,11 +485,11 @@ export default function RestaurantIdentitySettingsScreen() {
                 accessibilityLabel={t("settings.restaurant.accentColor")}
                 autoCapitalize="characters"
                 autoCorrect={false}
-                editable={canEdit && !saving}
+                editable={formEditable}
                 maxLength={7}
                 placeholder="#1F7A4D"
                 placeholderTextColor={colors.faint}
-                style={[styles.input, !canEdit && styles.inputDisabled]}
+                style={[styles.input, !formEditable && styles.inputDisabled]}
               />
             </View>
 
@@ -382,14 +502,14 @@ export default function RestaurantIdentitySettingsScreen() {
                 accessibilityLabel={t("settings.restaurant.logoUrl")}
                 autoCapitalize="none"
                 autoCorrect={false}
-                editable={canEdit && !saving}
+                editable={formEditable}
                 keyboardType="url"
                 maxLength={RESTAURANT_LOGO_URL_MAX_CHARACTERS}
                 placeholder={t("settings.restaurant.logoUrlPlaceholder")}
                 placeholderTextColor={colors.faint}
-                style={[styles.input, !canEdit && styles.inputDisabled]}
+                style={[styles.input, !formEditable && styles.inputDisabled]}
               />
-              {canEdit && draft.logo_url.trim().length > 0 ? (
+              {formEditable && draft.logo_url.trim().length > 0 ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t("settings.restaurant.clearLogo")}
@@ -411,14 +531,14 @@ export default function RestaurantIdentitySettingsScreen() {
                     <Pressable
                       key={style}
                       accessibilityRole="button"
-                      accessibilityState={{ selected, disabled: !canEdit || saving }}
+                      accessibilityState={{ selected, disabled: !formEditable }}
                       accessibilityLabel={t(SERVICE_STYLE_LABELS[style])}
-                      disabled={!canEdit || saving}
+                      disabled={!formEditable}
                       onPress={() => updateDraft("service_style", style)}
                       style={({ pressed }) => [
                         styles.chip,
                         selected && styles.chipSelected,
-                        pressed && canEdit && styles.pressed
+                        pressed && formEditable && styles.pressed
                       ]}
                     >
                       {selected ? <Check size={14} color={colors.accentDark} strokeWidth={2.6} /> : null}
@@ -440,14 +560,14 @@ export default function RestaurantIdentitySettingsScreen() {
                     <Pressable
                       key={timezone}
                       accessibilityRole="button"
-                      accessibilityState={{ selected, disabled: !canEdit || saving }}
+                      accessibilityState={{ selected, disabled: !formEditable }}
                       accessibilityLabel={timezone}
-                      disabled={!canEdit || saving}
+                      disabled={!formEditable}
                       onPress={() => updateDraft("timezone", timezone)}
                       style={({ pressed }) => [
                         styles.chip,
                         selected && styles.chipSelected,
-                        pressed && canEdit && styles.pressed
+                        pressed && formEditable && styles.pressed
                       ]}
                     >
                       {selected ? <Check size={14} color={colors.accentDark} strokeWidth={2.6} /> : null}
@@ -467,14 +587,14 @@ export default function RestaurantIdentitySettingsScreen() {
                     <Pressable
                       key={currency}
                       accessibilityRole="button"
-                      accessibilityState={{ selected, disabled: !canEdit || saving }}
+                      accessibilityState={{ selected, disabled: !formEditable }}
                       accessibilityLabel={currency}
-                      disabled={!canEdit || saving}
+                      disabled={!formEditable}
                       onPress={() => updateDraft("currency", currency)}
                       style={({ pressed }) => [
                         styles.chip,
                         selected && styles.chipSelected,
-                        pressed && canEdit && styles.pressed
+                        pressed && formEditable && styles.pressed
                       ]}
                     >
                       {selected ? <Check size={14} color={colors.accentDark} strokeWidth={2.6} /> : null}
@@ -495,11 +615,12 @@ export default function RestaurantIdentitySettingsScreen() {
               <Button
                 title={saving ? t("settings.restaurant.saving") : t("settings.restaurant.save")}
                 onPress={() => void handleSave()}
-                disabled={saving}
+                disabled={!interactive || saving}
                 fullWidth
               />
             ) : null}
           </Card>
+          ) : null}
 
           {saving ? (
             <View style={styles.loading} accessibilityLiveRegion="polite">
@@ -508,7 +629,7 @@ export default function RestaurantIdentitySettingsScreen() {
             </View>
           ) : null}
 
-          {status ? (
+          {!loadError && status && draft && previewSource ? (
             <View
               style={[styles.status, status === "error" ? styles.statusError : styles.statusSuccess]}
               accessibilityLiveRegion="polite"
@@ -521,7 +642,9 @@ export default function RestaurantIdentitySettingsScreen() {
               >
                 {status === "error"
                   ? t("settings.restaurant.saveError")
-                  : t("settings.restaurant.savedAnnouncement", { name: draft.name.trim() || restaurant.name })}
+                  : t("settings.restaurant.savedAnnouncement", {
+                      name: draft.name.trim() || previewSource.name
+                    })}
               </Text>
             </View>
           ) : null}
@@ -530,7 +653,7 @@ export default function RestaurantIdentitySettingsScreen() {
             <IconBadge tone="neutral">
               <Store size={19} color={colors.text} strokeWidth={2.2} />
             </IconBadge>
-            <Text style={styles.persistenceText}>{t(persistenceMessageKey)}</Text>
+            <Text style={styles.persistenceText}>{persistenceNote}</Text>
           </View>
         </View>
       </KeyboardAvoidingView>
