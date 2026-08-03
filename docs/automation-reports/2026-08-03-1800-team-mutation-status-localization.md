@@ -17,11 +17,11 @@ Branch: `cursor/mise-product-inspection-0473`
 
 ## Verification
 
-- `npm run typecheck`
-- `npm test`
-- `npm run security:static`
-- `npm run security:backend`
-- `npm run design:static`
-- `npm run qa:routes`
+- `npm run typecheck` — passed
+- `npm test` — 490 passed
+- `npm run security:static` — passed
+- `npm run security:backend` — passed
+- `npm run design:static` — passed
+- `npm run qa:routes` — passed
 
 Docker `supabase:test` and hosted private-beta re-proof remain unavailable in this environment.
