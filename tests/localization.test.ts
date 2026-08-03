@@ -81,6 +81,29 @@ test("Today command-center copy lives in the shared catalog with locale parity",
   }
 });
 
+test("Supplier emails screen copy lives in the shared catalog with locale parity", async () => {
+  const { readFileSync } = await import("node:fs");
+  const suppliersScreen = readFileSync("app/settings/suppliers.tsx", "utf8");
+  assert.match(suppliersScreen, /function buildSupplierCopy\(/);
+  assert.doesNotMatch(suppliersScreen, /const supplierCopy:\s*Record<AppLocale/);
+  assert.match(suppliersScreen, /t\("settings\.suppliers\.title"\)/);
+  assert.match(suppliersScreen, /t\("settings\.suppliers\.notice\.savedBody"/);
+  assert.match(suppliersScreen, /presentSuppliersMutationNoticeCopy/);
+
+  for (const locale of SUPPORTED_LOCALES) {
+    assert.ok(catalogs[locale]["settings.suppliers.title"].length > 0);
+    assert.ok(catalogs[locale]["settings.suppliers.empty.loadingTitle"].length > 0);
+    assert.equal(
+      translate(locale, "settings.suppliers.notice.savedBody", { supplier: "Fresh Foods" }).includes("Fresh Foods"),
+      true
+    );
+    assert.equal(
+      translate(locale, "settings.suppliers.emailAccessibility", { supplier: "Fresh Foods" }).includes("Fresh Foods"),
+      true
+    );
+  }
+});
+
 test("number, currency, and date helpers honor locale and restaurant settings", () => {
   assert.equal(formatLocalizedNumber("en", 1234.5), "1,234.5");
   assert.equal(formatLocalizedNumber("es", 1234.5), "1234,5");

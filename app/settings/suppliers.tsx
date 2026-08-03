@@ -14,7 +14,7 @@ import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../componen
 import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
-import type { AppLocale } from "../../i18n/catalog";
+import type { MessageKey, MessageValues } from "../../i18n/catalog";
 import {
   fetchSupplierRecipientDirectory,
   saveSupplierRecipient
@@ -26,7 +26,11 @@ import {
 import {
   presentSuppliersHubConfiguredCount,
   presentSuppliersHubEmptyCopy,
-  resolveSuppliersHubLoadState
+  presentSuppliersMutationActionsEditable,
+  presentSuppliersMutationBusy,
+  presentSuppliersMutationNoticeCopy,
+  resolveSuppliersHubLoadState,
+  type SuppliersMutationNoticeReason
 } from "../../services/presentation/suppliersHubPresentation";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
@@ -37,10 +41,109 @@ interface SupplierNotice {
   message: string;
 }
 
+interface SupplierCopy {
+  title: string;
+  subtitle: string;
+  back: string;
+  noRestaurantTitle: string;
+  noRestaurantBody: string;
+  readOnlyTitle: string;
+  readOnlyBody: string;
+  loadErrorTitle: string;
+  loadErrorBody: string;
+  retry: string;
+  retryAccessibility: string;
+  invalidTitle: string;
+  invalidBody: (supplier: string) => string;
+  savedTitle: string;
+  savedBody: (supplier: string) => string;
+  saveErrorTitle: string;
+  saveErrorBody: (supplier: string) => string;
+  safetyTitle: string;
+  safetyBody: string;
+  sectionTitle: string;
+  sectionSubtitle: string;
+  configuredCount: (configured: string, total: string) => string;
+  configuredCountLoading: string;
+  configuredCountUnavailable: string;
+  emptyTitle: string;
+  emptyBody: string;
+  emptyLoadingTitle: string;
+  emptyLoadingBody: string;
+  emptyUnavailableTitle: string;
+  emptyUnavailableBody: string;
+  savedRecipient: string;
+  currentSupplier: string;
+  configured: string;
+  needsEmail: string;
+  emailLabel: string;
+  emailPlaceholder: string;
+  emailAccessibility: (supplier: string) => string;
+  emailHint: string;
+  save: string;
+  saving: string;
+  saveAccessibility: (supplier: string) => string;
+  saveHint: string;
+  readOnlyEmailAccessibility: (supplier: string, email: string | null) => string;
+  notConfigured: string;
+}
+
+function buildSupplierCopy(t: (key: MessageKey, values?: MessageValues) => string): SupplierCopy {
+  return {
+    title: t("settings.suppliers.title"),
+    subtitle: t("settings.suppliers.subtitle"),
+    back: t("settings.suppliers.back"),
+    noRestaurantTitle: t("settings.suppliers.noRestaurant.title"),
+    noRestaurantBody: t("settings.suppliers.noRestaurant.body"),
+    readOnlyTitle: t("settings.suppliers.readOnly.title"),
+    readOnlyBody: t("settings.suppliers.readOnly.body"),
+    loadErrorTitle: t("settings.suppliers.retry.title"),
+    loadErrorBody: t("settings.suppliers.retry.body"),
+    retry: t("common.retry"),
+    retryAccessibility: t("settings.suppliers.retry.accessibility"),
+    invalidTitle: t("settings.suppliers.notice.invalidTitle"),
+    invalidBody: (supplier) => t("settings.suppliers.notice.invalidBody", { supplier }),
+    savedTitle: t("settings.suppliers.notice.savedTitle"),
+    savedBody: (supplier) => t("settings.suppliers.notice.savedBody", { supplier }),
+    saveErrorTitle: t("settings.suppliers.notice.saveErrorTitle"),
+    saveErrorBody: (supplier) => t("settings.suppliers.notice.saveErrorBody", { supplier }),
+    safetyTitle: t("settings.suppliers.safety.title"),
+    safetyBody: t("settings.suppliers.safety.body"),
+    sectionTitle: t("settings.suppliers.section.title"),
+    sectionSubtitle: t("settings.suppliers.section.subtitle"),
+    configuredCount: (configured, total) => t("settings.suppliers.configuredCount", { configured, total }),
+    configuredCountLoading: t("settings.suppliers.configuredCount.loading"),
+    configuredCountUnavailable: t("settings.suppliers.configuredCount.unavailable"),
+    emptyTitle: t("settings.suppliers.empty.title"),
+    emptyBody: t("settings.suppliers.empty.body"),
+    emptyLoadingTitle: t("settings.suppliers.empty.loadingTitle"),
+    emptyLoadingBody: t("settings.suppliers.empty.loadingBody"),
+    emptyUnavailableTitle: t("settings.suppliers.empty.unavailableTitle"),
+    emptyUnavailableBody: t("settings.suppliers.empty.unavailableBody"),
+    savedRecipient: t("settings.suppliers.savedRecipient"),
+    currentSupplier: t("settings.suppliers.currentSupplier"),
+    configured: t("settings.suppliers.configured"),
+    needsEmail: t("settings.suppliers.needsEmail"),
+    emailLabel: t("settings.suppliers.emailLabel"),
+    emailPlaceholder: t("settings.suppliers.emailPlaceholder"),
+    emailAccessibility: (supplier) => t("settings.suppliers.emailAccessibility", { supplier }),
+    emailHint: t("settings.suppliers.emailHint"),
+    save: t("settings.suppliers.save"),
+    saving: t("settings.suppliers.saving"),
+    saveAccessibility: (supplier) => t("settings.suppliers.saveAccessibility", { supplier }),
+    saveHint: t("settings.suppliers.saveHint"),
+    readOnlyEmailAccessibility: (supplier, email) => t("settings.suppliers.readOnlyEmailAccessibility", {
+      supplier,
+      email: email ?? t("settings.suppliers.notConfigured")
+    }),
+    notConfigured: t("settings.suppliers.notConfigured")
+  };
+}
+
 export default function SupplierRecipientsScreen() {
   const navigation = useNavigation();
-  const { formatNumber, locale } = useLocale();
-  const copy = supplierCopy[locale];
+  const { formatNumber, t } = useLocale();
+  const copy = useMemo(() => buildSupplierCopy(t), [t]);
   const { memberships, restaurant } = useMiseSession();
   const [entries, setEntries] = useState<SupplierRecipientDirectoryEntry[]>([]);
   const [draftEmails, setDraftEmails] = useState<Record<string, string>>({});
@@ -56,6 +159,28 @@ export default function SupplierRecipientsScreen() {
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
+  const mutationBusy = presentSuppliersMutationBusy(savingKeys.size);
+
+  const mutationNotice = useCallback((
+    reason: SuppliersMutationNoticeReason,
+    supplierName: string
+  ): SupplierNotice => {
+    const localized: Record<SuppliersMutationNoticeReason, { title: string; message: string }> = {
+      invalidEmail: {
+        title: copy.invalidTitle,
+        message: copy.invalidBody(supplierName)
+      },
+      saved: {
+        title: copy.savedTitle,
+        message: copy.savedBody(supplierName)
+      },
+      saveError: {
+        title: copy.saveErrorTitle,
+        message: copy.saveErrorBody(supplierName)
+      }
+    };
+    return presentSuppliersMutationNoticeCopy(reason, localized);
+  }, [copy]);
 
   const load = useCallback(async (showLoading = false) => {
     if (!restaurant) {
@@ -127,11 +252,7 @@ export default function SupplierRecipientsScreen() {
     if (actionLocksRef.current.has(key)) return;
     const email = (draftEmails[key] ?? "").trim();
     if (!isValidRecipientEmail(email)) {
-      setNotice({
-        tone: "warning",
-        title: copy.invalidTitle,
-        message: copy.invalidBody(entry.supplierName)
-      });
+      setNotice(mutationNotice("invalidEmail", entry.supplierName));
       return;
     }
 
@@ -154,18 +275,15 @@ export default function SupplierRecipientsScreen() {
           : currentEntry
       ));
       setDraftEmails((current) => ({ ...current, [key]: saved.email ?? "" }));
-      setNotice({
-        tone: "success",
-        title: copy.savedTitle,
-        message: copy.savedBody(saved.supplier_name)
-      });
-    } catch {
+      setNotice(mutationNotice("saved", saved.supplier_name));
+    } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice({
-        tone: "danger",
-        title: copy.saveErrorTitle,
-        message: copy.saveErrorBody(entry.supplierName)
+      captureMiseError(error, {
+        flow: "settings_suppliers",
+        operation: "save",
+        restaurant_id: restaurantId
       });
+      setNotice(mutationNotice("saveError", entry.supplierName));
     } finally {
       actionLocksRef.current.delete(key);
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -184,6 +302,7 @@ export default function SupplierRecipientsScreen() {
     loadError
   });
   const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentSuppliersMutationActionsEditable(canManage, mutationBusy, hubReady);
   const visibleEntries = hubReady ? entries : [];
   const configuredCount = useMemo(
     () => visibleEntries.filter((entry) => Boolean(entry.email)).length,
@@ -265,6 +384,7 @@ export default function SupplierRecipientsScreen() {
                 const draftEmail = draftEmails[key] ?? "";
                 const saving = savingKeys.has(key);
                 const unchanged = draftEmail.trim().toLowerCase() === (entry.email ?? "").toLowerCase();
+                const rowEditable = actionsEditable && !saving;
                 return (
                   <View
                     key={key}
@@ -299,11 +419,11 @@ export default function SupplierRecipientsScreen() {
                           autoCapitalize="none"
                           autoComplete="email"
                           autoCorrect={false}
-                          editable={!saving}
+                          editable={rowEditable}
                           keyboardType="email-address"
                           onChangeText={(value) => setDraftEmails((current) => ({ ...current, [key]: value }))}
                           onSubmitEditing={() => {
-                            if (!unchanged && !saving) void save(entry);
+                            if (!unchanged && rowEditable) void save(entry);
                           }}
                           placeholder={copy.emailPlaceholder}
                           placeholderTextColor={colors.faint}
@@ -318,7 +438,7 @@ export default function SupplierRecipientsScreen() {
                           accessibilityHint={copy.saveHint}
                           variant="secondary"
                           fullWidth
-                          disabled={saving || unchanged}
+                          disabled={!rowEditable || unchanged}
                           onPress={() => void save(entry)}
                         />
                       </View>
@@ -345,194 +465,6 @@ function isValidRecipientEmail(value: string) {
   const normalized = value.trim();
   return normalized.length >= 3 && normalized.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
 }
-
-interface SupplierCopy {
-  title: string;
-  subtitle: string;
-  back: string;
-  noRestaurantTitle: string;
-  noRestaurantBody: string;
-  readOnlyTitle: string;
-  readOnlyBody: string;
-  loadErrorTitle: string;
-  loadErrorBody: string;
-  retry: string;
-  retryAccessibility: string;
-  invalidTitle: string;
-  invalidBody: (supplier: string) => string;
-  savedTitle: string;
-  savedBody: (supplier: string) => string;
-  saveErrorTitle: string;
-  saveErrorBody: (supplier: string) => string;
-  safetyTitle: string;
-  safetyBody: string;
-  sectionTitle: string;
-  sectionSubtitle: string;
-  configuredCount: (configured: string, total: string) => string;
-  configuredCountLoading: string;
-  configuredCountUnavailable: string;
-  emptyTitle: string;
-  emptyBody: string;
-  emptyLoadingTitle: string;
-  emptyLoadingBody: string;
-  emptyUnavailableTitle: string;
-  emptyUnavailableBody: string;
-  savedRecipient: string;
-  currentSupplier: string;
-  configured: string;
-  needsEmail: string;
-  emailLabel: string;
-  emailPlaceholder: string;
-  emailAccessibility: (supplier: string) => string;
-  emailHint: string;
-  save: string;
-  saving: string;
-  saveAccessibility: (supplier: string) => string;
-  saveHint: string;
-  readOnlyEmailAccessibility: (supplier: string, email: string | null) => string;
-  notConfigured: string;
-}
-
-const supplierCopy: Record<AppLocale, SupplierCopy> = {
-  en: {
-    title: "Supplier emails",
-    subtitle: "Recipients for approved restaurant orders.",
-    back: "Back to settings",
-    noRestaurantTitle: "No restaurant selected",
-    noRestaurantBody: "Open a restaurant workspace before managing supplier recipients.",
-    readOnlyTitle: "View-only supplier emails",
-    readOnlyBody: "Owners, admins, and managers can update recipients. Staff can review the saved addresses.",
-    loadErrorTitle: "Could not refresh supplier emails",
-    loadErrorBody: "Try loading this restaurant’s supplier directory again.",
-    retry: "Try again",
-    retryAccessibility: "Retry loading supplier emails",
-    invalidTitle: "Enter a valid email",
-    invalidBody: (supplier) => `Add a complete email address for ${supplier}.`,
-    savedTitle: "Supplier email saved",
-    savedBody: (supplier) => `${supplier} is ready for approved order emails.`,
-    saveErrorTitle: "Supplier email was not saved",
-    saveErrorBody: (supplier) => `Try saving the recipient for ${supplier} again.`,
-    safetyTitle: "Restaurant-scoped recipients",
-    safetyBody: "Mise uses these addresses only for manager-approved supplier orders in this restaurant.",
-    sectionTitle: "Supplier directory",
-    sectionSubtitle: "Current inventory suppliers and previously saved recipients.",
-    configuredCount: (configured, total) => `${configured} of ${total} ready`,
-    configuredCountLoading: "Loading suppliers…",
-    configuredCountUnavailable: "Directory unavailable",
-    emptyTitle: "No suppliers yet",
-    emptyBody: "Add inventory suppliers during setup before configuring order recipients.",
-    emptyLoadingTitle: "Loading suppliers…",
-    emptyLoadingBody: "Mise is refreshing the recipient directory for this restaurant.",
-    emptyUnavailableTitle: "Supplier directory unavailable",
-    emptyUnavailableBody: "Retry to refresh supplier recipients for this restaurant.",
-    savedRecipient: "Saved recipient",
-    currentSupplier: "Current supplier",
-    configured: "Ready",
-    needsEmail: "Needs email",
-    emailLabel: "Order email",
-    emailPlaceholder: "orders@supplier.com",
-    emailAccessibility: (supplier) => `Order email for ${supplier}`,
-    emailHint: "Enter the recipient used for approved supplier orders.",
-    save: "Save email",
-    saving: "Saving",
-    saveAccessibility: (supplier) => `Save order email for ${supplier}`,
-    saveHint: "Saves this recipient to the active restaurant only.",
-    readOnlyEmailAccessibility: (supplier, email) => `${supplier} order email: ${email ?? "not configured"}`,
-    notConfigured: "Not configured"
-  },
-  es: {
-    title: "Correos de proveedores",
-    subtitle: "Destinatarios de pedidos aprobados del restaurante.",
-    back: "Volver a Configuración",
-    noRestaurantTitle: "No hay restaurante seleccionado",
-    noRestaurantBody: "Abre un espacio de restaurante antes de administrar destinatarios.",
-    readOnlyTitle: "Correos de proveedores de solo lectura",
-    readOnlyBody: "Propietarios, administradores y gerentes pueden actualizar destinatarios. El personal puede revisar las direcciones guardadas.",
-    loadErrorTitle: "No se pudieron actualizar los correos",
-    loadErrorBody: "Intenta cargar nuevamente el directorio de proveedores de este restaurante.",
-    retry: "Reintentar",
-    retryAccessibility: "Volver a cargar los correos de proveedores",
-    invalidTitle: "Ingresa un correo válido",
-    invalidBody: (supplier) => `Agrega una dirección de correo completa para ${supplier}.`,
-    savedTitle: "Correo del proveedor guardado",
-    savedBody: (supplier) => `${supplier} está listo para recibir pedidos aprobados.`,
-    saveErrorTitle: "No se guardó el correo",
-    saveErrorBody: (supplier) => `Intenta guardar nuevamente el destinatario de ${supplier}.`,
-    safetyTitle: "Destinatarios por restaurante",
-    safetyBody: "Mise usa estas direcciones solo para pedidos aprobados por un gerente en este restaurante.",
-    sectionTitle: "Directorio de proveedores",
-    sectionSubtitle: "Proveedores actuales del inventario y destinatarios guardados anteriormente.",
-    configuredCount: (configured, total) => `${configured} de ${total} listos`,
-    configuredCountLoading: "Cargando proveedores…",
-    configuredCountUnavailable: "Directorio no disponible",
-    emptyTitle: "Aún no hay proveedores",
-    emptyBody: "Agrega proveedores de inventario durante la configuración antes de definir destinatarios.",
-    emptyLoadingTitle: "Cargando proveedores…",
-    emptyLoadingBody: "Mise está actualizando el directorio de destinatarios de este restaurante.",
-    emptyUnavailableTitle: "Directorio de proveedores no disponible",
-    emptyUnavailableBody: "Reintenta para actualizar los destinatarios de proveedores de este restaurante.",
-    savedRecipient: "Destinatario guardado",
-    currentSupplier: "Proveedor actual",
-    configured: "Listo",
-    needsEmail: "Falta correo",
-    emailLabel: "Correo para pedidos",
-    emailPlaceholder: "pedidos@proveedor.com",
-    emailAccessibility: (supplier) => `Correo para pedidos de ${supplier}`,
-    emailHint: "Ingresa el destinatario que recibirá los pedidos aprobados.",
-    save: "Guardar correo",
-    saving: "Guardando",
-    saveAccessibility: (supplier) => `Guardar correo para pedidos de ${supplier}`,
-    saveHint: "Guarda este destinatario únicamente en el restaurante activo.",
-    readOnlyEmailAccessibility: (supplier, email) => `Correo para pedidos de ${supplier}: ${email ?? "sin configurar"}`,
-    notConfigured: "Sin configurar"
-  },
-  "zh-Hans": {
-    title: "供应商邮箱",
-    subtitle: "用于餐厅已批准订单的收件人。",
-    back: "返回设置",
-    noRestaurantTitle: "未选择餐厅",
-    noRestaurantBody: "请先打开餐厅工作区，再管理供应商收件人。",
-    readOnlyTitle: "供应商邮箱仅供查看",
-    readOnlyBody: "所有者、管理员和经理可以更新收件人；员工可以查看已保存的地址。",
-    loadErrorTitle: "无法刷新供应商邮箱",
-    loadErrorBody: "请重新加载此餐厅的供应商目录。",
-    retry: "重试",
-    retryAccessibility: "重新加载供应商邮箱",
-    invalidTitle: "请输入有效邮箱",
-    invalidBody: (supplier) => `请为 ${supplier} 添加完整的邮箱地址。`,
-    savedTitle: "供应商邮箱已保存",
-    savedBody: (supplier) => `${supplier} 已可接收批准后的订单邮件。`,
-    saveErrorTitle: "未能保存供应商邮箱",
-    saveErrorBody: (supplier) => `请重新保存 ${supplier} 的收件人。`,
-    safetyTitle: "餐厅专属收件人",
-    safetyBody: "Mise 仅使用这些地址发送此餐厅经经理批准的供应商订单。",
-    sectionTitle: "供应商目录",
-    sectionSubtitle: "当前库存供应商和之前保存的收件人。",
-    configuredCount: (configured, total) => `${configured}/${total} 已就绪`,
-    configuredCountLoading: "正在加载供应商…",
-    configuredCountUnavailable: "目录不可用",
-    emptyTitle: "尚无供应商",
-    emptyBody: "请先在设置中添加库存供应商，再配置订单收件人。",
-    emptyLoadingTitle: "正在加载供应商…",
-    emptyLoadingBody: "Mise 正在刷新此餐厅的收件人目录。",
-    emptyUnavailableTitle: "供应商目录不可用",
-    emptyUnavailableBody: "请重试以刷新此餐厅的供应商收件人。",
-    savedRecipient: "已保存的收件人",
-    currentSupplier: "当前供应商",
-    configured: "已就绪",
-    needsEmail: "需要邮箱",
-    emailLabel: "订单邮箱",
-    emailPlaceholder: "orders@supplier.com",
-    emailAccessibility: (supplier) => `${supplier} 的订单邮箱`,
-    emailHint: "输入用于接收已批准供应商订单的收件人。",
-    save: "保存邮箱",
-    saving: "正在保存",
-    saveAccessibility: (supplier) => `保存 ${supplier} 的订单邮箱`,
-    saveHint: "仅将此收件人保存到当前餐厅。",
-    readOnlyEmailAccessibility: (supplier, email) => `${supplier} 的订单邮箱：${email ?? "未配置"}`,
-    notConfigured: "未配置"
-  }
-};
 
 const styles = StyleSheet.create({
   stack: {

@@ -195,7 +195,10 @@ test("supplier recipient route is stale-response guarded and staff read-only", (
   assert.match(screen, /editable=\{!saving\}/);
   assert.match(screen, /minHeight: 44/);
   assert.match(screen, /accessibilityLabel=\{copy\.saveAccessibility/);
-  assert.match(screen, /Record<AppLocale, SupplierCopy>/);
+  assert.match(screen, /function buildSupplierCopy\(/);
+  assert.doesNotMatch(screen, /const supplierCopy:\s*Record<AppLocale/);
+  assert.match(screen, /t\("settings\.suppliers\.title"\)/);
+  assert.match(screen, /presentSuppliersMutationNoticeCopy/);
   assert.match(screen, /resolveSuppliersHubLoadState/);
   assert.match(screen, /RetryNotice/);
   assert.match(screen, /onRetry=\{\(\) => void load\(true\)\}/);
