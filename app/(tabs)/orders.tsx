@@ -40,6 +40,11 @@ import {
   operatingLimits,
   RECOMMENDATION_DISMISS_REASON_MAX_CHARACTERS
 } from "../../services/miseValidation";
+import {
+  presentOrdersHubGmailCopy,
+  presentOrdersHubLaneEmptyCopy,
+  resolveOrdersHubLoadState
+} from "../../services/presentation/ordersHubPresentation";
 import { trackMiseEvent } from "../../services/telemetry";
 import type { PurchaseRecommendation, RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
 
@@ -79,6 +84,7 @@ export default function OrdersScreen() {
   const [messageRestaurantId, setMessageRestaurantId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
 
   const recommendationLocksRef = useRef(new Set<string>());
   const sendingLocksRef = useRef(new Set<string>());
@@ -140,6 +146,7 @@ export default function OrdersScreen() {
           return next;
         });
         loadedRestaurantRef.current = restaurantId;
+        setLoadedRestaurantId(restaurantId);
       } catch {
         if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
           setLoadError(t("orders.error.load"));
@@ -171,9 +178,11 @@ export default function OrdersScreen() {
     setMessageTone("neutral");
     setMessageRestaurantId(null);
     setLoadError(null);
+    setLoadedRestaurantId(null);
     setLane("drafts");
     setRecommendationQuery("");
     setOrderLaneQuery("");
+    setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
   useEffect(() => {
@@ -212,12 +221,17 @@ export default function OrdersScreen() {
     return () => clearTimeout(timeout);
   }, [undoAction?.id]);
 
-  const dataMatchesActiveRestaurant = loadedRestaurantRef.current === restaurant?.id;
-  const visibleRecommendations = dataMatchesActiveRestaurant ? recommendations : [];
-  const visibleOrders = dataMatchesActiveRestaurant ? orders : [];
-  const visibleEmailConnection = dataMatchesActiveRestaurant ? emailConnection : null;
+  const hubLoadState = resolveOrdersHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: Boolean(loadError)
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleRecommendations = hubReady ? recommendations : [];
+  const visibleOrders = hubReady ? orders : [];
+  const visibleEmailConnection = hubReady ? emailConnection : null;
   const visibleMessage = messageRestaurantId === restaurant?.id ? message : null;
-  const visibleUndoAction = dataMatchesActiveRestaurant && canManage ? undoAction : null;
+  const visibleUndoAction = hubReady && canManage ? undoAction : null;
 
   const showRecommendationSearch =
     visibleRecommendations.length >= PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD;
@@ -312,17 +326,18 @@ export default function OrdersScreen() {
     [completedOrders.length, draftOrders.length, formatNumber, sentOrders.length, t]
   );
   const gmailStatus = visibleEmailConnection?.status ?? "not_connected";
-  const gmailIsConnected = gmailStatus === "connected";
-  const gmailNeedsAttention = gmailStatus === "needs_reauth" || gmailStatus === "restricted";
+  const gmailIsConnected = hubReady && gmailStatus === "connected";
+  const gmailNeedsAttention =
+    hubReady && (gmailStatus === "needs_reauth" || gmailStatus === "restricted");
   const canSendOrders = canManage && gmailIsConnected;
-  const gmailTitle = usingLocalDemo
+  const readyGmailTitle = usingLocalDemo
     ? t("orders.gmail.demo.title")
     : gmailIsConnected
       ? t("orders.gmail.connected.title")
       : gmailStatus === "needs_reauth"
         ? t("orders.gmail.reauth.title")
         : t("orders.gmail.ready.title");
-  const gmailBody = usingLocalDemo
+  const readyGmailBody = usingLocalDemo
     ? t("orders.gmail.demo.body")
     : gmailIsConnected
       ? t("orders.gmail.connected.body", {
@@ -331,13 +346,68 @@ export default function OrdersScreen() {
       : canConnectGmail
         ? t("orders.gmail.connect.body")
         : t("orders.gmail.readOnly.body");
-  const gmailActionTitle = usingLocalDemo
+  const readyGmailActionTitle = usingLocalDemo
     ? t("orders.gmail.action.viewSetup")
     : gmailIsConnected
       ? t("orders.gmail.action.manage")
       : gmailStatus === "needs_reauth"
         ? t("orders.gmail.action.reconnect")
         : t("orders.gmail.action.link");
+  const gmailPresentation = presentOrdersHubGmailCopy(
+    hubLoadState,
+    {
+      title: readyGmailTitle,
+      body: readyGmailBody,
+      actionTitle: readyGmailActionTitle
+    },
+    {
+      loadingTitle: t("orders.gmail.loading.title"),
+      loadingBody: t("orders.gmail.loading.body"),
+      unavailableTitle: t("orders.gmail.unavailable.title"),
+      unavailableBody: t("orders.gmail.unavailable.body"),
+      loadingAction: t("common.loading"),
+      unavailableAction: t("orders.gmail.unavailable.action")
+    }
+  );
+  const draftsEmptyPresentation = presentOrdersHubLaneEmptyCopy(
+    hubLoadState,
+    {
+      title: t("orders.empty.drafts.title"),
+      body: t("orders.empty.drafts.body")
+    },
+    {
+      loadingTitle: t("orders.empty.drafts.loadingTitle"),
+      loadingBody: t("orders.empty.drafts.loadingBody"),
+      unavailableTitle: t("orders.empty.drafts.unavailableTitle"),
+      unavailableBody: t("orders.empty.drafts.unavailableBody")
+    }
+  );
+  const sentEmptyPresentation = presentOrdersHubLaneEmptyCopy(
+    hubLoadState,
+    {
+      title: t("orders.empty.sent.title"),
+      body: t("orders.empty.sent.body")
+    },
+    {
+      loadingTitle: t("orders.empty.sent.loadingTitle"),
+      loadingBody: t("orders.empty.sent.loadingBody"),
+      unavailableTitle: t("orders.empty.sent.unavailableTitle"),
+      unavailableBody: t("orders.empty.sent.unavailableBody")
+    }
+  );
+  const historyEmptyPresentation = presentOrdersHubLaneEmptyCopy(
+    hubLoadState,
+    {
+      title: t("orders.empty.history.title"),
+      body: t("orders.empty.history.body")
+    },
+    {
+      loadingTitle: t("orders.empty.history.loadingTitle"),
+      loadingBody: t("orders.empty.history.loadingBody"),
+      unavailableTitle: t("orders.empty.history.unavailableTitle"),
+      unavailableBody: t("orders.empty.history.unavailableBody")
+    }
+  );
 
   function setRecommendationBusy(
     recommendationId: string,
@@ -653,6 +723,7 @@ export default function OrdersScreen() {
             title={t("orders.retry.title")}
             message={loadError}
             accessibilityLabel={t("orders.retry.accessibility")}
+            retryLabel={t("common.retry")}
             onRetry={() => void load(true)}
           />
         ) : null}
@@ -686,23 +757,29 @@ export default function OrdersScreen() {
                   <View
                     style={[
                       styles.mailIcon,
-                      gmailIsConnected && styles.mailIconConnected,
-                      gmailNeedsAttention && styles.mailIconAttention
+                      gmailPresentation.ready && gmailIsConnected && styles.mailIconConnected,
+                      gmailPresentation.ready && gmailNeedsAttention && styles.mailIconAttention
                     ]}
                   >
                     <Mail
                       size={22}
-                      color={gmailIsConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
+                      color={
+                        gmailPresentation.ready && gmailIsConnected
+                          ? colors.success
+                          : gmailPresentation.ready && gmailNeedsAttention
+                            ? colors.caution
+                            : colors.muted
+                      }
                       strokeWidth={2}
                     />
                   </View>
                   <View style={styles.emailCopy}>
-                    <Text style={styles.emailTitle}>{gmailTitle}</Text>
-                    <Text style={styles.emailBody}>{gmailBody}</Text>
+                    <Text style={styles.emailTitle}>{gmailPresentation.title}</Text>
+                    <Text style={styles.emailBody}>{gmailPresentation.body}</Text>
                   </View>
-                  {canConnectGmail ? (
+                  {canConnectGmail && gmailPresentation.ready ? (
                     <Button
-                      title={gmailActionTitle}
+                      title={gmailPresentation.actionTitle}
                       variant="secondary"
                       accessibilityLabel={t("orders.gmail.settingsAccessibility")}
                       onPress={() => router.push("/settings/gmail" as never)}
@@ -713,9 +790,11 @@ export default function OrdersScreen() {
                 <View style={styles.emailSecurity}>
                   <LockKeyhole size={12} color={colors.muted} strokeWidth={1.8} />
                   <Text style={styles.emailSecurityText}>
-                    {usingLocalDemo
-                      ? t("orders.gmail.security.demo")
-                      : t("orders.gmail.security.live")}
+                    {!gmailPresentation.ready
+                      ? t("orders.gmail.security.pending")
+                      : usingLocalDemo
+                        ? t("orders.gmail.security.demo")
+                        : t("orders.gmail.security.live")}
                   </Text>
                 </View>
               </SectionSurface>
@@ -739,8 +818,8 @@ export default function OrdersScreen() {
               {draftOrders.length === 0 ? (
                 <EmptyState
                   compact
-                  title={t("orders.empty.drafts.title")}
-                  body={t("orders.empty.drafts.body")}
+                  title={draftsEmptyPresentation.title}
+                  body={draftsEmptyPresentation.body}
                 />
               ) : orderLaneSearchNoMatches ? (
                 <EmptyState
@@ -903,8 +982,8 @@ export default function OrdersScreen() {
               {sentOrders.length === 0 ? (
                 <EmptyState
                   compact
-                  title={t("orders.empty.sent.title")}
-                  body={t("orders.empty.sent.body")}
+                  title={sentEmptyPresentation.title}
+                  body={sentEmptyPresentation.body}
                 />
               ) : orderLaneSearchNoMatches ? (
                 <EmptyState
@@ -947,8 +1026,8 @@ export default function OrdersScreen() {
               {completedOrders.length === 0 ? (
                 <EmptyState
                   compact
-                  title={t("orders.empty.history.title")}
-                  body={t("orders.empty.history.body")}
+                  title={historyEmptyPresentation.title}
+                  body={historyEmptyPresentation.body}
                 />
               ) : orderLaneSearchNoMatches ? (
                 <EmptyState
