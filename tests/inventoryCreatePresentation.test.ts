@@ -134,10 +134,12 @@ test("inventory create screen uses localized StatusNotice and never renders raw 
 });
 
 test("setup surfaces localized StatusNotice for step and create failures", () => {
-  assert.match(setupScreen, /setup\.error\.noticeTitle/);
+  assert.match(setupScreen, /presentSetupCreateNoticeCopy/);
   assert.match(setupScreen, /StatusNotice/);
-  assert.match(setupScreen, /tone="danger"/);
+  assert.match(setupScreen, /tone=\{notice\.tone\}/);
+  assert.match(setupScreen, /setup\.error\.notice\.createFailedTitle/);
   assert.match(catalog, /"setup\.error\.noticeTitle":\s*"Setup needs attention"/);
   assert.match(catalog, /"setup\.error\.noticeTitle":\s*"La configuración necesita atención"/);
   assert.match(catalog, /"setup\.error\.noticeTitle":\s*"设置需要处理"/);
+  assert.match(catalog, /"setup\.error\.notice\.createFailedTitle":\s*"Could not finish setup"/);
 });

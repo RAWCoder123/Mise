@@ -17,7 +17,7 @@ import { Card } from "../../components/ui/Card";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ProduceCrateIllustration, SupplierBagIllustration } from "../../components/ui/MiseIllustrations";
 import { Screen } from "../../components/ui/Screen";
-import { StatusNotice } from "../../components/ui/StatusNotice";
+import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import {
   SetupAddButton,
   SetupBulletRow,
@@ -50,8 +50,15 @@ import {
   isDemoDatasetRestaurantName
 } from "../../services/demoData";
 import { saveRestaurantSetup, updateRestaurantProfile } from "../../services/miseService";
+import {
+  presentSetupCreateNoticeCopy,
+  presentSetupFormBusy,
+  presentSetupFormEditable,
+  resolveSetupCreateFailureReason,
+  type SetupCreateNoticeReason
+} from "../../services/presentation/setupCreatePresentation";
 import { canUpdateRestaurantProfile } from "../../services/tenantAccess";
-import { trackMiseEvent } from "../../services/telemetry";
+import { captureMiseError, trackMiseEvent } from "../../services/telemetry";
 import { operatingLimits } from "../../services/miseValidation";
 import type { PosProvider } from "../../types/mise";
 
@@ -60,6 +67,34 @@ const orderDays = ["Mon", "Thu", "Fri"];
 const stylesOptions = ["Conservative", "Balanced", "Lean"] as const;
 const stepOrder: SetupStepId[] = ["profile", "inventory", "recipes", "email"];
 type TranslateFunction = (key: MessageKey, values?: MessageValues) => string;
+
+type SetupNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
+
+const NOTICE_COPY_KEYS: Record<
+  SetupCreateNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  profileContinue: {
+    title: "setup.error.notice.profileContinueTitle",
+    message: "setup.error.profileContinue"
+  },
+  profileNavigate: {
+    title: "setup.error.notice.profileNavigateTitle",
+    message: "setup.error.profileNavigate"
+  },
+  validation: {
+    title: "setup.error.notice.validationTitle",
+    message: "setup.error.noticeTitle"
+  },
+  createFailed: {
+    title: "setup.error.notice.createFailedTitle",
+    message: "setup.error.create"
+  }
+};
 
 export default function SetupScreen() {
   const { formatList, formatNumber, parseNumber, t } = useLocale();
@@ -100,8 +135,34 @@ export default function SetupScreen() {
   const [readyName, setReadyName] = useState<string | null>(null);
   const [skippedRecipeIngredients, setSkippedRecipeIngredients] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<SetupNotice | null>(null);
   const seededSetupKeyRef = useRef<string | null>(null);
+  const busy = presentSetupFormBusy(loading, submissionLockRef.current);
+  const formEditable = presentSetupFormEditable(canConfigure, busy);
+
+  function clearNotice() {
+    if (notice) setNotice(null);
+  }
+
+  function noticeFor(
+    reason: SetupCreateNoticeReason,
+    messageOverride?: string
+  ): SetupNotice {
+    const localized = (Object.keys(NOTICE_COPY_KEYS) as SetupCreateNoticeReason[]).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(NOTICE_COPY_KEYS[key].title),
+          message: t(NOTICE_COPY_KEYS[key].message)
+        };
+        return acc;
+      },
+      {} as Record<SetupCreateNoticeReason, { title: string; message: string }>
+    );
+    if (reason === "validation" && messageOverride) {
+      localized.validation.message = messageOverride;
+    }
+    return presentSetupCreateNoticeCopy(reason, localized);
+  }
 
   useEffect(() => {
     if (!ready || submissionLockRef.current || readyName) return;
@@ -118,7 +179,7 @@ export default function SetupScreen() {
     setPosSalesCsvText("");
     setSelectedDays(["Mon", "Thu"]);
     setOrderingStyle("Balanced");
-    setError(null);
+    setNotice(null);
   }, [authUser?.id, isDemoSetup, ready, readyName, restaurant?.cuisine_type, restaurant?.id, restaurant?.name, starterDrafts]);
 
   const posSalesImport = useMemo(() => parseSetupPosSalesCsv(posSalesCsvText), [posSalesCsvText]);
@@ -148,7 +209,7 @@ export default function SetupScreen() {
   );
 
   async function openDemoKitchen() {
-    if (submissionLockRef.current || !canConfigure) return;
+    if (submissionLockRef.current || !formEditable) return;
     const validationError = validateSetupDrafts({
       restaurantName,
       cuisineType,
@@ -162,14 +223,14 @@ export default function SetupScreen() {
       t
     });
     if (validationError) {
-      setError(validationError.message);
+      setNotice(noticeFor("validation", validationError.message));
       setActiveStep(validationError.step);
       return;
     }
 
     submissionLockRef.current = true;
     setLoading(true);
-    setError(null);
+    clearNotice();
     try {
       const normalizedInventoryItems = normalizeInventoryDraftNumbers(inventoryItems, parseNumber);
       const normalizedRecipes = normalizeRecipeDraftNumbers(recipes, parseNumber);
@@ -236,8 +297,12 @@ export default function SetupScreen() {
         attachment_count: 0
       });
       setReadyName(restaurantName);
-    } catch {
-      setError(t("setup.error.create"));
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "setup_create",
+        operation: isDemoSetup ? "start_demo" : "create_restaurant"
+      });
+      setNotice(noticeFor(resolveSetupCreateFailureReason(error)));
     } finally {
       submissionLockRef.current = false;
       setLoading(false);
@@ -245,10 +310,10 @@ export default function SetupScreen() {
   }
 
   function nextStep() {
-    if (submissionLockRef.current || loading) return;
-    setError(null);
+    if (submissionLockRef.current || busy) return;
+    clearNotice();
     if (activeStep === "profile" && (!restaurantName.trim() || !cuisineType.trim())) {
-      setError(t("setup.error.profileContinue"));
+      setNotice(noticeFor("profileContinue"));
       return;
     }
     const currentIndex = stepOrder.indexOf(activeStep);
@@ -263,10 +328,10 @@ export default function SetupScreen() {
   function selectStep(step: SetupStepId) {
     if (step !== "profile" && (!restaurantName.trim() || !cuisineType.trim())) {
       setActiveStep("profile");
-      setError(t("setup.error.profileNavigate"));
+      setNotice(noticeFor("profileNavigate"));
       return;
     }
-    setError(null);
+    clearNotice();
     setActiveStep(step);
   }
 
@@ -554,8 +619,8 @@ export default function SetupScreen() {
           </>
         ) : null}
 
-        {error ? (
-          <StatusNotice tone="danger" title={t("setup.error.noticeTitle")} message={error} />
+        {notice ? (
+          <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
         ) : null}
 
         <View style={styles.footerPanel}>
