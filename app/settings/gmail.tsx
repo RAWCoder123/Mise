@@ -9,7 +9,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
-import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -19,6 +19,11 @@ import {
   fetchEmailConnectionState,
   isGmailIntegrationError
 } from "../../services/miseService";
+import {
+  presentGmailHubSenderCopy,
+  presentGmailHubStatusCopy,
+  resolveGmailHubLoadState
+} from "../../services/presentation/gmailHubPresentation";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import type { RestaurantEmailConnection } from "../../types/mise";
 
@@ -39,24 +44,30 @@ export default function GmailConnectionScreen() {
   const [connection, setConnection] = useState<RestaurantEmailConnection | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [busyAction, setBusyAction] = useState<GmailAction | null>(null);
   const [notice, setNotice] = useState<GmailNotice | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
   const actionLockRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   const canManageConnection = canDeleteRestaurantData(memberships, restaurant?.id);
 
-  const load = useCallback(async (showLoading = true) => {
+  const load = useCallback(async (showLoading = false) => {
     if (!restaurant) {
       setLoading(false);
+      setLoadError(false);
       return;
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    if (showLoading) setLoading(true);
+    if (showLoading || loadedRestaurantRef.current !== restaurantId) {
+      setLoading(true);
+    }
+    setLoadError(false);
     try {
       const nextConnection = await fetchEmailConnectionState(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -64,14 +75,11 @@ export default function GmailConnectionScreen() {
         throw new Error("Gmail connection did not match the active restaurant.");
       }
       setConnection(nextConnection);
+      loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
-    } catch (loadError) {
+    } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice({
-        tone: "danger",
-        title: t("settings.gmail.error.loadTitle"),
-        message: t("settings.gmail.error.loadBody")
-      });
+      setLoadError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
@@ -79,9 +87,11 @@ export default function GmailConnectionScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    loadedRestaurantRef.current = null;
     actionLockRef.current = false;
     setConnection(null);
     setLoadedRestaurantId(null);
+    setLoadError(false);
     setBusyAction(null);
     setNotice(null);
     setConfirmDisconnect(false);
@@ -90,8 +100,8 @@ export default function GmailConnectionScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load(loadedRestaurantId !== restaurant?.id);
-    }, [load, loadedRestaurantId, restaurant?.id])
+      void load(false);
+    }, [load])
   );
 
   useEffect(() => {
@@ -144,7 +154,9 @@ export default function GmailConnectionScreen() {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       if (result.status === "connected") {
         setConnection(result.connection);
+        loadedRestaurantRef.current = restaurantId;
         setLoadedRestaurantId(restaurantId);
+        setLoadError(false);
         setNotice({
           tone: "success",
           title: t("settings.gmail.demoConnected.title"),
@@ -216,12 +228,31 @@ export default function GmailConnectionScreen() {
     }
   }
 
-  const visibleConnection = loadedRestaurantId === restaurant?.id ? connection : null;
-  const status = visibleConnection?.status ?? "not_connected";
-  const statusPresentation = gmailStatusPresentation(status, t);
+  const hubLoadState = resolveGmailHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleConnection = hubReady ? connection : null;
+  const status = visibleConnection?.status ?? null;
+  const statusPresentation = presentGmailHubStatusCopy(hubLoadState, status, {
+    loading: t("settings.gmail.status.loading"),
+    unavailable: t("settings.gmail.status.unavailable"),
+    connected: t("settings.gmail.status.connected"),
+    needsReauth: t("settings.gmail.status.needsReauth"),
+    restricted: t("settings.gmail.status.restricted"),
+    notConnected: t("settings.gmail.status.notConnected")
+  });
+  const senderValue = presentGmailHubSenderCopy(hubLoadState, visibleConnection?.sender_email, {
+    loading: t("settings.gmail.detail.senderLoading"),
+    unavailable: t("settings.gmail.detail.senderUnavailable"),
+    notConnected: t("settings.gmail.status.notConnected")
+  });
   const connectLabel = status === "needs_reauth" || status === "restricted"
     ? t("settings.gmail.action.reconnect")
     : t("settings.gmail.action.connect");
+  const showConnectActions = hubReady && statusPresentation.metaReady;
 
   return (
     <Screen
@@ -256,7 +287,18 @@ export default function GmailConnectionScreen() {
             />
           ) : null}
 
-          {notice ? <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} /> : null}
+          {loadError ? (
+            <RetryNotice
+              title={t("settings.gmail.retry.title")}
+              message={t("settings.gmail.error.loadBody")}
+              onRetry={() => void load(true)}
+              retryLabel={t("common.retry")}
+              accessibilityLabel={t("settings.gmail.retry.accessibility")}
+            />
+          ) : null}
+          {!loadError && notice ? (
+            <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
+          ) : null}
 
           <Card>
             <View style={styles.connectionHeader}>
@@ -275,18 +317,20 @@ export default function GmailConnectionScreen() {
             </View>
 
             <View style={styles.detailRows}>
-              <ConnectionDetail label={t("settings.gmail.detail.sender")} value={visibleConnection?.sender_email ?? t("settings.gmail.status.notConnected")} />
+              <ConnectionDetail label={t("settings.gmail.detail.sender")} value={senderValue} />
               <ConnectionDetail
                 label={t("settings.gmail.detail.lastVerified")}
                 value={
-                  visibleConnection?.last_verified_at
-                    ? formatDate(visibleConnection.last_verified_at, { dateStyle: "medium", timeStyle: "short" })
-                    : t("settings.gmail.detail.notVerified")
+                  !showConnectActions
+                    ? statusPresentation.label
+                    : visibleConnection?.last_verified_at
+                      ? formatDate(visibleConnection.last_verified_at, { dateStyle: "medium", timeStyle: "short" })
+                      : t("settings.gmail.detail.notVerified")
                 }
               />
             </View>
 
-            {canManageConnection ? (
+            {canManageConnection && showConnectActions ? (
               <View style={styles.connectionActions}>
                 {status === "connected" ? (
                   confirmDisconnect ? (
@@ -373,17 +417,6 @@ function ConnectionDetail({ label, value }: { label: string; value: string }) {
       <Text style={styles.detailValue} numberOfLines={2}>{value}</Text>
     </View>
   );
-}
-
-function gmailStatusPresentation(status: RestaurantEmailConnection["status"], t: Translate): {
-  label: string;
-  badgeTone: "neutral" | "success" | "warning" | "danger";
-  iconTone: "brand" | "leaf" | "warning" | "danger";
-} {
-  if (status === "connected") return { label: t("settings.gmail.status.connected"), badgeTone: "success", iconTone: "leaf" };
-  if (status === "needs_reauth") return { label: t("settings.gmail.status.needsReauth"), badgeTone: "warning", iconTone: "warning" };
-  if (status === "restricted") return { label: t("settings.gmail.status.restricted"), badgeTone: "danger", iconTone: "danger" };
-  return { label: t("settings.gmail.status.notConnected"), badgeTone: "neutral", iconTone: "brand" };
 }
 
 function gmailErrorNotice(error: unknown, fallback: string, t: Translate): GmailNotice {
