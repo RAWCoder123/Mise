@@ -44,7 +44,11 @@ import {
   presentTeamHubEmptyCopy,
   presentTeamHubPendingInvitesCopy,
   presentTeamHubRosterCopy,
-  resolveTeamHubLoadState
+  presentTeamMutationActionsEditable,
+  presentTeamMutationBusy,
+  presentTeamMutationNoticeCopy,
+  resolveTeamHubLoadState,
+  type TeamMutationNoticeReason
 } from "../../services/presentation/teamHubPresentation";
 import {
   canManageTeamForRestaurant,
@@ -54,7 +58,69 @@ import {
 import { captureMiseError } from "../../services/telemetry";
 import type { CreatedRestaurantMemberInvite, RestaurantMemberInvite, RestaurantRole, RestaurantTeamMember } from "../../types/mise";
 
-type TeamNotice = { tone: StatusNoticeTone; key: MessageKey };
+type TeamNotice = { tone: StatusNoticeTone; title: string; message: string };
+
+const MUTATION_NOTICE_KEYS: Record<
+  TeamMutationNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  invalidEmail: {
+    title: "settings.team.notice.invalidEmailTitle",
+    message: "settings.team.notice.invalidEmail"
+  },
+  added: {
+    title: "settings.team.notice.addedTitle",
+    message: "settings.team.notice.added"
+  },
+  addError: {
+    title: "settings.team.notice.addErrorTitle",
+    message: "settings.team.notice.addError"
+  },
+  inviteCreated: {
+    title: "settings.team.notice.inviteCreatedTitle",
+    message: "settings.team.notice.inviteCreated"
+  },
+  inviteCreateError: {
+    title: "settings.team.notice.inviteCreateErrorTitle",
+    message: "settings.team.notice.inviteCreateError"
+  },
+  inviteCopied: {
+    title: "settings.team.notice.inviteCopiedTitle",
+    message: "settings.team.notice.inviteCopied"
+  },
+  inviteRevoked: {
+    title: "settings.team.notice.inviteRevokedTitle",
+    message: "settings.team.notice.inviteRevoked"
+  },
+  inviteRevokeError: {
+    title: "settings.team.notice.inviteRevokeErrorTitle",
+    message: "settings.team.notice.inviteRevokeError"
+  },
+  updated: {
+    title: "settings.team.notice.updatedTitle",
+    message: "settings.team.notice.updated"
+  },
+  disabled: {
+    title: "settings.team.notice.disabledTitle",
+    message: "settings.team.notice.disabled"
+  },
+  enabled: {
+    title: "settings.team.notice.enabledTitle",
+    message: "settings.team.notice.enabled"
+  },
+  updateError: {
+    title: "settings.team.notice.updateErrorTitle",
+    message: "settings.team.notice.updateError"
+  },
+  removed: {
+    title: "settings.team.notice.removedTitle",
+    message: "settings.team.notice.removed"
+  },
+  removeError: {
+    title: "settings.team.notice.removeErrorTitle",
+    message: "settings.team.notice.removeError"
+  }
+};
 
 export default function TeamSettingsScreen() {
   const navigation = useNavigation();
@@ -78,7 +144,24 @@ export default function TeamSettingsScreen() {
   const canView = canViewTeamForRestaurant(memberships, restaurant?.id);
   const canManage = canManageTeamForRestaurant(memberships, restaurant?.id);
   const canViewInvites = canViewMemberInvitesForRestaurant(memberships, restaurant?.id);
+  const mutationBusy = presentTeamMutationBusy(busyKey);
   const assignableRoles = useMemo(() => rolesAssignableBy(role), [role]);
+
+  function mutationNotice(reason: TeamMutationNoticeReason): TeamNotice {
+    const localized = (
+      Object.keys(MUTATION_NOTICE_KEYS) as TeamMutationNoticeReason[]
+    ).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(MUTATION_NOTICE_KEYS[key].title),
+          message: t(MUTATION_NOTICE_KEYS[key].message)
+        };
+        return acc;
+      },
+      {} as Record<TeamMutationNoticeReason, { title: string; message: string }>
+    );
+    return presentTeamMutationNoticeCopy(reason, localized);
+  }
 
   useEffect(() => {
     if (assignableRoles.length > 0 && !assignableRoles.includes(inviteRole)) {
@@ -146,10 +229,10 @@ export default function TeamSettingsScreen() {
   }
 
   async function addExistingMember() {
-    if (!restaurant || !canManage || busyKey) return;
+    if (!restaurant || !canManage || mutationBusy) return;
     const restaurantId = restaurant.id;
     if (!isValidMemberEmail(inviteEmail)) {
-      setNotice({ tone: "caution", key: "settings.team.notice.invalidEmail" });
+      setNotice(mutationNotice("invalidEmail"));
       return;
     }
     setBusyKey("add");
@@ -159,20 +242,20 @@ export default function TeamSettingsScreen() {
       setInviteEmail("");
       setCreatedInvite(null);
       await load();
-      setNotice({ tone: "success", key: "settings.team.notice.added" });
+      setNotice(mutationNotice("added"));
     } catch (inviteError) {
       captureMiseError(inviteError, { flow: "settings_team", operation: "add", restaurant_id: restaurantId });
-      setNotice({ tone: "danger", key: "settings.team.notice.addError" });
+      setNotice(mutationNotice("addError"));
     } finally {
       setBusyKey(null);
     }
   }
 
   async function createInviteLink() {
-    if (!restaurant || !canManage || busyKey) return;
+    if (!restaurant || !canManage || mutationBusy) return;
     const restaurantId = restaurant.id;
     if (!isValidMemberEmail(inviteEmail)) {
-      setNotice({ tone: "caution", key: "settings.team.notice.invalidEmail" });
+      setNotice(mutationNotice("invalidEmail"));
       return;
     }
     setBusyKey("create-invite");
@@ -182,14 +265,14 @@ export default function TeamSettingsScreen() {
       setCreatedInvite(invite);
       setInviteEmail("");
       await load();
-      setNotice({ tone: "success", key: "settings.team.notice.inviteCreated" });
+      setNotice(mutationNotice("inviteCreated"));
     } catch (inviteError) {
       captureMiseError(inviteError, {
         flow: "settings_team",
         operation: "create_invite",
         restaurant_id: restaurantId
       });
-      setNotice({ tone: "danger", key: "settings.team.notice.inviteCreateError" });
+      setNotice(mutationNotice("inviteCreateError"));
     } finally {
       setBusyKey(null);
     }
@@ -202,11 +285,11 @@ export default function TeamSettingsScreen() {
   async function copyCreatedInvite() {
     if (!createdInvite) return;
     await Clipboard.setStringAsync(inviteShareUrl(createdInvite.claim_token));
-    setNotice({ tone: "success", key: "settings.team.notice.inviteCopied" });
+    setNotice(mutationNotice("inviteCopied"));
   }
 
   async function revokeInvite(invite: RestaurantMemberInvite) {
-    if (!restaurant || !canManage || busyKey) return;
+    if (!restaurant || !canManage || mutationBusy) return;
     const restaurantId = restaurant.id;
     setBusyKey(`revoke:${invite.id}`);
     setNotice(null);
@@ -214,21 +297,21 @@ export default function TeamSettingsScreen() {
       await revokeRestaurantMemberInvite(restaurantId, invite.id);
       if (createdInvite?.id === invite.id) setCreatedInvite(null);
       await load();
-      setNotice({ tone: "success", key: "settings.team.notice.inviteRevoked" });
+      setNotice(mutationNotice("inviteRevoked"));
     } catch (revokeError) {
       captureMiseError(revokeError, {
         flow: "settings_team",
         operation: "revoke_invite",
         restaurant_id: restaurantId
       });
-      setNotice({ tone: "danger", key: "settings.team.notice.inviteRevokeError" });
+      setNotice(mutationNotice("inviteRevokeError"));
     } finally {
       setBusyKey(null);
     }
   }
 
   async function changeRole(member: RestaurantTeamMember, nextRole: RestaurantRole) {
-    if (!restaurant || !canManage || busyKey || nextRole === member.role) return;
+    if (!restaurant || !canManage || mutationBusy || nextRole === member.role) return;
     if (!canActorChangeMemberRole(role, member.role, nextRole)) return;
     const restaurantId = restaurant.id;
     setBusyKey(`role:${member.user_id}`);
@@ -236,17 +319,17 @@ export default function TeamSettingsScreen() {
     try {
       await updateRestaurantMember(restaurantId, member.user_id, { role: nextRole });
       await load();
-      setNotice({ tone: "success", key: "settings.team.notice.updated" });
+      setNotice(mutationNotice("updated"));
     } catch (updateError) {
       captureMiseError(updateError, { flow: "settings_team", operation: "update_role", restaurant_id: restaurantId });
-      setNotice({ tone: "danger", key: "settings.team.notice.updateError" });
+      setNotice(mutationNotice("updateError"));
     } finally {
       setBusyKey(null);
     }
   }
 
   async function toggleDisabled(member: RestaurantTeamMember) {
-    if (!restaurant || !canManage || busyKey) return;
+    if (!restaurant || !canManage || mutationBusy) return;
     const nextStatus = member.status === "disabled" ? "active" : "disabled";
     if (!canActorChangeMemberStatus(role, member.role, nextStatus)) return;
     const restaurantId = restaurant.id;
@@ -255,24 +338,21 @@ export default function TeamSettingsScreen() {
     try {
       await updateRestaurantMember(restaurantId, member.user_id, { status: nextStatus });
       await load();
-      setNotice({
-        tone: "success",
-        key: nextStatus === "disabled" ? "settings.team.notice.disabled" : "settings.team.notice.enabled"
-      });
+      setNotice(mutationNotice(nextStatus === "disabled" ? "disabled" : "enabled"));
     } catch (updateError) {
       captureMiseError(updateError, {
         flow: "settings_team",
         operation: "update_status",
         restaurant_id: restaurantId
       });
-      setNotice({ tone: "danger", key: "settings.team.notice.updateError" });
+      setNotice(mutationNotice("updateError"));
     } finally {
       setBusyKey(null);
     }
   }
 
   async function removeMember(member: RestaurantTeamMember) {
-    if (!restaurant || !canManage || busyKey) return;
+    if (!restaurant || !canManage || mutationBusy) return;
     if (!canActorRemoveMember(role, member.role)) return;
     const restaurantId = restaurant.id;
     setBusyKey(`remove:${member.user_id}`);
@@ -280,10 +360,10 @@ export default function TeamSettingsScreen() {
     try {
       await removeRestaurantMember(restaurantId, member.user_id);
       await load();
-      setNotice({ tone: "success", key: "settings.team.notice.removed" });
+      setNotice(mutationNotice("removed"));
     } catch (removeError) {
       captureMiseError(removeError, { flow: "settings_team", operation: "remove", restaurant_id: restaurantId });
-      setNotice({ tone: "danger", key: "settings.team.notice.removeError" });
+      setNotice(mutationNotice("removeError"));
     } finally {
       setBusyKey(null);
     }
@@ -295,6 +375,7 @@ export default function TeamSettingsScreen() {
     loadError
   });
   const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentTeamMutationActionsEditable(canManage, mutationBusy, hubReady);
   const visibleMembers = hubReady ? members : [];
   const pendingInvites = hubReady
     ? invites.filter((invite) => isInvitePending(invite.status, invite.expires_at))
@@ -351,7 +432,9 @@ export default function TeamSettingsScreen() {
             accessibilityLabel={t("settings.team.retry.accessibility")}
           />
         ) : null}
-        {!loadError && notice ? <StatusNotice title={t(notice.key)} tone={notice.tone} /> : null}
+        {!loadError && notice ? (
+          <StatusNotice title={notice.title} message={notice.message} tone={notice.tone} />
+        ) : null}
 
         {!canView ? (
           <EmptyState
@@ -445,7 +528,7 @@ export default function TeamSettingsScreen() {
                                   )}
                                   variant="secondary"
                                   onPress={() => void toggleDisabled(member)}
-                                  disabled={Boolean(busyKey)}
+                                  disabled={!actionsEditable}
                                 />
                               ) : null}
                               {canRemove ? (
@@ -453,7 +536,7 @@ export default function TeamSettingsScreen() {
                                   title={t("settings.team.action.remove")}
                                   variant="secondary"
                                   onPress={() => void removeMember(member)}
-                                  disabled={Boolean(busyKey)}
+                                  disabled={!actionsEditable}
                                 />
                               ) : null}
                             </View>
@@ -513,14 +596,14 @@ export default function TeamSettingsScreen() {
                     )}
                     icon={<Link2 size={18} color={colors.surface} strokeWidth={2.25} />}
                     onPress={() => void createInviteLink()}
-                    disabled={Boolean(busyKey) || assignableRoles.length === 0}
+                    disabled={!actionsEditable || assignableRoles.length === 0}
                   />
                   <Button
                     title={t(busyKey === "add" ? "settings.team.adding" : "settings.team.add")}
                     icon={<UserPlus size={18} color={colors.text} strokeWidth={2.25} />}
                     variant="secondary"
                     onPress={() => void addExistingMember()}
-                    disabled={Boolean(busyKey) || assignableRoles.length === 0}
+                    disabled={!actionsEditable || assignableRoles.length === 0}
                   />
                 </View>
                 <Text style={styles.helper}>{t("settings.team.inviteHelper")}</Text>
@@ -578,7 +661,7 @@ export default function TeamSettingsScreen() {
                             title={t("settings.team.action.revokeInvite")}
                             variant="secondary"
                             onPress={() => void revokeInvite(invite)}
-                            disabled={Boolean(busyKey)}
+                            disabled={!actionsEditable}
                           />
                         ) : null}
                       </View>

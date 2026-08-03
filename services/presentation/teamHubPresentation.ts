@@ -73,3 +73,51 @@ export function presentTeamHubPendingInvitesCopy(
     emptyHelper: input.pendingCount === 0 ? copy.empty : null
   };
 }
+
+export type TeamMutationNoticeReason =
+  | "invalidEmail"
+  | "added"
+  | "addError"
+  | "inviteCreated"
+  | "inviteCreateError"
+  | "inviteCopied"
+  | "inviteRevoked"
+  | "inviteRevokeError"
+  | "updated"
+  | "disabled"
+  | "enabled"
+  | "updateError"
+  | "removed"
+  | "removeError";
+
+export function presentTeamMutationBusy(busyKey: string | null): boolean {
+  return busyKey !== null;
+}
+
+export function presentTeamMutationActionsEditable(
+  canManage: boolean,
+  busy: boolean,
+  hubReady: boolean
+): boolean {
+  return canManage && !busy && hubReady;
+}
+
+export function presentTeamMutationNoticeCopy(
+  reason: TeamMutationNoticeReason,
+  copy: Record<TeamMutationNoticeReason, { title: string; message: string }>
+): { tone: "danger" | "success" | "caution"; title: string; message: string } {
+  const selected = copy[reason] ?? copy.addError;
+  if (reason === "invalidEmail") {
+    return { tone: "caution", title: selected.title, message: selected.message };
+  }
+  if (
+    reason === "addError"
+    || reason === "inviteCreateError"
+    || reason === "inviteRevokeError"
+    || reason === "updateError"
+    || reason === "removeError"
+  ) {
+    return { tone: "danger", title: selected.title, message: selected.message };
+  }
+  return { tone: "success", title: selected.title, message: selected.message };
+}
