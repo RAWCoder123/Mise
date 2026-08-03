@@ -16,10 +16,10 @@ Branch: `cursor/mise-product-inspection-bd08` (FF from `c21c` + this change)
 
 ## Proof
 
-- `npm run typecheck`
-- `npm test`
-- `npm run security:static`
-- `npm run security:backend`
-- `npm run design:static`
-- `npm run qa:routes`
+- `npm run typecheck` passed
+- `npm test` — 422 passed / 0 failed
+- `npm run security:static` passed
+- `npm run security:backend` passed
+- `npm run design:static` passed
+- `npm run qa:routes` passed (includes `/settings/suppliers`)
 - Docker `supabase:test` still unavailable in this environment
