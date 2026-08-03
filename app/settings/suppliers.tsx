@@ -10,7 +10,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
-import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -23,7 +23,13 @@ import {
   supplierRecipientDirectoryKey,
   type SupplierRecipientDirectoryEntry
 } from "../../services/domain/supplierRecipients";
+import {
+  presentSuppliersHubConfiguredCount,
+  presentSuppliersHubEmptyCopy,
+  resolveSuppliersHubLoadState
+} from "../../services/presentation/suppliersHubPresentation";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+import { captureMiseError } from "../../services/telemetry";
 
 interface SupplierNotice {
   tone: StatusNoticeTone;
@@ -44,20 +50,24 @@ export default function SupplierRecipientsScreen() {
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState<SupplierNotice | null>(null);
   const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   const actionLocksRef = useRef(new Set<string>());
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading = false) => {
     if (!restaurant) {
       setLoading(false);
+      setLoadError(false);
       return;
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
+    if (showLoading || loadedRestaurantRef.current !== restaurantId) {
+      setLoading(true);
+    }
     setLoadError(false);
     try {
       const nextEntries = await fetchSupplierRecipientDirectory(restaurantId);
@@ -69,9 +79,15 @@ export default function SupplierRecipientsScreen() {
       setDraftEmails(Object.fromEntries(
         nextEntries.map((entry) => [supplierRecipientDirectoryKey(entry.supplierName), entry.email ?? ""])
       ));
+      loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
-    } catch {
+    } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "settings_suppliers",
+        operation: "load",
+        restaurant_id: restaurantId
+      });
       setLoadError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
@@ -82,6 +98,7 @@ export default function SupplierRecipientsScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    loadedRestaurantRef.current = null;
     actionLocksRef.current.clear();
     setEntries([]);
     setDraftEmails({});
@@ -94,7 +111,7 @@ export default function SupplierRecipientsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(false);
     }, [load])
   );
 
@@ -161,11 +178,36 @@ export default function SupplierRecipientsScreen() {
     }
   }
 
-  const visibleEntries = loadedRestaurantId === restaurant?.id ? entries : [];
+  const hubLoadState = resolveSuppliersHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleEntries = hubReady ? entries : [];
   const configuredCount = useMemo(
     () => visibleEntries.filter((entry) => Boolean(entry.email)).length,
     [visibleEntries]
   );
+  const configuredCountLabel = presentSuppliersHubConfiguredCount(
+    hubLoadState,
+    configuredCount,
+    visibleEntries.length,
+    {
+      loading: copy.configuredCountLoading,
+      unavailable: copy.configuredCountUnavailable,
+      configuredCount: copy.configuredCount
+    },
+    formatNumber
+  );
+  const emptyPresentation = presentSuppliersHubEmptyCopy(hubLoadState, {
+    loadingTitle: copy.emptyLoadingTitle,
+    loadingBody: copy.emptyLoadingBody,
+    unavailableTitle: copy.emptyUnavailableTitle,
+    unavailableBody: copy.emptyUnavailableBody,
+    emptyTitle: copy.emptyTitle,
+    emptyBody: copy.emptyBody
+  });
 
   return (
     <Screen
@@ -188,17 +230,18 @@ export default function SupplierRecipientsScreen() {
           ) : null}
 
           {loadError ? (
-            <StatusNotice
-              tone="danger"
+            <RetryNotice
               title={copy.loadErrorTitle}
               message={copy.loadErrorBody}
-              actionLabel={copy.retry}
-              actionAccessibilityLabel={copy.retryAccessibility}
-              onAction={() => void load()}
+              retryLabel={copy.retry}
+              accessibilityLabel={copy.retryAccessibility}
+              onRetry={() => void load(true)}
             />
           ) : null}
 
-          {notice ? <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} /> : null}
+          {!loadError && notice ? (
+            <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
+          ) : null}
 
           <StatusNotice
             icon={<ShieldCheck size={20} color={colors.text} strokeWidth={2.25} />}
@@ -209,12 +252,12 @@ export default function SupplierRecipientsScreen() {
           <SectionSurface
             title={copy.sectionTitle}
             subtitle={copy.sectionSubtitle}
-            action={copy.configuredCount(formatNumber(configuredCount), formatNumber(visibleEntries.length))}
+            action={configuredCountLabel}
             padding="none"
           >
-            {visibleEntries.length === 0 ? (
+            {hubLoadState !== "ready" || visibleEntries.length === 0 ? (
               <View style={styles.emptyWrap}>
-                <EmptyState compact title={copy.emptyTitle} body={copy.emptyBody} />
+                <EmptyState compact title={emptyPresentation.title} body={emptyPresentation.body} />
               </View>
             ) : (
               visibleEntries.map((entry, index) => {
@@ -326,8 +369,14 @@ interface SupplierCopy {
   sectionTitle: string;
   sectionSubtitle: string;
   configuredCount: (configured: string, total: string) => string;
+  configuredCountLoading: string;
+  configuredCountUnavailable: string;
   emptyTitle: string;
   emptyBody: string;
+  emptyLoadingTitle: string;
+  emptyLoadingBody: string;
+  emptyUnavailableTitle: string;
+  emptyUnavailableBody: string;
   savedRecipient: string;
   currentSupplier: string;
   configured: string;
@@ -353,7 +402,7 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     noRestaurantBody: "Open a restaurant workspace before managing supplier recipients.",
     readOnlyTitle: "View-only supplier emails",
     readOnlyBody: "Owners, admins, and managers can update recipients. Staff can review the saved addresses.",
-    loadErrorTitle: "Supplier emails could not refresh",
+    loadErrorTitle: "Could not refresh supplier emails",
     loadErrorBody: "Try loading this restaurant’s supplier directory again.",
     retry: "Try again",
     retryAccessibility: "Retry loading supplier emails",
@@ -368,8 +417,14 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     sectionTitle: "Supplier directory",
     sectionSubtitle: "Current inventory suppliers and previously saved recipients.",
     configuredCount: (configured, total) => `${configured} of ${total} ready`,
+    configuredCountLoading: "Loading suppliers…",
+    configuredCountUnavailable: "Directory unavailable",
     emptyTitle: "No suppliers yet",
     emptyBody: "Add inventory suppliers during setup before configuring order recipients.",
+    emptyLoadingTitle: "Loading suppliers…",
+    emptyLoadingBody: "Mise is refreshing the recipient directory for this restaurant.",
+    emptyUnavailableTitle: "Supplier directory unavailable",
+    emptyUnavailableBody: "Retry to refresh supplier recipients for this restaurant.",
     savedRecipient: "Saved recipient",
     currentSupplier: "Current supplier",
     configured: "Ready",
@@ -408,8 +463,14 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     sectionTitle: "Directorio de proveedores",
     sectionSubtitle: "Proveedores actuales del inventario y destinatarios guardados anteriormente.",
     configuredCount: (configured, total) => `${configured} de ${total} listos`,
+    configuredCountLoading: "Cargando proveedores…",
+    configuredCountUnavailable: "Directorio no disponible",
     emptyTitle: "Aún no hay proveedores",
     emptyBody: "Agrega proveedores de inventario durante la configuración antes de definir destinatarios.",
+    emptyLoadingTitle: "Cargando proveedores…",
+    emptyLoadingBody: "Mise está actualizando el directorio de destinatarios de este restaurante.",
+    emptyUnavailableTitle: "Directorio de proveedores no disponible",
+    emptyUnavailableBody: "Reintenta para actualizar los destinatarios de proveedores de este restaurante.",
     savedRecipient: "Destinatario guardado",
     currentSupplier: "Proveedor actual",
     configured: "Listo",
@@ -448,8 +509,14 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     sectionTitle: "供应商目录",
     sectionSubtitle: "当前库存供应商和之前保存的收件人。",
     configuredCount: (configured, total) => `${configured}/${total} 已就绪`,
+    configuredCountLoading: "正在加载供应商…",
+    configuredCountUnavailable: "目录不可用",
     emptyTitle: "尚无供应商",
     emptyBody: "请先在设置中添加库存供应商，再配置订单收件人。",
+    emptyLoadingTitle: "正在加载供应商…",
+    emptyLoadingBody: "Mise 正在刷新此餐厅的收件人目录。",
+    emptyUnavailableTitle: "供应商目录不可用",
+    emptyUnavailableBody: "请重试以刷新此餐厅的供应商收件人。",
     savedRecipient: "已保存的收件人",
     currentSupplier: "当前供应商",
     configured: "已就绪",

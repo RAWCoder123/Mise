@@ -17,6 +17,7 @@ test("operational screens reject late requests and render only active-restaurant
     pos: source("app/settings/pos.tsx"),
     team: source("app/settings/team.tsx"),
     gmail: source("app/settings/gmail.tsx"),
+    suppliers: source("app/settings/suppliers.tsx"),
     inventoryDetail: source("app/inventory/[id].tsx"),
     inventoryCount: source("app/inventory/count.tsx"),
     orderDetail: source("app/orders/[id].tsx")
@@ -74,6 +75,12 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
   assert.match(
     source("services/presentation/gmailHubPresentation.ts"),
+    /loadedRestaurantId\s*===\s*input\.restaurantId/
+  );
+  assert.match(screens.suppliers, /resolveSuppliersHubLoadState/);
+  assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);
+  assert.match(
+    source("services/presentation/suppliersHubPresentation.ts"),
     /loadedRestaurantId\s*===\s*input\.restaurantId/
   );
   assert.match(screens.settings, /presentSettingsHubPosCopy/);
