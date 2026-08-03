@@ -51,3 +51,44 @@ export function presentRecipesHubSectionAction(
   if (state === "error") return copy.unavailable;
   return readyAction;
 }
+
+export type RecipesMutationNoticeReason =
+  | "readOnly"
+  | "quantity"
+  | "menuItem"
+  | "inventoryItem"
+  | "wrongRestaurant"
+  | "saveFailed"
+  | "addFailed"
+  | "unlinkFailed"
+  | "saved"
+  | "linked"
+  | "unlinked";
+
+export function presentRecipesMutationFormBusy(
+  savingMappingId: string | null,
+  savingNewLink: boolean
+): boolean {
+  return savingMappingId !== null || savingNewLink;
+}
+
+export function presentRecipesMutationFormEditable(
+  canManage: boolean,
+  busy: boolean
+): boolean {
+  return canManage && !busy;
+}
+
+export function presentRecipesMutationNoticeCopy(
+  reason: RecipesMutationNoticeReason,
+  copy: Record<RecipesMutationNoticeReason, { title: string; message: string }>
+): { tone: "danger" | "success" | "caution"; title: string; message: string } {
+  const selected = copy[reason] ?? copy.saveFailed;
+  if (reason === "saved" || reason === "linked" || reason === "unlinked") {
+    return { tone: "success", title: selected.title, message: selected.message };
+  }
+  if (reason === "readOnly") {
+    return { tone: "caution", title: selected.title, message: selected.message };
+  }
+  return { tone: "danger", title: selected.title, message: selected.message };
+}

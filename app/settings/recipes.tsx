@@ -14,10 +14,11 @@ import { InsightChartIllustration } from "../../components/ui/MiseIllustrations"
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
-import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import type { MessageKey } from "../../i18n/catalog";
 import {
   filterMenuItemsForPicker,
   filterRecipeBaselineItemsBySearch,
@@ -35,11 +36,72 @@ import {
 import {
   presentRecipesHubEmptyCopy,
   presentRecipesHubSectionAction,
-  resolveRecipesHubLoadState
+  presentRecipesMutationFormBusy,
+  presentRecipesMutationFormEditable,
+  presentRecipesMutationNoticeCopy,
+  resolveRecipesHubLoadState,
+  type RecipesMutationNoticeReason
 } from "../../services/presentation/recipesHubPresentation";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+import { captureMiseError } from "../../services/telemetry";
 import { requireRecipeBaselineQuantity } from "../../services/miseValidation";
 import type { InventoryItem, RecipeBaselineItem, RecipeBaselineSummary } from "../../types/mise";
+
+type RecipesNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
+
+const MUTATION_NOTICE_KEYS: Record<
+  RecipesMutationNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  readOnly: {
+    title: "recipes.notice.readOnlyTitle",
+    message: "recipes.error.readOnly"
+  },
+  quantity: {
+    title: "recipes.notice.quantityTitle",
+    message: "recipes.error.quantity"
+  },
+  menuItem: {
+    title: "recipes.notice.menuItemTitle",
+    message: "recipes.error.menuItem"
+  },
+  inventoryItem: {
+    title: "recipes.notice.inventoryItemTitle",
+    message: "recipes.error.inventoryItem"
+  },
+  wrongRestaurant: {
+    title: "recipes.notice.wrongRestaurantTitle",
+    message: "recipes.error.wrongRestaurant"
+  },
+  saveFailed: {
+    title: "recipes.notice.saveFailedTitle",
+    message: "recipes.error.save"
+  },
+  addFailed: {
+    title: "recipes.notice.addFailedTitle",
+    message: "recipes.error.add"
+  },
+  unlinkFailed: {
+    title: "recipes.notice.unlinkFailedTitle",
+    message: "recipes.error.unlink"
+  },
+  saved: {
+    title: "recipes.notice.savedTitle",
+    message: "recipes.notice.saved"
+  },
+  linked: {
+    title: "recipes.notice.linkedTitle",
+    message: "recipes.notice.linked"
+  },
+  unlinked: {
+    title: "recipes.notice.unlinkedTitle",
+    message: "recipes.notice.unlinked"
+  }
+};
 
 export default function RecipeBaselinesScreen() {
   const navigation = useNavigation();
@@ -60,14 +122,36 @@ export default function RecipeBaselinesScreen() {
   const [savingMappingId, setSavingMappingId] = useState<string | null>(null);
   const [savingNewLink, setSavingNewLink] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<RecipesNotice | null>(null);
   const [mappedDishQuery, setMappedDishQuery] = useState("");
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const loadedRestaurantRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
+
+  function mutationNotice(
+    reason: RecipesMutationNoticeReason,
+    params?: Record<string, string>
+  ): RecipesNotice {
+    const localized = (
+      Object.keys(MUTATION_NOTICE_KEYS) as RecipesMutationNoticeReason[]
+    ).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(MUTATION_NOTICE_KEYS[key].title),
+          message: t(MUTATION_NOTICE_KEYS[key].message, params)
+        };
+        return acc;
+      },
+      {} as Record<RecipesMutationNoticeReason, { title: string; message: string }>
+    );
+    return presentRecipesMutationNoticeCopy(reason, localized);
+  }
+
+  function clearNotice() {
+    if (notice) setNotice(null);
+  }
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -82,7 +166,6 @@ export default function RecipeBaselinesScreen() {
     setSavingMappingId(null);
     setSavingNewLink(false);
     setLoadError(false);
-    setError(null);
     setNotice(null);
     setMappedDishQuery("");
     setLoading(Boolean(restaurant));
@@ -104,7 +187,6 @@ export default function RecipeBaselinesScreen() {
       setLoading(true);
     }
     setLoadError(false);
-    setError(null);
     try {
       const [nextSummary, nextInventoryItems] = await Promise.all([
         fetchRecipeBaselineSummary(restaurantId, { itemLimit: null }),
@@ -115,14 +197,18 @@ export default function RecipeBaselinesScreen() {
       setInventoryItems(nextInventoryItems);
       loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
-    } catch {
+    } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "settings_recipes",
+        operation: "load",
+        restaurant_id: restaurantId
+      });
       setLoadError(true);
-      setError(t("recipes.error.load"));
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
-  }, [restaurant?.id, t]);
+  }, [restaurant?.id]);
 
   const hubLoadState = resolveRecipesHubLoadState({
     restaurantId: restaurant?.id,
@@ -133,6 +219,8 @@ export default function RecipeBaselinesScreen() {
   const visibleSummary = hubReady ? summary : null;
   const visibleInventoryItems = hubReady ? inventoryItems : [];
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
+  const mutationBusy = presentRecipesMutationFormBusy(savingMappingId, savingNewLink);
+  const formEditable = presentRecipesMutationFormEditable(canManage, mutationBusy);
   const mappedDishes = visibleSummary?.items;
   const showMappedDishSearch = (mappedDishes?.length ?? 0) >= RECIPE_BASELINE_SEARCH_THRESHOLD;
   const filteredMappedDishes = useMemo(() => {
@@ -183,12 +271,14 @@ export default function RecipeBaselinesScreen() {
   );
 
   function handleInventoryItemNameChange(value: string) {
+    clearNotice();
     setNewInventoryItemName(value);
     const resolved = resolveInventoryItemForRecipeLink(visibleInventoryItems, value, null);
     setSelectedInventoryItemId(resolved?.id ?? null);
   }
 
   function handleInventoryItemSelect(item: InventoryItem) {
+    clearNotice();
     setNewInventoryItemName(item.item_name);
     setSelectedInventoryItemId(item.id);
   }
@@ -205,9 +295,9 @@ export default function RecipeBaselinesScreen() {
   }
 
   async function saveIngredient(mappingId: string, quantity: string) {
-    if (!restaurant) return;
+    if (!restaurant || mutationBusy) return;
     if (!canManage) {
-      setError(t("recipes.error.readOnly"));
+      setNotice(mutationNotice("readOnly"));
       return;
     }
     const restaurantId = restaurant.id;
@@ -215,30 +305,33 @@ export default function RecipeBaselinesScreen() {
     try {
       parsed = requireRecipeBaselineQuantity(parseNumber(quantity));
     } catch {
-      setError(t("recipes.error.quantity"));
+      setNotice(mutationNotice("quantity"));
       return;
     }
     setSavingMappingId(mappingId);
-    setError(null);
     setNotice(null);
     try {
       await updateRecipeBaselineIngredient(restaurantId, mappingId, parsed);
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice(t("recipes.notice.saved"));
+      setNotice(mutationNotice("saved"));
       await load(false);
-    } catch {
-      if (activeRestaurantIdRef.current === restaurantId) {
-        setError(t("recipes.error.save"));
-      }
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "settings_recipes",
+        operation: "save_baseline",
+        restaurant_id: restaurantId
+      });
+      setNotice(mutationNotice("saveFailed"));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSavingMappingId(null);
     }
   }
 
   function confirmUnlinkIngredient(mappingId: string, ingredientName: string, dishName: string) {
-    if (!restaurant) return;
+    if (!restaurant || mutationBusy) return;
     if (!canManage) {
-      setError(t("recipes.error.readOnly"));
+      setNotice(mutationNotice("readOnly"));
       return;
     }
     Alert.alert(
@@ -258,60 +351,62 @@ export default function RecipeBaselinesScreen() {
   }
 
   async function unlinkIngredient(mappingId: string, ingredientName: string, dishName: string) {
-    if (!restaurant) return;
+    if (!restaurant || mutationBusy) return;
     if (!canManage) {
-      setError(t("recipes.error.readOnly"));
+      setNotice(mutationNotice("readOnly"));
       return;
     }
     const restaurantId = restaurant.id;
     setSavingMappingId(mappingId);
-    setError(null);
     setNotice(null);
     try {
       await deleteRecipeBaselineIngredient(restaurantId, mappingId);
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice(t("recipes.notice.unlinked", { ingredient: ingredientName, dish: dishName }));
+      setNotice(mutationNotice("unlinked", { ingredient: ingredientName, dish: dishName }));
       await load(false);
-    } catch {
-      if (activeRestaurantIdRef.current === restaurantId) {
-        setError(t("recipes.error.unlink"));
-      }
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "settings_recipes",
+        operation: "unlink_baseline",
+        restaurant_id: restaurantId
+      });
+      setNotice(mutationNotice("unlinkFailed"));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSavingMappingId(null);
     }
   }
 
   async function addBaselineLink() {
-    if (!restaurant) return;
+    if (!restaurant || mutationBusy) return;
     if (!canManage) {
-      setError(t("recipes.error.readOnly"));
+      setNotice(mutationNotice("readOnly"));
       return;
     }
     const restaurantId = restaurant.id;
     const menuItemName = newMenuItemName.trim();
 
     if (!menuItemName) {
-      setError(t("recipes.error.menuItem"));
+      setNotice(mutationNotice("menuItem"));
       return;
     }
     if (!selectedInventoryItem) {
-      setError(t("recipes.error.inventoryItem"));
+      setNotice(mutationNotice("inventoryItem"));
       return;
     }
     if (selectedInventoryItem.restaurant_id !== restaurantId) {
-      setError(t("recipes.error.wrongRestaurant"));
+      setNotice(mutationNotice("wrongRestaurant"));
       return;
     }
     let quantity: number;
     try {
       quantity = requireRecipeBaselineQuantity(parseNumber(newQuantity));
     } catch {
-      setError(t("recipes.error.quantity"));
+      setNotice(mutationNotice("quantity"));
       return;
     }
 
     setSavingNewLink(true);
-    setError(null);
     setNotice(null);
     try {
       await addRecipeBaselineIngredient(restaurantId, {
@@ -321,15 +416,24 @@ export default function RecipeBaselinesScreen() {
         unit: selectedInventoryItem.unit
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice(t("recipes.notice.linked", { ingredient: selectedInventoryItem.item_name, dish: menuItemName }));
+      setNotice(
+        mutationNotice("linked", {
+          ingredient: selectedInventoryItem.item_name,
+          dish: menuItemName
+        })
+      );
       setNewInventoryItemName("");
       setSelectedInventoryItemId(null);
       setNewQuantity("1");
       await load(false);
-    } catch {
-      if (activeRestaurantIdRef.current === restaurantId) {
-        setError(t("recipes.error.add"));
-      }
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "settings_recipes",
+        operation: "add_baseline",
+        restaurant_id: restaurantId
+      });
+      setNotice(mutationNotice("addFailed"));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSavingNewLink(false);
     }
@@ -376,12 +480,9 @@ export default function RecipeBaselinesScreen() {
           accessibilityLabel={t("recipes.retry.accessibility")}
         />
       ) : null}
-      {!loadError && error ? (
-        <Text style={styles.error} accessibilityLiveRegion="assertive">
-          {error}
-        </Text>
+      {!loadError && notice ? (
+        <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
       ) : null}
-      {notice && <Text style={styles.notice} accessibilityLiveRegion="polite">{notice}</Text>}
       <View style={styles.stack}>
         {!canManage && hubReady ? (
           <StatusNotice
@@ -481,10 +582,17 @@ export default function RecipeBaselinesScreen() {
                 inventorySearchMatches={inventorySearchMatches.map((match) => match.item)}
                 inventoryItemCount={visibleInventoryItems.length}
                 saving={savingNewLink}
-                onMenuItemNameChange={setNewMenuItemName}
+                editable={formEditable}
+                onMenuItemNameChange={(value) => {
+                  clearNotice();
+                  setNewMenuItemName(value);
+                }}
                 onInventoryItemNameChange={handleInventoryItemNameChange}
                 onInventoryItemSelect={handleInventoryItemSelect}
-                onQuantityChange={setNewQuantity}
+                onQuantityChange={(value) => {
+                  clearNotice();
+                  setNewQuantity(value);
+                }}
                 onAdd={addBaselineLink}
               />
             ) : null}
@@ -548,6 +656,7 @@ function RecipeBaselineBuilder({
   inventorySearchMatches,
   inventoryItemCount,
   saving,
+  editable,
   onMenuItemNameChange,
   onInventoryItemNameChange,
   onInventoryItemSelect,
@@ -562,6 +671,7 @@ function RecipeBaselineBuilder({
   inventorySearchMatches: InventoryItem[];
   inventoryItemCount: number;
   saving: boolean;
+  editable: boolean;
   onMenuItemNameChange: (value: string) => void;
   onInventoryItemNameChange: (value: string) => void;
   onInventoryItemSelect: (item: InventoryItem) => void;
@@ -606,7 +716,7 @@ function RecipeBaselineBuilder({
                 key={itemName}
                 label={itemName}
                 active={menuItemName.trim().toLowerCase() === itemName.toLowerCase()}
-                disabled={saving}
+                disabled={!editable}
                 onPress={() => onMenuItemNameChange(itemName)}
               />
             ))}
@@ -618,10 +728,10 @@ function RecipeBaselineBuilder({
         <Text style={styles.inputLabel}>{t("recipes.field.menuItem")}</Text>
         <TextInput
           accessibilityLabel={t("recipes.field.menuItem")}
-          accessibilityState={{ disabled: saving }}
+          accessibilityState={{ disabled: !editable }}
           value={menuItemName}
           onChangeText={onMenuItemNameChange}
-          editable={!saving}
+          editable={editable}
           placeholder={t("recipes.field.menuPlaceholder")}
           placeholderTextColor={colors.faint}
           style={styles.builderInput}
@@ -633,10 +743,10 @@ function RecipeBaselineBuilder({
         <TextInput
           accessibilityLabel={t("recipes.field.inventoryItem")}
           accessibilityHint={t("recipes.field.inventorySearchHint")}
-          accessibilityState={{ disabled: saving }}
+          accessibilityState={{ disabled: !editable }}
           value={inventoryItemName}
           onChangeText={onInventoryItemNameChange}
-          editable={!saving}
+          editable={editable}
           autoCorrect={false}
           autoCapitalize="words"
           placeholder={t("recipes.field.inventoryPlaceholder")}
@@ -652,7 +762,7 @@ function RecipeBaselineBuilder({
               key={item.id}
               label={`${item.item_name} · ${item.unit}`}
               active={selectedInventoryItem?.id === item.id}
-              disabled={saving}
+              disabled={!editable}
               icon={
                 <Package
                   size={13}
@@ -671,10 +781,10 @@ function RecipeBaselineBuilder({
           <Text style={styles.inputLabel}>{t("recipes.field.quantity")}</Text>
           <TextInput
             accessibilityLabel={t("recipes.field.quantity")}
-            accessibilityState={{ disabled: saving }}
+            accessibilityState={{ disabled: !editable }}
             value={quantity}
             onChangeText={onQuantityChange}
-            editable={!saving}
+            editable={editable}
             keyboardType="decimal-pad"
             selectTextOnFocus
             style={styles.builderInput}
@@ -690,7 +800,7 @@ function RecipeBaselineBuilder({
         title={t(saving ? "recipes.action.adding" : "recipes.action.add")}
         icon={<Plus size={17} color={colors.surface} strokeWidth={2.5} />}
         onPress={onAdd}
-        disabled={saving}
+        disabled={!editable}
         fullWidth
       />
     </Card>
@@ -1190,17 +1300,6 @@ const styles = StyleSheet.create({
     minHeight: 48,
     width: 100,
     paddingHorizontal: 8
-  },
-  error: {
-    color: colors.danger,
-    fontSize: 13,
-    marginBottom: 12
-  },
-  notice: {
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 12
   },
   pressed: {
     opacity: 0.72
