@@ -37,6 +37,7 @@ import {
   presentInventoryHubListEmptyCopy,
   resolveInventoryHubLoadState
 } from "../../services/presentation/inventoryHubPresentation";
+import { captureMiseError } from "../../services/telemetry";
 import { canDraftInventoryCount, canManageRestaurantData, canRecordInventoryWaste } from "../../services/tenantAccess";
 import type { InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
@@ -107,8 +108,13 @@ export default function InventoryScreen() {
           ? current
           : null;
       });
-    } catch {
+    } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "inventory",
+        operation: "load",
+        restaurant_id: restaurantId
+      });
       setError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
