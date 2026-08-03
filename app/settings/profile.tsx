@@ -17,7 +17,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, fontFamilies, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -34,9 +34,41 @@ import {
   presentIdentitySettingsValuesVisible,
   resolveProfileIdentityLoadState
 } from "../../services/presentation/identitySettingsPresentation";
+import {
+  presentProfileIdentityFormEditable,
+  presentProfileIdentityNoticeCopy,
+  resolveProfileIdentitySaveFailureReason,
+  type ProfileIdentityNoticeReason
+} from "../../services/presentation/profileIdentityFormPresentation";
 import { captureMiseError } from "../../services/telemetry";
 
-type SaveStatus = "saved" | "error" | null;
+type ProfileNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
+
+const NOTICE_COPY_KEYS: Record<
+  ProfileIdentityNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  invalidName: {
+    title: "settings.profile.notice.invalidNameTitle",
+    message: "settings.profile.error.invalidName"
+  },
+  missingRestaurant: {
+    title: "settings.profile.notice.missingRestaurantTitle",
+    message: "settings.profile.notice.missingRestaurantBody"
+  },
+  unknown: {
+    title: "settings.profile.notice.saveFailedTitle",
+    message: "settings.profile.saveError"
+  },
+  saved: {
+    title: "settings.profile.notice.savedTitle",
+    message: "settings.profile.savedAnnouncement"
+  }
+};
 
 export default function ProfileSettingsScreen() {
   const navigation = useNavigation();
@@ -51,8 +83,7 @@ export default function ProfileSettingsScreen() {
   } = useMiseSession();
   const [name, setName] = useState(user?.name ?? "");
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<SaveStatus>(null);
-  const [validationKey, setValidationKey] = useState<MessageKey | null>(null);
+  const [notice, setNotice] = useState<ProfileNotice | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const requestIdRef = useRef(0);
@@ -74,6 +105,32 @@ export default function ProfileSettingsScreen() {
   const valuesVisible =
     presentIdentitySettingsValuesVisible(hubLoadState) ||
     (hubLoadState === "loading" && Boolean(name || user?.name));
+  const formEditable = presentProfileIdentityFormEditable(interactive, saving);
+
+  function clearNotice() {
+    if (notice) setNotice(null);
+  }
+
+  function noticeFor(
+    reason: ProfileIdentityNoticeReason,
+    messageParams?: Record<string, string>
+  ): ProfileNotice {
+    const localized = (Object.keys(NOTICE_COPY_KEYS) as ProfileIdentityNoticeReason[]).reduce(
+      (acc, key) => {
+        const messageKey = NOTICE_COPY_KEYS[key].message;
+        acc[key] = {
+          title: t(NOTICE_COPY_KEYS[key].title),
+          message:
+            key === "saved" && messageParams
+              ? t(messageKey, messageParams)
+              : t(messageKey)
+        };
+        return acc;
+      },
+      {} as Record<ProfileIdentityNoticeReason, { title: string; message: string }>
+    );
+    return presentProfileIdentityNoticeCopy(reason, localized);
+  }
 
   useEffect(() => {
     if (!scopeKey) {
@@ -168,24 +225,24 @@ export default function ProfileSettingsScreen() {
 
   async function handleSave() {
     if (saving || !interactive) return;
-    setStatus(null);
+    clearNotice();
 
     let normalizedName: string;
     try {
       normalizedName = normalizeOperatorDisplayName(name);
     } catch {
-      setValidationKey("settings.profile.error.invalidName");
+      setNotice(noticeFor("invalidName"));
       return;
     }
 
     if (!restaurant?.id) {
-      setStatus("error");
+      setNotice(noticeFor("missingRestaurant"));
       return;
     }
 
     if (normalizedName === (user?.name ?? "").trim()) {
-      setStatus("saved");
       dirtyRef.current = false;
+      setNotice(noticeFor("saved", { name: normalizedName }));
       return;
     }
 
@@ -195,7 +252,7 @@ export default function ProfileSettingsScreen() {
       await applyOperatorDisplayName(updated.name);
       setName(updated.name);
       dirtyRef.current = false;
-      setStatus("saved");
+      setNotice(noticeFor("saved", { name: updated.name }));
       AccessibilityInfo.announceForAccessibility(
         t("settings.profile.savedAnnouncement", { name: updated.name })
       );
@@ -205,7 +262,7 @@ export default function ProfileSettingsScreen() {
         operation: "update_display_name",
         restaurant_id: restaurant.id
       });
-      setStatus("error");
+      setNotice(noticeFor(resolveProfileIdentitySaveFailureReason(error)));
     } finally {
       setSaving(false);
     }
@@ -248,17 +305,16 @@ export default function ProfileSettingsScreen() {
                   onChangeText={(value) => {
                     dirtyRef.current = true;
                     setName(value);
-                    setStatus(null);
-                    setValidationKey(null);
+                    clearNotice();
                   }}
                   accessibilityLabel={t("settings.profile.displayName")}
                   autoCapitalize="words"
                   autoCorrect
-                  editable={interactive && !saving}
+                  editable={formEditable}
                   maxLength={OPERATOR_DISPLAY_NAME_MAX_LENGTH}
                   placeholder={t("settings.profile.displayNamePlaceholder")}
                   placeholderTextColor={colors.faint}
-                  style={[styles.input, !interactive && styles.inputDisabled]}
+                  style={[styles.input, !formEditable && styles.inputDisabled]}
                   textContentType="name"
                   onSubmitEditing={() => void handleSave()}
                 />
@@ -274,12 +330,6 @@ export default function ProfileSettingsScreen() {
                   <Text style={styles.emailLabel}>{t("settings.profile.email")}</Text>
                   <Text style={styles.emailValue}>{user.email}</Text>
                 </View>
-              ) : null}
-
-              {validationKey ? (
-                <Text accessibilityLiveRegion="assertive" accessibilityRole="alert" style={styles.error}>
-                  {t(validationKey)}
-                </Text>
               ) : null}
 
               <Button
@@ -298,22 +348,8 @@ export default function ProfileSettingsScreen() {
             </View>
           ) : null}
 
-          {!loadError && status ? (
-            <View
-              style={[styles.status, status === "error" ? styles.statusError : styles.statusSuccess]}
-              accessibilityLiveRegion="polite"
-            >
-              <Text
-                style={[
-                  styles.statusText,
-                  status === "error" ? styles.statusErrorText : styles.statusSuccessText
-                ]}
-              >
-                {status === "error"
-                  ? t("settings.profile.saveError")
-                  : t("settings.profile.savedAnnouncement", { name: name.trim() })}
-              </Text>
-            </View>
+          {!loadError && notice ? (
+            <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
           ) : null}
 
           <View style={styles.persistenceNote}>
@@ -390,10 +426,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...typography.body
   },
-  error: {
-    color: colors.danger,
-    ...typography.caption
-  },
   loading: {
     minHeight: 44,
     flexDirection: "row",
@@ -404,28 +436,6 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.muted,
     ...typography.body
-  },
-  status: {
-    minHeight: 44,
-    justifyContent: "center",
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
-  },
-  statusSuccess: {
-    backgroundColor: colors.successSoft
-  },
-  statusError: {
-    backgroundColor: colors.dangerSoft
-  },
-  statusText: {
-    ...typography.caption
-  },
-  statusSuccessText: {
-    color: colors.success
-  },
-  statusErrorText: {
-    color: colors.danger
   },
   persistenceNote: {
     minHeight: 56,

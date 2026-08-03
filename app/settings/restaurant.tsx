@@ -19,7 +19,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, fontFamilies, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -43,12 +43,22 @@ import {
   presentIdentitySettingsValuesVisible,
   resolveRestaurantIdentityLoadState
 } from "../../services/presentation/identitySettingsPresentation";
+import {
+  presentRestaurantIdentityFormEditable,
+  presentRestaurantIdentityNoticeCopy,
+  resolveRestaurantIdentitySaveFailureReason,
+  type RestaurantIdentityNoticeReason
+} from "../../services/presentation/restaurantIdentityFormPresentation";
 import { canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type { Restaurant, RestaurantServiceStyle } from "../../types/mise";
 import { restaurantInitials } from "../../utils/restaurantBranding";
 
-type SaveStatus = "saved" | "error" | null;
+type RestaurantNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
 
 const SERVICE_STYLE_LABELS: Record<RestaurantServiceStyle, MessageKey> = {
   quick_service: "settings.serviceStyle.quickService",
@@ -57,6 +67,56 @@ const SERVICE_STYLE_LABELS: Record<RestaurantServiceStyle, MessageKey> = {
   bar: "settings.serviceStyle.bar",
   cafe: "settings.serviceStyle.cafe",
   ghost_kitchen: "settings.serviceStyle.ghostKitchen"
+};
+
+const NOTICE_COPY_KEYS: Record<
+  RestaurantIdentityNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  invalidName: {
+    title: "settings.restaurant.notice.invalidNameTitle",
+    message: "settings.restaurant.error.invalidName"
+  },
+  invalidAddress: {
+    title: "settings.restaurant.notice.invalidAddressTitle",
+    message: "settings.restaurant.error.invalidAddress"
+  },
+  invalidCuisine: {
+    title: "settings.restaurant.notice.invalidCuisineTitle",
+    message: "settings.restaurant.error.invalidCuisine"
+  },
+  invalidTimezone: {
+    title: "settings.restaurant.notice.invalidTimezoneTitle",
+    message: "settings.restaurant.error.invalidTimezone"
+  },
+  invalidCurrency: {
+    title: "settings.restaurant.notice.invalidCurrencyTitle",
+    message: "settings.restaurant.error.invalidCurrency"
+  },
+  invalidServiceStyle: {
+    title: "settings.restaurant.notice.invalidServiceStyleTitle",
+    message: "settings.restaurant.error.invalidServiceStyle"
+  },
+  invalidBrandColor: {
+    title: "settings.restaurant.notice.invalidBrandColorTitle",
+    message: "settings.restaurant.error.invalidBrandColor"
+  },
+  invalidAccentColor: {
+    title: "settings.restaurant.notice.invalidAccentColorTitle",
+    message: "settings.restaurant.error.invalidAccentColor"
+  },
+  invalidLogoUrl: {
+    title: "settings.restaurant.notice.invalidLogoUrlTitle",
+    message: "settings.restaurant.error.invalidLogoUrl"
+  },
+  unknown: {
+    title: "settings.restaurant.notice.saveFailedTitle",
+    message: "settings.restaurant.saveError"
+  },
+  saved: {
+    title: "settings.restaurant.notice.savedTitle",
+    message: "settings.restaurant.savedAnnouncement"
+  }
 };
 
 export default function RestaurantIdentitySettingsScreen() {
@@ -75,8 +135,7 @@ export default function RestaurantIdentitySettingsScreen() {
     restaurant ? draftFromRestaurant(restaurant) : null
   );
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<SaveStatus>(null);
-  const [validationKey, setValidationKey] = useState<MessageKey | null>(null);
+  const [notice, setNotice] = useState<RestaurantNotice | null>(null);
   const [logoPreviewFailed, setLogoPreviewFailed] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -99,7 +158,34 @@ export default function RestaurantIdentitySettingsScreen() {
   const valuesVisible =
     presentIdentitySettingsValuesVisible(hubLoadState) ||
     (hubLoadState === "loading" && Boolean(draft && identityRestaurant));
-  const formEditable = canEdit && interactive && !saving;
+  const formEditable = presentRestaurantIdentityFormEditable(canEdit, interactive, saving);
+
+  function clearNotice() {
+    if (notice) setNotice(null);
+  }
+
+  function noticeFor(
+    reason: RestaurantIdentityNoticeReason,
+    messageParams?: Record<string, string>
+  ): RestaurantNotice {
+    const localized = (
+      Object.keys(NOTICE_COPY_KEYS) as RestaurantIdentityNoticeReason[]
+    ).reduce(
+      (acc, key) => {
+        const messageKey = NOTICE_COPY_KEYS[key].message;
+        acc[key] = {
+          title: t(NOTICE_COPY_KEYS[key].title),
+          message:
+            key === "saved" && messageParams
+              ? t(messageKey, messageParams)
+              : t(messageKey)
+        };
+        return acc;
+      },
+      {} as Record<RestaurantIdentityNoticeReason, { title: string; message: string }>
+    );
+    return presentRestaurantIdentityNoticeCopy(reason, localized);
+  }
 
   useEffect(() => {
     const restaurantId = restaurant?.id ?? null;
@@ -118,8 +204,7 @@ export default function RestaurantIdentitySettingsScreen() {
       setLoadError(false);
       setIdentityRestaurant(restaurant);
       setDraft(draftFromRestaurant(restaurant));
-      setStatus(null);
-      setValidationKey(null);
+      setNotice(null);
       setLogoPreviewFailed(false);
     }
   }, [restaurant, restaurant?.id]);
@@ -217,33 +302,36 @@ export default function RestaurantIdentitySettingsScreen() {
   ) {
     dirtyRef.current = true;
     setDraft((current) => (current ? { ...current, [key]: value } : current));
-    setStatus(null);
-    setValidationKey(null);
+    clearNotice();
     if (key === "logo_url") setLogoPreviewFailed(false);
   }
 
   async function handleSave() {
     if (saving || !identityRestaurant || !draft || !canEdit || !interactive) return;
-    setStatus(null);
+    clearNotice();
 
     if (!isValidRestaurantHexColor(draft.brand_color)) {
-      setValidationKey("settings.restaurant.error.invalidBrandColor");
+      setNotice(noticeFor("invalidBrandColor"));
       return;
     }
     if (!isValidRestaurantHexColor(draft.accent_color)) {
-      setValidationKey("settings.restaurant.error.invalidAccentColor");
+      setNotice(noticeFor("invalidAccentColor"));
       return;
     }
 
     const patch = buildRestaurantIdentityPatch(identityRestaurant, draft);
     if (!restaurantIdentityChanged(patch)) {
-      setStatus("saved");
       dirtyRef.current = false;
+      setNotice(
+        noticeFor("saved", {
+          name: draft.name.trim() || identityRestaurant.name
+        })
+      );
       return;
     }
 
     if (!patch.name && draft.name.trim().length === 0) {
-      setValidationKey("settings.restaurant.error.invalidName");
+      setNotice(noticeFor("invalidName"));
       return;
     }
 
@@ -256,39 +344,17 @@ export default function RestaurantIdentitySettingsScreen() {
       dirtyRef.current = false;
       loadedRestaurantRef.current = updated.id;
       setLoadedRestaurantId(updated.id);
-      setStatus("saved");
+      setNotice(noticeFor("saved", { name: updated.name }));
       AccessibilityInfo.announceForAccessibility(
         t("settings.restaurant.savedAnnouncement", { name: updated.name })
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (/name must be between|Restaurant name/i.test(message)) {
-        setValidationKey("settings.restaurant.error.invalidName");
-      } else if (/address/i.test(message)) {
-        setValidationKey("settings.restaurant.error.invalidAddress");
-      } else if (/Cuisine/i.test(message)) {
-        setValidationKey("settings.restaurant.error.invalidCuisine");
-      } else if (/timezone|IANA/i.test(message)) {
-        setValidationKey("settings.restaurant.error.invalidTimezone");
-      } else if (/Currency/i.test(message)) {
-        setValidationKey("settings.restaurant.error.invalidCurrency");
-      } else if (/Service style/i.test(message)) {
-        setValidationKey("settings.restaurant.error.invalidServiceStyle");
-      } else if (/Brand color/i.test(message)) {
-        setValidationKey("settings.restaurant.error.invalidBrandColor");
-      } else if (/Accent color/i.test(message)) {
-        setValidationKey("settings.restaurant.error.invalidAccentColor");
-      } else if (/Logo URL/i.test(message)) {
-        setValidationKey("settings.restaurant.error.invalidLogoUrl");
-      } else {
-        setValidationKey(null);
-      }
       captureMiseError(error, {
         flow: "settings_restaurant",
         operation: "update_restaurant_profile",
         restaurant_id: identityRestaurant.id
       });
-      setStatus("error");
+      setNotice(noticeFor(resolveRestaurantIdentitySaveFailureReason(error)));
     } finally {
       setSaving(false);
     }
@@ -605,12 +671,6 @@ export default function RestaurantIdentitySettingsScreen() {
               </View>
             </View>
 
-            {validationKey ? (
-              <Text accessibilityLiveRegion="assertive" accessibilityRole="alert" style={styles.error}>
-                {t(validationKey)}
-              </Text>
-            ) : null}
-
             {canEdit ? (
               <Button
                 title={saving ? t("settings.restaurant.saving") : t("settings.restaurant.save")}
@@ -629,24 +689,8 @@ export default function RestaurantIdentitySettingsScreen() {
             </View>
           ) : null}
 
-          {!loadError && status && draft && previewSource ? (
-            <View
-              style={[styles.status, status === "error" ? styles.statusError : styles.statusSuccess]}
-              accessibilityLiveRegion="polite"
-            >
-              <Text
-                style={[
-                  styles.statusText,
-                  status === "error" ? styles.statusErrorText : styles.statusSuccessText
-                ]}
-              >
-                {status === "error"
-                  ? t("settings.restaurant.saveError")
-                  : t("settings.restaurant.savedAnnouncement", {
-                      name: draft.name.trim() || previewSource.name
-                    })}
-              </Text>
-            </View>
+          {!loadError && notice ? (
+            <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
           ) : null}
 
           <View style={styles.persistenceNote}>
@@ -827,10 +871,6 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.88
   },
-  error: {
-    color: colors.danger,
-    ...typography.caption
-  },
   loading: {
     minHeight: 44,
     flexDirection: "row",
@@ -841,28 +881,6 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.muted,
     ...typography.body
-  },
-  status: {
-    minHeight: 44,
-    justifyContent: "center",
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
-  },
-  statusSuccess: {
-    backgroundColor: colors.successSoft
-  },
-  statusError: {
-    backgroundColor: colors.dangerSoft
-  },
-  statusText: {
-    ...typography.caption
-  },
-  statusSuccessText: {
-    color: colors.success
-  },
-  statusErrorText: {
-    color: colors.danger
   },
   persistenceNote: {
     minHeight: 56,

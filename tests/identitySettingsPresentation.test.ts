@@ -134,6 +134,7 @@ test("profile and restaurant identity screens wire soft-refresh and RetryNotice"
   assert.match(profileScreen, /resolveProfileIdentityLoadState/);
   assert.match(profileScreen, /presentIdentitySettingsInteractive/);
   assert.match(profileScreen, /RetryNotice/);
+  assert.match(profileScreen, /StatusNotice/);
   assert.match(profileScreen, /onRetry=\{\(\) => void load\(true\)\}/);
   assert.match(profileScreen, /settings\.profile\.retry\.accessibility/);
   assert.match(profileScreen, /loading=\{hubLoadState === "loading" && !valuesVisible\}/);
@@ -142,6 +143,7 @@ test("profile and restaurant identity screens wire soft-refresh and RetryNotice"
   assert.match(restaurantScreen, /resolveRestaurantIdentityLoadState/);
   assert.match(restaurantScreen, /presentIdentitySettingsInteractive/);
   assert.match(restaurantScreen, /RetryNotice/);
+  assert.match(restaurantScreen, /StatusNotice/);
   assert.match(restaurantScreen, /onRetry=\{\(\) => void load\(true\)\}/);
   assert.match(restaurantScreen, /settings\.restaurant\.retry\.accessibility/);
   assert.match(restaurantScreen, /loading=\{hubLoadState === "loading" && !valuesVisible\}/);
@@ -151,3 +153,4 @@ test("profile and restaurant identity screens wire soft-refresh and RetryNotice"
     /if \(!restaurant \|\| !draft\) \{\s*return \(\s*<Screen[\s\S]*settings\.profile\.noRestaurant/
   );
 });
+
