@@ -133,9 +133,13 @@ test("inventory hub wires soft-refresh and RetryNotice instead of false empty he
 });
 
 test("inventory detail load failures expose RetryNotice", () => {
+  assert.match(inventoryDetail, /resolveInventoryDetailLoadState/);
   assert.match(inventoryDetail, /RetryNotice/);
   assert.match(inventoryDetail, /inventory\.detail\.retry\.title/);
   assert.match(inventoryDetail, /inventory\.detail\.retry\.accessibility/);
-  assert.match(inventoryDetail, /onRetry=\{\(\) => void load\(\)\}/);
-  assert.match(inventoryDetail, /messageIsError && message/);
+  assert.match(inventoryDetail, /onRetry=\{\(\) => void load\(true\)\}/);
+  assert.match(inventoryDetail, /loadedRestaurantRef/);
+  assert.match(inventoryDetail, /loadedItemIdRef/);
+  assert.match(inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
+  assert.match(inventoryDetail, /keepPrior/);
 });
