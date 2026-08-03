@@ -65,6 +65,11 @@ test("Today command-center copy lives in the shared catalog with locale parity",
     assert.ok(catalogs[locale]["today.tasks.title"].length > 0);
     assert.ok(catalogs[locale]["today.salesMovement.empty"].length > 0);
     assert.ok(catalogs[locale]["today.tasks.mutedTitle"].length > 0);
+    assert.ok(catalogs[locale]["today.service.loading.title"].length > 0);
+    assert.ok(catalogs[locale]["today.service.unavailable.title"].length > 0);
+    assert.ok(catalogs[locale]["today.tasks.unavailableTitle"].length > 0);
+    assert.ok(catalogs[locale]["today.inventoryHealth.unavailable"].length > 0);
+    assert.ok(catalogs[locale]["today.salesMovement.unavailable"].length > 0);
     assert.equal(
       translate(locale, "today.tasks.mutedDetail", { count: "2" }).includes("2"),
       true

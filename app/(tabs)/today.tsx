@@ -55,6 +55,14 @@ import {
   presentOperationalTodayTaskAction
 } from "../../services/presentation/operationsPresentation";
 import { buildConciseTrendDateLabels } from "../../services/presentation/salesTrendLabels";
+import {
+  presentTodayInventoryHealthCopy,
+  presentTodaySalesEmptyCopy,
+  presentTodayServicePulseCopy,
+  presentTodayTasksEmptyCopy,
+  resolveTodayHubLoadState,
+  type TodayHubLoadState
+} from "../../services/presentation/todayHubPresentation";
 import { canRecordInventoryWaste } from "../../services/tenantAccess";
 import type { RestaurantRole } from "../../types/mise";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
@@ -216,7 +224,7 @@ export default function TodayScreen() {
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading = false) => {
     if (!restaurant) {
       setLoading(false);
       return;
@@ -224,7 +232,7 @@ export default function TodayScreen() {
 
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    if (loadedRestaurantIdRef.current !== restaurantId) setLoading(true);
+    if (showLoading || loadedRestaurantIdRef.current !== restaurantId) setLoading(true);
     setError(null);
     try {
       const nextSummary = await fetchTodaySummary(restaurantId);
@@ -247,7 +255,7 @@ export default function TodayScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(false);
     }, [load])
   );
 
@@ -261,7 +269,13 @@ export default function TodayScreen() {
     router.replace("/today");
   }
 
-  const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
+  const hubLoadState = resolveTodayHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: Boolean(error)
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleSummary = hubReady ? summary : null;
   const operationalTasks = visibleSummary?.operationalTasks ?? [];
   const visibleTasks = useMemo(
     () => filterOperationalTodayTasksByNotificationPreferences(operationalTasks, notificationPreferences),
@@ -271,6 +285,10 @@ export default function TodayScreen() {
     () => countHiddenOperationalTodayTasksByNotificationPreferences(operationalTasks, notificationPreferences),
     [notificationPreferences, operationalTasks]
   );
+  const inventoryHealthPresentation = presentTodayInventoryHealthCopy(hubLoadState, {
+    loading: t("today.inventoryHealth.loading"),
+    unavailable: t("today.inventoryHealth.unavailable")
+  });
 
   if (!restaurant) {
     return (
@@ -299,64 +317,74 @@ export default function TodayScreen() {
             message={error}
             retryLabel={t("common.retry")}
             accessibilityLabel={copy.retryAccessibilityLabel}
-            onRetry={() => void load()}
+            onRetry={() => void load(true)}
           />
         ) : null}
+        <MotionView delay={20} distance={4} duration={240}>
+          <ServicePulse
+            summary={visibleSummary}
+            hubLoadState={hubLoadState}
+            formatNumber={formatNumber}
+            copy={copy}
+            t={t}
+          />
+        </MotionView>
         {visibleSummary ? (
-          <>
-            <MotionView delay={20} distance={4} duration={240}>
-              <ServicePulse summary={visibleSummary} formatNumber={formatNumber} copy={copy} />
-            </MotionView>
-            <MotionView delay={55} distance={4} duration={260}>
-              <ServiceMetrics
-                summary={visibleSummary}
-                formatCompactCurrency={formatCompactCurrency}
-                formatNumber={formatNumber}
-                copy={copy}
-              />
-            </MotionView>
-            <MotionView delay={90} distance={5} duration={280}>
-              <SectionSurface
-                title={copy.inventoryHealthTitle}
-                action={copy.viewInventory}
-                actionAccessibilityLabel={copy.viewInventoryAccessibilityLabel}
-                onAction={() => router.push("/inventory")}
-                separatedHeader={false}
-              >
-                <InventoryHealth
-                  counts={visibleSummary.inventoryHealth}
-                  labels={copy.inventoryHealthLabels}
-                />
-              </SectionSurface>
-            </MotionView>
-            {showStaffWasteTip ? (
-              <MotionView delay={110} distance={4} duration={280}>
-                <SectionSurface
-                  title={t("today.waste.cardTitle")}
-                  subtitle={t("today.waste.cardSubtitle")}
-                  action={t("today.waste.openInventoryAction")}
-                  actionAccessibilityLabel={t("today.waste.openInventoryAccessibility")}
-                  onAction={() => router.push("/inventory")}
-                />
-              </MotionView>
-            ) : null}
-            <MotionView delay={125} distance={5} duration={300}>
-              <TaskSection
-                tasks={visibleTasks}
-                hiddenTaskCount={hiddenTaskCount}
-                restaurantTimeZone={visibleSummary.restaurantTimeZone}
-                role={role ?? "staff"}
-                showAll={showAllTasks}
-                onToggle={() => setShowAllTasks((current) => !current)}
-                copy={copy}
-                locale={locale}
-              />
-            </MotionView>
-            <MotionView delay={160} distance={5} duration={320}>
-              <SalesMovement summary={visibleSummary} copy={copy} />
-            </MotionView>
-          </>
+          <MotionView delay={55} distance={4} duration={260}>
+            <ServiceMetrics
+              summary={visibleSummary}
+              formatCompactCurrency={formatCompactCurrency}
+              formatNumber={formatNumber}
+              copy={copy}
+            />
+          </MotionView>
         ) : null}
+        <MotionView delay={90} distance={5} duration={280}>
+          <SectionSurface
+            title={copy.inventoryHealthTitle}
+            action={copy.viewInventory}
+            actionAccessibilityLabel={copy.viewInventoryAccessibilityLabel}
+            onAction={() => router.push("/inventory")}
+            separatedHeader={false}
+          >
+            {inventoryHealthPresentation.ready && visibleSummary ? (
+              <InventoryHealth
+                counts={visibleSummary.inventoryHealth}
+                labels={copy.inventoryHealthLabels}
+              />
+            ) : (
+              <Text style={styles.hubStateCopy}>{inventoryHealthPresentation.message}</Text>
+            )}
+          </SectionSurface>
+        </MotionView>
+        {showStaffWasteTip && hubReady ? (
+          <MotionView delay={110} distance={4} duration={280}>
+            <SectionSurface
+              title={t("today.waste.cardTitle")}
+              subtitle={t("today.waste.cardSubtitle")}
+              action={t("today.waste.openInventoryAction")}
+              actionAccessibilityLabel={t("today.waste.openInventoryAccessibility")}
+              onAction={() => router.push("/inventory")}
+            />
+          </MotionView>
+        ) : null}
+        <MotionView delay={125} distance={5} duration={300}>
+          <TaskSection
+            tasks={visibleTasks}
+            hiddenTaskCount={hiddenTaskCount}
+            hubLoadState={hubLoadState}
+            restaurantTimeZone={visibleSummary?.restaurantTimeZone ?? restaurant.timezone}
+            role={role ?? "staff"}
+            showAll={showAllTasks}
+            onToggle={() => setShowAllTasks((current) => !current)}
+            copy={copy}
+            locale={locale}
+            t={t}
+          />
+        </MotionView>
+        <MotionView delay={160} distance={5} duration={320}>
+          <SalesMovement summary={visibleSummary} hubLoadState={hubLoadState} copy={copy} t={t} />
+        </MotionView>
       </View>
     </Screen>
   );
@@ -364,49 +392,81 @@ export default function TodayScreen() {
 
 function ServicePulse({
   summary,
+  hubLoadState,
   formatNumber,
-  copy
+  copy,
+  t
 }: {
-  summary: TodayCommandCenterSummary;
+  summary: TodayCommandCenterSummary | null;
+  hubLoadState: TodayHubLoadState;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   copy: TodayCopy;
+  t: (key: MessageKey, values?: MessageValues) => string;
 }) {
-  const pulse = classifyTodayServicePulse({
-    inventoryHealth: summary.inventoryHealth,
-    pendingRecommendations: summary.pendingRecommendations,
-    openOperationalTaskCount: summary.operationalTasks.length
-  });
-  const countLabel = formatNumber(pulse.count);
-  const message =
-    pulse.kind === "stock_risk"
+  const pulse = summary
+    ? classifyTodayServicePulse({
+        inventoryHealth: summary.inventoryHealth,
+        pendingRecommendations: summary.pendingRecommendations,
+        openOperationalTaskCount: summary.operationalTasks.length
+      })
+    : null;
+  const countLabel = pulse ? formatNumber(pulse.count) : "0";
+  const readyMessage =
+    pulse?.kind === "stock_risk"
       ? copy.stockItemsNeedAttention(countLabel)
-      : pulse.kind === "order_review"
+      : pulse?.kind === "order_review"
         ? copy.recommendationsAwaitingReview(countLabel)
-        : pulse.kind === "open_tasks"
+        : pulse?.kind === "open_tasks"
           ? copy.openTasksNeedAttention(countLabel)
           : copy.serviceReadyDetail;
+  const presentation = presentTodayServicePulseCopy(
+    hubLoadState,
+    {
+      title: pulse?.kind === "ready" || !pulse ? copy.serviceReady : copy.serviceNeedsAttention,
+      message: readyMessage,
+      tone: pulse?.tone ?? "neutral"
+    },
+    {
+      loadingTitle: t("today.service.loading.title"),
+      loadingBody: t("today.service.loading.body"),
+      unavailableTitle: t("today.service.unavailable.title"),
+      unavailableBody: t("today.service.unavailable.body"),
+      loadingTone: "neutral",
+      unavailableTone: "warning"
+    }
+  );
   const actionLabel =
-    pulse.kind === "stock_risk"
-      ? copy.viewInventory
-      : pulse.kind === "order_review"
-        ? copy.reviewOrders
-        : pulse.kind === "ready"
-          ? copy.viewInventory
-          : undefined;
+    presentation.ready && pulse
+      ? pulse.kind === "stock_risk"
+        ? copy.viewInventory
+        : pulse.kind === "order_review"
+          ? copy.reviewOrders
+          : pulse.kind === "ready"
+            ? copy.viewInventory
+            : undefined
+      : undefined;
   const actionAccessibilityLabel =
-    pulse.kind === "order_review"
-      ? copy.reviewOrdersAccessibilityLabel
-      : pulse.kind === "stock_risk" || pulse.kind === "ready"
-        ? copy.viewInventoryAccessibilityLabel
-        : undefined;
+    presentation.ready && pulse
+      ? pulse.kind === "order_review"
+        ? copy.reviewOrdersAccessibilityLabel
+        : pulse.kind === "stock_risk" || pulse.kind === "ready"
+          ? copy.viewInventoryAccessibilityLabel
+          : undefined
+      : undefined;
   const actionRoute =
-    pulse.kind === "order_review" ? "/orders" : pulse.kind === "stock_risk" || pulse.kind === "ready" ? "/inventory" : null;
+    presentation.ready && pulse
+      ? pulse.kind === "order_review"
+        ? "/orders"
+        : pulse.kind === "stock_risk" || pulse.kind === "ready"
+          ? "/inventory"
+          : null
+      : null;
 
   return (
     <StatusNotice
-      title={pulse.kind === "ready" ? copy.serviceReady : copy.serviceNeedsAttention}
-      message={message}
-      tone={pulse.tone}
+      title={presentation.title}
+      message={presentation.message}
+      tone={presentation.tone}
       actionLabel={actionLabel}
       actionAccessibilityLabel={actionAccessibilityLabel}
       onAction={actionRoute ? () => router.push(actionRoute) : undefined}
@@ -483,39 +543,61 @@ function ServiceMetrics({
 function TaskSection({
   tasks,
   hiddenTaskCount,
+  hubLoadState,
   restaurantTimeZone,
   role,
   showAll,
   onToggle,
   copy,
-  locale
+  locale,
+  t
 }: {
   tasks: OperationalTodayTask[];
   hiddenTaskCount: number;
+  hubLoadState: TodayHubLoadState;
   restaurantTimeZone: string;
   role: RestaurantRole;
   showAll: boolean;
   onToggle: () => void;
   copy: TodayCopy;
   locale: AppLocale;
+  t: (key: MessageKey, values?: MessageValues) => string;
 }) {
   const prioritizedTasks = prioritizeOperationalTodayTasksForRole(tasks, role);
   const actionableCount = prioritizedTasks.filter((task) => canRestaurantRoleActOnTodayTask(role, task)).length;
   const hasRestrictedFollowUps = actionableCount < prioritizedTasks.length;
   const hasMore = prioritizedTasks.length > COMPACT_TASK_COUNT;
   const visibleTasks = showAll ? prioritizedTasks : prioritizedTasks.slice(0, COMPACT_TASK_COUNT);
-  const tasksAreMuted = prioritizedTasks.length === 0 && hiddenTaskCount > 0;
+  const tasksAreMuted = hubLoadState === "ready" && prioritizedTasks.length === 0 && hiddenTaskCount > 0;
+  const emptyPresentation = presentTodayTasksEmptyCopy(
+    hubLoadState,
+    { muted: tasksAreMuted, hiddenCount: hiddenTaskCount },
+    {
+      loadingTitle: t("today.tasks.loadingTitle"),
+      loadingBody: t("today.tasks.loadingBody"),
+      unavailableTitle: t("today.tasks.unavailableTitle"),
+      unavailableBody: t("today.tasks.unavailableBody"),
+      clearTitle: copy.clearTitle,
+      clearDetail: copy.clearDetail,
+      mutedTitle: copy.mutedTitle,
+      mutedDetail: copy.mutedDetail
+    }
+  );
   const action = hasMore
     ? showAll
       ? copy.showLess
       : copy.viewAll
     : tasksAreMuted
       ? copy.openAlertPreferences
-      : copy.taskCount(String(prioritizedTasks.length));
+      : hubLoadState === "ready"
+        ? copy.taskCount(String(prioritizedTasks.length))
+        : undefined;
   const subtitle =
-    hasRestrictedFollowUps && actionableCount > 0
-      ? copy.tasksSubtitleRoleAware
-      : copy.tasksSubtitle;
+    hubLoadState !== "ready"
+      ? copy.tasksSubtitle
+      : hasRestrictedFollowUps && actionableCount > 0
+        ? copy.tasksSubtitleRoleAware
+        : copy.tasksSubtitle;
 
   return (
     <SectionSurface
@@ -550,17 +632,19 @@ function TaskSection({
           >
             <BellOff size={21} color={colors.caution} strokeWidth={2.2} />
             <View style={styles.rowCopy}>
-              <Text style={styles.rowTitle}>{copy.mutedTitle}</Text>
-              <Text style={styles.rowDetail}>{copy.mutedDetail(String(hiddenTaskCount))}</Text>
+              <Text style={styles.rowTitle}>{emptyPresentation.title}</Text>
+              <Text style={styles.rowDetail}>{emptyPresentation.detail}</Text>
             </View>
             <ChevronRight size={18} color={colors.muted} strokeWidth={2.1} />
           </Pressable>
         ) : (
           <View style={styles.clearRow}>
-            <CheckCircle2 size={21} color={colors.success} strokeWidth={2.2} />
+            {hubLoadState === "ready" ? (
+              <CheckCircle2 size={21} color={colors.success} strokeWidth={2.2} />
+            ) : null}
             <View style={styles.rowCopy}>
-              <Text style={styles.rowTitle}>{copy.clearTitle}</Text>
-              <Text style={styles.rowDetail}>{copy.clearDetail}</Text>
+              <Text style={styles.rowTitle}>{emptyPresentation.title}</Text>
+              <Text style={styles.rowDetail}>{emptyPresentation.detail}</Text>
             </View>
           </View>
         )
@@ -673,8 +757,39 @@ function TaskRow({
   );
 }
 
-function SalesMovement({ summary, copy }: { summary: TodayCommandCenterSummary; copy: TodayCopy }) {
+function SalesMovement({
+  summary,
+  hubLoadState,
+  copy,
+  t
+}: {
+  summary: TodayCommandCenterSummary | null;
+  hubLoadState: TodayHubLoadState;
+  copy: TodayCopy;
+  t: (key: MessageKey, values?: MessageValues) => string;
+}) {
   const { formatCurrency, formatDate, formatNumber } = useLocale();
+  const emptyCopy = presentTodaySalesEmptyCopy(
+    hubLoadState,
+    { empty: copy.emptySalesTrend },
+    {
+      loading: t("today.salesMovement.loading"),
+      unavailable: t("today.salesMovement.unavailable")
+    }
+  );
+  if (!summary || hubLoadState !== "ready") {
+    return (
+      <SectionSurface
+        title={copy.salesMovementTitle}
+        action={copy.viewInsights}
+        actionAccessibilityLabel={copy.viewInsightsAccessibilityLabel}
+        onAction={() => router.push("/insights")}
+      >
+        <Text style={styles.emptyTrend}>{emptyCopy}</Text>
+      </SectionSurface>
+    );
+  }
+
   const points = summary.salesTrend;
   const todayKey = summary.operatingDate;
   const maximum = Math.max(1, ...points.map((point) => point.sales));
@@ -744,7 +859,7 @@ function SalesMovement({ summary, copy }: { summary: TodayCommandCenterSummary; 
           ))}
         </View>
       ) : (
-        <Text style={styles.emptyTrend}>{copy.emptySalesTrend}</Text>
+        <Text style={styles.emptyTrend}>{emptyCopy}</Text>
       )}
     </SectionSurface>
   );
@@ -985,5 +1100,10 @@ const styles = StyleSheet.create({
     color: colors.muted,
     ...typography.body,
     paddingVertical: 12
+  },
+  hubStateCopy: {
+    color: colors.muted,
+    ...typography.body,
+    paddingVertical: 4
   }
 });
