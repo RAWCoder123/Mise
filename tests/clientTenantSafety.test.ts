@@ -32,7 +32,8 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.today, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*summary\s*:\s*null/);
   assert.match(screens.inventory, /resolveInventoryHubLoadState/);
   assert.match(screens.inventory, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
-  assert.match(screens.insights, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*insights\s*:\s*\[\]/);
+  assert.match(screens.insights, /resolveInsightsHubLoadState/);
+  assert.match(screens.insights, /hubReady\s*\?\s*insights\s*:\s*\[\]/);
   assert.match(screens.settings, /resolveSettingsHubLoadState/);
   assert.match(screens.settings, /hubReady\s*\?\s*suppliers\s*:\s*\[\]/);
   assert.match(
@@ -41,6 +42,10 @@ test("operational screens reject late requests and render only active-restaurant
   );
   assert.match(
     source("services/presentation/inventoryHubPresentation.ts"),
+    /loadedRestaurantId\s*===\s*input\.restaurantId/
+  );
+  assert.match(
+    source("services/presentation/insightsHubPresentation.ts"),
     /loadedRestaurantId\s*===\s*input\.restaurantId/
   );
   assert.match(screens.orders, /loadedRestaurantRef\.current\s*===\s*restaurant\?\.id/);

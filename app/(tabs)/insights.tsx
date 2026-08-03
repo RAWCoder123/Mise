@@ -29,6 +29,13 @@ import {
   summarizeInsights
 } from "../../services/miseService";
 import {
+  presentInsightsHubBriefAction,
+  presentInsightsHubBriefEmptyCopy,
+  presentInsightsHubSummaryCopy,
+  presentInsightsHubTrendEmptyCopy,
+  resolveInsightsHubLoadState
+} from "../../services/presentation/insightsHubPresentation";
+import {
   presentInsight,
   presentLearningMemory,
   presentLearningMemorySignal
@@ -51,14 +58,14 @@ export default function InsightsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
-  const hasLoaded = useRef(false);
   const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   useEffect(() => {
     requestIdRef.current += 1;
-    hasLoaded.current = false;
+    loadedRestaurantRef.current = null;
     setLoadedRestaurantId(null);
     setInsights([]);
     setMemory(null);
@@ -69,7 +76,7 @@ export default function InsightsScreen() {
     setRefreshing(false);
   }, [restaurant?.id]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading = false) => {
     if (!restaurant) {
       setLoading(false);
       return;
@@ -77,7 +84,9 @@ export default function InsightsScreen() {
 
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    if (!hasLoaded.current) setLoading(true);
+    if (showLoading || loadedRestaurantRef.current !== restaurantId) {
+      setLoading(true);
+    }
     setError(false);
     try {
       const [nextInsights, nextMemory, nextSalesTrend] = await Promise.all([
@@ -89,13 +98,13 @@ export default function InsightsScreen() {
       setInsights(nextInsights);
       setMemory(nextMemory);
       setSalesTrend(nextSalesTrend);
+      loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
-        hasLoaded.current = true;
         setLoading(false);
       }
     }
@@ -103,7 +112,7 @@ export default function InsightsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(false);
     }, [load])
   );
 
@@ -128,6 +137,7 @@ export default function InsightsScreen() {
       setInsights(nextInsights);
       setMemory(nextMemory);
       setSalesTrend(nextSalesTrend);
+      loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -137,14 +147,20 @@ export default function InsightsScreen() {
     }
   }, [canManage, refreshing, restaurant?.id]);
 
-  const visibleInsights = loadedRestaurantId === restaurant?.id ? insights : [];
-  const visibleMemory = loadedRestaurantId === restaurant?.id ? memory : null;
-  const visibleSalesTrend = loadedRestaurantId === restaurant?.id ? salesTrend : [];
+  const hubLoadState = resolveInsightsHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleInsights = hubReady ? insights : [];
+  const visibleMemory = hubReady ? memory : null;
+  const visibleSalesTrend = hubReady ? salesTrend : [];
 
   const summary = useMemo(() => {
-    if (!restaurant) return null;
+    if (!restaurant || !hubReady) return null;
     return summarizeInsights(restaurant.id, visibleInsights);
-  }, [restaurant, visibleInsights]);
+  }, [hubReady, restaurant, visibleInsights]);
 
   const filteredInsights = useMemo(
     () => (filter === "all" ? visibleInsights : visibleInsights.filter((insight) => insight.severity === filter)),
@@ -161,7 +177,7 @@ export default function InsightsScreen() {
     [t]
   );
 
-  const summaryTitle = summary
+  const readySummaryTitle = summary
     ? summary.urgentCount > 0
       ? t("insights.summary.urgent")
       : summary.warningCount > 0
@@ -170,11 +186,48 @@ export default function InsightsScreen() {
           ? t("insights.summary.learning")
           : t("insights.summary.waiting")
     : t("insights.summary.waiting");
-  const summaryBody = summary && summary.signalCount > 0
+  const readySummaryBody = summary && summary.signalCount > 0
     ? t(summary.signalCount === 1 ? "insights.summary.withSignals.one" : "insights.summary.withSignals.other", {
         count: formatNumber(summary.signalCount)
       })
     : t("insights.summary.empty");
+  const summaryPresentation = presentInsightsHubSummaryCopy(
+    hubLoadState,
+    { title: readySummaryTitle, body: readySummaryBody },
+    {
+      loadingTitle: t("insights.summary.loadingTitle"),
+      loadingBody: t("insights.summary.loadingBody"),
+      unavailableTitle: t("insights.summary.unavailableTitle"),
+      unavailableBody: t("insights.summary.unavailableBody")
+    }
+  );
+  const briefEmptyPresentation = presentInsightsHubBriefEmptyCopy(
+    hubLoadState,
+    {
+      hasInsights: visibleInsights.length > 0,
+      filterLabel: labelForFilter(t, filter).toLocaleLowerCase()
+    },
+    {
+      loadingTitle: t("insights.brief.emptyLoading.title"),
+      loadingBody: t("insights.brief.emptyLoading.body"),
+      unavailableTitle: t("insights.brief.emptyUnavailable.title"),
+      unavailableBody: t("insights.brief.emptyUnavailable.body"),
+      emptyLearningTitle: t("insights.brief.emptyLearning.title"),
+      emptyLearningBody: t("insights.brief.emptyLearning.body"),
+      emptyFilterTitle: (filterLabel) => t("insights.brief.emptyFilter.title", { filter: filterLabel }),
+      emptyFilterBody: t("insights.brief.emptyFilter.body")
+    }
+  );
+  const briefAction = presentInsightsHubBriefAction(
+    hubLoadState,
+    t(filteredInsights.length === 1 ? "insights.signalCount.one" : "insights.signalCount.other", {
+      count: formatNumber(filteredInsights.length)
+    }),
+    {
+      loading: t("insights.brief.action.loading"),
+      unavailable: t("insights.brief.action.unavailable")
+    }
+  );
 
   return (
     <Screen
@@ -201,7 +254,7 @@ export default function InsightsScreen() {
           <RetryNotice
             title={t("insights.refreshError")}
             message={t("insights.loadError")}
-            onRetry={() => void load()}
+            onRetry={() => void load(true)}
             retryLabel={t("common.retry")}
             accessibilityLabel={t("insights.retry.accessibility")}
           />
@@ -209,16 +262,16 @@ export default function InsightsScreen() {
 
         <MotionView delay={30} distance={4}>
           <InsightsSummary
-            title={summaryTitle}
-            body={summaryBody}
-            urgent={summary?.urgentCount ?? 0}
-            watch={summary?.warningCount ?? 0}
-            learning={summary?.learningCount ?? 0}
+            title={summaryPresentation.title}
+            body={summaryPresentation.body}
+            urgent={summaryPresentation.ready ? summary?.urgentCount ?? 0 : 0}
+            watch={summaryPresentation.ready ? summary?.warningCount ?? 0 : 0}
+            learning={summaryPresentation.ready ? summary?.learningCount ?? 0 : 0}
           />
         </MotionView>
 
         <MotionView delay={70} distance={4}>
-          <SalesTrend points={visibleSalesTrend} />
+          <SalesTrend points={visibleSalesTrend} hubLoadState={hubLoadState} />
         </MotionView>
 
         <SegmentedControl
@@ -232,24 +285,14 @@ export default function InsightsScreen() {
           <SectionSurface
             title={t("insights.brief.title")}
             subtitle={t("insights.brief.subtitle")}
-            action={t(filteredInsights.length === 1 ? "insights.signalCount.one" : "insights.signalCount.other", {
-              count: formatNumber(filteredInsights.length)
-            })}
+            action={briefAction}
             padding="none"
           >
             {filteredInsights.length === 0 ? (
               <View style={styles.briefEmpty}>
                 <InsightChartIllustration size={66} />
-                <Text style={styles.briefEmptyTitle}>
-                  {visibleInsights.length === 0
-                    ? t("insights.brief.emptyLearning.title")
-                    : t("insights.brief.emptyFilter.title", { filter: labelForFilter(t, filter).toLocaleLowerCase() })}
-                </Text>
-                <Text style={styles.briefEmptyBody}>
-                  {visibleInsights.length === 0
-                    ? t("insights.brief.emptyLearning.body")
-                    : t("insights.brief.emptyFilter.body")}
-                </Text>
+                <Text style={styles.briefEmptyTitle}>{briefEmptyPresentation.title}</Text>
+                <Text style={styles.briefEmptyBody}>{briefEmptyPresentation.body}</Text>
               </View>
             ) : (
               <View>
@@ -326,7 +369,13 @@ function InsightsSummary({
   );
 }
 
-function SalesTrend({ points }: { points: InsightsSalesTrendPoint[] }) {
+function SalesTrend({
+  points,
+  hubLoadState
+}: {
+  points: InsightsSalesTrendPoint[];
+  hubLoadState: ReturnType<typeof resolveInsightsHubLoadState>;
+}) {
   const { formatCurrency, formatDate, formatNumber, t } = useLocale();
   const latest = points.at(-1);
   const previous = points.at(-2);
@@ -349,11 +398,27 @@ function SalesTrend({ points }: { points: InsightsSalesTrendPoint[] }) {
     latest ? formatDate(`${latest.date}T12:00:00.000Z`, { weekday: "short", timeZone: "UTC" }) : "",
     formatDate
   );
+  const emptyPresentation = presentInsightsHubTrendEmptyCopy(hubLoadState, {
+    loadingTitle: t("insights.trend.empty.loadingTitle"),
+    loadingBody: t("insights.trend.empty.loadingBody"),
+    unavailableTitle: t("insights.trend.empty.unavailableTitle"),
+    unavailableBody: t("insights.trend.empty.unavailableBody"),
+    emptyTitle: t("insights.trend.empty.title"),
+    emptyBody: t("insights.trend.empty.body")
+  });
+  const trendSubtitle =
+    hubLoadState === "loading"
+      ? t("insights.trend.subtitleLoading")
+      : hubLoadState === "error"
+        ? t("insights.trend.subtitleUnavailable")
+        : points.length > 0
+          ? t("insights.trend.subtitleComplete")
+          : t("insights.trend.subtitle");
 
   return (
     <SectionSurface
       title={t("insights.trend.title")}
-      subtitle={points.length > 0 ? t("insights.trend.subtitleComplete") : t("insights.trend.subtitle")}
+      subtitle={trendSubtitle}
       padding="comfortable"
     >
       {latest ? (
@@ -408,8 +473,8 @@ function SalesTrend({ points }: { points: InsightsSalesTrendPoint[] }) {
         </StateChangeView>
       ) : (
         <View style={styles.trendEmpty}>
-          <Text style={styles.trendEmptyTitle}>{t("insights.trend.empty.title")}</Text>
-          <Text style={styles.trendEmptyBody}>{t("insights.trend.empty.body")}</Text>
+          <Text style={styles.trendEmptyTitle}>{emptyPresentation.title}</Text>
+          <Text style={styles.trendEmptyBody}>{emptyPresentation.body}</Text>
         </View>
       )}
     </SectionSurface>
