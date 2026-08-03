@@ -1303,6 +1303,13 @@ test("inventory item create is service-owned with opening ledger movement and ma
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_create_inventory_item_and_signals[\s\S]*service_role/i);
   assert.match(list, /inventory\/new/);
   assert.match(createScreen, /createInventoryItem/);
+  assert.match(createScreen, /resolveInventoryCreateAccessState/);
+  assert.match(createScreen, /resolveInventoryCreateFailureReason/);
+  assert.match(createScreen, /StatusNotice/);
+  assert.doesNotMatch(
+    createScreen,
+    /setMessage\(error\s+instanceof\s+Error\s*\?\s*error\.message/
+  );
 });
 
 test("inventory count sessions are service-owned with draft progress and approve-time ledger writes", () => {

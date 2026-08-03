@@ -554,7 +554,9 @@ export default function SetupScreen() {
           </>
         ) : null}
 
-        {error ? <Text style={styles.error} accessibilityLiveRegion="assertive">{error}</Text> : null}
+        {error ? (
+          <StatusNotice tone="danger" title={t("setup.error.noticeTitle")} message={error} />
+        ) : null}
 
         <View style={styles.footerPanel}>
           <View style={styles.footerStatus}>
@@ -1389,10 +1391,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...typography.caption,
     flex: 1
-  },
-  error: {
-    color: colors.danger,
-    ...typography.caption
   },
   button: {
     marginTop: 10
