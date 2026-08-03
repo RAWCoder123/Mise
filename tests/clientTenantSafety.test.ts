@@ -97,7 +97,12 @@ test("operational screens reject late requests and render only active-restaurant
     source("services/presentation/inventoryCountPresentation.ts"),
     /loadedRestaurantId\s*===\s*input\.restaurantId/
   );
-  assert.match(screens.orderDetail, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*order\s*:\s*null/);
+  assert.match(screens.orderDetail, /resolveOrderDetailLoadState/);
+  assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);
+  assert.match(
+    source("services/presentation/orderDetailPresentation.ts"),
+    /loadedRestaurantId\s*===\s*input\.restaurantId/
+  );
 });
 
 test("workspace mutations stop stale continuations and session state is latest-wins", () => {

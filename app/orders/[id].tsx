@@ -17,7 +17,7 @@ import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
-import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -40,6 +40,10 @@ import {
   STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD
 } from "../../services/domain/inventoryItemSearch";
 import { MAIN_STORAGE_LOCATION_NAME } from "../../services/domain/inventoryTransfer";
+import {
+  presentOrderDetailMissingCopy,
+  resolveOrderDetailLoadState
+} from "../../services/presentation/orderDetailPresentation";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import {
@@ -86,15 +90,19 @@ export default function OrderDraftDetailScreen() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
+  const loadedOrderIdRef = useRef<string | null>(null);
   const actionLockRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
-  const load = useCallback(async (showLoading = true) => {
+  const load = useCallback(async (showLoading = false) => {
     if (!restaurant || !id) {
       setLoading(false);
+      setLoadError(false);
       setNotice({
         title: t("orders.detail.noRestaurant.title"),
         message: t("orders.detail.noRestaurant.body"),
@@ -106,8 +114,15 @@ export default function OrderDraftDetailScreen() {
     const restaurantId = restaurant.id;
     const orderId = id;
     const requestId = ++requestIdRef.current;
-    if (showLoading) setLoading(true);
+    if (
+      showLoading ||
+      loadedRestaurantRef.current !== restaurantId ||
+      loadedOrderIdRef.current !== orderId
+    ) {
+      setLoading(true);
+    }
     setNotice(null);
+    setLoadError(false);
     try {
       const [nextOrder, nextEmailConnection, recommendations, nextLocations] = await Promise.all([
         fetchSupplierOrder(restaurantId, orderId),
@@ -173,16 +188,24 @@ export default function OrderDraftDetailScreen() {
           linked.map((recommendation) => [recommendation.inventory_item_id, ""])
         )
       );
+      loadedRestaurantRef.current = restaurantId;
+      loadedOrderIdRef.current = orderId;
       setLoadedRestaurantId(restaurantId);
       setOperatorNote(nextOrder.operator_note ?? "");
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      setOrder(null);
-      setLinkedRecommendations([]);
-      setReceiveSummary(null);
-      setStorageLocations([]);
-      setReceiveStorageLocationId("");
-      setReceiveStorageLocationIds({});
+      const keepPrior =
+        loadedRestaurantRef.current === restaurantId && loadedOrderIdRef.current === orderId;
+      if (!keepPrior) {
+        setOrder(null);
+        setEmailConnection(null);
+        setLinkedRecommendations([]);
+        setReceiveSummary(null);
+        setStorageLocations([]);
+        setReceiveStorageLocationId("");
+        setReceiveStorageLocationIds({});
+      }
+      setLoadError(true);
       setNotice({
         title: t("orders.detail.load.title"),
         message:
@@ -199,6 +222,8 @@ export default function OrderDraftDetailScreen() {
   useEffect(() => {
     requestIdRef.current += 1;
     actionLockRef.current = false;
+    loadedRestaurantRef.current = null;
+    loadedOrderIdRef.current = null;
     setLoadedRestaurantId(null);
     setOrder(null);
     setEmailConnection(null);
@@ -214,8 +239,9 @@ export default function OrderDraftDetailScreen() {
     setOperatorNote("");
     setBusy(false);
     setNotice(null);
+    setLoadError(false);
     setLoading(Boolean(restaurant && id));
-    void load();
+    void load(true);
   }, [id, load, restaurant?.id]);
 
   function applyDefaultPutAwayLocation(locationId: string): void {
@@ -256,7 +282,7 @@ export default function OrderDraftDetailScreen() {
   }
 
   async function persistNote(): Promise<SupplierOrder> {
-    if (!restaurant || !order) throw new Error(t("orders.detail.unavailable"));
+    if (!restaurant || !order) throw new Error(t("orders.detail.notFound"));
     if (!canManage) return order;
     if (order.status !== "draft") return order;
     if (operatorNote.trim() === (order.operator_note ?? "").trim()) return order;
@@ -498,22 +524,35 @@ export default function OrderDraftDetailScreen() {
     }
   }
 
-  const visibleOrder = loadedRestaurantId === restaurant?.id ? order : null;
-  const visibleReceiveSummary = loadedRestaurantId === restaurant?.id ? receiveSummary : null;
+  const hubLoadState = resolveOrderDetailLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleOrder = hubReady ? order : null;
+  const visibleReceiveSummary = hubReady ? receiveSummary : null;
+  const visibleLinkedRecommendations = hubReady ? linkedRecommendations : [];
+  const visibleStorageLocations = hubReady ? storageLocations : [];
   const isDraft = visibleOrder?.status === "draft";
   const isSent = visibleOrder?.status === "sent";
   const isCompleted = visibleOrder?.status === "completed";
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canManageGmail = canDeleteRestaurantData(memberships, restaurant?.id);
   const canEditDraft = Boolean(isDraft && canManage);
-  const visibleEmailConnection = loadedRestaurantId === restaurant?.id ? emailConnection : null;
+  const visibleEmailConnection = hubReady ? emailConnection : null;
   const gmailReady = visibleEmailConnection?.status === "connected";
   const generatedMessage = visibleOrder ? generatedOrderMessage(visibleOrder) : "";
+  const missingCopy = presentOrderDetailMissingCopy(hubLoadState, {
+    loading: t("orders.detail.loading"),
+    unavailable: t("orders.detail.unavailable"),
+    notFound: t("orders.detail.notFound")
+  });
   const receiveReady = useMemo(
     () =>
       isSent &&
-      linkedRecommendations.length > 0 &&
-      linkedRecommendations.every((recommendation) => {
+      visibleLinkedRecommendations.length > 0 &&
+      visibleLinkedRecommendations.every((recommendation) => {
         const quantityReady = isReceiveQuantityInputReady(
           receiveQuantities[recommendation.inventory_item_id] ?? "",
           parseNumber
@@ -521,9 +560,9 @@ export default function OrderDraftDetailScreen() {
         const note = receiveNotes[recommendation.inventory_item_id] ?? "";
         const locationId = receiveStorageLocationIds[recommendation.inventory_item_id] ?? "";
         const locationReady =
-          storageLocations.length === 0 ||
+          visibleStorageLocations.length === 0 ||
           (Boolean(locationId) &&
-            storageLocations.some((location) => location.id === locationId));
+            visibleStorageLocations.some((location) => location.id === locationId));
         return (
           quantityReady &&
           locationReady &&
@@ -532,24 +571,24 @@ export default function OrderDraftDetailScreen() {
       }),
     [
       isSent,
-      linkedRecommendations,
       parseNumber,
       receiveNotes,
       receiveQuantities,
       receiveStorageLocationIds,
-      storageLocations
+      visibleLinkedRecommendations,
+      visibleStorageLocations
     ]
   );
   const showPutAwayLocationSearch =
-    storageLocations.length >= STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD;
+    visibleStorageLocations.length >= STORAGE_LOCATION_CHIP_SEARCH_THRESHOLD;
   const showReceiveLineSearch =
-    linkedRecommendations.length >= PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD;
+    visibleLinkedRecommendations.length >= PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD;
   const visibleReceiveLines = useMemo(() => {
-    if (!showReceiveLineSearch) return linkedRecommendations;
-    return filterInventoryItemsBySearch(linkedRecommendations, receiveLineQuery, {
+    if (!showReceiveLineSearch) return visibleLinkedRecommendations;
+    return filterInventoryItemsBySearch(visibleLinkedRecommendations, receiveLineQuery, {
       getExtraSearchText: (recommendation) => recommendation.supplier_name
     });
-  }, [linkedRecommendations, receiveLineQuery, showReceiveLineSearch]);
+  }, [receiveLineQuery, showReceiveLineSearch, visibleLinkedRecommendations]);
   const receiveLineSearchNoMatches =
     showReceiveLineSearch &&
     receiveLineQuery.trim().length > 0 &&
@@ -557,22 +596,22 @@ export default function OrderDraftDetailScreen() {
   const matchedPutAwayLocations = useMemo(
     () =>
       showPutAwayLocationSearch
-        ? filterStorageLocationsBySearch(storageLocations, putAwayLocationQuery)
-        : storageLocations,
-    [putAwayLocationQuery, showPutAwayLocationSearch, storageLocations]
+        ? filterStorageLocationsBySearch(visibleStorageLocations, putAwayLocationQuery)
+        : visibleStorageLocations,
+    [putAwayLocationQuery, showPutAwayLocationSearch, visibleStorageLocations]
   );
   const visiblePutAwayLocations = useMemo(
     () =>
       showPutAwayLocationSearch
-        ? filterStorageLocationsBySearch(storageLocations, putAwayLocationQuery, {
+        ? filterStorageLocationsBySearch(visibleStorageLocations, putAwayLocationQuery, {
             selectedId: receiveStorageLocationId
           })
-        : storageLocations,
+        : visibleStorageLocations,
     [
       putAwayLocationQuery,
       receiveStorageLocationId,
       showPutAwayLocationSearch,
-      storageLocations
+      visibleStorageLocations
     ]
   );
   const putAwayLocationNoMatches =
@@ -614,6 +653,16 @@ export default function OrderDraftDetailScreen() {
     >
       {visibleOrder ? (
         <View style={styles.stack}>
+          {loadError ? (
+            <RetryNotice
+              title={t("orders.detail.retry.title")}
+              message={notice?.message ?? t("orders.detail.load.body")}
+              onRetry={() => void load(true)}
+              retryLabel={t("common.retry")}
+              accessibilityLabel={t("orders.detail.retry.accessibility")}
+            />
+          ) : null}
+
           {!canManage ? (
             <StatusNotice
               title={t("orders.detail.viewOnly.title")}
@@ -788,7 +837,7 @@ export default function OrderDraftDetailScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("orders.detail.receive.title")}</Text>
               <Text style={styles.sectionBody}>{t("orders.detail.receive.body")}</Text>
-              {storageLocations.length > 0 ? (
+              {visibleStorageLocations.length > 0 ? (
                 <View style={styles.receivePutAway}>
                   <Text style={styles.receivePutAwayLabel}>
                     {t("orders.detail.receive.putAwayDefault")}
@@ -876,10 +925,10 @@ export default function OrderDraftDetailScreen() {
                   receiveStorageLocationIds[recommendation.inventory_item_id] ??
                   receiveStorageLocationId;
                 const linePutAwayLocations = showPutAwayLocationSearch
-                  ? filterStorageLocationsBySearch(storageLocations, putAwayLocationQuery, {
+                  ? filterStorageLocationsBySearch(visibleStorageLocations, putAwayLocationQuery, {
                       selectedId: linePutAwayId
                     })
-                  : storageLocations;
+                  : visibleStorageLocations;
                 const received = parseNumber(raw);
                 const discrepancy =
                   received != null && Number.isFinite(received)
@@ -918,7 +967,7 @@ export default function OrderDraftDetailScreen() {
                         })}
                       </Text>
                     ) : null}
-                    {storageLocations.length > 0 ? (
+                    {visibleStorageLocations.length > 0 ? (
                       <View style={styles.receiveLinePutAway}>
                         <Text style={styles.receiveLinePutAwayLabel}>
                           {t("orders.detail.receive.putAwayLine", {
@@ -986,7 +1035,7 @@ export default function OrderDraftDetailScreen() {
             </View>
           ) : null}
 
-          {notice ? (
+          {notice && !loadError ? (
             <StatusNotice
               tone={notice.tone}
               title={notice.title}
@@ -1084,9 +1133,17 @@ export default function OrderDraftDetailScreen() {
             />
           ) : null}
         </View>
+      ) : loadError ? (
+        <RetryNotice
+          title={t("orders.detail.retry.title")}
+          message={notice?.message ?? t("orders.detail.load.body")}
+          onRetry={() => void load(true)}
+          retryLabel={t("common.retry")}
+          accessibilityLabel={t("orders.detail.retry.accessibility")}
+        />
       ) : (
         <Text style={styles.notice} accessibilityLiveRegion="polite">
-          {notice?.message ?? t("orders.detail.notFound")}
+          {notice?.message ?? missingCopy}
         </Text>
       )}
     </Screen>
