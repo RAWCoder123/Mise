@@ -111,3 +111,73 @@ export function presentSettingsHubPosCopy(
     tone: "neutral"
   };
 }
+
+export type PosMutationAction = "connect" | "import";
+
+export type PosMutationNoticeReason =
+  | "demoLoaded"
+  | "csvImported"
+  | "csvImportedMapped"
+  | "csvImportedWithUnmapped"
+  | "csvImportedWithIncompatible"
+  | "csvImportedWithUnmappedAndIncompatible"
+  | "liveProvidersRestricted"
+  | "demoLoadFailed"
+  | "csvImportFailed"
+  | "csvValidationFailed";
+
+export function presentPosMutationBusy(busyAction: PosMutationAction | null): boolean {
+  return busyAction !== null;
+}
+
+export function presentPosMutationActionsEditable(
+  busy: boolean,
+  hubReady: boolean
+): boolean {
+  return !busy && hubReady;
+}
+
+export function presentPosMutationNoticeCopy(
+  reason: PosMutationNoticeReason,
+  copy: { title: string; message: string }
+): {
+  tone: "danger" | "success" | "warning" | "neutral" | "caution";
+  title: string;
+  message: string;
+} {
+  if (
+    reason === "demoLoaded" ||
+    reason === "csvImported" ||
+    reason === "csvImportedMapped"
+  ) {
+    return { tone: "success", title: copy.title, message: copy.message };
+  }
+  if (
+    reason === "csvImportedWithUnmapped" ||
+    reason === "csvImportedWithIncompatible" ||
+    reason === "csvImportedWithUnmappedAndIncompatible" ||
+    reason === "csvValidationFailed" ||
+    reason === "liveProvidersRestricted"
+  ) {
+    return { tone: "caution", title: copy.title, message: copy.message };
+  }
+  return { tone: "danger", title: copy.title, message: copy.message };
+}
+
+export function resolvePosCsvImportNoticeReason(input: {
+  unmappedCount: number;
+  incompatibleCount: number;
+}): Extract<
+  PosMutationNoticeReason,
+  | "csvImportedMapped"
+  | "csvImportedWithUnmapped"
+  | "csvImportedWithIncompatible"
+  | "csvImportedWithUnmappedAndIncompatible"
+> {
+  const unmapped = Math.max(0, Math.trunc(input.unmappedCount));
+  const incompatible = Math.max(0, Math.trunc(input.incompatibleCount));
+  if (unmapped > 0 && incompatible > 0) return "csvImportedWithUnmappedAndIncompatible";
+  if (unmapped > 0) return "csvImportedWithUnmapped";
+  if (incompatible > 0) return "csvImportedWithIncompatible";
+  return "csvImportedMapped";
+}

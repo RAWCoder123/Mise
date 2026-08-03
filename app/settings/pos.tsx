@@ -9,32 +9,79 @@ import { usePressScale } from "../../components/ui/Motion";
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import type { MessageKey, MessageValues } from "../../i18n/catalog";
 import { DEMO_SETUP_POS_SALES_PLACEHOLDER } from "../../services/demo/demoSetupData";
 import { importManualPosSalesCsv, previewManualPosSalesCsv } from "../../services/miseService";
 import {
   presentPosHubHeroCopy,
-  resolvePosHubLoadState
+  presentPosMutationActionsEditable,
+  presentPosMutationBusy,
+  presentPosMutationNoticeCopy,
+  resolvePosCsvImportNoticeReason,
+  resolvePosHubLoadState,
+  type PosMutationAction,
+  type PosMutationNoticeReason
 } from "../../services/presentation/posHubPresentation";
+import { captureMiseError } from "../../services/telemetry";
 import type { PosProvider } from "../../types/mise";
 
 const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Manual CSV Upload"];
-type PosMessage =
-  | { key: "pos.message.csvImported"; values: { count: string } }
-  | { key: "pos.message.csvImportedWithUnmapped"; values: { count: string; unmapped: string } }
-  | { key: "pos.message.csvImportedWithIncompatible"; values: { count: string; incompatible: string } }
-  | {
-      key: "pos.message.csvImportedWithUnmappedAndIncompatible";
-      values: { count: string; unmapped: string; incompatible: string };
-    }
-  | { key: "pos.message.csvImportedMapped"; values: { count: string } }
-  | { key: "pos.message.demoLoaded"; values: { provider: string } }
-  | { key: "pos.error.demoLoad" }
-  | { key: "pos.error.csvImport" }
-  | { key: "pos.error.csvValidation" };
+
+interface PosNotice {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+}
+
+const MUTATION_NOTICE_KEYS: Record<
+  PosMutationNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  demoLoaded: {
+    title: "pos.notice.demoLoaded.title",
+    message: "pos.message.demoLoaded"
+  },
+  csvImported: {
+    title: "pos.notice.csvImported.title",
+    message: "pos.message.csvImported"
+  },
+  csvImportedMapped: {
+    title: "pos.notice.csvImportedMapped.title",
+    message: "pos.message.csvImportedMapped"
+  },
+  csvImportedWithUnmapped: {
+    title: "pos.notice.csvImportedWithUnmapped.title",
+    message: "pos.message.csvImportedWithUnmapped"
+  },
+  csvImportedWithIncompatible: {
+    title: "pos.notice.csvImportedWithIncompatible.title",
+    message: "pos.message.csvImportedWithIncompatible"
+  },
+  csvImportedWithUnmappedAndIncompatible: {
+    title: "pos.notice.csvImportedWithUnmappedAndIncompatible.title",
+    message: "pos.message.csvImportedWithUnmappedAndIncompatible"
+  },
+  liveProvidersRestricted: {
+    title: "pos.notice.liveProvidersRestricted.title",
+    message: "pos.message.csvUnavailable"
+  },
+  demoLoadFailed: {
+    title: "pos.notice.demoLoadFailed.title",
+    message: "pos.error.demoLoad"
+  },
+  csvImportFailed: {
+    title: "pos.notice.csvImportFailed.title",
+    message: "pos.error.csvImport"
+  },
+  csvValidationFailed: {
+    title: "pos.notice.csvValidationFailed.title",
+    message: "pos.error.csvValidation"
+  }
+};
 
 export default function POSConnectionScreen() {
   const navigation = useNavigation();
@@ -43,28 +90,42 @@ export default function POSConnectionScreen() {
   const [loading, setLoading] = useState(Boolean(restaurant));
   const [loadError, setLoadError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<PosMutationAction | null>(null);
   const [loadingProvider, setLoadingProvider] = useState<PosProvider | null>(null);
-  const [importingCsv, setImportingCsv] = useState(false);
   const [csvText, setCsvText] = useState("");
-  const [message, setMessage] = useState<PosMessage | null>(null);
+  const [notice, setNotice] = useState<PosNotice | null>(null);
   const [unmappedAfterImport, setUnmappedAfterImport] = useState(0);
   const [incompatibleAfterImport, setIncompatibleAfterImport] = useState(0);
   const requestIdRef = useRef(0);
   const loadedRestaurantRef = useRef<string | null>(null);
+  const actionLockRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
   const csvPreview = useMemo(() => previewManualPosSalesCsv(csvText), [csvText]);
+  const mutationBusy = presentPosMutationBusy(busyAction);
+
+  const mutationNotice = useCallback(
+    (reason: PosMutationNoticeReason, values?: MessageValues): PosNotice => {
+      const keys = MUTATION_NOTICE_KEYS[reason];
+      return presentPosMutationNoticeCopy(reason, {
+        title: t(keys.title, values),
+        message: t(keys.message, values)
+      });
+    },
+    [t]
+  );
 
   useEffect(() => {
     requestIdRef.current += 1;
     loadedRestaurantRef.current = null;
+    actionLockRef.current = false;
     setLoadedRestaurantId(null);
     setLoadError(false);
     setLoading(Boolean(restaurant));
+    setBusyAction(null);
     setLoadingProvider(null);
-    setImportingCsv(false);
     setCsvText("");
-    setMessage(null);
+    setNotice(null);
     setUnmappedAfterImport(0);
     setIncompatibleAfterImport(0);
   }, [restaurant?.id]);
@@ -87,8 +148,13 @@ export default function POSConnectionScreen() {
         if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
         loadedRestaurantRef.current = restaurantId;
         setLoadedRestaurantId(restaurantId);
-      } catch {
+      } catch (error) {
         if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+        captureMiseError(error, {
+          flow: "settings_pos",
+          operation: "load",
+          restaurant_id: restaurantId
+        });
         setLoadError(true);
       } finally {
         if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
@@ -111,6 +177,7 @@ export default function POSConnectionScreen() {
     loadError
   });
   const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentPosMutationActionsEditable(mutationBusy, hubReady);
   const visiblePosProvider = hubReady ? posProvider : null;
   const posProviderLabel =
     visiblePosProvider === "Manual CSV Upload"
@@ -140,92 +207,91 @@ export default function POSConnectionScreen() {
   );
 
   async function connect(provider: PosProvider) {
-    if (provider === "Manual CSV Upload") {
+    if (provider === "Manual CSV Upload" || actionLockRef.current) {
       return;
     }
     if (!isDemoMode) {
-      setMessage({ key: "pos.error.demoLoad" });
+      setNotice(mutationNotice("liveProvidersRestricted"));
       return;
     }
+    const restaurantId = restaurant?.id ?? null;
+    actionLockRef.current = true;
+    setBusyAction("connect");
     setLoadingProvider(provider);
-    setMessage(null);
+    setNotice(null);
     try {
       await connectDemoPOS(provider);
-      if (restaurant?.id) {
-        loadedRestaurantRef.current = restaurant.id;
-        setLoadedRestaurantId(restaurant.id);
+      if (restaurantId && activeRestaurantIdRef.current !== restaurantId) return;
+      if (restaurantId) {
+        loadedRestaurantRef.current = restaurantId;
+        setLoadedRestaurantId(restaurantId);
       }
-      setMessage({ key: "pos.message.demoLoaded", values: { provider } });
-    } catch {
-      setMessage({ key: "pos.error.demoLoad" });
+      setNotice(mutationNotice("demoLoaded", { provider }));
+    } catch (error) {
+      if (restaurantId && activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "settings_pos",
+        operation: "connect",
+        restaurant_id: restaurantId ?? undefined
+      });
+      setNotice(mutationNotice("demoLoadFailed"));
     } finally {
-      setLoadingProvider(null);
+      actionLockRef.current = false;
+      if (!restaurantId || activeRestaurantIdRef.current === restaurantId) {
+        setBusyAction(null);
+        setLoadingProvider(null);
+      }
     }
   }
 
   async function importCsv() {
+    if (actionLockRef.current) return;
     if (!restaurant?.id) {
-      setMessage({ key: "pos.error.csvImport" });
+      setNotice(mutationNotice("csvImportFailed"));
       return;
     }
     if (csvPreview.status !== "ready" || csvPreview.acceptedRowCount === 0) {
-      setMessage({ key: "pos.error.csvValidation" });
+      setNotice(mutationNotice("csvValidationFailed"));
       return;
     }
-    setImportingCsv(true);
-    setMessage(null);
+    const restaurantId = restaurant.id;
+    actionLockRef.current = true;
+    setBusyAction("import");
+    setNotice(null);
     setUnmappedAfterImport(0);
     setIncompatibleAfterImport(0);
     try {
-      const result = await importManualPosSalesCsv(restaurant.id, csvText, "settings_manual_csv.txt");
+      const result = await importManualPosSalesCsv(restaurantId, csvText, "settings_manual_csv.txt");
       await refreshPosStatus();
-      if (activeRestaurantIdRef.current !== restaurant.id) return;
-      loadedRestaurantRef.current = restaurant.id;
-      setLoadedRestaurantId(restaurant.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      loadedRestaurantRef.current = restaurantId;
+      setLoadedRestaurantId(restaurantId);
       const unmappedCount = Math.max(0, Math.trunc(result.unmappedSaleCount ?? 0));
       const incompatibleCount = Math.max(0, Math.trunc(result.skippedIncompatibleCount ?? 0));
       setUnmappedAfterImport(unmappedCount);
       setIncompatibleAfterImport(incompatibleCount);
-      if (unmappedCount > 0 && incompatibleCount > 0) {
-        setMessage({
-          key: "pos.message.csvImportedWithUnmappedAndIncompatible",
-          values: {
-            count: formatNumber(result.posSalesRowsSaved),
-            unmapped: formatNumber(unmappedCount),
-            incompatible: formatNumber(incompatibleCount)
-          }
-        });
-      } else if (unmappedCount > 0) {
-        setMessage({
-          key: "pos.message.csvImportedWithUnmapped",
-          values: {
-            count: formatNumber(result.posSalesRowsSaved),
-            unmapped: formatNumber(unmappedCount)
-          }
-        });
-      } else if (incompatibleCount > 0) {
-        setMessage({
-          key: "pos.message.csvImportedWithIncompatible",
-          values: {
-            count: formatNumber(result.posSalesRowsSaved),
-            incompatible: formatNumber(incompatibleCount)
-          }
-        });
-      } else {
-        setMessage({
-          key: "pos.message.csvImportedMapped",
-          values: { count: formatNumber(result.posSalesRowsSaved) }
-        });
-      }
-    } catch {
-      if (activeRestaurantIdRef.current === restaurant.id) {
-        setMessage({ key: "pos.error.csvImport" });
-        setUnmappedAfterImport(0);
-        setIncompatibleAfterImport(0);
-      }
+      const reason = resolvePosCsvImportNoticeReason({ unmappedCount, incompatibleCount });
+      setNotice(
+        mutationNotice(reason, {
+          count: formatNumber(result.posSalesRowsSaved),
+          unmapped: formatNumber(unmappedCount),
+          incompatible: formatNumber(incompatibleCount)
+        })
+      );
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "settings_pos",
+        operation: "import",
+        restaurant_id: restaurantId
+      });
+      setNotice(mutationNotice("csvImportFailed"));
+      setUnmappedAfterImport(0);
+      setIncompatibleAfterImport(0);
     } finally {
-      if (activeRestaurantIdRef.current === restaurant.id) {
-        setImportingCsv(false);
+      actionLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setBusyAction(null);
       }
     }
   }
@@ -320,11 +386,9 @@ export default function POSConnectionScreen() {
           </Text>
         </View>
 
-        {message && (
-          <Text style={styles.message} accessibilityLiveRegion="polite">
-            {t(message.key, "values" in message ? message.values : undefined)}
-          </Text>
-        )}
+        {notice ? (
+          <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
+        ) : null}
 
         {hubReady && (unmappedAfterImport > 0 || incompatibleAfterImport > 0) ? (
           <Pressable
@@ -373,6 +437,7 @@ export default function POSConnectionScreen() {
             placeholder={DEMO_SETUP_POS_SALES_PLACEHOLDER}
             placeholderTextColor={colors.faint}
             autoCapitalize="none"
+            editable={actionsEditable}
           />
           {csvPreview.issues.slice(0, 3).map((issue) => (
             <Text key={`${issue.row}_${issue.field}`} style={styles.issue}>
@@ -381,21 +446,21 @@ export default function POSConnectionScreen() {
           ))}
           <Pressable
             onPress={() => void importCsv()}
-            disabled={importingCsv || csvPreview.status !== "ready" || !hubReady}
+            disabled={!actionsEditable || csvPreview.status !== "ready"}
             accessibilityRole="button"
             accessibilityLabel={t("pos.csv.importAction")}
             accessibilityState={{
-              disabled: importingCsv || csvPreview.status !== "ready" || !hubReady,
-              busy: importingCsv
+              disabled: !actionsEditable || csvPreview.status !== "ready",
+              busy: busyAction === "import"
             }}
             style={({ pressed }) => [
               styles.importButton,
-              (importingCsv || csvPreview.status !== "ready" || !hubReady) && styles.importButtonDisabled,
-              pressed && csvPreview.status === "ready" && hubReady && !importingCsv && styles.pressed
+              (!actionsEditable || csvPreview.status !== "ready") && styles.importButtonDisabled,
+              pressed && csvPreview.status === "ready" && actionsEditable && styles.pressed
             ]}
           >
             <Text style={styles.importButtonText}>
-              {importingCsv ? t("common.loading") : t("pos.csv.importAction")}
+              {busyAction === "import" ? t("common.loading") : t("pos.csv.importAction")}
             </Text>
           </Pressable>
         </Card>
@@ -424,7 +489,7 @@ export default function POSConnectionScreen() {
                       provider={provider}
                       selected={selected}
                       loading={loadingProvider === provider}
-                      disabled={!hubReady || loadingProvider !== null || importingCsv}
+                      disabled={!actionsEditable}
                       onPress={() => void connect(provider)}
                     />
                   );
@@ -601,11 +666,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.76
-  },
-  message: {
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 19
   },
   restrictedTitle: {
     color: colors.text,
