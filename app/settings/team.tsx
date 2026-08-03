@@ -13,7 +13,7 @@ import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
-import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -41,6 +41,12 @@ import {
   isInvitePending
 } from "../../services/domain/teamInvites";
 import {
+  presentTeamHubEmptyCopy,
+  presentTeamHubPendingInvitesCopy,
+  presentTeamHubRosterCopy,
+  resolveTeamHubLoadState
+} from "../../services/presentation/teamHubPresentation";
+import {
   canManageTeamForRestaurant,
   canViewMemberInvitesForRestaurant,
   canViewTeamForRestaurant
@@ -58,12 +64,14 @@ export default function TeamSettingsScreen() {
   const [invites, setInvites] = useState<RestaurantMemberInvite[]>([]);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [notice, setNotice] = useState<TeamNotice | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<AssignableRestaurantRole>("staff");
   const [createdInvite, setCreatedInvite] = useState<CreatedRestaurantMemberInvite | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const loadedRestaurantRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -78,16 +86,20 @@ export default function TeamSettingsScreen() {
     }
   }, [assignableRoles, inviteRole]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading = false) => {
     if (!restaurant || !canView) {
       setLoading(false);
+      setLoadError(false);
       setMembers([]);
       setInvites([]);
       return;
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
+    if (showLoading || loadedRestaurantRef.current !== restaurantId) {
+      setLoading(true);
+    }
+    setLoadError(false);
     try {
       const [nextMembers, nextInvites] = await Promise.all([
         fetchRestaurantTeamMembers(restaurantId),
@@ -96,11 +108,12 @@ export default function TeamSettingsScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setMembers(nextMembers);
       setInvites(nextInvites);
+      loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
-    } catch (loadError) {
+    } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      captureMiseError(loadError, { flow: "settings_team", operation: "load", restaurant_id: restaurantId });
-      setNotice({ tone: "danger", key: "settings.team.notice.loadError" });
+      captureMiseError(error, { flow: "settings_team", operation: "load", restaurant_id: restaurantId });
+      setLoadError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
         setLoading(false);
@@ -110,9 +123,11 @@ export default function TeamSettingsScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    loadedRestaurantRef.current = null;
     setMembers([]);
     setInvites([]);
     setLoadedRestaurantId(null);
+    setLoadError(false);
     setNotice(null);
     setBusyKey(null);
     setCreatedInvite(null);
@@ -121,7 +136,7 @@ export default function TeamSettingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(false);
     }, [load])
   );
 
@@ -274,16 +289,52 @@ export default function TeamSettingsScreen() {
     }
   }
 
-  const visibleMembers = loadedRestaurantId === restaurant?.id ? members : [];
-  const pendingInvites =
-    loadedRestaurantId === restaurant?.id
-      ? invites.filter((invite) => isInvitePending(invite.status, invite.expires_at))
-      : [];
+  const hubLoadState = resolveTeamHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleMembers = hubReady ? members : [];
+  const pendingInvites = hubReady
+    ? invites.filter((invite) => isInvitePending(invite.status, invite.expires_at))
+    : [];
+  const rosterBody = presentTeamHubRosterCopy(
+    hubLoadState,
+    visibleMembers.length,
+    {
+      loading: t("settings.team.rosterBody.loading"),
+      unavailable: t("settings.team.rosterBody.unavailable"),
+      rosterBody: (count) => t("settings.team.rosterBody", { count })
+    },
+    formatNumber
+  );
+  const emptyPresentation = presentTeamHubEmptyCopy(hubLoadState, {
+    loadingTitle: t("settings.team.empty.loadingTitle"),
+    loadingBody: t("settings.team.empty.loadingBody"),
+    unavailableTitle: t("settings.team.empty.unavailableTitle"),
+    unavailableBody: t("settings.team.empty.unavailableBody"),
+    emptyTitle: t("settings.team.emptyTitle"),
+    emptyBody: t("settings.team.emptyBody")
+  });
+  const pendingInvitesPresentation = presentTeamHubPendingInvitesCopy(
+    hubLoadState,
+    { pendingCount: pendingInvites.length, canManage },
+    {
+      loading: t("settings.team.pendingInvites.loading"),
+      unavailable: t("settings.team.pendingInvites.unavailable"),
+      empty: t("settings.team.pendingInvitesEmpty"),
+      body: (count) => t("settings.team.pendingInvitesBody", { count }),
+      readOnlyBody: (count) => t("settings.team.pendingInvitesReadOnlyBody", { count })
+    },
+    formatNumber
+  );
 
   return (
     <Screen
       title={t("settings.team.title")}
       subtitle={t("settings.team.subtitle")}
+      loading={loading}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={goBackToSettings}>
           <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
@@ -291,7 +342,16 @@ export default function TeamSettingsScreen() {
       }
     >
       <View style={styles.stack}>
-        {notice ? <StatusNotice title={t(notice.key)} tone={notice.tone} /> : null}
+        {loadError ? (
+          <RetryNotice
+            title={t("settings.team.retry.title")}
+            message={t("settings.team.notice.loadError")}
+            onRetry={() => void load(true)}
+            retryLabel={t("common.retry")}
+            accessibilityLabel={t("settings.team.retry.accessibility")}
+          />
+        ) : null}
+        {!loadError && notice ? <StatusNotice title={t(notice.key)} tone={notice.tone} /> : null}
 
         {!canView ? (
           <EmptyState
@@ -308,19 +368,15 @@ export default function TeamSettingsScreen() {
                 </IconBadge>
                 <View style={styles.sectionCopy}>
                   <Text style={styles.sectionTitle}>{t("settings.team.rosterTitle")}</Text>
-                  <Text style={styles.sectionBody}>
-                    {t("settings.team.rosterBody", { count: formatNumber(visibleMembers.length) })}
-                  </Text>
+                  <Text style={styles.sectionBody}>{rosterBody}</Text>
                 </View>
               </View>
 
-              {loading ? (
-                <Text style={styles.helper}>{t("settings.team.loading")}</Text>
-              ) : visibleMembers.length === 0 ? (
+              {hubLoadState !== "ready" || visibleMembers.length === 0 ? (
                 <EmptyState
                   illustration={<Users size={22} color={colors.muted} strokeWidth={2.25} />}
-                  title={t("settings.team.emptyTitle")}
-                  body={t("settings.team.emptyBody")}
+                  title={emptyPresentation.title}
+                  body={emptyPresentation.body}
                 />
               ) : (
                 <View style={styles.memberList}>
@@ -498,20 +554,13 @@ export default function TeamSettingsScreen() {
                   </IconBadge>
                   <View style={styles.sectionCopy}>
                     <Text style={styles.sectionTitle}>{t("settings.team.pendingInvitesTitle")}</Text>
-                    <Text style={styles.sectionBody}>
-                      {t(
-                        canManage
-                          ? "settings.team.pendingInvitesBody"
-                          : "settings.team.pendingInvitesReadOnlyBody",
-                        { count: formatNumber(pendingInvites.length) }
-                      )}
-                    </Text>
+                    <Text style={styles.sectionBody}>{pendingInvitesPresentation.sectionBody}</Text>
                   </View>
                 </View>
 
-                {pendingInvites.length === 0 ? (
-                  <Text style={styles.helper}>{t("settings.team.pendingInvitesEmpty")}</Text>
-                ) : (
+                {pendingInvitesPresentation.emptyHelper ? (
+                  <Text style={styles.helper}>{pendingInvitesPresentation.emptyHelper}</Text>
+                ) : pendingInvites.length === 0 ? null : (
                   <View style={styles.memberList}>
                     {pendingInvites.map((invite) => (
                       <View key={invite.id} style={styles.memberCard}>
