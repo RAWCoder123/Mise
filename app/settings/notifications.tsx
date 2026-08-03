@@ -16,7 +16,7 @@ import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { usePressScale } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, fontFamilies, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -26,12 +26,15 @@ import {
   type NotificationCategory
 } from "../../services/domain/notificationPreferences";
 import {
+  presentNotificationSettingsNoticeCopy,
   presentNotificationSettingsSummary,
   presentPreferenceSettingsInteractive,
   presentPreferenceSettingsValuesVisible,
-  resolvePreferenceSettingsLoadState
+  resolvePreferenceSettingsLoadState,
+  type NotificationSettingsNoticeReason
 } from "../../services/presentation/preferenceSettingsPresentation";
 import type { MessageKey } from "../../i18n/catalog";
+import { captureMiseError } from "../../services/telemetry";
 
 const CATEGORY_COPY: Record<
   NotificationCategory,
@@ -63,7 +66,25 @@ const CATEGORY_COPY: Record<
   }
 };
 
-type SaveStatus = { kind: "saved" | "error"; category: NotificationCategory } | null;
+type NotificationNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
+
+const NOTICE_COPY_KEYS: Record<
+  NotificationSettingsNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  saveFailed: {
+    title: "settings.notifications.notice.saveFailedTitle",
+    message: "settings.notifications.saveError"
+  },
+  saved: {
+    title: "settings.notifications.notice.savedTitle",
+    message: "settings.notifications.savedAnnouncement"
+  }
+};
 
 export default function NotificationSettingsScreen() {
   const navigation = useNavigation();
@@ -80,7 +101,7 @@ export default function NotificationSettingsScreen() {
     clearError
   } = useNotificationPreferences();
   const [busyCategory, setBusyCategory] = useState<NotificationCategory | null>(null);
-  const [status, setStatus] = useState<SaveStatus>(null);
+  const [notice, setNotice] = useState<NotificationNotice | null>(null);
 
   const hubLoadState = resolvePreferenceSettingsLoadState({
     sessionReady,
@@ -90,23 +111,56 @@ export default function NotificationSettingsScreen() {
   const valuesVisible = presentPreferenceSettingsValuesVisible(hubLoadState);
   const interactive = presentPreferenceSettingsInteractive(hubLoadState);
 
+  function clearNotice() {
+    if (notice) setNotice(null);
+  }
+
+  function noticeFor(
+    reason: NotificationSettingsNoticeReason,
+    messageParams?: Record<string, string>
+  ): NotificationNotice {
+    const localized = (Object.keys(NOTICE_COPY_KEYS) as NotificationSettingsNoticeReason[]).reduce(
+      (acc, key) => {
+        const messageKey = NOTICE_COPY_KEYS[key].message;
+        acc[key] = {
+          title: t(NOTICE_COPY_KEYS[key].title),
+          message:
+            key === "saved" && messageParams
+              ? t(messageKey, messageParams)
+              : t(messageKey)
+        };
+        return acc;
+      },
+      {} as Record<NotificationSettingsNoticeReason, { title: string; message: string }>
+    );
+    return presentNotificationSettingsNoticeCopy(reason, localized);
+  }
+
   async function chooseCategory(category: NotificationCategory, enabled: boolean) {
     if (!interactive || saving || preferences[category] === enabled) return;
     setBusyCategory(category);
-    setStatus(null);
+    clearNotice();
     clearError();
 
     try {
       await setCategoryEnabled(category, enabled);
-      setStatus({ kind: "saved", category });
-      AccessibilityInfo.announceForAccessibility(
-        t("settings.notifications.savedAnnouncement", {
-          category: t(CATEGORY_COPY[category].titleKey),
-          state: enabled ? t("common.on") : t("common.off")
+      const categoryLabel = t(CATEGORY_COPY[category].titleKey);
+      const stateLabel = enabled ? t("common.on") : t("common.off");
+      setNotice(
+        noticeFor("saved", {
+          category: categoryLabel,
+          state: stateLabel
         })
       );
-    } catch {
-      setStatus({ kind: "error", category });
+      AccessibilityInfo.announceForAccessibility(
+        t("settings.notifications.savedAnnouncement", {
+          category: categoryLabel,
+          state: stateLabel
+        })
+      );
+    } catch (error) {
+      captureMiseError(error, { flow: "settings_notifications", operation: "save" });
+      setNotice(noticeFor("saveFailed"));
     } finally {
       setBusyCategory(null);
     }
@@ -183,25 +237,8 @@ export default function NotificationSettingsScreen() {
           })}
         </Card>
 
-        {!loadError && status ? (
-          <View
-            style={[styles.status, status.kind === "error" ? styles.statusError : styles.statusSuccess]}
-            accessibilityLiveRegion="polite"
-          >
-            <Text
-              style={[
-                styles.statusText,
-                status.kind === "error" ? styles.statusErrorText : styles.statusSuccessText
-              ]}
-            >
-              {status.kind === "error"
-                ? t("settings.notifications.saveError")
-                : t("settings.notifications.savedAnnouncement", {
-                    category: t(CATEGORY_COPY[status.category].titleKey),
-                    state: preferences[status.category] ? t("common.on") : t("common.off")
-                  })}
-            </Text>
-          </View>
+        {!loadError && notice ? (
+          <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
         ) : null}
 
         <View style={styles.persistenceNote}>
@@ -330,28 +367,6 @@ const styles = StyleSheet.create({
   selectionEnabled: {
     borderColor: colors.accent,
     backgroundColor: colors.accent
-  },
-  status: {
-    minHeight: 44,
-    justifyContent: "center",
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
-  },
-  statusSuccess: {
-    backgroundColor: colors.successSoft
-  },
-  statusError: {
-    backgroundColor: colors.dangerSoft
-  },
-  statusText: {
-    ...typography.caption
-  },
-  statusSuccessText: {
-    color: colors.success
-  },
-  statusErrorText: {
-    color: colors.danger
   },
   persistenceNote: {
     minHeight: 56,

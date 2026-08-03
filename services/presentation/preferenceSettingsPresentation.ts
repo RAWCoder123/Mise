@@ -66,3 +66,30 @@ export function presentPreferenceSettingsInteractive(
 ): boolean {
   return state === "ready";
 }
+
+export type LanguageSettingsNoticeReason = "saved" | "saveFailed";
+export type NotificationSettingsNoticeReason = "saved" | "saveFailed";
+
+export function presentLanguageSettingsNoticeCopy(
+  reason: LanguageSettingsNoticeReason,
+  copy: Record<LanguageSettingsNoticeReason, { title: string; message: string }>
+): { tone: "danger" | "success"; title: string; message: string } {
+  const selected = copy[reason] ?? copy.saveFailed;
+  return {
+    tone: reason === "saved" ? "success" : "danger",
+    title: selected.title,
+    message: selected.message
+  };
+}
+
+export function presentNotificationSettingsNoticeCopy(
+  reason: NotificationSettingsNoticeReason,
+  copy: Record<NotificationSettingsNoticeReason, { title: string; message: string }>
+): { tone: "danger" | "success"; title: string; message: string } {
+  const selected = copy[reason] ?? copy.saveFailed;
+  return {
+    tone: reason === "saved" ? "success" : "danger",
+    title: selected.title,
+    message: selected.message
+  };
+}

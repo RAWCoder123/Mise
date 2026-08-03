@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  presentLanguageSettingsNoticeCopy,
   presentLanguageSettingsSelection,
+  presentNotificationSettingsNoticeCopy,
   presentNotificationSettingsSummary,
   presentPreferenceSettingsInteractive,
   presentPreferenceSettingsNote,
@@ -15,6 +17,7 @@ const languageScreen = readFileSync("app/settings/language.tsx", "utf8");
 const notificationsScreen = readFileSync("app/settings/notifications.tsx", "utf8");
 const localeContext = readFileSync("contexts/LocaleContext.tsx", "utf8");
 const notificationContext = readFileSync("contexts/NotificationPreferencesContext.tsx", "utf8");
+const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
 test("preference settings load state stays loading until ready and surfaces load errors", () => {
   assert.equal(
@@ -98,23 +101,65 @@ test("notification summary never claims muted defaults while loading or failed",
   assert.equal(presentPreferenceSettingsInteractive("ready"), true);
 });
 
-test("language and notifications hubs wire soft-refresh and RetryNotice instead of false preference flashes", () => {
+test("language and notification save notices use success only for saved", () => {
+  const languageCopy = {
+    saved: { title: "Language saved", message: "Updated to Español" },
+    saveFailed: { title: "Could not save", message: "Try again" }
+  };
+  const languageSaved = presentLanguageSettingsNoticeCopy("saved", languageCopy);
+  assert.equal(languageSaved.tone, "success");
+  assert.equal(languageSaved.title, "Language saved");
+  assert.equal(languageSaved.message, "Updated to Español");
+  const languageFailed = presentLanguageSettingsNoticeCopy("saveFailed", languageCopy);
+  assert.equal(languageFailed.tone, "danger");
+  assert.equal(languageFailed.title, "Could not save");
+
+  const notificationCopy = {
+    saved: { title: "Alert saved", message: "Inventory set to Off" },
+    saveFailed: { title: "Could not save alerts", message: "Try again" }
+  };
+  const notificationSaved = presentNotificationSettingsNoticeCopy("saved", notificationCopy);
+  assert.equal(notificationSaved.tone, "success");
+  assert.equal(notificationSaved.message, "Inventory set to Off");
+  const notificationFailed = presentNotificationSettingsNoticeCopy("saveFailed", notificationCopy);
+  assert.equal(notificationFailed.tone, "danger");
+  assert.equal(notificationFailed.title, "Could not save alerts");
+});
+
+test("language and notifications hubs wire soft-refresh, RetryNotice, and localized StatusNotice", () => {
   assert.match(languageScreen, /resolvePreferenceSettingsLoadState/);
   assert.match(languageScreen, /presentLanguageSettingsSelection/);
+  assert.match(languageScreen, /presentLanguageSettingsNoticeCopy/);
+  assert.match(languageScreen, /StatusNotice/);
+  assert.match(languageScreen, /captureMiseError/);
   assert.match(languageScreen, /RetryNotice/);
   assert.match(languageScreen, /onRetry=\{\(\) => reload\(true\)\}/);
   assert.match(languageScreen, /settings\.language\.retry\.accessibility/);
   assert.match(languageScreen, /loading=\{hubLoadState === "loading"\}/);
   assert.match(languageScreen, /selection\.interactive/);
+  assert.doesNotMatch(languageScreen, /setStatus\(|styles\.statusError|styles\.statusSuccess/);
 
   assert.match(notificationsScreen, /resolvePreferenceSettingsLoadState/);
   assert.match(notificationsScreen, /presentNotificationSettingsSummary/);
+  assert.match(notificationsScreen, /presentNotificationSettingsNoticeCopy/);
+  assert.match(notificationsScreen, /StatusNotice/);
+  assert.match(notificationsScreen, /captureMiseError/);
   assert.match(notificationsScreen, /RetryNotice/);
   assert.match(notificationsScreen, /onRetry=\{\(\) => reload\(true\)\}/);
   assert.match(notificationsScreen, /settings\.notifications\.retry\.accessibility/);
   assert.match(notificationsScreen, /loading=\{hubLoadState === "loading"\}/);
   assert.match(notificationsScreen, /presentPreferenceSettingsValuesVisible/);
   assert.match(notificationsScreen, /valuesVisible \? preferences\[category\] : false/);
+  assert.doesNotMatch(notificationsScreen, /setStatus\(|styles\.statusError|styles\.statusSuccess/);
+
+  assert.match(catalog, /settings\.language\.notice\.saveFailedTitle/);
+  assert.match(catalog, /settings\.language\.notice\.savedTitle/);
+  assert.match(catalog, /settings\.notifications\.notice\.saveFailedTitle/);
+  assert.match(catalog, /settings\.notifications\.notice\.savedTitle/);
+  assert.match(catalog, /"settings\.language\.notice\.saveFailedTitle":\s*"No se pudo guardar el idioma"/);
+  assert.match(catalog, /"settings\.language\.notice\.saveFailedTitle":\s*"无法保存语言设置"/);
+  assert.match(catalog, /"settings\.notifications\.notice\.savedTitle":\s*"Preferencia de alerta guardada"/);
+  assert.match(catalog, /"settings\.notifications\.notice\.savedTitle":\s*"提醒偏好已保存"/);
 });
 
 test("locale and notification preference contexts soft-refresh without wiping prior values", () => {
