@@ -12,7 +12,7 @@
 
 ## Verification
 - `npm run typecheck`
-- `npm test`
+- `npm test` — 416 passed after Team polish; 419 after Team + Gmail polish
 - `npm run security:static`
 - `npm run security:backend`
 - `npm run design:static`
