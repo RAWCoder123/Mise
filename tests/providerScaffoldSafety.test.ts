@@ -62,3 +62,14 @@ test("hosted createAiInsight surfaces fail-closed Edge statuses instead of inven
   assert.match(hostedCreate, /Live AI insight generation is unavailable/);
   assert.doesNotMatch(hostedCreate, /service_create_rules_engine_ai_insight/);
 });
+
+test("client POS adapters keep live providers marked unimplemented until Edge sync exists", () => {
+  const adapters = readFileSync("services/integrations/posAdapters.ts", "utf8");
+  assert.match(adapters, /provider_not_implemented/);
+  assert.match(adapters, /createUnavailableAdapter\("square"/);
+  assert.match(adapters, /createUnavailableAdapter\("toast"/);
+  assert.match(adapters, /createUnavailableAdapter\("clover"/);
+  assert.match(adapters, /createUnavailableAdapter\("lightspeed"/);
+  assert.match(adapters, /createUnavailableAdapter\("manual_csv"/);
+  assert.doesNotMatch(adapters, /provider_not_enabled/);
+});
