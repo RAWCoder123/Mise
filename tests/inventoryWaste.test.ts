@@ -92,7 +92,8 @@ test("inventory list and staff detail surface waste recording without manager co
   const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
   assert.match(list, /canRecordInventoryWaste/);
-  assert.match(list, /canRecordWaste \? \(/);
+  assert.match(list, /presentInventoryHubActionsEditable\(canRecordWaste, hubReady\)/);
+  assert.match(list, /canShowWasteAction \? \(/);
   assert.match(list, /inventory\.waste\.cardTitle/);
   assert.match(list, /searchInputRef\.current\?\.focus\(\)/);
   assert.match(detail, /showWasteBeforeCountSettings = canRecordWaste && !canManage/);
