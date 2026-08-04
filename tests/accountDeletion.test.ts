@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildAccountDeletionRequestMetadata,
+  isCompletedAccountDeletionStatus,
   isConfirmedAccountDeletion,
   selectMembershipIdsDisabledByAccountDeletion,
   selectSoleOwnedRestaurantIds
@@ -51,6 +52,16 @@ test("account deletion confirmation requires exact DELETE token", () => {
   assert.equal(isConfirmedAccountDeletion("delete account"), false);
   assert.equal(isConfirmedAccountDeletion(""), false);
   assert.equal(isConfirmedAccountDeletion(null), false);
+});
+
+test("account deletion completion status is exact completed only", () => {
+  assert.equal(isCompletedAccountDeletionStatus("completed"), true);
+  assert.equal(isCompletedAccountDeletionStatus("processing"), false);
+  assert.equal(isCompletedAccountDeletionStatus("failed"), false);
+  assert.equal(isCompletedAccountDeletionStatus("requested"), false);
+  assert.equal(isCompletedAccountDeletionStatus(""), false);
+  assert.equal(isCompletedAccountDeletionStatus(null), false);
+  assert.equal(isCompletedAccountDeletionStatus(undefined), false);
 });
 
 test("sole-owned restaurants exclude co-owned and inactive memberships", () => {

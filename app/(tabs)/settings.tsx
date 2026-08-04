@@ -85,6 +85,7 @@ export default function SettingsScreen() {
     resetDemoData,
     role,
     signOut,
+    clearLocalSessionAfterAccountDeletion,
     switchRestaurant,
     user,
     usingLocalDemo
@@ -233,8 +234,12 @@ export default function SettingsScreen() {
     setDeletingAccount(true);
     setMessage(null);
     try {
-      await requestAccountDeletion("DELETE");
-      await signOut();
+      const deletion = await requestAccountDeletion("DELETE");
+      if (deletion.status !== "completed") {
+        throw new Error("Account deletion could not be completed.");
+      }
+      // Auth user may already be gone; never treat remote revoke failure as delete failure.
+      await clearLocalSessionAfterAccountDeletion();
       router.replace("/login");
     } catch (deleteError) {
       captureMiseError(deleteError, { flow: "settings", operation: "delete_account" });

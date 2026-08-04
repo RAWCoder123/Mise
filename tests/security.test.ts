@@ -2589,6 +2589,31 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
   assert.match(accountDeletionTests, /deleted_actor_user_id/i);
   assert.match(catalog, /Restaurants you solely own are closed/);
   assert.match(settings, /requestAccountDeletion/);
+  assert.match(settings, /clearLocalSessionAfterAccountDeletion/);
+  assert.match(settings, /deletion\.status\s*!==\s*["']completed["']/);
+  assert.doesNotMatch(
+    settings.match(/async function confirmDeleteAccount\([\s\S]*?\n  \}/)?.[0] ?? "",
+    /await signOut\(\)/
+  );
+
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const hostedAccountDeletion =
+    repository.match(/async requestAccountDeletion\(confirmation\) \{[\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(hostedAccountDeletion, /isCompletedAccountDeletionStatus/);
+  assert.match(
+    hostedAccountDeletion,
+    /isCompletedAccountDeletionStatus\(payload\?\.status\)[\s\S]*if \(error\) throw error/
+  );
+  assert.doesNotMatch(hostedAccountDeletion, /if \(error\) throw error;\s*const payload/);
+
+  const session = readFileSync("contexts/MiseSessionContext.tsx", "utf8");
+  assert.match(session, /clearLocalSessionAfterAccountDeletion/);
+  assert.match(session, /sign_out_after_account_deletion/);
+  assert.match(
+    session.match(/const clearLocalSessionAfterAccountDeletion = useCallback\(async \(\) => \{[\s\S]*?\n  \},/)?.[0]
+      ?? "",
+    /await clearSessionState\(\)/
+  );
 });
 
 test("restaurant data export is owner/admin Edge-routed with secret redaction", () => {

@@ -10,6 +10,11 @@ export function isConfirmedAccountDeletion(confirmation: string | null | undefin
   return typeof confirmation === "string" && confirmation.trim().toUpperCase() === "DELETE";
 }
 
+/** Edge `request-account-deletion` success boundary after Auth hard-delete. */
+export function isCompletedAccountDeletionStatus(status: string | null | undefined): boolean {
+  return status === "completed";
+}
+
 export function selectSoleOwnedRestaurantIds(
   actorUserId: string,
   memberships: AccountDeletionMembershipSnapshot[]

@@ -100,6 +100,8 @@ interface MiseSessionContextValue {
   applyRestaurantProfile: (restaurant: Restaurant) => Promise<void>;
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Best-effort remote revoke + always clear local session after Auth account deletion. */
+  clearLocalSessionAfterAccountDeletion: () => Promise<void>;
 }
 
 const PASSWORD_RECOVERY_STORAGE_KEY = "mise:password-recovery:v1";
@@ -887,7 +889,29 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     clearPasswordRecovery();
     if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    }
+    await clearSessionState();
+  }, [clearPasswordRecovery, clearSessionState]);
+
+  const clearLocalSessionAfterAccountDeletion = useCallback(async () => {
+    clearPasswordRecovery();
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          captureMiseError(error, {
+            flow: "session",
+            operation: "sign_out_after_account_deletion"
+          });
+        }
+      } catch (remoteSignOutError) {
+        captureMiseError(remoteSignOutError, {
+          flow: "session",
+          operation: "sign_out_after_account_deletion"
+        });
+      }
     }
     await clearSessionState();
   }, [clearPasswordRecovery, clearSessionState]);
@@ -928,7 +952,8 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       applyOperatorDisplayName,
       applyRestaurantProfile,
       resetDemoData,
-      signOut
+      signOut,
+      clearLocalSessionAfterAccountDeletion
     }),
     [
       activeRestaurantId,
@@ -936,6 +961,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       applyRestaurantProfile,
       authUser,
       availableRestaurants,
+      clearLocalSessionAfterAccountDeletion,
       clearPasswordRecovery,
       clearPasswordRecoveryLinkError,
       completePasswordReset,

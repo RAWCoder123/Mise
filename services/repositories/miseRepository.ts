@@ -98,7 +98,10 @@ import {
   rolesAssignableBy,
   type AssignableRestaurantRole
 } from "../domain/teamMembership";
-import { isConfirmedAccountDeletion } from "../domain/accountDeletion";
+import {
+  isCompletedAccountDeletionStatus,
+  isConfirmedAccountDeletion
+} from "../domain/accountDeletion";
 import {
   buildRestaurantDataExport,
   serializeRestaurantDataExport,
@@ -3573,12 +3576,13 @@ function createSupabaseRepository(): MiseRepository {
       const { data, error } = await client.functions.invoke("request-account-deletion", {
         body: { confirmation }
       });
-      if (error) throw error;
       const payload = data as { status?: string; requestId?: string; message?: string } | null;
-      if (!payload?.status) {
-        throw new Error(payload?.message ?? "Account deletion could not be completed.");
+      // Auth hard-delete is the success boundary; prefer completed status over secondary invoke errors.
+      if (isCompletedAccountDeletionStatus(payload?.status)) {
+        return { status: "completed", requestId: payload?.requestId };
       }
-      return { status: payload.status, requestId: payload.requestId };
+      if (error) throw error;
+      throw new Error(payload?.message ?? "Account deletion could not be completed.");
     },
 
     async exportRestaurantData(restaurantId) {
