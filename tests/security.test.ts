@@ -2598,7 +2598,9 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
 
   const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
   const hostedAccountDeletion =
-    repository.match(/async requestAccountDeletion\(confirmation\) \{[\s\S]*?\n    \},/)?.[0] ?? "";
+    repository.match(
+      /async requestAccountDeletion\(confirmation\) \{[\s\S]*?request-account-deletion[\s\S]*?\n    \},/
+    )?.[0] ?? "";
   assert.match(hostedAccountDeletion, /isCompletedAccountDeletionStatus/);
   assert.match(
     hostedAccountDeletion,
