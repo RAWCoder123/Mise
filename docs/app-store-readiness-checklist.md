@@ -1,8 +1,10 @@
 # App Store Readiness Checklist
 
-Last updated: August 2, 2026
+Last updated: August 4, 2026
 
 Classification guidance uses evidence, not polish. Current overall status: **not yet beta-ready for paid public launch**; **controlled pilot-ready** only after the latest migration chain passes Docker/hosted security gates.
+
+Operator-facing StatusNotice localization and hub load telemetry now cover Today, Orders, Inventory, Insights, Settings hubs (including POS connect/import). Remaining App Store blockers are mostly external (Docker/hosted security re-proof, privacy/support URLs, Apple Developer / TestFlight, live POS/Gmail credentials).
 
 | Item | Status | Notes |
 | --- | --- | --- |
