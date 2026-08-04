@@ -522,9 +522,13 @@ if (/\.from\("sales_imports"\)[\s\S]*\.(?:insert|upsert)\(/i.test(syncPosSource)
 if (
   !/recordFunctionSecurityEvent\([\s\S]*"blocked"[\s\S]*"pos_sync_blocked"/i.test(syncPosSource) ||
   !/providerConfigured\s*\?\s*501\s*:\s*503/i.test(syncPosSource) ||
+  !/"provider_not_implemented"/i.test(syncPosSource) ||
+  /"provider_not_enabled"/i.test(syncPosSource) ||
   (syncPosSource.match(/recordFunctionSecurityEvent\s*\(/g)?.length ?? 0) !== 1
 ) {
-  failures.push("supabase/functions/sync-pos-sales/index.ts: unavailable sync must close once with a blocked 501/503 response.");
+  failures.push(
+    "supabase/functions/sync-pos-sales/index.ts: unavailable sync must close once with provider_not_implemented (501) or server_configuration_required (503)."
+  );
 }
 
 const generateAiSource = read("supabase/functions/generate-ai-insights/index.ts");

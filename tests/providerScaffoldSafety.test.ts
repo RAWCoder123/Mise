@@ -27,7 +27,6 @@ function assertFailClosedOrder(source: string, functionName: string) {
     `${functionName} has one explicit terminal security-event write`
   );
   assert.match(source, /"blocked"/);
-  assert.match(source, /provider_not_enabled/);
   assert.match(source, /server_configuration_required/);
   assert.match(source, /providerConfigured\s*\?\s*501\s*:\s*503/);
   assert.match(source, /retryable:\s*false/);
@@ -36,6 +35,8 @@ function assertFailClosedOrder(source: string, functionName: string) {
 
 test("unimplemented POS synchronization fails closed without creating import work", () => {
   assertFailClosedOrder(syncPos, "sync-pos-sales");
+  assert.match(syncPos, /"provider_not_implemented"/);
+  assert.doesNotMatch(syncPos, /"provider_not_enabled"/);
   assert.match(syncPos, /"pos_sync_blocked"/);
   assert.doesNotMatch(syncPos, /\.from\("sales_imports"\)/);
   assert.doesNotMatch(syncPos, /status:\s*"queued"|pos_sync_queued|scaffold:\s*true/);
@@ -43,6 +44,7 @@ test("unimplemented POS synchronization fails closed without creating import wor
 
 test("unimplemented model generation fails closed without persisting an insight", () => {
   assertFailClosedOrder(generateAi, "generate-ai-insights");
+  assert.match(generateAi, /"provider_not_enabled"/);
   assert.match(generateAi, /"ai_insight_generation_blocked"/);
   assert.doesNotMatch(generateAi, /service_create_rules_engine_ai_insight|\.from\("ai_insights"\)/);
   assert.doesNotMatch(generateAi, /generated_placeholder|ready_not_executed|ai_insight_generated/);

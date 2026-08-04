@@ -37,7 +37,9 @@ function createUnavailableAdapter(
     supportsCatalog,
     supportsInventory: false,
     async syncSales() {
-      throw new Error(`${displayName} sync requires a server-side Edge Function with provider secrets.`);
+      throw new Error(
+        `${displayName} live sync is provider_not_implemented until the server-side Edge Function is enabled with provider secrets.`
+      );
     }
   };
 }

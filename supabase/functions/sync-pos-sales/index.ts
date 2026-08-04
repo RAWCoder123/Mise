@@ -63,7 +63,10 @@ Deno.serve(async (req) => {
 
     const requiredSecretName = providerSecretNames[provider];
     const providerConfigured = requiredSecretName === null || Boolean(Deno.env.get(requiredSecretName));
-    const blockedReason = providerConfigured ? "provider_not_enabled" : "server_configuration_required";
+    // Secrets/config present means the provider can be selected, but live sync code is not
+    // implemented yet. Missing secrets are a server-configuration problem, not an
+    // unimplemented-capability signal.
+    const blockedReason = providerConfigured ? "provider_not_implemented" : "server_configuration_required";
 
     await recordFunctionSecurityEvent(securitySupabase, user.id, reservation.reservation_id!, restaurantId, "sync-pos-sales", "blocked", "pos_sync_blocked", {
       provider,
@@ -74,7 +77,7 @@ Deno.serve(async (req) => {
       {
         status: blockedReason,
         message: providerConfigured
-          ? "Live POS synchronization is not enabled."
+          ? "Live POS synchronization is not implemented for this provider."
           : "The selected POS connection is not configured on the server.",
         retryable: false
       },

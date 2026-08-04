@@ -186,7 +186,7 @@ assert.equal(unexpected.length, 0, `unexpected Edge statuses: ${unexpected.map((
 assert.equal(authorizedBlocked.length, 8, "the serialized 60-second window authorizes exactly 8 unavailable POS requests");
 assert.equal(rateLimited.length, 12, "all concurrent requests beyond the policy return 429");
 assert.ok(
-  authorizedBlocked.every((response) => response.payload?.status === "provider_not_enabled"),
+  authorizedBlocked.every((response) => response.payload?.status === "provider_not_implemented"),
   "authorized POS scaffold requests fail closed without reporting queued work"
 );
 assert.ok(

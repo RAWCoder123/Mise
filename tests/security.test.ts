@@ -480,7 +480,8 @@ test("manual CSV POS ingest is service-owned, bounded, and keeps live sync fail-
   );
   assert.match(skippedIncompatiblePgTap, /skipped_incompatible_count/);
   assert.match(skippedIncompatiblePgTap, /unit-incompatible mapping skips/i);
-  assert.match(syncPos, /provider_not_enabled/);
+  assert.match(syncPos, /provider_not_implemented/);
+  assert.doesNotMatch(syncPos, /"provider_not_enabled"/);
   assert.doesNotMatch(syncPos, /service_ingest_manual_pos_sales/);
   assert.doesNotMatch(application, /\.from\("pos_sales"\)\.insert/);
 });
@@ -1688,7 +1689,8 @@ test("Edge Functions validate contracts, sanitize metadata, and audit attempts",
   assert.match(syncPos, /requireIsoDateString\(body\.from,\s*"from"\)/i);
   assert.match(syncPos, /recordFunctionAuditLog\([\s\S]*"pos_sync_requested"/i);
   assert.match(syncPos, /recordFunctionSecurityEvent\([\s\S]*"pos_sync_blocked"/i);
-  assert.match(syncPos, /"provider_not_enabled"/i);
+  assert.match(syncPos, /"provider_not_implemented"/i);
+  assert.doesNotMatch(syncPos, /"provider_not_enabled"/i);
   assert.match(syncPos, /"server_configuration_required"/i);
   assert.doesNotMatch(syncPos, /\.from\("sales_imports"\)[\s\S]*\.(?:insert|upsert)\(/i);
   assert.doesNotMatch(syncPos, /status:\s*"queued"/i);
