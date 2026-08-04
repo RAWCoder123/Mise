@@ -51,6 +51,7 @@ import {
 } from "../../services/demoData";
 import { saveRestaurantSetup, updateRestaurantProfile } from "../../services/miseService";
 import {
+  presentSetupCreateBlockedByUnverifiedAccess,
   presentSetupCreateNoticeCopy,
   presentSetupFormBusy,
   presentSetupFormEditable,
@@ -93,6 +94,10 @@ const NOTICE_COPY_KEYS: Record<
   createFailed: {
     title: "setup.error.notice.createFailedTitle",
     message: "setup.error.create"
+  },
+  workspaceUnverified: {
+    title: "setup.access.unverifiedTitle",
+    message: "setup.access.unverifiedBody"
   }
 };
 
@@ -101,7 +106,7 @@ export default function SetupScreen() {
   const {
     authUser,
     canUseDemoMode,
-    clearWorkspaceAccessUnverified,
+    confirmWorkspaceAccess,
     continueWithDemo,
     createRestaurant,
     isDemoMode,
@@ -137,10 +142,12 @@ export default function SetupScreen() {
   const [readyName, setReadyName] = useState<string | null>(null);
   const [skippedRecipeIngredients, setSkippedRecipeIngredients] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [confirmingAccess, setConfirmingAccess] = useState(false);
   const [notice, setNotice] = useState<SetupNotice | null>(null);
-  const [workspaceAccessNotice, setWorkspaceAccessNotice] = useState(false);
   const seededSetupKeyRef = useRef<string | null>(null);
-  const busy = presentSetupFormBusy(loading, submissionLockRef.current);
+  const recoveredFromUnverifiedAccessRef = useRef(false);
+  const createBlockedByUnverifiedAccess = presentSetupCreateBlockedByUnverifiedAccess(workspaceAccessUnverified);
+  const busy = presentSetupFormBusy(loading || confirmingAccess, submissionLockRef.current);
   const formEditable = presentSetupFormEditable(canConfigure, busy);
 
   function clearNotice() {
@@ -186,11 +193,18 @@ export default function SetupScreen() {
   }, [authUser?.id, isDemoSetup, ready, readyName, restaurant?.cuisine_type, restaurant?.id, restaurant?.name, starterDrafts]);
 
   useEffect(() => {
-    if (!ready || !workspaceAccessUnverified) return;
-    // Fail-closed membership clear: explain why the operator landed on setup without a workspace.
-    setWorkspaceAccessNotice(true);
-    clearWorkspaceAccessUnverified();
-  }, [clearWorkspaceAccessUnverified, ready, workspaceAccessUnverified]);
+    if (workspaceAccessUnverified) {
+      recoveredFromUnverifiedAccessRef.current = true;
+    }
+  }, [workspaceAccessUnverified]);
+
+  useEffect(() => {
+    if (!ready || !restaurant || createBlockedByUnverifiedAccess) return;
+    // Only leave setup when membership was restored after a fail-closed clear.
+    if (!recoveredFromUnverifiedAccessRef.current || isDemoSetup || !authUser || readyName) return;
+    recoveredFromUnverifiedAccessRef.current = false;
+    router.replace("/today");
+  }, [authUser, createBlockedByUnverifiedAccess, isDemoSetup, ready, readyName, restaurant]);
 
   const posSalesImport = useMemo(() => parseSetupPosSalesCsv(posSalesCsvText), [posSalesCsvText]);
 
@@ -218,8 +232,35 @@ export default function SetupScreen() {
     [activeStep, readiness, t]
   );
 
+  async function retryWorkspaceAccess() {
+    if (confirmingAccess || busy) return;
+    setConfirmingAccess(true);
+    clearNotice();
+    try {
+      const outcome = await confirmWorkspaceAccess();
+      if (outcome === "restored") {
+        router.replace("/today");
+        return;
+      }
+      // Confirmed empty — create path unlocked by session clear of the unverified gate.
+    } catch (error) {
+      captureMiseError(error, { flow: "setup_workspace_access_confirm" });
+      setNotice({
+        tone: "danger",
+        title: t("setup.access.unverifiedRetryFailedTitle"),
+        message: t("setup.access.unverifiedRetryFailedBody")
+      });
+    } finally {
+      setConfirmingAccess(false);
+    }
+  }
+
   async function openDemoKitchen() {
     if (submissionLockRef.current || !formEditable) return;
+    if (createBlockedByUnverifiedAccess) {
+      setNotice(noticeFor("workspaceUnverified"));
+      return;
+    }
     const validationError = validateSetupDrafts({
       restaurantName,
       cuisineType,
@@ -443,12 +484,22 @@ export default function SetupScreen() {
       keyboardAware
     >
       <View style={styles.stack}>
-        {workspaceAccessNotice ? (
-          <StatusNotice
-            tone="caution"
-            title={t("setup.access.unverifiedTitle")}
-            message={t("setup.access.unverifiedBody")}
-          />
+        {createBlockedByUnverifiedAccess ? (
+          <>
+            <StatusNotice
+              tone="caution"
+              title={t("setup.access.unverifiedTitle")}
+              message={t("setup.access.unverifiedBody")}
+            />
+            <Button
+              title={confirmingAccess ? t("setup.access.unverifiedRetrying") : t("setup.access.unverifiedRetry")}
+              onPress={() => void retryWorkspaceAccess()}
+              disabled={confirmingAccess}
+              accessibilityState={{ disabled: confirmingAccess, busy: confirmingAccess }}
+              fullWidth
+              style={styles.accessButton}
+            />
+          </>
         ) : null}
 
         <SetupStepRail steps={setupSteps} onStepPress={(step) => selectStep(step as SetupStepId)} />
@@ -662,9 +713,12 @@ export default function SetupScreen() {
               : t("setup.action.continueTo", {
                   step: labelForStep(t, stepOrder[stepOrder.indexOf(activeStep) + 1] ?? "email")
                 })}
-            accessibilityState={{ disabled: loading, busy: loading }}
+            accessibilityState={{
+              disabled: loading || (activeStep === "email" && createBlockedByUnverifiedAccess),
+              busy: loading
+            }}
             onPress={nextStep}
-            disabled={loading}
+            disabled={loading || (activeStep === "email" && createBlockedByUnverifiedAccess)}
             fullWidth
             style={styles.button}
           />

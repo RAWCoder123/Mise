@@ -51,6 +51,7 @@ import {
   resetDemoData as resetDemoService,
   updateRestaurantProfile
 } from "../services/miseService";
+import { resolveSetupWorkspaceAccessConfirmOutcome } from "../services/presentation/setupCreatePresentation";
 import { activeMembershipForRestaurant, requireRestaurantAccess } from "../services/tenantAccess";
 import { captureMiseError } from "../services/telemetry";
 import { subscribeToTenantAuthorizationDenials } from "../services/tenantAuthorizationEvents";
@@ -90,6 +91,8 @@ interface MiseSessionContextValue {
   clearPasswordRecovery: () => void;
   clearPasswordRecoveryLinkError: () => void;
   clearWorkspaceAccessUnverified: () => void;
+  /** Re-hydrate memberships after fail-closed clear; clears the unverified gate when empty. */
+  confirmWorkspaceAccess: () => Promise<"restored" | "empty">;
   continueWithDemo: (profile?: { name?: string; cuisine_type?: string; posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   createRestaurant: (profile: {
     name: string;
@@ -653,6 +656,9 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       if (!authUser) {
         throw new Error("Sign in before creating a restaurant.");
       }
+      if (workspaceAccessUnverified) {
+        throw new Error("Confirm workspace access before creating a restaurant.");
+      }
       const nextRestaurant = await createRestaurantWithOwner(profile.name, profile.cuisine_type ?? null);
       if (profile.operational_profile) {
         const updatedRestaurant = await updateRestaurantProfile(nextRestaurant.id, {
@@ -665,8 +671,21 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       await hydrateSupabaseUser(authUser, nextRestaurant.id);
       return nextRestaurant;
     },
-    [authUser, hydrateSupabaseUser]
+    [authUser, hydrateSupabaseUser, workspaceAccessUnverified]
   );
+
+  const confirmWorkspaceAccess = useCallback(async () => {
+    if (!authUser || !isSupabaseConfigured) {
+      throw new Error("Sign in before confirming workspace access.");
+    }
+    await hydrateSupabaseUser(authUser, activeRestaurantIdRef.current);
+    const outcome = resolveSetupWorkspaceAccessConfirmOutcome(activeRestaurantIdRef.current);
+    if (outcome === "empty") {
+      // Membership fetch succeeded with zero workspaces — safe to offer create.
+      setWorkspaceAccessUnverified(false);
+    }
+    return outcome;
+  }, [authUser, hydrateSupabaseUser]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
@@ -979,6 +998,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       clearPasswordRecovery,
       clearPasswordRecoveryLinkError,
       clearWorkspaceAccessUnverified,
+      confirmWorkspaceAccess,
       continueWithDemo,
       createRestaurant,
       switchRestaurant,
@@ -1002,6 +1022,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       clearPasswordRecoveryLinkError,
       clearWorkspaceAccessUnverified,
       completePasswordReset,
+      confirmWorkspaceAccess,
       continueWithDemo,
       createRestaurant,
       connectDemoPOS,

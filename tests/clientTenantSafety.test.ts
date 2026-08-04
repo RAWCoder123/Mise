@@ -154,7 +154,9 @@ test("workspace mutations stop stale continuations and session state is latest-w
   assert.match(session, /clearUnverifiedWorkspaceAccess/);
   assert.match(session, /workspaceAccessUnverified/);
   assert.match(session, /clearWorkspaceAccessUnverified/);
+  assert.match(session, /confirmWorkspaceAccess/);
   assert.match(session, /setWorkspaceAccessUnverified\(true\)/);
+  assert.match(session, /Confirm workspace access before creating a restaurant/);
   assert.match(session, /pendingDenialRevalidation/);
   assert.match(session, /activeId\s*&&\s*!activeMembership/);
   assert.match(session, /sessionRequestIdRef\.current \+= 1/);
