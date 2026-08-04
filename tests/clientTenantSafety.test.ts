@@ -170,6 +170,13 @@ test("repository permission failures trigger live membership revalidation", () =
 
   assert.match(repository, /throwRepositoryError\(error, restaurantId\)/);
   assert.match(repository, /throwRepositoryError\(error, typeof body\.restaurantId/);
+  assert.match(repository, /throwRepositoryError\(error, input\.restaurant_id\)/);
+  assert.match(repository, /throwRepositoryError\(inventoryResult\.error, restaurantId\)/);
+  assert.match(repository, /throwRepositoryError\(linesError, restaurantId\)/);
+  assert.match(repository, /throwRepositoryError\(integration\.error, restaurantId\)/);
+  assert.doesNotMatch(repository, /if \(error\) throw error;/);
+  assert.doesNotMatch(repository, /if \(linesError\) throw linesError;/);
+  assert.doesNotMatch(repository, /if \(inventoryResult\.error\) throw inventoryResult\.error;/);
   assert.match(events, /code === "42501"/);
   assert.match(events, /status === 401/);
   assert.match(events, /status === 403/);

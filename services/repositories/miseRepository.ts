@@ -2797,7 +2797,7 @@ function createSupabaseRepository(): MiseRepository {
       p_restaurant_id: restaurantId,
       p_service_days: 28
     });
-    if (error) throw error;
+    if (error) throwRepositoryError(error, restaurantId);
     return ((data ?? []) as PosSale[]).map(normalizePosSale);
   }
 
@@ -3027,7 +3027,7 @@ function createSupabaseRepository(): MiseRepository {
           cuisineType: cuisineType ?? null
         }
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error);
       if (!data || data.status !== "completed") {
         throw new Error("Restaurant create did not complete.");
       }
@@ -3061,10 +3061,10 @@ function createSupabaseRepository(): MiseRepository {
           .order("created_at", { ascending: false })
           .limit(5)
       ]);
-      if (restaurantResult.error) throw restaurantResult.error;
-      if (posResult.error) throw posResult.error;
-      if (supplierResult.error) throw supplierResult.error;
-      if (aiResult.error) throw aiResult.error;
+      if (restaurantResult.error) throwRepositoryError(restaurantResult.error, restaurantId);
+      if (posResult.error) throwRepositoryError(posResult.error, restaurantId);
+      if (supplierResult.error) throwRepositoryError(supplierResult.error, restaurantId);
+      if (aiResult.error) throwRepositoryError(aiResult.error, restaurantId);
       return {
         restaurant: normalizeRestaurant(restaurantResult.data as Restaurant),
         posIntegrations: ((posResult.data ?? []) as PosIntegration[]).map(normalizePosIntegration),
@@ -3079,7 +3079,7 @@ function createSupabaseRepository(): MiseRepository {
         .select("*")
         .eq("restaurant_id", restaurantId)
         .order("updated_at", { ascending: false });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as PosIntegration[]).map(normalizePosIntegration);
     },
 
@@ -3089,7 +3089,7 @@ function createSupabaseRepository(): MiseRepository {
         .select("*")
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as AiInsight[]).map(normalizeAiInsight);
     },
 
@@ -3116,7 +3116,7 @@ function createSupabaseRepository(): MiseRepository {
           throw new Error(detail);
         }
       }
-      if (error) throw error;
+      if (error) throwRepositoryError(error, input.restaurant_id);
       const insight = payload?.insight;
       if (!insight || typeof insight !== "object") {
         throw new Error("AI insight workflow returned an invalid response.");
@@ -3139,11 +3139,11 @@ function createSupabaseRepository(): MiseRepository {
           client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId)
         ]);
 
-      if (restaurantResult.error) throw restaurantResult.error;
-      if (inventoryResult.error) throw inventoryResult.error;
-      if (recommendationsResult.error) throw recommendationsResult.error;
-      if (insightsResult.error) throw insightsResult.error;
-      if (mappingResult.error) throw mappingResult.error;
+      if (restaurantResult.error) throwRepositoryError(restaurantResult.error, restaurantId);
+      if (inventoryResult.error) throwRepositoryError(inventoryResult.error, restaurantId);
+      if (recommendationsResult.error) throwRepositoryError(recommendationsResult.error, restaurantId);
+      if (insightsResult.error) throwRepositoryError(insightsResult.error, restaurantId);
+      if (mappingResult.error) throwRepositoryError(mappingResult.error, restaurantId);
 
       return normalizeRestaurantData(
         restaurantResult.data as Restaurant,
@@ -3161,7 +3161,7 @@ function createSupabaseRepository(): MiseRepository {
         .select("*")
         .eq("restaurant_id", restaurantId)
         .order("item_name");
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as InventoryItem[]).map(normalizeInventoryItem);
     },
 
@@ -3218,14 +3218,14 @@ function createSupabaseRepository(): MiseRepository {
           .order("created_at", { ascending: false })
           .limit(500)
       ]);
-      if (inventoryResult.error) throw inventoryResult.error;
-      if (mappingResult.error) throw mappingResult.error;
-      if (restaurantResult.error) throw restaurantResult.error;
-      if (movementsResult.error) throw movementsResult.error;
-      if (receivingResult.error) throw receivingResult.error;
-      if (wasteResult.error) throw wasteResult.error;
-      if (countVarianceResult.error) throw countVarianceResult.error;
-      if (managerCorrectionResult.error) throw managerCorrectionResult.error;
+      if (inventoryResult.error) throwRepositoryError(inventoryResult.error, restaurantId);
+      if (mappingResult.error) throwRepositoryError(mappingResult.error, restaurantId);
+      if (restaurantResult.error) throwRepositoryError(restaurantResult.error, restaurantId);
+      if (movementsResult.error) throwRepositoryError(movementsResult.error, restaurantId);
+      if (receivingResult.error) throwRepositoryError(receivingResult.error, restaurantId);
+      if (wasteResult.error) throwRepositoryError(wasteResult.error, restaurantId);
+      if (countVarianceResult.error) throwRepositoryError(countVarianceResult.error, restaurantId);
+      if (managerCorrectionResult.error) throwRepositoryError(managerCorrectionResult.error, restaurantId);
       const operatingDate = toDateKeyInTimeZone(
         new Date(),
         (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
@@ -3399,7 +3399,7 @@ function createSupabaseRepository(): MiseRepository {
       const { data, error } = await client.rpc("list_restaurant_storage_locations", {
         p_restaurant_id: restaurantId
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as StorageLocation[]).map(normalizeStorageLocation);
     },
 
@@ -3424,7 +3424,7 @@ function createSupabaseRepository(): MiseRepository {
         query = query.eq("inventory_item_id", normalizedItemId);
       }
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as InventoryLocationBalance[]).map(normalizeInventoryLocationBalance);
     },
 
@@ -3456,7 +3456,7 @@ function createSupabaseRepository(): MiseRepository {
         .eq("inventory_item_id", itemId)
         .order("created_at", { ascending: false })
         .limit(Math.max(1, Math.min(limit ?? 8, 50)));
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as InventoryMovement[]).map(normalizeInventoryMovement);
     },
 
@@ -3472,7 +3472,7 @@ function createSupabaseRepository(): MiseRepository {
         .filter("metadata->>supplier_order_id", "eq", normalizedOrderId)
         .order("created_at", { ascending: true })
         .limit(capped);
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as InventoryMovement[]).map(normalizeInventoryMovement);
     },
 
@@ -3485,7 +3485,7 @@ function createSupabaseRepository(): MiseRepository {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       if (!session) return null;
       const { data: lines, error: linesError } = await client
         .from("inventory_count_lines")
@@ -3493,7 +3493,7 @@ function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .eq("session_id", session.id)
         .order("item_name", { ascending: true });
-      if (linesError) throw linesError;
+      if (linesError) throwRepositoryError(linesError, restaurantId);
       return normalizeInventoryCountSessionDetail({
         session: session as InventoryCountSessionDetail["session"],
         lines: (lines ?? []) as InventoryCountLine[]
@@ -3507,7 +3507,7 @@ function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .eq("id", sessionId)
         .maybeSingle();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       if (!session) throw new Error("Count session not found");
       const { data: lines, error: linesError } = await client
         .from("inventory_count_lines")
@@ -3515,7 +3515,7 @@ function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .eq("session_id", sessionId)
         .order("item_name", { ascending: true });
-      if (linesError) throw linesError;
+      if (linesError) throwRepositoryError(linesError, restaurantId);
       return normalizeInventoryCountSessionDetail({
         session: session as InventoryCountSessionDetail["session"],
         lines: (lines ?? []) as InventoryCountLine[]
@@ -3581,7 +3581,7 @@ function createSupabaseRepository(): MiseRepository {
       if (isCompletedAccountDeletionStatus(payload?.status)) {
         return { status: "completed", requestId: payload?.requestId };
       }
-      if (error) throw error;
+      if (error) throwRepositoryError(error);
       throw new Error(payload?.message ?? "Account deletion could not be completed.");
     },
 
@@ -3590,7 +3590,7 @@ function createSupabaseRepository(): MiseRepository {
       const { data, error } = await client.functions.invoke("export-restaurant-data", {
         body: { restaurantId }
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       const payload = data as {
         status?: string;
         export?: RestaurantDataExportDocument;
@@ -3650,7 +3650,7 @@ function createSupabaseRepository(): MiseRepository {
         .eq("inventory_item_id", itemId)
         .eq("status", "pending")
         .maybeSingle();
-      if (existing.error) throw existing.error;
+      if (existing.error) throwRepositoryError(existing.error, restaurantId);
       return existing.data ? normalizePurchaseRecommendation(existing.data as PurchaseRecommendation) : null;
     },
 
@@ -3674,7 +3674,7 @@ function createSupabaseRepository(): MiseRepository {
         .order("created_at", { ascending: false });
       if (status !== "all") query = query.eq("status", status);
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
     },
 
@@ -3725,7 +3725,7 @@ function createSupabaseRepository(): MiseRepository {
         .eq("status", "approved");
       if (supplierName) query = query.eq("supplier_name", supplierName);
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
     },
 
@@ -3753,7 +3753,7 @@ function createSupabaseRepository(): MiseRepository {
         .select("*")
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as SupplierOrder[]).map(normalizeSupplierOrder);
     },
 
@@ -3764,7 +3764,7 @@ function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
         .single();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return normalizeSupplierOrder(data as SupplierOrder);
     },
 
@@ -3868,7 +3868,7 @@ function createSupabaseRepository(): MiseRepository {
         .select("*")
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as Insight[]).map(normalizeInsight);
     },
 
@@ -3887,7 +3887,7 @@ function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .eq("provider", "gmail")
         .maybeSingle();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return data ? normalizeRestaurantEmailConnection(data as RestaurantEmailConnection) : null;
     },
 
@@ -3945,7 +3945,7 @@ function createSupabaseRepository(): MiseRepository {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (integration.error) throw integration.error;
+      if (integration.error) throwRepositoryError(integration.error, restaurantId);
       if (integration.data) {
         const normalized = normalizePosIntegration(integration.data as PosIntegration);
         const provider = normalizePosProviderFromIntegration(normalized.provider);
@@ -3963,7 +3963,7 @@ function createSupabaseRepository(): MiseRepository {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
 
       const provider = normalizePosProvider(data?.source_pos);
       return {
