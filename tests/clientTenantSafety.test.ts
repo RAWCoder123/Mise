@@ -147,6 +147,8 @@ test("workspace mutations stop stale continuations and session state is latest-w
   assert.match(session, /switchRequestIdRef/);
   assert.match(session, /sessionRequestIdRef/);
   assert.match(session, /sessionRequestId\s*!==\s*sessionRequestIdRef\.current/);
+  assert.match(session, /Promise\.allSettled/);
+  assert.match(session, /resolveMultiMembershipHydration/);
   assert.match(session, /storageQueueRef/);
   assert.match(session, /subscribeToTenantAuthorizationDenials/);
   assert.match(session, /revalidateLiveMemberships/);
