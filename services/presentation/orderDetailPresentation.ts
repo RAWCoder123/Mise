@@ -36,6 +36,7 @@ export type OrderDetailMutationNoticeReason =
   | "alreadySent"
   | "accepted"
   | "receiveInvalidStorage"
+  | "receiveLocationsUnavailable"
   | "receiveInvalidNote"
   | "receiveInvalidQuantity"
   | "received"
@@ -45,6 +46,47 @@ export type OrderDetailMutationNoticeReason =
   | "gmailReconnectRequired"
   | "noRestaurant"
   | "loadFailed";
+
+export type OrderDetailReceivePutAwayLoadState = "ready" | "unavailable" | "empty";
+
+export function resolveOrderDetailReceivePutAwayLoadState(input: {
+  loadError: boolean;
+  locationCount: number;
+}): OrderDetailReceivePutAwayLoadState {
+  if (input.loadError) return "unavailable";
+  if (input.locationCount <= 0) return "empty";
+  return "ready";
+}
+
+export function isOrderDetailReceiveBlockedByPutAwayLoad(
+  state: OrderDetailReceivePutAwayLoadState
+): boolean {
+  return state === "unavailable";
+}
+
+export function isOrderDetailReceiveLocationReady(input: {
+  putAwayLoadState: OrderDetailReceivePutAwayLoadState;
+  locationId: string;
+  locationIds: readonly string[];
+}): boolean {
+  if (input.putAwayLoadState === "unavailable") return false;
+  if (input.putAwayLoadState === "empty") return true;
+  return Boolean(input.locationId) && input.locationIds.includes(input.locationId);
+}
+
+export function presentOrderDetailReceivePutAwayCopy(
+  state: OrderDetailReceivePutAwayLoadState,
+  copy: {
+    unavailableTitle: string;
+    unavailableBody: string;
+  }
+): { title: string; message: string } | null {
+  if (state !== "unavailable") return null;
+  return {
+    title: copy.unavailableTitle,
+    message: copy.unavailableBody
+  };
+}
 
 export type OrderDetailSendErrorReason =
   | "gmailConnectRequired"
@@ -93,6 +135,7 @@ export function presentOrderDetailMutationNoticeCopy(
   }
   if (
     reason === "receiveInvalidStorage"
+    || reason === "receiveLocationsUnavailable"
     || reason === "receiveInvalidNote"
     || reason === "receiveInvalidQuantity"
   ) {

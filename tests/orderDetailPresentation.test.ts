@@ -3,12 +3,16 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  isOrderDetailReceiveBlockedByPutAwayLoad,
+  isOrderDetailReceiveLocationReady,
   presentOrderDetailMissingCopy,
   presentOrderDetailMutationActionsEditable,
   presentOrderDetailMutationBusy,
   presentOrderDetailMutationNoticeCopy,
+  presentOrderDetailReceivePutAwayCopy,
   presentOrderDetailSendErrorNotice,
   resolveOrderDetailLoadState,
+  resolveOrderDetailReceivePutAwayLoadState,
   resolveOrderDetailSendErrorReason
 } from "../services/presentation/orderDetailPresentation";
 
@@ -75,6 +79,10 @@ test("order detail mutation notice copy maps success, caution, warning, and dang
     alreadySent: { title: "Already sent", message: "Accepted body" },
     accepted: { title: "Accepted", message: "Moved to sent" },
     receiveInvalidStorage: { title: "Check receive", message: "Choose station" },
+    receiveLocationsUnavailable: {
+      title: "Stations unavailable",
+      message: "Reload put-away stations before receiving."
+    },
     receiveInvalidNote: { title: "Check receive", message: "Note too long" },
     receiveInvalidQuantity: { title: "Check receive", message: "Bad quantity" },
     received: { title: "Received", message: "Inventory updated" },
@@ -91,6 +99,10 @@ test("order detail mutation notice copy maps success, caution, warning, and dang
   assert.equal(presentOrderDetailMutationNoticeCopy("viewOnly", copy).tone, "neutral");
   assert.equal(presentOrderDetailMutationNoticeCopy("noRestaurant", copy).tone, "warning");
   assert.equal(presentOrderDetailMutationNoticeCopy("receiveInvalidStorage", copy).tone, "warning");
+  assert.equal(
+    presentOrderDetailMutationNoticeCopy("receiveLocationsUnavailable", copy).tone,
+    "warning"
+  );
   assert.equal(presentOrderDetailMutationNoticeCopy("gmailConnectRequired", copy).recovery, "gmail");
   assert.equal(presentOrderDetailMutationNoticeCopy("placeFailed", copy).tone, "danger");
   assert.equal(presentOrderDetailMutationNoticeCopy("accepted", copy).title, "Accepted");
@@ -154,4 +166,102 @@ test("order detail uses localized StatusNotice for mutation outcomes and capture
   assert.match(catalog, /orders\.detail\.notice\.receiveFailedTitle/);
   assert.match(catalog, /"orders\.detail\.notice\.placedTitle":\s*"Pedido marcado como realizado"/);
   assert.match(catalog, /"orders\.detail\.notice\.receivedTitle":\s*"已收货"/);
+});
+
+test("order detail receive put-away load state separates failure from empty success", () => {
+  assert.equal(
+    resolveOrderDetailReceivePutAwayLoadState({ loadError: true, locationCount: 0 }),
+    "unavailable"
+  );
+  assert.equal(
+    resolveOrderDetailReceivePutAwayLoadState({ loadError: false, locationCount: 0 }),
+    "empty"
+  );
+  assert.equal(
+    resolveOrderDetailReceivePutAwayLoadState({ loadError: false, locationCount: 2 }),
+    "ready"
+  );
+  assert.equal(isOrderDetailReceiveBlockedByPutAwayLoad("unavailable"), true);
+  assert.equal(isOrderDetailReceiveBlockedByPutAwayLoad("empty"), false);
+  assert.equal(isOrderDetailReceiveBlockedByPutAwayLoad("ready"), false);
+});
+
+test("order detail receive location readiness fails closed when put-away stations cannot load", () => {
+  assert.equal(
+    isOrderDetailReceiveLocationReady({
+      putAwayLoadState: "unavailable",
+      locationId: "",
+      locationIds: []
+    }),
+    false
+  );
+  assert.equal(
+    isOrderDetailReceiveLocationReady({
+      putAwayLoadState: "empty",
+      locationId: "",
+      locationIds: []
+    }),
+    true
+  );
+  assert.equal(
+    isOrderDetailReceiveLocationReady({
+      putAwayLoadState: "ready",
+      locationId: "loc_walkin",
+      locationIds: ["loc_main", "loc_walkin"]
+    }),
+    true
+  );
+  assert.equal(
+    isOrderDetailReceiveLocationReady({
+      putAwayLoadState: "ready",
+      locationId: "loc_missing",
+      locationIds: ["loc_main", "loc_walkin"]
+    }),
+    false
+  );
+});
+
+test("order detail receive put-away unavailable copy is localized warning content", () => {
+  const copy = presentOrderDetailReceivePutAwayCopy("unavailable", {
+    unavailableTitle: "Stations unavailable",
+    unavailableBody: "Reload put-away stations before receiving."
+  });
+  assert.deepEqual(copy, {
+    title: "Stations unavailable",
+    message: "Reload put-away stations before receiving."
+  });
+  assert.equal(
+    presentOrderDetailReceivePutAwayCopy("ready", {
+      unavailableTitle: "Stations unavailable",
+      unavailableBody: "Reload put-away stations before receiving."
+    }),
+    null
+  );
+});
+
+test("order detail fails closed when storage locations cannot load instead of silent Main fallback", () => {
+  assert.doesNotMatch(
+    orderDetail,
+    /fetchStorageLocations\([^)]*\)\.catch\(\s*\(\)\s*=>\s*\[\]\s*as\s*StorageLocation\[\]\s*\)/
+  );
+  assert.match(orderDetail, /resolveOrderDetailReceivePutAwayLoadState/);
+  assert.match(orderDetail, /isOrderDetailReceiveBlockedByPutAwayLoad/);
+  assert.match(orderDetail, /isOrderDetailReceiveLocationReady/);
+  assert.match(orderDetail, /presentOrderDetailReceivePutAwayCopy/);
+  assert.match(orderDetail, /storageLocationsLoadError/);
+  assert.match(orderDetail, /operation:\s*"load_storage_locations"/);
+  assert.match(orderDetail, /receiveLocationsUnavailable/);
+  assert.match(orderDetail, /orders\.detail\.receive\.locationsUnavailable\.title/);
+  assert.match(orderDetail, /orders\.detail\.receive\.locationsUnavailable\.retryAccessibility/);
+  assert.match(catalog, /orders\.detail\.receive\.locationsUnavailable\.title/);
+  assert.match(catalog, /orders\.detail\.receive\.locationsUnavailable\.body/);
+  assert.match(catalog, /orders\.detail\.receive\.locationsUnavailable\.retryAccessibility/);
+  assert.match(
+    catalog,
+    /"orders\.detail\.receive\.locationsUnavailable\.title":\s*"Estaciones no disponibles"/
+  );
+  assert.match(
+    catalog,
+    /"orders\.detail\.receive\.locationsUnavailable\.title":\s*"存放站不可用"/
+  );
 });

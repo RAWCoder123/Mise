@@ -42,12 +42,16 @@ import {
 import { MAIN_STORAGE_LOCATION_NAME } from "../../services/domain/inventoryTransfer";
 import type { MessageKey } from "../../i18n/catalog";
 import {
+  isOrderDetailReceiveBlockedByPutAwayLoad,
+  isOrderDetailReceiveLocationReady,
   presentOrderDetailMissingCopy,
   presentOrderDetailMutationActionsEditable,
   presentOrderDetailMutationBusy,
   presentOrderDetailMutationNoticeCopy,
+  presentOrderDetailReceivePutAwayCopy,
   presentOrderDetailSendErrorNotice,
   resolveOrderDetailLoadState,
+  resolveOrderDetailReceivePutAwayLoadState,
   resolveOrderDetailSendErrorReason,
   type OrderDetailMutationNoticeReason,
   type OrderDetailSendErrorReason
@@ -124,6 +128,10 @@ const MUTATION_NOTICE_KEYS: Record<
   receiveInvalidStorage: {
     title: "orders.detail.notice.receiveInvalidTitle",
     message: "orders.detail.receive.storageRequired"
+  },
+  receiveLocationsUnavailable: {
+    title: "orders.detail.receive.locationsUnavailable.title",
+    message: "orders.detail.receive.locationsUnavailable.body"
   },
   receiveInvalidNote: {
     title: "orders.detail.notice.receiveInvalidTitle",
@@ -209,6 +217,7 @@ export default function OrderDraftDetailScreen() {
   const [receiveQuantities, setReceiveQuantities] = useState<Record<string, string>>({});
   const [receiveNotes, setReceiveNotes] = useState<Record<string, string>>({});
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
+  const [storageLocationsLoadError, setStorageLocationsLoadError] = useState(false);
   const [receiveStorageLocationId, setReceiveStorageLocationId] = useState("");
   const [receiveStorageLocationIds, setReceiveStorageLocationIds] = useState<Record<string, string>>({});
   const [putAwayLocationQuery, setPutAwayLocationQuery] = useState("");
@@ -284,11 +293,13 @@ export default function OrderDraftDetailScreen() {
     setNotice(null);
     setLoadError(false);
     try {
-      const [nextOrder, nextEmailConnection, recommendations, nextLocations] = await Promise.all([
+      const [nextOrder, nextEmailConnection, recommendations, locationsResult] = await Promise.all([
         fetchSupplierOrder(restaurantId, orderId),
         fetchEmailConnectionState(restaurantId),
         fetchPurchaseRecommendations(restaurantId, "all"),
-        fetchStorageLocations(restaurantId).catch(() => [] as StorageLocation[])
+        fetchStorageLocations(restaurantId)
+          .then((locations) => ({ ok: true as const, locations }))
+          .catch((locationError: unknown) => ({ ok: false as const, error: locationError }))
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       if (nextEmailConnection && nextEmailConnection.restaurant_id !== restaurantId) {
@@ -302,6 +313,14 @@ export default function OrderDraftDetailScreen() {
             )?.summary ?? null
           : null;
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      const nextLocations = locationsResult.ok ? locationsResult.locations : [];
+      if (!locationsResult.ok) {
+        captureMiseError(locationsResult.error, {
+          flow: "order_detail",
+          operation: "load_storage_locations",
+          restaurant_id: restaurantId
+        });
+      }
       const main = nextLocations.find(
         (location) => location.name.toLowerCase() === MAIN_STORAGE_LOCATION_NAME.toLowerCase()
       );
@@ -310,8 +329,10 @@ export default function OrderDraftDetailScreen() {
       setLinkedRecommendations(linked);
       setReceiveSummary(completedSummary);
       setStorageLocations(nextLocations);
+      setStorageLocationsLoadError(!locationsResult.ok);
       const fallbackLocationId = main?.id ?? nextLocations[0]?.id ?? "";
       setReceiveStorageLocationId((currentDefault) => {
+        if (!locationsResult.ok) return "";
         const nextDefault =
           currentDefault && nextLocations.some((location) => location.id === currentDefault)
             ? currentDefault
@@ -319,6 +340,11 @@ export default function OrderDraftDetailScreen() {
         return nextDefault;
       });
       setReceiveStorageLocationIds((currentLineIds) => {
+        if (!locationsResult.ok) {
+          return Object.fromEntries(
+            linked.map((recommendation) => [recommendation.inventory_item_id, ""])
+          );
+        }
         const preservedDefault = Object.values(currentLineIds).find((id) =>
           nextLocations.some((location) => location.id === id)
         );
@@ -367,6 +393,7 @@ export default function OrderDraftDetailScreen() {
         setLinkedRecommendations([]);
         setReceiveSummary(null);
         setStorageLocations([]);
+        setStorageLocationsLoadError(false);
         setReceiveStorageLocationId("");
         setReceiveStorageLocationIds({});
       }
@@ -398,6 +425,7 @@ export default function OrderDraftDetailScreen() {
     setReceiveQuantities({});
     setReceiveNotes({});
     setStorageLocations([]);
+    setStorageLocationsLoadError(false);
     setReceiveStorageLocationId("");
     setReceiveStorageLocationIds({});
     setPutAwayLocationQuery("");
@@ -617,13 +645,22 @@ export default function OrderDraftDetailScreen() {
       setNotice(mutationNotice("viewOnly"));
       return;
     }
+    const putAwayLoadState = resolveOrderDetailReceivePutAwayLoadState({
+      loadError: storageLocationsLoadError,
+      locationCount: storageLocations.length
+    });
+    if (isOrderDetailReceiveBlockedByPutAwayLoad(putAwayLoadState)) {
+      setNotice(mutationNotice("receiveLocationsUnavailable"));
+      return;
+    }
     if (
-      storageLocations.length > 0 &&
       linkedRecommendations.some((recommendation) => {
         const locationId = receiveStorageLocationIds[recommendation.inventory_item_id] ?? "";
-        return (
-          !locationId || !storageLocations.some((location) => location.id === locationId)
-        );
+        return !isOrderDetailReceiveLocationReady({
+          putAwayLoadState,
+          locationId,
+          locationIds: storageLocations.map((location) => location.id)
+        });
       })
     ) {
       setNotice(mutationNotice("receiveInvalidStorage"));
@@ -692,6 +729,15 @@ export default function OrderDraftDetailScreen() {
   const visibleReceiveSummary = hubReady ? receiveSummary : null;
   const visibleLinkedRecommendations = hubReady ? linkedRecommendations : [];
   const visibleStorageLocations = hubReady ? storageLocations : [];
+  const visibleStorageLocationsLoadError = hubReady ? storageLocationsLoadError : false;
+  const receivePutAwayLoadState = resolveOrderDetailReceivePutAwayLoadState({
+    loadError: visibleStorageLocationsLoadError,
+    locationCount: visibleStorageLocations.length
+  });
+  const receivePutAwayUnavailableCopy = presentOrderDetailReceivePutAwayCopy(receivePutAwayLoadState, {
+    unavailableTitle: t("orders.detail.receive.locationsUnavailable.title"),
+    unavailableBody: t("orders.detail.receive.locationsUnavailable.body")
+  });
   const isDraft = visibleOrder?.status === "draft";
   const isSent = visibleOrder?.status === "sent";
   const isCompleted = visibleOrder?.status === "completed";
@@ -715,6 +761,7 @@ export default function OrderDraftDetailScreen() {
   const receiveReady = useMemo(
     () =>
       isSent &&
+      !isOrderDetailReceiveBlockedByPutAwayLoad(receivePutAwayLoadState) &&
       visibleLinkedRecommendations.length > 0 &&
       visibleLinkedRecommendations.every((recommendation) => {
         const quantityReady = isReceiveQuantityInputReady(
@@ -723,10 +770,11 @@ export default function OrderDraftDetailScreen() {
         );
         const note = receiveNotes[recommendation.inventory_item_id] ?? "";
         const locationId = receiveStorageLocationIds[recommendation.inventory_item_id] ?? "";
-        const locationReady =
-          visibleStorageLocations.length === 0 ||
-          (Boolean(locationId) &&
-            visibleStorageLocations.some((location) => location.id === locationId));
+        const locationReady = isOrderDetailReceiveLocationReady({
+          putAwayLoadState: receivePutAwayLoadState,
+          locationId,
+          locationIds: visibleStorageLocations.map((location) => location.id)
+        });
         return (
           quantityReady &&
           locationReady &&
@@ -737,6 +785,7 @@ export default function OrderDraftDetailScreen() {
       isSent,
       parseNumber,
       receiveNotes,
+      receivePutAwayLoadState,
       receiveQuantities,
       receiveStorageLocationIds,
       visibleLinkedRecommendations,
@@ -1001,6 +1050,15 @@ export default function OrderDraftDetailScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("orders.detail.receive.title")}</Text>
               <Text style={styles.sectionBody}>{t("orders.detail.receive.body")}</Text>
+              {receivePutAwayUnavailableCopy ? (
+                <RetryNotice
+                  title={receivePutAwayUnavailableCopy.title}
+                  message={receivePutAwayUnavailableCopy.message}
+                  onRetry={() => void load(false)}
+                  retryLabel={t("common.retry")}
+                  accessibilityLabel={t("orders.detail.receive.locationsUnavailable.retryAccessibility")}
+                />
+              ) : null}
               {visibleStorageLocations.length > 0 ? (
                 <View style={styles.receivePutAway}>
                   <Text style={styles.receivePutAwayLabel}>
