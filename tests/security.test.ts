@@ -2687,7 +2687,7 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
   assert.match(hostedAccountDeletion, /isCompletedAccountDeletionStatus/);
   assert.match(
     hostedAccountDeletion,
-    /isCompletedAccountDeletionStatus\(payload\?\.status\)[\s\S]*if \(error\) throw error/
+    /isCompletedAccountDeletionStatus\(payload\?\.status\)[\s\S]*if \(error\) throwRepositoryError\(error\)/
   );
   assert.doesNotMatch(hostedAccountDeletion, /if \(error\) throw error;\s*const payload/);
 
