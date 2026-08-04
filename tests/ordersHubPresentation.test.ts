@@ -78,7 +78,7 @@ test("orders hub load state stays loading until the active restaurant finishes l
       loadedRestaurantId: "r1",
       loadError: true
     }),
-    "ready"
+    "error"
   );
 });
 

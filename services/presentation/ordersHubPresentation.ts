@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type OrdersHubLoadState = "loading" | "ready" | "error";
 
 export type OrdersHubMutationNoticeReason =
@@ -29,10 +31,7 @@ export function resolveOrdersHubLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): OrdersHubLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentOrdersHubMutationBusy(busy: boolean): boolean {

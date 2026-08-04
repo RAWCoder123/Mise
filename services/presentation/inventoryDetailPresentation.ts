@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type InventoryDetailLoadState = "loading" | "ready" | "error";
 
 export type InventoryDetailMutationNoticeReason =
@@ -62,10 +64,7 @@ export function resolveInventoryDetailLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): InventoryDetailLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentInventoryDetailMissingCopy(

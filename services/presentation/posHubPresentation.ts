@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type PosHubLoadState = "loading" | "ready" | "error";
 
 export type PosMutationNoticeReason =
@@ -18,10 +20,7 @@ export function resolvePosHubLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): PosHubLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentPosMutationBusy(

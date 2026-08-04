@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type InventoryCountLoadState = "loading" | "ready" | "error";
 
 export type InventoryCountMutation = "start" | "save" | "submit" | "approve" | "cancel";
@@ -38,10 +40,7 @@ export function resolveInventoryCountLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): InventoryCountLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentInventoryCountStartCopy(

@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type OrderDetailLoadState = "loading" | "ready" | "error";
 
 export function resolveOrderDetailLoadState(input: {
@@ -5,10 +7,7 @@ export function resolveOrderDetailLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): OrderDetailLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentOrderDetailMissingCopy(

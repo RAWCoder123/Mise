@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type SuppliersHubLoadState = "loading" | "ready" | "error";
 
 export type SuppliersMutationNoticeReason = "invalidEmail" | "saved" | "saveError";
@@ -7,10 +9,7 @@ export function resolveSuppliersHubLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): SuppliersHubLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentSuppliersHubConfiguredCount(

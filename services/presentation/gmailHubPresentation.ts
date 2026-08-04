@@ -1,4 +1,5 @@
 import type { RestaurantEmailConnection } from "../../types/mise";
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
 
 export type GmailHubLoadState = "loading" | "ready" | "error";
 
@@ -7,10 +8,7 @@ export function resolveGmailHubLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): GmailHubLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentGmailHubStatusCopy(

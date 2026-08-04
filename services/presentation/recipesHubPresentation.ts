@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type RecipesHubLoadState = "loading" | "ready" | "error";
 
 export function resolveRecipesHubLoadState(input: {
@@ -5,10 +7,7 @@ export function resolveRecipesHubLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): RecipesHubLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentRecipesHubEmptyCopy(

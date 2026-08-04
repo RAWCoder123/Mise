@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type TeamHubLoadState = "loading" | "ready" | "error";
 
 export function resolveTeamHubLoadState(input: {
@@ -5,10 +7,7 @@ export function resolveTeamHubLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): TeamHubLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentTeamHubRosterCopy(

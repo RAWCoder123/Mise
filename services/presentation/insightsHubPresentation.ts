@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type InsightsHubLoadState = "loading" | "ready" | "error";
 
 export function resolveInsightsHubLoadState(input: {
@@ -5,10 +7,7 @@ export function resolveInsightsHubLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): InsightsHubLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentInsightsHubSummaryCopy(

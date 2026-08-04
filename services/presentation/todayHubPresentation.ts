@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type TodayHubLoadState = "loading" | "ready" | "error";
 
 export type TodayHubNoticeTone = "neutral" | "success" | "caution" | "warning" | "danger";
@@ -7,10 +9,7 @@ export function resolveTodayHubLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): TodayHubLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentTodayServicePulseCopy(

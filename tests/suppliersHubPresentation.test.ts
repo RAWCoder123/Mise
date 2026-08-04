@@ -53,7 +53,7 @@ test("suppliers hub load state stays loading until the active restaurant finishe
       loadedRestaurantId: "r1",
       loadError: true
     }),
-    "ready"
+    "error"
   );
 });
 

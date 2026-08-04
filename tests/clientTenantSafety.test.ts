@@ -195,6 +195,27 @@ test("repository permission failures trigger live membership revalidation", () =
   assert.match(events, /notifyTenantAuthorizationDenied/);
 });
 
+test("restaurant-scoped hubs fail closed on soft-refresh load errors", () => {
+  const helper = source("services/presentation/hubLoadState.ts");
+  assert.match(helper, /if \(input\.loadError\) return "error";/);
+  assert.match(
+    helper,
+    /if \(input\.loadError\) return "error";\s*if \(input\.loadedRestaurantId === input\.restaurantId\) return "ready";/
+  );
+
+  for (const path of [
+    "services/presentation/todayHubPresentation.ts",
+    "services/presentation/inventoryHubPresentation.ts",
+    "services/presentation/ordersHubPresentation.ts",
+    "services/presentation/insightsHubPresentation.ts",
+    "services/presentation/settingsHubPresentation.ts",
+    "services/presentation/orderDetailPresentation.ts",
+    "services/presentation/inventoryDetailPresentation.ts"
+  ]) {
+    assert.match(source(path), /resolveRestaurantScopedHubLoadState/);
+  }
+});
+
 test("manual tab controls expose their selected state on web", () => {
   const segmentedControl = source("components/ui/SegmentedControl.tsx");
   assert.match(segmentedControl, /accessibilityRole="tab"/);

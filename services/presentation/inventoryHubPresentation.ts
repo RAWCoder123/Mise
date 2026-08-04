@@ -1,3 +1,5 @@
+import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+
 export type InventoryHubLoadState = "loading" | "ready" | "error";
 
 export function resolveInventoryHubLoadState(input: {
@@ -5,10 +7,7 @@ export function resolveInventoryHubLoadState(input: {
   loadedRestaurantId: string | null;
   loadError: boolean;
 }): InventoryHubLoadState {
-  if (!input.restaurantId) return "ready";
-  if (input.loadedRestaurantId === input.restaurantId) return "ready";
-  if (input.loadError) return "error";
-  return "loading";
+  return resolveRestaurantScopedHubLoadState(input);
 }
 
 export function presentInventoryHubHealthCopy(

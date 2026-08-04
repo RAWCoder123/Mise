@@ -21,14 +21,14 @@ import {
 const orderDetail = readFileSync("app/orders/[id].tsx", "utf8");
 const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
-test("order detail load state stays ready after soft-refresh failure with prior restaurant data", () => {
+test("order detail load state fails closed after soft-refresh failure even with prior restaurant data", () => {
   assert.equal(
     resolveOrderDetailLoadState({
       restaurantId: "rest_a",
       loadedRestaurantId: "rest_a",
       loadError: true
     }),
-    "ready"
+    "error"
   );
   assert.equal(
     resolveOrderDetailLoadState({

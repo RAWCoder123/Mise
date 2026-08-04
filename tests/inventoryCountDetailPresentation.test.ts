@@ -18,14 +18,14 @@ import {
 const countScreen = readFileSync("app/inventory/count.tsx", "utf8");
 const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
-test("inventory count load state stays ready after soft-refresh failure with prior restaurant data", () => {
+test("inventory count load state fails closed after soft-refresh failure even with prior restaurant data", () => {
   assert.equal(
     resolveInventoryCountLoadState({
       restaurantId: "rest_a",
       loadedRestaurantId: "rest_a",
       loadError: true
     }),
-    "ready"
+    "error"
   );
   assert.equal(
     resolveInventoryCountLoadState({
@@ -79,7 +79,7 @@ test("inventory detail load state and missing copy distinguish loading, error, a
       loadedRestaurantId: "rest_a",
       loadError: true
     }),
-    "ready"
+    "error"
   );
   assert.equal(
     resolveInventoryDetailLoadState({

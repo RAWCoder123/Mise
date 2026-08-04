@@ -12,7 +12,7 @@ import {
 
 const todayHub = readFileSync("app/(tabs)/today.tsx", "utf8");
 
-test("today hub load state stays loading until the active restaurant finishes loading", () => {
+test("today hub load state fails closed on soft-refresh errors and stays loading until ready", () => {
   assert.equal(
     resolveTodayHubLoadState({
       restaurantId: "r1",
@@ -51,7 +51,7 @@ test("today hub load state stays loading until the active restaurant finishes lo
       loadedRestaurantId: "r1",
       loadError: true
     }),
-    "ready"
+    "error"
   );
 });
 
