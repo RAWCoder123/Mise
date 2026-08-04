@@ -421,3 +421,61 @@ test("final SQL function inventory handles plain create, replace, alter, and unk
   ` }]);
   assert.equal(replaced.functions.get("public.stale")?.securityMode, "invoker");
 });
+
+test("final authenticated table privileges track schema-wide revoke, column grants, and residual DML", async () => {
+  // @ts-ignore
+  const {
+    buildFinalAuthenticatedTablePrivileges,
+    hasAuthenticatedTableDml,
+    listAuthenticatedDmlPrivileges
+  } = await import("../scripts/sql-table-privileges.mjs");
+
+  const inventory = buildFinalAuthenticatedTablePrivileges([
+    {
+      path: "fixture.sql",
+      sql: `
+        create table if not exists public.restaurant_memberships (id uuid primary key);
+        create table if not exists public.users (id uuid primary key, name text);
+        create table if not exists public.pos_integrations (id uuid primary key);
+        grant select, insert, update, delete on table public.restaurant_memberships, public.pos_integrations to authenticated;
+        grant select on public.users to authenticated;
+        grant update (name) on public.users to authenticated;
+        revoke all on all tables in schema public from public, anon, authenticated, service_role;
+        grant select on table public.restaurant_memberships, public.users, public.pos_integrations to authenticated;
+        grant insert, update, delete on table public.pos_integrations to authenticated;
+        revoke insert, update, delete on table public.pos_integrations from authenticated;
+        revoke update (name) on table public.users from authenticated;
+        grant execute on function public.ignore_me() to authenticated;
+        revoke all on table private.hidden from public, anon, authenticated;
+      `
+    }
+  ]);
+
+  assert.equal(inventory.unrecognizedPrivilegeStatements.length, 0);
+  assert.equal(inventory.tables.get("restaurant_memberships")?.select, true);
+  assert.equal(hasAuthenticatedTableDml(inventory.tables.get("restaurant_memberships")), false);
+  assert.equal(inventory.tables.get("users")?.select, true);
+  assert.equal(hasAuthenticatedTableDml(inventory.tables.get("users")), false);
+  assert.equal(inventory.tables.get("pos_integrations")?.select, true);
+  assert.equal(hasAuthenticatedTableDml(inventory.tables.get("pos_integrations")), false);
+
+  const residual = buildFinalAuthenticatedTablePrivileges([
+    {
+      path: "fixture.sql",
+      sql: `
+        create table if not exists public.restaurant_memberships (id uuid primary key);
+        grant select on public.restaurant_memberships to authenticated;
+        grant insert, update, delete on table public.restaurant_memberships to authenticated;
+        grant update (name) on public.users to authenticated;
+      `
+    }
+  ]);
+  assert.equal(hasAuthenticatedTableDml(residual.tables.get("restaurant_memberships")), true);
+  assert.deepEqual(listAuthenticatedDmlPrivileges(residual.tables.get("restaurant_memberships")), [
+    "INSERT",
+    "UPDATE",
+    "DELETE"
+  ]);
+  assert.equal(hasAuthenticatedTableDml(residual.tables.get("users")), true);
+  assert.deepEqual(listAuthenticatedDmlPrivileges(residual.tables.get("users")), ["UPDATE(name)"]);
+});

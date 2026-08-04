@@ -1963,6 +1963,9 @@ test("backend security script proves local RLS, Data API grants, and firewall gu
   assert.match(script, /auth\.role/i);
   assert.match(script, /SECURITY DEFINER/i);
   assert.match(script, /buildFinalFunctionInventory/);
+  assert.match(script, /buildFinalAuthenticatedTablePrivileges/);
+  assert.match(script, /must not retain authenticated DML grants after service\/Edge ownership/i);
+  assert.match(script, /must retain authenticated SELECT for RLS-backed Data API reads/i);
   assert.match(script, /verify_jwt\s*=\s*true/i);
   assert.match(script, /requireAuthenticatedContext/);
   assert.match(script, /reserveFunctionInvocation/);
@@ -2477,6 +2480,8 @@ test("orphan authenticated write RLS policies are dropped on service-owned opera
   assert.match(tenantTests, /setup_attachments has no direct authenticated write policies/i);
   assert.match(securityBackend, /function buildFinalAuthenticatedPolicies\s*\(/);
   assert.match(securityBackend, /must not retain authenticated write policies/i);
+  assert.match(securityBackend, /buildFinalAuthenticatedTablePrivileges/);
+  assert.match(securityBackend, /must not retain authenticated DML grants after service\/Edge ownership/i);
 });
 
 test("secondary operational tables lose authenticated DML and inventory movements are ledgered", () => {

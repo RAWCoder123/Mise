@@ -2,6 +2,11 @@ import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { buildFinalFunctionInventory } from "./sql-function-inventory.mjs";
+import {
+  buildFinalAuthenticatedTablePrivileges,
+  hasAuthenticatedTableDml,
+  listAuthenticatedDmlPrivileges
+} from "./sql-table-privileges.mjs";
 import { minimalChildEnv } from "./safe-env.mjs";
 
 const root = process.cwd();
@@ -213,6 +218,44 @@ for (const { table, name, cmd, block } of finalAuthenticatedPolicies) {
   if (selectOnlyTenantTables.has(table) && cmd !== "SELECT") {
     failures.push(
       `supabase: public.${table} must not retain authenticated write policies after service/Edge ownership (found "${name}" for ${cmd}).`
+    );
+  }
+}
+
+const migrationSqlFiles = listFiles("supabase/migrations").filter((path) => path.endsWith(".sql")).sort();
+const tablePrivilegeInventory = buildFinalAuthenticatedTablePrivileges(
+  migrationSqlFiles.map((path) => ({ path, sql: read(path) }))
+);
+for (const unrecognized of tablePrivilegeInventory.unrecognizedPrivilegeStatements) {
+  failures.push(
+    `supabase: unrecognized authenticated table privilege DDL in ${unrecognized.source}; final DML mode cannot be proven.`
+  );
+}
+for (const table of selectOnlyTenantTables) {
+  const privileges = tablePrivilegeInventory.tables.get(table);
+  if (!privileges) {
+    failures.push(
+      `supabase: expected Data API table public.${table} is missing from the final authenticated privilege inventory.`
+    );
+    continue;
+  }
+  if (!privileges.select) {
+    failures.push(
+      `supabase: public.${table} must retain authenticated SELECT for RLS-backed Data API reads after service/Edge ownership.`
+    );
+  }
+  if (hasAuthenticatedTableDml(privileges)) {
+    failures.push(
+      `supabase: public.${table} must not retain authenticated DML grants after service/Edge ownership (found ${listAuthenticatedDmlPrivileges(privileges).join(", ")}).`
+    );
+  }
+}
+for (const table of serviceOnlyPublicTables) {
+  const privileges = tablePrivilegeInventory.tables.get(table);
+  if (!privileges) continue;
+  if (privileges.select || hasAuthenticatedTableDml(privileges)) {
+    failures.push(
+      `supabase: service-only public.${table} must not retain authenticated table privileges after final migrations.`
     );
   }
 }
