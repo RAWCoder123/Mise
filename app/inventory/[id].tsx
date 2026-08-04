@@ -40,10 +40,13 @@ import {
 } from "../../services/domain/inventoryItemSearch";
 import { reconcileLocationBalancesForDisplay } from "../../services/domain/inventoryTransfer";
 import {
+  isInventoryDetailStationActionBlocked,
   presentInventoryDetailMissingCopy,
   presentInventoryDetailMutationNoticeCopy,
+  presentInventoryDetailSecondaryLoadCopy,
   resolveInventoryDetailLoadState,
   resolveInventoryDetailSaveFailureReason,
+  resolveInventoryDetailSecondaryLoadState,
   resolveInventoryDetailTransferFailureReason,
   resolveInventoryDetailWasteFailureReason,
   type InventoryDetailMutationNoticeReason
@@ -164,6 +167,10 @@ const MUTATION_NOTICE_KEYS: Record<
     title: "inventory.detail.notice.locationFailedTitle",
     message: "inventory.detail.locationError"
   },
+  locationsUnavailable: {
+    title: "inventory.detail.notice.locationsUnavailableTitle",
+    message: "inventory.detail.notice.locationsUnavailableBody"
+  },
   loadFailed: {
     title: "inventory.detail.notice.loadFailedTitle",
     message: "inventory.detail.loadError"
@@ -177,6 +184,7 @@ export default function InventoryDetailScreen() {
   const { memberships, restaurant } = useMiseSession();
   const [outlook, setOutlook] = useState<InventoryOutlookItem | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
+  const [movementsLoadError, setMovementsLoadError] = useState(false);
   const [currentQuantity, setCurrentQuantity] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
@@ -185,7 +193,9 @@ export default function InventoryDetailScreen() {
   const [wasteStorageLocationId, setWasteStorageLocationId] = useState("");
   const [correctionNote, setCorrectionNote] = useState("");
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
+  const [storageLocationsLoadError, setStorageLocationsLoadError] = useState(false);
   const [locationBalances, setLocationBalances] = useState<InventoryLocationBalance[]>([]);
+  const [locationBalancesLoadError, setLocationBalancesLoadError] = useState(false);
   const [fromStorageLocationId, setFromStorageLocationId] = useState("");
   const [toStorageLocationId, setToStorageLocationId] = useState("");
   const [transferQuantity, setTransferQuantity] = useState("");
@@ -242,17 +252,50 @@ export default function InventoryDetailScreen() {
     setNotice(null);
     setLoadError(false);
     try {
-      const [nextOutlook, nextMovements, nextLocations, nextBalances] = await Promise.all([
+      const [nextOutlook, movementsResult, locationsResult, balancesResult] = await Promise.all([
         fetchInventoryItemOutlook(restaurantId, itemId),
-        fetchInventoryMovements(restaurantId, itemId, 6).catch(() => [] as InventoryMovement[]),
-        fetchStorageLocations(restaurantId).catch(() => [] as StorageLocation[]),
-        fetchInventoryLocationBalances(restaurantId, itemId).catch(() => [] as InventoryLocationBalance[])
+        fetchInventoryMovements(restaurantId, itemId, 6)
+          .then((rows) => ({ ok: true as const, rows }))
+          .catch((error: unknown) => ({ ok: false as const, error })),
+        fetchStorageLocations(restaurantId)
+          .then((locations) => ({ ok: true as const, locations }))
+          .catch((error: unknown) => ({ ok: false as const, error })),
+        fetchInventoryLocationBalances(restaurantId, itemId)
+          .then((balances) => ({ ok: true as const, balances }))
+          .catch((error: unknown) => ({ ok: false as const, error }))
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      if (!movementsResult.ok) {
+        captureMiseError(movementsResult.error, {
+          flow: "inventory_detail",
+          operation: "load_movements",
+          restaurant_id: restaurantId
+        });
+      }
+      if (!locationsResult.ok) {
+        captureMiseError(locationsResult.error, {
+          flow: "inventory_detail",
+          operation: "load_storage_locations",
+          restaurant_id: restaurantId
+        });
+      }
+      if (!balancesResult.ok) {
+        captureMiseError(balancesResult.error, {
+          flow: "inventory_detail",
+          operation: "load_location_balances",
+          restaurant_id: restaurantId
+        });
+      }
+      const nextMovements = movementsResult.ok ? movementsResult.rows : [];
+      const nextLocations = locationsResult.ok ? locationsResult.locations : [];
+      const nextBalances = balancesResult.ok ? balancesResult.balances : [];
       setOutlook(nextOutlook);
       setMovements(nextMovements);
+      setMovementsLoadError(!movementsResult.ok);
       setStorageLocations(nextLocations);
+      setStorageLocationsLoadError(!locationsResult.ok);
       setLocationBalances(nextBalances);
+      setLocationBalancesLoadError(!balancesResult.ok);
       loadedRestaurantRef.current = restaurantId;
       loadedItemIdRef.current = itemId;
       setLoadedRestaurantId(restaurantId);
@@ -265,17 +308,26 @@ export default function InventoryDetailScreen() {
       const main = nextLocations.find((location) => location.name.toLowerCase() === "main") ?? nextLocations[0];
       const secondary =
         nextLocations.find((location) => location.id !== main?.id) ?? nextLocations[1] ?? null;
-      setFromStorageLocationId((current) =>
-        current && nextLocations.some((location) => location.id === current) ? current : main?.id ?? ""
-      );
-      setWasteStorageLocationId((current) =>
-        current && nextLocations.some((location) => location.id === current) ? current : main?.id ?? ""
-      );
-      setToStorageLocationId((current) =>
-        current && nextLocations.some((location) => location.id === current) && current !== (main?.id ?? "")
+      setFromStorageLocationId((current) => {
+        if (!locationsResult.ok) return "";
+        return current && nextLocations.some((location) => location.id === current)
           ? current
-          : secondary?.id ?? ""
-      );
+          : main?.id ?? "";
+      });
+      setWasteStorageLocationId((current) => {
+        if (!locationsResult.ok) return "";
+        return current && nextLocations.some((location) => location.id === current)
+          ? current
+          : main?.id ?? "";
+      });
+      setToStorageLocationId((current) => {
+        if (!locationsResult.ok) return "";
+        return current &&
+          nextLocations.some((location) => location.id === current) &&
+          current !== (main?.id ?? "")
+          ? current
+          : secondary?.id ?? "";
+      });
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(error, {
@@ -288,8 +340,11 @@ export default function InventoryDetailScreen() {
       if (!keepPrior) {
         setOutlook(null);
         setMovements([]);
+        setMovementsLoadError(false);
         setStorageLocations([]);
+        setStorageLocationsLoadError(false);
         setLocationBalances([]);
+        setLocationBalancesLoadError(false);
       }
       setLoadError(true);
       setNotice(mutationNotice("loadFailed"));
@@ -311,8 +366,12 @@ export default function InventoryDetailScreen() {
     setWasteNote("");
     setWasteStorageLocationId("");
     setCorrectionNote("");
+    setMovements([]);
+    setMovementsLoadError(false);
     setStorageLocations([]);
+    setStorageLocationsLoadError(false);
     setLocationBalances([]);
+    setLocationBalancesLoadError(false);
     setFromStorageLocationId("");
     setToStorageLocationId("");
     setTransferQuantity("");
@@ -327,7 +386,14 @@ export default function InventoryDetailScreen() {
   }, [id, load, restaurant?.id]);
 
   useEffect(() => {
-    if (!notice || notice.tone === "danger" || notice.tone === "caution") return undefined;
+    if (
+      !notice ||
+      notice.tone === "danger" ||
+      notice.tone === "caution" ||
+      notice.tone === "warning"
+    ) {
+      return undefined;
+    }
     const timeout = setTimeout(() => setNotice(null), 4200);
     return () => clearTimeout(timeout);
   }, [notice]);
@@ -356,19 +422,53 @@ export default function InventoryDetailScreen() {
   const canManageLocations = canManageStorageLocations(memberships, restaurant?.id);
   /** Staff primary action — surface waste above read-only count settings. */
   const showWasteBeforeCountSettings = canRecordWaste && !canManage;
-  const balanceView = item
-    ? reconcileLocationBalancesForDisplay({
-        onHandQuantity: item.current_quantity,
-        balances: locationBalances.map((balance) => {
-          const location = storageLocations.find((entry) => entry.id === balance.storage_location_id);
-          return {
-            storageLocationId: balance.storage_location_id,
-            name: location?.name ?? balance.storage_location_id,
-            quantity: balance.quantity
-          };
+  const visibleMovements = hubReady ? movements : [];
+  const visibleMovementsLoadError = hubReady ? movementsLoadError : false;
+  const visibleStorageLocations = hubReady ? storageLocations : [];
+  const visibleStorageLocationsLoadError = hubReady ? storageLocationsLoadError : false;
+  const visibleLocationBalances = hubReady ? locationBalances : [];
+  const visibleLocationBalancesLoadError = hubReady ? locationBalancesLoadError : false;
+  const movementsLoadState = resolveInventoryDetailSecondaryLoadState({
+    loadError: visibleMovementsLoadError,
+    count: visibleMovements.length
+  });
+  const locationsLoadState = resolveInventoryDetailSecondaryLoadState({
+    loadError: visibleStorageLocationsLoadError,
+    count: visibleStorageLocations.length
+  });
+  const balancesLoadState = resolveInventoryDetailSecondaryLoadState({
+    loadError: visibleLocationBalancesLoadError,
+    count: visibleLocationBalances.length
+  });
+  const movementsUnavailableCopy = presentInventoryDetailSecondaryLoadCopy(movementsLoadState, {
+    unavailableTitle: t("inventory.detail.movements.unavailable.title"),
+    unavailableBody: t("inventory.detail.movements.unavailable.body")
+  });
+  const locationsUnavailableCopy = presentInventoryDetailSecondaryLoadCopy(locationsLoadState, {
+    unavailableTitle: t("inventory.detail.locations.unavailable.title"),
+    unavailableBody: t("inventory.detail.locations.unavailable.body")
+  });
+  const balancesUnavailableCopy = presentInventoryDetailSecondaryLoadCopy(balancesLoadState, {
+    unavailableTitle: t("inventory.detail.balances.unavailable.title"),
+    unavailableBody: t("inventory.detail.balances.unavailable.body")
+  });
+  const stationsBlocked = isInventoryDetailStationActionBlocked(locationsLoadState);
+  const balanceView =
+    item && !visibleLocationBalancesLoadError
+      ? reconcileLocationBalancesForDisplay({
+          onHandQuantity: item.current_quantity,
+          balances: visibleLocationBalances.map((balance) => {
+            const location = visibleStorageLocations.find(
+              (entry) => entry.id === balance.storage_location_id
+            );
+            return {
+              storageLocationId: balance.storage_location_id,
+              name: location?.name ?? balance.storage_location_id,
+              quantity: balance.quantity
+            };
+          })
         })
-      })
-    : null;
+      : null;
 
   function goBackToInventory() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -463,6 +563,17 @@ export default function InventoryDetailScreen() {
       setNotice(mutationNotice("viewOnlyInventory"));
       return;
     }
+    if (
+      isInventoryDetailStationActionBlocked(
+        resolveInventoryDetailSecondaryLoadState({
+          loadError: storageLocationsLoadError,
+          count: storageLocations.length
+        })
+      )
+    ) {
+      setNotice(mutationNotice("locationsUnavailable"));
+      return;
+    }
 
     const wasteFieldError = validateWasteQuantity(
       wasteQuantity,
@@ -536,6 +647,17 @@ export default function InventoryDetailScreen() {
     if (!restaurant || !item) return;
     if (!canTransfer) {
       setNotice(mutationNotice("viewOnlyInventory"));
+      return;
+    }
+    if (
+      isInventoryDetailStationActionBlocked(
+        resolveInventoryDetailSecondaryLoadState({
+          loadError: storageLocationsLoadError,
+          count: storageLocations.length
+        })
+      )
+    ) {
+      setNotice(mutationNotice("locationsUnavailable"));
       return;
     }
 
@@ -767,12 +889,23 @@ export default function InventoryDetailScreen() {
             ) : null}
           </Card>
 
-          {showWasteBeforeCountSettings ? (
+          {showWasteBeforeCountSettings || canTransfer ? (
+            locationsUnavailableCopy ? (
+              <RetryNotice
+                title={locationsUnavailableCopy.title}
+                message={locationsUnavailableCopy.message}
+                onRetry={() => void load(true)}
+                accessibilityLabel={t("inventory.detail.locations.unavailable.retryAccessibility")}
+              />
+            ) : null
+          ) : null}
+
+          {showWasteBeforeCountSettings && !stationsBlocked ? (
             <WasteRecordingCard
               t={t}
               itemName={item.item_name}
               unit={item.unit}
-              locations={storageLocations}
+              locations={visibleStorageLocations}
               wasteStorageLocationId={wasteStorageLocationId}
               wasteQuantity={wasteQuantity}
               wasteNote={wasteNote}
@@ -786,14 +919,16 @@ export default function InventoryDetailScreen() {
             />
           ) : null}
 
-          {canTransfer ? (
+          {canTransfer && !stationsBlocked ? (
             <TransferStockCard
               t={t}
               formatNumber={formatNumber}
               itemName={item.item_name}
               unit={item.unit}
-              locations={storageLocations}
+              locations={visibleStorageLocations}
               balanceView={balanceView}
+              balancesUnavailableCopy={balancesUnavailableCopy}
+              onRetryBalances={() => void load(true)}
               fromStorageLocationId={fromStorageLocationId}
               toStorageLocationId={toStorageLocationId}
               transferQuantity={transferQuantity}
@@ -879,12 +1014,12 @@ export default function InventoryDetailScreen() {
             ) : null}
           </Card>
 
-          {canRecordWaste && !showWasteBeforeCountSettings ? (
+          {canRecordWaste && !showWasteBeforeCountSettings && !stationsBlocked ? (
             <WasteRecordingCard
               t={t}
               itemName={item.item_name}
               unit={item.unit}
-              locations={storageLocations}
+              locations={visibleStorageLocations}
               wasteStorageLocationId={wasteStorageLocationId}
               wasteQuantity={wasteQuantity}
               wasteNote={wasteNote}
@@ -900,11 +1035,18 @@ export default function InventoryDetailScreen() {
 
           <Card>
             <Text style={styles.cardTitle}>{t("inventory.detail.movements.title")}</Text>
-            {movements.length === 0 ? (
+            {movementsUnavailableCopy ? (
+              <RetryNotice
+                title={movementsUnavailableCopy.title}
+                message={movementsUnavailableCopy.message}
+                onRetry={() => void load(true)}
+                accessibilityLabel={t("inventory.detail.movements.unavailable.retryAccessibility")}
+              />
+            ) : visibleMovements.length === 0 ? (
               <Text style={styles.copy}>{t("inventory.detail.movements.empty")}</Text>
             ) : (
               <View style={styles.movementList}>
-                {movements.map((movement) => {
+                {visibleMovements.map((movement) => {
                   const movementNote = movementNoteText(movement.metadata);
                   return (
                   <View key={movement.id} style={styles.movementRow}>
@@ -1058,6 +1200,8 @@ function TransferStockCard({
   unit,
   locations,
   balanceView,
+  balancesUnavailableCopy,
+  onRetryBalances,
   fromStorageLocationId,
   toStorageLocationId,
   transferQuantity,
@@ -1081,6 +1225,8 @@ function TransferStockCard({
   unit: string;
   locations: StorageLocation[];
   balanceView: ReturnType<typeof reconcileLocationBalancesForDisplay> | null;
+  balancesUnavailableCopy: { title: string; message: string } | null;
+  onRetryBalances: () => void;
   fromStorageLocationId: string;
   toStorageLocationId: string;
   transferQuantity: string;
@@ -1102,7 +1248,14 @@ function TransferStockCard({
     <Card>
       <Text style={styles.cardTitle}>{t("inventory.detail.transfer")}</Text>
       <Text style={styles.copy}>{t("inventory.detail.transferHelp")}</Text>
-      {balanceView && balanceView.balances.length > 0 ? (
+      {balancesUnavailableCopy ? (
+        <RetryNotice
+          title={balancesUnavailableCopy.title}
+          message={balancesUnavailableCopy.message}
+          onRetry={onRetryBalances}
+          accessibilityLabel={t("inventory.detail.balances.unavailable.retryAccessibility")}
+        />
+      ) : balanceView && balanceView.balances.length > 0 ? (
         <View style={styles.balanceList}>
           <Text style={styles.kicker}>{t("inventory.detail.transferBalances")}</Text>
           {balanceView.balances.map((balance) => (

@@ -23,7 +23,39 @@ export type InventoryDetailMutationNoticeReason =
   | "transferFailed"
   | "locationAdded"
   | "locationFailed"
+  | "locationsUnavailable"
   | "loadFailed";
+
+export type InventoryDetailSecondaryLoadState = "ready" | "unavailable" | "empty";
+
+export function resolveInventoryDetailSecondaryLoadState(input: {
+  loadError: boolean;
+  count: number;
+}): InventoryDetailSecondaryLoadState {
+  if (input.loadError) return "unavailable";
+  if (input.count <= 0) return "empty";
+  return "ready";
+}
+
+export function isInventoryDetailStationActionBlocked(
+  state: InventoryDetailSecondaryLoadState
+): boolean {
+  return state === "unavailable";
+}
+
+export function presentInventoryDetailSecondaryLoadCopy(
+  state: InventoryDetailSecondaryLoadState,
+  copy: {
+    unavailableTitle: string;
+    unavailableBody: string;
+  }
+): { title: string; message: string } | null {
+  if (state !== "unavailable") return null;
+  return {
+    title: copy.unavailableTitle,
+    message: copy.unavailableBody
+  };
+}
 
 export function resolveInventoryDetailLoadState(input: {
   restaurantId: string | null | undefined;
@@ -139,6 +171,9 @@ export function presentInventoryDetailMutationNoticeCopy(
     reason === "transferLocationMissing"
   ) {
     return { tone: "caution", title: selected.title, message: selected.message };
+  }
+  if (reason === "locationsUnavailable") {
+    return { tone: "warning", title: selected.title, message: selected.message };
   }
   return { tone: "danger", title: selected.title, message: selected.message };
 }

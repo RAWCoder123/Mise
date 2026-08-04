@@ -3,12 +3,15 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  isInventoryDetailStationActionBlocked,
   presentInventoryDetailMissingCopy,
   presentInventoryDetailMutationActionsEditable,
   presentInventoryDetailMutationBusy,
   presentInventoryDetailMutationNoticeCopy,
+  presentInventoryDetailSecondaryLoadCopy,
   resolveInventoryDetailLoadState,
   resolveInventoryDetailSaveFailureReason,
+  resolveInventoryDetailSecondaryLoadState,
   resolveInventoryDetailTransferFailureReason,
   resolveInventoryDetailWasteFailureReason,
   type InventoryDetailMutationNoticeReason
@@ -40,6 +43,10 @@ const NOTICE_COPY: Record<InventoryDetailMutationNoticeReason, { title: string; 
   transferFailed: { title: "Could not transfer", message: "Retry transfer" },
   locationAdded: { title: "Location added", message: "Storage location added" },
   locationFailed: { title: "Could not add location", message: "Retry location" },
+  locationsUnavailable: {
+    title: "Stations unavailable",
+    message: "Reload storage stations before waste or transfer."
+  },
   loadFailed: { title: "Could not load item", message: "Retry load" }
 };
 
@@ -176,6 +183,10 @@ test("inventory detail mutation notice copy uses success, caution, neutral, and 
   assert.equal(presentInventoryDetailMutationNoticeCopy("saveFailed", NOTICE_COPY).tone, "danger");
   assert.equal(presentInventoryDetailMutationNoticeCopy("wasteFailed", NOTICE_COPY).tone, "danger");
   assert.equal(presentInventoryDetailMutationNoticeCopy("loadFailed", NOTICE_COPY).tone, "danger");
+  assert.equal(
+    presentInventoryDetailMutationNoticeCopy("locationsUnavailable", NOTICE_COPY).tone,
+    "warning"
+  );
 });
 
 test("inventory detail screen localizes mutation StatusNotice outcomes with captureMiseError", () => {
@@ -227,10 +238,87 @@ test("inventory detail mutation notice keys exist in EN, ES, and zh-Hans catalog
     "inventory.detail.notice.transferFailedTitle",
     "inventory.detail.notice.locationAddedTitle",
     "inventory.detail.notice.locationFailedTitle",
+    "inventory.detail.notice.locationsUnavailableTitle",
+    "inventory.detail.notice.locationsUnavailableBody",
     "inventory.detail.notice.loadFailedTitle"
   ];
   for (const key of keys) {
     const matches = catalog.match(new RegExp(`"${key.replace(/\./g, "\\.")}"`, "g")) ?? [];
     assert.equal(matches.length, 3, `${key} should appear in EN/ES/zh-Hans`);
   }
+});
+
+test("inventory detail secondary load state separates failure from empty success", () => {
+  assert.equal(
+    resolveInventoryDetailSecondaryLoadState({ loadError: true, count: 0 }),
+    "unavailable"
+  );
+  assert.equal(
+    resolveInventoryDetailSecondaryLoadState({ loadError: false, count: 0 }),
+    "empty"
+  );
+  assert.equal(
+    resolveInventoryDetailSecondaryLoadState({ loadError: false, count: 3 }),
+    "ready"
+  );
+  assert.equal(isInventoryDetailStationActionBlocked("unavailable"), true);
+  assert.equal(isInventoryDetailStationActionBlocked("empty"), false);
+  assert.equal(isInventoryDetailStationActionBlocked("ready"), false);
+});
+
+test("inventory detail secondary unavailable copy is localized warning content", () => {
+  const copy = presentInventoryDetailSecondaryLoadCopy("unavailable", {
+    unavailableTitle: "History unavailable",
+    unavailableBody: "Reload inventory history."
+  });
+  assert.deepEqual(copy, {
+    title: "History unavailable",
+    message: "Reload inventory history."
+  });
+  assert.equal(
+    presentInventoryDetailSecondaryLoadCopy("ready", {
+      unavailableTitle: "History unavailable",
+      unavailableBody: "Reload inventory history."
+    }),
+    null
+  );
+});
+
+test("inventory detail fails closed when secondary movement location or balance loads fail", () => {
+  assert.doesNotMatch(
+    detailScreen,
+    /fetchInventoryMovements\([^)]*\)\.catch\(\s*\(\)\s*=>\s*\[\]\s*as\s*InventoryMovement\[\]\s*\)/
+  );
+  assert.doesNotMatch(
+    detailScreen,
+    /fetchStorageLocations\([^)]*\)\.catch\(\s*\(\)\s*=>\s*\[\]\s*as\s*StorageLocation\[\]\s*\)/
+  );
+  assert.doesNotMatch(
+    detailScreen,
+    /fetchInventoryLocationBalances\([^)]*\)\.catch\(\s*\(\)\s*=>\s*\[\]\s*as\s*InventoryLocationBalance\[\]\s*\)/
+  );
+  assert.match(detailScreen, /resolveInventoryDetailSecondaryLoadState/);
+  assert.match(detailScreen, /presentInventoryDetailSecondaryLoadCopy/);
+  assert.match(detailScreen, /isInventoryDetailStationActionBlocked/);
+  assert.match(detailScreen, /movementsLoadError/);
+  assert.match(detailScreen, /storageLocationsLoadError/);
+  assert.match(detailScreen, /locationBalancesLoadError/);
+  assert.match(detailScreen, /operation:\s*"load_movements"/);
+  assert.match(detailScreen, /operation:\s*"load_storage_locations"/);
+  assert.match(detailScreen, /operation:\s*"load_location_balances"/);
+  assert.match(detailScreen, /locationsUnavailable/);
+  assert.match(detailScreen, /inventory\.detail\.movements\.unavailable\.title/);
+  assert.match(detailScreen, /inventory\.detail\.locations\.unavailable\.title/);
+  assert.match(detailScreen, /inventory\.detail\.balances\.unavailable\.title/);
+  assert.match(catalog, /inventory\.detail\.movements\.unavailable\.title/);
+  assert.match(catalog, /inventory\.detail\.locations\.unavailable\.title/);
+  assert.match(catalog, /inventory\.detail\.balances\.unavailable\.title/);
+  assert.match(
+    catalog,
+    /"inventory\.detail\.locations\.unavailable\.title":\s*"Estaciones no disponibles"/
+  );
+  assert.match(
+    catalog,
+    /"inventory\.detail\.movements\.unavailable\.title":\s*"库存历史不可用"/
+  );
 });
