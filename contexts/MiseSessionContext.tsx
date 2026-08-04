@@ -81,12 +81,15 @@ interface MiseSessionContextValue {
   canUseDemoMode: boolean;
   passwordRecoveryPending: boolean;
   passwordRecoveryLinkError: boolean;
+  /** True after fail-closed membership clear when access could not be re-proven. */
+  workspaceAccessUnverified: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<SignUpOutcome>;
   requestPasswordReset: (email: string) => Promise<void>;
   completePasswordReset: (password: string) => Promise<void>;
   clearPasswordRecovery: () => void;
   clearPasswordRecoveryLinkError: () => void;
+  clearWorkspaceAccessUnverified: () => void;
   continueWithDemo: (profile?: { name?: string; cuisine_type?: string; posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   createRestaurant: (profile: {
     name: string;
@@ -146,6 +149,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   const [posStatusError, setPosStatusError] = useState(false);
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
   const [passwordRecoveryLinkError, setPasswordRecoveryLinkError] = useState(false);
+  const [workspaceAccessUnverified, setWorkspaceAccessUnverified] = useState(false);
   const activeRestaurantIdRef = useRef<string | null>(null);
   const posRequestIdRef = useRef(0);
   const posStatusRestaurantIdRef = useRef<string | null>(null);
@@ -241,6 +245,10 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     setPasswordRecoveryLinkError(false);
   }, []);
 
+  const clearWorkspaceAccessUnverified = useCallback(() => {
+    setWorkspaceAccessUnverified(false);
+  }, []);
+
   const clearSessionState = useCallback(async () => {
     sessionRequestIdRef.current += 1;
     switchRequestIdRef.current += 1;
@@ -254,6 +262,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     setMemberships([]);
     setRole(null);
     setIsDemoMode(false);
+    setWorkspaceAccessUnverified(false);
     const removal = storageQueueRef.current
       .catch(() => undefined)
       .then(() => AsyncStorage.removeItem(STORAGE_KEY));
@@ -303,6 +312,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
         restaurants.find((item) => item.id === activeMembership.restaurant_id) ?? restaurants[0] ?? null;
 
       activeRestaurantIdRef.current = activeRestaurant?.id ?? null;
+      setWorkspaceAccessUnverified(false);
       setRestaurant(activeRestaurant);
       setRole(activeMembership.role);
       setUser(
@@ -556,6 +566,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
         // live membership cannot be re-proven. Periodic/foreground blips stay soft.
         if (failClosedOnError && mounted) {
           await clearUnverifiedWorkspaceAccess();
+          setWorkspaceAccessUnverified(true);
         }
       } finally {
         refreshing = false;
@@ -960,12 +971,14 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       canUseDemoMode: demoModeAvailable,
       passwordRecoveryPending,
       passwordRecoveryLinkError,
+      workspaceAccessUnverified,
       signIn,
       signUp,
       requestPasswordReset,
       completePasswordReset,
       clearPasswordRecovery,
       clearPasswordRecoveryLinkError,
+      clearWorkspaceAccessUnverified,
       continueWithDemo,
       createRestaurant,
       switchRestaurant,
@@ -987,6 +1000,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       clearLocalSessionAfterAccountDeletion,
       clearPasswordRecovery,
       clearPasswordRecoveryLinkError,
+      clearWorkspaceAccessUnverified,
       completePasswordReset,
       continueWithDemo,
       createRestaurant,
@@ -996,6 +1010,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       memberships,
       passwordRecoveryLinkError,
       passwordRecoveryPending,
+      workspaceAccessUnverified,
       posProvider,
       posStatusLabel,
       posStatusRestaurantId,

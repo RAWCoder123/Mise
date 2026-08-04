@@ -152,6 +152,9 @@ test("workspace mutations stop stale continuations and session state is latest-w
   assert.match(session, /revalidateLiveMemberships/);
   assert.match(session, /failClosedOnError:\s*true/);
   assert.match(session, /clearUnverifiedWorkspaceAccess/);
+  assert.match(session, /workspaceAccessUnverified/);
+  assert.match(session, /clearWorkspaceAccessUnverified/);
+  assert.match(session, /setWorkspaceAccessUnverified\(true\)/);
   assert.match(session, /pendingDenialRevalidation/);
   assert.match(session, /activeId\s*&&\s*!activeMembership/);
   assert.match(session, /sessionRequestIdRef\.current \+= 1/);
@@ -160,7 +163,11 @@ test("workspace mutations stop stale continuations and session state is latest-w
   assert.match(session, /AppState\.addEventListener\("change"/);
   assert.match(
     session,
-    /captureMiseError\(error,\s*\{\s*flow:\s*"membership_revalidation"\s*\}\)[\s\S]*failClosedOnError[\s\S]*clearUnverifiedWorkspaceAccess/
+    /captureMiseError\(error,\s*\{\s*flow:\s*"membership_revalidation"\s*\}\)[\s\S]*failClosedOnError[\s\S]*clearUnverifiedWorkspaceAccess[\s\S]*setWorkspaceAccessUnverified\(true\)/
+  );
+  assert.match(
+    session,
+    /setWorkspaceAccessUnverified\(false\)/
   );
 });
 

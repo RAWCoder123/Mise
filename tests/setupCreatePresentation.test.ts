@@ -61,3 +61,18 @@ test("setup screen uses localized StatusNotice helpers and captureMiseError", ()
   assert.match(catalog, /"setup\.error\.notice\.validationTitle":\s*"Revisa este paso"/);
   assert.match(catalog, /"setup\.error\.notice\.validationTitle":\s*"请检查此设置步骤"/);
 });
+
+test("setup surfaces a localized StatusNotice after fail-closed workspace access clear", () => {
+  assert.match(setupScreen, /workspaceAccessUnverified/);
+  assert.match(setupScreen, /clearWorkspaceAccessUnverified/);
+  assert.match(setupScreen, /workspaceAccessNotice/);
+  assert.match(setupScreen, /setup\.access\.unverifiedTitle/);
+  assert.match(setupScreen, /setup\.access\.unverifiedBody/);
+  assert.match(setupScreen, /tone="caution"/);
+  assert.match(catalog, /"setup\.access\.unverifiedTitle":\s*"Workspace access could not be verified"/);
+  assert.match(catalog, /"setup\.access\.unverifiedTitle":\s*"No se pudo verificar el acceso al espacio"/);
+  assert.match(catalog, /"setup\.access\.unverifiedTitle":\s*"无法验证工作区访问权限"/);
+  assert.match(catalog, /"setup\.access\.unverifiedBody":\s*"Mise cleared the active restaurant/);
+  assert.match(catalog, /"setup\.access\.unverifiedBody":\s*"Mise quitó el restaurante activo/);
+  assert.match(catalog, /"setup\.access\.unverifiedBody":\s*"由于无法重新确认访问权限/);
+});

@@ -101,12 +101,14 @@ export default function SetupScreen() {
   const {
     authUser,
     canUseDemoMode,
+    clearWorkspaceAccessUnverified,
     continueWithDemo,
     createRestaurant,
     isDemoMode,
     memberships,
     ready,
-    restaurant
+    restaurant,
+    workspaceAccessUnverified
   } = useMiseSession();
   const isDemoSetup = canUseDemoMode && (!authUser || isDemoMode);
   const canConfigure = Boolean(
@@ -136,6 +138,7 @@ export default function SetupScreen() {
   const [skippedRecipeIngredients, setSkippedRecipeIngredients] = useState(0);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<SetupNotice | null>(null);
+  const [workspaceAccessNotice, setWorkspaceAccessNotice] = useState(false);
   const seededSetupKeyRef = useRef<string | null>(null);
   const busy = presentSetupFormBusy(loading, submissionLockRef.current);
   const formEditable = presentSetupFormEditable(canConfigure, busy);
@@ -181,6 +184,13 @@ export default function SetupScreen() {
     setOrderingStyle("Balanced");
     setNotice(null);
   }, [authUser?.id, isDemoSetup, ready, readyName, restaurant?.cuisine_type, restaurant?.id, restaurant?.name, starterDrafts]);
+
+  useEffect(() => {
+    if (!ready || !workspaceAccessUnverified) return;
+    // Fail-closed membership clear: explain why the operator landed on setup without a workspace.
+    setWorkspaceAccessNotice(true);
+    clearWorkspaceAccessUnverified();
+  }, [clearWorkspaceAccessUnverified, ready, workspaceAccessUnverified]);
 
   const posSalesImport = useMemo(() => parseSetupPosSalesCsv(posSalesCsvText), [posSalesCsvText]);
 
@@ -433,6 +443,14 @@ export default function SetupScreen() {
       keyboardAware
     >
       <View style={styles.stack}>
+        {workspaceAccessNotice ? (
+          <StatusNotice
+            tone="caution"
+            title={t("setup.access.unverifiedTitle")}
+            message={t("setup.access.unverifiedBody")}
+          />
+        ) : null}
+
         <SetupStepRail steps={setupSteps} onStepPress={(step) => selectStep(step as SetupStepId)} />
 
         {activeStep === "profile" ? (
