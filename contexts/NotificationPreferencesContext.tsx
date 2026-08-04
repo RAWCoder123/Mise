@@ -27,6 +27,7 @@ import {
   fetchMyNotificationPreferences,
   updateMyNotificationPreferences
 } from "../services/miseService";
+import { isTenantAuthorizationError } from "../services/tenantAuthorizationEvents";
 import { useMiseSession } from "./MiseSessionContext";
 
 interface NotificationPreferencesContextValue {
@@ -111,20 +112,24 @@ export function NotificationPreferencesProvider({
     const soft = !forceHardReloadRef.current && loadedScopeRef.current === expectedScope;
     forceHardReloadRef.current = false;
 
-    setError(null);
-    setLoadError(false);
     setSaving(false);
 
     if (!preferenceAdapter) {
       loadedScopeRef.current = expectedScope;
+      setLoadError(false);
+      setError(null);
       setReady(true);
       return;
     }
 
     if (!soft) {
+      setError(null);
+      setLoadError(false);
       setPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
       setReady(false);
     }
+    // Soft-refresh keeps loadError sticky until success so settings cannot
+    // become interactive again while a denied/stale hosted scope is reloading.
 
     preferenceAdapter
       .load()
@@ -177,6 +182,9 @@ export function NotificationPreferencesProvider({
         if (requestId === requestIdRef.current && activeScopeRef.current === expectedScope) {
           setPreferences(previous);
           setError(normalizeError(saveError));
+          if (isTenantAuthorizationError(saveError)) {
+            setLoadError(true);
+          }
         }
         throw saveError;
       } finally {

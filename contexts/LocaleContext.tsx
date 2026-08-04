@@ -42,6 +42,7 @@ import {
   type LocalePreferenceAdapter
 } from "../services/localePreferences";
 import { fetchMyPreferredLocale, updateMyPreferredLocale } from "../services/miseService";
+import { isTenantAuthorizationError } from "../services/tenantAuthorizationEvents";
 import { useMiseSession } from "./MiseSessionContext";
 
 type CurrencyFormatOptions = Omit<Intl.NumberFormatOptions, "style" | "currency"> & {
@@ -137,20 +138,24 @@ export function LocaleProvider({ children, hostedPreferenceAdapter = null }: Loc
     const soft = !forceHardReloadRef.current && loadedScopeRef.current === expectedScope;
     forceHardReloadRef.current = false;
 
-    setError(null);
-    setLoadError(false);
     setSaving(false);
 
     if (!preferenceAdapter) {
       loadedScopeRef.current = expectedScope;
+      setLoadError(false);
+      setError(null);
       setReady(true);
       return;
     }
 
     if (!soft) {
+      setError(null);
+      setLoadError(false);
       setLocaleState(deviceLocale);
       setReady(false);
     }
+    // Soft-refresh keeps loadError sticky until success so settings cannot
+    // become interactive again while a denied/stale hosted scope is reloading.
 
     preferenceAdapter
       .load()
@@ -202,6 +207,9 @@ export function LocaleProvider({ children, hostedPreferenceAdapter = null }: Loc
         if (requestId === requestIdRef.current && activeScopeRef.current === expectedScope) {
           setLocaleState(previousLocale);
           setError(normalizeError(saveError));
+          if (isTenantAuthorizationError(saveError)) {
+            setLoadError(true);
+          }
         }
         throw saveError;
       } finally {

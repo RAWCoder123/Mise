@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  type OperatorNotificationPreferences
+} from "../services/domain/notificationPreferences";
+import {
   presentLanguageSettingsNoticeCopy,
   presentLanguageSettingsSelection,
   presentNotificationSettingsNoticeCopy,
@@ -10,6 +14,7 @@ import {
   presentPreferenceSettingsInteractive,
   presentPreferenceSettingsNote,
   presentPreferenceSettingsValuesVisible,
+  resolveEffectiveNotificationPreferences,
   resolvePreferenceSettingsLoadState
 } from "../services/presentation/preferenceSettingsPresentation";
 
@@ -162,6 +167,39 @@ test("language and notifications hubs wire soft-refresh, RetryNotice, and locali
   assert.match(catalog, /"settings\.notifications\.notice\.savedTitle":\s*"提醒偏好已保存"/);
 });
 
+test("effective notification preferences fail closed until ready without loadError", () => {
+  const muted: OperatorNotificationPreferences = {
+    ...DEFAULT_NOTIFICATION_PREFERENCES,
+    inventory: false,
+    orders: false
+  };
+
+  assert.deepEqual(
+    resolveEffectiveNotificationPreferences({
+      preferences: muted,
+      ready: false,
+      loadError: false
+    }),
+    DEFAULT_NOTIFICATION_PREFERENCES
+  );
+  assert.deepEqual(
+    resolveEffectiveNotificationPreferences({
+      preferences: muted,
+      ready: true,
+      loadError: true
+    }),
+    DEFAULT_NOTIFICATION_PREFERENCES
+  );
+  assert.deepEqual(
+    resolveEffectiveNotificationPreferences({
+      preferences: muted,
+      ready: true,
+      loadError: false
+    }),
+    muted
+  );
+});
+
 test("locale and notification preference contexts soft-refresh without wiping prior values", () => {
   assert.match(localeContext, /loadError/);
   assert.match(localeContext, /reload/);
@@ -170,7 +208,19 @@ test("locale and notification preference contexts soft-refresh without wiping pr
     localeContext,
     /const soft = !forceHardReloadRef\.current && loadedScopeRef\.current === expectedScope/
   );
-  assert.match(localeContext, /if \(!soft\) \{\s*setLocaleState\(deviceLocale\)/);
+  assert.match(localeContext, /isTenantAuthorizationError/);
+  assert.match(
+    localeContext,
+    /if \(!soft\) \{\s*setError\(null\);\s*setLoadError\(false\);\s*setLocaleState\(deviceLocale\)/
+  );
+  assert.match(
+    localeContext,
+    /Soft-refresh keeps loadError sticky until success/
+  );
+  assert.match(
+    localeContext,
+    /if \(isTenantAuthorizationError\(saveError\)\) \{\s*setLoadError\(true\);\s*\}/
+  );
 
   assert.match(notificationContext, /loadError/);
   assert.match(notificationContext, /reload/);
@@ -179,8 +229,17 @@ test("locale and notification preference contexts soft-refresh without wiping pr
     notificationContext,
     /const soft = !forceHardReloadRef\.current && loadedScopeRef\.current === expectedScope/
   );
+  assert.match(notificationContext, /isTenantAuthorizationError/);
   assert.match(
     notificationContext,
-    /if \(!soft\) \{\s*setPreferences\(DEFAULT_NOTIFICATION_PREFERENCES\)/
+    /if \(!soft\) \{\s*setError\(null\);\s*setLoadError\(false\);\s*setPreferences\(DEFAULT_NOTIFICATION_PREFERENCES\)/
+  );
+  assert.match(
+    notificationContext,
+    /Soft-refresh keeps loadError sticky until success/
+  );
+  assert.match(
+    notificationContext,
+    /if \(isTenantAuthorizationError\(saveError\)\) \{\s*setLoadError\(true\);\s*\}/
   );
 });

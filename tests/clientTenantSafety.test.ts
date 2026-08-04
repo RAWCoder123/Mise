@@ -220,6 +220,26 @@ test("restaurant-scoped hubs fail closed on soft-refresh load errors", () => {
   }
 });
 
+test("preference soft-loads fail closed for operational muting and sticky loadError", () => {
+  const preferencePresentation = source("services/presentation/preferenceSettingsPresentation.ts");
+  const localeContext = source("contexts/LocaleContext.tsx");
+  const notificationContext = source("contexts/NotificationPreferencesContext.tsx");
+  const today = source("app/(tabs)/today.tsx");
+  const settings = source("app/(tabs)/settings.tsx");
+
+  assert.match(
+    preferencePresentation,
+    /if \(!input\.ready \|\| input\.loadError\) \{\s*return DEFAULT_NOTIFICATION_PREFERENCES;/
+  );
+  assert.match(localeContext, /Soft-refresh keeps loadError sticky until success/);
+  assert.match(notificationContext, /Soft-refresh keeps loadError sticky until success/);
+  assert.match(localeContext, /isTenantAuthorizationError\(saveError\)/);
+  assert.match(notificationContext, /isTenantAuthorizationError\(saveError\)/);
+  assert.match(today, /resolveEffectiveNotificationPreferences/);
+  assert.match(settings, /resolveEffectiveNotificationPreferences/);
+  assert.match(settings, /presentNotificationSettingsSummary/);
+});
+
 test("manual tab controls expose their selected state on web", () => {
   const segmentedControl = source("components/ui/SegmentedControl.tsx");
   assert.match(segmentedControl, /accessibilityRole="tab"/);

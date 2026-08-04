@@ -37,6 +37,7 @@ import {
   countHiddenOperationalTodayTasksByNotificationPreferences,
   filterOperationalTodayTasksByNotificationPreferences
 } from "../../services/domain/notificationPreferences";
+import { resolveEffectiveNotificationPreferences } from "../../services/presentation/preferenceSettingsPresentation";
 import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
@@ -196,7 +197,24 @@ function buildTodayCopy(t: (key: MessageKey, values?: MessageValues) => string):
 export default function TodayScreen() {
   const { canUseDemoMode, memberships, restaurant, role, continueWithDemo } = useMiseSession();
   const { locale, t, formatCompactCurrency, formatDate, formatNumber } = useLocale();
-  const { preferences: notificationPreferences } = useNotificationPreferences();
+  const {
+    preferences: notificationPreferenceState,
+    ready: notificationPreferencesReady,
+    loadError: notificationPreferencesLoadError
+  } = useNotificationPreferences();
+  const notificationPreferences = useMemo(
+    () =>
+      resolveEffectiveNotificationPreferences({
+        preferences: notificationPreferenceState,
+        ready: notificationPreferencesReady,
+        loadError: notificationPreferencesLoadError
+      }),
+    [
+      notificationPreferenceState,
+      notificationPreferencesLoadError,
+      notificationPreferencesReady
+    ]
+  );
   const copy = useMemo(() => buildTodayCopy(t), [t]);
   const showStaffWasteTip =
     role === "staff" && canRecordInventoryWaste(memberships, restaurant?.id ?? "");

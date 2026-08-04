@@ -82,7 +82,10 @@ test("Expo notification preference persistence loads identity-free and saves thr
 test("settings and today wire notification categories without push provider secrets", () => {
   assert.match(settingsHub, /settings\.preference\.notifications/);
   assert.match(settingsHub, /\/settings\/notifications/);
+  assert.match(settingsHub, /resolveEffectiveNotificationPreferences/);
+  assert.match(settingsHub, /presentNotificationSettingsSummary/);
   assert.match(notificationsScreen, /NOTIFICATION_CATEGORIES/);
+  assert.match(todayScreen, /resolveEffectiveNotificationPreferences/);
   assert.match(todayScreen, /filterOperationalTodayTasksByNotificationPreferences/);
   assert.match(todayScreen, /countHiddenOperationalTodayTasksByNotificationPreferences/);
   assert.match(todayScreen, /classifyTodayServicePulse/);

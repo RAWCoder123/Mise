@@ -1,3 +1,9 @@
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  normalizeNotificationPreferences,
+  type OperatorNotificationPreferences
+} from "../domain/notificationPreferences";
+
 export type PreferenceSettingsLoadState = "loading" | "ready" | "error";
 
 export function resolvePreferenceSettingsLoadState(input: {
@@ -8,6 +14,23 @@ export function resolvePreferenceSettingsLoadState(input: {
   if (!input.sessionReady || !input.ready) return "loading";
   if (input.loadError) return "error";
   return "ready";
+}
+
+/**
+ * Soft-refresh may keep last-known preference values in context for settings
+ * RetryNotice UX, but operational muting must fail closed whenever hosted
+ * (or any) preference authority is unverified. Otherwise a revoked-tenant or
+ * denied soft-load can keep hiding Today tasks behind stale mute state.
+ */
+export function resolveEffectiveNotificationPreferences(input: {
+  preferences: OperatorNotificationPreferences;
+  ready: boolean;
+  loadError: boolean;
+}): OperatorNotificationPreferences {
+  if (!input.ready || input.loadError) {
+    return DEFAULT_NOTIFICATION_PREFERENCES;
+  }
+  return normalizeNotificationPreferences(input.preferences);
 }
 
 export function presentLanguageSettingsSelection(

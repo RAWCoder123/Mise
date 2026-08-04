@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { router, useFocusEffect } from "expo-router";
 import {
   Bell,
@@ -59,6 +59,11 @@ import {
   presentSettingsHubSupplierCopy,
   resolveSettingsHubLoadState
 } from "../../services/presentation/settingsHubPresentation";
+import {
+  presentNotificationSettingsSummary,
+  resolveEffectiveNotificationPreferences,
+  resolvePreferenceSettingsLoadState
+} from "../../services/presentation/preferenceSettingsPresentation";
 import { canExportRestaurantData, canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type {
@@ -74,11 +79,16 @@ type SettingsNotice = { key: MessageKey; tone: StatusNoticeTone };
 
 export default function SettingsScreen() {
   const { formatList, formatNumber, locale, t } = useLocale();
-  const { preferences: notificationPreferences } = useNotificationPreferences();
+  const {
+    preferences: notificationPreferenceState,
+    ready: notificationPreferencesReady,
+    loadError: notificationPreferencesLoadError
+  } = useNotificationPreferences();
   const {
     availableRestaurants,
     isDemoMode,
     memberships,
+    ready: sessionReady,
     restaurant,
     posProvider,
     posStatusError,
@@ -91,6 +101,39 @@ export default function SettingsScreen() {
     user,
     usingLocalDemo
   } = useMiseSession();
+  const notificationPreferenceLoadState = resolvePreferenceSettingsLoadState({
+    sessionReady,
+    ready: notificationPreferencesReady,
+    loadError: notificationPreferencesLoadError
+  });
+  const notificationPreferences = useMemo(
+    () =>
+      resolveEffectiveNotificationPreferences({
+        preferences: notificationPreferenceState,
+        ready: notificationPreferencesReady,
+        loadError: notificationPreferencesLoadError
+      }),
+    [
+      notificationPreferenceState,
+      notificationPreferencesLoadError,
+      notificationPreferencesReady
+    ]
+  );
+  const mutedNotificationCount = NOTIFICATION_CATEGORIES.filter(
+    (category) => !notificationPreferences[category]
+  ).length;
+  const notificationPreferenceSubtitle = presentNotificationSettingsSummary(
+    notificationPreferenceLoadState,
+    mutedNotificationCount,
+    {
+      loading: t("settings.notifications.status.loading"),
+      unavailable: t("settings.notifications.status.unavailable"),
+      muted: t("settings.preference.notifications.muted", {
+        count: String(mutedNotificationCount)
+      }),
+      persistence: t("settings.preference.notifications.allOn")
+    }
+  );
   const [suppliers, setSuppliers] = useState<string[]>([]);
   const [opsProfile, setOpsProfile] = useState<RestaurantOpsProfile | null>(null);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
@@ -476,16 +519,7 @@ export default function SettingsScreen() {
           />
           <OperationalRow
             title={t("settings.preference.notifications")}
-            subtitle={
-              NOTIFICATION_CATEGORIES.every((category) => notificationPreferences[category])
-                ? t("settings.preference.notifications.allOn")
-                : t("settings.preference.notifications.muted", {
-                    count: String(
-                      NOTIFICATION_CATEGORIES.filter((category) => !notificationPreferences[category])
-                        .length
-                    )
-                  })
-            }
+            subtitle={notificationPreferenceSubtitle}
             icon={<Bell size={20} color={colors.caution} strokeWidth={2.25} />}
             iconTone="caution"
             onPress={() => router.push("/settings/notifications" as never)}
