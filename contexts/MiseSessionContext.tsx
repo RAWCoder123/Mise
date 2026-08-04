@@ -509,6 +509,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
 
     let mounted = true;
     let refreshing = false;
+    let pendingDenialRevalidation = false;
 
     const membershipSignature = (items: RestaurantMembership[]) =>
       items
@@ -516,9 +517,27 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
         .sort()
         .join("|");
 
-    const revalidateLiveMemberships = async () => {
-      if (!mounted || refreshing) return;
+    const clearUnverifiedWorkspaceAccess = async () => {
+      sessionRequestIdRef.current += 1;
+      switchRequestIdRef.current += 1;
+      posRequestIdRef.current += 1;
+      activeRestaurantIdRef.current = null;
+      setRestaurant(null);
+      setAvailableRestaurants([]);
+      setMemberships([]);
+      setRole(null);
+      setUser(appUserFromAuth(authUser, null, null));
+      clearPosStatus();
+      await saveSnapshot({ activeRestaurantId: null, isDemoMode: false });
+    };
+
+    const revalidateLiveMemberships = async (options?: { failClosedOnError?: boolean }) => {
+      if (!mounted) return;
+      if (options?.failClosedOnError) pendingDenialRevalidation = true;
+      if (refreshing) return;
       refreshing = true;
+      const failClosedOnError = pendingDenialRevalidation;
+      pendingDenialRevalidation = false;
       try {
         const nextMemberships = await fetchMembershipsForAuthUser(authUser.id);
         if (!mounted || membershipSignature(nextMemberships) === membershipSignature(memberships)) return;
@@ -526,30 +545,28 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
         const activeId = activeRestaurantIdRef.current;
         const activeMembership = activeMembershipForRestaurant(nextMemberships, activeId);
         if (activeId && !activeMembership) {
-          sessionRequestIdRef.current += 1;
-          switchRequestIdRef.current += 1;
-          posRequestIdRef.current += 1;
-          activeRestaurantIdRef.current = null;
-          setRestaurant(null);
-          setAvailableRestaurants([]);
-          setMemberships([]);
-          setRole(null);
-          setUser(appUserFromAuth(authUser, null, null));
-          clearPosStatus();
-          await saveSnapshot({ activeRestaurantId: null, isDemoMode: false });
+          await clearUnverifiedWorkspaceAccess();
           if (!mounted) return;
         }
 
         await hydrateSupabaseUser(authUser, activeMembership?.restaurant_id ?? null);
       } catch (error) {
         captureMiseError(error, { flow: "membership_revalidation" });
+        // After a tenant-authorization denial, do not keep stale restaurant/role UI when
+        // live membership cannot be re-proven. Periodic/foreground blips stay soft.
+        if (failClosedOnError && mounted) {
+          await clearUnverifiedWorkspaceAccess();
+        }
       } finally {
         refreshing = false;
+        if (pendingDenialRevalidation && mounted) {
+          void revalidateLiveMemberships({ failClosedOnError: true });
+        }
       }
     };
 
     const unsubscribeDenials = subscribeToTenantAuthorizationDenials(() => {
-      void revalidateLiveMemberships();
+      void revalidateLiveMemberships({ failClosedOnError: true });
     });
     const appStateSubscription = AppState.addEventListener("change", (state) => {
       if (state === "active") void revalidateLiveMemberships();

@@ -150,11 +150,18 @@ test("workspace mutations stop stale continuations and session state is latest-w
   assert.match(session, /storageQueueRef/);
   assert.match(session, /subscribeToTenantAuthorizationDenials/);
   assert.match(session, /revalidateLiveMemberships/);
+  assert.match(session, /failClosedOnError:\s*true/);
+  assert.match(session, /clearUnverifiedWorkspaceAccess/);
+  assert.match(session, /pendingDenialRevalidation/);
   assert.match(session, /activeId\s*&&\s*!activeMembership/);
   assert.match(session, /sessionRequestIdRef\.current \+= 1/);
   assert.match(session, /setRestaurant\(null\)/);
   assert.match(session, /setMemberships\(\[\]\)/);
   assert.match(session, /AppState\.addEventListener\("change"/);
+  assert.match(
+    session,
+    /captureMiseError\(error,\s*\{\s*flow:\s*"membership_revalidation"\s*\}\)[\s\S]*failClosedOnError[\s\S]*clearUnverifiedWorkspaceAccess/
+  );
 });
 
 test("repository permission failures trigger live membership revalidation", () => {
