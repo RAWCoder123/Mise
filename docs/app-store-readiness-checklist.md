@@ -37,6 +37,7 @@ Operator-facing StatusNotice localization and hub load telemetry now cover Today
 | Manual pending recommendation create | tested (code) | Inventory “add to order” uses Edge `create_pending_purchase_recommendation`; legacy authenticated create RPC revoked |
 | Supplier recipient upsert | tested (code) | Settings → Suppliers Edge-routed via `upsert_supplier_recipient`; service-owned RPC; legacy authenticated upsert revoked; staff remain read-only |
 | Supplier receive put-away stations | tested (code) | Orders receive chooses Main/Walk-in put-away; service RPC + private put-away helper; domain/demo/UI covered; client fails closed with RetryNotice when storage stations cannot load (no silent Main fallback); pgTAP suite authored (`receive_supplier_order_putaway.test.sql`) awaiting Docker execution |
+| Completed-order receive summary | tested (code) | Completed `/orders/[id]` shows ordered-versus-received ledger; client fails closed with RetryNotice when summary load fails (no silent empty-ledger fallback) |
 | Restaurant / operator profile mutations | tested (code) | `update_restaurant_profile`, `update_my_profile`, and locale writes Edge-routed via service RPCs; legacy authenticated mutation RPCs revoked; locale reads stay identity-free |
 | Live Gmail send | requires external credentials | Implemented; keep `GMAIL_SEND_ENABLED=false` until approved test |
 | Real-device iPhone QA | requires Apple Developer account action | Needs physical device / TestFlight |

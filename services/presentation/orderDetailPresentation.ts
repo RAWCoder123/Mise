@@ -88,6 +88,31 @@ export function presentOrderDetailReceivePutAwayCopy(
   };
 }
 
+export type OrderDetailReceiveSummaryLoadState = "ready" | "unavailable" | "empty";
+
+export function resolveOrderDetailReceiveSummaryLoadState(input: {
+  loadError: boolean;
+  lineCount: number;
+}): OrderDetailReceiveSummaryLoadState {
+  if (input.loadError) return "unavailable";
+  if (input.lineCount <= 0) return "empty";
+  return "ready";
+}
+
+export function presentOrderDetailReceiveSummaryCopy(
+  state: OrderDetailReceiveSummaryLoadState,
+  copy: {
+    unavailableTitle: string;
+    unavailableBody: string;
+  }
+): { title: string; message: string } | null {
+  if (state !== "unavailable") return null;
+  return {
+    title: copy.unavailableTitle,
+    message: copy.unavailableBody
+  };
+}
+
 export type OrderDetailSendErrorReason =
   | "gmailConnectRequired"
   | "gmailReconnectRequired"

@@ -10,9 +10,11 @@ import {
   presentOrderDetailMutationBusy,
   presentOrderDetailMutationNoticeCopy,
   presentOrderDetailReceivePutAwayCopy,
+  presentOrderDetailReceiveSummaryCopy,
   presentOrderDetailSendErrorNotice,
   resolveOrderDetailLoadState,
   resolveOrderDetailReceivePutAwayLoadState,
+  resolveOrderDetailReceiveSummaryLoadState,
   resolveOrderDetailSendErrorReason
 } from "../services/presentation/orderDetailPresentation";
 
@@ -263,5 +265,69 @@ test("order detail fails closed when storage locations cannot load instead of si
   assert.match(
     catalog,
     /"orders\.detail\.receive\.locationsUnavailable\.title":\s*"存放站不可用"/
+  );
+});
+
+test("order detail receive summary load state separates failure from empty ledger", () => {
+  assert.equal(
+    resolveOrderDetailReceiveSummaryLoadState({ loadError: true, lineCount: 0 }),
+    "unavailable"
+  );
+  assert.equal(
+    resolveOrderDetailReceiveSummaryLoadState({ loadError: false, lineCount: 0 }),
+    "empty"
+  );
+  assert.equal(
+    resolveOrderDetailReceiveSummaryLoadState({ loadError: false, lineCount: 2 }),
+    "ready"
+  );
+});
+
+test("order detail receive summary unavailable copy is localized warning content", () => {
+  const copy = presentOrderDetailReceiveSummaryCopy("unavailable", {
+    unavailableTitle: "Receive summary unavailable",
+    unavailableBody: "Reload to show ordered-versus-received details."
+  });
+  assert.deepEqual(copy, {
+    title: "Receive summary unavailable",
+    message: "Reload to show ordered-versus-received details."
+  });
+  assert.equal(
+    presentOrderDetailReceiveSummaryCopy("ready", {
+      unavailableTitle: "Receive summary unavailable",
+      unavailableBody: "Reload to show ordered-versus-received details."
+    }),
+    null
+  );
+  assert.equal(
+    presentOrderDetailReceiveSummaryCopy("empty", {
+      unavailableTitle: "Receive summary unavailable",
+      unavailableBody: "Reload to show ordered-versus-received details."
+    }),
+    null
+  );
+});
+
+test("order detail fails closed when completed receive summary cannot load instead of silent empty ledger", () => {
+  assert.doesNotMatch(
+    orderDetail,
+    /fetchSupplierOrderReceiveSummary\([^)]*\)\.catch\(\s*\(\)\s*=>\s*null\s*\)/
+  );
+  assert.match(orderDetail, /resolveOrderDetailReceiveSummaryLoadState/);
+  assert.match(orderDetail, /presentOrderDetailReceiveSummaryCopy/);
+  assert.match(orderDetail, /receiveSummaryLoadError/);
+  assert.match(orderDetail, /operation:\s*"load_receive_summary"/);
+  assert.match(orderDetail, /orders\.detail\.receivedSummary\.unavailable\.title/);
+  assert.match(orderDetail, /orders\.detail\.receivedSummary\.unavailable\.retryAccessibility/);
+  assert.match(catalog, /orders\.detail\.receivedSummary\.unavailable\.title/);
+  assert.match(catalog, /orders\.detail\.receivedSummary\.unavailable\.body/);
+  assert.match(catalog, /orders\.detail\.receivedSummary\.unavailable\.retryAccessibility/);
+  assert.match(
+    catalog,
+    /"orders\.detail\.receivedSummary\.unavailable\.title":\s*"Resumen de recepción no disponible"/
+  );
+  assert.match(
+    catalog,
+    /"orders\.detail\.receivedSummary\.unavailable\.title":\s*"收货摘要不可用"/
   );
 });
