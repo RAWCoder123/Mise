@@ -130,6 +130,9 @@ test("inventory hub wires soft-refresh and RetryNotice instead of false empty he
   assert.match(inventoryHub, /healthPresentation\.ready/);
   assert.match(inventoryHub, /inventory\.health\.unavailable/);
   assert.match(inventoryHub, /inventory\.emptyMatches\.unavailableTitle/);
+  assert.match(inventoryHub, /captureMiseError/);
+  assert.match(inventoryHub, /flow:\s*"inventory"/);
+  assert.match(inventoryHub, /operation:\s*"load"/);
 });
 
 test("inventory detail load failures expose RetryNotice", () => {

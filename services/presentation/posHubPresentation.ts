@@ -1,5 +1,18 @@
 export type PosHubLoadState = "loading" | "ready" | "error";
 
+export type PosMutationNoticeReason =
+  | "csvImported"
+  | "csvImportedMapped"
+  | "csvImportedWithUnmapped"
+  | "csvImportedWithIncompatible"
+  | "csvImportedWithUnmappedAndIncompatible"
+  | "demoLoaded"
+  | "demoLoadFailed"
+  | "csvImportFailed"
+  | "csvValidationFailed"
+  | "liveProviderRestricted"
+  | "loadFailed";
+
 export function resolvePosHubLoadState(input: {
   restaurantId: string | null | undefined;
   loadedRestaurantId: string | null;
@@ -9,6 +22,57 @@ export function resolvePosHubLoadState(input: {
   if (input.loadedRestaurantId === input.restaurantId) return "ready";
   if (input.loadError) return "error";
   return "loading";
+}
+
+export function presentPosMutationBusy(
+  loadingProvider: string | null,
+  importingCsv: boolean
+): boolean {
+  return loadingProvider !== null || importingCsv;
+}
+
+export function presentPosMutationActionsEditable(
+  hubReady: boolean,
+  busy: boolean
+): boolean {
+  return hubReady && !busy;
+}
+
+export function resolvePosCsvImportNoticeReason(input: {
+  unmappedCount: number;
+  incompatibleCount: number;
+}): PosMutationNoticeReason {
+  const unmapped = Math.max(0, Math.trunc(input.unmappedCount));
+  const incompatible = Math.max(0, Math.trunc(input.incompatibleCount));
+  if (unmapped > 0 && incompatible > 0) return "csvImportedWithUnmappedAndIncompatible";
+  if (unmapped > 0) return "csvImportedWithUnmapped";
+  if (incompatible > 0) return "csvImportedWithIncompatible";
+  return "csvImportedMapped";
+}
+
+export function presentPosMutationNoticeCopy(
+  reason: PosMutationNoticeReason,
+  copy: Record<PosMutationNoticeReason, { title: string; message: string }>
+): {
+  tone: "danger" | "success" | "warning" | "neutral" | "caution";
+  title: string;
+  message: string;
+} {
+  const selected = copy[reason] ?? copy.loadFailed;
+  if (
+    reason === "csvImported"
+    || reason === "csvImportedMapped"
+    || reason === "csvImportedWithUnmapped"
+    || reason === "csvImportedWithIncompatible"
+    || reason === "csvImportedWithUnmappedAndIncompatible"
+    || reason === "demoLoaded"
+  ) {
+    return { tone: "success", title: selected.title, message: selected.message };
+  }
+  if (reason === "csvValidationFailed" || reason === "liveProviderRestricted") {
+    return { tone: "caution", title: selected.title, message: selected.message };
+  }
+  return { tone: "danger", title: selected.title, message: selected.message };
 }
 
 export function presentPosHubHeroCopy(

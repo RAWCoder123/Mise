@@ -211,4 +211,8 @@ test("insights hub wires soft-refresh and RetryNotice instead of false empty lea
   assert.match(insightsHub, /insights\.summary\.unavailableTitle/);
   assert.match(insightsHub, /insights\.brief\.emptyUnavailable\.title/);
   assert.match(insightsHub, /insights\.trend\.empty\.unavailableTitle/);
+  assert.match(insightsHub, /captureMiseError/);
+  assert.match(insightsHub, /flow:\s*"insights"/);
+  assert.match(insightsHub, /operation:\s*"load"/);
+  assert.match(insightsHub, /operation:\s*"refresh"/);
 });

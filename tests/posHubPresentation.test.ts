@@ -4,12 +4,40 @@ import test from "node:test";
 
 import {
   presentPosHubHeroCopy,
+  presentPosMutationActionsEditable,
+  presentPosMutationBusy,
+  presentPosMutationNoticeCopy,
   presentSettingsHubPosCopy,
-  resolvePosHubLoadState
+  resolvePosCsvImportNoticeReason,
+  resolvePosHubLoadState,
+  type PosMutationNoticeReason
 } from "../services/presentation/posHubPresentation";
 
 const posHub = readFileSync("app/settings/pos.tsx", "utf8");
 const settingsHub = readFileSync("app/(tabs)/settings.tsx", "utf8");
+const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+const NOTICE_COPY = (
+  [
+    "csvImported",
+    "csvImportedMapped",
+    "csvImportedWithUnmapped",
+    "csvImportedWithIncompatible",
+    "csvImportedWithUnmappedAndIncompatible",
+    "demoLoaded",
+    "demoLoadFailed",
+    "csvImportFailed",
+    "csvValidationFailed",
+    "liveProviderRestricted",
+    "loadFailed"
+  ] as const satisfies readonly PosMutationNoticeReason[]
+).reduce(
+  (acc, reason) => {
+    acc[reason] = { title: `${reason} title`, message: `${reason} message` };
+    return acc;
+  },
+  {} as Record<PosMutationNoticeReason, { title: string; message: string }>
+);
 
 test("POS hub load state stays loading until the active restaurant status finishes", () => {
   assert.equal(
@@ -162,4 +190,71 @@ test("POS settings hub wires soft-refresh and RetryNotice instead of false disco
   assert.match(settingsHub, /presentSettingsHubPosCopy/);
   assert.match(settingsHub, /settings\.integration\.pos\.loading/);
   assert.match(settingsHub, /settings\.integration\.pos\.unavailable/);
+});
+
+test("POS CSV import notice reasons prefer mapped success unless repair is needed", () => {
+  assert.equal(
+    resolvePosCsvImportNoticeReason({ unmappedCount: 0, incompatibleCount: 0 }),
+    "csvImportedMapped"
+  );
+  assert.equal(
+    resolvePosCsvImportNoticeReason({ unmappedCount: 2, incompatibleCount: 0 }),
+    "csvImportedWithUnmapped"
+  );
+  assert.equal(
+    resolvePosCsvImportNoticeReason({ unmappedCount: 0, incompatibleCount: 1 }),
+    "csvImportedWithIncompatible"
+  );
+  assert.equal(
+    resolvePosCsvImportNoticeReason({ unmappedCount: 3, incompatibleCount: 2 }),
+    "csvImportedWithUnmappedAndIncompatible"
+  );
+});
+
+test("POS mutation busy and editable helpers gate connect and import actions", () => {
+  assert.equal(presentPosMutationBusy(null, false), false);
+  assert.equal(presentPosMutationBusy("Toast", false), true);
+  assert.equal(presentPosMutationBusy(null, true), true);
+  assert.equal(presentPosMutationActionsEditable(true, false), true);
+  assert.equal(presentPosMutationActionsEditable(false, false), false);
+  assert.equal(presentPosMutationActionsEditable(true, true), false);
+});
+
+test("POS mutation notice copy uses success, caution, and danger tones", () => {
+  assert.equal(presentPosMutationNoticeCopy("csvImportedMapped", NOTICE_COPY).tone, "success");
+  assert.equal(presentPosMutationNoticeCopy("csvImportedWithUnmapped", NOTICE_COPY).tone, "success");
+  assert.equal(presentPosMutationNoticeCopy("demoLoaded", NOTICE_COPY).tone, "success");
+  assert.equal(presentPosMutationNoticeCopy("csvValidationFailed", NOTICE_COPY).tone, "caution");
+  assert.equal(presentPosMutationNoticeCopy("liveProviderRestricted", NOTICE_COPY).tone, "caution");
+  assert.equal(presentPosMutationNoticeCopy("demoLoadFailed", NOTICE_COPY).tone, "danger");
+  assert.equal(presentPosMutationNoticeCopy("csvImportFailed", NOTICE_COPY).tone, "danger");
+  assert.equal(presentPosMutationNoticeCopy("loadFailed", NOTICE_COPY).tone, "danger");
+  assert.equal(
+    presentPosMutationNoticeCopy("demoLoaded", NOTICE_COPY).title,
+    "demoLoaded title"
+  );
+});
+
+test("POS hub uses localized StatusNotice for mutation outcomes and captureMiseError", () => {
+  assert.match(posHub, /presentPosMutationNoticeCopy/);
+  assert.match(posHub, /resolvePosCsvImportNoticeReason/);
+  assert.match(posHub, /presentPosMutationBusy/);
+  assert.match(posHub, /presentPosMutationActionsEditable/);
+  assert.match(posHub, /StatusNotice/);
+  assert.match(posHub, /title=\{visibleNotice\.title\}/);
+  assert.match(posHub, /message=\{visibleNotice\.message\}/);
+  assert.match(posHub, /tone=\{visibleNotice\.tone\}/);
+  assert.match(posHub, /captureMiseError/);
+  assert.match(posHub, /flow:\s*"settings_pos"/);
+  assert.match(posHub, /operation:\s*"load"/);
+  assert.match(posHub, /operation:\s*"connect"/);
+  assert.match(posHub, /operation:\s*"import"/);
+  assert.match(posHub, /liveProviderRestricted/);
+  assert.doesNotMatch(posHub, /styles\.message/);
+  assert.doesNotMatch(posHub, /setMessage\(/);
+  assert.match(catalog, /"pos\.notice\.demoLoadedTitle"/);
+  assert.match(catalog, /"pos\.notice\.liveProviderRestrictedTitle"/);
+  assert.match(catalog, /"pos\.error\.liveProviderRestricted"/);
+  assert.match(catalog, /"pos\.notice\.demoLoadedTitle":\s*"POS de demostración conectado"/);
+  assert.match(catalog, /"pos\.notice\.liveProviderRestrictedTitle":\s*"实时 POS 受限"/);
 });

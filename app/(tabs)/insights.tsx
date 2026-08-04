@@ -41,6 +41,7 @@ import {
   presentLearningMemorySignal
 } from "../../services/presentation/operationsPresentation";
 import { buildConciseTrendDateLabels } from "../../services/presentation/salesTrendLabels";
+import { captureMiseError } from "../../services/telemetry";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import type { InsightsSalesTrendPoint } from "../../services/miseService";
 import type { Insight, InsightSeverity, LearningMemorySignal, LearningMemorySummary } from "../../types/mise";
@@ -100,8 +101,13 @@ export default function InsightsScreen() {
       setSalesTrend(nextSalesTrend);
       loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
-    } catch {
+    } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(loadError, {
+        flow: "insights",
+        operation: "load",
+        restaurant_id: restaurantId
+      });
       setError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
@@ -139,8 +145,13 @@ export default function InsightsScreen() {
       setSalesTrend(nextSalesTrend);
       loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
-    } catch {
+    } catch (refreshError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(refreshError, {
+        flow: "insights",
+        operation: "refresh",
+        restaurant_id: restaurantId
+      });
       setError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setRefreshing(false);
