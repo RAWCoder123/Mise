@@ -44,6 +44,19 @@ Operator-facing StatusNotice localization and hub load telemetry now cover Today
 | Product analytics | requires founder decision | Optional public PostHog key/host |
 | EAS / TestFlight upload | requires Apple Developer account action | See `docs/testflight-readiness.md` |
 
+## Apple App Store Review Guidelines cross-check (reviewed 2026-08-04)
+
+Source: [App Store Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
+
+| Guideline | Mise status | Evidence / gap |
+| --- | --- | --- |
+| 2.1 App Completeness — final binaries, working URLs, on-device QA, demo account or demo mode | partial | Local demo mode exists; privacy/support HTTPS URLs and physical-device / TestFlight proof still required before submission |
+| 2.3 Accurate metadata — description/screenshots match core experience | requires founder decision | Screenshot-ready screens exist in-app; ASC metadata not authored here |
+| 5.1.1(i) Privacy policy link in ASC + in-app | blocked | Needs published HTTPS policy + `EXPO_PUBLIC_PRIVACY_POLICY_URL` |
+| 5.1.1(v) Account creation ⇒ in-app account deletion | tested (code) | Settings → Delete account; Edge + service RPC path; still needs hosted Auth re-proof |
+| 5.1.2 Data use / third-party sharing disclosure | requires founder decision | Optional Sentry/PostHog; disclose before enabling in production builds |
+| Login for App Review — demo account or built-in demo mode | complete (demo mode) | Built-in local demo path documented; confirm Review Notes when submitting |
+
 ## Evidence still required before raising classification
 
 1. `npm run verify:private-beta-security` with Docker and staging credentials, no skips.
