@@ -12,6 +12,7 @@ const authorityMigration = readFileSync(
   "supabase/migrations/20260801201000_staff_edge_audit_and_signal_authority.sql",
   "utf8"
 );
+const receiveOrders = readFileSync("services/application/orders.ts", "utf8");
 
 test("staff notification preference audits are allowlisted after the Edge mutation", () => {
   assert.match(edge, /"update_my_notification_preferences"/);
@@ -54,5 +55,18 @@ test("operational signal refresh preserves manual insights like manual recommend
   assert.match(
     databaseTests,
     /rules-owned insights are still replaced during operational signal refresh/i
+  );
+});
+
+test("receiveSupplierOrder reuses one recommendation snapshot for planning and learning", () => {
+  const receiveBody =
+    receiveOrders.match(/export async function receiveSupplierOrder\([\s\S]*?\n\}/)?.[0] ?? "";
+  assert.match(receiveBody, /recommendationSnapshot/);
+  assert.match(receiveBody, /recommendations: recommendationSnapshot/);
+  assert.match(receiveBody, /buildRecommendationInserts\([\s\S]*recommendationSnapshot/);
+  assert.match(receiveBody, /buildInsightsFromData\([\s\S]*recommendationSnapshot/);
+  assert.equal(
+    (receiveBody.match(/fetchPurchaseRecommendations\(/g) ?? []).length,
+    1
   );
 });
