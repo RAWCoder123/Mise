@@ -23,7 +23,12 @@ After a soft-refresh denial, deep-linked mutation affordances could remain inter
 
 ## Verification
 
-Pending in this run: `npm run typecheck`, `npm test`, `npm run security:static`, `npm run security:backend`, `npm run design:static`, `npm run qa:routes`.
+- `npm run typecheck`
+- `npm test` — 564/564
+- `npm run security:static`
+- `npm run security:backend`
+- `npm run design:static`
+- `npm run qa:routes`
 
 Docker `supabase:test` and hosted staging re-proof remain unavailable in this workspace.
 
