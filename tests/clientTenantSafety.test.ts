@@ -41,10 +41,15 @@ test("operational screens reject late requests and render only active-restaurant
   );
   assert.match(screens.inventory, /resolveInventoryHubLoadState/);
   assert.match(screens.inventory, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
+  assert.match(screens.inventory, /presentInventoryHubActionsEditable/);
+  assert.match(screens.inventory, /hubReady\s*\?\s*openCountSessionId\s*:\s*null/);
   assert.match(screens.insights, /resolveInsightsHubLoadState/);
   assert.match(screens.insights, /hubReady\s*\?\s*insights\s*:\s*\[\]/);
+  assert.match(screens.insights, /presentInsightsHubActionsEditable/);
   assert.match(screens.settings, /resolveSettingsHubLoadState/);
   assert.match(screens.settings, /hubReady\s*\?\s*suppliers\s*:\s*\[\]/);
+  assert.match(screens.settings, /presentSettingsHubRestaurantActionsEditable/);
+  assert.match(screens.settings, /disabled=\{!restaurantActionsEditable\}/);
   assert.match(
     source("services/presentation/settingsHubPresentation.ts"),
     /resolveRestaurantScopedHubLoadState/

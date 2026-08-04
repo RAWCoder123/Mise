@@ -33,6 +33,7 @@ interface OperationalRowProps {
   subtitleLines?: number;
   trailing?: ReactNode;
   onPress?: () => void;
+  disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -51,19 +52,21 @@ export function OperationalRow({
   subtitleLines = 2,
   trailing,
   onPress,
+  disabled = false,
   style
 }: OperationalRowProps) {
   const { pressIn, pressOut, scaleStyle } = usePressScale(0.985);
-  const isActionable = typeof onPress === "function";
+  const isActionable = typeof onPress === "function" && !disabled;
 
   return (
     <Pressable
       accessibilityRole={isActionable ? "button" : undefined}
+      accessibilityState={typeof onPress === "function" ? { disabled: !isActionable } : undefined}
       disabled={!isActionable}
-      onPress={onPress}
+      onPress={isActionable ? onPress : undefined}
       onPressIn={isActionable ? pressIn : undefined}
       onPressOut={isActionable ? pressOut : undefined}
-      style={({ pressed }) => [pressed && isActionable && styles.pressed]}
+      style={({ pressed }) => [pressed && isActionable && styles.pressed, disabled && styles.disabled]}
     >
       <Animated.View style={[styles.row, style, isActionable && scaleStyle]}>
         <IconBadge tone={iconTone}>{icon}</IconBadge>
@@ -78,7 +81,7 @@ export function OperationalRow({
             {subtitle}
           </Text>
         </View>
-        {(value || meta || trailing || isActionable) && (
+        {(value || meta || trailing || isActionable || (typeof onPress === "function" && disabled)) && (
           <View style={styles.trail}>
             {trailing}
             {value && (
@@ -91,7 +94,13 @@ export function OperationalRow({
                 {meta}
               </Text>
             )}
-            {isActionable && <ChevronRight size={19} color={colors.text} strokeWidth={2.45} />}
+            {(isActionable || (typeof onPress === "function" && disabled)) && (
+              <ChevronRight
+                size={19}
+                color={disabled ? colors.faint : colors.text}
+                strokeWidth={2.45}
+              />
+            )}
           </View>
         )}
       </Animated.View>
@@ -155,6 +164,9 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.76
+  },
+  disabled: {
+    opacity: 0.55
   }
 });
 

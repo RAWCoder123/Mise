@@ -17,3 +17,15 @@ export function resolveRestaurantScopedHubLoadState(input: {
   if (input.loadedRestaurantId === input.restaurantId) return "ready";
   return "loading";
 }
+
+/**
+ * Restaurant-scoped hub actions stay non-editable until the hub proves ready.
+ * Role membership alone is not enough after a soft-refresh denial/error.
+ */
+export function presentRestaurantScopedHubActionsEditable(input: {
+  allowed: boolean;
+  hubReady: boolean;
+  busy?: boolean;
+}): boolean {
+  return input.allowed && input.hubReady && !input.busy;
+}

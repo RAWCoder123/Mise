@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { resolveRestaurantScopedHubLoadState } from "../services/presentation/hubLoadState";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../services/presentation/hubLoadState";
 
 const HUB_RESOLVER_FILES = [
   "services/presentation/todayHubPresentation.ts",
@@ -77,4 +80,46 @@ test("restaurant-scoped hub resolvers delegate to shared fail-closed helper", ()
       `${path} must not prefer prior loaded data over loadError`
     );
   }
+});
+
+test("restaurant-scoped hub actions stay non-editable until the hub is ready", () => {
+  assert.equal(
+    presentRestaurantScopedHubActionsEditable({
+      allowed: true,
+      hubReady: true,
+      busy: false
+    }),
+    true
+  );
+  assert.equal(
+    presentRestaurantScopedHubActionsEditable({
+      allowed: true,
+      hubReady: false,
+      busy: false
+    }),
+    false
+  );
+  assert.equal(
+    presentRestaurantScopedHubActionsEditable({
+      allowed: false,
+      hubReady: true,
+      busy: false
+    }),
+    false
+  );
+  assert.equal(
+    presentRestaurantScopedHubActionsEditable({
+      allowed: true,
+      hubReady: true,
+      busy: true
+    }),
+    false
+  );
+  assert.equal(
+    presentRestaurantScopedHubActionsEditable({
+      allowed: true,
+      hubReady: true
+    }),
+    true
+  );
 });

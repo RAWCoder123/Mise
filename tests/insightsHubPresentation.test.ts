@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  presentInsightsHubActionsEditable,
   presentInsightsHubBriefAction,
   presentInsightsHubBriefEmptyCopy,
   presentInsightsHubSummaryCopy,
@@ -198,11 +199,19 @@ test("insights summary, brief, and trend copy never claim empty learning while l
   );
 });
 
+test("insights hub actions stay non-editable until the hub is ready", () => {
+  assert.equal(presentInsightsHubActionsEditable(true, false, true), true);
+  assert.equal(presentInsightsHubActionsEditable(true, true, true), false);
+  assert.equal(presentInsightsHubActionsEditable(true, false, false), false);
+  assert.equal(presentInsightsHubActionsEditable(false, false, true), false);
+});
+
 test("insights hub wires soft-refresh and RetryNotice instead of false empty learning", () => {
   assert.match(insightsHub, /resolveInsightsHubLoadState/);
   assert.match(insightsHub, /presentInsightsHubSummaryCopy/);
   assert.match(insightsHub, /presentInsightsHubBriefEmptyCopy/);
   assert.match(insightsHub, /presentInsightsHubTrendEmptyCopy/);
+  assert.match(insightsHub, /presentInsightsHubActionsEditable/);
   assert.match(insightsHub, /RetryNotice/);
   assert.match(insightsHub, /onRetry=\{\(\) => void load\(true\)\}/);
   assert.match(insightsHub, /loadedRestaurantRef/);
@@ -215,4 +224,6 @@ test("insights hub wires soft-refresh and RetryNotice instead of false empty lea
   assert.match(insightsHub, /flow:\s*"insights"/);
   assert.match(insightsHub, /operation:\s*"load"/);
   assert.match(insightsHub, /operation:\s*"refresh"/);
+  assert.match(insightsHub, /refreshActionsEditable/);
+  assert.match(insightsHub, /if \(!restaurant \|\| refreshing \|\| !canManage \|\| !hubReady\) return/);
 });

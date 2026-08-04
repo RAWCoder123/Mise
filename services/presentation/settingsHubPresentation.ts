@@ -1,5 +1,8 @@
 import type { RestaurantEmailConnection } from "../../types/mise";
-import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "./hubLoadState";
 
 export type SettingsHubLoadState = "loading" | "ready" | "error";
 
@@ -9,6 +12,14 @@ export function resolveSettingsHubLoadState(input: {
   loadError: boolean;
 }): SettingsHubLoadState {
   return resolveRestaurantScopedHubLoadState(input);
+}
+
+export function presentSettingsHubRestaurantActionsEditable(
+  allowed: boolean,
+  busy: boolean,
+  hubReady: boolean
+): boolean {
+  return presentRestaurantScopedHubActionsEditable({ allowed, hubReady, busy });
 }
 
 export function presentSettingsHubGmailCopy(

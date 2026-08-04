@@ -1,4 +1,7 @@
-import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "./hubLoadState";
 
 export type InsightsHubLoadState = "loading" | "ready" | "error";
 
@@ -8,6 +11,18 @@ export function resolveInsightsHubLoadState(input: {
   loadError: boolean;
 }): InsightsHubLoadState {
   return resolveRestaurantScopedHubLoadState(input);
+}
+
+export function presentInsightsHubActionsEditable(
+  canManage: boolean,
+  busy: boolean,
+  hubReady: boolean
+): boolean {
+  return presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy
+  });
 }
 
 export function presentInsightsHubSummaryCopy(

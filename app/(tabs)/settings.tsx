@@ -56,6 +56,7 @@ import {
 import {
   presentSettingsHubGmailCopy,
   presentSettingsHubRecipesCopy,
+  presentSettingsHubRestaurantActionsEditable,
   presentSettingsHubSupplierCopy,
   resolveSettingsHubLoadState
 } from "../../services/presentation/settingsHubPresentation";
@@ -230,6 +231,13 @@ export default function SettingsScreen() {
   );
 
   async function reset() {
+    const hubReadyForReset =
+      resolveSettingsHubLoadState({
+        restaurantId: restaurant?.id,
+        loadedRestaurantId,
+        loadError: hubLoadError
+      }) === "ready";
+    if (!hubReadyForReset || restoringDemo) return;
     setRestoringDemo(true);
     setMessage(null);
     try {
@@ -293,7 +301,13 @@ export default function SettingsScreen() {
   }
 
   async function exportCurrentRestaurantData() {
-    if (!restaurant || exportingData || deletingAccount || signingOut) return;
+    const hubReadyForExport =
+      resolveSettingsHubLoadState({
+        restaurantId: restaurant?.id,
+        loadedRestaurantId,
+        loadError: hubLoadError
+      }) === "ready";
+    if (!restaurant || !hubReadyForExport || exportingData || deletingAccount || signingOut) return;
     if (!canExportRestaurantData(memberships, restaurant.id)) {
       setMessage({ key: "settings.account.exportForbidden", tone: "caution" });
       return;
@@ -336,6 +350,11 @@ export default function SettingsScreen() {
     loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
+  const restaurantActionsEditable = presentSettingsHubRestaurantActionsEditable(
+    Boolean(restaurant),
+    restoringDemo || exportingData || signingOut || deletingAccount,
+    hubReady
+  );
   const visibleSuppliers = hubReady ? suppliers : [];
   const visibleOpsProfile = hubReady ? opsProfile : null;
   const visibleEmailConnection = hubReady ? emailConnection : null;
@@ -493,6 +512,7 @@ export default function SettingsScreen() {
               }
               icon={<Store size={20} color={colors.accentDark} strokeWidth={2.25} />}
               iconTone="brand"
+              disabled={!restaurantActionsEditable}
               onPress={() => router.push("/settings/restaurant" as never)}
             />
           ) : null}
@@ -552,6 +572,7 @@ export default function SettingsScreen() {
                   ? "caution"
                   : "neutral"
             }
+            disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/pos")}
           />
           <OperationalRow
@@ -580,6 +601,7 @@ export default function SettingsScreen() {
                   ? "caution"
                   : "neutral"
             }
+            disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/gmail" as never)}
           />
         </SettingsSection>
@@ -598,6 +620,7 @@ export default function SettingsScreen() {
             iconTone={recipesPresentation.caution ? "caution" : "neutral"}
             badgeLabel={recipesPresentation.badgeLabel}
             badgeTone={recipesPresentation.caution ? "caution" : undefined}
+            disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/recipes" as never)}
           />
           <OperationalRow
@@ -606,6 +629,7 @@ export default function SettingsScreen() {
             icon={<Truck size={20} color={colors.text} strokeWidth={2.25} />}
             iconTone="neutral"
             value={supplierPresentation.value}
+            disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/suppliers" as never)}
           />
           <OperationalRow
@@ -613,6 +637,7 @@ export default function SettingsScreen() {
             subtitle={t("settings.operations.team.body")}
             icon={<Users size={20} color={colors.text} strokeWidth={2.25} />}
             iconTone="neutral"
+            disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/team" as never)}
           />
           {restaurant ? (
@@ -621,6 +646,7 @@ export default function SettingsScreen() {
               subtitle={`${serviceStyleLabel(restaurant.service_style, t)} · ${restaurant.timezone} · ${restaurant.currency}`}
               icon={<ShieldCheck size={20} color={colors.success} strokeWidth={2.25} />}
               iconTone="leaf"
+              disabled={!restaurantActionsEditable}
               onPress={() => router.push("/settings/restaurant" as never)}
             />
           ) : null}
@@ -646,7 +672,7 @@ export default function SettingsScreen() {
                 variant="secondary"
                 icon={<RefreshCw size={18} color={colors.text} strokeWidth={2.25} />}
                 onPress={reset}
-                disabled={restoringDemo || hubLoading}
+                disabled={restoringDemo || !restaurantActionsEditable}
                 fullWidth
               />
             </View>
@@ -753,7 +779,7 @@ export default function SettingsScreen() {
                 variant="secondary"
                 icon={<Download size={18} color={colors.text} strokeWidth={2.25} />}
                 onPress={() => void exportCurrentRestaurantData()}
-                disabled={exportingData || signingOut || deletingAccount || !restaurant}
+                disabled={exportingData || signingOut || deletingAccount || !restaurantActionsEditable}
                 fullWidth
               />
             </View>

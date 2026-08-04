@@ -1,4 +1,7 @@
-import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "./hubLoadState";
 
 export type InventoryHubLoadState = "loading" | "ready" | "error";
 
@@ -8,6 +11,13 @@ export function resolveInventoryHubLoadState(input: {
   loadError: boolean;
 }): InventoryHubLoadState {
   return resolveRestaurantScopedHubLoadState(input);
+}
+
+export function presentInventoryHubActionsEditable(
+  allowed: boolean,
+  hubReady: boolean
+): boolean {
+  return presentRestaurantScopedHubActionsEditable({ allowed, hubReady });
 }
 
 export function presentInventoryHubHealthCopy(

@@ -29,6 +29,7 @@ import {
   summarizeInsights
 } from "../../services/miseService";
 import {
+  presentInsightsHubActionsEditable,
   presentInsightsHubBriefAction,
   presentInsightsHubBriefEmptyCopy,
   presentInsightsHubSummaryCopy,
@@ -123,9 +124,19 @@ export default function InsightsScreen() {
   );
 
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
+  const hubLoadState = resolveInsightsHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const refreshActionsEditable = presentInsightsHubActionsEditable(canManage, refreshing, hubReady);
+  const visibleInsights = hubReady ? insights : [];
+  const visibleMemory = hubReady ? memory : null;
+  const visibleSalesTrend = hubReady ? salesTrend : [];
 
   const refreshInsights = useCallback(async () => {
-    if (!restaurant || refreshing || !canManage) return;
+    if (!restaurant || refreshing || !canManage || !hubReady) return;
 
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
@@ -156,17 +167,7 @@ export default function InsightsScreen() {
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setRefreshing(false);
     }
-  }, [canManage, refreshing, restaurant?.id]);
-
-  const hubLoadState = resolveInsightsHubLoadState({
-    restaurantId: restaurant?.id,
-    loadedRestaurantId,
-    loadError: error
-  });
-  const hubReady = hubLoadState === "ready";
-  const visibleInsights = hubReady ? insights : [];
-  const visibleMemory = hubReady ? memory : null;
-  const visibleSalesTrend = hubReady ? salesTrend : [];
+  }, [canManage, hubReady, refreshing, restaurant?.id]);
 
   const summary = useMemo(() => {
     if (!restaurant || !hubReady) return null;
@@ -250,8 +251,8 @@ export default function InsightsScreen() {
           <ActionIcon
             accessibilityLabel={refreshing ? t("insights.refreshing") : t("insights.refresh")}
             accessibilityHint={t("insights.refreshHint")}
-            accessibilityState={{ disabled: refreshing }}
-            disabled={refreshing}
+            accessibilityState={{ disabled: !refreshActionsEditable }}
+            disabled={!refreshActionsEditable}
             onPress={() => void refreshInsights()}
             tone="brand"
           >

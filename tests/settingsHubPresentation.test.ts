@@ -6,6 +6,7 @@ import { presentSettingsHubPosCopy } from "../services/presentation/posHubPresen
 import {
   presentSettingsHubGmailCopy,
   presentSettingsHubRecipesCopy,
+  presentSettingsHubRestaurantActionsEditable,
   presentSettingsHubSupplierCopy,
   resolveSettingsHubLoadState
 } from "../services/presentation/settingsHubPresentation";
@@ -202,17 +203,32 @@ test("settings hub POS copy never claims disconnected while loading or failed", 
   assert.equal(ready.tone, "leaf");
 });
 
+test("settings hub restaurant-scoped actions stay non-editable until the hub is ready", () => {
+  assert.equal(presentSettingsHubRestaurantActionsEditable(true, false, true), true);
+  assert.equal(presentSettingsHubRestaurantActionsEditable(true, true, true), false);
+  assert.equal(presentSettingsHubRestaurantActionsEditable(true, false, false), false);
+  assert.equal(presentSettingsHubRestaurantActionsEditable(false, false, true), false);
+});
+
 test("settings hub wires Screen loading and RetryNotice instead of false empty flashes", () => {
   assert.match(settingsHub, /resolveSettingsHubLoadState/);
   assert.match(settingsHub, /presentSettingsHubGmailCopy/);
   assert.match(settingsHub, /presentSettingsHubPosCopy/);
   assert.match(settingsHub, /presentSettingsHubSupplierCopy/);
   assert.match(settingsHub, /presentSettingsHubRecipesCopy/);
+  assert.match(settingsHub, /presentSettingsHubRestaurantActionsEditable/);
+  assert.match(settingsHub, /restaurantActionsEditable/);
   assert.match(settingsHub, /loading=\{hubLoading\}/);
   assert.match(settingsHub, /RetryNotice/);
   assert.match(settingsHub, /settings\.retry\.title/);
   assert.match(settingsHub, /onRetry=\{\(\) => void load\(true\)\}/);
   assert.match(settingsHub, /loadedRestaurantRef/);
   assert.match(settingsHub, /if \(showLoading \|\| loadedRestaurantRef\.current !== restaurantId\)/);
+  assert.match(settingsHub, /disabled=\{!restaurantActionsEditable\}/);
+  assert.match(settingsHub, /disabled=\{restoringDemo \|\| !restaurantActionsEditable\}/);
+  assert.match(
+    settingsHub,
+    /disabled=\{exportingData \|\| signingOut \|\| deletingAccount \|\| !restaurantActionsEditable\}/
+  );
   assert.doesNotMatch(settingsHub, /Try reopening this screen/);
 });

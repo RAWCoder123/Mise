@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  presentInventoryHubActionsEditable,
   presentInventoryHubHealthCopy,
   presentInventoryHubListEmptyCopy,
   presentInventoryHubStationHealthCopy,
@@ -121,21 +122,32 @@ test("inventory health and list copy never claim empty stock while loading or fa
   assert.equal(readyStationEmpty.body, "No stocked items at this station");
 });
 
+test("inventory hub actions stay non-editable until the hub is ready", () => {
+  assert.equal(presentInventoryHubActionsEditable(true, true), true);
+  assert.equal(presentInventoryHubActionsEditable(true, false), false);
+  assert.equal(presentInventoryHubActionsEditable(false, true), false);
+});
+
 test("inventory hub wires soft-refresh and RetryNotice instead of false empty health", () => {
   assert.match(inventoryHub, /resolveInventoryHubLoadState/);
   assert.match(inventoryHub, /presentInventoryHubHealthCopy/);
   assert.match(inventoryHub, /presentInventoryHubListEmptyCopy/);
+  assert.match(inventoryHub, /presentInventoryHubActionsEditable/);
   assert.match(inventoryHub, /RetryNotice/);
   assert.match(inventoryHub, /onRetry=\{\(\) => void load\(true\)\}/);
   assert.match(inventoryHub, /loadedRestaurantRef/);
   assert.match(inventoryHub, /if \(showLoading \|\| loadedRestaurantRef\.current !== restaurantId\)/);
   assert.match(inventoryHub, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
+  assert.match(inventoryHub, /hubReady\s*\?\s*openCountSessionId\s*:\s*null/);
   assert.match(inventoryHub, /healthPresentation\.ready/);
   assert.match(inventoryHub, /inventory\.health\.unavailable/);
   assert.match(inventoryHub, /inventory\.emptyMatches\.unavailableTitle/);
   assert.match(inventoryHub, /captureMiseError/);
   assert.match(inventoryHub, /flow:\s*"inventory"/);
   assert.match(inventoryHub, /operation:\s*"load"/);
+  assert.match(inventoryHub, /canShowCreateAction/);
+  assert.match(inventoryHub, /canShowCountAction/);
+  assert.match(inventoryHub, /canShowWasteAction/);
 });
 
 test("inventory detail load failures expose RetryNotice", () => {

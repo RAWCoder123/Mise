@@ -33,6 +33,7 @@ import {
   type InventoryLocationHealthBreakdown
 } from "../../services/presentation/inventoryHealthPresentation";
 import {
+  presentInventoryHubActionsEditable,
   presentInventoryHubHealthCopy,
   presentInventoryHubListEmptyCopy,
   presentInventoryHubStationHealthCopy,
@@ -151,6 +152,13 @@ export default function InventoryScreen() {
   const visibleOutlooks = hubReady ? outlooks : [];
   const visibleLocationHealth = hubReady ? locationHealth : null;
   const visibleLocationHealthLoadError = hubReady ? locationHealthLoadError : false;
+  const visibleOpenCountSessionId = hubReady ? openCountSessionId : null;
+  const canShowCreateAction = presentInventoryHubActionsEditable(canManageInventory, hubReady);
+  const canShowCountAction = presentInventoryHubActionsEditable(
+    canDraftCount || Boolean(visibleOpenCountSessionId),
+    hubReady
+  );
+  const canShowWasteAction = presentInventoryHubActionsEditable(canRecordWaste, hubReady);
   const stationHealthLoadState = resolveInventoryHubStationHealthLoadState({
     loadError: visibleLocationHealthLoadError,
     breakdown: visibleLocationHealth
@@ -370,7 +378,7 @@ export default function InventoryScreen() {
           </SectionSurface>
         </MotionView>
 
-        {canManageInventory ? (
+        {canShowCreateAction ? (
           <MotionView delay={10} distance={3} duration={240}>
             <SectionSurface
               title={t("inventory.create.cardTitle")}
@@ -387,26 +395,26 @@ export default function InventoryScreen() {
           </MotionView>
         ) : null}
 
-        {canDraftCount || openCountSessionId ? (
+        {canShowCountAction ? (
           <MotionView delay={20} distance={3} duration={240}>
             <SectionSurface
               title={t("inventory.count.cardTitle")}
               subtitle={
-                openCountSessionId
+                visibleOpenCountSessionId
                   ? t("inventory.count.cardOpenSubtitle")
                   : t("inventory.count.cardSubtitle")
               }
             >
               <Button
                 title={
-                  openCountSessionId
+                  visibleOpenCountSessionId
                     ? t("inventory.count.resumeAction")
                     : t("inventory.count.startAction")
                 }
                 onPress={() => router.push("/inventory/count")}
                 fullWidth
                 accessibilityLabel={
-                  openCountSessionId
+                  visibleOpenCountSessionId
                     ? t("inventory.count.resumeAccessibility")
                     : t("inventory.count.startAccessibility")
                 }
@@ -416,7 +424,7 @@ export default function InventoryScreen() {
           </MotionView>
         ) : null}
 
-        {canRecordWaste ? (
+        {canShowWasteAction ? (
           <MotionView delay={30} distance={3} duration={240}>
             <SectionSurface
               title={t("inventory.waste.cardTitle")}
