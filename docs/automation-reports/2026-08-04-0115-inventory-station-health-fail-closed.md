@@ -9,9 +9,9 @@
 - EN / ES / zh-Hans copy for unavailable station health.
 - Tests cover helpers, catalog coverage, and removal of the silent `.catch(() => null)` fallback.
 
-## Verification
+## Verification (passed on 37a2)
 - `npm run typecheck`
-- `npm test`
+- `npm test` — 520 passed
 - `npm run security:static`
 - `npm run security:backend`
 - `npm run design:static`
