@@ -4,6 +4,7 @@ export type LoginNoticeReason =
   | "signInFailed"
   | "demoFailed"
   | "resetRequestFailed"
+  | "resetLinkInvalid"
   | "resetSent";
 
 export function presentLoginFormEditable(cloudConfigured: boolean, loading: boolean): boolean {

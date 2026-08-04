@@ -79,11 +79,13 @@ interface MiseSessionContextValue {
   usingLocalDemo: boolean;
   canUseDemoMode: boolean;
   passwordRecoveryPending: boolean;
+  passwordRecoveryLinkError: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<SignUpOutcome>;
   requestPasswordReset: (email: string) => Promise<void>;
   completePasswordReset: (password: string) => Promise<void>;
   clearPasswordRecovery: () => void;
+  clearPasswordRecoveryLinkError: () => void;
   continueWithDemo: (profile?: { name?: string; cuisine_type?: string; posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   createRestaurant: (profile: {
     name: string;
@@ -140,6 +142,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   const [posStatusRestaurantId, setPosStatusRestaurantId] = useState<string | null>(null);
   const [posStatusError, setPosStatusError] = useState(false);
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
+  const [passwordRecoveryLinkError, setPasswordRecoveryLinkError] = useState(false);
   const activeRestaurantIdRef = useRef<string | null>(null);
   const posRequestIdRef = useRef(0);
   const posStatusRestaurantIdRef = useRef<string | null>(null);
@@ -217,6 +220,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markPasswordRecovery = useCallback(async () => {
+    setPasswordRecoveryLinkError(false);
     setPasswordRecoveryPending(true);
     try {
       await AsyncStorage.setItem(PASSWORD_RECOVERY_STORAGE_KEY, "1");
@@ -228,6 +232,10 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   const clearPasswordRecovery = useCallback(() => {
     setPasswordRecoveryPending(false);
     void AsyncStorage.removeItem(PASSWORD_RECOVERY_STORAGE_KEY).catch(() => undefined);
+  }, []);
+
+  const clearPasswordRecoveryLinkError = useCallback(() => {
+    setPasswordRecoveryLinkError(false);
   }, []);
 
   const clearSessionState = useCallback(async () => {
@@ -461,6 +469,10 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
         }
       } catch (callbackError) {
         captureMiseError(callbackError, { flow: "password_recovery", operation: "auth_callback" });
+        if (mounted) {
+          setPasswordRecoveryPending(false);
+          setPasswordRecoveryLinkError(true);
+        }
       }
     }
 
@@ -900,11 +912,13 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       usingLocalDemo: isDemoMode,
       canUseDemoMode: demoModeAvailable,
       passwordRecoveryPending,
+      passwordRecoveryLinkError,
       signIn,
       signUp,
       requestPasswordReset,
       completePasswordReset,
       clearPasswordRecovery,
+      clearPasswordRecoveryLinkError,
       continueWithDemo,
       createRestaurant,
       switchRestaurant,
@@ -923,6 +937,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       authUser,
       availableRestaurants,
       clearPasswordRecovery,
+      clearPasswordRecoveryLinkError,
       completePasswordReset,
       continueWithDemo,
       createRestaurant,
@@ -930,6 +945,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       isDemoMode,
       isLoading,
       memberships,
+      passwordRecoveryLinkError,
       passwordRecoveryPending,
       posProvider,
       posStatusLabel,

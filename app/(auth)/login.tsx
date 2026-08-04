@@ -54,6 +54,10 @@ const NOTICE_COPY_KEYS: Record<LoginNoticeReason, { title: MessageKey; message: 
     title: "login.notice.resetRequestFailedTitle",
     message: "login.reset.error.requestFailed"
   },
+  resetLinkInvalid: {
+    title: "login.notice.resetLinkInvalidTitle",
+    message: "login.reset.error.linkInvalid"
+  },
   resetSent: {
     title: "login.notice.resetSentTitle",
     message: "login.reset.sent"
@@ -64,7 +68,9 @@ export default function LoginScreen() {
   const { formatNumber, t } = useLocale();
   const {
     canUseDemoMode,
+    clearPasswordRecoveryLinkError,
     continueWithDemo,
+    passwordRecoveryLinkError,
     passwordRecoveryPending,
     ready,
     requestPasswordReset,
@@ -105,6 +111,11 @@ export default function LoginScreen() {
       router.replace("/reset-password");
       return;
     }
+    if (passwordRecoveryLinkError) {
+      setNotice(noticeFor("resetLinkInvalid"));
+      clearPasswordRecoveryLinkError();
+      return;
+    }
     if (!user) return;
     void (async () => {
       const pendingInviteToken = await readPendingInviteToken();
@@ -115,7 +126,15 @@ export default function LoginScreen() {
         })
       );
     })();
-  }, [loading, passwordRecoveryPending, ready, restaurant, user]);
+  }, [
+    clearPasswordRecoveryLinkError,
+    loading,
+    passwordRecoveryLinkError,
+    passwordRecoveryPending,
+    ready,
+    restaurant,
+    user
+  ]);
 
   if (!ready) {
     return <Screen title={t("boot.title")} subtitle={t("boot.subtitle")} loading />;

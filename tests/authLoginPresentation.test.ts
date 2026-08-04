@@ -36,12 +36,18 @@ test("login notice copy uses success only for reset sent", () => {
     signInFailed: { title: "Sign in", message: "Try again" },
     demoFailed: { title: "Demo", message: "Demo failed" },
     resetRequestFailed: { title: "Reset", message: "Reset failed" },
+    resetLinkInvalid: { title: "Link", message: "Open a fresh link" },
     resetSent: { title: "Sent", message: "Check inbox" }
   };
 
   const failure = presentLoginNoticeCopy("signInFailed", copy);
   assert.equal(failure.tone, "danger");
   assert.equal(failure.title, "Sign in");
+
+  const linkFailure = presentLoginNoticeCopy("resetLinkInvalid", copy);
+  assert.equal(linkFailure.tone, "danger");
+  assert.equal(linkFailure.title, "Link");
+  assert.equal(linkFailure.message, "Open a fresh link");
 
   const success = presentLoginNoticeCopy("resetSent", copy);
   assert.equal(success.tone, "success");
@@ -56,14 +62,21 @@ test("login screen uses localized StatusNotice and never renders raw error.messa
   assert.match(loginScreen, /presentLoginFormEditable/);
   assert.match(loginScreen, /StatusNotice/);
   assert.match(loginScreen, /captureMiseError/);
+  assert.match(loginScreen, /passwordRecoveryLinkError/);
+  assert.match(loginScreen, /clearPasswordRecoveryLinkError/);
+  assert.match(loginScreen, /resetLinkInvalid/);
   assert.doesNotMatch(
     loginScreen,
     /setErrorKey|setNoticeKey|styles\.error|styles\.notice|signInError\.message|error\.message/
   );
   assert.match(catalog, /login\.notice\.signInFailedTitle/);
   assert.match(catalog, /login\.notice\.resetSentTitle/);
+  assert.match(catalog, /login\.notice\.resetLinkInvalidTitle/);
+  assert.match(catalog, /login\.reset\.error\.linkInvalid/);
   assert.match(catalog, /"login\.notice\.signInFailedTitle":\s*"No se pudo iniciar sesión"/);
   assert.match(catalog, /"login\.notice\.signInFailedTitle":\s*"无法登录"/);
   assert.match(catalog, /"login\.notice\.resetSentTitle":\s*"Revisa tu correo"/);
   assert.match(catalog, /"login\.notice\.resetSentTitle":\s*"请查看邮箱"/);
+  assert.match(catalog, /"login\.notice\.resetLinkInvalidTitle":\s*"Enlace de restablecimiento inválido"/);
+  assert.match(catalog, /"login\.notice\.resetLinkInvalidTitle":\s*"重置链接无效"/);
 });

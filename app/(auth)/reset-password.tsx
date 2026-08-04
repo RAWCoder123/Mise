@@ -51,6 +51,7 @@ export default function ResetPasswordScreen() {
   const {
     clearPasswordRecovery,
     completePasswordReset,
+    passwordRecoveryLinkError,
     passwordRecoveryPending,
     ready,
     restaurant,
@@ -88,11 +89,23 @@ export default function ResetPasswordScreen() {
   useEffect(() => {
     if (!ready || loading || completed) return;
     if (!passwordRecoveryPending) {
+      // Invalid/expired recovery links set passwordRecoveryLinkError; login shows the StatusNotice.
+      if (passwordRecoveryLinkError || !user) {
+        router.replace("/login");
+        return;
+      }
       if (restaurant) router.replace("/today");
-      else if (user) router.replace("/setup");
-      else router.replace("/login");
+      else router.replace("/setup");
     }
-  }, [completed, loading, passwordRecoveryPending, ready, restaurant, user]);
+  }, [
+    completed,
+    loading,
+    passwordRecoveryLinkError,
+    passwordRecoveryPending,
+    ready,
+    restaurant,
+    user
+  ]);
 
   if (!ready) {
     return <Screen title={t("boot.title")} subtitle={t("boot.subtitle")} loading />;

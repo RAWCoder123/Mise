@@ -64,3 +64,21 @@ test("password reset UI and session wiring are present", () => {
   assert.match(config, /mise:\/\/invite/);
   assert.match(config, /exp:\/\/127\.0\.0\.1:8081/);
 });
+
+test("failed recovery deep links surface a login StatusNotice instead of silent bounce", () => {
+  const session = readFileSync("contexts/MiseSessionContext.tsx", "utf8");
+  const login = readFileSync("app/(auth)/login.tsx", "utf8");
+  const reset = readFileSync("app/(auth)/reset-password.tsx", "utf8");
+
+  assert.match(session, /passwordRecoveryLinkError/);
+  assert.match(session, /clearPasswordRecoveryLinkError/);
+  assert.match(
+    session,
+    /captureMiseError\(callbackError[\s\S]*password_recovery[\s\S]*auth_callback[\s\S]*setPasswordRecoveryLinkError\(true\)/
+  );
+  assert.match(session, /setPasswordRecoveryLinkError\(false\)/);
+  assert.match(login, /passwordRecoveryLinkError/);
+  assert.match(login, /resetLinkInvalid/);
+  assert.match(login, /clearPasswordRecoveryLinkError/);
+  assert.match(reset, /passwordRecoveryLinkError/);
+});
