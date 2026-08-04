@@ -8,6 +8,7 @@ import { canUseDemoMode as canUseDemoModeForConfig, readPublicAppConfig } from "
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import {
   extractAuthCallbackParams,
+  isAuthSessionCallback,
   isPasswordRecoveryAuthEvent,
   isRecoveryCallback,
   isValidRecoveryEmail,
@@ -453,7 +454,8 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     async function consumeAuthCallback(url: string | null) {
       if (!url || !supabase) return;
       const params = extractAuthCallbackParams(url);
-      if (!isRecoveryCallback(params)) return;
+      if (!isAuthSessionCallback(params)) return;
+      const recoveryCallback = isRecoveryCallback(params, url);
 
       try {
         if (params.code) {
@@ -466,15 +468,19 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
           });
           if (error) throw error;
         }
-        if (params.type === "recovery" || params.code || (params.accessToken && params.refreshToken)) {
-          if (mounted) await markPasswordRecovery();
+        if (recoveryCallback && mounted) {
+          await markPasswordRecovery();
         }
       } catch (callbackError) {
-        captureMiseError(callbackError, { flow: "password_recovery", operation: "auth_callback" });
-        if (mounted) {
-          setPasswordRecoveryPending(false);
-          setPasswordRecoveryLinkError(true);
+        if (recoveryCallback) {
+          captureMiseError(callbackError, { flow: "password_recovery", operation: "auth_callback" });
+          if (mounted) {
+            setPasswordRecoveryPending(false);
+            setPasswordRecoveryLinkError(true);
+          }
+          return;
         }
+        captureMiseError(callbackError, { flow: "auth", operation: "auth_callback" });
       }
     }
 

@@ -67,8 +67,27 @@ export function extractAuthCallbackParams(url: string): AuthCallbackParams {
   }
 }
 
-export function isRecoveryCallback(params: AuthCallbackParams): boolean {
-  return params.type === "recovery" || Boolean(params.code) || Boolean(params.accessToken && params.refreshToken);
+export function isAuthSessionCallback(params: AuthCallbackParams): boolean {
+  return Boolean(params.code) || Boolean(params.accessToken && params.refreshToken);
+}
+
+export function isPasswordResetCallbackUrl(url: string): boolean {
+  if (!url || typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    const host = (parsed.hostname || "").toLowerCase();
+    const path = (parsed.pathname || "").toLowerCase();
+    if (host === "reset-password") return true;
+    return path === PASSWORD_RESET_PATH || path.endsWith(PASSWORD_RESET_PATH);
+  } catch {
+    return false;
+  }
+}
+
+export function isRecoveryCallback(params: AuthCallbackParams, url?: string): boolean {
+  if (params.type === "recovery") return true;
+  if (url && isPasswordResetCallbackUrl(url) && isAuthSessionCallback(params)) return true;
+  return false;
 }
 
 function firstParam(...values: Array<string | null>): string | null {

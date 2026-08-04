@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 import {
   extractAuthCallbackParams,
+  isAuthSessionCallback,
   isPasswordRecoveryAuthEvent,
   isRecoveryCallback,
   isValidRecoveryEmail,
@@ -27,20 +28,42 @@ test("new password validation enforces length and rejects spaces", () => {
 });
 
 test("auth callback parsing supports PKCE code and recovery hash tokens", () => {
-  const codeParams = extractAuthCallbackParams("mise://reset-password?code=abc123");
+  const resetUrl = "mise://reset-password?code=abc123";
+  const codeParams = extractAuthCallbackParams(resetUrl);
   assert.equal(codeParams.code, "abc123");
-  assert.equal(isRecoveryCallback(codeParams), true);
+  assert.equal(isAuthSessionCallback(codeParams), true);
+  assert.equal(isRecoveryCallback(codeParams, resetUrl), true);
 
-  const hashParams = extractAuthCallbackParams(
-    "mise://reset-password#access_token=tok&refresh_token=ref&type=recovery"
-  );
+  const recoveryHashUrl = "mise://reset-password#access_token=tok&refresh_token=ref&type=recovery";
+  const hashParams = extractAuthCallbackParams(recoveryHashUrl);
   assert.equal(hashParams.accessToken, "tok");
   assert.equal(hashParams.refreshToken, "ref");
   assert.equal(hashParams.type, "recovery");
-  assert.equal(isRecoveryCallback(hashParams), true);
+  assert.equal(isAuthSessionCallback(hashParams), true);
+  assert.equal(isRecoveryCallback(hashParams, recoveryHashUrl), true);
   assert.equal(isPasswordRecoveryAuthEvent("PASSWORD_RECOVERY"), true);
   assert.equal(isPasswordRecoveryAuthEvent("SIGNED_IN"), false);
   assert.equal(PASSWORD_RESET_PATH, "/reset-password");
+});
+
+test("signup and invite PKCE codes exchange session without marking password recovery", () => {
+  const signupUrl = "mise://?code=signup-code";
+  const signupParams = extractAuthCallbackParams(signupUrl);
+  assert.equal(isAuthSessionCallback(signupParams), true);
+  assert.equal(isRecoveryCallback(signupParams, signupUrl), false);
+
+  const inviteUrl = "mise://invite/abc?code=invite-code";
+  const inviteParams = extractAuthCallbackParams(inviteUrl);
+  assert.equal(isAuthSessionCallback(inviteParams), true);
+  assert.equal(isRecoveryCallback(inviteParams, inviteUrl), false);
+
+  const typedSignupUrl = "mise://login?code=confirm&type=signup";
+  const typedSignupParams = extractAuthCallbackParams(typedSignupUrl);
+  assert.equal(isAuthSessionCallback(typedSignupParams), true);
+  assert.equal(isRecoveryCallback(typedSignupParams, typedSignupUrl), false);
+
+  const recoveryTypedElsewhere = extractAuthCallbackParams("mise://today#access_token=tok&refresh_token=ref&type=recovery");
+  assert.equal(isRecoveryCallback(recoveryTypedElsewhere, "mise://today#access_token=tok&refresh_token=ref&type=recovery"), true);
 });
 
 test("password reset UI and session wiring are present", () => {
@@ -81,4 +104,18 @@ test("failed recovery deep links surface a login StatusNotice instead of silent 
   assert.match(login, /resetLinkInvalid/);
   assert.match(login, /clearPasswordRecoveryLinkError/);
   assert.match(reset, /passwordRecoveryLinkError/);
+});
+
+test("auth callback exchange scopes password recovery to recovery callbacks only", () => {
+  const session = readFileSync("contexts/MiseSessionContext.tsx", "utf8");
+  const domain = readFileSync("services/domain/authRecovery.ts", "utf8");
+
+  assert.match(domain, /export function isAuthSessionCallback/);
+  assert.match(session, /isAuthSessionCallback\(params\)/);
+  assert.match(session, /isRecoveryCallback\(params,\s*url\)/);
+  assert.match(session, /markPasswordRecovery\(\)/);
+  assert.doesNotMatch(
+    session,
+    /if \(params\.type === "recovery" \|\| params\.code \|\| \(params\.accessToken && params\.refreshToken\)\)/
+  );
 });
