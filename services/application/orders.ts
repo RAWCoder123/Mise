@@ -245,16 +245,15 @@ export async function receiveSupplierOrder(
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
   const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
   const normalizedLines = requireSupplierOrderReceiveLines(receiveLines);
-  const [order, recommendations, data, recommendationHistory, storageLocations] = await Promise.all([
+  const [order, recommendationSnapshot, data, storageLocations] = await Promise.all([
     repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
     repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
     repository.fetchPlanningData(normalizedRestaurantId),
-    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
     repository.fetchStorageLocations(normalizedRestaurantId)
   ]);
   const planned = planSupplierOrderReceive({
     order,
-    recommendations,
+    recommendations: recommendationSnapshot,
     inventoryItems: data.inventoryItems,
     receiveLines: normalizedLines,
     // Hosted reads are pure and may be empty before the first write seeds Main.
@@ -285,12 +284,14 @@ export async function receiveSupplierOrder(
     supplierOrderId: normalizedOrderId
   }));
   const receivingHistory = [...inFlightReceivingHistory, ...(data.receivingHistory ?? [])];
+  // Demo mode applies these client-built signals; hosted Edge recalculates from
+  // the authoritative SQL snapshot. Keep one consistent recommendation history.
   const nextRecommendations = buildRecommendationInserts(
     normalizedRestaurantId,
     planningInventory,
     data.sales,
     data.menuItemIngredients,
-    recommendationHistory,
+    recommendationSnapshot,
     data.operatingDate,
     data.appliedTodayConsumptionByItemId,
     receivingHistory,
@@ -309,7 +310,7 @@ export async function receiveSupplierOrder(
     data.wasteHistory,
     data.countVarianceHistory,
     data.managerCorrectionHistory,
-    recommendationHistory
+    recommendationSnapshot
   );
   return repository.receiveSupplierOrderAndSignals(
     normalizedRestaurantId,

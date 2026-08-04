@@ -875,8 +875,22 @@ test("staff waste recording is authorized in SQL, Edge, and inventory detail UI"
   );
   assert.match(authorityMigration, /staff_audit_actions text\[] := array\[/);
   assert.doesNotMatch(authorityMigration, /staff_audit_actions text\[] := array\[[\s\S]*inventory_updated/);
+  const notificationAuditMigration = readFileSync(
+    "supabase/migrations/20260804040000_staff_notification_audit_and_manual_insight_preserve.sql",
+    "utf8"
+  );
+  assert.match(
+    notificationAuditMigration,
+    /staff_audit_actions text\[] := array\[[\s\S]*'operator_notification_preferences_updated'/
+  );
+  assert.match(
+    notificationAuditMigration,
+    /delete from public\.insights[\s\S]*generation_source in \('mise_rules', 'legacy_client'\)/
+  );
   assert.match(databaseTests, /service audit RPC accepts staff actors for staff-authorized waste audits/i);
+  assert.match(databaseTests, /service audit RPC accepts staff actors for notification preference audits/i);
   assert.match(databaseTests, /service audit RPC rejects staff actors for manager-only audit actions/i);
+  assert.match(databaseTests, /manual insights survive rules-owned operational signal refresh/i);
   assert.match(databaseTests, /active staff can fetch planning snapshots required for waste signal refresh/i);
   assert.match(databaseTests, /'inventory_updated'/);
   assert.match(detail, /canRecordWaste/);

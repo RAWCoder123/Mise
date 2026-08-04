@@ -1,6 +1,6 @@
 begin;
 
-select plan(445);
+select plan(451);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -2128,6 +2128,69 @@ reset role;
 select is((select count(*) from public.purchase_recommendations where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and item_name = 'Atomic Rice' and status = 'pending'), 1::bigint, 'combined signal refresh persists its recommendation');
 select is((select count(*) from public.insights where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and title = 'Atomic Rice is low'), 1::bigint, 'combined signal refresh persists its insight');
 
+insert into public.insights (
+  id, restaurant_id, insight_type, title, description, recommended_action, severity, generation_source
+)
+values (
+  'aaaaaaaa-1415-4415-8415-aaaaaaaaaaaa',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'inventory',
+  'Manual manager note',
+  'Keep this manager-authored insight across rules refresh.',
+  'Leave the note in place.',
+  'info',
+  'manual'
+);
+
+set local role service_role;
+select lives_ok(
+  $sql$select public.service_commit_operational_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    jsonb_build_array(jsonb_build_object(
+      'inventory_item_id', pg_temp.snapshot_inventory_item_id(
+        '22222222-2222-4222-8222-222222222222',
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        'Atomic Rice'
+      ),
+      'recommended_quantity', 21,
+      'reason', 'Atomic refresh replacement',
+      'urgency', 'high'
+    )),
+    '[{"insight_type":"inventory","title":"Atomic Rice still needs attention","description":"Replacement rules insight.","why_it_matters":"Prep remains constrained.","recommended_action":"Review the order again.","severity":"warning"}]'::jsonb
+  )$sql$,
+  'second signal refresh replaces rules-owned insights without wiping manual rows'
+);
+reset role;
+select is(
+  (select count(*) from public.insights
+    where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and title = 'Manual manager note'
+      and generation_source = 'manual'),
+  1::bigint,
+  'manual insights survive rules-owned operational signal refresh'
+);
+select is(
+  (select count(*) from public.insights
+    where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and title = 'Atomic Rice is low'
+      and generation_source = 'mise_rules'),
+  0::bigint,
+  'rules-owned insights are still replaced during operational signal refresh'
+);
+select is(
+  (select count(*) from public.insights
+    where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and title = 'Atomic Rice still needs attention'
+      and generation_source = 'mise_rules'),
+  1::bigint,
+  'replacement rules insight is persisted after preserving manual insights'
+);
+
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', true);
 select ok(
@@ -3129,6 +3192,17 @@ select lives_ok(
   )$sql$,
   'service audit RPC accepts staff actors for staff-authorized waste audits'
 );
+select lives_ok(
+  $sql$select public.service_record_edge_audit_log(
+    '33333333-3333-4333-8333-333333333333',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'operator_notification_preferences_updated',
+    'users',
+    '33333333-3333-4333-8333-333333333333',
+    '{"source":"pgTAP","workflow":"update_my_notification_preferences"}'::jsonb
+  )$sql$,
+  'service audit RPC accepts staff actors for notification preference audits'
+);
 select is(
   pg_temp.try_execute($sql$select public.service_record_edge_audit_log(
     '33333333-3333-4333-8333-333333333333',
@@ -3140,6 +3214,18 @@ select is(
   )$sql$),
   false,
   'service audit RPC rejects staff actors for manager-only audit actions'
+);
+select is(
+  pg_temp.try_execute($sql$select public.service_record_edge_audit_log(
+    '33333333-3333-4333-8333-333333333333',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'inventory_updated',
+    'inventory_items',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    '{}'::jsonb
+  )$sql$),
+  false,
+  'service audit RPC still rejects staff actors for manager-only audit actions after notification allowlist'
 );
 select lives_ok(
   $sql$select public.service_fetch_operational_planning_snapshot(

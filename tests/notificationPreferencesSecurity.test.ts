@@ -6,6 +6,10 @@ const migration = readFileSync(
   "supabase/migrations/20260802170000_operator_notification_preferences.sql",
   "utf8"
 );
+const auditMigration = readFileSync(
+  "supabase/migrations/20260804040000_staff_notification_audit_and_manual_insight_preserve.sql",
+  "utf8"
+);
 const adapter = readFileSync("services/notificationPreferences.ts", "utf8");
 const preferenceContext = readFileSync("contexts/NotificationPreferencesContext.tsx", "utf8");
 const rootLayout = readFileSync("app/_layout.tsx", "utf8");
@@ -66,6 +70,11 @@ test("Expo notification preference persistence loads identity-free and saves thr
   assert.doesNotMatch(hostedSave, /\.rpc\(\s*["']update_my_notification_preferences["']/);
   assert.match(edge, /"update_my_notification_preferences"/);
   assert.match(edge, /service_update_my_notification_preferences/);
+  assert.match(edge, /operator_notification_preferences_updated/);
+  assert.match(
+    auditMigration,
+    /staff_audit_actions text\[] := array\[[\s\S]*'operator_notification_preferences_updated'/
+  );
   assert.match(securityBackend, /public\.update_my_notification_preferences/);
   assert.match(securityBackend, /public\.service_update_my_notification_preferences/);
 });
