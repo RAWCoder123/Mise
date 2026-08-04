@@ -37,7 +37,7 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.today, /hubReady\s*\?\s*summary\s*:\s*null/);
   assert.match(
     source("services/presentation/todayHubPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(screens.inventory, /resolveInventoryHubLoadState/);
   assert.match(screens.inventory, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
@@ -47,52 +47,52 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.settings, /hubReady\s*\?\s*suppliers\s*:\s*\[\]/);
   assert.match(
     source("services/presentation/settingsHubPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(
     source("services/presentation/inventoryHubPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(
     source("services/presentation/insightsHubPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(screens.orders, /resolveOrdersHubLoadState/);
   assert.match(screens.orders, /hubReady\s*\?\s*recommendations\s*:\s*\[\]/);
   assert.match(screens.orders, /hubReady\s*\?\s*orders\s*:\s*\[\]/);
   assert.match(
     source("services/presentation/ordersHubPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(screens.recipes, /resolveRecipesHubLoadState/);
   assert.match(screens.recipes, /hubReady\s*\?\s*summary\s*:\s*null/);
   assert.match(
     source("services/presentation/recipesHubPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(screens.pos, /resolvePosHubLoadState/);
   assert.match(screens.pos, /hubReady\s*\?\s*posProvider\s*:\s*null/);
   assert.match(
     source("services/presentation/posHubPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(screens.team, /resolveTeamHubLoadState/);
   assert.match(screens.team, /hubReady\s*\?\s*members\s*:\s*\[\]/);
   assert.match(
     source("services/presentation/teamHubPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(screens.gmail, /resolveGmailHubLoadState/);
   assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
   assert.match(
     source("services/presentation/gmailHubPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(screens.suppliers, /resolveSuppliersHubLoadState/);
   assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);
   assert.match(
     source("services/presentation/suppliersHubPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(screens.settings, /presentSettingsHubPosCopy/);
   assert.match(source("contexts/MiseSessionContext.tsx"), /posStatusRestaurantId/);
@@ -100,19 +100,23 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
   assert.match(
     source("services/presentation/inventoryDetailPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(screens.inventoryCount, /resolveInventoryCountLoadState/);
   assert.match(screens.inventoryCount, /hubReady\s*\?\s*detail\s*:\s*null/);
   assert.match(
     source("services/presentation/inventoryCountPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
   );
   assert.match(screens.orderDetail, /resolveOrderDetailLoadState/);
   assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);
   assert.match(
     source("services/presentation/orderDetailPresentation.ts"),
-    /loadedRestaurantId\s*===\s*input\.restaurantId/
+    /resolveRestaurantScopedHubLoadState/
+  );
+  assert.match(
+    source("services/presentation/hubLoadState.ts"),
+    /if \(input\.loadError\) return "error";\s*if \(input\.loadedRestaurantId === input\.restaurantId\) return "ready";/
   );
 
   const inventoryCreate = source("app/inventory/new.tsx");
