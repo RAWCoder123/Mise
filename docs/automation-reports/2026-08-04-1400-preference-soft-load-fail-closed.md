@@ -20,7 +20,7 @@ Tenant-authorization save failures restored prior values but left `loadError` fa
 ## Verification
 
 - `npm run typecheck`
-- `npm test`
+- `npm test` (557 passing)
 - `npm run security:static`
 - `npm run security:backend`
 - `npm run design:static`
