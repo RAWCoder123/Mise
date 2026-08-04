@@ -4,7 +4,7 @@ Last updated: August 4, 2026
 
 Classification guidance uses evidence, not polish. Current overall status: **not yet beta-ready for paid public launch**; **controlled pilot-ready** only after the latest migration chain passes Docker/hosted security gates.
 
-Operator-facing StatusNotice localization and hub load telemetry now cover Today, Orders, Inventory, Insights, Settings hubs (including POS connect/import). Remaining App Store blockers are mostly external (Docker/hosted security re-proof, privacy/support URLs, Apple Developer / TestFlight, live POS/Gmail credentials).
+Operator-facing StatusNotice localization and hub load telemetry now cover Today, Orders, Inventory, Insights, Settings hubs (including POS connect/import). Remaining App Store blockers are mostly external (Docker/hosted security re-proof, privacy/support/terms HTTPS URLs, Apple Developer / TestFlight, live POS/Gmail credentials).
 
 | Item | Status | Notes |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ Operator-facing StatusNotice localization and hub load telemetry now cover Today
 | Privacy policy URL | requires founder decision | Wire `EXPO_PUBLIC_PRIVACY_POLICY_URL` (HTTPS) once legal copy is published |
 | Support URL | requires founder decision | Wire `EXPO_PUBLIC_SUPPORT_URL` (HTTPS) once support page exists |
 | Apple privacy questionnaire | requires Apple Developer account action | App Store Connect |
-| Terms of service link | requires legal copy | Not yet published |
+| Terms of service link | requires legal copy | In-app Settings row wired to `EXPO_PUBLIC_TERMS_URL` (HTTPS-only, fail-closed when missing); founder must publish legal copy and set the EAS/env value |
 | Demo / review instructions | complete | Local demo path documented in `docs/private-beta-demo-readiness.md` |
 | No debug menus in production | complete | Diagnostics gated behind `__DEV__` |
 | No embedded test credentials in production | complete | Demo credentials hidden when `EXPO_PUBLIC_APP_ENV=production` |
@@ -52,7 +52,7 @@ Source: [App Store Review Guidelines](https://developer.apple.com/app-store/revi
 
 | Guideline | Mise status | Evidence / gap |
 | --- | --- | --- |
-| 2.1 App Completeness — final binaries, working URLs, on-device QA, demo account or demo mode | partial | Local demo mode exists; privacy/support HTTPS URLs and physical-device / TestFlight proof still required before submission |
+| 2.1 App Completeness — final binaries, working URLs, on-device QA, demo account or demo mode | partial | Local demo mode exists; privacy/support/terms HTTPS URLs and physical-device / TestFlight proof still required before submission |
 | 2.3 Accurate metadata — description/screenshots match core experience | requires founder decision | Screenshot-ready screens exist in-app; ASC metadata not authored here |
 | 5.1.1(i) Privacy policy link in ASC + in-app | blocked | Needs published HTTPS policy + `EXPO_PUBLIC_PRIVACY_POLICY_URL` |
 | 5.1.1(v) Account creation ⇒ in-app account deletion | tested (code) | Settings → Delete account; Edge + service RPC path; still needs hosted Auth re-proof |
@@ -62,6 +62,6 @@ Source: [App Store Review Guidelines](https://developer.apple.com/app-store/revi
 ## Evidence still required before raising classification
 
 1. `npm run verify:private-beta-security` with Docker and staging credentials, no skips.
-2. Published privacy and support URLs configured in EAS secrets.
+2. Published privacy, support, and terms URLs configured in EAS secrets.
 3. TestFlight install on a physical iPhone for core demo and hosted pilot workflows.
 4. Founder decision on first live POS provider and Gmail enablement.

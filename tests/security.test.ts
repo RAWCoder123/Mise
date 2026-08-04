@@ -85,7 +85,8 @@ test("production mode does not expose demo credentials or demo access", () => {
     appEnv: "production" as const,
     enableDemoMode: true,
     privacyPolicyUrl: null,
-    supportUrl: null
+    supportUrl: null,
+    termsUrl: null
   };
   const credentials = getInitialLoginCredentials(productionConfig);
 
@@ -121,6 +122,56 @@ test("development builds default to local demo mode unless explicitly disabled",
       delete process.env.EXPO_PUBLIC_ENABLE_DEMO_MODE;
     } else {
       process.env.EXPO_PUBLIC_ENABLE_DEMO_MODE = previousDemoMode;
+    }
+  }
+});
+
+test("public legal URLs accept HTTPS only and fail closed otherwise", () => {
+  const previous = {
+    privacy: process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL,
+    support: process.env.EXPO_PUBLIC_SUPPORT_URL,
+    terms: process.env.EXPO_PUBLIC_TERMS_URL
+  };
+
+  try {
+    process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL = "https://mise.app/privacy";
+    process.env.EXPO_PUBLIC_SUPPORT_URL = "https://mise.app/support";
+    process.env.EXPO_PUBLIC_TERMS_URL = "https://mise.app/terms";
+    const httpsConfig = readPublicAppConfig();
+    assert.equal(httpsConfig.privacyPolicyUrl, "https://mise.app/privacy");
+    assert.equal(httpsConfig.supportUrl, "https://mise.app/support");
+    assert.equal(httpsConfig.termsUrl, "https://mise.app/terms");
+
+    process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL = "http://mise.app/privacy";
+    process.env.EXPO_PUBLIC_SUPPORT_URL = "ftp://mise.app/support";
+    process.env.EXPO_PUBLIC_TERMS_URL = "not-a-url";
+    const rejectedConfig = readPublicAppConfig();
+    assert.equal(rejectedConfig.privacyPolicyUrl, null);
+    assert.equal(rejectedConfig.supportUrl, null);
+    assert.equal(rejectedConfig.termsUrl, null);
+
+    delete process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL;
+    delete process.env.EXPO_PUBLIC_SUPPORT_URL;
+    delete process.env.EXPO_PUBLIC_TERMS_URL;
+    const missingConfig = readPublicAppConfig();
+    assert.equal(missingConfig.privacyPolicyUrl, null);
+    assert.equal(missingConfig.supportUrl, null);
+    assert.equal(missingConfig.termsUrl, null);
+  } finally {
+    if (previous.privacy === undefined) {
+      delete process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL;
+    } else {
+      process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL = previous.privacy;
+    }
+    if (previous.support === undefined) {
+      delete process.env.EXPO_PUBLIC_SUPPORT_URL;
+    } else {
+      process.env.EXPO_PUBLIC_SUPPORT_URL = previous.support;
+    }
+    if (previous.terms === undefined) {
+      delete process.env.EXPO_PUBLIC_TERMS_URL;
+    } else {
+      process.env.EXPO_PUBLIC_TERMS_URL = previous.terms;
     }
   }
 });
@@ -2508,6 +2559,7 @@ test("secondary operational tables lose authenticated DML and inventory movement
   assert.match(edge, /auth\.admin\.deleteUser/);
   assert.match(settings, /requestAccountDeletion/);
   assert.match(settings, /EXPO_PUBLIC_PRIVACY_POLICY_URL|privacyPolicyUrl/);
+  assert.match(settings, /EXPO_PUBLIC_TERMS_URL|termsUrl/);
 });
 
 test("sole-owner account deletion archives restaurants and rolls back Auth failures", () => {

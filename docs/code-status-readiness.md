@@ -138,7 +138,7 @@ Important Supabase concepts already modeled:
 - `inventory_movements` (append-only count ledger; client SELECT only)
 - `account_deletion_requests` (user-scoped deletion audit; client SELECT own rows only)
 
-Authenticated Data API writes are revoked for `pos_integrations`, `sales_imports`, `supplier_items`, and `purchase_orders` (service/Edge owned). Settings includes in-app account deletion plus privacy/support URL hooks.
+Authenticated Data API writes are revoked for `pos_integrations`, `sales_imports`, `supplier_items`, and `purchase_orders` (service/Edge owned). Settings includes in-app account deletion plus privacy/support/terms URL hooks (`EXPO_PUBLIC_*`, HTTPS-only, fail-closed when unset).
 
 The Gmail migration also creates backend-only OAuth, credential, and delivery records in the private schema. PKCE verifiers and refresh credentials are stored through Supabase Vault; Expo can read only safe connection metadata.
 

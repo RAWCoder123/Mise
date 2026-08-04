@@ -7,6 +7,7 @@ export interface PublicAppConfig {
   enableDemoMode: boolean;
   privacyPolicyUrl: string | null;
   supportUrl: string | null;
+  termsUrl: string | null;
 }
 
 function normalizeOptionalHttpsUrl(value: string | undefined): string | null {
@@ -39,7 +40,8 @@ export function readPublicAppConfig(): PublicAppConfig {
     appEnv,
     enableDemoMode: demoModeValue === undefined ? appEnv !== "production" : parseBoolean(demoModeValue),
     privacyPolicyUrl: normalizeOptionalHttpsUrl(process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL),
-    supportUrl: normalizeOptionalHttpsUrl(process.env.EXPO_PUBLIC_SUPPORT_URL)
+    supportUrl: normalizeOptionalHttpsUrl(process.env.EXPO_PUBLIC_SUPPORT_URL),
+    termsUrl: normalizeOptionalHttpsUrl(process.env.EXPO_PUBLIC_TERMS_URL)
   };
 }
 

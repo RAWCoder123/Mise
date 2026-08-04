@@ -166,7 +166,7 @@ Before public App Store launch, Mise still needs:
 - production Supabase staging-to-production promotion process;
 - production monitoring and alert routing;
 - real account deletion/privacy support;
-- privacy policy and support URLs;
+- privacy policy, support, and terms of service URLs;
 - Apple privacy questionnaire;
 - real-device TestFlight QA;
 - deliberate live provider integrations with backend-only credentials.

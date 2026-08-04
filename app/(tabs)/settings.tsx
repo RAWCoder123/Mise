@@ -11,6 +11,7 @@ import {
   Database,
   Download,
   ExternalLink,
+  FileText,
   Languages,
   LogOut,
   Mail,
@@ -693,6 +694,13 @@ export default function SettingsScreen() {
             icon={<ShieldCheck size={20} color={colors.text} strokeWidth={2.25} />}
             iconTone="neutral"
             onPress={() => void openExternalUrl(appConfig.privacyPolicyUrl, "settings.account.privacyMissing")}
+          />
+          <OperationalRow
+            title={t("settings.account.terms")}
+            subtitle={appConfig.termsUrl ?? t("settings.account.termsMissing")}
+            icon={<FileText size={20} color={colors.text} strokeWidth={2.25} />}
+            iconTone="neutral"
+            onPress={() => void openExternalUrl(appConfig.termsUrl, "settings.account.termsMissing")}
           />
           <OperationalRow
             title={t("settings.account.support")}
