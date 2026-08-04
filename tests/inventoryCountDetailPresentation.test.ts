@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   buildInventoryCountLinePayload,
   presentInventoryCountFailureCopy,
+  presentInventoryCountMutationActionsEditable,
   presentInventoryCountStartCopy,
   presentInventoryCountSuccessCopy,
   resolveInventoryCountFailureReason,
@@ -70,6 +71,13 @@ test("inventory count start copy never offers a new session while loading or una
     body: "Begin",
     canStart: true
   });
+});
+
+test("inventory count mutation actions stay locked while busy or hub not ready", () => {
+  assert.equal(presentInventoryCountMutationActionsEditable(true, false, true), true);
+  assert.equal(presentInventoryCountMutationActionsEditable(true, true, true), false);
+  assert.equal(presentInventoryCountMutationActionsEditable(false, false, true), false);
+  assert.equal(presentInventoryCountMutationActionsEditable(true, false, false), false);
 });
 
 test("inventory detail load state and missing copy distinguish loading, error, and not found", () => {
@@ -290,4 +298,21 @@ test("inventory count screen uses localized StatusNotice and never renders raw e
   assert.match(catalog, /inventory\.count\.notice\.permissionBody/);
   assert.match(catalog, /"inventory\.count\.notice\.actionTitle":\s*"La acción de conteo necesita atención"/);
   assert.match(catalog, /"inventory\.count\.notice\.actionTitle":\s*"盘点操作需要处理"/);
+});
+
+test("inventory count screen wires hub-ready mutation editability for deep-link mutations", () => {
+  assert.match(countScreen, /presentInventoryCountMutationActionsEditable/);
+  assert.match(
+    countScreen,
+    /presentInventoryCountMutationActionsEditable\(\s*canDraft,\s*saving,\s*hubReady\s*\)/
+  );
+  assert.match(
+    countScreen,
+    /presentInventoryCountMutationActionsEditable\(\s*canApprove,\s*saving,\s*hubReady\s*\)/
+  );
+  assert.match(countScreen, /disabled=\{!draftEditable\}/);
+  assert.match(countScreen, /disabled=\{!approveEditable\}/);
+  assert.match(countScreen, /draftEditable && visibleDetail\.session\.status === "in_progress"/);
+  assert.match(countScreen, /!draftEditable\) return/);
+  assert.match(countScreen, /!approveEditable\) return/);
 });

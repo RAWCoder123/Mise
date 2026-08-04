@@ -1,4 +1,7 @@
-import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "./hubLoadState";
 
 export type InventoryCountLoadState = "loading" | "ready" | "error";
 
@@ -65,6 +68,22 @@ export function presentInventoryCountStartCopy(
     };
   }
   return { title: copy.startTitle, body: copy.startBody, canStart: true };
+}
+
+/**
+ * Count mutations stay non-editable until the session hub proves ready.
+ * Role membership alone is not enough after a soft-refresh denial/error.
+ */
+export function presentInventoryCountMutationActionsEditable(
+  allowed: boolean,
+  busy: boolean,
+  hubReady: boolean
+): boolean {
+  return presentRestaurantScopedHubActionsEditable({
+    allowed,
+    hubReady,
+    busy
+  });
 }
 
 export function resolveInventoryCountFailureReason(error: unknown): InventoryCountFailureReason {

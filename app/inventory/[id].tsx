@@ -42,6 +42,8 @@ import { reconcileLocationBalancesForDisplay } from "../../services/domain/inven
 import {
   isInventoryDetailStationActionBlocked,
   presentInventoryDetailMissingCopy,
+  presentInventoryDetailMutationActionsEditable,
+  presentInventoryDetailMutationBusy,
   presentInventoryDetailMutationNoticeCopy,
   presentInventoryDetailSecondaryLoadCopy,
   resolveInventoryDetailLoadState,
@@ -420,6 +422,27 @@ export default function InventoryDetailScreen() {
   const canRecordWaste = canRecordInventoryWaste(memberships, restaurant?.id);
   const canTransfer = canTransferInventory(memberships, restaurant?.id);
   const canManageLocations = canManageStorageLocations(memberships, restaurant?.id);
+  const mutationBusy = presentInventoryDetailMutationBusy(saving);
+  const manageEditable = presentInventoryDetailMutationActionsEditable(
+    canManage,
+    mutationBusy,
+    hubReady
+  );
+  const wasteEditable = presentInventoryDetailMutationActionsEditable(
+    canRecordWaste,
+    mutationBusy,
+    hubReady
+  );
+  const transferEditable = presentInventoryDetailMutationActionsEditable(
+    canTransfer,
+    mutationBusy,
+    hubReady
+  );
+  const locationEditable = presentInventoryDetailMutationActionsEditable(
+    canManageLocations,
+    mutationBusy,
+    hubReady
+  );
   /** Staff primary action — surface waste above read-only count settings. */
   const showWasteBeforeCountSettings = canRecordWaste && !canManage;
   const visibleMovements = hubReady ? movements : [];
@@ -476,7 +499,7 @@ export default function InventoryDetailScreen() {
   }
 
   async function save() {
-    if (!restaurant || !item) return;
+    if (!restaurant || !item || !hubReady || mutationBusy) return;
     if (!canManage) {
       setNotice(mutationNotice("viewOnlyInventory"));
       return;
@@ -531,7 +554,7 @@ export default function InventoryDetailScreen() {
   }
 
   async function addToOrder() {
-    if (!restaurant || !item) return;
+    if (!restaurant || !item || !hubReady || mutationBusy) return;
     if (!canManage) {
       setNotice(mutationNotice("viewOnlyOrdering"));
       return;
@@ -558,7 +581,7 @@ export default function InventoryDetailScreen() {
   }
 
   async function recordWaste() {
-    if (!restaurant || !item) return;
+    if (!restaurant || !item || !hubReady || mutationBusy) return;
     if (!canRecordWaste) {
       setNotice(mutationNotice("viewOnlyInventory"));
       return;
@@ -644,7 +667,7 @@ export default function InventoryDetailScreen() {
   }
 
   async function submitTransfer() {
-    if (!restaurant || !item) return;
+    if (!restaurant || !item || !hubReady || mutationBusy) return;
     if (!canTransfer) {
       setNotice(mutationNotice("viewOnlyInventory"));
       return;
@@ -727,7 +750,7 @@ export default function InventoryDetailScreen() {
   }
 
   async function addLocation() {
-    if (!restaurant || !canManageLocations) return;
+    if (!restaurant || !locationEditable) return;
     const restaurantId = restaurant.id;
     setSaving(true);
     setNotice(null);
@@ -882,7 +905,7 @@ export default function InventoryDetailScreen() {
                 variant="secondary"
                 icon={<ClipboardList size={17} color={colors.text} strokeWidth={2.5} />}
                 onPress={addToOrder}
-                disabled={saving}
+                disabled={!manageEditable}
                 fullWidth
                 style={styles.addButton}
               />
@@ -911,6 +934,7 @@ export default function InventoryDetailScreen() {
               wasteNote={wasteNote}
               fieldErrors={fieldErrors}
               saving={saving}
+              editable={wasteEditable}
               setWasteStorageLocationId={setWasteStorageLocationId}
               setWasteQuantity={setWasteQuantity}
               setWasteNote={setWasteNote}
@@ -935,8 +959,10 @@ export default function InventoryDetailScreen() {
               transferNote={transferNote}
               newLocationName={newLocationName}
               canManageLocations={canManageLocations}
+              locationEditable={locationEditable}
               fieldErrors={fieldErrors}
               saving={saving}
+              editable={transferEditable}
               setFromStorageLocationId={setFromStorageLocationId}
               setToStorageLocationId={setToStorageLocationId}
               setTransferQuantity={setTransferQuantity}
@@ -957,7 +983,7 @@ export default function InventoryDetailScreen() {
                 setCurrentQuantity(value);
                 setFieldErrors((current) => ({ ...current, currentQuantity: undefined }));
               }}
-              editable={canManage && !saving}
+              editable={manageEditable}
               error={fieldErrors.currentQuantity}
             />
             <Field
@@ -967,7 +993,7 @@ export default function InventoryDetailScreen() {
                 setParLevel(value);
                 setFieldErrors((current) => ({ ...current, parLevel: undefined }));
               }}
-              editable={canManage && !saving}
+              editable={manageEditable}
               error={fieldErrors.parLevel}
             />
             <Field
@@ -977,7 +1003,7 @@ export default function InventoryDetailScreen() {
                 setReorderThreshold(value);
                 setFieldErrors((current) => ({ ...current, reorderThreshold: undefined }));
               }}
-              editable={canManage && !saving}
+              editable={manageEditable}
               error={fieldErrors.reorderThreshold}
             />
             {canManage ? (
@@ -991,7 +1017,7 @@ export default function InventoryDetailScreen() {
                     setCorrectionNote(value);
                     setFieldErrors((current) => ({ ...current, correctionNote: undefined }));
                   }}
-                  editable={!saving}
+                  editable={manageEditable}
                   multiline
                   style={[styles.input, styles.noteInput, fieldErrors.correctionNote && styles.inputError]}
                 />
@@ -1007,7 +1033,7 @@ export default function InventoryDetailScreen() {
                 title={saving ? t("inventory.detail.saving") : t("inventory.detail.saveCount")}
                 icon={<Save size={17} color={colors.surface} strokeWidth={2.5} />}
                 onPress={save}
-                disabled={saving}
+                disabled={!manageEditable}
                 fullWidth
                 style={styles.saveButton}
               />
@@ -1025,6 +1051,7 @@ export default function InventoryDetailScreen() {
               wasteNote={wasteNote}
               fieldErrors={fieldErrors}
               saving={saving}
+              editable={wasteEditable}
               setWasteStorageLocationId={setWasteStorageLocationId}
               setWasteQuantity={setWasteQuantity}
               setWasteNote={setWasteNote}
@@ -1112,6 +1139,7 @@ function WasteRecordingCard({
   wasteNote,
   fieldErrors,
   saving,
+  editable,
   setWasteStorageLocationId,
   setWasteQuantity,
   setWasteNote,
@@ -1127,6 +1155,7 @@ function WasteRecordingCard({
   wasteNote: string;
   fieldErrors: InventoryFieldErrors;
   saving: boolean;
+  editable: boolean;
   setWasteStorageLocationId: (value: string) => void;
   setWasteQuantity: (value: string) => void;
   setWasteNote: (value: string) => void;
@@ -1143,7 +1172,7 @@ function WasteRecordingCard({
           locations={locations}
           selectedId={wasteStorageLocationId}
           error={fieldErrors.wasteLocation}
-          disabled={saving}
+          disabled={!editable}
           onSelect={(value) => {
             setWasteStorageLocationId(value);
             setFieldErrors((current) => ({ ...current, wasteLocation: undefined }));
@@ -1157,7 +1186,7 @@ function WasteRecordingCard({
           setWasteQuantity(value);
           setFieldErrors((current) => ({ ...current, wasteQuantity: undefined }));
         }}
-        editable={!saving}
+        editable={editable}
         error={fieldErrors.wasteQuantity}
       />
       <View style={styles.field}>
@@ -1170,7 +1199,7 @@ function WasteRecordingCard({
             setWasteNote(value);
             setFieldErrors((current) => ({ ...current, wasteNote: undefined }));
           }}
-          editable={!saving}
+          editable={editable}
           multiline
           style={[styles.input, styles.noteInput, fieldErrors.wasteNote && styles.inputError]}
         />
@@ -1185,7 +1214,7 @@ function WasteRecordingCard({
         accessibilityLabel={t("inventory.detail.wasteAccessibility", { item: itemName })}
         icon={<Trash2 size={17} color={colors.surface} strokeWidth={2.5} />}
         onPress={onRecordWaste}
-        disabled={saving}
+        disabled={!editable}
         fullWidth
         style={styles.saveButton}
       />
@@ -1208,8 +1237,10 @@ function TransferStockCard({
   transferNote,
   newLocationName,
   canManageLocations,
+  locationEditable,
   fieldErrors,
   saving,
+  editable,
   setFromStorageLocationId,
   setToStorageLocationId,
   setTransferQuantity,
@@ -1233,8 +1264,10 @@ function TransferStockCard({
   transferNote: string;
   newLocationName: string;
   canManageLocations: boolean;
+  locationEditable: boolean;
   fieldErrors: InventoryFieldErrors;
   saving: boolean;
+  editable: boolean;
   setFromStorageLocationId: (value: string) => void;
   setToStorageLocationId: (value: string) => void;
   setTransferQuantity: (value: string) => void;
@@ -1278,7 +1311,7 @@ function TransferStockCard({
         locations={locations}
         selectedId={fromStorageLocationId}
         error={fieldErrors.transferFrom}
-        disabled={saving}
+        disabled={!editable}
         onSelect={(value) => {
           setFromStorageLocationId(value);
           setFieldErrors((current) => ({ ...current, transferFrom: undefined }));
@@ -1289,7 +1322,7 @@ function TransferStockCard({
         locations={locations.filter((location) => location.id !== fromStorageLocationId)}
         selectedId={toStorageLocationId}
         error={fieldErrors.transferTo}
-        disabled={saving}
+        disabled={!editable}
         onSelect={(value) => {
           setToStorageLocationId(value);
           setFieldErrors((current) => ({ ...current, transferTo: undefined }));
@@ -1302,7 +1335,7 @@ function TransferStockCard({
           setTransferQuantity(value);
           setFieldErrors((current) => ({ ...current, transferQuantity: undefined }));
         }}
-        editable={!saving}
+        editable={editable}
         error={fieldErrors.transferQuantity}
       />
       <View style={styles.field}>
@@ -1315,7 +1348,7 @@ function TransferStockCard({
             setTransferNote(value);
             setFieldErrors((current) => ({ ...current, transferNote: undefined }));
           }}
-          editable={!saving}
+          editable={editable}
           multiline
           style={[styles.input, styles.noteInput, fieldErrors.transferNote && styles.inputError]}
         />
@@ -1330,7 +1363,7 @@ function TransferStockCard({
         accessibilityLabel={t("inventory.detail.transferAccessibility", { item: itemName })}
         icon={<ArrowLeftRight size={17} color={colors.surface} strokeWidth={2.5} />}
         onPress={onTransfer}
-        disabled={saving || locations.length < 2}
+        disabled={!editable || locations.length < 2}
         fullWidth
         style={styles.saveButton}
       />
@@ -1342,7 +1375,7 @@ function TransferStockCard({
               accessibilityLabel={t("inventory.detail.newLocation")}
               value={newLocationName}
               onChangeText={setNewLocationName}
-              editable={!saving}
+              editable={locationEditable}
               style={styles.input}
             />
           </View>
@@ -1350,7 +1383,7 @@ function TransferStockCard({
             title={t("inventory.detail.addLocation")}
             variant="secondary"
             onPress={onAddLocation}
-            disabled={saving || !newLocationName.trim()}
+            disabled={!locationEditable || !newLocationName.trim()}
             fullWidth
           />
         </View>

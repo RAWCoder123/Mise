@@ -1,4 +1,7 @@
-import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "./hubLoadState";
 
 export type InventoryDetailLoadState = "loading" | "ready" | "error";
 
@@ -89,7 +92,11 @@ export function presentInventoryDetailMutationActionsEditable(
   busy: boolean,
   hubReady: boolean
 ): boolean {
-  return canMutate && !busy && hubReady;
+  return presentRestaurantScopedHubActionsEditable({
+    allowed: canMutate,
+    hubReady,
+    busy
+  });
 }
 
 export function resolveInventoryDetailWasteFailureReason(

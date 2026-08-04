@@ -103,15 +103,29 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(source("contexts/MiseSessionContext.tsx"), /posStatusRestaurantId/);
   assert.match(screens.inventoryDetail, /resolveInventoryDetailLoadState/);
   assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
+  assert.match(screens.inventoryDetail, /presentInventoryDetailMutationActionsEditable/);
   assert.match(
     source("services/presentation/inventoryDetailPresentation.ts"),
     /resolveRestaurantScopedHubLoadState/
   );
+  assert.match(
+    source("services/presentation/inventoryDetailPresentation.ts"),
+    /presentRestaurantScopedHubActionsEditable/
+  );
   assert.match(screens.inventoryCount, /resolveInventoryCountLoadState/);
   assert.match(screens.inventoryCount, /hubReady\s*\?\s*detail\s*:\s*null/);
+  assert.match(screens.inventoryCount, /presentInventoryCountMutationActionsEditable/);
   assert.match(
     source("services/presentation/inventoryCountPresentation.ts"),
     /resolveRestaurantScopedHubLoadState/
+  );
+  assert.match(
+    source("services/presentation/inventoryCountPresentation.ts"),
+    /presentRestaurantScopedHubActionsEditable/
+  );
+  assert.match(
+    screens.recipes,
+    /presentRecipesMutationFormEditable\(\s*canManage,\s*mutationBusy,\s*hubReady\s*\)/
   );
   assert.match(screens.orderDetail, /resolveOrderDetailLoadState/);
   assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);

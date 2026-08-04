@@ -220,7 +220,7 @@ export default function RecipeBaselinesScreen() {
   const visibleInventoryItems = hubReady ? inventoryItems : [];
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const mutationBusy = presentRecipesMutationFormBusy(savingMappingId, savingNewLink);
-  const formEditable = presentRecipesMutationFormEditable(canManage, mutationBusy);
+  const formEditable = presentRecipesMutationFormEditable(canManage, mutationBusy, hubReady);
   const mappedDishes = visibleSummary?.items;
   const showMappedDishSearch = (mappedDishes?.length ?? 0) >= RECIPE_BASELINE_SEARCH_THRESHOLD;
   const filteredMappedDishes = useMemo(() => {
@@ -295,7 +295,7 @@ export default function RecipeBaselinesScreen() {
   }
 
   async function saveIngredient(mappingId: string, quantity: string) {
-    if (!restaurant || mutationBusy) return;
+    if (!restaurant || mutationBusy || !hubReady) return;
     if (!canManage) {
       setNotice(mutationNotice("readOnly"));
       return;
@@ -329,7 +329,7 @@ export default function RecipeBaselinesScreen() {
   }
 
   function confirmUnlinkIngredient(mappingId: string, ingredientName: string, dishName: string) {
-    if (!restaurant || mutationBusy) return;
+    if (!restaurant || mutationBusy || !hubReady) return;
     if (!canManage) {
       setNotice(mutationNotice("readOnly"));
       return;
@@ -351,7 +351,7 @@ export default function RecipeBaselinesScreen() {
   }
 
   async function unlinkIngredient(mappingId: string, ingredientName: string, dishName: string) {
-    if (!restaurant || mutationBusy) return;
+    if (!restaurant || mutationBusy || !hubReady) return;
     if (!canManage) {
       setNotice(mutationNotice("readOnly"));
       return;
@@ -378,7 +378,7 @@ export default function RecipeBaselinesScreen() {
   }
 
   async function addBaselineLink() {
-    if (!restaurant || mutationBusy) return;
+    if (!restaurant || mutationBusy || !hubReady) return;
     if (!canManage) {
       setNotice(mutationNotice("readOnly"));
       return;
@@ -635,6 +635,7 @@ export default function RecipeBaselinesScreen() {
                 key={item.menu_item_name}
                 item={item}
                 canManage={canManage}
+                formEditable={formEditable}
                 savingMappingId={savingMappingId}
                 onSave={saveIngredient}
                 onUnlink={confirmUnlinkIngredient}
@@ -845,12 +846,14 @@ function SuggestionChip({
 function RecipeRow({
   item,
   canManage,
+  formEditable,
   savingMappingId,
   onSave,
   onUnlink
 }: {
   item: RecipeBaselineItem;
   canManage: boolean;
+  formEditable: boolean;
   savingMappingId: string | null;
   onSave: (mappingId: string, quantity: string) => void;
   onUnlink: (mappingId: string, ingredientName: string, dishName: string) => void;
@@ -924,11 +927,11 @@ function RecipeRow({
                         <TextInput
                           value={draftValue}
                           onChangeText={(value) => setDrafts((current) => ({ ...current, [ingredient.mappingId]: value }))}
-                          editable={!isBusy}
+                          editable={formEditable && !isBusy}
                           keyboardType="decimal-pad"
                           selectTextOnFocus
                           accessibilityLabel={t("recipes.row.quantityAccessibility", { ingredient: ingredient.itemName })}
-                          accessibilityState={{ disabled: isBusy }}
+                          accessibilityState={{ disabled: !formEditable || isBusy }}
                           style={styles.quantityInput}
                         />
                       ) : (
@@ -965,7 +968,7 @@ function RecipeRow({
                           )}
                           variant="secondary"
                           icon={<Save size={15} color={colors.text} strokeWidth={2.5} />}
-                          disabled={isBusy}
+                          disabled={!formEditable || isBusy}
                           onPress={() => onSave(ingredient.mappingId, draftValue)}
                           style={styles.saveButton}
                         />
@@ -974,7 +977,7 @@ function RecipeRow({
                           accessibilityLabel={t("recipes.action.unlinkAccessibility", { ingredient: ingredient.itemName })}
                           variant="danger"
                           icon={<Unlink size={15} color={colors.surface} strokeWidth={2.5} />}
-                          disabled={isBusy}
+                          disabled={!formEditable || isBusy}
                           onPress={() => onUnlink(ingredient.mappingId, ingredient.itemName, item.menu_item_name)}
                           style={styles.unlinkButton}
                         />

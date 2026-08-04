@@ -104,6 +104,28 @@ test("inventory detail mutation actions stay locked while busy or not ready", ()
   assert.equal(presentInventoryDetailMutationActionsEditable(true, false, true), true);
 });
 
+test("inventory detail screen wires hub-ready mutation editability for deep-link mutations", () => {
+  assert.match(detailScreen, /presentInventoryDetailMutationActionsEditable/);
+  assert.match(detailScreen, /presentInventoryDetailMutationBusy/);
+  assert.match(
+    detailScreen,
+    /presentInventoryDetailMutationActionsEditable\(\s*canManage,\s*mutationBusy,\s*hubReady\s*\)/
+  );
+  assert.match(
+    detailScreen,
+    /presentInventoryDetailMutationActionsEditable\(\s*canRecordWaste,\s*mutationBusy,\s*hubReady\s*\)/
+  );
+  assert.match(
+    detailScreen,
+    /presentInventoryDetailMutationActionsEditable\(\s*canTransfer,\s*mutationBusy,\s*hubReady\s*\)/
+  );
+  assert.match(detailScreen, /editable=\{manageEditable\}/);
+  assert.match(detailScreen, /editable=\{wasteEditable\}/);
+  assert.match(detailScreen, /editable=\{transferEditable\}/);
+  assert.match(detailScreen, /disabled=\{!manageEditable\}/);
+  assert.match(detailScreen, /!hubReady \|\| mutationBusy\) return/);
+});
+
 test("inventory detail waste failure reasons map backend English errors without surfacing them", () => {
   assert.equal(
     resolveInventoryDetailWasteFailureReason(

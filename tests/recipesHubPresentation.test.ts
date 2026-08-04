@@ -128,13 +128,14 @@ test("recipes hub wires soft-refresh and RetryNotice instead of false empty mapp
   assert.match(recipesHub, /recipes\.retry\.accessibility/);
 });
 
-test("recipes mutation form busy and editable helpers gate edits while saving", () => {
+test("recipes mutation form busy and editable helpers gate edits while saving or hub not ready", () => {
   assert.equal(presentRecipesMutationFormBusy(null, false), false);
   assert.equal(presentRecipesMutationFormBusy("map_1", false), true);
   assert.equal(presentRecipesMutationFormBusy(null, true), true);
-  assert.equal(presentRecipesMutationFormEditable(true, false), true);
-  assert.equal(presentRecipesMutationFormEditable(true, true), false);
-  assert.equal(presentRecipesMutationFormEditable(false, false), false);
+  assert.equal(presentRecipesMutationFormEditable(true, false, true), true);
+  assert.equal(presentRecipesMutationFormEditable(true, true, true), false);
+  assert.equal(presentRecipesMutationFormEditable(false, false, true), false);
+  assert.equal(presentRecipesMutationFormEditable(true, false, false), false);
 });
 
 test("recipes mutation notice copy uses success for saves and danger for failures", () => {
@@ -165,6 +166,12 @@ test("recipes hub uses localized StatusNotice for mutation outcomes and never pl
   assert.match(recipesHub, /presentRecipesMutationNoticeCopy/);
   assert.match(recipesHub, /presentRecipesMutationFormBusy/);
   assert.match(recipesHub, /presentRecipesMutationFormEditable/);
+  assert.match(
+    recipesHub,
+    /presentRecipesMutationFormEditable\(\s*canManage,\s*mutationBusy,\s*hubReady\s*\)/
+  );
+  assert.match(recipesHub, /formEditable=\{formEditable\}/);
+  assert.match(recipesHub, /!hubReady\) return/);
   assert.match(recipesHub, /StatusNotice/);
   assert.match(recipesHub, /tone=\{notice\.tone\}/);
   assert.match(recipesHub, /captureMiseError/);

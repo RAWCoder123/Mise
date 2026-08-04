@@ -25,6 +25,7 @@ import {
 import {
   buildInventoryCountLinePayload,
   presentInventoryCountFailureCopy,
+  presentInventoryCountMutationActionsEditable,
   presentInventoryCountStartCopy,
   presentInventoryCountSuccessCopy,
   resolveInventoryCountFailureReason,
@@ -252,6 +253,16 @@ export default function InventoryCountSessionScreen() {
   });
   const hubReady = hubLoadState === "ready";
   const visibleDetail = hubReady ? detail : null;
+  const draftEditable = presentInventoryCountMutationActionsEditable(
+    canDraft,
+    saving,
+    hubReady
+  );
+  const approveEditable = presentInventoryCountMutationActionsEditable(
+    canApprove,
+    saving,
+    hubReady
+  );
   const startPresentation = presentInventoryCountStartCopy(hubLoadState, {
     loadingTitle: t("inventory.count.startLoadingTitle"),
     loadingBody: t("inventory.count.startLoadingBody"),
@@ -284,7 +295,7 @@ export default function InventoryCountSessionScreen() {
   }, [lineQuery, visibleDetail?.lines]);
 
   async function startSession() {
-    if (!restaurant || !canDraft) return;
+    if (!restaurant || !draftEditable) return;
     const restaurantId = restaurant.id;
     setSaving(true);
     setNotice(null);
@@ -326,7 +337,7 @@ export default function InventoryCountSessionScreen() {
   }
 
   async function saveProgress() {
-    if (!restaurant || !visibleDetail || !canDraft) return;
+    if (!restaurant || !visibleDetail || !draftEditable) return;
     const restaurantId = restaurant.id;
     const payload = buildInventoryCountLinePayload({
       lines: visibleDetail.lines,
@@ -368,7 +379,7 @@ export default function InventoryCountSessionScreen() {
   }
 
   async function submitSession() {
-    if (!restaurant || !visibleDetail || !canDraft) return;
+    if (!restaurant || !visibleDetail || !draftEditable) return;
     const restaurantId = restaurant.id;
     const payload = buildInventoryCountLinePayload({
       lines: visibleDetail.lines,
@@ -412,7 +423,7 @@ export default function InventoryCountSessionScreen() {
   }
 
   async function approveSession() {
-    if (!restaurant || !visibleDetail || !canApprove) return;
+    if (!restaurant || !visibleDetail || !approveEditable) return;
     const restaurantId = restaurant.id;
     setSaving(true);
     setNotice(null);
@@ -436,7 +447,7 @@ export default function InventoryCountSessionScreen() {
   }
 
   function confirmCancel() {
-    if (!restaurant || !visibleDetail || !canApprove) return;
+    if (!restaurant || !visibleDetail || !approveEditable) return;
     const restaurantId = restaurant.id;
     const sessionId = visibleDetail.session.id;
     Alert.alert(t("inventory.count.cancelTitle"), t("inventory.count.cancelBody"), [
@@ -525,7 +536,7 @@ export default function InventoryCountSessionScreen() {
                 <Button
                   title={t("inventory.count.startAction")}
                   onPress={() => void startSession()}
-                  disabled={!canDraft || saving}
+                  disabled={!draftEditable}
                   fullWidth
                   accessibilityLabel={t("inventory.count.startAccessibility")}
                 />
@@ -601,7 +612,7 @@ export default function InventoryCountSessionScreen() {
                           ? null
                           : counted - line.system_quantity_at_start;
                       const editable =
-                        canDraft && visibleDetail.session.status === "in_progress" && !saving;
+                        draftEditable && visibleDetail.session.status === "in_progress";
                       const showNoteField =
                         editable || noteRaw.trim().length > 0 || (variance != null && variance !== 0);
                       return (
@@ -681,13 +692,13 @@ export default function InventoryCountSessionScreen() {
                   <Button
                     title={t("inventory.count.saveAction")}
                     onPress={() => void saveProgress()}
-                    disabled={saving}
+                    disabled={!draftEditable}
                     fullWidth
                   />
                   <Button
                     title={t("inventory.count.submitAction")}
                     onPress={() => void submitSession()}
-                    disabled={saving}
+                    disabled={!draftEditable}
                     fullWidth
                     style={styles.secondaryAction}
                   />
@@ -697,7 +708,7 @@ export default function InventoryCountSessionScreen() {
                 <Button
                   title={t("inventory.count.approveAction")}
                   onPress={() => void approveSession()}
-                  disabled={saving}
+                  disabled={!approveEditable}
                   fullWidth
                 />
               ) : null}
@@ -709,7 +720,7 @@ export default function InventoryCountSessionScreen() {
                   title={t("inventory.count.cancelAction")}
                   variant="secondary"
                   onPress={confirmCancel}
-                  disabled={saving}
+                  disabled={!approveEditable}
                   fullWidth
                   style={styles.secondaryAction}
                 />

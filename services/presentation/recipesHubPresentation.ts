@@ -1,4 +1,7 @@
-import { resolveRestaurantScopedHubLoadState } from "./hubLoadState";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "./hubLoadState";
 
 export type RecipesHubLoadState = "loading" | "ready" | "error";
 
@@ -73,9 +76,14 @@ export function presentRecipesMutationFormBusy(
 
 export function presentRecipesMutationFormEditable(
   canManage: boolean,
-  busy: boolean
+  busy: boolean,
+  hubReady: boolean
 ): boolean {
-  return canManage && !busy;
+  return presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy
+  });
 }
 
 export function presentRecipesMutationNoticeCopy(
