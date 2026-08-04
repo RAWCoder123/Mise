@@ -19,7 +19,7 @@ Identity settings already checked `loadError` before loaded-restaurant match; hu
 ## Verification
 
 - `npm run typecheck`
-- `npm test`
+- `npm test` (555 passing)
 - `npm run security:static`
 - `npm run security:backend`
 - `npm run design:static`
