@@ -82,6 +82,34 @@ function checkExpoConfig() {
     failures.push("expo.ios.infoPlist.ITSAppUsesNonExemptEncryption must be false for this beta demo");
   }
 
+  const privacyManifests = expo.ios?.privacyManifests;
+  const accessedApiTypes = privacyManifests?.NSPrivacyAccessedAPITypes;
+  if (!Array.isArray(accessedApiTypes) || accessedApiTypes.length === 0) {
+    failures.push("app.json must declare expo.ios.privacyManifests.NSPrivacyAccessedAPITypes for App Store privacy manifests");
+  } else {
+    const expectedApiTypes = {
+      NSPrivacyAccessedAPICategoryUserDefaults: ["CA92.1"],
+      NSPrivacyAccessedAPICategoryFileTimestamp: ["0A2A.1", "3B52.1", "C617.1"],
+      NSPrivacyAccessedAPICategoryDiskSpace: ["85F4.1", "E174.1"]
+    };
+
+    for (const [apiType, reasons] of Object.entries(expectedApiTypes)) {
+      const entry = accessedApiTypes.find((item) => item?.NSPrivacyAccessedAPIType === apiType);
+      if (!entry) {
+        failures.push(`privacyManifests is missing required API category ${apiType}`);
+        continue;
+      }
+      const declaredReasons = [...(entry.NSPrivacyAccessedAPITypeReasons ?? [])].sort();
+      if (JSON.stringify(declaredReasons) !== JSON.stringify(reasons)) {
+        failures.push(
+          `privacyManifests.${apiType} must declare reasons ${reasons.join(", ")} (aggregated from AsyncStorage/Expo/RN PrivacyInfo)`
+        );
+      }
+    }
+
+    notes.push(`Privacy manifests: ${accessedApiTypes.length} required-reason API categories`);
+  }
+
   if (expo.icon) assertAsset(expo.icon, "App icon");
   if (splash?.image) assertAsset(splash.image, "Splash image");
   if (expo.web?.favicon) assertAsset(expo.web.favicon, "Web favicon", 128);

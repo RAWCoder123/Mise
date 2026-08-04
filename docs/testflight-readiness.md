@@ -20,7 +20,7 @@ npm run demo:ready
 npm run qa:ios-prereq
 ```
 
-`qa:ios-prereq` validates the app icon, supported `expo-splash-screen` plugin and splash asset, absence of legacy Expo fields, bundle identifier, build number, encryption setting, and local Xcode simulator tooling. It requires full Xcode, not only Command Line Tools.
+`qa:ios-prereq` validates the app icon, supported `expo-splash-screen` plugin and splash asset, absence of legacy Expo fields, bundle identifier, build number, encryption setting, aggregated `ios.privacyManifests` required-reason API declarations, and local Xcode simulator tooling. It requires full Xcode, not only Command Line Tools.
 
 ## Internal TestFlight Path
 
