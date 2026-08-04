@@ -1269,13 +1269,34 @@ test("security backend denylists revoked mutators and Edge-owned service RPCs", 
   assert.match(securityBackend, /public\.create_restaurant_with_owner/);
   assert.match(securityBackend, /public\.request_my_account_deletion/);
   assert.match(securityBackend, /public\.save_restaurant_setup/);
+  assert.match(securityBackend, /public\.undo_purchase_recommendation_action/);
+  assert.match(securityBackend, /public\.update_supplier_order_draft/);
+  assert.match(securityBackend, /public\.mark_supplier_order_sent/);
+  assert.match(securityBackend, /public\.replace_pending_purchase_recommendations/);
+  assert.match(securityBackend, /public\.replace_operational_insights/);
+  assert.match(securityBackend, /public\.replace_operational_signals/);
+  assert.match(securityBackend, /public\.update_inventory_item_and_signals/);
+  assert.match(securityBackend, /public\.save_recipe_mapping_and_signals/);
   assert.match(securityBackend, /public\.service_request_my_account_deletion/);
   assert.match(securityBackend, /public\.service_save_restaurant_setup/);
+  assert.match(securityBackend, /public\.service_undo_purchase_recommendation_action/);
+  assert.match(securityBackend, /public\.service_update_supplier_order_draft/);
+  assert.match(securityBackend, /public\.service_mark_supplier_order_sent/);
   assert.match(securityBackend, /must remain revoked from authenticated/);
   assert.match(stagingServiceRpc, /service_save_restaurant_setup/);
   assert.match(stagingServiceRpc, /service_request_my_account_deletion/);
   assert.match(stagingServiceRpc, /service_create_restaurant_with_owner/);
   assert.match(stagingServiceRpc, /service_transfer_inventory/);
+  assert.match(stagingServiceRpc, /service_dismiss_purchase_recommendation/);
+  assert.match(stagingServiceRpc, /service_undo_purchase_recommendation_action/);
+  assert.match(stagingServiceRpc, /service_update_supplier_order_draft/);
+  assert.match(stagingServiceRpc, /service_mark_supplier_order_sent/);
+  assert.match(stagingServiceRpc, /service_update_my_preferred_locale/);
+  assert.match(stagingServiceRpc, /service_update_my_notification_preferences/);
+  assert.doesNotMatch(
+    stagingServiceRpc,
+    /assertDeniedRpc\(\s*"service_update_my_preferred_locale",\s*"service_update_my_notification_preferences"/
+  );
 });
 
 test("inventory item create is service-owned with opening ledger movement and manager UI", () => {

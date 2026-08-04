@@ -293,6 +293,25 @@ await assertDeniedRpc(
   "purchase approval rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
+  "service_dismiss_purchase_recommendation",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_recommendation_id: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+    p_dismiss_reason: "staging_cross_tenant_probe"
+  },
+  "purchase dismissal rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_undo_purchase_recommendation_action",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_recommendation_id: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"
+  },
+  "purchase undo rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
   "service_create_pending_purchase_recommendation",
   {
     p_actor_user_id: managerA.id,
@@ -303,6 +322,28 @@ await assertDeniedRpc(
     p_urgency: "soon"
   },
   "pending purchase create rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_update_supplier_order_draft",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_order_id: "bbbbbbbb-3333-4333-8333-bbbbbbbbbbbb",
+    p_operator_note: "staging_cross_tenant_probe",
+    p_set_operator_note: true,
+    p_delivery_date: null,
+    p_set_delivery_date: false
+  },
+  "supplier draft update rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_mark_supplier_order_sent",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_order_id: "bbbbbbbb-3333-4333-8333-bbbbbbbbbbbb"
+  },
+  "supplier mark-sent rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
   "service_create_storage_location",
@@ -402,12 +443,28 @@ await assertDeniedRpc(
 );
 await assertDeniedRpc(
   "service_update_my_preferred_locale",
-  "service_update_my_notification_preferences",
   {
     p_actor_user_id: "00000000-0000-4000-8000-000000000000",
     p_locale: "es"
   },
-  "locale update rejects a forged actor binding"
+  "locale update rejects a forged actor binding",
+  "P0002"
+);
+await assertDeniedRpc(
+  "service_update_my_notification_preferences",
+  {
+    p_actor_user_id: "00000000-0000-4000-8000-000000000000",
+    p_preferences: {
+      inventory: true,
+      orders: true,
+      waste: true,
+      recipes_pos: true,
+      insights: true,
+      setup: true
+    }
+  },
+  "notification preference update rejects a forged actor binding",
+  "P0002"
 );
 
 const closeReservation = await admin.rpc("record_edge_function_security_event", {
