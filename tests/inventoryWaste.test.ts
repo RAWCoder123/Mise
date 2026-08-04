@@ -96,8 +96,9 @@ test("inventory list and staff detail surface waste recording without manager co
   assert.match(list, /inventory\.waste\.cardTitle/);
   assert.match(list, /searchInputRef\.current\?\.focus\(\)/);
   assert.match(detail, /showWasteBeforeCountSettings = canRecordWaste && !canManage/);
-  assert.match(detail, /showWasteBeforeCountSettings \? \(/);
-  assert.match(detail, /canRecordWaste && !showWasteBeforeCountSettings/);
+  assert.match(detail, /showWasteBeforeCountSettings && !stationsBlocked \? \(/);
+  assert.match(detail, /canRecordWaste && !showWasteBeforeCountSettings && !stationsBlocked/);
+  assert.match(detail, /isInventoryDetailStationActionBlocked/);
   assert.match(today, /showStaffWasteTip/);
   assert.match(today, /role === "staff" && canRecordInventoryWaste/);
   assert.match(today, /today\.waste\.cardTitle/);
