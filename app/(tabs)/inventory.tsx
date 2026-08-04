@@ -35,7 +35,9 @@ import {
 import {
   presentInventoryHubHealthCopy,
   presentInventoryHubListEmptyCopy,
-  resolveInventoryHubLoadState
+  presentInventoryHubStationHealthCopy,
+  resolveInventoryHubLoadState,
+  resolveInventoryHubStationHealthLoadState
 } from "../../services/presentation/inventoryHubPresentation";
 import { captureMiseError } from "../../services/telemetry";
 import { canDraftInventoryCount, canManageRestaurantData, canRecordInventoryWaste } from "../../services/tenantAccess";
@@ -51,6 +53,7 @@ export default function InventoryScreen() {
   const canRecordWaste = canRecordInventoryWaste(memberships, restaurant?.id ?? "");
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
   const [locationHealth, setLocationHealth] = useState<InventoryLocationHealthBreakdown | null>(null);
+  const [locationHealthLoadError, setLocationHealthLoadError] = useState(false);
   const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InventoryFilter>("All");
@@ -70,6 +73,7 @@ export default function InventoryScreen() {
     setLoadedRestaurantId(null);
     setOutlooks([]);
     setLocationHealth(null);
+    setLocationHealthLoadError(false);
     setOpenCountSessionId(null);
     setQuery("");
     setFilter("All");
@@ -91,14 +95,25 @@ export default function InventoryScreen() {
     }
     setError(false);
     try {
-      const [nextOutlooks, openSession, nextLocationHealth] = await Promise.all([
+      const [nextOutlooks, openSession, locationHealthResult] = await Promise.all([
         fetchInventoryOutlookItems(restaurantId),
         fetchOpenInventoryCountSession(restaurantId),
-        fetchInventoryLocationHealthBreakdown(restaurantId).catch(() => null)
+        fetchInventoryLocationHealthBreakdown(restaurantId)
+          .then((breakdown) => ({ ok: true as const, breakdown }))
+          .catch((stationError: unknown) => ({ ok: false as const, error: stationError }))
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      const nextLocationHealth = locationHealthResult.ok ? locationHealthResult.breakdown : null;
+      if (!locationHealthResult.ok) {
+        captureMiseError(locationHealthResult.error, {
+          flow: "inventory",
+          operation: "load_station_health",
+          restaurant_id: restaurantId
+        });
+      }
       setOutlooks(nextOutlooks);
       setLocationHealth(nextLocationHealth);
+      setLocationHealthLoadError(!locationHealthResult.ok);
       setOpenCountSessionId(openSession?.session.id ?? null);
       loadedRestaurantRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
@@ -135,6 +150,15 @@ export default function InventoryScreen() {
   const hubReady = hubLoadState === "ready";
   const visibleOutlooks = hubReady ? outlooks : [];
   const visibleLocationHealth = hubReady ? locationHealth : null;
+  const visibleLocationHealthLoadError = hubReady ? locationHealthLoadError : false;
+  const stationHealthLoadState = resolveInventoryHubStationHealthLoadState({
+    loadError: visibleLocationHealthLoadError,
+    breakdown: visibleLocationHealth
+  });
+  const stationHealthUnavailableCopy = presentInventoryHubStationHealthCopy(stationHealthLoadState, {
+    unavailableTitle: t("inventory.health.stationsUnavailable.title"),
+    unavailableBody: t("inventory.health.stationsUnavailable.body")
+  });
   const healthPresentation = presentInventoryHubHealthCopy(hubLoadState, {
     loading: t("inventory.health.loading"),
     unavailable: t("inventory.health.unavailable")
@@ -257,6 +281,17 @@ export default function InventoryScreen() {
             ) : (
               <Text style={styles.hubStateCopy}>{healthPresentation.message}</Text>
             )}
+            {stationHealthUnavailableCopy ? (
+              <View style={styles.stationBlock}>
+                <RetryNotice
+                  title={stationHealthUnavailableCopy.title}
+                  message={stationHealthUnavailableCopy.message}
+                  onRetry={() => void load(false)}
+                  retryLabel={t("common.retry")}
+                  accessibilityLabel={t("inventory.health.stationsUnavailable.retryAccessibility")}
+                />
+              </View>
+            ) : null}
             {visibleLocationHealth && visibleLocationHealth.stationCount > 1 ? (
               <View style={styles.stationBlock}>
                 <Text

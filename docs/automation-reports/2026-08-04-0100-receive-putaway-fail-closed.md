@@ -9,9 +9,9 @@
 - EN / ES / zh-Hans copy for unavailable put-away stations.
 - Tests cover readiness helpers, catalog coverage, and removal of the silent `.catch(() => [])` fallback.
 
-## Verification
+## Verification (passed on 37a2)
 - `npm run typecheck`
-- `npm test`
+- `npm test` — 518 passed
 - `npm run security:static`
 - `npm run security:backend`
 - `npm run design:static`

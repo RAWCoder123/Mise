@@ -53,3 +53,28 @@ export function presentInventoryHubListEmptyCopy(
     body: input.hasStationFilter ? copy.stationEmptyBody : copy.emptyBody
   };
 }
+
+export type InventoryHubStationHealthLoadState = "ready" | "unavailable" | "empty";
+
+export function resolveInventoryHubStationHealthLoadState(input: {
+  loadError: boolean;
+  breakdown: { stationCount: number } | null | undefined;
+}): InventoryHubStationHealthLoadState {
+  if (input.loadError) return "unavailable";
+  if (!input.breakdown || input.breakdown.stationCount <= 0) return "empty";
+  return "ready";
+}
+
+export function presentInventoryHubStationHealthCopy(
+  state: InventoryHubStationHealthLoadState,
+  copy: {
+    unavailableTitle: string;
+    unavailableBody: string;
+  }
+): { title: string; message: string } | null {
+  if (state !== "unavailable") return null;
+  return {
+    title: copy.unavailableTitle,
+    message: copy.unavailableBody
+  };
+}

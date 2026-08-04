@@ -5,11 +5,14 @@ import test from "node:test";
 import {
   presentInventoryHubHealthCopy,
   presentInventoryHubListEmptyCopy,
-  resolveInventoryHubLoadState
+  presentInventoryHubStationHealthCopy,
+  resolveInventoryHubLoadState,
+  resolveInventoryHubStationHealthLoadState
 } from "../services/presentation/inventoryHubPresentation";
 
 const inventoryHub = readFileSync("app/(tabs)/inventory.tsx", "utf8");
 const inventoryDetail = readFileSync("app/inventory/[id].tsx", "utf8");
+const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
 test("inventory hub load state stays loading until the active restaurant finishes loading", () => {
   assert.equal(
@@ -145,4 +148,70 @@ test("inventory detail load failures expose RetryNotice", () => {
   assert.match(inventoryDetail, /loadedItemIdRef/);
   assert.match(inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
   assert.match(inventoryDetail, /keepPrior/);
+});
+
+test("inventory hub station health load state separates failure from empty success", () => {
+  assert.equal(
+    resolveInventoryHubStationHealthLoadState({ loadError: true, breakdown: null }),
+    "unavailable"
+  );
+  assert.equal(
+    resolveInventoryHubStationHealthLoadState({ loadError: false, breakdown: null }),
+    "empty"
+  );
+  assert.equal(
+    resolveInventoryHubStationHealthLoadState({
+      loadError: false,
+      breakdown: { stationCount: 0 }
+    }),
+    "empty"
+  );
+  assert.equal(
+    resolveInventoryHubStationHealthLoadState({
+      loadError: false,
+      breakdown: { stationCount: 2 }
+    }),
+    "ready"
+  );
+  assert.deepEqual(
+    presentInventoryHubStationHealthCopy("unavailable", {
+      unavailableTitle: "Stations unavailable",
+      unavailableBody: "Retry station health"
+    }),
+    {
+      title: "Stations unavailable",
+      message: "Retry station health"
+    }
+  );
+  assert.equal(
+    presentInventoryHubStationHealthCopy("ready", {
+      unavailableTitle: "Stations unavailable",
+      unavailableBody: "Retry station health"
+    }),
+    null
+  );
+});
+
+test("inventory hub fails closed when station health cannot load instead of hiding stations", () => {
+  assert.doesNotMatch(
+    inventoryHub,
+    /fetchInventoryLocationHealthBreakdown\([^)]*\)\.catch\(\s*\(\)\s*=>\s*null\s*\)/
+  );
+  assert.match(inventoryHub, /resolveInventoryHubStationHealthLoadState/);
+  assert.match(inventoryHub, /presentInventoryHubStationHealthCopy/);
+  assert.match(inventoryHub, /locationHealthLoadError/);
+  assert.match(inventoryHub, /operation:\s*"load_station_health"/);
+  assert.match(inventoryHub, /inventory\.health\.stationsUnavailable\.title/);
+  assert.match(inventoryHub, /inventory\.health\.stationsUnavailable\.retryAccessibility/);
+  assert.match(catalog, /inventory\.health\.stationsUnavailable\.title/);
+  assert.match(catalog, /inventory\.health\.stationsUnavailable\.body/);
+  assert.match(catalog, /inventory\.health\.stationsUnavailable\.retryAccessibility/);
+  assert.match(
+    catalog,
+    /"inventory\.health\.stationsUnavailable\.title":\s*"Estaciones no disponibles"/
+  );
+  assert.match(
+    catalog,
+    /"inventory\.health\.stationsUnavailable\.title":\s*"站点库存不可用"/
+  );
 });
