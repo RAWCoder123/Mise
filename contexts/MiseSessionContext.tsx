@@ -328,11 +328,12 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      const { availableRestaurants, activeMembership, activeRestaurant } = hydration;
+      const { availableRestaurants, loadableMemberships, activeMembership, activeRestaurant } =
+        hydration;
 
       activeRestaurantIdRef.current = activeRestaurant.id;
       setWorkspaceAccessUnverified(false);
-      setMemberships(nextMemberships);
+      setMemberships(loadableMemberships);
       setAvailableRestaurants(availableRestaurants);
       setRestaurant(activeRestaurant);
       setRole(activeMembership.role);

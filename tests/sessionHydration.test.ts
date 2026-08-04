@@ -84,9 +84,41 @@ test("resolveMultiMembershipHydration drops failed non-preferred workspaces", ()
     resolved.availableRestaurants.map((item) => item.id),
     ["r2", "r3"]
   );
+  assert.deepEqual(
+    resolved.loadableMemberships.map((item) => item.restaurant_id),
+    ["r2", "r3"]
+  );
   assert.deepEqual(resolved.droppedRestaurantIds, ["r1"]);
   assert.equal(resolved.activeRestaurant.id, "r2");
   assert.equal(resolved.activeMembership.restaurant_id, "r2");
+});
+
+test("resolveMultiMembershipHydration drops archived restaurants even when fetch succeeds", () => {
+  const memberships = [membership("r1"), membership("r2")];
+  const settlements = settleMembershipRestaurantFetches(memberships, [
+    {
+      status: "fulfilled",
+      value: { ...restaurant("r1", "Archived"), archived_at: "2026-08-01T12:00:00.000Z" }
+    },
+    { status: "fulfilled", value: restaurant("r2", "Beta") }
+  ]);
+
+  const resolved = resolveMultiMembershipHydration({
+    memberships,
+    settlements,
+    preferredRestaurantId: null
+  });
+
+  assert.deepEqual(
+    resolved.availableRestaurants.map((item) => item.id),
+    ["r2"]
+  );
+  assert.deepEqual(
+    resolved.loadableMemberships.map((item) => item.restaurant_id),
+    ["r2"]
+  );
+  assert.deepEqual(resolved.droppedRestaurantIds, ["r1"]);
+  assert.equal(resolved.activeRestaurant.id, "r2");
 });
 
 test("resolveMultiMembershipHydration keeps preferred workspace when siblings fail", () => {
@@ -168,6 +200,7 @@ test("session hydration uses allSettled and selective workspace resolution", () 
   assert.match(session, /Promise\.allSettled/);
   assert.match(session, /settleMembershipRestaurantFetches/);
   assert.match(session, /resolveMultiMembershipHydration/);
+  assert.match(session, /setMemberships\(loadableMemberships\)/);
   assert.match(session, /operation:\s*"restaurant_fetch"/);
   assert.doesNotMatch(
     session,

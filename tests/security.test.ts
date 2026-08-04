@@ -2701,6 +2701,33 @@ test("sole-owner account deletion archives restaurants and rolls back Auth failu
   );
 });
 
+test("session membership list is identity-free and excludes archived restaurants", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260804120000_list_my_restaurant_memberships.sql",
+    "utf8"
+  );
+  const databaseTests = readFileSync(
+    "supabase/tests/database/list_my_restaurant_memberships.test.sql",
+    "utf8"
+  );
+  const repository = readFileSync("services/repositories/miseRepository.ts", "utf8");
+  const hostedRepository = repository.match(/function createSupabaseRepository\([\s\S]*$/)?.[0] ?? "";
+  const hostedLoad =
+    hostedRepository.match(/async fetchMembershipsForAuthUser\([\s\S]*?\n    \},/)?.[0] ?? "";
+
+  assert.match(migration, /function public\.list_my_restaurant_memberships\(\)/i);
+  assert.match(migration, /restaurant\.archived_at is null/i);
+  assert.match(migration, /membership\.user_id = actor_user_id/i);
+  assert.match(
+    migration,
+    /grant execute on function public\.list_my_restaurant_memberships\(\)[\s\S]*authenticated/i
+  );
+  assert.match(hostedLoad, /\.rpc\(\s*["']list_my_restaurant_memberships["']/);
+  assert.doesNotMatch(hostedLoad, /\.from\(\s*["']restaurant_memberships["']/);
+  assert.match(databaseTests, /archived restaurant memberships are excluded from the list/i);
+  assert.match(databaseTests, /operator A cannot read operator B memberships/i);
+});
+
 test("restaurant data export is owner/admin Edge-routed with secret redaction", () => {
   const migration = readFileSync(
     "supabase/migrations/20260801193000_edge_export_restaurant_data.sql",

@@ -63,6 +63,7 @@ export function resolveMultiMembershipHydration(input: {
   preferredRestaurantId?: string | null;
 }): {
   availableRestaurants: Restaurant[];
+  loadableMemberships: RestaurantMembership[];
   droppedRestaurantIds: string[];
   droppedErrors: unknown[];
   activeMembership: RestaurantMembership;
@@ -74,6 +75,13 @@ export function resolveMultiMembershipHydration(input: {
 
   for (const settlement of input.settlements) {
     if (settlement.status === "fulfilled") {
+      // Defense in depth: archived restaurants must not enter the workspace switcher
+      // even if a stale membership row still points at them.
+      if (settlement.restaurant.archived_at) {
+        droppedRestaurantIds.push(settlement.restaurantId);
+        droppedErrors.push(new Error("Restaurant workspace is archived"));
+        continue;
+      }
       restaurantsById.set(settlement.restaurantId, settlement.restaurant);
     } else {
       droppedRestaurantIds.push(settlement.restaurantId);
@@ -86,6 +94,10 @@ export function resolveMultiMembershipHydration(input: {
     .filter((restaurant): restaurant is Restaurant => Boolean(restaurant))
     .filter((restaurant, index, list) => list.findIndex((entry) => entry.id === restaurant.id) === index);
 
+  const loadableMemberships = input.memberships.filter((membership) =>
+    restaurantsById.has(membership.restaurant_id)
+  );
+
   const preferredMembership = activeMembershipForRestaurantId(
     input.memberships,
     input.preferredRestaurantId
@@ -94,17 +106,15 @@ export function resolveMultiMembershipHydration(input: {
   if (preferredMembership) {
     const preferredRestaurant = restaurantsById.get(preferredMembership.restaurant_id);
     if (!preferredRestaurant) {
-      const failed = input.settlements.find(
-        (settlement) =>
-          settlement.restaurantId === preferredMembership.restaurant_id && settlement.status === "rejected"
-      );
+      const failedIndex = droppedRestaurantIds.indexOf(preferredMembership.restaurant_id);
       throw new PreferredWorkspaceHydrationError(
         preferredMembership.restaurant_id,
-        failed && failed.status === "rejected" ? failed.error : undefined
+        failedIndex >= 0 ? droppedErrors[failedIndex] : undefined
       );
     }
     return {
       availableRestaurants,
+      loadableMemberships,
       droppedRestaurantIds,
       droppedErrors,
       activeMembership: preferredMembership,
@@ -113,7 +123,7 @@ export function resolveMultiMembershipHydration(input: {
   }
 
   const activeMembership =
-    input.memberships.find((membership) => restaurantsById.has(membership.restaurant_id)) ?? null;
+    loadableMemberships.find((membership) => restaurantsById.has(membership.restaurant_id)) ?? null;
   const activeRestaurant = activeMembership
     ? restaurantsById.get(activeMembership.restaurant_id) ?? null
     : null;
@@ -124,6 +134,7 @@ export function resolveMultiMembershipHydration(input: {
 
   return {
     availableRestaurants,
+    loadableMemberships,
     droppedRestaurantIds,
     droppedErrors,
     activeMembership,

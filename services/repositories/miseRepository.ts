@@ -1057,14 +1057,22 @@ function createLocalDemoRepository(): MiseRepository {
     workflowsRefreshOperationalSignals: false,
     async fetchMembershipsForAuthUser(userId) {
       const state = await readReadyDemoState();
+      const activeRestaurantIds = new Set(
+        (state.restaurants ?? [])
+          .filter((restaurant) => !restaurant.archived_at)
+          .map((restaurant) => restaurant.id)
+      );
       const memberships = (state.memberships ?? []).filter(
-        (membership) => membership.user_id === userId && membership.status === "active"
+        (membership) =>
+          membership.user_id === userId &&
+          membership.status === "active" &&
+          activeRestaurantIds.has(membership.restaurant_id)
       );
       if (memberships.length > 0) {
         return memberships.map(normalizeRestaurantMembership);
       }
       const user = state.users.find((entry) => entry.id === userId);
-      if (!user?.restaurant_id) return [];
+      if (!user?.restaurant_id || !activeRestaurantIds.has(user.restaurant_id)) return [];
       return [
         normalizeRestaurantMembership({
           id: `membership_${user.id}`,
@@ -2826,13 +2834,10 @@ function createSupabaseRepository(): MiseRepository {
 
   return {
     workflowsRefreshOperationalSignals: true,
-    async fetchMembershipsForAuthUser(userId) {
-      const { data, error } = await client
-        .from("restaurant_memberships")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("status", "active")
-        .order("created_at", { ascending: true });
+    async fetchMembershipsForAuthUser(_userId) {
+      // Identity-free RPC binds to auth.uid() and excludes archived restaurants.
+      // The userId argument remains for demo-local callers and API stability.
+      const { data, error } = await client.rpc("list_my_restaurant_memberships");
       if (error) throwRepositoryError(error);
       return ((data ?? []) as RestaurantMembership[]).map(normalizeRestaurantMembership);
     },
