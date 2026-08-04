@@ -45,6 +45,15 @@ const serviceOnlyPublicTables = new Set([
 const edgeFunctionNames = ["sync-pos-sales", "generate-ai-insights", "link-gmail", "send-supplier-email", "operational-workflows", "export-restaurant-data"];
 const userScopedEdgeFunctionNames = ["request-account-deletion"];
 const accountOnboardingEdgeFunctionNames = ["account-onboarding"];
+const providerCallbackEdgeFunctionNames = ["gmail-oauth-callback"];
+const nonTenantEdgeFunctionNames = ["outreach-agent", "outreach-unsubscribe", "outreach-webhook"];
+const classifiedEdgeFunctionNames = new Set([
+  ...edgeFunctionNames,
+  ...userScopedEdgeFunctionNames,
+  ...accountOnboardingEdgeFunctionNames,
+  ...providerCallbackEdgeFunctionNames,
+  ...nonTenantEdgeFunctionNames
+]);
 
 const failures = [];
 
@@ -121,6 +130,24 @@ const config = read("supabase/config.toml");
 const postgresMajor = Number(config.match(/major_version\s*=\s*(\d+)/)?.[1] ?? 0);
 if (!postgresMajor || postgresMajor < 15) {
   failures.push("supabase/config.toml: Supabase local Postgres major_version must be 15+ for supported private-beta testing.");
+}
+
+const configuredEdgeFunctionNames = [
+  ...config.matchAll(/\[functions\.([a-z0-9-]+)\]/gi)
+].map((match) => match[1]);
+for (const functionName of configuredEdgeFunctionNames) {
+  if (!classifiedEdgeFunctionNames.has(functionName)) {
+    failures.push(
+      `supabase/config.toml: Edge Function ${functionName} must be classified in security-backend as tenant, user-scoped, account-onboarding, provider-callback, or non-tenant.`
+    );
+  }
+}
+for (const functionName of classifiedEdgeFunctionNames) {
+  if (!configuredEdgeFunctionNames.includes(functionName)) {
+    failures.push(
+      `scripts/security-backend.mjs: classified Edge Function ${functionName} is missing from supabase/config.toml.`
+    );
+  }
 }
 
 if (/\bauth\.role\s*\(/i.test(combinedSql)) {
@@ -438,6 +465,53 @@ for (const functionName of accountOnboardingEdgeFunctionNames) {
   }
   if (!/create_restaurant_with_owner/.test(source) || !/claim_restaurant_member_invite/.test(source)) {
     failures.push(`${functionPath}: must expose create_restaurant_with_owner and claim_restaurant_member_invite actions.`);
+  }
+}
+
+for (const functionName of providerCallbackEdgeFunctionNames) {
+  const functionPath = `supabase/functions/${functionName}/index.ts`;
+  const source = read(functionPath);
+  const escapedFunctionName = escapeRegExp(functionName);
+  const configBlock = config.match(new RegExp(`\\[functions\\.${escapedFunctionName}\\]([\\s\\S]*?)(?=\\n\\[|$)`, "i"))?.[1] ?? "";
+
+  if (!/verify_jwt\s*=\s*false/i.test(configBlock)) {
+    failures.push(`supabase/config.toml: ${functionName} is a provider callback and must set verify_jwt = false.`);
+  }
+  if (/requireAuthenticatedContext\s*\(/.test(source)) {
+    failures.push(`${functionPath}: provider callbacks authenticate via claimed OAuth state, not requireAuthenticatedContext.`);
+  }
+  if (!/state\.length\s*<\s*32[\s\S]*service_claim_gmail_oauth[\s\S]*googleOAuthConfig\s*\(/i.test(source)) {
+    failures.push(
+      `${functionPath}: OAuth state must be bounded and atomically claimed before provider credentials are loaded.`
+    );
+  }
+  if (!/service_claim_gmail_oauth[\s\S]*recordFunctionSecurityEvent/i.test(source)) {
+    failures.push(`${functionPath}: must finalize reserved firewall security events after claiming OAuth state.`);
+  }
+  if (!/recordFunctionTerminalError\s*\(/.test(source)) {
+    failures.push(`${functionPath}: must record terminal firewall errors when the callback fails.`);
+  }
+  if (!/service_complete_gmail_oauth/.test(source) || !/service_fail_gmail_oauth/.test(source)) {
+    failures.push(`${functionPath}: must complete or fail the claimed Gmail OAuth flow through service-owned RPCs.`);
+  }
+  if (!new RegExp(`'${escapedFunctionName}'[\\s\\S]*array\\['owner',\\s*'admin'\\]`).test(combinedSql)) {
+    failures.push(
+      `supabase: firewall policy for ${functionName} must remain owner/admin scoped in migrations.`
+    );
+  }
+}
+
+for (const functionName of nonTenantEdgeFunctionNames) {
+  const functionPath = `supabase/functions/${functionName}/index.ts`;
+  const source = read(functionPath);
+  const escapedFunctionName = escapeRegExp(functionName);
+  const configBlock = config.match(new RegExp(`\\[functions\\.${escapedFunctionName}\\]([\\s\\S]*?)(?=\\n\\[|$)`, "i"))?.[1] ?? "";
+
+  if (!/verify_jwt\s*=\s*false/i.test(configBlock)) {
+    failures.push(`supabase/config.toml: non-tenant ${functionName} must set verify_jwt = false.`);
+  }
+  if (/requireAuthenticatedContext\s*\(/.test(source) || /requireRestaurantRole\s*\(/.test(source)) {
+    failures.push(`${functionPath}: non-tenant endpoints must not use restaurant JWT membership guards.`);
   }
 }
 

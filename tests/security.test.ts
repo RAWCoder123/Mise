@@ -1969,6 +1969,37 @@ test("backend security script proves local RLS, Data API grants, and firewall gu
   assert.doesNotMatch(script, /staging-tenant-check\.mjs/);
 });
 
+test("backend security classifies provider-callback and non-tenant Edge Functions", () => {
+  const script = readFileSync("scripts/security-backend.mjs", "utf8");
+  const config = readFileSync("supabase/config.toml", "utf8");
+  const callback = readFileSync("supabase/functions/gmail-oauth-callback/index.ts", "utf8");
+  const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
+
+  assert.match(script, /providerCallbackEdgeFunctionNames/);
+  assert.match(script, /nonTenantEdgeFunctionNames/);
+  assert.match(script, /classifiedEdgeFunctionNames/);
+  assert.match(script, /gmail-oauth-callback/);
+  assert.match(script, /outreach-agent/);
+  assert.match(script, /must be classified in security-backend/);
+  assert.match(script, /provider callback and must set verify_jwt = false/);
+  assert.match(script, /OAuth state must be bounded and atomically claimed/);
+  assert.match(script, /owner\/admin scoped in migrations/);
+  assert.match(script, /non-tenant endpoints must not use restaurant JWT membership guards/);
+
+  assert.match(config, /\[functions\.gmail-oauth-callback\]\s*verify_jwt\s*=\s*false/i);
+  assert.match(
+    callback,
+    /state\.length\s*<\s*32[\s\S]*service_claim_gmail_oauth[\s\S]*googleOAuthConfig\s*\(/i
+  );
+  assert.match(callback, /service_complete_gmail_oauth/);
+  assert.match(callback, /service_fail_gmail_oauth/);
+  assert.match(callback, /recordFunctionTerminalError/);
+  assert.doesNotMatch(callback, /requireAuthenticatedContext\s*\(/);
+
+  assert.match(securityStatic, /providerCallbackEdgeFunctions/);
+  assert.match(securityStatic, /gmail-oauth-callback/);
+});
+
 test("private-beta closure fails closed and runs every hosted proof", () => {
   const combined = readFileSync("scripts/verify-private-beta-security.mjs", "utf8");
   const hosted = readFileSync("scripts/verify-hosted-security.mjs", "utf8");
