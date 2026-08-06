@@ -64,7 +64,18 @@ const restaurantOwnedTables = new Set([
   "audit_logs",
   "restaurant_email_connections",
   "supplier_recipients",
-  "setup_attachments"
+  "setup_attachments",
+  "operational_issues",
+  "mise_actions",
+  "action_outcomes",
+  "restaurant_memories",
+  "restaurant_autonomy_rules",
+  "restaurant_tasks",
+  "restaurant_task_dependencies",
+  "activity_events",
+  "supplier_order_confirmations",
+  "supplier_deliveries",
+  "supplier_delivery_items"
 ]);
 
 const serviceOnlyPublicTables = new Set([
@@ -78,7 +89,11 @@ const serviceOnlyPublicTables = new Set([
 ]);
 
 const nonTenantEdgeFunctions = new Set(["outreach-agent", "outreach-unsubscribe", "outreach-webhook"]);
-const providerCallbackEdgeFunctions = new Set(["gmail-oauth-callback"]);
+const providerCallbackEdgeFunctions = new Set([
+  "gmail-oauth-callback",
+  "square-oauth-callback",
+  "square-webhooks"
+]);
 
 const providerSecretIdentifiers = [
   "SQUARE_ACCESS_TOKEN",
@@ -242,6 +257,17 @@ for (const file of functionSources) {
       }
       if (!/recordFunctionSecurityEvent\s*\(/.test(contents)) {
         failures.push(`${file}: OAuth callback must finalize its reserved firewall security event`);
+      }
+    } else if (functionName === "square-oauth-callback") {
+      if (!/state\.length\s*<\s*32[\s\S]*?service_claim_square_oauth[\s\S]*?squareOAuthConfig\(\)/.test(contents)) {
+        failures.push(`${file}: Square OAuth state must be bounded and atomically claimed before provider credentials are loaded`);
+      }
+      if (!/recordFunctionSecurityEvent\s*\(/.test(contents)) {
+        failures.push(`${file}: Square OAuth callback must finalize its reserved firewall security event`);
+      }
+    } else if (functionName === "square-webhooks") {
+      if (!/verifySquareSignature\([\s\S]*?if\s*\(!valid\)[\s\S]*?serviceClient\(\)/.test(contents)) {
+        failures.push(`${file}: Square signature verification must complete before service credentials are loaded`);
       }
     } else if (!/reserveFunctionInvocation\s*\(/.test(contents)) {
       failures.push(`${file}: Edge Function must reserve a firewall/rate-limit invocation before sensitive work`);

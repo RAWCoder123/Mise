@@ -22,7 +22,10 @@ site_url = "http://localhost:8081"
 additional_redirect_urls = [
   "http://localhost:8081",
   "http://127.0.0.1:8081",
-  "mise://accept-invite"
+  "http://localhost:8081/auth/callback",
+  "http://127.0.0.1:8081/auth/callback",
+  "mise://accept-invite",
+  "mise://auth/callback"
 ]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
@@ -34,6 +37,19 @@ enable_signup = true
 double_confirm_changes = true
 enable_confirmations = false
 
+# Social login for Expo app + web. Secrets come from env — never commit them.
+# Set SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID / SECRET (and Apple equivalents) before `supabase start`.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+skip_nonce_check = false
+
+[auth.external.apple]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
+
 [functions.sync-pos-sales]
 verify_jwt = true
 
@@ -44,6 +60,15 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.gmail-oauth-callback]
+verify_jwt = false
+
+[functions.link-square]
+verify_jwt = true
+
+[functions.square-oauth-callback]
+verify_jwt = false
+
+[functions.square-webhooks]
 verify_jwt = false
 
 [functions.send-supplier-email]

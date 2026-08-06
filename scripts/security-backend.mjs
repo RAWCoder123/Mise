@@ -30,7 +30,18 @@ const restaurantOwnedTables = new Set([
   "recipe_ingredients",
   "modifier_recipe_adjustments",
   "ingredient_substitutions",
-  "inventory_events"
+  "inventory_events",
+  "operational_issues",
+  "mise_actions",
+  "action_outcomes",
+  "restaurant_memories",
+  "restaurant_autonomy_rules",
+  "restaurant_tasks",
+  "restaurant_task_dependencies",
+  "activity_events",
+  "supplier_order_confirmations",
+  "supplier_deliveries",
+  "supplier_delivery_items"
 ]);
 
 const tenantAuthorizationTables = new Set(["restaurant_memberships"]);
@@ -49,6 +60,7 @@ const edgeFunctionNames = [
   "sync-pos-sales",
   "generate-ai-insights",
   "link-gmail",
+  "link-square",
   "send-supplier-email",
   "operational-workflows",
   "delete-account",
@@ -256,11 +268,10 @@ if (/\.from\("sales_imports"\)[\s\S]*\.(?:insert|upsert)\(/i.test(syncPosSource)
   failures.push("supabase/functions/sync-pos-sales/index.ts: unavailable providers must not create sales_import rows.");
 }
 if (
-  !/recordFunctionSecurityEvent\([\s\S]*"blocked"[\s\S]*"pos_sync_blocked"/i.test(syncPosSource) ||
-  !/providerConfigured\s*\?\s*501\s*:\s*503/i.test(syncPosSource) ||
-  (syncPosSource.match(/recordFunctionSecurityEvent\s*\(/g)?.length ?? 0) !== 1
+  !/provider\s*!==\s*"square"[\s\S]*?"pos_sync_blocked"[\s\S]*?501/i.test(syncPosSource) ||
+  !/if\s*\(!oauthConfig\)[\s\S]*?"server_configuration_required"[\s\S]*?503/i.test(syncPosSource)
 ) {
-  failures.push("supabase/functions/sync-pos-sales/index.ts: unavailable sync must close once with a blocked 501/503 response.");
+  failures.push("supabase/functions/sync-pos-sales/index.ts: unsupported or unconfigured providers must close with audited 501/503 responses.");
 }
 
 const generateAiSource = read("supabase/functions/generate-ai-insights/index.ts");

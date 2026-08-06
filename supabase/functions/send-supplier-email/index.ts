@@ -1,26 +1,27 @@
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
   buildGmailRawMessage,
   gmailMessageId,
+  type GoogleOAuthConfig,
   GoogleProviderError,
   refreshGoogleAccessToken,
   sendGmailMessage,
-  type GoogleOAuthConfig,
 } from "../_shared/gmail.ts";
 import {
   firewallBlockedResponse,
   handleError,
   HttpError,
+  type InvocationTerminalContext,
   jsonResponse,
   optionsResponse,
   readJsonObject,
   recordFunctionAuditLog,
   recordFunctionSecurityEvent,
   recordFunctionTerminalError,
-  reserveFunctionInvocation,
   requireAuthenticatedContext,
   requireRestaurantRole,
   requireUuid,
-  type InvocationTerminalContext,
+  reserveFunctionInvocation,
 } from "../_shared/mise.ts";
 
 interface ClaimedSupplierEmail {
@@ -37,10 +38,17 @@ interface ClaimedSupplierEmail {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
-  if (req.method !== "POST")
+  if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed." }, 405);
+  }
 
   let terminalContext: InvocationTerminalContext | null = null;
+  let actionFailureContext: {
+    securitySupabase: SupabaseClient;
+    actorUserId: string;
+    restaurantId: string;
+    orderId: string;
+  } | null = null;
   try {
     const { supabase, securitySupabase, user } =
       await requireAuthenticatedContext(req);
@@ -69,6 +77,13 @@ Deno.serve(async (req) => {
       "admin",
       "manager",
     ]);
+    await ensureSupplierSendApproved(supabase, restaurantId, orderId);
+    actionFailureContext = {
+      securitySupabase,
+      actorUserId: user.id,
+      restaurantId,
+      orderId,
+    };
     await recordFunctionAuditLog(
       securitySupabase,
       user.id,
@@ -80,6 +95,15 @@ Deno.serve(async (req) => {
     );
 
     if (Deno.env.get("GMAIL_SEND_ENABLED") !== "true") {
+      await recordMiseActionFailure(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        orderId,
+        "failed",
+        "live_sending_disabled",
+        "Supplier order sending is disabled for this environment.",
+      );
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -107,6 +131,15 @@ Deno.serve(async (req) => {
 
     const oauthConfig = googleOAuthConfig();
     if (!oauthConfig) {
+      await recordMiseActionFailure(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        orderId,
+        "failed",
+        "server_configuration_missing",
+        "Supplier order sending is not configured for this environment.",
+      );
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -144,6 +177,23 @@ Deno.serve(async (req) => {
 
     if (!isClaimedSupplierEmail(claimData)) {
       const response = claimOutcomeResponse(claimData);
+      if (
+        response.outcome !== "already_sent" &&
+        response.outcome !== "in_progress"
+      ) {
+        await recordMiseActionFailure(
+          securitySupabase,
+          user.id,
+          restaurantId,
+          orderId,
+          response.outcome === "requires_review" ? "unverified" : "failed",
+          safeErrorCode(response.outcome),
+          "message" in response.body &&
+            typeof response.body.message === "string"
+            ? response.body.message
+            : "Supplier order sending could not continue.",
+        );
+      }
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -194,6 +244,17 @@ Deno.serve(async (req) => {
           providerError.safeCode,
         );
       }
+      await recordMiseActionFailure(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        orderId,
+        "failed",
+        providerError?.safeCode ?? "gmail_refresh_failed",
+        providerError?.disposition === "reauthorize"
+          ? "Reconnect Gmail before sending this supplier order."
+          : "Gmail is temporarily unavailable. The supplier order was not sent.",
+      );
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -212,13 +273,13 @@ Deno.serve(async (req) => {
       return jsonResponse(
         providerError?.disposition === "reauthorize"
           ? {
-              status: "needs_reauth",
-              message: "Reconnect Gmail before sending this order.",
-            }
+            status: "needs_reauth",
+            message: "Reconnect Gmail before sending this order.",
+          }
           : {
-              status: "provider_unavailable",
-              message: "Gmail is temporarily unavailable. No email was sent.",
-            },
+            status: "provider_unavailable",
+            message: "Gmail is temporarily unavailable. No email was sent.",
+          },
         providerError?.disposition === "reauthorize" ? 409 : 502,
       );
     }
@@ -236,8 +297,8 @@ Deno.serve(async (req) => {
       providerMessage = await sendGmailMessage(tokens.accessToken, rawMessage);
     } catch (error) {
       const providerError = error instanceof GoogleProviderError ? error : null;
-      const ambiguous =
-        !providerError || providerError.disposition === "ambiguous";
+      const ambiguous = !providerError ||
+        providerError.disposition === "ambiguous";
       const safeCode = providerError?.safeCode ?? "gmail_send_network_unknown";
       await failDelivery(
         securitySupabase,
@@ -265,6 +326,17 @@ Deno.serve(async (req) => {
           safeCode,
         );
       }
+      await recordMiseActionFailure(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        orderId,
+        ambiguous ? "unverified" : "failed",
+        safeCode,
+        ambiguous
+          ? "Gmail did not return a definitive result. Review the delivery before retrying."
+          : "Gmail rejected the supplier order email.",
+      );
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -281,21 +353,21 @@ Deno.serve(async (req) => {
       return jsonResponse(
         ambiguous
           ? {
-              status: "delivery_requires_review",
-              message:
-                "Gmail did not return a definitive result. Mise will not retry automatically to avoid a duplicate email.",
-            }
+            status: "delivery_requires_review",
+            message:
+              "Gmail did not return a definitive result. Mise will not retry automatically to avoid a duplicate email.",
+          }
           : {
-              status: "provider_rejected",
-              message:
-                "Gmail rejected the email. Review the connection and try again.",
-            },
+            status: "provider_rejected",
+            message:
+              "Gmail rejected the email. Review the connection and try again.",
+          },
         ambiguous ? 409 : 502,
       );
     }
 
-    const { data: completion, error: completionError } =
-      await securitySupabase.rpc("service_complete_supplier_email_send", {
+    const { data: completion, error: completionError } = await securitySupabase
+      .rpc("service_complete_supplier_email_send", {
         p_actor_user_id: user.id,
         p_restaurant_id: restaurantId,
         p_order_id: orderId,
@@ -316,6 +388,15 @@ Deno.serve(async (req) => {
       } catch {
         // A stale sending claim becomes review-only; it is never auto-retried.
       }
+      await recordMiseActionFailure(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        orderId,
+        "unverified",
+        "database_finalize_failed",
+        "Gmail accepted the message, but Mise could not verify the final order state. Do not resend until it is reviewed.",
+      );
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -356,10 +437,103 @@ Deno.serve(async (req) => {
       orderedRecommendations: completion?.ordered_recommendations ?? [],
     });
   } catch (error) {
+    if (actionFailureContext) {
+      await recordMiseActionFailure(
+        actionFailureContext.securitySupabase,
+        actionFailureContext.actorUserId,
+        actionFailureContext.restaurantId,
+        actionFailureContext.orderId,
+        "failed",
+        "supplier_email_unexpected_failure",
+        "The supplier order was not sent because the delivery workflow failed.",
+      );
+    }
     await recordFunctionTerminalError(terminalContext);
     return handleError(error);
   }
 });
+
+async function ensureSupplierSendApproved(
+  supabase: SupabaseClient,
+  restaurantId: string,
+  orderId: string,
+) {
+  const { data, error } = await supabase
+    .from("mise_actions")
+    .select("id,status")
+    .eq("restaurant_id", restaurantId)
+    .eq("action_type", "send_supplier_order")
+    .eq("idempotency_key", `send_supplier_order:${orderId}`)
+    .maybeSingle();
+  if (error) {
+    throw new HttpError(500, "Unable to verify supplier order approval.");
+  }
+  if (!data) {
+    throw new HttpError(
+      409,
+      "This supplier order has no prepared action. Rebuild the draft before sending.",
+    );
+  }
+
+  const status = String(data.status);
+  if (status === "unverified") {
+    throw new HttpError(
+      409,
+      "Review the prior delivery attempt before sending again to avoid a duplicate order.",
+    );
+  }
+  if (["rejected", "cancelled", "reversed"].includes(status)) {
+    throw new HttpError(
+      409,
+      "This supplier order action is no longer approved for sending.",
+    );
+  }
+  if (["prepared", "waiting_for_approval", "failed"].includes(status)) {
+    const { error: decisionError } = await supabase.rpc("decide_mise_action", {
+      p_restaurant_id: restaurantId,
+      p_action_id: data.id,
+      p_decision: "approved",
+    });
+    if (decisionError) {
+      throw new HttpError(
+        409,
+        "Supplier order approval could not be recorded.",
+      );
+    }
+    return;
+  }
+  if (status !== "approved" && status !== "executed") {
+    throw new HttpError(
+      409,
+      "This supplier order action is not ready to send.",
+    );
+  }
+}
+
+async function recordMiseActionFailure(
+  securitySupabase: SupabaseClient,
+  actorUserId: string,
+  restaurantId: string,
+  orderId: string,
+  failureStatus: "failed" | "unverified",
+  errorCode: string,
+  errorMessage: string,
+) {
+  try {
+    await securitySupabase.rpc("service_record_mise_action_failure", {
+      p_actor_user_id: actorUserId,
+      p_restaurant_id: restaurantId,
+      p_supplier_order_id: orderId,
+      p_failure_status: failureStatus,
+      p_error_code: safeErrorCode(errorCode),
+      p_error_message: errorMessage.slice(0, 1000),
+    });
+  } catch {
+    // The original provider result remains authoritative. Security telemetry
+    // below still captures the terminal failure if public activity persistence
+    // is temporarily unavailable.
+  }
+}
 
 function googleOAuthConfig(): GoogleOAuthConfig | null {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
@@ -391,12 +565,11 @@ function isClaimedSupplierEmail(value: unknown): value is ClaimedSupplierEmail {
 }
 
 function claimOutcomeResponse(value: unknown) {
-  const outcome =
-    value &&
-    typeof value === "object" &&
-    typeof (value as Record<string, unknown>).outcome === "string"
-      ? String((value as Record<string, unknown>).outcome)
-      : "claim_failed";
+  const outcome = value &&
+      typeof value === "object" &&
+      typeof (value as Record<string, unknown>).outcome === "string"
+    ? String((value as Record<string, unknown>).outcome)
+    : "claim_failed";
   if (outcome === "already_sent") {
     return {
       outcome,

@@ -20,7 +20,10 @@ export type EdgeFunctionName =
   | "send-supplier-email"
   | "operational-workflows"
   | "delete-account"
-  | "export-restaurant-data";
+  | "export-restaurant-data"
+  | "link-square"
+  | "square-oauth-callback"
+  | "square-webhooks";
 export type EdgeFunctionSecurityEventType = "blocked" | "completed" | "error";
 
 export interface FunctionInvocationReservation {

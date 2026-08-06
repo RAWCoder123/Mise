@@ -1,6 +1,14 @@
 import {
+  listSquareCatalogItems,
+  refreshSquareAccessToken,
+  searchSquareOrders,
+  SquareProviderError,
+  type SquareOAuthConfig,
+} from "../_shared/square.ts";
+import {
   firewallBlockedResponse,
   handleError,
+  HttpError,
   jsonResponse,
   optionsResponse,
   readJsonObject,
@@ -14,18 +22,16 @@ import {
   requireRestaurantRole,
   requireUuid,
   type InvocationTerminalContext,
-  type PosProvider
+  type PosProvider,
 } from "../_shared/mise.ts";
 
-const providerSecretNames: Record<PosProvider, string | null> = {
-  square: "SQUARE_ACCESS_TOKEN",
-  toast: "TOAST_CLIENT_SECRET",
-  clover: "CLOVER_ACCESS_TOKEN",
-  lightspeed: "LIGHTSPEED_ACCESS_TOKEN",
-  manual_csv: null
-};
-
-const validProviderList = Object.keys(providerSecretNames) as PosProvider[];
+const validProviderList = [
+  "square",
+  "toast",
+  "clover",
+  "lightspeed",
+  "manual_csv",
+] as const satisfies readonly PosProvider[];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -39,49 +45,270 @@ Deno.serve(async (req) => {
     const provider = requireEnum(body.provider, "provider", validProviderList);
     const from = requireIsoDateString(body.from, "from");
     const to = requireIsoDateString(body.to, "to");
+    if (to < from) throw new HttpError(400, "The sync window is invalid.");
 
-    const reservation = await reserveFunctionInvocation(securitySupabase, user.id, restaurantId, "sync-pos-sales", "pos_sync_requested", {
-      provider,
-      from,
-      to
-    });
+    const reservation = await reserveFunctionInvocation(
+      securitySupabase,
+      user.id,
+      restaurantId,
+      "sync-pos-sales",
+      "pos_sync_requested",
+      { provider, from, to },
+    );
     if (!reservation.allowed) return firewallBlockedResponse(reservation);
     terminalContext = {
       securitySupabase,
       actorUserId: user.id,
       reservationId: reservation.reservation_id!,
       restaurantId,
-      functionName: "sync-pos-sales"
+      functionName: "sync-pos-sales",
     };
 
-    await requireRestaurantRole(supabase, user.id, restaurantId, ["owner", "admin", "manager"]);
-    await recordFunctionAuditLog(securitySupabase, user.id, restaurantId, "pos_sync_requested", "sales_imports", null, {
-      provider,
-      from,
-      to
-    });
-
-    const requiredSecretName = providerSecretNames[provider];
-    const providerConfigured = requiredSecretName === null || Boolean(Deno.env.get(requiredSecretName));
-    const blockedReason = providerConfigured ? "provider_not_enabled" : "server_configuration_required";
-
-    await recordFunctionSecurityEvent(securitySupabase, user.id, reservation.reservation_id!, restaurantId, "sync-pos-sales", "blocked", "pos_sync_blocked", {
-      provider,
-      reason: blockedReason
-    });
-    terminalContext = null;
-    return jsonResponse(
-      {
-        status: blockedReason,
-        message: providerConfigured
-          ? "Live POS synchronization is not enabled."
-          : "The selected POS connection is not configured on the server.",
-        retryable: false
-      },
-      providerConfigured ? 501 : 503
+    await requireRestaurantRole(supabase, user.id, restaurantId, [
+      "owner",
+      "admin",
+      "manager",
+    ]);
+    await recordFunctionAuditLog(
+      securitySupabase,
+      user.id,
+      restaurantId,
+      "pos_sync_requested",
+      "sales_imports",
+      null,
+      { provider, from, to },
     );
+
+    if (provider !== "square") {
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "sync-pos-sales",
+        "blocked",
+        "pos_sync_blocked",
+        { provider, reason: "provider_not_enabled" },
+      );
+      terminalContext = null;
+      return jsonResponse(
+        {
+          status: "provider_not_enabled",
+          message: "Live POS synchronization is not enabled for this provider.",
+          retryable: false,
+        },
+        501,
+      );
+    }
+
+    const oauthConfig = squareOAuthConfig();
+    if (!oauthConfig) {
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "sync-pos-sales",
+        "blocked",
+        "pos_sync_blocked",
+        { provider, reason: "server_configuration_required" },
+      );
+      terminalContext = null;
+      return jsonResponse(
+        {
+          status: "server_configuration_required",
+          message: "The selected POS connection is not configured on the server.",
+          retryable: false,
+        },
+        503,
+      );
+    }
+
+    const { data: credential, error: credentialError } = await securitySupabase.rpc(
+      "service_fetch_square_sync_credential",
+      { p_actor_user_id: user.id, p_restaurant_id: restaurantId },
+    );
+    if (credentialError) throw credentialError;
+
+    if (credential?.outcome === "provider_not_enabled") {
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "sync-pos-sales",
+        "blocked",
+        "pos_sync_blocked",
+        { provider, reason: "provider_not_enabled" },
+      );
+      terminalContext = null;
+      return jsonResponse(
+        {
+          status: "provider_not_enabled",
+          message: "Live POS synchronization is not enabled.",
+          retryable: false,
+        },
+        501,
+      );
+    }
+
+    if (credential?.outcome !== "ready") {
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "sync-pos-sales",
+        "blocked",
+        "pos_sync_blocked",
+        { provider, reason: "not_connected" },
+      );
+      terminalContext = null;
+      return jsonResponse(
+        {
+          status: "not_connected",
+          message: "Connect Square before syncing sales.",
+          retryable: false,
+        },
+        409,
+      );
+    }
+
+    const locationIds = Array.isArray(credential.locationIds)
+      ? credential.locationIds.filter((value: unknown): value is string => typeof value === "string")
+      : [];
+
+    try {
+      const tokens = await refreshSquareAccessToken(
+        oauthConfig,
+        String(credential.refreshToken),
+      );
+      if (tokens.refreshToken) {
+        await securitySupabase.rpc("service_rotate_square_refresh_token", {
+          p_actor_user_id: user.id,
+          p_restaurant_id: restaurantId,
+          p_credential_id: credential.credentialId,
+          p_credential_material: tokens.refreshToken,
+        });
+      }
+
+      const [sales, catalogItems] = await Promise.all([
+        searchSquareOrders(oauthConfig, tokens.accessToken, locationIds, from, to),
+        listSquareCatalogItems(oauthConfig, tokens.accessToken),
+      ]);
+
+      const { data: applied, error: applyError } = await securitySupabase.rpc(
+        "service_apply_square_sync_result",
+        {
+          p_actor_user_id: user.id,
+          p_restaurant_id: restaurantId,
+          p_integration_id: credential.integrationId,
+          p_sales: sales,
+          p_catalog_items: catalogItems,
+          p_sync_cursor: null,
+          p_from: from,
+          p_to: to,
+        },
+      );
+      if (applyError) throw applyError;
+
+      try {
+        const refreshResponse = await fetch(
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/operational-workflows`,
+          {
+            method: "POST",
+            headers: {
+              authorization: req.headers.get("authorization") ?? "",
+              apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ action: "refresh_signals", restaurantId }),
+          },
+        );
+        if (!refreshResponse.ok) {
+          // Sales persisted; signal refresh can retry from the client.
+        }
+      } catch {
+        // Sales persisted; signal refresh can retry from the client.
+      }
+
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "sync-pos-sales",
+        "completed",
+        "pos_sync_completed",
+        {
+          provider,
+          recordsProcessed: applied?.recordsProcessed ?? sales.length,
+          catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
+        },
+      );
+      terminalContext = null;
+      return jsonResponse({
+        status: "completed",
+        importId: applied?.importId ?? null,
+        recordsProcessed: applied?.recordsProcessed ?? sales.length,
+        catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
+      });
+    } catch (error) {
+      const safeCode =
+        error instanceof SquareProviderError ? error.safeCode : "square_sync_failed";
+      if (error instanceof SquareProviderError && error.disposition === "reauthorize") {
+        await securitySupabase.rpc("service_mark_square_connection_state", {
+          p_actor_user_id: user.id,
+          p_restaurant_id: restaurantId,
+          p_status: "error",
+          p_error_code: safeCode,
+        });
+      }
+      await securitySupabase.rpc("service_record_square_sync_failure", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_integration_id: credential.integrationId,
+        p_error_code: safeCode,
+        p_from: from,
+        p_to: to,
+      });
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "sync-pos-sales",
+        "error",
+        "pos_sync_failed",
+        { provider, reason: safeCode },
+      );
+      terminalContext = null;
+      if (error instanceof SquareProviderError && error.disposition === "reauthorize") {
+        return jsonResponse(
+          {
+            status: "needs_reauth",
+            message: "Reconnect Square before syncing sales.",
+            retryable: false,
+          },
+          409,
+        );
+      }
+      throw error instanceof HttpError
+        ? error
+        : new HttpError(502, "Square sync failed. Try again later.");
+    }
   } catch (error) {
     await recordFunctionTerminalError(terminalContext);
     return handleError(error);
   }
 });
+
+function squareOAuthConfig(): SquareOAuthConfig | null {
+  const applicationId = Deno.env.get("SQUARE_APPLICATION_ID");
+  const applicationSecret = Deno.env.get("SQUARE_APPLICATION_SECRET");
+  const redirectUri = Deno.env.get("SQUARE_REDIRECT_URI");
+  const environment =
+    Deno.env.get("SQUARE_ENVIRONMENT") === "production" ? "production" : "sandbox";
+  if (!applicationId || !applicationSecret || !redirectUri) return null;
+  return { applicationId, applicationSecret, redirectUri, environment };
+}

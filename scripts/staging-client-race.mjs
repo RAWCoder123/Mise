@@ -284,24 +284,39 @@ async function signIn(cdp) {
   await cdp.send("Page.navigate", { url: `${baseUrl}/login` });
   await waitFor(
     cdp,
-    `document.querySelector('input[aria-label="Email"]') &&
-      document.querySelector('input[aria-label="Password"]')`,
-    "Accessible login controls did not render"
+    `document.querySelector('input[aria-label="Email"]')`,
+    "Accessible login email control did not render"
   );
-  const filled = await evaluate(
+  const filledEmail = await evaluate(
     cdp,
     `(() => {
-      const inputs = [...document.querySelectorAll('input')];
-      if (inputs.length < 2) return false;
+      const input = document.querySelector('input[aria-label="Email"]');
+      if (!input) return false;
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-      setter.call(inputs[0], 'switcher@mise-staging.test');
-      inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-      setter.call(inputs[1], ${JSON.stringify(password)});
-      inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+      setter.call(input, 'switcher@mise-staging.test');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
     })()`
   );
-  assert.equal(filled, true, "login inputs were not available");
+  assert.equal(filledEmail, true, "login email input was not available");
+  await clickText(cdp, "Continue");
+  await waitFor(
+    cdp,
+    `document.querySelector('input[aria-label="Password"]')`,
+    "Accessible login password control did not render"
+  );
+  const filledPassword = await evaluate(
+    cdp,
+    `(() => {
+      const input = document.querySelector('input[aria-label="Password"]');
+      if (!input) return false;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(input, ${JSON.stringify(password)});
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`
+  );
+  assert.equal(filledPassword, true, "login password input was not available");
   await clickText(cdp, "Sign in");
   await waitFor(
     cdp,

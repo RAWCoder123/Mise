@@ -15,14 +15,23 @@ const childEnvironment = minimalChildEnv({
   PATH: [...dockerPaths, process.env.PATH ?? ""].filter(Boolean).join(delimiter)
 });
 
-function runSupabase(arguments_) {
-  const result = spawnSync(npx, ["supabase", ...arguments_], {
-    cwd: projectRoot,
-    env: childEnvironment,
-    stdio: "inherit"
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
+function runSupabase(arguments_, options = {}) {
+  const attempts = Math.max(1, (options.retries ?? 0) + 1);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = spawnSync(npx, ["supabase", ...arguments_], {
+      cwd: projectRoot,
+      env: childEnvironment,
+      stdio: "inherit"
+    });
+    if (result.error) throw result.error;
+    if (result.status === 0) return;
+    if (attempt < attempts) {
+      console.warn(
+        `Supabase ${arguments_.join(" ")} was not ready (attempt ${attempt}/${attempts}); retrying.`
+      );
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2_000);
+      continue;
+    }
     const error = new Error(`supabase ${arguments_.join(" ")} failed with exit code ${result.status ?? 1}`);
     error.exitStatus = result.status ?? 1;
     throw error;
@@ -56,7 +65,9 @@ try {
 
   try {
     cpSync(join(projectRoot, "supabase", "tests"), stagedTests, { recursive: true });
-    runSupabase(["test", "db", stagedTests]);
+    // Container restarts can briefly complete before Postgres accepts a new
+    // connection on macOS. Retry only the read-only test runner, never reset.
+    runSupabase(["test", "db", stagedTests], { retries: 2 });
     runNode("scripts/local-workspace-concurrency.mjs");
     runSupabase(["db", "advisors", "--local", "--type", "security", "--fail-on", "error"]);
   } finally {

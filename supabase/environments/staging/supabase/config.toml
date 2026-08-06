@@ -24,7 +24,14 @@ port = 54323
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["mise://accept-invite"]
+additional_redirect_urls = [
+  "mise://accept-invite",
+  "mise://auth/callback",
+  "http://localhost:8081",
+  "http://localhost:8081/auth/callback",
+  "http://127.0.0.1:8081",
+  "http://127.0.0.1:8081/auth/callback"
+]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
@@ -36,6 +43,17 @@ double_confirm_changes = true
 enable_confirmations = true
 max_frequency = "1m"
 otp_length = 8
+
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+skip_nonce_check = false
+
+[auth.external.apple]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
 
 [auth.mfa.totp]
 enroll_enabled = true

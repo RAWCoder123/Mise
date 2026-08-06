@@ -598,6 +598,8 @@ select is(
     where table_row.schemaname = 'public'
   ),
   array[
+    'action_outcomes',
+    'activity_events',
     'ai_insights',
     'audit_logs',
     'ingredient_substitutions',
@@ -606,8 +608,10 @@ select is(
     'inventory_items',
     'menu_item_ingredients',
     'menu_items',
+    'mise_actions',
     'modifier_recipe_adjustments',
     'operational_finding_decisions',
+    'operational_issues',
     'outreach_agent_runs',
     'outreach_campaigns',
     'outreach_enrollments',
@@ -623,13 +627,20 @@ select is(
     'purchase_recommendations',
     'recipe_ingredients',
     'recipe_versions',
+    'restaurant_autonomy_rules',
     'restaurant_email_connections',
     'restaurant_memberships',
+    'restaurant_memories',
     'restaurant_operational_controls',
+    'restaurant_task_dependencies',
+    'restaurant_tasks',
     'restaurants',
     'sales_imports',
     'setup_attachments',
+    'supplier_deliveries',
+    'supplier_delivery_items',
     'supplier_items',
+    'supplier_order_confirmations',
     'supplier_orders',
     'supplier_recipients',
     'system_operational_controls',
@@ -720,6 +731,8 @@ select is(
     'operational_mode_changes',
     'restaurant_signal_state',
     'restaurant_workspace_allocations',
+    'square_credentials',
+    'square_oauth_flows',
     'supplier_email_deliveries'
   ]::text[],
   'private table inventory is an exact reviewed allowlist'
@@ -753,7 +766,10 @@ select is(
         'pos_sales', 'inventory_items', 'menu_item_ingredients', 'purchase_recommendations',
         'supplier_orders', 'insights', 'pos_integrations', 'sales_imports', 'supplier_items',
         'purchase_orders', 'ai_insights', 'audit_logs', 'restaurant_email_connections',
-        'supplier_recipients', 'setup_attachments', 'operational_finding_decisions'
+        'supplier_recipients', 'setup_attachments', 'operational_finding_decisions',
+        'operational_issues', 'mise_actions', 'action_outcomes', 'restaurant_memories',
+        'restaurant_autonomy_rules', 'activity_events', 'supplier_order_confirmations',
+        'supplier_deliveries', 'supplier_delivery_items'
       )
       and column_row.column_name = 'restaurant_id'
       and column_row.is_nullable <> 'NO'
@@ -768,7 +784,10 @@ select is(
       'pos_sales', 'inventory_items', 'menu_item_ingredients', 'purchase_recommendations',
       'supplier_orders', 'insights', 'pos_integrations', 'sales_imports', 'supplier_items',
       'purchase_orders', 'ai_insights', 'audit_logs', 'restaurant_email_connections',
-      'supplier_recipients', 'setup_attachments', 'operational_finding_decisions'
+      'supplier_recipients', 'setup_attachments', 'operational_finding_decisions',
+      'operational_issues', 'mise_actions', 'action_outcomes', 'restaurant_memories',
+      'restaurant_autonomy_rules', 'activity_events', 'supplier_order_confirmations',
+      'supplier_deliveries', 'supplier_delivery_items'
     ]) table_name
     where not exists (
       select 1 from pg_policies policy

@@ -4,17 +4,17 @@ import {
   firewallBlockedResponse,
   handleError,
   HttpError,
+  type InvocationTerminalContext,
   jsonResponse,
   optionsResponse,
   readJsonObject,
   recordFunctionAuditLog,
   recordFunctionSecurityEvent,
   recordFunctionTerminalError,
-  reserveFunctionInvocation,
   requireAuthenticatedContext,
   requireRestaurantRole,
   requireUuid,
-  type InvocationTerminalContext
+  reserveFunctionInvocation,
 } from "../_shared/mise.ts";
 
 const PAGE_SIZE = 1_000;
@@ -49,7 +49,18 @@ const exportDatasets = [
   { name: "modifier_recipe_adjustments", order: "id" },
   { name: "ingredient_substitutions", order: "id" },
   { name: "operational_finding_decisions", order: "id" },
-  { name: "audit_logs", order: "id" }
+  { name: "operational_issues", order: "id" },
+  { name: "activity_events", order: "id" },
+  { name: "mise_actions", order: "id" },
+  { name: "action_outcomes", order: "id" },
+  { name: "restaurant_memories", order: "id" },
+  { name: "restaurant_autonomy_rules", order: "id" },
+  { name: "supplier_order_confirmations", order: "id" },
+  { name: "supplier_deliveries", order: "id" },
+  { name: "supplier_delivery_items", order: "id" },
+  { name: "restaurant_tasks", order: "id" },
+  { name: "restaurant_task_dependencies", order: "task_id" },
+  { name: "audit_logs", order: "id" },
 ] as const;
 
 type ExportDatasetName = (typeof exportDatasets)[number]["name"];
@@ -57,13 +68,18 @@ type JsonRecord = Record<string, unknown>;
 
 function assertSecretFree(value: unknown, path = "export"): void {
   if (Array.isArray(value)) {
-    value.forEach((entry, index) => assertSecretFree(entry, `${path}[${index}]`));
+    value.forEach((entry, index) =>
+      assertSecretFree(entry, `${path}[${index}]`)
+    );
     return;
   }
   if (!value || typeof value !== "object") return;
   for (const [key, nested] of Object.entries(value as JsonRecord)) {
     if (sensitiveKeyPattern.test(key)) {
-      throw new HttpError(500, `Restaurant export stopped because ${path} contains protected provider data.`);
+      throw new HttpError(
+        500,
+        `Restaurant export stopped because ${path} contains protected provider data.`,
+      );
     }
     assertSecretFree(nested, `${path}.${key}`);
   }
@@ -73,7 +89,7 @@ async function fetchDataset(
   supabase: SupabaseClient,
   table: ExportDatasetName,
   orderField: string,
-  restaurantId: string
+  restaurantId: string,
 ) {
   const first = await supabase
     .from(table)
@@ -81,13 +97,15 @@ async function fetchDataset(
     .eq("restaurant_id", restaurantId)
     .order(orderField, { ascending: true })
     .range(0, PAGE_SIZE - 1);
-  if (first.error) throw new HttpError(500, `Restaurant export could not read ${table}.`);
+  if (first.error) {
+    throw new HttpError(500, `Restaurant export could not read ${table}.`);
+  }
 
   const count = first.count ?? first.data.length;
   if (count > MAX_ROWS_PER_DATASET) {
     throw new HttpError(
       413,
-      `Restaurant export is too large for in-app delivery (${table}). Contact Mise support for a secure export.`
+      `Restaurant export is too large for in-app delivery (${table}). Contact Mise support for a secure export.`,
     );
   }
 
@@ -99,9 +117,14 @@ async function fetchDataset(
       .eq("restaurant_id", restaurantId)
       .order(orderField, { ascending: true })
       .range(rows.length, Math.min(rows.length + PAGE_SIZE - 1, count - 1));
-    if (next.error) throw new HttpError(500, `Restaurant export could not finish ${table}.`);
+    if (next.error) {
+      throw new HttpError(500, `Restaurant export could not finish ${table}.`);
+    }
     if (next.data.length === 0) {
-      throw new HttpError(500, `Restaurant export returned an incomplete ${table} dataset.`);
+      throw new HttpError(
+        500,
+        `Restaurant export returned an incomplete ${table} dataset.`,
+      );
     }
     rows.push(...next.data);
   }
@@ -111,11 +134,14 @@ async function fetchDataset(
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
-  if (req.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed." }, 405);
+  }
 
   let terminalContext: InvocationTerminalContext | null = null;
   try {
-    const { supabase, securitySupabase, user } = await requireAuthenticatedContext(req);
+    const { supabase, securitySupabase, user } =
+      await requireAuthenticatedContext(req);
     const body = await readJsonObject(req);
     const restaurantId = requireUuid(body.restaurantId, "restaurantId");
 
@@ -124,7 +150,7 @@ Deno.serve(async (req) => {
       user.id,
       restaurantId,
       "export-restaurant-data",
-      "restaurant_data_export_requested"
+      "restaurant_data_export_requested",
     );
     if (!reservation.allowed) return firewallBlockedResponse(reservation);
     terminalContext = {
@@ -132,10 +158,13 @@ Deno.serve(async (req) => {
       actorUserId: user.id,
       reservationId: reservation.reservation_id!,
       restaurantId,
-      functionName: "export-restaurant-data"
+      functionName: "export-restaurant-data",
     };
 
-    await requireRestaurantRole(supabase, user.id, restaurantId, ["owner", "admin"]);
+    await requireRestaurantRole(supabase, user.id, restaurantId, [
+      "owner",
+      "admin",
+    ]);
 
     const restaurantResult = await supabase
       .from("restaurants")
@@ -143,30 +172,41 @@ Deno.serve(async (req) => {
       .eq("id", restaurantId)
       .single();
     if (restaurantResult.error || !restaurantResult.data) {
-      throw new HttpError(500, "Restaurant export could not read the restaurant profile.");
+      throw new HttpError(
+        500,
+        "Restaurant export could not read the restaurant profile.",
+      );
     }
 
     const teamResult = await supabase.rpc("list_restaurant_members", {
-      p_restaurant_id: restaurantId
+      p_restaurant_id: restaurantId,
     });
     if (teamResult.error) {
-      throw new HttpError(500, "Restaurant export could not read the team directory.");
+      throw new HttpError(
+        500,
+        "Restaurant export could not read the team directory.",
+      );
     }
 
     const team = Array.isArray(teamResult.data) ? teamResult.data : [];
     const datasets: Partial<Record<ExportDatasetName, unknown[]>> = {};
     const counts: Partial<Record<ExportDatasetName | "team", number>> = {
-      team: team.length
+      team: team.length,
     };
     let totalRows = team.length;
 
     for (const dataset of exportDatasets) {
-      const rows = await fetchDataset(supabase, dataset.name, dataset.order, restaurantId);
+      const rows = await fetchDataset(
+        supabase,
+        dataset.name,
+        dataset.order,
+        restaurantId,
+      );
       totalRows += rows.length;
       if (totalRows > MAX_TOTAL_ROWS) {
         throw new HttpError(
           413,
-          "Restaurant export is too large for in-app delivery. Contact Mise support for a secure export."
+          "Restaurant export is too large for in-app delivery. Contact Mise support for a secure export.",
         );
       }
       datasets[dataset.name] = rows;
@@ -185,8 +225,9 @@ Deno.serve(async (req) => {
         scope: "restaurant_operational_data",
         credentialsExcluded: true,
         privateSecurityLogsExcluded: true,
-        backupDeletion: "Backups expire on the infrastructure provider schedule."
-      }
+        backupDeletion:
+          "Backups expire on the infrastructure provider schedule.",
+      },
     };
     assertSecretFree(payload);
 
@@ -194,7 +235,7 @@ Deno.serve(async (req) => {
     if (bytes > MAX_EXPORT_BYTES) {
       throw new HttpError(
         413,
-        "Restaurant export is too large for in-app delivery. Contact Mise support for a secure export."
+        "Restaurant export is too large for in-app delivery. Contact Mise support for a secure export.",
       );
     }
 
@@ -205,7 +246,7 @@ Deno.serve(async (req) => {
       "restaurant_data_export_completed",
       "restaurants",
       restaurantId,
-      { schema_version: 1, total_rows: totalRows, bytes, counts }
+      { schema_version: 1, total_rows: totalRows, bytes, counts },
     );
     await recordFunctionSecurityEvent(
       securitySupabase,
@@ -215,7 +256,7 @@ Deno.serve(async (req) => {
       "export-restaurant-data",
       "completed",
       "restaurant_data_export_completed",
-      { schema_version: 1, total_rows: totalRows, bytes }
+      { schema_version: 1, total_rows: totalRows, bytes },
     );
     terminalContext = null;
 
@@ -223,7 +264,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     captureFunctionError(error, {
       functionName: "export-restaurant-data",
-      operation: "restaurant_data_export"
+      operation: "restaurant_data_export",
     });
     await recordFunctionTerminalError(terminalContext);
     return handleError(error);
