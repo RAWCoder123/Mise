@@ -132,6 +132,26 @@ export function recalculationCycles(): readonly RecalculationCycle[] {
 }
 
 /**
+ * Ownership and budget for one cycle, so callers recording a run never
+ * re-invent the mapping the scheduler already owns.
+ */
+export function recalculationCycleDefinition(cycle: RecalculationCycle): {
+  cycle: RecalculationCycle;
+  monitoringOwner: RestaurantTaskRequiredRole;
+  jobName: string;
+  timeoutMs: number;
+} {
+  const definition = CYCLE_DEFINITIONS.find((entry) => entry.cycle === cycle);
+  if (!definition) throw new Error("Unknown recalculation cycle.");
+  return {
+    cycle: definition.cycle,
+    monitoringOwner: definition.monitoringOwner,
+    jobName: definition.jobName,
+    timeoutMs: definition.timeoutMs
+  };
+}
+
+/**
  * Exponential backoff after a failed attempt, capped so a struggling cycle is
  * still retried within the same service day.
  */

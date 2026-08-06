@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronDown, ChevronUp } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
+import { Badge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
@@ -172,6 +173,9 @@ export default function ActivityHistoryScreen() {
                   <Text style={styles.title} numberOfLines={expanded ? undefined : 2}>
                     {event.title}
                   </Text>
+                  {event.requiresAttention ? (
+                    <Badge tone="danger" label={t("activity.attention")} />
+                  ) : null}
                   {expanded ? (
                     <ChevronUp size={16} color={colors.muted} strokeWidth={2.1} />
                   ) : (
@@ -183,7 +187,6 @@ export default function ActivityHistoryScreen() {
                 </Text>
                 <Text style={styles.meta} numberOfLines={1}>
                   {event.category}
-                  {event.requiresAttention ? ` · ${t("activity.attention")}` : ""}
                   {` · ${event.status.replace(/_/g, " ")}`}
                 </Text>
                 {expanded ? (

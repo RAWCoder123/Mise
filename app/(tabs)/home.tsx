@@ -17,7 +17,7 @@ import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { CompactMetricStrip } from "../../components/ui/CompactMetricStrip";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, fontFamilies, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -39,6 +39,8 @@ import {
   fetchTodaySummary,
   type TodayCommandCenterSummary
 } from "../../services/miseService";
+import { runScheduledRecalculations } from "../../services/application/scheduledRecalculations";
+import type { RecalculationAttentionSummary } from "../../services/presentation/recalculationPresentation";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -54,6 +56,8 @@ export default function HomeScreen() {
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvalNotice, setApprovalNotice] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [recalcAttention, setRecalcAttention] =
+    useState<RecalculationAttentionSummary | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   const lastSeenSessionRef = useRef<{ restaurantId: string; value: string } | null>(null);
@@ -67,6 +71,7 @@ export default function HomeScreen() {
     setError(null);
     setApprovingId(null);
     setApprovalNotice(null);
+    setRecalcAttention(null);
     lastSeenSessionRef.current = null;
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
@@ -98,6 +103,15 @@ export default function HomeScreen() {
         }
         lastSeenSessionRef.current = { restaurantId, value: lastSeenAt };
       }
+      // Dispatch any due recalculation cycles before reading, so the screen
+      // always renders post-recalculation state rather than racing it.
+      const recalculation = await runScheduledRecalculations({
+        restaurantId,
+        restaurantTimeZone: restaurant.timezone
+      });
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setRecalcAttention(recalculation);
+
       const [nextSummary, nextBrief] = await Promise.all([
         fetchTodaySummary(restaurantId),
         fetchOperatingBrief(restaurantId, { lastSeenAt })
@@ -113,7 +127,7 @@ export default function HomeScreen() {
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
-  }, [restaurant?.id, t]);
+  }, [restaurant?.id, restaurant?.timezone, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -187,6 +201,25 @@ export default function HomeScreen() {
             retryLabel={t("common.retry")}
             accessibilityLabel={t("home.retry.accessibility")}
             onRetry={() => void load()}
+          />
+        ) : null}
+
+        {recalcAttention ? (
+          <StatusNotice
+            tone="warning"
+            title={t("home.recalculation.title")}
+            message={
+              recalcAttention.state === "unavailable"
+                ? t("home.recalculation.unavailable")
+                : t(
+                    recalcAttention.deadLetteredCount === 1
+                      ? "home.recalculation.body.one"
+                      : "home.recalculation.body.other",
+                    { count: formatNumber(recalcAttention.deadLetteredCount) }
+                  )
+            }
+            actionLabel={t("home.recalculation.action")}
+            onAction={() => router.push("/more/activity")}
           />
         ) : null}
 

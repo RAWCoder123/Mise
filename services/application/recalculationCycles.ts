@@ -17,10 +17,23 @@ import {
 export interface RecalculationPorts {
   /** Run ledger for the restaurant. Only current-service-day rows are used. */
   loadRuns(restaurantId: string): Promise<readonly RecalculationRunRecord[]>;
-  /** Durable record of one finished attempt, written before the report returns. */
-  recordRun(record: RecalculationRunRecord): Promise<void>;
+  /**
+   * Durable record of one finished attempt, written before the report returns.
+   * Telemetry is passed separately because it describes how the attempt ran,
+   * not whether the next one is due — the scheduler never reads it.
+   */
+  recordRun(
+    record: RecalculationRunRecord,
+    telemetry: RecalculationRunTelemetry
+  ): Promise<void>;
   /** The actual recalculation work for one cycle. */
   runCycle(cycle: RecalculationCycle, context: RecalculationRunContext): Promise<void>;
+}
+
+export interface RecalculationRunTelemetry {
+  startedAt: string;
+  durationMs: number;
+  timedOut: boolean;
 }
 
 export interface RecalculationRunContext {
@@ -126,15 +139,22 @@ export async function runDueRecalculationCycles(input: {
     executions.push(execution);
 
     try {
-      await input.ports.recordRun({
-        restaurantId: schedule.restaurantId,
-        cycle: decision.cycle,
-        operatingDate: schedule.operatingDate,
-        status: execution.status,
-        attempt: decision.attempt,
-        completedAt: finishedAt.toISOString(),
-        failureReason
-      });
+      await input.ports.recordRun(
+        {
+          restaurantId: schedule.restaurantId,
+          cycle: decision.cycle,
+          operatingDate: schedule.operatingDate,
+          status: execution.status,
+          attempt: decision.attempt,
+          completedAt: finishedAt.toISOString(),
+          failureReason
+        },
+        {
+          startedAt: new Date(startedAt).toISOString(),
+          durationMs: execution.durationMs,
+          timedOut
+        }
+      );
     } catch (error) {
       // A ledger write failure is itself operationally relevant. Surface it on
       // the execution instead of throwing away the attempt that already ran.

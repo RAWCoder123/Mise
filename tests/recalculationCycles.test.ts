@@ -257,3 +257,36 @@ test("dead-lettered cycles are reported for operator attention, not retried", as
   );
   assert.equal(report.needsOperatorAttention[0]?.monitoringOwner, "owner_admin");
 });
+
+test("run telemetry travels alongside the record so the ledger can store it", async () => {
+  const telemetry: { cycle: string; startedAt: string; durationMs: number; timedOut: boolean }[] = [];
+  const ports: RecalculationPorts = {
+    loadRuns: async () => [],
+    recordRun: async (record, runTelemetry) => {
+      telemetry.push({ cycle: record.cycle, ...runTelemetry });
+    },
+    runCycle: async (cycle) => {
+      if (cycle === "close") {
+        throw new RecalculationTimeoutError("recalculation.close exceeded its 180000ms timeout");
+      }
+    }
+  };
+
+  await runDueRecalculationCycles({
+    restaurantId,
+    restaurantTimeZone,
+    ports,
+    now: eveningUtc
+  });
+
+  assert.equal(telemetry.length, 3);
+  for (const entry of telemetry) {
+    assert.ok(Number.isFinite(Date.parse(entry.startedAt)));
+    assert.ok(entry.durationMs >= 0);
+  }
+  // Only the timed-out cycle carries the timeout flag through to the ledger.
+  assert.deepEqual(
+    telemetry.filter((entry) => entry.timedOut).map((entry) => entry.cycle),
+    ["close"]
+  );
+});
