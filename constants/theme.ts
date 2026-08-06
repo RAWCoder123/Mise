@@ -87,7 +87,7 @@ export const radii = {
 } as const;
 
 export const spacing = {
-  xxs: 4,
+  xxs: 2,
   xs: 4,
   sm: 8,
   md: 12,
@@ -199,11 +199,37 @@ export const conceptTypography = {
     lineHeight: 22,
     letterSpacing: -0.2
   },
+  /** Home greeting. Sans by design — the concept headline is not a serif. */
+  greeting: {
+    fontFamily: fontFamilies.bold,
+    fontSize: 19,
+    lineHeight: 24,
+    letterSpacing: -0.45
+  },
+  /** Metric numerals and order totals. */
+  metricValue: {
+    fontFamily: fontFamilies.bold,
+    fontSize: 17,
+    lineHeight: 21,
+    letterSpacing: -0.45
+  },
+  /** Card heads that outrank a row title — supplier name, detail header. */
+  cardTitle: {
+    fontFamily: fontFamilies.bold,
+    fontSize: 15,
+    lineHeight: 19,
+    letterSpacing: -0.25
+  },
+  /**
+   * Section heading. Outranks rowTitle by WEIGHT at equal size: at 13px on a
+   * 390pt screen, dropping to 12 would make the heading recede below the row
+   * it labels.
+   */
   sectionTitle: {
-    fontFamily: fontFamilies.semibold,
+    fontFamily: fontFamilies.bold,
     fontSize: 13,
     lineHeight: 17,
-    letterSpacing: -0.1
+    letterSpacing: -0.2
   },
   rowTitle: {
     fontFamily: fontFamilies.semibold,
@@ -214,13 +240,7 @@ export const conceptTypography = {
   body: {
     fontFamily: fontFamilies.body,
     fontSize: 12,
-    lineHeight: 17,
-    letterSpacing: 0
-  },
-  caption: {
-    fontFamily: fontFamilies.semibold,
-    fontSize: 10,
-    lineHeight: 13,
+    lineHeight: 16,
     letterSpacing: 0
   },
   button: {
@@ -228,6 +248,30 @@ export const conceptTypography = {
     fontSize: 11,
     lineHeight: 15,
     letterSpacing: 0
+  },
+  /** Row sublines and alert messages — the static counterpart to `button`. */
+  subtitle: {
+    fontFamily: fontFamilies.body,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0
+  },
+  /**
+   * The label rung: metric labels, group labels, timeline windows. Tracking
+   * stays at 0 so no Spanish or Chinese string widens at 390px.
+   */
+  caption: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 10,
+    lineHeight: 13,
+    letterSpacing: 0
+  },
+  /** Badges, comparison lines, provenance. The smallest legible rung. */
+  micro: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 0.2
   }
 } as const;
 
@@ -241,13 +285,19 @@ export const density = {
   tabLabel: 9,
   gutter: 16,
   hitTarget: 44,
+  /** SectionHeader row height; the action uses hitSlop to reach 44. */
+  sectionHeader: 20,
+  /** SectionHeader bottom margin. */
+  headerGap: 4,
+  /** Between sections in a screen stack. */
+  sectionGap: 14,
   timeColumn: 48,
-  timelineRow: 58,
-  timelineRowActive: 90,
+  timelineRow: 54,
+  timelineRowActive: 84,
   menuRow: 46,
-  operationalRow: 52,
+  operationalRow: 48,
   healthCard: 104,
-  shortcutTile: 70,
+  shortcutTile: 64,
   profileRow: 56,
   identityRow: 64,
   compactButton: 32,
