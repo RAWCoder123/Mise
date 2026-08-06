@@ -625,6 +625,7 @@ select is(
     'pos_sales',
     'purchase_orders',
     'purchase_recommendations',
+    'recalculation_runs',
     'recipe_ingredients',
     'recipe_versions',
     'restaurant_autonomy_rules',
@@ -769,7 +770,7 @@ select is(
         'supplier_recipients', 'setup_attachments', 'operational_finding_decisions',
         'operational_issues', 'mise_actions', 'action_outcomes', 'restaurant_memories',
         'restaurant_autonomy_rules', 'activity_events', 'supplier_order_confirmations',
-        'supplier_deliveries', 'supplier_delivery_items'
+        'supplier_deliveries', 'supplier_delivery_items', 'recalculation_runs'
       )
       and column_row.column_name = 'restaurant_id'
       and column_row.is_nullable <> 'NO'
@@ -787,7 +788,7 @@ select is(
       'supplier_recipients', 'setup_attachments', 'operational_finding_decisions',
       'operational_issues', 'mise_actions', 'action_outcomes', 'restaurant_memories',
       'restaurant_autonomy_rules', 'activity_events', 'supplier_order_confirmations',
-      'supplier_deliveries', 'supplier_delivery_items'
+      'supplier_deliveries', 'supplier_delivery_items', 'recalculation_runs'
     ]) table_name
     where not exists (
       select 1 from pg_policies policy
