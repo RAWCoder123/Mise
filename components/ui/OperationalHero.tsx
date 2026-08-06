@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
 
-import { colors, fontFamilies, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, fontFamilies, radii } from "../../constants/theme";
 import { StateChangeView, useReducedMotion } from "./Motion";
 
 export type OperationalHeroTone = "brand" | "leaf" | "caution" | "warning" | "danger" | "neutral";
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    ...typography.sectionTitle,
+    ...conceptTypography.displayTitle,
     fontSize: 18,
     lineHeight: 24,
     maxWidth: 430,

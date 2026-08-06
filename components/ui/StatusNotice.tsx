@@ -10,6 +10,8 @@ export type StatusNoticeActionVariant = "text" | "solid";
 export interface StatusNoticeProps extends Omit<ViewProps, "children"> {
   title: string;
   message?: string;
+  /** Third line for provenance — confidence, freshness, source. */
+  meta?: string;
   tone?: StatusNoticeTone;
   icon?: ReactNode;
   actionLabel?: string;
@@ -22,6 +24,7 @@ export interface StatusNoticeProps extends Omit<ViewProps, "children"> {
 export function StatusNotice({
   title,
   message,
+  meta,
   tone = "neutral",
   icon,
   actionLabel,
@@ -44,6 +47,7 @@ export function StatusNotice({
       <View style={styles.copy}>
         <Text style={styles.title} numberOfLines={2}>{title}</Text>
         {message ? <Text style={styles.message} numberOfLines={2}>{message}</Text> : null}
+        {meta ? <Text style={styles.meta} numberOfLines={1}>{meta}</Text> : null}
       </View>
       {actionIsAvailable ? (
         <Pressable
@@ -142,6 +146,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     marginTop: 2
+  },
+  meta: {
+    color: colors.faint,
+    ...typography.body,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 3
   },
   action: {
     minHeight: 44,

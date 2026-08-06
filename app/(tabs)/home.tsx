@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Eye, Package, ShoppingCart, Sparkles } from "lucide-react-native";
+import { ChevronDown, Eye, Package, ShoppingCart, Sparkles } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -12,7 +12,10 @@ import {
   type InventoryHealthCounts
 } from "../../components/ui/InventoryHealth";
 import { InventoryHealthSummaryCard } from "../../components/ui/InventoryHealthSummaryCard";
-import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
+import {
+  BriefClipboardIllustration,
+  ProduceCrateIllustration
+} from "../../components/ui/MiseIllustrations";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
@@ -338,43 +341,21 @@ function RestaurantStatusCard({
         : "danger";
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={t(statusKey)}
-      onPress={() => router.push(brief.needsApproval.length > 0 ? "/orders" : "/today")}
-      style={({ pressed }) => [
-        styles.alert,
-        tone === "warning" && styles.alertWarning,
-        tone === "danger" && styles.alertWarning,
-        tone === "success" && styles.alertSuccess,
-        pressed && styles.pressed
-      ]}
-    >
-      <View
-        style={[
-          styles.alertIcon,
-          tone === "success" ? styles.alertIconSuccess : styles.alertIconWarning
-        ]}
-      >
-        {tone === "success" ? (
-          <CheckCircle2 size={18} color={colors.success} strokeWidth={2.3} />
-        ) : (
-          <AlertTriangle size={18} color={colors.danger} strokeWidth={2.3} />
-        )}
-      </View>
-      <View style={styles.alertCopy}>
-        <Text style={styles.alertTitle} numberOfLines={1}>{t(statusKey)}</Text>
-        <Text style={styles.alertBody} numberOfLines={3}>{brief.restaurantStatus.summary}</Text>
-        <Text style={styles.metaLine} numberOfLines={1}>
-          {t("home.status.confidence", {
-            score: formatNumber(brief.restaurantStatus.confidence, { style: "percent", maximumFractionDigits: 0 })
-          })}
-          {" · "}
-          {t("home.status.freshness", { label: brief.restaurantStatus.dataFreshness.state })}
-        </Text>
-      </View>
-      <ChevronRight size={20} color={tone === "success" ? colors.faint : colors.danger} strokeWidth={2.2} />
-    </Pressable>
+    <StatusNotice
+      tone={tone}
+      title={t(statusKey)}
+      message={brief.restaurantStatus.summary}
+      meta={`${t("home.status.confidence", {
+        score: formatNumber(brief.restaurantStatus.confidence, {
+          style: "percent",
+          maximumFractionDigits: 0
+        })
+      })} · ${t("home.status.freshness", { label: brief.restaurantStatus.dataFreshness.state })}`}
+      actionLabel={t("home.status.review")}
+      actionVariant="solid"
+      actionAccessibilityLabel={t(statusKey)}
+      onAction={() => router.push(brief.needsApproval.length > 0 ? "/orders" : "/today")}
+    />
   );
 }
 
@@ -613,7 +594,7 @@ function DailyBriefing({
             </View>
           ))}
         </View>
-        <ChevronRight size={16} color={colors.faint} strokeWidth={2.2} />
+        <BriefClipboardIllustration size={64} />
       </Pressable>
     </View>
   );
@@ -782,7 +763,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    backgroundColor: colors.panel,
+    // panel (#F7F7F5) is nearly the canvas value, so the chip needs white.
+    backgroundColor: colors.surface,
     flexDirection: "row",
     alignItems: "center",
     gap: 6
@@ -798,7 +780,7 @@ const styles = StyleSheet.create({
   },
   greeting: {
     color: colors.text,
-    ...conceptTypography.screenTitle
+    ...conceptTypography.displayTitle
   },
   greetingSubtext: {
     color: colors.muted,
@@ -809,56 +791,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.medium,
     fontSize: 10,
     lineHeight: 13
-  },
-  alert: {
-    minHeight: 64,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.danger,
-    backgroundColor: colors.dangerSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
-  },
-  alertWarning: {
-    borderColor: colors.danger,
-    backgroundColor: colors.dangerSoft
-  },
-  alertSuccess: {
-    borderColor: colors.success,
-    backgroundColor: colors.successSoft
-  },
-  alertIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surface
-  },
-  alertIconWarning: {
-    backgroundColor: colors.surface
-  },
-  alertIconSuccess: {
-    backgroundColor: colors.surface
-  },
-  alertCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 3
-  },
-  alertTitle: {
-    color: colors.text,
-    ...conceptTypography.sectionTitle,
-    fontFamily: conceptTypography.screenTitle.fontFamily
-  },
-  alertBody: {
-    color: colors.muted,
-    ...conceptTypography.caption,
-    fontFamily: conceptTypography.body.fontFamily,
-    lineHeight: 15
   },
   metaLine: {
     color: colors.faint,

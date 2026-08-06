@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, radii, typography } from "../../constants/theme";
 
 export function EmptyState({
   title,
@@ -52,9 +52,9 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    ...typography.cardTitle,
-    fontSize: 17,
-    lineHeight: 22,
+    ...conceptTypography.displayTitle,
+    fontSize: 20,
+    lineHeight: 26,
     alignSelf: "center",
     textAlign: "center"
   },
