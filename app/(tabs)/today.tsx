@@ -1,61 +1,63 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { CalendarDays, CheckCircle2, LockKeyhole } from "lucide-react-native";
+import { CalendarDays } from "lucide-react-native";
 
 import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
+import { DailyCloseoutCelebration } from "../../components/operations/DailyCloseoutCelebration";
+import { OperatingPlanTimeline } from "../../components/operations/OperatingPlanTimeline";
+import { ActionIcon } from "../../components/ui/ActionIcon";
+import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
 import { Screen } from "../../components/ui/Screen";
+import { SectionHeader } from "../../components/ui/SectionHeader";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
-import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, density, typography } from "../../constants/theme";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
+import { colors, conceptTypography, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
-import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
+import type { MessageKey, MessageValues } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
 import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDecisionOutbox";
+import { buildDailyCloseoutSummary } from "../../services/domain/dailyCloseout";
 import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import type { DailyOperatingPlan, OperatingPlanBucket } from "../../services/domain/operatingPlan";
 import {
-  canRestaurantRoleActOnTodayTask,
-  classifyOperationalTodayTaskTiming,
-  type OperationalTodayTask,
-  type OperationalTodayTaskActionIntent,
-  type OperationalTodayTaskTiming
-} from "../../services/domain/todayTasks";
-import {
+  completeOperatorTask,
+  fetchDailyOperatingPlan,
   fetchDailyOperationalBrief,
   fetchQueuedOperationalFindingDecisions,
-  fetchTodaySummary,
   flushQueuedOperationalFindingDecisions,
+  listOpenOperatorTasks,
+  operatorTaskFocusRoute,
   queueOperationalFindingDecision,
-  type TodayCommandCenterSummary
+  type OperatorTask
 } from "../../services/miseService";
-import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
-import type { RestaurantRole } from "../../types/mise";
 
-type TaskFilter = "now" | "up_next" | "later" | "done";
+type TaskFilter = OperatingPlanBucket;
 type Translator = (key: MessageKey, values?: MessageValues) => string;
 
 const GROUP_CAPS: Record<TaskFilter, number> = {
-  now: 1,
-  up_next: 2,
+  now: 2,
+  up_next: 3,
   later: 4,
-  done: 2
+  done: 3
 };
 
 const GROUP_ORDER: readonly TaskFilter[] = ["now", "up_next", "later", "done"];
 
 export default function TodayScreen() {
   const { canUseDemoMode, continueWithDemo, memberships, restaurant, role } = useMiseSession();
-  const { formatDate, formatNumber, t, locale } = useLocale();
-  const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
+  const { formatNumber, t, locale } = useLocale();
+  const [summary, setSummary] = useState<DailyOperatingPlan | null>(null);
   const [brief, setBrief] = useState<DailyOperationalBrief | null>(null);
   const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
+  const [floorNotes, setFloorNotes] = useState<OperatorTask[]>([]);
   const [focus, setFocus] = useState<TaskFilter>("now");
   const [snoozedTaskIds, setSnoozedTaskIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
@@ -64,6 +66,8 @@ export default function TodayScreen() {
   const [briefMessage, setBriefMessage] = useState<string | null>(null);
   const [briefMessageIsError, setBriefMessageIsError] = useState(false);
   const [busyFindingId, setBusyFindingId] = useState<string | null>(null);
+  const [busyFloorNoteId, setBusyFloorNoteId] = useState<string | null>(null);
+  const [floorNoteMessage, setFloorNoteMessage] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
@@ -74,6 +78,7 @@ export default function TodayScreen() {
     setSummary(null);
     setBrief(null);
     setFindingQueue([]);
+    setFloorNotes([]);
     setLoadedRestaurantId(null);
     setFocus("now");
     setSnoozedTaskIds(new Set());
@@ -82,6 +87,8 @@ export default function TodayScreen() {
     setBriefMessage(null);
     setBriefMessageIsError(false);
     setBusyFindingId(null);
+    setBusyFloorNoteId(null);
+    setFloorNoteMessage(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
@@ -100,17 +107,20 @@ export default function TodayScreen() {
       await flushQueuedOperationalFindingDecisions(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
-      const [nextSummary, nextBrief, nextQueue] = await Promise.all([
-        fetchTodaySummary(restaurantId, { includeCompletedTasks: true }),
+      const [nextSummary, nextBrief, nextQueue, nextFloorNotes] = await Promise.all([
+        fetchDailyOperatingPlan(restaurantId, { includeCompletedTasks: true }),
         fetchDailyOperationalBrief(restaurantId),
-        fetchQueuedOperationalFindingDecisions(restaurantId)
+        fetchQueuedOperationalFindingDecisions(restaurantId),
+        listOpenOperatorTasks(restaurantId).catch(() => [] as OperatorTask[])
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
       setBrief(nextBrief);
       setFindingQueue(nextQueue);
+      setFloorNotes(nextFloorNotes);
       setLoadedRestaurantId(restaurantId);
       setSnoozedTaskIds(new Set());
+      setFloorNoteMessage(null);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "today", operation: "load", restaurant_id: restaurantId });
@@ -135,6 +145,28 @@ export default function TodayScreen() {
   }, [load]);
 
   const canManageBrief = canManageRestaurantData(memberships, restaurant?.id);
+
+  async function markFloorNoteDone(note: OperatorTask) {
+    if (!restaurant || busyFloorNoteId) return;
+    const restaurantId = restaurant.id;
+    setBusyFloorNoteId(note.id);
+    setFloorNoteMessage(null);
+    try {
+      await completeOperatorTask({ restaurantId, taskId: note.id });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setFloorNotes((current) => current.filter((candidate) => candidate.id !== note.id));
+    } catch (completeError) {
+      captureMiseError(completeError, {
+        flow: "today",
+        operation: "complete_operator_task",
+        restaurant_id: restaurantId
+      });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setFloorNoteMessage(t("today.floorNotes.completeError"));
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setBusyFloorNoteId(null);
+    }
+  }
 
   async function submitFindingFeedback(
     finding: OperationalFinding,
@@ -190,12 +222,26 @@ export default function TodayScreen() {
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
   const visibleBrief = loadedRestaurantId === restaurant?.id ? brief : null;
   const visibleFindingQueue = loadedRestaurantId === restaurant?.id ? findingQueue : [];
+  const visibleFloorNotes = loadedRestaurantId === restaurant?.id ? floorNotes : [];
+  const groupedFloorNotes = useMemo(() => {
+    const buckets: Record<"now" | "up_next" | "later", OperatorTask[]> = {
+      now: [],
+      up_next: [],
+      later: []
+    };
+    visibleFloorNotes.forEach((note) => {
+      buckets[note.timing].push(note);
+    });
+    return buckets;
+  }, [visibleFloorNotes]);
+
   const grouped = useMemo(() => {
     if (!visibleSummary) return emptyBuckets();
-    return bucketTasks(
-      visibleSummary.operationalTasks.filter((task) => !snoozedTaskIds.has(task.id)),
-      visibleSummary.restaurantTimeZone
-    );
+    const buckets = emptyBuckets();
+    for (const key of GROUP_ORDER) {
+      buckets[key] = visibleSummary.buckets[key].filter((item) => !snoozedTaskIds.has(item.id));
+    }
+    return buckets;
   }, [snoozedTaskIds, visibleSummary]);
 
   const timelineGroups = useMemo(() => {
@@ -204,11 +250,28 @@ export default function TodayScreen() {
       .map((key) => ({
         key,
         label: t(groupLabelKey(key)),
-        tasks: grouped[key].slice(0, GROUP_CAPS[key]),
+        items: grouped[key].slice(0, GROUP_CAPS[key]),
         total: grouped[key].length
       }))
       .filter((group) => group.total > 0 || group.key === focus);
   }, [focus, grouped, t]);
+
+  const closeoutSummary = useMemo(() => {
+    if (!visibleSummary) return null;
+    let completedTasks = 0;
+    let openTasks = 0;
+    for (const item of visibleSummary.items) {
+      if (item.status === "completed") completedTasks += 1;
+      else openTasks += 1;
+    }
+    return buildDailyCloseoutSummary({
+      operatingDate: visibleSummary.operatingDate,
+      restaurantTimeZone: visibleSummary.restaurantTimeZone,
+      completedTasks,
+      openTasks,
+      operatorTasksOpen: visibleFloorNotes.length
+    });
+  }, [visibleFloorNotes.length, visibleSummary]);
 
   const filterOptions = useMemo<readonly SegmentOption<TaskFilter>[]>(
     () =>
@@ -232,25 +295,6 @@ export default function TodayScreen() {
     [formatNumber, grouped, t]
   );
 
-  const flatTimeline = useMemo(() => {
-    const rows: { task: OperationalTodayTask; group: TaskFilter; showPrimary: boolean }[] = [];
-    timelineGroups.forEach((group) => {
-      group.tasks.forEach((task, index) => {
-        rows.push({
-          task,
-          group: group.key,
-          showPrimary: group.key === "now" && index === 0 && task.status !== "completed"
-        });
-      });
-    });
-    return rows;
-  }, [timelineGroups]);
-
-  const dateLabel = useMemo(
-    () => formatDate(new Date(), { weekday: "long", month: "short", day: "numeric" }),
-    [formatDate]
-  );
-
   if (!restaurant) {
     return (
       <Screen title={t("nav.today")} subtitle={t("today.subtitle")} titleAlign="left">
@@ -272,19 +316,12 @@ export default function TodayScreen() {
   return (
     <Screen
       title={t("nav.today")}
-      subtitle={`${restaurant.name} · ${dateLabel}`}
       titleAlign="left"
       loading={loading}
       action={
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("nav.today")}
-          hitSlop={8}
-          onPress={() => setFocus("now")}
-          style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
-        >
-          <CalendarDays size={18} color={colors.text} strokeWidth={1.9} />
-        </Pressable>
+        <ActionIcon accessibilityLabel={t("nav.today")} onPress={() => setFocus("now")}>
+          <CalendarDays size={22} color={colors.text} strokeWidth={1.9} />
+        </ActionIcon>
       }
     >
       <View style={styles.stack}>
@@ -317,46 +354,106 @@ export default function TodayScreen() {
           scrollable
         />
 
+        {closeoutSummary ? (
+          <DailyCloseoutCelebration
+            restaurantId={restaurant.id}
+            summary={closeoutSummary}
+            onOpenReport={() => router.push("/more/daily-report")}
+          />
+        ) : null}
+
         {visibleSummary ? (
-          flatTimeline.length === 0 ? (
-            <View style={styles.emptyTimeline}>
-              <CheckCircle2 size={22} color={colors.success} strokeWidth={2.25} />
-              <Text style={styles.emptyTitle}>{t(emptyTitleKey(focus))}</Text>
-              <Text style={styles.emptyBody}>{t("today.emptyBody")}</Text>
-            </View>
-          ) : (
-            <View style={styles.timelineList}>
-              {timelineGroups.map((group) => {
-                if (group.tasks.length === 0) return null;
-                const groupStartIndex = flatTimeline.findIndex((row) => row.group === group.key);
-                return (
-                  <View key={group.key} style={styles.timelineGroup}>
-                    <Text style={styles.groupLabel}>
-                      {group.label}
-                      {group.total > 0 ? ` · ${formatNumber(group.total)}` : ""}
-                    </Text>
-                    {group.tasks.map((task, index) => {
-                      const globalIndex = groupStartIndex + index;
-                      return (
-                        <TimelineTask
-                          key={task.id}
-                          task={task}
-                          locale={locale}
-                          role={role ?? "staff"}
-                          restaurantTimeZone={visibleSummary.restaurantTimeZone}
-                          isFirst={globalIndex === 0}
-                          isLast={globalIndex === flatTimeline.length - 1}
-                          showPrimaryAction={group.key === "now" && index === 0}
-                          onSnooze={() => setSnoozedTaskIds((current) => new Set([...current, task.id]))}
-                          t={t}
+          <OperatingPlanTimeline
+            groups={timelineGroups}
+            focus={focus}
+            locale={locale}
+            role={role ?? "staff"}
+            restaurantTimeZone={visibleSummary.restaurantTimeZone}
+            onSnooze={(itemId) => setSnoozedTaskIds((current) => new Set([...current, itemId]))}
+            t={t}
+          />
+        ) : null}
+
+        {visibleFloorNotes.length > 0 || floorNoteMessage ? (
+          <View style={styles.floorNotesSection}>
+            <SectionHeader
+              title={t("today.floorNotes.title")}
+              subtitle={
+                visibleFloorNotes.length > 0
+                  ? t("today.floorNotes.subtitle", { count: formatNumber(visibleFloorNotes.length) })
+                  : undefined
+              }
+            />
+            {floorNoteMessage ? (
+              <StatusNotice tone="danger" title={t("common.error")} message={floorNoteMessage} />
+            ) : null}
+            {(["now", "up_next", "later"] as const).map((timing) => {
+              const notes = groupedFloorNotes[timing];
+              if (notes.length === 0) return null;
+              return (
+                <View key={timing} style={styles.floorNotesGroup}>
+                  <Text style={styles.groupLabel}>
+                    {t(
+                      timing === "now"
+                        ? "floorNotes.timing.now"
+                        : timing === "up_next"
+                          ? "floorNotes.timing.upNext"
+                          : "floorNotes.timing.later"
+                    )}
+                  </Text>
+                  {notes.map((note) => {
+                    const focusRoute = operatorTaskFocusRoute(note.focusArea);
+                    return (
+                      <View key={note.id} style={styles.floorNoteCard}>
+                        <Pressable
+                          accessibilityRole={focusRoute ? "button" : undefined}
+                          accessibilityLabel={t("today.floorNotes.rowAccessibility", { title: note.title })}
+                          disabled={!focusRoute}
+                          onPress={focusRoute ? () => router.push(focusRoute as never) : undefined}
+                          style={({ pressed }) => [styles.floorNoteMain, pressed && focusRoute && styles.pressed]}
+                        >
+                          <View style={styles.floorNoteCopy}>
+                            <Text style={styles.floorNoteTitle}>{note.title}</Text>
+                            {note.body ? (
+                              <Text numberOfLines={2} style={styles.floorNoteDetail}>
+                                {note.body}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {note.focusArea ? (
+                            <Badge
+                              label={t(
+                                note.focusArea === "inventory"
+                                  ? "floorNotes.focus.inventory"
+                                  : note.focusArea === "orders"
+                                    ? "floorNotes.focus.orders"
+                                    : note.focusArea === "insights"
+                                      ? "floorNotes.focus.insights"
+                                      : "floorNotes.focus.ask"
+                              )}
+                              tone="neutral"
+                            />
+                          ) : null}
+                        </Pressable>
+                        <Button
+                          title={
+                            busyFloorNoteId === note.id
+                              ? t("common.saving")
+                              : t("today.floorNotes.markDone")
+                          }
+                          size="compact"
+                          variant="secondary"
+                          onPress={() => void markFloorNoteDone(note)}
+                          disabled={busyFloorNoteId === note.id}
+                          style={styles.floorNoteDone}
                         />
-                      );
-                    })}
-                  </View>
-                );
-              })}
-            </View>
-          )
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })}
+          </View>
         ) : null}
 
         <View style={styles.briefContinuation}>
@@ -377,99 +474,6 @@ export default function TodayScreen() {
   );
 }
 
-function TimelineTask({
-  task,
-  locale,
-  role,
-  restaurantTimeZone,
-  isFirst,
-  isLast,
-  showPrimaryAction,
-  onSnooze,
-  t
-}: {
-  task: OperationalTodayTask;
-  locale: AppLocale;
-  role: RestaurantRole;
-  restaurantTimeZone: string;
-  isFirst: boolean;
-  isLast: boolean;
-  showPrimaryAction: boolean;
-  onSnooze: () => void;
-  t: Translator;
-}) {
-  const { formatDate, formatDueTime } = useLocale();
-  const presentation = presentOperationalTodayTask(locale, task);
-  const timing = classifyOperationalTodayTaskTiming(task, { restaurantTimeZone });
-  const canAct = canRestaurantRoleActOnTodayTask(role, task);
-  const high = task.priority === "urgent" || task.priority === "high";
-  const timeLabel = taskTimingLabel(task, timing, restaurantTimeZone, formatDate, formatDueTime, t);
-  const actionLabel = t(intentKey(task.action.intent));
-
-  return (
-    <View style={[styles.timelineRow, showPrimaryAction && styles.timelineRowActive]}>
-      <View style={styles.timeColumn}>
-        <Text numberOfLines={1} style={[styles.timeText, high && styles.timeTextHigh]}>{timeLabel}</Text>
-        <View style={styles.lineWrap}>
-          {!isFirst ? <View style={styles.timelineLine} /> : <View style={styles.timelineLineTransparent} />}
-          <View style={[styles.timelineDot, high && styles.timelineDotHigh, task.status === "completed" && styles.timelineDotDone]} />
-          {!isLast ? <View style={styles.timelineLine} /> : <View style={styles.timelineLineTransparent} />}
-        </View>
-      </View>
-
-      <View style={[styles.taskContent, showPrimaryAction && styles.taskContentActive]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("today.task.accessibility", {
-            title: presentation.title,
-            detail: presentation.detail,
-            action: actionLabel
-          })}
-          onPress={() => router.push(`/tasks/${task.id}`)}
-          style={({ pressed }) => [styles.taskMain, pressed && styles.pressed]}
-        >
-          <View style={styles.taskCopy}>
-            <View style={styles.taskTitleRow}>
-              <Text numberOfLines={1} style={styles.taskTitle}>{presentation.title}</Text>
-              <View style={[styles.priorityBadge, high && styles.priorityBadgeHigh, task.status === "completed" && styles.priorityBadgeDone]}>
-                <Text style={[styles.priorityText, high && styles.priorityTextHigh, task.status === "completed" && styles.priorityTextDone]}>
-                  {t(task.status === "completed" ? "task.badge.done" : high ? "task.badge.high" : "task.badge.normal")}
-                </Text>
-              </View>
-            </View>
-            <Text numberOfLines={1} style={styles.taskDetail}>{presentation.detail}</Text>
-          </View>
-        </Pressable>
-
-        {showPrimaryAction && canAct && task.status !== "completed" ? (
-          <View style={styles.taskActions}>
-            <Button
-              title={t("today.action.snooze")}
-              variant="secondary"
-              size="compact"
-              onPress={onSnooze}
-              style={styles.snoozeButton}
-            />
-            <Button
-              title={t("today.action.start")}
-              size="compact"
-              onPress={() => router.push(task.action.route)}
-              style={styles.startButton}
-            />
-          </View>
-        ) : showPrimaryAction && !canAct && task.status !== "completed" ? (
-          <View style={styles.lockedAction}>
-            <LockKeyhole size={12} color={colors.muted} strokeWidth={2.2} />
-            <Text style={styles.lockedText}>
-              {t(task.requiredRole === "owner_admin" ? "today.locked.ownerAdmin" : "today.locked.manager")}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
 function describeFindingFlush(
   summary: {
     accepted: number;
@@ -486,22 +490,7 @@ function describeFindingFlush(
   return t("dailyBrief.result.queued");
 }
 
-function bucketTasks(tasks: OperationalTodayTask[], restaurantTimeZone: string): Record<TaskFilter, OperationalTodayTask[]> {
-  const buckets = emptyBuckets();
-  tasks.forEach((task) => {
-    if (task.status === "completed") {
-      buckets.done.push(task);
-      return;
-    }
-    const timing = classifyOperationalTodayTaskTiming(task, { restaurantTimeZone });
-    if (timing === "overdue" || timing === "due_soon") buckets.now.push(task);
-    else if (timing === "today") buckets.up_next.push(task);
-    else buckets.later.push(task);
-  });
-  return buckets;
-}
-
-function emptyBuckets(): Record<TaskFilter, OperationalTodayTask[]> {
+function emptyBuckets(): Record<TaskFilter, DailyOperatingPlan["buckets"][TaskFilter]> {
   return { now: [], up_next: [], later: [], done: [] };
 }
 
@@ -512,230 +501,62 @@ function groupLabelKey(filter: TaskFilter): MessageKey {
   return "today.filter.done";
 }
 
-function emptyTitleKey(filter: TaskFilter): MessageKey {
-  if (filter === "done") return "today.emptyDone";
-  if (filter === "now") return "today.emptyNow";
-  if (filter === "up_next") return "today.emptyUpNext";
-  return "today.emptyLater";
-}
-
-function taskTimingLabel(
-  task: OperationalTodayTask,
-  timing: OperationalTodayTaskTiming,
-  restaurantTimeZone: string,
-  formatDate: (value: Date | number | string, options?: Intl.DateTimeFormatOptions & { timeZone?: string }) => string,
-  formatDueTime: (value: Date | number | string, options?: { timeZone?: string }) => string,
-  t: Translator
-) {
-  if (task.dueAt) return formatDueTime(task.dueAt, { timeZone: restaurantTimeZone });
-  if (timing === "overdue") return t("relative.overdue");
-  if (timing === "due_soon") return t("relative.dueNow");
-  if (timing === "today") return t("relative.today");
-  if (task.dueDate) return formatDate(`${task.dueDate}T12:00:00.000Z`, { month: "short", day: "numeric", timeZone: "UTC" });
-  return t("task.timing.noTime");
-}
-
-function intentKey(intent: OperationalTodayTaskActionIntent): MessageKey {
-  if (intent === "update_inventory_count") return "today.intent.updateCount";
-  if (intent === "review_recommendation") return "today.intent.reviewRecommendation";
-  if (intent === "prepare_supplier_draft") return "today.intent.prepareDraft";
-  if (intent === "send_supplier_order") return "today.intent.sendOrder";
-  if (intent === "finish_setup") return "today.intent.finishSetup";
-  if (intent === "connect_pos") return "today.intent.connectPos";
-  if (intent === "review_insight") return "today.intent.reviewInsight";
-  return "today.intent.manageConnection";
-}
-
 const styles = StyleSheet.create({
   stack: {
-    gap: 6
+    gap: 10
   },
   emptyButton: {
-    marginTop: 12
-  },
-  headerAction: {
-    width: density.hitTarget,
-    height: density.hitTarget,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  emptyTimeline: {
-    minHeight: 120,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 12,
-    gap: 4
-  },
-  emptyTitle: {
-    color: colors.text,
-    ...conceptTypography.rowTitle,
-    marginTop: 4
-  },
-  emptyBody: {
-    color: colors.muted,
-    ...conceptTypography.body,
-    textAlign: "center"
-  },
-  timelineList: {
-    gap: 0
-  },
-  timelineGroup: {
-    gap: 0
+    marginTop: 16
   },
   groupLabel: {
     color: colors.muted,
     ...conceptTypography.caption,
     textAlign: "left",
-    marginBottom: 2,
-    marginTop: 6,
+    marginBottom: 8,
+    marginTop: 12,
     paddingLeft: 0
-  },
-  timelineRow: {
-    flexDirection: "row",
-    minHeight: density.timelineRow,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border
-  },
-  timelineRowActive: {
-    minHeight: density.timelineRowActive
-  },
-  timeColumn: {
-    width: density.timeColumn,
-    alignItems: "center"
-  },
-  timeText: {
-    width: density.timeColumn - 4,
-    color: colors.muted,
-    ...conceptTypography.caption,
-    textAlign: "center",
-    marginTop: 8
-  },
-  timeTextHigh: {
-    color: colors.danger
-  },
-  lineWrap: {
-    flex: 1,
-    minHeight: 20,
-    alignItems: "center",
-    marginTop: 2
-  },
-  timelineLine: {
-    width: StyleSheet.hairlineWidth,
-    flex: 1,
-    backgroundColor: colors.border
-  },
-  timelineLineTransparent: {
-    width: StyleSheet.hairlineWidth,
-    flex: 1,
-    backgroundColor: "transparent"
-  },
-  timelineDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.borderStrong,
-    marginVertical: 2
-  },
-  timelineDotHigh: {
-    backgroundColor: colors.danger
-  },
-  timelineDotDone: {
-    backgroundColor: colors.success
-  },
-  taskContent: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: "center",
-    paddingVertical: 6,
-    paddingRight: 2,
-    paddingLeft: 2
-  },
-  taskContentActive: {
-    paddingVertical: 8,
-    justifyContent: "flex-start"
-  },
-  taskMain: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6
-  },
-  taskCopy: {
-    flex: 1,
-    minWidth: 0
-  },
-  taskTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6
-  },
-  taskTitle: {
-    flex: 1,
-    color: colors.text,
-    ...conceptTypography.rowTitle
-  },
-  taskDetail: {
-    color: colors.muted,
-    ...conceptTypography.caption,
-    fontFamily: typography.families.body,
-    marginTop: 1
-  },
-  priorityBadge: {
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    backgroundColor: colors.panelStrong
-  },
-  priorityBadgeHigh: {
-    backgroundColor: colors.dangerSoft
-  },
-  priorityBadgeDone: {
-    backgroundColor: colors.successSoft
-  },
-  priorityText: {
-    color: colors.muted,
-    ...conceptTypography.caption
-  },
-  priorityTextHigh: {
-    color: colors.danger
-  },
-  priorityTextDone: {
-    color: colors.success
-  },
-  taskActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
-    marginTop: 6
-  },
-  startButton: {
-    minWidth: 72
-  },
-  snoozeButton: {
-    minWidth: 64
-  },
-  lockedAction: {
-    marginTop: 6,
-    minHeight: 26,
-    paddingHorizontal: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: 6,
-    backgroundColor: colors.panel
-  },
-  lockedText: {
-    color: colors.muted,
-    ...conceptTypography.caption
   },
   briefContinuation: {
     marginTop: 10,
-    paddingTop: 8,
+    paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
+  },
+  floorNotesSection: {
+    marginTop: 4,
+    gap: 6
+  },
+  floorNotesGroup: {
+    gap: 6
+  },
+  floorNoteCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    padding: 9,
+    gap: 7
+  },
+  floorNoteMain: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10
+  },
+  floorNoteCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4
+  },
+  floorNoteTitle: {
+    color: colors.text,
+    ...conceptTypography.rowTitle
+  },
+  floorNoteDetail: {
+    color: colors.muted,
+    ...conceptTypography.body
+  },
+  floorNoteDone: {
+    alignSelf: "flex-start"
   },
   pressed: {
     opacity: 0.72

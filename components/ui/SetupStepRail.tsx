@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
   },
   markerRow: {
     width: "100%",
-    minHeight: 27,
+    minHeight: 36,
     flexDirection: "row",
     alignItems: "center",
     position: "relative"
@@ -92,21 +92,21 @@ const styles = StyleSheet.create({
   connectorSegment: {
     flex: 1,
     height: 2,
-    marginHorizontal: 7,
+    marginHorizontal: 8,
     borderRadius: 999,
     backgroundColor: colors.border
   },
   connectorSpacer: {
     flex: 1,
     height: 2,
-    marginHorizontal: 7
+    marginHorizontal: 8
   },
   connectorActive: {
     backgroundColor: colors.success
   },
   marker: {
-    width: 27,
-    height: 27,
+    width: 36,
+    height: 36,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
@@ -126,7 +126,8 @@ const styles = StyleSheet.create({
   markerText: {
     color: colors.muted,
     ...typography.caption,
-    lineHeight: 15
+    fontSize: 13,
+    lineHeight: 16
   },
   activeMarkerText: {
     color: colors.surface
@@ -134,6 +135,8 @@ const styles = StyleSheet.create({
   stepLabel: {
     color: colors.text,
     ...typography.caption,
+    fontSize: 12,
+    lineHeight: 16,
     textAlign: "center"
   },
   activeLabel: {

@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
 import { ArrowLeft, CheckSquare, Send } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
+import { ThinkingBubble } from "../components/ask/ThinkingBubble";
+import { ActionIcon } from "../components/ui/ActionIcon";
+import { Badge } from "../components/ui/Badge";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MiseMark } from "../components/ui/BrandLockup";
 import { Screen } from "../components/ui/Screen";
@@ -10,9 +13,13 @@ import { RetryNotice } from "../components/ui/StatusNotice";
 import { colors, conceptTypography, radii, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
-import type { MessageKey, MessageValues } from "../i18n/catalog";
-import { fetchInsights, fetchTodaySummary, type TodayCommandCenterSummary } from "../services/miseService";
-import { presentInsight, presentOperationalTodayTask } from "../services/presentation/operationsPresentation";
+import {
+  answerAskMise,
+  fetchInsights,
+  fetchTodaySummary,
+  type TodayCommandCenterSummary
+} from "../services/miseService";
+import { presentOperationalTodayTask } from "../services/presentation/operationsPresentation";
 import { captureMiseError } from "../services/telemetry";
 import type { Insight } from "../types/mise";
 import type { OperationalTodayTask } from "../services/domain/todayTasks";
@@ -23,20 +30,27 @@ type ChatMessage = {
   text: string;
   priorities?: OperationalTodayTask[];
 };
-type Translator = (key: MessageKey, values?: MessageValues) => string;
+
+type ThinkingState = {
+  steps: string[];
+  revealedCount: number;
+};
+
+const THINK_STEP_MS = 420;
+const THINK_HOLD_MS = 280;
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 function BackAction() {
   const { t } = useLocale();
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={t("common.back")}
-      hitSlop={8}
-      onPress={() => router.back()}
-      style={({ pressed }) => [{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }, pressed && { opacity: 0.55 }]}
-    >
+    <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
       <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
-    </Pressable>
+    </ActionIcon>
   );
 }
 
@@ -49,10 +63,13 @@ export default function AskMiseScreen() {
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [thinking, setThinking] = useState<ThinkingState | null>(null);
+  const [asking, setAsking] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const seededRef = useRef(false);
   const requestIdRef = useRef(0);
+  const askGenerationRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -62,11 +79,14 @@ export default function AskMiseScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    askGenerationRef.current += 1;
     setSummary(null);
     setInsights([]);
     setLoadedRestaurantId(null);
     setError(null);
     setMessages([]);
+    setThinking(null);
+    setAsking(false);
     seededRef.current = false;
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
@@ -107,60 +127,96 @@ export default function AskMiseScreen() {
 
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
   const visibleInsights = loadedRestaurantId === restaurant?.id ? insights : [];
-  const topPriorityTasks = useMemo(
-    () => (visibleSummary?.operationalTasks.filter((task) => task.status === "open").slice(0, 3) ?? []),
-    [visibleSummary]
-  );
 
   useEffect(() => {
-    if (!visibleSummary || seededRef.current) return;
+    if (!visibleSummary || !restaurant || seededRef.current) return;
     seededRef.current = true;
     const greetingName = user?.name?.trim().split(/\s+/)[0] || t("ask.greeting.fallbackName");
-    const priorities = topPriorityTasks;
     setMessages([
       {
         id: "welcome",
         role: "mise",
-        text: t("ask.greeting.hi", { name: greetingName })
-      },
-      {
-        id: "seed-user",
-        role: "user",
-        text: t("ask.suggestion.priorities")
-      },
-      {
-        id: "seed-priorities",
-        role: "mise",
-        text: t("ask.answer.prioritiesLead"),
-        priorities
+        text: `${t("ask.greeting.hi", { name: greetingName })} ${t("ask.greeting.body", {
+          restaurant: restaurant.name
+        })}`
       }
     ]);
-  }, [t, topPriorityTasks, user?.name, visibleSummary]);
+  }, [restaurant, t, user?.name, visibleSummary]);
 
-  function ask(question: string) {
-    const trimmed = question.trim();
-    if (!trimmed || !visibleSummary) return;
-    const priorities = priorityKeywords.test(trimmed.toLowerCase())
-      ? visibleSummary.operationalTasks.filter((task) => task.status === "open").slice(0, 3)
-      : undefined;
-    const response = scriptedAnswer(trimmed, visibleSummary, visibleInsights, {
+  const ask = useCallback(
+    async (question: string) => {
+      const trimmed = question.trim();
+      if (!trimmed || !visibleSummary || !restaurant || asking) return;
+
+      const generation = ++askGenerationRef.current;
+      const restaurantId = restaurant.id;
+      setAsking(true);
+      setInput("");
+      setMessages((current) => [...current, { id: `u-${Date.now()}`, role: "user", text: trimmed }]);
+
+      try {
+        const reply = answerAskMise({
+          question: trimmed,
+          restaurant,
+          summary: visibleSummary,
+          insights: visibleInsights,
+          helpers: {
+            formatCompactCurrency,
+            formatNumber,
+            locale,
+            t
+          }
+        });
+
+        if (generation !== askGenerationRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+
+        setThinking({ steps: reply.thinkingSteps, revealedCount: 0 });
+        for (let index = 0; index < reply.thinkingSteps.length; index += 1) {
+          await delay(THINK_STEP_MS);
+          if (generation !== askGenerationRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+          setThinking({ steps: reply.thinkingSteps, revealedCount: index + 1 });
+        }
+
+        await delay(THINK_HOLD_MS);
+        if (generation !== askGenerationRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+
+        setThinking(null);
+        setMessages((current) => [
+          ...current,
+          {
+            id: `m-${Date.now()}`,
+            role: "mise",
+            text: reply.answer,
+            priorities: reply.showPriorities ? reply.priorities : undefined
+          }
+        ]);
+      } catch (askError) {
+        if (generation !== askGenerationRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+        captureMiseError(askError, { flow: "ask_mise", operation: "ask", restaurant_id: restaurantId });
+        setThinking(null);
+        setMessages((current) => [
+          ...current,
+          {
+            id: `m-error-${Date.now()}`,
+            role: "mise",
+            text: t("ask.answer.error")
+          }
+        ]);
+      } finally {
+        if (generation === askGenerationRef.current) setAsking(false);
+      }
+    },
+    [
+      asking,
       formatCompactCurrency,
       formatNumber,
       locale,
-      t
-    });
-    setMessages((current) => [
-      ...current,
-      { id: `u-${Date.now()}`, role: "user", text: trimmed },
-      {
-        id: `m-${Date.now()}`,
-        role: "mise",
-        text: priorities ? t("ask.answer.prioritiesLead") : response,
-        priorities
-      }
-    ]);
-    setInput("");
-  }
+      restaurant,
+      t,
+      visibleInsights,
+      visibleSummary
+    ]
+  );
 
   if (!restaurant) {
     return (
@@ -170,8 +226,23 @@ export default function AskMiseScreen() {
     );
   }
 
+  const suggestions = [
+    t("ask.suggestion.priorities"),
+    t("ask.suggestion.prep"),
+    t("ask.suggestion.waste"),
+    t("ask.suggestion.stock"),
+    t("ask.suggestion.orders"),
+    t("ask.suggestion.briefing")
+  ];
+
   return (
-    <Screen title={t("ask.title")} titleAlign="center" leadingAction={<BackAction />} loading={loading}>
+    <Screen
+      title={t("ask.title")}
+      titleAlign="center"
+      leadingAction={<BackAction />}
+      loading={loading}
+      keyboardAware
+    >
       <View style={styles.stack}>
         {error ? (
           <RetryNotice
@@ -191,7 +262,7 @@ export default function AskMiseScreen() {
               </View>
             ) : (
               <View key={message.id} style={styles.miseRow}>
-                <MiseMark size={16} />
+                <MiseMark size={22} />
                 <View style={styles.miseCopy}>
                   <Text style={styles.bubbleText}>{message.text}</Text>
                   {message.priorities && message.priorities.length > 0 ? (
@@ -199,9 +270,10 @@ export default function AskMiseScreen() {
                       {message.priorities.map((task) => {
                         const presentation = presentOperationalTodayTask(locale, task);
                         const high = task.priority === "urgent" || task.priority === "high";
-                        const due = task.dueAt && visibleSummary
-                          ? formatDueTime(task.dueAt, { timeZone: visibleSummary.restaurantTimeZone })
-                          : t("task.timing.noTime");
+                        const due =
+                          task.dueAt && visibleSummary
+                            ? formatDueTime(task.dueAt, { timeZone: visibleSummary.restaurantTimeZone })
+                            : t("task.timing.noTime");
                         return (
                           <Pressable
                             key={task.id}
@@ -211,14 +283,17 @@ export default function AskMiseScreen() {
                           >
                             <CheckSquare size={14} color={colors.muted} strokeWidth={2.2} />
                             <View style={styles.priorityCopy}>
-                              <Text numberOfLines={1} style={styles.priorityTitle}>{presentation.title}</Text>
-                              <Text numberOfLines={1} style={styles.priorityDue}>{due}</Text>
-                            </View>
-                            <View style={[styles.priorityChip, high && styles.priorityChipHigh]}>
-                              <Text style={[styles.priorityChipText, high && styles.priorityChipTextHigh]}>
-                                {t(high ? "task.badge.high" : "task.badge.normal")}
+                              <Text numberOfLines={1} style={styles.priorityTitle}>
+                                {presentation.title}
+                              </Text>
+                              <Text numberOfLines={1} style={styles.priorityDue}>
+                                {due}
                               </Text>
                             </View>
+                            <Badge
+                              label={t(high ? "task.badge.high" : "task.badge.normal")}
+                              tone={high ? "danger" : "neutral"}
+                            />
                           </Pressable>
                         );
                       })}
@@ -228,15 +303,23 @@ export default function AskMiseScreen() {
               </View>
             )
           )}
+
+          {thinking ? (
+            <ThinkingBubble
+              label={t("ask.thinking.label")}
+              steps={thinking.steps}
+              revealedCount={thinking.revealedCount}
+            />
+          ) : null}
         </View>
 
-        {visibleSummary ? (
+        {visibleSummary && !asking ? (
           <View style={styles.suggestions}>
-            {[t("ask.suggestion.priorities"), t("ask.suggestion.stock"), t("ask.suggestion.orders")].map((question) => (
+            {suggestions.map((question) => (
               <Pressable
                 key={question}
                 accessibilityRole="button"
-                onPress={() => ask(question)}
+                onPress={() => void ask(question)}
                 style={({ pressed }) => [styles.suggestion, pressed && styles.pressed]}
               >
                 <Text style={styles.suggestionText}>{question}</Text>
@@ -245,7 +328,7 @@ export default function AskMiseScreen() {
           </View>
         ) : null}
 
-        <View style={styles.composer}>
+        <View style={[styles.composer, asking && styles.composerDisabled]}>
           <TextInput
             accessibilityLabel={t("ask.input.accessibility")}
             value={input}
@@ -253,88 +336,37 @@ export default function AskMiseScreen() {
             placeholder={t("ask.input.placeholder")}
             placeholderTextColor={colors.faint}
             style={styles.input}
-            onSubmitEditing={() => ask(input)}
+            editable={!asking}
+            onSubmitEditing={() => void ask(input)}
             returnKeyType="send"
           />
-          <Pressable
-            accessibilityRole="button"
+          <ActionIcon
+            tone={asking || !input.trim() ? "default" : "brand"}
             accessibilityLabel={t("ask.send.accessibility")}
-            hitSlop={10}
-            onPress={() => ask(input)}
-            style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}
+            accessibilityState={{ disabled: asking || !input.trim() }}
+            disabled={asking || !input.trim()}
+            onPress={() => void ask(input)}
+            style={styles.sendButton}
           >
-            <Send size={16} color={colors.accent} strokeWidth={2.25} />
-          </Pressable>
+            <Send
+              size={18}
+              color={asking || !input.trim() ? colors.faint : colors.accentDark}
+              strokeWidth={2.25}
+            />
+          </ActionIcon>
         </View>
       </View>
     </Screen>
   );
 }
 
-const stockKeywords = /stock|low|inventory|inventario|existencias|bajo|库存|盘点/;
-const orderKeywords = /order|supplier|pedido|proveedor|订单|订货|供应商/;
-const salesKeywords = /sales|revenue|venta|ingreso|销售|营收/;
-const priorityKeywords = /priorit|prioridad|优先/;
-
-function scriptedAnswer(
-  question: string,
-  summary: TodayCommandCenterSummary,
-  insights: Insight[],
-  helpers: {
-    formatCompactCurrency: (value: number, currency?: string) => string;
-    formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
-    locale: Parameters<typeof presentInsight>[0];
-    t: Translator;
-  }
-) {
-  const { t } = helpers;
-  const normalized = question.toLowerCase();
-  const openTasks = summary.operationalTasks.filter((task) => task.status === "open");
-  const topTasks = openTasks.slice(0, 3).map((task) => presentOperationalTodayTask(helpers.locale, task).title);
-  const stockRisk = summary.inventoryHealth.low + summary.inventoryHealth.critical;
-  const topInsight = insights[0] ? presentInsight(helpers.locale, insights[0]) : null;
-
-  if (stockKeywords.test(normalized)) {
-    return stockRisk > 0
-      ? t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
-          count: helpers.formatNumber(stockRisk)
-        })
-      : t("ask.answer.stockClear");
-  }
-
-  if (orderKeywords.test(normalized)) {
-    return summary.pendingRecommendations > 0
-      ? t(summary.pendingRecommendations === 1 ? "ask.answer.orders.one" : "ask.answer.orders.other", {
-          count: helpers.formatNumber(summary.pendingRecommendations)
-        })
-      : t("ask.answer.ordersClear");
-  }
-
-  if (salesKeywords.test(normalized)) {
-    return t("ask.answer.sales", {
-      sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency),
-      count: helpers.formatNumber(summary.itemsSold)
-    });
-  }
-
-  if (topTasks.length > 0) {
-    const lead = t("ask.answer.priorities", { tasks: topTasks.join("; ") });
-    const tail = topInsight
-      ? t("ask.answer.prioritiesInsight", { insight: topInsight.title })
-      : t("ask.answer.prioritiesNoInsight");
-    return `${lead} ${tail}`;
-  }
-
-  return t("ask.answer.fallback");
-}
-
 const styles = StyleSheet.create({
   stack: {
     flex: 1,
-    gap: 8
+    gap: 10
   },
   chat: {
-    gap: 8,
+    gap: 9,
     flexGrow: 1
   },
   miseRow: {
@@ -346,13 +378,13 @@ const styles = StyleSheet.create({
   miseCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 6
+    gap: 8
   },
   bubble: {
-    maxWidth: "78%",
-    borderRadius: radii.md,
-    paddingHorizontal: 10,
-    paddingVertical: 6
+    maxWidth: "82%",
+    borderRadius: radii.lg,
+    paddingHorizontal: 11,
+    paddingVertical: 9
   },
   userBubble: {
     alignSelf: "flex-end",
@@ -366,19 +398,19 @@ const styles = StyleSheet.create({
     color: colors.text
   },
   priorityList: {
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     overflow: "hidden"
   },
   priorityRow: {
-    minHeight: 36,
+    minHeight: 46,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border
   },
@@ -394,75 +426,61 @@ const styles = StyleSheet.create({
     color: colors.muted,
     ...conceptTypography.caption,
     fontFamily: typography.families.body,
-    marginTop: 0
-  },
-  priorityChip: {
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    backgroundColor: colors.panelStrong
-  },
-  priorityChipHigh: {
-    backgroundColor: colors.dangerSoft
-  },
-  priorityChipText: {
-    color: colors.muted,
-    ...conceptTypography.caption
-  },
-  priorityChipTextHigh: {
-    color: colors.danger
+    marginTop: 2
   },
   suggestions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6
+    gap: 8
   },
   suggestion: {
-    minHeight: 25,
-    height: 25,
+    minHeight: 40,
     justifyContent: "center",
     borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    backgroundColor: colors.panel,
-    paddingHorizontal: 9
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: 14,
+    paddingVertical: 8
   },
   suggestionText: {
-    color: colors.muted,
+    color: colors.accentDark,
     ...conceptTypography.caption,
-    fontFamily: typography.families.body
+    fontFamily: typography.families.body,
+    fontSize: 13,
+    lineHeight: 17
   },
   pressed: {
     opacity: 0.7
   },
   composer: {
-    minHeight: 41,
-    height: 41,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: radii.md,
+    borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingLeft: 10,
-    paddingRight: 4,
-    gap: 4
+    paddingLeft: 14,
+    paddingRight: 6,
+    gap: 8
+  },
+  composerDisabled: {
+    opacity: 0.72
   },
   input: {
     flex: 1,
-    minHeight: 36,
+    minHeight: 44,
     paddingHorizontal: 0,
     paddingVertical: 0,
     color: colors.text,
     fontFamily: typography.families.body,
-    fontSize: 12,
-    lineHeight: 16
+    fontSize: 15,
+    lineHeight: 20
   },
   sendButton: {
-    width: 24,
-    height: 24,
-    backgroundColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center"
+    width: 40,
+    height: 40,
+    borderRadius: 20
   }
 });

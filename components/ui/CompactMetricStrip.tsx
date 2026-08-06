@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, fontFamilies, radii } from "../../constants/theme";
 
 export type CompactMetricTone = "default" | "accent" | "success" | "caution" | "warning" | "danger";
 
@@ -23,11 +23,11 @@ export interface CompactMetricStripProps {
   accessibilityLabel?: string;
 }
 
-/** Flat 4-up “At a glance” row with subtle vertical dividers. */
+/** Four-up glance strip for fast mobile scanning. */
 export function CompactMetricStrip({ metrics, style, accessibilityLabel }: CompactMetricStripProps) {
   return (
-    <View accessibilityLabel={accessibilityLabel} style={[styles.strip, style]}>
-      {metrics.map((metric, index) => (
+    <View accessibilityLabel={accessibilityLabel} style={[styles.grid, style]}>
+      {metrics.map((metric) => (
         <View
           accessible
           accessibilityLabel={
@@ -35,7 +35,7 @@ export function CompactMetricStrip({ metrics, style, accessibilityLabel }: Compa
             [metric.label, String(metric.value), metric.caption].filter(Boolean).join(", ")
           }
           key={metric.id}
-          style={[styles.metric, index > 0 && styles.dividedMetric]}
+          style={styles.card}
         >
           <Text style={styles.label} numberOfLines={1}>
             {metric.label}
@@ -64,45 +64,45 @@ export function CompactMetricStrip({ metrics, style, accessibilityLabel }: Compa
 export const MetricStrip = CompactMetricStrip;
 
 const styles = StyleSheet.create({
-  strip: {
-    minHeight: 64,
+  grid: {
     flexDirection: "row",
-    alignItems: "stretch",
-    overflow: "hidden",
-    borderRadius: radii.md,
+    flexWrap: "nowrap",
+    gap: 6
+  },
+  card: {
+    width: "auto",
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    minHeight: 66,
+    borderRadius: radii.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 10
-  },
-  metric: {
-    flex: 1,
-    minWidth: 0,
     paddingHorizontal: 8,
-    justifyContent: "center",
-    gap: 2
-  },
-  dividedMetric: {
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: colors.border
+    paddingVertical: 8,
+    gap: 2,
+    justifyContent: "center"
   },
   label: {
     color: colors.muted,
-    ...typography.caption,
-    fontSize: 10,
-    lineHeight: 13
+    ...conceptTypography.caption,
+    fontFamily: fontFamilies.body,
+    fontSize: 9,
+    lineHeight: 12
   },
   value: {
     color: colors.text,
-    fontFamily: typography.families.bold,
+    fontFamily: fontFamilies.bold,
     fontSize: 16,
     lineHeight: 20,
-    letterSpacing: -0.2
+    letterSpacing: -0.35
   },
   caption: {
-    fontFamily: typography.families.semibold,
-    fontSize: 10,
-    lineHeight: 13
+    fontFamily: fontFamilies.semibold,
+    fontSize: 9,
+    lineHeight: 12,
+    marginTop: 1
   },
   captionMuted: {
     color: colors.muted

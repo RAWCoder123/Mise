@@ -32,7 +32,7 @@ export function ActionTile({
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: Boolean(disabled) }}
       disabled={disabled}
-      hitSlop={2}
+      hitSlop={Math.max(0, Math.ceil((density.hitTarget - (compact ? density.shortcutTile : 88)) / 2))}
       onPress={onPress}
       style={({ pressed }) => [
         styles.tile,
@@ -73,24 +73,24 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8
+    gap: 12
   },
   gridFour: {
-    gap: 6,
+    gap: 8,
     flexWrap: "nowrap"
   },
   tile: {
     flexGrow: 1,
     flexBasis: "47%",
     minWidth: 0,
-    minHeight: 72,
-    borderRadius: radii.md,
+    minHeight: 88,
+    borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    gap: 8
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 10
   },
   compactTile: {
     flexBasis: 0,
@@ -99,26 +99,26 @@ const styles = StyleSheet.create({
     height: density.shortcutTile,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
-    paddingVertical: 6,
-    gap: 4
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    gap: 6
   },
   iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.sm,
-    backgroundColor: colors.panel,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 0,
+    borderColor: "transparent",
     alignItems: "center",
     justifyContent: "center"
   },
   compactIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 0,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     borderWidth: 0,
-    backgroundColor: "transparent"
+    backgroundColor: colors.accentSoft
   },
   label: {
     color: colors.text,

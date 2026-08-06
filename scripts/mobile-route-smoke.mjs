@@ -10,6 +10,8 @@ const routes = [
   "/inventory",
   "/orders",
   "/insights",
+  "/more/waste",
+  "/more/daily-brief",
   "/settings",
   "/settings/export",
   "/settings/privacy",

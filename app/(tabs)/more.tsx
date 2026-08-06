@@ -1,12 +1,16 @@
 import { router } from "expo-router";
 import {
+  Activity,
   BarChart3,
+  Brain,
   ChevronRight,
   ClipboardList,
   HelpCircle,
   Mail,
+  PackageMinus,
   ScanLine,
   Settings,
+  Sunrise,
   Truck,
   UsersRound
 } from "lucide-react-native";
@@ -15,6 +19,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ActionTile, ActionTileGrid } from "../../components/ui/ActionTile";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
+import { SectionHeader } from "../../components/ui/SectionHeader";
 import { colors, conceptTypography, density, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -36,73 +41,103 @@ export default function MoreScreen() {
   return (
     <Screen title={t("nav.more")} titleAlign="left">
       <View style={styles.stack}>
-        <Text style={styles.shortcutsLabel}>{t("more.shortcuts.title")}</Text>
+        <SectionHeader title={t("more.shortcuts.title")} />
         <ActionTileGrid columns={4} accessibilityLabel={t("more.shortcuts.accessibility")}>
           <ActionTile
             compact
             label={t("more.shortcut.createTask")}
             accessibilityLabel={t("more.shortcut.createTaskHint")}
-            icon={<ClipboardList size={16} color={colors.text} strokeWidth={1.9} />}
-            onPress={() => router.push("/today")}
+            icon={<ClipboardList size={20} color={colors.accent} strokeWidth={1.9} />}
+            onPress={() => router.push("/more/create-task")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.logDelivery")}
             accessibilityLabel={t("more.shortcut.logDeliveryHint")}
-            icon={<Truck size={16} color={colors.text} strokeWidth={1.9} />}
-            onPress={() => router.push("/inventory")}
+            icon={<Truck size={20} color={colors.accent} strokeWidth={1.9} />}
+            onPress={() => router.push("/more/log-delivery")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.scanItem")}
             accessibilityLabel={t("more.shortcut.scanItemHint")}
-            icon={<ScanLine size={16} color={colors.text} strokeWidth={1.9} />}
-            onPress={() => router.push("/inventory")}
+            icon={<ScanLine size={20} color={colors.accent} strokeWidth={1.9} />}
+            onPress={() => router.push("/more/scan-item")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.dailyReport")}
             accessibilityLabel={t("more.shortcut.dailyReportHint")}
-            icon={<BarChart3 size={16} color={colors.text} strokeWidth={1.9} />}
-            onPress={() => router.push("/insights")}
+            icon={<BarChart3 size={20} color={colors.accent} strokeWidth={1.9} />}
+            onPress={() => router.push("/more/daily-report")}
           />
         </ActionTileGrid>
 
         <View style={styles.list}>
           <OperationalRow
             density="menu"
+            title={t("more.row.dailyBrief.title")}
+            subtitle={t("more.row.dailyBrief.body")}
+            icon={<Sunrise size={20} color={colors.text} strokeWidth={1.9} />}
+            onPress={() => router.push("/more/daily-brief" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.waste.title")}
+            subtitle={t("more.row.waste.body")}
+            icon={<PackageMinus size={20} color={colors.text} strokeWidth={1.9} />}
+            onPress={() => router.push("/more/waste" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.activity.title")}
+            subtitle={t("more.row.activity.body")}
+            icon={<Activity size={20} color={colors.text} strokeWidth={1.9} />}
+            onPress={() => router.push("/more/activity" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.memory.title")}
+            subtitle={t("more.row.memory.body")}
+            icon={<Brain size={20} color={colors.text} strokeWidth={1.9} />}
+            onPress={() => router.push("/more/restaurant-memory" as never)}
+          />
+          <OperationalRow
+            density="menu"
             title={t("more.row.team.title")}
-            icon={<UsersRound size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<UsersRound size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/team" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("nav.insights")}
-            icon={<BarChart3 size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<BarChart3 size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/insights")}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.integrations.title")}
-            icon={<Mail size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<Mail size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/gmail")}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.suppliers.title")}
-            icon={<Truck size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<Truck size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/suppliers")}
           />
           <OperationalRow
             density="menu"
             title={t("nav.settings")}
-            icon={<Settings size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<Settings size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings")}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.help.title")}
+            subtitle={t("more.row.help.body")}
             icon={<HelpCircle size={17} color={colors.muted} strokeWidth={1.9} />}
+            onPress={() => router.push("/settings/support" as never)}
           />
         </View>
 
@@ -135,11 +170,7 @@ function initialsFor(value: string) {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 8
-  },
-  shortcutsLabel: {
-    color: colors.text,
-    ...conceptTypography.sectionTitle
+    gap: 12
   },
   list: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -149,20 +180,21 @@ const styles = StyleSheet.create({
   },
   profileRow: {
     minHeight: density.profileRow,
-    height: density.profileRow,
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.accentSoft
@@ -175,7 +207,8 @@ const styles = StyleSheet.create({
   },
   profileCopy: {
     flex: 1,
-    minWidth: 0
+    minWidth: 0,
+    gap: 2
   },
   profileName: {
     color: colors.text,
@@ -185,7 +218,7 @@ const styles = StyleSheet.create({
     color: colors.muted,
     ...conceptTypography.caption,
     fontFamily: conceptTypography.body.fontFamily,
-    marginTop: 1
+    marginTop: 2
   },
   pressed: {
     opacity: 0.72

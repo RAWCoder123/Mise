@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { colors, density, radii } from "../../constants/theme";
+import { colors, density } from "../../constants/theme";
 
 export type IconBadgeTone = "brand" | "leaf" | "neutral" | "caution" | "warning" | "danger" | "inverse";
 export type IconBadgeSize = "md" | "sm" | "plain";
@@ -32,21 +32,21 @@ export function IconBadge({ children, tone = "neutral", size = "md", style }: Ic
 
 const styles = StyleSheet.create({
   badge: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.md,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center"
   },
   badgeSm: {
     width: density.iconPlain,
     height: density.iconPlain,
-    borderRadius: radii.sm
+    borderRadius: density.iconPlain / 2
   },
   badgePlain: {
     width: density.iconPlain,
     height: density.iconPlain,
-    borderRadius: 0,
+    borderRadius: density.iconPlain / 2,
     backgroundColor: "transparent"
   }
 });

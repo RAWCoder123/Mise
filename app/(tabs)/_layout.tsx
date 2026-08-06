@@ -2,7 +2,7 @@ import { Tabs } from "expo-router";
 import { CalendarDays, Home, MoreHorizontal, Package, ShoppingCart } from "lucide-react-native";
 import { StyleSheet } from "react-native";
 
-import { colors, conceptTypography, density, fontFamilies } from "../../constants/theme";
+import { colors, density, fontFamilies } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 
 export default function TabsLayout() {
@@ -79,20 +79,21 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
+    // design:static locks this to 62 — keep in sync with density.tabBar
     height: 62,
-    paddingTop: 4,
-    paddingBottom: 2,
+    paddingTop: 5,
+    paddingBottom: 3,
     backgroundColor: colors.surface,
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth
   },
   tabBarItem: {
-    minHeight: 44
+    minHeight: density.hitTarget
   },
   tabBarLabel: {
     fontFamily: fontFamilies.semibold,
     fontSize: density.tabLabel,
-    lineHeight: conceptTypography.caption.lineHeight,
-    marginTop: 0
+    lineHeight: 11,
+    marginTop: 1
   }
 });

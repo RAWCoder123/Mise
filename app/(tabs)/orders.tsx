@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
-import { LockKeyhole, Mail, RotateCcw, Truck } from "lucide-react-native";
+import { Mail, RotateCcw, Truck } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { RecommendationDecisionRow } from "../../components/RecommendationDecisionRow";
 import { SupplierDraftCard } from "../../components/SupplierDraftCard";
+import { ActionIcon } from "../../components/ui/ActionIcon";
+import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { MotionView } from "../../components/ui/Motion";
@@ -15,7 +17,7 @@ import { SectionSurface } from "../../components/ui/SectionSurface";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { TrendLineChart } from "../../components/ui/TrendLineChart";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
@@ -544,15 +546,13 @@ export default function OrdersScreen() {
       titleAlign="left"
       loading={loading}
       action={
-        <Pressable
-          accessibilityRole="button"
+        <ActionIcon
           accessibilityLabel={t("orders.title")}
-          hitSlop={6}
           onPress={() => setLane("drafts")}
-          style={({ pressed }) => [styles.plusButton, pressed && styles.plusButtonPressed]}
+          style={styles.plusButton}
         >
           <Text style={styles.plusLabel}>+</Text>
-        </Pressable>
+        </ActionIcon>
       }
     >
       <View style={styles.stack}>
@@ -653,46 +653,43 @@ export default function OrdersScreen() {
                       )}
                     </Text>
                   </View>
-                  <Text style={styles.pendingChip}>{t("orders.lane.review")}</Text>
+                  <Badge label={t("orders.lane.review")} tone="caution" />
                 </Pressable>
               ) : null}
 
               <SectionSurface padding="none">
-                <View style={styles.emailMain}>
-                  <View
-                    style={[
-                      styles.mailIcon,
-                      gmailIsConnected && styles.mailIconConnected,
-                      gmailNeedsAttention && styles.mailIconAttention
-                    ]}
-                  >
-                    <Mail
-                      size={18}
-                      color={gmailIsConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
-                      strokeWidth={2}
-                    />
+                <View style={styles.emailBlock}>
+                  <View style={styles.emailMain}>
+                    <View
+                      style={[
+                        styles.mailIcon,
+                        gmailIsConnected && styles.mailIconConnected,
+                        gmailNeedsAttention && styles.mailIconAttention
+                      ]}
+                    >
+                      <Mail
+                        size={18}
+                        color={gmailIsConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
+                        strokeWidth={2}
+                      />
+                    </View>
+                    <View style={styles.emailCopy}>
+                      <Text style={styles.emailTitle}>{gmailTitle}</Text>
+                      <Text style={styles.emailBody} numberOfLines={1}>{gmailBody}</Text>
+                    </View>
+                    {canConnectGmail ? (
+                      <Button
+                        title={gmailActionTitle}
+                        variant="secondary"
+                        size="compact"
+                        accessibilityLabel={t("orders.gmail.settingsAccessibility")}
+                        onPress={() => router.push("/settings/gmail" as never)}
+                        style={styles.emailButton}
+                      />
+                    ) : null}
                   </View>
-                  <View style={styles.emailCopy}>
-                    <Text style={styles.emailTitle}>{gmailTitle}</Text>
-                    <Text style={styles.emailBody} numberOfLines={2}>{gmailBody}</Text>
-                  </View>
-                  {canConnectGmail ? (
-                    <Button
-                      title={gmailActionTitle}
-                      variant="secondary"
-                      size="compact"
-                      accessibilityLabel={t("orders.gmail.settingsAccessibility")}
-                      onPress={() => router.push("/settings/gmail" as never)}
-                      style={styles.emailButton}
-                    />
-                  ) : null}
-                </View>
-                <View style={styles.emailSecurity}>
-                  <LockKeyhole size={12} color={colors.muted} strokeWidth={1.8} />
-                  <Text style={styles.emailSecurityText}>
-                    {usingLocalDemo
-                      ? t("orders.gmail.security.demo")
-                      : t("orders.gmail.security.live")}
+                  <Text style={styles.emailSecurity}>
+                    {usingLocalDemo ? t("orders.gmail.security.demo") : t("orders.gmail.security.live")}
                   </Text>
                 </View>
               </SectionSurface>
@@ -870,19 +867,17 @@ export default function OrdersScreen() {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 8,
-    paddingBottom: 72
+    gap: 10,
+    paddingBottom: 80
   },
   tabs: {
-    marginBottom: 2
+    marginBottom: 4
   },
   plusButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center"
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.accent
   },
   plusButtonPressed: {
     opacity: 0.72
@@ -890,18 +885,18 @@ const styles = StyleSheet.create({
   plusLabel: {
     color: colors.surface,
     fontFamily: typography.families.bold,
-    fontSize: 18,
-    lineHeight: 20,
+    fontSize: 22,
+    lineHeight: 24,
     marginTop: -1
   },
   pendingCard: {
-    minHeight: 52,
+    minHeight: 56,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 9,
     flexDirection: "row",
     alignItems: "center",
     gap: 8
@@ -909,53 +904,44 @@ const styles = StyleSheet.create({
   pendingCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 1
+    gap: 3
   },
   pendingTitle: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 12,
-    lineHeight: 15
+    ...conceptTypography.rowTitle
   },
   pendingBody: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 10,
-    lineHeight: 13
-  },
-  pendingChip: {
-    color: colors.caution,
-    fontFamily: typography.families.semibold,
-    fontSize: 9,
-    lineHeight: 12,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radii.xl,
-    backgroundColor: colors.cautionSoft,
-    overflow: "hidden"
+    fontSize: 11,
+    lineHeight: 15
   },
   simNote: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 10,
-    lineHeight: 13,
-    marginTop: 2
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4
   },
   laneContent: {
     gap: 8
   },
+  emailBlock: {
+    paddingBottom: 10,
+    gap: 2
+  },
   emailMain: {
-    minHeight: 52,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    minHeight: 56,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 12
   },
   mailIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.surfaceWarm,
     alignItems: "center",
     justifyContent: "center"
@@ -972,43 +958,32 @@ const styles = StyleSheet.create({
   },
   emailTitle: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
+    ...conceptTypography.rowTitle
   },
   emailBody: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 10,
-    lineHeight: 13,
-    marginTop: 1
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2
+  },
+  emailSecurity: {
+    color: colors.faint,
+    ...conceptTypography.caption,
+    fontFamily: typography.families.body,
+    paddingHorizontal: 12
   },
   emailButton: {
     paddingHorizontal: 8
   },
-  emailSecurity: {
-    minHeight: 26,
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border
-  },
-  emailSecurityText: {
-    color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 9,
-    lineHeight: 12
-  },
   reviewQueue: {
     gap: 8,
-    paddingTop: 2
+    paddingTop: 4
   },
   supplierHeader: {
-    minHeight: 44,
+    minHeight: 50,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -1017,9 +992,9 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border
   },
   supplierIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: radii.sm,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: colors.successSoft,
     alignItems: "center",
     justifyContent: "center"
@@ -1031,15 +1006,15 @@ const styles = StyleSheet.create({
   supplierName: {
     color: colors.text,
     fontFamily: typography.families.semibold,
-    fontSize: 12,
-    lineHeight: 15
+    fontSize: 13,
+    lineHeight: 17
   },
   supplierMeta: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 9,
-    lineHeight: 12,
-    marginTop: 0
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 2
   },
   undoToast: {
     position: "absolute",

@@ -1,6 +1,6 @@
 import { ScrollView, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, radii } from "../../constants/theme";
 
 export interface SegmentOption<Value extends string> {
   value: Value;
@@ -41,6 +41,7 @@ export function SegmentedControl<Value extends string>({
         accessibilityState={{ selected, disabled: option.disabled }}
         aria-selected={selected}
         disabled={option.disabled}
+        hitSlop={variant === "pills" ? 9 : undefined}
         key={option.value}
         onPress={() => onValueChange(option.value)}
         style={({ pressed }) => [
@@ -138,9 +139,9 @@ const styles = StyleSheet.create({
   pillOption: {
     borderRadius: radii.xl,
     borderColor: colors.border,
-    backgroundColor: colors.panel,
-    minHeight: 28,
-    height: 28,
+    backgroundColor: colors.surface,
+    minHeight: 30,
+    height: 30,
     paddingHorizontal: 10,
     paddingVertical: 0
   },
@@ -171,7 +172,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.muted,
-    ...typography.caption,
+    ...conceptTypography.caption,
     textAlign: "center"
   },
   selectedLabel: {

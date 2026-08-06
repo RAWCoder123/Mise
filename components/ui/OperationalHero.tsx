@@ -160,13 +160,13 @@ const styles = StyleSheet.create({
   identity: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
+    gap: 14,
     flex: 1
   },
   iconSlot: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.md,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -178,65 +178,67 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     color: colors.accentDark,
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 12,
+    lineHeight: 16,
     fontFamily: fontFamilies.semibold,
     textTransform: "uppercase"
   },
   metaPill: {
-    minHeight: 32,
-    borderRadius: radii.md,
-    paddingHorizontal: 10,
+    minHeight: 36,
+    borderRadius: radii.xl,
+    paddingHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: colors.redBorder
+    borderWidth: 0,
+    borderColor: "transparent"
   },
   metaText: {
     color: colors.accentDark,
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: fontFamilies.semibold
   },
   title: {
     color: colors.text,
     ...typography.sectionTitle,
+    fontSize: 18,
+    lineHeight: 24,
     maxWidth: 430,
-    marginTop: 5
+    marginTop: 6
   },
   body: {
     color: colors.muted,
     fontFamily: fontFamilies.body,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 20,
     maxWidth: 430,
-    marginTop: 9
+    marginTop: 8
   },
   stats: {
     flexDirection: "row",
-    gap: 8,
-    marginTop: 12
+    gap: 10,
+    marginTop: 14
   },
   stat: {
     flex: 1,
-    minHeight: 56,
-    borderRadius: radii.md,
+    minHeight: 68,
+    borderRadius: radii.lg,
     backgroundColor: colors.surfaceWarm,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     justifyContent: "space-between"
   },
   statValue: {
     color: colors.text,
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: 20,
+    lineHeight: 24,
     fontFamily: fontFamilies.semibold
   },
   statLabel: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 14,
     fontFamily: fontFamilies.medium
   },

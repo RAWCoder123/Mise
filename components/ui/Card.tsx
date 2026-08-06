@@ -23,7 +23,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    padding: 12
+    padding: 16
   },
   warm: {
     backgroundColor: colors.surfaceWarm

@@ -92,29 +92,29 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceWarm
   },
   header: {
-    paddingHorizontal: 12,
-    paddingVertical: 10
+    paddingHorizontal: 16,
+    paddingVertical: 14
   },
   flatHeader: {
     paddingHorizontal: 0,
-    paddingTop: 4,
-    paddingBottom: 8
+    paddingTop: 8,
+    paddingBottom: 10
   },
   separatedHeader: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border
   },
   content: {
-    padding: 12
+    padding: 16
   },
   flatContent: {
     paddingHorizontal: 0
   },
   standaloneCompactPadding: {
-    padding: 12
+    padding: 14
   },
   comfortablePadding: {
-    padding: 14
+    padding: 18
   },
   noPadding: {
     padding: 0

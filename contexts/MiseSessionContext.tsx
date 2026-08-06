@@ -1,9 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Linking from "expo-linking";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { AppState } from "react-native";
 
 import { canUseDemoMode as canUseDemoModeForConfig, readPublicAppConfig } from "../lib/appConfig";
+import {
+  type AuthOAuthProvider,
+  createSessionFromUrl,
+  isMiseAuthCallbackUrl,
+  signInWithOAuthProvider
+} from "../lib/authOAuth";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import type {
   AppUser,
@@ -54,6 +61,7 @@ interface MiseSessionContextValue {
   usingLocalDemo: boolean;
   canUseDemoMode: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithProvider: (provider: AuthOAuthProvider) => Promise<void>;
   continueWithDemo: (profile?: { name?: string; cuisine_type?: string; posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   switchRestaurant: (restaurantId: string) => Promise<void>;
   connectDemoPOS: (provider: PosProvider) => Promise<void>;
@@ -464,6 +472,38 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     [hydrateSupabaseUser]
   );
 
+  const signInWithProvider = useCallback(async (provider: AuthOAuthProvider) => {
+    await signInWithOAuthProvider(provider);
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    let mounted = true;
+
+    async function consumeAuthCallback(url: string | null) {
+      if (!mounted || !url || !isMiseAuthCallbackUrl(url)) return;
+      try {
+        await createSessionFromUrl(url);
+      } catch (error) {
+        captureMiseError(error, { flow: "oauth", operation: "consume_auth_callback" });
+      }
+    }
+
+    void Linking.getInitialURL().then((url) => {
+      void consumeAuthCallback(url);
+    });
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      void consumeAuthCallback(url);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
   const switchRestaurant = useCallback(
     async (restaurantId: string) => {
       requireRestaurantAccess(memberships, restaurantId);
@@ -556,6 +596,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       usingLocalDemo: isDemoMode,
       canUseDemoMode: demoModeAvailable,
       signIn,
+      signInWithProvider,
       continueWithDemo,
       switchRestaurant,
       connectDemoPOS,
@@ -578,6 +619,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       resetDemoData,
       role,
       signIn,
+      signInWithProvider,
       signOut,
       switchRestaurant,
       user

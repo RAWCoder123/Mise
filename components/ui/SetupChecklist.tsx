@@ -130,37 +130,39 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   importRow: {
-    minHeight: 56,
-    borderRadius: radii.md,
+    minHeight: 64,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: 11,
+    padding: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 12
   },
   importIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.md,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 0,
     backgroundColor: colors.panel,
     alignItems: "center",
     justifyContent: "center"
   },
   importAction: {
-    minHeight: 36,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    gap: 2
+    gap: 4
   },
   importActionText: {
     color: colors.text,
-    ...typography.caption
+    ...typography.caption,
+    fontSize: 13,
+    lineHeight: 17
   },
   addButton: {
-    marginTop: 2
+    marginTop: 4
   },
   pressed: {
     opacity: 0.72

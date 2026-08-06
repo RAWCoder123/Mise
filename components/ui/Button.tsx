@@ -69,7 +69,7 @@ export function Button({
       hitSlop={hitSlop}
       {...props}
     >
-      <Animated.View style={[styles.content, scaleStyle]}>
+      <Animated.View style={[styles.content, isCompact && styles.compactContent, scaleStyle]}>
         {icon}
         <Text
           style={[
@@ -105,6 +105,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8
+  },
+  compactContent: {
+    gap: 4
   },
   primary: {
     backgroundColor: colors.accent,

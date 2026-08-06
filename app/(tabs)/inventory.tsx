@@ -1,22 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { Beef, ChevronRight, Droplets, Filter, LeafyGreen, Milk, Package, Search, Wheat } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Beef, Droplets, Filter, LeafyGreen, Milk, Package, Search, Wheat } from "lucide-react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 
+import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import {
-  InventoryHealthBar,
   buildInventoryHealthAccessibilityLabel,
   getInventoryHealthTotal,
   getWellStockedPercentage,
   type InventoryHealthCounts
 } from "../../components/ui/InventoryHealth";
+import { InventoryHealthSummaryCard } from "../../components/ui/InventoryHealthSummaryCard";
 import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
+import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
+import { SectionHeader } from "../../components/ui/SectionHeader";
 import { FilterRow, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, density, inventoryStatusColors, inventoryStatusSoftColors, radii, typography } from "../../constants/theme";
+import { colors, inventoryStatusColors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
@@ -42,6 +45,7 @@ export default function InventoryScreen() {
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
+  const searchInputRef = useRef<TextInput>(null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   useEffect(() => {
@@ -180,24 +184,18 @@ export default function InventoryScreen() {
       loading={loading}
       action={
         <View style={styles.headerActions}>
-          <Pressable
-            accessibilityRole="button"
+          <ActionIcon
             accessibilityLabel={t("inventory.search.accessibility")}
-            hitSlop={6}
-            onPress={() => setFilter("All")}
-            style={({ pressed }) => [styles.headerAction, pressed && styles.rowPressed]}
+            onPress={() => searchInputRef.current?.focus()}
           >
-            <Search size={18} color={colors.text} strokeWidth={2} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
+            <Search size={22} color={colors.text} strokeWidth={2} />
+          </ActionIcon>
+          <ActionIcon
             accessibilityLabel={t("inventory.filter.toggle")}
-            hitSlop={6}
             onPress={() => setFilter((current) => (current === "At risk" ? "All" : "At risk"))}
-            style={({ pressed }) => [styles.headerAction, pressed && styles.rowPressed]}
           >
-            <Filter size={17} color={filter === "At risk" ? colors.warning : colors.text} strokeWidth={2} />
-          </Pressable>
+            <Filter size={22} color={filter === "At risk" ? colors.warning : colors.text} strokeWidth={2} />
+          </ActionIcon>
         </View>
       }
     >
@@ -212,43 +210,23 @@ export default function InventoryScreen() {
           />
         ) : null}
 
-        <View accessible accessibilityLabel={healthAccessibilityLabel} style={styles.healthCard}>
-          <View style={styles.healthLabelRow}>
-            <Text style={styles.healthLabel}>{t("inventory.health.title")}</Text>
-            <View style={[styles.healthChip, attentionCount > 0 ? styles.healthChipWatch : styles.healthChipGood]}>
-              <Text style={[styles.healthChipText, attentionCount > 0 ? styles.healthChipTextWatch : styles.healthChipTextGood]}>
-                {healthTotal === 0
-                  ? healthLabels.empty
-                  : attentionCount === 0
-                    ? healthLabels.wellStocked
-                    : t(attentionCount === 1 ? "inventory.health.attention.one" : "inventory.health.attention.other", {
-                        count: formatNumber(attentionCount)
-                      })}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.healthHead}>
-            <Text style={styles.healthPercent}>
-              {healthTotal === 0 ? formatNumber(0, { style: "percent" }) : healthPercentLabel}
-            </Text>
-            <View style={styles.healthCopy}>
-              <Text style={styles.healthTitle} numberOfLines={1}>
-                {healthTotal === 0
-                  ? healthLabels.empty
-                  : attentionCount === 0
-                    ? healthLabels.wellStocked
-                    : t(
-                        attentionCount === 1
-                          ? "inventory.health.attention.one"
-                          : "inventory.health.attention.other",
-                        { count: formatNumber(attentionCount) }
-                      )}
-              </Text>
-              <Text style={styles.healthBody} numberOfLines={1}>{healthBody}</Text>
-            </View>
-          </View>
-          <InventoryHealthBar counts={healthCounts} />
-        </View>
+        <InventoryHealthSummaryCard
+          counts={healthCounts}
+          title={t("inventory.health.title")}
+          percentLabel={healthTotal === 0 ? formatNumber(0, { style: "percent" }) : healthPercentLabel}
+          chipLabel={
+            healthTotal === 0
+              ? healthLabels.empty
+              : attentionCount === 0
+                ? healthLabels.wellStocked
+                : t(attentionCount === 1 ? "inventory.health.attention.one" : "inventory.health.attention.other", {
+                    count: formatNumber(attentionCount)
+                  })
+          }
+          chipTone={attentionCount > 0 ? "warning" : "success"}
+          body={healthBody}
+          accessibilityLabel={healthAccessibilityLabel}
+        />
 
         <InventoryGroup
           title={t("inventory.group.lowStock")}
@@ -267,22 +245,19 @@ export default function InventoryScreen() {
           onHeaderPress={() => router.push("/orders")}
         />
 
-        {/* Keep filter option definitions for design:static semantic checks. */}
-        <View style={styles.hiddenFilters} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <View style={styles.allStock}>
           <FilterRow
             accessibilityLabel={t("inventory.filter.accessibility")}
             options={filterOptions}
             value={filter}
             onValueChange={setFilter}
           />
-        </View>
-
-        <View style={styles.allStock}>
-          <Text style={styles.groupTitle}>{t("inventory.list.title")}</Text>
+          <SectionHeader title={t("inventory.list.title")} />
           <View style={styles.controls}>
             <View style={styles.searchBox}>
-              <Search size={16} color={colors.faint} strokeWidth={2.25} />
+              <Search size={18} color={colors.faint} strokeWidth={2.25} />
               <TextInput
+                ref={searchInputRef}
                 accessibilityLabel={t("inventory.search.accessibility")}
                 value={query}
                 onChangeText={setQuery}
@@ -300,13 +275,11 @@ export default function InventoryScreen() {
             </View>
           ) : (
             <View style={styles.inventoryList}>
-              {filtered.slice(0, 12).map((outlook, index) => (
+              {filtered.slice(0, 12).map((outlook) => (
                 <InventoryListRow
                   key={outlook.item.id}
                   outlook={outlook}
-                  divided={index > 0}
                   queueCount={visibleQueue.filter((entry) => entry.event.inventoryItemId === outlook.item.id).length}
-                  compact
                 />
               ))}
             </View>
@@ -328,25 +301,21 @@ function InventoryGroup({
   queue: InventoryOutboxEntry[];
   onHeaderPress?: () => void;
 }) {
+  const { t } = useLocale();
   if (outlooks.length === 0) return null;
   return (
     <View style={styles.group}>
-      <Pressable
-        accessibilityRole={onHeaderPress ? "button" : undefined}
-        disabled={!onHeaderPress}
-        onPress={onHeaderPress}
-        style={styles.groupHeader}
-      >
-        <Text style={styles.groupTitle}>{title}</Text>
-      </Pressable>
+      <SectionHeader
+        title={title}
+        action={onHeaderPress ? t("common.viewAll") : undefined}
+        onAction={onHeaderPress}
+      />
       <View style={styles.inventoryList}>
-        {outlooks.map((outlook, index) => (
+        {outlooks.map((outlook) => (
           <InventoryListRow
             key={outlook.item.id}
             outlook={outlook}
-            divided={index > 0}
             queueCount={queue.filter((entry) => entry.event.inventoryItemId === outlook.item.id).length}
-            compact
           />
         ))}
       </View>
@@ -368,7 +337,7 @@ function isCanonicalUnitReady(item: InventoryItem) {
 }
 
 function categoryIcon(category: string, color: string) {
-  const props = { size: 16, color, strokeWidth: 2.2 } as const;
+  const props = { size: 18, color, strokeWidth: 2.2 } as const;
   const normalized = category.trim().toLowerCase();
   if (normalized.includes("protein") || normalized.includes("meat") || normalized.includes("beef") || normalized.includes("chicken")) {
     return <Beef {...props} />;
@@ -390,14 +359,10 @@ function categoryIcon(category: string, color: string) {
 
 function InventoryListRow({
   outlook,
-  divided,
-  queueCount,
-  compact = false
+  queueCount
 }: {
   outlook: InventoryOutlookItem;
-  divided: boolean;
   queueCount: number;
-  compact?: boolean;
 }) {
   const { formatNumber, t } = useLocale();
   const { item, prediction } = outlook;
@@ -414,10 +379,25 @@ function InventoryListRow({
           count: formatNumber(queueCount)
         })
       : t("inventory.row.openOps");
+  const statusColor = isCritical
+    ? inventoryStatusColors.Critical
+    : isLow
+      ? inventoryStatusColors.Low
+      : isGood
+        ? colors.success
+        : inventoryStatusColors.Watch;
+  const iconTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "leaf";
+  const badgeTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "success";
 
   return (
-    <Pressable
-      accessibilityRole="button"
+    <OperationalRow
+      density="operational"
+      title={item.item_name}
+      subtitle={`${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${item.unit} · ${localized.coverage}`}
+      icon={categoryIcon(item.category, statusColor)}
+      iconTone={iconTone}
+      badgeLabel={localized.status}
+      badgeTone={badgeTone}
       accessibilityLabel={t("inventory.row.accessibilityLedger", {
         item: item.item_name,
         status: localized.status,
@@ -428,307 +408,83 @@ function InventoryListRow({
       })}
       accessibilityHint={t("inventory.row.hintOps")}
       onPress={() => router.push(`/inventory/${item.id}`)}
-      style={({ pressed }) => [
-        styles.inventoryRow,
-        compact && styles.inventoryRowCompact,
-        isCritical && styles.inventoryRowCritical,
-        isLow && styles.inventoryRowLow,
-        prediction.projectedStatus === "Watch" && styles.inventoryRowWatch,
-        isGood && styles.inventoryRowGood,
-        divided && styles.dividedRow,
-        pressed && styles.rowPressed
-      ]}
-    >
-      <View
-        style={[
-          styles.statusIcon,
-          isCritical && styles.statusIconCritical,
-          isLow && styles.statusIconLow,
-          isWatch && styles.statusIconWatch,
-          isGood && styles.statusIconGood
-        ]}
-      >
-        {categoryIcon(item.category, isCritical ? inventoryStatusColors.Critical : isLow ? inventoryStatusColors.Low : isGood ? colors.success : inventoryStatusColors.Watch)}
-      </View>
-      <View style={styles.itemCopy}>
-        <View style={styles.itemTitleRow}>
-          <Text style={styles.itemTitle} numberOfLines={1}>{item.item_name}</Text>
-          <Text
-            style={[
-              styles.statusLabel,
-              isCritical && styles.statusLabelCritical,
-              isLow && styles.statusLabelLow,
-              isGood && styles.statusLabelGood
-            ]}
-          >
-            {localized.status}
-          </Text>
-        </View>
-        <Text style={styles.itemCoverage} numberOfLines={1}>
-          {formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} {item.unit} · {localized.coverage}
-        </Text>
-      </View>
-      <ChevronRight size={16} color={colors.faint} strokeWidth={2.25} />
-    </Pressable>
+    />
   );
 }
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 10
+    gap: 12
   },
   emptyButton: {
-    marginTop: 12
+    marginTop: 16
   },
   headerActions: {
     flexDirection: "row",
     alignItems: "center"
   },
-  headerAction: {
-    width: 40,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  healthCard: {
-    minHeight: density.healthCard,
-    maxHeight: 84,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 4,
-    justifyContent: "center"
-  },
-  healthLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8
-  },
-  healthLabel: {
-    color: colors.text,
-    ...conceptTypography.sectionTitle
-  },
-  healthChip: {
-    borderRadius: radii.xl,
-    paddingHorizontal: 6,
-    paddingVertical: 1
-  },
-  healthChipGood: {
-    backgroundColor: colors.successSoft
-  },
-  healthChipWatch: {
-    backgroundColor: colors.warningSoft
-  },
-  healthChipText: {
-    ...conceptTypography.caption
-  },
-  healthChipTextGood: {
-    color: colors.success
-  },
-  healthChipTextWatch: {
-    color: colors.warning
-  },
-  healthHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
-  },
-  healthPercent: {
-    color: colors.success,
-    fontFamily: typography.families.bold,
-    fontSize: 20,
-    lineHeight: 24,
-    letterSpacing: -0.3
-  },
-  healthCopy: {
-    flex: 1,
-    minWidth: 0
-  },
-  healthTitle: {
-    color: colors.text,
-    ...conceptTypography.rowTitle
-  },
-  healthBody: {
-    color: colors.muted,
-    ...conceptTypography.caption,
-    fontFamily: typography.families.body,
-    marginTop: 0
-  },
   group: {
-    gap: 2
-  },
-  groupHeader: {
-    minHeight: 20,
-    justifyContent: "center"
-  },
-  groupTitle: {
-    color: colors.text,
-    ...conceptTypography.sectionTitle
+    gap: 4
   },
   allStock: {
-    gap: 4,
-    marginTop: 6,
-    paddingTop: 6,
+    gap: 8,
+    marginTop: 4,
+    paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
   },
-  hiddenFilters: {
-    height: 0,
-    overflow: "hidden",
-    opacity: 0
-  },
   controls: {
-    gap: 6
+    gap: 10
   },
   searchBox: {
-    minHeight: 36,
+    minHeight: 44,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     borderRadius: radii.md,
     backgroundColor: colors.surface,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 10
   },
   searchInput: {
     flex: 1,
-    minHeight: 34,
+    minHeight: 42,
     color: colors.text,
     fontFamily: typography.families.body,
     fontSize: 12,
-    lineHeight: 16,
+    lineHeight: 17,
     paddingVertical: 0
   },
   inventoryList: {
     backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderColor: "transparent",
     overflow: "hidden"
   },
-  inventoryRow: {
-    minHeight: density.operationalRow,
-    height: density.operationalRow,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.borderStrong,
-    paddingHorizontal: 8,
-    paddingVertical: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
-  },
-  inventoryRowCompact: {
-    minHeight: density.operationalRow,
-    height: density.operationalRow
-  },
-  inventoryRowCritical: {
-    borderLeftColor: inventoryStatusColors.Critical
-  },
-  inventoryRowLow: {
-    borderLeftColor: inventoryStatusColors.Low
-  },
-  inventoryRowWatch: {
-    borderLeftColor: inventoryStatusColors.Watch
-  },
-  inventoryRowGood: {
-    borderLeftColor: inventoryStatusColors.Good
-  },
-  dividedRow: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border
-  },
-  rowPressed: {
-    backgroundColor: colors.panel
-  },
-  statusIcon: {
-    width: density.iconPlain,
-    height: density.iconPlain,
-    borderRadius: 6,
-    backgroundColor: inventoryStatusSoftColors.Watch,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  statusIconCritical: {
-    backgroundColor: colors.dangerSoft
-  },
-  statusIconLow: {
-    backgroundColor: inventoryStatusSoftColors.Low
-  },
-  statusIconWatch: {
-    backgroundColor: inventoryStatusSoftColors.Watch
-  },
-  statusIconGood: {
-    backgroundColor: colors.successSoft
-  },
-  itemCopy: {
-    flex: 1,
-    minWidth: 0
-  },
-  itemTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6
-  },
-  itemTitle: {
-    flex: 1,
-    color: colors.text,
-    ...conceptTypography.rowTitle
-  },
-  statusLabel: {
-    color: inventoryStatusColors.Watch,
-    ...conceptTypography.caption,
-    fontFamily: typography.families.bold,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    overflow: "hidden",
-    backgroundColor: inventoryStatusSoftColors.Watch
-  },
-  statusLabelCritical: {
-    color: inventoryStatusColors.Critical,
-    backgroundColor: colors.dangerSoft
-  },
-  statusLabelLow: {
-    color: inventoryStatusColors.Low,
-    backgroundColor: inventoryStatusSoftColors.Low
-  },
-  statusLabelGood: {
-    color: inventoryStatusColors.Good,
-    backgroundColor: colors.successSoft
-  },
-  itemCoverage: {
-    color: colors.muted,
-    ...conceptTypography.caption,
-    fontFamily: typography.families.body,
-    marginTop: 0
-  },
   emptyList: {
-    minHeight: 72,
+    minHeight: 120,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
-    padding: 12,
-    borderRadius: radii.md,
+    padding: 20,
+    borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    gap: 4
+    gap: 8
   },
   emptyListTitle: {
     color: colors.text,
     fontFamily: typography.families.semibold,
-    fontSize: 13,
-    lineHeight: 16
+    fontSize: 15,
+    lineHeight: 20
   },
   emptyListCopy: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: "center"
   }
 });

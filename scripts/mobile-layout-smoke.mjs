@@ -16,6 +16,8 @@ const baseRoutes = [
   "/orders",
   "/insights",
   "/more",
+  "/more/waste",
+  "/more/daily-brief",
   "/ask-mise",
   "/tasks/layout-smoke-task",
   "/settings",
@@ -442,6 +444,7 @@ const localizedLayoutRoutes = [
   "/orders",
   "/insights",
   "/more",
+  "/more/daily-brief",
   "/setup",
   "/accept-invite",
   "/settings",
@@ -457,7 +460,7 @@ async function verifyLocalizedLayouts(cdp, localeLabel) {
 }
 
 async function runOrderInteractionQa(cdp) {
-  console.log("Mise core interaction QA: initialize -> inventory -> Gmail simulation -> orders -> recipes -> insights -> POS -> reset");
+  console.log("Mise core interaction QA: initialize -> phase brief -> inventory -> Gmail simulation -> orders -> recipes -> insights -> POS -> reset");
   await evaluateValue(cdp, "localStorage.clear(); true");
   await navigateAndMeasure(cdp, "/login", []);
   await waitForBrowserCondition(
@@ -527,6 +530,25 @@ async function runOrderInteractionQa(cdp) {
     "persisted restored English preference"
   );
 
+  await navigateAndMeasure(cdp, "/more/daily-brief", []);
+  await waitForBrowserCondition(
+    cdp,
+    "document.body.innerText.includes('What matters now') && document.body.innerText.includes('Still unknown')",
+    "interpreted phase brief"
+  );
+  await clickByRoleAndText(cdp, "tab", "Pre-service");
+  await waitForBrowserCondition(
+    cdp,
+    "Array.from(document.querySelectorAll('[role=\"tab\"]')).some((node)=>node.textContent.includes('Pre-service')&&node.getAttribute('aria-selected')==='true')",
+    "selected pre-service brief"
+  );
+  await clickByRoleAndText(cdp, "tab", "Closing");
+  await waitForBrowserCondition(
+    cdp,
+    "document.body.innerText.includes('Finish with evidence') && document.body.innerText.includes('Open full daily report')",
+    "interactive closing brief"
+  );
+
   await navigateAndMeasure(cdp, "/inventory", []);
   await waitForBrowserCondition(cdp, "document.body.innerText.includes('Stock list')", "Inventory stock list");
   const inventoryRowLabel = await firstAriaLabelEnding(
@@ -579,7 +601,7 @@ async function runOrderInteractionQa(cdp) {
   await navigateAndMeasure(cdp, "/orders", []);
   await waitForBrowserCondition(
     cdp,
-    "document.body.innerText.includes('Supplier orders') && document.body.innerText.includes('Needs review')",
+    "location.pathname === '/orders' && Boolean(document.querySelector('[aria-label^=\"Review,\"]'))",
     "Orders Drafts lane and review queue prompt"
   );
   await clickByRoleAndText(cdp, "tab", "Review");
@@ -604,7 +626,7 @@ async function runOrderInteractionQa(cdp) {
   await sleep(1200);
   await waitForBrowserCondition(
     cdp,
-    "document.body.innerText.includes('Supplier orders')",
+    "location.pathname === '/orders' && Boolean(document.querySelector('[aria-label^=\"Drafts,\"]'))",
     "Orders after invalid quantity validation"
   );
   await clickByRoleAndText(cdp, "tab", "Review");
@@ -638,7 +660,7 @@ async function runOrderInteractionQa(cdp) {
   await sleep(1600);
   await waitForBrowserCondition(
     cdp,
-    "document.body.innerText.includes('Supplier orders')",
+    "location.pathname === '/orders' && Boolean(document.querySelector('[aria-label^=\"Drafts,\"]'))",
     "Orders after reload"
   );
   await clickByRoleAndText(cdp, "tab", "Review");
@@ -805,7 +827,7 @@ async function runOrderInteractionQa(cdp) {
   await clickByRoleAndText(cdp, "button", "Open Today");
   await waitForBrowserCondition(
     cdp,
-    "location.pathname === '/today' && document.body.innerText.includes('QA Sample Restaurant')",
+    "location.pathname === '/today' && Boolean(document.querySelector('[aria-label=\"Today\"]'))",
     "Today after guided setup"
   );
 

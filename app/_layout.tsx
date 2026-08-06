@@ -48,11 +48,20 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="inventory/[id]" />
               <Stack.Screen name="orders/[id]" />
+              <Stack.Screen name="more/create-task" />
+              <Stack.Screen name="more/log-delivery" />
+              <Stack.Screen name="more/scan-item" />
+              <Stack.Screen name="more/daily-report" />
+              <Stack.Screen name="more/daily-brief" />
+              <Stack.Screen name="more/waste" />
+              <Stack.Screen name="more/activity" />
+              <Stack.Screen name="more/restaurant-memory" />
               <Stack.Screen name="settings/pos" />
               <Stack.Screen name="settings/recipes" />
               <Stack.Screen name="settings/language" />
               <Stack.Screen name="settings/gmail" />
               <Stack.Screen name="settings/suppliers" />
+              <Stack.Screen name="settings/autonomy" />
             </Stack>
             <StatusBar style="dark" />
           </LocaleProvider>

@@ -111,10 +111,18 @@ semanticInventoryPalette.forEach(([status, token]) => {
   }
 });
 
-for (const file of ["components/ui/InventoryHealth.tsx", "app/(tabs)/inventory.tsx", "app/(tabs)/home.tsx"]) {
+for (const file of [
+  "components/ui/InventoryHealth.tsx",
+  "components/ui/InventoryHealthSummaryCard.tsx",
+  "app/(tabs)/inventory.tsx"
+]) {
   if (!read(file).includes("inventoryStatusColors")) {
     failures.push(`${file}: use the authoritative inventory status palette`);
   }
+}
+const homeScreen = read("app/(tabs)/home.tsx");
+if (!homeScreen.includes("InventoryHealthSummaryCard") && !homeScreen.includes("inventoryStatusColors")) {
+  failures.push("app/(tabs)/home.tsx: use the authoritative inventory status palette");
 }
 
 const inventoryScreen = read("app/(tabs)/inventory.tsx");

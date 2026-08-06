@@ -45,7 +45,14 @@
       ],
       "expo-localization",
       "@sentry/react-native",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Mise uses the camera to scan inventory barcodes."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

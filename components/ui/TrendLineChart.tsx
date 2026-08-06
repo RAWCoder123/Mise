@@ -205,8 +205,8 @@ const styles = StyleSheet.create({
     right: 0,
     color: colors.faint,
     fontFamily: typography.families.semibold,
-    fontSize: 10,
-    lineHeight: 14
+    fontSize: 12,
+    lineHeight: 16
   },
   labelRow: {
     flexDirection: "row",

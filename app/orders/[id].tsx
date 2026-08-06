@@ -5,19 +5,26 @@ import { ArrowLeft, CheckCircle2, Copy, FileText, Save, Send } from "lucide-reac
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
+import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import type { MessageKey } from "../../i18n/catalog";
 import {
   fetchEmailConnectionState,
-  fetchSupplierOrder,
+  fetchSupplierOrderOperationalDetail,
   isGmailIntegrationError,
+  receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
+import type {
+  SupplierDeliveryStatus,
+  SupplierOrderDeliveryEvidence
+} from "../../services/domain/supplierReliability";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type { RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
@@ -38,6 +45,7 @@ export default function OrderDraftDetailScreen() {
   const { memberships, restaurant, usingLocalDemo } = useMiseSession();
   const [order, setOrder] = useState<SupplierOrder | null>(null);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
+  const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -65,21 +73,23 @@ export default function OrderDraftDetailScreen() {
     if (showLoading) setLoading(true);
     setNotice(null);
     try {
-      const [nextOrder, nextEmailConnection] = await Promise.all([
-        fetchSupplierOrder(restaurantId, orderId),
+      const [nextDetail, nextEmailConnection] = await Promise.all([
+        fetchSupplierOrderOperationalDetail(restaurantId, orderId),
         fetchEmailConnectionState(restaurantId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       if (nextEmailConnection && nextEmailConnection.restaurant_id !== restaurantId) {
         throw new Error(t("orders.detail.connectionMismatch"));
       }
-      setOrder(nextOrder);
+      setOrder(nextDetail.order);
+      setDeliveryEvidence(nextDetail.deliveryEvidence);
       setEmailConnection(nextEmailConnection);
       setLoadedRestaurantId(restaurantId);
-      setOperatorNote(nextOrder.operator_note ?? "");
+      setOperatorNote(nextDetail.order.operator_note ?? "");
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
+      setDeliveryEvidence([]);
       setNotice({
         title: t("orders.detail.load.title"),
         message:
@@ -98,6 +108,7 @@ export default function OrderDraftDetailScreen() {
     actionLockRef.current = false;
     setLoadedRestaurantId(null);
     setOrder(null);
+    setDeliveryEvidence([]);
     setEmailConnection(null);
     setOperatorNote("");
     setBusy(false);
@@ -227,12 +238,55 @@ export default function OrderDraftDetailScreen() {
     }
   }
 
+  async function markReceived() {
+    if (!restaurant || !order || order.status !== "sent" || actionLockRef.current) return;
+    if (!canManage) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    actionLockRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await receiveSupplierOrderDelivery(restaurantId, order.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load(false);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        title:
+          result.outcome === "already_applied"
+            ? t("orders.detail.notice.alreadyReceivedTitle")
+            : t("orders.detail.notice.receivedTitle"),
+        message:
+          result.status === "discrepancy"
+            ? t("orders.detail.notice.receivedDiscrepancyBody")
+            : t("orders.detail.notice.receivedBody"),
+        tone: result.status === "discrepancy" ? "warning" : "success"
+      });
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setNotice({
+          title: t("orders.detail.notice.receiveFailedTitle"),
+          message: t("orders.detail.notice.receiveFailedBody"),
+          tone: "danger"
+        });
+      }
+    } finally {
+      actionLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
+    }
+  }
+
   const visibleOrder = loadedRestaurantId === restaurant?.id ? order : null;
   const isDraft = visibleOrder?.status === "draft";
+  const isSent = visibleOrder?.status === "sent";
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canManageGmail = canDeleteRestaurantData(memberships, restaurant?.id);
   const canEditDraft = Boolean(isDraft && canManage);
   const visibleEmailConnection = loadedRestaurantId === restaurant?.id ? emailConnection : null;
+  const visibleDeliveryEvidence =
+    loadedRestaurantId === restaurant?.id ? deliveryEvidence : [];
   const gmailReady = visibleEmailConnection?.status === "connected";
   const generatedMessage = visibleOrder ? generatedOrderMessage(visibleOrder) : "";
 
@@ -250,7 +304,9 @@ export default function OrderDraftDetailScreen() {
               ? t("orders.detail.subtitle.editable")
               : isDraft
                 ? t("orders.detail.subtitle.readOnlyDraft")
-                : t("orders.detail.subtitle.sent"))
+                : visibleOrder.status === "completed"
+                  ? t("orders.detail.subtitle.received")
+                  : t("orders.detail.subtitle.sent"))
           : t("orders.detail.subtitle.default")
       }
       loading={loading}
@@ -303,7 +359,11 @@ export default function OrderDraftDetailScreen() {
             </View>
             <View style={styles.statusCopy}>
               <Text style={styles.statusTitle}>
-                {isDraft ? t("orders.detail.status.draft") : t("orders.detail.status.sent")}
+                {isDraft
+                  ? t("orders.ops.DraftedByMise")
+                  : visibleOrder.status === "completed"
+                    ? t("orders.ops.Received")
+                    : t("orders.ops.Sent")}
               </Text>
               <Text style={styles.statusMeta}>
                 {visibleOrder.delivery_date
@@ -317,6 +377,55 @@ export default function OrderDraftDetailScreen() {
               </Text>
             </View>
           </View>
+
+          {visibleDeliveryEvidence.length > 0 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.deliveryEvidence.title")}</Text>
+              <Text style={styles.sectionBody}>{t("orders.detail.deliveryEvidence.body")}</Text>
+              {visibleDeliveryEvidence.map((evidence) => (
+                <View key={evidence.deliveryId} style={styles.deliveryEvidencePanel}>
+                  <View style={styles.deliveryEvidenceHeader}>
+                    <Badge
+                      label={t(`orders.detail.deliveryEvidence.status.${evidence.status}` as MessageKey)}
+                      tone={deliveryEvidenceTone(evidence.status)}
+                    />
+                    <Text style={styles.deliveryEvidenceMeta}>
+                      {t("orders.detail.deliveryEvidence.meta", {
+                        date: formatDate(evidence.receivedAt, {
+                          dateStyle: "medium",
+                          timeZone: restaurant?.timezone ?? "UTC"
+                        }),
+                        timing: t(
+                          `orders.detail.deliveryEvidence.timing.${evidence.timing}` as MessageKey
+                        )
+                      })}
+                    </Text>
+                  </View>
+                  <Text style={styles.deliveryEvidenceLine}>
+                    {evidence.discrepancyLineCount > 0
+                      ? t(
+                          evidence.lineCount === 1
+                            ? "orders.detail.deliveryEvidence.lines.attention.one"
+                            : "orders.detail.deliveryEvidence.lines.attention.other",
+                          {
+                            count: formatNumber(evidence.lineCount),
+                            issues: formatNumber(evidence.discrepancyLineCount)
+                          }
+                        )
+                      : t(
+                          evidence.lineCount === 1
+                            ? "orders.detail.deliveryEvidence.lines.clear.one"
+                            : "orders.detail.deliveryEvidence.lines.clear.other",
+                          { count: formatNumber(evidence.lineCount) }
+                        )}
+                  </Text>
+                  {evidence.notes ? (
+                    <Text style={styles.deliveryEvidenceNote}>{evidence.notes}</Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("orders.detail.generated.title")}</Text>
@@ -424,6 +533,19 @@ export default function OrderDraftDetailScreen() {
               fullWidth
             />
           ) : null}
+
+          {isSent && canManage ? (
+            <Button
+              title={busy ? t("orders.detail.action.receiving") : t("orders.detail.action.markReceived")}
+              accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
+                supplier: visibleOrder.supplier_name
+              })}
+              icon={<CheckCircle2 size={17} color={colors.surface} strokeWidth={2.25} />}
+              onPress={() => void markReceived()}
+              disabled={busy}
+              fullWidth
+            />
+          ) : null}
         </View>
       ) : (
         <Text style={styles.notice} accessibilityLiveRegion="polite">
@@ -432,6 +554,13 @@ export default function OrderDraftDetailScreen() {
       )}
     </Screen>
   );
+}
+
+function deliveryEvidenceTone(status: SupplierDeliveryStatus): BadgeTone {
+  if (status === "received") return "success";
+  if (status === "discrepancy" || status === "failed") return "danger";
+  if (status === "partially_received") return "warning";
+  return "neutral";
 }
 
 function viewOnlyNotice(t: Translate): OrderNotice {
@@ -560,6 +689,35 @@ const styles = StyleSheet.create({
   sectionBody: {
     color: colors.muted,
     ...typography.body
+  },
+  deliveryEvidencePanel: {
+    marginTop: 4,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceWarm,
+    padding: 12,
+    gap: 7
+  },
+  deliveryEvidenceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8
+  },
+  deliveryEvidenceMeta: {
+    flex: 1,
+    textAlign: "right",
+    color: colors.muted,
+    ...typography.caption
+  },
+  deliveryEvidenceLine: {
+    color: colors.text,
+    ...typography.body
+  },
+  deliveryEvidenceNote: {
+    color: colors.muted,
+    ...typography.caption
   },
   messagePanel: {
     borderRadius: radii.lg,

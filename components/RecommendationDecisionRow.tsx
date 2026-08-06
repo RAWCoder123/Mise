@@ -4,7 +4,9 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors, radii, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
+import { presentSupportedRecommendationStatus } from "../services/domain/operationalStatus";
 import type { PurchaseRecommendation } from "../types/mise";
+import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 
 interface RecommendationDecisionRowProps {
@@ -42,21 +44,35 @@ export function RecommendationDecisionRow({
       : recommendation.urgency === "medium"
         ? t("orders.recommendation.urgency.medium")
         : t("orders.recommendation.urgency.low");
+  const operationalStatus = presentSupportedRecommendationStatus(recommendation.status);
+  const operationalLabel =
+    operationalStatus === "WaitingForApproval"
+      ? t("orders.ops.WaitingForApproval")
+      : operationalStatus === "Approved"
+        ? t("orders.ops.Approved")
+        : operationalStatus === "Sent"
+          ? t("orders.ops.Sent")
+          : operationalStatus === "Cancelled"
+            ? t("orders.ops.Cancelled")
+            : t("orders.ops.Unverified");
 
   return (
     <View style={[styles.row, showDivider && styles.rowDivider, busy && styles.rowBusy]}>
       <View style={styles.heading}>
         <View style={styles.headingCopy}>
           <Text style={styles.itemName}>{recommendation.item_name}</Text>
-          <Text
-            style={[
-              styles.urgency,
-              recommendation.urgency === "high" && styles.urgencyHigh,
-              recommendation.urgency === "medium" && styles.urgencyMedium
-            ]}
-          >
-            {urgencyLabel}
-          </Text>
+          <View style={styles.statusLine}>
+            <Badge label={operationalLabel} tone="caution" />
+            <Text
+              style={[
+                styles.urgency,
+                recommendation.urgency === "high" && styles.urgencyHigh,
+                recommendation.urgency === "medium" && styles.urgencyMedium
+              ]}
+            >
+              {urgencyLabel}
+            </Text>
+          </View>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -197,6 +213,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0
   },
+  statusLine: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4
+  },
   itemName: {
     color: colors.text,
     ...typography.cardTitle,
@@ -207,7 +230,7 @@ const styles = StyleSheet.create({
     color: colors.muted,
     ...typography.caption,
     fontWeight: "500",
-    marginTop: 2
+    marginTop: 0
   },
   urgencyHigh: {
     color: colors.warning,

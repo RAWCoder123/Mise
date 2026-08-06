@@ -1,5 +1,6 @@
+import { useId, useMemo, useState } from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import { colors, inventoryStatusColors, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
@@ -167,20 +168,161 @@ function HealthRing({ counts }: { counts: InventoryHealthCounts }) {
   );
 }
 
-/** Compatibility export for secondary health visualizations. */
+/** Soft spectrum health bar — always flows green → gold → orange → tomato. */
 export function InventoryHealthBar({ counts }: { counts: InventoryHealthCounts }) {
+  const gradientId = `health-flow-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const normalizedCounts = normalizeInventoryHealthCounts(counts);
   const total = getInventoryHealthTotal(normalizedCounts);
+  const stops = useMemo(() => buildSpectrumHealthStops(normalizedCounts, total), [normalizedCounts, total]);
+  const [barWidth, setBarWidth] = useState(0);
+
+  if (total === 0) {
+    return (
+      <View style={styles.bar}>
+        <View style={styles.emptyBar} />
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.bar}>
-      {total === 0 ? <View style={styles.emptyBar} /> : null}
-      {healthSegments.map(({ key, color }) => {
-        const value = normalizedCounts[key];
-        return value > 0 ? <View key={key} style={{ backgroundColor: color, flexGrow: value, flexBasis: 0 }} /> : null;
-      })}
+    <View
+      style={styles.bar}
+      onLayout={(event) => {
+        const next = Math.round(event.nativeEvent.layout.width);
+        if (next > 0 && next !== barWidth) setBarWidth(next);
+      }}
+    >
+      {barWidth > 0 ? (
+        <Svg width={barWidth} height={BAR_HEIGHT}>
+          <Defs>
+            <LinearGradient id={gradientId} x1="0" y1="0" x2={barWidth} y2="0" gradientUnits="userSpaceOnUse">
+              {stops.map((stop, index) => (
+                <Stop key={`${index}-${stop.offset}`} offset={stop.offset} stopColor={stop.color} />
+              ))}
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width={barWidth} height={BAR_HEIGHT} rx={BAR_HEIGHT / 2} fill={`url(#${gradientId})`} />
+        </Svg>
+      ) : null}
     </View>
   );
+}
+
+type HealthStop = { offset: string; color: string };
+
+const BAR_HEIGHT = 12;
+
+/**
+ * Paint only present statuses with a bright warm spectrum.
+ * Never ghost in missing green — RGB green+red midpoints read as muddy brown.
+ */
+function buildSpectrumHealthStops(counts: InventoryHealthCounts, total: number): HealthStop[] {
+  if (total <= 0) {
+    return [
+      { offset: "0%", color: colors.panelStrong },
+      { offset: "100%", color: colors.panelStrong }
+    ];
+  }
+
+  const active = inventoryHealthStatusOrder
+    .map((key) => ({ key, value: counts[key], color: healthFlowColors[key] }))
+    .filter((segment) => segment.value > 0);
+
+  if (active.length === 1) {
+    const color = active[0]!.color;
+    const soft = mixHexColors(color, "#FFFFFF", 0.18);
+    return [
+      { offset: "0%", color: soft },
+      { offset: "45%", color },
+      { offset: "100%", color }
+    ];
+  }
+
+  const stops: HealthStop[] = [];
+  let cursor = 0;
+
+  active.forEach((segment, index) => {
+    const share = segment.value / total;
+    const start = cursor;
+    const end = cursor + share;
+    const mid = start + share / 2;
+    cursor = end;
+
+    if (index === 0) {
+      stops.push({ offset: "0%", color: segment.color });
+      stops.push({ offset: toPercent(Math.min(mid, start + share * 0.35)), color: segment.color });
+    } else {
+      const prev = active[index - 1]!;
+      const bridge = spectrumBridge(prev.key, segment.key);
+      const blendPad = Math.min(0.14, share * 0.55, (prev.value / total) * 0.55);
+      stops.push({ offset: toPercent(Math.max(0, start - blendPad)), color: prev.color });
+      stops.push({ offset: toPercent(Math.max(0, start - blendPad * 0.35)), color: bridge });
+      stops.push({ offset: toPercent(start), color: bridge });
+      stops.push({ offset: toPercent(Math.min(1, start + blendPad * 0.35)), color: bridge });
+      stops.push({ offset: toPercent(Math.min(1, start + blendPad)), color: segment.color });
+    }
+
+    stops.push({ offset: toPercent(mid), color: segment.color });
+
+    if (index === active.length - 1) {
+      stops.push({ offset: "100%", color: segment.color });
+    }
+  });
+
+  return dedupeStops(stops);
+}
+
+function spectrumBridge(
+  from: keyof InventoryHealthCounts,
+  to: keyof InventoryHealthCounts
+): string {
+  const key = `${from}:${to}`;
+  return spectrumBridges[key] ?? mixHexColors(healthFlowColors[from], healthFlowColors[to], 0.5);
+}
+
+/** Hand-picked bridges — stay warm between status tokens, never olive-brown mud. */
+const spectrumBridges: Record<string, string> = {
+  "good:watch": "#7A9A3A",
+  "good:low": "#C49A2E",
+  "good:critical": "#C97A3A",
+  "watch:low": "#B36B1A",
+  "watch:critical": "#C45A28",
+  "low:critical": "#C93A24"
+};
+
+function toPercent(value: number) {
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 1000) / 10}%`;
+}
+
+function dedupeStops(stops: HealthStop[]): HealthStop[] {
+  const seen = new Set<string>();
+  return stops.filter((stop) => {
+    const key = `${stop.offset}:${stop.color}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function mixHexColors(a: string, b: string, amount: number) {
+  const left = hexToRgb(a);
+  const right = hexToRgb(b);
+  if (!left || !right) return amount < 0.5 ? a : b;
+  const t = Math.max(0, Math.min(1, amount));
+  const mix = (channel: "r" | "g" | "b") => Math.round(left[channel] + (right[channel] - left[channel]) * t);
+  return `#${[mix("r"), mix("g"), mix("b")].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const normalized = hex.replace("#", "").trim();
+  if (normalized.length !== 6) return null;
+  const value = Number.parseInt(normalized, 16);
+  if (!Number.isFinite(value)) return null;
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255
+  };
 }
 
 function LegendItem({
@@ -205,6 +347,14 @@ function LegendItem({
     </View>
   );
 }
+
+/** Brand-aligned flow colors — same meanings as inventoryStatusColors. */
+const healthFlowColors: Record<keyof InventoryHealthCounts, string> = {
+  good: inventoryStatusColors.Good,
+  watch: inventoryStatusColors.Watch,
+  low: inventoryStatusColors.Low,
+  critical: inventoryStatusColors.Critical
+};
 
 const healthSegmentColors: Record<keyof InventoryHealthCounts, string> = {
   good: inventoryStatusColors.Good,
@@ -265,8 +415,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2
   },
   bar: {
-    height: 8,
-    flexDirection: "row",
+    height: BAR_HEIGHT,
     overflow: "hidden",
     borderRadius: 999,
     backgroundColor: colors.panelStrong
@@ -312,8 +461,8 @@ const styles = StyleSheet.create({
   legendSecondary: {
     color: colors.faint,
     fontFamily: typography.families.medium,
-    fontSize: 11,
-    lineHeight: 13,
+    fontSize: 12,
+    lineHeight: 15,
     textAlign: "right"
   }
 });

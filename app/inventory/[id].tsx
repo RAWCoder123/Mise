@@ -784,34 +784,34 @@ const styles = StyleSheet.create({
   },
   countLabel: {
     color: colors.faint,
-    fontSize: 10,
-    fontWeight: "900",
+    fontSize: 12,
+    fontWeight: "700",
     textTransform: "uppercase"
   },
-  countValue: { color: colors.text, fontSize: 15, fontWeight: "900", marginTop: 5 },
+  countValue: { color: colors.text, fontSize: 16, fontWeight: "700", marginTop: 6 },
   depletionValue: { color: colors.accentDark },
-  depletionRow: { flexDirection: "row", alignItems: "flex-start", gap: 7, marginTop: 12 },
-  depletionText: { flex: 1, color: colors.muted, fontSize: 13, lineHeight: 18, fontWeight: "700" },
-  coverageBox: { backgroundColor: colors.surfaceWarm, borderRadius: 12, padding: 12, marginTop: 16 },
-  kicker: { color: colors.faint, fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
-  coverage: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "900", marginTop: 5 },
-  copy: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 7 },
+  depletionRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginTop: 14 },
+  depletionText: { flex: 1, color: colors.muted, fontSize: 14, lineHeight: 20, fontWeight: "600" },
+  coverageBox: { backgroundColor: colors.surfaceWarm, borderRadius: 14, padding: 14, marginTop: 16 },
+  kicker: { color: colors.faint, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
+  coverage: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "700", marginTop: 6 },
+  copy: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 8 },
   opsBody: {
     color: colors.muted,
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: "700",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "600",
     marginTop: -6,
-    marginBottom: 12
+    marginBottom: 14
   },
   canonicalMeta: {
     color: colors.text,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "800",
-    marginBottom: 12
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
+    marginBottom: 14
   },
-  cardTitle: { color: colors.text, fontSize: 18, fontWeight: "900", marginBottom: 14 },
+  cardTitle: { color: colors.text, fontSize: 18, fontWeight: "700", marginBottom: 14 },
   flushTitle: { marginBottom: 0 },
   factGrid: { flexDirection: "row", gap: 10 },
   fact: {
@@ -822,24 +822,24 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: colors.background
   },
-  factValue: { color: colors.text, fontSize: 22, fontWeight: "900" },
-  factLabel: { color: colors.muted, fontSize: 12, fontWeight: "800", marginTop: 4 },
+  factValue: { color: colors.text, fontSize: 22, fontWeight: "700" },
+  factLabel: { color: colors.muted, fontSize: 13, fontWeight: "600", marginTop: 4 },
   recommendationBox: {
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: colors.surfaceWarm,
-    padding: 12,
+    padding: 14,
     marginTop: 12
   },
   recommendation: {
     color: colors.text,
     fontSize: 15,
     lineHeight: 22,
-    fontWeight: "800",
+    fontWeight: "700",
     marginTop: 5
   },
   addButton: { marginTop: 14 },
   field: { marginBottom: 14 },
-  label: { color: colors.text, fontSize: 13, fontWeight: "900", marginBottom: 7 },
+  label: { color: colors.text, fontSize: 14, fontWeight: "700", marginBottom: 8 },
   input: {
     minHeight: 52,
     borderWidth: 1,
@@ -849,7 +849,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     color: colors.text,
     fontSize: 18,
-    fontWeight: "800"
+    fontWeight: "700"
   },
   inputReadOnly: { color: colors.muted, backgroundColor: colors.surfaceWarm },
   inputError: { borderColor: colors.danger },

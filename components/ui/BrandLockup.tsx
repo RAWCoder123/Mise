@@ -1,9 +1,12 @@
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
 import { colors, fontFamilies } from "../../constants/theme";
 
-/** Tiny red handwritten/script “m” mark from the concept header. */
+const WORDMARK = require("../../assets/brand/mise-script-wordmark.png");
+const WORDMARK_ASPECT = 665 / 201;
+
+/** Red handwritten/script “m” — used alone in chat avatars and compact chrome. */
 export function MiseMark({
   size = 20,
   style
@@ -15,10 +18,10 @@ export function MiseMark({
     <View style={[styles.markBox, { width: size, height: size }, style]}>
       <Svg width={size} height={size} viewBox="0 0 24 24">
         <Path
-          d="M3.1 18.6c.15-4.2.55-8.4 1.55-10.35.55-1.05 1.45-1.55 2.35-1.25.75.25 1.2.95 1.55 2.05 1.05 3.25 1.85 6.7 2.45 9.35.15.7.5 1.05 1.05.95.55-.1.9-.55 1.2-1.35 1.15-3.35 2.35-6.85 3.45-8.55.55-.85 1.3-1.25 2.15-1.05.95.2 1.4 1.05 1.45 2.55.15 3.05 0 6.55-.25 9.45-.05.55.15 1 .65 1.15.2.05.4.05.6-.05"
+          d="M2.6 19.4c.25-4.55.85-8.85 1.9-10.85.65-1.2 1.7-1.75 2.7-1.35.85.35 1.3 1.15 1.65 2.35 1.0 3.4 1.8 6.95 2.4 9.55.1.6.38.88.82.78.48-.1.78-.48 1.05-1.2 1.25-3.5 2.55-7.15 3.7-8.9.58-.9 1.4-1.3 2.35-1.0 1.05.3 1.5 1.25 1.55 2.85.12 3.2-.05 6.8-.3 9.75-.05.5.12.9.55 1.05.22.06.42.05.6-.05"
           fill="none"
           stroke={colors.accent}
-          strokeWidth={2.15}
+          strokeWidth={2.55}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
@@ -27,7 +30,7 @@ export function MiseMark({
   );
 }
 
-/** Small red script m + black lowercase “mise”. */
+/** Official lockup from brand asset: red script m + black ise with red i-dot. */
 export function BrandLockup({
   compact,
   showTagline,
@@ -39,25 +42,32 @@ export function BrandLockup({
   size?: "default" | "small";
   style?: StyleProp<ViewStyle>;
 }) {
-  const markSize = size === "small" ? 18 : 22;
-  const wordSize = size === "small" ? 17 : 21;
+  const isSmall = size === "small";
+  const height = isSmall ? 20 : 30;
+  const width = Math.round(height * WORDMARK_ASPECT);
   const shouldShowTagline = showTagline ?? false;
 
   if (compact) {
     return (
-      <View style={[styles.wrap, styles.compactWrap, style]}>
-        <MiseMark size={markSize} />
+      <View style={[styles.wrap, styles.compactWrap, style]} accessibilityLabel="Mise">
+        <MiseMark size={isSmall ? 26 : 32} />
       </View>
     );
   }
 
   return (
     <View style={[styles.wrap, style]} accessibilityLabel="Mise">
-      <MiseMark size={markSize} />
-      <View style={styles.wordBlock}>
-        <Text style={[styles.wordmark, { fontSize: wordSize, lineHeight: wordSize + 2 }]}>mise</Text>
-        {shouldShowTagline ? <Text style={styles.tagline}>restaurant ops</Text> : null}
-      </View>
+      <Image
+        source={WORDMARK}
+        accessibilityIgnoresInvertColors
+        resizeMode="contain"
+        style={{ width, height }}
+      />
+      {shouldShowTagline ? (
+        <View style={styles.taglineBlock}>
+          <Text style={styles.tagline}>restaurant ops</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -66,7 +76,7 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6
+    gap: 0
   },
   compactWrap: {
     gap: 0
@@ -75,20 +85,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
-  wordBlock: {
+  taglineBlock: {
+    marginLeft: 8,
     justifyContent: "center"
-  },
-  wordmark: {
-    color: colors.text,
-    fontFamily: fontFamilies.bold,
-    letterSpacing: -0.45,
-    textTransform: "lowercase"
   },
   tagline: {
     color: colors.muted,
     fontFamily: fontFamilies.medium,
-    fontSize: 10,
-    lineHeight: 12,
-    marginTop: 1
+    fontSize: 11,
+    lineHeight: 14
   }
 });

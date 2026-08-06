@@ -34,6 +34,8 @@ interface OperationalRowProps {
   subtitleLines?: number;
   trailing?: ReactNode;
   onPress?: () => void;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
   style?: StyleProp<ViewStyle>;
   /** `menu` = open list rows; `operational` = inventory/group rows; default keeps prior feel. */
   density?: RowDensity;
@@ -54,6 +56,8 @@ export function OperationalRow({
   subtitleLines = 2,
   trailing,
   onPress,
+  accessibilityLabel,
+  accessibilityHint,
   style,
   density: rowDensity = "default"
 }: OperationalRowProps) {
@@ -62,11 +66,14 @@ export function OperationalRow({
   const showSubtitle = Boolean(subtitle?.trim());
   const isMenu = rowDensity === "menu";
   const isOperational = rowDensity === "operational";
-  const iconSize = isMenu || isOperational ? "plain" : iconTone === "neutral" ? "plain" : "sm";
+  // Menu stays icon-only; operational rows use soft status tiles (inventory concept).
+  const iconSize = isMenu ? "plain" : isOperational ? "sm" : iconTone === "neutral" ? "plain" : "sm";
 
   return (
     <Pressable
       accessibilityRole={isActionable ? "button" : undefined}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       disabled={!isActionable}
       onPress={onPress}
       onPressIn={isActionable ? pressIn : undefined}
@@ -90,7 +97,7 @@ export function OperationalRow({
             <Text style={[styles.title, (isMenu || isOperational) && styles.titleCompact]} numberOfLines={titleLines}>
               {title}
             </Text>
-            {badgeLabel && <Badge label={badgeLabel} tone={badgeTone} />}
+            {badgeLabel && !isOperational ? <Badge label={badgeLabel} tone={badgeTone} /> : null}
           </View>
           {showSubtitle ? (
             <Text style={[styles.subtitle, (isMenu || isOperational) && styles.subtitleCompact]} numberOfLines={subtitleLines}>
@@ -98,8 +105,9 @@ export function OperationalRow({
             </Text>
           ) : null}
         </View>
-        {(value || meta || trailing || isActionable) && (
+        {(value || meta || trailing || isActionable || (badgeLabel && isOperational)) && (
           <View style={styles.trail}>
+            {badgeLabel && isOperational ? <Badge label={badgeLabel} tone={badgeTone} /> : null}
             {trailing}
             {value && (
               <Text style={[styles.value, rowToneStyles[valueTone]]} numberOfLines={1} adjustsFontSizeToFit>
@@ -121,30 +129,30 @@ export function OperationalRow({
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 46,
+    minHeight: 54,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 6,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 9
   },
   rowMenu: {
     minHeight: density.menuRow,
     height: density.menuRow,
     paddingVertical: 0,
-    gap: 10
+    gap: 9
   },
   rowOperational: {
     minHeight: density.operationalRow,
-    height: density.operationalRow,
-    paddingVertical: 0,
-    gap: 8
+    paddingVertical: 7,
+    gap: 9
   },
   copy: {
     flex: 1,
-    minWidth: 0
+    minWidth: 0,
+    gap: 2
   },
   titleLine: {
     flexDirection: "row",
@@ -163,33 +171,36 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontFamily: fontFamilies.body,
     fontSize: 11,
-    lineHeight: 14,
+    lineHeight: 15,
     marginTop: 1
   },
   subtitleCompact: {
     ...conceptTypography.caption,
     fontFamily: fontFamilies.body,
-    marginTop: 0
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 1
   },
   trail: {
-    minWidth: 36,
-    alignItems: "flex-end",
-    justifyContent: "center",
-    gap: 2
+    minWidth: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 6
   },
   value: {
-    maxWidth: 76,
+    maxWidth: 96,
     color: colors.text,
     fontFamily: fontFamilies.semibold,
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 16,
     textAlign: "right"
   },
   meta: {
-    maxWidth: 84,
+    maxWidth: 96,
     color: colors.muted,
-    fontSize: 9,
-    lineHeight: 12,
+    fontSize: 10,
+    lineHeight: 13,
     fontFamily: fontFamilies.semibold,
     textAlign: "right"
   },

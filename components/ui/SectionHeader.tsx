@@ -35,7 +35,7 @@ export function SectionHeader({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={actionAccessibilityLabel ?? action}
-            hitSlop={6}
+            hitSlop={Math.max(0, Math.ceil((density.hitTarget - 32) / 2))}
             onPress={onAction}
             style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
           >
@@ -54,7 +54,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12
+    gap: 8,
+    marginBottom: 6
   },
   textWrap: {
     flex: 1
@@ -86,7 +87,7 @@ const styles = StyleSheet.create({
   },
   action: {
     color: colors.accentDark,
-    ...conceptTypography.caption
+    ...conceptTypography.button
   },
   meta: {
     color: colors.accentDark,

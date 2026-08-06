@@ -13,6 +13,7 @@ import {
 
 import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
 import { ActionIcon } from "../../components/ui/ActionIcon";
+import { DonutChart, donutPaletteColor } from "../../components/ui/DonutChart";
 import { InsightChartIllustration } from "../../components/ui/MiseIllustrations";
 import { MotionView, StateChangeView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
@@ -20,16 +21,18 @@ import { SectionSurface } from "../../components/ui/SectionSurface";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
 import { TrendLineChart } from "../../components/ui/TrendLineChart";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, fontFamilies, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDecisionOutbox";
 import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import type { InsightsSalesAnalytics } from "../../services/domain/insightsSalesAnalytics";
 import {
   fetchDailyOperationalBrief,
   fetchInsights,
+  fetchInsightsSalesAnalytics,
   fetchInsightsSalesTrend,
   fetchLearningMemorySummary,
   fetchQueuedOperationalFindingDecisions,
@@ -55,6 +58,7 @@ import type {
 } from "../../types/mise";
 
 type InsightFilter = "all" | InsightSeverity;
+type InsightsSurface = "sales" | "signals";
 
 export default function InsightsScreen() {
   const { formatNumber, t } = useLocale();
@@ -64,6 +68,8 @@ export default function InsightsScreen() {
   const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
   const [memory, setMemory] = useState<LearningMemorySummary | null>(null);
   const [salesTrend, setSalesTrend] = useState<InsightsSalesTrendPoint[]>([]);
+  const [salesAnalytics, setSalesAnalytics] = useState<InsightsSalesAnalytics | null>(null);
+  const [surface, setSurface] = useState<InsightsSurface>("signals");
   const [filter, setFilter] = useState<InsightFilter>("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -86,6 +92,8 @@ export default function InsightsScreen() {
     setFindingQueue([]);
     setMemory(null);
     setSalesTrend([]);
+    setSalesAnalytics(null);
+    setSurface("signals");
     setFilter("all");
     setError(false);
     setBriefMessage(null);
@@ -109,17 +117,20 @@ export default function InsightsScreen() {
       await flushQueuedOperationalFindingDecisions(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
-      const [nextInsights, nextMemory, nextSalesTrend, nextBrief, nextQueue] = await Promise.all([
-        fetchInsights(restaurantId),
-        fetchLearningMemorySummary(restaurantId),
-        fetchInsightsSalesTrend(restaurantId),
-        fetchDailyOperationalBrief(restaurantId),
-        fetchQueuedOperationalFindingDecisions(restaurantId)
-      ]);
+      const [nextInsights, nextMemory, nextSalesTrend, nextAnalytics, nextBrief, nextQueue] =
+        await Promise.all([
+          fetchInsights(restaurantId),
+          fetchLearningMemorySummary(restaurantId),
+          fetchInsightsSalesTrend(restaurantId),
+          fetchInsightsSalesAnalytics(restaurantId),
+          fetchDailyOperationalBrief(restaurantId),
+          fetchQueuedOperationalFindingDecisions(restaurantId)
+        ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setInsights(nextInsights);
       setMemory(nextMemory);
       setSalesTrend(nextSalesTrend);
+      setSalesAnalytics(nextAnalytics);
       setBrief(nextBrief);
       setFindingQueue(nextQueue);
       setLoadedRestaurantId(restaurantId);
@@ -191,17 +202,20 @@ export default function InsightsScreen() {
     try {
       await generateInsightsFromSalesAndInventory(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      const [nextInsights, nextMemory, nextSalesTrend, nextBrief, nextQueue] = await Promise.all([
-        fetchInsights(restaurantId),
-        fetchLearningMemorySummary(restaurantId),
-        fetchInsightsSalesTrend(restaurantId),
-        fetchDailyOperationalBrief(restaurantId),
-        fetchQueuedOperationalFindingDecisions(restaurantId)
-      ]);
+      const [nextInsights, nextMemory, nextSalesTrend, nextAnalytics, nextBrief, nextQueue] =
+        await Promise.all([
+          fetchInsights(restaurantId),
+          fetchLearningMemorySummary(restaurantId),
+          fetchInsightsSalesTrend(restaurantId),
+          fetchInsightsSalesAnalytics(restaurantId),
+          fetchDailyOperationalBrief(restaurantId),
+          fetchQueuedOperationalFindingDecisions(restaurantId)
+        ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setInsights(nextInsights);
       setMemory(nextMemory);
       setSalesTrend(nextSalesTrend);
+      setSalesAnalytics(nextAnalytics);
       setBrief(nextBrief);
       setFindingQueue(nextQueue);
       setLoadedRestaurantId(restaurantId);
@@ -218,6 +232,8 @@ export default function InsightsScreen() {
   const visibleFindingQueue = loadedRestaurantId === restaurant?.id ? findingQueue : [];
   const visibleMemory = loadedRestaurantId === restaurant?.id ? memory : null;
   const visibleSalesTrend = loadedRestaurantId === restaurant?.id ? salesTrend : [];
+  const visibleSalesAnalytics =
+    loadedRestaurantId === restaurant?.id ? salesAnalytics : null;
 
   const summary = useMemo(() => {
     if (!restaurant) return null;
@@ -235,6 +251,24 @@ export default function InsightsScreen() {
       { value: "urgent" as const, label: t("insights.filter.urgent"), accessibilityLabel: t("insights.filter.urgentAccessibility"), tone: "danger" as const },
       { value: "warning" as const, label: t("insights.filter.watch"), accessibilityLabel: t("insights.filter.watchAccessibility"), tone: "caution" as const },
       { value: "info" as const, label: t("insights.filter.info"), accessibilityLabel: t("insights.filter.infoAccessibility"), tone: "neutral" as const }
+    ],
+    [t]
+  );
+
+  const surfaceOptions = useMemo(
+    () => [
+      {
+        value: "signals" as const,
+        label: t("insights.surface.signals"),
+        accessibilityLabel: t("insights.surface.signalsAccessibility"),
+        tone: "brand" as const
+      },
+      {
+        value: "sales" as const,
+        label: t("insights.surface.sales"),
+        accessibilityLabel: t("insights.surface.salesAccessibility"),
+        tone: "brand" as const
+      }
     ],
     [t]
   );
@@ -302,78 +336,99 @@ export default function InsightsScreen() {
           />
         ) : null}
 
-        <MotionView delay={20} distance={4}>
-          <DailyBriefBoard
-            brief={visibleBrief}
-            queue={visibleFindingQueue}
-            canManage={canManage}
-            busyFindingId={busyFindingId}
-            message={briefMessage}
-            messageIsError={briefMessageIsError}
-            onSubmitFeedback={submitFindingFeedback}
-          />
-        </MotionView>
-
-        <MotionView delay={30} distance={4}>
-          <InsightsSummary
-            title={summaryTitle}
-            body={summaryBody}
-            nextStep={nextStep}
-            urgent={summary?.urgentCount ?? 0}
-            watch={summary?.warningCount ?? 0}
-            info={infoCount}
-          />
-        </MotionView>
-
-        <MotionView delay={70} distance={4}>
-          <SalesTrend points={visibleSalesTrend} currency={restaurant?.currency} />
-        </MotionView>
-
         <SegmentedControl
-          accessibilityLabel={t("insights.filter.accessibility")}
-          options={insightFilters}
-          value={filter}
-          onValueChange={setFilter}
+          accessibilityLabel={t("insights.surface.accessibility")}
+          options={surfaceOptions}
+          value={surface}
+          onValueChange={setSurface}
+          variant="pills"
         />
 
-        <MotionView key={filter} distance={4} duration={220}>
-          <SectionSurface
-            title={t("insights.brief.title")}
-            subtitle={
-              serviceLabel
-                ? t("insights.brief.subtitleStyle", { style: serviceLabel })
-                : t("insights.brief.subtitle")
-            }
-            action={t(filteredInsights.length === 1 ? "insights.signalCount.one" : "insights.signalCount.other", {
-              count: formatNumber(filteredInsights.length)
-            })}
-            padding="none"
-          >
-            {filteredInsights.length === 0 ? (
-              <View style={styles.briefEmpty}>
-                <InsightChartIllustration size={66} />
-                <Text style={styles.briefEmptyTitle}>
-                  {visibleInsights.length === 0
-                    ? t("insights.brief.emptyLearning.title")
-                    : t("insights.brief.emptyFilter.title", { filter: labelForFilter(t, filter).toLocaleLowerCase() })}
-                </Text>
-                <Text style={styles.briefEmptyBody}>
-                  {visibleInsights.length === 0
-                    ? t("insights.brief.emptyLearning.body")
-                    : t("insights.brief.emptyFilter.body")}
-                </Text>
-              </View>
-            ) : (
-              <View>
-                {filteredInsights.map((insight, index) => (
-                  <InsightListRow key={insight.id} insight={insight} divided={index > 0} />
-                ))}
-              </View>
-            )}
-          </SectionSurface>
-        </MotionView>
+        {surface === "sales" ? (
+          <MotionView key="sales" delay={20} distance={4}>
+            <View style={styles.stack}>
+              <SalesTrend points={visibleSalesTrend} currency={restaurant?.currency} />
+              <SalesAnalyticsBoard
+                analytics={visibleSalesAnalytics}
+                currency={restaurant?.currency}
+                serviceStyle={restaurant?.service_style ?? null}
+                cuisineType={restaurant?.cuisine_type ?? null}
+                restaurantName={restaurant?.name ?? null}
+              />
+            </View>
+          </MotionView>
+        ) : (
+          <>
+            <MotionView delay={20} distance={4}>
+              <DailyBriefBoard
+                brief={visibleBrief}
+                queue={visibleFindingQueue}
+                canManage={canManage}
+                busyFindingId={busyFindingId}
+                message={briefMessage}
+                messageIsError={briefMessageIsError}
+                onSubmitFeedback={submitFindingFeedback}
+              />
+            </MotionView>
 
-        {visibleMemory ? <HowMiseKnows memory={visibleMemory} /> : null}
+            <MotionView delay={30} distance={4}>
+              <InsightsSummary
+                title={summaryTitle}
+                body={summaryBody}
+                nextStep={nextStep}
+                urgent={summary?.urgentCount ?? 0}
+                watch={summary?.warningCount ?? 0}
+                info={infoCount}
+              />
+            </MotionView>
+
+            <SegmentedControl
+              accessibilityLabel={t("insights.filter.accessibility")}
+              options={insightFilters}
+              value={filter}
+              onValueChange={setFilter}
+            />
+
+            <MotionView key={filter} distance={4} duration={220}>
+              <SectionSurface
+                title={t("insights.brief.title")}
+                subtitle={
+                  serviceLabel
+                    ? t("insights.brief.subtitleStyle", { style: serviceLabel })
+                    : t("insights.brief.subtitle")
+                }
+                action={t(filteredInsights.length === 1 ? "insights.signalCount.one" : "insights.signalCount.other", {
+                  count: formatNumber(filteredInsights.length)
+                })}
+                padding="none"
+              >
+                {filteredInsights.length === 0 ? (
+                  <View style={styles.briefEmpty}>
+                    <InsightChartIllustration size={66} />
+                    <Text style={styles.briefEmptyTitle}>
+                      {visibleInsights.length === 0
+                        ? t("insights.brief.emptyLearning.title")
+                        : t("insights.brief.emptyFilter.title", { filter: labelForFilter(t, filter).toLocaleLowerCase() })}
+                    </Text>
+                    <Text style={styles.briefEmptyBody}>
+                      {visibleInsights.length === 0
+                        ? t("insights.brief.emptyLearning.body")
+                        : t("insights.brief.emptyFilter.body")}
+                    </Text>
+                  </View>
+                ) : (
+                  <View>
+                    {filteredInsights.map((insight, index) => (
+                      <InsightListRow key={insight.id} insight={insight} divided={index > 0} />
+                    ))}
+                  </View>
+                )}
+              </SectionSurface>
+            </MotionView>
+
+            {visibleMemory ? <HowMiseKnows memory={visibleMemory} /> : null}
+          </>
+        )}
       </View>
     </Screen>
   );
@@ -441,6 +496,218 @@ function InsightsSummary({
   );
 }
 
+function SalesAnalyticsBoard({
+  analytics,
+  currency,
+  serviceStyle,
+  cuisineType,
+  restaurantName
+}: {
+  analytics: InsightsSalesAnalytics | null;
+  currency?: string;
+  serviceStyle: RestaurantServiceStyle | null;
+  cuisineType: string | null;
+  restaurantName: string | null;
+}) {
+  const { formatCompactCurrency, formatNumber, t } = useLocale();
+  const hasSales = Boolean(analytics && analytics.saleCount > 0);
+  const maxSellerGross = Math.max(1, ...(analytics?.bestSellers.map((item) => item.grossSales) ?? [1]));
+  const maxWeekday = Math.max(1, ...(analytics?.weekdayMix.map((slice) => slice.value) ?? [1]));
+  const categorySlices =
+    analytics?.categoryMix.map((slice, index) => ({
+      label: localizeMixLabel(slice.label, t),
+      value: slice.value,
+      color: donutPaletteColor(index)
+    })) ?? [];
+  const sourceSlices =
+    analytics?.sourceMix.map((slice, index) => ({
+      label: localizeMixLabel(slice.label, t),
+      value: slice.value,
+      color: donutPaletteColor(index + 2)
+    })) ?? [];
+  const unitsLabels =
+    analytics?.unitsTrend.map((point) =>
+      point.date.slice(5).replace("-", "/")
+    ) ?? [];
+  const serviceLabel = serviceStyle ? serviceStyleLabel(serviceStyle, t) : null;
+
+  return (
+    <View style={styles.analyticsStack}>
+      <SectionSurface
+        title={t("insights.analytics.profile.title")}
+        subtitle={t("insights.analytics.profile.subtitle")}
+      >
+        <View style={styles.profileGrid}>
+          <ProfileChip
+            label={t("insights.analytics.profile.restaurant")}
+            value={restaurantName?.trim() || t("insights.analytics.profile.unknown")}
+          />
+          <ProfileChip
+            label={t("insights.analytics.profile.service")}
+            value={serviceLabel ?? t("insights.analytics.profile.unknown")}
+          />
+          <ProfileChip
+            label={t("insights.analytics.profile.cuisine")}
+            value={cuisineType?.trim() || t("insights.analytics.profile.unknown")}
+          />
+          <ProfileChip
+            label={t("insights.analytics.profile.window")}
+            value={
+              analytics?.windowStart && analytics.throughDate
+                ? t("insights.analytics.profile.windowValue", {
+                    start: analytics.windowStart.slice(5),
+                    end: analytics.throughDate.slice(5)
+                  })
+                : t("insights.analytics.profile.unknown")
+            }
+          />
+        </View>
+        <Text style={styles.profileNote}>{t("insights.analytics.profile.note")}</Text>
+      </SectionSurface>
+
+      {!hasSales ? (
+        <SectionSurface title={t("insights.analytics.empty.title")}>
+          <Text style={styles.analyticsEmptyBody}>{t("insights.analytics.empty.body")}</Text>
+        </SectionSurface>
+      ) : (
+        <>
+          <SectionSurface
+            title={t("insights.analytics.bestSellers.title")}
+            subtitle={t("insights.analytics.bestSellers.subtitle", {
+              count: formatNumber(analytics!.bestSellers.length)
+            })}
+            action={formatCompactCurrency(analytics!.totalGross, currency)}
+          >
+            <View style={styles.sellerList}>
+              {analytics!.bestSellers.map((item, index) => (
+                <View
+                  key={item.itemName}
+                  style={[styles.sellerRow, index > 0 && styles.dividedRow]}
+                >
+                  <View style={styles.sellerRank}>
+                    <Text style={styles.sellerRankText}>{formatNumber(index + 1)}</Text>
+                  </View>
+                  <View style={styles.sellerCopy}>
+                    <Text style={styles.sellerName} numberOfLines={1}>
+                      {item.itemName}
+                    </Text>
+                    <Text style={styles.sellerMeta}>
+                      {t("insights.analytics.bestSellers.meta", {
+                        units: formatNumber(item.quantity, { maximumFractionDigits: 1 }),
+                        share: formatNumber(item.share, {
+                          style: "percent",
+                          maximumFractionDigits: 0
+                        })
+                      })}
+                    </Text>
+                    <View style={styles.sellerTrack}>
+                      <View
+                        style={[
+                          styles.sellerFill,
+                          { width: `${Math.max(8, (item.grossSales / maxSellerGross) * 100)}%` }
+                        ]}
+                      />
+                    </View>
+                  </View>
+                  <Text style={styles.sellerValue}>
+                    {formatCompactCurrency(item.grossSales, currency)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </SectionSurface>
+
+          <SectionSurface
+            title={t("insights.analytics.category.title")}
+            subtitle={t("insights.analytics.category.subtitle")}
+          >
+            <DonutChart
+              slices={categorySlices}
+              centerLabel={t("insights.analytics.category.center")}
+              centerValue={formatNumber(analytics!.totalUnits, { maximumFractionDigits: 0 })}
+              accessibilityLabel={t("insights.analytics.category.accessibility", {
+                count: formatNumber(categorySlices.length)
+              })}
+            />
+          </SectionSurface>
+
+          <SectionSurface
+            title={t("insights.analytics.weekday.title")}
+            subtitle={t("insights.analytics.weekday.subtitle")}
+          >
+            <View style={styles.weekdayRow}>
+              {analytics!.weekdayMix.map((slice) => (
+                <View key={slice.weekday} style={styles.weekdayCol}>
+                  <View style={styles.weekdayBarTrack}>
+                    <View
+                      style={[
+                        styles.weekdayBarFill,
+                        {
+                          height: `${Math.max(slice.value > 0 ? 12 : 0, (slice.value / maxWeekday) * 100)}%`
+                        }
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.weekdayLabel}>{t(slice.labelKey)}</Text>
+                </View>
+              ))}
+            </View>
+          </SectionSurface>
+
+          {analytics!.unitsTrend.some((point) => point.units > 0) ? (
+            <SectionSurface
+              title={t("insights.analytics.units.title")}
+              subtitle={t("insights.analytics.units.subtitle")}
+            >
+              <TrendLineChart
+                series={[{ values: analytics!.unitsTrend.map((point) => point.units), color: colors.success }]}
+                labels={unitsLabels}
+                showArea
+                formatValue={(value) => formatNumber(value, { maximumFractionDigits: 0 })}
+                accessibilityLabel={t("insights.analytics.units.accessibility", {
+                  units: formatNumber(analytics!.totalUnits, { maximumFractionDigits: 0 })
+                })}
+              />
+            </SectionSurface>
+          ) : null}
+
+          {sourceSlices.length > 0 ? (
+            <SectionSurface
+              title={t("insights.analytics.source.title")}
+              subtitle={t("insights.analytics.source.subtitle")}
+            >
+              <DonutChart
+                slices={sourceSlices}
+                centerLabel={t("insights.analytics.source.center")}
+                accessibilityLabel={t("insights.analytics.source.accessibility", {
+                  count: formatNumber(sourceSlices.length)
+                })}
+              />
+            </SectionSurface>
+          ) : null}
+        </>
+      )}
+    </View>
+  );
+}
+
+function ProfileChip({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.profileChip}>
+      <Text style={styles.profileChipLabel}>{label}</Text>
+      <Text style={styles.profileChipValue} numberOfLines={2}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function localizeMixLabel(label: string, t: ReturnType<typeof useLocale>["t"]) {
+  if (label === "Other") return t("insights.analytics.mix.other");
+  if (label === "Uncategorized") return t("insights.analytics.mix.uncategorized");
+  return label;
+}
+
 function SalesTrend({
   points,
   currency
@@ -471,56 +738,73 @@ function SalesTrend({
   );
 
   return (
-    <SectionSurface
-      title={t("insights.trend.title")}
-      subtitle={points.length > 0 ? t("insights.trend.subtitleComplete") : t("insights.trend.subtitle")}
-      padding="comfortable"
-    >
-      {latest ? (
-        <StateChangeView stateKey={points.map((point) => `${point.date}:${point.sales}`).join("|")}>
-          <View style={styles.trendSummary}>
-            <View style={styles.trendSummaryCopy}>
-              <Text style={styles.trendValue}>
-                {formatCurrency(latest.sales, { currency, maximumFractionDigits: 0 })}
-              </Text>
-              <Text
-                style={[
-                  styles.trendChange,
-                  change !== null && change > 0 && styles.trendChangePositive,
-                  change !== null && change < 0 && styles.trendChangeNegative
-                ]}
-              >
-                {changeLabel}
+    <View style={styles.salesCard}>
+      <View style={styles.salesCardHeader}>
+        <Text style={styles.salesCardEyebrow}>{t("insights.sales.eyebrow")}</Text>
+        <Text style={styles.salesCardHeaderMeta}>{t("insights.sales.seeTrend")}</Text>
+      </View>
+
+      <View style={styles.salesCardBody}>
+        <Text style={styles.salesCardTitle}>{t("insights.sales.balance")}</Text>
+        {latest ? (
+          <StateChangeView stateKey={points.map((point) => `${point.date}:${point.sales}`).join("|")}>
+            <View style={styles.trendSummary}>
+              <View style={styles.trendSummaryCopy}>
+                <Text style={styles.trendValue}>
+                  {formatCurrency(latest.sales, { currency, maximumFractionDigits: 0 })}
+                </Text>
+                <Text
+                  style={[
+                    styles.trendChange,
+                    change !== null && change > 0 && styles.trendChangePositive,
+                    change !== null && change < 0 && styles.trendChangeNegative
+                  ]}
+                >
+                  {changeLabel}
+                </Text>
+              </View>
+              <Text style={styles.trendDate}>
+                {formatDate(`${latest.date}T12:00:00`, { month: "short", day: "numeric" })}
               </Text>
             </View>
-            <Text style={styles.trendDate}>
-              {formatDate(`${latest.date}T12:00:00`, { month: "short", day: "numeric" })}
-            </Text>
-          </View>
 
-          <TrendLineChart
-            series={[{ values: points.map((point) => point.sales) }]}
-            labels={dateLabels}
-            showArea
-            formatValue={(value) => formatCompactCurrency(value, currency)}
-            accessibilityLabel={t(
-              points.length === 1 ? "insights.trend.accessibility.one" : "insights.trend.accessibility.other",
-              {
-                count: formatNumber(points.length),
-                sales: formatCurrency(latest.sales, { currency, maximumFractionDigits: 0 }),
-                change: changeLabel
-              }
-            )}
-            style={styles.trendChart}
-          />
-        </StateChangeView>
-      ) : (
-        <View style={styles.trendEmpty}>
-          <Text style={styles.trendEmptyTitle}>{t("insights.trend.empty.title")}</Text>
-          <Text style={styles.trendEmptyBody}>{t("insights.trend.empty.body")}</Text>
-        </View>
-      )}
-    </SectionSurface>
+            <TrendLineChart
+              series={[{ values: points.map((point) => point.sales) }]}
+              labels={dateLabels}
+              showArea
+              formatValue={(value) => formatCompactCurrency(value, currency)}
+              accessibilityLabel={t(
+                points.length === 1 ? "insights.trend.accessibility.one" : "insights.trend.accessibility.other",
+                {
+                  count: formatNumber(points.length),
+                  sales: formatCurrency(latest.sales, { currency, maximumFractionDigits: 0 }),
+                  change: changeLabel
+                }
+              )}
+              style={styles.trendChart}
+            />
+
+            <View style={styles.salesDayList}>
+              {points.slice(-3).reverse().map((point, index) => (
+                <View key={point.date} style={[styles.salesDayRow, index > 0 && styles.salesDayRowDivided]}>
+                  <Text style={styles.salesDayLabel}>
+                    {formatDate(`${point.date}T12:00:00.000Z`, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })}
+                  </Text>
+                  <Text style={styles.salesDayValue}>
+                    {formatCurrency(point.sales, { currency, maximumFractionDigits: 0 })}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </StateChangeView>
+        ) : (
+          <View style={styles.trendEmpty}>
+            <Text style={styles.trendEmptyTitle}>{t("insights.trend.empty.title")}</Text>
+            <Text style={styles.trendEmptyBody}>{t("insights.sales.cta")}</Text>
+          </View>
+        )}
+      </View>
+    </View>
   );
 }
 
@@ -698,7 +982,208 @@ function labelForFilter(t: ReturnType<typeof useLocale>["t"], filter: InsightFil
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 14
+    gap: 16
+  },
+  analyticsStack: {
+    gap: 16
+  },
+  profileGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10
+  },
+  profileChip: {
+    width: "47%",
+    flexGrow: 1,
+    minWidth: 140,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceWarm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4
+  },
+  profileChipLabel: {
+    color: colors.muted,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 11,
+    lineHeight: 14,
+    textTransform: "uppercase",
+    letterSpacing: 0.3
+  },
+  profileChipValue: {
+    color: colors.text,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 14,
+    lineHeight: 18
+  },
+  profileNote: {
+    color: colors.muted,
+    ...conceptTypography.body,
+    marginTop: 12
+  },
+  analyticsEmptyBody: {
+    color: colors.muted,
+    ...conceptTypography.body
+  },
+  sellerList: {
+    marginTop: 2
+  },
+  sellerRow: {
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10
+  },
+  sellerRank: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accentSoft
+  },
+  sellerRankText: {
+    color: colors.accentDark,
+    fontFamily: fontFamilies.bold,
+    fontSize: 13,
+    lineHeight: 16
+  },
+  sellerCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4
+  },
+  sellerName: {
+    color: colors.text,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 15,
+    lineHeight: 19
+  },
+  sellerMeta: {
+    color: colors.muted,
+    fontFamily: fontFamilies.body,
+    fontSize: 12,
+    lineHeight: 16
+  },
+  sellerTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.panelStrong,
+    overflow: "hidden"
+  },
+  sellerFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: colors.accent
+  },
+  sellerValue: {
+    color: colors.text,
+    fontFamily: fontFamilies.bold,
+    fontSize: 14,
+    lineHeight: 18
+  },
+  weekdayRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 6,
+    minHeight: 120,
+    paddingTop: 8
+  },
+  weekdayCol: {
+    flex: 1,
+    alignItems: "center",
+    gap: 6
+  },
+  weekdayBarTrack: {
+    width: "70%",
+    height: 88,
+    borderRadius: 6,
+    backgroundColor: colors.panel,
+    justifyContent: "flex-end",
+    overflow: "hidden"
+  },
+  weekdayBarFill: {
+    width: "100%",
+    borderRadius: 6,
+    backgroundColor: colors.accent
+  },
+  weekdayLabel: {
+    color: colors.muted,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 11,
+    lineHeight: 14
+  },
+  salesCard: {
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: "hidden"
+  },
+  salesCardHeader: {
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  salesCardEyebrow: {
+    color: colors.text,
+    fontFamily: fontFamilies.bold,
+    fontSize: 15,
+    lineHeight: 20
+  },
+  salesCardHeaderMeta: {
+    color: colors.accentDark,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 13,
+    lineHeight: 17
+  },
+  salesCardBody: {
+    padding: 16,
+    gap: 12
+  },
+  salesCardTitle: {
+    color: colors.text,
+    fontFamily: fontFamilies.bold,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.3
+  },
+  salesDayList: {
+    marginTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
+  },
+  salesDayRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12
+  },
+  salesDayRowDivided: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
+  },
+  salesDayLabel: {
+    color: colors.muted,
+    fontFamily: fontFamilies.body,
+    fontSize: 14,
+    lineHeight: 18
+  },
+  salesDayValue: {
+    color: colors.text,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 15,
+    lineHeight: 20
   },
   summaryHeader: {
     padding: 14,
@@ -720,20 +1205,20 @@ const styles = StyleSheet.create({
   },
   summaryTitle: {
     color: colors.text,
-    fontFamily: typography.families.bold,
+    fontFamily: fontFamilies.bold,
     fontSize: 18,
     lineHeight: 23
   },
   summaryBody: {
     color: colors.muted,
-    fontFamily: typography.families.body,
+    fontFamily: fontFamilies.body,
     fontSize: 13,
     lineHeight: 19,
     marginTop: 4
   },
   summaryNextStep: {
     color: colors.accentDark,
-    fontFamily: typography.families.semibold,
+    fontFamily: fontFamilies.semibold,
     fontSize: 12.5,
     lineHeight: 17,
     marginTop: 8
@@ -762,7 +1247,7 @@ const styles = StyleSheet.create({
   },
   summaryMetricValue: {
     color: colors.text,
-    fontFamily: typography.families.bold,
+    fontFamily: fontFamilies.bold,
     fontSize: 20,
     lineHeight: 24
   },
@@ -777,9 +1262,9 @@ const styles = StyleSheet.create({
   },
   summaryMetricLabel: {
     color: colors.muted,
-    fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 15
+    fontFamily: fontFamilies.semibold,
+    fontSize: 13,
+    lineHeight: 17
   },
   briefEmpty: {
     paddingHorizontal: 20,
@@ -789,13 +1274,13 @@ const styles = StyleSheet.create({
   },
   briefEmptyTitle: {
     color: colors.text,
-    ...typography.cardTitle,
+    ...conceptTypography.rowTitle,
     marginTop: 8,
     textAlign: "center"
   },
   briefEmptyBody: {
     color: colors.muted,
-    ...typography.body,
+    ...conceptTypography.body,
     maxWidth: 300,
     marginTop: 5,
     textAlign: "center"
@@ -815,14 +1300,14 @@ const styles = StyleSheet.create({
   },
   trendValue: {
     color: colors.text,
-    fontFamily: typography.families.bold,
-    fontSize: 24,
-    lineHeight: 29,
-    letterSpacing: -0.25
+    fontFamily: fontFamilies.bold,
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: -0.6
   },
   trendChange: {
     color: colors.muted,
-    fontFamily: typography.families.semibold,
+    fontFamily: fontFamilies.semibold,
     fontSize: 12,
     lineHeight: 17,
     marginTop: 2
@@ -835,7 +1320,7 @@ const styles = StyleSheet.create({
   },
   trendDate: {
     color: colors.muted,
-    ...typography.caption,
+    ...conceptTypography.caption,
     marginTop: 5,
     textAlign: "right"
   },
@@ -850,12 +1335,12 @@ const styles = StyleSheet.create({
   },
   trendEmptyTitle: {
     color: colors.text,
-    ...typography.cardTitle,
+    ...conceptTypography.rowTitle,
     textAlign: "center"
   },
   trendEmptyBody: {
     color: colors.muted,
-    ...typography.body,
+    ...conceptTypography.body,
     marginTop: 4,
     textAlign: "center"
   },
@@ -895,15 +1380,15 @@ const styles = StyleSheet.create({
   insightTitle: {
     flex: 1,
     color: colors.text,
-    fontFamily: typography.families.bold,
+    fontFamily: fontFamilies.bold,
     fontSize: 15,
     lineHeight: 20
   },
   severityLabel: {
     color: colors.text,
-    fontFamily: typography.families.bold,
-    fontSize: 10,
-    lineHeight: 14
+    fontFamily: fontFamilies.bold,
+    fontSize: 12,
+    lineHeight: 16
   },
   severityDanger: {
     color: colors.danger
@@ -913,21 +1398,21 @@ const styles = StyleSheet.create({
   },
   insightDescription: {
     color: colors.muted,
-    fontFamily: typography.families.body,
+    fontFamily: fontFamilies.body,
     fontSize: 13,
     lineHeight: 19,
     marginTop: 4
   },
   insightEvidence: {
     color: colors.muted,
-    ...typography.body,
+    ...conceptTypography.body,
     fontSize: 12,
     lineHeight: 17,
     marginTop: 8
   },
   insightEvidenceLabel: {
     color: colors.text,
-    fontFamily: typography.families.semibold
+    fontFamily: fontFamilies.semibold
   },
   actionLine: {
     borderLeftWidth: 2,
@@ -940,16 +1425,16 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     color: colors.faint,
-    fontFamily: typography.families.bold,
-    fontSize: 10,
-    lineHeight: 14,
+    fontFamily: fontFamilies.bold,
+    fontSize: 12,
+    lineHeight: 16,
     textTransform: "uppercase"
   },
   actionText: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 12,
-    lineHeight: 17,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 14,
+    lineHeight: 19,
     marginTop: 2
   },
   evidenceTrigger: {
@@ -969,13 +1454,13 @@ const styles = StyleSheet.create({
   },
   evidenceTitle: {
     color: colors.text,
-    fontFamily: typography.families.bold,
+    fontFamily: fontFamilies.bold,
     fontSize: 15,
     lineHeight: 20
   },
   evidenceSubtitle: {
     color: colors.muted,
-    fontFamily: typography.families.body,
+    fontFamily: fontFamilies.body,
     fontSize: 12,
     lineHeight: 17,
     marginTop: 2
@@ -988,7 +1473,7 @@ const styles = StyleSheet.create({
   },
   evidenceIntro: {
     color: colors.muted,
-    fontFamily: typography.families.body,
+    fontFamily: fontFamilies.body,
     fontSize: 13,
     lineHeight: 19
   },
@@ -1021,21 +1506,21 @@ const styles = StyleSheet.create({
   },
   signalLabel: {
     color: colors.text,
-    fontFamily: typography.families.bold,
+    fontFamily: fontFamilies.bold,
     fontSize: 13,
     lineHeight: 18
   },
   signalDetail: {
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 16,
+    fontFamily: fontFamilies.body,
+    fontSize: 13,
+    lineHeight: 18,
     marginTop: 2
   },
   signalValue: {
     maxWidth: 72,
     color: colors.text,
-    fontFamily: typography.families.bold,
+    fontFamily: fontFamilies.bold,
     fontSize: 13,
     lineHeight: 18,
     textAlign: "right"
@@ -1048,7 +1533,7 @@ const styles = StyleSheet.create({
   },
   evidenceNext: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
+    fontFamily: fontFamilies.semibold,
     fontSize: 12,
     lineHeight: 18
   }

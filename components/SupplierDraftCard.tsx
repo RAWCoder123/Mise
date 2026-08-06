@@ -1,10 +1,12 @@
-import { CheckCircle2, Copy, LockKeyhole, Send } from "lucide-react-native";
+import { CheckCircle2, LockKeyhole, Send } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, radii, typography } from "../constants/theme";
+import { colors, conceptTypography, fontFamilies, radii } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
+import { presentSupportedSupplierOrderStatus } from "../services/domain/operationalStatus";
 import type { SupplierOrder } from "../types/mise";
 import { buildSupplierDraftPresentation } from "../utils/orderPresentation";
+import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 
 interface SupplierDraftCardProps {
@@ -47,12 +49,14 @@ export function SupplierDraftCard({
   const resolvedSendLabel = sendLabel ?? t("orders.card.action.markSent");
   const resolvedBusyLabel = busyLabel ?? t("orders.card.action.markingSent");
   const presentation = buildSupplierDraftPresentation(order);
+  const operationalStatus = presentSupportedSupplierOrderStatus(order.status);
   const statusLabel =
-    order.status === "draft"
-      ? t("orders.card.status.draft")
-      : order.status === "sent"
-        ? t("orders.card.status.sent")
-        : t("orders.card.status.completed");
+    operationalStatus === "DraftedByMise"
+      ? t("orders.ops.DraftedByMise")
+      : operationalStatus === "Sent"
+        ? t("orders.ops.Sent")
+        : t("orders.ops.Received");
+  const statusTone = order.status === "draft" ? "warning" : order.status === "sent" ? "success" : "neutral";
   const deliveryLabel = order.delivery_date
     ? formatDate(`${order.delivery_date}T12:00:00.000Z`, {
         month: "short",
@@ -63,6 +67,7 @@ export function SupplierDraftCard({
   const totalLabel = presentation.estimatedTotalCents > 0
     ? formatCurrency(presentation.estimatedTotalCents / 100)
     : null;
+  const showSendButton = Boolean(isDraft && sendIsVisible && sendAction);
 
   return (
     <View style={[styles.card, isDraft && styles.cardDraft]}>
@@ -75,20 +80,14 @@ export function SupplierDraftCard({
         onPress={onOpen}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
       >
-        <View style={[styles.supplierSeal, !isDraft && styles.supplierSealSent]}>
-          {isDraft ? (
-            <Text style={styles.supplierSealText}>{supplierInitials(order.supplier_name)}</Text>
-          ) : (
-            <CheckCircle2 size={18} color={colors.surface} strokeWidth={2.25} />
-          )}
-        </View>
         <View style={styles.headerCopy}>
-          <Text style={styles.supplierName} numberOfLines={1}>
-            {order.supplier_name}
-          </Text>
-          <Text style={[styles.status, !isDraft && styles.statusSent]}>
-            {t("orders.card.statusDate", { status: statusLabel, date: deliveryLabel })}
-          </Text>
+          <View style={styles.supplierLine}>
+            <Text style={styles.supplierName} numberOfLines={1}>
+              {order.supplier_name}
+            </Text>
+            <Badge label={statusLabel} tone={statusTone} />
+          </View>
+          <Text style={styles.status}>{deliveryLabel}</Text>
         </View>
         {totalLabel ? <Text style={styles.total}>{totalLabel}</Text> : null}
       </Pressable>
@@ -135,7 +134,17 @@ export function SupplierDraftCard({
       )}
 
       <View style={styles.actions}>
-        {isDraft && sendIsVisible && sendAction ? (
+        <Button
+          title={isDraft ? t("orders.card.action.editDraft") : t("orders.card.action.open")}
+          accessibilityLabel={t("orders.card.openAccessibility", {
+            supplier: order.supplier_name,
+            status: statusLabel
+          })}
+          variant="secondary"
+          onPress={onOpen}
+          style={styles.actionButton}
+        />
+        {showSendButton ? (
           <Button
             title={busy ? resolvedBusyLabel : resolvedSendLabel}
             accessibilityLabel={sendAccessibilityLabel ?? t("orders.card.markSentAccessibility", {
@@ -143,117 +152,106 @@ export function SupplierDraftCard({
             })}
             accessibilityHint={!sendIsAvailable ? sendDisabledHint : undefined}
             accessibilityState={{ disabled: sendIsDisabled }}
-            variant={busy ? "primary" : "soft"}
+            variant={busy || sendIsAvailable ? "primary" : "soft"}
             icon={
               busy ? (
-                <CheckCircle2 size={17} color={colors.surface} strokeWidth={2.25} />
+                <CheckCircle2 size={16} color={colors.surface} strokeWidth={2.25} />
               ) : !sendIsAvailable ? (
                 <LockKeyhole size={16} color={colors.accentDark} strokeWidth={2.25} />
               ) : (
-                <Send size={17} color={colors.accentDark} strokeWidth={2.25} />
+                <Send size={16} color={colors.surface} strokeWidth={2.25} />
               )
             }
             onPress={sendAction}
             disabled={sendIsDisabled}
             style={styles.actionButton}
           />
-        ) : null}
+        ) : (
+          <Button
+            title={t("orders.card.copy")}
+            accessibilityLabel={t("orders.card.copyAccessibility", { supplier: order.supplier_name })}
+            variant="soft"
+            onPress={onCopy}
+            style={styles.actionButton}
+          />
+        )}
+      </View>
+      {showSendButton ? (
         <Button
           title={t("orders.card.copy")}
           accessibilityLabel={t("orders.card.copyAccessibility", { supplier: order.supplier_name })}
-          variant="secondary"
-          icon={<Copy size={17} color={colors.text} strokeWidth={2.25} />}
+          variant="ghost"
           onPress={onCopy}
-          style={styles.actionButton}
+          style={styles.copyGhost}
         />
-      </View>
+      ) : null}
     </View>
   );
 }
 
-function supplierInitials(name: string) {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]!.charAt(0)}${parts[1]!.charAt(0)}`.toUpperCase();
-}
-
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radii.lg,
-    borderWidth: 1,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: 12,
-    gap: 10
+    gap: 8
   },
   cardDraft: {
-    borderColor: colors.accentSoft
+    borderColor: colors.border,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent
   },
   header: {
-    minHeight: 46,
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
-    gap: 11
+    gap: 8
   },
   pressed: {
     opacity: 0.66
-  },
-  supplierSeal: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.md,
-    backgroundColor: colors.successSoft,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  supplierSealSent: {
-    backgroundColor: colors.success
-  },
-  supplierSealText: {
-    color: colors.success,
-    fontFamily: typography.families.bold,
-    fontSize: 12,
-    lineHeight: 14,
-    letterSpacing: 0.2
   },
   headerCopy: {
     flex: 1,
     minWidth: 0
   },
+  supplierLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
+  },
   supplierName: {
+    flex: 1,
+    minWidth: 0,
     color: colors.text,
-    ...typography.cardTitle,
-    fontSize: 15,
-    lineHeight: 20
+    ...conceptTypography.rowTitle,
+    fontSize: 14,
+    lineHeight: 18
   },
   status: {
     color: colors.muted,
-    ...typography.caption,
-    fontWeight: "500",
+    ...conceptTypography.caption,
+    fontFamily: fontFamilies.body,
+    fontSize: 10,
+    lineHeight: 13,
     marginTop: 1
-  },
-  statusSent: {
-    color: colors.success,
-    fontWeight: "600"
   },
   total: {
     color: colors.text,
-    ...typography.metricValue,
+    fontFamily: fontFamilies.bold,
     fontSize: 18,
     lineHeight: 22,
+    letterSpacing: -0.3,
     textAlign: "right"
   },
   lines: {
-    gap: 1
+    gap: 2
   },
   linesLabel: {
     color: colors.text,
-    ...typography.caption,
-    marginBottom: 5
+    ...conceptTypography.caption,
+    marginBottom: 2
   },
   line: {
     minHeight: 22,
@@ -265,40 +263,46 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     color: colors.text,
-    fontFamily: typography.families.body,
-    fontSize: 11.5,
+    fontFamily: fontFamilies.body,
+    fontSize: 12,
     lineHeight: 16
   },
   lineQuantity: {
-    width: 82,
+    width: 66,
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 10.5,
+    fontFamily: fontFamilies.body,
+    fontSize: 11,
     lineHeight: 15,
     textAlign: "right"
   },
   linePrice: {
     width: 54,
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 10.5,
+    fontFamily: fontFamilies.body,
+    fontSize: 11,
     lineHeight: 15,
     textAlign: "right"
   },
   moreLines: {
     color: colors.muted,
-    ...typography.caption,
-    paddingTop: 10
+    ...conceptTypography.caption,
+    paddingTop: 2
   },
   noteReady: {
     color: colors.muted,
-    ...typography.body
+    ...conceptTypography.body
   },
   actions: {
     flexDirection: "row",
-    gap: 10
+    gap: 8,
+    paddingTop: 2
   },
   actionButton: {
-    flex: 1
+    flex: 1,
+    minHeight: 38
+  },
+  copyGhost: {
+    alignSelf: "center",
+    minHeight: 30
   }
 });

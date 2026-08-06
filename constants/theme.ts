@@ -74,10 +74,10 @@ export const inventoryStatusSoftColors = {
 } as const;
 
 export const radii = {
-  sm: 8,
-  md: 8,
-  lg: 10,
-  xl: 14
+  sm: 10,
+  md: 12,
+  lg: 14,
+  xl: 18
 } as const;
 
 export const spacing = {
@@ -124,32 +124,79 @@ export const typography = {
   families: fontFamilies,
   screenTitle: {
     fontFamily: fontFamilies.bold,
-    fontSize: 16,
-    lineHeight: 20,
-    letterSpacing: -0.2
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.3
   },
   sectionTitle: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 16,
+    lineHeight: 21,
     letterSpacing: 0
   },
   metricValue: {
     fontFamily: fontFamilies.bold,
-    fontSize: 16,
-    lineHeight: 20,
-    letterSpacing: -0.2
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.3
   },
   cardTitle: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: 15,
+    lineHeight: 20,
     letterSpacing: 0
   },
   body: {
     fontFamily: fontFamilies.body,
+    fontSize: 14,
+    lineHeight: 20,
+    letterSpacing: 0
+  },
+  caption: {
+    fontFamily: fontFamilies.semibold,
     fontSize: 12,
     lineHeight: 16,
+    letterSpacing: 0
+  },
+  button: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: 0
+  }
+} as const;
+
+/** Reference-scale type for the eight-screen concept surfaces. */
+export const conceptTypography = {
+  screenTitle: {
+    fontFamily: fontFamilies.bold,
+    fontSize: 20,
+    lineHeight: 25,
+    letterSpacing: -0.3
+  },
+  /** Fits the design:static-locked 56px app bar with trailing actions. */
+  appBarTitle: {
+    fontFamily: fontFamilies.bold,
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: -0.2
+  },
+  sectionTitle: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: -0.1
+  },
+  rowTitle: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: -0.1
+  },
+  body: {
+    fontFamily: fontFamilies.body,
+    fontSize: 12,
+    lineHeight: 17,
     letterSpacing: 0
   },
   caption: {
@@ -160,72 +207,32 @@ export const typography = {
   },
   button: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 12,
+    fontSize: 11,
     lineHeight: 15,
     letterSpacing: 0
   }
 } as const;
 
-/** iOS-compact scale for the eight-screen concept surfaces. */
-export const conceptTypography = {
-  screenTitle: {
-    fontFamily: fontFamilies.bold,
-    fontSize: 15,
-    lineHeight: 19,
-    letterSpacing: -0.2
-  },
-  sectionTitle: {
-    fontFamily: fontFamilies.semibold,
-    fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 0
-  },
-  rowTitle: {
-    fontFamily: fontFamilies.semibold,
-    fontSize: 12,
-    lineHeight: 16,
-    letterSpacing: 0
-  },
-  body: {
-    fontFamily: fontFamilies.body,
-    fontSize: 11,
-    lineHeight: 15,
-    letterSpacing: 0
-  },
-  caption: {
-    fontFamily: fontFamilies.semibold,
-    fontSize: 9,
-    lineHeight: 12,
-    letterSpacing: 0
-  },
-  button: {
-    fontFamily: fontFamilies.semibold,
-    fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 0
-  }
-} as const;
-
-/** Shared concept density — visible control sizes; use hitSlop for 44px targets.
+/** Shared concept density — roomy reference proportions; use hitSlop for 44px targets.
  * App bar / tab bar heights stay at the design:static-locked 56 / 62 chrome sizes.
  */
 export const density = {
   appBar: 56,
   tabBar: 62,
-  tabIcon: 18,
+  tabIcon: 19,
   tabLabel: 9,
   gutter: 16,
   hitTarget: 44,
-  timeColumn: 54,
-  timelineRow: 48,
-  timelineRowActive: 74,
-  menuRow: 40,
-  operationalRow: 45,
-  healthCard: 80,
-  shortcutTile: 52,
-  profileRow: 54,
-  identityRow: 54,
-  compactButton: 28,
-  iconPlain: 28,
+  timeColumn: 48,
+  timelineRow: 58,
+  timelineRowActive: 90,
+  menuRow: 46,
+  operationalRow: 52,
+  healthCard: 104,
+  shortcutTile: 70,
+  profileRow: 56,
+  identityRow: 64,
+  compactButton: 32,
+  iconPlain: 30,
   chevron: 14
 } as const;

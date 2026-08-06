@@ -14,6 +14,7 @@ import {
   Mail,
   PlugZap,
   RefreshCw,
+  Shield,
   ShieldCheck,
   Store,
   Trash2,
@@ -25,6 +26,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Button } from "../../components/ui/Button";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
+import { SectionHeader } from "../../components/ui/SectionHeader";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, density, fontFamilies, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
@@ -237,13 +239,19 @@ export default function SettingsScreen() {
           <OperationalRow
             density="menu"
             title={t("settings.account.privacy.title")}
-            icon={<ShieldCheck size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<ShieldCheck size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/privacy" as never)}
           />
           <OperationalRow
             density="menu"
+            title={t("settings.account.autonomy.title")}
+            icon={<Shield size={20} color={colors.text} strokeWidth={1.9} />}
+            onPress={() => router.push("/settings/autonomy" as never)}
+          />
+          <OperationalRow
+            density="menu"
             title={t("settings.account.support.title")}
-            icon={<LifeBuoy size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<LifeBuoy size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/support" as never)}
           />
         </SettingsSection>
@@ -253,7 +261,7 @@ export default function SettingsScreen() {
             density="menu"
             title={restaurant?.name ?? t("settings.profile.noRestaurant")}
             value={localizedRole ?? undefined}
-            icon={<Store size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<Store size={20} color={colors.text} strokeWidth={1.9} />}
           />
           {restaurant ? (
             <>
@@ -261,19 +269,19 @@ export default function SettingsScreen() {
                 density="menu"
                 title={t("settings.profile.timezone")}
                 value={restaurant.timezone}
-                icon={<Building2 size={17} color={colors.muted} strokeWidth={1.9} />}
+                icon={<Building2 size={20} color={colors.muted} strokeWidth={1.9} />}
               />
               <OperationalRow
                 density="menu"
                 title={t("settings.profile.currency")}
                 value={restaurant.currency}
-                icon={<Building2 size={17} color={colors.muted} strokeWidth={1.9} />}
+                icon={<Building2 size={20} color={colors.muted} strokeWidth={1.9} />}
               />
               <OperationalRow
                 density="menu"
                 title={t("settings.profile.serviceStyle")}
                 value={serviceStyleLabel(restaurant.service_style, t)}
-                icon={<Store size={17} color={colors.muted} strokeWidth={1.9} />}
+                icon={<Store size={20} color={colors.muted} strokeWidth={1.9} />}
               />
             </>
           ) : null}
@@ -316,7 +324,7 @@ export default function SettingsScreen() {
             density="menu"
             title={t("settings.preference.language")}
             value={LANGUAGE_OPTIONS.find((option) => option.locale === locale)?.nativeName ?? locale}
-            icon={<Languages size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<Languages size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/language" as never)}
           />
         </SettingsSection>
@@ -332,29 +340,24 @@ export default function SettingsScreen() {
         </Pressable>
 
         <SettingsSection title={t("settings.section.integrations")}>
-          {isDemoMode ? (
-            <OperationalRow
-              density="menu"
-              title={t("settings.integration.pos.title")}
-              value={t(posProvider ? "settings.integration.pos.connected" : "settings.integration.pos.notConnected")}
-              icon={<PlugZap size={17} color={posProvider ? colors.success : colors.muted} strokeWidth={1.9} />}
-              onPress={() => router.push("/settings/pos")}
-            />
-          ) : (
-            <OperationalRow
-              density="menu"
-              title={t("settings.integration.noPos.title")}
-              icon={<PlugZap size={17} color={colors.muted} strokeWidth={1.9} />}
-              onPress={() => router.push("/settings/sales-import" as never)}
-            />
-          )}
+          <OperationalRow
+            density="menu"
+            title={t("settings.integration.pos.title")}
+            value={
+              isDemoMode
+                ? t(posProvider ? "settings.integration.pos.connected" : "settings.integration.pos.notConnected")
+                : t("settings.integration.pos.manage")
+            }
+            icon={<PlugZap size={20} color={posProvider ? colors.success : colors.muted} strokeWidth={1.9} />}
+            onPress={() => router.push("/settings/pos")}
+          />
           <OperationalRow
             density="menu"
             title={t("settings.integration.gmail.title")}
             value={gmailConnectionBadge(visibleEmailConnection, t)}
             icon={
               <Mail
-                size={17}
+                size={20}
                 color={gmailConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
                 strokeWidth={1.9}
               />
@@ -367,20 +370,20 @@ export default function SettingsScreen() {
           <OperationalRow
             density="menu"
             title={t("settings.operations.salesImport.title")}
-            icon={<Upload size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<Upload size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/sales-import" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("settings.operations.recipes.title")}
-            icon={<BookOpen size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<BookOpen size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/recipes" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("settings.operations.suppliers.title")}
             value={formatNumber(visibleSuppliers.length)}
-            icon={<Truck size={17} color={colors.text} strokeWidth={1.9} />}
+            icon={<Truck size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/settings/suppliers" as never)}
           />
         </SettingsSection>
@@ -389,14 +392,14 @@ export default function SettingsScreen() {
           <OperationalRow
             density="menu"
             title={t(usingLocalDemo ? "settings.data.local.title" : "settings.data.hosted.title")}
-            icon={<Database size={17} color={usingLocalDemo ? colors.muted : colors.success} strokeWidth={1.9} />}
+            icon={<Database size={20} color={usingLocalDemo ? colors.muted : colors.success} strokeWidth={1.9} />}
           />
 
           {canExportRestaurant ? (
             <OperationalRow
               density="menu"
               title={t("settings.data.export.title")}
-              icon={<Download size={17} color={colors.text} strokeWidth={1.9} />}
+              icon={<Download size={20} color={colors.text} strokeWidth={1.9} />}
               onPress={() => router.push("/settings/export" as never)}
             />
           ) : null}
@@ -543,7 +546,7 @@ export default function SettingsScreen() {
 function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text accessibilityRole="header" style={styles.sectionTitle}>{title}</Text>
+      <SectionHeader title={title} />
       <View style={styles.sectionSurface}>{children}</View>
     </View>
   );
@@ -593,20 +596,18 @@ function readinessCheckLabel(checkId: string, t: Translator) {
 
 const styles = StyleSheet.create({
   stack: {
-    gap: 8
+    gap: 12
   },
   accountHero: {
     minHeight: density.identityRow,
-    height: density.identityRow,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 0
+    gap: 10
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.accentSoft
@@ -615,34 +616,30 @@ const styles = StyleSheet.create({
     color: colors.accentDark,
     fontFamily: fontFamilies.bold,
     fontSize: 13,
-    lineHeight: 16
+    lineHeight: 17
   },
   accountHeroCopy: {
     flex: 1,
-    minWidth: 0
+    minWidth: 0,
+    gap: 2
   },
   accountHeroName: {
     color: colors.text,
-    ...conceptTypography.rowTitle,
+    ...conceptTypography.sectionTitle,
     fontFamily: fontFamilies.bold
   },
   accountHeroMeta: {
     color: colors.text,
-    ...conceptTypography.caption,
-    marginTop: 1
+    ...conceptTypography.body,
+    marginTop: 2
   },
   accountHeroEmail: {
     color: colors.muted,
     ...conceptTypography.caption,
-    fontFamily: fontFamilies.body,
-    marginTop: 0
+    fontFamily: fontFamilies.body
   },
   section: {
-    gap: 2
-  },
-  sectionTitle: {
-    color: colors.text,
-    ...conceptTypography.sectionTitle
+    gap: 6
   },
   sectionSurface: {
     overflow: "hidden",
@@ -654,14 +651,13 @@ const styles = StyleSheet.create({
   },
   workspaceRow: {
     minHeight: density.menuRow,
-    height: density.menuRow,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 0,
-    paddingHorizontal: 2
+    gap: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 4
   },
   workspaceRowSelected: {
     backgroundColor: colors.accentSoft
@@ -692,27 +688,27 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   sectionAction: {
-    paddingVertical: 8
+    paddingVertical: 10
   },
   dangerZone: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    paddingVertical: 8,
-    gap: 4
+    paddingVertical: 12,
+    gap: 8
   },
   deleteOpenAction: {
     marginTop: 8
   },
   deleteConfirm: {
-    marginTop: 8,
-    gap: 8
+    marginTop: 10,
+    gap: 10
   },
   deleteConfirmLabel: {
     color: colors.text,
-    ...conceptTypography.caption
+    ...conceptTypography.body
   },
   deleteConfirmInput: {
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderStrong,
@@ -720,8 +716,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...typography.body,
     fontSize: 15,
+    lineHeight: 20,
     paddingHorizontal: 12,
-    paddingVertical: 10
+    paddingVertical: 12
   },
   diagnostics: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -731,61 +728,63 @@ const styles = StyleSheet.create({
     minHeight: density.menuRow,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 12,
+    paddingVertical: 8
   },
   diagnosticsCopy: {
     flex: 1
   },
   diagnosticsTitle: {
     color: colors.text,
-    ...typography.caption
+    ...conceptTypography.rowTitle
   },
   diagnosticsMeta: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 14
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2
   },
   diagnosticsList: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    paddingVertical: 8
+    paddingVertical: 12
   },
   diagnosticRow: {
-    minHeight: 32,
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 10
   },
   diagnosticDot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 4
   },
   diagnosticLabel: {
     flex: 1,
     color: colors.text,
     fontFamily: typography.families.body,
-    fontSize: 12,
-    lineHeight: 16
+    fontSize: 14,
+    lineHeight: 18
   },
   diagnosticStatus: {
     color: colors.muted,
-    ...typography.caption
+    ...conceptTypography.caption
   },
   diagnosticFootnote: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 6
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 8
   },
   signOutTextButton: {
     minHeight: density.hitTarget,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 0,
-    marginBottom: 2
+    marginTop: 4,
+    marginBottom: 4
   },
   signOutText: {
     color: colors.accent,

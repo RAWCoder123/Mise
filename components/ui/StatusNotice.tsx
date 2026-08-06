@@ -100,67 +100,68 @@ export function RetryNotice({
 }
 
 function defaultIcon(tone: StatusNoticeTone) {
-  if (tone === "success") return <CircleCheck size={16} color={colors.success} strokeWidth={2.25} />;
-  if (tone === "caution") return <TriangleAlert size={16} color={colors.caution} strokeWidth={2.25} />;
-  if (tone === "warning") return <TriangleAlert size={16} color={colors.warning} strokeWidth={2.25} />;
-  if (tone === "danger") return <CircleAlert size={16} color={colors.danger} strokeWidth={2.25} />;
-  return <Info size={16} color={colors.muted} strokeWidth={2.25} />;
+  if (tone === "success") return <CircleCheck size={18} color={colors.success} strokeWidth={2.25} />;
+  if (tone === "caution") return <TriangleAlert size={18} color={colors.caution} strokeWidth={2.25} />;
+  if (tone === "warning") return <TriangleAlert size={18} color={colors.warning} strokeWidth={2.25} />;
+  if (tone === "danger") return <CircleAlert size={18} color={colors.danger} strokeWidth={2.25} />;
+  return <Info size={18} color={colors.muted} strokeWidth={2.25} />;
 }
 
 const styles = StyleSheet.create({
   notice: {
-    minHeight: 52,
-    borderRadius: radii.md,
+    minHeight: 64,
+    borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 12
   },
   icon: {
-    width: 28,
-    height: 28,
-    borderRadius: radii.sm,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center"
   },
   copy: {
     flex: 1,
-    minWidth: 0
+    minWidth: 0,
+    gap: 2
   },
   title: {
     color: colors.text,
     ...typography.cardTitle,
-    fontSize: 13,
-    lineHeight: 17
+    fontSize: 15,
+    lineHeight: 20
   },
   message: {
     color: colors.muted,
     ...typography.body,
-    fontSize: 11.5,
-    lineHeight: 15,
-    marginTop: 1
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2
   },
   action: {
-    minHeight: 36,
+    minHeight: 44,
     minWidth: 44,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     alignItems: "center",
     justifyContent: "center"
   },
   solidAction: {
-    minHeight: 28,
+    minHeight: 36,
     minWidth: 0,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.md,
     backgroundColor: colors.accent
   },
   actionLabel: {
     color: colors.accentDark,
     ...typography.button,
-    fontSize: 12
+    fontSize: 14
   },
   solidActionLabel: {
     color: colors.surface

@@ -32,14 +32,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: 18,
+    padding: 24,
     alignItems: "flex-start"
   },
   compact: {
     alignItems: "center",
     borderStyle: "dashed",
     backgroundColor: colors.background,
-    paddingVertical: 22
+    paddingVertical: 28
   },
   framed: {
     alignItems: "center",
@@ -48,18 +48,22 @@ const styles = StyleSheet.create({
   },
   illustration: {
     alignSelf: "center",
-    marginBottom: 8
+    marginBottom: 12
   },
   title: {
     color: colors.text,
     ...typography.cardTitle,
+    fontSize: 17,
+    lineHeight: 22,
     alignSelf: "center",
     textAlign: "center"
   },
   body: {
     color: colors.muted,
     ...typography.body,
-    marginTop: 5,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
     textAlign: "center",
     alignSelf: "center"
   }

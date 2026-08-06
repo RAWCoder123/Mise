@@ -94,10 +94,10 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "47%",
     minWidth: 0,
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: radii.md,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface
@@ -106,37 +106,41 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 4
+    gap: 8
   },
   labelRow: {
     flex: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 4
+    gap: 6
   },
   label: {
     flexShrink: 1,
     color: colors.muted,
-    ...typography.caption
+    ...typography.caption,
+    fontSize: 12,
+    lineHeight: 16
   },
   value: {
     color: colors.text,
-    ...typography.metricValue
+    ...typography.metricValue,
+    fontSize: 22,
+    lineHeight: 28
   },
   deltaChip: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: radii.xl
   },
   deltaLabel: {
     fontFamily: typography.families.semibold,
-    fontSize: 10,
-    lineHeight: 13
+    fontSize: 12,
+    lineHeight: 15
   }
 });
 

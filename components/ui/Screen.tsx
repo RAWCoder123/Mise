@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, conceptTypography, density, spacing } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { ActionIcon } from "./ActionIcon";
 import { BrandLockup } from "./BrandLockup";
 import { MotionView } from "./Motion";
 
@@ -97,16 +97,13 @@ export function Screen({
           <View style={styles.topBar}>
             <BrandLockup size="small" showTagline={false} />
             {restaurant && !isInsightsRoute ? (
-              <Pressable
-                accessibilityRole="button"
+              <ActionIcon
                 accessibilityLabel={t("screen.openInsights")}
                 accessibilityHint={t("screen.openInsightsHint")}
-                hitSlop={8}
                 onPress={() => router.push("/insights")}
-                style={({ pressed }) => [styles.headerAction, pressed && styles.headerActionPressed]}
               >
-                <Bell size={18} color={colors.text} strokeWidth={1.9} />
-              </Pressable>
+                <Bell size={22} color={colors.text} strokeWidth={1.9} />
+              </ActionIcon>
             ) : (
               <View style={styles.headerAction} />
             )}
@@ -163,9 +160,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background
   },
   appBar: {
+    // design:static locks this to 56 — keep in sync with density.appBar
     height: 56,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomWidth: 0,
+    borderBottomColor: "transparent",
     backgroundColor: colors.surface
   },
   topBar: {
@@ -200,7 +198,7 @@ const styles = StyleSheet.create({
   },
   appBarTitle: {
     color: colors.text,
-    ...conceptTypography.screenTitle
+    ...conceptTypography.appBarTitle
   },
   appBarTitleCentered: {
     textAlign: "center"
@@ -211,32 +209,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
-  headerActionPressed: {
-    opacity: 0.5
-  },
   body: {
     flex: 1,
     backgroundColor: colors.background
   },
   scrollContent: {
-    paddingBottom: 80
+    paddingBottom: 72
   },
   keyboardAwareScrollContent: {
     paddingBottom: 160
   },
   content: {
     width: "100%",
-    maxWidth: 440,
+    maxWidth: 420,
     alignSelf: "center",
     paddingHorizontal: density.gutter,
-    paddingTop: 8
+    paddingTop: 6
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.md,
-    marginBottom: 6
+    gap: spacing.sm,
+    marginBottom: 8
   },
   headerText: {
     flex: 1,
@@ -249,7 +244,7 @@ const styles = StyleSheet.create({
   subtitle: {
     color: colors.muted,
     ...conceptTypography.body,
-    marginTop: 1,
+    marginTop: 0,
     maxWidth: 480
   },
   loading: {

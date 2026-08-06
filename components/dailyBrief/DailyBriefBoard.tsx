@@ -356,12 +356,12 @@ function queueTone(status: string): BadgeTone {
 
 const styles = StyleSheet.create({
   preview: {
-    minHeight: 58,
-    paddingVertical: 7,
-    paddingHorizontal: 2,
+    minHeight: 72,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 12
   },
   previewPressed: {
     opacity: 0.68
@@ -369,36 +369,36 @@ const styles = StyleSheet.create({
   previewCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 1
+    gap: 4
   },
   previewHeading: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5
+    gap: 8
   },
   previewTitle: {
     color: colors.text,
     fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
+    fontSize: 16,
+    lineHeight: 21
   },
   previewCount: {
     color: colors.accent,
     fontFamily: typography.families.semibold,
-    fontSize: 9,
-    lineHeight: 12
+    fontSize: 13,
+    lineHeight: 17
   },
   previewFinding: {
     color: colors.text,
     fontFamily: typography.families.semibold,
-    fontSize: 11,
-    lineHeight: 14
+    fontSize: 15,
+    lineHeight: 20
   },
   previewBody: {
     color: colors.muted,
     fontFamily: typography.families.body,
-    fontSize: 9,
-    lineHeight: 12
+    fontSize: 13,
+    lineHeight: 18
   },
   board: { gap: 12, padding: 12 },
   disclaimer: {
@@ -452,8 +452,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
     color: colors.faint,
     fontFamily: typography.families.bold,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 16,
     textTransform: "uppercase"
   },
   recommended: { color: colors.text, fontFamily: typography.families.semibold, fontSize: 14, lineHeight: 19 },

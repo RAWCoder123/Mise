@@ -781,9 +781,9 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     color: colors.faint,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "900",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
     textTransform: "uppercase"
   },
   builderInput: {
@@ -828,9 +828,9 @@ const styles = StyleSheet.create({
   },
   unitPreviewLabel: {
     color: colors.faint,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: "900"
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700"
   },
   recipeList: {
     gap: 10
@@ -909,9 +909,9 @@ const styles = StyleSheet.create({
   },
   ingredientUnit: {
     color: colors.muted,
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 1
+    fontSize: 13,
+    lineHeight: 17,
+    marginTop: 2
   },
   ingredientControls: {
     flexDirection: "row",
@@ -951,9 +951,9 @@ const styles = StyleSheet.create({
   },
   quantityUnit: {
     color: colors.faint,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: "800"
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700"
   },
   saveButton: {
     minHeight: 48,
