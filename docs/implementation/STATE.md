@@ -1,17 +1,31 @@
 # Mise implementation state
 
-Last updated: 2026-08-05 (Cursor bootstrap for Claude principal-implementer kit)  
-Working branch: `cursor/initial-mise-import`  
-HEAD: `bdb18814960b5034b90bfa6e5202bf7e60ced4f9` — *Refine concept fidelity across core screens*  
-Remote: `origin/cursor/initial-mise-import` — **local ahead by 125 commits** (0 behind)  
+Last updated: 2026-08-05 (Claude session: dirty-tree preservation + recalculation cycles)  
+Working branch: `rescue/ops-backend-20260805` (pushed to origin)  
+Branched from: `cursor/initial-mise-import` @ `bdb1881` — *Refine concept fidelity across core screens*  
 `main`: `be5a3c079555c56f19c5060993c8bfaa01c5eb35`
 
 ## Verdict
 
 **Do not treat public `main` + PR stack #1–#4 as the complete product.**  
-The real working product is this branch tip **plus a large dirty worktree** (~174 porcelain paths). That dirty tree holds Milestone 4 operating-plan/tasks, Square backend, waste, phase briefs, Ask Mise, and further UI densification that are **not on any `split/*` PR**.
+The real working product is `rescue/ops-backend-20260805`. It holds Milestone 4 operating-plan/tasks, Square backend, waste, phase briefs, Ask Mise, and further UI densification that are **not on any `split/*` PR**.
 
-Integrating only PRs #1–#4 onto clean `main` would **drop** that work unless it is first committed or otherwise preserved.
+Integrating only PRs #1–#4 onto clean `main` would **drop** that work.
+
+## Preservation: DONE (2026-08-05)
+
+The previously at-risk dirty worktree (~175 porcelain paths) is **committed and pushed**. The worktree is clean.
+
+| Commit | Contents |
+| --- | --- |
+| `0103656` | Operational backend data layer — 4 migrations, 3 pgTAP suites, Square edge functions, OAuth scaffolding |
+| `e0c6b8b` | Domain + application services with unit coverage |
+| `0f4983a` | Operator-facing UI for the operational backend |
+| `82df532` | Masterdoc, agent kit, implementation state |
+
+No secrets were committed; only `.example` files with placeholder keys.
+
+The PR-stack integration (Phases B–D of `PR_INTEGRATION_PLAN.md`) is **still outstanding** — preservation only removed the risk of losing work, it did not integrate the six split PRs.
 
 ## Authoritative inputs (staged)
 
@@ -58,28 +72,27 @@ Open PRs confirmed:
 
 Many other open **draft** inspection PRs (`cursor/mise-product-inspection-*`, etc.) exist and are unrelated to the six-way stack.
 
-## Dirty worktree risk (do not lose)
+## Work added this session
 
-Snapshot: **~174** porcelain paths (**~88** modified, **~86** untracked).
+**Batch `recalculation-cycles-44`** — roadmap increment 3 (scheduled recalculation cycles with explicit monitoring ownership), masterdoc Section 26 "Background Jobs".
 
-Examples of **untracked** capability that exists only in the worktree (not in HEAD):
+- `services/domain/recalculationSchedule.ts` — decides which of `daily_open` / `mid_shift` / `close` is due. Idempotency keys, exponential backoff, dead-lettering, restaurant-local 04:00 service-day rollover, per-cycle monitoring owner.
+- `services/application/recalculationCycles.ts` — executes due cycles through injected ports. Per-cycle timeout, failure isolation, fail-closed on an unreadable ledger.
+- `tests/recalculationSchedule.test.ts` (12) and `tests/recalculationCycles.test.ts` (10).
 
-- Daily operating plan: `services/domain/operatingPlan.ts`, `services/application/operatingPlan.ts`, `components/operations/**`, `tests/operatingPlan.test.ts`
-- Shared restaurant tasks: `services/domain/restaurantTasks.ts`, migration `20260802222329_shared_restaurant_tasks.sql`, related tests
-- Operational foundation / waste migrations and domain
-- Square OAuth/webhook edge functions + `docs/square-backend.md`
-- Ask Mise, daily report, floor notes, phase briefs, autonomy, restaurant memory
-- Staged agent kit under `docs/product/`, `docs/design/`, `docs/implementation/`
+**Deliberately not done:** no run-ledger migration, no persistence wiring, no cron trigger, no UI surfacing of dead-lettered cycles. The executor takes ports so persistence can land next.
 
-**First writer action (Claude, after user allows commits):** create one or more checkpoint commits on this branch (or a named rescue branch) that capture the dirty tree before any merge/rebase of the public PR stack.
-
-## Baseline gates (this machine, 2026-08-05)
+## Baseline gates (this machine, 2026-08-05, post-change)
 
 | Gate | Result |
 | --- | --- |
 | `npm run typecheck` | **PASS** |
-| `npm test` | **PASS** — 439 pass / 0 fail |
-| Docker / pgTAP full migration chain | **not run** this session |
+| `npm test` | **PASS** — 461 pass / 0 fail (was 439; +22 new) |
+| `npm run security:backend` | **PASS** |
+| `npm run security:static` | **PASS** |
+| `npm run design:static` | **PASS** |
+| `npm run qa:routes` | **PASS** |
+| Docker / pgTAP full migration chain | **not run** — Docker unavailable on this machine |
 | Hosted staging credentialed proof | **not run** |
 | Live POS / model / Gmail | remain fail-closed / external |
 
@@ -91,12 +104,13 @@ Examples of **untracked** capability that exists only in the worktree (not in HE
 - Public `main` still thin; product lives on this branch + dirty tree
 - PR stack CI checks absent — need local/CI run before merge decisions
 
-## Recommended next slice (Claude)
+## Recommended next slice
 
-1. **Preserve dirty tree** (checkpoint commit / rescue branch) — blocking before stack merges.
-2. Decide integration strategy: **prefer promote `cursor/initial-mise-import` (+ checkpoint) as integration trunk**; cherry-pick only missing unique commits from PR #2–#6 after diff inventory (Realtime revocation, dependency pin, order-automation evaluator).
-3. Do **not** reset this worktree onto `split/mockup-redesign`.
-4. After preservation: continue masterdoc vertical slices starting from Section 11 phase briefs / remaining Observe→Report gaps, with tests + no fabricated staffing/weather/reservations.
+1. ~~Preserve dirty tree~~ — **done**, see Preservation above.
+2. Persist the recalculation run ledger: additive migration + pgTAP, wire `RecalculationPorts` to `supabaseRepository`, then trigger `runDueRecalculationCycles` on a schedule (Edge Function or cron). This is the direct continuation of this session's work.
+3. Surface dead-lettered cycles in the app — masterdoc Section 26 forbids hiding background-job failures, and the data is already on `RecalculationCycleReport.needsOperatorAttention`.
+4. Integration strategy still open: **prefer promoting this trunk**; cherry-pick only missing unique commits from PR #2–#6 after diff inventory (Realtime revocation, dependency pin, order-automation evaluator).
+5. Do **not** reset this worktree onto `split/mockup-redesign`.
 
 ## Consultations
 

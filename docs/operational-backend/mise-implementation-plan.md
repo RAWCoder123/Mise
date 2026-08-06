@@ -85,12 +85,42 @@ Completed foundation batch: `operational-backend-foundation-40`
 - Localized English, Spanish, and Simplified Chinese screen chrome with stale-response protection
 - Local proof: 439 TypeScript tests, 665 pgTAP assertions, security/design gates, production export, route coverage, and rendered multilingual interaction QA
 
+## Batch recalculation-cycles-44 (domain and application complete locally)
+
+### Section 26 background-job scheduling for the operating loop
+
+- `services/domain/recalculationSchedule.ts`: storage-agnostic decision brain for the
+  `daily_open`, `mid_shift`, and `close` cycles. Window hours mirror `phaseForHour` so a
+  cycle and the narrative it feeds never disagree about the time of day.
+- Restaurant-local service day with a 04:00 rollover, so a late close is recorded against
+  the day it belongs to instead of the calendar day after midnight.
+- Idempotency: one stable work key per restaurant/service-day/cycle, reused across retries,
+  plus a unique per-dispatch attempt key. A succeeded cycle is never recalculated that day.
+- Retry with exponential backoff (2m/4m/8m, capped at 30m) and dead-lettering after four
+  attempts. Dead-lettered cycles are flagged `surfaceToOperator` with a named monitoring
+  owner rather than failing silently.
+- `services/application/recalculationCycles.ts`: executor with injected ports. Per-cycle
+  timeout, failure isolation so one bad cycle never cancels the rest, fail-closed handling
+  of an unreadable ledger, and ledger-write failures surfaced on the execution.
+- Local proof: 461 TypeScript tests (22 new), typecheck, security static/backend, design
+  static, and route smoke.
+
+### Not yet done in this batch
+
+- No run-ledger table or migration yet, so cycles are not persisted or triggered in
+  production. The executor takes ports precisely so persistence can land next.
+- Nothing schedules the executor yet; there is no cron or Edge Function trigger.
+- pgTAP was not re-run this session (no Docker on the authoring machine).
+
 ## Next roadmap increments
 
-1. Deploy remaining additive migrations to staging and run hosted tenant/provider proofs.
-2. Connect schedules, reservations, weather, review monitoring, and provider confirmations before surfacing those signals as known.
-3. Add scheduled daily/mid-shift/close recalculation cycles with explicit monitoring ownership.
-4. Complete physical-device and external release evidence under `docs/launch/GATE_STATUS.md`.
+1. Persist the recalculation run ledger (additive migration + pgTAP) and wire
+   `RecalculationPorts` to the repository, then trigger the executor on a schedule.
+2. Deploy remaining additive migrations to staging and run hosted tenant/provider proofs.
+3. Connect schedules, reservations, weather, review monitoring, and provider confirmations
+   before surfacing those signals as known.
+4. Surface dead-lettered cycles in the application so background failures stay visible.
+5. Complete physical-device and external release evidence under `docs/launch/GATE_STATUS.md`.
 
 ## Rollback and safety
 
