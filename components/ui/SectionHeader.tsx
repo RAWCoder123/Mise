@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-    marginBottom: 6
+    marginBottom: 8
   },
   textWrap: {
     flex: 1
