@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
-import { ChevronDown, Eye, Package, ShoppingCart, Sparkles } from "lucide-react-native";
+import { ChevronDown, Package, ShoppingCart, Sparkles } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -189,8 +189,8 @@ export default function HomeScreen() {
 
         <View style={styles.greetingBlock}>
           <Text style={styles.greeting}>{t(greetingKeyForNow(), { name: greetingName })}</Text>
-          <Text style={styles.greetingSubtext}>
-            {visibleBrief?.restaurantStatus.summary ?? t("home.greeting.subtext")}
+          <Text style={styles.greetingSubtext} numberOfLines={2}>
+            {t("home.greeting.subtext", { restaurant: restaurant.name })}
           </Text>
           {visibleBrief?.demoLabeled ? (
             <Text style={styles.demoLabel}>{t("home.demo.label")}</Text>
@@ -226,7 +226,7 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {visibleBrief ? <RestaurantStatusCard brief={visibleBrief} formatNumber={formatNumber} t={t} /> : null}
+        {visibleBrief ? <RestaurantStatusCard brief={visibleBrief} t={t} /> : null}
 
         {visibleSummary ? (
           <>
@@ -299,11 +299,7 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {visibleBrief ? <SinceAwaySection brief={visibleBrief} t={t} /> : null}
-
         {visibleBrief ? <ActivitySection brief={visibleBrief} t={t} /> : null}
-
-        {visibleBrief ? <WatchingSection brief={visibleBrief} t={t} /> : null}
 
         <Button
           title={t("home.ask.entry")}
@@ -320,41 +316,27 @@ export default function HomeScreen() {
 
 function RestaurantStatusCard({
   brief,
-  formatNumber,
   t
 }: {
   brief: OperatingBrief;
-  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   t: Translator;
 }) {
+  // A healthy morning needs no banner at all — the concept only shows this
+  // block when something is actually wrong.
+  if (brief.restaurantStatus.status === "on_track") return null;
+
   const statusKey =
-    brief.restaurantStatus.status === "on_track"
-      ? "home.status.on_track"
-      : brief.restaurantStatus.status === "attention_needed"
-        ? "home.status.attention_needed"
-        : "home.status.at_risk";
-  const tone =
-    brief.restaurantStatus.status === "on_track"
-      ? "success"
-      : brief.restaurantStatus.status === "attention_needed"
-        ? "warning"
-        : "danger";
+    brief.restaurantStatus.status === "attention_needed"
+      ? "home.status.attention_needed"
+      : "home.status.at_risk";
 
   return (
     <StatusNotice
-      tone={tone}
+      variant="row"
+      tone={brief.restaurantStatus.status === "attention_needed" ? "warning" : "danger"}
       title={t(statusKey)}
       message={brief.restaurantStatus.summary}
-      meta={`${t("home.status.confidence", {
-        score: formatNumber(brief.restaurantStatus.confidence, {
-          style: "percent",
-          maximumFractionDigits: 0
-        })
-      })} · ${t("home.status.freshness", { label: brief.restaurantStatus.dataFreshness.state })}`}
-      actionLabel={t("home.status.review")}
-      actionVariant="solid"
-      actionAccessibilityLabel={t(statusKey)}
-      onAction={() => router.push(brief.needsApproval.length > 0 ? "/orders" : "/today")}
+      onPress={() => router.push(brief.needsApproval.length > 0 ? "/orders" : "/today")}
     />
   );
 }
@@ -428,24 +410,6 @@ function ActivitySection({ brief, t }: { brief: OperatingBrief; t: Translator })
   );
 }
 
-function SinceAwaySection({ brief, t }: { brief: OperatingBrief; t: Translator }) {
-  const events = brief.sinceYouWereAway.slice(0, 3);
-  if (events.length === 0) return null;
-  return (
-    <View style={styles.section}>
-      <SectionHeader
-        title={t("home.sinceAway.title")}
-        action={t("home.activity.history")}
-        onAction={() => router.push("/more/activity" as never)}
-      />
-      {brief.activityWindowSummary ? (
-        <Text style={styles.cardBody}>{brief.activityWindowSummary.sentence}</Text>
-      ) : null}
-      {events.map((event) => <ActivityRow key={`away:${event.id}`} event={event} />)}
-    </View>
-  );
-}
-
 function ActivityRow({ event }: { event: ActivityEvent }) {
   const time = event.occurredAt.slice(11, 16);
   return (
@@ -455,28 +419,6 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
         <Text style={styles.cardTitle} numberOfLines={1}>{event.title}</Text>
         <Text style={styles.cardBody} numberOfLines={2}>{event.summary}</Text>
       </View>
-    </View>
-  );
-}
-
-function WatchingSection({ brief, t }: { brief: OperatingBrief; t: Translator }) {
-  const rows = brief.miseIsWatching.slice(0, 4);
-  return (
-    <View style={styles.section}>
-      <SectionHeader title={t("home.watching.title")} />
-      {rows.length === 0 ? (
-        <Text style={styles.emptyCopy}>{t("home.watching.empty")}</Text>
-      ) : (
-        rows.map((row) => (
-          <OperationalRow
-            key={row.id}
-            title={row.title}
-            subtitle={row.detail}
-            icon={<Eye size={18} color={colors.text} strokeWidth={2.15} />}
-            iconTone="neutral"
-          />
-        ))
-      )}
     </View>
   );
 }
@@ -495,10 +437,19 @@ function HomeMetrics({
   const openTasks = summary.operationalTasks.filter((task) => task.status === "open");
   const highPriority = openTasks.filter((task) => task.priority === "urgent" || task.priority === "high").length;
   const salesDelta = buildSalesDelta(summary, formatNumber);
+  // Average ticket gives the second cell a real comparison instead of a gap.
+  const averageTicket =
+    summary.itemsSold > 0
+      ? formatSalesCurrency(summary.salesToday / summary.itemsSold, summary.restaurantCurrency)
+      : undefined;
 
   return (
     <View style={styles.metricsBlock}>
-      <SectionHeader title={t("home.glance.title")} />
+      <SectionHeader
+        title={t("home.glance.title")}
+        action={t("common.viewAll")}
+        onAction={() => router.push("/insights")}
+      />
       <CompactMetricStrip
         accessibilityLabel={t("home.metrics.accessibility")}
         metrics={[
@@ -506,30 +457,39 @@ function HomeMetrics({
             id: "sales",
             label: t("home.metric.sales"),
             value: formatSalesCurrency(summary.salesToday, summary.restaurantCurrency),
-            caption: salesDelta?.label,
-            captionTone: salesDelta?.tone === "success" ? "success" : salesDelta?.tone === "danger" ? "danger" : "default"
+            delta: salesDelta?.label,
+            deltaTone: salesDelta?.tone === "success" ? "success" : salesDelta?.tone === "danger" ? "danger" : "default",
+            comparison: salesDelta ? t("home.metric.vsYesterday") : undefined
           },
           {
             id: "sold",
             label: t("home.metric.itemsSold"),
-            value: formatNumber(summary.itemsSold)
+            value: formatNumber(summary.itemsSold),
+            delta: averageTicket,
+            deltaTone: "default",
+            comparison: averageTicket ? t("home.metric.avgTicket") : undefined
           },
           {
             id: "tasks",
             label: t("home.metric.openTasks"),
             value: formatNumber(openTasks.length),
             tone: openTasks.length > 0 ? "default" : "success",
-            caption:
-              highPriority > 0
-                ? t("home.metric.high", { count: formatNumber(highPriority) })
-                : undefined,
-            captionTone: highPriority > 0 ? "danger" : "default"
+            delta: highPriority > 0 ? formatNumber(highPriority) : undefined,
+            deltaTone: "danger",
+            comparison: highPriority > 0 ? t("home.metric.highPriority") : undefined
           },
           {
             id: "orders",
             label: t("home.metric.orderReview"),
             value: formatNumber(summary.pendingRecommendations),
-            tone: summary.pendingRecommendations > 0 ? "caution" : "success"
+            tone: summary.pendingRecommendations > 0 ? "caution" : "success",
+            delta:
+              summary.pendingRecommendations > 0
+                ? formatNumber(summary.pendingRecommendations)
+                : undefined,
+            deltaTone: "caution",
+            comparison:
+              summary.pendingRecommendations > 0 ? t("home.metric.awaiting") : undefined
           }
         ]}
       />
@@ -621,14 +581,11 @@ function InventoryBrief({
         onAction={() => router.push("/inventory")}
       />
       <InventoryHealthSummaryCard
+        layout="inline"
         counts={counts}
         percentLabel={total === 0 ? formatNumber(0, { style: "percent" }) : percent}
-        statusLabel={t("home.health.healthy")}
-        legend={{
-          good: `${t("inventory.health.good")} ${formatNumber(counts.good)}`,
-          watch: `${t("inventory.health.watch")} ${formatNumber(counts.watch)}`,
-          low: `${t("inventory.health.low")} ${formatNumber(counts.low + counts.critical)}`
-        }}
+        chipLabel={t("home.health.healthy")}
+        chipTone="success"
       />
     </View>
   );
@@ -780,11 +737,11 @@ const styles = StyleSheet.create({
   },
   greeting: {
     color: colors.text,
-    ...conceptTypography.displayTitle
+    ...conceptTypography.greeting
   },
   greetingSubtext: {
     color: colors.muted,
-    ...conceptTypography.body
+    ...conceptTypography.subtitle
   },
   demoLabel: {
     color: colors.muted,
