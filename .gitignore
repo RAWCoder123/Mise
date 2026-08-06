@@ -5,6 +5,7 @@ web-build/
 .env
 .env.local
 .mise-staging.env
+.mise-auth-oauth.env
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -51,6 +51,96 @@ commit before another batch begins.
 | `private-beta-release-prerequisite-audit-29` | Codex | Refresh recovery evidence and isolate external release prerequisites | Complete; candidate freeze ready | `30158cd` |
 | `private-beta-hosted-candidate-closure-38` | Codex | Restore exact-candidate rendered tenant race and refresh provisional release evidence | Complete | `3249e77` |
 | `private-beta-expo-patch-closure-39` | Codex | Restore Expo Doctor with SDK 56 patch-compatible dependencies | Complete | `2346e62` |
+| `operational-backend-foundation-40` | Cursor + Codex | Truthful operating brief, activity/action/outcome/memory backbone, and inventory-to-delivery vertical slice | Complete; staging/device proof pending | Uncommitted shared worktree |
+| `daily-operating-plan-41` | Cursor + Codex | Deterministic daily plan plus durable role-aware restaurant tasks and verified completion | Complete locally; staging/device proof pending | Uncommitted shared worktree |
+
+### `daily-operating-plan-41`
+
+Delivered:
+
+- Cursor built the deterministic windowed Daily Operating Plan projection,
+  presentation layer, Today timeline, localization, and domain tests.
+- Codex added tenant-scoped shared tasks and dependency edges, active-member
+  RLS, role-gated create/complete/reopen RPCs, immutable activity, emergency
+  guards, export coverage, hosted/demo repository parity, and the final plan
+  merge.
+- Task creation now distinguishes central Restaurant work from Personal
+  device-only work and captures role, eligible assignee, service window,
+  verification, checklist, prerequisite, priority, and focus.
+- Task detail requires checklist completion, a real result, and configured
+  evidence; completion transactionally unblocks dependents and managers can
+  reopen work without erasing activity history.
+- Cursor's read-only integration audit drove fail-closed changed-replay checks,
+  persisted dependency hydration, cancelled/completed projection parity,
+  shared-task visibility on Home and Ask Mise, and non-assignee staff gating.
+- Rendered QA proved Restaurant task creation → Today → verified completion →
+  Done at mobile width, then rechecked every required operations route.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 411 passed
+- `npm run security:backend`
+- `npm run supabase:test`: 656 pgTAP assertions; concurrent quota proof
+  accepted 5 and rejected 15; no local advisor issues
+- `npm audit --audit-level=high`: 0 vulnerabilities
+- `npm run doctor`: 21/21 checks
+- `npm run design:static`
+- Expo production web export, `npm run qa:routes`, and
+  `npm run qa:interactions` across 23 routes and EN/ES/ZH at 390×844
+- In-app Browser proof at 390×844 and 1280px
+- Cursor read-only closure pass: no remaining actionable P0/P1/P2 findings
+- `docs/launch/evidence/backend/2026-08-02-daily-operating-plan.md`
+
+Remaining:
+
+- Deploy and prove the additive migrations in staging before production.
+- Verify the critical workflow on a physical supported iPhone.
+- Section 11 Morning / Pre-Service / Closing briefs and scheduled cycles remain
+  follow-on roadmap work; staffing/reservation/weather stay unknown until
+  authoritative sources exist.
+- No checkpoint was created automatically because the worktree includes
+  broader user-owned changes.
+
+### `operational-backend-foundation-40`
+
+Delivered:
+
+- Nine additive tenant-scoped operational tables with membership RLS, explicit
+  grants, append-only activity/outcomes, emergency-mode guards, and role-gated
+  authenticated/service workflows.
+- A deterministic operating-brief Home, real Activity History, correctable
+  Restaurant Memory, safe Autonomy controls, and full export parity.
+- Approval-gated supplier sending with explicit `failed` versus `unverified`
+  outcomes, plus replay-safe delivery → inventory → outcome → memory processing.
+- Hosted/demo parity and a truthful one-time backfill of existing open
+  recommendations and persisted supplier orders.
+- Non-contradictory inventory coverage/status presentation and localized
+  rendered workflow coverage.
+
+Evidence:
+
+- `npm run typecheck`
+- `npm test`: 391 passed
+- `npm audit --audit-level=high`: 0 vulnerabilities
+- `npm run doctor`: 21/21 checks
+- `npm run security:backend`
+- `npm run design:static`
+- Deno format/typecheck for changed Edge Functions
+- Expo web export, `npm run qa:routes`, and `npm run qa:interactions`
+- `npm run supabase:test`: 621 pgTAP assertions; concurrent quota proof
+  accepted 5 and rejected 15; no local advisor issues
+- `docs/launch/evidence/backend/2026-08-02-operational-backend-foundation.md`
+
+Remaining:
+
+- Deploy and prove the additive migration in staging before production.
+- Configure and prove live provider confirmations/delivery parsing before
+  changing provider or autonomy kill switches.
+- Scheduled cycles, new staffing/reservation/weather sources, physical-device
+  evidence, and external release approvals remain separate gated work.
+- No checkpoint was created automatically because the worktree includes
+  broader user-owned changes.
 
 ### `private-beta-release-prerequisite-audit-29`
 

@@ -1,5 +1,11 @@
 # Mise Agent Guide
 
+## Authoritative product + implementation state
+- Master product/engineering spec: `docs/product/mise-operational-backend-master.md`
+- Claude principal prompt / handoff: `docs/implementation/CLAUDE_CONSOLE_AGENT_PROMPT.md`, `docs/implementation/CLAUDE_HANDOFF.md`
+- Living status: `docs/implementation/STATE.md`, `docs/implementation/DECISIONS.md`, `docs/implementation/PR_INTEGRATION_PLAN.md`
+- UI references: `docs/design/references/`
+
 ## Product Direction
 - Mise is a mobile-first operations system for independent restaurants.
 - Keep the current stack: Expo Router, React Native, TypeScript, Supabase, and a custom in-app design system.

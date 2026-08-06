@@ -1,0 +1,22 @@
+---
+description: Mise operational backend product rules from the master prompt
+alwaysApply: true
+---
+
+# Mise operational backend
+
+Mise is an autonomous restaurant operations backend with a calm mobile control surface.
+
+Authoritative spec: `docs/MISE_OPERATIONAL_BACKEND_MASTER_PROMPT.md`
+Plan/audit: `docs/operational-backend/`
+
+## Non-negotiables
+
+- Do not build generic dashboards or fake AI behavior.
+- Every recommendation must be grounded in structured evidence.
+- Every action must be permissioned and auditable.
+- Every meaningful system event must create a truthful activity record.
+- Preserve tenant isolation, source-of-truth boundaries, and existing Mise branding.
+- LLM may explain/summarize; never invent inventory quantities, prices, permissions, or integration success.
+- Prefer incremental vertical slices over disconnected mock screens.
+- Demo data must be internally consistent and clearly labeled; production must not silently fall back to demo.

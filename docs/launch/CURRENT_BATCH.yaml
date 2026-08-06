@@ -1,50 +1,81 @@
-batch_id: private-beta-expo-patch-closure-39
-status: completed
-goal: Restore Expo Doctor to 21/21 by applying only the SDK 56 compatible Expo and Expo Router patch releases, then revalidate the exact provisional candidate.
-started_at: 2026-07-29
+batch_id: daily-operating-plan-41
+status: complete
+goal: >
+  Execute MISE_OPERATIONAL_BACKEND_MASTER_PROMPT.md Milestone 4 as a complete
+  local vertical slice: a deterministic daily operating plan plus durable,
+  tenant-safe restaurant tasks with service windows, assignment, dependencies,
+  verification, truthful results, and auditable activity.
+started_at: 2026-08-02
+completed_at: 2026-08-02
 codex_owned:
+  - docs/launch/**
+  - supabase/migrations/**
+  - supabase/tests/**
+  - services/domain/restaurantTasks.ts
+  - services/application/restaurantTasks.ts
+  - services/repositories/repositoryContracts.ts
+  - services/repositories/demoRepository.ts
+  - services/repositories/supabaseRepository.ts
+  - app/more/create-task.tsx
+  - app/tasks/[id].tsx
+  - services/demo/replaceableDemoData.ts
+  - services/domain/activityEvents.ts
+  - supabase/functions/export-restaurant-data/index.ts
+  - scripts/security-backend.mjs
+  - scripts/security-static.mjs
+  - tests/restaurantTasks.test.ts
+  - tests/restaurantTasksRepository.test.ts
+  - tests/sharedRestaurantTasksMigration.test.ts
+cursor_owned:
+  - services/domain/operatingPlan.ts
+  - services/application/operatingPlan.ts
+  - services/presentation/operationsPresentation.ts
+  - app/(tabs)/today.tsx
+  - components/operations/**
+  - i18n/catalog.ts
+  - services/miseService.ts
+  - tests/operatingPlan.test.ts
+  - docs/operational-backend/**
+shared_locked:
+  - contexts/**
+  - constants/theme.ts
+  - components/ui/**
+blocked_files:
   - package.json
   - package-lock.json
-  - tests/security.test.ts
-  - docs/launch/**
-cursor_owned: []
-shared_locked:
-  - app/**
-  - components/**
-  - constants/**
-  - contexts/**
-  - i18n/**
-  - services/**
-  - supabase/**
-  - scripts/**
-  - app.json
-  - eas.json
-blocked_files: []
-handoff_required: true
+handoff_required: false
 dependencies:
-  - private-beta-hosted-candidate-closure-38
+  - operational-backend-foundation-40
 required_tests:
   - npm run typecheck
   - npm test
-  - npm audit --audit-level=high
-  - npm run doctor
-  - npm run verify:private-beta-security:local
-  - npm run verify:private-beta-security:hosted
-  - npm run beta:go-no-go -- --json
+  - npm run security:backend
+  - npm run supabase:test
+  - npm run qa:routes
+  - npm run qa:interactions
 stop_conditions:
-  - The upgrade exceeds Expo SDK 56 patch-compatible versions
-  - Any application, domain, security, database, build, route, or interaction check regresses
-  - Any release receipt is recorded without exact-commit evidence
-  - Any cloud build, upload, distribution, production deployment, or paid action would begin
+  - Fabricating service windows, staffing coverage, or completion results
+  - Storing restaurant-wide tasks only on one device
+  - Bypassing tenant isolation, active membership, or role checks
+  - Allowing direct client writes to immutable activity history
+  - Completing verification-required work without a valid result and evidence
+  - Mixing demo tasks into hosted tenants
 evidence:
-  - "At commit 93f24fb, typecheck, 333 tests, and npm audit passed, but Expo Doctor newly reported expo 56.0.17 vs expected ~56.0.18 and expo-router 56.2.16 vs expected ~56.2.17."
-  - "Upgraded only expo to ~56.0.18 and expo-router to ~56.2.17 using the Expo installer; the lockfile resolved the matching SDK 56 patch graph."
-  - "Updated the repository dependency guard to require the new exact patch ranges."
-  - "npm run doctor: 21/21 checks passed."
-  - "npm audit --audit-level=high: zero vulnerabilities."
-  - "npm run typecheck: passed."
-  - "npm test: 333 passed."
-  - "npm run design:static and npm run qa:routes: passed."
-  - "MISE_MOBILE_LAYOUT_PORT=8103 MISE_MOBILE_LAYOUT_DEBUG_PORT=9353 MISE_MOBILE_LAYOUT_TIMEOUT_MS=240000 npm run qa:interactions: passed at 390x844 with zero overflow, core workflow, Español, and 简体中文."
+  - docs/launch/evidence/backend/2026-08-02-daily-operating-plan.md
+  - npm run typecheck
+  - npm test (411 passed)
+  - npm run security:backend
+  - npm run supabase:test (656 pgTAP assertions)
+  - npm run doctor (21/21)
+  - npm audit --audit-level=high (0 vulnerabilities)
+  - npm run design:static
+  - Expo production web export
+  - npm run qa:routes
+  - npm run qa:interactions (23 routes, EN/ES/ZH, 390x844)
+  - In-app Browser restaurant task create-to-verified-completion flow
 unresolved_findings: []
-checkpoint_commit: 2346e62619906dadbf74fe00c0121b216682e88e
+deferred_external:
+  - Deploy additive migrations to staging and run hosted tenant proof
+  - Verify the flow on a physical supported iPhone
+  - Keep providers and higher autonomy disabled until their separate gates pass
+checkpoint_commit: null

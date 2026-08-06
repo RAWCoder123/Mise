@@ -1,0 +1,20 @@
+---
+description: Keep Cursor/Codex tandem batches fast on the Mise launch schedule
+alwaysApply: true
+---
+
+# Tandem launch speed
+
+Read `docs/launch/CURRENT_BATCH.yaml` before editing. Honor `cursor_owned`, `codex_owned`, and `shared_locked`. Never edit the other owner's paths or `docs/launch/**` when Codex owns the batch.
+
+## Speed rules
+
+- Finish owned scope first; do not wait on the other agent for shared polish.
+- Prefer one owned checkpoint commit when asked; leave the other agent's dirty tree untouched.
+- Do not expand into blocked files, next-gate work, or speculative refactors during an open batch.
+- After owned UI/API work: run `npm run typecheck` (and `npm test` if domain/UI contracts changed), report changed paths + commit hash, and stop unless the user assigns more owned work.
+- If blocked on Codex, emit a paste-ready Codex continuation prompt instead of editing Codex files.
+
+## Handoff prompt shape (Cursor → Codex)
+
+Include: `batch_id`, Cursor commit hash, owned paths done, typecheck/test results, what Codex still owns, and explicit "do not touch" Cursor paths.

@@ -1,13 +1,13 @@
 # Mise Release Gate Status
 
-Updated: 2026-07-29
+Updated: 2026-08-02
 
 | Gate | Status | Current evidence | Remaining blockers |
 | --- | --- | --- | --- |
 | 1. Private-beta foundation | In progress | Expo dependency repair, tenant security migrations, deterministic demo mode, team roles, hosted account-deletion proof, service-only restaurant provisioning, globally disabled public signup with invited-user email login preserved, protected owner invitation acceptance and sign-in, owner/admin restaurant export, complete hosted two-tenant and rendered race proof, scrubbed observability contracts, live PostHog staging receipt, operational restore evidence, incident runbooks, enforced read-only/emergency modes, fail-closed exact-commit release authority, pinned TestFlight tooling, organization-owned EAS project identity and preview runtime configuration, sanitized mobile upload boundary, localized signed-out/in-app privacy and support access, reviewed/deployed owner-only public-web source, full Xcode 26.6, iOS 26.5 simulator runtime, passing native prerequisite gate, and successful iPhone 17 Pro simulator boot | Apple signing authorization and validation, public internet access for the reviewed privacy/support pages, physical-iPhone invitation/device proof, monitored invitation delivery, live Sentry receipt and alerts, paid-plan managed hosted recovery, monitored support/privacy inboxes, internal TestFlight |
 | 2. Inventory truth | Beta scope complete; device proof pending | Effective-dated mapping schema/domain rules, verified conversions, append-only ledger, event-derived on-hand projection, replay-safe RPC/outbox, count reconciliation, daily CSV import, mobile count/receipt/waste/stockout workflows, hosted learning proof, deterministic evidence-backed daily findings, exact append-only manager feedback, restart-safe feedback delivery, and localized operator UI including rendered export | Real-device inventory/offline/share walkthrough; package mappings remain fail-closed until verified |
 | 3. Square shadow mode | Not started | Fail-closed POS adapter scaffold | OAuth, webhooks, backfill, reconciliation, shadow evidence |
-| 4. Operational pilot | Not started | Default-off order safety evaluator, persisted `off`/`draft_only` policy, tenant/global provider gates, and manager-controlled email workflow | Scheduler, provider activation proof, pilot evidence |
+| 4. Operational pilot | Foundation and daily-plan slice complete locally; activation not started | Deterministic operating brief and Daily Operating Plan, durable role-aware restaurant tasks with dependencies/verification/results, truthful activity/issues, permissioned actions, append-only outcomes, correctable memory, scoped autonomy, approval-gated sends, replay-safe delivery-to-inventory processing, tenant RLS, and default-off provider controls | Staging migration proof, scheduler/phase briefs, physical-device proof, live provider confirmations/delivery parsing, outcome history, provider activation approval, pilot evidence |
 | 5. Commercial and App Store launch | Not started | Paid-readiness and TestFlight checklists | Savings evidence, billing approval, privacy/deletion, App Store submission |
 
 ## Gate policy
@@ -18,12 +18,12 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
 ## Current beta evidence
 
 - `npm run typecheck`
-- `npm test`: 330 passed
+- `npm test`: 411 passed
 - `npm run security:backend`
 - `npm run design:static`
 - `npm run qa:interactions`: passed at 390x844 in English, Spanish, and
   Simplified Chinese
-- `npm run supabase:test`: 566 pgTAP assertions, bounded concurrency proof,
+- `npm run supabase:test`: 656 pgTAP assertions, bounded concurrency proof,
   and no local security-advisor findings
 - `npm run verify:private-beta-security:hosted`: passed without skipped checks
 - `npm run staging:learning-check`: a bounded 30 lb recommendation learned the
@@ -76,6 +76,16 @@ until every preceding gate has documented evidence and no unresolved P0 or P1 is
   remains a separate receipt.
 - Xcode 26.6 and the iOS 26.5 simulator runtime are installed;
   `npm run qa:ios-prereq` passes and an iPhone 17 Pro completed first boot.
+- The operational-backend foundation now provides a deterministic Home brief,
+  real Activity History, explicit approval/action/outcome state, correctable
+  restaurant memory, scoped autonomy controls, and replay-safe receiving. The
+  changed routes pass rendered 390x844 English, Spanish, and Simplified Chinese
+  interaction QA with zero horizontal overflow.
+- The Daily Operating Plan now merges authoritative projected workflows with
+  durable restaurant-wide tasks. The role/assignee/window/dependency/checklist/
+  evidence path passed a rendered create → Today → complete → Done flow; the
+  task migration passed 35 focused pgTAP assertions and the full 656-assertion
+  local database suite.
 
 Remaining external verification:
 
