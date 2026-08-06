@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { colors, conceptTypography, fontFamilies, radii } from "../../constants/theme";
+import { colors, conceptTypography, radii } from "../../constants/theme";
 
 export type CompactMetricTone = "default" | "accent" | "success" | "caution" | "warning" | "danger";
 
@@ -8,7 +8,12 @@ export interface CompactMetric {
   id: string;
   label: string;
   value: string | number;
-  /** Optional trend/caption under the value (e.g. "+12%"). */
+  /** Movement against the comparison window, e.g. "+12%" or "4". */
+  delta?: string;
+  deltaTone?: CompactMetricTone;
+  /** What the delta is measured against, e.g. "vs yesterday". */
+  comparison?: string;
+  /** Legacy alias for `delta`; kept so existing callers keep working. */
   caption?: string;
   captionTone?: CompactMetricTone;
   tone?: CompactMetricTone;
@@ -21,39 +26,55 @@ export interface CompactMetricStripProps {
   accessibilityLabel?: string;
 }
 
-/** Four-up glance strip for fast mobile scanning. */
+/**
+ * Four-up glance strip: ONE bordered card divided by hairlines, not four
+ * separate cards. Each cell stacks label / value / delta / comparison and has
+ * no minimum height — the content sets the height.
+ */
 export function CompactMetricStrip({ metrics, style, accessibilityLabel }: CompactMetricStripProps) {
   return (
     <View accessibilityLabel={accessibilityLabel} style={[styles.grid, style]}>
-      {metrics.map((metric) => (
-        <View
-          accessible
-          accessibilityLabel={
-            metric.accessibilityLabel ??
-            [metric.label, String(metric.value), metric.caption].filter(Boolean).join(", ")
-          }
-          key={metric.id}
-          style={styles.card}
-        >
-          <Text style={styles.label} numberOfLines={1}>
-            {metric.label}
-          </Text>
-          <Text
-            numberOfLines={1}
-            style={[styles.value, metric.tone ? toneStyles[metric.tone] : undefined]}
+      {metrics.map((metric, index) => {
+        const delta = metric.delta ?? metric.caption;
+        const deltaTone = metric.deltaTone ?? metric.captionTone;
+        return (
+          <View
+            accessible
+            accessibilityLabel={
+              metric.accessibilityLabel ??
+              [metric.label, String(metric.value), delta, metric.comparison]
+                .filter(Boolean)
+                .join(", ")
+            }
+            key={metric.id}
+            style={[styles.cell, index > 0 && styles.cellDivided]}
           >
-            {metric.value}
-          </Text>
-          {metric.caption ? (
+            {/* Two lines so a long Spanish or Chinese label wraps instead of truncating. */}
+            <Text style={styles.label} numberOfLines={2}>
+              {metric.label}
+            </Text>
             <Text
               numberOfLines={1}
-              style={[styles.caption, metric.captionTone ? toneStyles[metric.captionTone] : styles.captionMuted]}
+              style={[styles.value, metric.tone ? toneStyles[metric.tone] : undefined]}
             >
-              {metric.caption}
+              {metric.value}
             </Text>
-          ) : null}
-        </View>
-      ))}
+            {delta ? (
+              <Text
+                numberOfLines={1}
+                style={[styles.delta, deltaTone ? toneStyles[deltaTone] : styles.deltaMuted]}
+              >
+                {delta}
+              </Text>
+            ) : null}
+            {metric.comparison ? (
+              <Text numberOfLines={1} style={styles.comparison}>
+                {metric.comparison}
+              </Text>
+            ) : null}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -65,45 +86,44 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "nowrap",
-    gap: 6
-  },
-  card: {
-    width: "auto",
-    flexGrow: 1,
-    flexBasis: 0,
-    minWidth: 0,
-    minHeight: 72,
+    gap: 0,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
+    overflow: "hidden"
+  },
+  cell: {
+    width: "auto",
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 0,
     paddingHorizontal: 8,
     paddingVertical: 8,
-    gap: 2,
-    justifyContent: "center"
+    gap: 1,
+    justifyContent: "flex-start"
+  },
+  cellDivided: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.border
   },
   label: {
     color: colors.muted,
-    ...conceptTypography.caption,
-    fontFamily: fontFamilies.body,
-    fontSize: 9,
-    lineHeight: 12
+    ...conceptTypography.caption
   },
   value: {
     color: colors.text,
-    fontFamily: fontFamilies.bold,
-    fontSize: 16,
-    lineHeight: 20,
-    letterSpacing: -0.35
+    ...conceptTypography.metricValue
   },
-  caption: {
-    fontFamily: fontFamilies.semibold,
-    fontSize: 9,
-    lineHeight: 12,
-    marginTop: 1
+  delta: {
+    ...conceptTypography.caption
   },
-  captionMuted: {
+  deltaMuted: {
     color: colors.muted
+  },
+  comparison: {
+    color: colors.faint,
+    ...conceptTypography.micro
   }
 });
 

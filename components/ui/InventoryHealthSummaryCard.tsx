@@ -22,6 +22,8 @@ interface InventoryHealthSummaryCardProps {
     low: string;
   };
   accessibilityLabel?: string;
+  /** `inline` is the concept's single-row Home strip; `card` is the block. */
+  layout?: "card" | "inline";
   style?: StyleProp<ViewStyle>;
 }
 
@@ -36,8 +38,26 @@ export function InventoryHealthSummaryCard({
   body,
   legend,
   accessibilityLabel,
+  layout = "card",
   style
 }: InventoryHealthSummaryCardProps) {
+  if (layout === "inline") {
+    // One row: big percent, status chip, and the bar taking the rest.
+    return (
+      <View accessible accessibilityLabel={accessibilityLabel} style={[styles.inlineRow, style]}>
+        <Text style={styles.inlinePercent}>{percentLabel}</Text>
+        {chipLabel ? (
+          <View style={[styles.chip, chipToneStyles[chipTone]]}>
+            <Text style={[styles.chipText, chipTextToneStyles[chipTone]]}>{chipLabel}</Text>
+          </View>
+        ) : null}
+        <View style={styles.inlineBar}>
+          <InventoryHealthBar counts={counts} height={6} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View accessible accessibilityLabel={accessibilityLabel} style={[styles.card, style]}>
       {title ? <Text style={styles.title}>{title}</Text> : null}
@@ -55,7 +75,7 @@ export function InventoryHealthSummaryCard({
           {body}
         </Text>
       ) : null}
-      <InventoryHealthBar counts={counts} />
+      <InventoryHealthBar counts={counts} height={8} />
       {legend ? (
         <View style={styles.legend}>
           <Text style={styles.legendText}>
@@ -82,9 +102,23 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    gap: 7
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 6
+  },
+  inlineRow: {
+    minHeight: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  inlinePercent: {
+    color: colors.success,
+    ...conceptTypography.screenTitle
+  },
+  inlineBar: {
+    flex: 1,
+    minWidth: 0
   },
   title: {
     color: colors.text,
@@ -98,26 +132,23 @@ const styles = StyleSheet.create({
   },
   percent: {
     color: colors.success,
-    fontFamily: fontFamilies.bold,
-    fontSize: 24,
-    lineHeight: 29,
-    letterSpacing: -0.5
+    ...conceptTypography.screenTitle
   },
   statusLabel: {
     color: colors.muted,
-    ...conceptTypography.rowTitle
+    ...conceptTypography.subtitle
   },
   chip: {
     borderRadius: radii.xl,
-    paddingHorizontal: 7,
-    paddingVertical: 3
+    paddingHorizontal: 6,
+    paddingVertical: 2
   },
   chipText: {
-    ...conceptTypography.caption
+    ...conceptTypography.micro
   },
   body: {
     color: colors.muted,
-    ...conceptTypography.body
+    ...conceptTypography.subtitle
   },
   legend: {
     flexDirection: "row",

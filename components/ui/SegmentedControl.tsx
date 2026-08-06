@@ -5,6 +5,8 @@ import { colors, conceptTypography, radii } from "../../constants/theme";
 export interface SegmentOption<Value extends string> {
   value: Value;
   label: string;
+  /** Count chip rendered beside the label, e.g. "5". Narrower than "(5)". */
+  badge?: string;
   accessibilityLabel?: string;
   disabled?: boolean;
   tone?: SegmentTone;
@@ -68,6 +70,14 @@ export function SegmentedControl<Value extends string>({
         >
           {option.label}
         </Text>
+        {option.badge ? (
+          <Text
+            numberOfLines={1}
+            style={[styles.badge, selected && styles.badgeSelected]}
+          >
+            {option.badge}
+          </Text>
+        ) : null}
       </Pressable>
     );
   });
@@ -123,6 +133,7 @@ const styles = StyleSheet.create({
     gap: 3
   },
   option: {
+    flexDirection: "row",
     minHeight: 44,
     minWidth: 44,
     borderRadius: radii.sm,
@@ -169,6 +180,14 @@ const styles = StyleSheet.create({
   selectedUnderline: {
     borderBottomColor: colors.accent,
     backgroundColor: colors.surface
+  },
+  badge: {
+    color: colors.muted,
+    ...conceptTypography.micro,
+    marginLeft: 4
+  },
+  badgeSelected: {
+    color: colors.surface
   },
   label: {
     color: colors.muted,

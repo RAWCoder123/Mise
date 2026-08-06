@@ -169,7 +169,14 @@ function HealthRing({ counts }: { counts: InventoryHealthCounts }) {
 }
 
 /** Soft spectrum health bar — always flows green → gold → orange → tomato. */
-export function InventoryHealthBar({ counts }: { counts: InventoryHealthCounts }) {
+export function InventoryHealthBar({
+  counts,
+  height = BAR_HEIGHT
+}: {
+  counts: InventoryHealthCounts;
+  /** Thinner inline on Home, thicker inside the Inventory card. */
+  height?: number;
+}) {
   const gradientId = `health-flow-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const normalizedCounts = normalizeInventoryHealthCounts(counts);
   const total = getInventoryHealthTotal(normalizedCounts);
@@ -186,14 +193,14 @@ export function InventoryHealthBar({ counts }: { counts: InventoryHealthCounts }
 
   return (
     <View
-      style={styles.bar}
+      style={[styles.bar, { height }]}
       onLayout={(event) => {
         const next = Math.round(event.nativeEvent.layout.width);
         if (next > 0 && next !== barWidth) setBarWidth(next);
       }}
     >
       {barWidth > 0 ? (
-        <Svg width={barWidth} height={BAR_HEIGHT}>
+        <Svg width={barWidth} height={height}>
           <Defs>
             <LinearGradient id={gradientId} x1="0" y1="0" x2={barWidth} y2="0" gradientUnits="userSpaceOnUse">
               {stops.map((stop, index) => (
@@ -201,7 +208,7 @@ export function InventoryHealthBar({ counts }: { counts: InventoryHealthCounts }
               ))}
             </LinearGradient>
           </Defs>
-          <Rect x="0" y="0" width={barWidth} height={BAR_HEIGHT} rx={BAR_HEIGHT / 2} fill={`url(#${gradientId})`} />
+          <Rect x="0" y="0" width={barWidth} height={height} rx={height / 2} fill={`url(#${gradientId})`} />
         </Svg>
       ) : null}
     </View>

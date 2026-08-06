@@ -83,14 +83,14 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "47%",
     minWidth: 0,
-    minHeight: 88,
-    borderRadius: radii.lg,
+    minHeight: 76,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    gap: 10
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8
   },
   compactTile: {
     flexBasis: 0,
@@ -104,9 +104,9 @@ const styles = StyleSheet.create({
     gap: 6
   },
   iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     backgroundColor: colors.accentSoft,
     borderWidth: 0,
     borderColor: "transparent",
@@ -114,11 +114,12 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   compactIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
     borderWidth: 0,
-    backgroundColor: colors.accentSoft
+    // The concept shows outline icons in a bordered square, not a filled chip.
+    backgroundColor: "transparent"
   },
   label: {
     color: colors.text,

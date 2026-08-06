@@ -35,7 +35,7 @@ export function SectionHeader({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={actionAccessibilityLabel ?? action}
-            hitSlop={Math.max(0, Math.ceil((density.hitTarget - 32) / 2))}
+            hitSlop={SECTION_ACTION_HIT_SLOP}
             onPress={onAction}
             style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
           >
@@ -49,22 +49,27 @@ export function SectionHeader({
   );
 }
 
+/** 20px label + 12px slop each side clears the 44px target. */
+const SECTION_ACTION_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 } as const;
+
 const styles = StyleSheet.create({
   wrap: {
+    minHeight: density.sectionHeader,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-    marginBottom: 8
+    marginBottom: density.headerGap
   },
   textWrap: {
     flex: 1
   },
   eyebrow: {
     color: colors.accent,
-    ...conceptTypography.caption,
+    ...conceptTypography.micro,
     textTransform: "uppercase",
-    marginBottom: 2
+    letterSpacing: 0.5,
+    marginBottom: 1
   },
   title: {
     color: colors.text,
@@ -75,13 +80,10 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     color: colors.muted,
-    ...conceptTypography.body,
-    marginTop: 2
+    ...conceptTypography.subtitle,
+    marginTop: 1
   },
   actionButton: {
-    minHeight: density.hitTarget,
-    minWidth: density.hitTarget,
-    paddingHorizontal: 6,
     alignItems: "flex-end",
     justifyContent: "center"
   },

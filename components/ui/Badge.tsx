@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { colors, fontFamilies } from "../../constants/theme";
+import { colors, conceptTypography } from "../../constants/theme";
 
 export type BadgeTone = "neutral" | "success" | "caution" | "warning" | "danger";
 
@@ -15,10 +15,10 @@ export function Badge({ label, tone = "neutral" }: { label: string; tone?: Badge
 const styles = StyleSheet.create({
   base: {
     alignSelf: "flex-start",
-    borderRadius: 7,
+    borderRadius: 6,
     borderWidth: 0,
-    paddingHorizontal: 6,
-    paddingVertical: 3
+    paddingHorizontal: 5,
+    paddingVertical: 2
   },
   neutral: {
     backgroundColor: colors.surfaceWarm
@@ -36,9 +36,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerSoft
   },
   label: {
-    fontSize: 9,
-    lineHeight: 12,
-    fontFamily: fontFamilies.semibold
+    ...conceptTypography.micro
   },
   neutralLabel: { color: colors.muted },
   successLabel: { color: colors.success },

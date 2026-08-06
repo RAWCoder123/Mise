@@ -129,11 +129,11 @@ export function OperationalRow({
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 54,
+    minHeight: 48,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 8,
+    paddingVertical: 7,
     flexDirection: "row",
     alignItems: "center",
     gap: 9
@@ -166,9 +166,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     color: colors.muted,
-    fontFamily: fontFamilies.body,
-    fontSize: 11,
-    lineHeight: 15,
+    ...conceptTypography.subtitle,
     marginTop: 1
   },
   trail: {
@@ -181,9 +179,7 @@ const styles = StyleSheet.create({
   value: {
     maxWidth: 96,
     color: colors.text,
-    fontFamily: fontFamilies.semibold,
-    fontSize: 12,
-    lineHeight: 16,
+    ...conceptTypography.rowTitle,
     textAlign: "right"
   },
   meta: {

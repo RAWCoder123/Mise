@@ -1,11 +1,13 @@
 import { type ReactNode } from "react";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react-native";
+import { ChevronRight, CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View, type ViewProps } from "react-native";
 
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, radii } from "../../constants/theme";
 
 export type StatusNoticeTone = "neutral" | "success" | "caution" | "warning" | "danger";
 export type StatusNoticeActionVariant = "text" | "solid";
+/** `row` is the concept's compact inline alert; `card` is the padded block. */
+export type StatusNoticeVariant = "card" | "row";
 
 export interface StatusNoticeProps extends Omit<ViewProps, "children"> {
   title: string;
@@ -19,6 +21,9 @@ export interface StatusNoticeProps extends Omit<ViewProps, "children"> {
   /** `solid` renders a compact filled accent button (mockup alert CTAs). */
   actionVariant?: StatusNoticeActionVariant;
   onAction?: () => void;
+  variant?: StatusNoticeVariant;
+  /** Makes the whole notice tappable and shows a trailing chevron. */
+  onPress?: () => void;
 }
 
 export function StatusNotice({
@@ -31,19 +36,31 @@ export function StatusNotice({
   actionAccessibilityLabel,
   actionVariant = "text",
   onAction,
+  variant = "card",
+  onPress,
   style,
   ...props
 }: StatusNoticeProps) {
   const actionIsAvailable = Boolean(actionLabel && onAction);
   const solidAction = actionVariant === "solid";
+  const isRow = variant === "row";
+  const Container = onPress ? Pressable : View;
 
   return (
-    <View
+    <Container
       accessibilityLiveRegion={tone === "danger" ? "assertive" : "polite"}
-      style={[styles.notice, noticeToneStyles[tone], style]}
+      {...(onPress
+        ? { accessibilityRole: "button" as const, accessibilityLabel: title, onPress }
+        : null)}
+      style={[styles.notice, isRow && styles.noticeRow, noticeToneStyles[tone], style]}
       {...props}
     >
-      <View style={[styles.icon, iconToneStyles[tone]]}>{icon ?? defaultIcon(tone)}</View>
+      {/* The row variant drops the filled circle: the concept shows a bare tone icon. */}
+      {isRow ? (
+        <View style={styles.rowIcon}>{icon ?? defaultIcon(tone)}</View>
+      ) : (
+        <View style={[styles.icon, iconToneStyles[tone]]}>{icon ?? defaultIcon(tone)}</View>
+      )}
       <View style={styles.copy}>
         <Text style={styles.title} numberOfLines={2}>{title}</Text>
         {message ? <Text style={styles.message} numberOfLines={2}>{message}</Text> : null}
@@ -53,7 +70,7 @@ export function StatusNotice({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={actionAccessibilityLabel ?? actionLabel}
-          hitSlop={4}
+          hitSlop={6}
           onPress={onAction}
           style={({ pressed }) => [
             styles.action,
@@ -72,7 +89,10 @@ export function StatusNotice({
           </Text>
         </Pressable>
       ) : null}
-    </View>
+      {onPress && !actionIsAvailable ? (
+        <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={2.2} />
+      ) : null}
+    </Container>
   );
 }
 
@@ -113,19 +133,25 @@ function defaultIcon(tone: StatusNoticeTone) {
 
 const styles = StyleSheet.create({
   notice: {
-    minHeight: 64,
-    borderRadius: radii.lg,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12
+    gap: 9
+  },
+  noticeRow: {
+    paddingVertical: 10
+  },
+  rowIcon: {
+    alignItems: "center",
+    justifyContent: "center"
   },
   icon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -136,27 +162,20 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    ...typography.cardTitle,
-    fontSize: 15,
-    lineHeight: 20
+    ...conceptTypography.rowTitle
   },
   message: {
     color: colors.muted,
-    ...typography.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 2
+    ...conceptTypography.subtitle,
+    marginTop: 1
   },
   meta: {
     color: colors.faint,
-    ...typography.body,
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 3
+    ...conceptTypography.micro,
+    marginTop: 2
   },
   action: {
-    minHeight: 44,
-    minWidth: 44,
+    minHeight: density.compactButton,
     paddingHorizontal: 8,
     alignItems: "center",
     justifyContent: "center"
@@ -171,8 +190,7 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     color: colors.accentDark,
-    ...typography.button,
-    fontSize: 14
+    ...conceptTypography.button
   },
   solidActionLabel: {
     color: colors.surface
