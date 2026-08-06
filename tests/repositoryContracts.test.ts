@@ -92,3 +92,32 @@ test("phase briefs compose only verified screen-safe operational facades", () =>
   assert.match(application, /buildDailyPhaseBriefs\(/);
   assert.doesNotMatch(application, /OpenAI|generateText|answerAskMise/);
 });
+
+test("both repository backends bound and tenant-scope the recalculation run ledger", () => {
+  const hosted = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  const demo = readFileSync("services/repositories/demoRepository.ts", "utf8");
+
+  const hostedRead = hosted.match(/async listRecalculationRuns\([\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(hostedRead, /\.from\("recalculation_runs"\)/);
+  assert.match(hostedRead, /\.eq\("restaurant_id", restaurantId\)/);
+  assert.match(hostedRead, /\.limit\(options\.limit \?\? 64\)/);
+  assert.match(hostedRead, /failed restaurant scope validation/);
+
+  // Writes are RPC-only; a client insert into the append-only ledger would
+  // bypass the replay guard and the activity trigger.
+  const hostedWrite = hosted.match(/async recordRecalculationRun\([\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(hostedWrite, /client\.rpc\(\s*"record_recalculation_run"/);
+  assert.doesNotMatch(hostedWrite, /\.insert\(/);
+  assert.match(hostedWrite, /failed restaurant scope validation/);
+
+  const demoRead = demo.match(/async listRecalculationRuns\([\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(demoRead, /run\.restaurantId === restaurantId/);
+  assert.match(demoRead, /options\.limit \?\? 64/);
+
+  // Demo parity must re-assert the same invariants the RPC enforces.
+  const demoWrite = demo.match(/async recordRecalculationRun\([\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(demoWrite, /requireActiveDemoRestaurant/);
+  assert.match(demoWrite, /already recorded a different attempt/);
+  assert.match(demoWrite, /attempt is out of range/);
+  assert.match(demoWrite, /fromRecalculationRunActivity/);
+});

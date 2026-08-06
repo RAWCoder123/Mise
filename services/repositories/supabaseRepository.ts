@@ -47,6 +47,11 @@ import {
   restaurantTaskFromPersistedRow,
   type PersistedRestaurantTaskRow
 } from "../domain/restaurantTasks";
+import {
+  recalculationRunFromPersistedRow,
+  recordRecalculationRunRpcArguments,
+  type PersistedRecalculationRunRow
+} from "../domain/recalculationRunTransport";
 import type { SupplierDeliveryRecordResult } from "./repositoryContracts";
 import type {
   SupplierDeliveryItemRecord,
@@ -1465,6 +1470,43 @@ export function createSupabaseRepository(): MiseRepository {
         throw new Error("Restaurant task failed restaurant scope validation.");
       }
       return task;
+    },
+
+    async listRecalculationRuns(restaurantId, options = {}) {
+      let query = client
+        .from("recalculation_runs")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("operating_date", { ascending: false })
+        .order("attempt", { ascending: true })
+        .limit(options.limit ?? 64);
+      if (options.sinceOperatingDate) {
+        query = query.gte("operating_date", options.sinceOperatingDate);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      const runs = ((data ?? []) as PersistedRecalculationRunRow[]).map(
+        recalculationRunFromPersistedRow
+      );
+      if (runs.some((run) => run.restaurantId !== restaurantId)) {
+        throw new Error("Recalculation runs failed restaurant scope validation.");
+      }
+      return runs;
+    },
+
+    async recordRecalculationRun(input) {
+      const { data, error } = await client.rpc(
+        "record_recalculation_run",
+        recordRecalculationRunRpcArguments(input)
+      );
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as PersistedRecalculationRunRow | null;
+      if (!row) throw new Error("Recalculation run recording returned an empty response.");
+      const run = recalculationRunFromPersistedRow(row);
+      if (run.restaurantId !== input.restaurantId.trim()) {
+        throw new Error("Recalculation run failed restaurant scope validation.");
+      }
+      return run;
     },
 
     async listMiseActions(restaurantId, options = {}) {

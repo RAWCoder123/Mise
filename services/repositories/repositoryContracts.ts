@@ -48,10 +48,50 @@ import type {
 import type {
   CompleteRestaurantTaskInput,
   CreateRestaurantTaskInput,
-  RestaurantTask
+  RestaurantTask,
+  RestaurantTaskRequiredRole
 } from "../domain/restaurantTasks";
+import type {
+  RecalculationCycle,
+  RecalculationRunStatus
+} from "../domain/recalculationSchedule";
 import type { SupplierDeliveryHistory } from "../domain/supplierReliability";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
+
+/**
+ * One finished recalculation attempt, as recorded through
+ * `public.record_recalculation_run`. The ledger is append-only: an identical
+ * replay of `idempotencyKey` returns the original row and a different payload
+ * on the same key is rejected.
+ */
+export interface RecalculationRunInput {
+  restaurantId: string;
+  cycle: RecalculationCycle;
+  /** Restaurant-local service day (YYYY-MM-DD), rolled at the 04:00 boundary. */
+  operatingDate: string;
+  status: RecalculationRunStatus;
+  /** 1-based, bounded by RECALCULATION_MAX_ATTEMPTS. */
+  attempt: number;
+  jobName: string;
+  /** Role accountable for reviewing a dead letter, not for recording the run. */
+  monitoringOwner: RestaurantTaskRequiredRole;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  timedOut: boolean;
+  failureReason: string | null;
+  /** Stable per-cycle identity, reused across retries. */
+  cycleKey: string;
+  /** Per-attempt replay unit: `{cycleKey}:attempt-{n}`. */
+  idempotencyKey: string;
+}
+
+export interface PersistedRecalculationRun extends RecalculationRunInput {
+  id: string;
+  recordedBy: string | null;
+  recordedAt: string;
+  correlationId: string;
+}
 
 export interface SupplierDeliveryLineInput {
   inventoryItemId: string;
@@ -277,6 +317,7 @@ export const RESTAURANT_EXPORT_DATASETS = [
   "supplier_delivery_items",
   "restaurant_tasks",
   "restaurant_task_dependencies",
+  "recalculation_runs",
   "audit_logs"
 ] as const;
 
@@ -511,6 +552,16 @@ export interface MiseRepository {
   createRestaurantTask(input: CreateRestaurantTaskInput): Promise<RestaurantTask>;
   completeRestaurantTask(input: CompleteRestaurantTaskInput): Promise<RestaurantTask>;
   reopenRestaurantTask(restaurantId: string, taskId: string): Promise<RestaurantTask>;
+  /**
+   * Recalculation run ledger. Reads stay bounded to recent service days so a
+   * long-lived restaurant never pulls its whole job history to decide what is
+   * due right now.
+   */
+  listRecalculationRuns(
+    restaurantId: string,
+    options?: { sinceOperatingDate?: string; limit?: number }
+  ): Promise<PersistedRecalculationRun[]>;
+  recordRecalculationRun(input: RecalculationRunInput): Promise<PersistedRecalculationRun>;
   listMiseActions(
     restaurantId: string,
     options?: { status?: MiseAction["status"] | "awaiting_decision"; limit?: number }

@@ -27,6 +27,7 @@ import {
 import {
   filterActivities,
   fromInventoryWasteRecorded,
+  fromRecalculationRunActivity,
   fromRestaurantTaskActivity,
   type ActivityFeedFilter
 } from "../domain/activityEvents";
@@ -60,7 +61,10 @@ import {
   restaurantTaskMatchesCreateRequest,
   type RestaurantTask
 } from "../domain/restaurantTasks";
-import type { SupplierDeliveryRecordResult } from "./repositoryContracts";
+import type {
+  PersistedRecalculationRun,
+  SupplierDeliveryRecordResult
+} from "./repositoryContracts";
 import {
   buildSupplierOrderMessage,
   createId,
@@ -303,6 +307,9 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
       created_by: task.createdBy,
       created_at: task.createdAt
     })));
+  datasets.recalculation_runs = (state.recalculationRuns ?? [])
+    .filter((run) => run.restaurantId === restaurantId)
+    .map((run) => ({ ...run, restaurant_id: run.restaurantId }));
   datasets.audit_logs = tenantRows(state.auditLogs);
 
   const team = state.users
@@ -2005,6 +2012,82 @@ export function createLocalDemoRepository(): MiseRepository {
           })
         ];
         return { ...reopened, dependencyIds: [...reopened.dependencyIds] };
+      });
+    },
+
+    async listRecalculationRuns(restaurantId, options = {}) {
+      const state = await readReadyDemoState(restaurantId);
+      let runs = (state.recalculationRuns ?? []).filter(
+        (run) => run.restaurantId === restaurantId
+      );
+      if (options.sinceOperatingDate) {
+        const since = options.sinceOperatingDate;
+        runs = runs.filter((run) => run.operatingDate >= since);
+      }
+      return runs
+        .slice()
+        .sort(
+          (left, right) =>
+            right.operatingDate.localeCompare(left.operatingDate) || left.attempt - right.attempt
+        )
+        .slice(0, options.limit ?? 64)
+        .map((run) => ({ ...run }));
+    },
+
+    async recordRecalculationRun(input) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, input.restaurantId);
+        if (!Number.isInteger(input.attempt) || input.attempt < 1 || input.attempt > 4) {
+          throw new Error("Recalculation run attempt is out of range.");
+        }
+        if (input.status === "failed" && !input.failureReason) {
+          throw new Error("A failed recalculation run requires a failure reason.");
+        }
+        if (input.status === "succeeded" && (input.failureReason || input.timedOut)) {
+          throw new Error("A succeeded recalculation run cannot carry a failure.");
+        }
+
+        const existing = (state.recalculationRuns ?? []).find(
+          (run) =>
+            run.restaurantId === input.restaurantId &&
+            run.idempotencyKey === input.idempotencyKey
+        );
+        if (existing) {
+          // Mirrors the RPC: an identical replay is the same fact recorded
+          // twice; anything else is a different attempt wearing a used key.
+          const identical =
+            existing.cycle === input.cycle &&
+            existing.operatingDate === input.operatingDate &&
+            existing.status === input.status &&
+            existing.attempt === input.attempt &&
+            existing.jobName === input.jobName &&
+            existing.monitoringOwner === input.monitoringOwner &&
+            existing.durationMs === input.durationMs &&
+            existing.timedOut === input.timedOut &&
+            existing.failureReason === input.failureReason &&
+            existing.cycleKey === input.cycleKey;
+          if (!identical) {
+            throw new Error(
+              "Recalculation run idempotency key already recorded a different attempt."
+            );
+          }
+          return { ...existing };
+        }
+
+        const run: PersistedRecalculationRun = {
+          ...input,
+          id: createId("recalculation_run"),
+          recordedBy: DEMO_USER_ID,
+          correlationId: createId("recalculation_correlation"),
+          recordedAt: new Date().toISOString()
+        };
+        state.recalculationRuns = [...(state.recalculationRuns ?? []), run];
+
+        const activity = fromRecalculationRunActivity({ ...run, maxAttempts: 4 });
+        if (activity) {
+          state.activityEvents = [...(state.activityEvents ?? []), activity];
+        }
+        return { ...run };
       });
     },
 

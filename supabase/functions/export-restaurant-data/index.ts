@@ -60,6 +60,7 @@ const exportDatasets = [
   { name: "supplier_delivery_items", order: "id" },
   { name: "restaurant_tasks", order: "id" },
   { name: "restaurant_task_dependencies", order: "task_id" },
+  { name: "recalculation_runs", order: "id" },
   { name: "audit_logs", order: "id" },
 ] as const;
 

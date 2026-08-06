@@ -81,7 +81,8 @@ export type ActivityRelatedEntityType =
   | "finding"
   | "memory"
   | "mise_action"
-  | "pos_import";
+  | "pos_import"
+  | "recalculation_run";
 
 export interface ActivityEvidenceReference {
   type: string;
@@ -353,6 +354,73 @@ export function fromRestaurantTaskActivity(
       ...(input.metadata ?? {})
     },
     idempotencyKey: `restaurant_task:${task.id}:${input.idempotencySuffix}`
+  });
+}
+
+/**
+ * Demo-mode mirror of `private.capture_recalculation_run_activity`. Emission is
+ * deliberately sparing and must stay in step with that trigger: one success beat
+ * for the opening cycle, every failure, and attention only once attempts are
+ * exhausted. Takes a structural record rather than the repository DTO so the
+ * activity module stays free of repository imports.
+ */
+export function fromRecalculationRunActivity(run: {
+  id: string;
+  restaurantId: string;
+  cycle: string;
+  operatingDate: string;
+  status: "succeeded" | "failed";
+  attempt: number;
+  maxAttempts: number;
+  jobName: string;
+  monitoringOwner: string;
+  completedAt: string;
+  durationMs: number;
+  timedOut: boolean;
+  failureReason: string | null;
+  cycleKey: string;
+}): ActivityEvent | null {
+  const succeeded = run.status === "succeeded";
+  // mid_shift and close successes stay in the ledger only.
+  if (succeeded && run.cycle !== "daily_open") return null;
+
+  return buildEvent({
+    restaurantId: run.restaurantId,
+    occurredAt: run.completedAt,
+    activityType: succeeded ? "forecast_updated" : "automation_failed",
+    category: succeeded ? "inventory" : "system",
+    title: succeeded ? "Opening recalculation completed" : "Scheduled recalculation failed",
+    summary: succeeded
+      ? "Mise refreshed forecasts, recommendations, and insights for the operating day."
+      : `Attempt ${run.attempt} of the ${run.cycle.replace(/_/g, " ")} recalculation did not complete. ${
+          run.failureReason ?? "No failure reason was recorded."
+        }`,
+    triggerType: "recalculation",
+    triggerReference: run.id,
+    sourceSystems: ["mise"],
+    autonomyLevel: 4,
+    status: succeeded ? "completed" : "failed",
+    requiresAttention: !succeeded && run.attempt >= run.maxAttempts,
+    relatedEntityType: "recalculation_run",
+    relatedEntityId: run.id,
+    sequenceId: `recalculation:${run.operatingDate}:${run.cycle}`,
+    metadata: {
+      cycle: run.cycle,
+      attempt: run.attempt,
+      maxAttempts: run.maxAttempts,
+      monitoringOwner: run.monitoringOwner,
+      jobName: run.jobName,
+      durationMs: run.durationMs,
+      timedOut: run.timedOut,
+      cycleKey: run.cycleKey
+    },
+    errorCode: succeeded
+      ? null
+      : run.timedOut
+        ? "recalculation_timed_out"
+        : "recalculation_failed",
+    errorMessage: succeeded ? null : run.failureReason,
+    idempotencyKey: `recalculation_run:${run.id}`
   });
 }
 

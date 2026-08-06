@@ -58,7 +58,7 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 8;
+  schema_version: 9;
   restaurants: Restaurant[];
   users: AppUser[];
   posSales: PosSale[];
@@ -113,6 +113,8 @@ export interface DemoState {
   }>;
   /** Shared operating-task mirror of hosted restaurant_tasks. */
   restaurantTasks: import("../domain/restaurantTasks").RestaurantTask[];
+  /** Run-ledger mirror of hosted public.recalculation_runs. */
+  recalculationRuns: import("../repositories/repositoryContracts").PersistedRecalculationRun[];
   currentRestaurantId: string;
   posProvider: PosProvider | null;
   posConnectedAt: string | null;
@@ -326,7 +328,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 8,
+    schema_version: 9,
     restaurants: [restaurant],
     users: [user],
     posSales,
@@ -467,6 +469,7 @@ export function createInitialDemoState(
     supplierDeliveries: [],
     supplierDeliveryItems: [],
     restaurantTasks: [],
+    recalculationRuns: [],
     auditLogs: [
       {
         id: "00000000-0000-4000-8000-000000000901",
@@ -581,7 +584,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 8,
+    schema_version: 9,
     restaurants,
     users: raw.users ?? seeded.users,
     posSales: raw.posSales ?? seeded.posSales,
@@ -621,6 +624,9 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     restaurantTasks: Array.isArray(raw.restaurantTasks)
       ? raw.restaurantTasks
       : seeded.restaurantTasks,
+    recalculationRuns: Array.isArray(raw.recalculationRuns)
+      ? raw.recalculationRuns
+      : seeded.recalculationRuns,
     currentRestaurantId: raw.currentRestaurantId ?? seeded.currentRestaurantId,
     posProvider: raw.posProvider ?? seeded.posProvider,
     posConnectedAt: raw.posConnectedAt ?? seeded.posConnectedAt
@@ -629,7 +635,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 8 ||
+      raw.schema_version !== 9 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
@@ -640,7 +646,8 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       (usesReferenceDataset && raw.inventoryEvents.length === 0 && seeded.inventoryEvents.length > 0) ||
       !Array.isArray(raw.supplierDeliveries) ||
       !Array.isArray(raw.supplierDeliveryItems) ||
-      !Array.isArray(raw.restaurantTasks)
+      !Array.isArray(raw.restaurantTasks) ||
+      !Array.isArray(raw.recalculationRuns)
   };
 }
 
