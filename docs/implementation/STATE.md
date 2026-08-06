@@ -78,23 +78,49 @@ Many other open **draft** inspection PRs (`cursor/mise-product-inspection-*`, et
 
 - `services/domain/recalculationSchedule.ts` — decides which of `daily_open` / `mid_shift` / `close` is due. Idempotency keys, exponential backoff, dead-lettering, restaurant-local 04:00 service-day rollover, per-cycle monitoring owner.
 - `services/application/recalculationCycles.ts` — executes due cycles through injected ports. Per-cycle timeout, failure isolation, fail-closed on an unreadable ledger.
-- `tests/recalculationSchedule.test.ts` (12) and `tests/recalculationCycles.test.ts` (10).
+- `tests/recalculationSchedule.test.ts` (12) and `tests/recalculationCycles.test.ts` (11).
 
-**Deliberately not done:** no run-ledger migration, no persistence wiring, no cron trigger, no UI surfacing of dead-lettered cycles. The executor takes ports so persistence can land next.
+**Batch `recalculation-ledger-45`** — makes the above actually run.
 
-## Baseline gates (this machine, 2026-08-05, post-change)
+- `supabase/migrations/20260805120000_recalculation_run_ledger.sql` — append-only `public.recalculation_runs`, `public.record_recalculation_run` RPC (auth.uid() + active membership, advisory lock, `is distinct from` replay), and `private.capture_recalculation_run_activity`. Reuses `automation_failed` / `forecast_updated` rather than adding activity types. No feature flag column; `operational_mode` already pauses it.
+- Repository: `listRecalculationRuns` / `recordRecalculationRun` on the contract, Supabase (RPC-only writes), and demo parity, plus `recalculation_runs` in `RESTAURANT_EXPORT_DATASETS` and the export edge function. Demo state → `schema_version: 9`.
+- `services/application/recalculationPorts.ts` — takes a narrow `RecalculationLedger` (not the repository singleton, which keeps it off the RN import chain and testable). Memoized `runCycle`; PG `55000` pause swallowed so a paused Mise defers rather than dead-lettering.
+- `services/application/scheduledRecalculations.ts` + `services/presentation/recalculationPresentation.ts` — never-throwing entry point and a pure attention summary.
+- Home awaits dispatch before its data fetch; dead letters render a warning `StatusNotice` routing to `/more/activity`. Activity rows show attention as a `Badge`.
+
+**Batch `warm-canvas-46`** — aesthetic pass against `docs/design/references/`.
+
+- `colors.canvas` (#FAF8F5) for the page, keeping `background`/`surface` white for cards and inputs. `design:static` pins token *values*, not consumers, so the lock holds and the AGENTS.md "warm neutral background" tension is resolved.
+- `radii.lg` 14 → 16; app bar keeps its locked `height: 56` and gains a hairline bottom border.
+- Contrast audit: 14 input fills `background` → `surface`; `AppErrorBoundary` shell and `EmptyState` dashed insets → `canvas`; five warm blocks that sat directly on the page → `surface`.
+- Fraunces (loaded and gate-required but previously unused) now renders the Home greeting, `EmptyState` titles, and `OperationalHero` titles. **No CJK glyphs — zh-Hans falls back to system sans in those three places.**
+- Home collapsed onto primitives: `RestaurantStatusCard` → `StatusNotice` (which gained an optional `meta` line), briefing card gained `BriefClipboardIllustration`. Nine dead style rules and three dead imports removed.
+
+**Deliberately not done:** no cron / machine-actor path (see below); no `paddingHorizontal` bump on `CompactMetricStrip` and no `today.tsx` floor-note collapse, both skipped because the 390px overflow gate could not be run.
+
+## Baseline gates (this machine, 2026-08-06, post-change)
 
 | Gate | Result |
 | --- | --- |
 | `npm run typecheck` | **PASS** |
-| `npm test` | **PASS** — 461 pass / 0 fail (was 439; +22 new) |
+| `npm test` | **PASS** — 476 pass / 0 fail (was 439 at session start) |
 | `npm run security:backend` | **PASS** |
 | `npm run security:static` | **PASS** |
 | `npm run design:static` | **PASS** |
-| `npm run qa:routes` | **PASS** |
+| `npm run qa:routes` | **PASS** — last run after the backend phases, **before** the aesthetic phases |
+| `npm run qa:interactions` | **PASS** (EN + ES + 简体中文) — same caveat: run before the aesthetic phases |
+| `npm run qa:mobile-layout` | **NOT RUN** for the aesthetic phases |
 | Docker / pgTAP full migration chain | **not run** — Docker unavailable on this machine |
 | Hosted staging credentialed proof | **not run** |
 | Live POS / model / Gmail | remain fail-closed / external |
+
+### Unverified visual risk
+
+The warm canvas, `radii.lg` bump, Fraunces placements, and Home card collapse
+landed **without** a browser layout or interaction run. Specifically unproven:
+390px horizontal overflow in Spanish and Chinese, the Fraunces CJK fallback,
+and the literal-copy assertions `qa:interactions` makes about Home. Run
+`npm run qa:mobile-layout && npm run qa:interactions` before trusting these.
 
 ## Honest unfinished (external / process)
 
@@ -106,11 +132,15 @@ Many other open **draft** inspection PRs (`cursor/mise-product-inspection-*`, et
 
 ## Recommended next slice
 
-1. ~~Preserve dirty tree~~ — **done**, see Preservation above.
-2. Persist the recalculation run ledger: additive migration + pgTAP, wire `RecalculationPorts` to `supabaseRepository`, then trigger `runDueRecalculationCycles` on a schedule (Edge Function or cron). This is the direct continuation of this session's work.
-3. Surface dead-lettered cycles in the app — masterdoc Section 26 forbids hiding background-job failures, and the data is already on `RecalculationCycleReport.needsOperatorAttention`.
-4. Integration strategy still open: **prefer promoting this trunk**; cherry-pick only missing unique commits from PR #2–#6 after diff inventory (Realtime revocation, dependency pin, order-automation evaluator).
-5. Do **not** reset this worktree onto `split/mockup-redesign`.
+1. ~~Preserve dirty tree~~ — **done**.
+2. ~~Persist the recalculation run ledger and wire the ports~~ — **done**.
+3. ~~Surface dead-lettered cycles~~ — **done**.
+4. **Run the visual gates** (`qa:mobile-layout`, `qa:interactions`) against the aesthetic phases and fix any 390px overflow. This is the highest-value next action — the aesthetic work is unverified.
+5. **Prove the migration chain.** `recalculation_run_ledger.test.sql` and the `tenant_isolation` allowlist edit have never executed. Needs Docker + `npm run supabase:test`.
+6. Real scheduling. Today cycles only run when an operator opens Home, so a restaurant nobody opens gets no recalculation. A cron path needs a machine-actor auth story: `scripts/security-backend.mjs:216-222` forbids `service_role` EXECUTE on new `public.*` SECURITY DEFINER functions, so this means extending that gate's allowlist deliberately, not incidentally.
+7. Differentiate the three cycles. All three currently drive the same `regenerateOperationalSignals`; `close` should reconcile the day rather than repeat the open.
+8. Integration strategy still open: **prefer promoting this trunk**; cherry-pick only missing unique commits from PR #2–#6 after diff inventory (Realtime revocation, dependency pin, order-automation evaluator).
+9. Do **not** reset this worktree onto `split/mockup-redesign`.
 
 ## Consultations
 
