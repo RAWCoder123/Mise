@@ -21,24 +21,19 @@ const styles = StyleSheet.create({
     paddingVertical: 3
   },
   neutral: {
-    backgroundColor: colors.surfaceWarm,
-    borderColor: colors.border
+    backgroundColor: colors.surfaceWarm
   },
   success: {
-    backgroundColor: colors.successSoft,
-    borderColor: colors.success
+    backgroundColor: colors.successSoft
   },
   caution: {
-    backgroundColor: colors.cautionSoft,
-    borderColor: colors.caution
+    backgroundColor: colors.cautionSoft
   },
   warning: {
-    backgroundColor: colors.warningSoft,
-    borderColor: colors.warning
+    backgroundColor: colors.warningSoft
   },
   danger: {
-    backgroundColor: colors.dangerSoft,
-    borderColor: colors.danger
+    backgroundColor: colors.dangerSoft
   },
   label: {
     fontSize: 9,

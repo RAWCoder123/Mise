@@ -480,11 +480,4 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20
   },
-  emptyListCopy: {
-    color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center"
-  }
 });

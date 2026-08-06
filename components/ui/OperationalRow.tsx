@@ -94,13 +94,13 @@ export function OperationalRow({
         </IconBadge>
         <View style={styles.copy}>
           <View style={styles.titleLine}>
-            <Text style={[styles.title, (isMenu || isOperational) && styles.titleCompact]} numberOfLines={titleLines}>
+            <Text style={styles.title} numberOfLines={titleLines}>
               {title}
             </Text>
             {badgeLabel && !isOperational ? <Badge label={badgeLabel} tone={badgeTone} /> : null}
           </View>
           {showSubtitle ? (
-            <Text style={[styles.subtitle, (isMenu || isOperational) && styles.subtitleCompact]} numberOfLines={subtitleLines}>
+            <Text style={styles.subtitle} numberOfLines={subtitleLines}>
               {subtitle}
             </Text>
           ) : null}
@@ -164,18 +164,8 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...conceptTypography.rowTitle
   },
-  titleCompact: {
-    ...conceptTypography.rowTitle
-  },
   subtitle: {
     color: colors.muted,
-    fontFamily: fontFamilies.body,
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 1
-  },
-  subtitleCompact: {
-    ...conceptTypography.caption,
     fontFamily: fontFamilies.body,
     fontSize: 11,
     lineHeight: 15,

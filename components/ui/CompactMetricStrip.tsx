@@ -1,4 +1,3 @@
-import { type ReactNode } from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { colors, conceptTypography, fontFamilies, radii } from "../../constants/theme";
@@ -12,7 +11,6 @@ export interface CompactMetric {
   /** Optional trend/caption under the value (e.g. "+12%"). */
   caption?: string;
   captionTone?: CompactMetricTone;
-  icon?: ReactNode;
   tone?: CompactMetricTone;
   accessibilityLabel?: string;
 }

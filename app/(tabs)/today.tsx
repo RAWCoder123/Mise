@@ -59,7 +59,6 @@ export default function TodayScreen() {
   const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
   const [floorNotes, setFloorNotes] = useState<OperatorTask[]>([]);
   const [focus, setFocus] = useState<TaskFilter>("now");
-  const [snoozedTaskIds, setSnoozedTaskIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [briefError, setBriefError] = useState(false);
@@ -81,7 +80,6 @@ export default function TodayScreen() {
     setFloorNotes([]);
     setLoadedRestaurantId(null);
     setFocus("now");
-    setSnoozedTaskIds(new Set());
     setError(null);
     setBriefError(false);
     setBriefMessage(null);
@@ -119,7 +117,6 @@ export default function TodayScreen() {
       setFindingQueue(nextQueue);
       setFloorNotes(nextFloorNotes);
       setLoadedRestaurantId(restaurantId);
-      setSnoozedTaskIds(new Set());
       setFloorNoteMessage(null);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -239,10 +236,10 @@ export default function TodayScreen() {
     if (!visibleSummary) return emptyBuckets();
     const buckets = emptyBuckets();
     for (const key of GROUP_ORDER) {
-      buckets[key] = visibleSummary.buckets[key].filter((item) => !snoozedTaskIds.has(item.id));
+      buckets[key] = visibleSummary.buckets[key];
     }
     return buckets;
-  }, [snoozedTaskIds, visibleSummary]);
+  }, [visibleSummary]);
 
   const timelineGroups = useMemo(() => {
     const focusedFirst = [focus, ...GROUP_ORDER.filter((value) => value !== focus)];
@@ -369,7 +366,6 @@ export default function TodayScreen() {
             locale={locale}
             role={role ?? "staff"}
             restaurantTimeZone={visibleSummary.restaurantTimeZone}
-            onSnooze={(itemId) => setSnoozedTaskIds((current) => new Set([...current, itemId]))}
             t={t}
           />
         ) : null}

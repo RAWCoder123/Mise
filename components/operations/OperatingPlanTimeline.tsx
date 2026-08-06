@@ -4,7 +4,7 @@ import { router } from "expo-router";
 
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { colors, conceptTypography, density, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { OperatingPlanBucket, OperatingPlanItem } from "../../services/domain/operatingPlan";
@@ -37,7 +37,6 @@ export function OperatingPlanTimeline({
   locale: AppLocale;
   role: RestaurantRole;
   restaurantTimeZone: string;
-  onSnooze: (itemId: string) => void;
   t: Translator;
 }) {
   const { formatNumber } = useLocale();
@@ -398,41 +397,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...conceptTypography.rowTitle
   },
-  taskDetail: {
-    color: colors.muted,
-    ...conceptTypography.body,
-    fontFamily: typography.families.body,
-    fontSize: 13,
-    lineHeight: 18
-  },
-  effect: {
-    color: colors.text,
-    ...conceptTypography.body,
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 2
-  },
   result: {
     color: colors.success,
     ...conceptTypography.body,
     fontSize: 12,
     lineHeight: 16,
     marginTop: 2
-  },
-  reprioritized: {
-    color: colors.danger,
-    ...conceptTypography.caption,
-    marginTop: 2
-  },
-  verification: {
-    color: colors.muted,
-    ...conceptTypography.caption,
-    marginTop: 2
-  },
-  deps: {
-    color: colors.muted,
-    ...conceptTypography.caption,
-    marginTop: 8
   },
   taskActions: {
     flexDirection: "row",
