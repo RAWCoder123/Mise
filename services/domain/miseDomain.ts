@@ -395,7 +395,8 @@ export function buildInventoryPrediction(
       : recentUsage || baselineUsage;
   const projectedQuantity = Math.max(0, safeItem.current_quantity - recentUsage);
   const daysCoverage = averageDailyUsage > 0 ? projectedQuantity / averageDailyUsage : null;
-  const projectedStatus = getInventoryStatusForQuantity(safeItem, projectedQuantity);
+  const quantityStatus = getInventoryStatusForQuantity(safeItem, projectedQuantity);
+  const projectedStatus = statusWithCoverageRisk(quantityStatus, daysCoverage, projectedQuantity);
   const demandTrend = getDemandTrend(recentUsage, baselineUsage);
   const suggestedOrderQuantity = roundOrderQuantity(safeItem.par_level - projectedQuantity);
   const coverageLabel = getCoverageLabel(safeItem, daysCoverage, averageDailyUsage, projectedQuantity);
@@ -450,6 +451,31 @@ export function buildInventoryPrediction(
     recommendationCopy,
     whyItMatters
   };
+}
+
+function statusWithCoverageRisk(
+  quantityStatus: InventoryStatus,
+  daysCoverage: number | null,
+  projectedQuantity: number
+): InventoryStatus {
+  if (projectedQuantity <= 0 || (daysCoverage !== null && daysCoverage <= 0.25)) {
+    return "Critical";
+  }
+  const coverageStatus: InventoryStatus =
+    daysCoverage === null
+      ? "Good"
+      : daysCoverage <= 0.75
+        ? "Low"
+        : daysCoverage <= 1.5
+          ? "Watch"
+          : "Good";
+  const rank: Record<InventoryStatus, number> = {
+    Good: 0,
+    Watch: 1,
+    Low: 2,
+    Critical: 3
+  };
+  return rank[coverageStatus] > rank[quantityStatus] ? coverageStatus : quantityStatus;
 }
 
 function getDemandTrend(recentUsage: number, baselineUsage: number) {
@@ -728,7 +754,7 @@ export function buildInsightsFromData(
             : `${item.item_name} ${verbForItem(item.item_name)} below normal level`,
         description: `${item.item_name} ${verbForItem(item.item_name)} counted at ${formatQuantity(item.current_quantity)} ${item.unit} and projected at ${formatQuantity(prediction.projectedQuantity)} ${item.unit} after POS sales. ${prediction.coverageLabel}.`,
         why_it_matters: prediction.whyItMatters,
-        recommended_action: `Review the ${item.supplier_name} order and add ${formatQuantity(prediction.suggestedOrderQuantity)} ${item.unit}.`,
+        recommended_action: `Check the walk-in, then add ${formatQuantity(prediction.suggestedOrderQuantity)} ${item.unit} on the next ${item.supplier_name} ticket.`,
         severity: prediction.urgency === "high" ? "urgent" : "warning",
         created_at: now,
         presentation: {
@@ -758,8 +784,8 @@ export function buildInsightsFromData(
       insight_type: "sales",
       title: `${sale.item_name} demand is rising`,
       description: `${sale.item_name} sold ${lift}% more than its usual day so far.`,
-      why_it_matters: "You may run through linked ingredients faster than your usual ordering rhythm.",
-      recommended_action: `Review inventory tied to ${sale.item_name.toLowerCase()} before tomorrow's prep.`,
+      why_it_matters: "Pull prep forward or you may 86 linked dishes before the next order lands.",
+      recommended_action: `Before the next prep window, confirm walk-in counts for ingredients tied to ${sale.item_name.toLowerCase()}.`,
       severity: "warning",
       created_at: now,
       presentation: {
@@ -789,8 +815,8 @@ export function buildInsightsFromData(
         insight_type: "prep",
         title: `${topSale.item_name} depends on low stock`,
         description: `${topSale.item_name} is one of today's best sellers and uses ${lowIngredient.item_name.toLowerCase()}, which is below reorder level.`,
-        why_it_matters: "A strong seller depends on an ingredient that may not cover tomorrow's demand.",
-        recommended_action: `Review tomorrow's ${lowIngredient.supplier_name} order.`,
+        why_it_matters: "A top seller can get 86'd mid-service if this ingredient runs out.",
+        recommended_action: `Before prep, put ${lowIngredient.item_name.toLowerCase()} on the next ${lowIngredient.supplier_name} ticket.`,
         severity: "urgent",
         created_at: now,
         presentation: {
@@ -818,8 +844,8 @@ export function buildInsightsFromData(
         insight_type: "waste",
         title: `${item.item_name} may be overstocked`,
         description: `You have about ${formatQuantity(item.current_quantity)} ${item.unit} of ${item.item_name.toLowerCase()}, more than the last few days of projected use.`,
-        why_it_matters: "Holding more than expected can tie up cash or create waste risk.",
-        recommended_action: `Delay the next ${item.item_name.toLowerCase()} order unless sales increase.`,
+        why_it_matters: "Extra on hand can spoil or tie up cash before the next rush needs it.",
+        recommended_action: `Skip or trim the next ${item.item_name.toLowerCase()} order unless tonight’s sales stay hot.`,
         severity: "info",
         created_at: now,
         presentation: {

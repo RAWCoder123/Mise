@@ -6,8 +6,13 @@ import {
 } from "../domain/miseDomain";
 import {
   deriveOperationalTodayTasks,
+  sortOperationalTodayTasks,
   type OperationalTodayTask
 } from "../domain/todayTasks";
+import {
+  operationalTodayTaskFromRestaurantTask,
+  visibleRestaurantTasksForToday
+} from "../domain/restaurantTasks";
 import type { InventoryStatus, TodaySummary } from "../../types/mise";
 import { toDateKeyInTimeZone } from "../../utils/format";
 import {
@@ -42,11 +47,12 @@ export async function fetchTodaySummary(
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const [data, ordersResult, emailConnectionResult, posIntegrationsResult] = await Promise.all([
+  const [data, ordersResult, emailConnectionResult, posIntegrationsResult, restaurantTasksResult] = await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
     repository.fetchSupplierOrders(normalizedRestaurantId),
     repository.fetchEmailConnectionState(normalizedRestaurantId),
-    repository.fetchPosIntegrations(normalizedRestaurantId)
+    repository.fetchPosIntegrations(normalizedRestaurantId),
+    repository.listRestaurantTasks(normalizedRestaurantId)
   ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
@@ -66,6 +72,9 @@ export async function fetchTodaySummary(
   const emailConnection = emailConnectionResult
     ? requireRestaurantScoped([emailConnectionResult], normalizedRestaurantId)[0] ?? null
     : null;
+  if (restaurantTasksResult.some((task) => task.restaurantId !== normalizedRestaurantId)) {
+    throw new Error("Today data failed restaurant task scope validation.");
+  }
   const operatingDate = toDateKeyInTimeZone(new Date(), data.restaurant.timezone);
   const demandFallback = demandFallbackForRestaurant(normalizedRestaurantId);
   const outlooks = buildInventoryOutlooks(
@@ -95,19 +104,26 @@ export async function fetchTodaySummary(
     demandFallback
   );
 
+  const projectedTasks = deriveOperationalTodayTasks({
+    restaurantId: normalizedRestaurantId,
+    restaurantTimeZone: data.restaurant.timezone,
+    inventoryOutlooks: outlooks,
+    recommendations,
+    orders,
+    setupReadiness,
+    posIntegrations,
+    insights,
+    includeCompleted: options.includeCompletedTasks
+  });
+  const sharedTasks = visibleRestaurantTasksForToday(restaurantTasksResult, {
+    includeCompleted: options.includeCompletedTasks
+  }).map(operationalTodayTaskFromRestaurantTask);
+
   return {
     ...summary,
     inventoryHealth: inventoryHealthCounts(outlooks.map(({ prediction }) => prediction.projectedStatus)),
-    operationalTasks: deriveOperationalTodayTasks({
-      restaurantId: normalizedRestaurantId,
-      restaurantTimeZone: data.restaurant.timezone,
-      inventoryOutlooks: outlooks,
-      recommendations,
-      orders,
-      setupReadiness,
-      posIntegrations,
-      insights,
-      includeCompleted: options.includeCompletedTasks
+    operationalTasks: sortOperationalTodayTasks([...projectedTasks, ...sharedTasks], {
+      restaurantTimeZone: data.restaurant.timezone
     }),
     operatingDate,
     restaurantTimeZone: data.restaurant.timezone,

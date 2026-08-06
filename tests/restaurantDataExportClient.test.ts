@@ -123,3 +123,32 @@ test("hosted and demo exports stay behind one stable screen-facing facade", () =
   assert.match(demo, /buildDemoRestaurantExport/);
   assert.doesNotMatch(demo, /functions\.invoke\("export-restaurant-data"/);
 });
+
+test("client export datasets include operational backend and shared-task tables", () => {
+  for (const dataset of [
+    "operational_issues",
+    "activity_events",
+    "mise_actions",
+    "action_outcomes",
+    "restaurant_memories",
+    "restaurant_autonomy_rules",
+    "restaurant_tasks",
+    "restaurant_task_dependencies",
+    "supplier_order_confirmations",
+    "supplier_deliveries",
+    "supplier_delivery_items"
+  ]) {
+    assert.ok(RESTAURANT_EXPORT_DATASETS.includes(dataset as (typeof RESTAURANT_EXPORT_DATASETS)[number]));
+  }
+
+  const demo = readFileSync("services/repositories/demoRepository.ts", "utf8");
+  assert.match(demo, /datasets\.operational_issues/);
+  assert.match(demo, /datasets\.supplier_order_confirmations/);
+  assert.match(demo, /datasets\.supplier_deliveries/);
+  assert.match(demo, /datasets\.supplier_delivery_items/);
+  assert.match(demo, /datasets\.mise_actions = \(state\.miseActions/);
+  assert.match(demo, /datasets\.action_outcomes = \(state\.actionOutcomes/);
+  assert.match(demo, /datasets\.restaurant_autonomy_rules = \(state\.autonomyRules/);
+  assert.match(demo, /datasets\.restaurant_tasks = \(state\.restaurantTasks/);
+  assert.match(demo, /datasets\.restaurant_task_dependencies/);
+});

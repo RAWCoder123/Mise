@@ -12,6 +12,12 @@ import {
 import { buildSupplierRecipientDirectory } from "../domain/supplierRecipients";
 import { buildSupplierSpendTrend, type SupplierSpendTrendPoint } from "../domain/supplierSpend";
 import {
+  buildSupplierReliabilitySummary,
+  buildSupplierOrderDeliveryEvidence,
+  type SupplierOrderDeliveryEvidence,
+  type SupplierReliabilitySummary
+} from "../domain/supplierReliability";
+import {
   requireRecommendationApprovalQuantity,
   requireSupplierOperatorNote,
   requireSupplierRecipientInput
@@ -109,6 +115,58 @@ export async function undoPurchaseRecommendationAction(restaurantId: string, rec
 
 export async function fetchSupplierOrders(restaurantId: string) {
   return repository.fetchSupplierOrders(restaurantId);
+}
+
+export type { SupplierOrderDeliveryEvidence };
+
+export async function fetchSupplierOrderOperationalDetail(
+  restaurantId: string,
+  orderId: string
+): Promise<{ order: SupplierOrder; deliveryEvidence: SupplierOrderDeliveryEvidence[] }> {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
+  const [order, history, restaurant] = await Promise.all([
+    repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
+    repository.fetchSupplierDeliveryHistory(normalizedRestaurantId),
+    repository.fetchRestaurant(normalizedRestaurantId)
+  ]);
+  if (order.restaurant_id !== normalizedRestaurantId) {
+    throw new Error("Supplier order belongs to another restaurant.");
+  }
+  return {
+    order,
+    deliveryEvidence: buildSupplierOrderDeliveryEvidence({
+      restaurantId: normalizedRestaurantId,
+      restaurantTimeZone: restaurant.timezone,
+      order,
+      deliveries: history.deliveries,
+      items: history.items
+    })
+  };
+}
+
+export type { SupplierReliabilitySummary };
+
+/**
+ * Deterministic supplier performance from promised dates and verified receipt
+ * evidence. This never changes supplier preference or ordering state.
+ */
+export async function fetchSupplierReliabilitySummary(
+  restaurantId: string
+): Promise<SupplierReliabilitySummary> {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const [orders, history, restaurant] = await Promise.all([
+    repository.fetchSupplierOrders(normalizedRestaurantId),
+    repository.fetchSupplierDeliveryHistory(normalizedRestaurantId),
+    repository.fetchRestaurant(normalizedRestaurantId)
+  ]);
+  return buildSupplierReliabilitySummary({
+    restaurantId: normalizedRestaurantId,
+    restaurantTimeZone: restaurant.timezone,
+    orders,
+    deliveries: history.deliveries,
+    items: history.items
+  });
 }
 
 export type { SupplierSpendTrendPoint };

@@ -38,7 +38,9 @@ test("rendered race harness still requires every route and mutation race", () =>
 
 test("rendered race login readiness uses stable accessible controls instead of marketing copy", () => {
   assert.match(harness, /input\[aria-label="Email"\]/);
+  assert.match(harness, /clickText\(cdp, "Continue"\)/);
   assert.match(harness, /input\[aria-label="Password"\]/);
+  assert.match(harness, /clickText\(cdp, "Sign in"\)/);
   assert.doesNotMatch(harness, /innerText\.includes\('Open Mise'\)/);
   assert.match(
     harness,

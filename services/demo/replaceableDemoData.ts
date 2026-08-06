@@ -19,6 +19,7 @@ import type {
 } from "../../types/mise";
 import type { SetupPosSaleDraft } from "../domain/setupDrafts";
 import type { OperationalFindingDecision } from "../domain/operationalFindingDecisions";
+import type { InventoryEvent } from "../domain/inventoryLedger";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
 import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
 
@@ -57,7 +58,7 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 3;
+  schema_version: 8;
   restaurants: Restaurant[];
   users: AppUser[];
   posSales: PosSale[];
@@ -75,6 +76,43 @@ export interface DemoState {
   operationalFindingDecisions: StoredOperationalFindingDecision[];
   emailConnections: RestaurantEmailConnection[];
   supplierRecipients: SupplierRecipient[];
+  /** Operator-facing activity mirror of hosted activity_events. */
+  activityEvents: import("../domain/activityEvents").ActivityEvent[];
+  /** Correctable restaurant memory mirror of hosted restaurant_memories. */
+  restaurantMemories: import("../domain/restaurantMemory").RestaurantMemory[];
+  /** Prepared/pending Mise actions mirror of hosted mise_actions. */
+  miseActions: import("../domain/miseActions").MiseAction[];
+  /** Restaurant autonomy rules mirror of hosted restaurant_autonomy_rules. */
+  autonomyRules: import("../domain/restaurantAutonomy").RestaurantAutonomyRule[];
+  /** Action outcome mirror of hosted action_outcomes. */
+  actionOutcomes: import("../domain/miseActions").Outcome[];
+  /** Append-only inventory ledger mirror of hosted inventory_events. */
+  inventoryEvents: InventoryEvent[];
+  /** Supplier delivery mirror of hosted supplier_deliveries. */
+  supplierDeliveries: Array<{
+    id: string;
+    restaurant_id: string;
+    supplier_order_id: string;
+    status: string;
+    received_at: string;
+    client_delivery_id: string;
+    notes: string | null;
+    created_at: string;
+  }>;
+  /** Supplier delivery line mirror of hosted supplier_delivery_items. */
+  supplierDeliveryItems: Array<{
+    id: string;
+    restaurant_id: string;
+    delivery_id: string;
+    inventory_item_id: string;
+    ordered_quantity: number | null;
+    received_quantity: number;
+    damaged_quantity: number;
+    missing_quantity: number;
+    canonical_unit: string;
+  }>;
+  /** Shared operating-task mirror of hosted restaurant_tasks. */
+  restaurantTasks: import("../domain/restaurantTasks").RestaurantTask[];
   currentRestaurantId: string;
   posProvider: PosProvider | null;
   posConnectedAt: string | null;
@@ -288,7 +326,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 3,
+    schema_version: 8,
     restaurants: [restaurant],
     users: [user],
     posSales,
@@ -420,6 +458,15 @@ export function createInitialDemoState(
       }
     ],
     operationalFindingDecisions: [],
+    activityEvents: [],
+    restaurantMemories: [],
+    miseActions: [],
+    autonomyRules: [],
+    actionOutcomes: [],
+    inventoryEvents: [],
+    supplierDeliveries: [],
+    supplierDeliveryItems: [],
+    restaurantTasks: [],
     auditLogs: [
       {
         id: "00000000-0000-4000-8000-000000000901",
@@ -451,9 +498,29 @@ export function createInitialDemoState(
  * item, assigns unique lifecycle ids, and restores the exact order link when a
  * legacy row can be matched safely. Version 3 adds the append-only operational
  * finding decision ledger without discarding an existing operator workspace.
+ * Version 4 adds operator activity and restaurant memory mirrors for the
+ * operational-backend foundation without discarding an existing workspace.
+ * Version 5 adds action outcome and supplier delivery mirrors for export parity.
+ * Version 6 adds centrally modeled restaurant tasks to the demo repository.
+ * Version 7 persists the inventory event ledger for reset/export parity and
+ * seeds reviewable waste evidence in the replaceable reference dataset.
+ * Version 8 repairs interim reference stores that were created before the
+ * seeded waste ledger was included.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
-  const seeded = createInitialDemoState(raw.posProvider ?? DEMO_DATASET.defaultPosProvider);
+  const referenceRestaurantNameMatches =
+    raw.restaurants?.[0]?.name?.trim().toLowerCase() ===
+    DEMO_DATASET.restaurant.name.toLowerCase();
+  const referenceInventoryNames = new Set(["Bell peppers", "Chicken thigh", "Jasmine rice"]);
+  const referenceInventoryMatchCount = (raw.inventoryItems ?? []).filter((item) =>
+    referenceInventoryNames.has(item.item_name)
+  ).length;
+  const usesReferenceDataset =
+    referenceRestaurantNameMatches && referenceInventoryMatchCount >= 2;
+  const seeded = createInitialDemoState(
+    raw.posProvider ?? DEMO_DATASET.defaultPosProvider,
+    usesReferenceDataset ? { preset: DEMO_DATASET.id } : undefined
+  );
   const seedRestaurant = seeded.restaurants[0]!;
   const restaurants = (raw.restaurants ?? seeded.restaurants).map((restaurant) => ({
     ...seedRestaurant,
@@ -514,7 +581,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 3,
+    schema_version: 8,
     restaurants,
     users: raw.users ?? seeded.users,
     posSales: raw.posSales ?? seeded.posSales,
@@ -533,6 +600,27 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       raw.operationalFindingDecisions ?? seeded.operationalFindingDecisions,
     emailConnections: raw.emailConnections ?? seeded.emailConnections,
     supplierRecipients: raw.supplierRecipients ?? seeded.supplierRecipients,
+    activityEvents: Array.isArray(raw.activityEvents) ? raw.activityEvents : seeded.activityEvents,
+    restaurantMemories: Array.isArray(raw.restaurantMemories)
+      ? raw.restaurantMemories
+      : seeded.restaurantMemories,
+    miseActions: Array.isArray(raw.miseActions) ? raw.miseActions : seeded.miseActions,
+    autonomyRules: Array.isArray(raw.autonomyRules) ? raw.autonomyRules : seeded.autonomyRules,
+    actionOutcomes: Array.isArray(raw.actionOutcomes) ? raw.actionOutcomes : seeded.actionOutcomes,
+    inventoryEvents:
+      Array.isArray(raw.inventoryEvents) &&
+      !(usesReferenceDataset && raw.inventoryEvents.length === 0)
+        ? raw.inventoryEvents
+        : seeded.inventoryEvents,
+    supplierDeliveries: Array.isArray(raw.supplierDeliveries)
+      ? raw.supplierDeliveries
+      : seeded.supplierDeliveries,
+    supplierDeliveryItems: Array.isArray(raw.supplierDeliveryItems)
+      ? raw.supplierDeliveryItems
+      : seeded.supplierDeliveryItems,
+    restaurantTasks: Array.isArray(raw.restaurantTasks)
+      ? raw.restaurantTasks
+      : seeded.restaurantTasks,
     currentRestaurantId: raw.currentRestaurantId ?? seeded.currentRestaurantId,
     posProvider: raw.posProvider ?? seeded.posProvider,
     posConnectedAt: raw.posConnectedAt ?? seeded.posConnectedAt
@@ -541,10 +629,18 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 3 ||
+      raw.schema_version !== 8 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
-      supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note)
+      supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
+      !Array.isArray(raw.activityEvents) ||
+      !Array.isArray(raw.restaurantMemories) ||
+      !Array.isArray(raw.actionOutcomes) ||
+      !Array.isArray(raw.inventoryEvents) ||
+      (usesReferenceDataset && raw.inventoryEvents.length === 0 && seeded.inventoryEvents.length > 0) ||
+      !Array.isArray(raw.supplierDeliveries) ||
+      !Array.isArray(raw.supplierDeliveryItems) ||
+      !Array.isArray(raw.restaurantTasks)
   };
 }
 
@@ -693,8 +789,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       category: "Protein",
       unit: "lbs",
       current_quantity: 140,
-      par_level: 95,
-      reorder_threshold: 38,
+      par_level: 500,
+      reorder_threshold: 200,
       estimated_unit_cost: 3.65,
       supplier_name: "Regional Protein Co."
     },
@@ -702,9 +798,9 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       item_name: "Eggs",
       category: "Dairy",
       unit: "units",
-      current_quantity: 560,
-      par_level: 280,
-      reorder_threshold: 110,
+      current_quantity: 1800,
+      par_level: 1500,
+      reorder_threshold: 600,
       estimated_unit_cost: 0.24,
       supplier_name: "Pantry Wholesale"
     },
@@ -712,9 +808,9 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       item_name: "Jasmine rice",
       category: "Dry goods",
       unit: "lbs",
-      current_quantity: 310,
-      par_level: 190,
-      reorder_threshold: 85,
+      current_quantity: 750,
+      par_level: 600,
+      reorder_threshold: 250,
       estimated_unit_cost: 0.95,
       supplier_name: "Pantry Wholesale"
     },
@@ -732,9 +828,9 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       item_name: "Bell peppers",
       category: "Produce",
       unit: "lbs",
-      current_quantity: 90,
-      par_level: 52,
-      reorder_threshold: 22,
+      current_quantity: 250,
+      par_level: 200,
+      reorder_threshold: 90,
       estimated_unit_cost: 2.35,
       supplier_name: "Metro Produce Supply"
     },
@@ -742,9 +838,9 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       item_name: "Beef strips",
       category: "Protein",
       unit: "lbs",
-      current_quantity: 80,
-      par_level: 82,
-      reorder_threshold: 34,
+      current_quantity: 140,
+      par_level: 140,
+      reorder_threshold: 70,
       estimated_unit_cost: 5.45,
       supplier_name: "Regional Protein Co."
     },
@@ -752,9 +848,9 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       item_name: "Dumpling wrappers",
       category: "Dry goods",
       unit: "packs",
-      current_quantity: 85,
-      par_level: 52,
-      reorder_threshold: 20,
+      current_quantity: 230,
+      par_level: 180,
+      reorder_threshold: 80,
       estimated_unit_cost: 2.2,
       supplier_name: "Pantry Wholesale"
     }
@@ -786,6 +882,54 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     ...buildDefaultDemoWeeklySales(provider ?? "Demo POS", createdAt, nowDate, timeZone)
   ];
 
+  state.inventoryEvents = [
+    demoInventoryEvent({
+      id: "demo-waste-peppers-1",
+      sequence: 1,
+      inventoryItemId: itemIds.tomatoes,
+      quantity: 1800,
+      canonicalUnit: "g",
+      effectiveAt: addDays(nowDate, -5).toISOString(),
+      note: "Trim and soft peppers after weekend prep."
+    }),
+    demoInventoryEvent({
+      id: "demo-waste-chicken-1",
+      sequence: 2,
+      inventoryItemId: itemIds.chicken,
+      quantity: 900,
+      canonicalUnit: "g",
+      effectiveAt: addDays(nowDate, -3).toISOString(),
+      note: "Trim loss during protein prep."
+    }),
+    demoInventoryEvent({
+      id: "demo-waste-peppers-2",
+      sequence: 3,
+      inventoryItemId: itemIds.tomatoes,
+      quantity: 1200,
+      canonicalUnit: "g",
+      effectiveAt: addDays(nowDate, -2).toISOString(),
+      note: "Repeated trim loss at close."
+    }),
+    demoInventoryEvent({
+      id: "demo-waste-rice-1",
+      sequence: 4,
+      inventoryItemId: itemIds.rice,
+      quantity: 2000,
+      canonicalUnit: "g",
+      effectiveAt: addDays(nowDate, -1).toISOString(),
+      note: "Overcooked batch discarded at close."
+    }),
+    demoInventoryEvent({
+      id: "demo-waste-chicken-prior",
+      sequence: 5,
+      inventoryItemId: itemIds.chicken,
+      quantity: 1000,
+      canonicalUnit: "g",
+      effectiveAt: addDays(nowDate, -10).toISOString(),
+      note: "Prior-week trim loss."
+    })
+  ];
+
   state.supplierOrders = [
     {
       id: "00000000-0000-4000-8000-000000000601",
@@ -808,6 +952,136 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       status: "sent",
       delivery_date: today,
       created_at: addDays(nowDate, -1).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000603",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_name: "Pantry Wholesale",
+      order_message: "Recorded pantry order: Jasmine rice - 80 lb",
+      operator_note: null,
+      status: "completed",
+      delivery_date: toDateKeyInTimeZone(addDays(nowDate, -14), timeZone),
+      created_at: addDays(nowDate, -15).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000604",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_name: "Pantry Wholesale",
+      order_message: "Recorded pantry order: Dumpling wrappers - 24 packs",
+      operator_note: null,
+      status: "completed",
+      delivery_date: toDateKeyInTimeZone(addDays(nowDate, -7), timeZone),
+      created_at: addDays(nowDate, -8).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000605",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_name: "Metro Produce Supply",
+      order_message: "Recorded produce order: Napa cabbage - 18 head",
+      operator_note: "Review the short cabbage delivery.",
+      status: "completed",
+      delivery_date: toDateKeyInTimeZone(addDays(nowDate, -5), timeZone),
+      created_at: addDays(nowDate, -6).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000606",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_name: "Metro Produce Supply",
+      order_message: "Recorded produce order: Bell peppers - 24 lb",
+      operator_note: null,
+      status: "completed",
+      delivery_date: toDateKeyInTimeZone(addDays(nowDate, -12), timeZone),
+      created_at: addDays(nowDate, -13).toISOString()
+    }
+  ];
+
+  state.supplierDeliveries = [
+    {
+      id: "00000000-0000-4000-8000-000000000d01",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_order_id: "00000000-0000-4000-8000-000000000603",
+      status: "received",
+      received_at: addDays(nowDate, -14).toISOString(),
+      client_delivery_id: "demo-delivery-pantry-1",
+      notes: null,
+      created_at: addDays(nowDate, -14).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000d02",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_order_id: "00000000-0000-4000-8000-000000000604",
+      status: "received",
+      received_at: addDays(nowDate, -7).toISOString(),
+      client_delivery_id: "demo-delivery-pantry-2",
+      notes: null,
+      created_at: addDays(nowDate, -7).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000d03",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_order_id: "00000000-0000-4000-8000-000000000605",
+      status: "discrepancy",
+      received_at: addDays(nowDate, -4).toISOString(),
+      client_delivery_id: "demo-delivery-metro-1",
+      notes: "Three heads were missing from the delivery.",
+      created_at: addDays(nowDate, -4).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000d04",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_order_id: "00000000-0000-4000-8000-000000000606",
+      status: "received",
+      received_at: addDays(nowDate, -12).toISOString(),
+      client_delivery_id: "demo-delivery-metro-2",
+      notes: null,
+      created_at: addDays(nowDate, -12).toISOString()
+    }
+  ];
+
+  state.supplierDeliveryItems = [
+    {
+      id: "00000000-0000-4000-8000-000000000e01",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      delivery_id: "00000000-0000-4000-8000-000000000d01",
+      inventory_item_id: itemIds.rice,
+      ordered_quantity: 80,
+      received_quantity: 80,
+      damaged_quantity: 0,
+      missing_quantity: 0,
+      canonical_unit: "g"
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000e02",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      delivery_id: "00000000-0000-4000-8000-000000000d02",
+      inventory_item_id: itemIds.pancakeMix,
+      ordered_quantity: 24,
+      received_quantity: 24,
+      damaged_quantity: 0,
+      missing_quantity: 0,
+      canonical_unit: "each"
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000e03",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      delivery_id: "00000000-0000-4000-8000-000000000d03",
+      inventory_item_id: itemIds.lettuce,
+      ordered_quantity: 18,
+      received_quantity: 15,
+      damaged_quantity: 0,
+      missing_quantity: 3,
+      canonical_unit: "each"
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000e04",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      delivery_id: "00000000-0000-4000-8000-000000000d04",
+      inventory_item_id: itemIds.tomatoes,
+      ordered_quantity: 24,
+      received_quantity: 24,
+      damaged_quantity: 0,
+      missing_quantity: 0,
+      canonical_unit: "g"
     }
   ];
 
@@ -1002,6 +1276,36 @@ function buildDefaultDemoWeeklySales(sourcePos: string, createdAt: string, nowDa
   }
 
   return sales;
+}
+
+function demoInventoryEvent(input: {
+  id: string;
+  sequence: number;
+  inventoryItemId: string;
+  quantity: number;
+  canonicalUnit: InventoryEvent["canonicalUnit"];
+  effectiveAt: string;
+  note: string;
+}): InventoryEvent {
+  return {
+    id: input.id,
+    sequence: input.sequence,
+    restaurantId: DEMO_RESTAURANT_ID,
+    inventoryItemId: input.inventoryItemId,
+    eventType: "waste",
+    quantity: input.quantity,
+    canonicalUnit: input.canonicalUnit,
+    effectiveAt: input.effectiveAt,
+    recordedAt: input.effectiveAt,
+    actorUserId: DEMO_USER_ID,
+    source: "demo_waste",
+    sourceReference: null,
+    reasonCode: "demo_closeout",
+    clientEventId: `demo:${input.id}`,
+    idempotencyKey: `demo_inventory:${input.id}`,
+    supersedesEventId: null,
+    metadata: { note: input.note, simulated: true }
+  };
 }
 
 export function providerToIntegrationProvider(provider: PosProvider | null) {

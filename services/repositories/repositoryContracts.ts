@@ -23,14 +23,55 @@ import type {
 } from "../../types/mise";
 import type { DemoSetupProfile } from "../demoData";
 import type {
+  InventoryEvent,
   InventoryEventAcceptance,
-  InventoryEventInput
+  InventoryEventInput,
+  InventoryEventType
 } from "../domain/inventoryLedger";
+import type {
+  ActivityEvent,
+  ActivityFeedFilter
+} from "../domain/activityEvents";
+import type { MiseAction } from "../domain/miseActions";
 import type {
   OperationalFindingDecision,
   OperationalFindingDecisionInput
 } from "../domain/operationalFindingDecisions";
+import type {
+  RestaurantMemory,
+  RestaurantMemoryStatus
+} from "../domain/restaurantMemory";
+import type {
+  AutonomyOperationalCategory,
+  RestaurantAutonomyRule
+} from "../domain/restaurantAutonomy";
+import type {
+  CompleteRestaurantTaskInput,
+  CreateRestaurantTaskInput,
+  RestaurantTask
+} from "../domain/restaurantTasks";
+import type { SupplierDeliveryHistory } from "../domain/supplierReliability";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
+
+export interface SupplierDeliveryLineInput {
+  inventoryItemId: string;
+  orderedQuantity?: number | null;
+  receivedQuantity: number;
+  damagedQuantity?: number;
+  missingQuantity?: number;
+  canonicalUnit: "g" | "ml" | "each";
+  substitutionInventoryItemId?: string | null;
+  unitPrice?: number | null;
+  discrepancyReason?: string | null;
+}
+
+export interface SupplierDeliveryRecordResult {
+  outcome: "applied" | "already_applied";
+  status: "received" | "partially_received" | "discrepancy" | "unverified";
+  deliveryId: string;
+  supplierOrderId: string;
+  outcomeId: string | null;
+}
 import {
   normalizeInsight,
   normalizeInventoryItem,
@@ -98,6 +139,49 @@ export type GmailConnectionWorkflowResult =
 export interface GmailDisconnectWorkflowResult {
   status: "not_connected";
   outcome: "disconnected" | "already_disconnected";
+}
+
+export type SquareIntegrationErrorStatus =
+  | "authorization_required"
+  | "not_connected"
+  | "needs_reauth"
+  | "provider_not_enabled"
+  | "server_configuration_missing"
+  | "request_blocked"
+  | "unknown";
+
+export class SquareIntegrationError extends Error {
+  readonly status: SquareIntegrationErrorStatus;
+
+  constructor(status: SquareIntegrationErrorStatus, message: string) {
+    super(message);
+    this.name = "SquareIntegrationError";
+    this.status = status;
+  }
+}
+
+export type SquareConnectionWorkflowResult =
+  | {
+      status: "authorization_required";
+      authorizationUrl: string;
+      expiresAt: string | null;
+    }
+  | {
+      status: "connected";
+      outcome: "demo_connected";
+      integration: PosIntegration;
+    };
+
+export interface SquareDisconnectWorkflowResult {
+  status: "not_connected";
+  outcome: "disconnected" | "already_disconnected";
+}
+
+export interface SquareSyncWorkflowResult {
+  status: "completed";
+  importId: string | null;
+  recordsProcessed: number;
+  catalogProcessed: number;
 }
 
 export interface SupplierOrderEmailSendResult {
@@ -182,6 +266,17 @@ export const RESTAURANT_EXPORT_DATASETS = [
   "modifier_recipe_adjustments",
   "ingredient_substitutions",
   "operational_finding_decisions",
+  "operational_issues",
+  "activity_events",
+  "mise_actions",
+  "action_outcomes",
+  "restaurant_memories",
+  "restaurant_autonomy_rules",
+  "supplier_order_confirmations",
+  "supplier_deliveries",
+  "supplier_delivery_items",
+  "restaurant_tasks",
+  "restaurant_task_dependencies",
   "audit_logs"
 ] as const;
 
@@ -291,6 +386,10 @@ export interface MiseRepository {
     restaurantId: string
   ): Promise<OperationalFindingDecision[]>;
   fetchInventoryItems(restaurantId: string): Promise<InventoryItem[]>;
+  listInventoryEvents(
+    restaurantId: string,
+    options?: { eventTypes?: InventoryEventType[]; limit?: number; since?: string }
+  ): Promise<InventoryEvent[]>;
   /**
    * Records an append-only, server-authoritative inventory event. Hosted mode
    * must use record_inventory_event; clients never insert into the ledger.
@@ -361,6 +460,11 @@ export interface MiseRepository {
   upsertSupplierOrderDraft(draft: SupplierOrderDraft): Promise<SupplierOrder>;
   deleteSupplierOrderDraft(restaurantId: string, supplierName: string): Promise<void>;
   fetchSupplierOrders(restaurantId: string): Promise<SupplierOrder[]>;
+  /**
+   * Bounded, newest-first receipt evidence used for supplier reliability.
+   * Every returned delivery and line must belong to the requested restaurant.
+   */
+  fetchSupplierDeliveryHistory(restaurantId: string): Promise<SupplierDeliveryHistory>;
   fetchSupplierOrder(restaurantId: string, orderId: string): Promise<SupplierOrder>;
   updateSupplierOrder(
     restaurantId: string,
@@ -370,6 +474,14 @@ export interface MiseRepository {
   markSupplierOrderSent(restaurantId: string, orderId: string): Promise<SupplierOrderSentWorkflowResult>;
   connectRestaurantGmail(restaurantId: string): Promise<GmailConnectionWorkflowResult>;
   disconnectRestaurantGmail(restaurantId: string): Promise<GmailDisconnectWorkflowResult>;
+  connectRestaurantSquare(restaurantId: string): Promise<SquareConnectionWorkflowResult>;
+  disconnectRestaurantSquare(restaurantId: string): Promise<SquareDisconnectWorkflowResult>;
+  syncSquarePosSales(
+    restaurantId: string,
+    from: string,
+    to: string
+  ): Promise<SquareSyncWorkflowResult>;
+  fetchSquarePosIntegration(restaurantId: string): Promise<PosIntegration | null>;
   sendSupplierOrderEmail(restaurantId: string, orderId: string): Promise<SupplierOrderEmailSendResult>;
   fetchInsights(restaurantId: string): Promise<Insight[]>;
   replaceInsights(restaurantId: string, insights: Insight[]): Promise<void>;
@@ -385,6 +497,66 @@ export interface MiseRepository {
   loadDemoPOSData(provider: PosProvider, setupProfile?: DemoSetupProfile): Promise<Restaurant>;
   resetDemoData(provider: PosProvider | null, setupProfile?: DemoSetupProfile): Promise<Restaurant>;
   fetchPOSStatus(restaurantId?: string | null): Promise<{ provider: PosProvider | null; connectedAt: string | null; label: string }>;
+  listActivityEvents(
+    restaurantId: string,
+    options?: {
+      since?: string;
+      until?: string;
+      limit?: number;
+      filter?: ActivityFeedFilter;
+      attentionOnly?: boolean;
+    }
+  ): Promise<ActivityEvent[]>;
+  listRestaurantTasks(restaurantId: string): Promise<RestaurantTask[]>;
+  createRestaurantTask(input: CreateRestaurantTaskInput): Promise<RestaurantTask>;
+  completeRestaurantTask(input: CompleteRestaurantTaskInput): Promise<RestaurantTask>;
+  reopenRestaurantTask(restaurantId: string, taskId: string): Promise<RestaurantTask>;
+  listMiseActions(
+    restaurantId: string,
+    options?: { status?: MiseAction["status"] | "awaiting_decision"; limit?: number }
+  ): Promise<MiseAction[]>;
+  decideMiseAction(
+    restaurantId: string,
+    actionId: string,
+    decision: "approved" | "rejected"
+  ): Promise<MiseAction>;
+  listRestaurantMemories(
+    restaurantId: string,
+    options?: { status?: RestaurantMemoryStatus | "actionable"; limit?: number }
+  ): Promise<RestaurantMemory[]>;
+  updateRestaurantMemoryDecision(
+    restaurantId: string,
+    memoryId: string,
+    decision: Exclude<RestaurantMemoryStatus, "active">,
+    correction?: string | null
+  ): Promise<RestaurantMemory>;
+  listAutonomyRules(restaurantId: string): Promise<RestaurantAutonomyRule[]>;
+  upsertAutonomyRule(
+    restaurantId: string,
+    input: {
+      actionType: string;
+      operationalCategory: AutonomyOperationalCategory;
+      maximumAutonomyLevel: 1 | 2 | 3 | 4 | 5;
+      requiresApproval: boolean;
+      enabled: boolean;
+      spendLimitCents?: number | null;
+      supplierName?: string | null;
+      communicationType?: string | null;
+      allowedStartTime?: string | null;
+      allowedEndTime?: string | null;
+    }
+  ): Promise<RestaurantAutonomyRule>;
+  recordSupplierOrderDelivery(
+    restaurantId: string,
+    input: {
+      supplierOrderId: string;
+      clientDeliveryId: string;
+      receivedAt: string;
+      lines: SupplierDeliveryLineInput[];
+      invoiceTotal?: number | null;
+      notes?: string | null;
+    }
+  ): Promise<SupplierDeliveryRecordResult>;
 }
 
 export function recommendationHistoryCutoffIso(now = Date.now()): string {

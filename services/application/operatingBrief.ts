@@ -1,0 +1,67 @@
+import { buildInventoryOutlooks } from "../domain/miseDomain";
+import { buildOperatingBrief, type OperatingBrief } from "../domain/operatingBrief";
+import { buildDailyOperationalBrief } from "../domain/operationalFindings";
+import { demandFallbackForRestaurant, isDemoDatasetRestaurantName } from "../demoData";
+import { toDateKeyInTimeZone } from "../../utils/format";
+import { getMiseRepository } from "./repository";
+
+const repository = getMiseRepository();
+
+export type { OperatingBrief };
+
+export async function fetchOperatingBrief(
+  restaurantId: string,
+  options: { lastSeenAt?: string | null } = {}
+): Promise<OperatingBrief> {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+
+  const [data, orders, activityEvents, miseActions, findingDecisions] = await Promise.all([
+    repository.fetchRestaurantData(normalizedRestaurantId),
+    repository.fetchSupplierOrders(normalizedRestaurantId),
+    repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }).catch(() => []),
+    repository.listMiseActions(normalizedRestaurantId, { status: "awaiting_decision", limit: 40 }).catch(() => []),
+    repository.fetchOperationalFindingDecisions(normalizedRestaurantId).catch(() => [])
+  ]);
+
+  if (data.restaurant.id !== normalizedRestaurantId) {
+    throw new Error("Operating brief failed restaurant scope validation.");
+  }
+
+  const operatingDate = toDateKeyInTimeZone(new Date(), data.restaurant.timezone);
+  const demandFallback = demandFallbackForRestaurant(normalizedRestaurantId);
+  const inventoryOutlooks = buildInventoryOutlooks(
+    normalizedRestaurantId,
+    data.inventoryItems,
+    data.sales,
+    data.menuItemIngredients,
+    operatingDate,
+    demandFallback
+  );
+  const findings = buildDailyOperationalBrief({
+    restaurantId: normalizedRestaurantId,
+    operatingDate,
+    sales: data.sales,
+    inventoryItems: data.inventoryItems,
+    mappings: data.menuItemIngredients,
+    recommendations: data.purchaseRecommendations,
+    insights: data.insights,
+    decisions: findingDecisions
+  }).findings;
+
+  return buildOperatingBrief({
+    restaurant: data.restaurant,
+    operatingDate,
+    lastSeenAt: options.lastSeenAt ?? null,
+    sales: data.sales,
+    inventoryItems: data.inventoryItems,
+    recommendations: data.purchaseRecommendations,
+    orders,
+    insights: data.insights,
+    findings,
+    activityEvents,
+    miseActions,
+    inventoryOutlooks,
+    demoLabeled: isDemoDatasetRestaurantName(data.restaurant.name)
+  });
+}

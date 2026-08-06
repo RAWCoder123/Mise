@@ -21,7 +21,8 @@ export type OperationalTodayTaskSourceKind =
   | "order"
   | "setup"
   | "integration"
-  | "insight";
+  | "insight"
+  | "restaurant_task";
 
 export type OperationalTodayTaskPriority = "urgent" | "high" | "normal";
 export type OperationalTodayTaskStatus = "open" | "completed";
@@ -37,7 +38,8 @@ export type OperationalTodayTaskActionIntent =
   | "connect_pos"
   | "manage_pos_connection"
   | "repair_pos_connection"
-  | "review_insight";
+  | "review_insight"
+  | "open_restaurant_task";
 
 export type OperationalTodayTaskRoute =
   | "/inventory"
@@ -48,7 +50,8 @@ export type OperationalTodayTaskRoute =
   | "/setup"
   | "/settings"
   | "/settings/pos"
-  | "/settings/recipes";
+  | "/settings/recipes"
+  | `/tasks/${string}`;
 
 export interface OperationalTodayTaskAction {
   intent: OperationalTodayTaskActionIntent;

@@ -4,6 +4,10 @@ import {
   buildLearningMemorySummary
 } from "../domain/miseDomain";
 import {
+  buildInsightsSalesAnalytics,
+  type InsightsSalesAnalytics
+} from "../domain/insightsSalesAnalytics";
+import {
   buildRecordedSalesTrend,
   type RecordedSalesTrendPoint
 } from "../domain/salesTrends";
@@ -14,6 +18,7 @@ import { getMiseRepository } from "./repository";
 const repository = getMiseRepository();
 
 export { generateInsightsFromSalesAndInventory };
+export type { InsightsSalesAnalytics };
 
 export async function fetchConditionalAnalytics(restaurantId: string) {
   const [data, orders] = await Promise.all([
@@ -54,6 +59,25 @@ export function buildInsightsSalesTrend(
   throughDate?: string | null
 ): InsightsSalesTrendPoint[] {
   return buildRecordedSalesTrend(restaurantId, sales, { limit, throughDate });
+}
+
+/** Category / weekday / source mix and best sellers from recorded POS (no invented demographics). */
+export async function fetchInsightsSalesAnalytics(
+  restaurantId: string
+): Promise<InsightsSalesAnalytics> {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+
+  const data = await repository.fetchPlanningData(normalizedRestaurantId);
+  if (data.sales.some((sale) => sale.restaurant_id !== normalizedRestaurantId)) {
+    throw new Error("Sales analytics failed restaurant scope validation.");
+  }
+  return buildInsightsSalesAnalytics({
+    restaurantId: normalizedRestaurantId,
+    sales: data.sales,
+    throughDate: data.operatingDate,
+    lookbackDays: 7
+  });
 }
 
 export function summarizeInsights(restaurantId: string, insights: Awaited<ReturnType<typeof fetchInsights>>) {

@@ -124,7 +124,8 @@ export function createInMemoryInventoryEventRecorder(input: {
   now?: () => string;
 }) {
   const events: InventoryEvent[] = [];
-  return async (candidate: InventoryEventInput): Promise<InventoryEventAcceptance> => {
+
+  async function record(candidate: InventoryEventInput): Promise<InventoryEventAcceptance> {
     const acceptance = acceptInventoryEvent({
       existingEvents: events,
       candidate,
@@ -136,7 +137,41 @@ export function createInMemoryInventoryEventRecorder(input: {
     });
     if (acceptance.status === "accepted") events.push(acceptance.event);
     return acceptance;
-  };
+  }
+
+  function list(options?: {
+    restaurantId?: string;
+    eventTypes?: InventoryEventType[];
+    limit?: number;
+    since?: string;
+  }): InventoryEvent[] {
+    let filtered = [...events];
+    if (options?.restaurantId) {
+      filtered = filtered.filter((event) => event.restaurantId === options.restaurantId);
+    }
+    if (options?.eventTypes?.length) {
+      const allowed = new Set(options.eventTypes);
+      filtered = filtered.filter((event) => allowed.has(event.eventType));
+    }
+    if (options?.since) {
+      const sinceMs = Date.parse(options.since);
+      if (Number.isFinite(sinceMs)) {
+        filtered = filtered.filter((event) => Date.parse(event.recordedAt) >= sinceMs);
+      }
+    }
+    filtered.sort(
+      (left, right) =>
+        Date.parse(right.recordedAt) - Date.parse(left.recordedAt) ||
+        right.sequence - left.sequence ||
+        left.id.localeCompare(right.id)
+    );
+    if (options?.limit != null && Number.isFinite(options.limit) && options.limit >= 0) {
+      return filtered.slice(0, options.limit);
+    }
+    return filtered;
+  }
+
+  return { record, list };
 }
 
 function unwrapRecord(value: unknown): Record<string, unknown> {

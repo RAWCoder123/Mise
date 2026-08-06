@@ -44,6 +44,11 @@ import type {
   InventoryEventType
 } from "./domain/inventoryLedger";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
+import type {
+  SupplierDeliveryItemRecord,
+  SupplierDeliveryRecord,
+  SupplierDeliveryStatus
+} from "./domain/supplierReliability";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
 
@@ -735,6 +740,45 @@ export function normalizeSupplierOrder(value: SupplierOrder): SupplierOrder {
     ...value,
     delivery_date: asNullableString(value.delivery_date)
   };
+}
+
+export function normalizeSupplierDeliveryRecord(
+  value: Omit<SupplierDeliveryRecord, "status"> & { status: unknown }
+): SupplierDeliveryRecord {
+  return {
+    ...value,
+    status: normalizeSupplierDeliveryStatus(value.status),
+    notes: asNullableString(value.notes),
+    received_at: asString(value.received_at),
+    created_at: asString(value.created_at, value.received_at)
+  };
+}
+
+export function normalizeSupplierDeliveryItemRecord(
+  value: SupplierDeliveryItemRecord
+): SupplierDeliveryItemRecord {
+  return {
+    ...value,
+    ordered_quantity:
+      value.ordered_quantity == null ? null : asNonNegativeNumber(value.ordered_quantity),
+    received_quantity: asNonNegativeNumber(value.received_quantity),
+    damaged_quantity: asNonNegativeNumber(value.damaged_quantity),
+    missing_quantity: asNonNegativeNumber(value.missing_quantity),
+    discrepancy_reason: asNullableString(value.discrepancy_reason)
+  };
+}
+
+function normalizeSupplierDeliveryStatus(value: unknown): SupplierDeliveryStatus {
+  if (
+    value === "unverified" ||
+    value === "partially_received" ||
+    value === "received" ||
+    value === "discrepancy" ||
+    value === "failed"
+  ) {
+    return value;
+  }
+  return "unverified";
 }
 
 export function normalizeInsight(value: Insight): Insight {

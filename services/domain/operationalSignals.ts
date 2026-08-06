@@ -137,8 +137,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         insight_type: "inventory",
         title: isCritical ? `${item.item_name} may run out today` : `${item.item_name} is below its normal level`,
         description: `${item.item_name} is projected at ${round(projectedQuantity)} ${item.unit} after mapped POS demand.`,
-        why_it_matters: "Low ingredient coverage can interrupt prep or service.",
-        recommended_action: `Review the ${item.supplier_name} order and add ${quantity} ${item.unit}.`,
+        why_it_matters: "This can interrupt prep or force an 86 mid-service.",
+        recommended_action: `Check the walk-in, then add ${quantity} ${item.unit} on the next ${item.supplier_name} ticket.`,
         severity: isCritical ? "urgent" : "warning",
         created_at: now,
         presentation: {
@@ -160,8 +160,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         insight_type: "waste",
         title: `${item.item_name} may be overstocked`,
         description: `${round(projectedQuantity)} ${item.unit} is more than three service days of mapped demand.`,
-        why_it_matters: "Excess stock can tie up cash or increase waste risk.",
-        recommended_action: `Delay the next ${item.item_name.toLowerCase()} order unless sales increase.`,
+        why_it_matters: "Extra on hand can spoil or tie up cash before the next rush needs it.",
+        recommended_action: `Skip or trim the next ${item.item_name.toLowerCase()} order unless tonight’s sales stay hot.`,
         severity: "info",
         created_at: now,
         presentation: {
@@ -186,8 +186,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       insight_type: "sales",
       title: `${sale.item_name} demand is rising`,
       description: `${sale.item_name} sold ${lift}% more than its recent service-day baseline.`,
-      why_it_matters: "Linked ingredients may deplete faster than the usual ordering rhythm.",
-      recommended_action: `Review inventory tied to ${sale.item_name.toLowerCase()} before the next prep window.`,
+      why_it_matters: "Pull prep forward or you may 86 linked dishes before the next order lands.",
+      recommended_action: `Before the next prep window, confirm walk-in counts for ingredients tied to ${sale.item_name.toLowerCase()}.`,
       severity: "warning",
       created_at: now,
       presentation: {
@@ -198,6 +198,46 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         }
       }
     });
+  }
+
+  const topSale = [...todaySales].sort((a, b) => b.quantity_sold - a.quantity_sold)[0];
+  if (topSale) {
+    const lowLinked = snapshot.inventoryItems.find((item) => {
+      if (item.restaurant_id !== snapshot.restaurantId) return false;
+      const linked = snapshot.menuItemIngredients.some(
+        (mapping) =>
+          mapping.restaurant_id === snapshot.restaurantId &&
+          mapping.inventory_item_id === item.id &&
+          normalizeKey(mapping.menu_item_name) === normalizeKey(topSale.item_name)
+      );
+      if (!linked) return false;
+      return insights.some(
+        (insight) =>
+          insight.id === `insight_low_${item.id}` &&
+          (insight.severity === "urgent" || insight.severity === "warning")
+      );
+    });
+    if (lowLinked) {
+      insights.push({
+        id: `insight_prep_${normalizeKey(topSale.item_name).replace(/\s+/g, "_")}`,
+        restaurant_id: snapshot.restaurantId,
+        insight_type: "prep",
+        title: `${topSale.item_name} depends on low stock`,
+        description: `${topSale.item_name} is selling hard and uses ${lowLinked.item_name.toLowerCase()}, which is already below reorder.`,
+        why_it_matters: "A top seller can get 86'd mid-service if this ingredient runs out.",
+        recommended_action: `Before prep, put ${lowLinked.item_name.toLowerCase()} on the next ${lowLinked.supplier_name} ticket.`,
+        severity: "urgent",
+        created_at: now,
+        presentation: {
+          code: "insight.rule.prep.low_stock",
+          values: {
+            menuItemName: topSale.item_name,
+            inventoryItemName: lowLinked.item_name,
+            supplierName: lowLinked.supplier_name
+          }
+        }
+      });
+    }
   }
 
   return { recommendations: recommendations.slice(0, 250), insights: dedupeInsights(insights).slice(0, 8) };

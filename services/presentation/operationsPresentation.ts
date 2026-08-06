@@ -8,6 +8,13 @@ import type {
   LearningMemorySignalPresentationDescriptor,
   TodayTaskPresentationDescriptor
 } from "../../types/presentation";
+import type {
+  OperatingPlanItem,
+  OperatingPlanItemKind,
+  ReprioritizationCode,
+  ServiceWindowId,
+  VerificationMethod
+} from "../domain/operatingPlan";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 
 export interface PresentedOperationalCopy {
@@ -175,33 +182,33 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       inventoryCriticalTitle: (itemName) => `${itemName} may run out today`,
       inventoryLowTitle: (itemName) => `${itemName} is below its normal level`,
       inventoryDescription: (itemName, quantity, unit) => `${itemName} is projected at ${quantity} ${unit} after mapped POS demand.`,
-      inventoryWhy: "Low ingredient coverage can interrupt prep or service.",
-      inventoryAction: (supplierName, quantity, unit) => `Review the ${supplierName} order and add ${quantity} ${unit}.`,
+      inventoryWhy: "This can interrupt prep or force an 86 mid-service.",
+      inventoryAction: (supplierName, quantity, unit) => `Check the walk-in, then add ${quantity} ${unit} on the next ${supplierName} ticket.`,
       salesTitle: (itemName) => `${itemName} demand is rising`,
       salesDescription: (itemName, lift) => `${itemName} is ${lift} above its recent service-day baseline.`,
-      salesWhy: "Linked ingredients may deplete faster than the usual ordering rhythm.",
-      salesAction: (itemName) => `Review inventory tied to ${itemName} before the next prep window.`,
+      salesWhy: "Pull prep forward or you may 86 linked dishes before the next order lands.",
+      salesAction: (itemName) => `Before the next prep window, confirm walk-in counts for ingredients tied to ${itemName}.`,
       prepTitle: (menuItemName) => `${menuItemName} depends on low stock`,
-      prepDescription: (menuItemName, inventoryItemName) => `${menuItemName} is selling strongly and uses ${inventoryItemName}, which is below its reorder level.`,
-      prepWhy: "A strong seller depends on an ingredient that may not cover the next service.",
-      prepAction: (supplierName) => `Review the next ${supplierName} order.`,
+      prepDescription: (menuItemName, inventoryItemName) => `${menuItemName} is selling hard and uses ${inventoryItemName}, which is already below reorder.`,
+      prepWhy: "A top seller can get 86'd mid-service if this ingredient runs out.",
+      prepAction: (supplierName) => `Before prep, put the short ingredient on the next ${supplierName} ticket.`,
       wasteTitle: (itemName) => `${itemName} may be overstocked`,
       wasteDescription: (itemName, quantity, unit) => `${itemName} has about ${quantity} ${unit}, more than projected use.`,
-      wasteWhy: "Excess stock can tie up cash or increase waste risk.",
-      wasteAction: (itemName) => `Delay the next ${itemName} order unless sales increase.`
+      wasteWhy: "Extra on hand can spoil or tie up cash before the next rush needs it.",
+      wasteAction: (itemName) => `Skip or trim the next ${itemName} order unless tonight’s sales stay hot.`
     },
     memory: {
       reliableLabel: "Mise memory is reliable",
       buildingLabel: "Mise memory is building",
       needsProofLabel: "Mise needs more proof",
-      reliableCopy: "Recipe baselines, POS depletion, and manager decisions give Mise enough evidence to explain recommendations.",
-      buildingCopy: "Mise is collecting recipe, sales, count, and ordering evidence before more workflow can be automated.",
+      reliableCopy: "I’m getting sharper on your rush, counts, and what you approve—enough to coach the next prep window.",
+      buildingCopy: "I’m still learning your house: recipes, sales, counts, and orders. Keep updating after service and I’ll get sharper.",
       nextSteps: {
-        "memory.next.recipe_coverage": "Map missing POS items to ingredients before relying on automated ordering.",
-        "memory.next.demand_history": "Collect at least seven service days so Mise can learn restaurant-specific demand.",
-        "memory.next.send_approved": "Send approved supplier drafts so Mise can remember the operator’s ordering judgment.",
-        "memory.next.first_order": "Approve and send the first supplier draft to create ordering history.",
-        "memory.next.keep_counts_current": "Keep updating counts after service so Mise can refine reorder timing."
+        "memory.next.recipe_coverage": "Map missing POS items to ingredients so I can protect prep, not just guess.",
+        "memory.next.demand_history": "Give me about seven service days so I learn your real rush pattern.",
+        "memory.next.send_approved": "Send approved supplier drafts so I remember what you actually order.",
+        "memory.next.first_order": "Approve and send the first supplier draft to start ordering memory.",
+        "memory.next.keep_counts_current": "Update counts after service so I can time the next reorder better."
       },
       recipeLabel: "Recipe coverage",
       recipeDetail: (count, rawCount) => `${count} dish-to-stock ${rawCount === 1 ? "link" : "links"}`,
@@ -677,6 +684,175 @@ function presentStructuredMemorySignal(
 
 function result(title: string, detail: string): PresentedOperationalCopy {
   return { title, detail, evidenceOnly: false };
+}
+
+export interface PresentedOperatingPlanItem {
+  title: string;
+  detail: string;
+  why: string;
+  effect: string;
+  neededByLabel: string | null;
+  windowLabel: string;
+  verificationLabel: string;
+  kindLabel: string;
+  completionResult: string | null;
+  reprioritizationReason: string | null;
+  evidenceOnly: boolean;
+}
+
+const operatingPlanCopyByLocale: Readonly<
+  Record<
+    AppLocale,
+    {
+      windows: Record<ServiceWindowId, string>;
+      verification: Record<VerificationMethod, string>;
+      kinds: Record<OperatingPlanItemKind, string>;
+      reprioritization: Record<ReprioritizationCode, (detail: string) => string>;
+    }
+  >
+> = {
+  en: {
+    windows: {
+      before_prep: "Before prep",
+      before_lunch: "Before lunch",
+      before_supplier_cutoff: "Before supplier cutoff",
+      before_dinner: "Before dinner",
+      during_service: "During service",
+      closing: "Closing",
+      end_of_day: "End of day",
+      unscheduled: "Unscheduled"
+    },
+    verification: {
+      count: "Verify by count",
+      review: "Verify by review",
+      receipt: "Verify by receipt",
+      provider_sync: "Verify by provider sync",
+      none: "No verification step"
+    },
+    kinds: {
+      mise_task: "Mise task",
+      human_task: "Floor task",
+      approval: "Approval",
+      observation: "Observation",
+      monitoring: "Monitoring",
+      completed: "Completed",
+      failed: "Failed"
+    },
+    reprioritization: {
+      overdue_deadline: (detail) => detail || "Moved to Now: evidenced deadline is overdue.",
+      delivery_overdue: (detail) => detail || "Moved to Now: delivery date is past.",
+      delivery_due_today: (detail) => detail || "Moved to Now: delivery is needed today.",
+      due_soon: (detail) => detail || "Moved to Now: deadline is due soon.",
+      stock_risk: (detail) => detail || "Moved to Now: projected stock risk.",
+      provider_failure: (detail) => detail || "Moved to Now: sales connection failed."
+    }
+  },
+  es: {
+    windows: {
+      before_prep: "Antes de prep",
+      before_lunch: "Antes del almuerzo",
+      before_supplier_cutoff: "Antes del corte del proveedor",
+      before_dinner: "Antes de la cena",
+      during_service: "Durante el servicio",
+      closing: "Cierre",
+      end_of_day: "Fin del día",
+      unscheduled: "Sin horario"
+    },
+    verification: {
+      count: "Verificar con conteo",
+      review: "Verificar con revisión",
+      receipt: "Verificar con recepción",
+      provider_sync: "Verificar con sync del proveedor",
+      none: "Sin paso de verificación"
+    },
+    kinds: {
+      mise_task: "Tarea Mise",
+      human_task: "Tarea de piso",
+      approval: "Aprobación",
+      observation: "Observación",
+      monitoring: "Monitoreo",
+      completed: "Completada",
+      failed: "Fallida"
+    },
+    reprioritization: {
+      overdue_deadline: (detail) => detail || "Movida a Ahora: la fecha límite evidenciada ya pasó.",
+      delivery_overdue: (detail) => detail || "Movida a Ahora: la entrega está atrasada.",
+      delivery_due_today: (detail) => detail || "Movida a Ahora: la entrega se necesita hoy.",
+      due_soon: (detail) => detail || "Movida a Ahora: la fecha límite es pronto.",
+      stock_risk: (detail) => detail || "Movida a Ahora: riesgo de stock proyectado.",
+      provider_failure: (detail) => detail || "Movida a Ahora: falló la conexión de ventas."
+    }
+  },
+  "zh-Hans": {
+    windows: {
+      before_prep: "备餐前",
+      before_lunch: "午餐前",
+      before_supplier_cutoff: "供应商截止前",
+      before_dinner: "晚餐前",
+      during_service: "营业中",
+      closing: "收工",
+      end_of_day: "当日结束前",
+      unscheduled: "未排程"
+    },
+    verification: {
+      count: "以盘点核实",
+      review: "以复核核实",
+      receipt: "以收货核实",
+      provider_sync: "以供应商同步核实",
+      none: "无需核实步骤"
+    },
+    kinds: {
+      mise_task: "Mise 任务",
+      human_task: "现场任务",
+      approval: "待批准",
+      observation: "观察项",
+      monitoring: "监控中",
+      completed: "已完成",
+      failed: "失败"
+    },
+    reprioritization: {
+      overdue_deadline: (detail) => detail || "已调至现在：有证据的截止时间已过。",
+      delivery_overdue: (detail) => detail || "已调至现在：送货日期已过。",
+      delivery_due_today: (detail) => detail || "已调至现在：今日需要送货。",
+      due_soon: (detail) => detail || "已调至现在：截止时间将至。",
+      stock_risk: (detail) => detail || "已调至现在：存在库存风险。",
+      provider_failure: (detail) => detail || "已调至现在：销售连接失败。"
+    }
+  }
+};
+
+export function presentServiceWindowLabel(locale: AppLocale, windowId: ServiceWindowId) {
+  return operatingPlanCopyByLocale[locale].windows[windowId];
+}
+
+export function presentOperatingPlanItem(
+  locale: AppLocale,
+  item: OperatingPlanItem
+): PresentedOperatingPlanItem {
+  const copy = operatingPlanCopyByLocale[locale];
+  const taskCopy = item.sourceTask
+    ? presentOperationalTodayTask(locale, item.sourceTask)
+    : {
+        title: item.title,
+        detail: item.detail,
+        actionLabel: item.title,
+        evidenceOnly: true
+      };
+  return {
+    title: taskCopy.title,
+    detail: taskCopy.detail,
+    why: item.why,
+    effect: item.effect,
+    neededByLabel: item.neededBy,
+    windowLabel: copy.windows[item.serviceWindow],
+    verificationLabel: copy.verification[item.verificationMethod],
+    kindLabel: copy.kinds[item.kind],
+    completionResult: item.completionResult,
+    reprioritizationReason: item.reprioritization
+      ? copy.reprioritization[item.reprioritization.code](item.reprioritization.reason)
+      : null,
+    evidenceOnly: taskCopy.evidenceOnly
+  };
 }
 
 function formatQuantity(locale: AppLocale, value: number) {

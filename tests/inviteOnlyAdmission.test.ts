@@ -24,11 +24,21 @@ test("beta login is sign-in-only while preserving bounded demo and public help a
   assert.doesNotMatch(login, /\bsignUp\b/);
   assert.doesNotMatch(login, /AuthMode|confirmationEmail|confirmPassword/);
   assert.match(login, /await signIn\(normalizedEmail, password\)/);
+  assert.match(login, /signInWithProvider/);
+  assert.match(login, /login\.action\.google/);
+  assert.match(login, /login\.action\.apple/);
   assert.match(login, /canUseDemoMode\s*\?/);
   assert.match(login, /router\.push\("\/settings\/privacy"/);
   assert.match(login, /router\.push\("\/settings\/support"/);
   assert.match(login, /login\.invite\.supportHint/);
   assert.match(catalog, /This August 3 beta is invite-only/);
+});
+
+test("session exposes OAuth provider sign-in without opening self-serve signup", () => {
+  assert.match(sessionContext, /signInWithProvider/);
+  assert.match(sessionContext, /signInWithOAuthProvider/);
+  assert.doesNotMatch(sessionContext, /\bsignUp\s*:/);
+  assert.doesNotMatch(sessionContext, /supabase\.auth\.signUp/);
 });
 
 test("hosted users without a restaurant fail closed before setup", () => {

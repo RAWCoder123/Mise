@@ -34,6 +34,24 @@ test("both repository backends bound recommendation history reads", () => {
   assert.match(demoMethod, /recommendation\.created_at >= cutoff/);
 });
 
+test("both repository backends bound and tenant-scope supplier delivery history", () => {
+  const hosted = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  const demo = readFileSync("services/repositories/demoRepository.ts", "utf8");
+
+  const hostedMethod = hosted.match(/async fetchSupplierDeliveryHistory\([\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(hostedMethod, /\.from\("supplier_deliveries"\)/);
+  assert.match(hostedMethod, /\.eq\("restaurant_id", restaurantId\)/);
+  assert.match(hostedMethod, /\.limit\(100\)/);
+  assert.match(hostedMethod, /\.from\("supplier_delivery_items"\)/);
+  assert.match(hostedMethod, /\.limit\(1000\)/);
+
+  const demoMethod = demo.match(/async fetchSupplierDeliveryHistory\([\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(demoMethod, /delivery\.restaurant_id === restaurantId/);
+  assert.match(demoMethod, /item\.restaurant_id === restaurantId/);
+  assert.match(demoMethod, /\.slice\(0, 100\)/);
+  assert.match(demoMethod, /\.slice\(0, 1000\)/);
+});
+
 test("recompute paths use the bounded history fetch instead of full recommendation scans", () => {
   const recalculations = readFileSync("services/application/recalculations.ts", "utf8");
   const inventory = readFileSync("services/application/inventory.ts", "utf8");
@@ -52,4 +70,25 @@ test("repository facade keeps demo and hosted backends behind one stable entry p
   assert.match(facade, /isSupabaseConfigured && supabase \? createSupabaseRepository\(\) : createLocalDemoRepository\(\)/);
   assert.match(applicationSeam, /export function setMiseRepositoryForTesting/);
   assert.match(applicationSeam, /new Proxy/);
+});
+
+test("waste analysis reads a tenant-scoped and bounded ledger window", () => {
+  const application = readFileSync("services/application/waste.ts", "utf8");
+
+  assert.match(application, /repository\.fetchRestaurant\(normalizedRestaurantId\)/);
+  assert.match(application, /repository\.fetchInventoryItems\(normalizedRestaurantId\)/);
+  assert.match(application, /repository\.listInventoryEvents\(normalizedRestaurantId/);
+  assert.match(application, /eventTypes: \["waste", "correction"\]/);
+  assert.match(application, /limit: WASTE_HISTORY_LIMIT/);
+  assert.match(application, /historyTruncated: events\.length === WASTE_HISTORY_LIMIT/);
+});
+
+test("phase briefs compose only verified screen-safe operational facades", () => {
+  const application = readFileSync("services/application/dailyPhaseBrief.ts", "utf8");
+
+  assert.match(application, /fetchDailyOperatingPlan\(normalizedRestaurantId/);
+  assert.match(application, /fetchOperatingBrief\(normalizedRestaurantId\)/);
+  assert.match(application, /fetchDailyOpsReport\(normalizedRestaurantId\)/);
+  assert.match(application, /buildDailyPhaseBriefs\(/);
+  assert.doesNotMatch(application, /OpenAI|generateText|answerAskMise/);
 });

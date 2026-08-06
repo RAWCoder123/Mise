@@ -12,7 +12,7 @@ const privacyPolicy = readFileSync("docs/store/privacy-policy.md", "utf8");
 test("restaurant export is owner/admin only and passes the standard firewall lifecycle", () => {
   assert.match(edge, /requireAuthenticatedContext\(req\)/);
   assert.match(edge, /reserveFunctionInvocation\([\s\S]*"export-restaurant-data"/);
-  assert.match(edge, /requireRestaurantRole\([\s\S]*\["owner", "admin"\]/);
+  assert.match(edge, /requireRestaurantRole\([\s\S]*\[\s*"owner",\s*"admin",?\s*\]/);
   assert.match(edge, /recordFunctionAuditLog\(/);
   assert.match(edge, /recordFunctionSecurityEvent\(/);
   assert.match(edge, /recordFunctionTerminalError\(terminalContext\)/);
@@ -35,6 +35,17 @@ test("restaurant export covers operational truth and excludes backend-only schem
     "modifier_recipe_adjustments",
     "ingredient_substitutions",
     "operational_finding_decisions",
+    "operational_issues",
+    "activity_events",
+    "mise_actions",
+    "action_outcomes",
+    "restaurant_memories",
+    "restaurant_autonomy_rules",
+    "restaurant_tasks",
+    "restaurant_task_dependencies",
+    "supplier_order_confirmations",
+    "supplier_deliveries",
+    "supplier_delivery_items",
     "audit_logs"
   ]) {
     assert.match(edge, new RegExp(`name: "${dataset}"`));

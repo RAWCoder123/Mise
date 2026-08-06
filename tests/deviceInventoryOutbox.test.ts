@@ -100,7 +100,7 @@ test("screen-safe flush sends through the active repository and persists authori
     createInMemoryInventoryEventRecorder({
       actorUserId: "manager-1",
       idFor: (candidate) => `server-${candidate.clientEventId}`
-    })
+    }).record
   );
   try {
     await queueInventoryEventForSubmission({
@@ -151,7 +151,7 @@ test("screen-safe flush defers transport failures instead of rejecting evidence"
 });
 
 test("demo repository deduplicates an exact retry under the same authority", async () => {
-  const record = createInMemoryInventoryEventRecorder({
+  const { record } = createInMemoryInventoryEventRecorder({
     actorUserId: "demo-user",
     idFor: (candidate) => `demo-${candidate.clientEventId}`,
     now: () => "2026-07-26T10:00:01.000Z"

@@ -23,6 +23,36 @@ import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAutho
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 import { TeamMembershipError, teamMembershipErrorFrom } from "../domain/teamMembership";
 import {
+  activityEventFromPersistedRow,
+  filterActivities,
+  type ActivityFeedFilter,
+  type PersistedActivityEventRow
+} from "../domain/activityEvents";
+import {
+  miseActionFromPersistedRow,
+  type PersistedMiseActionRow
+} from "../domain/miseActions";
+import {
+  restaurantMemoryFromPersistedRow,
+  type PersistedRestaurantMemoryRow,
+  type RestaurantMemoryStatus
+} from "../domain/restaurantMemory";
+import {
+  autonomyRuleFromPersistedRow,
+  type PersistedAutonomyRuleRow
+} from "../domain/restaurantAutonomy";
+import {
+  completeRestaurantTaskRpcArguments,
+  createRestaurantTaskRpcArguments,
+  restaurantTaskFromPersistedRow,
+  type PersistedRestaurantTaskRow
+} from "../domain/restaurantTasks";
+import type { SupplierDeliveryRecordResult } from "./repositoryContracts";
+import type {
+  SupplierDeliveryItemRecord,
+  SupplierDeliveryRecord
+} from "../domain/supplierReliability";
+import {
   inventoryEventRejectionFromRpcError,
   inventoryEventRpcArguments,
   normalizeInventoryEventRecord
@@ -47,6 +77,8 @@ import {
   normalizeSetupAttachment,
   normalizeSupplierItem,
   normalizeSupplierOrder,
+  normalizeSupplierDeliveryItemRecord,
+  normalizeSupplierDeliveryRecord,
   normalizeSupplierRecipient
 } from "../miseValidation";
 import { toDateKeyInTimeZone } from "../../utils/format";
@@ -56,7 +88,12 @@ import {
   normalizeRestaurantData,
   operationalDecisionHistoryCutoffIso,
   recommendationHistoryCutoffIso,
+  SquareIntegrationError,
   type GmailConnectionWorkflowResult,
+  type SquareConnectionWorkflowResult,
+  type SquareDisconnectWorkflowResult,
+  type SquareIntegrationErrorStatus,
+  type SquareSyncWorkflowResult,
   type GmailDisconnectWorkflowResult,
   type GmailIntegrationErrorStatus,
   type MiseRepository,
@@ -192,6 +229,90 @@ function requireGoogleAuthorizationUrl(value: unknown) {
   }
 }
 
+const squareIntegrationErrorStatuses = new Set<SquareIntegrationErrorStatus>([
+  "authorization_required",
+  "not_connected",
+  "needs_reauth",
+  "provider_not_enabled",
+  "server_configuration_missing",
+  "request_blocked",
+  "unknown"
+]);
+
+function parseSquareConnectionWorkflowResponse(data: unknown): SquareConnectionWorkflowResult {
+  const payload = asUnknownRecord(data);
+  if (payload.status !== "authorization_required") {
+    throw new SquareIntegrationError("unknown", "Square authorization returned an invalid response.");
+  }
+  const authorizationUrl = requireSquareAuthorizationUrl(payload.authorizationUrl);
+  const expiresAt =
+    typeof payload.expiresAt === "string" && Number.isFinite(Date.parse(payload.expiresAt))
+      ? payload.expiresAt
+      : null;
+  return { status: "authorization_required", authorizationUrl, expiresAt };
+}
+
+function parseSquareDisconnectWorkflowResponse(data: unknown): SquareDisconnectWorkflowResult {
+  const payload = asUnknownRecord(data);
+  if (
+    payload.status !== "not_connected" ||
+    (payload.outcome !== "disconnected" && payload.outcome !== "already_disconnected")
+  ) {
+    throw new SquareIntegrationError("unknown", "Square disconnection returned an invalid response.");
+  }
+  return { status: "not_connected", outcome: payload.outcome };
+}
+
+function parseSquareSyncWorkflowResponse(data: unknown): SquareSyncWorkflowResult {
+  const payload = asUnknownRecord(data);
+  if (payload.status !== "completed") {
+    throw new SquareIntegrationError("unknown", "Square sync returned an invalid response.");
+  }
+  const recordsProcessed = Number(payload.recordsProcessed ?? 0);
+  const catalogProcessed = Number(payload.catalogProcessed ?? 0);
+  if (!Number.isFinite(recordsProcessed) || recordsProcessed < 0 || !Number.isFinite(catalogProcessed) || catalogProcessed < 0) {
+    throw new SquareIntegrationError("unknown", "Square sync returned invalid counts.");
+  }
+  return {
+    status: "completed",
+    importId: typeof payload.importId === "string" ? payload.importId : null,
+    recordsProcessed: Math.floor(recordsProcessed),
+    catalogProcessed: Math.floor(catalogProcessed)
+  };
+}
+
+function requireSquareAuthorizationUrl(value: unknown) {
+  if (typeof value !== "string" || value.length > 4096) {
+    throw new SquareIntegrationError("unknown", "Square authorization returned an invalid URL.");
+  }
+  try {
+    const url = new URL(value);
+    const allowedHosts = new Set(["connect.squareup.com", "connect.squareupsandbox.com"]);
+    if (url.protocol !== "https:" || !allowedHosts.has(url.hostname) || url.username || url.password) {
+      throw new Error();
+    }
+    return url.toString();
+  } catch {
+    throw new SquareIntegrationError("unknown", "Square authorization returned an invalid URL.");
+  }
+}
+
+async function squareIntegrationErrorFrom(error: unknown, fallbackMessage: string) {
+  const payload = await readFunctionErrorPayload(error);
+  const candidateStatus = typeof payload.status === "string" ? payload.status : "unknown";
+  const status = squareIntegrationErrorStatuses.has(candidateStatus as SquareIntegrationErrorStatus)
+    ? (candidateStatus as SquareIntegrationErrorStatus)
+    : "unknown";
+  const candidateMessage =
+    typeof payload.message === "string"
+      ? payload.message
+      : typeof payload.error === "string"
+        ? payload.error
+        : "";
+  const message = candidateMessage.trim().slice(0, 320) || fallbackMessage;
+  return new SquareIntegrationError(status, message);
+}
+
 async function gmailIntegrationErrorFrom(error: unknown, fallbackMessage: string) {
   const payload = await readFunctionErrorPayload(error);
   const candidateStatus = typeof payload.status === "string" ? payload.status : "unknown";
@@ -250,6 +371,24 @@ export function createSupabaseRepository(): MiseRepository {
     return ((data ?? []) as PosSale[]).map(normalizePosSale);
   }
 
+  async function loadRestaurantTaskDependencyIds(restaurantId: string, taskId: string) {
+    const { data, error } = await client!
+      .from("restaurant_task_dependencies")
+      .select("restaurant_id, task_id, depends_on_task_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("task_id", taskId);
+    if (error) throw error;
+    const rows = (data ?? []) as Array<{
+      restaurant_id: string;
+      task_id: string;
+      depends_on_task_id: string;
+    }>;
+    if (rows.some((row) => row.restaurant_id !== restaurantId || row.task_id !== taskId)) {
+      throw new Error("Restaurant task dependencies failed restaurant scope validation.");
+    }
+    return rows.map((row) => row.depends_on_task_id);
+  }
+
   async function invokeOperationalWorkflow(body: Record<string, unknown>) {
     const { data, error } = await client!.functions.invoke("operational-workflows", { body });
     if (error) {
@@ -269,6 +408,20 @@ export function createSupabaseRepository(): MiseRepository {
     if (error) {
       if (isTenantAuthorizationError(error)) throwRepositoryError(error, restaurantId);
       throw await gmailIntegrationErrorFrom(error, fallbackMessage);
+    }
+    return data as unknown;
+  }
+
+  async function invokeSquareFunction(
+    functionName: "link-square" | "sync-pos-sales",
+    body: Record<string, unknown>,
+    restaurantId: string,
+    fallbackMessage: string
+  ) {
+    const { data, error } = await client!.functions.invoke(functionName, { body });
+    if (error) {
+      if (isTenantAuthorizationError(error)) throwRepositoryError(error, restaurantId);
+      throw await squareIntegrationErrorFrom(error, fallbackMessage);
     }
     return data as unknown;
   }
@@ -556,6 +709,29 @@ export function createSupabaseRepository(): MiseRepository {
         .order("item_name");
       if (error) throw error;
       return ((data ?? []) as InventoryItem[]).map(normalizeInventoryItem);
+    },
+
+    async listInventoryEvents(restaurantId, options) {
+      let query = client
+        .from("inventory_events")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("recorded_at", { ascending: false })
+        .order("sequence", { ascending: false });
+
+      if (options?.eventTypes?.length) {
+        query = query.in("event_type", options.eventTypes);
+      }
+      if (options?.since) {
+        query = query.gte("recorded_at", options.since);
+      }
+      if (options?.limit != null && Number.isFinite(options.limit) && options.limit >= 0) {
+        query = query.limit(options.limit);
+      }
+
+      const { data, error } = await query;
+      if (error) throwRepositoryError(error, restaurantId);
+      return (data ?? []).map((entry) => normalizeInventoryEventRecord(entry));
     },
 
     async recordInventoryEvent(input) {
@@ -921,6 +1097,38 @@ export function createSupabaseRepository(): MiseRepository {
       return ((data ?? []) as SupplierOrder[]).map(normalizeSupplierOrder);
     },
 
+    async fetchSupplierDeliveryHistory(restaurantId) {
+      const { data: deliveryRows, error: deliveryError } = await client
+        .from("supplier_deliveries")
+        .select("id,restaurant_id,supplier_order_id,status,received_at,notes,created_at")
+        .eq("restaurant_id", restaurantId)
+        .order("received_at", { ascending: false })
+        .limit(100);
+      if (deliveryError) throw deliveryError;
+
+      const deliveries = ((deliveryRows ?? []) as SupplierDeliveryRecord[]).map(
+        normalizeSupplierDeliveryRecord
+      );
+      if (deliveries.length === 0) return { deliveries: [], items: [] };
+
+      const { data: itemRows, error: itemError } = await client
+        .from("supplier_delivery_items")
+        .select(
+          "id,restaurant_id,delivery_id,inventory_item_id,ordered_quantity,received_quantity,damaged_quantity,missing_quantity,canonical_unit,discrepancy_reason"
+        )
+        .eq("restaurant_id", restaurantId)
+        .in("delivery_id", deliveries.map((delivery) => delivery.id))
+        .limit(1000);
+      if (itemError) throw itemError;
+
+      return {
+        deliveries,
+        items: ((itemRows ?? []) as SupplierDeliveryItemRecord[]).map(
+          normalizeSupplierDeliveryItemRecord
+        )
+      };
+    },
+
     async fetchSupplierOrder(restaurantId, orderId) {
       const { data, error } = await client
         .from("supplier_orders")
@@ -972,6 +1180,47 @@ export function createSupabaseRepository(): MiseRepository {
         "Could not disconnect Gmail."
       );
       return parseGmailDisconnectWorkflowResponse(data);
+    },
+
+    async connectRestaurantSquare(restaurantId) {
+      const data = await invokeSquareFunction(
+        "link-square",
+        { restaurantId, action: "connect" },
+        restaurantId,
+        "Could not start Square authorization."
+      );
+      return parseSquareConnectionWorkflowResponse(data);
+    },
+
+    async disconnectRestaurantSquare(restaurantId) {
+      const data = await invokeSquareFunction(
+        "link-square",
+        { restaurantId, action: "disconnect" },
+        restaurantId,
+        "Could not disconnect Square."
+      );
+      return parseSquareDisconnectWorkflowResponse(data);
+    },
+
+    async syncSquarePosSales(restaurantId, from, to) {
+      const data = await invokeSquareFunction(
+        "sync-pos-sales",
+        { restaurantId, provider: "square", from, to },
+        restaurantId,
+        "Could not sync Square sales."
+      );
+      return parseSquareSyncWorkflowResponse(data);
+    },
+
+    async fetchSquarePosIntegration(restaurantId) {
+      const { data, error } = await client
+        .from("pos_integrations")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("provider", "square")
+        .maybeSingle();
+      if (error) throw error;
+      return data ? normalizePosIntegration(data as PosIntegration) : null;
     },
 
     async sendSupplierOrderEmail(restaurantId, orderId) {
@@ -1108,6 +1357,279 @@ export function createSupabaseRepository(): MiseRepository {
         provider,
         connectedAt: typeof data?.created_at === "string" ? data.created_at : null,
         label: provider ? `${provider} demo connected` : "Not connected"
+      };
+    },
+
+    async listActivityEvents(restaurantId, options = {}) {
+      let query = client
+        .from("activity_events")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("occurred_at", { ascending: false })
+        .limit(options.limit ?? 100);
+      if (options.since) query = query.gte("occurred_at", options.since);
+      if (options.until) query = query.lte("occurred_at", options.until);
+      if (options.attentionOnly) query = query.eq("requires_attention", true);
+      const { data, error } = await query;
+      if (error) throw error;
+      let events = ((data ?? []) as PersistedActivityEventRow[]).map(activityEventFromPersistedRow);
+      if (events.some((event) => event.restaurantId !== restaurantId)) {
+        throw new Error("Activity events failed restaurant scope validation.");
+      }
+      if (options.filter && options.filter !== "all") {
+        events = filterActivities(events, options.filter as ActivityFeedFilter);
+      }
+      return events;
+    },
+
+    async listRestaurantTasks(restaurantId) {
+      const [tasksResult, dependenciesResult] = await Promise.all([
+        client
+          .from("restaurant_tasks")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .order("created_at", { ascending: false }),
+        client
+          .from("restaurant_task_dependencies")
+          .select("restaurant_id, task_id, depends_on_task_id")
+          .eq("restaurant_id", restaurantId)
+      ]);
+      if (tasksResult.error) throw tasksResult.error;
+      if (dependenciesResult.error) throw dependenciesResult.error;
+      const dependenciesByTask = new Map<string, string[]>();
+      for (const row of (dependenciesResult.data ?? []) as Array<{
+        restaurant_id: string;
+        task_id: string;
+        depends_on_task_id: string;
+      }>) {
+        if (row.restaurant_id !== restaurantId) {
+          throw new Error("Restaurant task dependencies failed restaurant scope validation.");
+        }
+        dependenciesByTask.set(row.task_id, [
+          ...(dependenciesByTask.get(row.task_id) ?? []),
+          row.depends_on_task_id
+        ]);
+      }
+      const tasks = ((tasksResult.data ?? []) as PersistedRestaurantTaskRow[]).map((row) =>
+        restaurantTaskFromPersistedRow(row, dependenciesByTask.get(row.id) ?? [])
+      );
+      if (tasks.some((task) => task.restaurantId !== restaurantId)) {
+        throw new Error("Restaurant tasks failed restaurant scope validation.");
+      }
+      return tasks;
+    },
+
+    async createRestaurantTask(input) {
+      const { data, error } = await client.rpc(
+        "create_restaurant_task",
+        createRestaurantTaskRpcArguments(input)
+      );
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantTaskRow | null;
+      if (!row) throw new Error("Task creation returned an empty response.");
+      const dependencyIds = await loadRestaurantTaskDependencyIds(input.restaurantId.trim(), row.id);
+      const task = restaurantTaskFromPersistedRow(row, dependencyIds);
+      if (task.restaurantId !== input.restaurantId.trim()) {
+        throw new Error("Restaurant task failed restaurant scope validation.");
+      }
+      return task;
+    },
+
+    async completeRestaurantTask(input) {
+      const { data, error } = await client.rpc(
+        "complete_restaurant_task",
+        completeRestaurantTaskRpcArguments(input)
+      );
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantTaskRow | null;
+      if (!row) throw new Error("Task completion returned an empty response.");
+      const dependencyIds = await loadRestaurantTaskDependencyIds(input.restaurantId.trim(), row.id);
+      const task = restaurantTaskFromPersistedRow(row, dependencyIds);
+      if (task.restaurantId !== input.restaurantId.trim()) {
+        throw new Error("Restaurant task failed restaurant scope validation.");
+      }
+      return task;
+    },
+
+    async reopenRestaurantTask(restaurantId, taskId) {
+      const { data, error } = await client.rpc("reopen_restaurant_task", {
+        p_restaurant_id: restaurantId,
+        p_task_id: taskId
+      });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantTaskRow | null;
+      if (!row) throw new Error("Task reopen returned an empty response.");
+      const dependencyIds = await loadRestaurantTaskDependencyIds(restaurantId, row.id);
+      const task = restaurantTaskFromPersistedRow(row, dependencyIds);
+      if (task.restaurantId !== restaurantId) {
+        throw new Error("Restaurant task failed restaurant scope validation.");
+      }
+      return task;
+    },
+
+    async listMiseActions(restaurantId, options = {}) {
+      let query = client
+        .from("mise_actions")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("created_at", { ascending: false })
+        .limit(options.limit ?? 100);
+      if (options.status === "awaiting_decision") {
+        query = query.in("status", ["prepared", "waiting_for_approval"]);
+      } else if (options.status) {
+        query = query.eq("status", options.status);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      const actions = ((data ?? []) as PersistedMiseActionRow[]).map(miseActionFromPersistedRow);
+      if (actions.some((action) => action.restaurantId !== restaurantId)) {
+        throw new Error("Mise actions failed restaurant scope validation.");
+      }
+      return actions;
+    },
+
+    async decideMiseAction(restaurantId, actionId, decision) {
+      const { data, error } = await client.rpc("decide_mise_action", {
+        p_restaurant_id: restaurantId,
+        p_action_id: actionId,
+        p_decision: decision
+      });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as PersistedMiseActionRow | null;
+      if (!row) throw new Error("Action decision returned an empty response.");
+      const action = miseActionFromPersistedRow(row);
+      if (action.restaurantId !== restaurantId) {
+        throw new Error("Mise action failed restaurant scope validation.");
+      }
+      return action;
+    },
+
+    async listRestaurantMemories(restaurantId, options = {}) {
+      let query = client
+        .from("restaurant_memories")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("last_updated_at", { ascending: false })
+        .limit(options.limit ?? 100);
+      if (options.status === "actionable") {
+        query = query.in("status", ["active", "confirmed", "corrected"]);
+      } else if (options.status) {
+        query = query.eq("status", options.status);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      const memories = ((data ?? []) as PersistedRestaurantMemoryRow[]).map(
+        restaurantMemoryFromPersistedRow
+      );
+      if (memories.some((memory) => memory.restaurantId !== restaurantId)) {
+        throw new Error("Restaurant memories failed restaurant scope validation.");
+      }
+      return memories;
+    },
+
+    async updateRestaurantMemoryDecision(restaurantId, memoryId, decision, correction) {
+      const allowed: Array<Exclude<RestaurantMemoryStatus, "active">> = [
+        "confirmed",
+        "corrected",
+        "dismissed",
+        "forgotten",
+        "disabled"
+      ];
+      if (!allowed.includes(decision)) {
+        throw new Error("Unsupported memory decision");
+      }
+      const { data, error } = await client.rpc("update_restaurant_memory", {
+        p_restaurant_id: restaurantId,
+        p_memory_id: memoryId,
+        p_decision: decision,
+        p_correction: correction ?? null
+      });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantMemoryRow | null;
+      if (!row) throw new Error("Memory decision returned an empty response.");
+      const memory = restaurantMemoryFromPersistedRow(row);
+      if (memory.restaurantId !== restaurantId) {
+        throw new Error("Restaurant memory failed restaurant scope validation.");
+      }
+      return memory;
+    },
+
+    async listAutonomyRules(restaurantId) {
+      const { data, error } = await client
+        .from("restaurant_autonomy_rules")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      const rules = ((data ?? []) as PersistedAutonomyRuleRow[]).map(autonomyRuleFromPersistedRow);
+      if (rules.some((rule) => rule.restaurantId !== restaurantId)) {
+        throw new Error("Autonomy rules failed restaurant scope validation.");
+      }
+      return rules;
+    },
+
+    async upsertAutonomyRule(restaurantId, input) {
+      const { data, error } = await client.rpc("upsert_restaurant_autonomy_rule", {
+        p_restaurant_id: restaurantId,
+        p_action_type: input.actionType,
+        p_operational_category: input.operationalCategory,
+        p_maximum_autonomy_level: input.maximumAutonomyLevel,
+        p_requires_approval: input.requiresApproval,
+        p_enabled: input.enabled,
+        p_spend_limit_cents: input.spendLimitCents ?? null,
+        p_supplier_name: input.supplierName ?? null,
+        p_communication_type: input.communicationType ?? null,
+        p_allowed_start_time: input.allowedStartTime ?? null,
+        p_allowed_end_time: input.allowedEndTime ?? null
+      });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as PersistedAutonomyRuleRow | null;
+      if (!row) throw new Error("Autonomy rule upsert returned an empty response.");
+      const rule = autonomyRuleFromPersistedRow(row);
+      if (rule.restaurantId !== restaurantId) {
+        throw new Error("Autonomy rule failed restaurant scope validation.");
+      }
+      return rule;
+    },
+
+    async recordSupplierOrderDelivery(restaurantId, input): Promise<SupplierDeliveryRecordResult> {
+      const { data, error } = await client.rpc("record_supplier_delivery", {
+        p_restaurant_id: restaurantId,
+        p_supplier_order_id: input.supplierOrderId,
+        p_client_delivery_id: input.clientDeliveryId,
+        p_received_at: input.receivedAt,
+        p_lines: input.lines.map((line) => ({
+          inventoryItemId: line.inventoryItemId,
+          orderedQuantity: line.orderedQuantity ?? null,
+          receivedQuantity: line.receivedQuantity,
+          damagedQuantity: line.damagedQuantity ?? 0,
+          missingQuantity: line.missingQuantity ?? 0,
+          canonicalUnit: line.canonicalUnit,
+          substitutionInventoryItemId: line.substitutionInventoryItemId ?? null,
+          unitPrice: line.unitPrice ?? null,
+          discrepancyReason: line.discrepancyReason ?? null
+        })),
+        p_invoice_total: input.invoiceTotal ?? null,
+        p_notes: input.notes ?? null
+      });
+      if (error) throw error;
+      const payload = (Array.isArray(data) ? data[0] : data) as {
+        outcome?: "applied" | "already_applied";
+        status?: SupplierDeliveryRecordResult["status"];
+        delivery?: { id?: string };
+        supplierOrderId?: string;
+        outcomeId?: string | null;
+      } | null;
+      const deliveryId = payload?.delivery?.id;
+      if (!payload?.outcome || !deliveryId) {
+        throw new Error("Supplier delivery returned an invalid response.");
+      }
+      return {
+        outcome: payload.outcome,
+        status: payload.status ?? "unverified",
+        deliveryId,
+        supplierOrderId: input.supplierOrderId,
+        outcomeId: payload.outcomeId ?? null
       };
     }
   };

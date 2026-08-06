@@ -128,6 +128,16 @@ test("default demo presents a balanced kitchen, a real reorder, and healthy sale
     [4, 1, 1, 1]
   );
   assert.equal(inventory.wellStockedPercent, 57);
+  assert.equal(
+    outlooks.some(
+      ({ prediction }) =>
+        prediction.projectedStatus === "Good" &&
+        (prediction.coverageLabel === "May run out today" ||
+          prediction.coverageLabel === "May run low tomorrow")
+    ),
+    false,
+    "a Good status must never contradict its coverage warning"
+  );
 
   const recommendations = buildRecommendationInserts(
     DEMO_RESTAURANT_ID,
@@ -158,7 +168,10 @@ test("default demo presents a balanced kitchen, a real reorder, and healthy sale
   assert.ok(movement >= 0.07 && movement <= 0.1, `expected +7% to +10%, received ${movement}`);
 
   assert.deepEqual(
-    state.supplierOrders.map((order) => order.delivery_date).sort(),
+    state.supplierOrders
+      .filter((order) => order.status !== "completed")
+      .map((order) => order.delivery_date)
+      .sort(),
     [operatingDate, nextDateKeyInTimeZone(now, restaurant.timezone)].sort()
   );
 });
