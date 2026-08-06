@@ -157,13 +157,14 @@ export function Screen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: colors.canvas
   },
   appBar: {
     // design:static locks this to 56 — keep in sync with density.appBar
     height: 56,
-    borderBottomWidth: 0,
-    borderBottomColor: "transparent",
+    // A white bar over the warm canvas needs a hairline to read as chrome.
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
     backgroundColor: colors.surface
   },
   topBar: {
@@ -211,7 +212,7 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-    backgroundColor: colors.background
+    backgroundColor: colors.canvas
   },
   scrollContent: {
     paddingBottom: 72

@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     ...conceptTypography.body,
     color: colors.text,
-    backgroundColor: colors.background
+    backgroundColor: colors.surface
   },
   actions: {
     flexDirection: "row",

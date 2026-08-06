@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surfaceWarm,
+    backgroundColor: colors.surface,
     padding: 14,
     gap: 6
   },

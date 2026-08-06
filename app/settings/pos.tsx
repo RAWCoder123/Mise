@@ -488,7 +488,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.background
+    backgroundColor: colors.surface
   },
   providerCopy: { flex: 1, gap: 2 },
   providerTitle: { ...typography.cardTitle, color: colors.text },

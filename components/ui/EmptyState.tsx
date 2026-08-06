@@ -38,13 +38,13 @@ const styles = StyleSheet.create({
   compact: {
     alignItems: "center",
     borderStyle: "dashed",
-    backgroundColor: colors.background,
+    backgroundColor: colors.canvas,
     paddingVertical: 28
   },
   framed: {
     alignItems: "center",
     borderStyle: "dashed",
-    backgroundColor: colors.background
+    backgroundColor: colors.canvas
   },
   illustration: {
     alignSelf: "center",

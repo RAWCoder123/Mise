@@ -8,6 +8,12 @@
 export const colors = {
   background: "#FFFFFF",
   surface: "#FFFFFF",
+  /**
+   * Warm page canvas behind white cards. `background` stays pure white for
+   * card and input surfaces; `canvas` is what a screen sits on, which is what
+   * AGENTS.md means by "warm neutral background".
+   */
+  canvas: "#FAF8F5",
   surfaceWarm: "#FAF8F5",
   panel: "#F7F7F5",
   panelStrong: "#EEEEEC",
@@ -76,7 +82,7 @@ export const inventoryStatusSoftColors = {
 export const radii = {
   sm: 10,
   md: 12,
-  lg: 14,
+  lg: 16,
   xl: 18
 } as const;
 
@@ -168,6 +174,18 @@ export const typography = {
 
 /** Reference-scale type for the eight-screen concept surfaces. */
 export const conceptTypography = {
+  /**
+   * Fraunces display voice for narrative moments only — the Home greeting,
+   * empty states, and operational heroes. Chrome, section labels, and every
+   * number stay Inter. Fraunces carries no CJK glyphs, so zh-Hans falls back
+   * to the system sans here; keep usage short and clamped.
+   */
+  displayTitle: {
+    fontFamily: fontFamilies.display,
+    fontSize: 24,
+    lineHeight: 29,
+    letterSpacing: -0.4
+  },
   screenTitle: {
     fontFamily: fontFamilies.bold,
     fontSize: 20,

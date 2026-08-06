@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.borderStrong,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",

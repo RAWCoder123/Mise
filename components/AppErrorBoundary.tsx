@@ -89,7 +89,7 @@ function resolveBoundaryLocale(): AppLocale {
 const styles = StyleSheet.create({
   shell: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.canvas,
     padding: 20,
     justifyContent: "center"
   },

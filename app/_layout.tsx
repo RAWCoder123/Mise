@@ -43,7 +43,7 @@ export default function RootLayout() {
       <AppErrorBoundary>
         <MiseSessionProvider>
           <LocaleProvider hostedPreferenceAdapter={hostedLocalePreferenceAdapter}>
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="inventory/[id]" />
@@ -79,7 +79,7 @@ function useWebAppStyles() {
     style.setAttribute("data-mise-web-styles", "true");
     style.textContent = `
       html, body, #root {
-        background: ${colors.background};
+        background: ${colors.canvas};
         font-family: ${fontFamilies.body}, Inter, system-ui, sans-serif;
       }
 

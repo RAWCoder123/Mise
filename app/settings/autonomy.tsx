@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     ...conceptTypography.body,
     color: colors.text,
-    backgroundColor: colors.background
+    backgroundColor: colors.surface
   },
   actions: {
     flexDirection: "row",
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     justifyContent: "center"
   },
   chipText: {

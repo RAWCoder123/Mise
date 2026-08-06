@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderRadius: 8,
     paddingHorizontal: 14,
     color: colors.text,

@@ -779,7 +779,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     padding: 12
   },
   countLabel: {
@@ -820,7 +820,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: 12,
-    backgroundColor: colors.background
+    backgroundColor: colors.surface
   },
   factValue: { color: colors.text, fontSize: 22, fontWeight: "700" },
   factLabel: { color: colors.muted, fontSize: 13, fontWeight: "600", marginTop: 4 },
@@ -844,7 +844,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderRadius: 12,
     paddingHorizontal: 14,
     color: colors.text,
@@ -861,7 +861,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     paddingHorizontal: 12,
     paddingVertical: 10,
     flexDirection: "row",
