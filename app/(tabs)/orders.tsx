@@ -230,9 +230,8 @@ export default function OrdersScreen() {
       return [
         {
           value: "drafts",
-          label: draftOrders.length > 0
-            ? `${draftsLabel} (${formatNumber(draftOrders.length)})`
-            : draftsLabel,
+          label: draftsLabel,
+          badge: draftOrders.length > 0 ? formatNumber(draftOrders.length) : undefined,
           accessibilityLabel: t("orders.lane.optionAccessibility", {
             lane: draftsLabel,
             count: formatNumber(draftOrders.length)
@@ -240,9 +239,11 @@ export default function OrdersScreen() {
         },
         {
           value: "review",
-          label: visibleRecommendations.length > 0
-            ? `${reviewLabel} (${formatNumber(visibleRecommendations.length)})`
-            : reviewLabel,
+          label: reviewLabel,
+          badge:
+            visibleRecommendations.length > 0
+              ? formatNumber(visibleRecommendations.length)
+              : undefined,
           accessibilityLabel: t("orders.lane.optionAccessibility", {
             lane: reviewLabel,
             count: formatNumber(visibleRecommendations.length)
@@ -912,16 +913,7 @@ const styles = StyleSheet.create({
   },
   pendingBody: {
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 15
-  },
-  simNote: {
-    color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 4
+    ...conceptTypography.subtitle
   },
   laneContent: {
     gap: 8
@@ -962,9 +954,7 @@ const styles = StyleSheet.create({
   },
   emailBody: {
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 13,
-    lineHeight: 18,
+    ...conceptTypography.subtitle,
     marginTop: 2
   },
   emailSecurity: {
@@ -1005,15 +995,11 @@ const styles = StyleSheet.create({
   },
   supplierName: {
     color: colors.text,
-    fontFamily: typography.families.semibold,
-    fontSize: 13,
-    lineHeight: 17
+    ...conceptTypography.rowTitle
   },
   supplierMeta: {
     color: colors.muted,
-    fontFamily: typography.families.body,
-    fontSize: 11,
-    lineHeight: 15,
+    ...conceptTypography.subtitle,
     marginTop: 2
   },
   undoToast: {

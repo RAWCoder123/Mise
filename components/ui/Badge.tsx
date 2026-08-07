@@ -4,10 +4,21 @@ import { colors, conceptTypography } from "../../constants/theme";
 
 export type BadgeTone = "neutral" | "success" | "caution" | "warning" | "danger";
 
-export function Badge({ label, tone = "neutral" }: { label: string; tone?: BadgeTone }) {
+export function Badge({
+  label,
+  tone = "neutral",
+  uppercase = false
+}: {
+  label: string;
+  tone?: BadgeTone;
+  /** Status pills the concept sets in caps, e.g. DRAFT / AWAITING APPROVAL. */
+  uppercase?: boolean;
+}) {
   return (
     <View style={[styles.base, styles[tone]]}>
-      <Text style={[styles.label, labelToneStyles[tone]]}>{label}</Text>
+      <Text style={[styles.label, labelToneStyles[tone], uppercase && styles.uppercaseLabel]}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -37,6 +48,10 @@ const styles = StyleSheet.create({
   },
   label: {
     ...conceptTypography.micro
+  },
+  uppercaseLabel: {
+    textTransform: "uppercase",
+    letterSpacing: 0.5
   },
   neutralLabel: { color: colors.muted },
   successLabel: { color: colors.success },

@@ -1,7 +1,7 @@
 import { CheckCircle2, LockKeyhole, Send } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, conceptTypography, fontFamilies, radii } from "../constants/theme";
+import { colors, conceptTypography, radii } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { presentSupportedSupplierOrderStatus } from "../services/domain/operationalStatus";
 import type { SupplierOrder } from "../types/mise";
@@ -85,7 +85,7 @@ export function SupplierDraftCard({
             <Text style={styles.supplierName} numberOfLines={1}>
               {order.supplier_name}
             </Text>
-            <Badge label={statusLabel} tone={statusTone} />
+            <Badge label={statusLabel} tone={statusTone} uppercase />
           </View>
           <Text style={styles.status}>{deliveryLabel}</Text>
         </View>
@@ -199,9 +199,7 @@ const styles = StyleSheet.create({
     gap: 8
   },
   cardDraft: {
-    borderColor: colors.border,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.accent
+    borderColor: colors.borderStrong
   },
   header: {
     minHeight: 40,
@@ -225,24 +223,16 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     color: colors.text,
-    ...conceptTypography.rowTitle,
-    fontSize: 14,
-    lineHeight: 18
+    ...conceptTypography.cardTitle
   },
   status: {
     color: colors.muted,
-    ...conceptTypography.caption,
-    fontFamily: fontFamilies.body,
-    fontSize: 10,
-    lineHeight: 13,
+    ...conceptTypography.subtitle,
     marginTop: 1
   },
   total: {
     color: colors.text,
-    fontFamily: fontFamilies.bold,
-    fontSize: 18,
-    lineHeight: 22,
-    letterSpacing: -0.3,
+    ...conceptTypography.metricValue,
     textAlign: "right"
   },
   lines: {
@@ -254,7 +244,7 @@ const styles = StyleSheet.create({
     marginBottom: 2
   },
   line: {
-    minHeight: 22,
+    minHeight: 20,
     flexDirection: "row",
     alignItems: "center",
     gap: 8
@@ -263,24 +253,18 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     color: colors.text,
-    fontFamily: fontFamilies.body,
-    fontSize: 12,
-    lineHeight: 16
+    ...conceptTypography.body
   },
   lineQuantity: {
-    width: 66,
+    width: 58,
     color: colors.muted,
-    fontFamily: fontFamilies.body,
-    fontSize: 11,
-    lineHeight: 15,
+    ...conceptTypography.caption,
     textAlign: "right"
   },
   linePrice: {
-    width: 54,
-    color: colors.muted,
-    fontFamily: fontFamilies.body,
-    fontSize: 11,
-    lineHeight: 15,
+    width: 56,
+    color: colors.text,
+    ...conceptTypography.caption,
     textAlign: "right"
   },
   moreLines: {
@@ -299,7 +283,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    minHeight: 38
+    minHeight: 36
   },
   copyGhost: {
     alignSelf: "center",
