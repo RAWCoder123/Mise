@@ -47,28 +47,28 @@ export default function MoreScreen() {
             compact
             label={t("more.shortcut.createTask")}
             accessibilityLabel={t("more.shortcut.createTaskHint")}
-            icon={<ClipboardList size={20} color={colors.accent} strokeWidth={1.9} />}
+            icon={<ClipboardList size={20} color={colors.text} strokeWidth={1.8} />}
             onPress={() => router.push("/more/create-task")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.logDelivery")}
             accessibilityLabel={t("more.shortcut.logDeliveryHint")}
-            icon={<Truck size={20} color={colors.accent} strokeWidth={1.9} />}
+            icon={<Truck size={20} color={colors.text} strokeWidth={1.8} />}
             onPress={() => router.push("/more/log-delivery")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.scanItem")}
             accessibilityLabel={t("more.shortcut.scanItemHint")}
-            icon={<ScanLine size={20} color={colors.accent} strokeWidth={1.9} />}
+            icon={<ScanLine size={20} color={colors.text} strokeWidth={1.8} />}
             onPress={() => router.push("/more/scan-item")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.dailyReport")}
             accessibilityLabel={t("more.shortcut.dailyReportHint")}
-            icon={<BarChart3 size={20} color={colors.accent} strokeWidth={1.9} />}
+            icon={<BarChart3 size={20} color={colors.text} strokeWidth={1.8} />}
             onPress={() => router.push("/more/daily-report")}
           />
         </ActionTileGrid>
@@ -77,28 +77,24 @@ export default function MoreScreen() {
           <OperationalRow
             density="menu"
             title={t("more.row.dailyBrief.title")}
-            subtitle={t("more.row.dailyBrief.body")}
             icon={<Sunrise size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/more/daily-brief" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.waste.title")}
-            subtitle={t("more.row.waste.body")}
             icon={<PackageMinus size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/more/waste" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.activity.title")}
-            subtitle={t("more.row.activity.body")}
             icon={<Activity size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/more/activity" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.memory.title")}
-            subtitle={t("more.row.memory.body")}
             icon={<Brain size={20} color={colors.text} strokeWidth={1.9} />}
             onPress={() => router.push("/more/restaurant-memory" as never)}
           />
@@ -135,8 +131,7 @@ export default function MoreScreen() {
           <OperationalRow
             density="menu"
             title={t("more.row.help.title")}
-            subtitle={t("more.row.help.body")}
-            icon={<HelpCircle size={17} color={colors.muted} strokeWidth={1.9} />}
+            icon={<HelpCircle size={20} color={colors.text} strokeWidth={1.8} />}
             onPress={() => router.push("/settings/support" as never)}
           />
         </View>
