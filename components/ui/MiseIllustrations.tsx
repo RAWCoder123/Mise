@@ -167,3 +167,220 @@ export function GmailMark({ size = 34 }: { size?: number }) {
     </Svg>
   );
 }
+
+/* ---------------------------------------------------------------------------
+ * Item glyphs.
+ *
+ * A compact companion set to the narrative illustrations above. Those are
+ * 96x86 scenes with ground shadows, which read as clutter at row scale; these
+ * are 24x24, flat-filled, no shadow, with a thinner outline so the silhouette
+ * still holds at 16px. Colour is the whole point — a green avocado and a red
+ * tomato are what make an inventory list feel like food rather than rows.
+ *
+ * This file is one of three on the design:static hardcoded-hex allowlist, so
+ * literal produce colours are permitted here and nowhere else.
+ * ------------------------------------------------------------------------ */
+
+const glyphOutline = colors.text;
+const glyphStroke = "1.3";
+
+/** Shared props for every item glyph. */
+export type ItemGlyphProps = { size?: number };
+
+function GlyphSvg({ size, children }: { size: number; children: React.ReactNode }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      {children}
+    </Svg>
+  );
+}
+
+export function TomatoGlyph({ size = 20 }: ItemGlyphProps) {
+  return (
+    <GlyphSvg size={size}>
+      <Circle cx="12" cy="14" r="7.2" fill="#E8453C" stroke={glyphOutline} strokeWidth={glyphStroke} />
+      <Path
+        d="M12 6.8c-2.6-.6-4-1.9-4.3-3.4 2 .1 3.7 1 4.3 3.4Z"
+        fill="#3F8F4F"
+        stroke={glyphOutline}
+        strokeWidth="1"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M12 6.8c2.5-.7 3.6-2 3.9-3.4-2 .1-3.4 1-3.9 3.4Z"
+        fill="#3F8F4F"
+        stroke={glyphOutline}
+        strokeWidth="1"
+        strokeLinejoin="round"
+      />
+      <Path d="M12 6.6V4.4" stroke={glyphOutline} strokeWidth="1.2" strokeLinecap="round" />
+    </GlyphSvg>
+  );
+}
+
+export function AvocadoGlyph({ size = 20 }: ItemGlyphProps) {
+  return (
+    <GlyphSvg size={size}>
+      <Path
+        d="M12 3.2c3.3 0 5.6 3.4 5.6 7.4 0 5-2.4 9.8-5.6 9.8s-5.6-4.8-5.6-9.8c0-4 2.3-7.4 5.6-7.4Z"
+        fill="#5C9A3C"
+        stroke={glyphOutline}
+        strokeWidth={glyphStroke}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M12 6.6c2 0 3.4 2.3 3.4 5.2 0 3.6-1.5 6.6-3.4 6.6s-3.4-3-3.4-6.6c0-2.9 1.4-5.2 3.4-5.2Z"
+        fill="#CBE0A4"
+      />
+      <Circle cx="12" cy="13.2" r="2.5" fill="#8A5A2B" stroke={glyphOutline} strokeWidth="1" />
+    </GlyphSvg>
+  );
+}
+
+export function OnionGlyph({ size = 20 }: ItemGlyphProps) {
+  return (
+    <GlyphSvg size={size}>
+      <Path
+        d="M12 6.4c3.6 0 6.2 3 6.2 6.6 0 4-2.8 7-6.2 7s-6.2-3-6.2-7c0-3.6 2.6-6.6 6.2-6.6Z"
+        fill="#A87BC4"
+        stroke={glyphOutline}
+        strokeWidth={glyphStroke}
+        strokeLinejoin="round"
+      />
+      <Path d="M9.6 8.4c-.9 3-.9 6.4 0 9.6" fill="none" stroke="#6E4A88" strokeWidth="1" strokeLinecap="round" />
+      <Path d="M14.4 8.4c.9 3 .9 6.4 0 9.6" fill="none" stroke="#6E4A88" strokeWidth="1" strokeLinecap="round" />
+      <Path d="M12 6.3 10.4 3.3M12 6.3l1.7-3" stroke="#3F8F4F" strokeWidth="1.3" strokeLinecap="round" />
+    </GlyphSvg>
+  );
+}
+
+export function MeatGlyph({ size = 20 }: ItemGlyphProps) {
+  // A cut with a bone nub reads as meat at 20px; the earlier organic blob did
+  // not survive the scale.
+  return (
+    <GlyphSvg size={size}>
+      <Path
+        d="M9.4 5.6c4.2 0 7.4 2.9 7.4 6.6s-3.2 6.6-7.4 6.6c-2.5 0-4.4-1.2-4.4-3 0-1 .5-1.8 1.3-2.4-.8-.5-1.3-1.3-1.3-2.2 0-.9.5-1.7 1.3-2.2-.8-.6-1.3-1.4-1.3-2.4 0-.9.9-1 4.4-1Z"
+        fill="#D9767A"
+        stroke={glyphOutline}
+        strokeWidth={glyphStroke}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M11 9c1.8 0 3.2 1.3 3.2 3.2S12.8 15.4 11 15.4"
+        fill="none"
+        stroke="#F6D2D4"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <Circle cx="18.4" cy="9.6" r="2.1" fill="#FFFFFF" stroke={glyphOutline} strokeWidth="1" />
+      <Circle cx="18.4" cy="14.6" r="2.1" fill="#FFFFFF" stroke={glyphOutline} strokeWidth="1" />
+    </GlyphSvg>
+  );
+}
+
+export function LeafyGreenGlyph({ size = 20 }: ItemGlyphProps) {
+  return (
+    <GlyphSvg size={size}>
+      <Path
+        d="M12 20c-4.4 0-7.4-3-7.4-7 0-4.4 3.6-8.2 7.4-9.6 3.8 1.4 7.4 5.2 7.4 9.6 0 4-3 7-7.4 7Z"
+        fill="#4E9B4A"
+        stroke={glyphOutline}
+        strokeWidth={glyphStroke}
+        strokeLinejoin="round"
+      />
+      <Path d="M12 5.2V19" fill="none" stroke="#2F6B39" strokeWidth="1.1" strokeLinecap="round" />
+      <Path
+        d="M12 9.6 8.6 7.4M12 13.4l-3.8-2.2M12 9.6l3.4-2.2M12 13.4l3.8-2.2"
+        fill="none"
+        stroke="#2F6B39"
+        strokeWidth=".9"
+        strokeLinecap="round"
+      />
+    </GlyphSvg>
+  );
+}
+
+export function DairyGlyph({ size = 20 }: ItemGlyphProps) {
+  return (
+    <GlyphSvg size={size}>
+      <Path
+        d="M8.6 3.4h6.8v2.4l2 3.4V20a1 1 0 0 1-1 1H7.6a1 1 0 0 1-1-1V9.2l2-3.4V3.4Z"
+        fill="#F2F5FA"
+        stroke={glyphOutline}
+        strokeWidth={glyphStroke}
+        strokeLinejoin="round"
+      />
+      <Path d="M6.6 12.4h10.8v4.2H6.6z" fill="#7FA8DC" />
+      <Path d="M8.6 5.8h6.8" fill="none" stroke={glyphOutline} strokeWidth="1" strokeLinecap="round" />
+    </GlyphSvg>
+  );
+}
+
+export function GrainGlyph({ size = 20 }: ItemGlyphProps) {
+  return (
+    <GlyphSvg size={size}>
+      <Path d="M12 20.4V7.6" fill="none" stroke="#B07A2B" strokeWidth="1.3" strokeLinecap="round" />
+      <Path
+        d="M12 8.2c-1.6-.7-2.5-2-2.6-3.6 1.6.2 2.6 1.4 2.6 3.6ZM12 8.2c1.6-.7 2.5-2 2.6-3.6-1.6.2-2.6 1.4-2.6 3.6ZM12 12.4c-1.6-.7-2.5-2-2.6-3.6 1.6.2 2.6 1.4 2.6 3.6ZM12 12.4c1.6-.7 2.5-2 2.6-3.6-1.6.2-2.6 1.4-2.6 3.6ZM12 16.6c-1.6-.7-2.5-2-2.6-3.6 1.6.2 2.6 1.4 2.6 3.6ZM12 16.6c1.6-.7 2.5-2 2.6-3.6-1.6.2-2.6 1.4-2.6 3.6Z"
+        fill="#E0B15C"
+        stroke={glyphOutline}
+        strokeWidth=".9"
+        strokeLinejoin="round"
+      />
+    </GlyphSvg>
+  );
+}
+
+export function CitrusGlyph({ size = 20 }: ItemGlyphProps) {
+  return (
+    <GlyphSvg size={size}>
+      <Circle cx="12" cy="13" r="7.4" fill="#F0B429" stroke={glyphOutline} strokeWidth={glyphStroke} />
+      <Path
+        d="M12 5.6V20.4M4.6 13h14.8M6.8 7.8l10.4 10.4M17.2 7.8 6.8 18.2"
+        fill="none"
+        stroke="#FDF0CE"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+      <Path
+        d="M12 5.6c-.4-1.6.3-2.8 1.8-3.4.3 1.7-.3 2.9-1.8 3.4Z"
+        fill="#3F8F4F"
+        stroke={glyphOutline}
+        strokeWidth=".9"
+        strokeLinejoin="round"
+      />
+    </GlyphSvg>
+  );
+}
+
+export function OilGlyph({ size = 20 }: ItemGlyphProps) {
+  return (
+    <GlyphSvg size={size}>
+      <Path
+        d="M10.4 2.8h3.2v2.6l2.8 3.6V20a1 1 0 0 1-1 1H8.6a1 1 0 0 1-1-1V9l2.8-3.6V2.8Z"
+        fill="#EAF0DC"
+        stroke={glyphOutline}
+        strokeWidth={glyphStroke}
+        strokeLinejoin="round"
+      />
+      <Path d="M7.6 12.6h8.8V19H7.6z" fill="#9CB84A" />
+      <Circle cx="12" cy="15.8" r="1.5" fill="#EAF0DC" stroke={glyphOutline} strokeWidth=".9" />
+    </GlyphSvg>
+  );
+}
+
+export function PantryBoxGlyph({ size = 20 }: ItemGlyphProps) {
+  return (
+    <GlyphSvg size={size}>
+      <Path
+        d="M4.4 8.2 12 4.6l7.6 3.6v8.2L12 20l-7.6-3.6V8.2Z"
+        fill="#E8DFD2"
+        stroke={glyphOutline}
+        strokeWidth={glyphStroke}
+        strokeLinejoin="round"
+      />
+      <Path d="M4.4 8.2 12 11.8l7.6-3.6M12 11.8V20" fill="none" stroke={glyphOutline} strokeWidth="1" />
+    </GlyphSvg>
+  );
+}

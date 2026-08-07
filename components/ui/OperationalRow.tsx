@@ -24,6 +24,8 @@ interface OperationalRowProps {
   subtitle?: string;
   icon: ReactNode;
   iconTone?: IconBadgeTone;
+  /** Replaces the IconBadge wrapper entirely — used for item glyphs. */
+  leading?: ReactNode;
   value?: string;
   meta?: string;
   valueTone?: RowSemanticTone;
@@ -46,6 +48,7 @@ export function OperationalRow({
   subtitle,
   icon,
   iconTone = "neutral",
+  leading,
   value,
   meta,
   valueTone = "neutral",
@@ -89,9 +92,11 @@ export function OperationalRow({
           isActionable && scaleStyle
         ]}
       >
-        <IconBadge tone={isMenu ? "neutral" : iconTone} size={iconSize}>
-          {icon}
-        </IconBadge>
+        {leading ?? (
+          <IconBadge tone={isMenu ? "neutral" : iconTone} size={iconSize}>
+            {icon}
+          </IconBadge>
+        )}
         <View style={styles.copy}>
           <View style={styles.titleLine}>
             <Text style={styles.title} numberOfLines={titleLines}>

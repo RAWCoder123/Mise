@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { Beef, Droplets, Filter, LeafyGreen, Milk, Package, Search, Wheat } from "lucide-react-native";
+import {
+  Beef,
+  Droplets,
+  Filter,
+  LeafyGreen,
+  Milk,
+  Package,
+  Search,
+  ShoppingCart,
+  Wheat
+} from "lucide-react-native";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -14,6 +24,7 @@ import {
 } from "../../components/ui/InventoryHealth";
 import { InventoryHealthSummaryCard } from "../../components/ui/InventoryHealthSummaryCard";
 import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
+import { ItemGlyph } from "../../components/ui/ItemGlyph";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
@@ -242,12 +253,28 @@ export default function InventoryScreen() {
           outlooks={visibleOutlooks.filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Watch").slice(0, 3)}
           queue={visibleQueue}
         />
-        <InventoryGroup
-          title={t("inventory.group.reorder")}
-          outlooks={visibleOutlooks.filter(({ prediction }) => prediction.projectedStatus === "Low" || prediction.projectedStatus === "Critical").slice(0, 3)}
-          queue={visibleQueue}
-          onHeaderPress={() => router.push("/orders")}
-        />
+        {/* The concept shows reorder as one summary row, not a repeat of the
+            same items already listed under Low stock and Stock alerts. */}
+        {reorderCount > 0 ? (
+          <View style={styles.group}>
+            <SectionHeader title={t("inventory.group.reorder")} />
+            <View style={styles.inventoryList}>
+              <OperationalRow
+                density="operational"
+                title={t(
+                  reorderCount === 1
+                    ? "inventory.reorder.summary.one"
+                    : "inventory.reorder.summary.other",
+                  { count: formatNumber(reorderCount) }
+                )}
+                subtitle={t("inventory.reorder.basis")}
+                icon={<ShoppingCart size={18} color={colors.accentDark} strokeWidth={2.2} />}
+                iconTone="brand"
+                onPress={() => router.push("/orders")}
+              />
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.allStock}>
           <FilterRow
@@ -400,6 +427,7 @@ function InventoryListRow({
       subtitle={`${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${item.unit} · ${localized.coverage}`}
       icon={categoryIcon(item.category, statusColor)}
       iconTone={iconTone}
+      leading={<ItemGlyph itemName={item.item_name} category={item.category} size={30} />}
       badgeLabel={localized.status}
       badgeTone={badgeTone}
       accessibilityLabel={t("inventory.row.accessibilityLedger", {

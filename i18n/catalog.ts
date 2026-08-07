@@ -1943,6 +1943,9 @@ const en = {
   "inventory.reorder.title": "Ready to reorder",
   "inventory.reorder.body.one": "{count} item is at or near reorder risk. Review supplier recommendations in Orders.",
   "inventory.reorder.body.other": "{count} items are at or near reorder risk. Review supplier recommendations in Orders.",
+  "inventory.reorder.summary.one": "{count} item ready to reorder",
+  "inventory.reorder.summary.other": "{count} items ready to reorder",
+  "inventory.reorder.basis": "Based on forecast and par levels",
   "inventory.reorder.action": "Review orders",
 
   "orders.lane.review": "Review",
@@ -4052,6 +4055,9 @@ const es = {
   "inventory.reorder.title": "Listo para reponer",
   "inventory.reorder.body.one": "{count} artículo está en riesgo de reposición o cerca de estarlo. Revisa las recomendaciones de proveedores en Pedidos.",
   "inventory.reorder.body.other": "{count} artículos están en riesgo de reposición o cerca de estarlo. Revisa las recomendaciones de proveedores en Pedidos.",
+  "inventory.reorder.summary.one": "{count} artículo listo para reponer",
+  "inventory.reorder.summary.other": "{count} artículos listos para reponer",
+  "inventory.reorder.basis": "Según la previsión y los niveles par",
   "inventory.reorder.action": "Revisar pedidos",
 
   "orders.lane.review": "Revisión",
@@ -6157,6 +6163,9 @@ const zhHans = {
   "inventory.reorder.title": "可以补货",
   "inventory.reorder.body.one": "{count} 项处于或接近补货风险。请在订单中查看供应商建议。",
   "inventory.reorder.body.other": "{count} 项处于或接近补货风险。请在订单中查看供应商建议。",
+  "inventory.reorder.summary.one": "{count}项待补货",
+  "inventory.reorder.summary.other": "{count} 项待补货",
+  "inventory.reorder.basis": "依据预测与安全库存",
   "inventory.reorder.action": "查看订单",
 
   "orders.lane.review": "审核",
