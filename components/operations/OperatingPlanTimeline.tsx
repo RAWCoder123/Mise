@@ -166,10 +166,14 @@ function OperatingPlanItemRow({
           style={({ pressed }) => [styles.taskMain, pressed && styles.pressed]}
         >
           <View style={styles.taskCopy}>
-            <Text style={styles.windowLabel}>{presentation.windowLabel}</Text>
             <Text numberOfLines={2} style={styles.taskTitle}>
               {presentation.title}
             </Text>
+            {presentation.windowLabel ? (
+              <Text numberOfLines={1} style={styles.taskWindow}>
+                {presentation.windowLabel}
+              </Text>
+            ) : null}
             {isDone && presentation.completionResult ? (
               <Text numberOfLines={1} style={styles.result}>
                 {t("today.plan.result", { result: presentation.completionResult })}
@@ -296,16 +300,14 @@ const styles = StyleSheet.create({
     color: colors.muted,
     ...conceptTypography.caption,
     textAlign: "left",
-    marginBottom: 4,
+    marginBottom: 6,
     marginTop: 8,
     paddingLeft: 0
   },
   timelineRow: {
     flexDirection: "row",
     minHeight: density.timelineRow,
-    paddingVertical: 7,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border
+    paddingVertical: 3
   },
   timelineRowActive: {
     minHeight: density.timelineRowActive
@@ -362,21 +364,20 @@ const styles = StyleSheet.create({
   timelineDotDone: {
     backgroundColor: colors.success
   },
+  // Every row is its own card — the cards separate themselves, so the row no
+  // longer needs a divider.
   taskContent: {
     flex: 1,
     minWidth: 0,
     justifyContent: "center",
-    paddingVertical: 2,
-    paddingRight: 0,
-    paddingLeft: 6
-  },
-  taskContentActive: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 9,
     borderRadius: radii.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surface
+  },
+  taskContentActive: {
     justifyContent: "flex-start"
   },
   taskMain: {
@@ -384,14 +385,14 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 8
   },
+  taskWindow: {
+    color: colors.muted,
+    ...conceptTypography.subtitle
+  },
   taskCopy: {
     flex: 1,
     minWidth: 0,
     gap: 2
-  },
-  windowLabel: {
-    color: colors.muted,
-    ...conceptTypography.caption
   },
   taskTitle: {
     color: colors.text,

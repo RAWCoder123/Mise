@@ -284,7 +284,8 @@ export default function TodayScreen() {
         const count = grouped[value].length;
         return {
           value,
-          label: count > 0 ? `${label} (${formatNumber(count)})` : label,
+          label,
+      badge: count > 0 ? formatNumber(count) : undefined,
           accessibilityLabel: t("today.filter.optionAccessibility", { filter: label, count: formatNumber(count) }),
           tone
         };
@@ -531,7 +532,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     backgroundColor: colors.surface,
     padding: 9,
-    gap: 7
+    gap: 6
   },
   floorNoteMain: {
     flexDirection: "row",
