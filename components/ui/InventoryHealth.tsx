@@ -178,19 +178,17 @@ export function InventoryHealthBar({
   height?: number;
 }) {
   const gradientId = `health-flow-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
-  const normalizedCounts = normalizeInventoryHealthCounts(counts);
+  // Memoized so the `stops` memo below can actually hold: normalizing returns a
+  // fresh object every render otherwise.
+  const normalizedCounts = useMemo(() => normalizeInventoryHealthCounts(counts), [counts]);
   const total = getInventoryHealthTotal(normalizedCounts);
   const stops = useMemo(() => buildSpectrumHealthStops(normalizedCounts, total), [normalizedCounts, total]);
   const [barWidth, setBarWidth] = useState(0);
 
-  if (total === 0) {
-    return (
-      <View style={styles.bar}>
-        <View style={styles.emptyBar} />
-      </View>
-    );
-  }
-
+  // One stable measured container across the empty -> populated transition.
+  // Returning early for the empty case used to swap in a View with no
+  // onLayout, so when counts arrived the width was never measured and the
+  // gradient never mounted — a live bar stuck showing its grey track.
   return (
     <View
       style={[styles.bar, { height }]}
@@ -199,7 +197,8 @@ export function InventoryHealthBar({
         if (next > 0 && next !== barWidth) setBarWidth(next);
       }}
     >
-      {barWidth > 0 ? (
+      {total === 0 ? <View style={styles.emptyBar} /> : null}
+      {total > 0 && barWidth > 0 ? (
         <Svg width={barWidth} height={height}>
           <Defs>
             <LinearGradient id={gradientId} x1="0" y1="0" x2={barWidth} y2="0" gradientUnits="userSpaceOnUse">

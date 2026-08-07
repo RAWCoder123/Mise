@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
-import { ChevronDown, Package, ShoppingCart, Sparkles } from "lucide-react-native";
+import {
+  ChevronDown,
+  ClipboardCheck,
+  Package,
+  ShoppingCart,
+  Sparkles,
+  TriangleAlert
+} from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -508,27 +515,43 @@ function DailyBriefing({
 }) {
   const openTasks = summary.operationalTasks.filter((task) => task.status === "open").length;
   const stockAlerts = summary.inventoryHealth.watch + summary.inventoryHealth.low + summary.inventoryHealth.critical;
+  const reorderCount = summary.inventoryHealth.low + summary.inventoryHealth.critical;
+  const highPriority = summary.operationalTasks.filter(
+    (task) => task.status === "open" && (task.priority === "urgent" || task.priority === "high")
+  ).length;
   const rows = [
     {
       id: "tasks",
       label: t(openTasks === 1 ? "home.brief.bullet.tasks.one" : "home.brief.bullet.tasks.other", {
         count: formatNumber(openTasks)
       }),
-      color: openTasks > 0 ? colors.danger : colors.success
+      sublabel: t("home.brief.sub.tasks", { count: formatNumber(highPriority) }),
+      icon: <ClipboardCheck size={12} color={openTasks > 0 ? colors.danger : colors.success} strokeWidth={2.4} />,
+      tint: openTasks > 0 ? colors.dangerSoft : colors.successSoft
     },
     {
       id: "orders",
       label: t(summary.pendingRecommendations === 1 ? "home.brief.bullet.orders.one" : "home.brief.bullet.orders.other", {
         count: formatNumber(summary.pendingRecommendations)
       }),
-      color: summary.pendingRecommendations > 0 ? colors.caution : colors.success
+      sublabel: t("home.brief.sub.orders", { count: formatNumber(summary.pendingRecommendations) }),
+      icon: (
+        <ShoppingCart
+          size={12}
+          color={summary.pendingRecommendations > 0 ? colors.caution : colors.success}
+          strokeWidth={2.4}
+        />
+      ),
+      tint: summary.pendingRecommendations > 0 ? colors.cautionSoft : colors.successSoft
     },
     {
       id: "stock",
       label: t(stockAlerts === 1 ? "home.brief.bullet.stock.one" : "home.brief.bullet.stock.other", {
         count: formatNumber(stockAlerts)
       }),
-      color: stockAlerts > 0 ? colors.warning : colors.success
+      sublabel: t("home.brief.sub.stock", { count: formatNumber(reorderCount) }),
+      icon: <TriangleAlert size={12} color={stockAlerts > 0 ? colors.warning : colors.success} strokeWidth={2.4} />,
+      tint: stockAlerts > 0 ? colors.warningSoft : colors.successSoft
     }
   ];
 
@@ -549,8 +572,11 @@ function DailyBriefing({
           <Text style={styles.briefingTitle}>{t("home.brief.heading")}</Text>
           {rows.map((row) => (
             <View key={row.id} style={styles.briefingRow}>
-              <View style={[styles.briefingDot, { backgroundColor: row.color }]} />
-              <Text numberOfLines={1} style={styles.briefingText}>{row.label}</Text>
+              <View style={[styles.briefingIcon, { backgroundColor: row.tint }]}>{row.icon}</View>
+              <View style={styles.briefingRowCopy}>
+                <Text numberOfLines={1} style={styles.briefingText}>{row.label}</Text>
+                <Text numberOfLines={1} style={styles.briefingSub}>{row.sublabel}</Text>
+              </View>
             </View>
           ))}
         </View>
@@ -826,7 +852,6 @@ const styles = StyleSheet.create({
     gap: 0
   },
   briefingCard: {
-    minHeight: 92,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
@@ -849,18 +874,26 @@ const styles = StyleSheet.create({
   briefingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6
+    gap: 8
   },
-  briefingDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3
+  briefingIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  briefingRowCopy: {
+    flex: 1,
+    minWidth: 0
   },
   briefingText: {
-    flex: 1,
-    color: colors.muted,
-    ...conceptTypography.caption,
-    fontFamily: fontFamilies.body
+    color: colors.text,
+    ...conceptTypography.caption
+  },
+  briefingSub: {
+    color: colors.faint,
+    ...conceptTypography.micro
   },
   pressed: {
     opacity: 0.72

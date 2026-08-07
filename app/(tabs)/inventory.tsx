@@ -210,6 +210,9 @@ export default function InventoryScreen() {
           />
         ) : null}
 
+        {/* Only render once counts are real: mounting the card mid-load showed
+            a dead grey bar under a live percentage. */}
+        {healthTotal > 0 ? (
         <InventoryHealthSummaryCard
           counts={healthCounts}
           title={t("inventory.health.title")}
@@ -227,6 +230,7 @@ export default function InventoryScreen() {
           body={healthBody}
           accessibilityLabel={healthAccessibilityLabel}
         />
+        ) : null}
 
         <InventoryGroup
           title={t("inventory.group.lowStock")}
