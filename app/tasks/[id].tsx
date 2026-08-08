@@ -4,10 +4,10 @@ import { ArrowLeft, CheckCircle2, Circle, ClipboardList, Clock3, Package, Shoppi
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
+import { OverflowMenu } from "../../components/ui/OverflowMenu";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
@@ -109,9 +109,24 @@ export default function TaskDetailScreen() {
     }, [load])
   );
 
+  const overflow = (
+    <OverflowMenu
+      accessibilityLabel={t("tasks.menu.accessibility")}
+      items={[
+        { id: "today", label: t("tasks.menu.openToday"), onSelect: () => router.replace("/today") },
+        {
+          id: "activity",
+          label: t("tasks.menu.viewActivity"),
+          onSelect: () => router.push("/more/activity" as never)
+        }
+      ]}
+    />
+  );
+
   if (!restaurant) {
     return (
-      <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />}>
+      <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />}
+      action={overflow}>
         <EmptyState title={t("tasks.noRestaurant.title")} body={t("tasks.noRestaurant.body")} />
       </Screen>
     );
@@ -119,7 +134,8 @@ export default function TaskDetailScreen() {
 
   if (!task && !sharedTask && !loading && !error) {
     return (
-      <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />}>
+      <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />}
+      action={overflow}>
         <EmptyState title={t("tasks.gone.title")} body={t("tasks.gone.body")} />
         <Button title={t("tasks.backToToday")} onPress={() => router.replace("/today")} fullWidth style={styles.emptyButton} />
       </Screen>
@@ -229,18 +245,23 @@ export default function TaskDetailScreen() {
         );
 
     return (
-      <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />} loading={loading} keyboardAware>
+      <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />}
+      action={overflow} loading={loading} keyboardAware>
         <View style={styles.stack}>
           {error ? (
             <StatusNotice tone="danger" title={t("common.error")} message={error} />
           ) : null}
 
           <View style={styles.hero}>
-            <IconBadge tone={completed ? "leaf" : high ? "danger" : "brand"} size="md">
-              {completed
-                ? <CheckCircle2 size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
-                : <ClipboardList size={icon.inline} color={high ? colors.danger : colors.accentDark} strokeWidth={iconStroke} />}
-            </IconBadge>
+            {completed ? (
+              <CheckCircle2 size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />
+            ) : (
+              <ClipboardList
+                size={icon.emphasis}
+                color={high ? colors.danger : colors.accentDark}
+                strokeWidth={iconStroke}
+              />
+            )}
             <View style={styles.heroCopy}>
               <Text style={styles.title}>{sharedTask.title}</Text>
               <View style={styles.inlineBadges}>
@@ -385,7 +406,8 @@ export default function TaskDetailScreen() {
     : "";
 
   return (
-    <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />} loading={loading}>
+    <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />}
+      action={overflow} loading={loading}>
       <View style={styles.stack}>
         {error ? (
           <RetryNotice
@@ -400,9 +422,7 @@ export default function TaskDetailScreen() {
         {task && presentation ? (
           <>
             <View style={styles.hero}>
-              <IconBadge tone={high ? "danger" : "brand"} size="md">
-                {taskIcon(task, high ? colors.danger : colors.accentDark)}
-              </IconBadge>
+              {taskIcon(task, high ? colors.danger : colors.accentDark)}
               <View style={styles.heroCopy}>
                 <Text style={styles.title}>{presentation.title}</Text>
                 <Badge
@@ -427,8 +447,8 @@ export default function TaskDetailScreen() {
 
             <View style={styles.checklist}>
               <Text style={styles.sectionTitle}>{t("tasks.checklist.title")}</Text>
-              {checklistKeys.map((key, index) => {
-                const isChecked = Boolean(checked[key]) || (task.status === "completed" && index < 2);
+              {checklistKeys.map((key) => {
+                const isChecked = Boolean(checked[key]);
                 return (
                   <Pressable
                     key={key}
@@ -554,7 +574,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 10
   },
   heroCopy: {
@@ -578,7 +598,7 @@ const styles = StyleSheet.create({
     gap: 0
   },
   metaRow: {
-    minHeight: 42,
+    minHeight: 38,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -630,7 +650,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border
   },
   checklist: {
-    gap: 5
+    gap: 0
   },
   checkRow: {
     minHeight: 44,
