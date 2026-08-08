@@ -8,7 +8,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View
+  View,
+  type StyleProp,
+  type ViewStyle
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -27,6 +29,8 @@ interface ScreenProps {
   action?: ReactNode;
   /** Optional left app-bar control for centered title chrome (e.g. back). */
   leadingAction?: ReactNode;
+  /** Extra style for the content column — e.g. flex: 1 for a pinned footer. */
+  contentStyle?: StyleProp<ViewStyle>;
   children?: ReactNode;
   loading?: boolean;
   scroll?: boolean;
@@ -48,6 +52,7 @@ export function Screen({
   subtitle,
   action,
   leadingAction,
+  contentStyle,
   children,
   loading,
   scroll = true,
@@ -66,7 +71,7 @@ export function Screen({
   const showBodySubtitle = Boolean(subtitle);
 
   const content = (
-    <MotionView style={styles.content} distance={3}>
+    <MotionView style={[styles.content, contentStyle]} distance={3}>
       {showBodyTitle || showBodySubtitle || (action && isBrand) ? (
         <View style={styles.header}>
           <View style={styles.headerText}>

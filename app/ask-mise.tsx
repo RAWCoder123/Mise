@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
-import { ArrowLeft, CheckSquare, Send } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ArrowLeft, Circle, Send } from "lucide-react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ThinkingBubble } from "../components/ask/ThinkingBubble";
 import { ActionIcon } from "../components/ui/ActionIcon";
@@ -226,12 +226,13 @@ export default function AskMiseScreen() {
     );
   }
 
+  // The first three are shown; they are the terse ones, per the reference.
   const suggestions = [
+    t("ask.suggestion.stock"),
     t("ask.suggestion.priorities"),
+    t("ask.suggestion.orders"),
     t("ask.suggestion.prep"),
     t("ask.suggestion.waste"),
-    t("ask.suggestion.stock"),
-    t("ask.suggestion.orders"),
     t("ask.suggestion.briefing")
   ];
 
@@ -242,6 +243,8 @@ export default function AskMiseScreen() {
       leadingAction={<BackAction />}
       loading={loading}
       keyboardAware
+      scroll={false}
+      contentStyle={styles.screenContent}
     >
       <View style={styles.stack}>
         {error ? (
@@ -254,7 +257,11 @@ export default function AskMiseScreen() {
           />
         ) : null}
 
-        <View style={styles.chat}>
+        <ScrollView
+          contentContainerStyle={styles.chatContent}
+          showsVerticalScrollIndicator={false}
+          style={styles.chat}
+        >
           {messages.map((message) =>
             message.role === "user" ? (
               <View key={message.id} style={[styles.bubble, styles.userBubble]}>
@@ -281,7 +288,7 @@ export default function AskMiseScreen() {
                             onPress={() => router.push(`/tasks/${task.id}`)}
                             style={({ pressed }) => [styles.priorityRow, pressed && styles.pressed]}
                           >
-                            <CheckSquare size={icon.inline} color={colors.muted} strokeWidth={iconStroke} />
+                            <Circle size={icon.inline} color={colors.borderStrong} strokeWidth={iconStroke} />
                             <View style={styles.priorityCopy}>
                               <Text numberOfLines={1} style={styles.priorityTitle}>
                                 {presentation.title}
@@ -311,11 +318,11 @@ export default function AskMiseScreen() {
               revealedCount={thinking.revealedCount}
             />
           ) : null}
-        </View>
+        </ScrollView>
 
         {visibleSummary && !asking ? (
           <View style={styles.suggestions}>
-            {suggestions.map((question) => (
+            {suggestions.slice(0, 3).map((question) => (
               <Pressable
                 key={question}
                 accessibilityRole="button"
@@ -341,16 +348,15 @@ export default function AskMiseScreen() {
             returnKeyType="send"
           />
           <ActionIcon
-            tone={asking || !input.trim() ? "default" : "brand"}
             accessibilityLabel={t("ask.send.accessibility")}
             accessibilityState={{ disabled: asking || !input.trim() }}
             disabled={asking || !input.trim()}
             onPress={() => void ask(input)}
-            style={styles.sendButton}
+            style={[styles.sendButton, !(asking || !input.trim()) && styles.sendButtonReady]}
           >
             <Send
               size={icon.row}
-              color={asking || !input.trim() ? colors.faint : colors.accentDark}
+              color={asking || !input.trim() ? colors.faint : colors.surface}
               strokeWidth={iconStroke}
             />
           </ActionIcon>
@@ -361,13 +367,20 @@ export default function AskMiseScreen() {
 }
 
 const styles = StyleSheet.create({
+  screenContent: {
+    flex: 1
+  },
   stack: {
     flex: 1,
-    gap: 10
+    gap: 10,
+    paddingBottom: 12
   },
   chat: {
+    flex: 1
+  },
+  chatContent: {
     gap: 9,
-    flexGrow: 1
+    paddingBottom: 4
   },
   miseRow: {
     flexDirection: "row",
@@ -433,18 +446,22 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8
   },
+  suggestionsPinned: {
+    paddingTop: 2
+  },
   suggestion: {
-    minHeight: 40,
+    minHeight: 34,
+    alignSelf: "flex-start",
     justifyContent: "center",
     borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    backgroundColor: colors.accentSoft,
-    paddingHorizontal: 14,
-    paddingVertical: 8
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 6
   },
   suggestionText: {
-    color: colors.accentDark,
+    color: colors.text,
     ...conceptTypography.caption,
     fontFamily: typography.families.body,
     fontSize: 13,
@@ -479,8 +496,11 @@ const styles = StyleSheet.create({
     lineHeight: 20
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20
+    width: 36,
+    height: 36,
+    borderRadius: 18
+  },
+  sendButtonReady: {
+    backgroundColor: colors.accent
   }
 });
