@@ -47,7 +47,7 @@ type Translator = (key: MessageKey, values?: MessageValues) => string;
 
 export default function HomeScreen() {
   const { canUseDemoMode, continueWithDemo, restaurant, user } = useMiseSession();
-  const { formatCurrency, formatNumber, t, locale } = useLocale();
+  const { formatCurrency, formatDate, formatNumber, t, locale } = useLocale();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [brief, setBrief] = useState<OperatingBrief | null>(null);
   const [loading, setLoading] = useState(true);
@@ -295,7 +295,7 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {visibleBrief ? <ActivitySection brief={visibleBrief} t={t} /> : null}
+        {visibleBrief ? <ActivitySection brief={visibleBrief} formatDate={formatDate} t={t} /> : null}
 
         <Button
           title={t("home.ask.entry")}
@@ -388,7 +388,15 @@ function ApprovalsSection({
   );
 }
 
-function ActivitySection({ brief, t }: { brief: OperatingBrief; t: Translator }) {
+function ActivitySection({
+  brief,
+  formatDate,
+  t
+}: {
+  brief: OperatingBrief;
+  formatDate: (value: string, options?: Intl.DateTimeFormatOptions) => string;
+  t: Translator;
+}) {
   const events = brief.liveActivity.slice(0, 5);
   return (
     <View style={styles.section}>
@@ -400,20 +408,32 @@ function ActivitySection({ brief, t }: { brief: OperatingBrief; t: Translator })
       {events.length === 0 ? (
         <Text style={styles.emptyCopy}>{t("home.activity.empty")}</Text>
       ) : (
-        events.map((event) => <ActivityRow key={event.id} event={event} />)
+        events.map((event) => (
+          <ActivityRow key={event.id} event={event} formatDate={formatDate} />
+        ))
       )}
     </View>
   );
 }
 
-function ActivityRow({ event }: { event: ActivityEvent }) {
-  const time = event.occurredAt.slice(11, 16);
+function ActivityRow({
+  event,
+  formatDate
+}: {
+  event: ActivityEvent;
+  formatDate: (value: string, options?: Intl.DateTimeFormatOptions) => string;
+}) {
+  // The clock must read in the restaurant's timezone. This used to slice the
+  // ISO string, which showed UTC to every restaurant that isn't on it.
+  const time = Number.isFinite(Date.parse(event.occurredAt))
+    ? formatDate(event.occurredAt, { hour: "2-digit", minute: "2-digit" })
+    : "--:--";
   return (
     <View style={styles.activityRow}>
-      <Text style={styles.activityTime}>{time || "--:--"}</Text>
+      <Text style={styles.activityTime}>{time}</Text>
       <View style={styles.activityCopy}>
-        <Text style={styles.cardTitle} numberOfLines={1}>{event.title}</Text>
-        <Text style={styles.cardBody} numberOfLines={2}>{event.summary}</Text>
+        <Text style={styles.activityTitle} numberOfLines={1}>{event.title}</Text>
+        <Text style={styles.activitySummary} numberOfLines={2}>{event.summary}</Text>
       </View>
     </View>
   );
@@ -801,8 +821,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border
   },
+  activityTitle: {
+    color: colors.text,
+    ...conceptTypography.rowTitle
+  },
+  activitySummary: {
+    color: colors.muted,
+    ...conceptTypography.subtitle,
+    marginTop: 1
+  },
   activityTime: {
-    width: 38,
+    width: 44,
     color: colors.muted,
     fontFamily: fontFamilies.semibold,
     fontSize: 10,
