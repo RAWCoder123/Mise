@@ -25,7 +25,7 @@ import {
   type SegmentOption
 } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, density, fontFamilies, radii } from "../../constants/theme";
+import { colors, conceptTypography, density, fontFamilies, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
@@ -43,7 +43,7 @@ function BackAction() {
   const { t } = useLocale();
   return (
     <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-      <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+      <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
     </ActionIcon>
   );
 }
@@ -210,7 +210,7 @@ export default function DailyPhaseBriefScreen() {
             </View>
 
             <View style={styles.boundary}>
-              <EyeOff size={17} color={colors.muted} strokeWidth={1.9} />
+              <EyeOff size={icon.row} color={colors.muted} strokeWidth={iconStroke} />
               <View style={styles.boundaryCopy}>
                 <Text style={styles.boundaryTitle}>{t("dailyPhaseBrief.boundary.title")}</Text>
                 <Text style={styles.boundaryBody}>
@@ -255,9 +255,9 @@ function FindingRow({
     >
       <View style={[styles.findingIndex, indexToneStyle(finding.tone)]}>
         {finding.tone === "positive" ? (
-          <CheckCircle2 size={16} color={colors.success} strokeWidth={2.3} />
+          <CheckCircle2 size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
         ) : finding.tone === "urgent" ? (
-          <Sparkles size={16} color={colors.danger} strokeWidth={2.2} />
+          <Sparkles size={icon.inline} color={colors.danger} strokeWidth={iconStroke} />
         ) : (
           <Text style={styles.findingIndexText}>{index}</Text>
         )}
@@ -267,16 +267,16 @@ function FindingRow({
         <Text style={styles.findingBody}>{finding.interpretation}</Text>
       </View>
       {onPress ? (
-        <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={2.2} />
+        <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={iconStroke} />
       ) : null}
     </Pressable>
   );
 }
 
 function phaseIcon(phase: DailyBriefPhase) {
-  if (phase === "morning") return <Sunrise size={20} color={colors.accent} strokeWidth={2} />;
-  if (phase === "pre_service") return <Utensils size={20} color={colors.accent} strokeWidth={2} />;
-  return <MoonStar size={20} color={colors.success} strokeWidth={2} />;
+  if (phase === "morning") return <Sunrise size={icon.emphasis} color={colors.accent} strokeWidth={iconStroke} />;
+  if (phase === "pre_service") return <Utensils size={icon.emphasis} color={colors.accent} strokeWidth={iconStroke} />;
+  return <MoonStar size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />;
 }
 
 function phaseEyebrowKey(phase: DailyBriefPhase) {

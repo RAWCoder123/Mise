@@ -304,3 +304,22 @@ export const density = {
   iconPlain: 30,
   chevron: 14
 } as const;
+
+/**
+ * One icon system, one weight, four sizes. Line icons only (lucide) — no
+ * cartoon artwork, no emoji, no mixed families. Chart components draw their
+ * own strokes and are deliberately out of scope here.
+ */
+export const icon = {
+  /** Tab bar. */
+  nav: 19,
+  /** Emphasis: empty states, section leads. */
+  emphasis: 20,
+  /** The default: list rows, buttons, app-bar actions. */
+  row: 18,
+  /** Inline with text, badges, dense meta. */
+  inline: 16
+} as const;
+
+/** The single stroke weight for every icon in the product. */
+export const iconStroke = 1.9;

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { colors, radii, typography } from "../constants/theme";
+import { colors, icon, iconStroke, radii, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { presentSupportedRecommendationStatus } from "../services/domain/operationalStatus";
 import type { PurchaseRecommendation } from "../types/mise";
@@ -90,9 +90,9 @@ export function RecommendationDecisionRow({
         >
           <Text style={styles.whyText}>{t("orders.recommendation.why")}</Text>
           {expanded ? (
-            <ChevronUp size={16} color={colors.text} strokeWidth={2.25} />
+            <ChevronUp size={icon.inline} color={colors.text} strokeWidth={iconStroke} />
           ) : (
-            <ChevronDown size={16} color={colors.text} strokeWidth={2.25} />
+            <ChevronDown size={icon.inline} color={colors.text} strokeWidth={iconStroke} />
           )}
         </Pressable>
       </View>
@@ -166,7 +166,7 @@ export function RecommendationDecisionRow({
               item: recommendation.item_name
             })}
             accessibilityState={{ disabled: busy }}
-            icon={<Check size={17} color={colors.surface} strokeWidth={2.25} />}
+            icon={<Check size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
             onPress={onApprove}
             disabled={busy}
             style={styles.actionButton}
@@ -178,7 +178,7 @@ export function RecommendationDecisionRow({
             })}
             accessibilityState={{ disabled: busy }}
             variant="secondary"
-            icon={<X size={17} color={colors.text} strokeWidth={2.25} />}
+            icon={<X size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
             onPress={onDismiss}
             disabled={busy}
             style={styles.actionButton}

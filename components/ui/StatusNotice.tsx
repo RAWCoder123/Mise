@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { ChevronRight, CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View, type ViewProps } from "react-native";
 
-import { colors, conceptTypography, density, radii } from "../../constants/theme";
+import { colors, conceptTypography, density, icon, iconStroke, radii } from "../../constants/theme";
 
 export type StatusNoticeTone = "neutral" | "success" | "caution" | "warning" | "danger";
 export type StatusNoticeActionVariant = "text" | "solid";
@@ -90,7 +90,7 @@ export function StatusNotice({
         </Pressable>
       ) : null}
       {onPress && !actionIsAvailable ? (
-        <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={2.2} />
+        <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={iconStroke} />
       ) : null}
     </Container>
   );
@@ -124,11 +124,11 @@ export function RetryNotice({
 }
 
 function defaultIcon(tone: StatusNoticeTone) {
-  if (tone === "success") return <CircleCheck size={18} color={colors.success} strokeWidth={2.25} />;
-  if (tone === "caution") return <TriangleAlert size={18} color={colors.caution} strokeWidth={2.25} />;
-  if (tone === "warning") return <TriangleAlert size={18} color={colors.warning} strokeWidth={2.25} />;
-  if (tone === "danger") return <CircleAlert size={18} color={colors.danger} strokeWidth={2.25} />;
-  return <Info size={18} color={colors.muted} strokeWidth={2.25} />;
+  if (tone === "success") return <CircleCheck size={icon.row} color={colors.success} strokeWidth={iconStroke} />;
+  if (tone === "caution") return <TriangleAlert size={icon.row} color={colors.caution} strokeWidth={iconStroke} />;
+  if (tone === "warning") return <TriangleAlert size={icon.row} color={colors.warning} strokeWidth={iconStroke} />;
+  if (tone === "danger") return <CircleAlert size={icon.row} color={colors.danger} strokeWidth={iconStroke} />;
+  return <Info size={icon.row} color={colors.muted} strokeWidth={iconStroke} />;
 }
 
 const styles = StyleSheet.create({

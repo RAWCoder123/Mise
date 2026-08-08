@@ -8,7 +8,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -156,7 +156,7 @@ export default function AcceptInviteScreen() {
       <View style={styles.stack}>
         <Card>
           <View style={styles.headerRow}>
-            <KeyRound size={22} color={colors.accent} strokeWidth={2.4} />
+            <KeyRound size={icon.emphasis} color={colors.accent} strokeWidth={iconStroke} />
             <Text accessibilityRole="header" style={styles.cardTitle}>
               {t("invite.form.title")}
             </Text>

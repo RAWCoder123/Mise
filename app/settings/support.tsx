@@ -9,7 +9,7 @@ import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 
@@ -63,7 +63,7 @@ export default function SupportSettingsScreen() {
           accessibilityLabel={t(signedIn ? "support.backToSettings" : "support.backToLogin")}
           onPress={goBack}
         >
-          <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
+          <ArrowLeft size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -78,7 +78,7 @@ export default function SupportSettingsScreen() {
         <Card>
           <View style={styles.hero}>
             <IconBadge tone="brand">
-              <LifeBuoy size={20} color={colors.accentDark} strokeWidth={2.25} />
+              <LifeBuoy size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
             </IconBadge>
             <View style={styles.heroCopy}>
               <Text style={styles.heroTitle}>{t("support.summary.title")}</Text>
@@ -97,7 +97,7 @@ export default function SupportSettingsScreen() {
           title={t("support.action.emailSupport")}
           accessibilityLabel={t("support.action.emailSupportAccessibility")}
           accessibilityHint={t("support.action.emailSupportHint")}
-          icon={<Mail size={17} color={colors.surface} strokeWidth={2.5} />}
+          icon={<Mail size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
           onPress={() => void openBoundedMailto(SUPPORT_MAILTO)}
           disabled={opening}
           fullWidth
@@ -107,7 +107,7 @@ export default function SupportSettingsScreen() {
           variant="secondary"
           accessibilityLabel={t("support.action.emailPrivacyAccessibility")}
           accessibilityHint={t("support.action.emailPrivacyHint")}
-          icon={<Mail size={17} color={colors.text} strokeWidth={2.5} />}
+          icon={<Mail size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
           onPress={() => void openBoundedMailto(PRIVACY_MAILTO)}
           disabled={opening}
           fullWidth

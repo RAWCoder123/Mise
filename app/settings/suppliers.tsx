@@ -11,7 +11,7 @@ import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
-import { colors, radii, spacing, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { AppLocale } from "../../i18n/catalog";
@@ -175,7 +175,7 @@ export default function SupplierRecipientsScreen() {
       keyboardAware
       action={
         <ActionIcon accessibilityLabel={copy.back} onPress={goBackToSettings}>
-          <ArrowLeft size={20} color={colors.text} strokeWidth={2.25} />
+          <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -201,7 +201,7 @@ export default function SupplierRecipientsScreen() {
           {notice ? <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} /> : null}
 
           <StatusNotice
-            icon={<ShieldCheck size={20} color={colors.text} strokeWidth={2.25} />}
+            icon={<ShieldCheck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             title={copy.safetyTitle}
             message={copy.safetyBody}
           />
@@ -230,9 +230,9 @@ export default function SupplierRecipientsScreen() {
                     <View style={styles.recipientHeader}>
                       <IconBadge tone={entry.email ? "leaf" : "warning"}>
                         <Mail
-                          size={20}
+                          size={icon.emphasis}
                           color={entry.email ? colors.success : colors.warning}
-                          strokeWidth={2.25}
+                          strokeWidth={iconStroke}
                         />
                       </IconBadge>
                       <View style={styles.recipientCopy}>

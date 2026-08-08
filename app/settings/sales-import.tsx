@@ -10,7 +10,7 @@ import { IconBadge } from "../../components/ui/IconBadge";
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, spacing, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { DEMO_SETUP_POS_SALES_PLACEHOLDER } from "../../services/demo/demoSetupData";
@@ -96,7 +96,7 @@ export default function SalesImportScreen() {
       subtitle={t("salesImport.subtitle")}
       action={
         <ActionIcon accessibilityLabel={t("salesImport.backToSettings")} onPress={goBackToSettings}>
-          <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
+          <ArrowLeft size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -107,7 +107,7 @@ export default function SalesImportScreen() {
           body={t("salesImport.hero.body")}
           meta={restaurant?.name ?? t("common.notSet")}
           tone="leaf"
-          icon={<Upload size={21} color={colors.success} strokeWidth={2.6} />}
+          icon={<Upload size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />}
           stats={[
             {
               label: t("salesImport.stat.ready"),
@@ -154,7 +154,7 @@ export default function SalesImportScreen() {
         <Card>
           <View style={styles.pasteHeader}>
             <IconBadge tone="neutral">
-              <FileSpreadsheet size={18} color={colors.text} strokeWidth={2.4} />
+              <FileSpreadsheet size={icon.row} color={colors.text} strokeWidth={iconStroke} />
             </IconBadge>
             <View style={styles.pasteCopy}>
               <Text style={styles.pasteTitle}>{t("salesImport.paste.title")}</Text>

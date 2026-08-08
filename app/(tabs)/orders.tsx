@@ -17,7 +17,7 @@ import { SectionSurface } from "../../components/ui/SectionSurface";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { TrendLineChart } from "../../components/ui/TrendLineChart";
-import { colors, conceptTypography, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
@@ -669,9 +669,9 @@ export default function OrdersScreen() {
                       ]}
                     >
                       <Mail
-                        size={18}
+                        size={icon.row}
                         color={gmailIsConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
-                        strokeWidth={2}
+                        strokeWidth={iconStroke}
                       />
                     </View>
                     <View style={styles.emailCopy}>
@@ -721,7 +721,7 @@ export default function OrdersScreen() {
                   <SectionSurface key={supplierName} padding="none">
                     <View style={styles.supplierHeader}>
                       <View style={styles.supplierIcon}>
-                        <Truck size={16} color={colors.success} strokeWidth={2.1} />
+                        <Truck size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
                       </View>
                       <View style={styles.supplierHeaderCopy}>
                         <Text style={styles.supplierName}>{supplierName}</Text>
@@ -831,7 +831,7 @@ export default function OrdersScreen() {
 
       {visibleUndoAction ? (
         <View style={styles.undoToast} accessibilityLiveRegion="polite">
-          <RotateCcw size={18} color={colors.surface} strokeWidth={2.25} />
+          <RotateCcw size={icon.row} color={colors.surface} strokeWidth={iconStroke} />
           <Text style={styles.undoText} numberOfLines={2}>
             {t(
               visibleUndoAction.action === "approved"

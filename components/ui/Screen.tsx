@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { colors, conceptTypography, density, spacing } from "../../constants/theme";
+import { colors, conceptTypography, density, icon, iconStroke, spacing } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { ActionIcon } from "./ActionIcon";
@@ -102,7 +102,7 @@ export function Screen({
                 accessibilityHint={t("screen.openInsightsHint")}
                 onPress={() => router.push("/insights")}
               >
-                <Bell size={22} color={colors.text} strokeWidth={1.9} />
+                <Bell size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
               </ActionIcon>
             ) : (
               <View style={styles.headerAction} />

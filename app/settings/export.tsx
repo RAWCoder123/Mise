@@ -11,7 +11,7 @@ import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { exportRestaurantData } from "../../services/miseService";
@@ -145,7 +145,7 @@ export default function RestaurantExportScreen() {
       subtitle={t("export.subtitle")}
       action={
         <ActionIcon accessibilityLabel={t("export.backToSettings")} onPress={goBackToSettings}>
-          <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
+          <ArrowLeft size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -161,7 +161,7 @@ export default function RestaurantExportScreen() {
             <Card>
               <View style={styles.heroRow}>
                 <IconBadge tone="brand">
-                  <Download size={20} color={colors.accentDark} strokeWidth={2.25} />
+                  <Download size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
                 </IconBadge>
                 <View style={styles.heroCopy}>
                   <Text style={styles.heroTitle}>{t("export.card.title")}</Text>
@@ -169,13 +169,13 @@ export default function RestaurantExportScreen() {
                 </View>
               </View>
               <View style={styles.retentionBox}>
-                <ShieldCheck size={18} color={colors.success} strokeWidth={2.25} />
+                <ShieldCheck size={icon.row} color={colors.success} strokeWidth={iconStroke} />
                 <Text style={styles.retentionText}>{t("export.retention.body")}</Text>
               </View>
               <Button
                 title={exporting ? t("export.action.exporting") : t("export.action.export")}
                 accessibilityHint={t("export.action.hint")}
-                icon={<Download size={17} color={colors.surface} strokeWidth={2.5} />}
+                icon={<Download size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
                 onPress={() => void runExport()}
                 disabled={exporting}
                 fullWidth

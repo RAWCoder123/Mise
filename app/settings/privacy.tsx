@@ -9,7 +9,7 @@ import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 
@@ -62,7 +62,7 @@ export default function PrivacySettingsScreen() {
           accessibilityLabel={t(signedIn ? "privacy.backToSettings" : "privacy.backToLogin")}
           onPress={goBack}
         >
-          <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
+          <ArrowLeft size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -73,7 +73,7 @@ export default function PrivacySettingsScreen() {
         <Card>
           <View style={styles.hero}>
             <IconBadge tone="leaf">
-              <ShieldCheck size={20} color={colors.success} strokeWidth={2.25} />
+              <ShieldCheck size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />
             </IconBadge>
             <View style={styles.heroCopy}>
               <Text style={styles.heroTitle}>{t("privacy.summary.title")}</Text>
@@ -94,7 +94,7 @@ export default function PrivacySettingsScreen() {
           title={t("privacy.action.openPolicyUrl")}
           accessibilityLabel={t("privacy.action.openPolicyUrlAccessibility")}
           accessibilityHint={t("privacy.action.openPolicyUrlHint")}
-          icon={<ExternalLink size={17} color={colors.surface} strokeWidth={2.5} />}
+          icon={<ExternalLink size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
           onPress={() => void openPrivacyPolicyUrl()}
           disabled={opening}
           fullWidth

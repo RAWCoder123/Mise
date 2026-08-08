@@ -11,7 +11,7 @@ import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, spacing, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
@@ -225,7 +225,7 @@ export default function POSConnectionScreen() {
       subtitle={isDemoMode ? t("pos.subtitle.demo") : t("pos.subtitle.live")}
       action={
         <ActionIcon accessibilityLabel={t("pos.backToSettings")} onPress={goBackToSettings}>
-          <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
+          <ArrowLeft size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -260,11 +260,11 @@ export default function POSConnectionScreen() {
           tone={isDemoMode ? (posProvider ? "leaf" : "caution") : squareConnected ? "leaf" : "caution"}
           icon={
             <PlugZap
-              size={21}
+              size={icon.emphasis}
               color={
                 (isDemoMode ? posProvider : squareConnected) ? colors.success : colors.caution
               }
-              strokeWidth={2.6}
+              strokeWidth={iconStroke}
             />
           }
           stats={[
@@ -430,11 +430,11 @@ function ProviderOption({
       <Animated.View style={[styles.providerRow, selected && styles.providerRowSelected, scaleStyle]}>
         <View style={styles.providerIcon}>
           {isCsv ? (
-            <FileText size={18} color={colors.text} strokeWidth={2.2} />
+            <FileText size={icon.row} color={colors.text} strokeWidth={iconStroke} />
           ) : selected ? (
-            <CheckCircle size={18} color={colors.success} strokeWidth={2.2} />
+            <CheckCircle size={icon.row} color={colors.success} strokeWidth={iconStroke} />
           ) : (
-            <PlugZap size={18} color={colors.muted} strokeWidth={2.2} />
+            <PlugZap size={icon.row} color={colors.muted} strokeWidth={iconStroke} />
           )}
         </View>
         <View style={styles.providerCopy}>

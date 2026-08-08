@@ -20,7 +20,7 @@ import { ActionTile, ActionTileGrid } from "../../components/ui/ActionTile";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
-import { colors, conceptTypography, density, radii } from "../../constants/theme";
+import { colors, conceptTypography, density, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -47,28 +47,28 @@ export default function MoreScreen() {
             compact
             label={t("more.shortcut.createTask")}
             accessibilityLabel={t("more.shortcut.createTaskHint")}
-            icon={<ClipboardList size={20} color={colors.text} strokeWidth={1.8} />}
+            icon={<ClipboardList size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/create-task")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.logDelivery")}
             accessibilityLabel={t("more.shortcut.logDeliveryHint")}
-            icon={<Truck size={20} color={colors.text} strokeWidth={1.8} />}
+            icon={<Truck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/log-delivery")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.scanItem")}
             accessibilityLabel={t("more.shortcut.scanItemHint")}
-            icon={<ScanLine size={20} color={colors.text} strokeWidth={1.8} />}
+            icon={<ScanLine size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/scan-item")}
           />
           <ActionTile
             compact
             label={t("more.shortcut.dailyReport")}
             accessibilityLabel={t("more.shortcut.dailyReportHint")}
-            icon={<BarChart3 size={20} color={colors.text} strokeWidth={1.8} />}
+            icon={<BarChart3 size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/daily-report")}
           />
         </ActionTileGrid>
@@ -77,61 +77,61 @@ export default function MoreScreen() {
           <OperationalRow
             density="menu"
             title={t("more.row.dailyBrief.title")}
-            icon={<Sunrise size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Sunrise size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/daily-brief" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.waste.title")}
-            icon={<PackageMinus size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<PackageMinus size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/waste" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.activity.title")}
-            icon={<Activity size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Activity size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/activity" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.memory.title")}
-            icon={<Brain size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Brain size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/restaurant-memory" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.team.title")}
-            icon={<UsersRound size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<UsersRound size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/team" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("nav.insights")}
-            icon={<BarChart3 size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<BarChart3 size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/insights")}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.integrations.title")}
-            icon={<Mail size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Mail size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/gmail")}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.suppliers.title")}
-            icon={<Truck size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Truck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/suppliers")}
           />
           <OperationalRow
             density="menu"
             title={t("nav.settings")}
-            icon={<Settings size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Settings size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings")}
           />
           <OperationalRow
             density="menu"
             title={t("more.row.help.title")}
-            icon={<HelpCircle size={20} color={colors.text} strokeWidth={1.8} />}
+            icon={<HelpCircle size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/support" as never)}
           />
         </View>
@@ -149,7 +149,7 @@ export default function MoreScreen() {
             <Text style={styles.profileName}>{user?.name?.trim() || t("more.profile.fallbackName")}</Text>
             <Text style={styles.profileMeta}>{role ? t(roleKeys[role]) : t("settings.account.operator")}</Text>
           </View>
-          <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={2.25} />
+          <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={iconStroke} />
         </Pressable>
       </View>
     </Screen>

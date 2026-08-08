@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ChevronRight, CircleCheck, CircleDashed } from "lucide-react-native";
 
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, icon as iconScale, iconStroke, radii, typography } from "../../constants/theme";
 import { Button } from "./Button";
 
 interface SetupChecklistCardProps {
@@ -40,9 +40,9 @@ export function SetupBulletRow({ title, detail, complete, trailing }: SetupBulle
   return (
     <View style={styles.bulletRow}>
       {complete ? (
-        <CircleCheck size={20} color={colors.success} strokeWidth={2.5} />
+        <CircleCheck size={iconScale.emphasis} color={colors.success} strokeWidth={iconStroke} />
       ) : (
-        <CircleDashed size={20} color={colors.faint} strokeWidth={2.4} />
+        <CircleDashed size={iconScale.emphasis} color={colors.faint} strokeWidth={iconStroke} />
       )}
       <View style={styles.bulletCopy}>
         <Text style={styles.bulletTitle} numberOfLines={1}>{title}</Text>
@@ -71,7 +71,7 @@ export function SetupImportRow({ title, detail, icon, onPress, actionLabel = "Ad
       {isActionable ? (
         <View style={styles.importAction}>
           <Text style={styles.importActionText}>{actionLabel}</Text>
-          <ChevronRight size={17} color={colors.faint} strokeWidth={2.25} />
+          <ChevronRight size={iconScale.row} color={colors.faint} strokeWidth={iconStroke} />
         </View>
       ) : null}
     </Pressable>

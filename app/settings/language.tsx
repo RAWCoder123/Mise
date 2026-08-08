@@ -16,7 +16,7 @@ import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { usePressScale } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
-import { colors, fontFamilies, radii, spacing, typography } from "../../constants/theme";
+import { colors, fontFamilies, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { LANGUAGE_OPTIONS, translate, type AppLocale, type MessageKey } from "../../i18n/catalog";
 
@@ -69,7 +69,7 @@ export default function LanguageSettingsScreen() {
       subtitle={t("settings.language.subtitle")}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={goBackToSettings}>
-          <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
+          <ArrowLeft size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -119,7 +119,7 @@ export default function LanguageSettingsScreen() {
 
         <View style={styles.persistenceNote}>
           <IconBadge tone="neutral">
-            <Languages size={19} color={colors.text} strokeWidth={2.2} />
+            <Languages size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
           </IconBadge>
           <Text style={styles.persistenceText}>{t(persistenceMessageKey)}</Text>
         </View>
@@ -169,7 +169,7 @@ function LanguageOption({
           {loading ? (
             <ActivityIndicator size="small" color={colors.surface} />
           ) : selected ? (
-            <Check size={18} color={colors.surface} strokeWidth={2.8} />
+            <Check size={icon.row} color={colors.surface} strokeWidth={iconStroke} />
           ) : null}
         </View>
       </Animated.View>

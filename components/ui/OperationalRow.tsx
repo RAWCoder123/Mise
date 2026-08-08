@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { ChevronRight } from "lucide-react-native";
 
-import { colors, conceptTypography, density, fontFamilies } from "../../constants/theme";
+import { colors, conceptTypography, density, fontFamilies, iconStroke } from "../../constants/theme";
 import { usePressScale } from "./Motion";
 import { Badge } from "./Badge";
 import { IconBadge, type IconBadgeTone } from "./IconBadge";
@@ -124,7 +124,7 @@ export function OperationalRow({
                 {meta}
               </Text>
             )}
-            {isActionable && <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={2.25} />}
+            {isActionable && <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={iconStroke} />}
           </View>
         )}
       </Animated.View>

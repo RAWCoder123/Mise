@@ -4,7 +4,7 @@ import { router } from "expo-router";
 
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { colors, conceptTypography, density, radii } from "../../constants/theme";
+import { colors, conceptTypography, density, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { OperatingPlanBucket, OperatingPlanItem } from "../../services/domain/operatingPlan";
@@ -199,7 +199,7 @@ function OperatingPlanItemRow({
           </View>
         ) : showPrimaryAction && !canAct && !isDone ? (
           <View style={styles.lockedAction}>
-            <LockKeyhole size={12} color={colors.muted} strokeWidth={2.2} />
+            <LockKeyhole size={12} color={colors.muted} strokeWidth={iconStroke} />
             <Text style={styles.lockedText}>
               {t(item.requiredRole === "owner_admin" ? "today.locked.ownerAdmin" : "today.locked.manager")}
             </Text>

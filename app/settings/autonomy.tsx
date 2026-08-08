@@ -8,7 +8,7 @@ import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, radii } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { autonomyLevelLabel } from "../../services/domain/operationalStatus";
@@ -161,7 +161,7 @@ export default function AutonomySettingsScreen() {
       loading={loading}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-          <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+          <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -185,7 +185,7 @@ export default function AutonomySettingsScreen() {
           <EmptyState
             title={t("autonomy.empty.title")}
             body={t("autonomy.empty.body")}
-            illustration={<Shield size={28} color={colors.muted} strokeWidth={1.8} />}
+            illustration={<Shield size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
           />
         ) : null}
 

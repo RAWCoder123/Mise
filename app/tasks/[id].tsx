@@ -10,7 +10,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, typography } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -36,7 +36,7 @@ function BackAction() {
   const { t } = useLocale();
   return (
     <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-      <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+      <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
     </ActionIcon>
   );
 }
@@ -238,8 +238,8 @@ export default function TaskDetailScreen() {
           <View style={styles.hero}>
             <IconBadge tone={completed ? "leaf" : high ? "danger" : "brand"} size="md">
               {completed
-                ? <CheckCircle2 size={15} color={colors.success} strokeWidth={2.1} />
-                : <ClipboardList size={15} color={high ? colors.danger : colors.accentDark} strokeWidth={2.1} />}
+                ? <CheckCircle2 size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
+                : <ClipboardList size={icon.inline} color={high ? colors.danger : colors.accentDark} strokeWidth={iconStroke} />}
             </IconBadge>
             <View style={styles.heroCopy}>
               <Text style={styles.title}>{sharedTask.title}</Text>
@@ -281,8 +281,8 @@ export default function TaskDetailScreen() {
                     style={({ pressed }) => [styles.checkRow, pressed && styles.pressed]}
                   >
                     {isChecked
-                      ? <CheckCircle2 size={16} color={colors.success} strokeWidth={2.2} />
-                      : <Circle size={16} color={colors.borderStrong} strokeWidth={2.2} />}
+                      ? <CheckCircle2 size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
+                      : <Circle size={icon.inline} color={colors.borderStrong} strokeWidth={iconStroke} />}
                     <Text style={[styles.checkText, isChecked && styles.checkTextDone]}>
                       {String(entry.label ?? entry.type ?? t("tasks.shared.checklistItem", { number: index + 1 }))}
                     </Text>
@@ -438,9 +438,9 @@ export default function TaskDetailScreen() {
                     style={({ pressed }) => [styles.checkRow, pressed && styles.pressed]}
                   >
                     {isChecked ? (
-                      <CheckCircle2 size={16} color={colors.success} strokeWidth={2.2} />
+                      <CheckCircle2 size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
                     ) : (
-                      <Circle size={16} color={colors.borderStrong} strokeWidth={2.2} />
+                      <Circle size={icon.inline} color={colors.borderStrong} strokeWidth={iconStroke} />
                     )}
                     <Text style={[styles.checkText, isChecked && styles.checkTextDone]}>{t(key)}</Text>
                   </Pressable>

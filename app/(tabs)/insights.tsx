@@ -1,27 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
-import {
-  AlertTriangle,
-  BookOpen,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Lightbulb,
-  RefreshCw
-} from "lucide-react-native";
+import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronUp, Lightbulb, RefreshCw } from "lucide-react-native";
 
 import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { DonutChart, donutPaletteColor } from "../../components/ui/DonutChart";
-import { InsightChartIllustration } from "../../components/ui/MiseIllustrations";
 import { MotionView, StateChangeView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
 import { TrendLineChart } from "../../components/ui/TrendLineChart";
-import { colors, conceptTypography, fontFamilies, radii } from "../../constants/theme";
+import { colors, conceptTypography, fontFamilies, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -320,7 +311,7 @@ export default function InsightsScreen() {
             onPress={() => void refreshInsights()}
             tone="brand"
           >
-            <RefreshCw size={20} color={colors.accentDark} strokeWidth={2.25} />
+            <RefreshCw size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
           </ActionIcon>
         ) : undefined
       }
@@ -404,7 +395,7 @@ export default function InsightsScreen() {
               >
                 {filteredInsights.length === 0 ? (
                   <View style={styles.briefEmpty}>
-                    <InsightChartIllustration size={66} />
+                    <BarChart3 size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />
                     <Text style={styles.briefEmptyTitle}>
                       {visibleInsights.length === 0
                         ? t("insights.brief.emptyLearning.title")
@@ -457,11 +448,11 @@ function InsightsSummary({
       <View style={styles.summaryHeader}>
         <View style={[styles.summaryIcon, { backgroundColor: palette.soft }]}>
           {tone === "danger" ? (
-            <AlertTriangle size={22} color={palette.strong} strokeWidth={2.25} />
+            <AlertTriangle size={icon.emphasis} color={palette.strong} strokeWidth={iconStroke} />
           ) : urgent === 0 && watch === 0 && info === 0 ? (
-            <CheckCircle2 size={22} color={palette.strong} strokeWidth={2.25} />
+            <CheckCircle2 size={icon.emphasis} color={palette.strong} strokeWidth={iconStroke} />
           ) : (
-            <Lightbulb size={22} color={palette.strong} strokeWidth={2.25} />
+            <Lightbulb size={icon.emphasis} color={palette.strong} strokeWidth={iconStroke} />
           )}
         </View>
         <View style={styles.summaryCopy}>
@@ -475,20 +466,20 @@ function InsightsSummary({
           label={t("insights.metric.urgent")}
           value={urgent}
           tone="danger"
-          icon={<AlertTriangle size={18} color={urgent > 0 ? colors.danger : colors.muted} strokeWidth={2.25} />}
+          icon={<AlertTriangle size={icon.row} color={urgent > 0 ? colors.danger : colors.muted} strokeWidth={iconStroke} />}
         />
         <SummaryMetric
           label={t("insights.metric.watch")}
           value={watch}
           tone="caution"
-          icon={<Lightbulb size={18} color={watch > 0 ? colors.caution : colors.muted} strokeWidth={2.25} />}
+          icon={<Lightbulb size={icon.row} color={watch > 0 ? colors.caution : colors.muted} strokeWidth={iconStroke} />}
           divided
         />
         <SummaryMetric
           label={t("insights.metric.info")}
           value={info}
           tone="default"
-          icon={<BookOpen size={18} color={info > 0 ? colors.text : colors.muted} strokeWidth={2.25} />}
+          icon={<BookOpen size={icon.row} color={info > 0 ? colors.text : colors.muted} strokeWidth={iconStroke} />}
           divided
         />
       </View>
@@ -880,9 +871,9 @@ function InsightListRow({ insight, divided }: { insight: Insight; divided: boole
     <View style={[styles.insightRow, divided && styles.dividedRow]}>
       <View style={[styles.insightIcon, isUrgent && styles.insightIconDanger, isWatch && styles.insightIconWatch]}>
         {isUrgent ? (
-          <AlertTriangle size={20} color={colors.danger} strokeWidth={2.25} />
+          <AlertTriangle size={icon.emphasis} color={colors.danger} strokeWidth={iconStroke} />
         ) : (
-          <Lightbulb size={20} color={isWatch ? colors.caution : colors.text} strokeWidth={2.25} />
+          <Lightbulb size={icon.emphasis} color={isWatch ? colors.caution : colors.text} strokeWidth={iconStroke} />
         )}
       </View>
       <View style={styles.insightCopy}>
@@ -922,7 +913,7 @@ function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
         onPress={() => setExpanded((value) => !value)}
         style={({ pressed }) => [styles.evidenceTrigger, pressed && styles.rowPressed]}
       >
-        <BookOpen size={20} color={colors.text} strokeWidth={2.25} />
+        <BookOpen size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
         <View style={styles.evidenceTriggerCopy}>
           <Text style={styles.evidenceTitle}>{t("insights.memory.title")}</Text>
           <Text style={styles.evidenceSubtitle}>
@@ -930,9 +921,9 @@ function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
           </Text>
         </View>
         {expanded ? (
-          <ChevronUp size={20} color={colors.faint} strokeWidth={2.25} />
+          <ChevronUp size={icon.emphasis} color={colors.faint} strokeWidth={iconStroke} />
         ) : (
-          <ChevronDown size={20} color={colors.faint} strokeWidth={2.25} />
+          <ChevronDown size={icon.emphasis} color={colors.faint} strokeWidth={iconStroke} />
         )}
       </Pressable>
 

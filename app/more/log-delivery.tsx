@@ -12,7 +12,7 @@ import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
@@ -32,7 +32,7 @@ function BackAction() {
   const { t } = useLocale();
   return (
     <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-      <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+      <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
     </ActionIcon>
   );
 }
@@ -353,7 +353,7 @@ export default function LogDeliveryScreen() {
             )}
             <Button
               title={t("logDelivery.history.logNew")}
-              icon={<Truck size={17} color={colors.surface} strokeWidth={2.4} />}
+              icon={<Truck size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => setTab("log")}
               fullWidth
             />
@@ -388,7 +388,7 @@ export default function LogDeliveryScreen() {
                           })
                         : t("logDelivery.row.unverified")
                     }
-                    icon={<Package size={18} color={colors.text} strokeWidth={1.9} />}
+                    icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                     onPress={() => {
                       setSelected(item);
                       setMessage(null);
@@ -475,7 +475,7 @@ export default function LogDeliveryScreen() {
 
             <Button
               title={submitting ? t("common.saving") : t("logDelivery.submit")}
-              icon={<Truck size={17} color={colors.surface} strokeWidth={2.4} />}
+              icon={<Truck size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void submitReceipt()}
               disabled={submitting || !canManage || !isCanonicalUnitReady(selected)}
               fullWidth

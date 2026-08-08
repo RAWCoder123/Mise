@@ -11,7 +11,7 @@ import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
@@ -25,7 +25,7 @@ function BackAction() {
   const { t } = useLocale();
   return (
     <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-      <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+      <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
     </ActionIcon>
   );
 }
@@ -180,7 +180,7 @@ export default function ScanItemScreen() {
             </View>
           ) : (
             <View style={styles.permissionCard}>
-              <Camera size={28} color={colors.accent} strokeWidth={1.9} />
+              <Camera size={icon.emphasis} color={colors.accent} strokeWidth={iconStroke} />
               <Text style={styles.permissionTitle}>{t("scanItem.permission.title")}</Text>
               <Text style={styles.permissionBody}>{t("scanItem.permission.body")}</Text>
               <Button
@@ -190,7 +190,7 @@ export default function ScanItemScreen() {
                     : t("scanItem.permission.allow")
                 }
                 onPress={() => void requestPermission()}
-                icon={<Camera size={16} color={colors.surface} strokeWidth={2.2} />}
+                icon={<Camera size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />}
               />
             </View>
           )
@@ -222,7 +222,7 @@ export default function ScanItemScreen() {
 
         <SectionHeader title={t("scanItem.search.section")} />
         <View style={styles.searchWrap}>
-          <Search size={18} color={colors.muted} strokeWidth={2.1} />
+          <Search size={icon.row} color={colors.muted} strokeWidth={iconStroke} />
           <TextInput
             accessibilityLabel={t("scanItem.search.accessibility")}
             placeholder={t("scanItem.search.placeholder")}
@@ -245,7 +245,7 @@ export default function ScanItemScreen() {
           <EmptyState
             title={t("scanItem.empty.title")}
             body={t("scanItem.empty.body")}
-            illustration={<ScanLine size={28} color={colors.muted} strokeWidth={1.8} />}
+            illustration={<ScanLine size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
           />
         ) : (
           <View style={styles.list}>
@@ -259,7 +259,7 @@ export default function ScanItemScreen() {
                   code: item.id
                 })}
                 value={`${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${item.unit}`}
-                icon={<Package size={18} color={colors.text} strokeWidth={1.9} />}
+                icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => router.push(`/inventory/${item.id}`)}
                 accessibilityLabel={t("scanItem.row.accessibility", { item: item.item_name })}
               />

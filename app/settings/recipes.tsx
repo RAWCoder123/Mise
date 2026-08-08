@@ -10,12 +10,11 @@ import { Card } from "../../components/ui/Card";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { OperationsFlow } from "../../components/ui/OperationsFlow";
-import { InsightChartIllustration } from "../../components/ui/MiseIllustrations";
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors } from "../../constants/theme";
+import { colors, icon, iconStroke } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
@@ -253,14 +252,14 @@ export default function RecipeBaselinesScreen() {
         subtitle={t("recipes.noRestaurant.subtitle")}
         action={
           <ActionIcon accessibilityLabel={t("recipes.back")} onPress={goBackToSettings}>
-            <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
+            <ArrowLeft size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
           </ActionIcon>
         }
       >
         <EmptyState
           title={t("recipes.noRestaurant.title")}
           body={t("recipes.noRestaurant.body")}
-          illustration={<InsightChartIllustration />}
+          illustration={<BookOpen size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
         />
       </Screen>
     );
@@ -274,7 +273,7 @@ export default function RecipeBaselinesScreen() {
       keyboardAware
       action={
         <ActionIcon accessibilityLabel={t("recipes.back")} onPress={goBackToSettings}>
-          <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
+          <ArrowLeft size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -297,9 +296,9 @@ export default function RecipeBaselinesScreen() {
             tone={visibleSummary.coveragePercent >= 100 ? "leaf" : "caution"}
             icon={
               <BookOpen
-                size={21}
+                size={icon.emphasis}
                 color={visibleSummary.coveragePercent >= 100 ? colors.success : colors.caution}
-                strokeWidth={2.6}
+                strokeWidth={iconStroke}
               />
             }
             stats={[
@@ -317,20 +316,20 @@ export default function RecipeBaselinesScreen() {
                 label: t("recipes.flow.posSale"),
                 value: formatNumber(visibleSummary.posItemsCovered),
                 detail: t("recipes.flow.coveredItems"),
-                icon: <ShoppingBag size={18} color={colors.success} strokeWidth={2.4} />,
+                icon: <ShoppingBag size={icon.row} color={colors.success} strokeWidth={iconStroke} />,
                 tone: "leaf"
               },
               {
                 label: t("recipes.flow.ingredientMap"),
                 value: formatNumber(visibleSummary.ingredientMappings),
                 detail: t("recipes.flow.baselineQuantities"),
-                icon: <BookOpen size={18} color={colors.text} strokeWidth={2.4} />
+                icon: <BookOpen size={icon.row} color={colors.text} strokeWidth={iconStroke} />
               },
               {
                 label: t("recipes.flow.inventoryMovement"),
                 value: formatNumber(visibleSummary.inventoryItemsLinked),
                 detail: t("recipes.flow.stockAffected"),
-                icon: <PackageCheck size={18} color={colors.success} strokeWidth={2.4} />,
+                icon: <PackageCheck size={icon.row} color={colors.success} strokeWidth={iconStroke} />,
                 tone: "leaf"
               }
             ]}
@@ -339,7 +338,7 @@ export default function RecipeBaselinesScreen() {
           {visibleSummary.posItemsMissingRecipes.length > 0 && (
             <Card style={styles.warningCard}>
               <View style={styles.warningHeader}>
-                <AlertTriangle size={19} color={colors.caution} strokeWidth={2.4} />
+                <AlertTriangle size={icon.emphasis} color={colors.caution} strokeWidth={iconStroke} />
                 <Text style={styles.warningTitle}>{t("recipes.warning.title")}</Text>
               </View>
               <Text style={styles.warningCopy}>
@@ -379,7 +378,7 @@ export default function RecipeBaselinesScreen() {
               <EmptyState
                 title={t("recipes.empty.title")}
                 body={t("recipes.empty.body")}
-                illustration={<InsightChartIllustration />}
+                illustration={<BookOpen size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
               />
             ) : (
               visibleSummary.items.map((item) => (
@@ -429,7 +428,7 @@ function RecipeBaselineBuilder({
     <Card style={styles.builderCard}>
       <View style={styles.builderHeader}>
         <IconBadge tone="brand">
-          <Plus size={18} color={colors.accent} strokeWidth={2.5} />
+          <Plus size={icon.row} color={colors.accent} strokeWidth={iconStroke} />
         </IconBadge>
         <View style={styles.builderHeaderText}>
           <Text style={styles.builderTitle}>{t("recipes.builder.title")}</Text>
@@ -477,7 +476,7 @@ function RecipeBaselineBuilder({
               label={item.item_name}
               active={selectedInventoryItem?.id === item.id}
               disabled={saving}
-              icon={<Package size={13} color={selectedInventoryItem?.id === item.id ? colors.surface : colors.text} strokeWidth={2.4} />}
+              icon={<Package size={icon.inline} color={selectedInventoryItem?.id === item.id ? colors.surface : colors.text} strokeWidth={iconStroke} />}
               onPress={() => onInventoryItemNameChange(item.item_name)}
             />
           ))}
@@ -516,7 +515,7 @@ function RecipeBaselineBuilder({
 
       <Button
         title={t(saving ? "recipes.action.adding" : "recipes.action.add")}
-        icon={<Plus size={17} color={colors.surface} strokeWidth={2.5} />}
+        icon={<Plus size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
         onPress={onAdd}
         disabled={saving}
         fullWidth
@@ -593,7 +592,7 @@ function RecipeRow({
       <View style={styles.statusRail} />
       <View style={styles.recipeLead}>
         <IconBadge tone="leaf">
-          <Link2 size={18} color={colors.success} strokeWidth={2.4} />
+          <Link2 size={icon.row} color={colors.success} strokeWidth={iconStroke} />
         </IconBadge>
         <View style={styles.recipeText}>
           <View style={styles.recipeTop}>
@@ -672,7 +671,7 @@ function RecipeRow({
                         title={t(isSaving ? "recipes.action.saving" : "recipes.action.save")}
                         accessibilityLabel={t("recipes.action.saveAccessibility", { ingredient: ingredient.itemName })}
                         variant="secondary"
-                        icon={<Save size={15} color={colors.text} strokeWidth={2.5} />}
+                        icon={<Save size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                         disabled={isBusy || !isDirty}
                         onPress={() => onSave(ingredient.mappingId, draftValue, { immediate: true })}
                         style={styles.saveButton}

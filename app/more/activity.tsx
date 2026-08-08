@@ -9,7 +9,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, radii } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -118,7 +118,7 @@ export default function ActivityHistoryScreen() {
       loading={loading}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-          <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+          <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -177,9 +177,9 @@ export default function ActivityHistoryScreen() {
                     <Badge tone="danger" label={t("activity.attention")} />
                   ) : null}
                   {expanded ? (
-                    <ChevronUp size={16} color={colors.muted} strokeWidth={2.1} />
+                    <ChevronUp size={icon.inline} color={colors.muted} strokeWidth={iconStroke} />
                   ) : (
-                    <ChevronDown size={16} color={colors.muted} strokeWidth={2.1} />
+                    <ChevronDown size={icon.inline} color={colors.muted} strokeWidth={iconStroke} />
                   )}
                 </View>
                 <Text style={styles.summary} numberOfLines={expanded ? undefined : 3}>

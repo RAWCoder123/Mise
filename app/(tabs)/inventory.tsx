@@ -23,14 +23,12 @@ import {
   type InventoryHealthCounts
 } from "../../components/ui/InventoryHealth";
 import { InventoryHealthSummaryCard } from "../../components/ui/InventoryHealthSummaryCard";
-import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
-import { ItemGlyph } from "../../components/ui/ItemGlyph";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { FilterRow, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, inventoryStatusColors, radii, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, inventoryStatusColors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
@@ -181,7 +179,7 @@ export default function InventoryScreen() {
         <EmptyState
           title={t("inventory.noWorkspace.title")}
           body={t("inventory.noWorkspace.body")}
-          illustration={<ProduceCrateIllustration />}
+          illustration={<Package size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
         />
         <Button title={t("inventory.noWorkspace.action")} onPress={() => router.replace("/setup")} fullWidth style={styles.emptyButton} />
       </Screen>
@@ -199,13 +197,13 @@ export default function InventoryScreen() {
             accessibilityLabel={t("inventory.search.accessibility")}
             onPress={() => searchInputRef.current?.focus()}
           >
-            <Search size={22} color={colors.text} strokeWidth={2} />
+            <Search size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
           </ActionIcon>
           <ActionIcon
             accessibilityLabel={t("inventory.filter.toggle")}
             onPress={() => setFilter((current) => (current === "At risk" ? "All" : "At risk"))}
           >
-            <Filter size={22} color={filter === "At risk" ? colors.warning : colors.text} strokeWidth={2} />
+            <Filter size={icon.emphasis} color={filter === "At risk" ? colors.warning : colors.text} strokeWidth={iconStroke} />
           </ActionIcon>
         </View>
       }
@@ -268,7 +266,7 @@ export default function InventoryScreen() {
                   { count: formatNumber(reorderCount) }
                 )}
                 subtitle={t("inventory.reorder.basis")}
-                icon={<ShoppingCart size={18} color={colors.accentDark} strokeWidth={2.2} />}
+                icon={<ShoppingCart size={icon.row} color={colors.accentDark} strokeWidth={iconStroke} />}
                 iconTone="brand"
                 onPress={() => router.push("/orders")}
               />
@@ -286,7 +284,7 @@ export default function InventoryScreen() {
           <SectionHeader title={t("inventory.list.title")} />
           <View style={styles.controls}>
             <View style={styles.searchBox}>
-              <Search size={18} color={colors.faint} strokeWidth={2.25} />
+              <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
               <TextInput
                 ref={searchInputRef}
                 accessibilityLabel={t("inventory.search.accessibility")}
@@ -301,7 +299,7 @@ export default function InventoryScreen() {
           </View>
           {filtered.length === 0 ? (
             <View style={styles.emptyList}>
-              <Package size={20} color={colors.faint} strokeWidth={2.25} />
+              <Package size={icon.emphasis} color={colors.faint} strokeWidth={iconStroke} />
               <Text style={styles.emptyListTitle}>{t("inventory.emptyMatches.title")}</Text>
             </View>
           ) : (
@@ -427,7 +425,6 @@ function InventoryListRow({
       subtitle={`${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${item.unit} · ${localized.coverage}`}
       icon={categoryIcon(item.category, statusColor)}
       iconTone={iconTone}
-      leading={<ItemGlyph itemName={item.item_name} category={item.category} size={30} />}
       badgeLabel={localized.status}
       badgeTone={badgeTone}
       accessibilityLabel={t("inventory.row.accessibilityLedger", {

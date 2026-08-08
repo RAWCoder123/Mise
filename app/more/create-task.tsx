@@ -11,7 +11,7 @@ import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -44,7 +44,7 @@ function BackAction() {
   const { t } = useLocale();
   return (
     <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-      <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+      <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
     </ActionIcon>
   );
 }
@@ -549,7 +549,7 @@ export default function CreateOperatorTaskScreen() {
 
         <Button
           title={saving ? t("common.saving") : t("operatorTasks.save")}
-          icon={<ClipboardList size={17} color={colors.surface} strokeWidth={2.4} />}
+          icon={<ClipboardList size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
           onPress={() => void save()}
           disabled={saving}
           fullWidth

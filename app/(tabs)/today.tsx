@@ -10,12 +10,11 @@ import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { ProduceCrateIllustration } from "../../components/ui/MiseIllustrations";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, radii } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey, MessageValues } from "../../i18n/catalog";
@@ -299,7 +298,7 @@ export default function TodayScreen() {
         <EmptyState
           title={t("workspace.none.title")}
           body={t(canUseDemoMode ? "workspace.none.demoBody" : "workspace.none.body")}
-          illustration={<ProduceCrateIllustration />}
+          illustration={<CalendarDays size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
         />
         <Button
           title={t(canUseDemoMode ? "workspace.none.demoAction" : "workspace.none.setupAction")}
@@ -318,7 +317,7 @@ export default function TodayScreen() {
       loading={loading}
       action={
         <ActionIcon accessibilityLabel={t("nav.today")} onPress={() => setFocus("now")}>
-          <CalendarDays size={22} color={colors.text} strokeWidth={1.9} />
+          <CalendarDays size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >

@@ -1,14 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
-import {
-  ChevronDown,
-  ClipboardCheck,
-  Package,
-  ShoppingCart,
-  Sparkles,
-  TriangleAlert
-} from "lucide-react-native";
+import { ChevronDown, ClipboardCheck, Package, ShoppingCart, Sparkles, Store, TriangleAlert } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -19,16 +12,12 @@ import {
   type InventoryHealthCounts
 } from "../../components/ui/InventoryHealth";
 import { InventoryHealthSummaryCard } from "../../components/ui/InventoryHealthSummaryCard";
-import {
-  BriefClipboardIllustration,
-  ProduceCrateIllustration
-} from "../../components/ui/MiseIllustrations";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { CompactMetricStrip } from "../../components/ui/CompactMetricStrip";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, fontFamilies, radii } from "../../constants/theme";
+import { colors, conceptTypography, fontFamilies, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey, MessageValues } from "../../i18n/catalog";
@@ -167,7 +156,7 @@ export default function HomeScreen() {
         <EmptyState
           title={t("workspace.none.title")}
           body={t(canUseDemoMode ? "workspace.none.demoBody" : "workspace.none.body")}
-          illustration={<ProduceCrateIllustration />}
+          illustration={<Store size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
         />
         <Button
           title={t(canUseDemoMode ? "workspace.none.demoAction" : "workspace.none.setupAction")}
@@ -191,7 +180,7 @@ export default function HomeScreen() {
           style={({ pressed }) => [styles.restaurantChip, pressed && styles.pressed]}
         >
           <Text numberOfLines={1} style={styles.restaurantChipText}>{restaurant.name}</Text>
-          <ChevronDown size={16} color={colors.muted} strokeWidth={2.2} />
+          <ChevronDown size={icon.inline} color={colors.muted} strokeWidth={iconStroke} />
         </Pressable>
 
         <View style={styles.greetingBlock}>
@@ -312,7 +301,7 @@ export default function HomeScreen() {
           title={t("home.ask.entry")}
           accessibilityLabel={t("home.ask.accessibility")}
           variant="secondary"
-          icon={<Sparkles size={17} color={colors.text} strokeWidth={2.1} />}
+          icon={<Sparkles size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
           onPress={() => router.push("/ask-mise" as never)}
           fullWidth
         />
@@ -526,7 +515,7 @@ function DailyBriefing({
         count: formatNumber(openTasks)
       }),
       sublabel: t("home.brief.sub.tasks", { count: formatNumber(highPriority) }),
-      icon: <ClipboardCheck size={12} color={openTasks > 0 ? colors.danger : colors.success} strokeWidth={2.4} />,
+      icon: <ClipboardCheck size={12} color={openTasks > 0 ? colors.danger : colors.success} strokeWidth={iconStroke} />,
       tint: openTasks > 0 ? colors.dangerSoft : colors.successSoft
     },
     {
@@ -539,7 +528,7 @@ function DailyBriefing({
         <ShoppingCart
           size={12}
           color={summary.pendingRecommendations > 0 ? colors.caution : colors.success}
-          strokeWidth={2.4}
+          strokeWidth={iconStroke}
         />
       ),
       tint: summary.pendingRecommendations > 0 ? colors.cautionSoft : colors.successSoft
@@ -550,7 +539,7 @@ function DailyBriefing({
         count: formatNumber(stockAlerts)
       }),
       sublabel: t("home.brief.sub.stock", { count: formatNumber(reorderCount) }),
-      icon: <TriangleAlert size={12} color={stockAlerts > 0 ? colors.warning : colors.success} strokeWidth={2.4} />,
+      icon: <TriangleAlert size={12} color={stockAlerts > 0 ? colors.warning : colors.success} strokeWidth={iconStroke} />,
       tint: stockAlerts > 0 ? colors.warningSoft : colors.successSoft
     }
   ];
@@ -580,7 +569,6 @@ function DailyBriefing({
             </View>
           ))}
         </View>
-        <BriefClipboardIllustration size={64} />
       </Pressable>
     </View>
   );

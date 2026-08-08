@@ -17,7 +17,7 @@ import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { FilterRow, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, inventoryStatusColors, radii } from "../../constants/theme";
+import { colors, icon, iconStroke, inventoryStatusColors, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
@@ -331,7 +331,7 @@ export default function InventoryDetailScreen() {
       keyboardAware
       action={
         <ActionIcon accessibilityLabel={t("inventory.detail.back")} onPress={goBackToInventory}>
-          <ArrowLeft size={20} color={colors.accentDark} strokeWidth={2.4} />
+          <ArrowLeft size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -351,7 +351,7 @@ export default function InventoryDetailScreen() {
                     ? "warning"
                     : "danger"
             }
-            icon={<PackageCheck size={21} color={inventoryStatusColors[status]} strokeWidth={2.6} />}
+            icon={<PackageCheck size={icon.emphasis} color={inventoryStatusColors[status]} strokeWidth={iconStroke} />}
             stats={[
               {
                 label: t("inventory.detail.projected"),
@@ -416,7 +416,7 @@ export default function InventoryDetailScreen() {
             </View>
             {prediction.todayDepletion > 0 ? (
               <View style={styles.depletionRow}>
-                <ArrowDownRight size={16} color={colors.accentDark} strokeWidth={2.5} />
+                <ArrowDownRight size={icon.inline} color={colors.accentDark} strokeWidth={iconStroke} />
                 <Text style={styles.depletionText}>{localizedPrediction.depletion}</Text>
               </View>
             ) : null}
@@ -457,7 +457,7 @@ export default function InventoryDetailScreen() {
                 title={t("inventory.detail.addToOrder")}
                 accessibilityLabel={t("inventory.detail.addAccessibility", { item: item.item_name })}
                 variant="secondary"
-                icon={<ClipboardList size={17} color={colors.text} strokeWidth={2.5} />}
+                icon={<ClipboardList size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => void addToOrder()}
                 disabled={busy}
                 fullWidth
@@ -577,7 +577,7 @@ export default function InventoryDetailScreen() {
             {canManage ? (
               <Button
                 title={savingSettings ? t("inventory.detail.saving") : t("inventory.detail.saveSettings")}
-                icon={<Save size={17} color={colors.surface} strokeWidth={2.5} />}
+                icon={<Save size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
                 onPress={() => void saveSettings()}
                 disabled={busy}
                 fullWidth

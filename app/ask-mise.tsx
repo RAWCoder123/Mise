@@ -10,7 +10,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { MiseMark } from "../components/ui/BrandLockup";
 import { Screen } from "../components/ui/Screen";
 import { RetryNotice } from "../components/ui/StatusNotice";
-import { colors, conceptTypography, radii, typography } from "../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
 import {
@@ -49,7 +49,7 @@ function BackAction() {
   const { t } = useLocale();
   return (
     <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-      <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+      <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
     </ActionIcon>
   );
 }
@@ -262,7 +262,7 @@ export default function AskMiseScreen() {
               </View>
             ) : (
               <View key={message.id} style={styles.miseRow}>
-                <MiseMark size={22} />
+                <MiseMark size={icon.emphasis} />
                 <View style={styles.miseCopy}>
                   <Text style={styles.bubbleText}>{message.text}</Text>
                   {message.priorities && message.priorities.length > 0 ? (
@@ -281,7 +281,7 @@ export default function AskMiseScreen() {
                             onPress={() => router.push(`/tasks/${task.id}`)}
                             style={({ pressed }) => [styles.priorityRow, pressed && styles.pressed]}
                           >
-                            <CheckSquare size={14} color={colors.muted} strokeWidth={2.2} />
+                            <CheckSquare size={icon.inline} color={colors.muted} strokeWidth={iconStroke} />
                             <View style={styles.priorityCopy}>
                               <Text numberOfLines={1} style={styles.priorityTitle}>
                                 {presentation.title}
@@ -349,9 +349,9 @@ export default function AskMiseScreen() {
             style={styles.sendButton}
           >
             <Send
-              size={18}
+              size={icon.row}
               color={asking || !input.trim() ? colors.faint : colors.accentDark}
-              strokeWidth={2.25}
+              strokeWidth={iconStroke}
             />
           </ActionIcon>
         </View>

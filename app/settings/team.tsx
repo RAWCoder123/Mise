@@ -11,7 +11,7 @@ import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
-import { colors, radii, spacing, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -116,7 +116,7 @@ export default function TeamSettingsScreen() {
       title: t("team.title"),
       headerLeft: () => (
         <ActionIcon accessibilityLabel={t("team.back")} onPress={() => router.back()}>
-          <ArrowLeft size={20} color={colors.text} strokeWidth={2.2} />
+          <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
         </ActionIcon>
       )
     });
@@ -236,7 +236,7 @@ export default function TeamSettingsScreen() {
               title={t(busyKey === "invite" ? "team.invite.adding" : "team.invite.add")}
               onPress={() => void inviteMember()}
               disabled={Boolean(busyKey) || inviteEmail.trim().length === 0}
-              icon={<UserPlus size={16} color={colors.surface} strokeWidth={2.2} />}
+              icon={<UserPlus size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />}
             />
           </SectionSurface>
         ) : (
@@ -256,7 +256,7 @@ export default function TeamSettingsScreen() {
             <EmptyState
               title={t("team.empty.title")}
               body={t("team.empty.body")}
-              illustration={<UsersRound size={22} color={colors.muted} strokeWidth={2.1} />}
+              illustration={<UsersRound size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
               framed
             />
           ) : null}
@@ -267,7 +267,7 @@ export default function TeamSettingsScreen() {
               <View key={`${member.restaurant_id}:${member.user_id}`} style={styles.memberCard}>
                 <View style={styles.memberHeader}>
                   <IconBadge tone="neutral">
-                    <UsersRound size={16} color={colors.text} strokeWidth={2.2} />
+                    <UsersRound size={icon.inline} color={colors.text} strokeWidth={iconStroke} />
                   </IconBadge>
                   <View style={styles.memberCopy}>
                     <Text style={styles.memberName}>

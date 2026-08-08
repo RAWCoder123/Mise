@@ -12,7 +12,7 @@ import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, typography } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -31,7 +31,7 @@ function BackAction() {
   const { t } = useLocale();
   return (
     <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-      <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+      <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
     </ActionIcon>
   );
 }
@@ -178,7 +178,7 @@ export default function WasteScreen() {
                 title={t("waste.action.record")}
                 variant="secondary"
                 size="compact"
-                icon={<Plus size={16} color={colors.text} strokeWidth={2.2} />}
+                icon={<Plus size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => router.push("/inventory")}
                 style={styles.inlineAction}
               />
@@ -223,7 +223,7 @@ export default function WasteScreen() {
                         : undefined
                     }
                     badgeTone={item.distinctDayCount >= 2 ? "warning" : "neutral"}
-                    icon={<PackageMinus size={18} color={colors.text} strokeWidth={1.9} />}
+                    icon={<PackageMinus size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                     iconTone={item.distinctDayCount >= 2 ? "warning" : "neutral"}
                     onPress={() => router.push(`/inventory/${item.inventoryItemId}` as never)}
                     accessibilityLabel={t("waste.action.reviewItem", { item: item.itemName })}

@@ -28,7 +28,7 @@ import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, density, fontFamilies, radii, typography } from "../../constants/theme";
+import { colors, conceptTypography, density, fontFamilies, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { LANGUAGE_OPTIONS, type MessageKey, type MessageValues } from "../../i18n/catalog";
@@ -215,7 +215,7 @@ export default function SettingsScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.headerBack, pressed && styles.pressed]}
         >
-          <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+          <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
         </Pressable>
       }
     >
@@ -239,19 +239,19 @@ export default function SettingsScreen() {
           <OperationalRow
             density="menu"
             title={t("settings.account.privacy.title")}
-            icon={<ShieldCheck size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<ShieldCheck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/privacy" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("settings.account.autonomy.title")}
-            icon={<Shield size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Shield size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/autonomy" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("settings.account.support.title")}
-            icon={<LifeBuoy size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<LifeBuoy size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/support" as never)}
           />
         </SettingsSection>
@@ -261,7 +261,7 @@ export default function SettingsScreen() {
             density="menu"
             title={restaurant?.name ?? t("settings.profile.noRestaurant")}
             value={localizedRole ?? undefined}
-            icon={<Store size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Store size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
           />
           {restaurant ? (
             <>
@@ -269,19 +269,19 @@ export default function SettingsScreen() {
                 density="menu"
                 title={t("settings.profile.timezone")}
                 value={restaurant.timezone}
-                icon={<Building2 size={20} color={colors.muted} strokeWidth={1.9} />}
+                icon={<Building2 size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
               />
               <OperationalRow
                 density="menu"
                 title={t("settings.profile.currency")}
                 value={restaurant.currency}
-                icon={<Building2 size={20} color={colors.muted} strokeWidth={1.9} />}
+                icon={<Building2 size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
               />
               <OperationalRow
                 density="menu"
                 title={t("settings.profile.serviceStyle")}
                 value={serviceStyleLabel(restaurant.service_style, t)}
-                icon={<Store size={20} color={colors.muted} strokeWidth={1.9} />}
+                icon={<Store size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
               />
             </>
           ) : null}
@@ -307,12 +307,12 @@ export default function SettingsScreen() {
                       pressed && styles.pressed
                     ]}
                   >
-                    <Building2 size={18} color={selected ? colors.accentDark : colors.muted} strokeWidth={2.25} />
+                    <Building2 size={icon.row} color={selected ? colors.accentDark : colors.muted} strokeWidth={iconStroke} />
                     <View style={styles.workspaceCopy}>
                       <Text style={styles.workspaceName}>{item.name}</Text>
                       <Text style={styles.workspaceMeta}>{item.cuisine_type ?? t("settings.workspace.metaFallback")}</Text>
                     </View>
-                    {selected ? <Check size={18} color={colors.success} strokeWidth={2.25} /> : null}
+                    {selected ? <Check size={icon.row} color={colors.success} strokeWidth={iconStroke} /> : null}
                   </Pressable>
                 );
               })
@@ -324,7 +324,7 @@ export default function SettingsScreen() {
             density="menu"
             title={t("settings.preference.language")}
             value={LANGUAGE_OPTIONS.find((option) => option.locale === locale)?.nativeName ?? locale}
-            icon={<Languages size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Languages size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/language" as never)}
           />
         </SettingsSection>
@@ -348,7 +348,7 @@ export default function SettingsScreen() {
                 ? t(posProvider ? "settings.integration.pos.connected" : "settings.integration.pos.notConnected")
                 : t("settings.integration.pos.manage")
             }
-            icon={<PlugZap size={20} color={posProvider ? colors.success : colors.muted} strokeWidth={1.9} />}
+            icon={<PlugZap size={icon.emphasis} color={posProvider ? colors.success : colors.muted} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/pos")}
           />
           <OperationalRow
@@ -357,9 +357,9 @@ export default function SettingsScreen() {
             value={gmailConnectionBadge(visibleEmailConnection, t)}
             icon={
               <Mail
-                size={20}
+                size={icon.emphasis}
                 color={gmailConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
-                strokeWidth={1.9}
+                strokeWidth={iconStroke}
               />
             }
             onPress={() => router.push("/settings/gmail" as never)}
@@ -370,20 +370,20 @@ export default function SettingsScreen() {
           <OperationalRow
             density="menu"
             title={t("settings.operations.salesImport.title")}
-            icon={<Upload size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Upload size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/sales-import" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("settings.operations.recipes.title")}
-            icon={<BookOpen size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<BookOpen size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/recipes" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("settings.operations.suppliers.title")}
             value={formatNumber(visibleSuppliers.length)}
-            icon={<Truck size={20} color={colors.text} strokeWidth={1.9} />}
+            icon={<Truck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/suppliers" as never)}
           />
         </SettingsSection>
@@ -392,14 +392,14 @@ export default function SettingsScreen() {
           <OperationalRow
             density="menu"
             title={t(usingLocalDemo ? "settings.data.local.title" : "settings.data.hosted.title")}
-            icon={<Database size={20} color={usingLocalDemo ? colors.muted : colors.success} strokeWidth={1.9} />}
+            icon={<Database size={icon.emphasis} color={usingLocalDemo ? colors.muted : colors.success} strokeWidth={iconStroke} />}
           />
 
           {canExportRestaurant ? (
             <OperationalRow
               density="menu"
               title={t("settings.data.export.title")}
-              icon={<Download size={20} color={colors.text} strokeWidth={1.9} />}
+              icon={<Download size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
               onPress={() => router.push("/settings/export" as never)}
             />
           ) : null}
@@ -409,7 +409,7 @@ export default function SettingsScreen() {
               <Button
                 title={t(loading ? "settings.data.restoring" : "settings.data.restore")}
                 variant="secondary"
-                icon={<RefreshCw size={18} color={colors.text} strokeWidth={2.25} />}
+                icon={<RefreshCw size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={reset}
                 disabled={loading}
                 fullWidth
@@ -438,9 +438,9 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
                 {diagnosticsOpen ? (
-                  <ChevronUp size={20} color={colors.muted} strokeWidth={2.25} />
+                  <ChevronUp size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />
                 ) : (
-                  <ChevronDown size={20} color={colors.muted} strokeWidth={2.25} />
+                  <ChevronDown size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />
                 )}
               </Pressable>
               {diagnosticsOpen ? (
@@ -504,7 +504,7 @@ export default function SettingsScreen() {
                 <Button
                   title={t(deletingAccount ? "settings.account.deleting" : "settings.account.deleteConfirm")}
                   variant="danger"
-                  icon={<Trash2 size={18} color={colors.surface} strokeWidth={2.25} />}
+                  icon={<Trash2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
                   onPress={removeAccount}
                   disabled={
                     deletingAccount ||
@@ -530,7 +530,7 @@ export default function SettingsScreen() {
                   title={t("settings.account.deleteTitle")}
                   accessibilityHint={t("settings.account.deleteOpenHint")}
                   variant="secondary"
-                  icon={<Trash2 size={18} color={colors.danger} strokeWidth={2.25} />}
+                  icon={<Trash2 size={icon.row} color={colors.danger} strokeWidth={iconStroke} />}
                   onPress={() => setDeleteConfirmOpen(true)}
                   fullWidth
                 />

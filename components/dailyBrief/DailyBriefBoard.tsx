@@ -6,7 +6,7 @@ import { Badge, type BadgeTone } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { SectionSurface } from "../ui/SectionSurface";
 import { StatusNotice } from "../ui/StatusNotice";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDecisionOutbox";
 import type {
@@ -113,7 +113,7 @@ export function DailyBriefBoard({
             </Text>
           )}
         </View>
-        <ChevronRight size={15} color={colors.faint} strokeWidth={2.2} />
+        <ChevronRight size={icon.inline} color={colors.faint} strokeWidth={iconStroke} />
       </Pressable>
     );
   }

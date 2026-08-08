@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Check } from "lucide-react-native";
 
-import { colors, typography } from "../../constants/theme";
+import { colors, iconStroke, typography } from "../../constants/theme";
 
 export type SetupStepStatus = "complete" | "active" | "missing" | "locked";
 
@@ -41,7 +41,7 @@ export function SetupStepRail({ steps, onStepPress }: SetupStepRailProps) {
                 )}
                 <View style={[styles.marker, active && styles.activeMarker, complete && styles.completeMarker]}>
                   {complete ? (
-                    <Check size={12} color={colors.surface} strokeWidth={3} />
+                    <Check size={12} color={colors.surface} strokeWidth={iconStroke} />
                   ) : (
                     <Text style={[styles.markerText, active && styles.activeMarkerText]}>{index + 1}</Text>
                   )}

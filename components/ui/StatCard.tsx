@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { Minus, TrendingDown, TrendingUp } from "lucide-react-native";
 
-import { colors, radii, spacing, typography } from "../../constants/theme";
+import { colors, iconStroke, radii, spacing, typography } from "../../constants/theme";
 
 export type StatCardTone = "default" | "accent" | "success" | "caution" | "warning" | "danger";
 export type StatDeltaTone = "success" | "danger" | "neutral";
@@ -50,7 +50,7 @@ export function StatCard({ label, value, icon, tone = "default", delta, accessib
         </View>
         {delta ? (
           <View style={[styles.deltaChip, deltaChipStyles[delta.tone]]}>
-            <DeltaIcon size={10} color={deltaIconColor} strokeWidth={2.4} />
+            <DeltaIcon size={10} color={deltaIconColor} strokeWidth={iconStroke} />
             <Text numberOfLines={1} style={[styles.deltaLabel, { color: deltaIconColor }]}>
               {delta.label}
             </Text>

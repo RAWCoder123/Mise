@@ -8,7 +8,7 @@ import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, radii } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { RestaurantMemory } from "../../services/domain/restaurantMemory";
@@ -140,7 +140,7 @@ export default function RestaurantMemoryScreen() {
       loading={loading}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-          <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+          <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -161,7 +161,7 @@ export default function RestaurantMemoryScreen() {
           <EmptyState
             title={t("memory.empty.title")}
             body={t("memory.empty.body")}
-            illustration={<Brain size={28} color={colors.muted} strokeWidth={1.8} />}
+            illustration={<Brain size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
           />
         ) : null}
 

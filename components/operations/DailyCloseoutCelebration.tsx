@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { CheckCircle2, Sparkles } from "lucide-react-native";
 import { StyleSheet, Text, View } from "react-native";
 
-import { colors, conceptTypography, fontFamilies, radii } from "../../constants/theme";
+import { colors, conceptTypography, fontFamilies, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import type { MessageKey } from "../../i18n/catalog";
 import type { DailyCloseoutSummary } from "../../services/domain/dailyCloseout";
@@ -82,9 +82,9 @@ export function DailyCloseoutCelebration({
       <StateChangeView stateKey={acknowledged ? "acknowledged" : summary.phase} style={styles.content}>
         <View style={[styles.icon, acknowledged && styles.iconAcknowledged]}>
           {acknowledged ? (
-            <CheckCircle2 size={20} color={colors.success} strokeWidth={2.3} />
+            <CheckCircle2 size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />
           ) : (
-            <Sparkles size={20} color={colors.accent} strokeWidth={2.2} />
+            <Sparkles size={icon.emphasis} color={colors.accent} strokeWidth={iconStroke} />
           )}
         </View>
         <View style={styles.copy}>
@@ -119,7 +119,7 @@ export function DailyCloseoutCelebration({
         ) : null}
         {acknowledged ? (
           <View style={styles.savedState}>
-            <CheckCircle2 size={14} color={colors.success} strokeWidth={2.3} />
+            <CheckCircle2 size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
             <Text style={styles.savedText}>{t("dailyCloseout.action.acknowledged")}</Text>
           </View>
         ) : (

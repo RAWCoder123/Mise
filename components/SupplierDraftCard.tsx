@@ -1,7 +1,7 @@
 import { CheckCircle2, LockKeyhole, Send } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, conceptTypography, radii } from "../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { presentSupportedSupplierOrderStatus } from "../services/domain/operationalStatus";
 import type { SupplierOrder } from "../types/mise";
@@ -155,11 +155,11 @@ export function SupplierDraftCard({
             variant={busy || sendIsAvailable ? "primary" : "soft"}
             icon={
               busy ? (
-                <CheckCircle2 size={16} color={colors.surface} strokeWidth={2.25} />
+                <CheckCircle2 size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />
               ) : !sendIsAvailable ? (
-                <LockKeyhole size={16} color={colors.accentDark} strokeWidth={2.25} />
+                <LockKeyhole size={icon.inline} color={colors.accentDark} strokeWidth={iconStroke} />
               ) : (
-                <Send size={16} color={colors.surface} strokeWidth={2.25} />
+                <Send size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />
               )
             }
             onPress={sendAction}

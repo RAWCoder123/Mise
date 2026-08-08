@@ -9,7 +9,7 @@ import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
-import { colors, radii, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -316,7 +316,7 @@ export default function OrderDraftDetailScreen() {
           accessibilityLabel={t("orders.detail.back")}
           onPress={goBackToOrders}
         >
-          <ArrowLeft size={20} color={colors.text} strokeWidth={2.25} />
+          <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -352,9 +352,9 @@ export default function OrderDraftDetailScreen() {
           <View style={styles.statusRow}>
             <View style={[styles.statusIcon, !isDraft && styles.statusIconSent]}>
               {isDraft ? (
-                <FileText size={20} color={colors.text} strokeWidth={2.25} />
+                <FileText size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
               ) : (
-                <CheckCircle2 size={20} color={colors.success} strokeWidth={2.25} />
+                <CheckCircle2 size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />
               )}
             </View>
             <View style={styles.statusCopy}>
@@ -497,7 +497,7 @@ export default function OrderDraftDetailScreen() {
                 supplier: visibleOrder.supplier_name
               })}
               variant="secondary"
-              icon={<Copy size={17} color={colors.text} strokeWidth={2.25} />}
+              icon={<Copy size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
               onPress={() => void copyOrder()}
               disabled={busy}
               style={styles.actionButton}
@@ -507,7 +507,7 @@ export default function OrderDraftDetailScreen() {
                 title={busy ? t("orders.detail.action.saving") : t("orders.detail.action.save")}
                 accessibilityLabel={t("orders.detail.action.saveAccessibility")}
                 variant="secondary"
-                icon={<Save size={17} color={colors.text} strokeWidth={2.25} />}
+                icon={<Save size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => void saveNote()}
                 disabled={busy}
                 style={styles.actionButton}
@@ -527,7 +527,7 @@ export default function OrderDraftDetailScreen() {
               accessibilityLabel={usingLocalDemo
                 ? t("orders.detail.action.simulateAccessibility", { supplier: visibleOrder.supplier_name })
                 : t("orders.detail.action.sendAccessibility", { supplier: visibleOrder.supplier_name })}
-              icon={<Send size={17} color={colors.surface} strokeWidth={2.25} />}
+              icon={<Send size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void sendOrder()}
               disabled={busy}
               fullWidth
@@ -540,7 +540,7 @@ export default function OrderDraftDetailScreen() {
               accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
                 supplier: visibleOrder.supplier_name
               })}
-              icon={<CheckCircle2 size={17} color={colors.surface} strokeWidth={2.25} />}
+              icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void markReceived()}
               disabled={busy}
               fullWidth

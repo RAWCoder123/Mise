@@ -10,7 +10,7 @@ import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
-import { colors, spacing, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
@@ -230,7 +230,7 @@ export default function GmailConnectionScreen() {
       loading={loading}
       action={
         <ActionIcon accessibilityLabel={t("settings.gmail.back")} onPress={goBackToSettings}>
-          <ArrowLeft size={20} color={colors.text} strokeWidth={2.25} />
+          <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
         </ActionIcon>
       }
     >
@@ -262,9 +262,9 @@ export default function GmailConnectionScreen() {
             <View style={styles.connectionHeader}>
               <IconBadge tone={statusPresentation.iconTone}>
                 {status === "connected" ? (
-                  <CheckCircle2 size={21} color={colors.success} strokeWidth={2.4} />
+                  <CheckCircle2 size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />
                 ) : (
-                  <Mail size={21} color={colors.accent} strokeWidth={2.4} />
+                  <Mail size={icon.emphasis} color={colors.accent} strokeWidth={iconStroke} />
                 )}
               </IconBadge>
               <View style={styles.connectionTitleBlock}>
@@ -305,7 +305,7 @@ export default function GmailConnectionScreen() {
                           title={busyAction === "disconnect" ? t("settings.gmail.action.disconnecting") : t("settings.gmail.action.confirmDisconnect")}
                           accessibilityLabel={t("settings.gmail.action.confirmDisconnectAccessibility")}
                           variant="danger"
-                          icon={<Unplug size={16} color={colors.surface} strokeWidth={2.3} />}
+                          icon={<Unplug size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />}
                           onPress={() => void disconnect()}
                           disabled={busyAction !== null}
                           style={styles.confirmButton}
@@ -316,7 +316,7 @@ export default function GmailConnectionScreen() {
                     <Button
                       title={t("settings.gmail.action.disconnect")}
                       variant="secondary"
-                      icon={<Unplug size={17} color={colors.text} strokeWidth={2.25} />}
+                      icon={<Unplug size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                       onPress={() => setConfirmDisconnect(true)}
                       disabled={busyAction !== null}
                       fullWidth
@@ -325,7 +325,7 @@ export default function GmailConnectionScreen() {
                 ) : (
                   <Button
                     title={busyAction === "connect" ? t("settings.gmail.action.openingGoogle") : connectLabel}
-                    icon={<ExternalLink size={17} color={colors.surface} strokeWidth={2.25} />}
+                    icon={<ExternalLink size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
                     onPress={() => void connect()}
                     disabled={busyAction !== null}
                     fullWidth
@@ -337,7 +337,7 @@ export default function GmailConnectionScreen() {
 
           <Card tone="warm">
             <View style={styles.securityHeader}>
-              <ShieldCheck size={20} color={colors.text} strokeWidth={2.35} />
+              <ShieldCheck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
               <Text style={styles.securityTitle}>{t("settings.gmail.security.title")}</Text>
             </View>
             <Text style={styles.securityCopy}>
@@ -355,7 +355,7 @@ export default function GmailConnectionScreen() {
             title={busyAction === "refresh" ? t("settings.gmail.action.refreshing") : t("settings.gmail.action.refresh")}
             accessibilityLabel={t("settings.gmail.action.refreshAccessibility")}
             variant="ghost"
-            icon={<RefreshCw size={17} color={colors.text} strokeWidth={2.2} />}
+            icon={<RefreshCw size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => void refresh()}
             disabled={busyAction !== null}
             fullWidth

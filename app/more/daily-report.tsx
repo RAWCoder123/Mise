@@ -27,7 +27,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, typography } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
@@ -48,7 +48,7 @@ function BackAction() {
   const { t } = useLocale();
   return (
     <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
-      <ArrowLeft size={20} color={colors.text} strokeWidth={2.1} />
+      <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
     </ActionIcon>
   );
 }
@@ -194,11 +194,11 @@ export default function DailyReportScreen() {
                   }
                   accessory={
                     visibleReport.sales.salesTrendDirection === "up" ? (
-                      <ArrowUpRight size={16} color={colors.success} strokeWidth={2.2} />
+                      <ArrowUpRight size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
                     ) : visibleReport.sales.salesTrendDirection === "down" ? (
-                      <ArrowDownRight size={16} color={colors.danger} strokeWidth={2.2} />
+                      <ArrowDownRight size={icon.inline} color={colors.danger} strokeWidth={iconStroke} />
                     ) : (
-                      <Minus size={16} color={colors.muted} strokeWidth={2.2} />
+                      <Minus size={icon.inline} color={colors.muted} strokeWidth={iconStroke} />
                     )
                   }
                 />
@@ -263,7 +263,7 @@ export default function DailyReportScreen() {
                 title={t("dailyReport.action.inventory")}
                 variant="secondary"
                 size="compact"
-                icon={<Package size={16} color={colors.text} strokeWidth={2.2} />}
+                icon={<Package size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => router.push("/inventory")}
                 style={styles.inlineAction}
               />
@@ -322,7 +322,7 @@ export default function DailyReportScreen() {
                 title={t("dailyReport.waste.action")}
                 variant="secondary"
                 size="compact"
-                icon={<PackageMinus size={16} color={colors.text} strokeWidth={2.2} />}
+                icon={<PackageMinus size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => router.push("/more/waste" as never)}
                 style={styles.inlineAction}
               />
@@ -339,7 +339,7 @@ export default function DailyReportScreen() {
                 title={t("dailyReport.action.orders")}
                 variant="secondary"
                 size="compact"
-                icon={<ShoppingBag size={16} color={colors.text} strokeWidth={2.2} />}
+                icon={<ShoppingBag size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => router.push("/orders")}
                 style={styles.inlineAction}
               />
@@ -366,7 +366,7 @@ export default function DailyReportScreen() {
                 title={t("dailyReport.action.today")}
                 variant="secondary"
                 size="compact"
-                icon={<ClipboardList size={16} color={colors.text} strokeWidth={2.2} />}
+                icon={<ClipboardList size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => router.push("/today")}
                 style={styles.inlineAction}
               />
@@ -375,7 +375,7 @@ export default function DailyReportScreen() {
             <SectionHeader title={t("dailyReport.section.deliveries")} />
             <Card>
               <View style={styles.deliveryHeader}>
-                <Truck size={18} color={colors.text} strokeWidth={2} />
+                <Truck size={icon.row} color={colors.text} strokeWidth={iconStroke} />
                 <Text style={styles.taskLine}>
                   {t("dailyReport.deliveries.count", {
                     count: formatNumber(visibleReport.deliveriesToday.count)
@@ -492,7 +492,7 @@ export default function DailyReportScreen() {
                             title={t("dailyReport.supplierReliability.reviewOrder")}
                             variant="secondary"
                             size="compact"
-                            icon={<ArrowRight size={15} color={colors.text} strokeWidth={2.2} />}
+                            icon={<ArrowRight size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                             onPress={() =>
                               router.push(`/orders/${supplier.relatedOrderIds[0]}` as never)
                             }
@@ -508,7 +508,7 @@ export default function DailyReportScreen() {
                 title={t("dailyReport.supplierReliability.action")}
                 variant="secondary"
                 size="compact"
-                icon={<ShoppingBag size={16} color={colors.text} strokeWidth={2.2} />}
+                icon={<ShoppingBag size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => router.push("/orders")}
                 style={styles.inlineAction}
               />
@@ -566,7 +566,7 @@ export default function DailyReportScreen() {
             <Card>
               {visibleReport.managerAdvice.askBriefingText ? (
                 <View style={styles.briefingBlock}>
-                  <Sparkles size={16} color={colors.accent} strokeWidth={2.1} />
+                  <Sparkles size={icon.inline} color={colors.accent} strokeWidth={iconStroke} />
                   <Text style={styles.briefingText}>{visibleReport.managerAdvice.askBriefingText}</Text>
                 </View>
               ) : null}
@@ -580,7 +580,7 @@ export default function DailyReportScreen() {
                     title={t("dailyReport.advice.open")}
                     variant="secondary"
                     size="compact"
-                    icon={<ArrowRight size={15} color={colors.text} strokeWidth={2.2} />}
+                    icon={<ArrowRight size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                     onPress={() => router.push(action.route)}
                   />
                 </View>

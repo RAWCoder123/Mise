@@ -1,21 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  CheckCircle,
-  ChefHat,
-  FileSpreadsheet,
-  Package,
-  Plus,
-  ShieldCheck,
-  Trash2,
-  Truck
-} from "lucide-react-native";
+import { CheckCircle, ChefHat, FileSpreadsheet, Package, Plus, ShieldCheck, Trash2, Truck } from "lucide-react-native";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { ProduceCrateIllustration, SupplierBagIllustration } from "../../components/ui/MiseIllustrations";
 import { Screen } from "../../components/ui/Screen";
 import { StatusNotice } from "../../components/ui/StatusNotice";
 import {
@@ -25,7 +15,7 @@ import {
   SetupImportRow
 } from "../../components/ui/SetupChecklist";
 import { SetupStepRail, type SetupStepRailItem } from "../../components/ui/SetupStepRail";
-import { colors, fontFamilies, radii, spacing, typography } from "../../constants/theme";
+import { colors, fontFamilies, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey, MessageValues } from "../../i18n/catalog";
@@ -334,7 +324,7 @@ export default function SetupScreen() {
       <Screen title={t("setup.ready.title")} subtitle={t("setup.ready.subtitle", { restaurant: readyName })}>
         <Card tone="warm">
           <View style={styles.statusRow}>
-            <CheckCircle size={19} color={colors.success} strokeWidth={2.5} />
+            <CheckCircle size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />
             <Text style={styles.status}>
               {isDemoSetup
                 ? t("setup.ready.demoStatus", { provider: posProvider })
@@ -401,7 +391,7 @@ export default function SetupScreen() {
                     framed
                     title={t("setup.inventory.emptyTitle")}
                     body={t("setup.inventory.emptyBody")}
-                    illustration={<ProduceCrateIllustration />}
+                    illustration={<Package size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
                   />
                   <SetupAddButton
                     title={t("setup.inventory.addFirst")}
@@ -438,7 +428,7 @@ export default function SetupScreen() {
                   framed
                   title={t("setup.suppliers.emptyTitle")}
                   body={t("setup.suppliers.emptyBody")}
-                  illustration={<SupplierBagIllustration />}
+                  illustration={<Truck size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
                 />
               ) : (
                 suppliers.map((supplier) => (
@@ -465,7 +455,7 @@ export default function SetupScreen() {
                 framed
                 title={t("setup.recipes.emptyTitle")}
                 body={t("setup.recipes.emptyBody")}
-                illustration={<ProduceCrateIllustration />}
+                illustration={<Package size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />}
               />
             ) : (
               recipes.map((recipe) => (
@@ -511,7 +501,7 @@ export default function SetupScreen() {
               <SetupImportRow
                 title={t("setup.pos.pasteTitle")}
                 detail={t("setup.pos.format")}
-                icon={<FileSpreadsheet size={18} color={colors.text} strokeWidth={2.4} />}
+                icon={<FileSpreadsheet size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
               />
               <TextInput
                 accessibilityLabel={t("setup.pos.accessibility")}
@@ -556,7 +546,7 @@ export default function SetupScreen() {
 
         <View style={styles.footerPanel}>
           <View style={styles.footerStatus}>
-            {isDemoSetup ? <ChefHat size={18} color={colors.accent} strokeWidth={2.5} /> : <ShieldCheck size={18} color={colors.text} strokeWidth={2.5} />}
+            {isDemoSetup ? <ChefHat size={icon.row} color={colors.accent} strokeWidth={iconStroke} /> : <ShieldCheck size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
             <Text style={styles.status}>
               {t("setup.footer.progress", {
                 complete: formatNumber(setupSteps.filter((step) => step.status === "complete").length),
@@ -612,7 +602,7 @@ function InventoryDraftRow({
   return (
     <View style={styles.draftPanel}>
       <View style={styles.draftHeader}>
-        <Package size={18} color={colors.caution} strokeWidth={2.5} />
+        <Package size={icon.row} color={colors.caution} strokeWidth={iconStroke} />
         <TextInput
           accessibilityLabel={t("setup.field.inventoryName")}
           value={item.name}
@@ -649,7 +639,7 @@ function SupplierDraftRow({
   return (
     <View style={styles.draftPanel}>
       <View style={styles.draftHeader}>
-        <Truck size={18} color={colors.success} strokeWidth={2.5} />
+        <Truck size={icon.row} color={colors.success} strokeWidth={iconStroke} />
         <TextInput
           accessibilityLabel={t("setup.field.supplierName")}
           value={supplier.name}
@@ -689,7 +679,7 @@ function RecipeDraftEditor({
   return (
     <View style={styles.recipePanel}>
       <View style={styles.draftHeader}>
-        <ChefHat size={18} color={colors.caution} strokeWidth={2.5} />
+        <ChefHat size={icon.row} color={colors.caution} strokeWidth={iconStroke} />
         <TextInput
           accessibilityLabel={t("setup.field.dishName")}
           value={recipe.dishName}
@@ -746,7 +736,7 @@ function RecipeDraftEditor({
         style={styles.inlineAdd}
         accessibilityRole="button"
       >
-        <Plus size={16} color={colors.accent} strokeWidth={2.5} />
+        <Plus size={icon.inline} color={colors.accent} strokeWidth={iconStroke} />
         <Text style={styles.inlineAddText}>{t("setup.addIngredient")}</Text>
       </Pressable>
     </View>
@@ -823,7 +813,7 @@ function ChoiceChip({ label, selected, onPress }: { label: string; selected: boo
 function IconPress({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable accessibilityLabel={label} onPress={onPress} style={styles.iconPress} accessibilityRole="button">
-      <Trash2 size={16} color={colors.faint} strokeWidth={2.4} />
+      <Trash2 size={icon.inline} color={colors.faint} strokeWidth={iconStroke} />
     </Pressable>
   );
 }
