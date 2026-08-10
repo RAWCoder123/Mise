@@ -101,9 +101,10 @@ select set_config('request.jwt.claim.sub', 'f1111111-1111-4111-8111-111111111111
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select is(
   pg_temp.try_execute($sql$
-    update public.restaurants
-    set name = 'Mode Kitchen Read Only'
-    where id = 'f0000000-0000-4000-8000-000000000001'
+    select public.update_restaurant_profile(
+      'f0000000-0000-4000-8000-000000000001',
+      '{"name":"Mode Kitchen Read Only"}'::jsonb
+    )
   $sql$),
   false,
   'read-only mode blocks an authenticated tenant mutation'
@@ -164,9 +165,10 @@ select set_config('request.jwt.claim.sub', 'f1111111-1111-4111-8111-111111111111
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select is(
   pg_temp.try_execute($sql$
-    update public.restaurants
-    set name = 'Mode Kitchen Restored'
-    where id = 'f0000000-0000-4000-8000-000000000001'
+    select public.update_restaurant_profile(
+      'f0000000-0000-4000-8000-000000000001',
+      '{"name":"Mode Kitchen Restored"}'::jsonb
+    )
   $sql$),
   true,
   'normal mode permits an otherwise authorized tenant mutation'

@@ -130,6 +130,11 @@ Data API—owners/admins cannot flip `gmail_delivery_enabled`,
 `square_sync_enabled`, or related flags from the Expo client. Founder/ops
 enablement uses service-role scripts after staging proof.
 
+Legacy `sales_imports`, `supplier_items`, and `purchase_orders` are likewise
+SELECT-only for authenticated clients. Managers cannot forge POS import rows,
+supplier catalog entries, or legacy purchase orders through the Data API;
+service_role / Edge paths remain the write authority.
+
 ## Secret Handling
 
 Never expose these in Expo, public env vars, client-readable tables, logs, test snapshots, or API responses:

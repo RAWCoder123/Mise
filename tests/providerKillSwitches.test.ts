@@ -70,10 +70,10 @@ test("restaurant provider controls are SELECT-only for authenticated clients", (
     revokeClientDml,
     /grant select on public\.restaurant_operational_controls to authenticated/i,
   );
-  assert.match(securityBackend, /selectOnlyProviderControlTables/i);
+  assert.match(securityBackend, /selectOnlyAuthenticatedTables/i);
   assert.match(
     securityBackend,
-    /must not retain authenticated DML grants on provider controls/i,
+    /must not retain authenticated DML grants after service\/Edge ownership/i,
   );
 
   const migrationFiles = readdirSync("supabase/migrations")

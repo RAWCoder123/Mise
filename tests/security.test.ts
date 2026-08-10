@@ -648,8 +648,8 @@ test("backend security script proves local RLS, Data API grants, and firewall gu
   assert.match(script, /SECURITY DEFINER/i);
   assert.match(script, /buildFinalFunctionInventory/);
   assert.match(script, /buildFinalAuthenticatedTablePrivileges/);
-  assert.match(script, /selectOnlyProviderControlTables/);
-  assert.match(script, /must not retain authenticated DML grants on provider controls/i);
+  assert.match(script, /selectOnlyAuthenticatedTables/);
+  assert.match(script, /must not retain authenticated DML grants after service\/Edge ownership/i);
   assert.match(script, /verify_jwt\s*=\s*true/i);
   assert.match(script, /requireAuthenticatedContext/);
   assert.match(script, /reserveFunctionInvocation/);
@@ -828,6 +828,34 @@ test("security readiness document defines private-beta backend rules and public 
   assert.match(doc, /Demo data is local-only/);
   assert.match(doc, /verify_jwt = true/);
   assert.match(doc, /Provider credentials belong in backend-only Supabase Edge Function secrets/);
+  assert.match(doc, /Provider enablement is dual-gated/);
   assert.match(doc, /Do not use real restaurant data until all are true/);
   assert.match(doc, /Public-Launch Blockers/);
+});
+
+test("legacy ops tables lose authenticated DML while retaining SELECT", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260810121000_revoke_legacy_ops_table_client_dml.sql",
+    "utf8",
+  );
+  const tenantTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+
+  for (const table of ["sales_imports", "supplier_items", "purchase_orders"]) {
+    assert.match(
+      migration,
+      new RegExp(`revoke insert, update, delete on public\\.${table} from authenticated`, "i"),
+    );
+    assert.match(
+      migration,
+      new RegExp(`grant select on public\\.${table} to authenticated`, "i"),
+    );
+    assert.match(securityBackend, new RegExp(`"${table}"`));
+  }
+  assert.match(migration, /Managers can insert sales imports/i);
+  assert.match(migration, /Managers can insert supplier items/i);
+  assert.match(migration, /Managers can insert purchase orders/i);
+  assert.match(tenantTests, /sales import writes are service\/Edge-only/i);
+  assert.match(tenantTests, /supplier item writes are service\/Edge-only/i);
+  assert.match(tenantTests, /legacy purchase order writes are service\/Edge-only/i);
 });

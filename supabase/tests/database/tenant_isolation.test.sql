@@ -1,6 +1,6 @@
 begin;
 
-select plan(351);
+select plan(354);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -584,6 +584,9 @@ select is(has_table_privilege('authenticated', 'public.inventory_items', 'UPDATE
 select is(has_table_privilege('authenticated', 'public.menu_item_ingredients', 'UPDATE'), false, 'recipe baseline writes are atomic RPC-only');
 select is(has_table_privilege('authenticated', 'public.restaurant_operational_controls', 'UPDATE'), false, 'restaurant provider kill switches are service-only writes');
 select is(has_table_privilege('authenticated', 'public.system_operational_controls', 'UPDATE'), false, 'global provider kill switches are service-only writes');
+select is(has_table_privilege('authenticated', 'public.sales_imports', 'INSERT'), false, 'sales import writes are service/Edge-only');
+select is(has_table_privilege('authenticated', 'public.supplier_items', 'INSERT'), false, 'supplier item writes are service/Edge-only');
+select is(has_table_privilege('authenticated', 'public.purchase_orders', 'INSERT'), false, 'legacy purchase order writes are service/Edge-only');
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'INSERT'), false, 'membership inserts are RPC-only');
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'UPDATE'), false, 'membership updates are RPC-only');
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'DELETE'), false, 'membership deletes are RPC-only');

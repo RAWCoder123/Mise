@@ -146,10 +146,16 @@ function buildFinalAuthenticatedPolicies(sql) {
   return [...policies.values()];
 }
 
-/** Provider kill switches: clients may read, never Data-API mutate. */
-const selectOnlyProviderControlTables = new Set([
+/**
+ * Authenticated Data API is SELECT-only for these tables.
+ * Mutations must use service_role / Edge / guarded RPCs.
+ */
+const selectOnlyAuthenticatedTables = new Set([
   "system_operational_controls",
-  "restaurant_operational_controls"
+  "restaurant_operational_controls",
+  "sales_imports",
+  "supplier_items",
+  "purchase_orders"
 ]);
 
 runRequired("Running existing static security checks...", process.execPath, ["scripts/security-static.mjs"]);
@@ -216,9 +222,9 @@ for (const { table, block } of policyBlocks) {
 
 const finalAuthenticatedPolicies = buildFinalAuthenticatedPolicies(combinedSql);
 for (const { table, name, cmd } of finalAuthenticatedPolicies) {
-  if (selectOnlyProviderControlTables.has(table) && cmd !== "SELECT") {
+  if (selectOnlyAuthenticatedTables.has(table) && cmd !== "SELECT") {
     failures.push(
-      `supabase: public.${table} must not retain authenticated write policies on provider controls (found "${name}" for ${cmd}).`
+      `supabase: public.${table} must not retain authenticated write policies after service/Edge ownership (found "${name}" for ${cmd}).`
     );
   }
 }
@@ -232,22 +238,22 @@ for (const unrecognized of tablePrivilegeInventory.unrecognizedPrivilegeStatemen
     `supabase: unrecognized authenticated table privilege DDL in ${unrecognized.source}; final DML mode cannot be proven.`
   );
 }
-for (const table of selectOnlyProviderControlTables) {
+for (const table of selectOnlyAuthenticatedTables) {
   const privileges = tablePrivilegeInventory.tables.get(table);
   if (!privileges) {
     failures.push(
-      `supabase: expected provider-control table public.${table} is missing from the final authenticated privilege inventory.`
+      `supabase: expected SELECT-only table public.${table} is missing from the final authenticated privilege inventory.`
     );
     continue;
   }
   if (!privileges.select) {
     failures.push(
-      `supabase: public.${table} must retain authenticated SELECT so members can read kill-switch state.`
+      `supabase: public.${table} must retain authenticated SELECT for RLS-backed Data API reads after service/Edge ownership.`
     );
   }
   if (hasAuthenticatedTableDml(privileges)) {
     failures.push(
-      `supabase: public.${table} must not retain authenticated DML grants on provider controls (found ${listAuthenticatedDmlPrivileges(privileges).join(", ")}).`
+      `supabase: public.${table} must not retain authenticated DML grants after service/Edge ownership (found ${listAuthenticatedDmlPrivileges(privileges).join(", ")}).`
     );
   }
 }
