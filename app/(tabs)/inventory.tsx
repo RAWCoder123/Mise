@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
 import {
   Beef,
+  ClipboardList,
   Droplets,
   Filter,
   LeafyGreen,
@@ -35,19 +36,23 @@ import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   fetchInventoryOutlookItems,
+  fetchOpenInventoryCountSession,
   fetchQueuedInventoryEvents,
   summarizeInventoryOutlooks
 } from "../../services/miseService";
 import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
+import { canDraftInventoryCount } from "../../services/tenantAccess";
 import type { InventoryItem, InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
 
 export default function InventoryScreen() {
   const { formatNumber, t } = useLocale();
-  const { restaurant } = useMiseSession();
+  const { restaurant, memberships } = useMiseSession();
+  const canDraftCount = canDraftInventoryCount(memberships, restaurant?.id ?? "");
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
+  const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InventoryFilter>("All");
   const [loading, setLoading] = useState(true);
@@ -63,6 +68,7 @@ export default function InventoryScreen() {
     setLoadedRestaurantId(null);
     setOutlooks([]);
     setQueueEntries([]);
+    setOpenCountSessionId(null);
     setQuery("");
     setFilter("All");
     setError(false);
@@ -80,13 +86,15 @@ export default function InventoryScreen() {
     setLoading(true);
     setError(false);
     try {
-      const [nextOutlooks, nextQueue] = await Promise.all([
+      const [nextOutlooks, nextQueue, openSession] = await Promise.all([
         fetchInventoryOutlookItems(restaurantId),
-        fetchQueuedInventoryEvents(restaurantId)
+        fetchQueuedInventoryEvents(restaurantId),
+        fetchOpenInventoryCountSession(restaurantId).catch(() => null)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlooks(nextOutlooks);
       setQueueEntries(nextQueue);
+      setOpenCountSessionId(openSession?.session.id ?? null);
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -246,6 +254,34 @@ export default function InventoryScreen() {
           body={healthBody}
           accessibilityLabel={healthAccessibilityLabel}
         />
+        ) : null}
+
+        {hubReady && (canDraftCount || openCountSessionId) ? (
+          <View style={styles.group}>
+            <SectionHeader
+              title={t("inventory.count.cardTitle")}
+              subtitle={
+                openCountSessionId
+                  ? t("inventory.count.cardOpenSubtitle")
+                  : t("inventory.count.cardSubtitle")
+              }
+            />
+            <Button
+              title={
+                openCountSessionId
+                  ? t("inventory.count.resumeAction")
+                  : t("inventory.count.startAction")
+              }
+              onPress={() => router.push("/inventory/count")}
+              fullWidth
+              accessibilityLabel={
+                openCountSessionId
+                  ? t("inventory.count.resumeAccessibility")
+                  : t("inventory.count.startAccessibility")
+              }
+              icon={<ClipboardList size={18} color={colors.cream} strokeWidth={2.25} />}
+            />
+          </View>
         ) : null}
 
         <InventoryGroup
