@@ -1,6 +1,6 @@
 begin;
 
-select plan(10);
+select plan(13);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -66,6 +66,21 @@ select is(
   false,
   'authenticated clients cannot read private mode history'
 );
+select is(
+  has_table_privilege('authenticated', 'public.restaurant_operational_controls', 'SELECT'),
+  true,
+  'authenticated clients can read restaurant provider controls'
+);
+select is(
+  has_table_privilege('authenticated', 'public.restaurant_operational_controls', 'UPDATE'),
+  false,
+  'authenticated clients cannot Data-API update restaurant provider controls'
+);
+select is(
+  has_table_privilege('authenticated', 'public.system_operational_controls', 'UPDATE'),
+  false,
+  'authenticated clients cannot Data-API update global provider controls'
+);
 
 select is(
   (
@@ -86,11 +101,9 @@ select set_config('request.jwt.claim.sub', 'f1111111-1111-4111-8111-111111111111
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select is(
   pg_temp.try_execute($sql$
-    update public.restaurant_operational_controls
-    set gmail_delivery_enabled = false,
-        updated_at = now(),
-        updated_by = 'f1111111-1111-4111-8111-111111111111'
-    where restaurant_id = 'f0000000-0000-4000-8000-000000000001'
+    update public.restaurants
+    set name = 'Mode Kitchen Read Only'
+    where id = 'f0000000-0000-4000-8000-000000000001'
   $sql$),
   false,
   'read-only mode blocks an authenticated tenant mutation'
@@ -151,11 +164,9 @@ select set_config('request.jwt.claim.sub', 'f1111111-1111-4111-8111-111111111111
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select is(
   pg_temp.try_execute($sql$
-    update public.restaurant_operational_controls
-    set gmail_delivery_enabled = false,
-        updated_at = now(),
-        updated_by = 'f1111111-1111-4111-8111-111111111111'
-    where restaurant_id = 'f0000000-0000-4000-8000-000000000001'
+    update public.restaurants
+    set name = 'Mode Kitchen Restored'
+    where id = 'f0000000-0000-4000-8000-000000000001'
   $sql$),
   true,
   'normal mode permits an otherwise authorized tenant mutation'

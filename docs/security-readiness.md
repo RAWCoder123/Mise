@@ -123,6 +123,13 @@ Each function must:
 
 `sync-pos-sales` and `generate-ai-insights` additionally fail closed after the live role check and request audit: they record one terminal `blocked` event, return a bounded `501`/`503` response, and create no queued import or placeholder insight. Live Square, Toast, Clover, Lightspeed, Gmail, supplier sending, and OpenAI execution remain disabled until backend-only credentials, staging verification, monitoring, and product/legal readiness are complete.
 
+Provider enablement is dual-gated by `system_operational_controls` and
+`restaurant_operational_controls`. Authenticated clients retain SELECT so the
+app can explain a disabled provider, but both tables are SELECT-only for the
+Data API—owners/admins cannot flip `gmail_delivery_enabled`,
+`square_sync_enabled`, or related flags from the Expo client. Founder/ops
+enablement uses service-role scripts after staging proof.
+
 ## Secret Handling
 
 Never expose these in Expo, public env vars, client-readable tables, logs, test snapshots, or API responses:

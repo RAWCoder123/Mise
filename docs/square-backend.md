@@ -56,8 +56,9 @@ sync for the merchant. Leave disabled until sync is proven.
 
 1. Owner/admin opens Settings → POS Connection → Connect Square.
 2. Approve Square scopes in the browser and return to Mise.
-3. After an operator enables `square_sync_enabled` for that restaurant (and
-   system), use Sync sales now (28-day window) or wait for webhooks.
+3. After founder/ops enable `square_sync_enabled` for that restaurant and the
+   system row via service-role (clients cannot Data-API mutate provider
+   controls), use Sync sales now (28-day window) or wait for webhooks.
 4. Map new dishes in Recipes so sales deplete inventory projections.
 5. CSV import remains available as a fallback.
 

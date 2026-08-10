@@ -2,6 +2,11 @@ import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { buildFinalFunctionInventory } from "./sql-function-inventory.mjs";
+import {
+  buildFinalAuthenticatedTablePrivileges,
+  hasAuthenticatedTableDml,
+  listAuthenticatedDmlPrivileges
+} from "./sql-table-privileges.mjs";
 import { minimalChildEnv } from "./safe-env.mjs";
 
 const root = process.cwd();
@@ -115,6 +120,38 @@ function extractPolicyBlocks(sql) {
   }));
 }
 
+function buildFinalAuthenticatedPolicies(sql) {
+  const policies = new Map();
+  const statementPattern =
+    /(?:create\s+policy\s+"([^"]+)"\s+on\s+public\.([a-z_]+)([\s\S]*?);|drop\s+policy\s+if\s+exists\s+"([^"]+)"\s+on\s+public\.([a-z_]+)\s*;)/gi;
+
+  for (const match of sql.matchAll(statementPattern)) {
+    if (match[1]) {
+      const name = match[1];
+      const table = match[2];
+      const body = match[3] ?? "";
+      const cmd = (body.match(/\bfor\s+(select|insert|update|delete|all)\b/i)?.[1] ?? "all").toUpperCase();
+      policies.set(`${table}\0${name}`, {
+        table,
+        name,
+        cmd,
+        block: match[0]
+      });
+      continue;
+    }
+
+    policies.delete(`${match[5]}\0${match[4]}`);
+  }
+
+  return [...policies.values()];
+}
+
+/** Provider kill switches: clients may read, never Data-API mutate. */
+const selectOnlyProviderControlTables = new Set([
+  "system_operational_controls",
+  "restaurant_operational_controls"
+]);
+
 runRequired("Running existing static security checks...", process.execPath, ["scripts/security-static.mjs"]);
 
 const sqlFiles = ["supabase/schema.sql", ...listFiles("supabase/migrations").filter((path) => path.endsWith(".sql"))];
@@ -174,6 +211,44 @@ for (const { table, block } of policyBlocks) {
 
   if (publicUserScopedTables.has(table) && !/\b(id|user_id)\s*=\s*auth\.uid\(\)/i.test(block)) {
     failures.push(`supabase: public.${table} policy must be scoped to auth.uid().`);
+  }
+}
+
+const finalAuthenticatedPolicies = buildFinalAuthenticatedPolicies(combinedSql);
+for (const { table, name, cmd } of finalAuthenticatedPolicies) {
+  if (selectOnlyProviderControlTables.has(table) && cmd !== "SELECT") {
+    failures.push(
+      `supabase: public.${table} must not retain authenticated write policies on provider controls (found "${name}" for ${cmd}).`
+    );
+  }
+}
+
+const migrationSqlFiles = listFiles("supabase/migrations").filter((path) => path.endsWith(".sql")).sort();
+const tablePrivilegeInventory = buildFinalAuthenticatedTablePrivileges(
+  migrationSqlFiles.map((path) => ({ path, sql: read(path) }))
+);
+for (const unrecognized of tablePrivilegeInventory.unrecognizedPrivilegeStatements) {
+  failures.push(
+    `supabase: unrecognized authenticated table privilege DDL in ${unrecognized.source}; final DML mode cannot be proven.`
+  );
+}
+for (const table of selectOnlyProviderControlTables) {
+  const privileges = tablePrivilegeInventory.tables.get(table);
+  if (!privileges) {
+    failures.push(
+      `supabase: expected provider-control table public.${table} is missing from the final authenticated privilege inventory.`
+    );
+    continue;
+  }
+  if (!privileges.select) {
+    failures.push(
+      `supabase: public.${table} must retain authenticated SELECT so members can read kill-switch state.`
+    );
+  }
+  if (hasAuthenticatedTableDml(privileges)) {
+    failures.push(
+      `supabase: public.${table} must not retain authenticated DML grants on provider controls (found ${listAuthenticatedDmlPrivileges(privileges).join(", ")}).`
+    );
   }
 }
 
