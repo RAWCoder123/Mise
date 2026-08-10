@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import {
   buildFinalAuthenticatedTablePrivileges,
   hasAuthenticatedTableDml,
 } from "../scripts/sql-table-privileges.mjs";
-import { readdirSync } from "node:fs";
-import { join } from "node:path";
 
 const migration = readFileSync(
   "supabase/migrations/20260728203500_enforce_provider_kill_switches.sql",

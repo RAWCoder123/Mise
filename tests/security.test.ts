@@ -647,6 +647,9 @@ test("backend security script proves local RLS, Data API grants, and firewall gu
   assert.match(script, /auth\.role/i);
   assert.match(script, /SECURITY DEFINER/i);
   assert.match(script, /buildFinalFunctionInventory/);
+  assert.match(script, /buildFinalAuthenticatedTablePrivileges/);
+  assert.match(script, /selectOnlyProviderControlTables/);
+  assert.match(script, /must not retain authenticated DML grants on provider controls/i);
   assert.match(script, /verify_jwt\s*=\s*true/i);
   assert.match(script, /requireAuthenticatedContext/);
   assert.match(script, /reserveFunctionInvocation/);
