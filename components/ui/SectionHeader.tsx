@@ -27,7 +27,7 @@ export function SectionHeader({
     <View style={styles.wrap}>
       <View style={styles.textWrap}>
         {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-        <Text accessibilityRole="header" style={[styles.title, size === "compact" && styles.compactTitle]}>{title}</Text>
+        {title ? <Text accessibilityRole="header" style={[styles.title, size === "compact" && styles.compactTitle]}>{title}</Text> : null}
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
       {action ? (
