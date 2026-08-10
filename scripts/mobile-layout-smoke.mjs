@@ -13,6 +13,7 @@ const baseRoutes = [
   "/home",
   "/today",
   "/inventory",
+  "/inventory/count",
   "/orders",
   "/insights",
   "/more",

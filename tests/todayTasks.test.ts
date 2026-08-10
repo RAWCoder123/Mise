@@ -78,9 +78,14 @@ test("derives a stable, tenant-scoped operational queue without duplicating inve
   );
 
   const inventoryTask = tasks.find((task) => task.source.kind === "inventory" && task.source.id === "watch_item");
-  assert.equal(inventoryTask?.priority, "normal");
-  assert.equal(inventoryTask?.action.route, "/inventory/watch_item");
-  assert.equal(inventoryTask?.dueAt, null);
+  assert.equal(inventoryTask, undefined, "stock-risk items route through the count session task instead of per-item shortcuts");
+
+  const countSessionTask = tasks.find(
+    (task) => task.source.kind === "inventory_count_session" && task.action.intent === "begin_inventory_count_session"
+  );
+  assert.equal(countSessionTask?.priority, "urgent");
+  assert.equal(countSessionTask?.action.route, "/inventory/count");
+  assert.equal(countSessionTask?.requiredRole, "member");
 
   const approvedTask = tasks.find((task) => task.action.intent === "prepare_supplier_draft");
   assert.equal(approvedTask?.source.id, "rec_approved");

@@ -131,6 +131,27 @@ await assertDeniedRpc(
   "recipe workflow rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
+  "service_begin_inventory_count_session",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_note: null
+  },
+  "count session begin rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
+  "service_approve_inventory_count_session",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_session_id: "00000000-0000-4000-8000-000000009999",
+    p_expected_revision: 0,
+    p_recommendations: [],
+    p_insights: []
+  },
+  "count session approve rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
   "service_create_rules_engine_ai_insight",
   {
     p_actor_user_id: managerA.id,

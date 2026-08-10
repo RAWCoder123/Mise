@@ -775,6 +775,8 @@ test("hosted Edge and service RPC checks forge every privileged tenant boundary"
     "service_mark_operational_signals_pending",
     "service_commit_operational_signals",
     "service_update_inventory_and_signals",
+    "service_begin_inventory_count_session",
+    "service_approve_inventory_count_session",
     "service_save_recipe_and_signals",
     "service_create_rules_engine_ai_insight",
     "service_record_edge_audit_log"
@@ -909,6 +911,8 @@ test("orphan operational write policies are dropped and pinned SELECT-only", () 
     "menu_item_ingredients",
     "pos_sales",
     "setup_attachments",
+    "inventory_count_sessions",
+    "inventory_count_lines",
   ]) {
     assert.match(securityBackend, new RegExp(`"${table}"`));
   }
@@ -916,4 +920,49 @@ test("orphan operational write policies are dropped and pinned SELECT-only", () 
     tenantTests,
     /Edge-owned operational tables retain no authenticated write policies/i,
   );
+});
+
+test("inventory count sessions are service-owned with ledger approve path", () => {
+  const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const migration = readFileSync(
+    "supabase/migrations/20260810140000_inventory_count_sessions_ledger.sql",
+    "utf8"
+  );
+  const validation = readFileSync("services/miseValidation.ts", "utf8");
+  const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
+
+  assert.match(inventoryWorkflow, /beginInventoryCountSession/);
+  assert.match(inventoryWorkflow, /approveInventoryCountSession[\s\S]*planCountSessionApprovals/);
+  assert.match(repository, /action:\s*"begin_count_session"/i);
+  assert.match(repository, /action:\s*"approve_count_session"/i);
+  assert.match(edge, /"begin_count_session"/);
+  assert.match(edge, /"approve_count_session"/);
+  assert.match(edge, /staffOperationalActions/);
+  assert.match(edge, /service_approve_inventory_count_session/);
+  assert.match(edge, /inventory_count_session_approved/);
+  assert.match(edge, /requireCountLineUpdates[\s\S]*note/);
+  assert.match(migration, /create table if not exists public\.inventory_count_sessions/i);
+  assert.match(migration, /create table if not exists public\.inventory_count_lines/i);
+  assert.match(migration, /insert into public\.inventory_events/i);
+  assert.match(migration, /event_type,\s*[\s\S]*'count'/i);
+  assert.match(migration, /'approve_count_session'/i);
+  assert.doesNotMatch(migration, /inventory_movements/i);
+  assert.doesNotMatch(migration, /update public\.inventory_items[\s\S]*current_quantity/i);
+  assert.match(migration, /array\['owner', 'admin', 'manager', 'staff'\]/i);
+  assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.service_approve_inventory_count_session[\s\S]*authenticated/i);
+  assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_approve_inventory_count_session[\s\S]*service_role/i);
+  assert.match(migration, /grant select on public\.inventory_count_sessions to authenticated/i);
+  assert.doesNotMatch(migration, /grant insert on table public\.inventory_count_sessions to authenticated/i);
+  assert.match(validation, /requireInventoryCountLineNote/);
+  assert.match(tenantAccess, /canDraftInventoryCount/);
+  assert.match(tenantAccess, /canApproveInventoryCount/);
+  const staffActionsBlock =
+    edge.match(/staffOperationalActions = new Set<OperationalAction>\(\[([\s\S]*?)\]\)/)?.[1] ?? "";
+  assert.match(staffActionsBlock, /"begin_count_session"/);
+  assert.match(staffActionsBlock, /"save_count_lines"/);
+  assert.match(staffActionsBlock, /"submit_count_session"/);
+  assert.doesNotMatch(staffActionsBlock, /approve_count_session/);
+  assert.doesNotMatch(staffActionsBlock, /cancel_count_session/);
 });
