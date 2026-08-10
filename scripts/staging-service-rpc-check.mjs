@@ -108,7 +108,7 @@ await assertDeniedRpc(
     p_restaurant_id: tenantB,
     p_inventory_item_id: tenantBInventoryId,
     p_expected_revision: 0,
-    p_patch: { current_quantity: 1 },
+    p_patch: { par_level: 1 },
     p_recommendations: [],
     p_insights: []
   },

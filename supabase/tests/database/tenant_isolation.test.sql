@@ -1156,8 +1156,8 @@ select is(
 );
 
 set local role service_role;
-select lives_ok(
-  $sql$select public.service_update_inventory_and_signals(
+select is(
+  pg_temp.try_execute($sql$select public.service_update_inventory_and_signals(
     '22222222-2222-4222-8222-222222222222',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
@@ -1168,11 +1168,32 @@ select lives_ok(
     '{"current_quantity":42}'::jsonb,
     '[]'::jsonb,
     '[]'::jsonb
-  )$sql$,
-  'trusted workflow updates manager inventory and both operational signal sets atomically'
+  )$sql$),
+  false,
+  'service inventory workflow rejects unaudited current_quantity patches'
 );
 reset role;
-select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 42::numeric, 'atomic inventory update persisted');
+select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 20::numeric, 'rejected quantity patch leaves on-hand unchanged');
+
+set local role service_role;
+select lives_ok(
+  $sql$select public.service_update_inventory_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '{"par_level":42}'::jsonb,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$,
+  'trusted workflow updates manager inventory policy and both operational signal sets atomically'
+);
+reset role;
+select is((select par_level from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 42::numeric, 'atomic inventory policy update persisted');
+select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 20::numeric, 'policy patch does not rewrite on-hand quantity');
 
 set local role service_role;
 select is(
@@ -1184,15 +1205,16 @@ select is(
       '22222222-2222-4222-8222-222222222222',
       'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     )->>'revision')::bigint,
-    '{"current_quantity":43}'::jsonb,
+    '{"par_level":43}'::jsonb,
     '[]'::jsonb,
     '[{"insight_type":"invalid","title":"Bad","description":"Bad","recommended_action":"Bad","severity":"warning"}]'::jsonb
   )$sql$),
   false,
-  'invalid regenerated signals roll back the inventory count change'
+  'invalid regenerated signals roll back the inventory policy change'
 );
 reset role;
-select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 42::numeric, 'rolled-back signal refresh preserves the prior count');
+select is((select par_level from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 42::numeric, 'rolled-back signal refresh preserves the prior policy');
+select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 20::numeric, 'rolled-back signal refresh preserves on-hand quantity');
 
 set local role service_role;
 select is(
@@ -1204,12 +1226,12 @@ select is(
       '22222222-2222-4222-8222-222222222222',
       'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     )->>'revision')::bigint - 1),
-    '{"current_quantity":44}'::jsonb,
+    '{"par_level":44}'::jsonb,
     '[]'::jsonb,
     '[]'::jsonb
   )$sql$),
   false,
-  'stale inventory editors cannot overwrite a newer count'
+  'stale inventory editors cannot overwrite a newer policy revision'
 );
 reset role;
 
@@ -1560,7 +1582,7 @@ select ok(
   'staff inventory update is contained'
 );
 reset role;
-select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 42::numeric, 'staff cannot update inventory counts');
+select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 20::numeric, 'staff cannot update inventory counts');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', true);

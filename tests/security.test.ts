@@ -315,6 +315,10 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
   const edgeWorkflow = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
   const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const migration = readFileSync("supabase/migrations/20260714183310_secure_operational_workflows.sql", "utf8");
+  const policyOnlyMigration = readFileSync(
+    "supabase/migrations/20260810130000_service_inventory_policy_only_patches.sql",
+    "utf8"
+  );
   const projectionMigration = readFileSync(
     "supabase/migrations/20260727203458_inventory_event_projection_authority.sql",
     "utf8"
@@ -333,6 +337,19 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
   assert.match(migration, /planning_revision[\s\S]*p_expected_revision/i);
   assert.match(migration, /update\s+public\.inventory_items[\s\S]*commit_operational_signals/i);
   assert.match(migration, /revoke\s+all\s+on\s+function\s+public\.update_inventory_item_and_signals[\s\S]*authenticated/i);
+  assert.match(
+    policyOnlyMigration,
+    /safe_patch\s*-\s*array\['par_level',\s*'reorder_threshold',\s*'supplier_name'\]/i
+  );
+  assert.match(
+    policyOnlyMigration,
+    /set\s+par_level\s*=\s*item_row\.par_level[\s\S]*reorder_threshold\s*=\s*item_row\.reorder_threshold[\s\S]*supplier_name\s*=\s*item_row\.supplier_name/i
+  );
+  assert.doesNotMatch(
+    policyOnlyMigration,
+    /set\s+current_quantity\s*=\s*item_row\.current_quantity/i
+  );
+  assert.match(policyOnlyMigration, /On-hand quantity changes must use record_inventory_event/i);
   assert.match(projectionMigration, /after insert on public\.inventory_events/i);
 });
 

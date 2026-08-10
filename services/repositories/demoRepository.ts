@@ -966,6 +966,11 @@ export function createLocalDemoRepository(): MiseRepository {
       recommendations,
       insights
     ) {
+      if (Object.prototype.hasOwnProperty.call(patch, "current_quantity")) {
+        throw new Error(
+          "Record a count, receipt, waste, or stockout so on-hand changes remain auditable."
+        );
+      }
       return mutateDemoState((state) => {
         const item = state.inventoryItems.find(
           (entry) => entry.restaurant_id === restaurantId && entry.id === itemId
