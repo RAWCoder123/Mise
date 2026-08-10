@@ -8,6 +8,7 @@ Multi-item inventory count sessions are now available on the Mise tip with staff
 
 - Migration `20260810140000_inventory_count_sessions_ledger.sql` adds `inventory_count_sessions` and `inventory_count_lines` (SELECT-only for authenticated clients).
 - Service RPCs: begin, save_lines, submit, cancel, get, approve.
+- Begin only includes items with verified canonical conversion so approve cannot fail after staff has already counted.
 - Approve inserts canonical `inventory_events` with stable idempotency keys `count_session:{session_id}:{item_id}` and skips unchanged lines.
 - `private.edge_function_policy` now allows `staff` on `operational-workflows` while preserving all other Edge function rows.
 
@@ -22,5 +23,6 @@ Multi-item inventory count sessions are now available on the Mise tip with staff
 ## Verification
 
 - `npm run typecheck`
-- `npm test` including `tests/inventoryCountSessions.test.ts`
+- `npm test` — 488 pass / 0 fail (7 pre-existing recalculation timeout cancels)
 - `npm run security:backend` and `npm run security:static`
+- `npm run design:static` and `npm run qa:routes` (includes `/inventory/count`)

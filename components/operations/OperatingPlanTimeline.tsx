@@ -262,6 +262,8 @@ function emptyTitleKey(filter: OperatingPlanBucket): MessageKey {
 
 function intentKey(intent: OperationalTodayTaskActionIntent): MessageKey {
   if (intent === "update_inventory_count") return "today.intent.updateCount";
+  if (intent === "begin_inventory_count_session") return "today.intent.beginCountSession";
+  if (intent === "continue_inventory_count_session") return "today.intent.continueCountSession";
   if (intent === "review_recommendation") return "today.intent.reviewRecommendation";
   if (intent === "prepare_supplier_draft") return "today.intent.prepareDraft";
   if (intent === "send_supplier_order") return "today.intent.sendOrder";

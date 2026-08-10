@@ -14,7 +14,11 @@ import {
 } from "../services/domain/inventoryCountSessions";
 import type { InventoryCountLine, InventoryItem } from "../types/mise";
 
-const item = (id: string, quantity: number): InventoryItem => ({
+const item = (
+  id: string,
+  quantity: number,
+  options?: Partial<Pick<InventoryItem, "canonical_unit" | "canonical_quantity_per_unit" | "canonical_unit_verification_status">>
+): InventoryItem => ({
   id,
   restaurant_id: "rest_a",
   item_name: id,
@@ -25,7 +29,10 @@ const item = (id: string, quantity: number): InventoryItem => ({
   reorder_threshold: 4,
   estimated_unit_cost: 1,
   supplier_name: "Local",
-  last_updated: "2026-07-31T00:00:00.000Z"
+  last_updated: "2026-07-31T00:00:00.000Z",
+  canonical_unit: options?.canonical_unit ?? "g",
+  canonical_quantity_per_unit: options?.canonical_quantity_per_unit ?? 453.592,
+  canonical_unit_verification_status: options?.canonical_unit_verification_status ?? "verified"
 });
 
 const line = (
@@ -160,4 +167,28 @@ test("staff may draft and submit counts; only managers approve or cancel", () =>
   assert.equal(canCancelInventoryCountSession("staff"), false);
   assert.equal(canCancelInventoryCountSession("admin"), true);
   assert.equal(canDraftInventoryCountSession(null), false);
+});
+
+test("count sessions only include inventory items with verified canonical conversion", () => {
+  const lines = buildCountSessionLinesFromInventory(
+    "rest_a",
+    "session_1",
+    [
+      item("tomatoes", 10),
+      item("unverified", 4, { canonical_unit_verification_status: "draft" })
+    ],
+    "2026-07-31T00:00:00.000Z"
+  );
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0]?.inventory_item_id, "tomatoes");
+  assert.throws(
+    () =>
+      buildCountSessionLinesFromInventory(
+        "rest_a",
+        "session_1",
+        [item("unverified", 4, { canonical_unit_verification_status: "draft" })],
+        "2026-07-31T00:00:00.000Z"
+      ),
+    /canonical units/i
+  );
 });

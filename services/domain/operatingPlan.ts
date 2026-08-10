@@ -438,7 +438,13 @@ function kindForTask(task: OperationalTodayTask): OperatingPlanItemKind {
   if (task.status === "completed") return "completed";
   if (task.source.kind === "integration" && task.source.status === "error") return "failed";
   if (task.action.intent === "review_recommendation") return "approval";
-  if (task.action.intent === "update_inventory_count") return "human_task";
+  if (
+    task.action.intent === "update_inventory_count" ||
+    task.action.intent === "begin_inventory_count_session" ||
+    task.action.intent === "continue_inventory_count_session"
+  ) {
+    return "human_task";
+  }
   if (task.action.intent === "review_insight") return "observation";
   if (
     task.action.intent === "manage_pos_connection" ||
@@ -471,7 +477,11 @@ function neededByForTask(task: OperationalTodayTask, order: SupplierOrder | null
 }
 
 function effectForIntent(intent: OperationalTodayTaskActionIntent, task: OperationalTodayTask) {
-  if (intent === "update_inventory_count") {
+  if (
+    intent === "update_inventory_count" ||
+    intent === "begin_inventory_count_session" ||
+    intent === "continue_inventory_count_session"
+  ) {
     return "Confirms on-hand stock before service depletes coverage further.";
   }
   if (intent === "review_recommendation") {
@@ -498,7 +508,13 @@ function effectForIntent(intent: OperationalTodayTaskActionIntent, task: Operati
 }
 
 function verificationForIntent(intent: OperationalTodayTaskActionIntent): VerificationMethod {
-  if (intent === "update_inventory_count") return "count";
+  if (
+    intent === "update_inventory_count" ||
+    intent === "begin_inventory_count_session" ||
+    intent === "continue_inventory_count_session"
+  ) {
+    return "count";
+  }
   if (intent === "send_supplier_order") return "receipt";
   if (
     intent === "connect_pos" ||
@@ -600,7 +616,13 @@ function assignServiceWindow(
   order: SupplierOrder | null
 ): ServiceWindowId {
   if (task.status === "completed") return "closing";
-  if (task.action.intent === "update_inventory_count") return "before_prep";
+  if (
+    task.action.intent === "update_inventory_count" ||
+    task.action.intent === "begin_inventory_count_session" ||
+    task.action.intent === "continue_inventory_count_session"
+  ) {
+    return "before_prep";
+  }
   if (task.action.intent === "review_recommendation") {
     return task.priority === "urgent" ? "before_prep" : "before_lunch";
   }
@@ -675,8 +697,11 @@ function reprioritizationForTask(input: {
   if (
     task.priority === "urgent" &&
     (task.source.kind === "inventory" ||
+      task.source.kind === "inventory_count_session" ||
       recommendation?.urgency === "high" ||
-      task.action.intent === "update_inventory_count")
+      task.action.intent === "update_inventory_count" ||
+      task.action.intent === "begin_inventory_count_session" ||
+      task.action.intent === "continue_inventory_count_session")
   ) {
     return {
       code: "stock_risk",

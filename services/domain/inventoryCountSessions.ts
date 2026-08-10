@@ -145,19 +145,34 @@ export function applyCountApprovalsToInventory(
   });
 }
 
+export function isCountSessionEligibleInventoryItem(item: Pick<
+  InventoryItem,
+  "canonical_unit" | "canonical_quantity_per_unit" | "canonical_unit_verification_status"
+>): boolean {
+  const conversion = item.canonical_quantity_per_unit;
+  return (
+    item.canonical_unit_verification_status === "verified" &&
+    (item.canonical_unit === "g" || item.canonical_unit === "ml" || item.canonical_unit === "each") &&
+    conversion != null &&
+    Number.isFinite(conversion) &&
+    conversion > 0
+  );
+}
+
 export function buildCountSessionLinesFromInventory(
   restaurantId: string,
   sessionId: string,
   inventoryItems: readonly InventoryItem[],
   nowIso: string
 ): InventoryCountLine[] {
-  if (inventoryItems.length < 1) {
-    throw new Error("Add inventory items before starting a count session.");
+  const eligibleItems = inventoryItems.filter(isCountSessionEligibleInventoryItem);
+  if (eligibleItems.length < 1) {
+    throw new Error("Verify canonical units for inventory items before starting a count session.");
   }
-  if (inventoryItems.length > 250) {
+  if (eligibleItems.length > 250) {
     throw new Error("Count sessions support at most 250 items.");
   }
-  return inventoryItems.map((item, index) => ({
+  return eligibleItems.map((item, index) => ({
     id: `${sessionId}_line_${index + 1}`,
     restaurant_id: restaurantId,
     session_id: sessionId,

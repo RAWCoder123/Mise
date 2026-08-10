@@ -164,11 +164,17 @@ begin
     raise exception 'A count session is already open for this restaurant' using errcode = '23505';
   end if;
 
+  -- Only verified canonical items can project count events. Starting with
+  -- draft/unverified items would leave approve fail-closed after staff counted.
   select count(*)::integer into item_count
   from public.inventory_items
-  where restaurant_id = p_restaurant_id;
+  where restaurant_id = p_restaurant_id
+    and canonical_unit_verification_status = 'verified'
+    and canonical_unit is not null
+    and canonical_quantity_per_unit is not null
+    and canonical_quantity_per_unit > 0;
   if item_count < 1 then
-    raise exception 'Add inventory items before starting a count session' using errcode = '22023';
+    raise exception 'Verify canonical units for inventory items before starting a count session' using errcode = '22023';
   end if;
   if item_count > 250 then
     raise exception 'Count sessions support at most 250 items' using errcode = '22023';
@@ -198,6 +204,10 @@ begin
     item.current_quantity
   from public.inventory_items as item
   where item.restaurant_id = p_restaurant_id
+    and item.canonical_unit_verification_status = 'verified'
+    and item.canonical_unit is not null
+    and item.canonical_quantity_per_unit is not null
+    and item.canonical_quantity_per_unit > 0
   order by item.item_name, item.id;
 
   return private.inventory_count_session_detail(session_id);

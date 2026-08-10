@@ -529,7 +529,11 @@ function sharedRelatedLabel(task: RestaurantTask, t: (key: MessageKey) => string
 }
 
 function checklistKeysForIntent(intent: OperationalTodayTaskActionIntent): readonly MessageKey[] {
-  if (intent === "update_inventory_count") {
+  if (
+    intent === "update_inventory_count" ||
+    intent === "begin_inventory_count_session" ||
+    intent === "continue_inventory_count_session"
+  ) {
     return ["tasks.checklist.inventory.1", "tasks.checklist.inventory.2", "tasks.checklist.inventory.3", "tasks.checklist.generic.3"];
   }
   if (intent === "review_recommendation") {
@@ -548,7 +552,9 @@ function checklistKeysForIntent(intent: OperationalTodayTaskActionIntent): reado
 }
 
 function relatedLabelFor(task: OperationalTodayTask, t: (key: MessageKey) => string) {
-  if (task.source.kind === "inventory") return t("tasks.related.inventory");
+  if (task.source.kind === "inventory" || task.source.kind === "inventory_count_session") {
+    return t("tasks.related.inventory");
+  }
   if (task.source.kind === "order" || task.source.kind === "recommendation") return t("tasks.related.orders");
   if (task.source.kind === "integration") return t("tasks.related.integrations");
   if (task.source.kind === "insight") return t("tasks.related.insights");
@@ -557,7 +563,9 @@ function relatedLabelFor(task: OperationalTodayTask, t: (key: MessageKey) => str
 
 function taskIcon(task: OperationalTodayTask, color: string): ReactNode {
   const props = { size: 15, color, strokeWidth: 2.1 } as const;
-  if (task.source.kind === "inventory") return <Package {...props} />;
+  if (task.source.kind === "inventory" || task.source.kind === "inventory_count_session") {
+    return <Package {...props} />;
+  }
   if (task.source.kind === "recommendation" || task.source.kind === "order") return <ShoppingCart {...props} />;
   if (task.source.kind === "integration") return <ClipboardList {...props} />;
   if (task.status === "completed") return <CheckCircle2 {...props} />;
