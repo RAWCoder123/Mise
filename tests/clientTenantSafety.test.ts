@@ -14,6 +14,9 @@ test("operational screens reject late requests and render only active-restaurant
     insights: source("app/(tabs)/insights.tsx"),
     settings: source("app/(tabs)/settings.tsx"),
     recipes: source("app/settings/recipes.tsx"),
+    team: source("app/settings/team.tsx"),
+    suppliers: source("app/settings/suppliers.tsx"),
+    gmail: source("app/settings/gmail.tsx"),
     inventoryDetail: source("app/inventory/[id].tsx"),
     orderDetail: source("app/orders/[id].tsx")
   };
@@ -26,16 +29,28 @@ test("operational screens reject late requests and render only active-restaurant
       /requestId\s*!==\s*requestIdRef\.current\s*\|\|\s*activeRestaurantIdRef\.current\s*!==\s*restaurantId/,
       `${name} must reject late responses`
     );
+    assert.match(screen, /resolveRestaurantScopedHubLoadState/, `${name} must use shared hub readiness`);
+    assert.match(screen, /hubReady/, `${name} must gate restaurant-scoped data on hub readiness`);
   }
 
-  assert.match(screens.today, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*summary\s*:\s*null/);
-  assert.match(screens.inventory, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*outlooks\s*:\s*\[\]/);
-  assert.match(screens.insights, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*insights\s*:\s*\[\]/);
-  assert.match(screens.settings, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*suppliers\s*:\s*\[\]/);
-  assert.match(screens.orders, /loadedRestaurantRef\.current\s*===\s*restaurant\?\.id/);
-  assert.match(screens.recipes, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*summary\s*:\s*null/);
-  assert.match(screens.inventoryDetail, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*outlook\s*:\s*null/);
-  assert.match(screens.orderDetail, /loadedRestaurantId\s*===\s*restaurant\?\.id\s*\?\s*order\s*:\s*null/);
+  assert.match(screens.today, /hubReady\s*\?\s*summary\s*:\s*null/);
+  assert.match(screens.inventory, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
+  assert.match(screens.insights, /hubReady\s*\?\s*insights\s*:\s*\[\]/);
+  assert.match(screens.settings, /hubReady\s*\?\s*suppliers\s*:\s*\[\]/);
+  assert.match(screens.settings, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.settings, /disabled=\{!restaurantActionsEditable\}/);
+  assert.match(screens.orders, /hubReady\s*\?\s*recommendations\s*:\s*\[\]/);
+  assert.match(screens.orders, /hubReady\s*\?\s*orders\s*:\s*\[\]/);
+  assert.match(screens.recipes, /hubReady\s*\?\s*summary\s*:\s*null/);
+  assert.match(screens.team, /hubReady\s*\?\s*members\s*:\s*\[\]/);
+  assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);
+  assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
+  assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
+  assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);
+  assert.match(
+    source("services/presentation/hubLoadState.ts"),
+    /if \(input\.loadError\) return "error";\s*if \(input\.loadedRestaurantId === input\.restaurantId\) return "ready";/
+  );
 });
 
 test("workspace mutations stop stale continuations and session state is latest-wins", () => {

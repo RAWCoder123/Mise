@@ -19,6 +19,10 @@ import {
   fetchEmailConnectionState,
   isGmailIntegrationError
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import type { RestaurantEmailConnection } from "../../types/mise";
 
@@ -38,6 +42,7 @@ export default function GmailConnectionScreen() {
   const { isDemoMode, memberships, restaurant } = useMiseSession();
   const [connection, setConnection] = useState<RestaurantEmailConnection | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [hubLoadError, setHubLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<GmailAction | null>(null);
   const [notice, setNotice] = useState<GmailNotice | null>(null);
@@ -57,6 +62,7 @@ export default function GmailConnectionScreen() {
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
     if (showLoading) setLoading(true);
+    setHubLoadError(false);
     try {
       const nextConnection = await fetchEmailConnectionState(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -65,8 +71,10 @@ export default function GmailConnectionScreen() {
       }
       setConnection(nextConnection);
       setLoadedRestaurantId(restaurantId);
+      setHubLoadError(false);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setHubLoadError(true);
       setNotice({
         tone: "danger",
         title: t("settings.gmail.error.loadTitle"),
@@ -82,6 +90,7 @@ export default function GmailConnectionScreen() {
     actionLockRef.current = false;
     setConnection(null);
     setLoadedRestaurantId(null);
+    setHubLoadError(false);
     setBusyAction(null);
     setNotice(null);
     setConfirmDisconnect(false);
@@ -126,7 +135,7 @@ export default function GmailConnectionScreen() {
 
   async function connect() {
     if (!restaurant || actionLockRef.current) return;
-    if (!canManageConnection) {
+    if (!actionsEditable) {
       setNotice({
         tone: "warning",
         title: t("settings.gmail.owner.title"),
@@ -171,7 +180,7 @@ export default function GmailConnectionScreen() {
   }
 
   async function disconnect() {
-    if (!restaurant || actionLockRef.current || !canManageConnection) return;
+    if (!restaurant || actionLockRef.current || !actionsEditable) return;
     const restaurantId = restaurant.id;
     actionLockRef.current = true;
     setBusyAction("disconnect");
@@ -216,7 +225,19 @@ export default function GmailConnectionScreen() {
     }
   }
 
-  const visibleConnection = loadedRestaurantId === restaurant?.id ? connection : null;
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: hubLoadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const mutationAllowed = canManageConnection && hubReady;
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManageConnection,
+    hubReady,
+    busy: Boolean(busyAction)
+  });
+  const visibleConnection = hubReady ? connection : null;
   const status = visibleConnection?.status ?? "not_connected";
   const statusPresentation = gmailStatusPresentation(status, t);
   const connectLabel = status === "needs_reauth" || status === "restricted"
@@ -286,7 +307,7 @@ export default function GmailConnectionScreen() {
               />
             </View>
 
-            {canManageConnection ? (
+            {mutationAllowed ? (
               <View style={styles.connectionActions}>
                 {status === "connected" ? (
                   confirmDisconnect ? (

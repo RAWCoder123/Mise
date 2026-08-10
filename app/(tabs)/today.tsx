@@ -35,6 +35,10 @@ import {
   queueOperationalFindingDecision,
   type OperatorTask
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -141,9 +145,20 @@ export default function TodayScreen() {
   }, [load]);
 
   const canManageBrief = canManageRestaurantData(memberships, restaurant?.id);
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: Boolean(error)
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManageBrief,
+    hubReady,
+    busy: Boolean(busyFindingId)
+  });
 
   async function markFloorNoteDone(note: OperatorTask) {
-    if (!restaurant || busyFloorNoteId) return;
+    if (!restaurant || !hubReady || busyFloorNoteId) return;
     const restaurantId = restaurant.id;
     setBusyFloorNoteId(note.id);
     setFloorNoteMessage(null);
@@ -169,7 +184,7 @@ export default function TodayScreen() {
     decisionType: OperationalFindingDecisionType,
     editedRecommendedAction?: string
   ) {
-    if (!restaurant || !canManageBrief || busyFindingId) return;
+    if (!restaurant || !actionsEditable || busyFindingId) return;
     const restaurantId = restaurant.id;
     setBusyFindingId(finding.id);
     setBriefMessage(null);
@@ -215,10 +230,10 @@ export default function TodayScreen() {
     router.replace("/today");
   }
 
-  const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
-  const visibleBrief = loadedRestaurantId === restaurant?.id ? brief : null;
-  const visibleFindingQueue = loadedRestaurantId === restaurant?.id ? findingQueue : [];
-  const visibleFloorNotes = loadedRestaurantId === restaurant?.id ? floorNotes : [];
+  const visibleSummary = hubReady ? summary : null;
+  const visibleBrief = hubReady ? brief : null;
+  const visibleFindingQueue = hubReady ? findingQueue : [];
+  const visibleFloorNotes = hubReady ? floorNotes : [];
   const groupedFloorNotes = useMemo(() => {
     const buckets: Record<"now" | "up_next" | "later", OperatorTask[]> = {
       now: [],
@@ -456,7 +471,7 @@ export default function TodayScreen() {
           <DailyBriefBoard
             brief={visibleBrief}
             queue={visibleFindingQueue}
-            canManage={canManageBrief}
+            canManage={actionsEditable}
             busyFindingId={busyFindingId}
             message={briefMessage}
             messageIsError={briefMessageIsError}

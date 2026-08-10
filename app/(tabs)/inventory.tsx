@@ -38,6 +38,7 @@ import {
   fetchQueuedInventoryEvents,
   summarizeInventoryOutlooks
 } from "../../services/miseService";
+import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
 import type { InventoryItem, InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
@@ -101,8 +102,14 @@ export default function InventoryScreen() {
     }, [load])
   );
 
-  const visibleOutlooks = loadedRestaurantId === restaurant?.id ? outlooks : [];
-  const visibleQueue = loadedRestaurantId === restaurant?.id ? queueEntries : [];
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleOutlooks = hubReady ? outlooks : [];
+  const visibleQueue = hubReady ? queueEntries : [];
 
   const filterOptions = useMemo<readonly SegmentOption<InventoryFilter>[]>(() => {
     const options: readonly SegmentOption<InventoryFilter>[] = [
@@ -304,7 +311,7 @@ export default function InventoryScreen() {
             </View>
           ) : (
             <View style={styles.inventoryList}>
-              {filtered.slice(0, 12).map((outlook) => (
+              {filtered.map((outlook) => (
                 <InventoryListRow
                   key={outlook.item.id}
                   outlook={outlook}

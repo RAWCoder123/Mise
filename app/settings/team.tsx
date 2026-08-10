@@ -30,6 +30,10 @@ import {
   TeamMembershipError,
   type AssignableTeamRole
 } from "../../services/domain/teamMembership";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import type { RestaurantRole, RestaurantTeamMember } from "../../types/mise";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -122,8 +126,22 @@ export default function TeamSettingsScreen() {
     });
   }, [navigation, t]);
 
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const mutationAllowed = canManage && hubReady;
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy: Boolean(busyKey)
+  });
+  const visibleMembers = hubReady ? members : [];
+
   async function inviteMember() {
-    if (!restaurant || !canManage || busyKey) return;
+    if (!restaurant || !actionsEditable) return;
     const normalizedEmail = normalizeTeamMemberEmail(inviteEmail);
     if (!normalizedEmail) {
       setNotice({ tone: "danger", titleKey: "team.notice.emailInvalid" });
@@ -155,7 +173,7 @@ export default function TeamSettingsScreen() {
   }
 
   async function changeRole(member: RestaurantTeamMember, nextRole: AssignableTeamRole) {
-    if (!restaurant || busyKey || member.role === nextRole) return;
+    if (!restaurant || !actionsEditable || member.role === nextRole) return;
     setBusyKey(`role:${member.user_id}`);
     setNotice(null);
     try {
@@ -171,7 +189,7 @@ export default function TeamSettingsScreen() {
   }
 
   async function removeMember(member: RestaurantTeamMember) {
-    if (!restaurant || busyKey) return;
+    if (!restaurant || !actionsEditable) return;
     setBusyKey(`remove:${member.user_id}`);
     setNotice(null);
     try {
@@ -185,8 +203,6 @@ export default function TeamSettingsScreen() {
       setBusyKey(null);
     }
   }
-
-  const visibleMembers = loadedRestaurantId === restaurant?.id ? members : [];
 
   return (
     <Screen title={t("team.title")} subtitle={restaurant ? restaurant.name : t("team.subtitle")}>
@@ -211,7 +227,7 @@ export default function TeamSettingsScreen() {
               placeholder={t("team.invite.emailPlaceholder")}
               accessibilityLabel={t("team.invite.emailAccessibility")}
               style={styles.input}
-              editable={!busyKey}
+              editable={actionsEditable}
             />
             <View style={styles.roleRow}>
               {availableRoles.map((option) => {
@@ -220,9 +236,10 @@ export default function TeamSettingsScreen() {
                   <Pressable
                     key={option}
                     onPress={() => setInviteRole(option)}
+                    disabled={!actionsEditable}
                     style={[styles.roleChip, selected ? styles.roleChipSelected : null]}
                     accessibilityRole="button"
-                    accessibilityState={{ selected }}
+                    accessibilityState={{ selected, disabled: !actionsEditable }}
                     accessibilityLabel={t(roleKeys[option])}
                   >
                     <Text style={[styles.roleChipText, selected ? styles.roleChipTextSelected : null]}>
@@ -235,7 +252,7 @@ export default function TeamSettingsScreen() {
             <Button
               title={t(busyKey === "invite" ? "team.invite.adding" : "team.invite.add")}
               onPress={() => void inviteMember()}
-              disabled={Boolean(busyKey) || inviteEmail.trim().length === 0}
+              disabled={!actionsEditable || inviteEmail.trim().length === 0}
               icon={<UserPlus size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />}
             />
           </SectionSurface>
@@ -262,7 +279,7 @@ export default function TeamSettingsScreen() {
           ) : null}
           {visibleMembers.map((member) => {
             const isSelf = member.user_id === user?.id;
-            const editable = canEditTeamMember(role, { role: member.role, isSelf });
+            const editable = mutationAllowed && canEditTeamMember(role, { role: member.role, isSelf });
             return (
               <View key={`${member.restaurant_id}:${member.user_id}`} style={styles.memberCard}>
                 <View style={styles.memberHeader}>
@@ -288,9 +305,9 @@ export default function TeamSettingsScreen() {
                             key={option}
                             onPress={() => void changeRole(member, option)}
                             style={[styles.roleChip, selected ? styles.roleChipSelected : null]}
-                            disabled={Boolean(busyKey)}
+                            disabled={!actionsEditable}
                             accessibilityRole="button"
-                            accessibilityState={{ selected }}
+                            accessibilityState={{ selected, disabled: !actionsEditable }}
                             accessibilityLabel={t("team.member.setRole", { role: t(roleKeys[option]) })}
                           >
                             <Text style={[styles.roleChipText, selected ? styles.roleChipTextSelected : null]}>
@@ -304,7 +321,7 @@ export default function TeamSettingsScreen() {
                       title={t(busyKey === `remove:${member.user_id}` ? "team.member.removing" : "team.member.remove")}
                       variant="secondary"
                       onPress={() => void removeMember(member)}
-                      disabled={Boolean(busyKey)}
+                      disabled={!actionsEditable}
                     />
                   </View>
                 ) : null}

@@ -32,6 +32,10 @@ import {
   undoPurchaseRecommendationAction,
   type SupplierSpendTrendPoint
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
 import { trackMiseEvent } from "../../services/telemetry";
@@ -191,13 +195,22 @@ export default function OrdersScreen() {
     return () => clearTimeout(timeout);
   }, [undoAction?.id]);
 
-  const dataMatchesActiveRestaurant = loadedRestaurantRef.current === restaurant?.id;
-  const visibleRecommendations = dataMatchesActiveRestaurant ? recommendations : [];
-  const visibleOrders = dataMatchesActiveRestaurant ? orders : [];
-  const visibleSpendTrend = dataMatchesActiveRestaurant ? spendTrend : [];
-  const visibleEmailConnection = dataMatchesActiveRestaurant ? emailConnection : null;
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId: loadedRestaurantRef.current,
+    loadError: Boolean(loadError)
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady
+  });
+  const visibleRecommendations = hubReady ? recommendations : [];
+  const visibleOrders = hubReady ? orders : [];
+  const visibleSpendTrend = hubReady ? spendTrend : [];
+  const visibleEmailConnection = hubReady ? emailConnection : null;
   const visibleMessage = messageRestaurantId === restaurant?.id ? message : null;
-  const visibleUndoAction = dataMatchesActiveRestaurant && canManage ? undoAction : null;
+  const visibleUndoAction = hubReady && actionsEditable ? undoAction : null;
 
   const groupedRecommendations = useMemo(() => {
     const groups = new Map<string, PurchaseRecommendation[]>();
@@ -338,7 +351,7 @@ export default function OrdersScreen() {
 
   async function approve(recommendation: PurchaseRecommendation) {
     if (!restaurant || recommendationLocksRef.current.has(recommendation.id)) return;
-    if (!canManage) {
+    if (!actionsEditable) {
       showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
       return;
     }
@@ -395,7 +408,7 @@ export default function OrdersScreen() {
 
   async function dismiss(recommendation: PurchaseRecommendation) {
     if (!restaurant || recommendationLocksRef.current.has(recommendation.id)) return;
-    if (!canManage) {
+    if (!actionsEditable) {
       showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
       return;
     }
@@ -430,7 +443,7 @@ export default function OrdersScreen() {
 
   async function undoLastAction() {
     if (!restaurant || !undoAction || undoLockRef.current) return;
-    if (!canManage) {
+    if (!actionsEditable) {
       showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
       setUndoAction(null);
       return;
@@ -479,7 +492,7 @@ export default function OrdersScreen() {
 
   async function sendOrder(order: SupplierOrder) {
     if (!restaurant || sendingLocksRef.current.has(order.id)) return;
-    if (!canManage) {
+    if (!actionsEditable) {
       showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
       return;
     }
@@ -616,7 +629,7 @@ export default function OrdersScreen() {
                       router.push({ pathname: "/orders/[id]", params: { id: order.id } })
                     }
                     onSend={() => void sendOrder(order)}
-                    showSend={canManage}
+                    showSend={actionsEditable}
                     canSend={canSendOrders}
                     sendLabel={t(usingLocalDemo ? "orders.action.simulateSend" : "orders.action.gmailSend")}
                     busyLabel={t(usingLocalDemo ? "orders.action.simulating" : "orders.action.gmailSending")}
@@ -751,7 +764,7 @@ export default function OrdersScreen() {
                         onDismiss={() => void dismiss(recommendation)}
                         action={recommendationActions[recommendation.id]}
                         error={quantityErrors[recommendation.id]}
-                        readOnly={!canManage}
+                        readOnly={!actionsEditable}
                         showDivider={index < supplierRecommendations.length - 1}
                       />
                     ))}

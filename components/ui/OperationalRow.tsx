@@ -36,6 +36,8 @@ interface OperationalRowProps {
   subtitleLines?: number;
   trailing?: ReactNode;
   onPress?: () => void;
+  /** Keeps the row visually pressable but non-interactive (e.g. hub not ready). */
+  disabled?: boolean;
   accessibilityLabel?: string;
   accessibilityHint?: string;
   style?: StyleProp<ViewStyle>;
@@ -59,13 +61,14 @@ export function OperationalRow({
   subtitleLines = 2,
   trailing,
   onPress,
+  disabled = false,
   accessibilityLabel,
   accessibilityHint,
   style,
   density: rowDensity = "default"
 }: OperationalRowProps) {
   const { pressIn, pressOut, scaleStyle } = usePressScale(0.985);
-  const isActionable = typeof onPress === "function";
+  const isActionable = typeof onPress === "function" && !disabled;
   const showSubtitle = Boolean(subtitle?.trim());
   const isMenu = rowDensity === "menu";
   const isOperational = rowDensity === "operational";
@@ -77,11 +80,12 @@ export function OperationalRow({
       accessibilityRole={isActionable ? "button" : undefined}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
+      accessibilityState={typeof onPress === "function" ? { disabled: !isActionable } : undefined}
       disabled={!isActionable}
-      onPress={onPress}
+      onPress={isActionable ? onPress : undefined}
       onPressIn={isActionable ? pressIn : undefined}
       onPressOut={isActionable ? pressOut : undefined}
-      style={({ pressed }) => [pressed && isActionable && styles.pressed]}
+      style={({ pressed }) => [pressed && isActionable && styles.pressed, disabled && styles.disabled]}
     >
       <Animated.View
         style={[
@@ -110,7 +114,7 @@ export function OperationalRow({
             </Text>
           ) : null}
         </View>
-        {(value || meta || trailing || isActionable || (badgeLabel && isOperational)) && (
+        {(value || meta || trailing || isActionable || (typeof onPress === "function" && disabled) || (badgeLabel && isOperational)) && (
           <View style={styles.trail}>
             {badgeLabel && isOperational ? <Badge label={badgeLabel} tone={badgeTone} /> : null}
             {trailing}
@@ -124,7 +128,13 @@ export function OperationalRow({
                 {meta}
               </Text>
             )}
-            {isActionable && <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={iconStroke} />}
+            {(isActionable || (typeof onPress === "function" && disabled)) && (
+              <ChevronRight
+                size={density.chevron}
+                color={disabled ? colors.faint : colors.faint}
+                strokeWidth={iconStroke}
+              />
+            )}
           </View>
         )}
       </Animated.View>
@@ -197,6 +207,9 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.76
+  },
+  disabled: {
+    opacity: 0.55
   }
 });
 

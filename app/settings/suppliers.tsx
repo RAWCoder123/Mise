@@ -23,6 +23,10 @@ import {
   supplierRecipientDirectoryKey,
   type SupplierRecipientDirectoryEntry
 } from "../../services/domain/supplierRecipients";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 
 interface SupplierNotice {
@@ -103,8 +107,21 @@ export default function SupplierRecipientsScreen() {
     else router.replace("/settings");
   }
 
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy: savingKeys.size > 0
+  });
+  const visibleEntries = hubReady ? entries : [];
+
   async function save(entry: SupplierRecipientDirectoryEntry) {
-    if (!restaurant || !canManage) return;
+    if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
     const key = supplierRecipientDirectoryKey(entry.supplierName);
     if (actionLocksRef.current.has(key)) return;
@@ -161,7 +178,6 @@ export default function SupplierRecipientsScreen() {
     }
   }
 
-  const visibleEntries = loadedRestaurantId === restaurant?.id ? entries : [];
   const configuredCount = useMemo(
     () => visibleEntries.filter((entry) => Boolean(entry.email)).length,
     [visibleEntries]
@@ -256,11 +272,11 @@ export default function SupplierRecipientsScreen() {
                           autoCapitalize="none"
                           autoComplete="email"
                           autoCorrect={false}
-                          editable={!saving}
+                          editable={actionsEditable && !saving}
                           keyboardType="email-address"
                           onChangeText={(value) => setDraftEmails((current) => ({ ...current, [key]: value }))}
                           onSubmitEditing={() => {
-                            if (!unchanged && !saving) void save(entry);
+                            if (!unchanged && actionsEditable && !saving) void save(entry);
                           }}
                           placeholder={copy.emailPlaceholder}
                           placeholderTextColor={colors.faint}
@@ -275,7 +291,7 @@ export default function SupplierRecipientsScreen() {
                           accessibilityHint={copy.saveHint}
                           variant="secondary"
                           fullWidth
-                          disabled={saving || unchanged}
+                          disabled={!actionsEditable || saving || unchanged}
                           onPress={() => void save(entry)}
                         />
                       </View>

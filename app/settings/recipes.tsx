@@ -23,6 +23,10 @@ import {
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { requireRecipeBaselineQuantity } from "../../services/miseValidation";
 import type { InventoryItem, RecipeBaselineItem, RecipeBaselineSummary } from "../../types/mise";
@@ -42,6 +46,7 @@ export default function RecipeBaselinesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [hubLoadError, setHubLoadError] = useState(false);
   const requestIdRef = useRef(0);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -57,6 +62,7 @@ export default function RecipeBaselinesScreen() {
     saveTimersRef.current.forEach((timer) => clearTimeout(timer));
     saveTimersRef.current.clear();
     setLoadedRestaurantId(null);
+    setHubLoadError(false);
     setSummary(null);
     setInventoryItems([]);
     setNewMenuItemName("");
@@ -78,6 +84,7 @@ export default function RecipeBaselinesScreen() {
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
+    setHubLoadError(false);
     try {
       const [nextSummary, nextInventoryItems] = await Promise.all([
         fetchRecipeBaselineSummary(restaurantId),
@@ -87,8 +94,10 @@ export default function RecipeBaselinesScreen() {
       setSummary(nextSummary);
       setInventoryItems(nextInventoryItems);
       setLoadedRestaurantId(restaurantId);
+      setHubLoadError(false);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setHubLoadError(true);
       setError(t("recipes.error.load"));
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
@@ -116,9 +125,22 @@ export default function RecipeBaselinesScreen() {
     };
   }, []);
 
-  const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
-  const visibleInventoryItems = loadedRestaurantId === restaurant?.id ? inventoryItems : [];
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: hubLoadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const mutationBusy = savingNewLink || savingMappingId !== null;
+  const mutationAllowed = canManage && hubReady;
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy: mutationBusy
+  });
+  const visibleSummary = hubReady ? summary : null;
+  const visibleInventoryItems = hubReady ? inventoryItems : [];
 
   const selectedInventoryItem = useMemo(() => {
     const normalized = newInventoryItemName.trim().toLowerCase();
@@ -139,7 +161,7 @@ export default function RecipeBaselinesScreen() {
 
   async function saveIngredient(mappingId: string, quantity: string, options?: { quiet?: boolean }) {
     if (!restaurant) return;
-    if (!canManage) {
+    if (!actionsEditable) {
       setError(t("recipes.error.readOnly"));
       return;
     }
@@ -194,7 +216,7 @@ export default function RecipeBaselinesScreen() {
 
   async function addBaselineLink() {
     if (!restaurant) return;
-    if (!canManage) {
+    if (!actionsEditable) {
       setError(t("recipes.error.readOnly"));
       return;
     }
@@ -352,7 +374,7 @@ export default function RecipeBaselinesScreen() {
             </Card>
           )}
 
-          {canManage ? (
+          {mutationAllowed ? (
             <RecipeBaselineBuilder
               menuItemName={newMenuItemName}
               inventoryItemName={newInventoryItemName}
@@ -385,7 +407,7 @@ export default function RecipeBaselinesScreen() {
                 <RecipeRow
                   key={item.menu_item_name}
                   item={item}
-                  canManage={canManage}
+                  canManage={actionsEditable}
                   savingMappingId={savingMappingId}
                   onSave={queueIngredientSave}
                 />

@@ -33,6 +33,10 @@ import {
   summarizeInsights
 } from "../../services/miseService";
 import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
+import {
   presentInsight,
   presentLearningMemory,
   presentLearningMemorySignal
@@ -150,13 +154,24 @@ export default function InsightsScreen() {
   }, [load]);
 
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy: refreshing || Boolean(busyFindingId)
+  });
 
   async function submitFindingFeedback(
     finding: OperationalFinding,
     decisionType: OperationalFindingDecisionType,
     editedRecommendedAction?: string
   ) {
-    if (!restaurant || !canManage || busyFindingId) return;
+    if (!restaurant || !actionsEditable || busyFindingId) return;
     const restaurantId = restaurant.id;
     setBusyFindingId(finding.id);
     setBriefMessage(null);
@@ -184,7 +199,7 @@ export default function InsightsScreen() {
   }
 
   const refreshInsights = useCallback(async () => {
-    if (!restaurant || refreshing || !canManage) return;
+    if (!restaurant || refreshing || !canManage || !hubReady) return;
 
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
@@ -216,15 +231,14 @@ export default function InsightsScreen() {
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setRefreshing(false);
     }
-  }, [canManage, refreshing, restaurant?.id]);
+  }, [canManage, hubReady, refreshing, restaurant?.id]);
 
-  const visibleInsights = loadedRestaurantId === restaurant?.id ? insights : [];
-  const visibleBrief = loadedRestaurantId === restaurant?.id ? brief : null;
-  const visibleFindingQueue = loadedRestaurantId === restaurant?.id ? findingQueue : [];
-  const visibleMemory = loadedRestaurantId === restaurant?.id ? memory : null;
-  const visibleSalesTrend = loadedRestaurantId === restaurant?.id ? salesTrend : [];
-  const visibleSalesAnalytics =
-    loadedRestaurantId === restaurant?.id ? salesAnalytics : null;
+  const visibleInsights = hubReady ? insights : [];
+  const visibleBrief = hubReady ? brief : null;
+  const visibleFindingQueue = hubReady ? findingQueue : [];
+  const visibleMemory = hubReady ? memory : null;
+  const visibleSalesTrend = hubReady ? salesTrend : [];
+  const visibleSalesAnalytics = hubReady ? salesAnalytics : null;
 
   const summary = useMemo(() => {
     if (!restaurant) return null;
@@ -306,8 +320,8 @@ export default function InsightsScreen() {
           <ActionIcon
             accessibilityLabel={refreshing ? t("insights.refreshing") : t("insights.refresh")}
             accessibilityHint={t("insights.refreshHint")}
-            accessibilityState={{ disabled: refreshing }}
-            disabled={refreshing}
+            accessibilityState={{ disabled: !actionsEditable }}
+            disabled={!actionsEditable}
             onPress={() => void refreshInsights()}
             tone="brand"
           >
@@ -354,7 +368,7 @@ export default function InsightsScreen() {
               <DailyBriefBoard
                 brief={visibleBrief}
                 queue={visibleFindingQueue}
-                canManage={canManage}
+                canManage={actionsEditable}
                 busyFindingId={busyFindingId}
                 message={briefMessage}
                 messageIsError={briefMessageIsError}

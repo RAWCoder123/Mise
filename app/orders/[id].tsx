@@ -25,6 +25,10 @@ import type {
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
 } from "../../services/domain/supplierReliability";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type { RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
@@ -51,6 +55,7 @@ export default function OrderDraftDetailScreen() {
   const [notice, setNotice] = useState<OrderNotice | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [hubLoadError, setHubLoadError] = useState(false);
   const requestIdRef = useRef(0);
   const actionLockRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
@@ -72,6 +77,7 @@ export default function OrderDraftDetailScreen() {
     const requestId = ++requestIdRef.current;
     if (showLoading) setLoading(true);
     setNotice(null);
+    setHubLoadError(false);
     try {
       const [nextDetail, nextEmailConnection] = await Promise.all([
         fetchSupplierOrderOperationalDetail(restaurantId, orderId),
@@ -85,11 +91,13 @@ export default function OrderDraftDetailScreen() {
       setDeliveryEvidence(nextDetail.deliveryEvidence);
       setEmailConnection(nextEmailConnection);
       setLoadedRestaurantId(restaurantId);
+      setHubLoadError(false);
       setOperatorNote(nextDetail.order.operator_note ?? "");
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setDeliveryEvidence([]);
+      setHubLoadError(true);
       setNotice({
         title: t("orders.detail.load.title"),
         message:
@@ -107,6 +115,7 @@ export default function OrderDraftDetailScreen() {
     requestIdRef.current += 1;
     actionLockRef.current = false;
     setLoadedRestaurantId(null);
+    setHubLoadError(false);
     setOrder(null);
     setDeliveryEvidence([]);
     setEmailConnection(null);
@@ -119,7 +128,7 @@ export default function OrderDraftDetailScreen() {
 
   async function persistNote(): Promise<SupplierOrder> {
     if (!restaurant || !order) throw new Error(t("orders.detail.unavailable"));
-    if (!canManage) return order;
+    if (!actionsEditable) return order;
     if (order.status !== "draft") return order;
     if (operatorNote.trim() === (order.operator_note ?? "").trim()) return order;
 
@@ -135,7 +144,7 @@ export default function OrderDraftDetailScreen() {
 
   async function saveNote() {
     if (!restaurant || !order || actionLockRef.current) return;
-    if (!canManage) {
+    if (!actionsEditable) {
       setNotice(viewOnlyNotice(t));
       return;
     }
@@ -197,7 +206,7 @@ export default function OrderDraftDetailScreen() {
 
   async function sendOrder() {
     if (!restaurant || !order || order.status !== "draft" || actionLockRef.current) return;
-    if (!canManage) {
+    if (!actionsEditable) {
       setNotice(viewOnlyNotice(t));
       return;
     }
@@ -240,7 +249,7 @@ export default function OrderDraftDetailScreen() {
 
   async function markReceived() {
     if (!restaurant || !order || order.status !== "sent" || actionLockRef.current) return;
-    if (!canManage) {
+    if (!actionsEditable) {
       setNotice(viewOnlyNotice(t));
       return;
     }
@@ -278,15 +287,26 @@ export default function OrderDraftDetailScreen() {
     }
   }
 
-  const visibleOrder = loadedRestaurantId === restaurant?.id ? order : null;
-  const isDraft = visibleOrder?.status === "draft";
-  const isSent = visibleOrder?.status === "sent";
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canManageGmail = canDeleteRestaurantData(memberships, restaurant?.id);
-  const canEditDraft = Boolean(isDraft && canManage);
-  const visibleEmailConnection = loadedRestaurantId === restaurant?.id ? emailConnection : null;
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: hubLoadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy
+  });
+  const visibleOrder = hubReady ? order : null;
+  const isDraft = visibleOrder?.status === "draft";
+  const isSent = visibleOrder?.status === "sent";
+  const canEditDraft = Boolean(isDraft && actionsEditable);
+  const visibleEmailConnection = hubReady ? emailConnection : null;
   const visibleDeliveryEvidence =
-    loadedRestaurantId === restaurant?.id ? deliveryEvidence : [];
+    hubReady ? deliveryEvidence : [];
   const gmailReady = visibleEmailConnection?.status === "connected";
   const generatedMessage = visibleOrder ? generatedOrderMessage(visibleOrder) : "";
 
@@ -534,7 +554,7 @@ export default function OrderDraftDetailScreen() {
             />
           ) : null}
 
-          {isSent && canManage ? (
+          {isSent && actionsEditable ? (
             <Button
               title={busy ? t("orders.detail.action.receiving") : t("orders.detail.action.markReceived")}
               accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {

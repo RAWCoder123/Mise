@@ -40,6 +40,10 @@ import {
   fetchRestaurantOpsProfile,
   fetchSuppliers
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type {
@@ -81,6 +85,7 @@ export default function SettingsScreen() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [switchingRestaurantId, setSwitchingRestaurantId] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [hubLoadError, setHubLoadError] = useState(false);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -88,6 +93,7 @@ export default function SettingsScreen() {
   useEffect(() => {
     requestIdRef.current += 1;
     setLoadedRestaurantId(null);
+    setHubLoadError(false);
     setSuppliers([]);
     setOpsProfile(null);
     setEmailConnection(null);
@@ -120,9 +126,12 @@ export default function SettingsScreen() {
       setEmailConnection(nextEmailConnection);
       setReadiness(nextReadiness);
       setLoadedRestaurantId(restaurantId);
+      setHubLoadError(false);
+      setMessage((current) => (current?.key === "settings.notice.loadError" ? null : current));
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "settings", operation: "load", restaurant_id: restaurantId });
+      setHubLoadError(true);
       setMessage({ key: "settings.notice.loadError", tone: "danger" });
     }
   }, [isDemoMode, restaurant?.id]);
@@ -134,6 +143,13 @@ export default function SettingsScreen() {
   );
 
   async function reset() {
+    const hubReadyForReset =
+      resolveRestaurantScopedHubLoadState({
+        restaurantId: restaurant?.id,
+        loadedRestaurantId,
+        loadError: hubLoadError
+      }) === "ready";
+    if (!hubReadyForReset || loading) return;
     setLoading(true);
     setMessage(null);
     try {
@@ -193,10 +209,21 @@ export default function SettingsScreen() {
     }
   }
 
-  const visibleSuppliers = loadedRestaurantId === restaurant?.id ? suppliers : [];
-  const visibleOpsProfile = loadedRestaurantId === restaurant?.id ? opsProfile : null;
-  const visibleEmailConnection = loadedRestaurantId === restaurant?.id ? emailConnection : null;
-  const visibleReadiness = loadedRestaurantId === restaurant?.id ? readiness : null;
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: hubLoadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const restaurantActionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: Boolean(restaurant),
+    hubReady,
+    busy: loading || signingOut || deletingAccount || Boolean(switchingRestaurantId)
+  });
+  const visibleSuppliers = hubReady ? suppliers : [];
+  const visibleOpsProfile = hubReady ? opsProfile : null;
+  const visibleEmailConnection = hubReady ? emailConnection : null;
+  const visibleReadiness = hubReady ? readiness : null;
   const gmailConnected = visibleEmailConnection?.status === "connected";
   const gmailNeedsAttention = visibleEmailConnection?.status === "needs_reauth" || visibleEmailConnection?.status === "restricted";
   const canExportRestaurant = Boolean(restaurant) && canDeleteRestaurantData(memberships, restaurant?.id);
@@ -349,6 +376,7 @@ export default function SettingsScreen() {
                 : t("settings.integration.pos.manage")
             }
             icon={<PlugZap size={icon.emphasis} color={posProvider ? colors.success : colors.muted} strokeWidth={iconStroke} />}
+            disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/pos")}
           />
           <OperationalRow
@@ -362,6 +390,7 @@ export default function SettingsScreen() {
                 strokeWidth={iconStroke}
               />
             }
+            disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/gmail" as never)}
           />
         </SettingsSection>
@@ -371,12 +400,14 @@ export default function SettingsScreen() {
             density="menu"
             title={t("settings.operations.salesImport.title")}
             icon={<Upload size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/sales-import" as never)}
           />
           <OperationalRow
             density="menu"
             title={t("settings.operations.recipes.title")}
             icon={<BookOpen size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/recipes" as never)}
           />
           <OperationalRow
@@ -384,6 +415,7 @@ export default function SettingsScreen() {
             title={t("settings.operations.suppliers.title")}
             value={formatNumber(visibleSuppliers.length)}
             icon={<Truck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/suppliers" as never)}
           />
         </SettingsSection>
@@ -400,6 +432,7 @@ export default function SettingsScreen() {
               density="menu"
               title={t("settings.data.export.title")}
               icon={<Download size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+              disabled={!restaurantActionsEditable}
               onPress={() => router.push("/settings/export" as never)}
             />
           ) : null}
@@ -411,7 +444,7 @@ export default function SettingsScreen() {
                 variant="secondary"
                 icon={<RefreshCw size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={reset}
-                disabled={loading}
+                disabled={!restaurantActionsEditable || loading}
                 fullWidth
               />
             </View>
