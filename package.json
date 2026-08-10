@@ -8,7 +8,7 @@
     "web": "expo start --web",
     "ios": "expo start --ios",
     "android": "expo start --android",
-    "test": "node --test --import tsx tests/**/*.test.ts",
+    "test": "node --test --import tsx 'tests/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
     "qa:routes": "node scripts/mobile-route-smoke.mjs",
