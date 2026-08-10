@@ -19,12 +19,12 @@ Design-rebuild hubs muted cross-restaurant stale rows via `loadedRestaurantId`, 
 
 ## Verification
 
-- `npm run typecheck`
-- `npm test`
-- `npm run security:static`
-- `npm run security:backend`
-- `npm run design:static`
-- `npm run qa:routes`
+- `npm run typecheck` — pass
+- `npm test` — 475 pass / 0 fail (7 pre-existing recalculation timeout tests cancelled by pending timers)
+- `npm run security:static` — pass
+- `npm run security:backend` — pass
+- `npm run design:static` — pass
+- `npm run qa:routes` — pass
 
 ## Next
 
