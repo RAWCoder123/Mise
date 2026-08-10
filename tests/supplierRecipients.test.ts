@@ -159,8 +159,11 @@ test("supplier recipient route is stale-response guarded and staff read-only", (
   assert.match(screen, /canManageRestaurantData\(memberships, restaurant\?\.id\)/);
   assert.match(screen, /activeRestaurantIdRef\.current !== restaurantId/);
   assert.match(screen, /requestId !== requestIdRef\.current/);
+  assert.match(screen, /resolveRestaurantScopedHubLoadState/);
+  assert.match(screen, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screen, /canManage \? \(/);
-  assert.match(screen, /editable=\{!saving\}/);
+  assert.match(screen, /editable=\{actionsEditable && !saving\}/);
+  assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| unchanged\}/);
   assert.match(screen, /minHeight: 44/);
   assert.match(screen, /accessibilityLabel=\{copy\.saveAccessibility/);
   assert.match(screen, /Record<AppLocale, SupplierCopy>/);

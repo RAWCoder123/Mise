@@ -39,11 +39,12 @@ test("orders keeps staff read-only while preserving review, copy, and detail acc
 
   assert.match(screen, /canManageRestaurantData\(memberships, restaurant\?\.id\)/);
   assert.match(screen, /canDeleteRestaurantData\(memberships, restaurant\?\.id\)/);
-  assert.match(screen, /readOnly=\{!canManage\}/);
-  assert.match(screen, /showSend=\{canManage\}/);
+  assert.match(screen, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screen, /readOnly=\{!actionsEditable\}/);
+  assert.match(screen, /showSend=\{actionsEditable\}/);
   assert.match(screen, /canSend=\{canSendOrders\}/);
   assert.match(screen, /t\("orders\.readOnly\.title"\)/);
-  assert.ok((screen.match(/if \(!canManage\)/g) ?? []).length >= 4);
+  assert.ok((screen.match(/if \(!actionsEditable\)/g) ?? []).length >= 4);
   assert.match(screen, /onCopy=\{\(\) => void copyOrder\(order\)\}/);
   assert.match(screen, /pathname: "\/orders\/\[id\]"/);
 
