@@ -56,7 +56,6 @@ export default function POSConnectionScreen() {
   activeRestaurantIdRef.current = restaurant?.id ?? null;
   const canManage = canDeleteRestaurantData(memberships, restaurant?.id);
   const posProviderLabel = posProvider === "Manual CSV Upload" ? t("pos.provider.manualCsv") : posProvider;
-  const squareConnected = integration?.status === "connected";
 
   useEffect(() => {
     requestIdRef.current += 1;

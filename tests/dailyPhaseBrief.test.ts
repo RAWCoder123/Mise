@@ -24,15 +24,20 @@ test("restaurant-local hours select Morning, Pre-Service, and Closing phases", (
 
 test("count-session related refs route phase findings to the inventory count screen", () => {
   const evidence = fixtures();
+  const countItem: OperatingPlanItem = {
+    ...planItem("open"),
+    id: "plan-count-session",
+    relatedRefs: [{ type: "inventory_count_session", id: "count_session_1" }]
+  };
   const countPlan: DailyOperatingPlan = {
     ...evidence.operatingPlan,
-    items: [
-      {
-        ...planItem("open"),
-        id: "plan-count-session",
-        relatedRefs: [{ type: "inventory_count_session", id: "count_session_1" }]
-      }
-    ]
+    items: [countItem],
+    buckets: {
+      now: [countItem],
+      up_next: [],
+      later: [],
+      done: []
+    }
   };
   const result = buildDailyPhaseBriefs({
     restaurantId,
