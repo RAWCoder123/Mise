@@ -155,7 +155,11 @@ const selectOnlyAuthenticatedTables = new Set([
   "restaurant_operational_controls",
   "sales_imports",
   "supplier_items",
-  "purchase_orders"
+  "purchase_orders",
+  "inventory_items",
+  "menu_item_ingredients",
+  "pos_sales",
+  "setup_attachments"
 ]);
 
 runRequired("Running existing static security checks...", process.execPath, ["scripts/security-static.mjs"]);

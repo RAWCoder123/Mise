@@ -859,3 +859,44 @@ test("legacy ops tables lose authenticated DML while retaining SELECT", () => {
   assert.match(tenantTests, /supplier item writes are service\/Edge-only/i);
   assert.match(tenantTests, /legacy purchase order writes are service\/Edge-only/i);
 });
+
+test("orphan operational write policies are dropped and pinned SELECT-only", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260810122000_drop_orphan_operational_write_policies.sql",
+    "utf8",
+  );
+  const tenantTests = readFileSync("supabase/tests/database/tenant_isolation.test.sql", "utf8");
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+
+  for (const policy of [
+    "Managers can insert inventory",
+    "Managers can update inventory",
+    "Owners and admins can delete inventory",
+    "Managers can insert menu mappings",
+    "Managers can update menu mappings",
+    "Owners and admins can delete menu mappings",
+    "Managers can insert sales",
+    "Managers can update sales",
+    "Owners and admins can delete sales",
+    "Managers can insert setup attachments",
+    "Managers can update setup attachments",
+    "Owners and admins can delete setup attachments",
+  ]) {
+    assert.match(
+      migration,
+      new RegExp(`drop policy if exists "${policy}"`, "i"),
+    );
+  }
+  for (const table of [
+    "inventory_items",
+    "menu_item_ingredients",
+    "pos_sales",
+    "setup_attachments",
+  ]) {
+    assert.match(securityBackend, new RegExp(`"${table}"`));
+  }
+  assert.match(
+    tenantTests,
+    /Edge-owned operational tables retain no authenticated write policies/i,
+  );
+});

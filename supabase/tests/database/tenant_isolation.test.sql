@@ -1,6 +1,6 @@
 begin;
 
-select plan(354);
+select plan(358);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -587,6 +587,58 @@ select is(has_table_privilege('authenticated', 'public.system_operational_contro
 select is(has_table_privilege('authenticated', 'public.sales_imports', 'INSERT'), false, 'sales import writes are service/Edge-only');
 select is(has_table_privilege('authenticated', 'public.supplier_items', 'INSERT'), false, 'supplier item writes are service/Edge-only');
 select is(has_table_privilege('authenticated', 'public.purchase_orders', 'INSERT'), false, 'legacy purchase order writes are service/Edge-only');
+select is(
+  (
+    select count(*)
+    from pg_policies policy
+    where policy.schemaname = 'public'
+      and policy.tablename in (
+        'inventory_items',
+        'menu_item_ingredients',
+        'pos_sales',
+        'setup_attachments'
+      )
+      and policy.cmd in ('INSERT', 'UPDATE', 'DELETE', 'ALL')
+  ),
+  0::bigint,
+  'Edge-owned operational tables retain no authenticated write policies'
+);
+select is(
+  (
+    select count(*)
+    from pg_policies policy
+    where policy.schemaname = 'public'
+      and policy.tablename = 'inventory_items'
+      and policy.cmd = 'SELECT'
+      and policy.roles @> array['authenticated']::name[]
+  ) > 0,
+  true,
+  'inventory retains an authenticated SELECT policy after orphan write policies drop'
+);
+select is(
+  (
+    select count(*)
+    from pg_policies policy
+    where policy.schemaname = 'public'
+      and policy.tablename = 'pos_sales'
+      and policy.cmd = 'SELECT'
+      and policy.roles @> array['authenticated']::name[]
+  ) > 0,
+  true,
+  'pos_sales retains an authenticated SELECT policy after orphan write policies drop'
+);
+select is(
+  (
+    select count(*)
+    from pg_policies policy
+    where policy.schemaname = 'public'
+      and policy.tablename = 'setup_attachments'
+      and policy.cmd = 'SELECT'
+      and policy.roles @> array['authenticated']::name[]
+  ) > 0,
+  true,
+  'setup_attachments retains an authenticated SELECT policy after orphan write policies drop'
+);
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'INSERT'), false, 'membership inserts are RPC-only');
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'UPDATE'), false, 'membership updates are RPC-only');
 select is(has_table_privilege('authenticated', 'public.restaurant_memberships', 'DELETE'), false, 'membership deletes are RPC-only');
