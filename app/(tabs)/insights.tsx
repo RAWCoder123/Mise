@@ -755,7 +755,7 @@ function SalesTrend({
                 </Text>
               </View>
               <Text style={styles.trendDate}>
-                {formatDate(`${latest.date}T12:00:00`, { month: "short", day: "numeric" })}
+                {formatDate(`${latest.date}T12:00:00.000Z`, { month: "short", day: "numeric", timeZone: "UTC" })}
               </Text>
             </View>
 
