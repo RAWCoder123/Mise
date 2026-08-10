@@ -22,6 +22,32 @@ test("restaurant-local hours select Morning, Pre-Service, and Closing phases", (
   assert.equal(phaseForHour(2), "closing");
 });
 
+test("count-session related refs route phase findings to the inventory count screen", () => {
+  const evidence = fixtures();
+  const countPlan: DailyOperatingPlan = {
+    ...evidence.operatingPlan,
+    items: [
+      {
+        ...planItem("open"),
+        id: "plan-count-session",
+        relatedRefs: [{ type: "inventory_count_session", id: "count_session_1" }]
+      }
+    ]
+  };
+  const result = buildDailyPhaseBriefs({
+    restaurantId,
+    ...evidence,
+    operatingPlan: countPlan,
+    now: new Date("2026-08-03T16:00:00.000Z")
+  });
+  assert.ok(
+    Object.values(result.briefs).some((brief) =>
+      brief.findings.some((finding) => finding.route === "/inventory/count")
+    ),
+    "count-session urgency should deep-link to /inventory/count"
+  );
+});
+
 test("phase briefs prioritize three to five interpreted findings without fabricating integrations", () => {
   const evidence = fixtures();
   const result = buildDailyPhaseBriefs({

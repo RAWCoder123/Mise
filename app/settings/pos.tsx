@@ -21,6 +21,10 @@ import {
   isSquareIntegrationError,
   syncSquarePosSales
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import type { PosIntegration, PosProvider } from "../../types/mise";
 
@@ -40,39 +44,82 @@ export default function POSConnectionScreen() {
   const [integration, setIntegration] = useState<PosIntegration | null>(null);
   const [loadingIntegration, setLoadingIntegration] = useState(!isDemoMode);
   const [busyAction, setBusyAction] = useState<"connect" | "disconnect" | "sync" | null>(null);
+  const [hubLoadError, setHubLoadError] = useState(false);
+  const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{
     tone: "success" | "warning" | "danger" | "neutral";
     title: string;
     message: string;
   } | null>(null);
   const requestIdRef = useRef(0);
+  const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
+  activeRestaurantIdRef.current = restaurant?.id ?? null;
   const canManage = canDeleteRestaurantData(memberships, restaurant?.id);
   const posProviderLabel = posProvider === "Manual CSV Upload" ? t("pos.provider.manualCsv") : posProvider;
   const squareConnected = integration?.status === "connected";
 
+  useEffect(() => {
+    requestIdRef.current += 1;
+    setIntegration(null);
+    setLoadedRestaurantId(null);
+    setHubLoadError(false);
+    setNotice(null);
+    setMessage(null);
+    setBusyAction(null);
+    setLoadingProvider(null);
+    setLoadingIntegration(Boolean(restaurant) && !isDemoMode);
+    if (isDemoMode && restaurant) {
+      setLoadedRestaurantId(restaurant.id);
+      setLoadingIntegration(false);
+    }
+  }, [isDemoMode, restaurant?.id]);
+
   const loadIntegration = useCallback(async (showLoading = true) => {
     if (isDemoMode || !restaurant) {
       setLoadingIntegration(false);
+      if (isDemoMode && restaurant) {
+        setLoadedRestaurantId(restaurant.id);
+        setHubLoadError(false);
+      }
       return;
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
     if (showLoading) setLoadingIntegration(true);
+    setHubLoadError(false);
     try {
       const next = await fetchSquarePosIntegration(restaurantId);
-      if (requestId !== requestIdRef.current) return;
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setIntegration(next);
+      setLoadedRestaurantId(restaurantId);
     } catch {
-      if (requestId !== requestIdRef.current) return;
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setHubLoadError(true);
       setNotice({
         tone: "danger",
         title: t("pos.error.loadTitle"),
         message: t("pos.error.loadBody")
       });
     } finally {
-      if (requestId === requestIdRef.current) setLoadingIntegration(false);
+      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        setLoadingIntegration(false);
+      }
     }
   }, [isDemoMode, restaurant?.id, t]);
+
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: hubLoadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy: busyAction !== null || loadingProvider !== null
+  });
+  const visibleIntegration = hubReady ? integration : null;
+  const visibleSquareConnected = visibleIntegration?.status === "connected";
 
   useFocusEffect(
     useCallback(() => {
@@ -109,24 +156,32 @@ export default function POSConnectionScreen() {
       router.push("/settings/sales-import" as never);
       return;
     }
+    if (!actionsEditable) return;
+    const restaurantId = restaurant?.id ?? null;
     setLoadingProvider(provider);
     setMessage(null);
     try {
       await connectDemoPOS(provider);
+      if (restaurantId && activeRestaurantIdRef.current !== restaurantId) return;
       setMessage({ key: "pos.message.demoLoaded", values: { provider } });
     } catch {
+      if (restaurantId && activeRestaurantIdRef.current !== restaurantId) return;
       setMessage({ key: "pos.error.demoLoad" });
     } finally {
-      setLoadingProvider(null);
+      if (!restaurantId || activeRestaurantIdRef.current === restaurantId) {
+        setLoadingProvider(null);
+      }
     }
   }
 
   async function connectSquare() {
-    if (!restaurant || !canManage) return;
+    if (!restaurant || !actionsEditable) return;
+    const restaurantId = restaurant.id;
     setBusyAction("connect");
     setNotice(null);
     try {
-      const result = await connectRestaurantSquare(restaurant.id);
+      const result = await connectRestaurantSquare(restaurantId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       if (result.status === "authorization_required") {
         const opened = await Linking.openURL(result.authorizationUrl);
         if (!opened) {
@@ -138,6 +193,7 @@ export default function POSConnectionScreen() {
         }
       } else {
         setIntegration(result.integration);
+        setLoadedRestaurantId(restaurantId);
         setNotice({
           tone: "success",
           title: t("pos.square.connectedTitle"),
@@ -145,22 +201,25 @@ export default function POSConnectionScreen() {
         });
       }
     } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
         tone: "danger",
         title: t("pos.square.connectErrorTitle"),
         message: isSquareIntegrationError(error) ? error.message : t("pos.square.connectErrorBody")
       });
     } finally {
-      setBusyAction(null);
+      if (activeRestaurantIdRef.current === restaurantId) setBusyAction(null);
     }
   }
 
   async function disconnectSquare() {
-    if (!restaurant || !canManage) return;
+    if (!restaurant || !actionsEditable) return;
+    const restaurantId = restaurant.id;
     setBusyAction("disconnect");
     setNotice(null);
     try {
-      await disconnectRestaurantSquare(restaurant.id);
+      await disconnectRestaurantSquare(restaurantId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setIntegration((current) =>
         current ? { ...current, status: "not_connected", last_sync_at: null } : current
       );
@@ -171,28 +230,31 @@ export default function POSConnectionScreen() {
       });
       await loadIntegration(false);
     } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
         tone: "danger",
         title: t("pos.square.disconnectErrorTitle"),
         message: isSquareIntegrationError(error) ? error.message : t("pos.square.disconnectErrorBody")
       });
     } finally {
-      setBusyAction(null);
+      if (activeRestaurantIdRef.current === restaurantId) setBusyAction(null);
     }
   }
 
   async function syncSquare() {
-    if (!restaurant) return;
+    if (!restaurant || !actionsEditable) return;
+    const restaurantId = restaurant.id;
     setBusyAction("sync");
     setNotice(null);
     try {
       const to = new Date();
       const from = new Date(to.getTime() - 28 * 24 * 60 * 60 * 1000);
       const result = await syncSquarePosSales(
-        restaurant.id,
+        restaurantId,
         from.toISOString().slice(0, 10),
         to.toISOString().slice(0, 10)
       );
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setMessage({
         key: "pos.message.syncCompleted",
         values: { count: String(result.recordsProcessed) }
@@ -204,13 +266,14 @@ export default function POSConnectionScreen() {
       });
       await loadIntegration(false);
     } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
         tone: "danger",
         title: t("pos.square.syncErrorTitle"),
         message: isSquareIntegrationError(error) ? error.message : t("pos.square.syncErrorBody")
       });
     } finally {
-      setBusyAction(null);
+      if (activeRestaurantIdRef.current === restaurantId) setBusyAction(null);
     }
   }
 
@@ -237,7 +300,7 @@ export default function POSConnectionScreen() {
               ? posProviderLabel
                 ? t("pos.hero.connected", { provider: posProviderLabel })
                 : t("pos.hero.connectSource")
-              : squareConnected
+              : visibleSquareConnected
                 ? t("pos.hero.connected", { provider: "Square" })
                 : t("pos.hero.connectSource")
           }
@@ -246,23 +309,23 @@ export default function POSConnectionScreen() {
               ? posProviderLabel
                 ? t("pos.status.demoConnected", { provider: posProviderLabel })
                 : t("pos.status.demoMode")
-              : squareConnected
+              : visibleSquareConnected
                 ? t("pos.status.squareConnected")
                 : t("pos.status.squareReady")
           }
           meta={
             isDemoMode
               ? posProviderLabel ?? t("common.demo")
-              : squareConnected
+              : visibleSquareConnected
                 ? t("common.live")
                 : t("pos.value.beta")
           }
-          tone={isDemoMode ? (posProvider ? "leaf" : "caution") : squareConnected ? "leaf" : "caution"}
+          tone={isDemoMode ? (posProvider ? "leaf" : "caution") : visibleSquareConnected ? "leaf" : "caution"}
           icon={
             <PlugZap
               size={icon.emphasis}
               color={
-                (isDemoMode ? posProvider : squareConnected) ? colors.success : colors.caution
+                (isDemoMode ? posProvider : visibleSquareConnected) ? colors.success : colors.caution
               }
               strokeWidth={iconStroke}
             />
@@ -274,10 +337,10 @@ export default function POSConnectionScreen() {
                 ? posProvider
                   ? t("common.on")
                   : t("common.none")
-                : squareConnected
+                : visibleSquareConnected
                   ? t("common.on")
                   : t("common.none"),
-              tone: (isDemoMode ? posProvider : squareConnected) ? "leaf" : "caution"
+              tone: (isDemoMode ? posProvider : visibleSquareConnected) ? "leaf" : "caution"
             },
             {
               label: t("pos.stat.mode"),
@@ -289,7 +352,13 @@ export default function POSConnectionScreen() {
         />
 
         {notice ? (
-          <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
+          <StatusNotice
+            tone={notice.tone}
+            title={notice.title}
+            message={notice.message}
+            actionLabel={hubLoadError ? t("common.retry") : undefined}
+            onAction={hubLoadError ? () => void loadIntegration(true) : undefined}
+          />
         ) : null}
 
         <View style={styles.demoSafety}>
@@ -325,7 +394,7 @@ export default function POSConnectionScreen() {
                     selected={selected}
                     isCsv={isCsv}
                     loading={loadingProvider === provider}
-                    disabled={loadingProvider !== null}
+                    disabled={!actionsEditable || loadingProvider !== null}
                     onPress={() => void connect(provider)}
                   />
                 );
@@ -336,27 +405,27 @@ export default function POSConnectionScreen() {
           <Card>
             <Text style={styles.restrictedTitle}>{t("pos.square.cardTitle")}</Text>
             <Text style={styles.restrictedCopy}>{t("pos.square.cardBody")}</Text>
-            {loadingIntegration ? (
+            {loadingIntegration || !hubReady ? (
               <Text style={styles.meta}>{t("common.loading")}</Text>
             ) : (
               <Text style={styles.meta}>
-                {squareConnected
+                {visibleSquareConnected
                   ? t("pos.square.lastSync", {
-                      value: integration?.last_sync_at
-                        ? formatDate(integration.last_sync_at)
+                      value: visibleIntegration?.last_sync_at
+                        ? formatDate(visibleIntegration.last_sync_at)
                         : t("common.none")
                     })
                   : t("pos.square.notConnectedMeta")}
               </Text>
             )}
             <View style={styles.actions}>
-              {canManage ? (
-                squareConnected ? (
+              {actionsEditable ? (
+                visibleSquareConnected ? (
                   <>
                     <Button
                       title={busyAction === "sync" ? t("pos.square.syncing") : t("pos.square.syncNow")}
                       onPress={() => void syncSquare()}
-                      disabled={busyAction !== null}
+                      disabled={!actionsEditable}
                       accessibilityHint={t("pos.square.syncHint")}
                     />
                     <Button
@@ -367,7 +436,7 @@ export default function POSConnectionScreen() {
                       }
                       variant="secondary"
                       onPress={() => void disconnectSquare()}
-                      disabled={busyAction !== null}
+                      disabled={!actionsEditable}
                       accessibilityHint={t("pos.square.disconnectHint")}
                     />
                   </>
@@ -377,17 +446,20 @@ export default function POSConnectionScreen() {
                       busyAction === "connect" ? t("pos.square.connecting") : t("pos.square.connect")
                     }
                     onPress={() => void connectSquare()}
-                    disabled={busyAction !== null}
+                    disabled={!actionsEditable}
                     accessibilityHint={t("pos.square.connectHint")}
                   />
                 )
               ) : (
-                <Text style={styles.meta}>{t("pos.square.ownerRequired")}</Text>
+                <Text style={styles.meta}>
+                  {canManage ? t("common.loading") : t("pos.square.ownerRequired")}
+                </Text>
               )}
               <Button
                 title={t("pos.restricted.importCsv")}
                 variant="secondary"
                 onPress={() => router.push("/settings/sales-import" as never)}
+                disabled={!hubReady}
                 accessibilityHint={t("pos.provider.hintCsvImport")}
               />
             </View>

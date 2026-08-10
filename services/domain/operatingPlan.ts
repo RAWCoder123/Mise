@@ -50,6 +50,7 @@ export type OperatingPlanPriority = OperationalTodayTaskPriority | "low";
 
 export type OperatingPlanRelatedEntityType =
   | "inventory_item"
+  | "inventory_count_session"
   | "purchase_recommendation"
   | "supplier_order"
   | "insight"
@@ -538,6 +539,8 @@ function relatedRefsForTask(task: OperationalTodayTask): OperatingPlanRelatedRef
   const refs: OperatingPlanRelatedRef[] = [];
   if (task.source.kind === "inventory") {
     refs.push({ type: "inventory_item", id: task.source.id });
+  } else if (task.source.kind === "inventory_count_session") {
+    refs.push({ type: "inventory_count_session", id: task.source.id });
   } else if (task.source.kind === "recommendation") {
     refs.push({ type: "purchase_recommendation", id: task.source.id });
   } else if (task.source.kind === "order") {
@@ -554,6 +557,11 @@ function relatedRefsForTask(task: OperationalTodayTask): OperatingPlanRelatedRef
       refs.push({ type: "supplier_order", id: task.action.entityId });
     } else if (task.action.intent === "update_inventory_count") {
       refs.push({ type: "inventory_item", id: task.action.entityId });
+    } else if (
+      task.action.intent === "begin_inventory_count_session" ||
+      task.action.intent === "continue_inventory_count_session"
+    ) {
+      refs.push({ type: "inventory_count_session", id: task.action.entityId });
     } else if (
       task.action.intent === "review_recommendation" ||
       task.action.intent === "prepare_supplier_draft"

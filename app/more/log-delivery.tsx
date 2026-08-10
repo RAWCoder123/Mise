@@ -22,6 +22,10 @@ import {
   queueInventoryOperation,
   type DeliveryHistoryEntry
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type { InventoryItem } from "../../types/mise";
@@ -153,8 +157,19 @@ export default function LogDeliveryScreen() {
     }, [load])
   );
 
-  const visibleItems = loadedRestaurantId === restaurant?.id ? items : [];
-  const visibleHistory = loadedRestaurantId === restaurant?.id ? history : [];
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy: submitting
+  });
+  const visibleItems = hubReady ? items : [];
+  const visibleHistory = hubReady ? history : [];
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return visibleItems.slice(0, 40);
@@ -177,8 +192,8 @@ export default function LogDeliveryScreen() {
   }
 
   async function submitReceipt() {
-    if (!restaurant || !selected || submitting) return;
-    if (!canManage) {
+    if (!restaurant || !selected || !actionsEditable) return;
+    if (!canManage || !hubReady) {
       setMessage(t("inventory.detail.viewOnlyInventory"));
       setMessageIsError(true);
       return;
@@ -457,7 +472,7 @@ export default function LogDeliveryScreen() {
               onChangeText={setQuantityText}
               keyboardType="decimal-pad"
               style={styles.input}
-              editable={canManage && isCanonicalUnitReady(selected)}
+              editable={actionsEditable && isCanonicalUnitReady(selected)}
             />
 
             <SectionHeader title={t("logDelivery.field.note")} />
@@ -470,14 +485,14 @@ export default function LogDeliveryScreen() {
               style={[styles.input, styles.noteInput]}
               multiline
               textAlignVertical="top"
-              editable={canManage}
+              editable={actionsEditable}
             />
 
             <Button
               title={submitting ? t("common.saving") : t("logDelivery.submit")}
               icon={<Truck size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void submitReceipt()}
-              disabled={submitting || !canManage || !isCanonicalUnitReady(selected)}
+              disabled={!actionsEditable || !isCanonicalUnitReady(selected)}
               fullWidth
             />
 

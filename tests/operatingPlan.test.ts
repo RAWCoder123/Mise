@@ -102,6 +102,28 @@ test("builds a tenant-scoped windowed plan with why, needed-by, effect, kind, an
   );
 });
 
+test("count session tasks expose inventory_count_session related refs", () => {
+  const tasks = deriveTasks({
+    recommendations: [],
+    orders: []
+  });
+  const countSessionTask = tasks.find(
+    (task) =>
+      task.source.kind === "inventory_count_session" &&
+      task.action.intent === "begin_inventory_count_session"
+  );
+  assert.ok(countSessionTask, "stock-risk outlooks should create a begin count-session task");
+
+  const plan = buildDailyOperatingPlan(baseInput({ tasks }));
+  const countItem = plan.items.find(
+    (item) => item.sourceTask?.source.kind === "inventory_count_session"
+  );
+  assert.ok(countItem);
+  assert.deepEqual(countItem?.relatedRefs, [
+    { type: "inventory_count_session", id: countSessionTask!.source.id }
+  ]);
+});
+
 test("attaches dependency ids only when evidenced by recommendation→draft→order links", () => {
   const recommendations = [
     recommendation({

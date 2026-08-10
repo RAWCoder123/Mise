@@ -9,6 +9,7 @@ export type DailyPhaseFindingTone = "urgent" | "attention" | "positive" | "neutr
 export type DailyPhaseBriefRoute =
   | "/today"
   | "/inventory"
+  | "/inventory/count"
   | "/orders"
   | "/insights"
   | "/more/daily-report"
@@ -435,6 +436,9 @@ function firstOpen(items: readonly OperatingPlanItem[]) {
 }
 
 function routeForPlanItem(item: OperatingPlanItem): DailyPhaseBriefRoute {
+  if (item.relatedRefs.some((ref) => ref.type === "inventory_count_session")) {
+    return "/inventory/count";
+  }
   if (item.relatedRefs.some((ref) => ref.type === "inventory_item")) return "/inventory";
   if (
     item.relatedRefs.some(

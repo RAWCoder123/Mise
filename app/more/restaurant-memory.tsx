@@ -17,6 +17,10 @@ import {
   fetchRestaurantMemories,
   updateRestaurantMemoryDecision
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -75,11 +79,23 @@ export default function RestaurantMemoryScreen() {
     }, [load])
   );
 
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy: Boolean(busyId)
+  });
+
   async function decide(
     memory: RestaurantMemory,
     decision: "confirmed" | "corrected" | "dismissed" | "forgotten" | "disabled"
   ) {
-    if (!restaurant || !canManage || busyId) return;
+    if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
     setBusyId(memory.id);
     setNotice(null);
@@ -109,7 +125,7 @@ export default function RestaurantMemoryScreen() {
   }
 
   async function convertToRule(memory: RestaurantMemory) {
-    if (!restaurant || !canManage || busyId) return;
+    if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
     setBusyId(memory.id);
     setNotice(null);
@@ -131,7 +147,7 @@ export default function RestaurantMemoryScreen() {
     }
   }
 
-  const visible = loadedRestaurantId === restaurant?.id ? memories : [];
+  const visible = hubReady ? memories : [];
 
   return (
     <Screen
@@ -192,7 +208,7 @@ export default function RestaurantMemoryScreen() {
                 ))}
               </View>
             ) : null}
-            {canManage ? (
+            {actionsEditable ? (
               <>
                 <TextInput
                   accessibilityLabel={t("memory.correction.label")}
@@ -202,46 +218,46 @@ export default function RestaurantMemoryScreen() {
                   }
                   multiline
                   style={styles.input}
-                  editable={busyId !== memory.id}
+                  editable={actionsEditable && busyId !== memory.id}
                 />
                 <View style={styles.actions}>
                   <Button
                     title={t("memory.action.confirm")}
                     variant="secondary"
-                    disabled={busyId === memory.id}
+                    disabled={!actionsEditable || busyId === memory.id}
                     onPress={() => void decide(memory, "confirmed")}
                     style={styles.action}
                   />
                   <Button
                     title={t("memory.action.correct")}
-                    disabled={busyId === memory.id}
+                    disabled={!actionsEditable || busyId === memory.id}
                     onPress={() => void decide(memory, "corrected")}
                     style={styles.action}
                   />
                   <Button
                     title={t("memory.action.dismiss")}
                     variant="secondary"
-                    disabled={busyId === memory.id}
+                    disabled={!actionsEditable || busyId === memory.id}
                     onPress={() => void decide(memory, "dismissed")}
                     style={styles.action}
                   />
                   <Button
                     title={t("memory.action.disable")}
                     variant="secondary"
-                    disabled={busyId === memory.id}
+                    disabled={!actionsEditable || busyId === memory.id}
                     onPress={() => void decide(memory, "disabled")}
                     style={styles.action}
                   />
                   <Button
                     title={t("memory.action.forget")}
                     variant="secondary"
-                    disabled={busyId === memory.id}
+                    disabled={!actionsEditable || busyId === memory.id}
                     onPress={() => void decide(memory, "forgotten")}
                     style={styles.action}
                   />
                   <Button
                     title={t("memory.action.convertRule")}
-                    disabled={busyId === memory.id}
+                    disabled={!actionsEditable || busyId === memory.id}
                     onPress={() => void convertToRule(memory)}
                     style={styles.action}
                   />

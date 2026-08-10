@@ -17,8 +17,13 @@ const HUB_CONSUMER_FILES = [
   "app/settings/team.tsx",
   "app/settings/suppliers.tsx",
   "app/settings/gmail.tsx",
+  "app/settings/autonomy.tsx",
+  "app/settings/pos.tsx",
   "app/inventory/[id].tsx",
-  "app/orders/[id].tsx"
+  "app/orders/[id].tsx",
+  "app/more/restaurant-memory.tsx",
+  "app/more/log-delivery.tsx",
+  "app/more/create-task.tsx"
 ];
 
 test("restaurant-scoped hub load state fails closed on soft-refresh errors", () => {

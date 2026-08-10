@@ -17,8 +17,13 @@ test("operational screens reject late requests and render only active-restaurant
     team: source("app/settings/team.tsx"),
     suppliers: source("app/settings/suppliers.tsx"),
     gmail: source("app/settings/gmail.tsx"),
+    autonomy: source("app/settings/autonomy.tsx"),
+    pos: source("app/settings/pos.tsx"),
     inventoryDetail: source("app/inventory/[id].tsx"),
-    orderDetail: source("app/orders/[id].tsx")
+    orderDetail: source("app/orders/[id].tsx"),
+    restaurantMemory: source("app/more/restaurant-memory.tsx"),
+    logDelivery: source("app/more/log-delivery.tsx"),
+    createTask: source("app/more/create-task.tsx")
   };
 
   for (const [name, screen] of Object.entries(screens)) {
@@ -47,6 +52,15 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
   assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
   assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);
+  assert.match(screens.autonomy, /hubReady\s*\?\s*rules\s*:\s*\[\]/);
+  assert.match(screens.autonomy, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.restaurantMemory, /hubReady\s*\?\s*memories\s*:\s*\[\]/);
+  assert.match(screens.logDelivery, /hubReady\s*\?\s*items\s*:\s*\[\]/);
+  assert.match(screens.logDelivery, /hubReady\s*\?\s*history\s*:\s*\[\]/);
+  assert.match(screens.pos, /visibleIntegration/);
+  assert.match(screens.pos, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.createTask, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.settings, /!restaurantActionsEditable/);
   assert.match(
     source("services/presentation/hubLoadState.ts"),
     /if \(input\.loadError\) return "error";\s*if \(input\.loadedRestaurantId === input\.restaurantId\) return "ready";/

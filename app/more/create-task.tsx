@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
 import { ArrowLeft, ClipboardList } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -33,6 +33,10 @@ import {
   type RestaurantTaskServiceWindow,
   type RestaurantTaskVerificationMethod
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 import type { RestaurantTeamMember } from "../../types/mise";
 
@@ -90,8 +94,26 @@ export default function CreateOperatorTaskScreen() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [hubLoadError, setHubLoadError] = useState(false);
+  const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+  const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
+  activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   const hasDueDate = dueDateText.trim().length > 0;
+
+  useEffect(() => {
+    requestIdRef.current += 1;
+    setTasks([]);
+    setSharedTasks([]);
+    setTeam([]);
+    setLoadedRestaurantId(null);
+    setListError(null);
+    setHubLoadError(false);
+    setError(null);
+    setSaved(false);
+    setBusyTaskId(null);
+  }, [restaurant?.id]);
 
   const priorityOptions = useMemo<readonly SegmentOption<OperatorTaskPriority>[]>(
     () => [
@@ -180,27 +202,38 @@ export default function CreateOperatorTaskScreen() {
   const loadTasks = useCallback(async () => {
     if (!restaurant) {
       setTasks([]);
+      setSharedTasks([]);
+      setTeam([]);
       return;
     }
+    const restaurantId = restaurant.id;
+    const requestId = ++requestIdRef.current;
+    setListError(null);
+    setHubLoadError(false);
     try {
       const [next, nextShared, nextTeam] = await Promise.all([
-        listOperatorTasks(restaurant.id),
-        listSharedRestaurantTasks(restaurant.id, { includeCompleted: true }),
-        fetchRestaurantTeam(restaurant.id)
+        listOperatorTasks(restaurantId),
+        listSharedRestaurantTasks(restaurantId, { includeCompleted: true }),
+        fetchRestaurantTeam(restaurantId)
       ]);
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setTasks(next);
       setSharedTasks(nextShared);
       setTeam(nextTeam.filter((member) => member.status === "active"));
+      setLoadedRestaurantId(restaurantId);
       setListError(null);
+      setHubLoadError(false);
     } catch (loadError) {
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, {
         flow: "operator_tasks",
         operation: "list",
-        restaurant_id: restaurant.id
+        restaurant_id: restaurantId
       });
+      setHubLoadError(true);
       setListError(t("operatorTasks.error.load"));
     }
-  }, [restaurant, t]);
+  }, [restaurant?.id, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -208,9 +241,20 @@ export default function CreateOperatorTaskScreen() {
     }, [loadTasks])
   );
 
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: hubLoadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: Boolean(restaurant),
+    hubReady,
+    busy: saving || Boolean(busyTaskId)
+  });
   const openTasks = useMemo(() => tasks.filter((task) => task.status === "open"), [tasks]);
   const completedTasks = useMemo(() => tasks.filter((task) => task.status === "done"), [tasks]);
-  const visibleList = showCompleted ? completedTasks : openTasks;
+  const visibleList = hubReady ? (showCompleted ? completedTasks : openTasks) : [];
   const openSharedTasks = useMemo(
     () => sharedTasks.filter((task) => task.status !== "completed" && task.status !== "cancelled"),
     [sharedTasks]
@@ -219,17 +263,20 @@ export default function CreateOperatorTaskScreen() {
     () => sharedTasks.filter((task) => task.status === "completed"),
     [sharedTasks]
   );
+  const visibleOpenSharedTasks = hubReady ? openSharedTasks : [];
+  const visibleCompletedSharedTasks = hubReady ? completedSharedTasks : [];
   const assignableTeam = useMemo(
-    () => team.filter(
-      (member) =>
-        memberCanTakeRole(member, requiredRole) &&
-        (role !== "staff" || member.user_id === user?.id)
-    ),
-    [team, requiredRole, role, user?.id]
+    () =>
+      (hubReady ? team : []).filter(
+        (member) =>
+          memberCanTakeRole(member, requiredRole) &&
+          (role !== "staff" || member.user_id === user?.id)
+      ),
+    [team, requiredRole, role, user?.id, hubReady]
   );
 
   async function save() {
-    if (!restaurant || saving) return;
+    if (!restaurant || !actionsEditable) return;
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setError(t("operatorTasks.error.titleRequired"));
@@ -244,13 +291,14 @@ export default function CreateOperatorTaskScreen() {
       return;
     }
 
+    const restaurantId = restaurant.id;
     setSaving(true);
     setError(null);
     setSaved(false);
     try {
       if (scope === "restaurant") {
         await createSharedRestaurantTask({
-          restaurantId: restaurant.id,
+          restaurantId,
           clientTaskId: `restaurant-task:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
           title: trimmedTitle,
           detail: body,
@@ -273,7 +321,7 @@ export default function CreateOperatorTaskScreen() {
         });
       } else {
         await createOperatorTask({
-          restaurantId: restaurant.id,
+          restaurantId,
           title: trimmedTitle,
           body,
           priority,
@@ -282,6 +330,7 @@ export default function CreateOperatorTaskScreen() {
           focusArea: focus === "none" ? null : focus
         });
       }
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       setSaved(true);
       setTitle("");
       setBody("");
@@ -300,47 +349,57 @@ export default function CreateOperatorTaskScreen() {
       captureMiseError(saveError, {
         flow: "operator_tasks",
         operation: "create",
-        restaurant_id: restaurant.id
+        restaurant_id: restaurantId
       });
-      setError(t("operatorTasks.error.save"));
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setError(t("operatorTasks.error.save"));
+      }
     } finally {
-      setSaving(false);
+      if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
   }
 
   async function markDone(task: OperatorTask) {
-    if (!restaurant || busyTaskId) return;
+    if (!restaurant || !actionsEditable) return;
+    const restaurantId = restaurant.id;
     setBusyTaskId(task.id);
     try {
-      await completeOperatorTask({ restaurantId: restaurant.id, taskId: task.id });
+      await completeOperatorTask({ restaurantId, taskId: task.id });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       await loadTasks();
     } catch (completeError) {
       captureMiseError(completeError, {
         flow: "operator_tasks",
         operation: "complete",
-        restaurant_id: restaurant.id
+        restaurant_id: restaurantId
       });
-      setListError(t("operatorTasks.error.complete"));
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setListError(t("operatorTasks.error.complete"));
+      }
     } finally {
-      setBusyTaskId(null);
+      if (activeRestaurantIdRef.current === restaurantId) setBusyTaskId(null);
     }
   }
 
   async function reopen(task: OperatorTask) {
-    if (!restaurant || busyTaskId) return;
+    if (!restaurant || !actionsEditable) return;
+    const restaurantId = restaurant.id;
     setBusyTaskId(task.id);
     try {
-      await reopenOperatorTask({ restaurantId: restaurant.id, taskId: task.id });
+      await reopenOperatorTask({ restaurantId, taskId: task.id });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
       await loadTasks();
     } catch (reopenError) {
       captureMiseError(reopenError, {
         flow: "operator_tasks",
         operation: "reopen",
-        restaurant_id: restaurant.id
+        restaurant_id: restaurantId
       });
-      setListError(t("operatorTasks.error.reopen"));
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setListError(t("operatorTasks.error.reopen"));
+      }
     } finally {
-      setBusyTaskId(null);
+      if (activeRestaurantIdRef.current === restaurantId) setBusyTaskId(null);
     }
   }
 
@@ -534,13 +593,14 @@ export default function CreateOperatorTaskScreen() {
                 selected={!dependencyId}
                 onPress={() => setDependencyId(null)}
               />
-              {openSharedTasks.slice(0, 12).map((task) => (
+              {visibleOpenSharedTasks.slice(0, 12).map((task) => (
                 <ChoiceRow
                   key={task.id}
                   label={task.title}
                   detail={task.status}
                   selected={dependencyId === task.id}
                   onPress={() => setDependencyId(task.id)}
+                  disabled={!actionsEditable}
                 />
               ))}
             </View>
@@ -551,7 +611,7 @@ export default function CreateOperatorTaskScreen() {
           title={saving ? t("common.saving") : t("operatorTasks.save")}
           icon={<ClipboardList size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
           onPress={() => void save()}
-          disabled={saving}
+          disabled={!actionsEditable}
           fullWidth
         />
 
@@ -565,10 +625,14 @@ export default function CreateOperatorTaskScreen() {
             subtitle={
               showCompleted
                 ? t("operatorTasks.list.completedSubtitle", {
-                    count: scope === "restaurant" ? completedSharedTasks.length : completedTasks.length
+                    count:
+                      scope === "restaurant"
+                        ? visibleCompletedSharedTasks.length
+                        : visibleList.length
                   })
                 : t("operatorTasks.list.openSubtitle", {
-                    count: scope === "restaurant" ? openSharedTasks.length : openTasks.length
+                    count:
+                      scope === "restaurant" ? visibleOpenSharedTasks.length : visibleList.length
                   })
             }
           />
@@ -591,12 +655,21 @@ export default function CreateOperatorTaskScreen() {
         </View>
 
         {listError ? (
-          <StatusNotice tone="danger" title={t("common.error")} message={listError} />
+          <StatusNotice
+            tone="danger"
+            title={t("common.error")}
+            message={listError}
+            actionLabel={hubLoadError ? t("common.retry") : undefined}
+            onAction={hubLoadError ? () => void loadTasks() : undefined}
+          />
         ) : null}
 
         {(scope === "restaurant"
-          ? showCompleted ? completedSharedTasks : openSharedTasks
-          : visibleList).length === 0 ? (
+          ? showCompleted
+            ? visibleCompletedSharedTasks
+            : visibleOpenSharedTasks
+          : visibleList
+        ).length === 0 ? (
           <EmptyState
             title={
               showCompleted
@@ -611,12 +684,13 @@ export default function CreateOperatorTaskScreen() {
           />
         ) : scope === "restaurant" ? (
           <View style={styles.taskList}>
-            {(showCompleted ? completedSharedTasks : openSharedTasks).map((task) => (
+            {(showCompleted ? visibleCompletedSharedTasks : visibleOpenSharedTasks).map((task) => (
               <View key={task.id} style={styles.taskCard}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t("operatorTasks.list.rowAccessibility", { title: task.title })}
                   onPress={() => router.push(`/tasks/${task.id}`)}
+                  disabled={!hubReady}
                   style={({ pressed }) => [styles.taskMain, pressed && styles.pressed]}
                 >
                   <View style={styles.taskCopy}>
@@ -639,6 +713,7 @@ export default function CreateOperatorTaskScreen() {
                   size="compact"
                   variant="secondary"
                   onPress={() => router.push(`/tasks/${task.id}`)}
+                  disabled={!hubReady}
                   style={styles.taskAction}
                 />
               </View>
@@ -656,7 +731,7 @@ export default function CreateOperatorTaskScreen() {
                     accessibilityLabel={t("operatorTasks.list.rowAccessibility", {
                       title: task.title
                     })}
-                    disabled={!focusRoute}
+                    disabled={!focusRoute || !hubReady}
                     onPress={focusRoute ? () => router.push(focusRoute as never) : undefined}
                     style={({ pressed }) => [
                       styles.taskMain,
@@ -704,7 +779,7 @@ export default function CreateOperatorTaskScreen() {
                     size="compact"
                     variant="secondary"
                     onPress={() => void (showCompleted ? reopen(task) : markDone(task))}
-                    disabled={busyTaskId === task.id}
+                    disabled={!actionsEditable || busyTaskId === task.id}
                     style={styles.taskAction}
                   />
                 </View>
@@ -721,19 +796,27 @@ function ChoiceRow({
   label,
   detail,
   selected,
-  onPress
+  onPress,
+  disabled = false
 }: {
   label: string;
   detail?: string;
   selected: boolean;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="radio"
-      accessibilityState={{ selected }}
+      accessibilityState={{ selected, disabled }}
+      disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.choiceRow, selected && styles.choiceRowSelected, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.choiceRow,
+        selected && styles.choiceRowSelected,
+        pressed && !disabled && styles.pressed,
+        disabled && styles.choiceRowDisabled
+      ]}
     >
       <View style={[styles.choiceDot, selected && styles.choiceDotSelected]} />
       <Text style={styles.choiceLabel} numberOfLines={2}>{label}</Text>
@@ -792,6 +875,9 @@ const styles = StyleSheet.create({
   choiceRowSelected: {
     borderColor: colors.accent,
     backgroundColor: colors.accentSoft
+  },
+  choiceRowDisabled: {
+    opacity: 0.55
   },
   choiceDot: {
     width: 10,

@@ -18,6 +18,10 @@ import {
   fetchAutonomyRules,
   saveAutonomyRule
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -86,6 +90,18 @@ export default function AutonomySettingsScreen() {
     }, [load])
   );
 
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canEdit,
+    hubReady,
+    busy: Boolean(busyKey)
+  });
+
   async function persist(
     rule: RestaurantAutonomyRule,
     patch: Partial<{
@@ -94,7 +110,7 @@ export default function AutonomySettingsScreen() {
       maximumAutonomyLevel: 1 | 2 | 3 | 4 | 5;
     }> = {}
   ) {
-    if (!restaurant || !canEdit || busyKey) return;
+    if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
     const draft = drafts[rule.id] ?? draftFromRule(rule);
     const spendParsed = draft.spendLimitText.trim()
@@ -131,7 +147,7 @@ export default function AutonomySettingsScreen() {
   }
 
   async function createDefaults() {
-    if (!restaurant || !canEdit || busyKey) return;
+    if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
     setBusyKey("defaults");
     setNotice(null);
@@ -152,7 +168,7 @@ export default function AutonomySettingsScreen() {
     }
   }
 
-  const visible = loadedRestaurantId === restaurant?.id ? rules : [];
+  const visible = hubReady ? rules : [];
 
   return (
     <Screen
@@ -189,11 +205,11 @@ export default function AutonomySettingsScreen() {
           />
         ) : null}
 
-        {!error && visible.length === 0 && canEdit ? (
+        {!error && visible.length === 0 && actionsEditable ? (
           <Button
             title={busyKey === "defaults" ? t("autonomy.action.creatingDefaults") : t("autonomy.action.createDefaults")}
             onPress={() => void createDefaults()}
-            disabled={Boolean(busyKey)}
+            disabled={!actionsEditable}
             fullWidth
           />
         ) : null}
@@ -219,7 +235,7 @@ export default function AutonomySettingsScreen() {
                   : t("autonomy.noApproval")}
               </Text>
 
-              {canEdit ? (
+              {actionsEditable ? (
                 <>
                   <View style={styles.fieldGrid}>
                     <Field
@@ -281,7 +297,7 @@ export default function AutonomySettingsScreen() {
                   <View style={styles.actions}>
                     <Chip
                       label={rule.enabled ? t("autonomy.action.disable") : t("autonomy.action.enable")}
-                      disabled={busyKey === rule.id}
+                      disabled={!actionsEditable || busyKey === rule.id}
                       onPress={() => void persist(rule, { enabled: !rule.enabled })}
                     />
                     {!isSend ? (
@@ -291,7 +307,7 @@ export default function AutonomySettingsScreen() {
                             ? t("autonomy.action.allowWithoutApproval")
                             : t("autonomy.action.requireApproval")
                         }
-                        disabled={busyKey === rule.id}
+                        disabled={!actionsEditable || busyKey === rule.id}
                         onPress={() => void persist(rule, { requiresApproval: !rule.requiresApproval })}
                       />
                     ) : (
@@ -299,7 +315,7 @@ export default function AutonomySettingsScreen() {
                     )}
                     <Chip
                       label={t("autonomy.action.levelDown")}
-                      disabled={busyKey === rule.id || rule.maximumAutonomyLevel <= 1}
+                      disabled={!actionsEditable || busyKey === rule.id || rule.maximumAutonomyLevel <= 1}
                       onPress={() =>
                         void persist(rule, {
                           maximumAutonomyLevel: Math.max(1, rule.maximumAutonomyLevel - 1) as 1 | 2 | 3 | 4 | 5
@@ -308,7 +324,7 @@ export default function AutonomySettingsScreen() {
                     />
                     <Chip
                       label={t("autonomy.action.levelUp")}
-                      disabled={busyKey === rule.id || rule.maximumAutonomyLevel >= 5}
+                      disabled={!actionsEditable || busyKey === rule.id || rule.maximumAutonomyLevel >= 5}
                       onPress={() =>
                         void persist(rule, {
                           maximumAutonomyLevel: Math.min(5, rule.maximumAutonomyLevel + 1) as 1 | 2 | 3 | 4 | 5
@@ -317,7 +333,7 @@ export default function AutonomySettingsScreen() {
                     />
                     <Chip
                       label={t("autonomy.action.saveScope")}
-                      disabled={busyKey === rule.id}
+                      disabled={!actionsEditable || busyKey === rule.id}
                       onPress={() => void persist(rule)}
                     />
                   </View>

@@ -180,8 +180,24 @@ export default function SettingsScreen() {
     }
   }
 
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: hubLoadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const restaurantActionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: Boolean(restaurant),
+    hubReady,
+    busy: loading || signingOut || deletingAccount || Boolean(switchingRestaurantId)
+  });
+  const visibleSuppliers = hubReady ? suppliers : [];
+  const visibleOpsProfile = hubReady ? opsProfile : null;
+  const visibleEmailConnection = hubReady ? emailConnection : null;
+  const visibleReadiness = hubReady ? readiness : null;
+
   async function removeAccount() {
-    if (deletingAccount || !restaurant) return;
+    if (deletingAccount || !restaurant || !restaurantActionsEditable) return;
     setDeletingAccount(true);
     setMessage(null);
     try {
@@ -208,22 +224,6 @@ export default function SettingsScreen() {
       setSwitchingRestaurantId(null);
     }
   }
-
-  const hubLoadState = resolveRestaurantScopedHubLoadState({
-    restaurantId: restaurant?.id,
-    loadedRestaurantId,
-    loadError: hubLoadError
-  });
-  const hubReady = hubLoadState === "ready";
-  const restaurantActionsEditable = presentRestaurantScopedHubActionsEditable({
-    allowed: Boolean(restaurant),
-    hubReady,
-    busy: loading || signingOut || deletingAccount || Boolean(switchingRestaurantId)
-  });
-  const visibleSuppliers = hubReady ? suppliers : [];
-  const visibleOpsProfile = hubReady ? opsProfile : null;
-  const visibleEmailConnection = hubReady ? emailConnection : null;
-  const visibleReadiness = hubReady ? readiness : null;
   const gmailConnected = visibleEmailConnection?.status === "connected";
   const gmailNeedsAttention = visibleEmailConnection?.status === "needs_reauth" || visibleEmailConnection?.status === "restricted";
   const canExportRestaurant = Boolean(restaurant) && canDeleteRestaurantData(memberships, restaurant?.id);
@@ -529,7 +529,7 @@ export default function SettingsScreen() {
                   })}
                   autoCapitalize="characters"
                   autoCorrect={false}
-                  editable={!deletingAccount}
+                  editable={restaurantActionsEditable && !deletingAccount}
                   placeholder={t("settings.account.deleteConfirmWord")}
                   placeholderTextColor={colors.faint}
                   style={styles.deleteConfirmInput}
@@ -540,6 +540,7 @@ export default function SettingsScreen() {
                   icon={<Trash2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
                   onPress={removeAccount}
                   disabled={
+                    !restaurantActionsEditable ||
                     deletingAccount ||
                     deleteConfirmText.trim().toLowerCase() !==
                       t("settings.account.deleteConfirmWord").toLowerCase()
@@ -565,6 +566,7 @@ export default function SettingsScreen() {
                   variant="secondary"
                   icon={<Trash2 size={icon.row} color={colors.danger} strokeWidth={iconStroke} />}
                   onPress={() => setDeleteConfirmOpen(true)}
+                  disabled={!restaurantActionsEditable}
                   fullWidth
                 />
               </View>
