@@ -53,10 +53,7 @@ test("tenant isolation pins unaudited quantity rejection and policy-only atomic 
     tenantIsolation,
     /policy patch does not rewrite on-hand quantity/i
   );
-  assert.match(
-    tenantIsolation,
-    /'"par_level":42'/i
-  );
+  assert.match(tenantIsolation, /\{"par_level":42\}/);
 });
 
 test("demo inventory signal updates reject current_quantity patches", () => {
