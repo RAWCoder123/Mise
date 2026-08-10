@@ -27,6 +27,7 @@ import type {
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
+import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
@@ -184,7 +185,7 @@ export default function HomeScreen() {
         </Pressable>
 
         <View style={styles.greetingBlock}>
-          <Text style={styles.greeting}>{t(greetingKeyForNow(), { name: greetingName })}</Text>
+          <Text style={styles.greeting}>{t(greetingKeyForNow(restaurant.timezone), { name: greetingName })}</Text>
           <Text style={styles.greetingSubtext} numberOfLines={2}>
             {t("home.greeting.subtext", { restaurant: restaurant.name })}
           </Text>
@@ -727,8 +728,11 @@ function firstName(name: string | null | undefined) {
   return name?.trim().split(/\s+/)[0] ?? "";
 }
 
-function greetingKeyForNow(): MessageKey {
-  const hour = new Date().getHours();
+// The greeting must read in the restaurant's timezone for the same reason the
+// activity log does: a manager away from the site would otherwise be greeted
+// against their own device clock rather than the service they are running.
+function greetingKeyForNow(timeZone: string): MessageKey {
+  const hour = hourInTimeZone(new Date(), timeZone);
   if (hour < 12) return "home.greeting.morning";
   if (hour < 17) return "home.greeting.afternoon";
   return "home.greeting.evening";
