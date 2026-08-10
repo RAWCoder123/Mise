@@ -19,8 +19,28 @@ import {
   type InvocationTerminalContext
 } from "../_shared/mise.ts";
 
-const actions = ["refresh_signals", "update_inventory", "upsert_recipe", "save_setup"] as const;
+const actions = [
+  "refresh_signals",
+  "update_inventory",
+  "upsert_recipe",
+  "save_setup",
+  "begin_count_session",
+  "save_count_lines",
+  "submit_count_session",
+  "cancel_count_session",
+  "approve_count_session"
+] as const;
 type OperationalAction = (typeof actions)[number];
+const countSessionDraftActions = new Set<OperationalAction>([
+  "begin_count_session",
+  "save_count_lines",
+  "submit_count_session"
+]);
+const staffOperationalActions = new Set<OperationalAction>([
+  "begin_count_session",
+  "save_count_lines",
+  "submit_count_session"
+]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -48,7 +68,16 @@ Deno.serve(async (req) => {
       functionName: "operational-workflows"
     };
 
-    await requireRestaurantRole(supabase, user.id, restaurantId, ["owner", "admin", "manager"]);
+    if (staffOperationalActions.has(action)) {
+      await requireRestaurantRole(supabase, user.id, restaurantId, [
+        "owner",
+        "admin",
+        "manager",
+        "staff"
+      ]);
+    } else {
+      await requireRestaurantRole(supabase, user.id, restaurantId, ["owner", "admin", "manager"]);
+    }
 
     let result: unknown;
     let setupSummary: unknown = null;
@@ -83,6 +112,8 @@ Deno.serve(async (req) => {
         true,
         requireRecord(data, "setup summary")
       );
+    } else if (countSessionDraftActions.has(action) || action === "cancel_count_session") {
+      result = await runCountSessionDraftAction(securitySupabase, user.id, restaurantId, action, body);
     } else {
       result = await refreshWithRetry(securitySupabase, user.id, restaurantId, action, body, false, {});
     }
@@ -93,7 +124,7 @@ Deno.serve(async (req) => {
       restaurantId,
       auditAction(action),
       auditEntityTable(action),
-      auditEntityId(action, body),
+      auditEntityId(action, body, result),
       { workflow: action }
     );
     await recordFunctionSecurityEvent(
@@ -132,7 +163,24 @@ async function refreshWithRetry(
         { p_actor_user_id: actorUserId, p_restaurant_id: restaurantId }
       ) as OperationalPlanningSnapshot & { revision: number };
       const revision = requireBoundedInteger(snapshot.revision, "planning revision", 0, Number.MAX_SAFE_INTEGER);
-      const planning = applyRequestedMutation(snapshot, action, body);
+      let mutationBody = body;
+      if (action === "approve_count_session") {
+        const sessionId = requireUuid(body.sessionId, "sessionId");
+        const detail = requireRecord(
+          await serviceRpc(securitySupabase, "service_get_inventory_count_session", {
+            p_actor_user_id: actorUserId,
+            p_restaurant_id: restaurantId,
+            p_session_id: sessionId
+          }),
+          "count session"
+        );
+        const session = requireRecord(detail.session, "count session.session");
+        if (session.status !== "submitted") {
+          throw new HttpError(400, "Submit the count session before approving adjustments.");
+        }
+        mutationBody = { ...body, approvedLines: requireArray(detail.lines, "count session.lines", 250) };
+      }
+      const planning = applyRequestedMutation(snapshot, action, mutationBody);
       const signals = calculateOperationalSignals(planning);
       const recommendations = signals.recommendations.map((recommendation) => ({
         inventory_item_id: recommendation.inventory_item_id,
@@ -174,6 +222,16 @@ async function refreshWithRetry(
           p_insights: insights
         });
       }
+      if (action === "approve_count_session") {
+        return await serviceRpc(securitySupabase, "service_approve_inventory_count_session", {
+          p_actor_user_id: actorUserId,
+          p_restaurant_id: restaurantId,
+          p_session_id: requireUuid(body.sessionId, "sessionId"),
+          p_expected_revision: revision,
+          p_recommendations: recommendations,
+          p_insights: insights
+        });
+      }
       return await serviceRpc(securitySupabase, "service_commit_operational_signals", {
         p_actor_user_id: actorUserId,
         p_restaurant_id: restaurantId,
@@ -191,11 +249,75 @@ async function refreshWithRetry(
   throw lastError;
 }
 
+async function runCountSessionDraftAction(
+  securitySupabase: Parameters<typeof serviceRpc>[0],
+  actorUserId: string,
+  restaurantId: string,
+  action: OperationalAction,
+  body: Record<string, unknown>
+) {
+  if (action === "begin_count_session") {
+    return await serviceRpc(securitySupabase, "service_begin_inventory_count_session", {
+      p_actor_user_id: actorUserId,
+      p_restaurant_id: restaurantId,
+      p_note: body.note == null ? null : requireBoundedString(body.note, "note", 240)
+    });
+  }
+  if (action === "save_count_lines") {
+    return await serviceRpc(securitySupabase, "service_save_inventory_count_lines", {
+      p_actor_user_id: actorUserId,
+      p_restaurant_id: restaurantId,
+      p_session_id: requireUuid(body.sessionId, "sessionId"),
+      p_lines: requireCountLineUpdates(body.lines)
+    });
+  }
+  if (action === "submit_count_session") {
+    return await serviceRpc(securitySupabase, "service_submit_inventory_count_session", {
+      p_actor_user_id: actorUserId,
+      p_restaurant_id: restaurantId,
+      p_session_id: requireUuid(body.sessionId, "sessionId")
+    });
+  }
+  return await serviceRpc(securitySupabase, "service_cancel_inventory_count_session", {
+    p_actor_user_id: actorUserId,
+    p_restaurant_id: restaurantId,
+    p_session_id: requireUuid(body.sessionId, "sessionId")
+  });
+}
+
 function applyRequestedMutation(
   snapshot: OperationalPlanningSnapshot,
   action: OperationalAction,
   body: Record<string, unknown>
 ): OperationalPlanningSnapshot {
+  if (action === "approve_count_session") {
+    const lines = requireArray(body.approvedLines, "approvedLines", 250);
+    if (lines.length < 1) throw new HttpError(400, "approvedLines must include at least one row.");
+    const quantityByItemId = new Map<string, number>();
+    for (const [index, entry] of lines.entries()) {
+      const row = requireRecord(entry, `approvedLines[${index}]`);
+      const itemId = requireUuid(row.inventory_item_id, `approvedLines[${index}].inventory_item_id`);
+      const counted = requireBoundedNumber(
+        row.counted_quantity,
+        `approvedLines[${index}].counted_quantity`,
+        0,
+        1_000_000
+      );
+      quantityByItemId.set(itemId, counted);
+    }
+    return {
+      ...snapshot,
+      inventoryItems: snapshot.inventoryItems.map((item) =>
+        quantityByItemId.has(item.id)
+          ? {
+              ...item,
+              current_quantity: quantityByItemId.get(item.id) as number,
+              last_updated: new Date().toISOString()
+            }
+          : item
+      )
+    };
+  }
   if (action === "update_inventory") {
     const itemId = requireUuid(body.itemId, "itemId");
     const patch = requireInventoryPatch(body.patch);
@@ -288,6 +410,42 @@ function requireInventoryPatch(value: unknown) {
   return normalized;
 }
 
+function requireCountLineUpdates(value: unknown) {
+  const lines = requireArray(value, "lines", 250);
+  if (lines.length < 1) throw new HttpError(400, "lines must include at least one row.");
+  const seen = new Set<string>();
+  return lines.map((entry, index) => {
+    const row = requireRecord(entry, `lines[${index}]`);
+    const inventoryItemId = requireUuid(
+      row.inventoryItemId ?? row.inventory_item_id,
+      `lines[${index}].inventoryItemId`
+    );
+    if (seen.has(inventoryItemId)) {
+      throw new HttpError(400, `lines[${index}] duplicates an inventory item.`);
+    }
+    seen.add(inventoryItemId);
+    const countedQuantity = requireBoundedNumber(
+      row.countedQuantity ?? row.counted_quantity,
+      `lines[${index}].countedQuantity`,
+      0,
+      1_000_000
+    );
+    const normalized: Record<string, unknown> = {
+      inventory_item_id: inventoryItemId,
+      counted_quantity: countedQuantity
+    };
+    if (Object.prototype.hasOwnProperty.call(row, "note")) {
+      const note = row.note;
+      if (note !== null && note !== undefined) {
+        normalized.note = requireBoundedString(note, `lines[${index}].note`, 240);
+      } else {
+        normalized.note = null;
+      }
+    }
+    return normalized;
+  });
+}
+
 function isRevisionConflict(error: unknown) {
   const candidate = error as { code?: unknown; message?: unknown };
   return candidate?.code === "40001" || String(candidate?.message ?? "").includes("Planning snapshot changed");
@@ -297,17 +455,43 @@ function auditAction(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_updated";
   if (action === "upsert_recipe") return "recipe_baseline_updated";
   if (action === "save_setup") return "setup_signals_completed";
+  if (action === "begin_count_session") return "inventory_count_session_started";
+  if (action === "save_count_lines") return "inventory_count_lines_saved";
+  if (action === "submit_count_session") return "inventory_count_session_submitted";
+  if (action === "cancel_count_session") return "inventory_count_session_cancelled";
+  if (action === "approve_count_session") return "inventory_count_session_approved";
   return "operational_signals_refreshed";
 }
 
 function auditEntityTable(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_items";
   if (action === "upsert_recipe") return "menu_item_ingredients";
+  if (
+    action === "begin_count_session" ||
+    action === "save_count_lines" ||
+    action === "submit_count_session" ||
+    action === "cancel_count_session" ||
+    action === "approve_count_session"
+  ) {
+    return "inventory_count_sessions";
+  }
   return "restaurants";
 }
 
-function auditEntityId(action: OperationalAction, body: Record<string, unknown>) {
+function auditEntityId(action: OperationalAction, body: Record<string, unknown>, result: unknown) {
   if (action === "update_inventory") return requireUuid(body.itemId, "itemId");
   if (action === "upsert_recipe" && body.mappingId != null) return requireUuid(body.mappingId, "mappingId");
+  if (
+    action === "save_count_lines" ||
+    action === "submit_count_session" ||
+    action === "cancel_count_session" ||
+    action === "approve_count_session"
+  ) {
+    return requireUuid(body.sessionId, "sessionId");
+  }
+  if (action === "begin_count_session" && result && typeof result === "object") {
+    const session = (result as { session?: { id?: string } }).session;
+    return session?.id ?? null;
+  }
   return null;
 }

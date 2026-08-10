@@ -5,6 +5,7 @@ import type {
   Insight,
   InventoryItem,
   InventoryItemPatch,
+  InventoryCountSessionDetail,
   MenuItemIngredient,
   MenuItemIngredientInput,
   PosIntegration,
@@ -458,6 +459,22 @@ export interface MiseRepository {
     recommendations: PurchaseRecommendationInput[],
     insights: Insight[]
   ): Promise<InventoryItem>;
+  fetchOpenInventoryCountSession(restaurantId: string): Promise<InventoryCountSessionDetail | null>;
+  fetchInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
+  beginInventoryCountSession(restaurantId: string, note: string | null): Promise<InventoryCountSessionDetail>;
+  saveInventoryCountLines(
+    restaurantId: string,
+    sessionId: string,
+    lines: Array<{ inventoryItemId: string; countedQuantity: number; note?: string | null }>
+  ): Promise<InventoryCountSessionDetail>;
+  submitInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
+  cancelInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
+  approveInventoryCountSession(
+    restaurantId: string,
+    sessionId: string,
+    recommendations: PurchaseRecommendationInput[],
+    insights: Insight[]
+  ): Promise<InventoryCountSessionDetail>;
   updateMenuItemIngredientQuantity(
     restaurantId: string,
     mappingId: string,

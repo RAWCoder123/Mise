@@ -1,4 +1,8 @@
 import type { RestaurantMembership, RestaurantRole } from "../types/mise";
+import {
+  canApproveInventoryCountSession,
+  canDraftInventoryCountSession
+} from "./domain/inventoryCountSessions";
 
 const managerRoles: RestaurantRole[] = ["owner", "admin", "manager"];
 const ownerAdminRoles: RestaurantRole[] = ["owner", "admin"];
@@ -43,6 +47,22 @@ export function canUpdateRestaurantProfile(
   restaurantId: string | null | undefined
 ) {
   return canDeleteRestaurantData(memberships, restaurantId);
+}
+
+export function canDraftInventoryCount(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  const membership = activeMembershipForRestaurant(memberships, restaurantId);
+  return canDraftInventoryCountSession(membership?.role);
+}
+
+export function canApproveInventoryCount(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  const membership = activeMembershipForRestaurant(memberships, restaurantId);
+  return canApproveInventoryCountSession(membership?.role);
 }
 
 export function requireRestaurantAccess(

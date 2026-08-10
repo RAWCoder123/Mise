@@ -4,6 +4,7 @@ import type {
   AuditLog,
   Insight,
   InventoryItem,
+  InventoryCountSessionDetail,
   MenuItemIngredient,
   PosIntegration,
   PosProvider,
@@ -58,7 +59,7 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 9;
+  schema_version: 10;
   restaurants: Restaurant[];
   users: AppUser[];
   posSales: PosSale[];
@@ -88,6 +89,8 @@ export interface DemoState {
   actionOutcomes: import("../domain/miseActions").Outcome[];
   /** Append-only inventory ledger mirror of hosted inventory_events. */
   inventoryEvents: InventoryEvent[];
+  /** Open and historical inventory count sessions. */
+  inventoryCountSessions: InventoryCountSessionDetail[];
   /** Supplier delivery mirror of hosted supplier_deliveries. */
   supplierDeliveries: Array<{
     id: string;
@@ -328,7 +331,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 9,
+    schema_version: 10,
     restaurants: [restaurant],
     users: [user],
     posSales,
@@ -466,6 +469,7 @@ export function createInitialDemoState(
     autonomyRules: [],
     actionOutcomes: [],
     inventoryEvents: [],
+    inventoryCountSessions: [],
     supplierDeliveries: [],
     supplierDeliveryItems: [],
     restaurantTasks: [],
@@ -584,7 +588,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 9,
+    schema_version: 10,
     restaurants,
     users: raw.users ?? seeded.users,
     posSales: raw.posSales ?? seeded.posSales,
@@ -615,6 +619,9 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       !(usesReferenceDataset && raw.inventoryEvents.length === 0)
         ? raw.inventoryEvents
         : seeded.inventoryEvents,
+    inventoryCountSessions: Array.isArray(raw.inventoryCountSessions)
+      ? raw.inventoryCountSessions
+      : seeded.inventoryCountSessions,
     supplierDeliveries: Array.isArray(raw.supplierDeliveries)
       ? raw.supplierDeliveries
       : seeded.supplierDeliveries,
@@ -635,7 +642,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 9 ||
+      raw.schema_version !== 10 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
@@ -643,6 +650,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       !Array.isArray(raw.restaurantMemories) ||
       !Array.isArray(raw.actionOutcomes) ||
       !Array.isArray(raw.inventoryEvents) ||
+      !Array.isArray(raw.inventoryCountSessions) ||
       (usesReferenceDataset && raw.inventoryEvents.length === 0 && seeded.inventoryEvents.length > 0) ||
       !Array.isArray(raw.supplierDeliveries) ||
       !Array.isArray(raw.supplierDeliveryItems) ||

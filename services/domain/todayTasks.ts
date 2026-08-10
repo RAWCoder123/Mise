@@ -1,5 +1,6 @@
 import type {
   Insight,
+  InventoryCountSession,
   InventoryOutlookItem,
   PosIntegration,
   PurchaseRecommendation,
@@ -17,6 +18,7 @@ import type { TodayTaskPresentationDescriptor } from "../../types/presentation";
  */
 export type OperationalTodayTaskSourceKind =
   | "inventory"
+  | "inventory_count_session"
   | "recommendation"
   | "order"
   | "setup"
@@ -31,6 +33,8 @@ export type OperationalTodayTaskTiming = "overdue" | "due_soon" | "today" | "lat
 
 export type OperationalTodayTaskActionIntent =
   | "update_inventory_count"
+  | "begin_inventory_count_session"
+  | "continue_inventory_count_session"
   | "review_recommendation"
   | "prepare_supplier_draft"
   | "send_supplier_order"
@@ -43,6 +47,7 @@ export type OperationalTodayTaskActionIntent =
 
 export type OperationalTodayTaskRoute =
   | "/inventory"
+  | "/inventory/count"
   | `/inventory/${string}`
   | "/orders"
   | `/orders/${string}`
@@ -52,6 +57,9 @@ export type OperationalTodayTaskRoute =
   | "/settings/pos"
   | "/settings/recipes"
   | `/tasks/${string}`;
+
+/** Stable synthetic source id for the suggested begin-count task (not a DB session id). */
+export const SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID = "suggested_begin";
 
 export interface OperationalTodayTaskAction {
   intent: OperationalTodayTaskActionIntent;
@@ -97,6 +105,7 @@ export interface DeriveOperationalTodayTasksInput {
   /** Undefined means integration readiness was not loaded; [] means no POS connection exists. */
   posIntegrations?: readonly PosIntegration[];
   insights: readonly Insight[];
+  openCountSession?: InventoryCountSession | null;
   now?: Date;
   includeCompleted?: boolean;
 }
@@ -126,6 +135,88 @@ export function deriveOperationalTodayTasks(
       .filter((recommendation) => recommendation.status === "pending" || recommendation.status === "approved")
       .map((recommendation) => recommendation.inventory_item_id)
   );
+
+  const openCountSession =
+    input.openCountSession &&
+    input.openCountSession.restaurant_id === restaurantId &&
+    (input.openCountSession.status === "in_progress" || input.openCountSession.status === "submitted")
+      ? input.openCountSession
+      : null;
+  if (openCountSession) {
+    const awaitingApproval = openCountSession.status === "submitted";
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "inventory_count_session",
+        sourceId: openCountSession.id,
+        sourceStatus: openCountSession.status,
+        title: awaitingApproval ? "Approve inventory count" : "Continue inventory count",
+        detail: awaitingApproval
+          ? "A submitted multi-item count is waiting for manager approval before stock is updated."
+          : "An inventory count session is in progress. Finish counting items and submit for approval.",
+        presentation: {
+          code: awaitingApproval
+            ? "today.inventory_count_session.approve"
+            : "today.inventory_count_session.continue",
+          values: {
+            status: openCountSession.status
+          }
+        },
+        priority: awaitingApproval ? "high" : "normal",
+        action: {
+          intent: "continue_inventory_count_session",
+          label: awaitingApproval ? "Review count" : "Continue count",
+          route: "/inventory/count",
+          entityId: openCountSession.id
+        },
+        requiredRole: awaitingApproval ? "manager" : "member",
+        isComplete: false,
+        completionReason: awaitingApproval
+          ? "Count session is submitted and awaiting approval."
+          : "Count session is still in progress."
+      }),
+      includeCompleted
+    );
+  } else {
+    const riskOutlooks = input.inventoryOutlooks.filter(
+      (outlook) =>
+        outlook.item.restaurant_id === restaurantId && outlook.prediction.projectedStatus !== "Good"
+    );
+    if (riskOutlooks.length > 0) {
+      const hasCritical = riskOutlooks.some(
+        (outlook) => outlook.prediction.projectedStatus === "Critical"
+      );
+      const hasLow = riskOutlooks.some((outlook) => outlook.prediction.projectedStatus === "Low");
+      pushIfVisible(
+        tasks,
+        buildTask({
+          restaurantId,
+          sourceKind: "inventory_count_session",
+          sourceId: SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID,
+          sourceStatus: "suggested",
+          title: "Start inventory count",
+          detail:
+            "Stock-risk items need a multi-item count. Staff can begin the session and submit it for manager approval.",
+          presentation: {
+            code: "today.inventory_count_session.begin",
+            values: { riskItemCount: riskOutlooks.length }
+          },
+          priority: hasCritical ? "urgent" : hasLow ? "high" : "normal",
+          action: {
+            intent: "begin_inventory_count_session",
+            label: "Start count",
+            route: "/inventory/count",
+            entityId: null
+          },
+          requiredRole: "member",
+          isComplete: false,
+          completionReason: "No open inventory count session exists while stock-risk items remain."
+        }),
+        includeCompleted
+      );
+    }
+  }
 
   for (const recommendation of recommendations) {
     const reviewComplete = recommendation.status !== "pending";
@@ -197,7 +288,15 @@ export function deriveOperationalTodayTasks(
     }
   }
 
+  const suppressPerItemInventoryOutlookTasks =
+    Boolean(openCountSession) ||
+    input.inventoryOutlooks.some(
+      (outlook) =>
+        outlook.item.restaurant_id === restaurantId && outlook.prediction.projectedStatus !== "Good"
+    );
+
   for (const outlook of input.inventoryOutlooks) {
+    if (suppressPerItemInventoryOutlookTasks) break;
     const { item, prediction } = outlook;
     if (item.restaurant_id !== restaurantId) continue;
     if (prediction.projectedStatus === "Good") continue;

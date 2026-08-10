@@ -6,8 +6,15 @@ import {
   recommendationReason,
   shouldSuppressRecommendationForItem
 } from "../domain/miseDomain";
+import {
+  applyCountApprovalsToInventory,
+  planCountSessionApprovals,
+  summarizeCountSessionProgress
+} from "../domain/inventoryCountSessions";
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
 import {
+  requireInventoryCountLineUpdates,
+  requireInventoryCountSessionNote,
   requireInventoryItemPatch,
   requireRecipeBaselineQuantity
 } from "../miseValidation";
@@ -233,6 +240,77 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     itemId,
     existing.last_updated,
     normalizedPatch,
+    recommendations,
+    insights
+  );
+}
+
+export async function fetchOpenInventoryCountSession(restaurantId: string) {
+  return repository.fetchOpenInventoryCountSession(restaurantId);
+}
+
+export async function beginInventoryCountSession(restaurantId: string, note?: string | null) {
+  const normalizedNote = requireInventoryCountSessionNote(note);
+  return repository.beginInventoryCountSession(restaurantId, normalizedNote);
+}
+
+export async function saveInventoryCountLines(
+  restaurantId: string,
+  sessionId: string,
+  lines: unknown
+) {
+  const normalizedLines = requireInventoryCountLineUpdates(lines);
+  return repository.saveInventoryCountLines(restaurantId, sessionId, normalizedLines);
+}
+
+export async function submitInventoryCountSession(restaurantId: string, sessionId: string) {
+  return repository.submitInventoryCountSession(restaurantId, sessionId);
+}
+
+export async function cancelInventoryCountSession(restaurantId: string, sessionId: string) {
+  return repository.cancelInventoryCountSession(restaurantId, sessionId);
+}
+
+export async function approveInventoryCountSession(restaurantId: string, sessionId: string) {
+  const [detail, data, recommendationHistory] = await Promise.all([
+    repository.fetchInventoryCountSession(restaurantId, sessionId),
+    repository.fetchPlanningData(restaurantId),
+    repository.fetchRecommendationHistory(restaurantId)
+  ]);
+  if (detail.session.status !== "submitted") {
+    throw new Error("Submit the count session before approving adjustments.");
+  }
+  const progress = summarizeCountSessionProgress(detail.lines);
+  if (!progress.canApprove) {
+    throw new Error("Count every item before approving the session.");
+  }
+  const approvals = planCountSessionApprovals({
+    inventoryItems: data.inventoryItems,
+    lines: detail.lines
+  });
+  const planningInventory = applyCountApprovalsToInventory(
+    data.inventoryItems,
+    approvals,
+    new Date().toISOString()
+  );
+  const recommendations = buildRecommendationInserts(
+    restaurantId,
+    planningInventory,
+    data.sales,
+    data.menuItemIngredients,
+    recommendationHistory,
+    data.operatingDate
+  );
+  const insights = buildInsightsFromData(
+    restaurantId,
+    planningInventory,
+    data.sales,
+    data.menuItemIngredients,
+    data.operatingDate
+  );
+  return repository.approveInventoryCountSession(
+    restaurantId,
+    sessionId,
     recommendations,
     insights
   );

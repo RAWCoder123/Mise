@@ -4,6 +4,8 @@ import type {
   AiInsight,
   Insight,
   InventoryItem,
+  InventoryCountLine,
+  InventoryCountSessionDetail,
   MenuItemIngredient,
   PosIntegration,
   PosProvider,
@@ -72,6 +74,7 @@ import {
   normalizeAiInsight,
   normalizeRestaurantEmailConnection,
   normalizeInventoryItem,
+  normalizeInventoryCountSessionDetail,
   normalizeMenuItemIngredient,
   normalizePosIntegration,
   normalizePosSale,
@@ -1673,8 +1676,114 @@ export function createSupabaseRepository(): MiseRepository {
         supplierOrderId: input.supplierOrderId,
         outcomeId: payload.outcomeId ?? null
       };
+    },
+
+    async fetchOpenInventoryCountSession(restaurantId) {
+      const { data: session, error } = await client
+        .from("inventory_count_sessions")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .in("status", ["in_progress", "submitted"])
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (!session) return null;
+      const { data: lines, error: linesError } = await client
+        .from("inventory_count_lines")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("session_id", session.id)
+        .order("item_name", { ascending: true });
+      if (linesError) throw linesError;
+      return normalizeInventoryCountSessionDetail({
+        session: session as InventoryCountSessionDetail["session"],
+        lines: (lines ?? []) as InventoryCountLine[]
+      });
+    },
+
+    async fetchInventoryCountSession(restaurantId, sessionId) {
+      const { data: session, error } = await client
+        .from("inventory_count_sessions")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", sessionId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!session) throw new Error("Count session not found");
+      const { data: lines, error: linesError } = await client
+        .from("inventory_count_lines")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("session_id", sessionId)
+        .order("item_name", { ascending: true });
+      if (linesError) throw linesError;
+      return normalizeInventoryCountSessionDetail({
+        session: session as InventoryCountSessionDetail["session"],
+        lines: (lines ?? []) as InventoryCountLine[]
+      });
+    },
+
+    async beginInventoryCountSession(restaurantId, note) {
+      const response = await invokeOperationalWorkflow({
+        action: "begin_count_session",
+        restaurantId,
+        note
+      });
+      return parseCountSessionWorkflowResult(response.result);
+    },
+
+    async saveInventoryCountLines(restaurantId, sessionId, lines) {
+      const response = await invokeOperationalWorkflow({
+        action: "save_count_lines",
+        restaurantId,
+        sessionId,
+        lines
+      });
+      return parseCountSessionWorkflowResult(response.result);
+    },
+
+    async submitInventoryCountSession(restaurantId, sessionId) {
+      const response = await invokeOperationalWorkflow({
+        action: "submit_count_session",
+        restaurantId,
+        sessionId
+      });
+      return parseCountSessionWorkflowResult(response.result);
+    },
+
+    async cancelInventoryCountSession(restaurantId, sessionId) {
+      const response = await invokeOperationalWorkflow({
+        action: "cancel_count_session",
+        restaurantId,
+        sessionId
+      });
+      return parseCountSessionWorkflowResult(response.result);
+    },
+
+    async approveInventoryCountSession(restaurantId, sessionId, _recommendations, _insights) {
+      const response = await invokeOperationalWorkflow({
+        action: "approve_count_session",
+        restaurantId,
+        sessionId
+      });
+      return parseCountSessionWorkflowResult(response.result);
     }
   };
+}
+
+function parseCountSessionWorkflowResult(value: unknown) {
+  if (!value || typeof value !== "object") {
+    throw new Error("Count session workflow returned an invalid response.");
+  }
+  const payload = value as { session?: unknown; lines?: unknown };
+  if (!payload.session) {
+    throw new Error("Count session workflow returned an invalid response.");
+  }
+  return normalizeInventoryCountSessionDetail({
+    session: payload.session as InventoryCountSessionDetail["session"],
+    lines: (payload.lines ?? []) as InventoryCountLine[]
+  });
 }
 
 function normalizePosProviderFromIntegration(value: unknown): PosProvider | null {

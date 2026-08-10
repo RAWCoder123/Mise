@@ -10,6 +10,9 @@ import {
   type OperationalTodayTask
 } from "../domain/todayTasks";
 import {
+  fetchOpenInventoryCountSession
+} from "./inventory";
+import {
   operationalTodayTaskFromRestaurantTask,
   visibleRestaurantTasksForToday
 } from "../domain/restaurantTasks";
@@ -47,12 +50,14 @@ export async function fetchTodaySummary(
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const [data, ordersResult, emailConnectionResult, posIntegrationsResult, restaurantTasksResult] = await Promise.all([
+  const [data, ordersResult, emailConnectionResult, posIntegrationsResult, restaurantTasksResult, openCountSession] =
+    await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
     repository.fetchSupplierOrders(normalizedRestaurantId),
     repository.fetchEmailConnectionState(normalizedRestaurantId),
     repository.fetchPosIntegrations(normalizedRestaurantId),
-    repository.listRestaurantTasks(normalizedRestaurantId)
+    repository.listRestaurantTasks(normalizedRestaurantId),
+    fetchOpenInventoryCountSession(normalizedRestaurantId).catch(() => null)
   ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
@@ -113,6 +118,7 @@ export async function fetchTodaySummary(
     setupReadiness,
     posIntegrations,
     insights,
+    openCountSession: openCountSession?.session ?? null,
     includeCompleted: options.includeCompletedTasks
   });
   const sharedTasks = visibleRestaurantTasksForToday(restaurantTasksResult, {
