@@ -630,7 +630,7 @@ export default function OrdersScreen() {
                     }
                     onSend={() => void sendOrder(order)}
                     showSend={actionsEditable}
-                    canSend={canSendOrders}
+                    canSend={usingLocalDemo || canSendOrders}
                     sendLabel={t(usingLocalDemo ? "orders.action.simulateSend" : "orders.action.gmailSend")}
                     busyLabel={t(usingLocalDemo ? "orders.action.simulating" : "orders.action.gmailSending")}
                     sendAccessibilityLabel={t(

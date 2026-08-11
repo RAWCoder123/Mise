@@ -151,13 +151,25 @@ if (!rootLayout.includes("*:focus-visible") || !rootLayout.includes("outline: 3p
 }
 
 const screen = read("components/ui/Screen.tsx");
-if (!/appBar:\s*\{[\s\S]*?height:\s*56,/.test(screen)) {
-  failures.push("components/ui/Screen.tsx: app bar must remain 56px");
+if (!/topBar:\s*\{[\s\S]*?height:\s*52,/.test(screen)) {
+  failures.push("components/ui/Screen.tsx: app bar row must remain 52px");
+}
+// The reference has no rule under the title; a hairline there reinstates the
+// dashboard chrome the reconstruction removed.
+if (/appBar:\s*\{[\s\S]*?borderBottom/.test(screen)) {
+  failures.push("components/ui/Screen.tsx: app bar must not draw a bottom border over the canvas");
 }
 
 const tabs = read("app/(tabs)/_layout.tsx");
-if (!/tabBar:\s*\{[\s\S]*?height:\s*62,/.test(tabs)) {
-  failures.push("app/(tabs)/_layout.tsx: bottom navigation must remain 62px plus safe area");
+if (!/tabBar:\s*\{[\s\S]*?height:\s*60,/.test(tabs)) {
+  failures.push("app/(tabs)/_layout.tsx: bottom navigation must remain 60px plus safe area");
+}
+// Understated inactive icons, Mise red active, no pill or floating container.
+if (!/tabBarActiveTintColor:\s*colors\.accent\b/.test(tabs)) {
+  failures.push("app/(tabs)/_layout.tsx: active tab must use Mise red");
+}
+if (/tabBarItemStyle:[\s\S]*?borderRadius/.test(tabs) || /tabBarBackground/.test(tabs)) {
+  failures.push("app/(tabs)/_layout.tsx: bottom navigation must stay flat — no pill or floating container");
 }
 
 if (failures.length > 0) {

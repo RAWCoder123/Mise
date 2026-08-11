@@ -1,7 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Check } from "lucide-react-native";
-
-import { colors, iconStroke, typography } from "../../constants/theme";
+import { colors, typography } from "../../constants/theme";
 
 export type SetupStepStatus = "complete" | "active" | "missing" | "locked";
 
@@ -40,11 +38,15 @@ export function SetupStepRail({ steps, onStepPress }: SetupStepRailProps) {
                   <View style={styles.connectorSpacer} />
                 )}
                 <View style={[styles.marker, active && styles.activeMarker, complete && styles.completeMarker]}>
-                  {complete ? (
-                    <Check size={12} color={colors.surface} strokeWidth={iconStroke} />
-                  ) : (
-                    <Text style={[styles.markerText, active && styles.activeMarkerText]}>{index + 1}</Text>
-                  )}
+                  <Text
+                    style={[
+                      styles.markerText,
+                      active && styles.activeMarkerText,
+                      complete && styles.completeMarkerText
+                    ]}
+                  >
+                    {index + 1}
+                  </Text>
                 </View>
                 {index < steps.length - 1 ? (
                   <View style={[styles.connectorSegment, complete && styles.connectorActive]} />
@@ -102,7 +104,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 8
   },
   connectorActive: {
-    backgroundColor: colors.success
+    backgroundColor: colors.text
   },
   marker: {
     width: 36,
@@ -120,8 +122,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentDark
   },
   completeMarker: {
-    borderColor: colors.success,
-    backgroundColor: colors.success
+    borderColor: colors.text,
+    backgroundColor: colors.surface
   },
   markerText: {
     color: colors.muted,
@@ -131,6 +133,9 @@ const styles = StyleSheet.create({
   },
   activeMarkerText: {
     color: colors.surface
+  },
+  completeMarkerText: {
+    color: colors.text
   },
   stepLabel: {
     color: colors.text,

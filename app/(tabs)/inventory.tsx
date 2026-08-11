@@ -25,6 +25,7 @@ import {
 } from "../../components/ui/InventoryHealth";
 import { InventoryHealthSummaryCard } from "../../components/ui/InventoryHealthSummaryCard";
 import { OperationalRow } from "../../components/ui/OperationalRow";
+import { RowGroup } from "../../components/ui/RowGroup";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { FilterRow, type SegmentOption } from "../../components/ui/SegmentedControl";
@@ -55,6 +56,7 @@ export default function InventoryScreen() {
   const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InventoryFilter>("All");
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -71,6 +73,7 @@ export default function InventoryScreen() {
     setOpenCountSessionId(null);
     setQuery("");
     setFilter("All");
+    setSearchExpanded(false);
     setError(false);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
@@ -187,6 +190,7 @@ export default function InventoryScreen() {
       return matchesFilter && matchesQuery;
     });
   }, [filter, query, visibleOutlooks]);
+  const showStockBrowser = searchExpanded || filter !== "All";
 
   if (!restaurant) {
     return (
@@ -210,7 +214,10 @@ export default function InventoryScreen() {
         <View style={styles.headerActions}>
           <ActionIcon
             accessibilityLabel={t("inventory.search.accessibility")}
-            onPress={() => searchInputRef.current?.focus()}
+            onPress={() => {
+              setSearchExpanded(true);
+              setTimeout(() => searchInputRef.current?.focus(), 0);
+            }}
           >
             <Search size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
           </ActionIcon>
@@ -256,50 +263,24 @@ export default function InventoryScreen() {
         />
         ) : null}
 
-        {hubReady && (canDraftCount || openCountSessionId) ? (
-          <View style={styles.group}>
-            <SectionHeader
-              title={t("inventory.count.cardTitle")}
-              subtitle={
-                openCountSessionId
-                  ? t("inventory.count.cardOpenSubtitle")
-                  : t("inventory.count.cardSubtitle")
-              }
-            />
-            <Button
-              title={
-                openCountSessionId
-                  ? t("inventory.count.resumeAction")
-                  : t("inventory.count.startAction")
-              }
-              onPress={() => router.push("/inventory/count")}
-              fullWidth
-              accessibilityLabel={
-                openCountSessionId
-                  ? t("inventory.count.resumeAccessibility")
-                  : t("inventory.count.startAccessibility")
-              }
-              icon={<ClipboardList size={18} color={colors.cream} strokeWidth={2.25} />}
-            />
-          </View>
-        ) : null}
-
         <InventoryGroup
           title={t("inventory.group.lowStock")}
           outlooks={visibleOutlooks.filter(({ prediction }) => prediction.projectedStatus === "Low").slice(0, 3)}
           queue={visibleQueue}
+          onHeaderPress={() => setFilter("At risk")}
         />
         <InventoryGroup
           title={t("inventory.group.stockAlerts")}
           outlooks={visibleOutlooks.filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Watch").slice(0, 3)}
           queue={visibleQueue}
+          onHeaderPress={() => setFilter("Watch")}
         />
         {/* The concept shows reorder as one summary row, not a repeat of the
             same items already listed under Low stock and Stock alerts. */}
         {reorderCount > 0 ? (
           <View style={styles.group}>
             <SectionHeader title={t("inventory.group.reorder")} />
-            <View style={styles.inventoryList}>
+            <RowGroup>
               <OperationalRow
                 density="operational"
                 title={t(
@@ -313,11 +294,11 @@ export default function InventoryScreen() {
                 iconTone="brand"
                 onPress={() => router.push("/orders")}
               />
-            </View>
+            </RowGroup>
           </View>
         ) : null}
 
-        <View style={styles.allStock}>
+        {showStockBrowser ? <View style={styles.allStock}>
           <FilterRow
             accessibilityLabel={t("inventory.filter.accessibility")}
             options={filterOptions}
@@ -346,7 +327,7 @@ export default function InventoryScreen() {
               <Text style={styles.emptyListTitle}>{t("inventory.emptyMatches.title")}</Text>
             </View>
           ) : (
-            <View style={styles.inventoryList}>
+            <RowGroup>
               {filtered.map((outlook) => (
                 <InventoryListRow
                   key={outlook.item.id}
@@ -354,9 +335,38 @@ export default function InventoryScreen() {
                   queueCount={visibleQueue.filter((entry) => entry.event.inventoryItemId === outlook.item.id).length}
                 />
               ))}
-            </View>
+            </RowGroup>
           )}
-        </View>
+        </View> : null}
+
+        {showStockBrowser && hubReady && (canDraftCount || openCountSessionId) ? (
+          <View style={styles.countSection}>
+            <SectionHeader
+              title={t("inventory.count.cardTitle")}
+              subtitle={
+                openCountSessionId
+                  ? t("inventory.count.cardOpenSubtitle")
+                  : t("inventory.count.cardSubtitle")
+              }
+            />
+            <Button
+              title={
+                openCountSessionId
+                  ? t("inventory.count.resumeAction")
+                  : t("inventory.count.startAction")
+              }
+              onPress={() => router.push("/inventory/count")}
+              variant="secondary"
+              size="compact"
+              accessibilityLabel={
+                openCountSessionId
+                  ? t("inventory.count.resumeAccessibility")
+                  : t("inventory.count.startAccessibility")
+              }
+              icon={<ClipboardList size={16} color={colors.text} strokeWidth={iconStroke} />}
+            />
+          </View>
+        ) : null}
       </View>
     </Screen>
   );
@@ -382,7 +392,7 @@ function InventoryGroup({
         action={onHeaderPress ? t("common.viewAll") : undefined}
         onAction={onHeaderPress}
       />
-      <View style={styles.inventoryList}>
+      <RowGroup>
         {outlooks.map((outlook) => (
           <InventoryListRow
             key={outlook.item.id}
@@ -390,7 +400,7 @@ function InventoryGroup({
             queueCount={queue.filter((entry) => entry.event.inventoryItemId === outlook.item.id).length}
           />
         ))}
-      </View>
+      </RowGroup>
     </View>
   );
 }
@@ -501,6 +511,13 @@ const styles = StyleSheet.create({
   allStock: {
     gap: 8,
     marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
+  },
+  countSection: {
+    gap: 6,
+    marginTop: 2,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border

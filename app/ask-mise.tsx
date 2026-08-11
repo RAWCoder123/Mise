@@ -27,6 +27,7 @@ import type { OperationalTodayTask } from "../services/domain/todayTasks";
 type ChatMessage = {
   id: string;
   role: "user" | "mise";
+  title?: string;
   text: string;
   priorities?: OperationalTodayTask[];
 };
@@ -132,16 +133,50 @@ export default function AskMiseScreen() {
     if (!visibleSummary || !restaurant || seededRef.current) return;
     seededRef.current = true;
     const greetingName = user?.name?.trim().split(/\s+/)[0] || t("ask.greeting.fallbackName");
+    const question = t("ask.suggestion.priorities");
+    const reply = answerAskMise({
+      question,
+      restaurant,
+      summary: visibleSummary,
+      insights: visibleInsights,
+      helpers: {
+        formatCompactCurrency,
+        formatNumber,
+        locale,
+        t
+      }
+    });
     setMessages([
       {
         id: "welcome",
         role: "mise",
-        text: `${t("ask.greeting.hi", { name: greetingName })} ${t("ask.greeting.body", {
+        title: t("ask.greeting.hi", { name: greetingName }),
+        text: t("ask.greeting.body", {
           restaurant: restaurant.name
-        })}`
+        })
+      },
+      {
+        id: "seed-question",
+        role: "user",
+        text: question
+      },
+      {
+        id: "seed-answer",
+        role: "mise",
+        text: reply.answer,
+        priorities: reply.showPriorities ? reply.priorities : undefined
       }
     ]);
-  }, [restaurant, t, user?.name, visibleSummary]);
+  }, [
+    formatCompactCurrency,
+    formatNumber,
+    locale,
+    restaurant,
+    t,
+    user?.name,
+    visibleInsights,
+    visibleSummary
+  ]);
 
   const ask = useCallback(
     async (question: string) => {
@@ -271,6 +306,7 @@ export default function AskMiseScreen() {
               <View key={message.id} style={styles.miseRow}>
                 <MiseMark size={icon.emphasis} />
                 <View style={styles.miseCopy}>
+                  {message.title ? <Text style={styles.miseTitle}>{message.title}</Text> : null}
                   <Text style={styles.bubbleText}>{message.text}</Text>
                   {message.priorities && message.priorities.length > 0 ? (
                     <View style={styles.priorityList}>
@@ -392,6 +428,11 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 8
+  },
+  miseTitle: {
+    color: colors.text,
+    ...conceptTypography.rowTitle,
+    marginBottom: -5
   },
   bubble: {
     maxWidth: "82%",

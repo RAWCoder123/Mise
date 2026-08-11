@@ -375,7 +375,7 @@ export default function SettingsScreen() {
                 ? t(posProvider ? "settings.integration.pos.connected" : "settings.integration.pos.notConnected")
                 : t("settings.integration.pos.manage")
             }
-            icon={<PlugZap size={icon.emphasis} color={posProvider ? colors.success : colors.muted} strokeWidth={iconStroke} />}
+            icon={<PlugZap size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/pos")}
           />
@@ -581,7 +581,7 @@ export default function SettingsScreen() {
 function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
-      <SectionHeader title={title} />
+      <SectionHeader eyebrow={title} title="" />
       <View style={styles.sectionSurface}>{children}</View>
     </View>
   );
@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 0
+    paddingHorizontal: 12
   },
   workspaceRow: {
     minHeight: density.menuRow,
@@ -822,7 +822,7 @@ const styles = StyleSheet.create({
     marginBottom: 4
   },
   signOutText: {
-    color: colors.accent,
+    color: colors.danger,
     ...conceptTypography.rowTitle
   },
   headerBack: {

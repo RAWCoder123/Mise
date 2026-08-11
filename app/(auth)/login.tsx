@@ -28,7 +28,7 @@ type LoginStep = "identity" | "password";
 
 function GoogleMark() {
   return (
-    <Svg width={18} height={18} viewBox="0 0 18 18" accessibilityElementsHidden>
+    <Svg width={18} height={18} viewBox="0 0 18 18">
       <Path
         fill={colors.text}
         d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"
@@ -51,7 +51,7 @@ function GoogleMark() {
 
 function AppleMark() {
   return (
-    <Svg width={18} height={18} viewBox="0 0 18 18" accessibilityElementsHidden>
+    <Svg width={18} height={18} viewBox="0 0 18 18">
       <Path
         fill={colors.text}
         d="M14.7 12.2c-.25.58-.37.84-.7 1.35-.45.72-.1.1-.1.1-.54.87-1.16 1.95-2.05 1.96-.78.02-1 .5-1.9.5s-1.15-.48-1.92-.5c-.86-.02-1.52-1.05-2.07-1.92-1.2-1.92-2.11-5.43-.88-7.4.6-.96 1.58-1.57 2.5-1.57.8 0 1.46.54 1.91.54s1.4-.67 2.43-.57c.41.02 1.57.17 2.31 1.26-.06.04-1.38.8-1.36 2.4.02 1.9 1.67 2.53 1.7 2.54-.02.05-.26.9-.47 1.41zM11.9 2.9c.42-.53.73-1.27.65-2.01-.63.03-1.4.43-1.85.96-.4.46-.76 1.2-.66 1.91.7.05 1.42-.35 1.86-.86z"

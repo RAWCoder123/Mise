@@ -79,11 +79,20 @@ export const inventoryStatusSoftColors = {
   Critical: colors.dangerSoft
 } as const;
 
+/**
+ * The reference boards use one card radius almost everywhere (~10) with a
+ * slightly tighter radius on chips and tiles. Nothing in the concept is
+ * rounder than 18, and nothing is square.
+ */
 export const radii = {
+  /** Chips, badges, small tiles. */
+  xs: 8,
   sm: 10,
+  /** The default card radius. */
   md: 12,
-  lg: 16,
-  xl: 18
+  lg: 14,
+  xl: 18,
+  pill: 999
 } as const;
 
 export const spacing = {
@@ -123,51 +132,55 @@ export const fontFamilies = {
 } as const;
 
 /**
- * Default typography — keep slightly roomier for setup/auth and dense forms.
- * Primary tab/reference surfaces should prefer `conceptTypography`.
+ * Secondary-surface typography — settings sub-pages, auth, setup, dense forms.
+ *
+ * This scale used to run a rung larger than the tab surfaces, which is why the
+ * product read as separately designed screens: a settings page and Home did not
+ * share a rhythm. It now sits on the same reference scale as
+ * `conceptTypography`, one notch roomier only where a form genuinely needs it.
  */
 export const typography = {
   families: fontFamilies,
   screenTitle: {
     fontFamily: fontFamilies.bold,
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 20,
+    lineHeight: 25,
     letterSpacing: -0.3
   },
   sectionTitle: {
-    fontFamily: fontFamilies.semibold,
-    fontSize: 16,
-    lineHeight: 21,
-    letterSpacing: 0
+    fontFamily: fontFamilies.bold,
+    fontSize: 15,
+    lineHeight: 19,
+    letterSpacing: -0.2
   },
   metricValue: {
     fontFamily: fontFamilies.bold,
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.3
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: -0.4
   },
   cardTitle: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 15,
-    lineHeight: 20,
-    letterSpacing: 0
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: -0.1
   },
   body: {
     fontFamily: fontFamilies.body,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
     letterSpacing: 0
   },
   caption: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
     letterSpacing: 0
   },
   button: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 17,
     letterSpacing: 0
   }
 } as const;
@@ -192,12 +205,29 @@ export const conceptTypography = {
     lineHeight: 25,
     letterSpacing: -0.3
   },
-  /** Fits the design:static-locked 56px app bar with trailing actions. */
+  /** Fits the 52pt app bar with trailing actions. */
   appBarTitle: {
     fontFamily: fontFamilies.bold,
-    fontSize: 18,
-    lineHeight: 22,
-    letterSpacing: -0.2
+    fontSize: 19,
+    lineHeight: 23,
+    letterSpacing: -0.3
+  },
+  /**
+   * The one oversized numeral in the product: inventory health. Home shows it
+   * beside a chip, Inventory gives it a card of its own.
+   */
+  healthValue: {
+    fontFamily: fontFamilies.bold,
+    fontSize: 26,
+    lineHeight: 31,
+    letterSpacing: -0.8
+  },
+  /** Supplier order totals — outranks a metric numeral in its own card. */
+  orderTotal: {
+    fontFamily: fontFamilies.bold,
+    fontSize: 20,
+    lineHeight: 24,
+    letterSpacing: -0.5
   },
   /** Home greeting. Sans by design — the concept headline is not a serif. */
   greeting: {
@@ -216,9 +246,9 @@ export const conceptTypography = {
   /** Card heads that outrank a row title — supplier name, detail header. */
   cardTitle: {
     fontFamily: fontFamilies.bold,
-    fontSize: 15,
-    lineHeight: 19,
-    letterSpacing: -0.25
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.3
   },
   /**
    * Section heading. Outranks rowTitle by WEIGHT at equal size: at 13px on a
@@ -245,8 +275,8 @@ export const conceptTypography = {
   },
   button: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 12,
+    lineHeight: 16,
     letterSpacing: 0
   },
   /** Row sublines and alert messages — the static counterpart to `button`. */
@@ -275,33 +305,44 @@ export const conceptTypography = {
   }
 } as const;
 
-/** Shared concept density — roomy reference proportions; use hitSlop for 44px targets.
- * App bar / tab bar heights stay at the design:static-locked 56 / 62 chrome sizes.
+/**
+ * Reference density. The concept boards are compact but never cramped: rows sit
+ * around 44–48pt, sections are separated by ~14pt, and chrome is deliberately
+ * small so the operating picture — not the app frame — owns the viewport.
+ *
+ * Visual height and touch height are decoupled. A 32pt chip is a legitimate
+ * reference proportion; it reaches 44pt through hitSlop, never by growing.
  */
 export const density = {
-  appBar: 56,
-  tabBar: 62,
-  tabIcon: 19,
+  /** Compact top chrome. The reference bar is title-height plus breathing room. */
+  appBar: 52,
+  tabBar: 60,
+  tabIcon: 18,
   tabLabel: 9,
   gutter: 16,
   hitTarget: 44,
   /** SectionHeader row height; the action uses hitSlop to reach 44. */
   sectionHeader: 20,
   /** SectionHeader bottom margin. */
-  headerGap: 4,
+  headerGap: 6,
   /** Between sections in a screen stack. */
   sectionGap: 14,
-  timeColumn: 48,
-  timelineRow: 54,
-  timelineRowActive: 84,
+  /** Left timeline column on Today: bucket name, time, and duration. */
+  timeColumn: 62,
+  timelineRow: 50,
+  timelineRowActive: 78,
   menuRow: 46,
-  operationalRow: 48,
+  operationalRow: 46,
+  /** Grouped list rows inside a card (Home tasks, inventory sections). */
+  groupedRow: 44,
   healthCard: 104,
-  shortcutTile: 64,
+  shortcutTile: 62,
   profileRow: 56,
   identityRow: 64,
   compactButton: 32,
-  iconPlain: 30,
+  /** Square icon tile that leads a grouped row. */
+  iconTile: 28,
+  iconPlain: 28,
   chevron: 14
 } as const;
 

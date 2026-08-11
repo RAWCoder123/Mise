@@ -73,7 +73,9 @@ export default function MoreScreen() {
           />
         </ActionTileGrid>
 
-        <View style={styles.list}>
+        <View style={styles.section}>
+          <SectionHeader title={t("more.section.operations")} />
+          <View style={styles.list}>
           <OperationalRow
             density="menu"
             title={t("more.row.dailyBrief.title")}
@@ -98,6 +100,12 @@ export default function MoreScreen() {
             icon={<Brain size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/restaurant-memory" as never)}
           />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <SectionHeader title={t("more.section.team")} />
+          <View style={styles.list}>
           <OperationalRow
             density="menu"
             title={t("more.row.team.title")}
@@ -134,6 +142,7 @@ export default function MoreScreen() {
             icon={<HelpCircle size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/support" as never)}
           />
+          </View>
         </View>
 
         <Pressable
@@ -172,6 +181,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface
+  },
+  section: {
+    gap: 4
   },
   profileRow: {
     minHeight: density.profileRow,

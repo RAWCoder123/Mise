@@ -80,3 +80,26 @@ function normalizeCount(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, value);
 }
+
+export type InventoryHealthTier = "healthy" | "watch" | "attention";
+
+/**
+ * Which word describes the kitchen's stock right now.
+ *
+ * Home and Inventory both print a chip beside the well-stocked percentage. That
+ * chip used to be hardcoded to "Healthy", so a kitchen at 57% well-stocked
+ * still announced itself as healthy directly above a bar that was mostly amber
+ * and red. The tiers are deliberately coarse — an operator needs "fine / keep an
+ * eye on it / deal with it", not a fifth significant figure.
+ */
+export function inventoryHealthTier(counts: InventoryHealthCounts): InventoryHealthTier {
+  const normalized = normalizeInventoryHealthCounts(counts);
+  if (getInventoryHealthTotal(normalized) === 0) return "watch";
+  // Anything genuinely out of stock outranks the average: one critical item is
+  // a service problem even when the rest of the shelf is full.
+  if (normalized.critical > 0) return "attention";
+  const wellStocked = getWellStockedPercentage(normalized);
+  if (wellStocked >= 80) return "healthy";
+  if (wellStocked >= 60) return "watch";
+  return "attention";
+}

@@ -79,10 +79,13 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    // design:static locks this to 62 — keep in sync with density.tabBar
-    height: 62,
-    paddingTop: 5,
-    paddingBottom: 3,
+    // Measured off the concept: the bar is ~60pt tall at 390x844, which is what
+    // fits an 18pt icon over a 9pt label without clipping the label. Dropping
+    // to 56 cut the labels off. design:static locks this — keep density.tabBar
+    // in sync.
+    height: 60,
+    paddingTop: 6,
+    paddingBottom: 6,
     backgroundColor: colors.surface,
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth
@@ -94,6 +97,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.semibold,
     fontSize: density.tabLabel,
     lineHeight: 11,
-    marginTop: 1
+    marginTop: 2
   }
 });

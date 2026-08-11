@@ -62,8 +62,11 @@ export function StatusNotice({
         <View style={[styles.icon, iconToneStyles[tone]]}>{icon ?? defaultIcon(tone)}</View>
       )}
       <View style={styles.copy}>
-        <Text style={styles.title} numberOfLines={2}>{title}</Text>
-        {message ? <Text style={styles.message} numberOfLines={2}>{message}</Text> : null}
+        <Text style={styles.title} numberOfLines={isRow ? 1 : 2}>{title}</Text>
+        {/* The concept's inline alert is a headline plus one qualifying line.
+            Letting the message run to two lines is what made Home's alert twice
+            the reference height. Card notices keep the extra line. */}
+        {message ? <Text style={styles.message} numberOfLines={isRow ? 1 : 2}>{message}</Text> : null}
         {meta ? <Text style={styles.meta} numberOfLines={1}>{meta}</Text> : null}
       </View>
       {actionIsAvailable ? (

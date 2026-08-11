@@ -39,7 +39,6 @@ export function OperatingPlanTimeline({
   restaurantTimeZone: string;
   t: Translator;
 }) {
-  const { formatNumber } = useLocale();
   const flat = groups.flatMap((group) =>
     group.items.map((item, index) => ({
       item,
@@ -66,7 +65,6 @@ export function OperatingPlanTimeline({
           <View key={group.key} style={styles.timelineGroup}>
             <Text style={styles.groupLabel}>
               {group.label}
-              {group.total > 0 ? ` · ${formatNumber(group.total)}` : ""}
             </Text>
             {group.items.map((item, index) => {
               const globalIndex = groupStartIndex + index;
@@ -79,6 +77,8 @@ export function OperatingPlanTimeline({
                   restaurantTimeZone={restaurantTimeZone}
                   isFirst={globalIndex === 0}
                   isLast={globalIndex === flat.length - 1}
+                  isGroupFirst={index === 0}
+                  isGroupLast={index === group.items.length - 1}
                   showPrimaryAction={group.key === "now" && index === 0}
                   t={t}
                 />
@@ -98,6 +98,8 @@ function OperatingPlanItemRow({
   restaurantTimeZone,
   isFirst,
   isLast,
+  isGroupFirst,
+  isGroupLast,
   showPrimaryAction,
   t
 }: {
@@ -107,6 +109,8 @@ function OperatingPlanItemRow({
   restaurantTimeZone: string;
   isFirst: boolean;
   isLast: boolean;
+  isGroupFirst: boolean;
+  isGroupLast: boolean;
   showPrimaryAction: boolean;
   t: Translator;
 }) {
@@ -154,7 +158,14 @@ function OperatingPlanItemRow({
         </View>
       </View>
 
-      <View style={[styles.taskContent, showPrimaryAction && styles.taskContentActive]}>
+      <View
+        style={[
+          styles.taskContent,
+          isGroupFirst && styles.taskContentFirst,
+          isGroupLast && styles.taskContentLast,
+          showPrimaryAction && styles.taskContentActive
+        ]}
+      >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("today.task.accessibility", {
@@ -309,7 +320,7 @@ const styles = StyleSheet.create({
   timelineRow: {
     flexDirection: "row",
     minHeight: density.timelineRow,
-    paddingVertical: 3
+    paddingVertical: 0
   },
   timelineRowActive: {
     minHeight: density.timelineRowActive
@@ -366,18 +377,29 @@ const styles = StyleSheet.create({
   timelineDotDone: {
     backgroundColor: colors.success
   },
-  // Every row is its own card — the cards separate themselves, so the row no
-  // longer needs a divider.
+  // A bucket is one grouped card. Rows share the side borders and use a
+  // hairline divider, matching the reference timeline rather than floating as
+  // unrelated task cards.
   taskContent: {
     flex: 1,
     minWidth: 0,
     justifyContent: "center",
     paddingVertical: 7,
     paddingHorizontal: 9,
-    borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface
+  },
+  taskContentFirst: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: radii.sm,
+    borderTopRightRadius: radii.sm
+  },
+  taskContentLast: {
+    borderBottomLeftRadius: radii.sm,
+    borderBottomRightRadius: radii.sm
   },
   taskContentActive: {
     justifyContent: "flex-start"

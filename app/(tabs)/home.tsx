@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
-import { ChevronDown, ClipboardCheck, Package, ShoppingCart, Sparkles, Store, TriangleAlert } from "lucide-react-native";
+import { ClipboardCheck, Package, ShoppingCart, Sparkles, Store, TriangleAlert } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -41,10 +41,27 @@ import {
 } from "../../services/miseService";
 import { runScheduledRecalculations } from "../../services/application/scheduledRecalculations";
 import type { RecalculationAttentionSummary } from "../../services/presentation/recalculationPresentation";
+import {
+  inventoryHealthTier,
+  type InventoryHealthTier
+} from "../../services/presentation/inventoryHealthPresentation";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
+import { taskRoleLabelKey } from "../../services/presentation/taskRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
 
 type Translator = (key: MessageKey, values?: MessageValues) => string;
+
+/** The stock-health chip says what the bar beneath it actually shows. */
+const HEALTH_TIER_LABEL: Record<InventoryHealthTier, MessageKey> = {
+  healthy: "home.health.healthy",
+  watch: "home.health.watch",
+  attention: "home.health.attention"
+};
+const HEALTH_TIER_TONE: Record<InventoryHealthTier, "success" | "warning" | "neutral"> = {
+  healthy: "success",
+  watch: "neutral",
+  attention: "warning"
+};
 
 export default function HomeScreen() {
   const { canUseDemoMode, continueWithDemo, restaurant, user } = useMiseSession();
@@ -174,24 +191,13 @@ export default function HomeScreen() {
   return (
     <Screen loading={loading}>
       <View style={styles.stack}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("screen.openRestaurantSettings", { restaurant: restaurant.name })}
-          onPress={() => router.push("/settings")}
-          style={({ pressed }) => [styles.restaurantChip, pressed && styles.pressed]}
-        >
-          <Text numberOfLines={1} style={styles.restaurantChipText}>{restaurant.name}</Text>
-          <ChevronDown size={icon.inline} color={colors.muted} strokeWidth={iconStroke} />
-        </Pressable>
-
+        {/* The restaurant chip lives in the brand chrome (see Screen.tsx), the
+            way the concept binds it to the wordmark. */}
         <View style={styles.greetingBlock}>
           <Text style={styles.greeting}>{t(greetingKeyForNow(restaurant.timezone), { name: greetingName })}</Text>
           <Text style={styles.greetingSubtext} numberOfLines={2}>
             {t("home.greeting.subtext", { restaurant: restaurant.name })}
           </Text>
-          {visibleBrief?.demoLabeled ? (
-            <Text style={styles.demoLabel}>{t("home.demo.label")}</Text>
-          ) : null}
         </View>
 
         {error ? (
@@ -327,13 +333,20 @@ function RestaurantStatusCard({
       ? "home.status.attention_needed"
       : "home.status.at_risk";
 
+  // The concept names the actual problem in the headline — "Low stock: Chicken
+  // Breast" — and keeps the status word as the qualifier. `topRisk` is the
+  // brief's own pick for the single most pressing issue, so lead with it and
+  // only fall back to the generic status sentence when it has nothing.
+  const topRisk = brief.restaurantStatus.topRisk?.trim();
+  const primaryApproval = brief.needsApproval[0];
+
   return (
     <StatusNotice
       variant="row"
       tone={brief.restaurantStatus.status === "attention_needed" ? "warning" : "danger"}
-      title={t(statusKey)}
-      message={brief.restaurantStatus.summary}
-      onPress={() => router.push(brief.needsApproval.length > 0 ? "/orders" : "/today")}
+      title={topRisk || primaryApproval?.title || t(statusKey)}
+      message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
+      onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
     />
   );
 }
@@ -490,7 +503,6 @@ function HomeMetrics({
             id: "tasks",
             label: t("home.metric.openTasks"),
             value: formatNumber(openTasks.length),
-            tone: openTasks.length > 0 ? "default" : "success",
             delta: highPriority > 0 ? formatNumber(highPriority) : undefined,
             deltaTone: "danger",
             comparison: highPriority > 0 ? t("home.metric.highPriority") : undefined
@@ -498,8 +510,11 @@ function HomeMetrics({
           {
             id: "orders",
             label: t("home.metric.orderReview"),
+            // The numeral stays ink like every other cell. Colouring the value
+            // amber made "awaiting review" read as an error and broke the
+            // restraint the concept keeps across the glance strip — only the
+            // small qualifier beneath it carries status colour.
             value: formatNumber(summary.pendingRecommendations),
-            tone: summary.pendingRecommendations > 0 ? "caution" : "success",
             delta:
               summary.pendingRecommendations > 0
                 ? formatNumber(summary.pendingRecommendations)
@@ -523,6 +538,16 @@ function DailyBriefing({
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   t: Translator;
 }) {
+  const { formatDate } = useLocale();
+  // Read the operating date in the restaurant's zone, matching the rest of the
+  // screen — a device clock would date the briefing wrong for a travelling owner.
+  const dateLabel = t("home.brief.date", {
+    date: formatDate(`${summary.operatingDate}T12:00:00.000Z`, {
+      timeZone: "UTC",
+      month: "short",
+      day: "numeric"
+    })
+  });
   const openTasks = summary.operationalTasks.filter((task) => task.status === "open").length;
   const stockAlerts = summary.inventoryHealth.watch + summary.inventoryHealth.low + summary.inventoryHealth.critical;
   const reorderCount = summary.inventoryHealth.low + summary.inventoryHealth.critical;
@@ -566,32 +591,35 @@ function DailyBriefing({
   ];
 
   return (
-    <View style={styles.briefingSection}>
-      <SectionHeader
-        title={t("home.brief.title")}
-        action={t("home.brief.action")}
-        onAction={() => router.push("/insights")}
-      />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t("home.brief.heading")}
-        onPress={() => router.push("/today")}
-        style={({ pressed }) => [styles.briefingCard, pressed && styles.pressed]}
-      >
-        <View style={styles.briefingCopy}>
-          <Text style={styles.briefingTitle}>{t("home.brief.heading")}</Text>
-          {rows.map((row) => (
-            <View key={row.id} style={styles.briefingRow}>
-              <View style={[styles.briefingIcon, { backgroundColor: row.tint }]}>{row.icon}</View>
-              <View style={styles.briefingRowCopy}>
-                <Text numberOfLines={1} style={styles.briefingText}>{row.label}</Text>
-                <Text numberOfLines={1} style={styles.briefingSub}>{row.sublabel}</Text>
-              </View>
+    /**
+     * One card, heading inside.
+     *
+     * This block used to be a section header ("Daily Brief") wrapping a card
+     * that then repeated its own heading ("What needs you before service"), so
+     * the same idea was announced twice and the card read as a container rather
+     * than as the briefing itself. The concept states it once, at the top of the
+     * one surface, with the operating date beneath it.
+     */
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t("home.brief.title")}
+      onPress={() => router.push("/today")}
+      style={({ pressed }) => [styles.briefingCard, pressed && styles.pressed]}
+    >
+      <Text style={styles.briefingTitle}>{t("home.brief.title")}</Text>
+      <Text style={styles.briefingDate}>{dateLabel}</Text>
+      <View style={styles.briefingRows}>
+        {rows.map((row) => (
+          <View key={row.id} style={styles.briefingRow}>
+            <View style={[styles.briefingIcon, { backgroundColor: row.tint }]}>{row.icon}</View>
+            <View style={styles.briefingRowCopy}>
+              <Text numberOfLines={1} style={styles.briefingText}>{row.label}</Text>
+              <Text numberOfLines={1} style={styles.briefingSub}>{row.sublabel}</Text>
             </View>
-          ))}
-        </View>
-      </Pressable>
-    </View>
+          </View>
+        ))}
+      </View>
+    </Pressable>
   );
 }
 
@@ -607,6 +635,7 @@ function InventoryBrief({
   const total = getInventoryHealthTotal(counts);
   const healthy = getWellStockedPercentage(counts);
   const percent = formatNumber(healthy / 100, { style: "percent", maximumFractionDigits: 0 });
+  const tier = inventoryHealthTier(counts);
 
   return (
     <View style={styles.healthSection}>
@@ -619,8 +648,8 @@ function InventoryBrief({
         layout="inline"
         counts={counts}
         percentLabel={total === 0 ? formatNumber(0, { style: "percent" }) : percent}
-        chipLabel={t("home.health.healthy")}
-        chipTone="success"
+        chipLabel={t(HEALTH_TIER_LABEL[tier])}
+        chipTone={HEALTH_TIER_TONE[tier]}
       />
     </View>
   );
@@ -677,14 +706,17 @@ function HomeTaskRow({
   const presentation = presentOperationalTodayTask(locale, task);
   const timing = classifyOperationalTodayTaskTiming(task, { restaurantTimeZone });
   const timeLabel = task.dueAt
-    ? formatDueTime(task.dueAt, { timeZone: restaurantTimeZone })
+    ? t("home.tasks.due", { time: formatDueTime(task.dueAt, { timeZone: restaurantTimeZone }) })
     : t(timingKey(timing));
+  // The concept pairs when with who — "Due 8:30 AM · Opening Manager" — so the
+  // operator can tell at a glance whether the task is theirs to pick up.
+  const subtitle = `${timeLabel} · ${t(taskRoleLabelKey(task.requiredRole))}`;
   const high = task.priority === "urgent" || task.priority === "high";
 
   return (
     <OperationalRow
       title={presentation.title}
-      subtitle={timeLabel}
+      subtitle={subtitle}
       icon={taskIcon(task, high ? colors.danger : colors.text)}
       iconTone={high ? "danger" : "brand"}
       badgeLabel={t(high ? "task.badge.high" : "task.badge.normal")}
@@ -878,19 +910,20 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
-  },
-  briefingCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 5
+    paddingVertical: 11
   },
   briefingTitle: {
     color: colors.text,
-    ...conceptTypography.rowTitle
+    ...conceptTypography.sectionTitle
+  },
+  briefingDate: {
+    color: colors.faint,
+    ...conceptTypography.subtitle,
+    marginTop: 1
+  },
+  briefingRows: {
+    marginTop: 9,
+    gap: 7
   },
   briefingRow: {
     flexDirection: "row",
@@ -900,7 +933,7 @@ const styles = StyleSheet.create({
   briefingIcon: {
     width: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: radii.xs,
     alignItems: "center",
     justifyContent: "center"
   },
@@ -910,11 +943,11 @@ const styles = StyleSheet.create({
   },
   briefingText: {
     color: colors.text,
-    ...conceptTypography.caption
+    ...conceptTypography.rowTitle
   },
   briefingSub: {
     color: colors.faint,
-    ...conceptTypography.micro
+    ...conceptTypography.subtitle
   },
   pressed: {
     opacity: 0.72

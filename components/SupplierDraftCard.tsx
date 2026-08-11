@@ -80,16 +80,16 @@ export function SupplierDraftCard({
         onPress={onOpen}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
       >
-        <View style={styles.headerCopy}>
-          <View style={styles.supplierLine}>
-            <Text style={styles.supplierName} numberOfLines={1}>
-              {order.supplier_name}
-            </Text>
-            <Badge label={statusLabel} tone={statusTone} uppercase />
-          </View>
-          <Text style={styles.status}>{deliveryLabel}</Text>
+        <View style={styles.supplierLine}>
+          <Text style={styles.supplierName} numberOfLines={1}>
+            {order.supplier_name}
+          </Text>
+          <Badge label={statusLabel} tone={statusTone} uppercase />
         </View>
-        {totalLabel ? <Text style={styles.total}>{totalLabel}</Text> : null}
+        <View style={styles.metaLine}>
+          <Text style={styles.status}>{deliveryLabel}</Text>
+          {totalLabel ? <Text style={styles.total}>{totalLabel}</Text> : null}
+        </View>
       </Pressable>
 
       {presentation.lines.length > 0 ? (
@@ -144,7 +144,7 @@ export function SupplierDraftCard({
           onPress={onOpen}
           style={styles.actionButton}
         />
-        {showSendButton ? (
+        {showSendButton && sendIsAvailable ? (
           <Button
             title={busy ? resolvedBusyLabel : resolvedSendLabel}
             accessibilityLabel={sendAccessibilityLabel ?? t("orders.card.markSentAccessibility", {
@@ -176,15 +176,6 @@ export function SupplierDraftCard({
           />
         )}
       </View>
-      {showSendButton ? (
-        <Button
-          title={t("orders.card.copy")}
-          accessibilityLabel={t("orders.card.copyAccessibility", { supplier: order.supplier_name })}
-          variant="ghost"
-          onPress={onCopy}
-          style={styles.copyGhost}
-        />
-      ) : null}
     </View>
   );
 }
@@ -203,21 +194,21 @@ const styles = StyleSheet.create({
   },
   header: {
     minHeight: 40,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
+    gap: 3
   },
   pressed: {
     opacity: 0.66
-  },
-  headerCopy: {
-    flex: 1,
-    minWidth: 0
   },
   supplierLine: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6
+  },
+  metaLine: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 8
   },
   supplierName: {
     flex: 1,
@@ -226,6 +217,7 @@ const styles = StyleSheet.create({
     ...conceptTypography.cardTitle
   },
   status: {
+    flex: 1,
     color: colors.muted,
     ...conceptTypography.subtitle,
     marginTop: 1
@@ -285,8 +277,4 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 36
   },
-  copyGhost: {
-    alignSelf: "center",
-    minHeight: 30
-  }
 });

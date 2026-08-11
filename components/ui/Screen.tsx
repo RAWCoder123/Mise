@@ -20,6 +20,7 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { ActionIcon } from "./ActionIcon";
 import { BrandLockup } from "./BrandLockup";
 import { MotionView } from "./Motion";
+import { RestaurantSwitcher } from "./RestaurantSwitcher";
 
 export type ScreenChrome = "brand" | "title";
 
@@ -99,19 +100,28 @@ export function Screen({
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <View style={styles.appBar}>
         {isBrand ? (
-          <View style={styles.topBar}>
-            <BrandLockup size="small" showTagline={false} />
-            {restaurant && !isInsightsRoute ? (
-              <ActionIcon
-                accessibilityLabel={t("screen.openInsights")}
-                accessibilityHint={t("screen.openInsightsHint")}
-                onPress={() => router.push("/insights")}
-              >
-                <Bell size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
-              </ActionIcon>
-            ) : (
-              <View style={styles.headerAction} />
-            )}
+          <View style={styles.brandBlock}>
+            <View style={styles.topBar}>
+              <BrandLockup size="small" showTagline={false} />
+              {restaurant && !isInsightsRoute ? (
+                <ActionIcon
+                  accessibilityLabel={t("screen.openInsights")}
+                  accessibilityHint={t("screen.openInsightsHint")}
+                  onPress={() => router.push("/insights")}
+                >
+                  <Bell size={icon.row} color={colors.text} strokeWidth={iconStroke} />
+                </ActionIcon>
+              ) : (
+                <View style={styles.headerAction} />
+              )}
+            </View>
+            {/* The concept binds the restaurant chip to the wordmark rather than
+                letting it float at the top of the scrolling content. */}
+            {restaurant ? (
+              <View style={styles.switcherSlot}>
+                <RestaurantSwitcher name={restaurant.name} />
+              </View>
+            ) : null}
           </View>
         ) : (
           <View style={styles.topBar}>
@@ -164,16 +174,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.canvas
   },
+  /**
+   * The concept has no chrome bar: the title (or wordmark) sits directly on the
+   * page canvas with no rule beneath it, so the app frame recedes and the
+   * operating picture starts immediately. Painting a white bar with a hairline
+   * over a warm canvas is what made the previous build read as a generic
+   * dashboard shell.
+   */
   appBar: {
-    // design:static locks this to 56 — keep in sync with density.appBar
-    height: 56,
-    // A white bar over the warm canvas needs a hairline to read as chrome.
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface
+    // design:static locks the bar row to 52 — keep in sync with density.appBar
+    minHeight: 52,
+    backgroundColor: colors.canvas
+  },
+  /** Wordmark row plus the restaurant chip, as one bound unit. */
+  brandBlock: {
+    paddingBottom: 4
+  },
+  switcherSlot: {
+    paddingHorizontal: density.gutter,
+    marginTop: -4
   },
   topBar: {
-    height: 56,
+    height: 52,
     paddingHorizontal: density.gutter,
     flexDirection: "row",
     alignItems: "center",

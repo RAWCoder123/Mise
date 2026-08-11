@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { colors, density } from "../../constants/theme";
+import { colors, density, radii } from "../../constants/theme";
 
 export type IconBadgeTone = "brand" | "leaf" | "neutral" | "caution" | "warning" | "danger" | "inverse";
 export type IconBadgeSize = "md" | "sm" | "plain";
@@ -9,7 +9,7 @@ export type IconBadgeSize = "md" | "sm" | "plain";
 interface IconBadgeProps {
   children: ReactNode;
   tone?: IconBadgeTone;
-  /** `plain` keeps outline icons without colored tiles; `sm` is ~28px. */
+  /** `plain` keeps outline icons untiled; `sm` is the 28px reference tile. */
   size?: IconBadgeSize;
   style?: StyleProp<ViewStyle>;
 }
@@ -30,23 +30,29 @@ export function IconBadge({ children, tone = "neutral", size = "md", style }: Ic
   );
 }
 
+/**
+ * The concept leads a row with a small rounded-square tile, not a large filled
+ * circle. Circles at 44px read as decorative avatars and were what made the
+ * previous build's lists feel like a consumer feed rather than an operating
+ * surface. Touch size is carried by the row, not by this tile.
+ */
 const styles = StyleSheet.create({
   badge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center"
   },
   badgeSm: {
-    width: density.iconPlain,
-    height: density.iconPlain,
-    borderRadius: density.iconPlain / 2
+    width: density.iconTile,
+    height: density.iconTile,
+    borderRadius: radii.xs
   },
   badgePlain: {
     width: density.iconPlain,
     height: density.iconPlain,
-    borderRadius: density.iconPlain / 2,
+    borderRadius: radii.xs,
     backgroundColor: "transparent"
   }
 });

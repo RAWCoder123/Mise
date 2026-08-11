@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle, ChefHat, FileSpreadsheet, Package, Plus, ShieldCheck, Trash2, Truck } from "lucide-react-native";
+import { CheckCircle, ChefHat, FileSpreadsheet, Package, Plus, Trash2, Truck } from "lucide-react-native";
 import { router } from "expo-router";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
@@ -355,8 +355,15 @@ export default function SetupScreen() {
       title={t(isDemoSetup ? "setup.main.demoTitle" : "setup.main.hostedTitle")}
       subtitle={t(isDemoSetup ? "setup.main.demoSubtitle" : "setup.main.hostedSubtitle")}
       keyboardAware
+      scroll={false}
+      contentStyle={styles.screenContent}
     >
-      <View style={styles.stack}>
+      <View style={styles.setupShell}>
+        <ScrollView
+          contentContainerStyle={styles.stack}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
         <SetupStepRail steps={setupSteps} onStepPress={(step) => selectStep(step as SetupStepId)} />
 
         {activeStep === "profile" ? (
@@ -542,18 +549,10 @@ export default function SetupScreen() {
           </>
         ) : null}
 
-        {error ? <Text style={styles.error} accessibilityLiveRegion="assertive">{error}</Text> : null}
+          {error ? <Text style={styles.error} accessibilityLiveRegion="assertive">{error}</Text> : null}
+        </ScrollView>
 
         <View style={styles.footerPanel}>
-          <View style={styles.footerStatus}>
-            {isDemoSetup ? <ChefHat size={icon.row} color={colors.accent} strokeWidth={iconStroke} /> : <ShieldCheck size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
-            <Text style={styles.status}>
-              {t("setup.footer.progress", {
-                complete: formatNumber(setupSteps.filter((step) => step.status === "complete").length),
-                total: formatNumber(setupSteps.length)
-              })}
-            </Text>
-          </View>
           <Button
             title={activeStep === "email"
               ? loading
@@ -1062,8 +1061,16 @@ function normalizeDraftNumber(value: string, parseNumber: (value: string) => num
 }
 
 const styles = StyleSheet.create({
+  screenContent: {
+    flex: 1
+  },
+  setupShell: {
+    flex: 1,
+    minHeight: 0
+  },
   stack: {
-    gap: spacing.md
+    gap: spacing.md,
+    paddingBottom: 12
   },
   readinessList: {
     gap: 0
@@ -1232,11 +1239,6 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 16
   },
-  footerStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
-  },
   setupSummary: {
     color: colors.text,
     ...typography.body,
@@ -1259,11 +1261,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.md
   },
   footerPanel: {
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.accentSoft,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
     backgroundColor: colors.surface,
-    padding: 12
+    paddingHorizontal: 0,
+    paddingTop: 10,
+    paddingBottom: 4
   },
   skipButton: {
     minHeight: 44,

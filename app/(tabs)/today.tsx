@@ -4,7 +4,6 @@ import { router, useFocusEffect } from "expo-router";
 import { CalendarDays } from "lucide-react-native";
 
 import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
-import { DailyCloseoutCelebration } from "../../components/operations/DailyCloseoutCelebration";
 import { OperatingPlanTimeline } from "../../components/operations/OperatingPlanTimeline";
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge } from "../../components/ui/Badge";
@@ -20,7 +19,6 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey, MessageValues } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
 import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDecisionOutbox";
-import { buildDailyCloseoutSummary } from "../../services/domain/dailyCloseout";
 import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
 import type { DailyOperatingPlan, OperatingPlanBucket } from "../../services/domain/operatingPlan";
@@ -48,8 +46,8 @@ type Translator = (key: MessageKey, values?: MessageValues) => string;
 const GROUP_CAPS: Record<TaskFilter, number> = {
   now: 2,
   up_next: 3,
-  later: 4,
-  done: 3
+  later: 1,
+  done: 1
 };
 
 const GROUP_ORDER: readonly TaskFilter[] = ["now", "up_next", "later", "done"];
@@ -256,8 +254,7 @@ export default function TodayScreen() {
   }, [visibleSummary]);
 
   const timelineGroups = useMemo(() => {
-    const focusedFirst = [focus, ...GROUP_ORDER.filter((value) => value !== focus)];
-    return focusedFirst
+    return GROUP_ORDER
       .map((key) => ({
         key,
         label: t(groupLabelKey(key)),
@@ -266,23 +263,6 @@ export default function TodayScreen() {
       }))
       .filter((group) => group.total > 0 || group.key === focus);
   }, [focus, grouped, t]);
-
-  const closeoutSummary = useMemo(() => {
-    if (!visibleSummary) return null;
-    let completedTasks = 0;
-    let openTasks = 0;
-    for (const item of visibleSummary.items) {
-      if (item.status === "completed") completedTasks += 1;
-      else openTasks += 1;
-    }
-    return buildDailyCloseoutSummary({
-      operatingDate: visibleSummary.operatingDate,
-      restaurantTimeZone: visibleSummary.restaurantTimeZone,
-      completedTasks,
-      openTasks,
-      operatorTasksOpen: visibleFloorNotes.length
-    });
-  }, [visibleFloorNotes.length, visibleSummary]);
 
   const filterOptions = useMemo<readonly SegmentOption<TaskFilter>[]>(
     () =>
@@ -299,7 +279,7 @@ export default function TodayScreen() {
         return {
           value,
           label,
-      badge: count > 0 ? formatNumber(count) : undefined,
+          badge: value !== "now" && count > 0 ? formatNumber(count) : undefined,
           accessibilityLabel: t("today.filter.optionAccessibility", { filter: label, count: formatNumber(count) }),
           tone
         };
@@ -365,14 +345,6 @@ export default function TodayScreen() {
           variant="pills"
           scrollable
         />
-
-        {closeoutSummary ? (
-          <DailyCloseoutCelebration
-            restaurantId={restaurant.id}
-            summary={closeoutSummary}
-            onOpenReport={() => router.push("/more/daily-report")}
-          />
-        ) : null}
 
         {visibleSummary ? (
           <OperatingPlanTimeline
