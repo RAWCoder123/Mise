@@ -63,9 +63,6 @@ export function OperatingPlanTimeline({
         const groupStartIndex = flat.findIndex((row) => row.group === group.key);
         return (
           <View key={group.key} style={styles.timelineGroup}>
-            <Text style={styles.groupLabel}>
-              {group.label}
-            </Text>
             {group.items.map((item, index) => {
               const globalIndex = groupStartIndex + index;
               return (
@@ -79,6 +76,7 @@ export function OperatingPlanTimeline({
                   isLast={globalIndex === flat.length - 1}
                   isGroupFirst={index === 0}
                   isGroupLast={index === group.items.length - 1}
+                  groupLabel={index === 0 ? group.label : undefined}
                   showPrimaryAction={group.key === "now" && index === 0}
                   t={t}
                 />
@@ -100,6 +98,7 @@ function OperatingPlanItemRow({
   isLast,
   isGroupFirst,
   isGroupLast,
+  groupLabel,
   showPrimaryAction,
   t
 }: {
@@ -111,6 +110,7 @@ function OperatingPlanItemRow({
   isLast: boolean;
   isGroupFirst: boolean;
   isGroupLast: boolean;
+  groupLabel?: string;
   showPrimaryAction: boolean;
   t: Translator;
 }) {
@@ -133,6 +133,11 @@ function OperatingPlanItemRow({
   return (
     <View style={[styles.timelineRow, showPrimaryAction && styles.timelineRowActive]}>
       <View style={styles.timeColumn}>
+        {groupLabel ? (
+          <Text numberOfLines={1} style={styles.groupLabel}>
+            {groupLabel}
+          </Text>
+        ) : null}
         <Text
           numberOfLines={2}
           style={[
@@ -261,7 +266,11 @@ function neededByLabel(
   if (timing === "overdue") return t("relative.overdue");
   if (timing === "due_soon") return t("relative.dueNow");
   if (timing === "today") return t("relative.today");
-  return t("task.timing.noTime");
+  // No exact deadline: leave the time column empty rather than stamping
+  // "No time" on it. The concept's left column is a clock, and printing a
+  // filler word there in urgency red drew the eye to absent data — the bucket
+  // heading above the dot already says when this belongs.
+  return null;
 }
 
 function emptyTitleKey(filter: OperatingPlanBucket): MessageKey {
@@ -307,15 +316,16 @@ const styles = StyleSheet.create({
   },
   timelineGroup: {
     gap: 0,
-    marginTop: 2
+    marginTop: 8
   },
   groupLabel: {
-    color: colors.muted,
-    ...conceptTypography.caption,
+    width: density.timeColumn - 4,
+    color: colors.text,
+    ...conceptTypography.rowTitle,
+    fontSize: 12,
+    lineHeight: 16,
     textAlign: "left",
-    marginBottom: 6,
-    marginTop: 8,
-    paddingLeft: 0
+    marginBottom: 3
   },
   timelineRow: {
     flexDirection: "row",
@@ -327,13 +337,13 @@ const styles = StyleSheet.create({
   },
   timeColumn: {
     width: density.timeColumn,
-    alignItems: "center"
+    alignItems: "flex-start"
   },
   timeText: {
     width: density.timeColumn - 4,
     color: colors.text,
     ...conceptTypography.caption,
-    textAlign: "center",
+    textAlign: "left",
     marginTop: 1
   },
   timeTextHot: {
@@ -349,7 +359,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 22,
     alignItems: "center",
-    marginTop: 4
+    marginTop: 4,
+    marginLeft: 10
   },
   timelineLine: {
     width: StyleSheet.hairlineWidth,

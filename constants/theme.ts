@@ -318,7 +318,7 @@ export const density = {
   appBar: 52,
   tabBar: 60,
   tabIcon: 18,
-  tabLabel: 9,
+  tabLabel: 10,
   gutter: 16,
   hitTarget: 44,
   /** SectionHeader row height; the action uses hitSlop to reach 44. */

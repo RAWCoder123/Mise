@@ -304,7 +304,7 @@ export default function AskMiseScreen() {
               </View>
             ) : (
               <View key={message.id} style={styles.miseRow}>
-                <MiseMark size={icon.emphasis} />
+                <MiseMark size={28} />
                 <View style={styles.miseCopy}>
                   {message.title ? <Text style={styles.miseTitle}>{message.title}</Text> : null}
                   <Text style={styles.bubbleText}>{message.text}</Text>
@@ -392,7 +392,7 @@ export default function AskMiseScreen() {
           >
             <Send
               size={icon.row}
-              color={asking || !input.trim() ? colors.faint : colors.surface}
+              color={asking ? colors.faint : input.trim() ? colors.surface : colors.accent}
               strokeWidth={iconStroke}
             />
           </ActionIcon>
@@ -442,7 +442,9 @@ const styles = StyleSheet.create({
   },
   userBubble: {
     alignSelf: "flex-end",
-    backgroundColor: colors.panelStrong
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: 14,
+    paddingVertical: 10
   },
   bubbleText: {
     color: colors.text,

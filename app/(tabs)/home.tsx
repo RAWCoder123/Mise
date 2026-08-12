@@ -338,13 +338,18 @@ function RestaurantStatusCard({
   // brief's own pick for the single most pressing issue, so lead with it and
   // only fall back to the generic status sentence when it has nothing.
   const topRisk = brief.restaurantStatus.topRisk?.trim();
+  const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
 
   return (
     <StatusNotice
       variant="row"
       tone={brief.restaurantStatus.status === "attention_needed" ? "warning" : "danger"}
-      title={topRisk || primaryApproval?.title || t(statusKey)}
+      title={
+        primaryMenuRisk
+          ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
+          : primaryApproval?.title || t(statusKey)
+      }
       message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
       onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
     />
@@ -705,12 +710,20 @@ function HomeTaskRow({
   const { formatDueTime } = useLocale();
   const presentation = presentOperationalTodayTask(locale, task);
   const timing = classifyOperationalTodayTaskTiming(task, { restaurantTimeZone });
-  const timeLabel = task.dueAt
-    ? t("home.tasks.due", { time: formatDueTime(task.dueAt, { timeZone: restaurantTimeZone }) })
-    : t(timingKey(timing));
   // The concept pairs when with who — "Due 8:30 AM · Opening Manager" — so the
   // operator can tell at a glance whether the task is theirs to pick up.
-  const subtitle = `${timeLabel} · ${t(taskRoleLabelKey(task.requiredRole))}`;
+  //
+  // Not every task carries an exact instant. When there is no due time, print
+  // the role alone rather than padding the line with "No time ·" or "Later ·":
+  // a filler word where a time should be reads as missing data, and the bucket
+  // is already visible on Today.
+  const role = t(taskRoleLabelKey(task.requiredRole));
+  const timeLabel = task.dueAt
+    ? t("home.tasks.due", { time: formatDueTime(task.dueAt, { timeZone: restaurantTimeZone }) })
+    : timing === "overdue" || timing === "due_soon"
+      ? t(timingKey(timing))
+      : null;
+  const subtitle = timeLabel ? `${timeLabel} · ${role}` : role;
   const high = task.priority === "urgent" || task.priority === "high";
 
   return (
@@ -882,10 +895,10 @@ const styles = StyleSheet.create({
     gap: 0
   },
   tasksSection: {
-    gap: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    paddingTop: 10
+    // No rule above the section: the concept separates Home's blocks with
+    // whitespace and the section label alone. A divider here added a second
+    // separator on top of the stack gap and pushed Top tasks out of the fold.
+    gap: 0
   },
   emptyCopy: {
     color: colors.muted,
@@ -921,18 +934,21 @@ const styles = StyleSheet.create({
     ...conceptTypography.subtitle,
     marginTop: 1
   },
+  // The concept's briefing is ~110pt for three rows. Row copy sits a rung below
+  // a list row title — this is a summary, not a set of tappable items — which is
+  // what keeps the card from crowding out Inventory health and Top tasks.
   briefingRows: {
-    marginTop: 9,
-    gap: 7
+    marginTop: 7,
+    gap: 5
   },
   briefingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 7
   },
   briefingIcon: {
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     borderRadius: radii.xs,
     alignItems: "center",
     justifyContent: "center"
@@ -943,11 +959,11 @@ const styles = StyleSheet.create({
   },
   briefingText: {
     color: colors.text,
-    ...conceptTypography.rowTitle
+    ...conceptTypography.caption
   },
   briefingSub: {
     color: colors.faint,
-    ...conceptTypography.subtitle
+    ...conceptTypography.micro
   },
   pressed: {
     opacity: 0.72

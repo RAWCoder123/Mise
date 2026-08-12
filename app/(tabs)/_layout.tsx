@@ -91,12 +91,25 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth
   },
   tabBarItem: {
-    minHeight: density.hitTarget
+    // No minHeight here. React Navigation lays the item out inside the bar's
+    // content box; forcing 44 against a 60pt bar with padding pushed the label
+    // past the bar's bottom edge and clipped it on every tab. The 44pt target
+    // comes from the bar height itself, which is already above it.
+    paddingVertical: 0
   },
   tabBarLabel: {
     fontFamily: fontFamilies.semibold,
     fontSize: density.tabLabel,
-    lineHeight: 11,
-    marginTop: 2
+    lineHeight: 14,
+    marginTop: 3,
+    marginBottom: 0,
+    includeFontPadding: false,
+    // React Navigation's web tab item is a flex column, and the label was the
+    // flexible child: it collapsed to a 6px box with overflow:hidden and cut
+    // every glyph in half, on all five tabs. Measured, not guessed — lineHeight
+    // alone does not survive a flex squeeze, so pin the box and refuse to shrink.
+    height: 14,
+    flexShrink: 0,
+    flexGrow: 0
   }
 });

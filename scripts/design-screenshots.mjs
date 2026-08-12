@@ -42,7 +42,11 @@ const shots = [
   { name: "03-inventory", route: "/inventory" },
   { name: "04-orders", route: "/orders" },
   { name: "05-task-detail", discover: "task" },
-  { name: "06-ask-mise", route: "/ask-mise" },
+  {
+    name: "06-ask-mise",
+    route: "/ask-mise",
+    settle: "What are my top priorities today"
+  },
   { name: "07-more", route: "/more" },
   { name: "08-settings", route: "/settings" },
   { name: "09-setup", route: "/setup" }
@@ -238,6 +242,51 @@ async function applyViewport(cdp) {
   });
 }
 
+/**
+ * Report the rendered geometry of the chrome and of Home's section stack.
+ *
+ * Screenshots show that something is wrong; they do not say by how much.
+ * Measuring the live DOM is what stops a "make it a bit shorter" guessing loop
+ * — the tab bar was mis-sized twice before this existed.
+ */
+async function measureChrome(cdp) {
+  return evaluateValue(
+    cdp,
+    `(() => {
+      const out = { viewport: window.innerHeight, clipped: [] };
+      const labels = Array.from(document.querySelectorAll('*')).filter((node) => {
+        const text = (node.textContent || '').trim();
+        return node.children.length === 0 && ['Home','Today','Inventory','Orders','More'].includes(text);
+      });
+      const navLabels = labels.filter((node) => node.getBoundingClientRect().top > window.innerHeight - 120);
+      out.tabLabels = navLabels.map((node) => {
+        const r = node.getBoundingClientRect();
+        return { text: node.textContent.trim(), top: Math.round(r.top), bottom: Math.round(r.bottom) };
+      });
+      // A label can sit inside the viewport and still be cut by its own box, so
+      // compare the line box against what the font actually needs.
+      out.clipped = out.tabLabels.filter((l) => l.bottom > window.innerHeight).map((l) => l.text);
+      if (navLabels[0]) {
+        const s = getComputedStyle(navLabels[0]);
+        const r = navLabels[0].getBoundingClientRect();
+        out.labelBox = {
+          height: Math.round(r.height * 10) / 10,
+          fontSize: s.fontSize,
+          lineHeight: s.lineHeight,
+          overflow: s.overflow
+        };
+        out.labelTooShort = r.height < parseFloat(s.fontSize) * 1.2;
+      }
+      const bar = navLabels[0] ? navLabels[0].closest('[role="tablist"]') : null;
+      if (bar) {
+        const r = bar.getBoundingClientRect();
+        out.tabBar = { top: Math.round(r.top), height: Math.round(r.height), bottom: Math.round(r.bottom) };
+      }
+      return out;
+    })()`
+  );
+}
+
 async function capture(cdp, name) {
   const viewportShot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
   await writeFile(join(outputDir, `${name}.png`), Buffer.from(viewportShot.data, "base64"));
@@ -361,6 +410,9 @@ async function main() {
     }
     await sleep(700);
     await capture(cdp, shot.name);
+    if (shot.name === "01-home") {
+      console.log("  chrome geometry:", JSON.stringify(await measureChrome(cdp)));
+    }
   }
 
   cdp.close();

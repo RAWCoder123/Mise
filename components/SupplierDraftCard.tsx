@@ -52,11 +52,11 @@ export function SupplierDraftCard({
   const operationalStatus = presentSupportedSupplierOrderStatus(order.status);
   const statusLabel =
     operationalStatus === "DraftedByMise"
-      ? t("orders.ops.DraftedByMise")
+      ? t("orders.card.status.draft")
       : operationalStatus === "Sent"
         ? t("orders.ops.Sent")
         : t("orders.ops.Received");
-  const statusTone = order.status === "draft" ? "warning" : order.status === "sent" ? "success" : "neutral";
+  const statusTone = order.status === "sent" ? "success" : "neutral";
   const deliveryLabel = order.delivery_date
     ? formatDate(`${order.delivery_date}T12:00:00.000Z`, {
         month: "short",
@@ -168,10 +168,14 @@ export function SupplierDraftCard({
           />
         ) : (
           <Button
-            title={t("orders.card.copy")}
-            accessibilityLabel={t("orders.card.copyAccessibility", { supplier: order.supplier_name })}
-            variant="soft"
-            onPress={onCopy}
+            title={isDraft ? t("orders.card.action.review") : t("orders.card.copy")}
+            accessibilityLabel={
+              isDraft
+                ? t("orders.card.reviewAccessibility", { supplier: order.supplier_name })
+                : t("orders.card.copyAccessibility", { supplier: order.supplier_name })
+            }
+            variant={isDraft ? "primary" : "soft"}
+            onPress={isDraft ? onOpen : onCopy}
             style={styles.actionButton}
           />
         )}
@@ -190,7 +194,7 @@ const styles = StyleSheet.create({
     gap: 8
   },
   cardDraft: {
-    borderColor: colors.borderStrong
+    borderColor: colors.redBorder
   },
   header: {
     minHeight: 40,

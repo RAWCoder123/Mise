@@ -41,11 +41,17 @@ export function InventoryHealthSummaryCard({
   layout = "card",
   style
 }: InventoryHealthSummaryCardProps) {
+  // The numeral carries the same tone as the chip beside it. It used to be
+  // hardcoded green, so a kitchen at 57% rendered a green "57%" next to an
+  // amber "Needs attention" chip and a mostly-amber bar — three elements
+  // describing the same state, disagreeing.
+  const percentToneStyle = percentToneStyles[chipTone];
+
   if (layout === "inline") {
     // One row: big percent, status chip, and the bar taking the rest.
     return (
       <View accessible accessibilityLabel={accessibilityLabel} style={[styles.inlineRow, style]}>
-        <Text style={styles.inlinePercent}>{percentLabel}</Text>
+        <Text style={[styles.inlinePercent, percentToneStyle]}>{percentLabel}</Text>
         {chipLabel ? (
           <View style={[styles.chip, chipToneStyles[chipTone]]}>
             <Text style={[styles.chipText, chipTextToneStyles[chipTone]]}>{chipLabel}</Text>
@@ -62,7 +68,7 @@ export function InventoryHealthSummaryCard({
     <View accessible accessibilityLabel={accessibilityLabel} style={[styles.card, style]}>
       {title ? <Text style={styles.title}>{title}</Text> : null}
       <View style={styles.head}>
-        <Text style={styles.percent}>{percentLabel}</Text>
+        <Text style={[styles.percent, percentToneStyle]}>{percentLabel}</Text>
         {statusLabel ? <Text style={styles.statusLabel}>{statusLabel}</Text> : null}
         {chipLabel ? (
           <View style={[styles.chip, chipToneStyles[chipTone]]}>
@@ -172,4 +178,11 @@ const chipTextToneStyles = StyleSheet.create({
   success: { color: colors.success },
   warning: { color: colors.warning },
   neutral: { color: colors.muted }
+});
+
+/** The big percentage agrees with the chip: green only when actually healthy. */
+const percentToneStyles = StyleSheet.create({
+  success: { color: colors.success },
+  warning: { color: colors.warning },
+  neutral: { color: colors.text }
 });

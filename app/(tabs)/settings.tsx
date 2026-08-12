@@ -356,16 +356,6 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t(signingOut ? "settings.account.signingOut" : "settings.account.signOut")}
-          disabled={signingOut}
-          onPress={leave}
-          style={({ pressed }) => [styles.signOutTextButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.signOutText}>{t(signingOut ? "settings.account.signingOut" : "settings.account.signOut")}</Text>
-        </Pressable>
-
         <SettingsSection title={t("settings.section.integrations")}>
           <OperationalRow
             density="menu"
@@ -573,6 +563,16 @@ export default function SettingsScreen() {
             )}
           </View>
         </SettingsSection>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t(signingOut ? "settings.account.signingOut" : "settings.account.signOut")}
+          disabled={signingOut}
+          onPress={leave}
+          style={({ pressed }) => [styles.signOutTextButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.signOutText}>{t(signingOut ? "settings.account.signingOut" : "settings.account.signOut")}</Text>
+        </Pressable>
       </View>
     </Screen>
   );

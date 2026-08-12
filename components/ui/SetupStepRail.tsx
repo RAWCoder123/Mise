@@ -94,14 +94,14 @@ const styles = StyleSheet.create({
   connectorSegment: {
     flex: 1,
     height: 2,
-    marginHorizontal: 8,
+    marginHorizontal: 0,
     borderRadius: 999,
     backgroundColor: colors.border
   },
   connectorSpacer: {
     flex: 1,
     height: 2,
-    marginHorizontal: 8
+    marginHorizontal: 0
   },
   connectorActive: {
     backgroundColor: colors.text

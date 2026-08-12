@@ -551,7 +551,11 @@ async function runOrderInteractionQa(cdp) {
   );
 
   await navigateAndMeasure(cdp, "/inventory", []);
-  await waitForBrowserCondition(cdp, "document.body.innerText.includes('Stock list')", "Inventory stock list");
+  await waitForBrowserCondition(
+    cdp,
+    "document.body.innerText.includes('Low stock items') && document.body.innerText.includes('Stock alerts')",
+    "Inventory operational groups"
+  );
   const inventoryRowLabel = await firstAriaLabelEnding(
     cdp,
     "Record count, receive, waste, or stockout."

@@ -186,13 +186,14 @@ const styles = StyleSheet.create({
   },
   trail: {
     minWidth: 40,
+    maxWidth: "56%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 6
   },
   value: {
-    maxWidth: 96,
+    maxWidth: 150,
     color: colors.text,
     ...conceptTypography.rowTitle,
     textAlign: "right"
