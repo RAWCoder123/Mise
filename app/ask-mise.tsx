@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-
 import { ThinkingBubble } from "../components/ask/ThinkingBubble";
 import { ActionIcon } from "../components/ui/ActionIcon";
 import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MiseMark } from "../components/ui/BrandLockup";
 import { Screen } from "../components/ui/Screen";
@@ -13,6 +14,7 @@ import { RetryNotice } from "../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, radii, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
+import { DEMO_DATASET } from "../services/demoData";
 import {
   answerAskMise,
   fetchInsights,
@@ -58,7 +60,7 @@ function BackAction() {
 export default function AskMiseScreen() {
   const navigation = useNavigation();
   const { formatCompactCurrency, formatDueTime, formatNumber, locale, t } = useLocale();
-  const { restaurant, user } = useMiseSession();
+  const { canUseDemoMode, continueWithDemo, restaurant, user } = useMiseSession();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -69,6 +71,7 @@ export default function AskMiseScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const seededRef = useRef(false);
+  const chatRef = useRef<ScrollView>(null);
   const requestIdRef = useRef(0);
   const askGenerationRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
@@ -129,6 +132,12 @@ export default function AskMiseScreen() {
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
   const visibleInsights = loadedRestaurantId === restaurant?.id ? insights : [];
 
+  const revealLatestMessage = useCallback((animated = true) => {
+    requestAnimationFrame(() => {
+      chatRef.current?.scrollToEnd({ animated });
+    });
+  }, []);
+
   useEffect(() => {
     if (!visibleSummary || !restaurant || seededRef.current) return;
     seededRef.current = true;
@@ -167,11 +176,13 @@ export default function AskMiseScreen() {
         priorities: reply.showPriorities ? reply.priorities : undefined
       }
     ]);
+    revealLatestMessage(false);
   }, [
     formatCompactCurrency,
     formatNumber,
     locale,
     restaurant,
+    revealLatestMessage,
     t,
     user?.name,
     visibleInsights,
@@ -188,6 +199,7 @@ export default function AskMiseScreen() {
       setAsking(true);
       setInput("");
       setMessages((current) => [...current, { id: `u-${Date.now()}`, role: "user", text: trimmed }]);
+      revealLatestMessage();
 
       try {
         const reply = answerAskMise({
@@ -206,10 +218,12 @@ export default function AskMiseScreen() {
         if (generation !== askGenerationRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
         setThinking({ steps: reply.thinkingSteps, revealedCount: 0 });
+        revealLatestMessage();
         for (let index = 0; index < reply.thinkingSteps.length; index += 1) {
           await delay(THINK_STEP_MS);
           if (generation !== askGenerationRef.current || activeRestaurantIdRef.current !== restaurantId) return;
           setThinking({ steps: reply.thinkingSteps, revealedCount: index + 1 });
+          revealLatestMessage();
         }
 
         await delay(THINK_HOLD_MS);
@@ -225,6 +239,7 @@ export default function AskMiseScreen() {
             priorities: reply.showPriorities ? reply.priorities : undefined
           }
         ]);
+        revealLatestMessage();
       } catch (askError) {
         if (generation !== askGenerationRef.current || activeRestaurantIdRef.current !== restaurantId) return;
         captureMiseError(askError, { flow: "ask_mise", operation: "ask", restaurant_id: restaurantId });
@@ -237,6 +252,7 @@ export default function AskMiseScreen() {
             text: t("ask.answer.error")
           }
         ]);
+        revealLatestMessage();
       } finally {
         if (generation === askGenerationRef.current) setAsking(false);
       }
@@ -247,16 +263,37 @@ export default function AskMiseScreen() {
       formatNumber,
       locale,
       restaurant,
+      revealLatestMessage,
       t,
       visibleInsights,
       visibleSummary
     ]
   );
 
+  const openWorkspace = useCallback(async () => {
+    if (!canUseDemoMode) {
+      router.replace("/setup");
+      return;
+    }
+    await continueWithDemo({
+      preset: DEMO_DATASET.id,
+      name: DEMO_DATASET.restaurant.name,
+      cuisine_type: DEMO_DATASET.restaurant.cuisineType,
+      posProvider: DEMO_DATASET.defaultPosProvider
+    });
+    router.replace("/ask-mise");
+  }, [canUseDemoMode, continueWithDemo]);
+
   if (!restaurant) {
     return (
       <Screen title={t("ask.title")} titleAlign="center" leadingAction={<BackAction />}>
         <EmptyState title={t("tasks.noRestaurant.title")} body={t("ask.noRestaurant.body")} />
+        <Button
+          title={t(canUseDemoMode ? "workspace.none.demoAction" : "workspace.none.setupAction")}
+          onPress={() => void openWorkspace()}
+          fullWidth
+          style={styles.emptyButton}
+        />
       </Screen>
     );
   }
@@ -293,7 +330,11 @@ export default function AskMiseScreen() {
         ) : null}
 
         <ScrollView
+          ref={chatRef}
           contentContainerStyle={styles.chatContent}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => revealLatestMessage(messages.length > 3 || Boolean(thinking))}
           showsVerticalScrollIndicator={false}
           style={styles.chat}
         >
@@ -545,5 +586,8 @@ const styles = StyleSheet.create({
   },
   sendButtonReady: {
     backgroundColor: colors.accent
+  },
+  emptyButton: {
+    marginTop: 12
   }
 });

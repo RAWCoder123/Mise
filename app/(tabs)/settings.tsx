@@ -581,7 +581,11 @@ export default function SettingsScreen() {
 function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
-      <SectionHeader eyebrow={title} title="" />
+      {/* Sentence-case ink, not a red uppercase eyebrow. Four red headings down
+          one settings page is exactly the "every heading is red" failure the
+          brief calls out — red is reserved for the primary action, the active
+          tab, and genuinely urgent state. */}
+      <SectionHeader title={title} />
       <View style={styles.sectionSurface}>{children}</View>
     </View>
   );

@@ -460,6 +460,49 @@ async function verifyLocalizedLayouts(cdp, localeLabel) {
   await navigateAndMeasure(cdp, "/settings/language", []);
 }
 
+async function runAskMiseInteractionQa(cdp) {
+  console.log("Mise Ask interaction QA: type question -> thinking -> visible grounded answer");
+  await navigateAndMeasure(cdp, "/ask-mise", []);
+  await waitForBrowserCondition(
+    cdp,
+    "document.body.innerText.includes('What are my top priorities today?') && Boolean(document.querySelector('[aria-label=\"Ask Mise a question\"]'))",
+    "seeded Ask Mise conversation"
+  );
+
+  const question = "How are sales today?";
+  await setInputByAriaLabel(cdp, "Ask Mise a question", question);
+  await clickByAriaLabel(cdp, "Send question");
+  await waitForBrowserCondition(
+    cdp,
+    "document.body.innerText.includes('Sales today are') && document.body.innerText.includes('Top seller so far')",
+    "grounded Ask Mise sales answer",
+    15000
+  );
+
+  const answerGeometry = await evaluateValue(
+    cdp,
+    `(() => {
+      const node = Array.from(document.querySelectorAll('*')).find((entry) =>
+        entry.children.length === 0 && (entry.textContent || '').includes('Sales today are')
+      );
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom, viewport: window.innerHeight };
+    })()`
+  );
+  if (
+    !answerGeometry ||
+    answerGeometry.top < 0 ||
+    answerGeometry.bottom > answerGeometry.viewport
+  ) {
+    throw new Error(
+      "Ask Mise answered outside the visible chat viewport: " + JSON.stringify(answerGeometry)
+    );
+  }
+
+  console.log("Mise Ask interaction QA passed.");
+}
+
 async function runOrderInteractionQa(cdp) {
   console.log("Mise core interaction QA: initialize -> phase brief -> inventory -> Gmail simulation -> orders -> recipes -> insights -> POS -> reset");
   await evaluateValue(cdp, "localStorage.clear(); true");
@@ -530,6 +573,8 @@ async function runOrderInteractionQa(cdp) {
     "document.body.innerText.includes('App language') && Boolean(document.querySelector('[aria-label=\"Use English for Mise\"]'))",
     "persisted restored English preference"
   );
+
+  await runAskMiseInteractionQa(cdp);
 
   await navigateAndMeasure(cdp, "/more/daily-brief", []);
   await waitForBrowserCondition(

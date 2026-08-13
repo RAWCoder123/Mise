@@ -657,7 +657,11 @@ export default function OrdersScreen() {
                   style={({ pressed }) => [styles.pendingCard, pressed && styles.plusButtonPressed]}
                 >
                   <View style={styles.pendingCopy}>
-                    <Text style={styles.pendingTitle}>{t("orders.review.title")}</Text>
+                    <Text style={styles.pendingTitle} numberOfLines={1}>
+                      {groupedRecommendations.length === 1
+                        ? groupedRecommendations[0]?.[0]
+                        : t("orders.review.title")}
+                    </Text>
                     <Text style={styles.pendingBody}>
                       {t(
                         visibleRecommendations.length === 1
@@ -667,7 +671,7 @@ export default function OrdersScreen() {
                       )}
                     </Text>
                   </View>
-                  <Badge label={t("orders.lane.review")} tone="caution" />
+                  <Badge label={t("orders.ops.WaitingForApproval")} tone="neutral" />
                 </Pressable>
               ) : null}
 
