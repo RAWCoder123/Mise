@@ -1,4 +1,11 @@
-# Implementation decisions
+# Implementation decisions — HISTORICAL
+
+Status: **SUPERSEDED**
+
+> Historical document.
+> This file describes Mise before repository consolidation.
+> Do not use it as the current implementation source of truth.
+> Current state: `docs/implementation/STATE.md`.
 
 ## 2026-08-05 — Integration trunk is local branch + dirty tree, not PR #4 alone
 

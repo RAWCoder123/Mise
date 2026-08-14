@@ -1,10 +1,18 @@
 # Mise Agent Guide
 
-## Authoritative product + implementation state
-- Master product/engineering spec: `docs/product/mise-operational-backend-master.md`
-- Claude principal prompt / handoff: `docs/implementation/CLAUDE_CONSOLE_AGENT_PROMPT.md`, `docs/implementation/CLAUDE_HANDOFF.md`
-- Living status: `docs/implementation/STATE.md`, `docs/implementation/DECISIONS.md`, `docs/implementation/PR_INTEGRATION_PLAN.md`
-- UI references: `docs/design/references/`
+## Source of Truth
+- The latest fetched `origin/main` is the sole authoritative implementation baseline.
+- Current implementation status: `docs/implementation/STATE.md`.
+- Master product/engineering spec: `docs/product/mise-operational-backend-master.md`.
+- UI references: `docs/design/references/`.
+- `docs/implementation/DECISIONS.md`, `PR_INTEGRATION_PLAN.md`, `CLAUDE_HANDOFF.md`, `CLAUDE_CONSOLE_AGENT_PROMPT.md`, and `AGENT_KIT_README.md` are historical or superseded.
+
+## Before Work
+- Run `git fetch origin`, switch to `main`, and run `git pull --ff-only origin main` before creating a task branch.
+- If the current worktree is dirty, preserve it; do not discard, reset, or overwrite it. Use a separate clean worktree when needed.
+- Do not resume or merge wholesale from `rescue/*`, `split/*`, `cursor/initial-mise-import`, or `cursor/mise-product-inspection-*`.
+- Re-evaluate any historical idea against current `origin/main` and implement it as a fresh, narrow PR.
+- Use one designated writer for a change set. Other agents may inspect or review, but must not edit the same paths concurrently.
 
 ## Product Direction
 - Mise is a mobile-first operations system for independent restaurants.
@@ -20,7 +28,8 @@
 
 ## Backend Standards
 - Keep screen-facing service APIs stable in `services/miseService.ts`.
-- Put pure business logic in `services/domain/`, data access in `services/repositories/`, and input normalization in `services/miseValidation.ts`.
+- Keep pure business rules in `services/domain/`, orchestration in `services/application/`, screen-facing formatting in `services/presentation/`, data access in `services/repositories/`, and external provider boundaries in `services/integrations/`.
+- Put input normalization in `services/miseValidation.ts`.
 - Keep restaurant-specific identity on the tenant model: `brand_color`, `accent_color`, `logo_url`, `service_style`, `timezone`, `currency`, and `operational_profile`.
 - Use `services/integrations/` for POS adapter contracts and `services/ai/` for structured insight contracts; do not put provider secrets or OpenAI keys in the Expo client.
 - Preserve local demo mode whenever changing Supabase-backed behavior.

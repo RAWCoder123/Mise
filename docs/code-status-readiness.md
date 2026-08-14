@@ -1,4 +1,11 @@
-# Mise Code And Readiness Status
+# Mise Code And Readiness Status — HISTORICAL
+
+Status: **SUPERSEDED**
+
+> Historical document.
+> This file describes Mise before repository consolidation.
+> Do not use it as the current implementation source of truth.
+> Current state: `docs/implementation/STATE.md`.
 
 Last updated: July 19, 2026
 

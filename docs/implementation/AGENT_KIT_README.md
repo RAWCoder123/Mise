@@ -1,4 +1,11 @@
-# Mise Claude Agent Kit
+# Mise Claude Agent Kit — HISTORICAL
+
+Status: **SUPERSEDED**
+
+> Historical document.
+> This file describes Mise before repository consolidation.
+> Do not use it as the current implementation source of truth.
+> Current state: `docs/implementation/STATE.md`.
 
 1. Clone or open `RAWCoder123/Mise` locally.
 2. Copy `CLAUDE_CONSOLE_AGENT_PROMPT.md` and `MISE_OPERATIONAL_BACKEND_MASTER_PROMPT(1).md` into the repository root.

@@ -1,4 +1,11 @@
-# Mise Code Review & Improvement Plan — 2026-07-21
+# Mise Code Review & Improvement Plan — 2026-07-21 — HISTORICAL
+
+Status: **SUPERSEDED**
+
+> Historical document.
+> This file describes Mise before repository consolidation.
+> Do not use it as the current implementation source of truth.
+> Current state: `docs/implementation/STATE.md`.
 
 Shared handoff document for engineering agents (Cursor / Codex) and humans.
 Source: full-codebase review of the 2026-07-21 snapshot. Follow `AGENTS.md`

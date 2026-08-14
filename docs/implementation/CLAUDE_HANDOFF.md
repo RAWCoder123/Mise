@@ -1,4 +1,11 @@
-# Claude handoff — start here
+# Claude handoff — HISTORICAL
+
+Status: **SUPERSEDED**
+
+> Historical document.
+> This file describes Mise before repository consolidation.
+> Do not use it as the current implementation source of truth.
+> Current state: `docs/implementation/STATE.md`.
 
 Paste `docs/implementation/CLAUDE_CONSOLE_AGENT_PROMPT.md` into Claude Console from the repo root, then read this file before changing code.
 
