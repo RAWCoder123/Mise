@@ -1,4 +1,11 @@
-# Mise — Claude Console Principal Implementation Agent Prompt
+# Mise — Claude Console Principal Implementation Agent Prompt — HISTORICAL
+
+Status: **SUPERSEDED**
+
+> Historical document.
+> This file describes Mise before repository consolidation.
+> Do not use it as the current implementation source of truth.
+> Current state: `docs/implementation/STATE.md`.
 
 Paste this entire prompt into Claude Console/Claude Code from the root of the Mise repository. Place the master product document and UI reference images in the workspace before starting when possible.
 
