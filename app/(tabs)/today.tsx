@@ -254,11 +254,12 @@ export default function TodayScreen() {
   }, [visibleSummary]);
 
   const timelineGroups = useMemo(() => {
-    return GROUP_ORDER
+    const focusedOrder = [focus, ...GROUP_ORDER.filter((key) => key !== focus)];
+    return focusedOrder
       .map((key) => ({
         key,
         label: t(groupLabelKey(key)),
-        items: grouped[key].slice(0, GROUP_CAPS[key]),
+        items: key === focus ? grouped[key] : grouped[key].slice(0, GROUP_CAPS[key]),
         total: grouped[key].length
       }))
       .filter((group) => group.total > 0 || group.key === focus);

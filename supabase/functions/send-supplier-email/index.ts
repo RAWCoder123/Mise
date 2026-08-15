@@ -179,7 +179,8 @@ Deno.serve(async (req) => {
       const response = claimOutcomeResponse(claimData);
       if (
         response.outcome !== "already_sent" &&
-        response.outcome !== "in_progress"
+        response.outcome !== "in_progress" &&
+        response.outcome !== "approval_required"
       ) {
         await recordMiseActionFailure(
           securitySupabase,
@@ -489,18 +490,10 @@ async function ensureSupplierSendApproved(
     );
   }
   if (["prepared", "waiting_for_approval", "failed"].includes(status)) {
-    const { error: decisionError } = await supabase.rpc("decide_mise_action", {
-      p_restaurant_id: restaurantId,
-      p_action_id: data.id,
-      p_decision: "approved",
-    });
-    if (decisionError) {
-      throw new HttpError(
-        409,
-        "Supplier order approval could not be recorded.",
-      );
-    }
-    return;
+    throw new HttpError(
+      409,
+      "Review the supplier recipient and explicitly approve this action before sending.",
+    );
   }
   if (status !== "approved" && status !== "executed") {
     throw new HttpError(
@@ -606,6 +599,19 @@ function claimOutcomeResponse(value: unknown) {
         status: "delivery_requires_review",
         message:
           "Review the prior delivery before sending again to avoid a duplicate email.",
+      },
+    };
+  }
+  if (outcome === "approval_required") {
+    return {
+      outcome,
+      eventType: "blocked" as const,
+      action: "supplier_email_approval_required",
+      status: 409,
+      body: {
+        status: "approval_required",
+        message:
+          "Review the current sender, recipient, and subject, then approve again before sending.",
       },
     };
   }

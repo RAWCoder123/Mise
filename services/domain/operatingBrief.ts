@@ -36,6 +36,7 @@ export interface OperatingBriefApprovalCard {
   id: string;
   recommendationId: string | null;
   actionId: string | null;
+  orderId?: string | null;
   findingId: string | null;
   title: string;
   decision: string;
@@ -264,6 +265,7 @@ function buildApprovalCards(
       id: `approval_rec_${recommendation.id}`,
       recommendationId: recommendation.id,
       actionId: null,
+      orderId: null,
       findingId: null,
       title: `Approve ${recommendation.item_name} reorder`,
       decision: `Approve ${recommendation.recommended_quantity} ${recommendation.unit} from ${recommendation.supplier_name}`,
@@ -312,6 +314,7 @@ function buildApprovalCards(
       id: `approval_action_${action.id}`,
       recommendationId: action.recommendationId,
       actionId: action.id,
+      orderId: typeof impact.orderId === "string" ? impact.orderId : null,
       findingId: null,
       title,
       decision: `Approve prepared action (${action.actionType})`,
@@ -341,6 +344,7 @@ function buildApprovalCards(
       id: `approval_finding_${finding.id}`,
       recommendationId: null,
       actionId: null,
+      orderId: null,
       findingId: finding.id,
       title: finding.title,
       decision: finding.recommendedAction,

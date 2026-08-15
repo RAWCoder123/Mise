@@ -17,6 +17,7 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   connectRestaurantSquare,
   disconnectRestaurantSquare,
+  fetchPilotReadiness,
   fetchSquarePosIntegration,
   isSquareIntegrationError,
   syncSquarePosSales
@@ -25,6 +26,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import type { PilotReadiness, PilotReadinessAreaId } from "../../services/domain/pilotReadiness";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import type { PosIntegration, PosProvider } from "../../types/mise";
 
@@ -42,6 +44,8 @@ export default function POSConnectionScreen() {
   const [loadingProvider, setLoadingProvider] = useState<PosProvider | null>(null);
   const [message, setMessage] = useState<PosMessage | null>(null);
   const [integration, setIntegration] = useState<PosIntegration | null>(null);
+  const [pilotReadiness, setPilotReadiness] = useState<PilotReadiness | null>(null);
+  const [readinessLoadError, setReadinessLoadError] = useState(false);
   const [loadingIntegration, setLoadingIntegration] = useState(!isDemoMode);
   const [busyAction, setBusyAction] = useState<"connect" | "disconnect" | "sync" | null>(null);
   const [hubLoadError, setHubLoadError] = useState(false);
@@ -52,6 +56,7 @@ export default function POSConnectionScreen() {
     message: string;
   } | null>(null);
   const requestIdRef = useRef(0);
+  const readinessRequestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
   const canManage = canDeleteRestaurantData(memberships, restaurant?.id);
@@ -60,6 +65,8 @@ export default function POSConnectionScreen() {
   useEffect(() => {
     requestIdRef.current += 1;
     setIntegration(null);
+    setPilotReadiness(null);
+    setReadinessLoadError(false);
     setLoadedRestaurantId(null);
     setHubLoadError(false);
     setNotice(null);
@@ -72,6 +79,23 @@ export default function POSConnectionScreen() {
       setLoadingIntegration(false);
     }
   }, [isDemoMode, restaurant?.id]);
+
+  const loadPilotReadiness = useCallback(async () => {
+    if (!restaurant) return;
+    const restaurantId = restaurant.id;
+    const requestId = ++readinessRequestIdRef.current;
+    try {
+      const next = await fetchPilotReadiness(restaurantId);
+      if (requestId !== readinessRequestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setPilotReadiness(next);
+      setReadinessLoadError(false);
+    } catch {
+      if (requestId === readinessRequestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        setPilotReadiness(null);
+        setReadinessLoadError(true);
+      }
+    }
+  }, [restaurant?.id]);
 
   const loadIntegration = useCallback(async (showLoading = true) => {
     if (isDemoMode || !restaurant) {
@@ -123,7 +147,8 @@ export default function POSConnectionScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadIntegration(false);
-    }, [loadIntegration])
+      void loadPilotReadiness();
+    }, [loadIntegration, loadPilotReadiness])
   );
 
   useEffect(() => {
@@ -163,6 +188,7 @@ export default function POSConnectionScreen() {
       await connectDemoPOS(provider);
       if (restaurantId && activeRestaurantIdRef.current !== restaurantId) return;
       setMessage({ key: "pos.message.demoLoaded", values: { provider } });
+      await loadPilotReadiness();
     } catch {
       if (restaurantId && activeRestaurantIdRef.current !== restaurantId) return;
       setMessage({ key: "pos.error.demoLoad" });
@@ -198,6 +224,7 @@ export default function POSConnectionScreen() {
           title: t("pos.square.connectedTitle"),
           message: t("pos.square.connectedBody")
         });
+        await loadPilotReadiness();
       }
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -228,6 +255,7 @@ export default function POSConnectionScreen() {
         message: t("pos.square.disconnectedBody")
       });
       await loadIntegration(false);
+      await loadPilotReadiness();
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
@@ -264,6 +292,7 @@ export default function POSConnectionScreen() {
         message: t("pos.square.syncBody", { count: String(result.recordsProcessed) })
       });
       await loadIntegration(false);
+      await loadPilotReadiness();
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
@@ -357,6 +386,31 @@ export default function POSConnectionScreen() {
             message={notice.message}
             actionLabel={hubLoadError ? t("common.retry") : undefined}
             onAction={hubLoadError ? () => void loadIntegration(true) : undefined}
+          />
+        ) : null}
+
+        {readinessLoadError ? (
+          <StatusNotice
+            tone="danger"
+            title={t("pos.readiness.unavailableTitle")}
+            message={t("pos.readiness.unavailableBody")}
+            actionLabel={t("common.retry")}
+            onAction={() => void loadPilotReadiness()}
+          />
+        ) : pilotReadiness ? (
+          <StatusNotice
+            tone={pilotReadiness.canSend ? "success" : "warning"}
+            title={pilotReadiness.canSend
+              ? t("pos.readiness.readyTitle")
+              : t("pos.readiness.attentionTitle")}
+            message={pilotReadiness.canSend
+              ? t("pos.readiness.readyBody")
+              : t("pos.readiness.attentionBody", {
+                  areas: pilotReadiness.areas
+                    .filter((area) => area.status !== "ready")
+                    .map((area) => pilotReadinessAreaLabel(area.id, t))
+                    .join(", ")
+                })}
           />
         ) : null}
 
@@ -467,6 +521,19 @@ export default function POSConnectionScreen() {
       </View>
     </Screen>
   );
+}
+
+function pilotReadinessAreaLabel(
+  area: PilotReadinessAreaId,
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  switch (area) {
+    case "pos_sales": return t("pos.readiness.area.posSales");
+    case "inventory_counts": return t("pos.readiness.area.inventoryCounts");
+    case "recipe_coverage": return t("pos.readiness.area.recipeCoverage");
+    case "supplier_routing": return t("pos.readiness.area.supplierRouting");
+    case "email_delivery": return t("pos.readiness.area.emailDelivery");
+  }
 }
 
 function ProviderOption({

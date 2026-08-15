@@ -198,6 +198,9 @@ export default function HomeScreen() {
           <Text style={styles.greetingSubtext} numberOfLines={2}>
             {t("home.greeting.subtext", { restaurant: restaurant.name })}
           </Text>
+          {visibleBrief?.demoLabeled ? (
+            <Text style={styles.demoLabel}>{t("home.demo.label")}</Text>
+          ) : null}
         </View>
 
         {error ? (
@@ -265,26 +268,24 @@ export default function HomeScreen() {
             t={t}
             onApprove={async (card) => {
               if (!restaurant || approvingId) return;
-              if (!card.recommendationId && !card.actionId) {
-                router.push("/orders");
+              if (!card.recommendationId) {
+                if (card.actionId && card.orderId) {
+                  router.push({ pathname: "/orders/[id]", params: { id: card.orderId } });
+                } else {
+                  router.push("/orders");
+                }
                 return;
               }
               setApprovingId(card.id);
               setApprovalNotice(null);
               try {
-                const decisionResult = await approveOperatingDecision(restaurant.id, {
+                await approveOperatingDecision(restaurant.id, {
                   recommendationId: card.recommendationId,
                   actionId: card.actionId,
                   quantity: card.quantity ?? undefined
                 });
                 if (activeRestaurantIdRef.current !== restaurant.id) return;
-                setApprovalNotice(
-                  t(
-                    decisionResult.kind === "action_executed"
-                      ? "home.approvals.sent"
-                      : "home.approvals.approved"
-                  )
-                );
+                setApprovalNotice(t("home.approvals.approved"));
                 await load();
               } catch (approveError) {
                 captureMiseError(approveError, {
@@ -379,7 +380,7 @@ function ApprovalsSection({
         <Text style={styles.emptyCopy}>{t("home.approvals.empty")}</Text>
       ) : (
         cards.map((card) => {
-          const canOneTap = Boolean(card.recommendationId || card.actionId);
+          const canOneTap = Boolean(card.recommendationId);
           return (
             <View key={card.id} style={styles.briefCard}>
               <Text style={styles.cardTitle}>{card.title}</Text>
