@@ -1784,6 +1784,9 @@ export function createLocalDemoRepository(): MiseRepository {
         if (!connection || connection.status !== "connected") {
           throw new GmailIntegrationError("gmail_not_connected", "Connect the demo Gmail sender before sending this order.");
         }
+        if (!connection.sender_email) {
+          throw new GmailIntegrationError("gmail_not_connected", "Verify the demo Gmail sender before sending this order.");
+        }
         const recipient = state.supplierRecipients.find(
           (entry) =>
             entry.restaurant_id === restaurantId &&
@@ -1805,17 +1808,32 @@ export function createLocalDemoRepository(): MiseRepository {
           (entry) => entry.idempotencyKey === actionKey
         );
         if (!existingAction) {
-          existingAction = createPreparedAction({
-            restaurantId,
-            actionType: "send_supplier_order",
-            idempotencyKey: actionKey,
-            expectedImpact: { supplierName: order.supplier_name, orderId },
-            now: order.created_at
-          });
-          state.miseActions = [...(state.miseActions ?? []), existingAction];
+          throw new Error("This supplier order has no prepared action. Rebuild the draft before sending.");
         }
-        if (["rejected", "cancelled", "reversed", "unverified"].includes(existingAction.status)) {
-          throw new Error("This supplier order action is not approved for sending.");
+        if (existingAction.status !== "approved" && existingAction.status !== "executed") {
+          throw new GmailIntegrationError("approval_required", "This supplier order action is not approved for sending.");
+        }
+        if (existingAction.status !== "executed") {
+          const restaurant = state.restaurants.find((entry) => entry.id === restaurantId);
+          const approvedEnvelope = existingAction.expectedImpact?.approvedEnvelope;
+          const currentSubject = restaurant
+            ? `${restaurant.name} order for ${order.supplier_name}`
+            : "";
+          const envelopeMatches =
+            approvedEnvelope !== null &&
+            typeof approvedEnvelope === "object" &&
+            !Array.isArray(approvedEnvelope) &&
+            String((approvedEnvelope as Record<string, unknown>).from ?? "").trim().toLowerCase() ===
+              connection.sender_email.trim().toLowerCase() &&
+            String((approvedEnvelope as Record<string, unknown>).to ?? "").trim().toLowerCase() ===
+              recipient.email.trim().toLowerCase() &&
+            String((approvedEnvelope as Record<string, unknown>).subject ?? "") === currentSubject;
+          if (!envelopeMatches) {
+            throw new GmailIntegrationError(
+              "approval_required",
+              "Sender, recipient, or subject changed. Review the current delivery details before sending."
+            );
+          }
         }
 
         const wasAlreadySent = order.status === "sent" || order.status === "completed";
@@ -1823,16 +1841,10 @@ export function createLocalDemoRepository(): MiseRepository {
         const providerMessageId = `demo-gmail:${orderId}`;
         if (!wasAlreadySent) {
           appendDemoSupplierOrderActivity(state, result.order, { previousStatus: "draft" });
-          const approvedAction =
-            existingAction.status === "prepared" ||
-            existingAction.status === "waiting_for_approval" ||
-            existingAction.status === "failed"
-              ? markApproved(existingAction, DEMO_USER_ID)
-              : existingAction;
           const executedAction =
-            approvedAction.status === "executed"
-              ? approvedAction
-              : markExecuted(approvedAction, {
+            existingAction.status === "executed"
+              ? existingAction
+              : markExecuted(existingAction, {
                   supplierOrderId: orderId,
                   provider: "gmail",
                   providerMessageId,
@@ -2337,6 +2349,17 @@ export function createLocalDemoRepository(): MiseRepository {
         .slice(0, options.limit ?? 100);
     },
 
+    async fetchSupplierSendAction(restaurantId, orderId) {
+      const state = await readReadyDemoState(restaurantId);
+      return (state.miseActions ?? []).find(
+        (action) =>
+          action.restaurantId === restaurantId &&
+          action.actionType === "send_supplier_order" &&
+          (action.expectedImpact?.orderId === orderId ||
+            action.idempotencyKey.endsWith(`send_supplier_order:${orderId}`))
+      ) ?? null;
+    },
+
     async decideMiseAction(restaurantId, actionId, decision) {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, restaurantId);
@@ -2394,6 +2417,92 @@ export function createLocalDemoRepository(): MiseRepository {
           resolvedBy: DEMO_USER_ID
         };
         state.activityEvents = [...(state.activityEvents ?? []), decisionEvent];
+        return next;
+      });
+    },
+
+    async approveSupplierSendEnvelope(restaurantId, actionId, orderId, envelope) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const action = (state.miseActions ?? []).find(
+          (entry) => entry.restaurantId === restaurantId && entry.id === actionId
+        );
+        const order = state.supplierOrders.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
+        );
+        if (!action || action.actionType !== "send_supplier_order") {
+          throw new GmailIntegrationError("approval_required", "This supplier order has no prepared send action.");
+        }
+        if (
+          action.expectedImpact?.orderId !== orderId &&
+          !action.idempotencyKey.endsWith(`send_supplier_order:${orderId}`)
+        ) {
+          throw new GmailIntegrationError("approval_required", "The prepared send action does not match this supplier order.");
+        }
+        if (!order || order.status !== "draft") {
+          throw new GmailIntegrationError("approval_required", "Only a draft supplier order can be approved for sending.");
+        }
+        if (!["prepared", "waiting_for_approval", "approved", "failed"].includes(action.status)) {
+          throw new GmailIntegrationError("approval_required", "This supplier order must be reviewed again before sending.");
+        }
+
+        const restaurant = state.restaurants.find((entry) => entry.id === restaurantId);
+        const connection = state.emailConnections.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.provider === "gmail"
+        );
+        const recipient = state.supplierRecipients.find(
+          (entry) =>
+            entry.restaurant_id === restaurantId &&
+            entry.supplier_name.trim().toLowerCase() === order.supplier_name.trim().toLowerCase()
+        );
+        const currentEnvelope = {
+          from: connection?.sender_email?.trim().toLowerCase() ?? "",
+          to: recipient?.email?.trim().toLowerCase() ?? "",
+          subject: restaurant ? `${restaurant.name} order for ${order.supplier_name}` : ""
+        };
+        const reviewedEnvelope = {
+          from: envelope.from.trim().toLowerCase(),
+          to: envelope.to.trim().toLowerCase(),
+          subject: envelope.subject.trim()
+        };
+        if (
+          connection?.status !== "connected" ||
+          !currentEnvelope.from ||
+          !currentEnvelope.to ||
+          !currentEnvelope.subject ||
+          currentEnvelope.from !== reviewedEnvelope.from ||
+          currentEnvelope.to !== reviewedEnvelope.to ||
+          currentEnvelope.subject !== reviewedEnvelope.subject
+        ) {
+          throw new GmailIntegrationError(
+            "approval_required",
+            "Sender, recipient, or subject changed. Review the current delivery details before sending."
+          );
+        }
+
+        const now = new Date().toISOString();
+        const approved = action.status === "approved"
+          ? action
+          : markApproved(action, DEMO_USER_ID, now);
+        const next = {
+          ...approved,
+          approvedBy: DEMO_USER_ID,
+          expectedImpact: {
+            ...(approved.expectedImpact ?? {}),
+            approvedEnvelope: { ...currentEnvelope, reviewedAt: now }
+          },
+          updatedAt: now
+        };
+        state.miseActions = (state.miseActions ?? []).map((entry) =>
+          entry.id === actionId ? next : entry
+        );
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_send_envelope_approved",
+          entity_table: "mise_actions",
+          entity_id: actionId,
+          metadata: { supplier_order_id: orderId, simulated: true }
+        });
         return next;
       });
     },

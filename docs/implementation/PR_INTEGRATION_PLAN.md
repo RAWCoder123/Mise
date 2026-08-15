@@ -1,7 +1,9 @@
 # PR integration plan
 
-Status: **draft strategy from verified git + GitHub** (2026-08-05)  
+Status: **historical / superseded** (2026-08-14)
 Decision owner: Claude principal implementer (after user approval to commit/merge)
+
+PR #127 and the operational backend integration are now on `main` at `e3d9f3472ecd90fa0a8392fb9a71c5cb5ff1d1ec`. Do not execute this old rescue/stack sequence. Current work proceeds on `pilot/first-restaurant-operating-loop`; see `docs/implementation/STATE.md` and `docs/pilot/FIRST_RESTAURANT_GAP_AUDIT.md`.
 
 ## Goal
 

@@ -1,5 +1,6 @@
 import type { MiseAction } from "../domain/miseActions";
-import { approvePurchaseRecommendation, sendSupplierOrderEmail } from "./orders";
+import type { SupplierSendEnvelope } from "../repositories/repositoryContracts";
+import { approvePurchaseRecommendation } from "./orders";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -17,6 +18,24 @@ export async function fetchMiseActions(
   return actions;
 }
 
+export async function fetchSupplierSendAction(restaurantId: string, orderId: string) {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedOrderId = orderId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!normalizedOrderId) throw new Error("Missing supplier order.");
+  if (!repository.fetchSupplierSendAction) {
+    throw new Error("Supplier send action lookup is unavailable.");
+  }
+  const action = await repository.fetchSupplierSendAction(
+    normalizedRestaurantId,
+    normalizedOrderId
+  );
+  if (action && action.restaurantId !== normalizedRestaurantId) {
+    throw new Error("Supplier send action failed restaurant scope validation.");
+  }
+  return action;
+}
+
 export async function decideMiseAction(
   restaurantId: string,
   actionId: string,
@@ -31,10 +50,46 @@ export async function decideMiseAction(
   return action;
 }
 
+export async function approveSupplierSendEnvelope(
+  restaurantId: string,
+  actionId: string,
+  orderId: string,
+  envelope: SupplierSendEnvelope
+) {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedActionId = actionId.trim();
+  const normalizedOrderId = orderId.trim();
+  const normalizedEnvelope = {
+    from: envelope.from.trim().toLowerCase(),
+    to: envelope.to.trim().toLowerCase(),
+    subject: envelope.subject.trim()
+  };
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!normalizedActionId) throw new Error("Missing supplier send action.");
+  if (!normalizedOrderId) throw new Error("Missing supplier order.");
+  if (!normalizedEnvelope.from || !normalizedEnvelope.to || !normalizedEnvelope.subject) {
+    throw new Error("Supplier send approval requires the reviewed sender, recipient, and subject.");
+  }
+  if (!repository.approveSupplierSendEnvelope) {
+    throw new Error("Supplier send envelope approval is unavailable.");
+  }
+  const action = await repository.approveSupplierSendEnvelope(
+    normalizedRestaurantId,
+    normalizedActionId,
+    normalizedOrderId,
+    normalizedEnvelope
+  );
+  if (action.restaurantId !== normalizedRestaurantId || action.id !== normalizedActionId) {
+    throw new Error("Supplier send approval failed restaurant scope validation.");
+  }
+  return action;
+}
+
 /**
  * One-tap Home/Orders approval path:
  * - recommendation approvals use the existing purchase-recommendation workflow
- * - prepared Mise actions use decide_mise_action
+ * - prepared Mise actions record the explicit decision only; external execution
+ *   stays in the destination-review workflow that owns the final send.
  */
 export async function approveOperatingDecision(
   restaurantId: string,
@@ -50,14 +105,6 @@ export async function approveOperatingDecision(
   }
   if (input.actionId) {
     const action = await decideMiseAction(restaurantId, input.actionId, "approved");
-    if (action.actionType === "send_supplier_order") {
-      const orderId = action.expectedImpact?.orderId;
-      if (typeof orderId !== "string" || !orderId.trim()) {
-        throw new Error("Approved supplier-send action is missing its order reference.");
-      }
-      const sendResult = await sendSupplierOrderEmail(restaurantId, orderId);
-      return { kind: "action_executed" as const, action, sendResult };
-    }
     return { kind: "action" as const, action };
   }
   throw new Error("Approval requires a recommendation or action id.");

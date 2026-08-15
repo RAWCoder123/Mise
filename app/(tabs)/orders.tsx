@@ -27,8 +27,6 @@ import {
   fetchPurchaseRecommendations,
   fetchSupplierOrders,
   fetchSupplierSpendTrend,
-  isGmailIntegrationError,
-  sendSupplierOrderEmail,
   undoPurchaseRecommendationAction,
   type SupplierSpendTrendPoint
 } from "../../services/miseService";
@@ -67,7 +65,6 @@ export default function OrdersScreen() {
   const [quantityErrors, setQuantityErrors] = useState<Record<string, string | undefined>>({});
   const [recommendationActions, setRecommendationActions] =
     useState<Record<string, RecommendationAction | undefined>>(EMPTY_ACTIONS);
-  const [sendingOrderIds, setSendingOrderIds] = useState<Record<string, boolean>>({});
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<StatusNoticeTone>("neutral");
@@ -76,7 +73,6 @@ export default function OrdersScreen() {
   const [loading, setLoading] = useState(true);
 
   const recommendationLocksRef = useRef(new Set<string>());
-  const sendingLocksRef = useRef(new Set<string>());
   const undoLockRef = useRef(false);
   const requestIdRef = useRef(0);
   const loadedRestaurantRef = useRef<string | null>(null);
@@ -145,7 +141,6 @@ export default function OrdersScreen() {
     requestIdRef.current += 1;
     loadedRestaurantRef.current = null;
     recommendationLocksRef.current.clear();
-    sendingLocksRef.current.clear();
     undoLockRef.current = false;
     setRecommendations([]);
     setOrders([]);
@@ -154,7 +149,6 @@ export default function OrdersScreen() {
     setQuantities({});
     setQuantityErrors({});
     setRecommendationActions(EMPTY_ACTIONS);
-    setSendingOrderIds({});
     setUndoAction(null);
     setMessage(null);
     setMessageTone("neutral");
@@ -285,7 +279,6 @@ export default function OrdersScreen() {
   const gmailStatus = visibleEmailConnection?.status ?? "not_connected";
   const gmailIsConnected = gmailStatus === "connected";
   const gmailNeedsAttention = gmailStatus === "needs_reauth" || gmailStatus === "restricted";
-  const canSendOrders = canManage && gmailIsConnected;
   const gmailTitle = usingLocalDemo
     ? t("orders.gmail.demo.title")
     : gmailIsConnected
@@ -321,18 +314,6 @@ export default function OrdersScreen() {
       if (action) return { ...current, [recommendationId]: action };
       const next = { ...current };
       delete next[recommendationId];
-      return next;
-    });
-  }
-
-  function setOrderBusy(orderId: string, busy: boolean) {
-    if (busy) sendingLocksRef.current.add(orderId);
-    else sendingLocksRef.current.delete(orderId);
-
-    setSendingOrderIds((current) => {
-      if (busy) return { ...current, [orderId]: true };
-      const next = { ...current };
-      delete next[orderId];
       return next;
     });
   }
@@ -490,70 +471,6 @@ export default function OrdersScreen() {
     }
   }
 
-  async function sendOrder(order: SupplierOrder) {
-    if (!restaurant || sendingLocksRef.current.has(order.id)) return;
-    if (!actionsEditable) {
-      showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
-      return;
-    }
-    const restaurantId = restaurant.id;
-
-    setOrderBusy(order.id, true);
-    try {
-      const result = await sendSupplierOrderEmail(restaurantId, order.id);
-      if (activeRestaurantIdRef.current !== restaurantId) return;
-      const movedCount = result.orderedRecommendations.length;
-      const wasAlreadySent = result.outcome !== "applied";
-      setUndoAction((current) =>
-        current?.recommendation.supplier_name === order.supplier_name ? null : current
-      );
-      const sendMessage = usingLocalDemo
-        ? wasAlreadySent
-          ? t("orders.notice.send.demo.already", { supplier: order.supplier_name })
-          : t(
-              movedCount === 0
-                ? "orders.notice.send.demo.zero"
-                : movedCount === 1
-                  ? "orders.notice.send.demo.one"
-                  : "orders.notice.send.demo.other",
-              { supplier: order.supplier_name, count: formatNumber(movedCount) }
-            )
-        : wasAlreadySent
-          ? t("orders.notice.send.gmail.already", { supplier: order.supplier_name })
-          : t(
-              movedCount === 0
-                ? "orders.notice.send.gmail.zero"
-                : movedCount === 1
-                  ? "orders.notice.send.gmail.one"
-                  : "orders.notice.send.gmail.other",
-              { supplier: order.supplier_name, count: formatNumber(movedCount) }
-            );
-      showMessage(sendMessage, restaurantId);
-      setLane("sent");
-    } catch (error) {
-      if (activeRestaurantIdRef.current === restaurantId) {
-        let detail = t(usingLocalDemo ? "orders.error.send.demo" : "orders.error.send.gmail");
-        if (isGmailIntegrationError(error)) {
-          if (error.status === "needs_reauth") detail = t("orders.error.send.reauth");
-          else if (error.status === "gmail_not_connected") detail = t("orders.error.send.notConnected");
-          else if (error.status === "supplier_email_missing" || error.status === "supplier_email_invalid") {
-            detail = t("orders.error.send.supplierEmail");
-          } else if (error.status === "delivery_requires_review" || error.status === "in_progress") {
-            detail = t("orders.error.send.review");
-          } else if (error.status === "live_sending_disabled" || error.status === "server_configuration_missing") {
-            detail = t("orders.error.send.disabled");
-          }
-        }
-        showMessage(detail, restaurantId, "danger");
-      }
-    } finally {
-      if (activeRestaurantIdRef.current === restaurantId) {
-        setOrderBusy(order.id, false);
-        await load(false);
-      }
-    }
-  }
-
   return (
     <Screen
       title={t("nav.orders")}
@@ -628,23 +545,7 @@ export default function OrdersScreen() {
                     onOpen={() =>
                       router.push({ pathname: "/orders/[id]", params: { id: order.id } })
                     }
-                    onSend={() => void sendOrder(order)}
-                    showSend={actionsEditable}
-                    canSend={canSendOrders}
-                    sendLabel={t(usingLocalDemo ? "orders.action.simulateSend" : "orders.action.gmailSend")}
-                    busyLabel={t(usingLocalDemo ? "orders.action.simulating" : "orders.action.gmailSending")}
-                    sendAccessibilityLabel={t(
-                      usingLocalDemo
-                        ? "orders.card.simulateSendAccessibility"
-                        : "orders.card.gmailSendAccessibility",
-                      { supplier: order.supplier_name }
-                    )}
-                    sendDisabledHint={
-                      canConnectGmail
-                        ? t("orders.action.sendDisabledOwner")
-                        : t("orders.action.sendDisabledManager")
-                    }
-                    busy={Boolean(sendingOrderIds[order.id])}
+                    showSend={false}
                   />
                 ))
               )}

@@ -145,6 +145,7 @@ function parseSupplierOrderSentWorkflowResponse(data: unknown): SupplierOrderSen
 }
 
 const gmailIntegrationErrorStatuses = new Set<GmailIntegrationErrorStatus>([
+  "approval_required",
   "delivery_requires_review",
   "gmail_not_connected",
   "in_progress",
@@ -1533,6 +1534,23 @@ export function createSupabaseRepository(): MiseRepository {
       return actions;
     },
 
+    async fetchSupplierSendAction(restaurantId, orderId) {
+      const { data, error } = await client
+        .from("mise_actions")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("action_type", "send_supplier_order")
+        .eq("idempotency_key", `send_supplier_order:${orderId}`)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const action = miseActionFromPersistedRow(data as PersistedMiseActionRow);
+      if (action.restaurantId !== restaurantId) {
+        throw new Error("Supplier send action failed restaurant scope validation.");
+      }
+      return action;
+    },
+
     async decideMiseAction(restaurantId, actionId, decision) {
       const { data, error } = await client.rpc("decide_mise_action", {
         p_restaurant_id: restaurantId,
@@ -1545,6 +1563,34 @@ export function createSupabaseRepository(): MiseRepository {
       const action = miseActionFromPersistedRow(row);
       if (action.restaurantId !== restaurantId) {
         throw new Error("Mise action failed restaurant scope validation.");
+      }
+      return action;
+    },
+
+    async approveSupplierSendEnvelope(restaurantId, actionId, orderId, envelope) {
+      const { data, error } = await client.rpc("approve_supplier_send_envelope", {
+        p_restaurant_id: restaurantId,
+        p_action_id: actionId,
+        p_order_id: orderId,
+        p_reviewed_from: envelope.from,
+        p_reviewed_to: envelope.to,
+        p_reviewed_subject: envelope.subject
+      });
+      if (error) {
+        const message = typeof error.message === "string" ? error.message : "";
+        if (message.includes("Supplier send approval required")) {
+          throw new GmailIntegrationError(
+            "approval_required",
+            "Sender, recipient, or subject changed. Review the current delivery details before sending."
+          );
+        }
+        throw error;
+      }
+      const row = (Array.isArray(data) ? data[0] : data) as PersistedMiseActionRow | null;
+      if (!row) throw new Error("Supplier send approval returned an empty response.");
+      const action = miseActionFromPersistedRow(row);
+      if (action.restaurantId !== restaurantId || action.id !== actionId) {
+        throw new Error("Supplier send approval failed restaurant scope validation.");
       }
       return action;
     },

@@ -41,10 +41,10 @@ test("orders keeps staff read-only while preserving review, copy, and detail acc
   assert.match(screen, /canDeleteRestaurantData\(memberships, restaurant\?\.id\)/);
   assert.match(screen, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screen, /readOnly=\{!actionsEditable\}/);
-  assert.match(screen, /showSend=\{actionsEditable\}/);
-  assert.match(screen, /canSend=\{canSendOrders\}/);
+  assert.match(screen, /showSend=\{false\}/);
+  assert.doesNotMatch(screen, /onSend=\{/);
   assert.match(screen, /t\("orders\.readOnly\.title"\)/);
-  assert.ok((screen.match(/if \(!actionsEditable\)/g) ?? []).length >= 4);
+  assert.ok((screen.match(/if \(!actionsEditable\)/g) ?? []).length >= 3);
   assert.match(screen, /onCopy=\{\(\) => void copyOrder\(order\)\}/);
   assert.match(screen, /pathname: "\/orders\/\[id\]"/);
 
@@ -66,7 +66,6 @@ test("recommendation actions validate quantity, lock locally, and reload authori
   assert.match(screen, /parseNumber\(rawQuantity\)/);
   assert.match(screen, /t\("orders\.validation\.quantityRange"/);
   assert.match(screen, /recommendationLocksRef\.current\.has\(recommendation\.id\)/);
-  assert.match(screen, /sendingLocksRef\.current\.has\(order\.id\)/);
   assert.match(screen, /undoLockRef\.current/);
   assert.match(screen, /await load\(false\)/);
   assert.doesNotMatch(screen, /setRecommendations\(\(current\) => \[recommendation/);
@@ -77,24 +76,31 @@ test("recommendation actions validate quantity, lock locally, and reload authori
   assert.match(row, /accessibilityState=\{\{ expanded \}\}/);
 });
 
-test("order list uses the Gmail delivery adapter and never fabricates hosted sends", () => {
+test("order list routes drafts into explicit recipient review before the Gmail delivery adapter", () => {
   const screen = readFileSync("app/(tabs)/orders.tsx", "utf8");
   const detail = readFileSync("app/orders/[id].tsx", "utf8");
   const card = readFileSync("components/SupplierDraftCard.tsx", "utf8");
   const catalog = readFileSync("i18n/catalog.ts", "utf8");
 
-  assert.match(screen, /await sendSupplierOrderEmail\(restaurantId, order\.id\)/);
+  assert.doesNotMatch(screen, /sendSupplierOrderEmail/);
+  assert.match(screen, /showSend=\{false\}/);
   assert.doesNotMatch(screen, /markSupplierOrderSent/);
+  assert.match(detail, /prepareSupplierEmailPayload\(restaurantId, orderId\)/);
+  assert.match(detail, /fetchSupplierSendAction\(restaurantId, orderId\)/);
+  assert.match(detail, /sameDeliveryEnvelope\(emailPayload, refreshedPayload\)/);
+  assert.match(detail, /await approveSupplierSendEnvelope\(/);
+  assert.doesNotMatch(detail, /decideMiseAction/);
   assert.match(detail, /await sendSupplierOrderEmail\(restaurantId, savedOrder\.id\)/);
   assert.doesNotMatch(detail, /markSupplierOrderSent/);
   assert.match(detail, /t\("orders\.detail\.action\.simulate"\)/);
-  assert.match(detail, /t\("orders\.detail\.gmail\.send"\)/);
+  assert.match(detail, /t\("orders\.detail\.gmail\.approveAndSend"\)/);
+  assert.match(detail, /orders\.detail\.review\.from/);
+  assert.match(detail, /orders\.detail\.review\.to/);
+  assert.match(detail, /orders\.detail\.review\.subject/);
   assert.match(detail, /t\("orders\.detail\.notice\.demoSentBody"\)/);
   assert.match(catalog, /Mise updated the demo workflow\. No email was sent\./);
   assert.match(detail, /operator_note: operatorNote\.trim\(\) \|\| null/);
   assert.match(detail, /order\.status !== "draft"/);
   assert.match(card, /title=\{busy \? resolvedBusyLabel : resolvedSendLabel\}/);
-  assert.match(screen, /sendLabel=\{t\(usingLocalDemo \? "orders\.action\.simulateSend" : "orders\.action\.gmailSend"\)\}/);
-  assert.match(screen, /orders\.notice\.send\.demo\.(?:already|zero|one|other)/);
   assert.doesNotMatch(card, /Send email/i);
 });

@@ -1,11 +1,35 @@
 # Mise implementation state
 
-Last updated: 2026-08-05 (Claude session: dirty-tree preservation + recalculation cycles)  
-Working branch: `rescue/ops-backend-20260805` (pushed to origin)  
-Branched from: `cursor/initial-mise-import` @ `bdb1881` — *Refine concept fidelity across core screens*  
-`main`: `be5a3c079555c56f19c5060993c8bfaa01c5eb35`
+Last updated: 2026-08-14 (first-restaurant operating-loop milestone)
+Working branch: `pilot/first-restaurant-operating-loop` (local, uncommitted)
+Branched from: `main` @ `e3d9f3472ecd90fa0a8392fb9a71c5cb5ff1d1ec`
+`origin/main`: `e3d9f3472ecd90fa0a8392fb9a71c5cb5ff1d1ec` (PR #127 merged)
 
-## Verdict
+## Current verdict
+
+The presentation reconstruction and operational backend are now together on `main`. The current pilot branch adds a bounded safety slice: a tenant-scoped readiness contract, truthful Square sync counts and replay pgTAP source, explicit supplier From/To/Subject review, and an atomic backend binding between that reviewed envelope and external Gmail execution. Home demo disclosure and Today selected-bucket visibility regressions from PR #127 are also repaired.
+
+This is **not yet a pilot-ready claim**. Provider-identity recipe mapping, count-time-anchored depletion, readiness enforcement at recommendation approval/drafting, a machine scheduler, the full database migration chain, and controlled Square/Gmail staging proof remain open. See `docs/pilot/FIRST_RESTAURANT_GAP_AUDIT.md` and `docs/pilot/FIRST_OPERATING_LOOP_EVIDENCE.md`.
+
+### Current local verification
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | PASS |
+| `npm test` | PASS — 508 pass / 0 fail |
+| `npm run security:backend` | PASS |
+| `npm run security:static` | PASS |
+| `npm run design:static` | PASS |
+| `npm run qa:routes` | PASS |
+| `npm run qa:mobile-layout` | PASS — 390 × 844, no horizontal overflow |
+| `npm run qa:interactions` | PASS — core flow, Spanish, Simplified Chinese, Ask Mise |
+| `npm run supabase:test` | BLOCKED — Docker Desktop/socket is not installed; Square replay and supplier-envelope pgTAP remain unexecuted |
+
+## Historical 2026-08-05 snapshot
+
+The material below documents the now-integrated rescue/PR-stack period. It is retained for provenance and does not override the current verdict above.
+
+## Historical verdict
 
 **Do not treat public `main` + PR stack #1–#4 as the complete product.**  
 The real working product is `rescue/ops-backend-20260805`. It holds Milestone 4 operating-plan/tasks, Square backend, waste, phase briefs, Ask Mise, and further UI densification that are **not on any `split/*` PR**.
