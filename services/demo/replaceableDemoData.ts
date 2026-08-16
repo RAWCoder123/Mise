@@ -1439,7 +1439,8 @@ function demoRecommendationEvidence(
   const countEvent = latestVerifiedCountEvidence(
     DEMO_RESTAURANT_ID,
     inventoryItemId,
-    inventoryEvents
+    inventoryEvents,
+    generatedAt
   );
   if (!countEvent) return legacyRecommendationEvidence(inventoryItemId, generatedAt);
   return {

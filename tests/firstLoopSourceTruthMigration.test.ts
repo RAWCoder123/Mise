@@ -47,6 +47,17 @@ test("approval, draft preparation, and send authorization all revalidate provena
   assert.match(migration, /create or replace function public\.approve_supplier_send_envelope[\s\S]*order_recommendation_sources_are_current/i);
   assert.match(migration, /create or replace function private\.service_claim_supplier_email_send[\s\S]*order_recommendation_sources_are_current/i);
   assert.match(migration, /'bodyHash', current_body_hash/i);
+  assert.match(migration, /count_row\.effective_at > now\(\) \+ interval '5 minutes'/i);
+  assert.match(migration, /canonical_unit_verification_status = 'verified'[\s\S]*item\.canonical_unit = count_row\.canonical_unit/i);
+  assert.match(migration, /old\.status = 'pending' and new\.status = 'approved'[\s\S]*should_bump := false/i);
+  assert.match(migration, /bump_recommendation_history_revision\(\)[\s\S]*mise\.inventory_event_tenant_delete/i);
+});
+
+test("future inventory events are rejected at the database boundary", () => {
+  assert.match(migration, /create or replace function private\.reject_future_inventory_event/i);
+  assert.match(migration, /new\.effective_at > clock_timestamp\(\) \+ interval '5 minutes'/i);
+  assert.match(migration, /create trigger reject_future_inventory_event[\s\S]*before insert on public\.inventory_events/i);
+  assert.match(migration, /revoke all on function private\.reject_future_inventory_event\(\)[\s\S]*service_role/i);
 });
 
 test("private planning authority is service-only and count-event based", () => {

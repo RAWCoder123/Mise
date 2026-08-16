@@ -286,9 +286,27 @@ function assertRecommendationEvidenceCurrent(
       inventoryItemId: recommendation.inventory_item_id,
       evidence: recommendation.source_evidence,
       inventoryEvents: state.inventoryEvents,
+      inventoryItem: demoInventoryItemForEvidence(state, recommendation),
       now: recommendation.source_evidence.generatedAt
     })
   ) {
     throw new Error("Recommendation evidence is stale or incomplete. Regenerate the plan before continuing.");
   }
+}
+
+function demoInventoryItemForEvidence(
+  state: DemoState,
+  recommendation: DemoState["purchaseRecommendations"][number]
+) {
+  const item = state.inventoryItems.find(
+    (entry) =>
+      entry.restaurant_id === recommendation.restaurant_id &&
+      entry.id === recommendation.inventory_item_id
+  );
+  if (!item || item.canonical_unit || !/^heads?$/i.test(item.unit.trim())) return item;
+  return {
+    ...item,
+    canonical_unit: "each" as const,
+    canonical_quantity_per_unit: 1
+  };
 }

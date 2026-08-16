@@ -189,7 +189,7 @@ function assessInventoryCounts(
   const latestCountByItem = new Map(
     items.map((item) => [
       item.id,
-      latestVerifiedCountEvidence(item.restaurant_id, item.id, countEvents)
+      latestVerifiedCountEvidence(item.restaurant_id, item.id, countEvents, generatedAt)
     ] as const)
   );
   const missing = items.filter((item) => !latestCountByItem.get(item.id));

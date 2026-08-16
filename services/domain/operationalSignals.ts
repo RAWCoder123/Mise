@@ -135,7 +135,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const countEvidence = latestVerifiedCountEvidence(
       snapshot.restaurantId,
       item.id,
-      snapshot.inventoryEvents ?? []
+      snapshot.inventoryEvents ?? [],
+      now
     );
     const countIsFresh = countEvidence
       ? ageHours(countEvidence.effectiveAt, now) <= maximumCountAgeHours
@@ -186,7 +187,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       : null;
     const projectedQuantity = Math.max(
       0,
-      (verifiedBaseline ?? finiteNonNegative(item.current_quantity)) - depletion
+      (verifiedBaseline ?? 0) - depletion
     );
     const threshold = finiteNonNegative(item.reorder_threshold);
     const isCritical = projectedQuantity <= 0;
@@ -197,8 +198,13 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       ? Date.parse(countEvidence.effectiveAt) > Date.parse(recentHandled.created_at)
       : false;
 
-    if (!countEvidence || !countIsFresh || (mode === "square_live" && applicableMappings.length === 0)) {
-      if (!countEvidence || !countIsFresh || projectedQuantity <= threshold) {
+    if (
+      !countEvidence ||
+      !countIsFresh ||
+      verifiedBaseline === null ||
+      (mode === "square_live" && applicableMappings.length === 0)
+    ) {
+      if (!countEvidence || !countIsFresh || verifiedBaseline === null || projectedQuantity <= threshold) {
         const missingChain = mode === "square_live" && applicableMappings.length === 0;
         insights.push(blockedInventoryInsight({
           restaurantId: snapshot.restaurantId,
@@ -208,6 +214,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
             ? "No verified physical count is available."
             : !countIsFresh
               ? `The latest physical count is older than ${maximumCountAgeHours} hours.`
+              : verifiedBaseline === null
+                ? "The latest physical count no longer matches the item's verified unit conversion."
               : missingChain
                 ? "No active verified Square catalog and recipe chain covers this item."
                 : "Verified planning evidence is incomplete."
@@ -371,8 +379,10 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
 export function latestVerifiedCountEvidence(
   restaurantId: string,
   inventoryItemId: string,
-  events: readonly InventoryEvent[]
+  events: readonly InventoryEvent[],
+  asOf = new Date().toISOString()
 ): VerifiedCountEvidence | null {
+  const evidenceCeiling = Date.parse(safeIso(asOf) ?? new Date().toISOString()) + 5 * 60_000;
   const superseded = new Set(
     events
       .filter((event) => event.restaurantId === restaurantId && event.supersedesEventId)
@@ -384,6 +394,8 @@ export function latestVerifiedCountEvidence(
         event.restaurantId === restaurantId &&
         event.inventoryItemId === inventoryItemId &&
         event.eventType === "count" &&
+        Number.isFinite(Date.parse(event.effectiveAt)) &&
+        Date.parse(event.effectiveAt) <= evidenceCeiling &&
         !superseded.has(event.id)
     )
     .sort((left, right) => {
@@ -407,6 +419,7 @@ export function recommendationEvidenceIsCurrent(input: {
   inventoryItemId: string;
   evidence: RecommendationSourceEvidence;
   inventoryEvents: readonly InventoryEvent[];
+  inventoryItem?: OperationalInventoryItem | null;
   now?: string;
   maximumCountAgeHours?: number;
   planningRevision?: number | null;
@@ -414,12 +427,13 @@ export function recommendationEvidenceIsCurrent(input: {
   verifiedMappingIds?: readonly string[];
   verifiedRecipeVersionIds?: readonly string[];
 }) {
+  const now = safeIso(input.now) ?? new Date().toISOString();
   const latest = latestVerifiedCountEvidence(
     input.restaurantId,
     input.inventoryItemId,
-    input.inventoryEvents
+    input.inventoryEvents,
+    now
   );
-  const now = safeIso(input.now) ?? new Date().toISOString();
   if (input.evidence.mode === "legacy" || !latest || !input.evidence.countEvent) return false;
   const generatedAt = safeIso(input.evidence.generatedAt);
   if (
@@ -438,6 +452,10 @@ export function recommendationEvidenceIsCurrent(input: {
     latest.canonicalUnit !== input.evidence.countEvent.canonicalUnit
   ) return false;
   if (ageHours(latest.effectiveAt, now) > boundedMaximumCountAge(input.maximumCountAgeHours)) return false;
+  if (
+    input.inventoryItem &&
+    verifiedInventoryBaseline(input.inventoryItem, latest, input.inventoryEvents) === null
+  ) return false;
   if (
     input.planningRevision != null &&
     input.evidence.planningRevision !== input.planningRevision

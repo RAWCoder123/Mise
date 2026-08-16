@@ -152,10 +152,12 @@ function requireCanonicalUnit(value: unknown) {
 }
 
 function requireInventoryTimestamp(value: unknown) {
+  const parsed = typeof value === "string" ? Date.parse(value) : Number.NaN;
   if (
     typeof value !== "string" ||
     !/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
-    !Number.isFinite(Date.parse(value))
+    !Number.isFinite(parsed) ||
+    parsed > Date.now() + 5 * 60_000
   ) {
     throw new Error("Enter a valid inventory time.");
   }

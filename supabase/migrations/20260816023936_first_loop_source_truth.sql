@@ -79,6 +79,29 @@ $$;
 revoke all on function private.bump_restaurant_signal_state(uuid)
 from public, anon, authenticated, service_role;
 
+create or replace function private.reject_future_inventory_event()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.effective_at > clock_timestamp() + interval '5 minutes' then
+    raise exception 'Inventory event effective time cannot be in the future'
+      using errcode = '22023';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function private.reject_future_inventory_event()
+from public, anon, authenticated, service_role;
+
+drop trigger if exists reject_future_inventory_event on public.inventory_events;
+create trigger reject_future_inventory_event
+before insert on public.inventory_events
+for each row execute function private.reject_future_inventory_event();
+
 alter table public.purchase_recommendations
   add column if not exists confidence text not null default 'blocked',
   add column if not exists source_evidence jsonb not null default jsonb_build_object(
@@ -836,6 +859,7 @@ begin
   if not found
     or count_row.id <> evidence_count_id
     or count_row.effective_at < now() - interval '36 hours'
+    or count_row.effective_at > now() + interval '5 minutes'
     or count_row.effective_at is distinct from
       (p_source_evidence->'countEvent'->>'effectiveAt')::timestamptz
     or count_row.recorded_at is distinct from
@@ -846,6 +870,15 @@ begin
       (p_source_evidence->'countEvent'->>'quantity')::numeric
     or count_row.canonical_unit is distinct from
       p_source_evidence->'countEvent'->>'canonicalUnit'
+    or not exists (
+      select 1
+      from public.inventory_items item
+      where item.restaurant_id = p_restaurant_id
+        and item.id = p_inventory_item_id
+        and item.canonical_unit_verification_status = 'verified'
+        and item.canonical_unit = count_row.canonical_unit
+        and item.canonical_quantity_per_unit > 0
+    )
   then return false; end if;
 
   select exists (
@@ -1254,6 +1287,53 @@ grant execute on function private.fetch_operational_planning_snapshot(uuid, uuid
 grant execute on function private.commit_operational_signals(
   uuid, uuid, bigint, jsonb, jsonb, boolean, jsonb
 ) to service_role;
+
+-- Approval is a human decision on already-generated evidence, not a new
+-- planning input. Keep the recommendation's revision current until another
+-- source change occurs so the reviewed draft can be authorized and sent.
+create or replace function private.bump_recommendation_history_revision()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  target_restaurant_id uuid := case when tg_op = 'DELETE' then old.restaurant_id else new.restaurant_id end;
+  should_bump boolean := false;
+begin
+  if pg_catalog.current_setting(
+    'mise.inventory_event_tenant_delete',
+    true
+  ) = 'true'
+  then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
+
+  if tg_op = 'INSERT' then
+    should_bump := new.status in ('approved', 'dismissed', 'ordered');
+  elsif tg_op = 'DELETE' then
+    should_bump := old.status in ('approved', 'dismissed', 'ordered');
+  elsif old.status = 'pending' and new.status = 'approved' then
+    should_bump := false;
+  else
+    should_bump := old.status is distinct from new.status
+      or (new.status in ('approved', 'ordered') and old.recommended_quantity is distinct from new.recommended_quantity);
+  end if;
+  if should_bump then
+    insert into private.restaurant_signal_state (
+      restaurant_id, planning_revision, signals_revision, status, updated_at
+    ) values (target_restaurant_id, 1, 0, 'pending', now())
+    on conflict (restaurant_id) do update
+    set planning_revision = private.restaurant_signal_state.planning_revision + 1,
+        status = 'pending',
+        updated_at = now();
+  end if;
+  return case when tg_op = 'DELETE' then old else new end;
+end;
+$$;
+
+revoke all on function private.bump_recommendation_history_revision()
+from public, anon, authenticated, service_role;
 
 create or replace function private.order_recommendation_sources_are_current(
   p_restaurant_id uuid,

@@ -102,6 +102,40 @@ test("count freshness comes only from the latest non-superseded physical count",
   assert.match(signals.insights[0]?.description ?? "", /older than 36 hours/i);
 });
 
+test("future-dated counts never become fresh recommendation evidence", () => {
+  const futureCount = inventoryEvent(
+    "10000000-0000-4000-8000-000000000413",
+    2,
+    "count",
+    0,
+    "2027-08-15T16:00:00.000Z"
+  );
+  const snapshot = baseSnapshot({ inventoryEvents: [futureCount] });
+  const signals = calculateOperationalSignals(snapshot);
+
+  assert.equal(
+    latestVerifiedCountEvidence(restaurantId, inventoryItemId, [futureCount], generatedAt),
+    null
+  );
+  assert.equal(signals.recommendations.length, 0);
+  assert.match(signals.insights[0]?.description ?? "", /no verified physical count/i);
+});
+
+test("count-unit mismatches block instead of falling back to current quantity", () => {
+  const snapshot = baseSnapshot({
+    inventoryItems: [{
+      ...baseSnapshot().inventoryItems[0]!,
+      current_quantity: 0,
+      canonical_unit: "ml",
+      canonical_quantity_per_unit: 1000
+    }]
+  });
+  const signals = calculateOperationalSignals(snapshot);
+
+  assert.equal(signals.recommendations.length, 0);
+  assert.match(signals.insights[0]?.description ?? "", /no longer matches/i);
+});
+
 test("only post-count sales reduce the verified baseline", () => {
   const sales = [
     {
@@ -244,6 +278,22 @@ test("recommendation evidence fails closed after a newer count or planning revis
       inventoryEvents: snapshot.inventoryEvents!,
       now: generatedAt,
       planningRevision: 8
+    }),
+    false
+  );
+  assert.equal(
+    recommendationEvidenceIsCurrent({
+      restaurantId,
+      inventoryItemId,
+      evidence: recommendation.source_evidence,
+      inventoryEvents: snapshot.inventoryEvents!,
+      inventoryItem: {
+        ...snapshot.inventoryItems[0]!,
+        canonical_unit: "ml",
+        canonical_quantity_per_unit: 1000
+      },
+      now: generatedAt,
+      planningRevision: 7
     }),
     false
   );

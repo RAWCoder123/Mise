@@ -329,6 +329,19 @@ test("marking a supplier draft sent advances only approved linked recommendation
   );
 });
 
+test("the seeded produce draft carries compatible count evidence through demo send", () => {
+  const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
+  const sent = markSupplierOrderSentInDemoState(
+    state,
+    DEMO_RESTAURANT_ID,
+    "00000000-0000-4000-8000-000000000601"
+  );
+
+  assert.equal(sent.outcome, "applied");
+  assert.equal(sent.order.status, "sent");
+  assert.equal(sent.orderedRecommendations.length, 2);
+});
+
 test("demo-state repair retains history, deduplicates pending rows, and restores links", () => {
   const seed = createInitialDemoState("Toast", undefined, FIXED_NOW);
   const source = seed.purchaseRecommendations[0]!;
