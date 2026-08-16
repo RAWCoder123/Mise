@@ -136,6 +136,40 @@ test("count-unit mismatches block instead of falling back to current quantity", 
   assert.match(signals.insights[0]?.description ?? "", /no longer matches/i);
 });
 
+test("a later ledger event with an incompatible unit invalidates the verified baseline", () => {
+  const mismatchedReceipt = inventoryEvent(
+    "10000000-0000-4000-8000-000000000414",
+    2,
+    "receipt",
+    5,
+    "2026-08-15T13:00:00.000Z",
+    { canonicalUnit: "ml" }
+  );
+  const signals = calculateOperationalSignals(baseSnapshot({
+    inventoryEvents: [...baseSnapshot().inventoryEvents!, mismatchedReceipt]
+  }));
+
+  assert.equal(signals.recommendations.length, 0);
+  assert.equal(signals.insights[0]?.presentation.code, "insight.rule.inventory.evidence_blocked");
+  assert.match(signals.insights[0]?.description ?? "", /no longer matches/i);
+});
+
+test("placeholder correlation identities are replaced with a non-sentinel UUID", () => {
+  const recommendation = calculateOperationalSignals(baseSnapshot({
+    correlationId: "00000000-0000-4000-8000-000000000000"
+  })).recommendations[0];
+
+  assert.ok(recommendation);
+  assert.match(
+    recommendation.source_evidence.correlationId,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  );
+  assert.notEqual(
+    recommendation.source_evidence.correlationId,
+    "00000000-0000-4000-8000-000000000000"
+  );
+});
+
 test("only post-count sales reduce the verified baseline", () => {
   const sales = [
     {

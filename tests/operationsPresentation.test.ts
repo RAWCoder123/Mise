@@ -98,6 +98,14 @@ test("rules-based Insight codes localize structured values while opaque copy is 
         status: "Critical"
       }
     },
+    {
+      code: "insight.rule.inventory.evidence_blocked",
+      values: {
+        itemName,
+        reason: "stale_count",
+        maximumCountAgeHours: 24
+      }
+    },
     { code: "insight.rule.sales.demand_rising", values: { itemName, liftPercent: 25 } },
     {
       code: "insight.rule.prep.low_stock",

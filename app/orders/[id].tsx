@@ -759,10 +759,14 @@ function gmailConnectionRequiredNotice(
 
 function orderSendErrorNotice(error: unknown, t: Translate): OrderNotice {
   if (!isGmailIntegrationError(error)) {
+    const evidenceBlocked = error instanceof Error &&
+      /evidence|stale|regenerate|verified count|catalog chain/i.test(error.message);
     return {
       title: t("orders.detail.error.sendTitle"),
-      message: t("orders.detail.error.sendBody"),
-      tone: "danger"
+      message: evidenceBlocked
+        ? t("orders.error.evidenceStale")
+        : t("orders.detail.error.sendBody"),
+      tone: evidenceBlocked ? "warning" : "danger"
     };
   }
   if (error.status === "approval_required") {

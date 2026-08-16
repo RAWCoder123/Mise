@@ -191,6 +191,7 @@ export type SquareIntegrationErrorStatus =
   | "not_connected"
   | "needs_reauth"
   | "provider_not_enabled"
+  | "location_selection_required"
   | "server_configuration_missing"
   | "request_blocked"
   | "unknown";
@@ -279,8 +280,6 @@ export interface RecipeMappingSignalInput {
   quantityUsedPerSale: number;
   unit: string;
   expectedQuantity: number | null;
-  recommendations: PurchaseRecommendationInput[];
-  insights: Insight[];
 }
 
 export interface RestaurantData {
@@ -445,6 +444,7 @@ export interface MiseRepository {
     restaurantId: string
   ): Promise<OperationalFindingDecision[]>;
   fetchInventoryItems(restaurantId: string): Promise<InventoryItem[]>;
+  fetchMenuItemIngredients(restaurantId: string): Promise<MenuItemIngredient[]>;
   listInventoryEvents(
     restaurantId: string,
     options?: { eventTypes?: InventoryEventType[]; limit?: number; since?: string }
@@ -472,9 +472,7 @@ export interface MiseRepository {
     restaurantId: string,
     itemId: string,
     expectedLastUpdated: string,
-    patch: InventoryItemPatch,
-    recommendations: PurchaseRecommendationInput[],
-    insights: Insight[]
+    patch: InventoryItemPatch
   ): Promise<InventoryItem>;
   fetchOpenInventoryCountSession(restaurantId: string): Promise<InventoryCountSessionDetail | null>;
   fetchInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
@@ -488,9 +486,7 @@ export interface MiseRepository {
   cancelInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
   approveInventoryCountSession(
     restaurantId: string,
-    sessionId: string,
-    recommendations: PurchaseRecommendationInput[],
-    insights: Insight[]
+    sessionId: string
   ): Promise<InventoryCountSessionDetail>;
   updateMenuItemIngredientQuantity(
     restaurantId: string,

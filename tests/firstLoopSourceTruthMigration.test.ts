@@ -51,6 +51,9 @@ test("approval, draft preparation, and send authorization all revalidate provena
   assert.match(migration, /canonical_unit_verification_status = 'verified'[\s\S]*item\.canonical_unit = count_row\.canonical_unit/i);
   assert.match(migration, /old\.status = 'pending' and new\.status = 'approved'[\s\S]*should_bump := false/i);
   assert.match(migration, /bump_recommendation_history_revision\(\)[\s\S]*mise\.inventory_event_tenant_delete/i);
+  assert.match(migration, /recommendation_stale_for_regeneration[\s\S]*delete from public\.purchase_recommendations recommendation[\s\S]*stale_recommendation_ids/i);
+  assert.match(migration, /mise\.signal_regeneration[\s\S]*stale_recommendations_replaced/i);
+  assert.match(migration, /correlationId'[\s\S]*\^00000000-0000-\[0-9a-f\]/i);
 });
 
 test("future inventory events are rejected at the database boundary", () => {
@@ -58,6 +61,15 @@ test("future inventory events are rejected at the database boundary", () => {
   assert.match(migration, /new\.effective_at > clock_timestamp\(\) \+ interval '5 minutes'/i);
   assert.match(migration, /create trigger reject_future_inventory_event[\s\S]*before insert on public\.inventory_events/i);
   assert.match(migration, /revoke all on function private\.reject_future_inventory_event\(\)[\s\S]*service_role/i);
+});
+
+test("planning event reads retain each latest count without a mixed global cap", () => {
+  assert.match(migration, /create or replace function public\.fetch_inventory_planning_events/i);
+  assert.match(migration, /select distinct on \(event\.inventory_item_id\)[\s\S]*event\.effective_at desc/i);
+  assert.match(migration, /event\.id = count_event\.id[\s\S]*event\.sequence > count_event\.sequence/i);
+  assert.match(migration, /security invoker[\s\S]*grant execute on function public\.fetch_inventory_planning_events\(uuid\)[\s\S]*authenticated/i);
+  assert.match(migration, /'inventoryEvents'[\s\S]*public\.fetch_inventory_planning_events\(p_restaurant_id\) event/i);
+  assert.doesNotMatch(migration, /select \* from public\.inventory_events[\s\S]*limit 5000/i);
 });
 
 test("private planning authority is service-only and count-event based", () => {

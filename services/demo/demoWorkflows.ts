@@ -7,6 +7,7 @@ import {
 } from "../domain/miseDomain";
 import {
   calculateOperationalSignals,
+  createCorrelationId,
   recommendationEvidenceIsCurrent
 } from "../domain/operationalSignals";
 import { nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../../utils/format";
@@ -20,6 +21,7 @@ function demoOperatingDate(state: DemoState, restaurantId: string) {
 }
 
 export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: string) {
+  detachStaleApprovedDraftLines(state, restaurantId);
   const signals = demoOperationalSignals(state, restaurantId);
   const pendingByItem = new Map(
     state.purchaseRecommendations
@@ -253,11 +255,7 @@ function rebuildDemoDraftMessage(state: DemoState, order: SupplierOrder) {
 }
 
 function demoOperationalSignals(state: DemoState, restaurantId: string) {
-  const generatedAt = state.inventoryEvents
-    .filter((event) => event.restaurantId === restaurantId)
-    .map((event) => event.recordedAt)
-    .sort()
-    .at(-1) ?? state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.created_at ?? new Date().toISOString();
+  const generatedAt = demoEvidenceNow(state, restaurantId);
   return calculateOperationalSignals({
     restaurantId,
     operatingDate: demoOperatingDate(state, restaurantId),
@@ -271,27 +269,92 @@ function demoOperationalSignals(state: DemoState, restaurantId: string) {
     selectedPosLocationId: null,
     planningRevision: null,
     generatedAt,
-    correlationId: crypto.randomUUID()
+    correlationId: createCorrelationId()
   });
+}
+
+function demoEvidenceNow(state: DemoState, restaurantId: string, notBefore?: string) {
+  const latestEvent = state.inventoryEvents
+    .filter((event) => event.restaurantId === restaurantId)
+    .map((event) => event.recordedAt)
+    .sort()
+    .at(-1);
+  return [
+    latestEvent,
+    notBefore,
+    state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.created_at
+  ]
+    .filter((value): value is string => Boolean(value) && Number.isFinite(Date.parse(value!)))
+    .sort()
+    .at(-1) ?? new Date().toISOString();
 }
 
 function assertRecommendationEvidenceCurrent(
   state: DemoState,
   recommendation: DemoState["purchaseRecommendations"][number]
 ) {
-  if (
-    recommendation.confidence === "blocked" ||
-    !recommendationEvidenceIsCurrent({
+  if (!demoRecommendationEvidenceIsCurrent(state, recommendation)) {
+    throw new Error("Recommendation evidence is stale or incomplete. Regenerate the plan before continuing.");
+  }
+}
+
+function demoRecommendationEvidenceIsCurrent(
+  state: DemoState,
+  recommendation: DemoState["purchaseRecommendations"][number]
+) {
+  return recommendation.confidence !== "blocked" &&
+    recommendationEvidenceIsCurrent({
       restaurantId: recommendation.restaurant_id,
       inventoryItemId: recommendation.inventory_item_id,
       evidence: recommendation.source_evidence,
       inventoryEvents: state.inventoryEvents,
       inventoryItem: demoInventoryItemForEvidence(state, recommendation),
-      now: recommendation.source_evidence.generatedAt
-    })
-  ) {
-    throw new Error("Recommendation evidence is stale or incomplete. Regenerate the plan before continuing.");
+      now: demoEvidenceNow(
+        state,
+        recommendation.restaurant_id,
+        recommendation.source_evidence.generatedAt
+      )
+    });
+}
+
+function detachStaleApprovedDraftLines(state: DemoState, restaurantId: string) {
+  const affectedOrderIds = new Set<string>();
+  const staleRecommendationIds = new Set<string>();
+  for (const recommendation of state.purchaseRecommendations) {
+    if (
+      recommendation.restaurant_id !== restaurantId ||
+      recommendation.status !== "approved" ||
+      !recommendation.supplier_order_id ||
+      demoRecommendationEvidenceIsCurrent(state, recommendation)
+    ) continue;
+    const order = state.supplierOrders.find(
+      (entry) =>
+        entry.restaurant_id === restaurantId &&
+        entry.id === recommendation.supplier_order_id &&
+        entry.status === "draft"
+    );
+    if (!order) continue;
+    affectedOrderIds.add(order.id);
+    staleRecommendationIds.add(recommendation.id);
+    recommendation.status = "pending";
+    recommendation.supplier_order_id = null;
+    recommendation.confidence = "blocked";
   }
+  for (const orderId of affectedOrderIds) {
+    const order = state.supplierOrders.find(
+      (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
+    );
+    if (!order) continue;
+    const remaining = linkedApprovedRecommendations(state, orderId);
+    if (remaining.length === 0) {
+      state.supplierOrders = state.supplierOrders.filter((entry) => entry.id !== orderId);
+    } else {
+      order.order_message = buildSupplierOrderMessage(order.supplier_name, remaining, order.operator_note);
+    }
+  }
+  state.purchaseRecommendations = state.purchaseRecommendations.filter(
+    (recommendation) => !staleRecommendationIds.has(recommendation.id)
+  );
 }
 
 function demoInventoryItemForEvidence(

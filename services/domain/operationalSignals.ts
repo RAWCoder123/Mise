@@ -123,9 +123,10 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       mapping.restaurant_id === snapshot.restaurantId &&
       mapping.pos_location_id === selectedPosLocationId
   );
-  const correlationId = validCorrelationId(snapshot.correlationId)
+  const correlationId = validCorrelationId(snapshot.correlationId) &&
+    !placeholderCorrelationId(snapshot.correlationId)
     ? snapshot.correlationId!
-    : randomCorrelationId();
+    : createCorrelationId();
   const handled = latestHandledByItem(snapshot.recommendationHistory);
   const learned = learnedQuantities(snapshot.recommendationHistory);
   const recommendations: OperationalRecommendation[] = [];
@@ -206,10 +207,21 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     ) {
       if (!countEvidence || !countIsFresh || verifiedBaseline === null || projectedQuantity <= threshold) {
         const missingChain = mode === "square_live" && applicableMappings.length === 0;
+        const reasonCode = !countEvidence
+          ? "missing_count" as const
+          : !countIsFresh
+            ? "stale_count" as const
+            : verifiedBaseline === null
+              ? "unit_mismatch" as const
+              : missingChain
+                ? "missing_square_chain" as const
+                : "incomplete" as const;
         insights.push(blockedInventoryInsight({
           restaurantId: snapshot.restaurantId,
           item,
           now,
+          reasonCode,
+          maximumCountAgeHours,
           reason: !countEvidence
             ? "No verified physical count is available."
             : !countIsFresh
@@ -440,7 +452,7 @@ export function recommendationEvidenceIsCurrent(input: {
     !generatedAt ||
     Date.parse(generatedAt) > Date.parse(now) + 5 * 60_000 ||
     !validCorrelationId(input.evidence.correlationId) ||
-    input.evidence.correlationId === "00000000-0000-0000-0000-000000000000"
+    placeholderCorrelationId(input.evidence.correlationId)
   ) return false;
   if (latest.countEventId !== input.evidence.countEvent.countEventId) return false;
   if (
@@ -497,10 +509,16 @@ function verifiedInventoryBaseline(
         event.inventoryItemId === item.id &&
         event.sequence > count.sequence &&
         event.eventType !== "count" &&
-        event.canonicalUnit === canonicalUnit &&
         !superseded.has(event.id)
     )
     .sort((left, right) => left.sequence - right.sequence);
+
+  if (laterEvents.some(
+    (event) =>
+      event.canonicalUnit !== canonicalUnit ||
+      !Number.isFinite(event.quantity) ||
+      event.quantity < 0
+  )) return null;
 
   let quantity = count.quantity;
   for (const event of laterEvents) {
@@ -547,6 +565,8 @@ function blockedInventoryInsight(input: {
   restaurantId: string;
   item: OperationalInventoryItem;
   now: string;
+  reasonCode: "missing_count" | "stale_count" | "unit_mismatch" | "missing_square_chain" | "incomplete";
+  maximumCountAgeHours: number;
   reason: string;
 }): OperationalInsight {
   return {
@@ -560,14 +580,11 @@ function blockedInventoryInsight(input: {
     severity: "warning",
     created_at: input.now,
     presentation: {
-      code: "insight.rule.inventory.stock_risk",
+      code: "insight.rule.inventory.evidence_blocked",
       values: {
         itemName: input.item.item_name,
-        projectedQuantity: finiteNonNegative(input.item.current_quantity),
-        unit: input.item.unit,
-        supplierName: input.item.supplier_name,
-        suggestedOrderQuantity: 0,
-        status: "Low"
+        reason: input.reasonCode,
+        maximumCountAgeHours: input.maximumCountAgeHours
       }
     }
   };
@@ -659,10 +676,27 @@ function validCorrelationId(value: unknown) {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function randomCorrelationId() {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : "00000000-0000-4000-8000-000000000000";
+function placeholderCorrelationId(value: unknown) {
+  return typeof value === "string" &&
+    /^00000000-0000-[0-9a-f]{4}-[0-9a-f]{4}-000000000000$/i.test(value);
+}
+
+export function createCorrelationId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function uniqueBounded(values: readonly string[]) {

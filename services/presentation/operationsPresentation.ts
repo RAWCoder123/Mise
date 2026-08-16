@@ -86,6 +86,14 @@ interface OperationsCopy {
     inventoryDescription: (itemName: string, quantity: string, unit: string) => string;
     inventoryWhy: string;
     inventoryAction: (supplierName: string, quantity: string, unit: string) => string;
+    inventoryBlockedTitle: (itemName: string) => string;
+    inventoryBlockedDescription: (
+      itemName: string,
+      reason: "missing_count" | "stale_count" | "unit_mismatch" | "missing_square_chain" | "incomplete",
+      maximumCountAgeHours: number
+    ) => string;
+    inventoryBlockedWhy: string;
+    inventoryBlockedAction: (itemName: string) => string;
     salesTitle: (itemName: string) => string;
     salesDescription: (itemName: string, lift: string) => string;
     salesWhy: string;
@@ -198,6 +206,16 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       inventoryDescription: (itemName, quantity, unit) => `${itemName} is projected at ${quantity} ${unit} after mapped POS demand.`,
       inventoryWhy: "This can interrupt prep or force an 86 mid-service.",
       inventoryAction: (supplierName, quantity, unit) => `Check the walk-in, then add ${quantity} ${unit} on the next ${supplierName} ticket.`,
+      inventoryBlockedTitle: (itemName) => `Verify ${itemName} before ordering`,
+      inventoryBlockedDescription: (itemName, reason, maximumCountAgeHours) => ({
+        missing_count: `No verified physical count is available for ${itemName}.`,
+        stale_count: `The latest physical count for ${itemName} is older than ${maximumCountAgeHours} hours.`,
+        unit_mismatch: `The latest physical count for ${itemName} no longer matches its verified unit conversion.`,
+        missing_square_chain: `No active verified Square catalog and recipe chain covers ${itemName}.`,
+        incomplete: `Verified planning evidence for ${itemName} is incomplete.`
+      })[reason],
+      inventoryBlockedWhy: "Mise will not turn incomplete or stale evidence into a supplier recommendation.",
+      inventoryBlockedAction: (itemName) => `Complete the missing verification for ${itemName}, then regenerate the plan.`,
       salesTitle: (itemName) => `${itemName} demand is rising`,
       salesDescription: (itemName, lift) => `${itemName} is ${lift} above its recent service-day baseline.`,
       salesWhy: "Pull prep forward or you may 86 linked dishes before the next order lands.",
@@ -310,6 +328,16 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       inventoryDescription: (itemName, quantity, unit) => `La proyección de ${itemName} es ${quantity} ${unit} después de la demanda POS vinculada.`,
       inventoryWhy: "Una cobertura baja de ingredientes puede interrumpir la preparación o el servicio.",
       inventoryAction: (supplierName, quantity, unit) => `Revisa el pedido de ${supplierName} y añade ${quantity} ${unit}.`,
+      inventoryBlockedTitle: (itemName) => `Verifica ${itemName} antes de pedir`,
+      inventoryBlockedDescription: (itemName, reason, maximumCountAgeHours) => ({
+        missing_count: `No hay un conteo físico verificado para ${itemName}.`,
+        stale_count: `El último conteo físico de ${itemName} tiene más de ${maximumCountAgeHours} horas.`,
+        unit_mismatch: `El último conteo físico de ${itemName} ya no coincide con su conversión de unidad verificada.`,
+        missing_square_chain: `Ninguna cadena verificada de catálogo y receta de Square cubre ${itemName}.`,
+        incomplete: `La evidencia de planificación verificada de ${itemName} está incompleta.`
+      })[reason],
+      inventoryBlockedWhy: "Mise no convierte evidencia incompleta o vencida en una recomendación al proveedor.",
+      inventoryBlockedAction: (itemName) => `Completa la verificación de ${itemName} y vuelve a generar el plan.`,
       salesTitle: (itemName) => `La demanda de ${itemName} está aumentando`,
       salesDescription: (itemName, lift) => `${itemName} está ${lift} por encima de su referencia reciente por día de servicio.`,
       salesWhy: "Los ingredientes vinculados pueden agotarse más rápido que el ritmo habitual de pedidos.",
@@ -420,6 +448,16 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       inventoryDescription: (itemName, quantity, unit) => `根据已关联的 POS 需求，${itemName} 预计剩余 ${quantity} ${unit}。`,
       inventoryWhy: "原料覆盖不足可能影响备餐或营业。",
       inventoryAction: (supplierName, quantity, unit) => `请审核 ${supplierName} 订单并添加 ${quantity} ${unit}。`,
+      inventoryBlockedTitle: (itemName) => `订货前请验证 ${itemName}`,
+      inventoryBlockedDescription: (itemName, reason, maximumCountAgeHours) => ({
+        missing_count: `${itemName} 没有经过验证的实物盘点。`,
+        stale_count: `${itemName} 的最近实物盘点已超过 ${maximumCountAgeHours} 小时。`,
+        unit_mismatch: `${itemName} 的最近实物盘点与已验证的单位换算不再匹配。`,
+        missing_square_chain: `没有有效且已验证的 Square 目录和配方链覆盖 ${itemName}。`,
+        incomplete: `${itemName} 的已验证计划依据不完整。`
+      })[reason],
+      inventoryBlockedWhy: "Mise 不会把不完整或过期的依据转换为供应商建议。",
+      inventoryBlockedAction: (itemName) => `请完成 ${itemName} 的缺失验证，然后重新生成计划。`,
       salesTitle: (itemName) => `${itemName} 需求正在上升`,
       salesDescription: (itemName, lift) => `${itemName} 比近期营业日基线高 ${lift}。`,
       salesWhy: "关联原料的消耗速度可能快于通常的订货节奏。",
@@ -582,6 +620,19 @@ export function presentInsight(locale: AppLocale, insight: Insight): PresentedIn
         formatQuantity(locale, values.suggestedOrderQuantity),
         values.unit
       ),
+      evidenceOnly: false
+    };
+  }
+  if (code === "insight.rule.inventory.evidence_blocked") {
+    return {
+      title: copy.insight.inventoryBlockedTitle(values.itemName),
+      description: copy.insight.inventoryBlockedDescription(
+        values.itemName,
+        values.reason,
+        values.maximumCountAgeHours
+      ),
+      whyItMatters: copy.insight.inventoryBlockedWhy,
+      recommendedAction: copy.insight.inventoryBlockedAction(values.itemName),
       evidenceOnly: false
     };
   }

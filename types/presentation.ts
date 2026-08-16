@@ -40,6 +40,7 @@ export const TODAY_TASK_PRESENTATION_CODES = [
 
 export const INSIGHT_PRESENTATION_CODES = [
   "insight.rule.inventory.stock_risk",
+  "insight.rule.inventory.evidence_blocked",
   "insight.rule.sales.demand_rising",
   "insight.rule.prep.low_stock",
   "insight.rule.waste.overstock",
@@ -134,6 +135,14 @@ export type InsightPresentationDescriptor =
         supplierName: string;
         suggestedOrderQuantity: number;
         status: "Low" | "Critical";
+      };
+    }
+  | {
+      code: "insight.rule.inventory.evidence_blocked";
+      values: {
+        itemName: string;
+        reason: "missing_count" | "stale_count" | "unit_mismatch" | "missing_square_chain" | "incomplete";
+        maximumCountAgeHours: number;
       };
     }
   | {

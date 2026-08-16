@@ -129,7 +129,12 @@ const DIRECT_UNITS: Readonly<
   each: { multiplier: 1, unit: "each" },
   ea: { multiplier: 1, unit: "each" },
   count: { multiplier: 1, unit: "each" },
-  unit: { multiplier: 1, unit: "each" }
+  unit: { multiplier: 1, unit: "each" },
+  units: { multiplier: 1, unit: "each" },
+  head: { multiplier: 1, unit: "each" },
+  heads: { multiplier: 1, unit: "each" },
+  piece: { multiplier: 1, unit: "each" },
+  pieces: { multiplier: 1, unit: "each" }
 };
 
 const PACK_UNITS = new Set(["case", "cases", "pack", "packs", "portion", "portions"]);

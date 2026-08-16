@@ -31,9 +31,9 @@ function recommendation(
 ): PurchaseRecommendation {
   const countSources = [
     { suffix: "101", sequence: 1, quantity: 8164.66266 },
-    { suffix: "103", sequence: 2, quantity: 36287.3896 },
-    { suffix: "105", sequence: 4, quantity: 4535.9237 },
-    { suffix: "107", sequence: 5, quantity: 9071.8474 }
+    { suffix: "103", sequence: 3, quantity: 36287.3896 },
+    { suffix: "105", sequence: 5, quantity: 4535.9237 },
+    { suffix: "107", sequence: 7, quantity: 9071.8474 }
   ];
   const hashedSource = countSources[
     [...id].reduce((sum, character) => sum + character.charCodeAt(0), 0) % countSources.length
@@ -340,6 +340,50 @@ test("the seeded produce draft carries compatible count evidence through demo se
   assert.equal(sent.outcome, "applied");
   assert.equal(sent.order.status, "sent");
   assert.equal(sent.orderedRecommendations.length, 2);
+});
+
+test("regeneration detaches stale approved draft lines and requires a fresh approval", () => {
+  const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
+  const orderId = "00000000-0000-4000-8000-000000000601";
+  const stale = state.purchaseRecommendations.find(
+    (entry) => entry.supplier_order_id === orderId && entry.status === "approved"
+  );
+  assert.ok(stale?.source_evidence.countEvent);
+  const previousCount = stale.source_evidence.countEvent;
+  state.inventoryEvents.push({
+    id: `replacement-${previousCount.countEventId}`,
+    sequence: Math.max(...state.inventoryEvents.map((event) => event.sequence)) + 1,
+    restaurantId: DEMO_RESTAURANT_ID,
+    inventoryItemId: stale.inventory_item_id,
+    eventType: "count",
+    quantity: 0,
+    canonicalUnit: previousCount.canonicalUnit,
+    effectiveAt: "2026-07-15T15:00:00.000Z",
+    recordedAt: "2026-07-15T15:00:00.000Z",
+    actorUserId: "demo-manager",
+    source: "test_count",
+    sourceReference: null,
+    reasonCode: null,
+    clientEventId: `replacement-${previousCount.countEventId}`,
+    idempotencyKey: `replacement-${previousCount.countEventId}`,
+    supersedesEventId: null,
+    metadata: {}
+  });
+
+  rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
+
+  const regenerated = state.purchaseRecommendations.find(
+    (entry) => entry.inventory_item_id === stale.inventory_item_id && entry.status === "pending"
+  );
+  assert.ok(regenerated);
+  assert.equal(regenerated.supplier_order_id, null);
+  assert.equal(regenerated.source_evidence.countEvent?.countEventId, `replacement-${previousCount.countEventId}`);
+  assert.equal(
+    state.purchaseRecommendations.some(
+      (entry) => entry.supplier_order_id === orderId && entry.inventory_item_id === stale.inventory_item_id
+    ),
+    false
+  );
 });
 
 test("demo-state repair retains history, deduplicates pending rows, and restores links", () => {

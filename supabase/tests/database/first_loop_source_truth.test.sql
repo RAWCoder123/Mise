@@ -1,6 +1,6 @@
 begin;
 
-select plan(25);
+select plan(30);
 
 select ok(exists (
   select 1 from pg_catalog.pg_attribute
@@ -53,6 +53,12 @@ select is(has_function_privilege('anon', 'public.review_pos_catalog_mapping(uuid
   'anonymous callers cannot review catalog mappings');
 select is(has_function_privilege('service_role', 'public.review_pos_catalog_mapping(uuid,uuid,text)', 'EXECUTE'), false,
   'the service role cannot impersonate a manager to review mappings');
+select is(has_function_privilege('authenticated', 'public.fetch_inventory_planning_events(uuid)', 'EXECUTE'), true,
+  'authenticated members can reach the RLS-protected planning event read');
+select is(has_function_privilege('anon', 'public.fetch_inventory_planning_events(uuid)', 'EXECUTE'), false,
+  'anonymous callers cannot read planning events');
+select is(has_function_privilege('service_role', 'public.fetch_inventory_planning_events(uuid)', 'EXECUTE'), false,
+  'the service role does not receive the client planning-event API');
 select is(has_function_privilege(
   'service_role', 'private.recommendation_source_is_current(uuid,uuid,bigint,jsonb)', 'EXECUTE'
 ), false, 'the provenance predicate is not a standalone service API');
@@ -70,6 +76,16 @@ select like(
   pg_get_functiondef('private.recommendation_source_is_current(uuid,uuid,bigint,jsonb)'::regprocedure),
   '%event_type = ''count''%effective_at%planningRevision%',
   'provenance checks the current physical count and planning revision'
+);
+select like(
+  pg_get_functiondef('private.recommendation_source_is_current(uuid,uuid,bigint,jsonb)'::regprocedure),
+  '%^00000000-0000-[0-9a-f]{4}-[0-9a-f]{4}-000000000000$%',
+  'provenance rejects generated placeholder correlation identities'
+);
+select like(
+  pg_get_functiondef('private.fetch_operational_planning_snapshot(uuid,uuid)'::regprocedure),
+  '%public.fetch_inventory_planning_events(p_restaurant_id)%',
+  'service planning retains each latest count without a global event cap'
 );
 select like(
   pg_get_functiondef('public.approve_purchase_recommendation(uuid,uuid,numeric)'::regprocedure),

@@ -70,6 +70,7 @@ import {
   normalizeOperationalFindingDecision,
   operationalFindingDecisionRpcArguments
 } from "../domain/operationalFindingDecisions";
+import { createCorrelationId } from "../domain/operationalSignals";
 import {
   normalizeAppUser,
   normalizeInsight,
@@ -247,6 +248,7 @@ const squareIntegrationErrorStatuses = new Set<SquareIntegrationErrorStatus>([
   "not_connected",
   "needs_reauth",
   "provider_not_enabled",
+  "location_selection_required",
   "server_configuration_missing",
   "request_blocked",
   "unknown"
@@ -724,6 +726,15 @@ export function createSupabaseRepository(): MiseRepository {
       return ((data ?? []) as InventoryItem[]).map(normalizeInventoryItem);
     },
 
+    async fetchMenuItemIngredients(restaurantId) {
+      const { data, error } = await client
+        .from("menu_item_ingredients")
+        .select("*")
+        .eq("restaurant_id", restaurantId);
+      if (error) throwRepositoryError(error, restaurantId);
+      return ((data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient);
+    },
+
     async listInventoryEvents(restaurantId, options) {
       let query = client
         .from("inventory_events")
@@ -793,12 +804,9 @@ export function createSupabaseRepository(): MiseRepository {
         fetchBoundedPlanningSales(restaurantId),
         client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
         client.from("restaurants").select("timezone").eq("id", restaurantId).single(),
-        client
-          .from("inventory_events")
-          .select("*")
-          .eq("restaurant_id", restaurantId)
-          .order("sequence", { ascending: false })
-          .limit(4000),
+        client.rpc("fetch_inventory_planning_events", {
+          p_restaurant_id: restaurantId
+        }),
         client
           .from("pos_integrations")
           .select("*")
@@ -838,7 +846,7 @@ export function createSupabaseRepository(): MiseRepository {
         selectedPosLocationId,
         planningRevision: null,
         generatedAt,
-        correlationId: crypto.randomUUID(),
+        correlationId: createCorrelationId(),
         operatingDate: toDateKeyInTimeZone(
           new Date(),
           (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
@@ -919,9 +927,7 @@ export function createSupabaseRepository(): MiseRepository {
       restaurantId,
       itemId,
       _expectedLastUpdated,
-      patch,
-      _recommendations,
-      _insights
+      patch
     ) {
       const response = await invokeOperationalWorkflow({
         action: "update_inventory",
@@ -1902,7 +1908,7 @@ export function createSupabaseRepository(): MiseRepository {
       return parseCountSessionWorkflowResult(response.result);
     },
 
-    async approveInventoryCountSession(restaurantId, sessionId, _recommendations, _insights) {
+    async approveInventoryCountSession(restaurantId, sessionId) {
       const response = await invokeOperationalWorkflow({
         action: "approve_count_session",
         restaurantId,
@@ -1981,12 +1987,10 @@ async function fetchVerifiedRecipeMappings(
       .filter(
         (entry) =>
           entry.menu_item_id === mapping.menu_item_id &&
-          (entry.pos_location_id == null || entry.pos_location_id === selectedPosLocationId)
+          entry.pos_location_id === selectedPosLocationId
       )
       .sort((left, right) => {
-        const locationRank = Number(right.pos_location_id === selectedPosLocationId) -
-          Number(left.pos_location_id === selectedPosLocationId);
-        return locationRank || Number(right.version_number ?? 0) - Number(left.version_number ?? 0);
+        return Number(right.version_number ?? 0) - Number(left.version_number ?? 0);
       })[0];
     if (!version || typeof version.id !== "string") continue;
     const servingQuantity = Number(version.serving_quantity);

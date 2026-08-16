@@ -316,7 +316,9 @@ export default function POSConnectionScreen() {
       setNotice({
         tone: "danger",
         title: t("pos.square.syncErrorTitle"),
-        message: isSquareIntegrationError(error) ? error.message : t("pos.square.syncErrorBody")
+        message: isSquareIntegrationError(error) && error.status === "location_selection_required"
+          ? t("pos.square.locationRequired")
+          : t("pos.square.syncErrorBody")
       });
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setBusyAction(null);
@@ -597,7 +599,9 @@ export default function POSConnectionScreen() {
                   <Text style={styles.restrictedTitle}>{t("pos.location.title")}</Text>
                   <Text style={styles.restrictedCopy}>{t("pos.location.body")}</Text>
                   <View style={styles.reviewList}>
-                    {(visibleIntegration?.locations ?? []).map((location) => (
+                    {(visibleIntegration?.locations ?? []).length === 0 ? (
+                      <Text style={styles.meta}>{t("pos.location.empty")}</Text>
+                    ) : (visibleIntegration?.locations ?? []).map((location) => (
                       <View key={location.id} style={styles.reviewRow}>
                         <View style={styles.reviewCopy}>
                           <Text style={styles.reviewTitle}>{location.display_name}</Text>
@@ -608,11 +612,21 @@ export default function POSConnectionScreen() {
                           </Text>
                         </View>
                         <Button
-                          title={location.selected_for_planning ? t("pos.location.selected") : t("pos.location.select")}
+                          title={
+                            busyAction === `location:${location.id}`
+                              ? t("common.saving")
+                              : location.selected_for_planning
+                                ? t("pos.location.selected")
+                                : t("pos.location.select")
+                          }
                           size="compact"
                           variant={location.selected_for_planning ? "soft" : "secondary"}
                           disabled={!planningActionsEditable || location.status !== "active" || location.selected_for_planning}
                           onPress={() => void choosePlanningLocation(location.id)}
+                          accessibilityLabel={t("pos.location.selectAccessibility", {
+                            location: location.display_name
+                          })}
+                          accessibilityHint={t("pos.location.selectHint")}
                         />
                       </View>
                     ))}
@@ -643,18 +657,34 @@ export default function POSConnectionScreen() {
                           {mapping.verification_status === "draft" ? (
                             <View style={styles.inlineActions}>
                               <Button
-                                title={t("pos.mapping.verify")}
+                                title={
+                                  busyAction === `mapping:${mapping.id}:verified`
+                                    ? t("common.saving")
+                                    : t("pos.mapping.verify")
+                                }
                                 size="compact"
                                 variant="soft"
                                 disabled={!planningActionsEditable}
                                 onPress={() => void reviewCatalogMapping(mapping.id, "verified")}
+                                accessibilityLabel={t("pos.mapping.verifyAccessibility", {
+                                  item: mapping.external_name
+                                })}
+                                accessibilityHint={t("pos.mapping.reviewHint")}
                               />
                               <Button
-                                title={t("pos.mapping.reject")}
+                                title={
+                                  busyAction === `mapping:${mapping.id}:rejected`
+                                    ? t("common.saving")
+                                    : t("pos.mapping.reject")
+                                }
                                 size="compact"
                                 variant="ghost"
                                 disabled={!planningActionsEditable}
                                 onPress={() => void reviewCatalogMapping(mapping.id, "rejected")}
+                                accessibilityLabel={t("pos.mapping.rejectAccessibility", {
+                                  item: mapping.external_name
+                                })}
+                                accessibilityHint={t("pos.mapping.reviewHint")}
                               />
                             </View>
                           ) : null}

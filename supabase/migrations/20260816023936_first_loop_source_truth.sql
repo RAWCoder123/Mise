@@ -102,6 +102,53 @@ create trigger reject_future_inventory_event
 before insert on public.inventory_events
 for each row execute function private.reject_future_inventory_event();
 
+-- Return the exact ledger slice needed to evaluate every item's latest
+-- non-superseded count and all subsequent adjustments. This avoids a global
+-- mixed-event limit silently dropping a valid count for a busy tenant.
+create or replace function public.fetch_inventory_planning_events(
+  p_restaurant_id uuid
+)
+returns setof public.inventory_events
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  with non_superseded as (
+    select event.*
+    from public.inventory_events event
+    where event.restaurant_id = p_restaurant_id
+      and not exists (
+        select 1
+        from public.inventory_events correction
+        where correction.restaurant_id = event.restaurant_id
+          and correction.supersedes_event_id = event.id
+      )
+  ),
+  latest_counts as (
+    select distinct on (event.inventory_item_id)
+      event.inventory_item_id,
+      event.id,
+      event.sequence
+    from non_superseded event
+    where event.event_type = 'count'
+    order by event.inventory_item_id, event.effective_at desc,
+      event.recorded_at desc, event.sequence desc
+  )
+  select event.*
+  from non_superseded event
+  join latest_counts count_event
+    on count_event.inventory_item_id = event.inventory_item_id
+  where event.id = count_event.id
+    or event.sequence > count_event.sequence
+  order by event.sequence desc;
+$$;
+
+revoke all on function public.fetch_inventory_planning_events(uuid)
+from public, anon, authenticated, service_role;
+grant execute on function public.fetch_inventory_planning_events(uuid)
+to authenticated;
+
 alter table public.purchase_recommendations
   add column if not exists confidence text not null default 'blocked',
   add column if not exists source_evidence jsonb not null default jsonb_build_object(
@@ -817,7 +864,8 @@ begin
     or p_source_evidence->'countEvent'->>'canonicalUnit' is null
     or coalesce(p_source_evidence->>'correlationId', '') !~*
       '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-    or p_source_evidence->>'correlationId' = '00000000-0000-0000-0000-000000000000'
+    or p_source_evidence->>'correlationId' ~*
+      '^00000000-0000-[0-9a-f]{4}-[0-9a-f]{4}-000000000000$'
   then
     return false;
   end if;
@@ -1081,11 +1129,7 @@ begin
         'idempotencyKey', event.idempotency_key,
         'supersedesEventId', event.supersedes_event_id, 'metadata', event.metadata
       ) order by event.sequence)
-      from (
-        select * from public.inventory_events
-        where restaurant_id = p_restaurant_id
-        order by sequence desc limit 5000
-      ) event
+      from public.fetch_inventory_planning_events(p_restaurant_id) event
     ), '[]'::jsonb),
     'verifiedRecipeMappings', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -1157,6 +1201,9 @@ declare
   safe_setup_metadata jsonb := coalesce(p_setup_metadata, '{}'::jsonb);
   inserted_recommendations integer;
   inserted_insights integer;
+  stale_recommendation_ids uuid[] := array[]::uuid[];
+  stale_order_ids uuid[] := array[]::uuid[];
+  stale_recommendations integer := 0;
 begin
   if not private.actor_has_restaurant_role(
     p_actor_user_id, p_restaurant_id, array['owner', 'admin', 'manager']
@@ -1209,6 +1256,63 @@ begin
       or (payload.why_it_matters is not null and length(payload.why_it_matters) > 2000)
   ) then raise exception 'Generated insight payload is invalid' using errcode = '22023'; end if;
 
+  -- A source change invalidates human approval of the old quantity. Audit and
+  -- remove only stale lines from still-unsent drafts so regeneration can
+  -- replace them without emitting a false operator status transition.
+  select
+    coalesce(array_agg(recommendation.id), array[]::uuid[]),
+    coalesce(array_agg(distinct recommendation.supplier_order_id), array[]::uuid[])
+  into stale_recommendation_ids, stale_order_ids
+  from public.purchase_recommendations recommendation
+  join public.supplier_orders orders
+    on orders.restaurant_id = recommendation.restaurant_id
+    and orders.id = recommendation.supplier_order_id
+    and orders.status = 'draft'
+  where recommendation.restaurant_id = p_restaurant_id
+    and recommendation.status = 'approved'
+    and (
+      recommendation.confidence = 'blocked'
+      or recommendation.planning_revision is distinct from current_revision
+      or not private.recommendation_source_is_current(
+        recommendation.restaurant_id,
+        recommendation.inventory_item_id,
+        recommendation.planning_revision,
+        recommendation.source_evidence
+      )
+    );
+
+  if cardinality(stale_recommendation_ids) > 0 then
+    insert into public.audit_logs (
+      restaurant_id, actor_user_id, action, entity_table, entity_id, metadata
+    )
+    select
+      p_restaurant_id,
+      p_actor_user_id,
+      'recommendation_stale_for_regeneration',
+      'purchase_recommendations',
+      recommendation.id,
+      jsonb_build_object(
+        'supplier_order_id', recommendation.supplier_order_id,
+        'previous_status', recommendation.status,
+        'recommended_quantity', recommendation.recommended_quantity,
+        'unit', recommendation.unit,
+        'confidence', recommendation.confidence,
+        'source_evidence', recommendation.source_evidence,
+        'previous_planning_revision', recommendation.planning_revision,
+        'current_planning_revision', current_revision
+      )
+    from public.purchase_recommendations recommendation
+    where recommendation.restaurant_id = p_restaurant_id
+      and recommendation.id = any(stale_recommendation_ids);
+
+    perform pg_catalog.set_config('mise.signal_regeneration', 'true', true);
+    delete from public.purchase_recommendations recommendation
+    where recommendation.restaurant_id = p_restaurant_id
+      and recommendation.id = any(stale_recommendation_ids);
+    get diagnostics stale_recommendations = row_count;
+    perform pg_catalog.set_config('mise.signal_regeneration', 'false', true);
+  end if;
+
   delete from public.purchase_recommendations
   where restaurant_id = p_restaurant_id and status = 'pending'
     and (generation_source in ('mise_rules', 'legacy_client') or confidence = 'blocked');
@@ -1236,6 +1340,31 @@ begin
       and manual.generation_source = 'manual' and manual.confidence <> 'blocked'
   );
   get diagnostics inserted_recommendations = row_count;
+
+  if cardinality(stale_order_ids) > 0 then
+    delete from public.supplier_orders orders
+    where orders.restaurant_id = p_restaurant_id
+      and orders.id = any(stale_order_ids)
+      and orders.status = 'draft'
+      and not exists (
+        select 1
+        from public.purchase_recommendations recommendation
+        where recommendation.restaurant_id = p_restaurant_id
+          and recommendation.supplier_order_id = orders.id
+          and recommendation.status = 'approved'
+      );
+
+    update public.supplier_orders orders
+    set order_message = private.build_supplier_order_message(
+      p_restaurant_id,
+      orders.id,
+      orders.supplier_name,
+      orders.operator_note
+    )
+    where orders.restaurant_id = p_restaurant_id
+      and orders.id = any(stale_order_ids)
+      and orders.status = 'draft';
+  end if;
 
   delete from public.insights where restaurant_id = p_restaurant_id;
   insert into public.insights (
@@ -1271,7 +1400,8 @@ begin
 
   return jsonb_build_object(
     'planning_revision', current_revision, 'signals_status', 'current',
-    'recommendations', inserted_recommendations, 'insights', inserted_insights
+    'recommendations', inserted_recommendations, 'insights', inserted_insights,
+    'stale_recommendations_replaced', stale_recommendations
   );
 end;
 $$;
@@ -1305,6 +1435,10 @@ begin
     'mise.inventory_event_tenant_delete',
     true
   ) = 'true'
+    or pg_catalog.current_setting(
+      'mise.signal_regeneration',
+      true
+    ) = 'true'
   then
     return case when tg_op = 'DELETE' then old else new end;
   end if;

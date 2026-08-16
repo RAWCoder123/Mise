@@ -74,6 +74,7 @@ import {
 } from "../domain/miseDomain";
 import { TeamMembershipError } from "../domain/teamMembership";
 import { acceptInventoryEvent } from "../domain/inventoryLedger";
+import { createCorrelationId } from "../domain/operationalSignals";
 import {
   assertSessionMutable,
   buildCountSessionLinesFromInventory,
@@ -774,6 +775,13 @@ export function createLocalDemoRepository(): MiseRepository {
         .sort((a, b) => a.item_name.localeCompare(b.item_name));
     },
 
+    async fetchMenuItemIngredients(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return state.menuItemIngredients
+        .filter((mapping) => mapping.restaurant_id === restaurantId)
+        .map(normalizeMenuItemIngredient);
+    },
+
     listInventoryEvents,
 
     recordInventoryEvent,
@@ -918,7 +926,7 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
-    async approveInventoryCountSession(restaurantId, sessionId, _recommendations, _insights) {
+    async approveInventoryCountSession(restaurantId, sessionId) {
       const detail = await readReadyDemoState(restaurantId).then((state) => {
         const found = findDemoCountSession(state, restaurantId, sessionId);
         if (!found) throw new Error("Count session not found");
@@ -1009,7 +1017,7 @@ export function createLocalDemoRepository(): MiseRepository {
         selectedPosLocationId: null,
         planningRevision: null,
         generatedAt: new Date().toISOString(),
-        correlationId: crypto.randomUUID(),
+        correlationId: createCorrelationId(),
         operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone)
       };
     },
@@ -1184,9 +1192,7 @@ export function createLocalDemoRepository(): MiseRepository {
       restaurantId,
       itemId,
       expectedLastUpdated,
-      patch,
-      recommendations,
-      insights
+      patch
     ) {
       if (Object.prototype.hasOwnProperty.call(patch, "current_quantity")) {
         throw new Error(
@@ -1202,20 +1208,8 @@ export function createLocalDemoRepository(): MiseRepository {
           throw new Error("Inventory item changed since it was loaded. Reload and try again.");
         }
         Object.assign(item, patch, { last_updated: new Date().toISOString() });
-        state.purchaseRecommendations = [
-          ...state.purchaseRecommendations.filter(
-            (recommendation) => recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
-          ),
-          ...recommendations.map((recommendation) => ({
-            ...recommendation,
-            id: createId("rec"),
-            created_at: new Date().toISOString()
-          }))
-        ];
-        state.insights = [
-          ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),
-          ...insights
-        ];
+        rebuildPurchaseRecommendations(state, restaurantId);
+        rebuildInsights(state, restaurantId);
         return normalizeInventoryItem(item);
       });
     },
@@ -1299,20 +1293,8 @@ export function createLocalDemoRepository(): MiseRepository {
           };
           state.menuItemIngredients.push(mapping);
         }
-        state.purchaseRecommendations = [
-          ...state.purchaseRecommendations.filter(
-            (recommendation) => recommendation.restaurant_id !== input.restaurantId || recommendation.status !== "pending"
-          ),
-          ...input.recommendations.map((recommendation) => ({
-            ...recommendation,
-            id: createId("rec"),
-            created_at: new Date().toISOString()
-          }))
-        ];
-        state.insights = [
-          ...state.insights.filter((insight) => insight.restaurant_id !== input.restaurantId),
-          ...input.insights
-        ];
+        rebuildPurchaseRecommendations(state, input.restaurantId);
+        rebuildInsights(state, input.restaurantId);
         return normalizeMenuItemIngredient(mapping);
       });
     },
