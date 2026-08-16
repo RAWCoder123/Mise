@@ -154,9 +154,14 @@ export default function TodayScreen() {
     hubReady,
     busy: Boolean(busyFindingId)
   });
+  const floorNotesEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManageBrief,
+    hubReady,
+    busy: Boolean(busyFloorNoteId)
+  });
 
   async function markFloorNoteDone(note: OperatorTask) {
-    if (!restaurant || !hubReady || busyFloorNoteId) return;
+    if (!restaurant || !floorNotesEditable) return;
     const restaurantId = restaurant.id;
     setBusyFloorNoteId(note.id);
     setFloorNoteMessage(null);
@@ -428,7 +433,7 @@ export default function TodayScreen() {
                           size="compact"
                           variant="secondary"
                           onPress={() => void markFloorNoteDone(note)}
-                          disabled={busyFloorNoteId === note.id}
+                          disabled={!floorNotesEditable}
                           style={styles.floorNoteDone}
                         />
                       </View>
