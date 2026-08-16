@@ -43,6 +43,28 @@ export async function syncSquarePosSales(
   );
 }
 
+export async function selectPosLocation(restaurantId: string, locationId: string) {
+  return repository.selectPosLocation(
+    requireWorkflowId(restaurantId, "restaurant"),
+    requireWorkflowId(locationId, "POS location")
+  );
+}
+
+export async function reviewPosCatalogMapping(
+  restaurantId: string,
+  mappingId: string,
+  decision: "verified" | "rejected"
+) {
+  if (decision !== "verified" && decision !== "rejected") {
+    throw new Error("Choose a valid catalog mapping decision.");
+  }
+  return repository.reviewPosCatalogMapping(
+    requireWorkflowId(restaurantId, "restaurant"),
+    requireWorkflowId(mappingId, "catalog mapping"),
+    decision
+  );
+}
+
 export function isSquareIntegrationError(error: unknown): error is SquareIntegrationError {
   return error instanceof SquareIntegrationError;
 }

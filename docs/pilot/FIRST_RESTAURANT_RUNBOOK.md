@@ -13,8 +13,8 @@
 1. Use Square Sandbox for the first proof.
 2. Connect Square from Settings → POS as the owner/admin.
 3. Confirm OAuth returns to Mise and the connection shows the authorized merchant/location state.
-4. Confirm the intended Square locations; stop if multiple locations cannot be distinguished safely.
-5. Run a bounded initial sync.
+4. As an owner/admin/manager, select exactly one active controlled-pilot location in Settings → POS; stop if the intended location cannot be distinguished safely.
+5. Run a bounded initial sync; a missing or ambiguous selected location must fail closed.
 6. Verify authoritative `pos_sales`, `sales_imports`, catalog mappings, last-sync state, and activity before trusting the UI banner.
 7. Replay the same window and then an overlapping window. Confirm logical sales totals do not increase for the overlap.
 8. Read the operating-loop readiness status in Settings → POS; treat every listed area as blocking evidence, not a cosmetic warning.
@@ -33,8 +33,9 @@
 1. Start with the highest-volume Square items.
 2. Resolve provider item/variation identity to the intended Mise menu item.
 3. Add ingredient quantity-per-sale mappings using compatible verified units.
-4. Leave uncertain or partial mappings blocked; never guess.
-5. Verify mapped sales produce the expected ingredient usage and that unmapped sales reduce readiness.
+4. As an owner/admin/manager, verify or reject each provider mapping in Settings → POS. Verification must bind to an active verified recipe version and verified canonical ingredients.
+5. Leave uncertain, draft, rejected, or partial mappings blocked; never guess.
+6. Verify that only post-count sales from the selected location and verified chain reduce the physical-count baseline.
 
 ## Suppliers
 

@@ -6,6 +6,7 @@ import {
   type OrderAutomationPolicy
 } from "../services/domain/orderAutomation";
 import type { InventoryItem, PurchaseRecommendation } from "../types/mise";
+import { blockedRecommendationEvidence } from "./recommendationFixtures";
 
 const restaurantId = "rest_automation";
 const supplierName = "Fresh Produce Co.";
@@ -60,6 +61,8 @@ function recommendation(
     urgency: "high",
     status: "pending",
     supplier_order_id: null,
+    confidence: "blocked",
+    source_evidence: blockedRecommendationEvidence(itemId, "2026-07-26T12:30:00.000Z"),
     created_at: "2026-07-26T12:30:00.000Z",
     ...overrides
   };

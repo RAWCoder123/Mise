@@ -43,6 +43,10 @@ import { buildRecordedSalesTrend } from "./salesTrends";
  * layer stays free of demo dataset knowledge.
  */
 export type DemandFallback = (menuItemName: string) => number | undefined;
+export type RecommendationRecord = Omit<
+  PurchaseRecommendation,
+  "confidence" | "source_evidence"
+> & Partial<Pick<PurchaseRecommendation, "confidence" | "source_evidence">>;
 
 export function createId(prefix: string) {
   const uuid =
@@ -165,7 +169,7 @@ export function learnedRecommendationReason(
   return `${reason} Mise is using a stable median from recent approved orders: ${formatQuantity(learnedQuantity)} ${item.unit}.`;
 }
 
-export function buildLearnedOrderQuantities(restaurantId: string, history: PurchaseRecommendation[] = []) {
+export function buildLearnedOrderQuantities(restaurantId: string, history: RecommendationRecord[] = []) {
   const samples = new Map<string, Array<{ quantity: number; createdAt: string }>>();
   history
     .filter((recommendation) => recommendation.restaurant_id === restaurantId)
@@ -223,14 +227,14 @@ export function boundedLearnedQuantity(
   return Math.max(1, Math.ceil(learned));
 }
 
-function isHandledRecommendation(recommendation: PurchaseRecommendation) {
+function isHandledRecommendation(recommendation: RecommendationRecord) {
   return recommendation.status === "approved" || recommendation.status === "dismissed" || recommendation.status === "ordered";
 }
 
 function latestHandledRecommendationForItem(
   restaurantId: string,
   itemId: string,
-  history: PurchaseRecommendation[] = []
+  history: RecommendationRecord[] = []
 ) {
   return history
     .filter((recommendation) => recommendation.restaurant_id === restaurantId)
@@ -242,7 +246,7 @@ function latestHandledRecommendationForItem(
 export function shouldSuppressRecommendationForItem(
   restaurantId: string,
   item: InventoryItem,
-  history: PurchaseRecommendation[] = []
+  history: RecommendationRecord[] = []
 ) {
   const handled = latestHandledRecommendationForItem(restaurantId, item.id, history);
   if (!handled) return false;
@@ -866,7 +870,7 @@ export function buildTodaySummary(
   restaurant: Restaurant,
   sales: PosSale[],
   inventoryItems: InventoryItem[],
-  recommendations: PurchaseRecommendation[],
+  recommendations: RecommendationRecord[],
   insights: Insight[],
   mappings: MenuItemIngredient[] = [],
   operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone),
@@ -1038,10 +1042,10 @@ export function severityRank(severity: InsightSeverity) {
 
 export function buildDraftsFromRecommendations(
   restaurantId: string,
-  recommendations: PurchaseRecommendation[],
+  recommendations: RecommendationRecord[],
   options: { now?: Date; timeZone?: string } = {}
 ) {
-  const grouped = new Map<string, PurchaseRecommendation[]>();
+  const grouped = new Map<string, RecommendationRecord[]>();
   recommendations
     .filter((recommendation) => recommendation.restaurant_id === restaurantId)
     .filter((recommendation) => recommendation.status === "approved")
@@ -1070,7 +1074,7 @@ export function buildDraftsFromRecommendations(
 
 export function buildSupplierOrderMessage(
   supplierName: string,
-  recommendations: PurchaseRecommendation[],
+  recommendations: RecommendationRecord[],
   operatorNote: string | null = null
 ) {
   const lines = recommendations
@@ -1099,7 +1103,7 @@ export interface SupplierOrderSentWorkflowResult {
 
 export function buildOrderQueueSummary(
   restaurantId: string,
-  recommendations: PurchaseRecommendation[],
+  recommendations: RecommendationRecord[],
   orders: SupplierOrder[]
 ): OrderQueueSummary {
   const pendingRecommendations = recommendations.filter(
@@ -1195,7 +1199,7 @@ export function buildLearningMemorySummary(
   restaurant: Restaurant,
   sales: PosSale[],
   inventoryItems: InventoryItem[],
-  recommendations: PurchaseRecommendation[],
+  recommendations: RecommendationRecord[],
   insights: Insight[],
   mappings: MenuItemIngredient[],
   orders: SupplierOrder[] = []
@@ -1348,7 +1352,7 @@ export function buildDemoReadinessSummary(
   restaurant: Restaurant,
   sales: PosSale[],
   inventoryItems: InventoryItem[],
-  recommendations: PurchaseRecommendation[],
+  recommendations: RecommendationRecord[],
   insights: Insight[],
   mappings: MenuItemIngredient[],
   orders: SupplierOrder[] = [],
@@ -1510,7 +1514,7 @@ export function buildDemoWalkthroughChecklist(
   restaurant: Restaurant,
   sales: PosSale[],
   inventoryItems: InventoryItem[],
-  recommendations: PurchaseRecommendation[],
+  recommendations: RecommendationRecord[],
   insights: Insight[],
   mappings: MenuItemIngredient[],
   orders: SupplierOrder[] = [],
@@ -1841,7 +1845,7 @@ export function buildRecommendationInserts(
   inventoryItems: InventoryItem[],
   sales: PosSale[],
   mappings: MenuItemIngredient[],
-  recommendationHistory: PurchaseRecommendation[],
+  recommendationHistory: RecommendationRecord[],
   operatingDate: string,
   demandFallback?: DemandFallback
 ) {

@@ -11,6 +11,8 @@ import type {
   InventoryItem,
   InventoryItemPatch,
   MenuItemIngredient,
+  PosCatalogItemMapping,
+  PosLocation,
   PosSale,
   PosIntegration,
   PurchaseOrder,
@@ -150,10 +152,12 @@ function requireCanonicalUnit(value: unknown) {
 }
 
 function requireInventoryTimestamp(value: unknown) {
+  const parsed = typeof value === "string" ? Date.parse(value) : Number.NaN;
   if (
     typeof value !== "string" ||
     !/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
-    !Number.isFinite(Date.parse(value))
+    !Number.isFinite(parsed) ||
+    parsed > Date.now() + 5 * 60_000
   ) {
     throw new Error("Enter a valid inventory time.");
   }
@@ -306,9 +310,33 @@ export function normalizeRestaurantTeamMember(value: RestaurantTeamMember): Rest
 export function normalizePosSale(value: PosSale): PosSale {
   return {
     ...value,
+    occurred_at: asNullableIsoTimestamp(value.occurred_at),
+    pos_location_id: asNullableString(value.pos_location_id),
+    external_catalog_item_id: asNullableString(value.external_catalog_item_id),
+    external_variation_id: asNullableString(value.external_variation_id),
     quantity_sold: asBoundedNonNegativeNumber(value.quantity_sold, operatingLimits.posQuantitySold),
     gross_sales: asBoundedNonNegativeNumber(value.gross_sales, operatingLimits.posSalesAmount),
     net_sales: asBoundedNonNegativeNumber(value.net_sales, operatingLimits.posSalesAmount)
+  };
+}
+
+export function normalizePosLocation(value: PosLocation): PosLocation {
+  return {
+    ...value,
+    timezone: asNullableString(value.timezone),
+    selected_for_planning: value.selected_for_planning === true
+  };
+}
+
+export function normalizePosCatalogItemMapping(
+  value: PosCatalogItemMapping
+): PosCatalogItemMapping {
+  return {
+    ...value,
+    confidence: Math.min(1, Math.max(0, asNumber(value.confidence))),
+    effective_to: asNullableIsoTimestamp(value.effective_to),
+    verified_at: asNullableIsoTimestamp(value.verified_at),
+    verified_by: asNullableString(value.verified_by)
   };
 }
 
@@ -376,11 +404,119 @@ export function normalizeMenuItemIngredient(value: MenuItemIngredient): MenuItem
 }
 
 export function normalizePurchaseRecommendation(value: PurchaseRecommendation): PurchaseRecommendation {
+  const sourceEvidence = normalizeRecommendationSourceEvidence(
+    value.source_evidence,
+    value.inventory_item_id,
+    value.created_at
+  );
   return {
     ...value,
-    recommended_quantity: normalizeRecommendedQuantity(value.recommended_quantity)
+    recommended_quantity: normalizeRecommendedQuantity(value.recommended_quantity),
+    confidence:
+      value.confidence === "low" || value.confidence === "medium" || value.confidence === "high"
+        ? value.confidence
+        : "blocked",
+    source_evidence: sourceEvidence
   };
 }
+
+function normalizeRecommendationSourceEvidence(
+  value: unknown,
+  inventoryItemId: string,
+  createdAt: string
+): PurchaseRecommendation["source_evidence"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return legacyRecommendationSourceEvidence(inventoryItemId, createdAt);
+  }
+  const record = value as Record<string, unknown>;
+  const mode = record.mode;
+  const count = normalizeCountEvidence(record.countEvent, inventoryItemId);
+  const generatedAt = asNullableIsoTimestamp(record.generatedAt) ?? safeIsoTimestamp(createdAt);
+  const correlationId = typeof record.correlationId === "string" && UUID_PATTERN.test(record.correlationId)
+    ? record.correlationId
+    : "00000000-0000-0000-0000-000000000000";
+  const planningRevision = Number(record.planningRevision);
+  return {
+    version: 1,
+    mode:
+      mode === "demo" || mode === "manual_csv" || mode === "square_verified"
+        ? mode
+        : "legacy",
+    countEvent: count,
+    salesThrough: asNullableIsoTimestamp(record.salesThrough),
+    posLocationId: asNullableString(record.posLocationId),
+    mappingIds: boundedStringArray(record.mappingIds, 100),
+    recipeVersionIds: boundedStringArray(record.recipeVersionIds, 100),
+    planningRevision: Number.isSafeInteger(planningRevision) && planningRevision >= 0
+      ? planningRevision
+      : null,
+    generatedAt,
+    correlationId
+  };
+}
+
+function normalizeCountEvidence(value: unknown, inventoryItemId: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const sequence = Number(record.sequence);
+  const quantity = Number(record.quantity);
+  const canonicalUnit = record.canonicalUnit;
+  if (
+    typeof record.countEventId !== "string" ||
+    record.inventoryItemId !== inventoryItemId ||
+    !Number.isSafeInteger(sequence) || sequence < 1 ||
+    !Number.isFinite(quantity) || quantity < 0 ||
+    (canonicalUnit !== "g" && canonicalUnit !== "ml" && canonicalUnit !== "each")
+  ) return null;
+  const effectiveAt = asNullableIsoTimestamp(record.effectiveAt);
+  const recordedAt = asNullableIsoTimestamp(record.recordedAt);
+  if (!effectiveAt || !recordedAt) return null;
+  return {
+    countEventId: record.countEventId,
+    inventoryItemId,
+    effectiveAt,
+    recordedAt,
+    sequence,
+    quantity,
+    canonicalUnit: canonicalUnit as "g" | "ml" | "each"
+  };
+}
+
+function legacyRecommendationSourceEvidence(
+  _inventoryItemId: string,
+  createdAt: string
+): PurchaseRecommendation["source_evidence"] {
+  return {
+    version: 1,
+    mode: "legacy",
+    countEvent: null,
+    salesThrough: null,
+    posLocationId: null,
+    mappingIds: [],
+    recipeVersionIds: [],
+    planningRevision: null,
+    generatedAt: safeIsoTimestamp(createdAt),
+    correlationId: "00000000-0000-0000-0000-000000000000"
+  };
+}
+
+function boundedStringArray(value: unknown, maximum: number) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is string => typeof entry === "string" && entry.length > 0 && entry.length <= 200)
+    .slice(0, maximum);
+}
+
+function asNullableIsoTimestamp(value: unknown) {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null;
+  return new Date(value).toISOString();
+}
+
+function safeIsoTimestamp(value: unknown) {
+  return asNullableIsoTimestamp(value) ?? new Date(0).toISOString();
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function normalizeRecommendedQuantity(value: unknown) {
   return asBoundedNonNegativeNumber(value, operatingLimits.recommendationQuantity);
@@ -973,6 +1109,12 @@ export function normalizePosIntegration(value: PosIntegration): PosIntegration {
     last_sync_at: asNullableString(value.last_sync_at),
     sync_cursor: asNullableString(value.sync_cursor),
     settings: asRecord(value.settings),
+    locations: Array.isArray(value.locations)
+      ? value.locations.map(normalizePosLocation)
+      : undefined,
+    catalog_mappings: Array.isArray(value.catalog_mappings)
+      ? value.catalog_mappings.map(normalizePosCatalogItemMapping)
+      : undefined,
     updated_at: value.updated_at ?? value.created_at
   };
 }

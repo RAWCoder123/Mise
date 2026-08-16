@@ -1,8 +1,8 @@
 # First restaurant operating loop — gap audit
 
-Date: 2026-08-14  
-Branch: `pilot/first-restaurant-operating-loop`  
-Baseline: `origin/main` at `e3d9f3472ecd90fa0a8392fb9a71c5cb5ff1d1ec`
+Date: 2026-08-15
+Branch: `pilot/first-loop-source-truth`
+Baseline: `origin/main` at `312c6f13a7d9d405ddfcad6eb7260020c3f54bb1`
 
 ## Status legend
 
@@ -14,7 +14,7 @@ Baseline: `origin/main` at `e3d9f3472ecd90fa0a8392fb9a71c5cb5ff1d1ec`
 
 ## Executive verdict
 
-Mise already contains most of the component workflows for a controlled operating loop: guarded Square and Gmail OAuth, idempotent Square sale identity, inventory count sessions, deterministic recipe depletion, recommendation and draft workflows, provider-verified Gmail completion, delivery receipt projection, and append-only activity. This milestone slice adds a machine-readable readiness contract, truthful Square import counts with replay coverage, and an explicit supplier delivery-envelope review whose approval is enforced separately from send execution. It is still not safe to call the loop pilot-ready. The principal remaining gaps are that live Square catalog identity is not connected to recipe consumption, inventory consumption is not anchored to verified count time, and recommendation approval does not yet fail closed on the readiness contract.
+Mise now closes the source-truth gaps in the controlled operating loop: one selected Square location, provider item and variation identity, manager-reviewed catalog mappings, verified recipe-version chains, physical-count freshness, post-count depletion, structured recommendation provenance, and fail-closed revalidation through approval, draft preparation, and send authorization. It is still not safe to call the loop pilot-ready until signal-refresh failure state and end-to-end correlation are durable, the failure matrix and runbook evidence are complete, and the exact migration/function candidate is executed on configured hosted staging.
 
 ## End-to-end matrix
 
@@ -23,20 +23,20 @@ Mise already contains most of the component workflows for a controlled operating
 | Authoritative baseline | PR #127 merged to `main`; reference evidence under `docs/design/` | READY | None for branch start | Preserve the reference UI and branch from current `main` |
 | Restaurant workspace | `MiseSessionContext`, memberships, `restaurants`, tenant helpers | READY | Hosted pilot account not provisioned in this run | Use the existing invite-only provisioning path |
 | Square OAuth | `app/settings/pos.tsx` → `link-square` → `square-oauth-callback` → Vault-backed credentials | EXTERNAL | No Square Sandbox credentials or callback proof in this run | Run authorized sandbox OAuth; retain owner/admin role gate, state, PKCE, and private token storage |
-| Square locations | OAuth callback → `service_complete_square_oauth` → `pos_locations` | PARTIAL | UI does not expose location selection; sync uses all active locations from the credential | Add explicit location authorization/selection if the first merchant has more than one operational location |
+| Square locations | OAuth callback → `pos_locations` → guarded manager selection | READY | Hosted multi-location proof remains external | Select exactly one controlled-pilot location and record hosted evidence |
 | Square sync | `sync-pos-sales` → `_shared/square` → `service_apply_square_sync_result` → `operational-workflows.refresh_signals` | PARTIAL | Truthful processed counts are now persisted; signal refresh failure is still swallowed after sales commit | Persist an explicit planning-stale/refresh-failed state |
 | Sales persistence | `pos_sales` unique `(restaurant_id, source_pos, source_record_id)`; Square order-line IDs are preserved | READY | Replay/overlap pgTAP proof exists but the full database suite was not executable in this run | Run `supabase:test` against the exact candidate migration chain |
-| Catalog mapping | Square catalog → `menu_items` + draft `pos_catalog_item_mappings` | UNSAFE | New menu items are matched/created by normalized name, mapping stays draft, deleted/inactive items are not reconciled, and no operator UI resolves draft mappings | Preserve provider item/variation identity on sales and add a minimal mapping review UI; never use draft mappings for planning |
+| Catalog mapping | Square catalog → provider identity → guarded review → verified recipe version | READY | Deleted/inactive catalog reconciliation and hosted proof remain open | Run controlled catalog review on staging; draft/rejected mappings remain excluded |
 | Inventory baseline | `inventory/count` → count-session RPCs → canonical inventory ledger → projected on-hand | READY | Hosted database proof was not run in this session | Run pgTAP and a controlled opening count with real items |
-| Inventory freshness | `inventory_items.last_updated` is used by forecasts and automation | UNSAFE | `last_updated` changes for policy edits and receipts, so it is not authoritative count freshness; midday counts can also be reduced by all same-day sales | Derive freshness and depletion windows from verified count/ledger evidence, not generic row updates |
-| Recipe mapping | `menu_item_ingredients`; deterministic name-normalized sale-to-ingredient use; unit compatibility checks | PARTIAL | The screen-facing recipe model is name-based and does not consume verified `pos_catalog_item_mappings`; mapping coverage is not an ordering gate | Join verified provider identity to menu/recipe identity and expose missing mappings |
-| Recipe consumption | `calculateOperationalSignals` and `buildInventoryPrediction` | PARTIAL | Tests prove mapped sales deplete ingredients, but incomplete recipes and stale counts do not block recommendation creation | Add planning readiness blockers and temporal count anchoring |
+| Inventory freshness | Latest non-superseded count event `effective_at` | READY | Hosted pgTAP execution remains open | Prove stale, superseded, receipt-after-count, and policy-edit cases on staging |
+| Recipe mapping | Verified provider identity → verified recipe version → verified canonical ingredient | READY | Manual/demo retain their legacy-compatible path by design | Keep name-only and draft live mappings excluded |
+| Recipe consumption | `calculateOperationalSignals` with a count-time sales window | READY | Live provider proof remains external | Prove a controlled post-count Square sale on staging |
 | Forecast / outlook | `operationalSignals`, recalculation cycles, run ledger | PARTIAL | Open/mid/close cycles currently run the same recomputation; scheduled execution still depends on opening Home | Differentiate close reconciliation and add an authorized machine-runner before unattended operation |
 | Pilot readiness | `buildPilotReadiness` → `fetchPilotReadiness` → Settings / POS status | READY | Exact blockers cover POS history/freshness, physical counts/canonical units, sales-weighted recipe coverage, supplier/cost routing, recipients, and Gmail; approval paths do not consume it yet | Enforce the same contract in recommendation approval/drafting after temporal count anchoring |
-| Recommendation | `service_commit_operational_signals`, `purchase_recommendations`, learning history | UNSAFE | Recommendation can still be created from stale/unverified inventory and incomplete recipe coverage; evidence is mainly a prose reason | Gate purchasing on pilot readiness and persist structured provenance inputs |
+| Recommendation | Structured confidence and bounded source evidence committed by the Edge workflow | READY | Exact hosted execution remains open | Regenerate legacy blocked rows after staging deployment |
 | Recommendation suppression | handled recommendation + later `last_updated` comparison | PARTIAL | A non-count item update can unsuppress a handled recommendation | Compare against newer verified inventory evidence instead |
 | Supplier draft | approve RPC groups recommendations into one tenant/supplier draft and rebuilds idempotently | READY | Draft has no structured order-line table; totals cannot be authoritative when costs are incomplete | Keep totals absent unless every line has authoritative cost; consider durable structured lines before scaling |
-| Human recommendation approval | `approve_purchase_recommendation`; owner/admin/manager; quantity bounded | READY | Approval freshness is not revalidated server-side | Re-evaluate current planning/readiness evidence inside the approval boundary |
+| Human recommendation approval | `approve_purchase_recommendation`; role, quantity, and provenance checked | READY | Hosted stale-approval pgTAP remains open | Execute stale count/revision rejection in staging |
 | Supplier recipient | `supplier_recipients` guarded RPC, directory UI, and final delivery-envelope review | PARTIAL | Order detail displays exact sender, recipient, and subject; normalized supplier-name matching is consistent across review, demo, approval, and provider claim, but identity is still name-based | Move to durable supplier identity while preserving exact tenant/supplier binding |
 | Gmail OAuth | `link-gmail` → callback → Vault-backed credential | EXTERNAL | Google OAuth credentials and sender proof were not available in this run | Use a Mise-controlled test Gmail account in authorized staging |
 | Gmail live-send gate | `GMAIL_SEND_ENABLED`, system and restaurant provider controls | READY | Environment remains intentionally disabled until explicitly configured | Keep fail-closed and document activation ownership |
@@ -68,8 +68,6 @@ Mise already contains most of the component workflows for a controlled operating
 
 ## Highest-priority implementation order
 
-1. Separate verified inventory-count freshness from generic item update time and anchor depletion to count time.
-2. Connect provider catalog/variation identity to verified menu mapping and recipe consumption.
-3. Enforce the readiness contract at recommendation approval and draft generation with structured provenance.
-4. Persist explicit signal-refresh failure state and sync-to-recompute correlation.
-5. Prove the controlled loop in staging and record only redacted evidence.
+1. Persist explicit signal-refresh failure state and sync-to-recompute correlation.
+2. Complete the failure matrix, role matrix, runbook, and exact-candidate evidence.
+3. Deploy and prove the controlled loop in hosted staging with redacted evidence.

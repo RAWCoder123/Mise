@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { buildSupplierSpendTrend } from "../services/domain/supplierSpend";
 import type { InventoryItem, PurchaseRecommendation, SupplierOrder } from "../types/mise";
+import { blockedRecommendationEvidence } from "./recommendationFixtures";
 
 const restaurantId = "rest_1";
 
@@ -53,6 +54,8 @@ function recommendation(
     urgency: "medium",
     status,
     supplier_order_id: orderId,
+    confidence: "blocked",
+    source_evidence: blockedRecommendationEvidence(itemId, "2026-07-20T12:00:00.000Z"),
     created_at: "2026-07-20T12:00:00.000Z"
   };
 }

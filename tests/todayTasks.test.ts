@@ -17,6 +17,7 @@ import type {
   SetupReadinessSummary,
   SupplierOrder
 } from "../types/mise";
+import { blockedRecommendationEvidence } from "./recommendationFixtures";
 
 const restaurantId = "restaurant_a";
 const otherRestaurantId = "restaurant_b";
@@ -230,6 +231,8 @@ function recommendation(
     urgency: "high",
     status: "pending",
     supplier_order_id: null,
+    confidence: "blocked",
+    source_evidence: blockedRecommendationEvidence("critical_item", "2026-07-18T14:00:00.000Z"),
     created_at: "2026-07-18T14:00:00.000Z",
     ...patch
   };

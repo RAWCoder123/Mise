@@ -49,6 +49,10 @@ export interface SquareLocation {
 }
 
 export interface SquareSaleRow {
+  occurred_at: string;
+  external_location_id: string;
+  external_catalog_item_id: string;
+  external_variation_id: string;
   sale_date: string;
   item_name: string;
   category: string;
@@ -276,10 +280,10 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
   const record = order as Record<string, unknown>;
   const orderId = stringField(record, "id", 128);
   if (!orderId) return [];
-  const closedAt =
-    stringField(record, "closed_at", 64) ||
-    stringField(record, "created_at", 64) ||
-    new Date().toISOString();
+  const locationId = stringField(record, "location_id", 128);
+  const closedAt = stringField(record, "closed_at", 64);
+  if (!locationId || !closedAt || !Number.isFinite(Date.parse(closedAt))) return [];
+  const occurredAt = new Date(closedAt).toISOString();
   const saleDate = closedAt.slice(0, 10);
   const lineItems = Array.isArray(record.line_items) ? record.line_items : [];
   const rows: SquareSaleRow[] = [];
@@ -292,11 +296,14 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
     const uid = stringField(item, "uid", 128) || String(index);
     const gross = moneyAmount(item.gross_sales_money) ?? moneyAmount(item.total_money) ?? 0;
     const net = moneyAmount(item.total_money) ?? gross;
-    const category =
-      stringField(item, "catalog_object_id", 80) ||
-      stringField(item, "variation_name", 80) ||
-      "Square";
+    const variationId = stringField(item, "catalog_object_id", 128);
+    if (!variationId) continue;
+    const category = stringField(item, "variation_name", 80) || "Square";
     rows.push({
+      occurred_at: occurredAt,
+      external_location_id: locationId,
+      external_catalog_item_id: "",
+      external_variation_id: variationId,
       sale_date: saleDate,
       item_name: name,
       category: category.slice(0, 80),
@@ -307,6 +314,21 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
     });
   }
   return rows;
+}
+
+export function attachSquareCatalogIdentity(
+  sales: readonly SquareSaleRow[],
+  catalog: readonly SquareCatalogRow[],
+): SquareSaleRow[] {
+  const itemByVariation = new Map(
+    catalog
+      .filter((row) => row.external_catalog_item_id && row.external_variation_id)
+      .map((row) => [row.external_variation_id, row.external_catalog_item_id] as const),
+  );
+  return sales.flatMap((sale) => {
+    const itemId = itemByVariation.get(sale.external_variation_id);
+    return itemId ? [{ ...sale, external_catalog_item_id: itemId }] : [];
+  });
 }
 
 export function normalizeCatalogItem(object: unknown): SquareCatalogRow[] {

@@ -375,9 +375,15 @@ export default function OrdersScreen() {
         current.filter((item) => item.id !== recommendation.id)
       );
       showMessage(t("orders.notice.approved", { item: approved.item_name }), restaurantId);
-    } catch {
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
-        showMessage(t("orders.error.approve"), restaurantId, "danger");
+        showMessage(
+          recommendationEvidenceError(error)
+            ? t("orders.error.evidenceStale")
+            : t("orders.error.approve"),
+          restaurantId,
+          "danger"
+        );
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -782,6 +788,10 @@ export default function OrdersScreen() {
       ) : null}
     </Screen>
   );
+}
+
+function recommendationEvidenceError(error: unknown) {
+  return error instanceof Error && /evidence|stale|regenerate|verified count|catalog chain/i.test(error.message);
 }
 
 const styles = StyleSheet.create({

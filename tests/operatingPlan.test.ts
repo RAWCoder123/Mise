@@ -22,6 +22,7 @@ import type {
   SetupReadinessSummary,
   SupplierOrder
 } from "../types/mise";
+import { blockedRecommendationEvidence } from "./recommendationFixtures";
 
 const restaurantId = "rest_plan";
 const otherRestaurantId = "rest_other";
@@ -433,6 +434,8 @@ function recommendation(overrides: Partial<PurchaseRecommendation> = {}): Purcha
     urgency: "medium",
     status: "pending",
     supplier_order_id: null,
+    confidence: "blocked",
+    source_evidence: blockedRecommendationEvidence("inv_1", "2026-08-02T10:00:00.000Z"),
     created_at: "2026-08-02T10:00:00.000Z",
     ...overrides
   };

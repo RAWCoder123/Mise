@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  attachSquareCatalogIdentity,
   buildSquareAuthorizationUrl,
   normalizeCatalogItem,
   normalizeOrderSales,
@@ -54,11 +55,13 @@ test("Square OAuth URL requests merchant, catalog, and orders scopes without lea
 test("Square order and catalog normalizers produce bounded Mise sales and catalog rows", () => {
   const sales = normalizeOrderSales({
     id: "order-1",
+    location_id: "location-1",
     closed_at: "2026-07-30T12:00:00.000Z",
     line_items: [
       {
         uid: "line-1",
         name: "Burger",
+        catalog_object_id: "var-1",
         quantity: "2",
         gross_sales_money: { amount: 2400, currency: "USD" },
         total_money: { amount: 2400, currency: "USD" },
@@ -70,6 +73,9 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
   assert.equal(sales[0]?.quantity_sold, 2);
   assert.equal(sales[0]?.source_record_id, "square_order-1_line-1");
   assert.equal(sales[0]?.gross_sales, 24);
+  assert.equal(sales[0]?.occurred_at, "2026-07-30T12:00:00.000Z");
+  assert.equal(sales[0]?.external_location_id, "location-1");
+  assert.equal(sales[0]?.external_variation_id, "var-1");
 
   const catalog = normalizeCatalogItem({
     type: "ITEM",
@@ -88,6 +94,8 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
   assert.equal(catalog.length, 1);
   assert.equal(catalog[0]?.external_catalog_item_id, "item-1");
   assert.equal(catalog[0]?.external_name, "Burger");
+  const identified = attachSquareCatalogIdentity(sales, catalog);
+  assert.equal(identified[0]?.external_catalog_item_id, "item-1");
 });
 
 test("Square migration keeps credentials private and kill-switch gated", () => {

@@ -327,8 +327,9 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
 
   assert.match(validation, /patch\.current_quantity[\s\S]*remain auditable/i);
   assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold", "supplier_name"\]\)/i);
-  assert.match(updateWorkflow, /fetchPlanningData[\s\S]*fetchRecommendationHistory/i);
-  assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);
+  assert.match(updateWorkflow, /fetchInventoryItems/i);
+  assert.doesNotMatch(updateWorkflow, /fetchPlanningData|fetchRecommendationHistory/i);
+  assert.doesNotMatch(updateWorkflow, /buildRecommendationInserts|buildInsightsFromData/i);
   assert.match(updateWorkflow, /updateInventoryItemAndSignals\([\s\S]*existing\.last_updated/i);
   assert.doesNotMatch(updateWorkflow, /repository\.updateInventoryItem\(/i);
   assert.match(repository, /action:\s*"update_inventory"/i);
@@ -490,7 +491,8 @@ test("workflow authority hardening removes direct writes and makes Edge telemetr
   assert.match(migration, /grant\s+execute[\s\S]*reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)\s+to\s+service_role/i);
   assert.match(migration, /revoke\s+all[\s\S]*reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)[\s\S]*authenticated/i);
 
-  assert.match(repository, /rpc\("create_pending_purchase_recommendation"/i);
+  assert.doesNotMatch(repository, /rpc\("create_pending_purchase_recommendation"/i);
+  assert.match(repository, /action:\s*"refresh_signals"[\s\S]*purchase_recommendations/i);
   assert.doesNotMatch(repository, /rpc\("replace_pending_purchase_recommendations"/i);
   assert.doesNotMatch(repository, /rpc\("replace_operational_insights"/i);
   assert.match(repository, /functions\.invoke\("operational-workflows"/i);
@@ -587,7 +589,7 @@ test("package exposes private-beta backend security gates", () => {
   assert.match(script("verify:paid-product"), /verify:private-beta-security/);
 
   assert.equal(packageJson.dependencies.expo, "~56.0.18");
-  assert.equal(packageJson.dependencies["expo-router"], "~56.2.17");
+  assert.equal(packageJson.dependencies["expo-router"], "~56.2.18");
   assert.equal(packageJson.dependencies["expo-constants"], "~56.0.22");
   assert.equal(packageJson.dependencies["expo-linking"], "~56.0.16");
   assert.equal(packageJson.dependencies["expo-splash-screen"], "~56.0.14");
@@ -934,7 +936,11 @@ test("inventory count sessions are service-owned with ledger approve path", () =
   const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
 
   assert.match(inventoryWorkflow, /beginInventoryCountSession/);
-  assert.match(inventoryWorkflow, /approveInventoryCountSession[\s\S]*planCountSessionApprovals/);
+  assert.match(
+    inventoryWorkflow,
+    /approveInventoryCountSession[\s\S]*fetchInventoryCountSession[\s\S]*summarizeCountSessionProgress[\s\S]*repository\.approveInventoryCountSession/
+  );
+  assert.doesNotMatch(inventoryWorkflow, /approveInventoryCountSession[\s\S]*planCountSessionApprovals/);
   assert.match(repository, /action:\s*"begin_count_session"/i);
   assert.match(repository, /action:\s*"approve_count_session"/i);
   assert.match(edge, /"begin_count_session"/);

@@ -9,6 +9,7 @@ import type {
   PosSale,
   PurchaseRecommendation
 } from "../types/mise";
+import { blockedRecommendationEvidence } from "./recommendationFixtures";
 import {
   BETA_FINDING_POLICY_VERSION,
   buildDailyOperationalBrief
@@ -57,6 +58,8 @@ const recommendation: PurchaseRecommendation = {
   urgency: "high",
   status: "pending",
   supplier_order_id: null,
+  confidence: "blocked",
+  source_evidence: blockedRecommendationEvidence(item.id, "2026-07-27T11:05:00.000Z"),
   created_at: "2026-07-27T11:05:00.000Z"
 };
 

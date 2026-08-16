@@ -58,6 +58,14 @@ test("normalizes mass, volume, count, and verified pack quantities", () => {
   });
   assert.equal(normalizeOperationalQuantity({ quantity: 2, unit: "tbsp" }).unit, "ml");
   assert.equal(normalizeOperationalQuantity({ quantity: 3, unit: "each" }).quantity, 3);
+  for (const unit of ["units", "head", "heads", "piece", "pieces"]) {
+    assert.deepEqual(normalizeOperationalQuantity({ quantity: 3, unit }), {
+      ok: true,
+      quantity: 3,
+      unit: "each",
+      blockers: []
+    });
+  }
   assert.deepEqual(
     normalizeOperationalQuantity({
       quantity: 2,

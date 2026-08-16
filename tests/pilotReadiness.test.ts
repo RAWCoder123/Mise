@@ -17,7 +17,13 @@ const now = "2026-08-14T12:00:00.000Z";
 const integration: PosIntegration = {
   id: "pos-1", restaurant_id: restaurantId, provider: "square", status: "connected",
   external_location_id: "location-1", last_sync_at: "2026-08-14T11:00:00.000Z",
-  sync_cursor: null, settings: {}, created_at: now, updated_at: now
+  sync_cursor: null, settings: {}, created_at: now, updated_at: now,
+  locations: [{
+    id: "pos-location-1", restaurant_id: restaurantId, pos_integration_id: "pos-1",
+    external_location_id: "location-1", display_name: "Main dining room",
+    timezone: "America/New_York", status: "active", selected_for_planning: true,
+    created_at: now, updated_at: now
+  }]
 };
 const inventory: InventoryItem = {
   id: "inventory-1", restaurant_id: restaurantId, item_name: "Chicken", category: "Protein",
@@ -51,7 +57,9 @@ function sales(days = 7): PosSale[] {
     id: `sale-${index}`, restaurant_id: restaurantId, source_record_id: `square-${index}`,
     sale_date: `2026-08-${String(7 + index).padStart(2, "0")}`, item_name: "Chicken Bowl",
     category: "Entree", quantity_sold: 10, gross_sales: 120, net_sales: 120,
-    source_pos: "Square", created_at: now
+    source_pos: "Square", occurred_at: `2026-08-${String(7 + index).padStart(2, "0")}T18:00:00.000Z`,
+    pos_location_id: "pos-location-1", external_catalog_item_id: "catalog-chicken",
+    external_variation_id: "variation-chicken", created_at: now
   }));
 }
 
@@ -64,6 +72,17 @@ function readyInput() {
     inventoryItems: [inventory],
     countEvents: [count],
     recipeMappings: [mapping],
+    verifiedRecipeMappings: [{
+      restaurant_id: restaurantId,
+      pos_location_id: "pos-location-1",
+      catalog_mapping_id: "catalog-mapping-1",
+      recipe_version_id: "recipe-version-1",
+      external_catalog_item_id: "catalog-chicken",
+      external_variation_id: "variation-chicken",
+      inventory_item_id: inventory.id,
+      quantity_used_per_sale: 0.5,
+      unit: "lb"
+    }],
     supplierRecipients: [recipient],
     emailConnection: email
   };
@@ -87,7 +106,10 @@ test("pilot readiness blocks recommendations without physical-count evidence", (
 });
 
 test("pilot readiness reports sales-weighted recipe gaps with exact menu items", () => {
-  const unmapped = { ...sales()[0]!, id: "sale-unmapped", item_name: "Wings", quantity_sold: 100 };
+  const unmapped = {
+    ...sales()[0]!, id: "sale-unmapped", item_name: "Wings", quantity_sold: 100,
+    external_catalog_item_id: "catalog-wings", external_variation_id: "variation-wings"
+  };
   const readiness = buildPilotReadiness({ ...readyInput(), sales: [...sales(), unmapped] });
   const recipes = readiness.areas.find((area) => area.id === "recipe_coverage");
   assert.equal(recipes?.status, "attention");

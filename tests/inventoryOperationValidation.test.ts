@@ -85,6 +85,10 @@ test("invalid units, times, anomalous quantities, and unbounded evidence are rej
   };
   assert.throws(() => requireInventoryOperation({ ...base, canonicalUnit: "lb" }), /grams/);
   assert.throws(() => requireInventoryOperation({ ...base, effectiveAt: "today" }), /valid inventory time/);
+  assert.throws(
+    () => requireInventoryOperation({ ...base, effectiveAt: "2999-01-01T00:00:00.000Z" }),
+    /valid inventory time/
+  );
   assert.throws(() => requireInventoryOperation({ ...base, quantity: Number.NaN }), /valid inventory quantity/);
   assert.throws(() => requireInventoryOperation({ ...base, quantity: "" }), /valid inventory quantity/);
   assert.throws(() => requireInventoryOperation({ ...base, quantity: null }), /valid inventory quantity/);
