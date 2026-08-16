@@ -16,6 +16,7 @@ import {
 } from "../services/domain/supplierDelivery";
 import { normalizeInventoryItem } from "../services/miseValidation";
 import type { PurchaseRecommendation, SupplierOrder } from "../types/mise";
+import { blockedRecommendationEvidence } from "./recommendationFixtures";
 
 test("inventory→order approval cards expose one-tap recommendation ids", () => {
   const state = createInitialDemoState("Toast", undefined, new Date("2026-08-02T15:00:00.000Z"));
@@ -33,6 +34,8 @@ test("inventory→order approval cards expose one-tap recommendation ids", () =>
     urgency: "high",
     status: "pending",
     supplier_order_id: null,
+    confidence: "blocked",
+    source_evidence: blockedRecommendationEvidence(item.id, "2026-08-02T14:00:00.000Z"),
     created_at: "2026-08-02T14:00:00.000Z"
   };
 
@@ -123,6 +126,8 @@ test("delivery lines + outcome complete the inventory→order→receive path", (
     urgency: "medium",
     status: "ordered",
     supplier_order_id: order.id,
+    confidence: "blocked",
+    source_evidence: blockedRecommendationEvidence(item.id, order.created_at),
     created_at: order.created_at
   };
 

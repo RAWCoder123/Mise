@@ -918,7 +918,7 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
-    async approveInventoryCountSession(restaurantId, sessionId, recommendations, insights) {
+    async approveInventoryCountSession(restaurantId, sessionId, _recommendations, _insights) {
       const detail = await readReadyDemoState(restaurantId).then((state) => {
         const found = findDemoCountSession(state, restaurantId, sessionId);
         if (!found) throw new Error("Count session not found");
@@ -936,7 +936,6 @@ export function createLocalDemoRepository(): MiseRepository {
       });
       const now = new Date().toISOString();
       for (const approval of approvals) {
-        if (!approval.changed) continue;
         const item = state.inventoryItems.find(
           (entry) => entry.restaurant_id === restaurantId && entry.id === approval.inventoryItemId
         );
@@ -977,22 +976,7 @@ export function createLocalDemoRepository(): MiseRepository {
       return mutateDemoState((demoState) => {
         const current = findDemoCountSession(demoState, restaurantId, sessionId);
         if (!current) throw new Error("Count session not found");
-        demoState.purchaseRecommendations = [
-          ...demoState.purchaseRecommendations.filter(
-            (recommendation) =>
-              recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
-          ),
-          ...recommendations.map((recommendation) => ({
-            ...recommendation,
-            id: createId("rec"),
-            created_at: now
-          }))
-        ];
-        demoState.insights = [
-          ...demoState.insights.filter((insight) => insight.restaurant_id !== restaurantId),
-          ...insights
-        ];
-        return replaceDemoCountSession(demoState, {
+        const approved = replaceDemoCountSession(demoState, {
           session: {
             ...current.session,
             status: "approved",
@@ -1002,6 +986,9 @@ export function createLocalDemoRepository(): MiseRepository {
           },
           lines: current.lines
         });
+        rebuildPurchaseRecommendations(demoState, restaurantId);
+        rebuildInsights(demoState, restaurantId);
+        return approved;
       });
     },
 
@@ -1014,6 +1001,15 @@ export function createLocalDemoRepository(): MiseRepository {
         menuItemIngredients: state.menuItemIngredients
           .filter((mapping) => mapping.restaurant_id === restaurantId)
           .map(normalizeMenuItemIngredient),
+        inventoryEvents: (state.inventoryEvents ?? []).filter(
+          (event) => event.restaurantId === restaurantId
+        ),
+        verifiedRecipeMappings: [],
+        planningMode: "demo" as const,
+        selectedPosLocationId: null,
+        planningRevision: null,
+        generatedAt: new Date().toISOString(),
+        correlationId: crypto.randomUUID(),
         operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone)
       };
     },
@@ -1739,6 +1735,14 @@ export function createLocalDemoRepository(): MiseRepository {
         (entry) => entry.restaurant_id === restaurantId && entry.provider === "square"
       );
       return integration ? normalizePosIntegration(integration) : null;
+    },
+
+    async selectPosLocation() {
+      throw new Error("Live Square location selection is unavailable in demo mode.");
+    },
+
+    async reviewPosCatalogMapping() {
+      throw new Error("Live Square catalog review is unavailable in demo mode.");
     },
 
     async disconnectRestaurantGmail(restaurantId) {

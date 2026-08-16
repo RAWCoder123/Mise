@@ -186,7 +186,9 @@ async function refreshWithRetry(
         inventory_item_id: recommendation.inventory_item_id,
         recommended_quantity: recommendation.recommended_quantity,
         reason: recommendation.reason,
-        urgency: recommendation.urgency
+        urgency: recommendation.urgency,
+        confidence: recommendation.confidence,
+        source_evidence: recommendation.source_evidence
       }));
       const insights = signals.insights.map((insight) => ({
         insight_type: insight.insight_type,
@@ -198,18 +200,20 @@ async function refreshWithRetry(
       }));
 
       if (action === "update_inventory") {
-        return await serviceRpc(securitySupabase, "service_update_inventory_and_signals", {
+        const updated = await serviceRpc(securitySupabase, "service_update_inventory_and_signals", {
           p_actor_user_id: actorUserId,
           p_restaurant_id: restaurantId,
           p_inventory_item_id: requireUuid(body.itemId, "itemId"),
           p_expected_revision: revision,
           p_patch: requireInventoryPatch(body.patch),
-          p_recommendations: recommendations,
-          p_insights: insights
+          p_recommendations: [],
+          p_insights: []
         });
+        await refreshWithRetry(securitySupabase, actorUserId, restaurantId, "refresh_signals", {}, false, {});
+        return updated;
       }
       if (action === "upsert_recipe") {
-        return await serviceRpc(securitySupabase, "service_save_recipe_and_signals", {
+        const updated = await serviceRpc(securitySupabase, "service_save_recipe_and_signals", {
           p_actor_user_id: actorUserId,
           p_restaurant_id: restaurantId,
           p_mapping_id: body.mappingId == null ? null : requireUuid(body.mappingId, "mappingId"),
@@ -218,19 +222,31 @@ async function refreshWithRetry(
           p_quantity_used_per_sale: requireBoundedNumber(body.quantityUsedPerSale, "quantityUsedPerSale", Number.EPSILON, 10_000),
           p_unit: requireBoundedString(body.unit, "unit", 40),
           p_expected_revision: revision,
-          p_recommendations: recommendations,
-          p_insights: insights
+          p_recommendations: [],
+          p_insights: []
         });
+        await refreshWithRetry(securitySupabase, actorUserId, restaurantId, "refresh_signals", {}, false, {});
+        return updated;
       }
       if (action === "approve_count_session") {
-        return await serviceRpc(securitySupabase, "service_approve_inventory_count_session", {
+        const approved = await serviceRpc(securitySupabase, "service_approve_inventory_count_session", {
           p_actor_user_id: actorUserId,
           p_restaurant_id: restaurantId,
           p_session_id: requireUuid(body.sessionId, "sessionId"),
           p_expected_revision: revision,
-          p_recommendations: recommendations,
-          p_insights: insights
+          p_recommendations: [],
+          p_insights: []
         });
+        await refreshWithRetry(
+          securitySupabase,
+          actorUserId,
+          restaurantId,
+          "refresh_signals",
+          {},
+          false,
+          {}
+        );
+        return approved;
       }
       return await serviceRpc(securitySupabase, "service_commit_operational_signals", {
         p_actor_user_id: actorUserId,

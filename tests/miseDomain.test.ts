@@ -55,6 +55,7 @@ import { getPosAdapter } from "../services/integrations/posAdapters";
 import { buildSupplierDraftPresentation, parseSupplierOrderLines } from "../utils/orderPresentation";
 import { todayScreenTitle } from "../utils/screenTitles";
 import { addDays, toDateKey, toDateKeyInTimeZone } from "../utils/format";
+import { blockedRecommendationEvidence } from "./recommendationFixtures";
 
 function isoDaysAgo(days: number) {
   return addDays(new Date(), -days).toISOString();
@@ -573,7 +574,7 @@ test("approved and ordered recommendations also suppress duplicate pending rows"
   });
 });
 
-test("demo recommendation rebuild uses full history without browser runtime errors", () => {
+test("demo recommendation rebuild uses full history and a newer count can reopen work", () => {
   const state = createInitialDemoState("Toast");
   const chicken = state.inventoryItems.find((item) => item.item_name === "Chicken breast");
   assert.ok(chicken);
@@ -590,7 +591,9 @@ test("demo recommendation rebuild uses full history without browser runtime erro
     urgency: "high",
     status: "dismissed",
     supplier_order_id: null,
-    created_at: "2026-06-20T09:30:00.000Z"
+    confidence: "blocked",
+    source_evidence: blockedRecommendationEvidence(chicken.id, "2026-06-20T15:00:00.000Z"),
+    created_at: "2026-06-20T15:00:00.000Z"
   });
 
   assert.doesNotThrow(() => rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID));
@@ -600,7 +603,7 @@ test("demo recommendation rebuild uses full history without browser runtime erro
         recommendation.inventory_item_id === chicken.id &&
         recommendation.status === "pending"
     ),
-    false
+    true
   );
 });
 

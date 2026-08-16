@@ -8,7 +8,9 @@ import type {
   InventoryCountSessionDetail,
   MenuItemIngredient,
   MenuItemIngredientInput,
+  PosCatalogItemMapping,
   PosIntegration,
+  PosLocation,
   PosProvider,
   PosSale,
   PurchaseRecommendation,
@@ -57,6 +59,7 @@ import type {
   RecalculationRunStatus
 } from "../domain/recalculationSchedule";
 import type { SupplierDeliveryHistory } from "../domain/supplierReliability";
+import type { OperationalVerifiedRecipeMapping } from "../domain/operationalSignals";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 
 /**
@@ -369,6 +372,13 @@ export interface PlanningData {
   inventoryItems: InventoryItem[];
   sales: PosSale[];
   menuItemIngredients: MenuItemIngredient[];
+  inventoryEvents: InventoryEvent[];
+  verifiedRecipeMappings: OperationalVerifiedRecipeMapping[];
+  planningMode: "demo" | "manual_csv" | "square_live";
+  selectedPosLocationId: string | null;
+  planningRevision: number | null;
+  generatedAt: string;
+  correlationId: string;
   operatingDate: string;
 }
 
@@ -547,6 +557,12 @@ export interface MiseRepository {
     to: string
   ): Promise<SquareSyncWorkflowResult>;
   fetchSquarePosIntegration(restaurantId: string): Promise<PosIntegration | null>;
+  selectPosLocation(restaurantId: string, locationId: string): Promise<PosLocation>;
+  reviewPosCatalogMapping(
+    restaurantId: string,
+    mappingId: string,
+    decision: "verified" | "rejected"
+  ): Promise<PosCatalogItemMapping>;
   sendSupplierOrderEmail(restaurantId: string, orderId: string): Promise<SupplierOrderEmailSendResult>;
   fetchInsights(restaurantId: string): Promise<Insight[]>;
   replaceInsights(restaurantId: string, insights: Insight[]): Promise<void>;

@@ -84,6 +84,10 @@ export interface PosSale {
   id: string;
   restaurant_id: string;
   source_record_id?: string | null;
+  occurred_at?: string | null;
+  pos_location_id?: string | null;
+  external_catalog_item_id?: string | null;
+  external_variation_id?: string | null;
   sale_date: string;
   item_name: string;
   category: string;
@@ -92,6 +96,39 @@ export interface PosSale {
   net_sales: number;
   source_pos: string;
   created_at: string;
+}
+
+export interface PosLocation {
+  id: string;
+  restaurant_id: string;
+  pos_integration_id: string;
+  external_location_id: string;
+  display_name: string;
+  timezone: string | null;
+  status: "active" | "paused" | "disconnected";
+  selected_for_planning: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PosCatalogMappingStatus = "draft" | "verified" | "rejected" | "expired";
+
+export interface PosCatalogItemMapping {
+  id: string;
+  restaurant_id: string;
+  pos_location_id: string;
+  external_catalog_item_id: string;
+  external_variation_id: string;
+  external_name: string;
+  menu_item_id: string;
+  verification_status: PosCatalogMappingStatus;
+  confidence: number;
+  effective_from: string;
+  effective_to: string | null;
+  verified_at: string | null;
+  verified_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface InventoryItem {
@@ -168,6 +205,31 @@ export interface MenuItemIngredientInput {
   unit: string;
 }
 
+export type ConfidenceBand = "blocked" | "low" | "medium" | "high";
+
+export interface VerifiedCountEvidence {
+  countEventId: string;
+  inventoryItemId: string;
+  effectiveAt: string;
+  recordedAt: string;
+  sequence: number;
+  quantity: number;
+  canonicalUnit: "g" | "ml" | "each";
+}
+
+export interface RecommendationSourceEvidence {
+  version: 1;
+  mode: "demo" | "manual_csv" | "square_verified" | "legacy";
+  countEvent: VerifiedCountEvidence | null;
+  salesThrough: string | null;
+  posLocationId: string | null;
+  mappingIds: string[];
+  recipeVersionIds: string[];
+  planningRevision: number | null;
+  generatedAt: string;
+  correlationId: string;
+}
+
 export interface PurchaseRecommendation {
   id: string;
   restaurant_id: string;
@@ -180,6 +242,8 @@ export interface PurchaseRecommendation {
   urgency: Urgency;
   status: RecommendationStatus;
   supplier_order_id: string | null;
+  confidence: ConfidenceBand;
+  source_evidence: RecommendationSourceEvidence;
   created_at: string;
 }
 
@@ -217,6 +281,8 @@ export interface PosIntegration {
   last_sync_at: string | null;
   sync_cursor: string | null;
   settings: Record<string, unknown>;
+  locations?: PosLocation[];
+  catalog_mappings?: PosCatalogItemMapping[];
   created_at: string;
   updated_at: string;
 }

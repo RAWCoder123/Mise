@@ -1,18 +1,15 @@
 import type { SupplierOrder } from "../../types/mise";
 import {
-  boundedLearnedQuantity,
-  buildInsightsFromData,
-  buildInventoryOutlooks,
-  buildLearnedOrderQuantities,
   buildSupplierOrderMessage,
   createId,
-  learnedRecommendationReason,
-  shouldSuppressRecommendationForItem,
   type RecommendationWorkflowResult,
   type SupplierOrderSentWorkflowResult
 } from "../domain/miseDomain";
+import {
+  calculateOperationalSignals,
+  recommendationEvidenceIsCurrent
+} from "../domain/operationalSignals";
 import { nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../../utils/format";
-import { demoDemandFallback } from "./demandFallback";
 import { DEMO_RESTAURANT_TIME_ZONE, type DemoState } from "./replaceableDemoData";
 
 function demoOperatingDate(state: DemoState, restaurantId: string) {
@@ -23,78 +20,39 @@ function demoOperatingDate(state: DemoState, restaurantId: string) {
 }
 
 export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: string) {
-  const now = new Date().toISOString();
-  const recommendationHistory = [...state.purchaseRecommendations];
-  const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
-  const lowOutlooks = buildInventoryOutlooks(
-    restaurantId,
-    state.inventoryItems,
-    state.posSales,
-    state.menuItemIngredients,
-    demoOperatingDate(state, restaurantId),
-    demoDemandFallback
-  ).filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low");
-  const lowItemIds = new Set(lowOutlooks.map(({ item }) => item.id));
-  const kept = state.purchaseRecommendations.filter((recommendation) => {
-    if (recommendation.restaurant_id !== restaurantId) return true;
-    if (recommendation.status !== "pending") return true;
-    return lowItemIds.has(recommendation.inventory_item_id);
-  });
-
-  lowOutlooks.forEach(({ item, prediction }) => {
-    const pending = kept.find(
+  const signals = demoOperationalSignals(state, restaurantId);
+  const pendingByItem = new Map(
+    state.purchaseRecommendations
+      .filter(
+        (recommendation) =>
+          recommendation.restaurant_id === restaurantId && recommendation.status === "pending"
+      )
+      .map((recommendation) => [recommendation.inventory_item_id, recommendation] as const)
+  );
+  state.purchaseRecommendations = [
+    ...state.purchaseRecommendations.filter(
       (recommendation) =>
-        recommendation.restaurant_id === restaurantId &&
-        recommendation.inventory_item_id === item.id &&
-        recommendation.status === "pending"
-    );
-    if (!pending && shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory)) return;
-
-    const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
-    const recommendedQuantity = learnedQuantity ?? prediction.suggestedOrderQuantity;
-    const reason = learnedRecommendationReason(item, prediction, learnedQuantity);
-
-    if (pending) {
-      pending.item_name = item.item_name;
-      pending.supplier_name = item.supplier_name;
-      pending.recommended_quantity = recommendedQuantity;
-      pending.unit = item.unit;
-      pending.reason = reason;
-      pending.urgency = prediction.urgency;
-      if (pending.created_at.localeCompare(item.last_updated) < 0) {
-        pending.created_at = now;
-      }
-      return;
-    }
-
-    kept.push({
-      id: createId("rec"),
-      restaurant_id: restaurantId,
-      inventory_item_id: item.id,
-      item_name: item.item_name,
-      supplier_name: item.supplier_name,
-      recommended_quantity: recommendedQuantity,
-      unit: item.unit,
-      reason,
-      urgency: prediction.urgency,
-      status: "pending",
-      supplier_order_id: null,
-      created_at: now
-    });
-  });
-
-  state.purchaseRecommendations = kept;
+        recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
+    ),
+    ...signals.recommendations.map((recommendation) => {
+      const existing = pendingByItem.get(recommendation.inventory_item_id);
+      const evidenceGenerationUnchanged =
+        existing?.source_evidence.generatedAt === recommendation.source_evidence.generatedAt &&
+        existing?.source_evidence.countEvent?.countEventId ===
+          recommendation.source_evidence.countEvent?.countEventId;
+      return {
+        ...recommendation,
+        id: existing?.id ?? createId("rec"),
+        created_at: evidenceGenerationUnchanged
+          ? existing.created_at
+          : recommendation.source_evidence.generatedAt
+      };
+    })
+  ];
 }
 
 export function rebuildInsights(state: DemoState, restaurantId: string) {
-  const generated = buildInsightsFromData(
-    restaurantId,
-    state.inventoryItems,
-    state.posSales,
-    state.menuItemIngredients,
-    demoOperatingDate(state, restaurantId),
-    demoDemandFallback
-  );
+  const generated = demoOperationalSignals(state, restaurantId).insights;
   state.insights = [
     ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),
     ...generated
@@ -122,6 +80,7 @@ export function approveRecommendationInDemoState(
     }
     recommendation.recommended_quantity = recommendedQuantity;
   }
+  assertRecommendationEvidenceCurrent(state, recommendation);
 
   let order = recommendation.supplier_order_id
     ? state.supplierOrders.find(
@@ -258,6 +217,10 @@ export function markSupplierOrderSentInDemoState(
     };
   }
 
+  linked
+    .filter((recommendation) => recommendation.status === "approved")
+    .forEach((recommendation) => assertRecommendationEvidenceCurrent(state, recommendation));
+
   order.status = "sent";
   const orderedRecommendations = linked.filter((recommendation) => recommendation.status === "approved");
   orderedRecommendations.forEach((recommendation) => {
@@ -287,4 +250,45 @@ function rebuildDemoDraftMessage(state: DemoState, order: SupplierOrder) {
     linkedApprovedRecommendations(state, order.id),
     order.operator_note
   );
+}
+
+function demoOperationalSignals(state: DemoState, restaurantId: string) {
+  const generatedAt = state.inventoryEvents
+    .filter((event) => event.restaurantId === restaurantId)
+    .map((event) => event.recordedAt)
+    .sort()
+    .at(-1) ?? state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.created_at ?? new Date().toISOString();
+  return calculateOperationalSignals({
+    restaurantId,
+    operatingDate: demoOperatingDate(state, restaurantId),
+    inventoryItems: state.inventoryItems,
+    sales: state.posSales,
+    menuItemIngredients: state.menuItemIngredients,
+    recommendationHistory: state.purchaseRecommendations,
+    inventoryEvents: state.inventoryEvents,
+    verifiedRecipeMappings: [],
+    planningMode: "demo",
+    selectedPosLocationId: null,
+    planningRevision: null,
+    generatedAt,
+    correlationId: crypto.randomUUID()
+  });
+}
+
+function assertRecommendationEvidenceCurrent(
+  state: DemoState,
+  recommendation: DemoState["purchaseRecommendations"][number]
+) {
+  if (
+    recommendation.confidence === "blocked" ||
+    !recommendationEvidenceIsCurrent({
+      restaurantId: recommendation.restaurant_id,
+      inventoryItemId: recommendation.inventory_item_id,
+      evidence: recommendation.source_evidence,
+      inventoryEvents: state.inventoryEvents,
+      now: recommendation.source_evidence.generatedAt
+    })
+  ) {
+    throw new Error("Recommendation evidence is stale or incomplete. Regenerate the plan before continuing.");
+  }
 }

@@ -2,9 +2,7 @@ import type { InventoryItemPatch } from "../../types/mise";
 import {
   buildInventoryControlSummary,
   buildInventoryOutlooks,
-  buildRecipeBaselineSummary,
-  recommendationReason,
-  shouldSuppressRecommendationForItem
+  buildRecipeBaselineSummary
 } from "../domain/miseDomain";
 import {
   applyCountApprovalsToInventory,
@@ -86,14 +84,16 @@ export async function updateRecipeBaselineIngredient(
     data.sales,
     planningMappings,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   const insights = buildInsightsFromData(
     restaurantId,
     data.inventoryItems,
     data.sales,
     planningMappings,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -161,14 +161,16 @@ export async function addRecipeBaselineIngredient(
     data.sales,
     planningMappings,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   const insights = buildInsightsFromData(
     restaurantId,
     data.inventoryItems,
     data.sales,
     planningMappings,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -187,23 +189,23 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
   const existing = await repository.findPendingRecommendation(restaurantId, itemId);
   if (existing) return existing;
 
-  const { item, prediction } = await fetchInventoryItemOutlook(restaurantId, itemId);
-  const history = await repository.fetchRecommendationHistory(restaurantId);
-  if (shouldSuppressRecommendationForItem(restaurantId, item, history)) {
-    throw new Error("Update the inventory count first. This item was already handled.");
+  const [data, history] = await Promise.all([
+    repository.fetchPlanningData(restaurantId),
+    repository.fetchRecommendationHistory(restaurantId)
+  ]);
+  const recommendation = buildRecommendationInserts(
+    restaurantId,
+    data.inventoryItems,
+    data.sales,
+    data.menuItemIngredients,
+    history,
+    data.operatingDate,
+    planningContext(data)
+  ).find((entry) => entry.inventory_item_id === itemId);
+  if (!recommendation) {
+    throw new Error("Complete a fresh count and verify the sales-to-recipe evidence before ordering.");
   }
-  return repository.createPurchaseRecommendation({
-    restaurant_id: restaurantId,
-    inventory_item_id: item.id,
-    item_name: item.item_name,
-    supplier_name: item.supplier_name,
-    recommended_quantity: prediction.suggestedOrderQuantity,
-    unit: item.unit,
-    reason: recommendationReason(item, prediction),
-    urgency: prediction.urgency,
-    status: "pending",
-    supplier_order_id: null
-  });
+  return repository.createPurchaseRecommendation(recommendation);
 }
 
 export async function updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch) {
@@ -226,14 +228,16 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     data.sales,
     data.menuItemIngredients,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   const insights = buildInsightsFromData(
     restaurantId,
     planningInventory,
     data.sales,
     data.menuItemIngredients,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   return repository.updateInventoryItemAndSignals(
     restaurantId,
@@ -299,14 +303,16 @@ export async function approveInventoryCountSession(restaurantId: string, session
     data.sales,
     data.menuItemIngredients,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   const insights = buildInsightsFromData(
     restaurantId,
     planningInventory,
     data.sales,
     data.menuItemIngredients,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   return repository.approveInventoryCountSession(
     restaurantId,
@@ -314,4 +320,16 @@ export async function approveInventoryCountSession(restaurantId: string, session
     recommendations,
     insights
   );
+}
+
+function planningContext(data: Awaited<ReturnType<typeof repository.fetchPlanningData>>) {
+  return {
+    inventoryEvents: data.inventoryEvents,
+    verifiedRecipeMappings: data.verifiedRecipeMappings,
+    planningMode: data.planningMode,
+    selectedPosLocationId: data.selectedPosLocationId,
+    planningRevision: data.planningRevision,
+    generatedAt: data.generatedAt,
+    correlationId: data.correlationId
+  };
 }

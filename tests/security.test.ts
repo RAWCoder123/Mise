@@ -490,7 +490,8 @@ test("workflow authority hardening removes direct writes and makes Edge telemetr
   assert.match(migration, /grant\s+execute[\s\S]*reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)\s+to\s+service_role/i);
   assert.match(migration, /revoke\s+all[\s\S]*reserve_edge_function_invocation\(uuid,\s*uuid,\s*text,\s*text,\s*jsonb\)[\s\S]*authenticated/i);
 
-  assert.match(repository, /rpc\("create_pending_purchase_recommendation"/i);
+  assert.doesNotMatch(repository, /rpc\("create_pending_purchase_recommendation"/i);
+  assert.match(repository, /action:\s*"refresh_signals"[\s\S]*purchase_recommendations/i);
   assert.doesNotMatch(repository, /rpc\("replace_pending_purchase_recommendations"/i);
   assert.doesNotMatch(repository, /rpc\("replace_operational_insights"/i);
   assert.match(repository, /functions\.invoke\("operational-workflows"/i);

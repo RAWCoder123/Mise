@@ -1,4 +1,5 @@
 import type { InventoryEvent } from "./inventoryLedger";
+import { latestVerifiedCountEvidence, type OperationalVerifiedRecipeMapping } from "./operationalSignals";
 import type {
   InventoryItem,
   MenuItemIngredient,
@@ -42,6 +43,7 @@ export interface PilotReadinessInput {
   inventoryItems: readonly InventoryItem[];
   countEvents: readonly InventoryEvent[];
   recipeMappings: readonly MenuItemIngredient[];
+  verifiedRecipeMappings?: readonly OperationalVerifiedRecipeMapping[];
   supplierRecipients: readonly SupplierRecipient[];
   emailConnection: RestaurantEmailConnection | null;
   minimumSalesDays?: number;
@@ -69,7 +71,13 @@ export function buildPilotReadiness(input: PilotReadinessInput): PilotReadiness 
   const areas = [
     assessPosSales(input.posIntegrations, input.sales, minimumSalesDays, generatedAt),
     assessInventoryCounts(input.inventoryItems, input.countEvents, maximumCountAgeHours, generatedAt),
-    assessRecipeCoverage(input.sales, input.recipeMappings, minimumRecipeCoverage),
+    assessRecipeCoverage(
+      input.sales,
+      input.recipeMappings,
+      input.verifiedRecipeMappings ?? [],
+      input.posIntegrations,
+      minimumRecipeCoverage
+    ),
     assessSupplierRouting(input.inventoryItems, input.supplierRecipients),
     assessEmailDelivery(input.emailConnection, input.inventoryItems, input.supplierRecipients)
   ];
@@ -106,7 +114,24 @@ function assessPosSales(
   generatedAt: string
 ): PilotReadinessArea {
   const connected = integrations.filter((integration) => integration.status === "connected");
-  const salesDays = new Set(sales.map((sale) => sale.sale_date)).size;
+  const square = connected.find((integration) => integration.provider === "square");
+  const selectedLocations = square?.locations?.filter(
+    (location) => location.status === "active" && location.selected_for_planning
+  ) ?? [];
+  const squareSales = square
+    ? sales.filter((sale) => sale.source_pos.trim().toLowerCase() === "square")
+    : [];
+  const eligibleSales = square
+    ? squareSales.filter(
+        (sale) =>
+          selectedLocations.length === 1 &&
+          sale.pos_location_id === selectedLocations[0]!.id &&
+          Boolean(sale.occurred_at) &&
+          Boolean(sale.external_catalog_item_id?.trim()) &&
+          Boolean(sale.external_variation_id?.trim())
+      )
+    : sales;
+  const salesDays = new Set(eligibleSales.map((sale) => sale.sale_date)).size;
   const latestSync = connected
     .map((integration) => integration.last_sync_at)
     .filter((value): value is string => Boolean(value))
@@ -123,6 +148,12 @@ function assessPosSales(
     ], { connectedIntegrations: connected.length, salesRows: 0, salesDays });
   }
   const blockers: string[] = [];
+  if (square && selectedLocations.length !== 1) {
+    blockers.push("Select exactly one active Square location for planning.");
+  }
+  if (square && eligibleSales.length !== squareSales.length) {
+    blockers.push(`${squareSales.length - eligibleSales.length} Square sales rows are missing verified location, timestamp, or catalog identity.`);
+  }
   if (salesDays < minimumSalesDays) {
     blockers.push(`Only ${salesDays} of ${minimumSalesDays} required sales days are available.`);
   }
@@ -131,10 +162,16 @@ function assessPosSales(
   }
   return area(
     "pos_sales",
-    blockers.length === 0 ? "ready" : "attention",
+    blockers.length === 0 ? "ready" : square ? "blocked" : "attention",
     blockers.length === 0 ? "POS history and sync freshness are ready." : "POS data needs attention.",
     blockers,
-    { connectedIntegrations: connected.length, salesRows: sales.length, salesDays }
+    {
+      connectedIntegrations: connected.length,
+      salesRows: eligibleSales.length,
+      salesDays,
+      selectedLocations: selectedLocations.length,
+      incompleteLiveRows: square ? squareSales.length - eligibleSales.length : 0
+    }
   );
 }
 
@@ -149,15 +186,16 @@ function assessInventoryCounts(
       "Add inventory items and complete a physical count."
     ], { inventoryItems: 0, countedItems: 0, freshCountedItems: 0, verifiedCanonicalUnits: 0 });
   }
-  const latestCountByItem = new Map<string, string>();
-  for (const event of countEvents) {
-    const current = latestCountByItem.get(event.inventoryItemId);
-    if (!current || event.effectiveAt > current) latestCountByItem.set(event.inventoryItemId, event.effectiveAt);
-  }
-  const missing = items.filter((item) => !latestCountByItem.has(item.id));
+  const latestCountByItem = new Map(
+    items.map((item) => [
+      item.id,
+      latestVerifiedCountEvidence(item.restaurant_id, item.id, countEvents)
+    ] as const)
+  );
+  const missing = items.filter((item) => !latestCountByItem.get(item.id));
   const stale = items.filter((item) => {
-    const timestamp = latestCountByItem.get(item.id);
-    return timestamp ? ageHours(timestamp, generatedAt) > maximumCountAgeHours : false;
+    const evidence = latestCountByItem.get(item.id);
+    return evidence ? ageHours(evidence.effectiveAt, generatedAt) > maximumCountAgeHours : false;
   });
   const unverified = items.filter(
     (item) => item.canonical_unit_verification_status !== "verified"
@@ -188,8 +226,62 @@ function assessInventoryCounts(
 function assessRecipeCoverage(
   sales: readonly PosSale[],
   mappings: readonly MenuItemIngredient[],
+  verifiedRecipeMappings: readonly OperationalVerifiedRecipeMapping[],
+  integrations: readonly PosIntegration[],
   minimumCoverage: number
 ): PilotReadinessArea {
+  const square = integrations.find(
+    (integration) => integration.provider === "square" && integration.status === "connected"
+  );
+  const selectedLocation = square?.locations?.find(
+    (location) => location.status === "active" && location.selected_for_planning
+  ) ?? null;
+  if (square) {
+    const liveSales = sales.filter(
+      (sale) =>
+        sale.source_pos.trim().toLowerCase() === "square" &&
+        sale.pos_location_id === selectedLocation?.id &&
+        Boolean(sale.external_catalog_item_id?.trim()) &&
+        Boolean(sale.external_variation_id?.trim())
+    );
+    const verifiedKeys = new Set(
+      verifiedRecipeMappings
+        .filter((mapping) => mapping.pos_location_id === selectedLocation?.id)
+        .map((mapping) => `${mapping.external_catalog_item_id}\u001f${mapping.external_variation_id}`)
+    );
+    const totalQuantity = liveSales.reduce((sum, sale) => sum + positive(sale.quantity_sold), 0);
+    const mappedQuantity = liveSales.reduce((sum, sale) => {
+      const key = `${sale.external_catalog_item_id ?? ""}\u001f${sale.external_variation_id ?? ""}`;
+      return sum + (verifiedKeys.has(key) ? positive(sale.quantity_sold) : 0);
+    }, 0);
+    const coverage = totalQuantity > 0 ? mappedQuantity / totalQuantity : 0;
+    const missingNames = new Set(
+      liveSales
+        .filter((sale) => {
+          const key = `${sale.external_catalog_item_id ?? ""}\u001f${sale.external_variation_id ?? ""}`;
+          return positive(sale.quantity_sold) > 0 && !verifiedKeys.has(key);
+        })
+        .map((sale) => sale.item_name.trim())
+    );
+    const blockers = coverage >= minimumCoverage ? [] : [
+      `Verified Square recipe coverage is ${Math.round(coverage * 100)}%; ${Math.round(minimumCoverage * 100)}% is required.`,
+      ...[...missingNames].slice(0, 5).map((name) => `Missing verified recipe chain for ${name}.`)
+    ];
+    return area(
+      "recipe_coverage",
+      totalQuantity === 0 || mappedQuantity === 0 ? "blocked" : coverage >= minimumCoverage ? "ready" : "attention",
+      coverage >= minimumCoverage
+        ? "Verified Square catalog-to-recipe coverage is ready."
+        : "Draft or name-only mappings cannot support live depletion.",
+      blockers,
+      {
+        recipeMappings: new Set(verifiedRecipeMappings.map((mapping) => mapping.recipe_version_id)).size,
+        mappedSalesQuantity: mappedQuantity,
+        totalSalesQuantity: totalQuantity,
+        coveragePercent: Math.round(coverage * 100)
+      }
+    );
+  }
   const mappedNames = new Set(mappings.map((mapping) => normalizeName(mapping.menu_item_name)));
   const totalQuantity = sales.reduce((sum, sale) => sum + positive(sale.quantity_sold), 0);
   const mappedQuantity = sales.reduce(
@@ -284,6 +376,7 @@ function assertRestaurantScope(restaurantId: string, input: PilotReadinessInput)
     ...input.inventoryItems.map((item) => item.restaurant_id),
     ...input.countEvents.map((item) => item.restaurantId),
     ...input.recipeMappings.map((item) => item.restaurant_id),
+    ...(input.verifiedRecipeMappings ?? []).map((item) => item.restaurant_id),
     ...input.supplierRecipients.map((item) => item.restaurant_id),
     ...(input.emailConnection ? [input.emailConnection.restaurant_id] : [])
   ].some((id) => id !== restaurantId);

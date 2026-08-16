@@ -20,6 +20,8 @@ import {
   fetchPilotReadiness,
   fetchSquarePosIntegration,
   isSquareIntegrationError,
+  reviewPosCatalogMapping,
+  selectPosLocation,
   syncSquarePosSales
 } from "../../services/miseService";
 import {
@@ -27,10 +29,16 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import type { PilotReadiness, PilotReadinessAreaId } from "../../services/domain/pilotReadiness";
-import { canDeleteRestaurantData } from "../../services/tenantAccess";
+import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import type { PosIntegration, PosProvider } from "../../types/mise";
 
 const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Manual CSV Upload"];
+type BusyAction =
+  | "connect"
+  | "disconnect"
+  | "sync"
+  | `location:${string}`
+  | `mapping:${string}:${"verified" | "rejected"}`;
 type PosMessage =
   | { key: "pos.message.demoLoaded"; values: { provider: string } }
   | { key: "pos.error.demoLoad" }
@@ -47,7 +55,7 @@ export default function POSConnectionScreen() {
   const [pilotReadiness, setPilotReadiness] = useState<PilotReadiness | null>(null);
   const [readinessLoadError, setReadinessLoadError] = useState(false);
   const [loadingIntegration, setLoadingIntegration] = useState(!isDemoMode);
-  const [busyAction, setBusyAction] = useState<"connect" | "disconnect" | "sync" | null>(null);
+  const [busyAction, setBusyAction] = useState<BusyAction | null>(null);
   const [hubLoadError, setHubLoadError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{
@@ -59,7 +67,8 @@ export default function POSConnectionScreen() {
   const readinessRequestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
-  const canManage = canDeleteRestaurantData(memberships, restaurant?.id);
+  const canManageConnection = canDeleteRestaurantData(memberships, restaurant?.id);
+  const canReviewPlanning = canManageRestaurantData(memberships, restaurant?.id);
   const posProviderLabel = posProvider === "Manual CSV Upload" ? t("pos.provider.manualCsv") : posProvider;
 
   useEffect(() => {
@@ -137,12 +146,23 @@ export default function POSConnectionScreen() {
   });
   const hubReady = hubLoadState === "ready";
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
-    allowed: canManage,
+    allowed: canManageConnection,
     hubReady,
     busy: busyAction !== null || loadingProvider !== null
   });
   const visibleIntegration = hubReady ? integration : null;
   const visibleSquareConnected = visibleIntegration?.status === "connected";
+  const planningActionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canReviewPlanning,
+    hubReady,
+    busy: busyAction !== null || loadingProvider !== null
+  });
+  const selectedLocation = visibleIntegration?.locations?.find(
+    (location) => location.status === "active" && location.selected_for_planning
+  ) ?? null;
+  const visibleMappings = (visibleIntegration?.catalog_mappings ?? []).filter(
+    (mapping) => !selectedLocation || mapping.pos_location_id === selectedLocation.id
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -254,8 +274,7 @@ export default function POSConnectionScreen() {
         title: t("pos.square.disconnectedTitle"),
         message: t("pos.square.disconnectedBody")
       });
-      await loadIntegration(false);
-      await loadPilotReadiness();
+      await Promise.all([loadIntegration(false), loadPilotReadiness()]);
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
@@ -291,14 +310,67 @@ export default function POSConnectionScreen() {
         title: t("pos.square.syncTitle"),
         message: t("pos.square.syncBody", { count: String(result.recordsProcessed) })
       });
-      await loadIntegration(false);
-      await loadPilotReadiness();
+      await Promise.all([loadIntegration(false), loadPilotReadiness()]);
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
         tone: "danger",
         title: t("pos.square.syncErrorTitle"),
         message: isSquareIntegrationError(error) ? error.message : t("pos.square.syncErrorBody")
+      });
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setBusyAction(null);
+    }
+  }
+
+  async function choosePlanningLocation(locationId: string) {
+    if (!restaurant || !planningActionsEditable) return;
+    const restaurantId = restaurant.id;
+    setBusyAction(`location:${locationId}`);
+    setNotice(null);
+    try {
+      await selectPosLocation(restaurantId, locationId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await loadIntegration(false);
+      await loadPilotReadiness();
+      setNotice({
+        tone: "success",
+        title: t("pos.location.selectedTitle"),
+        message: t("pos.location.selectedBody")
+      });
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        tone: "danger",
+        title: t("pos.location.errorTitle"),
+        message: error instanceof Error ? error.message : t("pos.location.errorBody")
+      });
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setBusyAction(null);
+    }
+  }
+
+  async function reviewCatalogMapping(mappingId: string, decision: "verified" | "rejected") {
+    if (!restaurant || !planningActionsEditable) return;
+    const restaurantId = restaurant.id;
+    setBusyAction(`mapping:${mappingId}:${decision}`);
+    setNotice(null);
+    try {
+      await reviewPosCatalogMapping(restaurantId, mappingId, decision);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await loadIntegration(false);
+      await loadPilotReadiness();
+      setNotice({
+        tone: decision === "verified" ? "success" : "neutral",
+        title: t(decision === "verified" ? "pos.mapping.verifiedTitle" : "pos.mapping.rejectedTitle"),
+        message: t("pos.mapping.reviewedBody")
+      });
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        tone: "danger",
+        title: t("pos.mapping.errorTitle"),
+        message: error instanceof Error ? error.message : t("pos.mapping.errorBody")
       });
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setBusyAction(null);
@@ -455,68 +527,145 @@ export default function POSConnectionScreen() {
             </View>
           </>
         ) : (
-          <Card>
-            <Text style={styles.restrictedTitle}>{t("pos.square.cardTitle")}</Text>
-            <Text style={styles.restrictedCopy}>{t("pos.square.cardBody")}</Text>
-            {loadingIntegration || !hubReady ? (
-              <Text style={styles.meta}>{t("common.loading")}</Text>
-            ) : (
-              <Text style={styles.meta}>
-                {visibleSquareConnected
-                  ? t("pos.square.lastSync", {
-                      value: visibleIntegration?.last_sync_at
-                        ? formatDate(visibleIntegration.last_sync_at)
-                        : t("common.none")
-                    })
-                  : t("pos.square.notConnectedMeta")}
-              </Text>
-            )}
-            <View style={styles.actions}>
-              {actionsEditable ? (
-                visibleSquareConnected ? (
-                  <>
-                    <Button
-                      title={busyAction === "sync" ? t("pos.square.syncing") : t("pos.square.syncNow")}
-                      onPress={() => void syncSquare()}
-                      disabled={!actionsEditable}
-                      accessibilityHint={t("pos.square.syncHint")}
-                    />
-                    <Button
-                      title={
-                        busyAction === "disconnect"
-                          ? t("pos.square.disconnecting")
-                          : t("pos.square.disconnect")
-                      }
-                      variant="secondary"
-                      onPress={() => void disconnectSquare()}
-                      disabled={!actionsEditable}
-                      accessibilityHint={t("pos.square.disconnectHint")}
-                    />
-                  </>
-                ) : (
-                  <Button
-                    title={
-                      busyAction === "connect" ? t("pos.square.connecting") : t("pos.square.connect")
-                    }
-                    onPress={() => void connectSquare()}
-                    disabled={!actionsEditable}
-                    accessibilityHint={t("pos.square.connectHint")}
-                  />
-                )
+          <>
+            <Card>
+              <Text style={styles.restrictedTitle}>{t("pos.square.cardTitle")}</Text>
+              <Text style={styles.restrictedCopy}>{t("pos.square.cardBody")}</Text>
+              {loadingIntegration || !hubReady ? (
+                <Text style={styles.meta}>{t("common.loading")}</Text>
               ) : (
                 <Text style={styles.meta}>
-                  {canManage ? t("common.loading") : t("pos.square.ownerRequired")}
+                  {visibleSquareConnected
+                    ? t("pos.square.lastSync", {
+                        value: visibleIntegration?.last_sync_at
+                          ? formatDate(visibleIntegration.last_sync_at)
+                          : t("common.none")
+                      })
+                    : t("pos.square.notConnectedMeta")}
                 </Text>
               )}
-              <Button
-                title={t("pos.restricted.importCsv")}
-                variant="secondary"
-                onPress={() => router.push("/settings/sales-import" as never)}
-                disabled={!hubReady}
-                accessibilityHint={t("pos.provider.hintCsvImport")}
-              />
-            </View>
-          </Card>
+              <View style={styles.actions}>
+                {actionsEditable ? (
+                  visibleSquareConnected ? (
+                    <>
+                      <Button
+                        title={busyAction === "sync" ? t("pos.square.syncing") : t("pos.square.syncNow")}
+                        onPress={() => void syncSquare()}
+                        disabled={!actionsEditable}
+                        accessibilityHint={t("pos.square.syncHint")}
+                      />
+                      <Button
+                        title={
+                          busyAction === "disconnect"
+                            ? t("pos.square.disconnecting")
+                            : t("pos.square.disconnect")
+                        }
+                        variant="secondary"
+                        onPress={() => void disconnectSquare()}
+                        disabled={!actionsEditable}
+                        accessibilityHint={t("pos.square.disconnectHint")}
+                      />
+                    </>
+                  ) : (
+                    <Button
+                      title={
+                        busyAction === "connect" ? t("pos.square.connecting") : t("pos.square.connect")
+                      }
+                      onPress={() => void connectSquare()}
+                      disabled={!actionsEditable}
+                      accessibilityHint={t("pos.square.connectHint")}
+                    />
+                  )
+                ) : (
+                  <Text style={styles.meta}>
+                    {canManageConnection ? t("common.loading") : t("pos.square.ownerRequired")}
+                  </Text>
+                )}
+                <Button
+                  title={t("pos.restricted.importCsv")}
+                  variant="secondary"
+                  onPress={() => router.push("/settings/sales-import" as never)}
+                  disabled={!hubReady}
+                  accessibilityHint={t("pos.provider.hintCsvImport")}
+                />
+              </View>
+            </Card>
+
+            {visibleSquareConnected ? (
+              <>
+                <Card>
+                  <Text style={styles.restrictedTitle}>{t("pos.location.title")}</Text>
+                  <Text style={styles.restrictedCopy}>{t("pos.location.body")}</Text>
+                  <View style={styles.reviewList}>
+                    {(visibleIntegration?.locations ?? []).map((location) => (
+                      <View key={location.id} style={styles.reviewRow}>
+                        <View style={styles.reviewCopy}>
+                          <Text style={styles.reviewTitle}>{location.display_name}</Text>
+                          <Text style={styles.metaInline}>
+                            {location.selected_for_planning
+                              ? t("pos.location.selected")
+                              : t(`pos.location.status.${location.status}`)}
+                          </Text>
+                        </View>
+                        <Button
+                          title={location.selected_for_planning ? t("pos.location.selected") : t("pos.location.select")}
+                          size="compact"
+                          variant={location.selected_for_planning ? "soft" : "secondary"}
+                          disabled={!planningActionsEditable || location.status !== "active" || location.selected_for_planning}
+                          onPress={() => void choosePlanningLocation(location.id)}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                </Card>
+
+                <Card>
+                  <Text style={styles.restrictedTitle}>{t("pos.mapping.title")}</Text>
+                  <Text style={styles.restrictedCopy}>{t("pos.mapping.body")}</Text>
+                  {!selectedLocation ? (
+                    <Text style={styles.meta}>{t("pos.mapping.selectLocation")}</Text>
+                  ) : visibleMappings.length === 0 ? (
+                    <Text style={styles.meta}>{t("pos.mapping.empty")}</Text>
+                  ) : (
+                    <View style={styles.reviewList}>
+                      {visibleMappings.map((mapping) => (
+                        <View key={mapping.id} style={styles.mappingRow}>
+                          <View style={styles.reviewCopy}>
+                            <Text style={styles.reviewTitle}>{mapping.external_name}</Text>
+                            <Text style={styles.metaInline}>
+                              {mapping.verification_status === "verified"
+                                ? t("pos.mapping.verified")
+                                : mapping.verification_status === "rejected"
+                                  ? t("pos.mapping.rejected")
+                                  : t("pos.mapping.needsReview")}
+                            </Text>
+                          </View>
+                          {mapping.verification_status === "draft" ? (
+                            <View style={styles.inlineActions}>
+                              <Button
+                                title={t("pos.mapping.verify")}
+                                size="compact"
+                                variant="soft"
+                                disabled={!planningActionsEditable}
+                                onPress={() => void reviewCatalogMapping(mapping.id, "verified")}
+                              />
+                              <Button
+                                title={t("pos.mapping.reject")}
+                                size="compact"
+                                variant="ghost"
+                                disabled={!planningActionsEditable}
+                                onPress={() => void reviewCatalogMapping(mapping.id, "rejected")}
+                              />
+                            </View>
+                          ) : null}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </Card>
+              </>
+            ) : null}
+          </>
         )}
       </View>
     </Screen>
@@ -636,6 +785,27 @@ const styles = StyleSheet.create({
   restrictedCopy: { ...typography.body, color: colors.muted, marginTop: 6 },
   meta: { ...typography.caption, color: colors.muted, marginTop: spacing.sm },
   actions: { gap: spacing.sm, marginTop: spacing.md },
+  reviewList: { gap: spacing.sm, marginTop: spacing.md },
+  reviewRow: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm
+  },
+  mappingRow: {
+    gap: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm
+  },
+  reviewCopy: { flex: 1, minWidth: 0 },
+  reviewTitle: { ...typography.body, color: colors.text, fontWeight: "700" },
+  metaInline: { ...typography.caption, color: colors.muted, marginTop: 2 },
+  inlineActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   pressed: { opacity: 0.92 },
   disabled: { opacity: 0.55 }
 });

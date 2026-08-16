@@ -11,6 +11,7 @@ import {
   shouldSuppressRecommendationForItem
 } from "../services/domain/miseDomain";
 import { calculateOperationalSignals } from "../services/domain/operationalSignals";
+import type { InventoryEvent } from "../services/domain/inventoryLedger";
 import { inventoryUnitsAreCompatible } from "../services/domain/inventoryUnits";
 import { buildRecordedSalesTrend } from "../services/domain/salesTrends";
 import {
@@ -26,6 +27,7 @@ import type {
   PurchaseRecommendation
 } from "../types/mise";
 import { nextDateKeyInTimeZone } from "../utils/format";
+import { blockedRecommendationEvidence } from "./recommendationFixtures";
 
 const operatingDate = "2026-07-14";
 const fixedNow = "2026-07-14T12:00:00.000Z";
@@ -70,6 +72,8 @@ function approvedRecommendation(
     urgency: "medium",
     status,
     supplier_order_id: null,
+    confidence: "blocked",
+    source_evidence: blockedRecommendationEvidence(`item_${id}`, fixedNow),
     created_at: fixedNow
   };
 }
@@ -273,7 +277,29 @@ test("prediction boundaries ignore wrong dates, anomalous quantities, and incomp
     inventoryItems: [item],
     sales,
     menuItemIngredients: mappings,
-    recommendationHistory: []
+    recommendationHistory: [],
+    inventoryEvents: [{
+      id: "count-low-item",
+      sequence: 1,
+      restaurantId,
+      inventoryItemId: item.id,
+      eventType: "count",
+      quantity: 20 * 453.59237,
+      canonicalUnit: "g",
+      effectiveAt: "2026-07-14T10:00:00.000Z",
+      recordedAt: "2026-07-14T10:00:00.000Z",
+      actorUserId: "manager",
+      source: "test_count",
+      sourceReference: null,
+      reasonCode: null,
+      clientEventId: "count-low-item",
+      idempotencyKey: "count-low-item",
+      supersedesEventId: null,
+      metadata: {}
+    } satisfies InventoryEvent],
+    planningMode: "manual_csv",
+    generatedAt: fixedNow,
+    correlationId: "11111111-1111-4111-8111-111111111111"
   });
   assert.equal(operational.recommendations.length, 1);
   assert.equal(operational.recommendations[0]?.recommended_quantity, 7);

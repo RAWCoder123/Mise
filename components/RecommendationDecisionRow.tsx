@@ -32,9 +32,10 @@ export function RecommendationDecisionRow({
   showDivider,
   readOnly = false
 }: RecommendationDecisionRowProps) {
-  const { formatNumber, t } = useLocale();
+  const { formatDate, formatNumber, t } = useLocale();
   const [expanded, setExpanded] = useState(false);
   const busy = Boolean(action);
+  const evidenceBlocked = recommendation.confidence === "blocked";
   const suggestedQuantity = formatNumber(recommendation.recommended_quantity, {
     maximumFractionDigits: 3
   });
@@ -55,6 +56,23 @@ export function RecommendationDecisionRow({
           : operationalStatus === "Cancelled"
             ? t("orders.ops.Cancelled")
             : t("orders.ops.Unverified");
+  const confidenceLabel = t(`orders.recommendation.confidence.${recommendation.confidence}`);
+  const countEvidence = recommendation.source_evidence.countEvent;
+  const sourceSummary = countEvidence
+    ? [
+        t("orders.recommendation.source.counted", {
+          date: formatDate(countEvidence.effectiveAt, { dateStyle: "medium", timeStyle: "short" })
+        }),
+        recommendation.source_evidence.salesThrough
+          ? t("orders.recommendation.source.salesThrough", {
+              date: formatDate(recommendation.source_evidence.salesThrough, {
+                dateStyle: "medium",
+                timeStyle: "short"
+              })
+            })
+          : t("orders.recommendation.source.noSales")
+      ].join(" · ")
+    : t("orders.recommendation.source.blocked");
 
   return (
     <View style={[styles.row, showDivider && styles.rowDivider, busy && styles.rowBusy]}>
@@ -63,6 +81,18 @@ export function RecommendationDecisionRow({
           <Text style={styles.itemName}>{recommendation.item_name}</Text>
           <View style={styles.statusLine}>
             <Badge label={operationalLabel} tone="caution" />
+            <Badge
+              label={confidenceLabel}
+              tone={
+                recommendation.confidence === "high"
+                  ? "success"
+                  : recommendation.confidence === "medium"
+                    ? "caution"
+                    : recommendation.confidence === "low"
+                      ? "warning"
+                      : "danger"
+              }
+            />
             <Text
               style={[
                 styles.urgency,
@@ -106,6 +136,7 @@ export function RecommendationDecisionRow({
               unit: recommendation.unit
             })}
           </Text>
+          <Text style={styles.sourceMeta}>{sourceSummary}</Text>
         </View>
       ) : null}
 
@@ -139,11 +170,11 @@ export function RecommendationDecisionRow({
               accessibilityLabel={t("orders.recommendation.quantityAccessibility", {
                 item: recommendation.item_name
               })}
-              accessibilityState={{ disabled: busy }}
+              accessibilityState={{ disabled: busy || evidenceBlocked }}
               value={quantity}
               onChangeText={onQuantityChange}
               keyboardType="decimal-pad"
-              editable={!busy}
+              editable={!busy && !evidenceBlocked}
               selectTextOnFocus
               style={styles.quantityInput}
             />
@@ -165,10 +196,10 @@ export function RecommendationDecisionRow({
             accessibilityLabel={t("orders.recommendation.approveAccessibility", {
               item: recommendation.item_name
             })}
-            accessibilityState={{ disabled: busy }}
+            accessibilityState={{ disabled: busy || evidenceBlocked }}
             icon={<Check size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
             onPress={onApprove}
-            disabled={busy}
+            disabled={busy || evidenceBlocked}
             style={styles.actionButton}
           />
           <Button
@@ -270,6 +301,10 @@ const styles = StyleSheet.create({
     color: colors.muted,
     ...typography.caption,
     fontWeight: "500"
+  },
+  sourceMeta: {
+    color: colors.muted,
+    ...typography.caption
   },
   quantityRow: {
     flexDirection: "row",

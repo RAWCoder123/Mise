@@ -7,7 +7,9 @@ import type {
   InventoryCountLine,
   InventoryCountSessionDetail,
   MenuItemIngredient,
+  PosCatalogItemMapping,
   PosIntegration,
+  PosLocation,
   PosProvider,
   PosSale,
   PurchaseRecommendation,
@@ -76,7 +78,9 @@ import {
   normalizeInventoryItem,
   normalizeInventoryCountSessionDetail,
   normalizeMenuItemIngredient,
+  normalizePosCatalogItemMapping,
   normalizePosIntegration,
+  normalizePosLocation,
   normalizePosSale,
   normalizePurchaseRecommendation,
   normalizeRestaurant,
@@ -783,19 +787,58 @@ export function createSupabaseRepository(): MiseRepository {
     },
 
     async fetchPlanningData(restaurantId) {
-      const [inventoryResult, sales, mappingResult, restaurantResult] = await Promise.all([
+      const generatedAt = new Date().toISOString();
+      const [inventoryResult, sales, mappingResult, restaurantResult, eventResult, integrationResult, locationResult] = await Promise.all([
         client.from("inventory_items").select("*").eq("restaurant_id", restaurantId).order("item_name"),
         fetchBoundedPlanningSales(restaurantId),
         client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
-        client.from("restaurants").select("timezone").eq("id", restaurantId).single()
+        client.from("restaurants").select("timezone").eq("id", restaurantId).single(),
+        client
+          .from("inventory_events")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .order("sequence", { ascending: false })
+          .limit(4000),
+        client
+          .from("pos_integrations")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .eq("provider", "square")
+          .maybeSingle(),
+        client
+          .from("pos_locations")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .eq("selected_for_planning", true)
       ]);
       if (inventoryResult.error) throw inventoryResult.error;
       if (mappingResult.error) throw mappingResult.error;
       if (restaurantResult.error) throw restaurantResult.error;
+      if (eventResult.error) throw eventResult.error;
+      if (integrationResult.error) throw integrationResult.error;
+      if (locationResult.error) throw locationResult.error;
+      const inventoryItems = ((inventoryResult.data ?? []) as InventoryItem[]).map(normalizeInventoryItem);
+      const selectedLocations = ((locationResult.data ?? []) as PosLocation[]).map(normalizePosLocation);
+      if (selectedLocations.length > 1) {
+        throw new Error("Square planning requires exactly one selected POS location.");
+      }
+      const selectedPosLocationId = selectedLocations[0]?.id ?? null;
+      const liveSquare = integrationResult.data &&
+        normalizePosIntegration(integrationResult.data as PosIntegration).status === "connected";
+      const verifiedRecipeMappings = liveSquare && selectedPosLocationId
+        ? await fetchVerifiedRecipeMappings(client, restaurantId, selectedPosLocationId, inventoryItems, generatedAt)
+        : [];
       return {
-        inventoryItems: ((inventoryResult.data ?? []) as InventoryItem[]).map(normalizeInventoryItem),
+        inventoryItems,
         sales,
         menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
+        inventoryEvents: (eventResult.data ?? []).map(normalizeInventoryEventRecord),
+        verifiedRecipeMappings,
+        planningMode: liveSquare ? "square_live" as const : "manual_csv" as const,
+        selectedPosLocationId,
+        planningRevision: null,
+        generatedAt,
+        correlationId: crypto.randomUUID(),
         operatingDate: toDateKeyInTimeZone(
           new Date(),
           (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
@@ -937,14 +980,21 @@ export function createSupabaseRepository(): MiseRepository {
     },
 
     async createPurchaseRecommendation(input) {
-      const { data, error } = await client.rpc("create_pending_purchase_recommendation", {
-        p_restaurant_id: input.restaurant_id,
-        p_inventory_item_id: input.inventory_item_id,
-        p_recommended_quantity: input.recommended_quantity,
-        p_reason: input.reason,
-        p_urgency: input.urgency
+      await invokeOperationalWorkflow({
+        action: "refresh_signals",
+        restaurantId: input.restaurant_id
       });
-      if (error) throw error;
+      const { data, error } = await client
+        .from("purchase_recommendations")
+        .select("*")
+        .eq("restaurant_id", input.restaurant_id)
+        .eq("inventory_item_id", input.inventory_item_id)
+        .eq("status", "pending")
+        .maybeSingle();
+      if (error) throwRepositoryError(error, input.restaurant_id);
+      if (!data) {
+        throw new Error("Fresh verified evidence does not support this supplier recommendation.");
+      }
       return normalizePurchaseRecommendation(data as PurchaseRecommendation);
     },
 
@@ -1222,14 +1272,59 @@ export function createSupabaseRepository(): MiseRepository {
     },
 
     async fetchSquarePosIntegration(restaurantId) {
-      const { data, error } = await client
-        .from("pos_integrations")
-        .select("*")
-        .eq("restaurant_id", restaurantId)
-        .eq("provider", "square")
-        .maybeSingle();
-      if (error) throw error;
-      return data ? normalizePosIntegration(data as PosIntegration) : null;
+      const [integrationResult, locationResult, mappingResult] = await Promise.all([
+        client
+          .from("pos_integrations")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .eq("provider", "square")
+          .maybeSingle(),
+        client
+          .from("pos_locations")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .order("display_name"),
+        client
+          .from("pos_catalog_item_mappings")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .is("effective_to", null)
+          .order("external_name")
+          .limit(250)
+      ]);
+      if (integrationResult.error) throw integrationResult.error;
+      if (locationResult.error) throw locationResult.error;
+      if (mappingResult.error) throw mappingResult.error;
+      if (!integrationResult.data) return null;
+      return normalizePosIntegration({
+        ...(integrationResult.data as PosIntegration),
+        locations: ((locationResult.data ?? []) as PosLocation[]).map(normalizePosLocation),
+        catalog_mappings: ((mappingResult.data ?? []) as PosCatalogItemMapping[])
+          .map(normalizePosCatalogItemMapping)
+      });
+    },
+
+    async selectPosLocation(restaurantId, locationId) {
+      const { data, error } = await client.rpc("select_pos_location", {
+        p_restaurant_id: restaurantId,
+        p_location_id: locationId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") throw new Error("POS location selection returned an invalid response.");
+      return normalizePosLocation(row as PosLocation);
+    },
+
+    async reviewPosCatalogMapping(restaurantId, mappingId, decision) {
+      const { data, error } = await client.rpc("review_pos_catalog_mapping", {
+        p_restaurant_id: restaurantId,
+        p_mapping_id: mappingId,
+        p_decision: decision
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") throw new Error("Catalog mapping review returned an invalid response.");
+      return normalizePosCatalogItemMapping(row as PosCatalogItemMapping);
     },
 
     async sendSupplierOrderEmail(restaurantId, orderId) {
@@ -1830,6 +1925,99 @@ function parseCountSessionWorkflowResult(value: unknown) {
     session: payload.session as InventoryCountSessionDetail["session"],
     lines: (payload.lines ?? []) as InventoryCountLine[]
   });
+}
+
+async function fetchVerifiedRecipeMappings(
+  client: NonNullable<typeof supabase>,
+  restaurantId: string,
+  selectedPosLocationId: string,
+  inventoryItems: InventoryItem[],
+  generatedAt: string
+) {
+  const [mappingResult, versionResult, ingredientResult] = await Promise.all([
+    client
+      .from("pos_catalog_item_mappings")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("pos_location_id", selectedPosLocationId)
+      .eq("verification_status", "verified")
+      .is("effective_to", null),
+    client
+      .from("recipe_versions")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "verified")
+      .lte("effective_from", generatedAt)
+      .or(`effective_to.is.null,effective_to.gt.${generatedAt}`),
+    client
+      .from("recipe_ingredients")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("verification_status", "verified")
+  ]);
+  if (mappingResult.error) throw mappingResult.error;
+  if (versionResult.error) throw versionResult.error;
+  if (ingredientResult.error) throw ingredientResult.error;
+
+  const mappings = ((mappingResult.data ?? []) as PosCatalogItemMapping[])
+    .map(normalizePosCatalogItemMapping);
+  const versions = (versionResult.data ?? []) as Array<Record<string, unknown>>;
+  const ingredients = (ingredientResult.data ?? []) as Array<Record<string, unknown>>;
+  const itemById = new Map(inventoryItems.map((item) => [item.id, item]));
+  const result: Array<{
+    restaurant_id: string;
+    pos_location_id: string;
+    catalog_mapping_id: string;
+    recipe_version_id: string;
+    external_catalog_item_id: string;
+    external_variation_id: string;
+    inventory_item_id: string;
+    quantity_used_per_sale: number;
+    unit: string;
+  }> = [];
+
+  for (const mapping of mappings) {
+    const version = versions
+      .filter(
+        (entry) =>
+          entry.menu_item_id === mapping.menu_item_id &&
+          (entry.pos_location_id == null || entry.pos_location_id === selectedPosLocationId)
+      )
+      .sort((left, right) => {
+        const locationRank = Number(right.pos_location_id === selectedPosLocationId) -
+          Number(left.pos_location_id === selectedPosLocationId);
+        return locationRank || Number(right.version_number ?? 0) - Number(left.version_number ?? 0);
+      })[0];
+    if (!version || typeof version.id !== "string") continue;
+    const servingQuantity = Number(version.serving_quantity);
+    if (!Number.isFinite(servingQuantity) || servingQuantity <= 0) continue;
+    for (const ingredient of ingredients.filter((entry) => entry.recipe_version_id === version.id)) {
+      if (typeof ingredient.inventory_item_id !== "string") continue;
+      const item = itemById.get(ingredient.inventory_item_id);
+      const canonicalQuantityPerUnit = Number(item?.canonical_quantity_per_unit);
+      const quantity = Number(ingredient.quantity);
+      if (
+        !item ||
+        item.canonical_unit_verification_status !== "verified" ||
+        !Number.isFinite(canonicalQuantityPerUnit) || canonicalQuantityPerUnit <= 0 ||
+        !Number.isFinite(quantity) || quantity <= 0 ||
+        ingredient.canonical_unit !== item.canonical_unit
+      ) continue;
+      result.push({
+        restaurant_id: restaurantId,
+        pos_location_id: selectedPosLocationId,
+        catalog_mapping_id: mapping.id,
+        recipe_version_id: version.id,
+        external_catalog_item_id: mapping.external_catalog_item_id,
+        external_variation_id: mapping.external_variation_id,
+        inventory_item_id: item.id,
+        quantity_used_per_sale: quantity / servingQuantity / canonicalQuantityPerUnit,
+        unit: item.unit
+      });
+      if (result.length >= 1000) return result;
+    }
+  }
+  return result;
 }
 
 function normalizePosProviderFromIntegration(value: unknown): PosProvider | null {

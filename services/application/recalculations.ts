@@ -10,7 +10,8 @@ export async function generateInsightsFromSalesAndInventory(restaurantId: string
     data.inventoryItems,
     data.sales,
     data.menuItemIngredients,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   await repository.replaceInsights(restaurantId, insights);
   return insights;
@@ -25,7 +26,8 @@ export async function generatePurchaseRecommendations(restaurantId: string) {
     data.sales,
     data.menuItemIngredients,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   await repository.replacePendingRecommendations(restaurantId, inserts);
 }
@@ -41,14 +43,28 @@ export async function regenerateOperationalSignals(restaurantId: string) {
     data.sales,
     data.menuItemIngredients,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   const insights = buildInsightsFromData(
     restaurantId,
     data.inventoryItems,
     data.sales,
     data.menuItemIngredients,
-    data.operatingDate
+    data.operatingDate,
+    planningContext(data)
   );
   await repository.replaceOperationalSignals(restaurantId, recommendations, insights);
+}
+
+function planningContext(data: Awaited<ReturnType<typeof repository.fetchPlanningData>>) {
+  return {
+    inventoryEvents: data.inventoryEvents,
+    verifiedRecipeMappings: data.verifiedRecipeMappings,
+    planningMode: data.planningMode,
+    selectedPosLocationId: data.selectedPosLocationId,
+    planningRevision: data.planningRevision,
+    generatedAt: data.generatedAt,
+    correlationId: data.correlationId
+  };
 }

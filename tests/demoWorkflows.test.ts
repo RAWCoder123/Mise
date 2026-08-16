@@ -14,6 +14,7 @@ import {
   type StoredDemoState
 } from "../services/demoData";
 import type { PurchaseRecommendation, SupplierOrder } from "../types/mise";
+import { blockedRecommendationEvidence } from "./recommendationFixtures";
 
 const FIXED_NOW = new Date("2026-07-15T16:00:00.000Z");
 
@@ -28,10 +29,21 @@ function recommendation(
   id: string,
   overrides: Partial<PurchaseRecommendation> = {}
 ): PurchaseRecommendation {
+  const countSources = [
+    { suffix: "101", sequence: 1, quantity: 8164.66266 },
+    { suffix: "103", sequence: 2, quantity: 36287.3896 },
+    { suffix: "105", sequence: 4, quantity: 4535.9237 },
+    { suffix: "107", sequence: 5, quantity: 9071.8474 }
+  ];
+  const hashedSource = countSources[
+    [...id].reduce((sum, character) => sum + character.charCodeAt(0), 0) % countSources.length
+  ]!;
+  const inventoryItemId =
+    overrides.inventory_item_id ?? `00000000-0000-4000-8000-000000000${hashedSource.suffix}`;
+  const source = countSources.find((candidate) => inventoryItemId.endsWith(candidate.suffix)) ?? hashedSource;
   return {
     id,
     restaurant_id: DEMO_RESTAURANT_ID,
-    inventory_item_id: `item_${id}`,
     item_name: `Item ${id}`,
     supplier_name: "Neighborhood Produce",
     recommended_quantity: 5,
@@ -40,6 +52,25 @@ function recommendation(
     urgency: "medium",
     status: "pending",
     supplier_order_id: null,
+    confidence: "medium",
+    source_evidence: {
+      ...blockedRecommendationEvidence(
+        inventoryItemId,
+        FIXED_NOW.toISOString()
+      ),
+      mode: "demo",
+      countEvent: {
+        countEventId: `demo-count-${inventoryItemId}`,
+        inventoryItemId,
+        effectiveAt: "2026-07-15T14:00:00.000Z",
+        recordedAt: "2026-07-15T14:00:00.000Z",
+        sequence: source.sequence,
+        quantity: source.quantity,
+        canonicalUnit: "g"
+      },
+      correlationId: "11111111-1111-4111-8111-111111111111"
+    },
+    inventory_item_id: inventoryItemId,
     created_at: FIXED_NOW.toISOString(),
     ...overrides
   };
@@ -94,7 +125,7 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
   );
   assert.ok(item);
 
-  pending.created_at = "2026-07-15T09:00:00.000Z";
+  const originalCreatedAt = pending.created_at;
   item.last_updated = "2026-07-16T09:00:00.000Z";
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
 
@@ -103,9 +134,29 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
   );
   assert.ok(refreshed);
   assert.equal(refreshed.status, "pending");
-  assert.ok(refreshed.created_at.localeCompare(item.last_updated) >= 0);
+  assert.equal(refreshed.created_at, originalCreatedAt);
 
-  approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, refreshed.id);
+  const countBeforeApproval = state.inventoryEvents
+    .filter((event) => event.inventoryItemId === item.id && event.eventType === "count")
+    .sort((left, right) => right.sequence - left.sequence)[0]!;
+  state.inventoryEvents.push({
+    ...countBeforeApproval,
+    id: "count-before-approval",
+    sequence: Math.max(...state.inventoryEvents.map((event) => event.sequence)) + 1,
+    effectiveAt: "2026-07-15T16:30:00.000Z",
+    recordedAt: "2026-07-15T16:30:00.000Z",
+    clientEventId: "count-before-approval",
+    idempotencyKey: "count-before-approval"
+  });
+  rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
+  const countRefreshed = state.purchaseRecommendations.find(
+    (recommendation) => recommendation.id === pending.id
+  );
+  assert.ok(countRefreshed);
+  assert.equal(countRefreshed.created_at, "2026-07-15T16:30:00.000Z");
+  assert.equal(countRefreshed.source_evidence.countEvent?.countEventId, "count-before-approval");
+
+  approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, countRefreshed.id);
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
   assert.equal(
     state.purchaseRecommendations.some(
@@ -116,7 +167,18 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
     false
   );
 
-  item.last_updated = new Date(Date.now() + 60_000).toISOString();
+  const latestCount = state.inventoryEvents
+    .filter((event) => event.inventoryItemId === item.id && event.eventType === "count")
+    .sort((left, right) => right.sequence - left.sequence)[0]!;
+  state.inventoryEvents.push({
+    ...latestCount,
+    id: "count-after-approval",
+    sequence: Math.max(...state.inventoryEvents.map((event) => event.sequence)) + 1,
+    effectiveAt: "2026-07-15T17:00:00.000Z",
+    recordedAt: "2026-07-15T17:00:00.000Z",
+    clientEventId: "count-after-approval",
+    idempotencyKey: "count-after-approval"
+  });
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
   const nextPending = state.purchaseRecommendations.find(
     (recommendation) =>
@@ -217,7 +279,7 @@ test("undoing approved items rebuilds a shared draft and removes it when empty",
 
 test("undo refuses to replace a newer pending recommendation", () => {
   const state = emptyWorkflowState();
-  const approved = recommendation("approved", { inventory_item_id: "shared_item" });
+  const approved = recommendation("approved");
   state.purchaseRecommendations.push(approved);
   approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, approved.id);
 
@@ -316,7 +378,7 @@ test("demo-state repair retains history, deduplicates pending rows, and restores
   const pending = repaired.state.purchaseRecommendations.find((entry) => entry.status === "pending");
 
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 10);
+  assert.equal(repaired.state.schema_version, 11);
   assert.equal(repaired.state.purchaseRecommendations.length, 3);
   assert.equal(new Set(repaired.state.purchaseRecommendations.map((entry) => entry.id)).size, 3);
   assert.deepEqual(

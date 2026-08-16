@@ -1,4 +1,5 @@
 import {
+  attachSquareCatalogIdentity,
   listSquareCatalogItems,
   refreshSquareAccessToken,
   searchSquareOrders,
@@ -152,6 +153,28 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (credential?.outcome === "location_selection_required") {
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "sync-pos-sales",
+        "blocked",
+        "pos_sync_blocked",
+        { provider, reason: "location_selection_required" },
+      );
+      terminalContext = null;
+      return jsonResponse(
+        {
+          status: "location_selection_required",
+          message: "Select exactly one Square location before syncing sales.",
+          retryable: false,
+        },
+        409,
+      );
+    }
+
     if (credential?.outcome !== "ready") {
       await recordFunctionSecurityEvent(
         securitySupabase,
@@ -192,10 +215,11 @@ Deno.serve(async (req) => {
         });
       }
 
-      const [sales, catalogItems] = await Promise.all([
+      const [rawSales, catalogItems] = await Promise.all([
         searchSquareOrders(oauthConfig, tokens.accessToken, locationIds, from, to),
         listSquareCatalogItems(oauthConfig, tokens.accessToken),
       ]);
+      const sales = attachSquareCatalogIdentity(rawSales, catalogItems);
 
       const { data: applied, error: applyError } = await securitySupabase.rpc(
         "service_apply_square_sync_result",

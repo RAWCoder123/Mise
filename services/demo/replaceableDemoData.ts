@@ -21,6 +21,8 @@ import type {
 import type { SetupPosSaleDraft } from "../domain/setupDrafts";
 import type { OperationalFindingDecision } from "../domain/operationalFindingDecisions";
 import type { InventoryEvent } from "../domain/inventoryLedger";
+import { normalizeOperationalQuantity } from "../domain/operationalMapping";
+import { latestVerifiedCountEvidence } from "../domain/operationalSignals";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
 import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
 
@@ -59,7 +61,7 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 10;
+  schema_version: 11;
   restaurants: Restaurant[];
   users: AppUser[];
   posSales: PosSale[];
@@ -330,8 +332,14 @@ export function createInitialDemoState(
     sale("00000000-0000-4000-8000-000000000305", today, "Pancakes", "Breakfast", 24, 288, provider ?? "Demo POS", now)
   ];
 
+  const inventoryEvents = demoCountInventoryEvents(
+    inventoryItems,
+    new Date(nowDate.getTime() - 2 * 60 * 60 * 1000).toISOString(),
+    1
+  );
+
   const state: DemoState = {
-    schema_version: 10,
+    schema_version: 11,
     restaurants: [restaurant],
     users: [user],
     posSales,
@@ -350,6 +358,8 @@ export function createInitialDemoState(
         urgency: "medium",
         status: "approved",
         supplier_order_id: "00000000-0000-4000-8000-000000000601",
+        confidence: "medium",
+        source_evidence: demoRecommendationEvidence(inventoryEvents, itemIds.tomatoes, now),
         created_at: now
       },
       {
@@ -364,6 +374,8 @@ export function createInitialDemoState(
         urgency: "medium",
         status: "approved",
         supplier_order_id: "00000000-0000-4000-8000-000000000601",
+        confidence: "medium",
+        source_evidence: demoRecommendationEvidence(inventoryEvents, itemIds.lettuce, now),
         created_at: now
       }
     ],
@@ -468,7 +480,7 @@ export function createInitialDemoState(
     miseActions: [],
     autonomyRules: [],
     actionOutcomes: [],
-    inventoryEvents: [],
+    inventoryEvents,
     inventoryCountSessions: [],
     supplierDeliveries: [],
     supplierDeliveryItems: [],
@@ -512,7 +524,8 @@ export function createInitialDemoState(
  * Version 7 persists the inventory event ledger for reset/export parity and
  * seeds reviewable waste evidence in the replaceable reference dataset.
  * Version 8 repairs interim reference stores that were created before the
- * seeded waste ledger was included.
+ * seeded waste ledger was included. Version 11 adds fresh physical-count
+ * evidence and blocks legacy recommendations until they are regenerated.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const referenceRestaurantNameMatches =
@@ -581,14 +594,43 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     return {
       ...recommendation,
       id,
-      supplier_order_id: linkedOrder?.id ?? null
+      supplier_order_id: linkedOrder?.id ?? null,
+      confidence: (
+        recommendation.confidence === "low" ||
+        recommendation.confidence === "medium" ||
+        recommendation.confidence === "high"
+          ? recommendation.confidence
+          : "blocked"
+      ) as PurchaseRecommendation["confidence"],
+      source_evidence:
+        recommendation.source_evidence ??
+        legacyRecommendationEvidence(recommendation.inventory_item_id, recommendation.created_at)
     };
   });
+
+  const inputInventoryEvents = Array.isArray(raw.inventoryEvents) ? raw.inventoryEvents : [];
+  const seededCountByItem = new Map(
+    seeded.inventoryEvents
+      .filter((event) => event.eventType === "count")
+      .map((event) => [event.inventoryItemId, event] as const)
+  );
+  const inventoryEvents = [
+    ...inputInventoryEvents,
+    ...Array.from(seededCountByItem.values()).filter(
+      (seededCount) =>
+        !inputInventoryEvents.some(
+          (event) =>
+            event.restaurantId === seededCount.restaurantId &&
+            event.inventoryItemId === seededCount.inventoryItemId &&
+            event.eventType === "count"
+        )
+    )
+  ].map((event, index) => ({ ...event, sequence: index + 1 }));
 
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 10,
+    schema_version: 11,
     restaurants,
     users: raw.users ?? seeded.users,
     posSales: raw.posSales ?? seeded.posSales,
@@ -614,11 +656,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     miseActions: Array.isArray(raw.miseActions) ? raw.miseActions : seeded.miseActions,
     autonomyRules: Array.isArray(raw.autonomyRules) ? raw.autonomyRules : seeded.autonomyRules,
     actionOutcomes: Array.isArray(raw.actionOutcomes) ? raw.actionOutcomes : seeded.actionOutcomes,
-    inventoryEvents:
-      Array.isArray(raw.inventoryEvents) &&
-      !(usesReferenceDataset && raw.inventoryEvents.length === 0)
-        ? raw.inventoryEvents
-        : seeded.inventoryEvents,
+    inventoryEvents,
     inventoryCountSessions: Array.isArray(raw.inventoryCountSessions)
       ? raw.inventoryCountSessions
       : seeded.inventoryCountSessions,
@@ -642,7 +680,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 10 ||
+      raw.schema_version !== 11 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
@@ -650,6 +688,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       !Array.isArray(raw.restaurantMemories) ||
       !Array.isArray(raw.actionOutcomes) ||
       !Array.isArray(raw.inventoryEvents) ||
+      inventoryEvents.length !== inputInventoryEvents.length ||
       !Array.isArray(raw.inventoryCountSessions) ||
       (usesReferenceDataset && raw.inventoryEvents.length === 0 && seeded.inventoryEvents.length > 0) ||
       !Array.isArray(raw.supplierDeliveries) ||
@@ -942,7 +981,12 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       canonicalUnit: "g",
       effectiveAt: addDays(nowDate, -10).toISOString(),
       note: "Prior-week trim loss."
-    })
+    }),
+    ...demoCountInventoryEvents(
+      state.inventoryItems,
+      new Date(nowDate.getTime() - 2 * 60 * 60 * 1000).toISOString(),
+      6
+    )
   ];
 
   state.supplierOrders = [
@@ -1114,6 +1158,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       urgency: "medium",
       status: "approved",
       supplier_order_id: "00000000-0000-4000-8000-000000000601",
+      confidence: "medium",
+      source_evidence: demoRecommendationEvidence(state.inventoryEvents, itemIds.lettuce, createdAt),
       created_at: createdAt
     },
     {
@@ -1128,6 +1174,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       urgency: "medium",
       status: "approved",
       supplier_order_id: "00000000-0000-4000-8000-000000000601",
+      confidence: "medium",
+      source_evidence: demoRecommendationEvidence(state.inventoryEvents, itemIds.tomatoes, createdAt),
       created_at: createdAt
     },
     {
@@ -1142,6 +1190,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       urgency: "medium",
       status: "ordered",
       supplier_order_id: "00000000-0000-4000-8000-000000000602",
+      confidence: "blocked",
+      source_evidence: legacyRecommendationEvidence(itemIds.rice, sentOrderCreatedAt),
       created_at: sentOrderCreatedAt
     },
     {
@@ -1156,6 +1206,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       urgency: "medium",
       status: "ordered",
       supplier_order_id: "00000000-0000-4000-8000-000000000602",
+      confidence: "blocked",
+      source_evidence: legacyRecommendationEvidence(itemIds.pancakeMix, sentOrderCreatedAt),
       created_at: sentOrderCreatedAt
     }
   ];
@@ -1320,6 +1372,87 @@ function demoInventoryEvent(input: {
     idempotencyKey: `demo_inventory:${input.id}`,
     supersedesEventId: null,
     metadata: { note: input.note, simulated: true }
+  };
+}
+
+function demoCountInventoryEvents(
+  items: readonly InventoryItem[],
+  effectiveAt: string,
+  startingSequence: number
+): InventoryEvent[] {
+  let nextSequence = startingSequence;
+  return items.flatMap((item) => {
+    const inferred = normalizeOperationalQuantity({ quantity: 1, unit: item.unit });
+    const isDiscreteHead = /^heads?$/i.test(item.unit.trim());
+    const canonicalUnit = item.canonical_unit ?? (inferred.ok ? inferred.unit : isDiscreteHead ? "each" : null);
+    const quantityPerUnit =
+      item.canonical_quantity_per_unit ?? (inferred.ok ? inferred.quantity : isDiscreteHead ? 1 : null);
+    if (!canonicalUnit || !quantityPerUnit) return [];
+    const id = `demo-count-${item.id}`;
+    const sequence = nextSequence;
+    nextSequence += 1;
+    return [{
+      id,
+      sequence,
+      restaurantId: item.restaurant_id,
+      inventoryItemId: item.id,
+      eventType: "count" as const,
+      quantity: item.current_quantity * quantityPerUnit,
+      canonicalUnit,
+      effectiveAt,
+      recordedAt: effectiveAt,
+      actorUserId: DEMO_USER_ID,
+      source: "demo_physical_count",
+      sourceReference: "demo_opening_count",
+      reasonCode: null,
+      clientEventId: `demo:${id}`,
+      idempotencyKey: `demo_inventory:${id}`,
+      supersedesEventId: null,
+      metadata: { simulated: true }
+    }];
+  });
+}
+
+function legacyRecommendationEvidence(
+  _inventoryItemId: string,
+  createdAt: string
+): PurchaseRecommendation["source_evidence"] {
+  return {
+    version: 1,
+    mode: "legacy",
+    countEvent: null,
+    salesThrough: null,
+    posLocationId: null,
+    mappingIds: [],
+    recipeVersionIds: [],
+    planningRevision: null,
+    generatedAt: createdAt,
+    correlationId: "00000000-0000-0000-0000-000000000000"
+  };
+}
+
+function demoRecommendationEvidence(
+  inventoryEvents: readonly InventoryEvent[],
+  inventoryItemId: string,
+  generatedAt: string
+): PurchaseRecommendation["source_evidence"] {
+  const countEvent = latestVerifiedCountEvidence(
+    DEMO_RESTAURANT_ID,
+    inventoryItemId,
+    inventoryEvents
+  );
+  if (!countEvent) return legacyRecommendationEvidence(inventoryItemId, generatedAt);
+  return {
+    version: 1,
+    mode: "demo",
+    countEvent,
+    salesThrough: null,
+    posLocationId: null,
+    mappingIds: [],
+    recipeVersionIds: [],
+    planningRevision: null,
+    generatedAt,
+    correlationId: "00000000-0000-4000-8000-000000000777"
   };
 }
 
