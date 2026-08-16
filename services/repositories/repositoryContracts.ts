@@ -142,6 +142,7 @@ export const RECOMMENDATION_HISTORY_DAYS = 180;
 export const OPERATIONAL_DECISION_HISTORY_DAYS = 180;
 
 export type GmailIntegrationErrorStatus =
+  | "approval_required"
   | "delivery_requires_review"
   | "gmail_not_connected"
   | "in_progress"
@@ -231,6 +232,12 @@ export interface SupplierOrderEmailSendResult {
   providerMessageId: string | null;
   order: SupplierOrder;
   orderedRecommendations: PurchaseRecommendation[];
+}
+
+export interface SupplierSendEnvelope {
+  from: string;
+  to: string;
+  subject: string;
 }
 
 export interface RestaurantSetupSnapshotInput {
@@ -583,10 +590,17 @@ export interface MiseRepository {
     restaurantId: string,
     options?: { status?: MiseAction["status"] | "awaiting_decision"; limit?: number }
   ): Promise<MiseAction[]>;
+  fetchSupplierSendAction?(restaurantId: string, orderId: string): Promise<MiseAction | null>;
   decideMiseAction(
     restaurantId: string,
     actionId: string,
     decision: "approved" | "rejected"
+  ): Promise<MiseAction>;
+  approveSupplierSendEnvelope?(
+    restaurantId: string,
+    actionId: string,
+    orderId: string,
+    envelope: SupplierSendEnvelope
   ): Promise<MiseAction>;
   listRestaurantMemories(
     restaurantId: string,

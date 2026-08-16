@@ -4,12 +4,19 @@ import test from "node:test";
 
 test("Gmail client workflows stay typed, tenant-scoped, and behind backend functions", () => {
   const application = readFileSync("services/application/orders.ts", "utf8");
+  const actionApplication = readFileSync("services/application/miseActions.ts", "utf8");
   const hostedRepository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const demoRepository = readFileSync("services/repositories/demoRepository.ts", "utf8");
+  const sendFunction = readFileSync("supabase/functions/send-supplier-email/index.ts", "utf8");
+  const envelopeMigration = readFileSync(
+    "supabase/migrations/20260814130000_supplier_send_envelope_approval.sql",
+    "utf8"
+  );
 
   assert.match(application, /export async function connectRestaurantGmail/);
   assert.match(application, /export async function disconnectRestaurantGmail/);
   assert.match(application, /export async function sendSupplierOrderEmail/);
+  assert.match(actionApplication, /export async function approveSupplierSendEnvelope/);
   assert.match(application, /requireWorkflowId\(restaurantId, "restaurant"\)/);
   assert.match(application, /requireWorkflowId\(orderId, "supplier order"\)/);
 
@@ -17,9 +24,32 @@ test("Gmail client workflows stay typed, tenant-scoped, and behind backend funct
   assert.match(hostedRepository, /"link-gmail",\s*\{ restaurantId, action: "connect" \}/s);
   assert.match(hostedRepository, /"link-gmail",\s*\{ restaurantId, action: "disconnect" \}/s);
   assert.match(hostedRepository, /"send-supplier-email",\s*\{ restaurantId, orderId \}/s);
+  assert.match(hostedRepository, /client\.rpc\("approve_supplier_send_envelope"/);
+  assert.match(hostedRepository, /\.eq\("idempotency_key", `send_supplier_order:\$\{orderId\}`\)/);
   assert.match(demoRepository, /requireActiveDemoRestaurant\(state, restaurantId\)/);
   assert.match(demoRepository, /entry\.restaurant_id === restaurantId && entry\.id === orderId/);
   assert.match(demoRepository, /entry\.restaurant_id === restaurantId && entry\.provider === "gmail"/);
+  assert.match(sendFunction, /explicitly approve this action before sending/i);
+  assert.match(sendFunction, /outcome === "approval_required"/);
+  assert.match(
+    sendFunction,
+    /response\.outcome !== "in_progress" &&\s*response\.outcome !== "approval_required"/
+  );
+  assert.doesNotMatch(
+    sendFunction.slice(sendFunction.indexOf("async function ensureSupplierSendApproved")),
+    /rpc\("decide_mise_action"/
+  );
+  assert.match(demoRepository, /expectedImpact\?\.approvedEnvelope/);
+  assert.match(demoRepository, /throw new GmailIntegrationError\("approval_required"/);
+  assert.match(envelopeMigration, /approved_envelope[\s\S]*approval_required/);
+  assert.match(envelopeMigration, /for update;[\s\S]*service_claim_supplier_email_send_unchecked/);
+  assert.ok(
+    (envelopeMigration.match(/lower\(trim\(supplier\.supplier_name\)\) = lower\(trim\(order_row\.supplier_name\)\)/g) ?? []).length >= 2
+  );
+  assert.match(
+    envelopeMigration,
+    /lower\(trim\(recipient\.supplier_name\)\) = lower\(trim\(order_row\.supplier_name\)\)/
+  );
   assert.doesNotMatch(application, /client_secret|refresh_token|access_token/i);
 });
 
@@ -52,6 +82,10 @@ test("Gmail settings and order delivery UI preserve roles, simulation disclosure
   assert.match(orderDetail, /canManageRestaurantData\(memberships, restaurant\?\.id\)/);
   assert.match(orderDetail, /canDeleteRestaurantData\(memberships, restaurant\?\.id\)/);
   assert.match(orderDetail, /emailConnection\?\.status !== "connected"/);
+  assert.match(orderDetail, /prepareSupplierEmailPayload/);
+  assert.match(orderDetail, /orders\.detail\.review\.to/);
+  assert.match(orderDetail, /approveSupplierSendEnvelope/);
+  assert.doesNotMatch(orderDetail, /decideMiseAction/);
   assert.match(orderDetail, /await sendSupplierOrderEmail\(restaurantId, savedOrder\.id\)/);
   assert.match(orderDetail, /orders\.detail\.notice\.demoSentBody/);
   assert.match(catalog, /Mise updated the demo workflow\. No email was sent\./);

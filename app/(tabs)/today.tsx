@@ -154,9 +154,14 @@ export default function TodayScreen() {
     hubReady,
     busy: Boolean(busyFindingId)
   });
+  const floorNotesEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManageBrief,
+    hubReady,
+    busy: Boolean(busyFloorNoteId)
+  });
 
   async function markFloorNoteDone(note: OperatorTask) {
-    if (!restaurant || !hubReady || busyFloorNoteId) return;
+    if (!restaurant || !floorNotesEditable) return;
     const restaurantId = restaurant.id;
     setBusyFloorNoteId(note.id);
     setFloorNoteMessage(null);
@@ -254,11 +259,12 @@ export default function TodayScreen() {
   }, [visibleSummary]);
 
   const timelineGroups = useMemo(() => {
-    return GROUP_ORDER
+    const focusedOrder = [focus, ...GROUP_ORDER.filter((key) => key !== focus)];
+    return focusedOrder
       .map((key) => ({
         key,
         label: t(groupLabelKey(key)),
-        items: grouped[key].slice(0, GROUP_CAPS[key]),
+        items: key === focus ? grouped[key] : grouped[key].slice(0, GROUP_CAPS[key]),
         total: grouped[key].length
       }))
       .filter((group) => group.total > 0 || group.key === focus);
@@ -427,7 +433,7 @@ export default function TodayScreen() {
                           size="compact"
                           variant="secondary"
                           onPress={() => void markFloorNoteDone(note)}
-                          disabled={busyFloorNoteId === note.id}
+                          disabled={!floorNotesEditable}
                           style={styles.floorNoteDone}
                         />
                       </View>

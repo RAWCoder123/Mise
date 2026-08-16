@@ -15,8 +15,11 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
   fetchEmailConnectionState,
+  fetchSupplierSendAction,
   fetchSupplierOrderOperationalDetail,
   isGmailIntegrationError,
+  approveSupplierSendEnvelope,
+  prepareSupplierEmailPayload,
   receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
   updateSupplierOrder
@@ -25,13 +28,18 @@ import type {
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
 } from "../../services/domain/supplierReliability";
+import type { MiseAction } from "../../services/domain/miseActions";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
-import type { RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
+import type {
+  RestaurantEmailConnection,
+  SupplierEmailPayload,
+  SupplierOrder
+} from "../../types/mise";
 
 type Translate = ReturnType<typeof useLocale>["t"];
 
@@ -49,6 +57,8 @@ export default function OrderDraftDetailScreen() {
   const { memberships, restaurant, usingLocalDemo } = useMiseSession();
   const [order, setOrder] = useState<SupplierOrder | null>(null);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
+  const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
+  const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -79,17 +89,24 @@ export default function OrderDraftDetailScreen() {
     setNotice(null);
     setHubLoadError(false);
     try {
-      const [nextDetail, nextEmailConnection] = await Promise.all([
+      const [nextDetail, nextEmailConnection, nextEmailPayload, nextSendAction] = await Promise.all([
         fetchSupplierOrderOperationalDetail(restaurantId, orderId),
-        fetchEmailConnectionState(restaurantId)
+        fetchEmailConnectionState(restaurantId),
+        prepareSupplierEmailPayload(restaurantId, orderId),
+        fetchSupplierSendAction(restaurantId, orderId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       if (nextEmailConnection && nextEmailConnection.restaurant_id !== restaurantId) {
         throw new Error(t("orders.detail.connectionMismatch"));
       }
+      if (nextEmailPayload.orderId !== orderId) {
+        throw new Error(t("orders.detail.orderMismatch"));
+      }
       setOrder(nextDetail.order);
       setDeliveryEvidence(nextDetail.deliveryEvidence);
       setEmailConnection(nextEmailConnection);
+      setEmailPayload(nextEmailPayload);
+      setSupplierSendAction(nextSendAction);
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       setOperatorNote(nextDetail.order.operator_note ?? "");
@@ -97,6 +114,8 @@ export default function OrderDraftDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setDeliveryEvidence([]);
+      setEmailPayload(null);
+      setSupplierSendAction(null);
       setHubLoadError(true);
       setNotice({
         title: t("orders.detail.load.title"),
@@ -119,6 +138,8 @@ export default function OrderDraftDetailScreen() {
     setOrder(null);
     setDeliveryEvidence([]);
     setEmailConnection(null);
+    setEmailPayload(null);
+    setSupplierSendAction(null);
     setOperatorNote("");
     setBusy(false);
     setNotice(null);
@@ -214,6 +235,23 @@ export default function OrderDraftDetailScreen() {
       setNotice(gmailConnectionRequiredNotice(emailConnection?.status ?? "not_connected", t));
       return;
     }
+    if (!emailPayload?.canSend) {
+      setNotice({
+        title: t("orders.detail.error.supplierEmailTitle"),
+        message: emailPayload?.blockedReason ?? t("orders.detail.error.supplierEmailBody"),
+        tone: "warning",
+        recovery: emailPayload?.to ? "gmail" : "supplier"
+      });
+      return;
+    }
+    if (!supplierSendAction || !canApproveSupplierSendAction(supplierSendAction)) {
+      setNotice({
+        title: t("orders.detail.approvalMissing.title"),
+        message: t("orders.detail.approvalMissing.body"),
+        tone: "warning"
+      });
+      return;
+    }
     const restaurantId = restaurant.id;
     actionLockRef.current = true;
     setBusy(true);
@@ -221,6 +259,45 @@ export default function OrderDraftDetailScreen() {
     try {
       const savedOrder = await persistNote();
       if (activeRestaurantIdRef.current !== restaurantId) return;
+      const refreshedPayload = await prepareSupplierEmailPayload(restaurantId, savedOrder.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      if (!sameDeliveryEnvelope(emailPayload, refreshedPayload)) {
+        setEmailPayload(refreshedPayload);
+        setNotice({
+          title: t("orders.detail.review.changedTitle"),
+          message: t("orders.detail.review.changedBody"),
+          tone: "warning"
+        });
+        return;
+      }
+      if (!refreshedPayload.canSend) {
+        setEmailPayload(refreshedPayload);
+        setNotice({
+          title: t("orders.detail.error.supplierEmailTitle"),
+          message: refreshedPayload.blockedReason ?? t("orders.detail.error.supplierEmailBody"),
+          tone: "warning",
+          recovery: refreshedPayload.to ? "gmail" : "supplier"
+        });
+        return;
+      }
+      if (!refreshedPayload.from || !refreshedPayload.to) {
+        throw new Error(t("orders.detail.approvalMissing.body"));
+      }
+      const approvedAction = await approveSupplierSendEnvelope(
+        restaurantId,
+        supplierSendAction.id,
+        savedOrder.id,
+        {
+          from: refreshedPayload.from,
+          to: refreshedPayload.to,
+          subject: refreshedPayload.subject
+        }
+      );
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setSupplierSendAction(approvedAction);
+      if (approvedAction.status !== "approved") {
+        throw new Error(t("orders.detail.approvalMissing.body"));
+      }
       const result = await sendSupplierOrderEmail(restaurantId, savedOrder.id);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(result.order);
@@ -305,9 +382,16 @@ export default function OrderDraftDetailScreen() {
   const isSent = visibleOrder?.status === "sent";
   const canEditDraft = Boolean(isDraft && actionsEditable);
   const visibleEmailConnection = hubReady ? emailConnection : null;
+  const visibleEmailPayload = hubReady ? emailPayload : null;
+  const visibleSupplierSendAction = hubReady ? supplierSendAction : null;
   const visibleDeliveryEvidence =
     hubReady ? deliveryEvidence : [];
-  const gmailReady = visibleEmailConnection?.status === "connected";
+  const gmailReady = Boolean(
+    visibleEmailConnection?.status === "connected" &&
+    visibleEmailPayload?.canSend &&
+    visibleSupplierSendAction &&
+    canApproveSupplierSendAction(visibleSupplierSendAction)
+  );
   const generatedMessage = visibleOrder ? generatedOrderMessage(visibleOrder) : "";
 
   function goBackToOrders() {
@@ -349,7 +433,7 @@ export default function OrderDraftDetailScreen() {
             />
           ) : null}
 
-          {canEditDraft && !gmailReady ? (
+          {canEditDraft && visibleEmailConnection?.status !== "connected" ? (
             <StatusNotice
               tone="warning"
               title={visibleEmailConnection?.status === "needs_reauth"
@@ -459,6 +543,49 @@ export default function OrderDraftDetailScreen() {
             </View>
           </View>
 
+          {isDraft ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.review.title")}</Text>
+              <Text style={styles.sectionBody}>{t("orders.detail.review.body")}</Text>
+              <View style={styles.emailReviewPanel}>
+                <EmailReviewRow
+                  label={t("orders.detail.review.from")}
+                  value={visibleEmailPayload?.from ?? t("orders.detail.review.unavailable")}
+                />
+                <EmailReviewRow
+                  label={t("orders.detail.review.to")}
+                  value={visibleEmailPayload?.to ?? t("orders.detail.review.unavailable")}
+                />
+                <EmailReviewRow
+                  label={t("orders.detail.review.subject")}
+                  value={visibleEmailPayload?.subject ?? t("orders.detail.review.unavailable")}
+                />
+              </View>
+              {visibleEmailPayload?.blockedReason ? (
+                <StatusNotice
+                  tone="warning"
+                  title={visibleEmailPayload.to
+                    ? t("orders.detail.connection.connectTitle")
+                    : t("orders.detail.error.supplierEmailTitle")}
+                  message={visibleEmailPayload.blockedReason}
+                  actionLabel={visibleEmailPayload.to
+                    ? t("orders.detail.recovery.gmail")
+                    : t("orders.detail.recovery.supplier")}
+                  onAction={() => router.push(
+                    visibleEmailPayload.to ? "/settings/gmail" as never : "/settings/suppliers" as never
+                  )}
+                />
+              ) : null}
+              {!visibleSupplierSendAction ? (
+                <StatusNotice
+                  tone="warning"
+                  title={t("orders.detail.approvalMissing.title")}
+                  message={t("orders.detail.approvalMissing.body")}
+                />
+              ) : null}
+            </View>
+          ) : null}
+
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("orders.detail.note.title")}</Text>
             <Text style={styles.sectionBody}>
@@ -543,10 +670,13 @@ export default function OrderDraftDetailScreen() {
                     : t("orders.detail.gmail.sending"))
                 : usingLocalDemo
                   ? t("orders.detail.action.simulate")
-                  : t("orders.detail.gmail.send")}
+                  : t("orders.detail.gmail.approveAndSend")}
               accessibilityLabel={usingLocalDemo
                 ? t("orders.detail.action.simulateAccessibility", { supplier: visibleOrder.supplier_name })
-                : t("orders.detail.action.sendAccessibility", { supplier: visibleOrder.supplier_name })}
+                : t("orders.detail.action.approveAndSendAccessibility", {
+                    supplier: visibleOrder.supplier_name,
+                    recipient: visibleEmailPayload?.to ?? ""
+                  })}
               icon={<Send size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void sendOrder()}
               disabled={busy}
@@ -574,6 +704,28 @@ export default function OrderDraftDetailScreen() {
       )}
     </Screen>
   );
+}
+
+function EmailReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.emailReviewRow}>
+      <Text style={styles.emailReviewLabel}>{label}</Text>
+      <Text selectable style={styles.emailReviewValue}>{value}</Text>
+    </View>
+  );
+}
+
+function canApproveSupplierSendAction(action: MiseAction) {
+  return ["prepared", "waiting_for_approval", "approved", "failed"].includes(
+    action.status
+  );
+}
+
+function sameDeliveryEnvelope(left: SupplierEmailPayload, right: SupplierEmailPayload) {
+  return left.orderId === right.orderId &&
+    left.to === right.to &&
+    left.from === right.from &&
+    left.subject === right.subject;
 }
 
 function deliveryEvidenceTone(status: SupplierDeliveryStatus): BadgeTone {
@@ -611,6 +763,13 @@ function orderSendErrorNotice(error: unknown, t: Translate): OrderNotice {
       title: t("orders.detail.error.sendTitle"),
       message: t("orders.detail.error.sendBody"),
       tone: "danger"
+    };
+  }
+  if (error.status === "approval_required") {
+    return {
+      title: t("orders.detail.review.changedTitle"),
+      message: t("orders.detail.review.changedBody"),
+      tone: "warning"
     };
   }
   if (error.status === "gmail_not_connected" || error.status === "needs_reauth") {
@@ -746,6 +905,32 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: 14,
     marginTop: 6
+  },
+  emailReviewPanel: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    padding: 14,
+    marginTop: 6,
+    gap: 10
+  },
+  emailReviewRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12
+  },
+  emailReviewLabel: {
+    width: 58,
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "700"
+  },
+  emailReviewValue: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    ...typography.body
   },
   orderMessage: {
     color: colors.text,

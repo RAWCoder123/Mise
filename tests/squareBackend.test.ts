@@ -13,6 +13,14 @@ const migration = readFileSync(
   "supabase/migrations/20260730210000_square_backend_oauth_sync.sql",
   "utf8",
 );
+const truthfulCountMigration = readFileSync(
+  "supabase/migrations/20260814120000_square_sync_truthful_counts.sql",
+  "utf8",
+);
+const squareDatabaseProof = readFileSync(
+  "supabase/tests/database/square_sync_result.test.sql",
+  "utf8",
+);
 const linkSquare = readFileSync("supabase/functions/link-square/index.ts", "utf8");
 const syncPos = readFileSync("supabase/functions/sync-pos-sales/index.ts", "utf8");
 const webhooks = readFileSync("supabase/functions/square-webhooks/index.ts", "utf8");
@@ -105,4 +113,18 @@ test("Square Edge Functions stay fail-closed until configured and enabled", () =
   assert.match(config, /\[functions\.link-square\][\s\S]*verify_jwt = true/i);
   assert.match(config, /\[functions\.square-oauth-callback\][\s\S]*verify_jwt = false/i);
   assert.match(config, /\[functions\.square-webhooks\][\s\S]*verify_jwt = false/i);
+});
+
+test("Square sync records truthful counts and database replay coverage", () => {
+  assert.match(truthfulCountMigration, /processed_count integer := 0/i);
+  assert.match(truthfulCountMigration, /records_processed = processed_count/i);
+  assert.match(truthfulCountMigration, /'recordsProcessed', processed_count/i);
+  assert.doesNotMatch(truthfulCountMigration, /records_processed = records_processed/i);
+  assert.match(
+    truthfulCountMigration,
+    /on conflict \(restaurant_id, source_pos, source_record_id\)[\s\S]*do update/i,
+  );
+  assert.match(squareDatabaseProof, /an exact replay does not duplicate logical sales rows/i);
+  assert.match(squareDatabaseProof, /the overlapping row is deduplicated/i);
+  assert.match(squareDatabaseProof, /metadata->>'recordsProcessed'/i);
 });
