@@ -98,6 +98,9 @@ test("order list routes drafts into explicit recipient review before the Gmail d
   assert.match(detail, /orders\.detail\.review\.to/);
   assert.match(detail, /orders\.detail\.review\.subject/);
   assert.match(detail, /t\("orders\.detail\.notice\.demoSentBody"\)/);
+  assert.match(detail, /previewSupplierOrderDelivery/);
+  assert.match(detail, /lineAdjustments/);
+  assert.match(catalog, /"orders\.detail\.receive\.title"/);
   assert.match(catalog, /Mise updated the demo workflow\. No email was sent\./);
   assert.match(detail, /operator_note: operatorNote\.trim\(\) \|\| null/);
   assert.match(detail, /order\.status !== "draft"/);
