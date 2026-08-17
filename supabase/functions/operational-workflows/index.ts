@@ -23,6 +23,7 @@ const actions = [
   "refresh_signals",
   "update_inventory",
   "upsert_recipe",
+  "delete_recipe",
   "save_setup",
   "begin_count_session",
   "save_count_lines",
@@ -222,6 +223,16 @@ async function refreshWithRetry(
           p_insights: insights
         });
       }
+      if (action === "delete_recipe") {
+        return await serviceRpc(securitySupabase, "service_delete_recipe_and_signals", {
+          p_actor_user_id: actorUserId,
+          p_restaurant_id: restaurantId,
+          p_mapping_id: requireUuid(body.mappingId, "mappingId"),
+          p_expected_revision: revision,
+          p_recommendations: recommendations,
+          p_insights: insights
+        });
+      }
       if (action === "approve_count_session") {
         return await serviceRpc(securitySupabase, "service_approve_inventory_count_session", {
           p_actor_user_id: actorUserId,
@@ -356,6 +367,18 @@ function applyRequestedMutation(
         : [...snapshot.menuItemIngredients, mapping]
     };
   }
+  if (action === "delete_recipe") {
+    const mappingId = requireUuid(body.mappingId, "mappingId");
+    if (!snapshot.menuItemIngredients.some((entry) => (entry as { id?: string }).id === mappingId)) {
+      throw new HttpError(404, "Recipe mapping not found.");
+    }
+    return {
+      ...snapshot,
+      menuItemIngredients: snapshot.menuItemIngredients.filter(
+        (entry) => (entry as { id?: string }).id !== mappingId
+      )
+    };
+  }
   return snapshot;
 }
 
@@ -454,6 +477,7 @@ function isRevisionConflict(error: unknown) {
 function auditAction(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_updated";
   if (action === "upsert_recipe") return "recipe_baseline_updated";
+  if (action === "delete_recipe") return "recipe_baseline_deleted";
   if (action === "save_setup") return "setup_signals_completed";
   if (action === "begin_count_session") return "inventory_count_session_started";
   if (action === "save_count_lines") return "inventory_count_lines_saved";
@@ -465,7 +489,7 @@ function auditAction(action: OperationalAction) {
 
 function auditEntityTable(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_items";
-  if (action === "upsert_recipe") return "menu_item_ingredients";
+  if (action === "upsert_recipe" || action === "delete_recipe") return "menu_item_ingredients";
   if (
     action === "begin_count_session" ||
     action === "save_count_lines" ||
@@ -480,7 +504,9 @@ function auditEntityTable(action: OperationalAction) {
 
 function auditEntityId(action: OperationalAction, body: Record<string, unknown>, result: unknown) {
   if (action === "update_inventory") return requireUuid(body.itemId, "itemId");
-  if (action === "upsert_recipe" && body.mappingId != null) return requireUuid(body.mappingId, "mappingId");
+  if ((action === "upsert_recipe" || action === "delete_recipe") && body.mappingId != null) {
+    return requireUuid(body.mappingId, "mappingId");
+  }
   if (
     action === "save_count_lines" ||
     action === "submit_count_session" ||
