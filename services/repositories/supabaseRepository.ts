@@ -1642,7 +1642,7 @@ export function createSupabaseRepository(): MiseRepository {
       if (!payload.order) {
         throw new GmailIntegrationError("unknown", "Supplier email delivery resolution did not return the order.");
       }
-      const order = normalizeSupplierOrder(payload.order);
+      const order = normalizeSupplierOrder(payload.order as SupplierOrder);
       if (order.restaurant_id !== restaurantId || order.id !== orderId) {
         throw new Error("Supplier email delivery resolution failed restaurant scope validation.");
       }

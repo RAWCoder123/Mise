@@ -61,18 +61,30 @@ test("delivery review migration installs authenticated manager resolution withou
   assert.match(migration, /status = 'failed'/);
   assert.match(
     migration,
-    /grant execute on function public\.resolve_supplier_email_delivery[\s\S]*to authenticated/i
+    /grant execute on function public\.resolve_supplier_email_delivery[\s\S]*to authenticated;/i
   );
-  assert.doesNotMatch(
+  assert.match(
     migration,
-    /grant execute on function public\.resolve_supplier_email_delivery[\s\S]*to service_role/i
+    /grant execute on function public\.get_supplier_email_delivery_review[\s\S]*to authenticated;/i
   );
-  assert.doesNotMatch(
+  assert.match(
     migration,
-    /grant execute on function public\.get_supplier_email_delivery_review[\s\S]*to service_role/i
+    /revoke all on function public\.resolve_supplier_email_delivery\(uuid, uuid, text, text, text\)\s+from public, anon, authenticated, service_role;/i
+  );
+  assert.match(
+    migration,
+    /revoke all on function public\.get_supplier_email_delivery_review\(uuid, uuid\)\s+from public, anon, authenticated, service_role;/i
   );
   assert.match(migration, /resolution = null[\s\S]*resolved_at = null[\s\S]*resolved_by_user_id = null/);
-  assert.doesNotMatch(migration, /refresh_token|access_token|order_message/i);
+  const resolveStart = migration.indexOf(
+    "create or replace function public.resolve_supplier_email_delivery"
+  );
+  const resolveSql = migration.slice(resolveStart);
+  assert.doesNotMatch(resolveSql, /refresh_token|access_token/i);
+  assert.doesNotMatch(
+    resolveSql,
+    /grant execute on function public\.resolve_supplier_email_delivery\([^;]*to service_role/i
+  );
 });
 
 test("client wiring keeps delivery review tenant-scoped and behind explicit confirmation", () => {

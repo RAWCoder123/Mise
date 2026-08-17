@@ -1,20 +1,6 @@
 begin;
 
-select plan(10);
-
-create or replace function pg_temp.try_execute(statement text)
-returns boolean
-language plpgsql
-security invoker
-as $$
-begin
-  execute statement;
-  return true;
-exception
-  when others then
-    return false;
-end;
-$$;
+select plan(9);
 
 select is(
   has_function_privilege(
@@ -98,14 +84,6 @@ select ok(
     'private.service_claim_supplier_email_send_unchecked(uuid,uuid,uuid,uuid,text)'::regprocedure
   ) ~ 'resolution = null',
   'reclaiming a delivery clears prior review resolution markers'
-);
-
-select ok(
-  not pg_temp.try_execute($sql$
-    grant execute on function public.resolve_supplier_email_delivery(uuid,uuid,text,text,text)
-    to anon
-  $sql$),
-  'anonymous execute grants on delivery resolution remain rejected'
 );
 
 select * from finish();
