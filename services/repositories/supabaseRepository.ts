@@ -282,11 +282,24 @@ function parseSquareSyncWorkflowResponse(data: unknown): SquareSyncWorkflowResul
   if (!Number.isFinite(recordsProcessed) || recordsProcessed < 0 || !Number.isFinite(catalogProcessed) || catalogProcessed < 0) {
     throw new SquareIntegrationError("unknown", "Square sync returned invalid counts.");
   }
+  const planningSyncStatus =
+    payload.planningSyncStatus === "fresh" || payload.planningSyncStatus === "stale"
+      ? payload.planningSyncStatus
+      : "fresh";
+  const planningSyncErrorCode =
+    typeof payload.planningSyncErrorCode === "string" && payload.planningSyncErrorCode.trim()
+      ? payload.planningSyncErrorCode.trim().slice(0, 120)
+      : null;
+  if (planningSyncStatus === "fresh" && planningSyncErrorCode) {
+    throw new SquareIntegrationError("unknown", "Square sync returned inconsistent planning state.");
+  }
   return {
     status: "completed",
     importId: typeof payload.importId === "string" ? payload.importId : null,
     recordsProcessed: Math.floor(recordsProcessed),
-    catalogProcessed: Math.floor(catalogProcessed)
+    catalogProcessed: Math.floor(catalogProcessed),
+    planningSyncStatus,
+    planningSyncErrorCode: planningSyncStatus === "stale" ? planningSyncErrorCode : null
   };
 }
 

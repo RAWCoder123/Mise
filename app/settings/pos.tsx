@@ -27,6 +27,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import type { PilotReadiness, PilotReadinessAreaId } from "../../services/domain/pilotReadiness";
+import { posPlanningNeedsOperatorAttention } from "../../services/domain/posPlanningSync";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import type { PosIntegration, PosProvider } from "../../types/mise";
 
@@ -34,7 +35,8 @@ const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Ma
 type PosMessage =
   | { key: "pos.message.demoLoaded"; values: { provider: string } }
   | { key: "pos.error.demoLoad" }
-  | { key: "pos.message.syncCompleted"; values: { count: string } };
+  | { key: "pos.message.syncCompleted"; values: { count: string } }
+  | { key: "pos.message.syncPlanningStale"; values: { count: string } };
 
 export default function POSConnectionScreen() {
   const navigation = useNavigation();
@@ -143,6 +145,9 @@ export default function POSConnectionScreen() {
   });
   const visibleIntegration = hubReady ? integration : null;
   const visibleSquareConnected = visibleIntegration?.status === "connected";
+  const visiblePlanningAttention = visibleIntegration
+    ? posPlanningNeedsOperatorAttention(visibleIntegration)
+    : false;
 
   useFocusEffect(
     useCallback(() => {
@@ -282,15 +287,27 @@ export default function POSConnectionScreen() {
         to.toISOString().slice(0, 10)
       );
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setMessage({
-        key: "pos.message.syncCompleted",
-        values: { count: String(result.recordsProcessed) }
-      });
-      setNotice({
-        tone: "success",
-        title: t("pos.square.syncTitle"),
-        message: t("pos.square.syncBody", { count: String(result.recordsProcessed) })
-      });
+      if (result.planningSyncStatus === "stale") {
+        setMessage({
+          key: "pos.message.syncPlanningStale",
+          values: { count: String(result.recordsProcessed) }
+        });
+        setNotice({
+          tone: "warning",
+          title: t("pos.square.planningStaleTitle"),
+          message: t("pos.square.planningStaleBody", { count: String(result.recordsProcessed) })
+        });
+      } else {
+        setMessage({
+          key: "pos.message.syncCompleted",
+          values: { count: String(result.recordsProcessed) }
+        });
+        setNotice({
+          tone: "success",
+          title: t("pos.square.syncTitle"),
+          message: t("pos.square.syncBody", { count: String(result.recordsProcessed) })
+        });
+      }
       await loadIntegration(false);
       await loadPilotReadiness();
     } catch (error) {
@@ -461,15 +478,20 @@ export default function POSConnectionScreen() {
             {loadingIntegration || !hubReady ? (
               <Text style={styles.meta}>{t("common.loading")}</Text>
             ) : (
-              <Text style={styles.meta}>
-                {visibleSquareConnected
-                  ? t("pos.square.lastSync", {
-                      value: visibleIntegration?.last_sync_at
-                        ? formatDate(visibleIntegration.last_sync_at)
-                        : t("common.none")
-                    })
-                  : t("pos.square.notConnectedMeta")}
-              </Text>
+              <>
+                <Text style={styles.meta}>
+                  {visibleSquareConnected
+                    ? t("pos.square.lastSync", {
+                        value: visibleIntegration?.last_sync_at
+                          ? formatDate(visibleIntegration.last_sync_at)
+                          : t("common.none")
+                      })
+                    : t("pos.square.notConnectedMeta")}
+                </Text>
+                {visiblePlanningAttention ? (
+                  <Text style={styles.meta}>{t("pos.square.planningStaleMeta")}</Text>
+                ) : null}
+              </>
             )}
             <View style={styles.actions}>
               {actionsEditable ? (
