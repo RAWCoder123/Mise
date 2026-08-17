@@ -183,6 +183,37 @@ export async function addRecipeBaselineIngredient(
   });
 }
 
+export async function deleteRecipeBaselineIngredient(restaurantId: string, mappingId: string) {
+  const [data, recommendationHistory] = await Promise.all([
+    repository.fetchPlanningData(restaurantId),
+    repository.fetchRecommendationHistory(restaurantId)
+  ]);
+  const existing = data.menuItemIngredients.find((mapping) => mapping.id === mappingId);
+  if (!existing) throw new Error("Recipe baseline mapping not found");
+  const planningMappings = data.menuItemIngredients.filter((mapping) => mapping.id !== mappingId);
+  const recommendations = buildRecommendationInserts(
+    restaurantId,
+    data.inventoryItems,
+    data.sales,
+    planningMappings,
+    recommendationHistory,
+    data.operatingDate
+  );
+  const insights = buildInsightsFromData(
+    restaurantId,
+    data.inventoryItems,
+    data.sales,
+    planningMappings,
+    data.operatingDate
+  );
+  await repository.deleteRecipeMappingAndSignals({
+    restaurantId,
+    mappingId: existing.id,
+    recommendations,
+    insights
+  });
+}
+
 export async function addInventoryItemToOrder(restaurantId: string, itemId: string) {
   const existing = await repository.findPendingRecommendation(restaurantId, itemId);
   if (existing) return existing;

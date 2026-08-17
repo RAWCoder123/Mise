@@ -1481,6 +1481,78 @@ select is(
 );
 reset role;
 
+set local role service_role;
+select lives_ok(
+  $sql$select public.service_delete_recipe_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1313-4313-8313-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$,
+  'trusted workflow unlinks a recipe mapping without rewriting historical consumption'
+);
+reset role;
+select is(
+  (select count(*) from public.menu_item_ingredients where id = 'aaaaaaaa-1313-4313-8313-aaaaaaaaaaaa'),
+  0::bigint,
+  'recipe unlink removes the live mapping'
+);
+select is(
+  (select count(*) from public.pos_sales where id = 'aaaaaaaa-1010-4010-8010-aaaaaaaaaaaa'),
+  1::bigint,
+  'recipe unlink retains historical POS sales that used the mapping'
+);
+select is(
+  (select count(*) from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  1::bigint,
+  'recipe unlink retains the linked inventory item'
+);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+select is(
+  pg_temp.try_execute($sql$select public.service_delete_recipe_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    pg_temp.snapshot_recipe_mapping_id(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'Atomic Bowl'
+    ),
+    0,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$),
+  false,
+  'authenticated clients cannot execute the recipe unlink service RPC directly'
+);
+reset role;
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_delete_recipe_and_signals(
+    '33333333-3333-4333-8333-333333333333',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    pg_temp.snapshot_recipe_mapping_id(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'Atomic Bowl'
+    ),
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$),
+  false,
+  'staff cannot unlink recipe mappings through the service-owned workflow'
+);
+reset role;
+
 insert into public.pos_sales (
   restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales, source_pos
 ) values (

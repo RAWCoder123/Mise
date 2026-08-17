@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
-import { AlertTriangle, ArrowLeft, BookOpen, Link2, Package, PackageCheck, Plus, Save, ShoppingBag } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { AlertTriangle, ArrowLeft, BookOpen, Link2, Package, PackageCheck, Plus, Save, ShoppingBag, Unlink } from "lucide-react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge } from "../../components/ui/Badge";
@@ -19,6 +19,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   addRecipeBaselineIngredient,
+  deleteRecipeBaselineIngredient,
   fetchInventoryItems,
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
@@ -212,6 +213,57 @@ export default function RecipeBaselinesScreen() {
       void saveIngredient(mappingId, quantity, { quiet: true });
     }, 700);
     saveTimersRef.current.set(mappingId, timer);
+  }
+
+  function confirmUnlinkIngredient(mappingId: string, ingredientName: string, dishName: string) {
+    if (!restaurant) return;
+    if (!actionsEditable) {
+      setError(t("recipes.error.readOnly"));
+      return;
+    }
+    Alert.alert(
+      t("recipes.unlink.confirmTitle"),
+      t("recipes.unlink.confirmBody", { ingredient: ingredientName, dish: dishName }),
+      [
+        { text: t("recipes.unlink.cancel"), style: "cancel" },
+        {
+          text: t("recipes.unlink.confirm"),
+          style: "destructive",
+          onPress: () => {
+            void unlinkIngredient(mappingId, ingredientName, dishName);
+          }
+        }
+      ]
+    );
+  }
+
+  async function unlinkIngredient(mappingId: string, ingredientName: string, dishName: string) {
+    if (!restaurant) return;
+    if (!actionsEditable) {
+      setError(t("recipes.error.readOnly"));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    const pendingSave = saveTimersRef.current.get(mappingId);
+    if (pendingSave) {
+      clearTimeout(pendingSave);
+      saveTimersRef.current.delete(mappingId);
+    }
+    setSavingMappingId(mappingId);
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteRecipeBaselineIngredient(restaurantId, mappingId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice(t("recipes.notice.unlinked", { ingredient: ingredientName, dish: dishName }));
+      await load();
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setError(t("recipes.error.unlink"));
+      }
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSavingMappingId(null);
+    }
   }
 
   async function addBaselineLink() {
@@ -410,6 +462,7 @@ export default function RecipeBaselinesScreen() {
                   canManage={actionsEditable}
                   savingMappingId={savingMappingId}
                   onSave={queueIngredientSave}
+                  onUnlink={confirmUnlinkIngredient}
                 />
               ))
             )}
@@ -585,12 +638,14 @@ function RecipeRow({
   item,
   canManage,
   savingMappingId,
-  onSave
+  onSave,
+  onUnlink
 }: {
   item: RecipeBaselineItem;
   canManage: boolean;
   savingMappingId: string | null;
   onSave: (mappingId: string, quantity: string, options?: { immediate?: boolean; cancel?: boolean }) => void;
+  onUnlink: (mappingId: string, ingredientName: string, dishName: string) => void;
 }) {
   const { formatNumber, parseNumber, t } = useLocale();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -689,15 +744,26 @@ function RecipeRow({
                       </Text>
                     </View>
                     {canManage ? (
-                      <Button
-                        title={t(isSaving ? "recipes.action.saving" : "recipes.action.save")}
-                        accessibilityLabel={t("recipes.action.saveAccessibility", { ingredient: ingredient.itemName })}
-                        variant="secondary"
-                        icon={<Save size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
-                        disabled={isBusy || !isDirty}
-                        onPress={() => onSave(ingredient.mappingId, draftValue, { immediate: true })}
-                        style={styles.saveButton}
-                      />
+                      <View style={styles.ingredientActions}>
+                        <Button
+                          title={t(isSaving ? "recipes.action.saving" : "recipes.action.save")}
+                          accessibilityLabel={t("recipes.action.saveAccessibility", { ingredient: ingredient.itemName })}
+                          variant="secondary"
+                          icon={<Save size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
+                          disabled={isBusy || !isDirty}
+                          onPress={() => onSave(ingredient.mappingId, draftValue, { immediate: true })}
+                          style={styles.saveButton}
+                        />
+                        <Button
+                          title={t("recipes.action.unlink")}
+                          accessibilityLabel={t("recipes.action.unlinkAccessibility", { ingredient: ingredient.itemName })}
+                          variant="danger"
+                          icon={<Unlink size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />}
+                          disabled={isBusy}
+                          onPress={() => onUnlink(ingredient.mappingId, ingredient.itemName, item.menu_item_name)}
+                          style={styles.unlinkButton}
+                        />
+                      </View>
                     ) : null}
                   </View>
                 </View>
@@ -941,6 +1007,10 @@ const styles = StyleSheet.create({
     gap: 8,
     minWidth: 0
   },
+  ingredientActions: {
+    gap: 8,
+    minWidth: 100
+  },
   quantityEdit: {
     minHeight: 48,
     flex: 1,
@@ -977,6 +1047,11 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   saveButton: {
+    minHeight: 48,
+    width: 100,
+    paddingHorizontal: 8
+  },
+  unlinkButton: {
     minHeight: 48,
     width: 100,
     paddingHorizontal: 8

@@ -280,6 +280,13 @@ export interface RecipeMappingSignalInput {
   insights: Insight[];
 }
 
+export interface RecipeMappingDeleteInput {
+  restaurantId: string;
+  mappingId: string;
+  recommendations: PurchaseRecommendationInput[];
+  insights: Insight[];
+}
+
 export interface RestaurantData {
   restaurant: Restaurant;
   sales: PosSale[];
@@ -489,6 +496,7 @@ export interface MiseRepository {
   ): Promise<MenuItemIngredient>;
   upsertMenuItemIngredient(input: MenuItemIngredientInput): Promise<MenuItemIngredient>;
   saveRecipeMappingAndSignals(input: RecipeMappingSignalInput): Promise<MenuItemIngredient>;
+  deleteRecipeMappingAndSignals(input: RecipeMappingDeleteInput): Promise<void>;
   findPendingRecommendation(restaurantId: string, itemId: string): Promise<PurchaseRecommendation | null>;
   createPurchaseRecommendation(input: PurchaseRecommendationInput): Promise<PurchaseRecommendation>;
   fetchPurchaseRecommendations(
