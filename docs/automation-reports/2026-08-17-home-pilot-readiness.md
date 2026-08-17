@@ -18,8 +18,9 @@
 
 ## Verification
 
-- `npm run typecheck`
-- `npm test -- tests/homePilotReadinessPresentation.test.ts tests/pilotUiSafety.test.ts`
+- `npm run typecheck` — pass
+- `node --import tsx --test tests/homePilotReadinessPresentation.test.ts tests/pilotUiSafety.test.ts` — 12 pass / 0 fail
+- `npm test` — 509 pass / 0 fail (7 pre-existing timeout cancels)
 
 ## Not claimed
 
