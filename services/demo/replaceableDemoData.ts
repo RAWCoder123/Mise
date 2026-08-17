@@ -180,6 +180,8 @@ export function createInitialDemoState(
   nowDate = new Date()
 ): DemoState {
   const now = nowDate.toISOString();
+  // Opening count is earlier than today's POS closed times so same-day depletion stays active.
+  const openingCountAt = new Date(nowDate.getTime() - 6 * 60 * 60 * 1000).toISOString();
   const restaurantTimeZone = DEMO_RESTAURANT_TIME_ZONE;
   const today = toDateKeyInTimeZone(nowDate, restaurantTimeZone);
   const tomorrow = toDateKeyInTimeZone(addDays(nowDate, 1), restaurantTimeZone);
@@ -227,7 +229,8 @@ export function createInitialDemoState(
       reorder_threshold: 25,
       estimated_unit_cost: 3.7,
       supplier_name: "Fresh Poultry Supply",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: openingCountAt
     },
     {
       id: itemIds.eggs,
@@ -240,7 +243,8 @@ export function createInitialDemoState(
       reorder_threshold: 100,
       estimated_unit_cost: 0.22,
       supplier_name: "Restaurant Depot",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: openingCountAt
     },
     {
       id: itemIds.rice,
@@ -253,7 +257,8 @@ export function createInitialDemoState(
       reorder_threshold: 40,
       estimated_unit_cost: 0.9,
       supplier_name: "Dry Goods Wholesale",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: openingCountAt
     },
     {
       id: itemIds.lettuce,
@@ -266,7 +271,8 @@ export function createInitialDemoState(
       reorder_threshold: 15,
       estimated_unit_cost: 1.4,
       supplier_name: "Local Produce Co.",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: openingCountAt
     },
     {
       id: itemIds.tomatoes,
@@ -279,7 +285,8 @@ export function createInitialDemoState(
       reorder_threshold: 12,
       estimated_unit_cost: 1.8,
       supplier_name: "Local Produce Co.",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: openingCountAt
     },
     {
       id: itemIds.beef,
@@ -292,7 +299,8 @@ export function createInitialDemoState(
       reorder_threshold: 50,
       estimated_unit_cost: 1.65,
       supplier_name: "Restaurant Depot",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: openingCountAt
     },
     {
       id: itemIds.pancakeMix,
@@ -305,7 +313,8 @@ export function createInitialDemoState(
       reorder_threshold: 18,
       estimated_unit_cost: 1.2,
       supplier_name: "Dry Goods Wholesale",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: openingCountAt
     }
   ];
 
@@ -874,7 +883,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
   state.inventoryItems = state.inventoryItems.map((item) => ({
     ...item,
     ...itemUpdates[item.id],
-    last_updated: createdAt
+    last_updated: createdAt,
+    last_counted_at: new Date(Date.parse(createdAt) - 6 * 60 * 60 * 1000).toISOString()
   }));
 
   state.menuItemIngredients = [
@@ -1471,6 +1481,7 @@ function sale(
     gross_sales: grossSales,
     net_sales: Math.round(grossSales * 0.93),
     source_pos: sourcePos,
+    sold_at: createdAt,
     created_at: createdAt
   };
 }

@@ -38,6 +38,7 @@ function inventory(
     estimated_unit_cost: 4,
     supplier_name: supplierName,
     last_updated: "2026-07-26T12:00:00.000Z",
+    last_counted_at: "2026-07-26T12:00:00.000Z",
     ...overrides
   };
 }
@@ -136,7 +137,10 @@ test("stale counts, weak history, quantity drift, and missing prices force manua
       recommendation("rec_garlic", "garlic", 8)
     ],
     inventoryItems: [
-      inventory("herbs", { last_updated: "2026-07-24T12:00:00.000Z" }),
+      inventory("herbs", {
+        last_updated: "2026-07-24T12:00:00.000Z",
+        last_counted_at: "2026-07-24T12:00:00.000Z"
+      }),
       inventory("garlic", { estimated_unit_cost: 0 })
     ],
     recommendationHistory: [

@@ -92,6 +92,7 @@ test("applyCountApprovalsToInventory updates only counted items", () => {
   assert.equal(next[0]?.current_quantity, 8);
   assert.equal(next[1]?.current_quantity, 4);
   assert.equal(next[0]?.last_updated, "2026-07-31T01:00:00.000Z");
+  assert.equal(next[0]?.last_counted_at, "2026-07-31T01:00:00.000Z");
 });
 
 test("mergeCountLineUpdates rejects unknown items and accepts valid counts", () => {

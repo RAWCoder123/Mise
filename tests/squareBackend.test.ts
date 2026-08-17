@@ -70,6 +70,8 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
   assert.equal(sales[0]?.quantity_sold, 2);
   assert.equal(sales[0]?.source_record_id, "square_order-1_line-1");
   assert.equal(sales[0]?.gross_sales, 24);
+  assert.equal(sales[0]?.sold_at, "2026-07-30T12:00:00.000Z");
+  assert.equal(sales[0]?.sale_date, "2026-07-30");
 
   const catalog = normalizeCatalogItem({
     type: "ITEM",
@@ -127,4 +129,13 @@ test("Square sync records truthful counts and database replay coverage", () => {
   assert.match(squareDatabaseProof, /an exact replay does not duplicate logical sales rows/i);
   assert.match(squareDatabaseProof, /the overlapping row is deduplicated/i);
   assert.match(squareDatabaseProof, /metadata->>'recordsProcessed'/i);
+});
+
+test("Square sync persists sold_at for count-anchored depletion", () => {
+  const freshnessMigration = readFileSync(
+    "supabase/migrations/20260817090000_inventory_count_freshness_and_sale_time.sql",
+    "utf8",
+  );
+  assert.match(freshnessMigration, /sold_at timestamptz/i);
+  assert.match(freshnessMigration, /sale->>'sold_at'/i);
 });

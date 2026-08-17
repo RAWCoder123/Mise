@@ -312,7 +312,8 @@ function applyRequestedMutation(
           ? {
               ...item,
               current_quantity: quantityByItemId.get(item.id) as number,
-              last_updated: new Date().toISOString()
+              last_updated: new Date().toISOString(),
+              last_counted_at: new Date().toISOString()
             }
           : item
       )

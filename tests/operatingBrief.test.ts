@@ -51,6 +51,7 @@ function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
     estimated_unit_cost: 3.5,
     supplier_name: "Metro Produce",
     last_updated: "2026-08-02T11:00:00.000Z",
+    last_counted_at: "2026-08-02T11:00:00.000Z",
     ...overrides
   };
 }

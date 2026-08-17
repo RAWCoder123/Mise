@@ -140,7 +140,8 @@ export function applyCountApprovalsToInventory(
     return {
       ...item,
       current_quantity: approval.quantityAfter,
-      last_updated: lastUpdated
+      last_updated: lastUpdated,
+      last_counted_at: lastUpdated
     };
   });
 }

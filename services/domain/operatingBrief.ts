@@ -16,6 +16,7 @@ import {
   type ActivityEvent,
   type ActivityWindowSummary
 } from "./activityEvents";
+import { inventoryCountAsOf } from "./inventoryCountFreshness";
 import type { MiseAction } from "./miseActions";
 import type { OperationalFinding } from "./operationalFindings";
 import {
@@ -152,8 +153,8 @@ function buildDataFreshness(input: OperatingBriefInput, generatedAt: string): Da
   }
 
   const latestInventory = input.inventoryItems
-    .map((item) => item.last_updated)
-    .filter((value) => Number.isFinite(Date.parse(value)))
+    .map((item) => inventoryCountAsOf(item))
+    .filter((value): value is string => typeof value === "string" && Number.isFinite(Date.parse(value)))
     .sort()
     .at(-1);
   const latestSale = input.sales
@@ -215,7 +216,7 @@ function recommendationConfidence(
     };
   }
 
-  const countAgeHours = hoursBetween(generatedAt, outlook.item.last_updated);
+  const countAgeHours = hoursBetween(generatedAt, inventoryCountAsOf(outlook.item) ?? "");
   let score = 0.25;
   const reasons: string[] = [];
   if (outlook.prediction.historySource === "restaurant_history") {
@@ -466,7 +467,7 @@ function buildMonitoringRows(
         id: `watch_inventory_${outlook.item.id}`,
         title: `Tracking ${outlook.item.item_name} usage`,
         detail: outlook.prediction.coverageLabel,
-        startedAt: outlook.item.last_updated || generatedAt,
+        startedAt: inventoryCountAsOf(outlook.item) || generatedAt,
         status: "monitoring",
         relatedEntityType: "inventory_item",
         relatedEntityId: outlook.item.id

@@ -47,7 +47,8 @@ function inventoryItem(
     reorder_threshold: 10,
     estimated_unit_cost: 1,
     supplier_name: "Supplier",
-    last_updated: fixedNow
+    last_updated: fixedNow,
+    last_counted_at: null
   };
 }
 
@@ -267,6 +268,31 @@ test("prediction boundaries ignore wrong dates, anomalous quantities, and incomp
   assert.ok(Number.isFinite(prediction.averageDailyUsage));
   assert.ok(Number.isFinite(prediction.suggestedOrderQuantity));
 
+  const middayCounted: InventoryItem = {
+    ...item,
+    last_counted_at: `${operatingDate}T18:00:00.000Z`
+  };
+  const morningAndAfternoon = [
+    sale("morning", operatingDate, 4, restaurantId),
+    {
+      ...sale("afternoon", operatingDate, 2, restaurantId),
+      sold_at: `${operatingDate}T19:00:00.000Z`
+    }
+  ];
+  morningAndAfternoon[0] = {
+    ...morningAndAfternoon[0]!,
+    sold_at: `${operatingDate}T12:00:00.000Z`
+  };
+  const anchored = buildInventoryPrediction(
+    middayCounted,
+    morningAndAfternoon,
+    [mapping("compatible", 0.5, "pounds")],
+    operatingDate
+  );
+  // Midday count already includes morning usage; only post-count sales deplete.
+  assert.equal(anchored.todayDepletion, 1);
+  assert.equal(anchored.projectedQuantity, 19);
+
   const operational = calculateOperationalSignals({
     restaurantId,
     operatingDate,
@@ -311,12 +337,19 @@ test("supplier grouping is tenant-safe and uses the restaurant calendar for tomo
 test("equal-timestamp handling suppresses duplicates and recommendation rebuilds are replay-safe", () => {
   const restaurantId = "restaurant-suppression";
   const item = inventoryItem("low-item", restaurantId, 5);
+  item.last_counted_at = item.last_updated;
   const handled = approvedRecommendation("handled", restaurantId, "Supplier", item.item_name, "dismissed");
   handled.inventory_item_id = item.id;
-  handled.created_at = item.last_updated;
+  handled.created_at = item.last_counted_at!;
 
   assert.equal(shouldSuppressRecommendationForItem(restaurantId, item, [handled]), true);
   assert.equal(shouldSuppressRecommendationForItem("restaurant-other", item, [handled]), false);
+
+  // Policy/receipt bumps to last_updated must not unsuppress without a newer verified count.
+  item.last_updated = "2026-07-14T18:00:00.000Z";
+  assert.equal(shouldSuppressRecommendationForItem(restaurantId, item, [handled]), true);
+  item.last_counted_at = "2026-07-14T18:00:00.000Z";
+  assert.equal(shouldSuppressRecommendationForItem(restaurantId, item, [handled]), false);
 
   const state = createInitialDemoState("Toast");
   state.purchaseRecommendations = [];
