@@ -20,12 +20,13 @@ test("recipe unlink regenerates planning without the deleted mapping", () => {
   const demo = readFileSync("services/repositories/demoRepository.ts", "utf8");
   const deleteFn =
     inventory.match(/export\s+async\s+function\s+deleteRecipeBaselineIngredient[\s\S]*?\n\}/)?.[0] ?? "";
-  const applyDelete =
-    edge.match(/if \(action === "delete_recipe"\) \{[\s\S]*?return \{[\s\S]*?\};\n  \}/)?.[0] ?? "";
+  const applyMutation =
+    edge.match(/function applyRequestedMutation\([\s\S]*?\n\}/)?.[0] ?? "";
 
   assert.match(deleteFn, /filter\(\(mapping\) => mapping\.id !== mappingId\)/);
   assert.match(deleteFn, /deleteRecipeMappingAndSignals/);
-  assert.match(applyDelete, /menuItemIngredients\.filter/);
+  assert.match(applyMutation, /action === "delete_recipe"/);
+  assert.match(applyMutation, /menuItemIngredients:\s*snapshot\.menuItemIngredients\.filter/);
   assert.match(demo, /async deleteRecipeMappingAndSignals/);
   assert.match(demo, /splice\(index, 1\)/);
 });
