@@ -96,6 +96,7 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
 
   pending.created_at = "2026-07-15T09:00:00.000Z";
   item.last_updated = "2026-07-16T09:00:00.000Z";
+  item.last_counted_at = "2026-07-16T09:00:00.000Z";
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
 
   const refreshed = state.purchaseRecommendations.find(
@@ -103,7 +104,7 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
   );
   assert.ok(refreshed);
   assert.equal(refreshed.status, "pending");
-  assert.ok(refreshed.created_at.localeCompare(item.last_updated) >= 0);
+  assert.ok(refreshed.created_at.localeCompare(item.last_counted_at!) >= 0);
 
   approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, refreshed.id);
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
@@ -117,6 +118,7 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
   );
 
   item.last_updated = new Date(Date.now() + 60_000).toISOString();
+  item.last_counted_at = item.last_updated;
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
   const nextPending = state.purchaseRecommendations.find(
     (recommendation) =>

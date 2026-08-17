@@ -18,7 +18,7 @@ export function inventoryCountAsOf(
  * Prefer provider `sold_at`; date-only rows cannot be timed within a day.
  */
 export function saleEffectiveAt(
-  sale: Pick<PosSale, "sold_at" | "sale_date" | "created_at">
+  sale: Pick<PosSale, "sold_at" | "sale_date"> & { created_at?: string }
 ): string | null {
   if (typeof sale.sold_at === "string" && sale.sold_at.trim()) {
     return Number.isFinite(Date.parse(sale.sold_at)) ? sale.sold_at : null;
@@ -39,7 +39,7 @@ export function saleEffectiveAt(
  *   already reflected in a midday count.
  */
 export function isSaleInDepletionWindow(
-  sale: Pick<PosSale, "sold_at" | "sale_date" | "created_at">,
+  sale: Pick<PosSale, "sold_at" | "sale_date"> & { created_at?: string },
   operatingDate: string,
   countedAt: string | null,
   restaurantTimeZone = "UTC"

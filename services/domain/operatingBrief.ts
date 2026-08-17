@@ -154,7 +154,7 @@ function buildDataFreshness(input: OperatingBriefInput, generatedAt: string): Da
 
   const latestInventory = input.inventoryItems
     .map((item) => inventoryCountAsOf(item))
-    .filter((value): value is string => Boolean(value) && Number.isFinite(Date.parse(value)))
+    .filter((value): value is string => typeof value === "string" && Number.isFinite(Date.parse(value)))
     .sort()
     .at(-1);
   const latestSale = input.sales

@@ -261,7 +261,8 @@ test("server-shared operational rules are deterministic and reject anomalous his
       current_quantity: 1,
       par_level: 20,
       reorder_threshold: 5,
-      last_updated: "2026-07-14T12:00:00.000Z"
+      last_updated: "2026-07-14T12:00:00.000Z",
+      last_counted_at: "2026-07-14T12:00:00.000Z"
     }],
     sales: [],
     menuItemIngredients: [],

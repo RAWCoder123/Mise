@@ -496,6 +496,7 @@ test("handled recommendations stay suppressed until a fresh inventory count", ()
   const chicken = state.inventoryItems.find((item) => item.item_name === "Chicken breast");
   assert.ok(chicken);
   chicken.last_updated = "2026-06-20T09:00:00.000Z";
+  chicken.last_counted_at = "2026-06-20T09:00:00.000Z";
   const handledRecommendation = {
     id: "rec_recent_dismissed",
     restaurant_id: DEMO_RESTAURANT_ID,
@@ -524,6 +525,7 @@ test("handled recommendations stay suppressed until a fresh inventory count", ()
   assert.equal(suppressed.some((insert) => insert.inventory_item_id === chicken.id), false);
 
   chicken.last_updated = "2026-06-20T10:00:00.000Z";
+  chicken.last_counted_at = "2026-06-20T10:00:00.000Z";
   const regenerated = buildRecommendationInserts(
     DEMO_RESTAURANT_ID,
     state.inventoryItems,
@@ -542,6 +544,7 @@ test("approved and ordered recommendations also suppress duplicate pending rows"
   const rice = state.inventoryItems.find((item) => item.item_name === "Rice");
   assert.ok(rice);
   rice.last_updated = "2026-06-20T09:00:00.000Z";
+  rice.last_counted_at = "2026-06-20T09:00:00.000Z";
   const handledStatuses = ["approved", "ordered"] as const;
 
   handledStatuses.forEach((status) => {
@@ -578,6 +581,7 @@ test("demo recommendation rebuild uses full history without browser runtime erro
   const chicken = state.inventoryItems.find((item) => item.item_name === "Chicken breast");
   assert.ok(chicken);
   chicken.last_updated = "2026-06-20T09:00:00.000Z";
+  chicken.last_counted_at = "2026-06-20T09:00:00.000Z";
   state.purchaseRecommendations.push({
     id: "rec_browser_regression",
     restaurant_id: DEMO_RESTAURANT_ID,
