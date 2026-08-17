@@ -1,4 +1,5 @@
 import type { InventoryItem, PurchaseRecommendation } from "../../types/mise";
+import { isFreshInventoryCount } from "./inventoryCountFreshness";
 import { canonicalInventoryUnit } from "./inventoryUnits";
 
 export type OrderAutomationDecision = "manual_review" | "automatic_draft" | "automatic_send";
@@ -147,7 +148,7 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
 
     if (
       item &&
-      !isFreshTimestamp(item.last_updated, now, policy.maximumInventoryAgeHours)
+      !isFreshInventoryCount(item, now, policy.maximumInventoryAgeHours)
     ) {
       blockers.add("stale_inventory_count");
     }

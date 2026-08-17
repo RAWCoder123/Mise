@@ -35,6 +35,10 @@ import { formatQuantity, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../.
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
+import {
+  inventoryCountAsOf,
+  isSaleInDepletionWindow
+} from "./inventoryCountFreshness";
 import { buildRecordedSalesTrend } from "./salesTrends";
 
 /**
@@ -246,7 +250,10 @@ export function shouldSuppressRecommendationForItem(
 ) {
   const handled = latestHandledRecommendationForItem(restaurantId, item.id, history);
   if (!handled) return false;
-  return handled.created_at.localeCompare(item.last_updated) >= 0;
+  const countedAt = inventoryCountAsOf(item);
+  // Only a newer verified count can unsuppress; policy/receipt last_updated bumps must not.
+  if (!countedAt) return true;
+  return handled.created_at.localeCompare(countedAt) >= 0;
 }
 
 function verbForItem(itemName: string) {
@@ -360,8 +367,11 @@ export function buildInventoryPrediction(
     par_level: finiteNonNegative(item.par_level),
     reorder_threshold: finiteNonNegative(item.reorder_threshold)
   };
+  const countedAt = inventoryCountAsOf(safeItem);
   const todaySales = sales.filter(
-    (sale) => sale.restaurant_id === item.restaurant_id && isToday(sale, operatingDate)
+    (sale) =>
+      sale.restaurant_id === item.restaurant_id &&
+      isSaleInDepletionWindow(sale, operatingDate, countedAt)
   );
   const relevantMappings = mappings.filter(
     (mapping) =>

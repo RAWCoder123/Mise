@@ -91,6 +91,8 @@ export interface PosSale {
   gross_sales: number;
   net_sales: number;
   source_pos: string;
+  /** Provider closed/sold timestamp when known; used for same-day count anchoring. */
+  sold_at?: string | null;
   created_at: string;
 }
 
@@ -106,6 +108,8 @@ export interface InventoryItem {
   estimated_unit_cost: number;
   supplier_name: string;
   last_updated: string;
+  /** Latest verified physical count; distinct from last_updated. */
+  last_counted_at?: string | null;
   canonical_unit?: "g" | "ml" | "each" | null;
   canonical_quantity_per_unit?: number | null;
   canonical_unit_verification_status?: "draft" | "verified" | "rejected" | "expired";

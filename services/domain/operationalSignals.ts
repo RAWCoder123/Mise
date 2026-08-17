@@ -1,4 +1,8 @@
 import { canonicalInventoryUnit, inventoryUnitsAreCompatible } from "./inventoryUnits.ts";
+import {
+  inventoryCountAsOf,
+  isSaleInDepletionWindow
+} from "./inventoryCountFreshness.ts";
 import type { InsightPresentationDescriptor } from "../../types/presentation.ts";
 
 export interface OperationalInventoryItem {
@@ -11,6 +15,7 @@ export interface OperationalInventoryItem {
   par_level: number;
   reorder_threshold: number;
   last_updated?: string;
+  last_counted_at?: string | null;
 }
 
 export interface OperationalSale {
@@ -18,6 +23,8 @@ export interface OperationalSale {
   sale_date: string;
   item_name: string;
   quantity_sold: number;
+  sold_at?: string | null;
+  created_at?: string;
 }
 
 export interface OperationalRecipeMapping {
@@ -74,6 +81,9 @@ export interface OperationalPlanningSnapshot {
 export function calculateOperationalSignals(snapshot: OperationalPlanningSnapshot) {
   const now = new Date().toISOString();
   const demand = historicalDailyDemand(snapshot.sales, snapshot.operatingDate);
+  const countedByItem = new Map(
+    snapshot.inventoryItems.map((item) => [item.id, inventoryCountAsOf(item)] as const)
+  );
   const todaySales = snapshot.sales.filter(
     (sale) => sale.restaurant_id === snapshot.restaurantId && sale.sale_date === snapshot.operatingDate
   );
@@ -83,6 +93,10 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   const insights: OperationalInsight[] = [];
 
   for (const item of snapshot.inventoryItems.filter((entry) => entry.restaurant_id === snapshot.restaurantId)) {
+    const countedAt = countedByItem.get(item.id) ?? null;
+    const depletionSales = todaySales.filter((sale) =>
+      isSaleInDepletionWindow(sale, snapshot.operatingDate, countedAt)
+    );
     const mappings = snapshot.menuItemIngredients.filter(
       (mapping) =>
         mapping.restaurant_id === snapshot.restaurantId &&
@@ -90,7 +104,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         inventoryUnitsAreCompatible(item.unit, mapping.unit)
     );
     const todayUsage = mappings.reduce((sum, mapping) => {
-      const sold = todaySales
+      const sold = depletionSales
         .filter((sale) => normalizeKey(sale.item_name) === normalizeKey(mapping.menu_item_name))
         .reduce((quantity, sale) => quantity + finiteNonNegative(sale.quantity_sold), 0);
       return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
@@ -104,8 +118,9 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const isLow = !isCritical && projectedQuantity <= threshold;
     const suggested = Math.max(1, Math.ceil(finiteNonNegative(item.par_level) - projectedQuantity));
     const recentHandled = handled.get(item.id);
-    const changedAfterHandling = recentHandled && item.last_updated
-      ? Date.parse(item.last_updated) > Date.parse(recentHandled.created_at)
+    const countedAtIso = inventoryCountAsOf(item);
+    const changedAfterHandling = recentHandled && countedAtIso
+      ? Date.parse(countedAtIso) > Date.parse(recentHandled.created_at)
       : false;
 
     if ((isCritical || isLow) && (!recentHandled || changedAfterHandling)) {

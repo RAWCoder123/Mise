@@ -227,7 +227,8 @@ export function createInitialDemoState(
       reorder_threshold: 25,
       estimated_unit_cost: 3.7,
       supplier_name: "Fresh Poultry Supply",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: now
     },
     {
       id: itemIds.eggs,
@@ -240,7 +241,8 @@ export function createInitialDemoState(
       reorder_threshold: 100,
       estimated_unit_cost: 0.22,
       supplier_name: "Restaurant Depot",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: now
     },
     {
       id: itemIds.rice,
@@ -253,7 +255,8 @@ export function createInitialDemoState(
       reorder_threshold: 40,
       estimated_unit_cost: 0.9,
       supplier_name: "Dry Goods Wholesale",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: now
     },
     {
       id: itemIds.lettuce,
@@ -266,7 +269,8 @@ export function createInitialDemoState(
       reorder_threshold: 15,
       estimated_unit_cost: 1.4,
       supplier_name: "Local Produce Co.",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: now
     },
     {
       id: itemIds.tomatoes,
@@ -279,7 +283,8 @@ export function createInitialDemoState(
       reorder_threshold: 12,
       estimated_unit_cost: 1.8,
       supplier_name: "Local Produce Co.",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: now
     },
     {
       id: itemIds.beef,
@@ -292,7 +297,8 @@ export function createInitialDemoState(
       reorder_threshold: 50,
       estimated_unit_cost: 1.65,
       supplier_name: "Restaurant Depot",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: now
     },
     {
       id: itemIds.pancakeMix,
@@ -305,7 +311,8 @@ export function createInitialDemoState(
       reorder_threshold: 18,
       estimated_unit_cost: 1.2,
       supplier_name: "Dry Goods Wholesale",
-      last_updated: now
+      last_updated: now,
+      last_counted_at: now
     }
   ];
 
@@ -874,7 +881,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
   state.inventoryItems = state.inventoryItems.map((item) => ({
     ...item,
     ...itemUpdates[item.id],
-    last_updated: createdAt
+    last_updated: createdAt,
+    last_counted_at: createdAt
   }));
 
   state.menuItemIngredients = [
@@ -1471,6 +1479,7 @@ function sale(
     gross_sales: grossSales,
     net_sales: Math.round(grossSales * 0.93),
     source_pos: sourcePos,
+    sold_at: createdAt,
     created_at: createdAt
   };
 }

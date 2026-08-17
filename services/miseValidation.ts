@@ -308,7 +308,8 @@ export function normalizePosSale(value: PosSale): PosSale {
     ...value,
     quantity_sold: asBoundedNonNegativeNumber(value.quantity_sold, operatingLimits.posQuantitySold),
     gross_sales: asBoundedNonNegativeNumber(value.gross_sales, operatingLimits.posSalesAmount),
-    net_sales: asBoundedNonNegativeNumber(value.net_sales, operatingLimits.posSalesAmount)
+    net_sales: asBoundedNonNegativeNumber(value.net_sales, operatingLimits.posSalesAmount),
+    sold_at: asNullableString(value.sold_at)
   };
 }
 
@@ -355,6 +356,7 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
     par_level: asBoundedNonNegativeNumber(value.par_level, operatingLimits.inventoryQuantity),
     reorder_threshold: asBoundedNonNegativeNumber(value.reorder_threshold, operatingLimits.inventoryQuantity),
     estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost),
+    last_counted_at: asNullableString(value.last_counted_at),
     canonical_unit: canonicalUnit,
     canonical_quantity_per_unit: canonicalQuantityPerUnit,
     canonical_unit_verification_status: verificationStatus,

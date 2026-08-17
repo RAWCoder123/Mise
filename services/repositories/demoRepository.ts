@@ -485,6 +485,9 @@ export function createLocalDemoRepository(): MiseRepository {
       state.inventoryEvents = [...(state.inventoryEvents ?? []), acceptance.event];
       item.current_quantity = projectedQuantity;
       item.last_updated = acceptance.event.recordedAt;
+      if (input.eventType === "count") {
+        item.last_counted_at = input.effectiveAt;
+      }
       if (input.eventType === "waste") {
         const timeZone = state.restaurants.find(
           (restaurant) => restaurant.id === input.restaurantId
@@ -992,7 +995,7 @@ export function createLocalDemoRepository(): MiseRepository {
           ...demoState.insights.filter((insight) => insight.restaurant_id !== restaurantId),
           ...insights
         ];
-        return replaceDemoCountSession(demoState, {
+        const approved = replaceDemoCountSession(demoState, {
           session: {
             ...current.session,
             status: "approved",
@@ -1002,6 +1005,15 @@ export function createLocalDemoRepository(): MiseRepository {
           },
           lines: current.lines
         });
+        for (const line of current.lines) {
+          const item = demoState.inventoryItems.find(
+            (entry) => entry.restaurant_id === restaurantId && entry.id === line.inventory_item_id
+          );
+          if (!item) continue;
+          item.last_counted_at = now;
+          item.last_updated = now;
+        }
+        return approved;
       });
     },
 
