@@ -35,7 +35,8 @@ const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Ma
 type PosMessage =
   | { key: "pos.message.demoLoaded"; values: { provider: string } }
   | { key: "pos.error.demoLoad" }
-  | { key: "pos.message.syncCompleted"; values: { count: string } };
+  | { key: "pos.message.syncCompleted"; values: { count: string } }
+  | { key: "pos.message.syncPlanningStale"; values: { count: string } };
 
 export default function POSConnectionScreen() {
   const navigation = useNavigation();

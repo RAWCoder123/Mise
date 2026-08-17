@@ -97,7 +97,7 @@ test("today tasks keep connected POS incomplete when planning refresh failed", (
   const planningTask = tasks.find((task) => task.source.id === "pos_1");
   assert.ok(planningTask);
   assert.equal(planningTask?.status, "open");
-  assert.equal(planningTask?.presentation.code, "today.integration.planningStale");
+  assert.equal(planningTask?.presentation?.code, "today.integration.planningStale");
   assert.match(planningTask?.title ?? "", /Refresh Square planning/i);
 });
 
