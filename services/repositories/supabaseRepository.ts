@@ -31,6 +31,9 @@ import {
   type PersistedActivityEventRow
 } from "../domain/activityEvents";
 import {
+  normalizeSupplierEmailDeliveryReview
+} from "../domain/supplierEmailDeliveryReview";
+import {
   miseActionFromPersistedRow,
   type PersistedMiseActionRow
 } from "../domain/miseActions";
@@ -107,6 +110,7 @@ import {
   type MiseRepository,
   type RestaurantDataExport,
   type RestaurantSetupSnapshotSummary,
+  type SupplierEmailDeliveryResolutionResult,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
 
@@ -1593,6 +1597,70 @@ export function createSupabaseRepository(): MiseRepository {
         throw new Error("Supplier send approval failed restaurant scope validation.");
       }
       return action;
+    },
+
+    async fetchSupplierEmailDeliveryReview(restaurantId, orderId) {
+      const { data, error } = await client.rpc("get_supplier_email_delivery_review", {
+        p_restaurant_id: restaurantId,
+        p_order_id: orderId
+      });
+      if (error) throw error;
+      return normalizeSupplierEmailDeliveryReview(data, restaurantId, orderId);
+    },
+
+    async resolveSupplierEmailDelivery(
+      restaurantId,
+      orderId,
+      resolution,
+      confirmation,
+      providerMessageId = null
+    ) {
+      const { data, error } = await client.rpc("resolve_supplier_email_delivery", {
+        p_restaurant_id: restaurantId,
+        p_order_id: orderId,
+        p_resolution: resolution,
+        p_confirmation: confirmation,
+        p_provider_message_id: providerMessageId
+      });
+      if (error) {
+        const message = typeof error.message === "string" ? error.message : "";
+        if (message.includes("does not require review")) {
+          throw new GmailIntegrationError(
+            "delivery_requires_review",
+            "This supplier email delivery is not waiting for review."
+          );
+        }
+        throw error;
+      }
+      const payload = asUnknownRecord(data);
+      if (
+        (payload.outcome !== "applied" && payload.outcome !== "already_applied") ||
+        (payload.resolution !== "confirm_sent" && payload.resolution !== "allow_retry")
+      ) {
+        throw new GmailIntegrationError("unknown", "Supplier email delivery resolution returned an invalid response.");
+      }
+      if (!payload.order) {
+        throw new GmailIntegrationError("unknown", "Supplier email delivery resolution did not return the order.");
+      }
+      const order = normalizeSupplierOrder(payload.order as SupplierOrder);
+      if (order.restaurant_id !== restaurantId || order.id !== orderId) {
+        throw new Error("Supplier email delivery resolution failed restaurant scope validation.");
+      }
+      const result: SupplierEmailDeliveryResolutionResult = {
+        outcome: payload.outcome,
+        resolution: payload.resolution,
+        order,
+        actionStatus:
+          typeof payload.actionStatus === "string" ? payload.actionStatus : null,
+        orderedRecommendations: Array.isArray(payload.ordered_recommendations)
+          ? payload.ordered_recommendations.map((entry) =>
+              normalizePurchaseRecommendation(entry as PurchaseRecommendation)
+            )
+          : undefined,
+        deliveryStatus:
+          typeof payload.deliveryStatus === "string" ? payload.deliveryStatus : null
+      };
+      return result;
     },
 
     async listRestaurantMemories(restaurantId, options = {}) {
