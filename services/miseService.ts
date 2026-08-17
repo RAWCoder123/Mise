@@ -26,6 +26,7 @@ export * from "./application/operatingPlan";
 export * from "./application/restaurantTasks";
 export * from "./application/restaurantMemory";
 export * from "./application/miseActions";
+export * from "./application/supplierEmailDeliveryReview";
 export * from "./application/autonomy";
 export * from "./application/waste";
 export * from "./application/pilotReadiness";

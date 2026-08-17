@@ -17,10 +17,12 @@ import {
   fetchEmailConnectionState,
   fetchSupplierSendAction,
   fetchSupplierOrderOperationalDetail,
+  fetchSupplierEmailDeliveryReview,
   isGmailIntegrationError,
   approveSupplierSendEnvelope,
   prepareSupplierEmailPayload,
   receiveSupplierOrderDelivery,
+  resolveSupplierEmailDelivery,
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
@@ -29,6 +31,10 @@ import type {
   SupplierOrderDeliveryEvidence
 } from "../../services/domain/supplierReliability";
 import type { MiseAction } from "../../services/domain/miseActions";
+import {
+  supplierEmailDeliveryRequiresReview,
+  type SupplierEmailDeliveryReview
+} from "../../services/domain/supplierEmailDeliveryReview";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -59,6 +65,7 @@ export default function OrderDraftDetailScreen() {
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
+  const [deliveryReview, setDeliveryReview] = useState<SupplierEmailDeliveryReview | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -89,12 +96,14 @@ export default function OrderDraftDetailScreen() {
     setNotice(null);
     setHubLoadError(false);
     try {
-      const [nextDetail, nextEmailConnection, nextEmailPayload, nextSendAction] = await Promise.all([
-        fetchSupplierOrderOperationalDetail(restaurantId, orderId),
-        fetchEmailConnectionState(restaurantId),
-        prepareSupplierEmailPayload(restaurantId, orderId),
-        fetchSupplierSendAction(restaurantId, orderId)
-      ]);
+      const [nextDetail, nextEmailConnection, nextEmailPayload, nextSendAction, nextDeliveryReview] =
+        await Promise.all([
+          fetchSupplierOrderOperationalDetail(restaurantId, orderId),
+          fetchEmailConnectionState(restaurantId),
+          prepareSupplierEmailPayload(restaurantId, orderId),
+          fetchSupplierSendAction(restaurantId, orderId),
+          fetchSupplierEmailDeliveryReview(restaurantId, orderId).catch(() => null)
+        ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       if (nextEmailConnection && nextEmailConnection.restaurant_id !== restaurantId) {
         throw new Error(t("orders.detail.connectionMismatch"));
@@ -107,6 +116,7 @@ export default function OrderDraftDetailScreen() {
       setEmailConnection(nextEmailConnection);
       setEmailPayload(nextEmailPayload);
       setSupplierSendAction(nextSendAction);
+      setDeliveryReview(nextDeliveryReview);
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       setOperatorNote(nextDetail.order.operator_note ?? "");
@@ -116,6 +126,7 @@ export default function OrderDraftDetailScreen() {
       setDeliveryEvidence([]);
       setEmailPayload(null);
       setSupplierSendAction(null);
+      setDeliveryReview(null);
       setHubLoadError(true);
       setNotice({
         title: t("orders.detail.load.title"),
@@ -140,6 +151,7 @@ export default function OrderDraftDetailScreen() {
     setEmailConnection(null);
     setEmailPayload(null);
     setSupplierSendAction(null);
+    setDeliveryReview(null);
     setOperatorNote("");
     setBusy(false);
     setNotice(null);
@@ -364,6 +376,47 @@ export default function OrderDraftDetailScreen() {
     }
   }
 
+  async function resolveDeliveryReview(resolution: "confirm_sent" | "allow_retry") {
+    if (!restaurant || !order || order.status !== "draft" || actionLockRef.current) return;
+    if (!actionsEditable) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    actionLockRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await resolveSupplierEmailDelivery(restaurantId, order.id, resolution);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load(false);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        title:
+          resolution === "confirm_sent"
+            ? t("orders.detail.reviewResolution.confirmedTitle")
+            : t("orders.detail.reviewResolution.retryTitle"),
+        message:
+          resolution === "confirm_sent"
+            ? t("orders.detail.reviewResolution.confirmedBody")
+            : t("orders.detail.reviewResolution.retryBody"),
+        tone: "success"
+      });
+      if (result.order) setOrder(result.order);
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setNotice({
+          title: t("orders.detail.reviewResolution.failedTitle"),
+          message: t("orders.detail.reviewResolution.failedBody"),
+          tone: "danger"
+        });
+      }
+    } finally {
+      actionLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
+    }
+  }
+
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canManageGmail = canDeleteRestaurantData(memberships, restaurant?.id);
   const hubLoadState = resolveRestaurantScopedHubLoadState({
@@ -384,13 +437,19 @@ export default function OrderDraftDetailScreen() {
   const visibleEmailConnection = hubReady ? emailConnection : null;
   const visibleEmailPayload = hubReady ? emailPayload : null;
   const visibleSupplierSendAction = hubReady ? supplierSendAction : null;
+  const visibleDeliveryReview = hubReady ? deliveryReview : null;
+  const needsDeliveryReview = supplierEmailDeliveryRequiresReview(
+    visibleDeliveryReview,
+    visibleSupplierSendAction?.status
+  );
   const visibleDeliveryEvidence =
     hubReady ? deliveryEvidence : [];
   const gmailReady = Boolean(
     visibleEmailConnection?.status === "connected" &&
     visibleEmailPayload?.canSend &&
     visibleSupplierSendAction &&
-    canApproveSupplierSendAction(visibleSupplierSendAction)
+    canApproveSupplierSendAction(visibleSupplierSendAction) &&
+    !needsDeliveryReview
   );
   const generatedMessage = visibleOrder ? generatedOrderMessage(visibleOrder) : "";
 
@@ -582,6 +641,38 @@ export default function OrderDraftDetailScreen() {
                   title={t("orders.detail.approvalMissing.title")}
                   message={t("orders.detail.approvalMissing.body")}
                 />
+              ) : null}
+              {needsDeliveryReview ? (
+                <View style={styles.reviewResolutionPanel}>
+                  <StatusNotice
+                    tone="warning"
+                    title={t("orders.detail.reviewResolution.title")}
+                    message={t("orders.detail.reviewResolution.body")}
+                  />
+                  {actionsEditable ? (
+                    <View style={styles.reviewResolutionActions}>
+                      <Button
+                        title={busy
+                          ? t("orders.detail.reviewResolution.working")
+                          : t("orders.detail.reviewResolution.confirmSent")}
+                        accessibilityLabel={t("orders.detail.reviewResolution.confirmSentAccessibility")}
+                        variant="secondary"
+                        onPress={() => void resolveDeliveryReview("confirm_sent")}
+                        disabled={busy}
+                        style={styles.actionButton}
+                      />
+                      <Button
+                        title={busy
+                          ? t("orders.detail.reviewResolution.working")
+                          : t("orders.detail.reviewResolution.allowRetry")}
+                        accessibilityLabel={t("orders.detail.reviewResolution.allowRetryAccessibility")}
+                        onPress={() => void resolveDeliveryReview("allow_retry")}
+                        disabled={busy}
+                        style={styles.actionButton}
+                      />
+                    </View>
+                  ) : null}
+                </View>
               ) : null}
             </View>
           ) : null}
@@ -931,6 +1022,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
     color: colors.text,
     ...typography.body
+  },
+  reviewResolutionPanel: {
+    gap: 12,
+    marginTop: 12
+  },
+  reviewResolutionActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12
   },
   orderMessage: {
     color: colors.text,

@@ -25,6 +25,8 @@ test("Gmail client workflows stay typed, tenant-scoped, and behind backend funct
   assert.match(hostedRepository, /"link-gmail",\s*\{ restaurantId, action: "disconnect" \}/s);
   assert.match(hostedRepository, /"send-supplier-email",\s*\{ restaurantId, orderId \}/s);
   assert.match(hostedRepository, /client\.rpc\("approve_supplier_send_envelope"/);
+  assert.match(hostedRepository, /client\.rpc\("get_supplier_email_delivery_review"/);
+  assert.match(hostedRepository, /client\.rpc\("resolve_supplier_email_delivery"/);
   assert.match(hostedRepository, /\.eq\("idempotency_key", `send_supplier_order:\$\{orderId\}`\)/);
   assert.match(demoRepository, /requireActiveDemoRestaurant\(state, restaurantId\)/);
   assert.match(demoRepository, /entry\.restaurant_id === restaurantId && entry\.id === orderId/);
@@ -85,6 +87,8 @@ test("Gmail settings and order delivery UI preserve roles, simulation disclosure
   assert.match(orderDetail, /prepareSupplierEmailPayload/);
   assert.match(orderDetail, /orders\.detail\.review\.to/);
   assert.match(orderDetail, /approveSupplierSendEnvelope/);
+  assert.match(orderDetail, /resolveSupplierEmailDelivery/);
+  assert.match(orderDetail, /needsDeliveryReview/);
   assert.doesNotMatch(orderDetail, /decideMiseAction/);
   assert.match(orderDetail, /await sendSupplierOrderEmail\(restaurantId, savedOrder\.id\)/);
   assert.match(orderDetail, /orders\.detail\.notice\.demoSentBody/);

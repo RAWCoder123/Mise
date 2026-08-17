@@ -156,6 +156,29 @@ export type GmailIntegrationErrorStatus =
   | "supplier_email_missing"
   | "unknown";
 
+export type SupplierEmailDeliveryResolution = "confirm_sent" | "allow_retry";
+
+export interface SupplierEmailDeliveryReview {
+  requiresReview: boolean;
+  orderStatus: string;
+  deliveryStatus: "sending" | "sent" | "failed" | "unknown" | null;
+  lastErrorCode: string | null;
+  updatedAt: string | null;
+  providerMessageIdPresent: boolean;
+  resolution: SupplierEmailDeliveryResolution | null;
+  actionId: string | null;
+  actionStatus: string | null;
+}
+
+export interface SupplierEmailDeliveryResolutionResult {
+  outcome: "applied" | "already_applied";
+  resolution: SupplierEmailDeliveryResolution;
+  order: import("../../types/mise").SupplierOrder;
+  actionStatus: string | null;
+  orderedRecommendations?: import("../../types/mise").PurchaseRecommendation[];
+  deliveryStatus?: string | null;
+}
+
 export class GmailIntegrationError extends Error {
   readonly status: GmailIntegrationErrorStatus;
 
@@ -602,6 +625,17 @@ export interface MiseRepository {
     orderId: string,
     envelope: SupplierSendEnvelope
   ): Promise<MiseAction>;
+  fetchSupplierEmailDeliveryReview?(
+    restaurantId: string,
+    orderId: string
+  ): Promise<SupplierEmailDeliveryReview>;
+  resolveSupplierEmailDelivery?(
+    restaurantId: string,
+    orderId: string,
+    resolution: SupplierEmailDeliveryResolution,
+    confirmation: string,
+    providerMessageId?: string | null
+  ): Promise<SupplierEmailDeliveryResolutionResult>;
   listRestaurantMemories(
     restaurantId: string,
     options?: { status?: RestaurantMemoryStatus | "actionable"; limit?: number }
