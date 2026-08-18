@@ -445,13 +445,18 @@ export function buildInventoryPrediction(
   const projectedQuantity = Math.max(0, safeItem.current_quantity - recentUsage);
   const daysCoverage = averageDailyUsage > 0 ? projectedQuantity / averageDailyUsage : null;
   const quantityStatus = getInventoryStatusForQuantity(safeItem, projectedQuantity);
-  const projectedStatus = statusWithCoverageRisk(quantityStatus, daysCoverage, projectedQuantity);
+  const computedStatus = statusWithCoverageRisk(quantityStatus, daysCoverage, projectedQuantity);
+  // `current_quantity` was last overwritten by an invalid future-dated count, so the
+  // number cannot support a confident Good/Low/Critical claim. Watch is the existing
+  // "counts need a look" state, which is the only honest read until a real recount.
+  const contaminatedProjection = countEvidence.status === "contaminated";
+  const projectedStatus: InventoryStatus = contaminatedProjection ? "Watch" : computedStatus;
   const demandTrend = getDemandTrend(mappedTodayUsage, baselineUsage);
   const suggestedOrderQuantity = roundOrderQuantity(safeItem.par_level - projectedQuantity);
   const coverageLabel = getCoverageLabel(safeItem, daysCoverage, averageDailyUsage, projectedQuantity);
   const trendLabel = getTrendLabel(demandTrend);
   const suggestedAction = getSuggestedAction(safeItem, suggestedOrderQuantity, daysCoverage, projectedStatus);
-  const urgency = projectedStatus === "Critical" ? "high" : projectedStatus === "Low" ? "medium" : "low";
+  const urgency: Urgency = projectedStatus === "Critical" ? "high" : projectedStatus === "Low" ? "medium" : "low";
   const historySource: InventoryPrediction["historySource"] = hasRestaurantHistory
     ? "restaurant_history"
     : hasDemoFallback
@@ -501,7 +506,11 @@ export function buildInventoryPrediction(
     confidenceCopy,
     recommendationCopy,
     whyItMatters,
-    countEvidence: countEvidence.status === "verified" ? "verified_count" : "no_verified_count",
+    countEvidence: contaminatedProjection
+      ? "contaminated_projection"
+      : countEvidence.status === "verified"
+        ? "verified_count"
+        : "no_verified_count",
     countedAt: countEvidence.countedAt,
     countAgeHours: countEvidence.countAgeHours,
     countFreshness: countEvidence.freshness,

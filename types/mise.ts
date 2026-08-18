@@ -369,8 +369,12 @@ export interface InventoryPrediction {
   confidenceCopy: string;
   recommendationCopy: string;
   whyItMatters: string;
-  /** Whether a verified physical count anchors this projection. Never derived from `last_updated`. */
-  countEvidence: "verified_count" | "no_verified_count";
+  /**
+   * Whether a verified physical count anchors this projection. Never derived from
+   * `last_updated`. `contaminated_projection` means on-hand was last overwritten by an
+   * invalid future-dated count, so the quantity itself must not drive decisions.
+   */
+  countEvidence: "verified_count" | "no_verified_count" | "contaminated_projection";
   /** Authoritative instant of the newest verified physical count for this item. */
   countedAt: string | null;
   countAgeHours: number | null;

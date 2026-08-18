@@ -245,6 +245,11 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
   const outlook = anchored.outlooks.find((entry) => entry.item.id === itemId);
   if (!outlook) throw new Error("Inventory item not found");
   const { item, prediction } = outlook;
+  if (prediction.countEvidence === "contaminated_projection") {
+    throw new Error(
+      "Record a new physical count for this item first. Its on-hand number came from an invalid future-dated count."
+    );
+  }
   if (shouldSuppressRecommendationForItem(restaurantId, item, history, anchored.countEvidence)) {
     throw new Error("Update the inventory count first. This item was already handled.");
   }

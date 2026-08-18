@@ -11,6 +11,7 @@ import {
   isStrictlyAfterCount,
   isTemporallyValidCount,
   missingInventoryCountEvidence,
+  projectionContaminatedByFutureCount,
   projectAuthoritativeOnHand,
   resolveVerifiedInventoryCount,
   verifiedCountSupersedes,
@@ -25,6 +26,7 @@ import {
   type InventoryEvent
 } from "../services/domain/inventoryLedger";
 import { buildInventoryPrediction, shouldSuppressRecommendationForItem } from "../services/domain/miseDomain";
+import { assessOrderAutomation } from "../services/domain/orderAutomation";
 import { calculateOperationalSignals } from "../services/domain/operationalSignals";
 import type { InventoryItem, MenuItemIngredient, PosSale, PurchaseRecommendation } from "../types/mise";
 
@@ -662,7 +664,9 @@ test("A materially future-dated count is neither fresh nor authoritative", () =>
   assert.equal(resolveVerifiedInventoryCount(restaurantA, itemId, [future], CANONICAL_PER_UNIT, { asOf }), null);
 
   const evidence = evidenceFor([future], { generatedAt: asOf });
-  assert.equal(evidence.status, "missing");
+  // The future row was the last count applied, so the materialized projection is
+  // contaminated — a strictly stronger statement than "never counted".
+  assert.equal(evidence.status, "contaminated");
   assert.equal(evidence.countedAt, null);
   assert.equal(evidence.countAgeHours, null);
   assert.equal(evidence.freshness, "unverified");
@@ -706,12 +710,25 @@ test("a future count never hides the newest valid count for the item", () => {
     countEvent("2026-08-24T08:00:00.000Z", 999, { id: "count-future", sequence: 9 })
   ];
 
+  // The resolver still identifies the newest VALID count as the authoritative one.
   const resolved = resolveVerifiedInventoryCount(restaurantA, itemId, events, CANONICAL_PER_UNIT, { asOf });
   assert.equal(resolved?.eventId, "count-valid");
   assert.equal(resolved?.countedAt, "2026-08-17T08:00:00.000Z");
   assert.equal(resolved?.countedQuantity, 12);
 
-  const evidence = evidenceFor(events, { generatedAt: asOf });
+  // But the future row was the last count APPLIED, so the materialized quantity that
+  // planning would start from is tainted and the item has no usable evidence yet.
+  assert.equal(projectionContaminatedByFutureCount(restaurantA, itemId, events, { asOf }), true);
+  assert.equal(evidenceFor(events, { generatedAt: asOf }).status, "contaminated");
+
+  // When the future row was applied BEFORE a valid count, the projection was
+  // re-anchored by that valid count and the item is trustworthy again.
+  const recounted = [
+    countEvent("2026-08-24T08:00:00.000Z", 999, { id: "count-future", sequence: 2 }),
+    countEvent("2026-08-17T08:00:00.000Z", 12, { id: "count-valid", sequence: 5 })
+  ];
+  assert.equal(projectionContaminatedByFutureCount(restaurantA, itemId, recounted, { asOf }), false);
+  const evidence = evidenceFor(recounted, { generatedAt: asOf });
   assert.equal(evidence.status, "verified");
   assert.equal(evidence.countedAt, "2026-08-17T08:00:00.000Z");
   assert.equal(evidence.freshness, "fresh");
@@ -808,15 +825,16 @@ test("server-shared signals ignore future count evidence and keep the valid anch
     timeZone: "UTC"
   };
 
-  // A count dated a week out must not suppress today's depletion the way a real
-  // same-day count does, because it is not evidence at all.
+  // A count dated a week out is the last count applied, so `current_quantity` is
+  // tainted: the item produces no quantity-based signal at all until a real recount.
   const futureOnly = calculateOperationalSignals({
     ...snapshot,
     inventoryCountEvents: [countEvent(futureIso(7), 12, { id: "count-future" })]
   });
-  assert.equal(lowStockProjectedQuantity(futureOnly.insights), 8);
+  assert.equal(lowStockProjectedQuantity(futureOnly.insights), null);
+  assert.equal(futureOnly.recommendations.length, 0);
 
-  // A previous-day valid count behind a future row still anchors the window.
+  // Same when an older valid count exists behind the future row.
   const validBehindFuture = calculateOperationalSignals({
     ...snapshot,
     inventoryCountEvents: [
@@ -824,7 +842,19 @@ test("server-shared signals ignore future count evidence and keep the valid anch
       countEvent(futureIso(7), 12, { id: "count-future", sequence: 9 })
     ]
   });
-  assert.equal(lowStockProjectedQuantity(validBehindFuture.insights), 8);
+  assert.equal(lowStockProjectedQuantity(validBehindFuture.insights), null);
+  assert.equal(validBehindFuture.recommendations.length, 0);
+
+  // A legitimate recount applied after the future row restores normal output.
+  const recounted = calculateOperationalSignals({
+    ...snapshot,
+    inventoryCountEvents: [
+      countEvent(futureIso(7), 999, { id: "count-future", sequence: 1 }),
+      countEvent("2026-08-16T13:00:00.000Z", 12, { id: "count-recount", sequence: 9 })
+    ]
+  });
+  assert.equal(lowStockProjectedQuantity(recounted.insights), 8);
+  assert.equal(recounted.recommendations.length, 1);
 
   // And a future row cannot unsuppress a handled decision.
   const handled = {
@@ -922,17 +952,21 @@ test("future count evidence from another tenant changes nothing for this tenant"
     countEvent("2026-08-17T17:00:00.000Z", 999, { id: "count-b-valid", restaurantId: restaurantB, sequence: 8 })
   ];
 
+  // Restaurant A stays verified: another tenant's future row is not its contamination.
   const evidence = evidenceFor(events, { generatedAt: asOf });
   assert.equal(evidence.restaurantId, restaurantA);
+  assert.equal(evidence.status, "verified");
   assert.equal(evidence.countedAt, "2026-08-17T08:00:00.000Z");
+  assert.equal(projectionContaminatedByFutureCount(restaurantA, itemId, events, { asOf }), false);
 
-  // Restaurant B resolves to its own newest valid count, not its future row.
+  // Restaurant B carries its own contamination: its future row was applied last.
   const foreign = evidenceFor(events, {
     restaurantId: restaurantB,
     generatedAt: asOf,
     item: item({ restaurant_id: restaurantB })
   });
-  assert.equal(foreign.countedAt, "2026-08-17T17:00:00.000Z");
+  assert.equal(foreign.status, "contaminated");
+  assert.equal(projectionContaminatedByFutureCount(restaurantB, itemId, events, { asOf }), true);
 });
 
 test("the planning snapshot and ledger trigger both exclude future-dated counts", () => {
@@ -989,4 +1023,342 @@ test("a future ledger movement cannot inflate projected inventory", () => {
   assert.equal(projection.appliedAdditions, 6);
   assert.equal(projection.appliedConsumption, 4);
   assert.equal(projection.projectedQuantity, 22);
+});
+
+// ---------------------------------------------------------------------------
+// Legacy contamination: a future count inserted BEFORE the rejection trigger
+// existed may already have overwritten inventory_items.current_quantity, because
+// apply_inventory_event_projection sets current_quantity = count quantity in
+// ledger sequence order. Ignoring the row as evidence is not sufficient.
+// ---------------------------------------------------------------------------
+
+/** The ledger history of the contaminated scenario: valid 20, then an invalid 100. */
+function legacyContaminatedLedger(): InventoryEvent[] {
+  return [
+    ledgerEvent({ sequence: 1, eventType: "count", quantity: 20, effectiveAt: "2026-08-17T08:00:00.000Z" }),
+    ledgerEvent({ sequence: 2, eventType: "count", quantity: 100, effectiveAt: futureIso(7) })
+  ];
+}
+
+test("a legacy future count that already moved current_quantity cannot drive planning", () => {
+  const ledger = legacyContaminatedLedger();
+
+  // The materialized projection really is 100: the trigger replaces on each count,
+  // in insertion order, so the invalid row won.
+  assert.equal(projectInventoryEvents(restaurantA, itemId, ledger).quantity / CANONICAL_PER_UNIT, 100);
+
+  const contaminatedItem = item({ current_quantity: 100, reorder_threshold: 12, par_level: 40 });
+  const evidence = evidenceFor(ledger, { item: contaminatedItem });
+  assert.equal(evidence.status, "contaminated");
+  assert.equal(evidence.countedAt, null);
+  assert.equal(evidence.freshness, "unverified");
+
+  // The screen-facing projection must not present 100 as a confident position.
+  const prediction = buildInventoryPrediction(
+    contaminatedItem,
+    [],
+    [],
+    operatingDate,
+    undefined,
+    undefined,
+    evidence
+  );
+  assert.equal(prediction.countEvidence, "contaminated_projection");
+  assert.equal(prediction.isTemporallyAuthoritative, false);
+  assert.equal(prediction.projectedStatus, "Watch");
+  assert.equal(prediction.urgency, "low");
+
+  // And the server-shared planner emits no quantity-based output for the item.
+  const signals = calculateOperationalSignals({
+    restaurantId: restaurantA,
+    operatingDate,
+    inventoryItems: [
+      {
+        id: itemId,
+        restaurant_id: restaurantA,
+        item_name: "Chicken breast",
+        supplier_name: "Fresh Foods",
+        unit: "lb",
+        current_quantity: 100,
+        par_level: 40,
+        reorder_threshold: 12,
+        last_updated: "2026-08-17T23:59:00.000Z"
+      }
+    ],
+    sales: [],
+    menuItemIngredients: [],
+    recommendationHistory: [],
+    timeZone: "UTC",
+    inventoryCountEvents: ledger
+  });
+  assert.equal(signals.recommendations.length, 0);
+  assert.equal(lowStockProjectedQuantity(signals.insights), null);
+  assert.equal(
+    signals.insights.some((insight) => insight.id === `insight_overstock_${itemId}`),
+    false
+  );
+
+  // A contaminated item also cannot be manually pushed onto an order: the outlook
+  // carries the label the application layer refuses on.
+  assert.equal(prediction.countEvidence, "contaminated_projection");
+});
+
+test("the invalid future count stays in append-only history", () => {
+  const ledger = legacyContaminatedLedger();
+  const before = ledger.map((event) => event.id);
+
+  // Nothing in the correction removes, rewrites, or reorders ledger rows.
+  evidenceFor(ledger);
+  projectionContaminatedByFutureCount(restaurantA, itemId, ledger, { asOf: evaluatedAt });
+  projectInventoryEvents(restaurantA, itemId, ledger);
+
+  assert.deepEqual(ledger.map((event) => event.id), before);
+  assert.equal(ledger.filter((event) => event.eventType === "count").length, 2);
+  assert.ok(ledger.some((event) => Date.parse(event.effectiveAt) > Date.parse(evaluatedAt)));
+});
+
+test("a later legitimate recount restores a trustworthy baseline", () => {
+  const recountedAt = "2026-08-17T20:00:00.000Z";
+  const ledger = [
+    ...legacyContaminatedLedger(),
+    // The recount is applied after the invalid row, so the trigger re-anchors
+    // current_quantity to 25 and the item becomes trustworthy again.
+    ledgerEvent({ sequence: 3, eventType: "count", quantity: 5, effectiveAt: recountedAt })
+  ];
+
+  assert.equal(projectInventoryEvents(restaurantA, itemId, ledger).quantity / CANONICAL_PER_UNIT, 5);
+  assert.equal(projectionContaminatedByFutureCount(restaurantA, itemId, ledger, { asOf: evaluatedAt }), false);
+
+  const recountedItem = item({ current_quantity: 5, reorder_threshold: 12, par_level: 40 });
+  const evidence = evidenceFor(ledger, { item: recountedItem });
+  assert.equal(evidence.status, "verified");
+  assert.equal(evidence.countedAt, recountedAt);
+  assert.equal(evidence.freshness, "fresh");
+
+  const prediction = buildInventoryPrediction(
+    recountedItem,
+    [],
+    [],
+    operatingDate,
+    undefined,
+    undefined,
+    evidence
+  );
+  assert.equal(prediction.countEvidence, "verified_count");
+  assert.equal(prediction.isTemporallyAuthoritative, true);
+  // Readiness is restored rather than permanently forced to the contaminated
+  // "needs a look" state: 5 is below reorder, so the real risk shows through.
+  assert.equal(prediction.projectedStatus, "Critical");
+  assert.equal(prediction.urgency, "high");
+
+  // The recount also becomes the depletion anchor for the invariant engine.
+  const projection = project({
+    evidence,
+    consumption: [
+      consumption("2026-08-17T19:00:00.000Z", 5),
+      consumption("2026-08-17T21:00:00.000Z", 3)
+    ]
+  });
+  assert.equal(projection.baselineQuantity, 5);
+  assert.equal(projection.appliedConsumption, 3);
+  assert.equal(projection.projectedQuantity, 2);
+});
+
+test("receipts and waste after the restoring recount still project correctly", () => {
+  const recountedAt = "2026-08-17T20:00:00.000Z";
+  const ledger = [
+    ...legacyContaminatedLedger(),
+    ledgerEvent({ sequence: 3, eventType: "count", quantity: 25, effectiveAt: recountedAt }),
+    ledgerEvent({ sequence: 4, eventType: "receipt", quantity: 10, effectiveAt: "2026-08-17T21:00:00.000Z" }),
+    ledgerEvent({ sequence: 5, eventType: "waste", quantity: 4, effectiveAt: "2026-08-17T22:00:00.000Z" })
+  ];
+
+  // Existing ledger semantics are unchanged: 25 counted, +10 received, -4 wasted.
+  assert.equal(projectInventoryEvents(restaurantA, itemId, ledger).quantity / CANONICAL_PER_UNIT, 31);
+  assert.equal(projectionContaminatedByFutureCount(restaurantA, itemId, ledger, { asOf: evaluatedAt }), false);
+
+  const evidence = evidenceFor(ledger, { item: item({ current_quantity: 31 }) });
+  const projection = project({
+    evidence,
+    movements: [
+      { restaurantId: restaurantA, inventoryItemId: itemId, effectiveAt: "2026-08-17T21:00:00.000Z", quantityDelta: 10 },
+      { restaurantId: restaurantA, inventoryItemId: itemId, effectiveAt: "2026-08-17T22:00:00.000Z", quantityDelta: -4 },
+      // A movement recorded before the recount is already inside the counted quantity.
+      { restaurantId: restaurantA, inventoryItemId: itemId, effectiveAt: "2026-08-17T10:00:00.000Z", quantityDelta: 50 }
+    ]
+  });
+  assert.equal(projection.baselineQuantity, 25);
+  assert.equal(projection.appliedAdditions, 10);
+  assert.equal(projection.appliedLedgerReductions, 4);
+  assert.equal(projection.projectedQuantity, 31);
+});
+
+test("stockouts, adjustments, transfers and corrections keep their ledger meaning", () => {
+  const recountedAt = "2026-08-17T20:00:00.000Z";
+  const base = [
+    ...legacyContaminatedLedger(),
+    ledgerEvent({ sequence: 3, eventType: "count", quantity: 25, effectiveAt: recountedAt })
+  ];
+
+  const stockout = projectInventoryEvents(restaurantA, itemId, [
+    ...base,
+    ledgerEvent({ sequence: 4, eventType: "stockout", quantity: 0, effectiveAt: "2026-08-17T21:00:00.000Z" })
+  ]);
+  assert.equal(stockout.quantity / CANONICAL_PER_UNIT, 0);
+
+  const adjusted = projectInventoryEvents(restaurantA, itemId, [
+    ...base,
+    ledgerEvent({ sequence: 4, eventType: "adjustment", quantity: -5, effectiveAt: "2026-08-17T21:00:00.000Z" }),
+    ledgerEvent({ sequence: 5, eventType: "transfer", quantity: 2, effectiveAt: "2026-08-17T22:00:00.000Z" }),
+    ledgerEvent({
+      sequence: 6,
+      eventType: "correction",
+      quantity: 3,
+      effectiveAt: "2026-08-17T23:00:00.000Z",
+      supersedesEventId: "event-4"
+    })
+  ]);
+  assert.equal(adjusted.quantity / CANONICAL_PER_UNIT, 25);
+
+  // Non-count events never change the contamination verdict in either direction.
+  assert.equal(projectionContaminatedByFutureCount(restaurantA, itemId, base, { asOf: evaluatedAt }), false);
+  assert.equal(
+    projectionContaminatedByFutureCount(restaurantA, itemId, legacyContaminatedLedger(), {
+      asOf: evaluatedAt
+    }),
+    true
+  );
+});
+
+test("contamination is tenant-scoped and does not leak between restaurants", () => {
+  const ledger = [
+    ...legacyContaminatedLedger(),
+    {
+      ...ledgerEvent({ sequence: 3, eventType: "count", quantity: 25, effectiveAt: "2026-08-17T20:00:00.000Z" }),
+      id: "event-b-1",
+      restaurantId: restaurantB
+    }
+  ];
+
+  assert.equal(projectionContaminatedByFutureCount(restaurantA, itemId, ledger, { asOf: evaluatedAt }), true);
+  // Restaurant B's own history is clean and its higher sequence must not clear A.
+  assert.equal(projectionContaminatedByFutureCount(restaurantB, itemId, ledger, { asOf: evaluatedAt }), false);
+  assert.equal(evidenceFor(ledger, { generatedAt: evaluatedAt }).status, "contaminated");
+  assert.equal(
+    evidenceFor(ledger, {
+      restaurantId: restaurantB,
+      generatedAt: evaluatedAt,
+      item: item({ restaurant_id: restaurantB })
+    }).status,
+    "verified"
+  );
+});
+
+test("a contaminated projection cannot release suppression or order readiness", () => {
+  const ledger = legacyContaminatedLedger();
+  const contaminatedItem = item({ current_quantity: 100 });
+  const evidenceMap = buildInventoryCountEvidence({
+    restaurantId: restaurantA,
+    items: [contaminatedItem],
+    countEvents: ledger,
+    generatedAt: evaluatedAt
+  });
+
+  const handled: PurchaseRecommendation = {
+    id: "rec-handled-contaminated",
+    restaurant_id: restaurantA,
+    inventory_item_id: itemId,
+    item_name: "Chicken breast",
+    supplier_name: "Fresh Foods",
+    recommended_quantity: 20,
+    unit: "lb",
+    reason: "Operator dismissed during service.",
+    urgency: "high",
+    status: "dismissed",
+    supplier_order_id: null,
+    created_at: "2026-08-17T09:00:00.000Z"
+  };
+  assert.equal(
+    shouldSuppressRecommendationForItem(restaurantA, contaminatedItem, [handled], evidenceMap),
+    true
+  );
+
+  // Order automation stays on manual review with an explicit stale-count blocker.
+  const assessment = assessOrderAutomation({
+    restaurantId: restaurantA,
+    supplierName: "Fresh Foods",
+    candidates: [
+      {
+        id: "rec-candidate",
+        restaurant_id: restaurantA,
+        inventory_item_id: itemId,
+        item_name: "Chicken breast",
+        supplier_name: "Fresh Foods",
+        recommended_quantity: 12,
+        unit: "lb",
+        reason: "Projected below par.",
+        urgency: "high",
+        status: "pending",
+        supplier_order_id: null,
+        created_at: "2026-08-17T22:30:00.000Z"
+      }
+    ],
+    inventoryItems: [contaminatedItem],
+    recommendationHistory: [11, 12, 12].map((quantity, index) => ({
+      id: `rec-history-${index}`,
+      restaurant_id: restaurantA,
+      inventory_item_id: itemId,
+      item_name: "Chicken breast",
+      supplier_name: "Fresh Foods",
+      recommended_quantity: quantity,
+      unit: "lb",
+      reason: "Previously ordered.",
+      urgency: "medium" as const,
+      status: "ordered" as const,
+      supplier_order_id: null,
+      created_at: `2026-08-1${index + 1}T12:00:00.000Z`
+    })),
+    inventoryCountEvents: ledger,
+    delivery: { emailConnected: true, supplierRecipientConfigured: true },
+    now: new Date(evaluatedAt)
+  });
+  assert.equal(assessment.decision, "manual_review");
+  assert.ok(assessment.blockers.includes("stale_inventory_count"));
+
+  // And the application layer refuses a manual add on the contaminated label.
+  const prediction = buildInventoryPrediction(
+    contaminatedItem,
+    [],
+    [],
+    operatingDate,
+    undefined,
+    undefined,
+    evidenceMap.get(itemId)
+  );
+  assert.equal(prediction.countEvidence, "contaminated_projection");
+  const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
+  assert.match(
+    inventoryWorkflow,
+    /prediction\.countEvidence === "contaminated_projection"[\s\S]*Record a new physical count/
+  );
+});
+
+test("the planning snapshot returns the rows needed to detect contamination", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260817120000_authoritative_inventory_count_evidence.sql",
+    "utf8"
+  );
+
+  // The newest count by insertion sequence is what the projection trigger last
+  // applied, so the snapshot must expose it even when it is future-dated.
+  assert.match(
+    migration,
+    /order\s+by\s+event\.inventory_item_id,\s*event\.sequence\s+desc/i
+  );
+  // The newest valid count is still returned as the authoritative baseline.
+  assert.match(
+    migration,
+    /effective_at\s*<=\s*now\(\)\s*\+\s*interval\s*'2 minutes'[\s\S]*order\s+by\s+event\.inventory_item_id,\s*event\.effective_at\s+desc/i
+  );
+  assert.match(migration, /union/i);
 });

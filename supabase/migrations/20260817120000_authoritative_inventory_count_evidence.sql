@@ -82,15 +82,22 @@ begin
         limit 500
       ) recommendation
     ), '[]'::jsonb),
-    -- Newest VALID verified physical count per inventory item. Count sessions are
-    -- capped at 250 items, so one row per item stays bounded.
+    -- Up to two count rows per inventory item, so the domain can judge both the
+    -- authoritative baseline and whether the materialized projection is trustworthy.
+    -- Count sessions are capped at 250 items, so this stays bounded.
     --
-    -- Future-dated counts are excluded before the per-item newest-wins choice, so a
-    -- count effective after now can neither be reported as fresh evidence nor hide
-    -- the latest valid count. The two-minute bound is the device/server clock-skew
-    -- tolerance shared with COUNT_CLOCK_SKEW_TOLERANCE_MS in
-    -- services/domain/inventoryCountAuthority.ts and with the
-    -- reject_future_dated_inventory_count ledger trigger.
+    --   1. The newest count by ledger SEQUENCE. `apply_inventory_event_projection`
+    --      applies events in insertion order and a count REPLACES
+    --      inventory_items.current_quantity, so this row is what the materialized
+    --      quantity was last anchored by. It is returned even when future-dated:
+    --      hiding it would hide the contamination it caused.
+    --   2. The newest VALID count by effective time, which is the authoritative
+    --      baseline. Future-dated rows are excluded here, so a count effective after
+    --      now can never be reported as fresh evidence or hide the latest valid count.
+    --
+    -- The two-minute bound is the device/server clock-skew tolerance shared with
+    -- COUNT_CLOCK_SKEW_TOLERANCE_MS in services/domain/inventoryCountAuthority.ts and
+    -- with the reject_future_dated_inventory_count ledger trigger.
     'inventoryCountEvents', coalesce((
       select jsonb_agg(
         jsonb_build_object(
@@ -103,15 +110,25 @@ begin
           'quantity', newest_count.quantity,
           'canonicalUnit', newest_count.canonical_unit
         )
-        order by newest_count.inventory_item_id
+        order by newest_count.inventory_item_id, newest_count.sequence
       )
       from (
-        select distinct on (event.inventory_item_id) event.*
-        from public.inventory_events event
-        where event.restaurant_id = p_restaurant_id
-          and event.event_type = 'count'
-          and event.effective_at <= now() + interval '2 minutes'
-        order by event.inventory_item_id, event.effective_at desc, event.sequence desc
+        (
+          select distinct on (event.inventory_item_id) event.*
+          from public.inventory_events event
+          where event.restaurant_id = p_restaurant_id
+            and event.event_type = 'count'
+          order by event.inventory_item_id, event.sequence desc
+        )
+        union
+        (
+          select distinct on (event.inventory_item_id) event.*
+          from public.inventory_events event
+          where event.restaurant_id = p_restaurant_id
+            and event.event_type = 'count'
+            and event.effective_at <= now() + interval '2 minutes'
+          order by event.inventory_item_id, event.effective_at desc, event.sequence desc
+        )
       ) newest_count
     ), '[]'::jsonb)
   );
@@ -119,4 +136,4 @@ end;
 $$;
 
 comment on function private.fetch_operational_planning_snapshot(uuid, uuid) is
-  'Tenant-scoped planning snapshot. Carries the newest non-future verified inventory count per item and the restaurant timezone so projected on-hand is anchored to physical count time, not inventory_items.last_updated.';
+  'Tenant-scoped planning snapshot. Carries the newest valid verified inventory count per item, the newest count actually applied to the projection, and the restaurant timezone, so projected on-hand is anchored to physical count time rather than inventory_items.last_updated and a tainted projection is detectable.';

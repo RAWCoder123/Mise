@@ -129,6 +129,10 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     }, 0);
     const itemCountEvidence =
       countEvidence.get(item.id) ?? missingInventoryCountEvidence(snapshot.restaurantId, item.id);
+    // `current_quantity` here was last overwritten by an invalid future-dated count.
+    // The numeric basis is untrustworthy, so this item produces no quantity-based
+    // recommendation or insight until a real recount re-anchors the projection.
+    if (itemCountEvidence.status === "contaminated") continue;
     // A verified count taken inside today's operating day already observed part of
     // today's day-resolution POS sales, so those sales must not deplete it again.
     const todayUsage =

@@ -42,7 +42,42 @@ export const DEFAULT_MAXIMUM_COUNT_AGE_HOURS = 36;
 export const COUNT_VALIDITY_RULE = "reject_counts_effective_after_evaluation_instant" as const;
 export const COUNT_CLOCK_SKEW_TOLERANCE_MS = 120_000;
 
-export type InventoryCountEvidenceStatus = "verified" | "missing";
+/**
+ * Contamination rule for the materialized on-hand projection
+ * (`PROJECTION_CONTAMINATION_RULE`).
+ *
+ * `private.apply_inventory_event_projection` is an AFTER INSERT trigger that applies
+ * events in ledger `sequence` (insertion) order, and a `count` event *replaces*
+ * `inventory_items.current_quantity` rather than adjusting it. So the materialized
+ * value is anchored by the highest-sequence `count` row for that item, plus the
+ * non-count deltas inserted after it.
+ *
+ * A future-dated count inserted before the `reject_future_dated_inventory_count`
+ * trigger existed therefore may already have overwritten `current_quantity`. Ignoring
+ * it as *evidence* is not enough: `calculateOperationalSignals` still starts from
+ * `current_quantity` as its numeric on-hand basis.
+ *
+ * The projection is contaminated exactly when the item's highest-sequence count is
+ * temporally invalid. If a valid count was inserted after it, the trigger re-anchored
+ * `current_quantity` to that valid count and only valid deltas followed, so the item
+ * is trustworthy again — which is why a legitimate recount restores readiness without
+ * any repair, deletion, or fabricated count.
+ *
+ * Mise fails closed rather than rebuilding the projection because the ledger is not a
+ * complete history: setup writes `current_quantity` directly (ledger authority begins
+ * "after the first ledger event"), and `canonical_quantity_per_unit` is mutable, so
+ * replaying historical canonical quantities with today's factor is not provably
+ * faithful.
+ */
+export const PROJECTION_CONTAMINATION_RULE =
+  "highest_sequence_count_must_be_temporally_valid" as const;
+
+/**
+ * `contaminated` means the item's materialized on-hand projection
+ * (`inventory_items.current_quantity`) was last anchored by an invalid future-dated
+ * count, so the number itself cannot be trusted — see `PROJECTION_CONTAMINATION_RULE`.
+ */
+export type InventoryCountEvidenceStatus = "verified" | "missing" | "contaminated";
 export type InventoryCountFreshness = "fresh" | "stale" | "unverified";
 export type AuthoritativeInventoryEvidence = "verified_count" | "no_verified_count";
 
@@ -218,6 +253,58 @@ export function resolveVerifiedInventoryCount(
 }
 
 /**
+ * `PROJECTION_CONTAMINATION_RULE`: true when the item's highest-sequence count is
+ * future-dated, meaning `inventory_items.current_quantity` was last overwritten by
+ * invalid evidence and the number itself cannot drive operational decisions.
+ */
+export function projectionContaminatedByFutureCount(
+  restaurantId: string,
+  inventoryItemId: string,
+  candidates: readonly VerifiedCountCandidate[],
+  options: { asOf?: string; clockSkewToleranceMs?: number } = {}
+): boolean {
+  const asOf = options.asOf ?? new Date().toISOString();
+  const clockSkewToleranceMs = boundedTolerance(options.clockSkewToleranceMs);
+  let topSequence = Number.NEGATIVE_INFINITY;
+  let contaminated = false;
+
+  for (const candidate of candidates) {
+    if (candidate.restaurantId !== restaurantId) continue;
+    if (candidate.inventoryItemId !== inventoryItemId) continue;
+    if (candidate.eventType !== undefined && candidate.eventType !== "count") continue;
+    if (!Number.isFinite(Date.parse(candidate.effectiveAt))) continue;
+    const sequence = Number.isFinite(candidate.sequence) ? Number(candidate.sequence) : 0;
+    const invalid = !isTemporallyValidCount(candidate.effectiveAt, asOf, clockSkewToleranceMs);
+    if (sequence > topSequence) {
+      topSequence = sequence;
+      contaminated = invalid;
+      continue;
+    }
+    // Sequence tie: fail closed, an invalid row at the top sequence contaminates.
+    if (sequence === topSequence && invalid) contaminated = true;
+  }
+
+  return contaminated;
+}
+
+/** Evidence for an item whose materialized projection was tainted by a future count. */
+export function contaminatedInventoryCountEvidence(
+  restaurantId: string,
+  inventoryItemId: string
+): InventoryCountEvidence {
+  return {
+    restaurantId,
+    inventoryItemId,
+    status: "contaminated",
+    count: null,
+    countedAt: null,
+    countedOperatingDate: null,
+    countAgeHours: null,
+    freshness: "unverified"
+  };
+}
+
+/**
  * Builds per-item count evidence for one restaurant.
  *
  * `resolveOperatingDate` lets the caller supply restaurant-local day keys without
@@ -240,6 +327,18 @@ export function buildInventoryCountEvidence(input: {
   const evidence = new Map<string, InventoryCountEvidence>();
 
   for (const item of input.items) {
+    // A tainted materialized projection outranks any older valid count: the number
+    // planning would start from is untrustworthy, so the item has no usable evidence
+    // until a real recount re-anchors it.
+    if (
+      projectionContaminatedByFutureCount(restaurantId, item.id, input.countEvents, {
+        asOf: generatedAt,
+        clockSkewToleranceMs
+      })
+    ) {
+      evidence.set(item.id, contaminatedInventoryCountEvidence(restaurantId, item.id));
+      continue;
+    }
     const count = resolveVerifiedInventoryCount(
       restaurantId,
       item.id,
