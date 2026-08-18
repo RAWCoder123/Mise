@@ -35,6 +35,13 @@ import { formatQuantity, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../.
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
+import {
+  dayResolutionConsumptionIsAfterCount,
+  missingInventoryCountEvidence,
+  verifiedCountSupersedes,
+  type InventoryCountEvidence,
+  type InventoryCountEvidenceMap
+} from "./inventoryCountAuthority";
 import { buildRecordedSalesTrend } from "./salesTrends";
 
 /**
@@ -239,14 +246,35 @@ function latestHandledRecommendationForItem(
     .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
 }
 
+/**
+ * A handled recommendation stays suppressed until authoritative physical evidence
+ * proves the shelf was recounted after the operator handled it.
+ *
+ * `item.last_updated` is deliberately not consulted: it moves for par, reorder,
+ * supplier, and cost edits, so it would unsuppress purchasing on a metadata change.
+ * With no verified count evidence Mise fails closed and keeps the suppression.
+ */
 export function shouldSuppressRecommendationForItem(
   restaurantId: string,
   item: InventoryItem,
-  history: PurchaseRecommendation[] = []
+  history: PurchaseRecommendation[] = [],
+  countEvidence?: InventoryCountEvidenceMap
 ) {
   const handled = latestHandledRecommendationForItem(restaurantId, item.id, history);
   if (!handled) return false;
-  return handled.created_at.localeCompare(item.last_updated) >= 0;
+  const evidence = inventoryCountEvidenceFor(countEvidence, restaurantId, item.id);
+  return !verifiedCountSupersedes(evidence, handled.created_at);
+}
+
+/** Falls back to fail-closed "no verified count" when evidence was not supplied. */
+function inventoryCountEvidenceFor(
+  countEvidence: InventoryCountEvidenceMap | undefined,
+  restaurantId: string,
+  inventoryItemId: string
+): InventoryCountEvidence {
+  const evidence = countEvidence?.get(inventoryItemId);
+  if (evidence && evidence.restaurantId === restaurantId) return evidence;
+  return missingInventoryCountEvidence(restaurantId, inventoryItemId);
 }
 
 function verbForItem(itemName: string) {
@@ -261,14 +289,23 @@ export function buildInventoryOutlooks(
   sales: PosSale[],
   mappings: MenuItemIngredient[],
   operatingDate: string,
-  demandFallback?: DemandFallback
+  demandFallback?: DemandFallback,
+  countEvidence?: InventoryCountEvidenceMap
 ): InventoryOutlookItem[] {
   const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .map((item) => ({
       item,
-      prediction: buildInventoryPrediction(item, sales, mappings, operatingDate, historicalBaselines, demandFallback)
+      prediction: buildInventoryPrediction(
+        item,
+        sales,
+        mappings,
+        operatingDate,
+        historicalBaselines,
+        demandFallback,
+        inventoryCountEvidenceFor(countEvidence, restaurantId, item.id)
+      )
     }))
     .sort((a, b) => {
       const rankDelta = predictionRank(b.prediction) - predictionRank(a.prediction);
@@ -352,7 +389,8 @@ export function buildInventoryPrediction(
   mappings: MenuItemIngredient[],
   operatingDate: string,
   historicalBaselines = buildHistoricalDemandBaselines(item.restaurant_id, sales, operatingDate),
-  demandFallback?: DemandFallback
+  demandFallback?: DemandFallback,
+  countEvidence: InventoryCountEvidence = missingInventoryCountEvidence(item.restaurant_id, item.id)
 ): InventoryPrediction {
   const safeItem: InventoryItem = {
     ...item,
@@ -369,12 +407,21 @@ export function buildInventoryPrediction(
       mapping.inventory_item_id === item.id &&
       inventoryUnitsAreCompatible(safeItem.unit, mapping.unit)
   );
-  const recentUsage = relevantMappings.reduce((sum, mapping) => {
+  const mappedTodayUsage = relevantMappings.reduce((sum, mapping) => {
     const sold = todaySales
       .filter((sale) => normalizeMenuItemKey(sale.item_name) === normalizeMenuItemKey(mapping.menu_item_name))
       .reduce((saleSum, sale) => saleSum + finiteNonNegative(sale.quantity_sold), 0);
     return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
   }, 0);
+  // `pos_sales` rows carry day resolution only, so a verified count taken inside
+  // today's operating day already observed part of today's sales. Those sales must
+  // not deplete the counted baseline a second time; they are reported as
+  // unattributed instead, which drops the item out of temporal authority.
+  const todayUsageIsAfterCount =
+    countEvidence.status !== "verified" ||
+    dayResolutionConsumptionIsAfterCount(countEvidence.countedOperatingDate, operatingDate);
+  const recentUsage = todayUsageIsAfterCount ? mappedTodayUsage : 0;
+  const unattributedTodayDepletion = todayUsageIsAfterCount ? 0 : mappedTodayUsage;
   let historySampleDays = 0;
   let hasRestaurantHistory = false;
   let hasDemoFallback = false;
@@ -389,40 +436,49 @@ export function buildInventoryPrediction(
     const baseline = learned?.dailyQuantity ?? fallback;
     return sum + baseline * finiteNonNegative(mapping.quantity_used_per_sale);
   }, 0);
+  // Demand rate still uses every mapped sale observed today, even sales the count
+  // already absorbed; only the depletion arithmetic is restricted to the count window.
   const averageDailyUsage =
-    recentUsage > 0 && baselineUsage > 0
-      ? recentUsage * 0.35 + baselineUsage * 0.65
-      : recentUsage || baselineUsage;
+    mappedTodayUsage > 0 && baselineUsage > 0
+      ? mappedTodayUsage * 0.35 + baselineUsage * 0.65
+      : mappedTodayUsage || baselineUsage;
   const projectedQuantity = Math.max(0, safeItem.current_quantity - recentUsage);
   const daysCoverage = averageDailyUsage > 0 ? projectedQuantity / averageDailyUsage : null;
   const quantityStatus = getInventoryStatusForQuantity(safeItem, projectedQuantity);
-  const projectedStatus = statusWithCoverageRisk(quantityStatus, daysCoverage, projectedQuantity);
-  const demandTrend = getDemandTrend(recentUsage, baselineUsage);
+  const computedStatus = statusWithCoverageRisk(quantityStatus, daysCoverage, projectedQuantity);
+  // `current_quantity` was last overwritten by an invalid future-dated count, so the
+  // number cannot support a confident Good/Low/Critical claim. Watch is the existing
+  // "counts need a look" state, which is the only honest read until a real recount.
+  const contaminatedProjection = countEvidence.status === "contaminated";
+  const projectedStatus: InventoryStatus = contaminatedProjection ? "Watch" : computedStatus;
+  const demandTrend = getDemandTrend(mappedTodayUsage, baselineUsage);
   const suggestedOrderQuantity = roundOrderQuantity(safeItem.par_level - projectedQuantity);
   const coverageLabel = getCoverageLabel(safeItem, daysCoverage, averageDailyUsage, projectedQuantity);
   const trendLabel = getTrendLabel(demandTrend);
   const suggestedAction = getSuggestedAction(safeItem, suggestedOrderQuantity, daysCoverage, projectedStatus);
-  const urgency = projectedStatus === "Critical" ? "high" : projectedStatus === "Low" ? "medium" : "low";
+  const urgency: Urgency = projectedStatus === "Critical" ? "high" : projectedStatus === "Low" ? "medium" : "low";
   const historySource: InventoryPrediction["historySource"] = hasRestaurantHistory
     ? "restaurant_history"
     : hasDemoFallback
       ? "demo_fallback"
-      : recentUsage > 0
+      : mappedTodayUsage > 0
         ? "current_day"
         : "none";
   const basis = hasRestaurantHistory
-    ? recentUsage > 0
+    ? mappedTodayUsage > 0
       ? `Based on today's mapped POS sales and ${historySampleDays} recent service days`
       : `Based on ${historySampleDays} recent service days mapped through recipe baselines`
     : hasDemoFallback
       ? "Based on the demo demand pattern and mapped recipe baselines"
-      : recentUsage > 0
+      : mappedTodayUsage > 0
         ? "Based on today's POS sales mapped through recipe baselines"
         : "Mise is still learning this item";
   const depletionCopy =
     recentUsage > 0
       ? `POS sales have depleted about ${formatQuantity(recentUsage)} ${item.unit} today. Projected on hand is ${formatQuantity(projectedQuantity)} ${item.unit}.`
-      : "No mapped POS depletion has been recorded for this item today.";
+      : unattributedTodayDepletion > 0
+        ? `Today's verified count already reflects ${formatQuantity(unattributedTodayDepletion)} ${item.unit} of mapped POS demand, so Mise is not subtracting it again. Projected on hand is ${formatQuantity(projectedQuantity)} ${item.unit}.`
+        : "No mapped POS depletion has been recorded for this item today.";
   const confidenceCopy = hasRestaurantHistory
     ? `Demand memory uses a trimmed rolling average, so one unusual day cannot set the baseline.`
     : averageDailyUsage > 0
@@ -449,7 +505,17 @@ export function buildInventoryPrediction(
     depletionCopy,
     confidenceCopy,
     recommendationCopy,
-    whyItMatters
+    whyItMatters,
+    countEvidence: contaminatedProjection
+      ? "contaminated_projection"
+      : countEvidence.status === "verified"
+        ? "verified_count"
+        : "no_verified_count",
+    countedAt: countEvidence.countedAt,
+    countAgeHours: countEvidence.countAgeHours,
+    countFreshness: countEvidence.freshness,
+    unattributedTodayDepletion,
+    isTemporallyAuthoritative: countEvidence.status === "verified" && unattributedTodayDepletion === 0
   };
 }
 
@@ -729,7 +795,8 @@ export function buildInsightsFromData(
   sales: PosSale[],
   mappings: MenuItemIngredient[],
   operatingDate: string,
-  demandFallback?: DemandFallback
+  demandFallback?: DemandFallback,
+  countEvidence?: InventoryCountEvidenceMap
 ) {
   const now = new Date().toISOString();
   const todaySales = sales.filter(
@@ -738,7 +805,15 @@ export function buildInsightsFromData(
   const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
   const insights: Insight[] = [];
   const usage = estimateUsage(todaySales, mappings, inventoryItems);
-  const outlooks = buildInventoryOutlooks(restaurantId, inventoryItems, sales, mappings, operatingDate, demandFallback);
+  const outlooks = buildInventoryOutlooks(
+    restaurantId,
+    inventoryItems,
+    sales,
+    mappings,
+    operatingDate,
+    demandFallback,
+    countEvidence
+  );
 
   outlooks
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
@@ -870,7 +945,8 @@ export function buildTodaySummary(
   insights: Insight[],
   mappings: MenuItemIngredient[] = [],
   operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone),
-  demandFallback?: DemandFallback
+  demandFallback?: DemandFallback,
+  countEvidence?: InventoryCountEvidenceMap
 ): TodaySummary {
   const todaySales = sales.filter(
     (sale) => sale.restaurant_id === restaurant.id && isToday(sale, operatingDate)
@@ -879,7 +955,15 @@ export function buildTodaySummary(
   const netSalesToday = todaySales.reduce((sum, sale) => sum + sale.net_sales, 0);
   const itemsSold = todaySales.reduce((sum, sale) => sum + sale.quantity_sold, 0);
   const topItems = [...todaySales].sort((a, b) => b.quantity_sold - a.quantity_sold).slice(0, 3);
-  const outlooks = buildInventoryOutlooks(restaurant.id, inventoryItems, sales, mappings, operatingDate, demandFallback);
+  const outlooks = buildInventoryOutlooks(
+    restaurant.id,
+    inventoryItems,
+    sales,
+    mappings,
+    operatingDate,
+    demandFallback,
+    countEvidence
+  );
   const recipeBaseline = buildRecipeBaselineSummary(restaurant.id, sales, mappings, inventoryItems, operatingDate);
   const workflow = {
     posMenuItemsCovered: recipeBaseline.posItemsCovered,
@@ -1352,7 +1436,11 @@ export function buildDemoReadinessSummary(
   insights: Insight[],
   mappings: MenuItemIngredient[],
   orders: SupplierOrder[] = [],
-  options: { demandFallback?: DemandFallback; demoProfileName?: string | null } = {}
+  options: {
+    demandFallback?: DemandFallback;
+    demoProfileName?: string | null;
+    countEvidence?: InventoryCountEvidenceMap;
+  } = {}
 ): DemoReadinessSummary {
   const restaurantSales = sales.filter((sale) => sale.restaurant_id === restaurant.id);
   const restaurantInventory = inventoryItems.filter((item) => item.restaurant_id === restaurant.id);
@@ -1374,7 +1462,8 @@ export function buildDemoReadinessSummary(
     sales,
     mappings,
     operatingDate,
-    options.demandFallback
+    options.demandFallback,
+    options.countEvidence
   );
   const lowOutlookCount = outlooks.filter(
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low"
@@ -1843,17 +1932,26 @@ export function buildRecommendationInserts(
   mappings: MenuItemIngredient[],
   recommendationHistory: PurchaseRecommendation[],
   operatingDate: string,
-  demandFallback?: DemandFallback
+  demandFallback?: DemandFallback,
+  countEvidence?: InventoryCountEvidenceMap
 ) {
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
   const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
 
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
-    .filter((item) => !shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory))
+    .filter((item) => !shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory, countEvidence))
     .map((item) => ({
       item,
-      prediction: buildInventoryPrediction(item, sales, mappings, operatingDate, historicalBaselines, demandFallback)
+      prediction: buildInventoryPrediction(
+        item,
+        sales,
+        mappings,
+        operatingDate,
+        historicalBaselines,
+        demandFallback,
+        inventoryCountEvidenceFor(countEvidence, restaurantId, item.id)
+      )
     }))
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
     .map(({ item, prediction }) => {

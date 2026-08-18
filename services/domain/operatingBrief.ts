@@ -151,11 +151,17 @@ function buildDataFreshness(input: OperatingBriefInput, generatedAt: string): Da
     missingData.push("inventory projections");
   }
 
-  const latestInventory = input.inventoryItems
-    .map((item) => item.last_updated)
-    .filter((value) => Number.isFinite(Date.parse(value)))
+  // Physical-inventory freshness comes only from verified count evidence carried on
+  // the projection. `inventory_items.last_updated` also moves for policy, cost, and
+  // supplier edits, so it must never make an uncounted shelf look current.
+  const latestInventory = (input.inventoryOutlooks ?? [])
+    .map((outlook) => outlook.prediction.countedAt)
+    .filter((value): value is string => typeof value === "string" && Number.isFinite(Date.parse(value)))
     .sort()
     .at(-1);
+  if (input.inventoryItems.length > 0 && !latestInventory) {
+    missingData.push("verified inventory counts");
+  }
   const latestSale = input.sales
     .map((sale) => sale.created_at)
     .filter((value) => Number.isFinite(Date.parse(value)))
@@ -202,8 +208,7 @@ function buildDataFreshness(input: OperatingBriefInput, generatedAt: string): Da
 
 function recommendationConfidence(
   input: OperatingBriefInput,
-  recommendation: PurchaseRecommendation,
-  generatedAt: string
+  recommendation: PurchaseRecommendation
 ): { score: number | null; rationale: string } {
   const outlook = (input.inventoryOutlooks ?? []).find(
     (entry) => entry.item.id === recommendation.inventory_item_id
@@ -215,7 +220,8 @@ function recommendationConfidence(
     };
   }
 
-  const countAgeHours = hoursBetween(generatedAt, outlook.item.last_updated);
+  // Verified count age only. An unverified item scores as "older or unknown".
+  const countAgeHours = outlook.prediction.countAgeHours;
   let score = 0.25;
   const reasons: string[] = [];
   if (outlook.prediction.historySource === "restaurant_history") {
@@ -253,14 +259,11 @@ function recommendationConfidence(
   };
 }
 
-function buildApprovalCards(
-  input: OperatingBriefInput,
-  generatedAt: string
-): OperatingBriefApprovalCard[] {
+function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalCard[] {
   const pending = input.recommendations.filter((recommendation) => recommendation.status === "pending");
   const coveredRecommendationIds = new Set(pending.map((recommendation) => recommendation.id));
   const cards: OperatingBriefApprovalCard[] = pending.map((recommendation) => {
-    const confidence = recommendationConfidence(input, recommendation, generatedAt);
+    const confidence = recommendationConfidence(input, recommendation);
     return {
       id: `approval_rec_${recommendation.id}`,
       recommendationId: recommendation.id,
@@ -466,7 +469,7 @@ function buildMonitoringRows(
         id: `watch_inventory_${outlook.item.id}`,
         title: `Tracking ${outlook.item.item_name} usage`,
         detail: outlook.prediction.coverageLabel,
-        startedAt: outlook.item.last_updated || generatedAt,
+        startedAt: outlook.prediction.countedAt ?? generatedAt,
         status: "monitoring",
         relatedEntityType: "inventory_item",
         relatedEntityId: outlook.item.id
@@ -532,7 +535,7 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
     ? new Date(input.generatedAt).toISOString()
     : new Date().toISOString();
   const activity = deriveActivityFromStructuredInputs(input);
-  const approvals = buildApprovalCards(input, generatedAt);
+  const approvals = buildApprovalCards(input);
   const freshness = buildDataFreshness(input, generatedAt);
   const outlook = buildOutlook(input);
   const criticalCount = (input.inventoryOutlooks ?? []).filter(

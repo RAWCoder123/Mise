@@ -9,6 +9,10 @@ import {
   applyOperationalFindingDecisions,
   type OperationalFindingDecision
 } from "./operationalFindingDecisions";
+import {
+  buildInventoryCountEvidence,
+  type LedgerProjectionEvent
+} from "./inventoryCountAuthority";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
 const MAX_FINDINGS = 12;
@@ -97,6 +101,14 @@ export interface DailyOperationalBriefInput {
   recommendations: readonly PurchaseRecommendation[];
   insights: readonly Insight[];
   decisions?: readonly OperationalFindingDecision[];
+  /**
+   * Ledger rows from the inventory ledger: count rows date the evidence, non-count
+   * rows prove the materialized quantity followed the count boundary. Without them an
+   * item's inventory evidence is incomplete rather than dated from `last_updated`.
+   */
+  inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
+  /** False when the caller's bounded ledger read was truncated. */
+  ledgerComplete?: boolean;
 }
 
 function normalizedKey(value: string) {
@@ -167,7 +179,8 @@ function assertTenantScope(input: DailyOperationalBriefInput) {
     input.mappings,
     input.recommendations,
     input.insights,
-    input.decisions ?? []
+    input.decisions ?? [],
+    input.inventoryLedgerEvents ?? []
   ];
   if (collections.some((collection) => collection.some((row) => {
     const restaurantId = "restaurant_id" in row ? row.restaurant_id : row.restaurantId;
@@ -199,6 +212,15 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
 
   const findings: OperationalFinding[] = [];
   const itemById = new Map(input.inventoryItems.map((item) => [item.id, item]));
+  // Inventory evidence is dated from verified physical counts only. `last_updated`
+  // moves for policy, cost, and supplier edits and would fake fresh count evidence.
+  const countEvidence = buildInventoryCountEvidence({
+    restaurantId,
+    items: input.inventoryItems,
+    ledgerEvents: input.inventoryLedgerEvents ?? [],
+    ledgerComplete: input.ledgerComplete,
+    generatedAt
+  });
   const mappedInventoryIds = new Set(input.mappings.map((mapping) => mapping.inventory_item_id));
   const activeRecommendations = input.recommendations
     .filter((recommendation) => recommendation.status === "pending")
@@ -206,9 +228,13 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
 
   for (const recommendation of activeRecommendations) {
     const item = itemById.get(recommendation.inventory_item_id);
-    const asOf = finiteTimestamp(item?.last_updated ?? recommendation.created_at, generatedAt);
+    const verifiedCountedAt = item
+      ? countEvidence.get(item.id)?.countedAt ?? null
+      : null;
+    const asOf = finiteTimestamp(verifiedCountedAt ?? recommendation.created_at, generatedAt);
     const missingData: string[] = [];
     if (!item) missingData.push("inventory_item");
+    if (item && !verifiedCountedAt) missingData.push("verified_physical_count");
     if (!mappedInventoryIds.has(recommendation.inventory_item_id)) missingData.push("menu_mapping");
     if (item?.canonical_unit_verification_status !== "verified") {
       missingData.push("verified_canonical_unit");

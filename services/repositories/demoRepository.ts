@@ -73,7 +73,12 @@ import {
   severityRankForUrgency
 } from "../domain/miseDomain";
 import { TeamMembershipError } from "../domain/teamMembership";
-import { acceptInventoryEvent } from "../domain/inventoryLedger";
+import {
+  acceptInventoryEvent,
+  type InventoryEvent,
+  type InventoryEventInput
+} from "../domain/inventoryLedger";
+import { isTemporallyValidCount } from "../domain/inventoryCountAuthority";
 import {
   assertSessionMutable,
   buildCountSessionLinesFromInventory,
@@ -386,6 +391,33 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   }, restaurantId);
 }
 
+/**
+ * Mirrors private.stamp_inventory_event_projection_applied. Returns false when the
+ * candidate falls at or before the item's authoritative count boundary, so demo mode
+ * and the database agree on which rows may move the on-hand projection.
+ */
+function inventoryEventMovesProjection(
+  existingEvents: readonly InventoryEvent[],
+  candidate: InventoryEventInput,
+  recordedAt: string
+) {
+  let boundary = Number.NEGATIVE_INFINITY;
+  for (const event of existingEvents) {
+    if (event.restaurantId !== candidate.restaurantId) continue;
+    if (event.inventoryItemId !== candidate.inventoryItemId) continue;
+    if (event.eventType !== "count") continue;
+    if (!isTemporallyValidCount(event.effectiveAt, recordedAt)) continue;
+    const effective = Date.parse(event.effectiveAt);
+    if (Number.isFinite(effective) && effective > boundary) boundary = effective;
+  }
+  if (boundary === Number.NEGATIVE_INFINITY) return true;
+  const candidateEffective = Date.parse(candidate.effectiveAt);
+  if (!Number.isFinite(candidateEffective)) return true;
+  return candidate.eventType === "count"
+    ? candidateEffective >= boundary
+    : candidateEffective > boundary;
+}
+
 function deterministicDemoEventId(restaurantId: string, clientEventId: string) {
   const value = `${restaurantId}\u001f${clientEventId}`;
   let hash = 2166136261;
@@ -415,6 +447,10 @@ export function createLocalDemoRepository(): MiseRepository {
       if (Number.isFinite(sinceMs)) {
         events = events.filter((event) => Date.parse(event.recordedAt) >= sinceMs);
       }
+    }
+    if (options?.sinceSequence != null && Number.isFinite(options.sinceSequence)) {
+      const minimumSequence = Number(options.sinceSequence);
+      events = events.filter((event) => event.sequence > minimumSequence);
     }
     events.sort(
       (left, right) =>
@@ -482,10 +518,21 @@ export function createLocalDemoRepository(): MiseRepository {
       });
       if (acceptance.status !== "accepted") return acceptance;
 
-      state.inventoryEvents = [...(state.inventoryEvents ?? []), acceptance.event];
-      item.current_quantity = projectedQuantity;
-      item.last_updated = acceptance.event.recordedAt;
-      if (input.eventType === "waste") {
+      // Mirrors private.stamp_inventory_event_projection_applied: a row effective at
+      // or before the item's authoritative count is retained in history but must not
+      // move the on-hand projection again.
+      const projectionApplied = inventoryEventMovesProjection(
+        state.inventoryEvents ?? [],
+        input,
+        acceptance.event.recordedAt
+      );
+      const recordedEvent = { ...acceptance.event, projectionApplied };
+      state.inventoryEvents = [...(state.inventoryEvents ?? []), recordedEvent];
+      if (projectionApplied) {
+        item.current_quantity = projectedQuantity;
+        item.last_updated = recordedEvent.recordedAt;
+      }
+      if (projectionApplied && input.eventType === "waste") {
         const timeZone = state.restaurants.find(
           (restaurant) => restaurant.id === input.restaurantId
         )?.timezone ?? "UTC";
@@ -529,10 +576,11 @@ export function createLocalDemoRepository(): MiseRepository {
           event_type: input.eventType,
           client_event_id: input.clientEventId,
           sequence: acceptance.event.sequence,
+          projection_applied: projectionApplied,
           simulated: true
         }
       });
-      return acceptance;
+      return { status: "accepted" as const, event: recordedEvent };
     });
   }
 
@@ -1014,7 +1062,8 @@ export function createLocalDemoRepository(): MiseRepository {
         menuItemIngredients: state.menuItemIngredients
           .filter((mapping) => mapping.restaurant_id === restaurantId)
           .map(normalizeMenuItemIngredient),
-        operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone)
+        operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone),
+        timeZone: restaurant.timezone
       };
     },
 

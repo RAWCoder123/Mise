@@ -1,3 +1,4 @@
+import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
 export type InventoryEventType =
@@ -28,11 +29,17 @@ export interface InventoryEvent {
   idempotencyKey: string;
   supersedesEventId: string | null;
   metadata: Readonly<Record<string, unknown>>;
+  /**
+   * Whether this row moved the on-hand projection. False when it was retained in
+   * history but fell at or before the item's authoritative count boundary. Absent on
+   * legacy rows, which are read as applied — the fail-closed interpretation.
+   */
+  projectionApplied?: boolean;
 }
 
 export type InventoryEventInput = Omit<
   InventoryEvent,
-  "id" | "sequence" | "recordedAt" | "actorUserId"
+  "id" | "sequence" | "recordedAt" | "actorUserId" | "projectionApplied"
 >;
 
 export type InventoryEventAcceptance =
@@ -55,7 +62,7 @@ export function acceptInventoryEvent(input: {
   candidate: InventoryEventInput;
   authority: { id: string; actorUserId: string; recordedAt: string };
 }): InventoryEventAcceptance {
-  const invalidReason = validateEventInput(input.candidate);
+  const invalidReason = validateEventInput(input.candidate, input.authority.recordedAt);
   if (invalidReason) return { status: "rejected", reason: invalidReason };
 
   const sameClientEvent = input.existingEvents.find(
@@ -160,11 +167,19 @@ export function projectInventoryEvents(
   };
 }
 
-function validateEventInput(input: InventoryEventInput) {
+function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
+  // A physical count observes the present, so it may not be effective in the future.
+  // Mirrors the reject_future_dated_inventory_count database trigger.
+  if (
+    input.eventType === "count" &&
+    !isTemporallyValidCount(input.effectiveAt, recordedAt, COUNT_CLOCK_SKEW_TOLERANCE_MS)
+  ) {
+    return "future_dated_count";
+  }
   if (!Number.isFinite(input.quantity)) return "invalid_quantity";
   if (
     (input.eventType === "receipt" ||

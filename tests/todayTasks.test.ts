@@ -272,7 +272,13 @@ function outlook(
       depletionCopy: "2 lb used today",
       confidenceCopy: "14 days of restaurant history",
       recommendationCopy: "Review current stock.",
-      whyItMatters: "Stock may not cover service."
+      whyItMatters: "Stock may not cover service.",
+      countEvidence: "verified_count",
+      countedAt: "2026-07-18T14:00:00.000Z",
+      countAgeHours: 4,
+      countFreshness: "fresh",
+      unattributedTodayDepletion: 0,
+      isTemporallyAuthoritative: true
     }
   };
 }

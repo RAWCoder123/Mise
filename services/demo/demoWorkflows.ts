@@ -11,28 +11,51 @@ import {
   type RecommendationWorkflowResult,
   type SupplierOrderSentWorkflowResult
 } from "../domain/miseDomain";
+import { buildInventoryCountEvidence } from "../domain/inventoryCountAuthority";
 import { nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../../utils/format";
 import { demoDemandFallback } from "./demandFallback";
 import { DEMO_RESTAURANT_TIME_ZONE, type DemoState } from "./replaceableDemoData";
 
-function demoOperatingDate(state: DemoState, restaurantId: string) {
-  const timeZone =
+function demoTimeZone(state: DemoState, restaurantId: string) {
+  return (
     state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.timezone ??
-    DEMO_RESTAURANT_TIME_ZONE;
-  return toDateKeyInTimeZone(new Date(), timeZone);
+    DEMO_RESTAURANT_TIME_ZONE
+  );
+}
+
+function demoOperatingDate(state: DemoState, restaurantId: string) {
+  return toDateKeyInTimeZone(new Date(), demoTimeZone(state, restaurantId));
+}
+
+/**
+ * Ledger `count` rows are the only physical-count evidence in demo mode too, and the
+ * full local ledger is passed so out-of-order projection contamination is detectable.
+ * Demo state holds the complete ledger, so the read is never truncated.
+ */
+function demoCountEvidence(state: DemoState, restaurantId: string) {
+  const timeZone = demoTimeZone(state, restaurantId);
+  return buildInventoryCountEvidence({
+    restaurantId,
+    items: state.inventoryItems.filter((item) => item.restaurant_id === restaurantId),
+    ledgerEvents: state.inventoryEvents ?? [],
+    ledgerComplete: true,
+    resolveOperatingDate: (iso) => toDateKeyInTimeZone(new Date(iso), timeZone)
+  });
 }
 
 export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: string) {
   const now = new Date().toISOString();
   const recommendationHistory = [...state.purchaseRecommendations];
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
+  const countEvidence = demoCountEvidence(state, restaurantId);
   const lowOutlooks = buildInventoryOutlooks(
     restaurantId,
     state.inventoryItems,
     state.posSales,
     state.menuItemIngredients,
     demoOperatingDate(state, restaurantId),
-    demoDemandFallback
+    demoDemandFallback,
+    countEvidence
   ).filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low");
   const lowItemIds = new Set(lowOutlooks.map(({ item }) => item.id));
   const kept = state.purchaseRecommendations.filter((recommendation) => {
@@ -48,7 +71,9 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
         recommendation.inventory_item_id === item.id &&
         recommendation.status === "pending"
     );
-    if (!pending && shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory)) return;
+    if (!pending && shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory, countEvidence)) {
+      return;
+    }
 
     const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
     const recommendedQuantity = learnedQuantity ?? prediction.suggestedOrderQuantity;
@@ -61,7 +86,10 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
       pending.unit = item.unit;
       pending.reason = reason;
       pending.urgency = prediction.urgency;
-      if (pending.created_at.localeCompare(item.last_updated) < 0) {
+      // Re-stamp only when a verified count superseded the pending row, never on a
+      // policy or cost edit.
+      const countedAt = countEvidence.get(item.id)?.countedAt;
+      if (countedAt && pending.created_at.localeCompare(countedAt) < 0) {
         pending.created_at = now;
       }
       return;
@@ -93,7 +121,8 @@ export function rebuildInsights(state: DemoState, restaurantId: string) {
     state.posSales,
     state.menuItemIngredients,
     demoOperatingDate(state, restaurantId),
-    demoDemandFallback
+    demoDemandFallback,
+    demoCountEvidence(state, restaurantId)
   );
   state.insights = [
     ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),

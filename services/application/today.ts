@@ -23,6 +23,10 @@ import {
   demandFallbackForRestaurant,
   isDemoDatasetRestaurantName
 } from "../demoData";
+import {
+  fetchInventoryLedgerEvidence,
+  inventoryCountEvidenceFor
+} from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -50,14 +54,23 @@ export async function fetchTodaySummary(
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const [data, ordersResult, emailConnectionResult, posIntegrationsResult, restaurantTasksResult, openCountSession] =
+  const [
+    data,
+    ordersResult,
+    emailConnectionResult,
+    posIntegrationsResult,
+    restaurantTasksResult,
+    openCountSession,
+    ledger
+  ] =
     await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
     repository.fetchSupplierOrders(normalizedRestaurantId),
     repository.fetchEmailConnectionState(normalizedRestaurantId),
     repository.fetchPosIntegrations(normalizedRestaurantId),
     repository.listRestaurantTasks(normalizedRestaurantId),
-    fetchOpenInventoryCountSession(normalizedRestaurantId).catch(() => null)
+    fetchOpenInventoryCountSession(normalizedRestaurantId).catch(() => null),
+    fetchInventoryLedgerEvidence(normalizedRestaurantId)
   ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
@@ -82,13 +95,21 @@ export async function fetchTodaySummary(
   }
   const operatingDate = toDateKeyInTimeZone(new Date(), data.restaurant.timezone);
   const demandFallback = demandFallbackForRestaurant(normalizedRestaurantId);
+  const countEvidence = inventoryCountEvidenceFor({
+    restaurantId: normalizedRestaurantId,
+    inventoryItems,
+    ledgerEvents: ledger.events,
+    ledgerComplete: ledger.complete,
+    timeZone: data.restaurant.timezone
+  });
   const outlooks = buildInventoryOutlooks(
     normalizedRestaurantId,
     inventoryItems,
     sales,
     mappings,
     operatingDate,
-    demandFallback
+    demandFallback,
+    countEvidence
   );
   const setupReadiness = buildSetupReadinessSummary({
     restaurant: data.restaurant,
@@ -106,7 +127,8 @@ export async function fetchTodaySummary(
     insights,
     mappings,
     operatingDate,
-    demandFallback
+    demandFallback,
+    countEvidence
   );
 
   const projectedTasks = deriveOperationalTodayTasks({
@@ -138,9 +160,10 @@ export async function fetchTodaySummary(
 }
 
 export async function fetchDemoReadinessSummary(restaurantId: string) {
-  const [data, orders] = await Promise.all([
+  const [data, orders, ledger] = await Promise.all([
     repository.fetchRestaurantData(restaurantId),
-    repository.fetchSupplierOrders(restaurantId)
+    repository.fetchSupplierOrders(restaurantId),
+    fetchInventoryLedgerEvidence(restaurantId)
   ]);
   return buildDemoReadinessSummary(
     data.restaurant,
@@ -154,7 +177,14 @@ export async function fetchDemoReadinessSummary(restaurantId: string) {
       demandFallback: demandFallbackForRestaurant(restaurantId),
       demoProfileName: isDemoDatasetRestaurantName(data.restaurant.name)
         ? DEMO_DATASET.restaurant.name
-        : null
+        : null,
+      countEvidence: inventoryCountEvidenceFor({
+        restaurantId,
+        inventoryItems: data.inventoryItems,
+        ledgerEvents: ledger.events,
+        ledgerComplete: ledger.complete,
+        timeZone: data.restaurant.timezone
+      })
     }
   );
 }

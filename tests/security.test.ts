@@ -327,7 +327,7 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
 
   assert.match(validation, /patch\.current_quantity[\s\S]*remain auditable/i);
   assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold", "supplier_name"\]\)/i);
-  assert.match(updateWorkflow, /fetchPlanningData[\s\S]*fetchRecommendationHistory/i);
+  assert.match(updateWorkflow, /fetchAnchoredPlanningData[\s\S]*fetchRecommendationHistory/i);
   assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);
   assert.match(updateWorkflow, /updateInventoryItemAndSignals\([\s\S]*existing\.last_updated/i);
   assert.doesNotMatch(updateWorkflow, /repository\.updateInventoryItem\(/i);

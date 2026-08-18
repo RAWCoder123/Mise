@@ -3,6 +3,10 @@ import { buildOperatingBrief, type OperatingBrief } from "../domain/operatingBri
 import { buildDailyOperationalBrief } from "../domain/operationalFindings";
 import { demandFallbackForRestaurant, isDemoDatasetRestaurantName } from "../demoData";
 import { toDateKeyInTimeZone } from "../../utils/format";
+import {
+  fetchInventoryLedgerEvidence,
+  inventoryCountEvidenceFor
+} from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -16,12 +20,13 @@ export async function fetchOperatingBrief(
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const [data, orders, activityEvents, miseActions, findingDecisions] = await Promise.all([
+  const [data, orders, activityEvents, miseActions, findingDecisions, ledger] = await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
     repository.fetchSupplierOrders(normalizedRestaurantId),
     repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }).catch(() => []),
     repository.listMiseActions(normalizedRestaurantId, { status: "awaiting_decision", limit: 40 }).catch(() => []),
-    repository.fetchOperationalFindingDecisions(normalizedRestaurantId).catch(() => [])
+    repository.fetchOperationalFindingDecisions(normalizedRestaurantId).catch(() => []),
+    fetchInventoryLedgerEvidence(normalizedRestaurantId)
   ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
@@ -30,13 +35,21 @@ export async function fetchOperatingBrief(
 
   const operatingDate = toDateKeyInTimeZone(new Date(), data.restaurant.timezone);
   const demandFallback = demandFallbackForRestaurant(normalizedRestaurantId);
+  const countEvidence = inventoryCountEvidenceFor({
+    restaurantId: normalizedRestaurantId,
+    inventoryItems: data.inventoryItems,
+    ledgerEvents: ledger.events,
+    ledgerComplete: ledger.complete,
+    timeZone: data.restaurant.timezone
+  });
   const inventoryOutlooks = buildInventoryOutlooks(
     normalizedRestaurantId,
     data.inventoryItems,
     data.sales,
     data.menuItemIngredients,
     operatingDate,
-    demandFallback
+    demandFallback,
+    countEvidence
   );
   const findings = buildDailyOperationalBrief({
     restaurantId: normalizedRestaurantId,
@@ -46,7 +59,9 @@ export async function fetchOperatingBrief(
     mappings: data.menuItemIngredients,
     recommendations: data.purchaseRecommendations,
     insights: data.insights,
-    decisions: findingDecisions
+    decisions: findingDecisions,
+    inventoryLedgerEvents: ledger.events,
+    ledgerComplete: ledger.complete
   }).findings;
 
   return buildOperatingBrief({

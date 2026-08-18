@@ -734,6 +734,9 @@ export function createSupabaseRepository(): MiseRepository {
       if (options?.since) {
         query = query.gte("recorded_at", options.since);
       }
+      if (options?.sinceSequence != null && Number.isFinite(options.sinceSequence)) {
+        query = query.gt("sequence", options.sinceSequence);
+      }
       if (options?.limit != null && Number.isFinite(options.limit) && options.limit >= 0) {
         query = query.limit(options.limit);
       }
@@ -792,14 +795,13 @@ export function createSupabaseRepository(): MiseRepository {
       if (inventoryResult.error) throw inventoryResult.error;
       if (mappingResult.error) throw mappingResult.error;
       if (restaurantResult.error) throw restaurantResult.error;
+      const timeZone = (restaurantResult.data as Pick<Restaurant, "timezone">).timezone;
       return {
         inventoryItems: ((inventoryResult.data ?? []) as InventoryItem[]).map(normalizeInventoryItem),
         sales,
         menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
-        operatingDate: toDateKeyInTimeZone(
-          new Date(),
-          (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
-        )
+        operatingDate: toDateKeyInTimeZone(new Date(), timeZone),
+        timeZone
       };
     },
 

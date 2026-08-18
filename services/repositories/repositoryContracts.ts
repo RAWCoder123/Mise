@@ -370,6 +370,8 @@ export interface PlanningData {
   sales: PosSale[];
   menuItemIngredients: MenuItemIngredient[];
   operatingDate: string;
+  /** Restaurant timezone, needed to place a verified count inside the right operating day. */
+  timeZone: string;
 }
 
 export interface MiseRepository {
@@ -437,7 +439,13 @@ export interface MiseRepository {
   fetchInventoryItems(restaurantId: string): Promise<InventoryItem[]>;
   listInventoryEvents(
     restaurantId: string,
-    options?: { eventTypes?: InventoryEventType[]; limit?: number; since?: string }
+    options?: {
+      eventTypes?: InventoryEventType[];
+      limit?: number;
+      since?: string;
+      /** Only rows with a ledger sequence strictly greater than this value. */
+      sinceSequence?: number;
+    }
   ): Promise<InventoryEvent[]>;
   /**
    * Records an append-only, server-authoritative inventory event. Hosted mode

@@ -271,7 +271,17 @@ test("server-shared operational rules are deterministic and reject anomalous his
       unit: "lb",
       status: "approved",
       created_at: `2026-07-1${index + 1}T12:00:00.000Z`
-    }))
+    })),
+    // Verified ledger count evidence, taken after the newest handled approval and
+    // before the operating day under test.
+    inventoryLedgerEvents: [{
+      restaurantId: "restaurant-1",
+      inventoryItemId: "item-1",
+      effectiveAt: "2026-07-13T22:00:00.000Z",
+      eventType: "count",
+      sequence: 1
+    }],
+    timeZone: "UTC"
   };
   const first = calculateOperationalSignals(snapshot);
   const second = calculateOperationalSignals(snapshot);
