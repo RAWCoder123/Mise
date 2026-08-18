@@ -137,7 +137,9 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
   assert.equal(refreshed.status, "pending");
   assert.ok(refreshed.created_at.localeCompare(firstCount.effectiveAt) >= 0);
 
-  approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, refreshed.id);
+  const approved = approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, refreshed.id);
+  // Pin the decision instant so the count that releases it is unambiguously past.
+  approved.recommendation.created_at = "2026-07-16T12:00:00.000Z";
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
   assert.equal(
     state.purchaseRecommendations.some(
@@ -149,7 +151,7 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
   );
 
   // A non-count row mutation must not release the suppression.
-  item.last_updated = new Date(Date.now() + 60_000).toISOString();
+  item.last_updated = new Date().toISOString();
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
   assert.equal(
     state.purchaseRecommendations.some(
@@ -160,7 +162,19 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
     false
   );
 
-  recordDemoCount(state, item.id, new Date(Date.now() + 60_000).toISOString());
+  // Neither does a count dated in the future.
+  recordDemoCount(state, item.id, new Date(Date.now() + 7 * 86_400_000).toISOString());
+  rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
+  assert.equal(
+    state.purchaseRecommendations.some(
+      (recommendation) =>
+        recommendation.inventory_item_id === item.id &&
+        recommendation.status === "pending"
+    ),
+    false
+  );
+
+  recordDemoCount(state, item.id, "2026-07-16T13:00:00.000Z");
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
   const nextPending = state.purchaseRecommendations.find(
     (recommendation) =>

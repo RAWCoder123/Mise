@@ -23,6 +23,25 @@ export const COUNT_BOUNDARY_RULE = "count_instant_included_in_baseline" as const
 /** Matches the pilot readiness contract's inventory-count staleness window. */
 export const DEFAULT_MAXIMUM_COUNT_AGE_HOURS = 36;
 
+/**
+ * Temporal-validity rule for physical counts (`COUNT_VALIDITY_RULE`).
+ *
+ * A physical count is an observation of the present, so a count effective in the
+ * future is not evidence of anything and is rejected outright — it is never aged
+ * to zero, never treated as fresh, and never allowed to hide an older valid count.
+ *
+ * The tolerance exists for one specific reason: `effective_at` on a count recorded
+ * from a device is stamped from that device's clock, while the instant we evaluate
+ * against comes from the reading process's clock. An NTP-synced device is within
+ * seconds; two minutes absorbs unsynced drift without admitting a materially
+ * future-dated count. The same two-minute bound is applied in
+ * `private.fetch_operational_planning_snapshot` and in the
+ * `reject_future_dated_inventory_count` ledger trigger, so the client, the Edge
+ * planning path, and the database agree on which counts exist.
+ */
+export const COUNT_VALIDITY_RULE = "reject_counts_effective_after_evaluation_instant" as const;
+export const COUNT_CLOCK_SKEW_TOLERANCE_MS = 120_000;
+
 export type InventoryCountEvidenceStatus = "verified" | "missing";
 export type InventoryCountFreshness = "fresh" | "stale" | "unverified";
 export type AuthoritativeInventoryEvidence = "verified_count" | "no_verified_count";
@@ -100,6 +119,13 @@ export interface AuthoritativeOnHandInput {
   evidence: InventoryCountEvidence;
   movements?: readonly AuthoritativeLedgerMovement[];
   consumption?: readonly AuthoritativeConsumptionEntry[];
+  /**
+   * Evaluation instant. Evidence effective after it (beyond clock-skew tolerance)
+   * is not yet an observation and is ignored, so a future receipt cannot inflate
+   * projected stock the way a future count could inflate freshness.
+   */
+  asOf?: string;
+  clockSkewToleranceMs?: number;
 }
 
 export interface AuthoritativeOnHandProjection {
@@ -127,15 +153,39 @@ export interface AuthoritativeOnHandProjection {
   isTemporallyAuthoritative: boolean;
 }
 
-/** Resolves the newest verified physical count for one tenant-scoped item. */
+/**
+ * True when a count's effective instant is a valid observation of the present.
+ * Anything beyond the clock-skew tolerance is future-dated and therefore invalid.
+ */
+export function isTemporallyValidCount(
+  effectiveAt: string | null | undefined,
+  asOf: string,
+  clockSkewToleranceMs: number = COUNT_CLOCK_SKEW_TOLERANCE_MS
+): boolean {
+  if (!effectiveAt) return false;
+  const effective = Date.parse(effectiveAt);
+  const evaluated = Date.parse(asOf);
+  if (!Number.isFinite(effective) || !Number.isFinite(evaluated)) return false;
+  return effective <= evaluated + boundedTolerance(clockSkewToleranceMs);
+}
+
+/**
+ * Resolves the newest *valid* verified physical count for one tenant-scoped item.
+ *
+ * Future-dated candidates are discarded before the newest-wins comparison, so an
+ * invalid future count can never hide the latest valid count for that item.
+ */
 export function resolveVerifiedInventoryCount(
   restaurantId: string,
   inventoryItemId: string,
   candidates: readonly VerifiedCountCandidate[],
-  canonicalQuantityPerUnit?: number | null
+  canonicalQuantityPerUnit?: number | null,
+  options: { asOf?: string; clockSkewToleranceMs?: number } = {}
 ): VerifiedInventoryCount | null {
   let newest: VerifiedInventoryCount | null = null;
   let newestTimestamp = Number.NEGATIVE_INFINITY;
+  // Fail closed: with no explicit evaluation instant, judge against real time.
+  const asOf = options.asOf ?? new Date().toISOString();
 
   for (const candidate of candidates) {
     if (candidate.restaurantId !== restaurantId) continue;
@@ -143,6 +193,7 @@ export function resolveVerifiedInventoryCount(
     if (candidate.eventType !== undefined && candidate.eventType !== "count") continue;
     const timestamp = Date.parse(candidate.effectiveAt);
     if (!Number.isFinite(timestamp)) continue;
+    if (!isTemporallyValidCount(candidate.effectiveAt, asOf, options.clockSkewToleranceMs)) continue;
     const sequence = Number.isFinite(candidate.sequence) ? Number(candidate.sequence) : 0;
     if (
       newest &&
@@ -178,11 +229,13 @@ export function buildInventoryCountEvidence(input: {
   countEvents: readonly VerifiedCountCandidate[];
   generatedAt?: string;
   maximumCountAgeHours?: number;
+  clockSkewToleranceMs?: number;
   resolveOperatingDate?: (iso: string) => string;
 }): Map<string, InventoryCountEvidence> {
   const restaurantId = input.restaurantId.trim();
   const generatedAt = input.generatedAt ?? new Date().toISOString();
   const maximumCountAgeHours = boundedAgeHours(input.maximumCountAgeHours);
+  const clockSkewToleranceMs = boundedTolerance(input.clockSkewToleranceMs);
   const resolveOperatingDate = input.resolveOperatingDate ?? utcOperatingDate;
   const evidence = new Map<string, InventoryCountEvidence>();
 
@@ -191,9 +244,21 @@ export function buildInventoryCountEvidence(input: {
       restaurantId,
       item.id,
       input.countEvents,
-      item.canonical_quantity_per_unit
+      item.canonical_quantity_per_unit,
+      { asOf: generatedAt, clockSkewToleranceMs }
     );
-    evidence.set(item.id, countEvidenceFor(restaurantId, item.id, count, generatedAt, maximumCountAgeHours, resolveOperatingDate));
+    evidence.set(
+      item.id,
+      countEvidenceFor(
+        restaurantId,
+        item.id,
+        count,
+        generatedAt,
+        maximumCountAgeHours,
+        clockSkewToleranceMs,
+        resolveOperatingDate
+      )
+    );
   }
 
   return evidence;
@@ -296,6 +361,8 @@ export function projectAuthoritativeOnHand(
   const restaurantId = input.restaurantId;
   const inventoryItemId = input.inventoryItemId;
   const evidence = input.evidence;
+  const asOf = input.asOf ?? new Date().toISOString();
+  const clockSkewToleranceMs = boundedTolerance(input.clockSkewToleranceMs);
   const count = evidence.status === "verified" ? evidence.count : null;
   const baselineQuantity =
     count && Number.isFinite(count.countedQuantity) ? Number(count.countedQuantity) : null;
@@ -309,6 +376,7 @@ export function projectAuthoritativeOnHand(
     if (movement.restaurantId !== restaurantId) continue;
     if (movement.inventoryItemId !== inventoryItemId) continue;
     if (!Number.isFinite(movement.quantityDelta)) continue;
+    if (!isTemporallyValidCount(movement.effectiveAt, asOf, clockSkewToleranceMs)) continue;
     if (!isStrictlyAfterCount(evidence.countedAt, movement.effectiveAt)) continue;
     if (movement.quantityDelta >= 0) appliedAdditions += movement.quantityDelta;
     else appliedLedgerReductions += Math.abs(movement.quantityDelta);
@@ -320,6 +388,7 @@ export function projectAuthoritativeOnHand(
     const quantity = Number.isFinite(entry.quantity) ? Math.max(0, entry.quantity) : 0;
     if (quantity === 0) continue;
     if (entry.resolution === "instant") {
+      if (!isTemporallyValidCount(entry.occurredAt, asOf, clockSkewToleranceMs)) continue;
       if (isStrictlyAfterCount(evidence.countedAt, entry.occurredAt)) appliedConsumption += quantity;
       continue;
     }
@@ -364,10 +433,13 @@ function countEvidenceFor(
   count: VerifiedInventoryCount | null,
   generatedAt: string,
   maximumCountAgeHours: number,
+  clockSkewToleranceMs: number,
   resolveOperatingDate: (iso: string) => string
 ): InventoryCountEvidence {
   if (!count) return missingInventoryCountEvidence(restaurantId, inventoryItemId);
-  const countAgeHours = ageHours(count.countedAt, generatedAt);
+  const countAgeHours = ageHours(count.countedAt, generatedAt, clockSkewToleranceMs);
+  // Defensive: an unmeasurable age is never presented as a usable count.
+  if (countAgeHours === null) return missingInventoryCountEvidence(restaurantId, inventoryItemId);
   return {
     restaurantId,
     inventoryItemId,
@@ -376,7 +448,7 @@ function countEvidenceFor(
     countedAt: count.countedAt,
     countedOperatingDate: safeOperatingDate(count.countedAt, resolveOperatingDate),
     countAgeHours,
-    freshness: countAgeHours === null || countAgeHours > maximumCountAgeHours ? "stale" : "fresh"
+    freshness: countAgeHours > maximumCountAgeHours ? "stale" : "fresh"
   };
 }
 
@@ -414,7 +486,26 @@ function boundedAgeHours(value: number | undefined) {
   return Math.min(24 * 30, Math.max(1, value));
 }
 
-function ageHours(then: string, now: string) {
+/**
+ * Age of an observation in hours.
+ *
+ * Returns null when the age cannot be measured, or when `then` is further in the
+ * future than the clock-skew tolerance allows. Only drift inside the tolerance is
+ * flattened to zero; a materially future timestamp is reported as unmeasurable so
+ * callers fail closed instead of reading it as a brand-new observation.
+ */
+function ageHours(
+  then: string,
+  now: string,
+  clockSkewToleranceMs: number = COUNT_CLOCK_SKEW_TOLERANCE_MS
+) {
   const elapsed = Date.parse(now) - Date.parse(then);
-  return Number.isFinite(elapsed) ? Math.max(0, elapsed / 3_600_000) : null;
+  if (!Number.isFinite(elapsed)) return null;
+  if (elapsed < -boundedTolerance(clockSkewToleranceMs)) return null;
+  return Math.max(0, elapsed / 3_600_000);
+}
+
+function boundedTolerance(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) return COUNT_CLOCK_SKEW_TOLERANCE_MS;
+  return Math.min(COUNT_CLOCK_SKEW_TOLERANCE_MS, Math.max(0, value));
 }

@@ -82,8 +82,15 @@ begin
         limit 500
       ) recommendation
     ), '[]'::jsonb),
-    -- Newest verified physical count per inventory item. Count sessions are capped
-    -- at 250 items, so one row per item stays bounded.
+    -- Newest VALID verified physical count per inventory item. Count sessions are
+    -- capped at 250 items, so one row per item stays bounded.
+    --
+    -- Future-dated counts are excluded before the per-item newest-wins choice, so a
+    -- count effective after now can neither be reported as fresh evidence nor hide
+    -- the latest valid count. The two-minute bound is the device/server clock-skew
+    -- tolerance shared with COUNT_CLOCK_SKEW_TOLERANCE_MS in
+    -- services/domain/inventoryCountAuthority.ts and with the
+    -- reject_future_dated_inventory_count ledger trigger.
     'inventoryCountEvents', coalesce((
       select jsonb_agg(
         jsonb_build_object(
@@ -103,6 +110,7 @@ begin
         from public.inventory_events event
         where event.restaurant_id = p_restaurant_id
           and event.event_type = 'count'
+          and event.effective_at <= now() + interval '2 minutes'
         order by event.inventory_item_id, event.effective_at desc, event.sequence desc
       ) newest_count
     ), '[]'::jsonb)
@@ -111,4 +119,4 @@ end;
 $$;
 
 comment on function private.fetch_operational_planning_snapshot(uuid, uuid) is
-  'Tenant-scoped planning snapshot. Carries verified inventory count evidence and the restaurant timezone so projected on-hand is anchored to physical count time, not inventory_items.last_updated.';
+  'Tenant-scoped planning snapshot. Carries the newest non-future verified inventory count per item and the restaurant timezone so projected on-hand is anchored to physical count time, not inventory_items.last_updated.';

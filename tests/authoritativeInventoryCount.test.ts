@@ -4,9 +4,12 @@ import test from "node:test";
 
 import {
   COUNT_BOUNDARY_RULE,
+  COUNT_CLOCK_SKEW_TOLERANCE_MS,
+  COUNT_VALIDITY_RULE,
   buildInventoryCountEvidence,
   dayResolutionConsumptionIsAfterCount,
   isStrictlyAfterCount,
+  isTemporallyValidCount,
   missingInventoryCountEvidence,
   projectAuthoritativeOnHand,
   resolveVerifiedInventoryCount,
@@ -16,7 +19,11 @@ import {
   type InventoryCountEvidence,
   type VerifiedCountCandidate
 } from "../services/domain/inventoryCountAuthority";
-import { projectInventoryEvents, type InventoryEvent } from "../services/domain/inventoryLedger";
+import {
+  acceptInventoryEvent,
+  projectInventoryEvents,
+  type InventoryEvent
+} from "../services/domain/inventoryLedger";
 import { buildInventoryPrediction, shouldSuppressRecommendationForItem } from "../services/domain/miseDomain";
 import { calculateOperationalSignals } from "../services/domain/operationalSignals";
 import type { InventoryItem, MenuItemIngredient, PosSale, PurchaseRecommendation } from "../types/mise";
@@ -25,6 +32,13 @@ const restaurantA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const restaurantB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const itemId = "item-chicken";
 const operatingDate = "2026-08-17";
+/** Shared evaluation instant, so validity and freshness do not depend on wall clock. */
+const evaluatedAt = "2026-08-17T23:00:00.000Z";
+
+/** A clearly future instant, relative to whenever this suite runs. */
+function futureIso(days: number) {
+  return new Date(Date.now() + days * 86_400_000).toISOString();
+}
 
 /** One canonical gram per native unit keeps ledger and native quantities directly comparable. */
 const CANONICAL_PER_UNIT = 1;
@@ -81,7 +95,7 @@ function evidenceFor(
     restaurantId,
     items: [scopedItem],
     countEvents: events,
-    generatedAt: options.generatedAt ?? "2026-08-17T18:00:00.000Z"
+    generatedAt: options.generatedAt ?? evaluatedAt
   });
   return map.get(scopedItem.id) ?? missingInventoryCountEvidence(restaurantId, scopedItem.id);
 }
@@ -132,13 +146,15 @@ function project(input: {
   movements?: Parameters<typeof projectAuthoritativeOnHand>[0]["movements"];
   consumption?: readonly AuthoritativeConsumptionEntry[];
   restaurantId?: string;
+  asOf?: string;
 }) {
   return projectAuthoritativeOnHand({
     restaurantId: input.restaurantId ?? restaurantA,
     inventoryItemId: itemId,
     evidence: input.evidence,
     movements: input.movements,
-    consumption: input.consumption
+    consumption: input.consumption,
+    asOf: input.asOf ?? evaluatedAt
   });
 }
 
@@ -626,11 +642,351 @@ test("the planning snapshot and Edge workflow carry authoritative count evidence
   );
   assert.match(migration, /where\s+event\.restaurant_id\s*=\s*p_restaurant_id/i);
   // No privilege, policy, or RLS relaxation rides along with this read-only change.
-  assert.doesNotMatch(migration, /\bgrant\b/i);
-  assert.doesNotMatch(migration, /create\s+policy|drop\s+policy|disable\s+row\s+level\s+security/i);
+  assert.doesNotMatch(migration, /^\s*(grant|revoke)\s/im);
+  assert.doesNotMatch(migration, /^\s*(create|drop)\s+policy\s/im);
+  assert.doesNotMatch(migration, /^\s*alter\s+table\s/im);
 
   assert.match(edgeWorkflow, /withPendingCountEvidence\(snapshot\.inventoryCountEvents/);
   assert.match(signals, /inventoryCountEvents\?:\s*readonly\s+VerifiedCountCandidate\[\]/);
   // Planning depletion no longer reads the generic row mutation timestamp.
   assert.doesNotMatch(signals, /Date\.parse\(item\.last_updated\)/);
+});
+
+// Future-dated count evidence: a physical count is an observation of the present.
+test("A materially future-dated count is neither fresh nor authoritative", () => {
+  const asOf = evaluatedAt;
+  const future = countEvent("2026-08-24T08:00:00.000Z", 500, { id: "count-future" });
+
+  assert.equal(COUNT_VALIDITY_RULE, "reject_counts_effective_after_evaluation_instant");
+  assert.equal(isTemporallyValidCount(future.effectiveAt, asOf), false);
+  assert.equal(resolveVerifiedInventoryCount(restaurantA, itemId, [future], CANONICAL_PER_UNIT, { asOf }), null);
+
+  const evidence = evidenceFor([future], { generatedAt: asOf });
+  assert.equal(evidence.status, "missing");
+  assert.equal(evidence.countedAt, null);
+  assert.equal(evidence.countAgeHours, null);
+  assert.equal(evidence.freshness, "unverified");
+
+  // Fail closed rather than reporting a fabricated projection.
+  const projection = project({ evidence });
+  assert.equal(projection.evidence, "no_verified_count");
+  assert.equal(projection.projectedQuantity, null);
+  assert.equal(projection.isTemporallyAuthoritative, false);
+
+  // A future timestamp is never flattened into age zero.
+  assert.notEqual(evidence.countAgeHours, 0);
+});
+
+test("only clock-skew-sized drift is tolerated, and the tolerance cannot be widened", () => {
+  const asOf = evaluatedAt;
+  const withinSkew = new Date(Date.parse(asOf) + 60_000).toISOString();
+  const beyondSkew = new Date(Date.parse(asOf) + COUNT_CLOCK_SKEW_TOLERANCE_MS + 1_000).toISOString();
+
+  assert.equal(COUNT_CLOCK_SKEW_TOLERANCE_MS, 120_000);
+  assert.equal(isTemporallyValidCount(withinSkew, asOf), true);
+  assert.equal(isTemporallyValidCount(beyondSkew, asOf), false);
+  // Drift inside the tolerance is reported as a zero-age observation, not a negative one.
+  assert.equal(evidenceFor([countEvent(withinSkew, 20)], { generatedAt: asOf }).countAgeHours, 0);
+
+  // A caller cannot opt into a larger window than the shared tolerance.
+  assert.equal(
+    isTemporallyValidCount(beyondSkew, asOf, 30 * 86_400_000),
+    false
+  );
+  // A caller may opt into a stricter window.
+  assert.equal(isTemporallyValidCount(withinSkew, asOf, 0), false);
+});
+
+test("a future count never hides the newest valid count for the item", () => {
+  const asOf = evaluatedAt;
+  const events = [
+    countEvent("2026-08-16T08:00:00.000Z", 30, { id: "count-old", sequence: 1 }),
+    countEvent("2026-08-17T08:00:00.000Z", 12, { id: "count-valid", sequence: 2 }),
+    // Newest by timestamp and by sequence, and therefore the dangerous case.
+    countEvent("2026-08-24T08:00:00.000Z", 999, { id: "count-future", sequence: 9 })
+  ];
+
+  const resolved = resolveVerifiedInventoryCount(restaurantA, itemId, events, CANONICAL_PER_UNIT, { asOf });
+  assert.equal(resolved?.eventId, "count-valid");
+  assert.equal(resolved?.countedAt, "2026-08-17T08:00:00.000Z");
+  assert.equal(resolved?.countedQuantity, 12);
+
+  const evidence = evidenceFor(events, { generatedAt: asOf });
+  assert.equal(evidence.status, "verified");
+  assert.equal(evidence.countedAt, "2026-08-17T08:00:00.000Z");
+  assert.equal(evidence.freshness, "fresh");
+
+  // The valid count still anchors the window; the future row contributes nothing.
+  const projection = project({
+    evidence,
+    consumption: [consumption("2026-08-17T09:00:00.000Z", 4)]
+  });
+  assert.equal(projection.baselineQuantity, 12);
+  assert.equal(projection.appliedConsumption, 4);
+  assert.equal(projection.projectedQuantity, 8);
+});
+
+test("future count evidence cannot release recommendation suppression", () => {
+  const handled: PurchaseRecommendation = {
+    id: "rec-handled-future",
+    restaurant_id: restaurantA,
+    inventory_item_id: itemId,
+    item_name: "Chicken breast",
+    supplier_name: "Fresh Foods",
+    recommended_quantity: 20,
+    unit: "lb",
+    reason: "Operator dismissed during service.",
+    urgency: "high",
+    status: "dismissed",
+    supplier_order_id: null,
+    created_at: "2026-08-17T12:00:00.000Z"
+  };
+  const asOf = evaluatedAt;
+  const scopedItem = item();
+
+  const futureOnly = buildInventoryCountEvidence({
+    restaurantId: restaurantA,
+    items: [scopedItem],
+    countEvents: [countEvent("2026-08-24T08:00:00.000Z", 20, { id: "count-future" })],
+    generatedAt: asOf
+  });
+  assert.equal(verifiedCountSupersedes(futureOnly.get(itemId)!, handled.created_at), false);
+  assert.equal(shouldSuppressRecommendationForItem(restaurantA, scopedItem, [handled], futureOnly), true);
+
+  // A future count alongside a pre-decision count also keeps the suppression closed.
+  const futureAndStale = buildInventoryCountEvidence({
+    restaurantId: restaurantA,
+    items: [scopedItem],
+    countEvents: [
+      countEvent("2026-08-17T08:00:00.000Z", 20, { id: "count-before", sequence: 1 }),
+      countEvent("2026-08-24T08:00:00.000Z", 20, { id: "count-future", sequence: 9 })
+    ],
+    generatedAt: asOf
+  });
+  assert.equal(shouldSuppressRecommendationForItem(restaurantA, scopedItem, [handled], futureAndStale), true);
+
+  // Only a real post-decision count releases it.
+  const released = buildInventoryCountEvidence({
+    restaurantId: restaurantA,
+    items: [scopedItem],
+    countEvents: [countEvent("2026-08-17T14:00:00.000Z", 20, { id: "count-after" })],
+    generatedAt: asOf
+  });
+  assert.equal(shouldSuppressRecommendationForItem(restaurantA, scopedItem, [handled], released), false);
+});
+
+test("server-shared signals ignore future count evidence and keep the valid anchor", () => {
+  const snapshot = {
+    restaurantId: restaurantA,
+    operatingDate,
+    inventoryItems: [
+      {
+        id: itemId,
+        restaurant_id: restaurantA,
+        item_name: "Chicken breast",
+        supplier_name: "Fresh Foods",
+        unit: "lb",
+        current_quantity: 12,
+        par_level: 40,
+        reorder_threshold: 12,
+        last_updated: "2026-08-17T23:59:00.000Z"
+      }
+    ],
+    sales: [
+      { restaurant_id: restaurantA, sale_date: operatingDate, item_name: "Chicken bowl", quantity_sold: 8 }
+    ],
+    menuItemIngredients: [
+      {
+        restaurant_id: restaurantA,
+        menu_item_name: "Chicken bowl",
+        inventory_item_id: itemId,
+        quantity_used_per_sale: 0.5,
+        unit: "lb"
+      }
+    ],
+    recommendationHistory: [],
+    timeZone: "UTC"
+  };
+
+  // A count dated a week out must not suppress today's depletion the way a real
+  // same-day count does, because it is not evidence at all.
+  const futureOnly = calculateOperationalSignals({
+    ...snapshot,
+    inventoryCountEvents: [countEvent(futureIso(7), 12, { id: "count-future" })]
+  });
+  assert.equal(lowStockProjectedQuantity(futureOnly.insights), 8);
+
+  // A previous-day valid count behind a future row still anchors the window.
+  const validBehindFuture = calculateOperationalSignals({
+    ...snapshot,
+    inventoryCountEvents: [
+      countEvent("2026-08-16T13:00:00.000Z", 12, { id: "count-valid", sequence: 1 }),
+      countEvent(futureIso(7), 12, { id: "count-future", sequence: 9 })
+    ]
+  });
+  assert.equal(lowStockProjectedQuantity(validBehindFuture.insights), 8);
+
+  // And a future row cannot unsuppress a handled decision.
+  const handled = {
+    inventory_item_id: itemId,
+    recommended_quantity: 20,
+    unit: "lb",
+    status: "dismissed",
+    created_at: "2026-08-17T09:00:00.000Z"
+  };
+  const suppressed = calculateOperationalSignals({
+    ...snapshot,
+    recommendationHistory: [handled],
+    inventoryCountEvents: [countEvent(futureIso(7), 12, { id: "count-future" })]
+  });
+  assert.equal(suppressed.recommendations.length, 0);
+});
+
+test("the ledger refuses to append future-dated count evidence", () => {
+  const recordedAt = "2026-08-17T18:00:00.000Z";
+  const base = {
+    restaurantId: restaurantA,
+    inventoryItemId: itemId,
+    eventType: "count" as const,
+    quantity: 20,
+    canonicalUnit: "g" as const,
+    source: "approve_count_session",
+    sourceReference: null,
+    reasonCode: null,
+    clientEventId: "client-count-1",
+    idempotencyKey: "idem-count-1",
+    supersedesEventId: null,
+    metadata: {}
+  };
+  const authority = { id: "event-1", actorUserId: "owner-a", recordedAt };
+
+  const future = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: { ...base, effectiveAt: "2026-08-24T08:00:00.000Z" },
+    authority
+  });
+  assert.equal(future.status, "rejected");
+  assert.equal("reason" in future ? future.reason : null, "future_dated_count");
+
+  // E: a count effective at the moment it is recorded still succeeds.
+  const current = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: { ...base, effectiveAt: recordedAt },
+    authority
+  });
+  assert.equal(current.status, "accepted");
+
+  // Non-count evidence keeps its existing behavior; this change is count-scoped.
+  const futureReceipt = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: {
+      ...base,
+      eventType: "receipt",
+      effectiveAt: "2026-08-24T08:00:00.000Z",
+      clientEventId: "client-receipt-1",
+      idempotencyKey: "idem-receipt-1"
+    },
+    authority
+  });
+  assert.equal(futureReceipt.status, "accepted");
+});
+
+test("a current-time count approval still produces usable authoritative evidence", () => {
+  // Mirrors approveInventoryCountSession and the Edge approve_count_session path:
+  // countedAt is stamped just before the recompute, so it must remain valid.
+  const countedAt = new Date().toISOString();
+  const pending = withPendingCountEvidence([], {
+    restaurantId: restaurantA,
+    inventoryItemIds: [itemId],
+    countedAt
+  });
+  const evidence = buildInventoryCountEvidence({
+    restaurantId: restaurantA,
+    items: [item()],
+    countEvents: pending,
+    generatedAt: new Date(Date.parse(countedAt) + 5).toISOString()
+  }).get(itemId);
+
+  assert.ok(evidence);
+  assert.equal(evidence.status, "verified");
+  assert.equal(evidence.freshness, "fresh");
+  assert.equal(evidence.countedAt, countedAt);
+  assert.ok((evidence.countAgeHours ?? -1) >= 0 && (evidence.countAgeHours ?? 1) < 0.01);
+});
+
+test("future count evidence from another tenant changes nothing for this tenant", () => {
+  const asOf = evaluatedAt;
+  const events = [
+    countEvent("2026-08-17T08:00:00.000Z", 20, { id: "count-a-valid" }),
+    countEvent(futureIso(7), 999, { id: "count-b-future", restaurantId: restaurantB, sequence: 9 }),
+    countEvent("2026-08-17T17:00:00.000Z", 999, { id: "count-b-valid", restaurantId: restaurantB, sequence: 8 })
+  ];
+
+  const evidence = evidenceFor(events, { generatedAt: asOf });
+  assert.equal(evidence.restaurantId, restaurantA);
+  assert.equal(evidence.countedAt, "2026-08-17T08:00:00.000Z");
+
+  // Restaurant B resolves to its own newest valid count, not its future row.
+  const foreign = evidenceFor(events, {
+    restaurantId: restaurantB,
+    generatedAt: asOf,
+    item: item({ restaurant_id: restaurantB })
+  });
+  assert.equal(foreign.countedAt, "2026-08-17T17:00:00.000Z");
+});
+
+test("the planning snapshot and ledger trigger both exclude future-dated counts", () => {
+  const snapshotMigration = readFileSync(
+    "supabase/migrations/20260817120000_authoritative_inventory_count_evidence.sql",
+    "utf8"
+  );
+  const triggerMigration = readFileSync(
+    "supabase/migrations/20260818120000_reject_future_dated_inventory_counts.sql",
+    "utf8"
+  );
+
+  // The per-item newest-wins choice happens after future rows are filtered out, so a
+  // future count cannot be selected over — or hide — the latest valid count.
+  assert.match(
+    snapshotMigration,
+    /event_type\s*=\s*'count'\s*\n\s*and event\.effective_at\s*<=\s*now\(\)\s*\+\s*interval\s*'2 minutes'\s*\n\s*order\s+by\s+event\.inventory_item_id/i
+  );
+
+  assert.match(
+    triggerMigration,
+    /create\s+or\s+replace\s+function\s+private\.reject_future_dated_inventory_count/i
+  );
+  assert.match(triggerMigration, /security\s+invoker[\s\S]*set\s+search_path\s*=\s*''/i);
+  assert.match(
+    triggerMigration,
+    /new\.event_type\s*=\s*'count'[\s\S]*new\.effective_at\s*>\s*clock_timestamp\(\)\s*\+\s*interval\s*'2 minutes'/i
+  );
+  assert.match(triggerMigration, /before\s+insert\s+on\s+public\.inventory_events/i);
+  // Rejection only. No privilege, policy, RLS, or append-only relaxation rides along.
+  assert.doesNotMatch(triggerMigration, /^\s*(grant|revoke)\s/im);
+  assert.doesNotMatch(triggerMigration, /^\s*(create|drop)\s+policy\s/im);
+  assert.doesNotMatch(triggerMigration, /^\s*alter\s+table\s/im);
+  // The pre-existing append-only guard is left in place.
+  assert.doesNotMatch(triggerMigration, /reject_inventory_event_mutation/i);
+});
+
+test("a future ledger movement cannot inflate projected inventory", () => {
+  const evidence = evidenceFor([countEvent("2026-08-17T08:00:00.000Z", 20)]);
+  const projection = project({
+    evidence,
+    movements: [
+      // Delivery scheduled for next week is not stock on the shelf today.
+      { restaurantId: restaurantA, inventoryItemId: itemId, effectiveAt: futureIso(7), quantityDelta: 500 },
+      { restaurantId: restaurantA, inventoryItemId: itemId, effectiveAt: "2026-08-17T10:00:00.000Z", quantityDelta: 6 }
+    ],
+    consumption: [
+      consumption("2026-08-17T11:00:00.000Z", 4),
+      // Nor is a sale dated next week today's depletion.
+      consumption(futureIso(7), 99)
+    ]
+  });
+
+  assert.equal(projection.appliedAdditions, 6);
+  assert.equal(projection.appliedConsumption, 4);
+  assert.equal(projection.projectedQuantity, 22);
 });
