@@ -1,4 +1,5 @@
 import {
+  enrichSquareSalesWithCatalogIdentity,
   listSquareCatalogItems,
   refreshSquareAccessToken,
   searchSquareOrders,
@@ -197,13 +198,14 @@ Deno.serve(async (req) => {
         listSquareCatalogItems(oauthConfig, tokens.accessToken),
       ]);
 
+      const salesWithCatalogIdentity = enrichSquareSalesWithCatalogIdentity(sales, catalogItems);
       const { data: applied, error: applyError } = await securitySupabase.rpc(
         "service_apply_square_sync_result",
         {
           p_actor_user_id: user.id,
           p_restaurant_id: restaurantId,
           p_integration_id: credential.integrationId,
-          p_sales: sales,
+          p_sales: salesWithCatalogIdentity,
           p_catalog_items: catalogItems,
           p_sync_cursor: null,
           p_from: from,
@@ -242,7 +244,7 @@ Deno.serve(async (req) => {
         "pos_sync_completed",
         {
           provider,
-          recordsProcessed: applied?.recordsProcessed ?? sales.length,
+          recordsProcessed: applied?.recordsProcessed ?? salesWithCatalogIdentity.length,
           catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
         },
       );
@@ -250,7 +252,7 @@ Deno.serve(async (req) => {
       return jsonResponse({
         status: "completed",
         importId: applied?.importId ?? null,
-        recordsProcessed: applied?.recordsProcessed ?? sales.length,
+        recordsProcessed: applied?.recordsProcessed ?? salesWithCatalogIdentity.length,
         catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
       });
     } catch (error) {

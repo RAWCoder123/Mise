@@ -1,6 +1,6 @@
 begin;
 
-select plan(8);
+select plan(9);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -44,7 +44,7 @@ select is(
       'd0000000-0000-4000-8000-000000000001',
       'd0000000-0000-4000-8000-000000000101',
       '[
-        {"source_record_id":"square-order-1-line-1","sale_date":"2026-08-10","item_name":"Burger","category":"Square","quantity_sold":2,"gross_sales":24,"net_sales":24},
+        {"source_record_id":"square-order-1-line-1","sale_date":"2026-08-10","item_name":"Burger","category":"Square","quantity_sold":2,"gross_sales":24,"net_sales":24,"provider_catalog_item_id":"ITEM-A","provider_variation_id":"VAR-A"},
         {"source_record_id":"square-order-1-line-2","sale_date":"2026-08-10","item_name":"Fries","category":"Square","quantity_sold":1,"gross_sales":6,"net_sales":6}
       ]'::jsonb,
       '[]'::jsonb,
@@ -61,6 +61,12 @@ select is(
   (select count(*) from public.pos_sales where restaurant_id = 'd0000000-0000-4000-8000-000000000001'),
   2::bigint,
   'first Square sync persists two logical sales rows'
+);
+
+select is(
+  (select provider_catalog_item_id || ':' || provider_variation_id from public.pos_sales where restaurant_id = 'd0000000-0000-4000-8000-000000000001' and source_record_id = 'square-order-1-line-1'),
+  'ITEM-A:VAR-A',
+  'Square sync persists catalog and variation identity separately from the replay key'
 );
 
 select is(
@@ -82,7 +88,7 @@ select lives_ok(
       'd0000000-0000-4000-8000-000000000001',
       'd0000000-0000-4000-8000-000000000101',
       '[
-        {"source_record_id":"square-order-1-line-1","sale_date":"2026-08-10","item_name":"Burger","category":"Square","quantity_sold":2,"gross_sales":24,"net_sales":24},
+        {"source_record_id":"square-order-1-line-1","sale_date":"2026-08-10","item_name":"Burger","category":"Square","quantity_sold":2,"gross_sales":24,"net_sales":24,"provider_catalog_item_id":"ITEM-A","provider_variation_id":"VAR-A"},
         {"source_record_id":"square-order-1-line-2","sale_date":"2026-08-10","item_name":"Fries","category":"Square","quantity_sold":1,"gross_sales":6,"net_sales":6}
       ]'::jsonb,
       '[]'::jsonb,

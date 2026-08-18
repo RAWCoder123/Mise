@@ -56,6 +56,8 @@ export interface SquareSaleRow {
   gross_sales: number;
   net_sales: number;
   source_record_id: string;
+  provider_catalog_item_id?: string;
+  provider_variation_id?: string;
 }
 
 export interface SquareCatalogRow {
@@ -292,8 +294,9 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
     const uid = stringField(item, "uid", 128) || String(index);
     const gross = moneyAmount(item.gross_sales_money) ?? moneyAmount(item.total_money) ?? 0;
     const net = moneyAmount(item.total_money) ?? gross;
+    const variationId = stringField(item, "catalog_object_id", 128);
     const category =
-      stringField(item, "catalog_object_id", 80) ||
+      variationId ||
       stringField(item, "variation_name", 80) ||
       "Square";
     rows.push({
@@ -304,9 +307,27 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
       gross_sales: clampMoney(gross),
       net_sales: clampMoney(net),
       source_record_id: `square_${orderId}_${uid}`.slice(0, 200),
+      provider_variation_id: variationId || undefined,
     });
   }
   return rows;
+}
+
+export function enrichSquareSalesWithCatalogIdentity(
+  sales: SquareSaleRow[],
+  catalogItems: SquareCatalogRow[],
+): SquareSaleRow[] {
+  const catalogItemByVariation = new Map(
+    catalogItems
+      .filter((item) => Boolean(item.external_variation_id) && Boolean(item.external_catalog_item_id))
+      .map((item) => [item.external_variation_id, item.external_catalog_item_id] as const),
+  );
+  return sales.map((sale) => {
+    const catalogItemId = sale.provider_variation_id
+      ? catalogItemByVariation.get(sale.provider_variation_id)
+      : undefined;
+    return catalogItemId ? { ...sale, provider_catalog_item_id: catalogItemId } : sale;
+  });
 }
 
 export function normalizeCatalogItem(object: unknown): SquareCatalogRow[] {

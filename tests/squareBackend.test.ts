@@ -59,6 +59,7 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
       {
         uid: "line-1",
         name: "Burger",
+        catalog_object_id: "var-1",
         quantity: "2",
         gross_sales_money: { amount: 2400, currency: "USD" },
         total_money: { amount: 2400, currency: "USD" },
@@ -70,6 +71,7 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
   assert.equal(sales[0]?.quantity_sold, 2);
   assert.equal(sales[0]?.source_record_id, "square_order-1_line-1");
   assert.equal(sales[0]?.gross_sales, 24);
+  assert.equal(sales[0]?.provider_variation_id, "var-1");
 
   const catalog = normalizeCatalogItem({
     type: "ITEM",
@@ -127,4 +129,5 @@ test("Square sync records truthful counts and database replay coverage", () => {
   assert.match(squareDatabaseProof, /an exact replay does not duplicate logical sales rows/i);
   assert.match(squareDatabaseProof, /the overlapping row is deduplicated/i);
   assert.match(squareDatabaseProof, /metadata->>'recordsProcessed'/i);
+  assert.match(squareDatabaseProof, /provider_catalog_item_id.*provider_variation_id/i);
 });

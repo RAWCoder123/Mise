@@ -8,6 +8,13 @@ import {
 } from "./inventoryCountAuthority.ts";
 import { toDateKeyInTimeZone } from "../../utils/format.ts";
 import type { InsightPresentationDescriptor } from "../../types/presentation.ts";
+import {
+  recipeDemandKey,
+  saleDemandKey,
+  saleMatchesRecipe,
+  saleRequiresVerifiedProviderIdentity,
+  type VerifiedProviderSaleMapping
+} from "./providerSaleIdentity.ts";
 
 export interface OperationalInventoryItem {
   id: string;
@@ -30,10 +37,14 @@ export interface OperationalSale {
   sale_date: string;
   item_name: string;
   quantity_sold: number;
+  source_pos?: string | null;
+  provider_catalog_item_id?: string | null;
+  provider_variation_id?: string | null;
 }
 
 export interface OperationalRecipeMapping {
   restaurant_id: string;
+  menu_item_id?: string | null;
   menu_item_name: string;
   inventory_item_id: string;
   quantity_used_per_sale: number;
@@ -80,6 +91,7 @@ export interface OperationalPlanningSnapshot {
   inventoryItems: OperationalInventoryItem[];
   sales: OperationalSale[];
   menuItemIngredients: OperationalRecipeMapping[];
+  providerMappings?: readonly VerifiedProviderSaleMapping[];
   recommendationHistory: OperationalRecommendationHistory[];
   /**
    * Ledger rows from the append-only inventory ledger. Count rows supply the
@@ -107,7 +119,13 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       ? (iso) => toDateKeyInTimeZone(new Date(iso), timeZone)
       : undefined
   });
-  const demand = historicalDailyDemand(snapshot.sales, snapshot.operatingDate);
+  const providerMappings = snapshot.providerMappings ?? [];
+  const demand = historicalDailyDemand(
+    snapshot.sales,
+    snapshot.operatingDate,
+    snapshot.menuItemIngredients,
+    providerMappings
+  );
   const todaySales = snapshot.sales.filter(
     (sale) => sale.restaurant_id === snapshot.restaurantId && sale.sale_date === snapshot.operatingDate
   );
@@ -125,12 +143,12 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     );
     const mappedTodayUsage = mappings.reduce((sum, mapping) => {
       const sold = todaySales
-        .filter((sale) => normalizeKey(sale.item_name) === normalizeKey(mapping.menu_item_name))
+        .filter((sale) => saleMatchesRecipe(sale, mapping, providerMappings))
         .reduce((quantity, sale) => quantity + finiteNonNegative(sale.quantity_sold), 0);
       return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
     }, 0);
     const baselineUsage = mappings.reduce((sum, mapping) => {
-      return sum + (demand.get(normalizeKey(mapping.menu_item_name)) ?? 0) * finiteNonNegative(mapping.quantity_used_per_sale);
+      return sum + (demand.get(recipeDemandKey(mapping)) ?? 0) * finiteNonNegative(mapping.quantity_used_per_sale);
     }, 0);
     const itemCountEvidence =
       countEvidence.get(item.id) ?? missingInventoryCountEvidence(snapshot.restaurantId, item.id);
@@ -228,6 +246,28 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     }
   }
 
+  const unverifiedProviderSales = todaySales.filter((sale) => {
+    if (!saleRequiresVerifiedProviderIdentity(sale)) return false;
+    return !snapshot.menuItemIngredients.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings));
+  });
+  if (unverifiedProviderSales.length > 0) {
+    insights.push({
+      id: `insight_pos_mapping_unverified_${snapshot.restaurantId}`,
+      restaurant_id: snapshot.restaurantId,
+      insight_type: "sales",
+      title: "POS recipe mappings need review",
+      description: `${unverifiedProviderSales.length} provider sale line${unverifiedProviderSales.length === 1 ? "" : "s"} cannot deplete inventory until its catalog identity is verified.`,
+      why_it_matters: "Mise keeps unverified provider sales in reporting but excludes them from recipe consumption.",
+      recommended_action: "Verify the POS catalog mapping before using these sales for inventory planning.",
+      severity: "warning",
+      created_at: now,
+      presentation: {
+        code: "insight.rule.sales.demand_rising",
+        values: { itemName: "POS mapping review", liftPercent: unverifiedProviderSales.length }
+      }
+    });
+  }
+
   for (const sale of todaySales) {
     const baseline = demand.get(normalizeKey(sale.item_name));
     if (!baseline || sale.quantity_sold < baseline * 1.2) continue;
@@ -260,7 +300,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         (mapping) =>
           mapping.restaurant_id === snapshot.restaurantId &&
           mapping.inventory_item_id === item.id &&
-          normalizeKey(mapping.menu_item_name) === normalizeKey(topSale.item_name)
+          saleMatchesRecipe(topSale, mapping, providerMappings)
       );
       if (!linked) return false;
       return insights.some(
@@ -346,7 +386,12 @@ export function buildInsightsFromData(
   }).insights;
 }
 
-function historicalDailyDemand(sales: OperationalSale[], operatingDate: string) {
+function historicalDailyDemand(
+  sales: OperationalSale[],
+  operatingDate: string,
+  _mappings: OperationalRecipeMapping[],
+  providerMappings: readonly VerifiedProviderSaleMapping[]
+) {
   const days = [...new Set(sales.filter((sale) => sale.sale_date < operatingDate).map((sale) => sale.sale_date))]
     .sort((a, b) => b.localeCompare(a))
     .slice(0, 28);
@@ -355,7 +400,8 @@ function historicalDailyDemand(sales: OperationalSale[], operatingDate: string) 
   const totals = new Map<string, Map<string, number>>();
   for (const sale of sales) {
     if (!selectedDays.has(sale.sale_date) || sale.quantity_sold <= 0) continue;
-    const key = normalizeKey(sale.item_name);
+    const key = saleDemandKey(sale, providerMappings);
+    if (!key) continue;
     const daily = totals.get(key) ?? new Map<string, number>();
     daily.set(sale.sale_date, (daily.get(sale.sale_date) ?? 0) + finiteNonNegative(sale.quantity_sold));
     totals.set(key, daily);

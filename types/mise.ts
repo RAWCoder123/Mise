@@ -84,6 +84,8 @@ export interface PosSale {
   id: string;
   restaurant_id: string;
   source_record_id?: string | null;
+  provider_catalog_item_id?: string | null;
+  provider_variation_id?: string | null;
   sale_date: string;
   item_name: string;
   category: string;
@@ -154,6 +156,7 @@ export interface InventoryCountSessionDetail {
 export interface MenuItemIngredient {
   id: string;
   restaurant_id: string;
+  menu_item_id?: string | null;
   menu_item_name: string;
   inventory_item_id: string;
   quantity_used_per_sale: number;

@@ -323,11 +323,11 @@ export function createInitialDemoState(
   ];
 
   const posSales: PosSale[] = [
-    sale("00000000-0000-4000-8000-000000000301", today, "Chicken Bowl", "Bowls", 42, 546, provider ?? "Demo POS", now),
-    sale("00000000-0000-4000-8000-000000000302", today, "Burger", "Sandwiches", 31, 465, provider ?? "Demo POS", now),
-    sale("00000000-0000-4000-8000-000000000303", today, "Fried Rice", "Bowls", 28, 336, provider ?? "Demo POS", now),
-    sale("00000000-0000-4000-8000-000000000304", today, "Caesar Salad", "Salads", 19, 247, provider ?? "Demo POS", now),
-    sale("00000000-0000-4000-8000-000000000305", today, "Pancakes", "Breakfast", 24, 288, provider ?? "Demo POS", now)
+    sale("00000000-0000-4000-8000-000000000301", today, "Chicken Bowl", "Bowls", 42, 546, "Demo POS", now),
+    sale("00000000-0000-4000-8000-000000000302", today, "Burger", "Sandwiches", 31, 465, "Demo POS", now),
+    sale("00000000-0000-4000-8000-000000000303", today, "Fried Rice", "Bowls", 28, 336, "Demo POS", now),
+    sale("00000000-0000-4000-8000-000000000304", today, "Caesar Salad", "Salads", 19, 247, "Demo POS", now),
+    sale("00000000-0000-4000-8000-000000000305", today, "Pancakes", "Breakfast", 24, 288, "Demo POS", now)
   ];
 
   const state: DemoState = {
@@ -732,7 +732,7 @@ function applyImportedPosSales(state: DemoState, posSales?: SetupPosSaleDraft[])
       entry.category,
       entry.quantitySold,
       entry.grossSales,
-      entry.sourcePos,
+      "Manual CSV Upload",
       createdAt
     )
   );
@@ -893,8 +893,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
   ];
 
   state.posSales = [
-    ...buildDefaultDemoCurrentSales(today, provider ?? "Demo POS", createdAt),
-    ...buildDefaultDemoWeeklySales(provider ?? "Demo POS", createdAt, nowDate, timeZone)
+    ...buildDefaultDemoCurrentSales(today, "Demo POS", createdAt),
+    ...buildDefaultDemoWeeklySales("Demo POS", createdAt, nowDate, timeZone)
   ];
 
   state.inventoryEvents = [
