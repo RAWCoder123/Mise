@@ -77,6 +77,25 @@ const locationBMappings: VerifiedProviderSaleMapping[] = [{
   menuItemId: "menu-rice"
 }];
 
+const conflictingMappings: VerifiedProviderSaleMapping[] = [
+  {
+    restaurantId: restaurantA,
+    sourcePos: "square",
+    providerLocationId: "loc-a",
+    externalCatalogItemId: "ITEM-A",
+    externalVariationId: "VAR-A",
+    menuItemId: chickenMenuId
+  },
+  {
+    restaurantId: restaurantA,
+    sourcePos: "square",
+    providerLocationId: "loc-a",
+    externalCatalogItemId: "ITEM-A",
+    externalVariationId: "VAR-A",
+    menuItemId: "menu-soup"
+  }
+];
+
 function depletion(sales: PosSale[], mappings = verifiedMappings) {
   return buildInventoryPrediction(inventoryItem, sales, [recipe], operatingDate, undefined, undefined, undefined, mappings)
     .todayDepletion;
@@ -96,6 +115,19 @@ test("verified Square identity remains tied to its provider location and survive
   assert.equal(saleMatchesRecipe(renamed, recipe, verifiedMappings), true);
   assert.equal(resolveVerifiedProviderMenuItemId(squareSale({ provider_location_id: "loc-b" }), verifiedMappings), null);
   assert.equal(resolveVerifiedProviderMenuItemId(squareSale({ provider_location_id: "loc-b" }), locationBMappings), "menu-rice");
+});
+
+test("ambiguous verified mappings for the same identity fail closed regardless of array order", () => {
+  const sale = squareSale();
+  assert.equal(resolveVerifiedProviderMenuItemId(sale, conflictingMappings), null);
+  assert.equal(resolveVerifiedProviderMenuItemId(sale, [...conflictingMappings].reverse()), null);
+});
+
+test("different locations remain independent for verified provider mappings", () => {
+  const locB = squareSale({ provider_location_id: "loc-b" });
+  const locA = squareSale({ provider_location_id: "loc-a" });
+  assert.equal(resolveVerifiedProviderMenuItemId(locB, locationBMappings), "menu-rice");
+  assert.equal(resolveVerifiedProviderMenuItemId(locA, locationBMappings), null);
 });
 
 test("same display name with the wrong variation ID cannot consume the verified recipe", () => {

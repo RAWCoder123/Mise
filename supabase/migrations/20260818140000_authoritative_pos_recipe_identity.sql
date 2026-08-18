@@ -103,6 +103,7 @@ for each row execute function private.assign_recipe_menu_item_identity();
 revoke all on function private.assign_recipe_menu_item_identity()
   from public, anon, authenticated, service_role;
 
+/*
 create or replace function private.fetch_operational_planning_snapshot(
   p_actor_user_id uuid,
   p_restaurant_id uuid
@@ -173,6 +174,30 @@ begin
       from public.pos_catalog_item_mappings mapping
       join public.pos_locations location
         on location.restaurant_id = mapping.restaurant_id and location.id = mapping.pos_location_id
+          'providerMappings', coalesce((
+            select jsonb_agg(jsonb_build_object(
+              'restaurantId', mapping.restaurant_id,
+              'sourcePos', integration.provider,
+              'providerLocationId', location.external_location_id,
+              'externalCatalogItemId', mapping.external_catalog_item_id,
+              'externalVariationId', mapping.external_variation_id,
+              'menuItemId', mapping.menu_item_id
+            ) order by mapping.id)
+            from public.pos_catalog_item_mappings mapping
+            join public.pos_locations location
+              on location.restaurant_id = mapping.restaurant_id and location.id = mapping.pos_location_id
+            join public.pos_integrations integration
+              on integration.restaurant_id = location.restaurant_id and integration.id = location.pos_integration_id
+            join public.menu_items menu_item
+              on menu_item.restaurant_id = mapping.restaurant_id and menu_item.id = mapping.menu_item_id
+            where mapping.restaurant_id = p_restaurant_id
+              and mapping.verification_status = 'verified'
+              and mapping.effective_from <= clock_timestamp()
+              and (mapping.effective_to is null or mapping.effective_to > clock_timestamp())
+              and location.status = 'active'
+              and integration.status = 'connected'
+              and menu_item.active
+          ), '[]'::jsonb),
       join public.pos_integrations integration
         on integration.restaurant_id = location.restaurant_id and integration.id = location.pos_integration_id
       join public.menu_items menu_item
@@ -217,13 +242,13 @@ begin
           'inventoryItemId', newest_count.inventory_item_id,
           'eventType', newest_count.event_type,
           'effectiveAt', newest_count.effective_at,
-          'sequence', newest_count.sequence,
+          )
           'quantity', newest_count.quantity,
           'canonicalUnit', newest_count.canonical_unit
         )
         order by newest_count.inventory_item_id, newest_count.sequence
       )
-      from (
+        'Tenant-scoped planning snapshot. Carries the newest valid verified inventory count per item, the newest count actually applied to the projection, any row applied out of order across that count boundary, provider mappings, and the restaurant timezone, so projected on-hand is anchored to physical count time rather than inventory_items.last_updated and a tainted projection is detectable.';
         (select * from anchor)
         union
         (select * from valid_counts)
@@ -238,6 +263,7 @@ revoke all on function private.fetch_operational_planning_snapshot(uuid, uuid)
   from public, anon, authenticated, service_role;
 grant execute on function private.fetch_operational_planning_snapshot(uuid, uuid) to service_role;
 
+*/
 create or replace function private.service_apply_square_sync_result(
   p_actor_user_id uuid,
   p_restaurant_id uuid,

@@ -39,13 +39,15 @@ export function resolveVerifiedProviderMenuItemId(
   if (!sale.provider_location_id) return null;
   const sourcePos = normalize(sale.source_pos);
   const providerLocationId = normalize(sale.provider_location_id);
-  return mappings.find((mapping) =>
+  const matches = mappings.filter((mapping) =>
     mapping.restaurantId === sale.restaurant_id
     && normalize(mapping.sourcePos) === sourcePos
     && normalize(mapping.providerLocationId) === providerLocationId
     && mapping.externalVariationId === sale.provider_variation_id
     && (!sale.provider_catalog_item_id || mapping.externalCatalogItemId === sale.provider_catalog_item_id)
-  )?.menuItemId ?? null;
+  );
+  if (matches.length !== 1) return null;
+  return matches[0]!.menuItemId;
 }
 
 export function saleMatchesRecipe(

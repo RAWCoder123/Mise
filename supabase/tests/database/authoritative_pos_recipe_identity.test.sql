@@ -1,6 +1,6 @@
 begin;
 
-select plan(10);
+select plan(19);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -54,6 +54,24 @@ values (
   'Bulk recommendation inventory',
   'Test',
   'each',
+  0,
+  0,
+  0,
+  1,
+  'Supplier',
+  '2026-08-10T00:00:00Z'
+);
+
+insert into public.inventory_items (
+  id, restaurant_id, item_name, category, unit, current_quantity, par_level,
+  reorder_threshold, estimated_unit_cost, supplier_name, last_updated
+)
+values (
+  'e0000000-0000-4000-8000-000000000998',
+  'e0000000-0000-4000-8000-000000000001',
+  'Count boundary evidence item',
+  'Test',
+  'g',
   0,
   0,
   0,
@@ -179,6 +197,50 @@ select
   '2026-08-10T00:00:00Z'::timestamptz + (gs || ' minutes')::interval
 from generate_series(1, 520) gs;
 
+insert into public.inventory_events (
+  restaurant_id, inventory_item_id, event_type, quantity, canonical_unit,
+  effective_at, actor_user_id, source, client_event_id, idempotency_key
+)
+values
+  (
+    'e0000000-0000-4000-8000-000000000001',
+    'e0000000-0000-4000-8000-000000000998',
+    'count',
+    100,
+    'g',
+    '2026-08-10T10:00:00Z',
+    'e1111111-1111-4111-8111-111111111111',
+    'test_fixture',
+    'count-anchor',
+    'count-anchor'
+  );
+
+reset role;
+alter table public.inventory_events disable trigger user;
+set local role service_role;
+
+insert into public.inventory_events (
+  restaurant_id, inventory_item_id, event_type, quantity, canonical_unit,
+  effective_at, actor_user_id, source, client_event_id, idempotency_key, projection_applied
+)
+values (
+    'e0000000-0000-4000-8000-000000000001',
+    'e0000000-0000-4000-8000-000000000998',
+    'receipt',
+    25,
+    'g',
+    '2026-08-10T09:00:00Z',
+    'e1111111-1111-4111-8111-111111111111',
+    'test_fixture',
+    'legacy-out-of-order',
+    'legacy-out-of-order',
+    true
+  );
+
+reset role;
+alter table public.inventory_events enable trigger user;
+set local role service_role;
+
 select is(
   jsonb_array_length((public.service_fetch_operational_planning_snapshot(
     'e1111111-1111-4111-8111-111111111111',
@@ -213,6 +275,165 @@ select is(
   ))->'providerMappings'->0->>'providerLocationId',
   'loc-a',
   'provider mapping evidence carries provider location identity'
+);
+
+select ok(
+  jsonb_path_exists(
+    public.service_fetch_operational_planning_snapshot(
+      'e1111111-1111-4111-8111-111111111111',
+      'e0000000-0000-4000-8000-000000000001'
+    ),
+    '$.inventoryLedgerEvents[*] ? (@.inventoryItemId == "e0000000-0000-4000-8000-000000000998" && @.eventType == "receipt" && @.projectionApplied == true)'
+  ),
+  'planning snapshot carries out-of-order applied ledger evidence for contamination detection'
+);
+
+select ok(
+  jsonb_path_exists(
+    public.service_fetch_operational_planning_snapshot(
+      'e1111111-1111-4111-8111-111111111111',
+      'e0000000-0000-4000-8000-000000000001'
+    ),
+    '$.inventoryLedgerEvents[*] ? (@.inventoryItemId == "e0000000-0000-4000-8000-000000000998" && @.eventType == "count")'
+  ),
+  'planning snapshot still carries the authoritative count anchor alongside contamination evidence'
+);
+
+insert into public.restaurants (id, name, cuisine_type)
+values ('f0000000-0000-4000-8000-000000000001', 'Planning Sales Kitchen', 'Fast casual');
+
+insert into public.restaurant_memberships (restaurant_id, user_id, role, status)
+values (
+  'f0000000-0000-4000-8000-000000000001',
+  'e1111111-1111-4111-8111-111111111111',
+  'manager',
+  'active'
+);
+
+insert into public.pos_sales (
+  restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales,
+  source_pos, source_record_id, provider_location_id, provider_catalog_item_id, provider_variation_id
+)
+values
+  (
+    'f0000000-0000-4000-8000-000000000001',
+    '2026-08-10'::date,
+    'Burger',
+    'Square',
+    2,
+    24,
+    24,
+    'Square',
+    'square-a',
+    'loc-a',
+    'ITEM-A',
+    'VAR-A'
+  ),
+  (
+    'f0000000-0000-4000-8000-000000000001',
+    '2026-08-10'::date,
+    'Burger Deluxe',
+    'Square',
+    1,
+    12,
+    12,
+    'Square',
+    'square-b',
+    'loc-b',
+    'ITEM-A',
+    'VAR-A'
+  ),
+  (
+    'f0000000-0000-4000-8000-000000000001',
+    '2026-08-10'::date,
+    'Burger',
+    'Square',
+    1,
+    12,
+    12,
+    'Square',
+    'square-missing',
+    null,
+    null,
+    null
+  ),
+  (
+    'f0000000-0000-4000-8000-000000000001',
+    '2026-08-10'::date,
+    'Burger',
+    'Square',
+    1,
+    10,
+    10,
+    'Manual CSV',
+    'manual-burger',
+    null,
+    null,
+    null
+  );
+
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'e1111111-1111-4111-8111-111111111111', true);
+
+select is(
+  (select provider_location_id from public.fetch_planning_sales('f0000000-0000-4000-8000-000000000001', 28)
+   where provider_location_id = 'loc-a'
+     and provider_catalog_item_id = 'ITEM-A'
+     and provider_variation_id = 'VAR-A'
+     and source_pos = 'Square'),
+  'loc-a',
+  'verified Square sale survives planning-sales with location identity intact'
+);
+
+select is(
+  (select provider_catalog_item_id || ':' || provider_variation_id
+   from public.fetch_planning_sales('f0000000-0000-4000-8000-000000000001', 28)
+   where provider_location_id = 'loc-a'
+     and provider_catalog_item_id = 'ITEM-A'
+     and provider_variation_id = 'VAR-A'
+     and source_pos = 'Square'),
+  'ITEM-A:VAR-A',
+  'verified Square sale survives planning-sales with catalog and variation identity intact'
+);
+
+select is(
+  (select count(distinct provider_location_id)
+   from public.fetch_planning_sales('f0000000-0000-4000-8000-000000000001', 28)
+   where provider_catalog_item_id = 'ITEM-A'
+     and provider_variation_id = 'VAR-A'
+     and source_pos = 'Square'),
+  2::bigint,
+  'same Square variation remains distinguishable across locations'
+);
+
+select is(
+  (select source_pos from public.fetch_planning_sales('f0000000-0000-4000-8000-000000000001', 28)
+   where source_record_id = 'square-missing'),
+  'Square',
+  'provider rows missing identity remain recognizably provider-originated'
+);
+
+select is(
+  (select provider_location_id is null and provider_catalog_item_id is null and provider_variation_id is null
+   from public.fetch_planning_sales('f0000000-0000-4000-8000-000000000001', 28)
+   where source_record_id = 'square-missing'),
+  true,
+  'provider rows missing identity fail closed'
+);
+
+select is(
+  (select count(*) from public.fetch_planning_sales('f0000000-0000-4000-8000-000000000001', 28)
+   where item_name = 'Burger' and source_pos = 'Mise aggregate'),
+  0::bigint,
+  'Square and manual Burger rows never collapse into a non-provider aggregate'
+);
+
+select is(
+  (select count(*) from public.fetch_planning_sales('f0000000-0000-4000-8000-000000000001', 28)
+   where item_name = 'Burger' and source_pos = 'Manual CSV'),
+  1::bigint,
+  'manual Burger rows remain manual and bounded'
 );
 
 reset role;
