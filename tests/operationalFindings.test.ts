@@ -13,6 +13,7 @@ import {
   BETA_FINDING_POLICY_VERSION,
   buildDailyOperationalBrief
 } from "../services/domain/operationalFindings";
+import type { VerifiedCountCandidate } from "../services/domain/inventoryCountAuthority";
 
 const restaurantId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const generatedAt = "2026-07-27T12:00:00.000Z";
@@ -86,6 +87,17 @@ const insight: Insight = {
   created_at: "2026-07-27T11:15:00.000Z"
 };
 
+/** The only evidence that dates an item's physical inventory. */
+function verifiedCount(effectiveAt: string): VerifiedCountCandidate {
+  return {
+    restaurantId,
+    inventoryItemId: item.id,
+    effectiveAt,
+    eventType: "count",
+    sequence: 1
+  };
+}
+
 function build(overrides = {}) {
   return buildDailyOperationalBrief({
     restaurantId,
@@ -96,6 +108,7 @@ function build(overrides = {}) {
     mappings: [mapping],
     recommendations: [recommendation],
     insights: [insight],
+    inventoryCountEvents: [verifiedCount("2026-07-27T11:00:00.000Z")],
     ...overrides
   });
 }
@@ -135,14 +148,25 @@ test("complete verified evidence produces a fresh high-confidence recommendation
 });
 
 test("stale evidence remains visible but cannot be labeled fresh", () => {
-  const staleItem = { ...item, last_updated: "2026-07-20T11:00:00.000Z" };
-  const brief = build({ inventoryItems: [staleItem] });
+  const brief = build({ inventoryCountEvents: [verifiedCount("2026-07-20T11:00:00.000Z")] });
   const finding = brief.findings.find((entry) => entry.id === `finding:recommendation:${recommendation.id}`);
 
   assert.ok(finding);
   assert.equal(finding.freshness.state, "stale");
   assert.equal(finding.confidence.score, 0.55);
   assert.ok(Date.parse(finding.freshness.staleAfter) < Date.parse(generatedAt));
+});
+
+test("a non-count row update never dates inventory evidence", () => {
+  // `last_updated` moves for a policy, cost, or supplier edit. Without verified count
+  // evidence the finding must report incomplete evidence, not fresh evidence.
+  const editedItem = { ...item, last_updated: generatedAt, estimated_unit_cost: 9.75 };
+  const brief = build({ inventoryItems: [editedItem], inventoryCountEvents: [] });
+  const finding = brief.findings.find((entry) => entry.id === `finding:recommendation:${recommendation.id}`);
+
+  assert.ok(finding);
+  assert.equal(finding.freshness.state, "incomplete");
+  assert.ok(finding.freshness.missingData.includes("verified_physical_count"));
 });
 
 test("missing daily sales and inventory become explicit high-confidence data gaps", () => {

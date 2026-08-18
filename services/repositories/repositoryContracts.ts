@@ -370,6 +370,8 @@ export interface PlanningData {
   sales: PosSale[];
   menuItemIngredients: MenuItemIngredient[];
   operatingDate: string;
+  /** Restaurant timezone, needed to place a verified count inside the right operating day. */
+  timeZone: string;
 }
 
 export interface MiseRepository {

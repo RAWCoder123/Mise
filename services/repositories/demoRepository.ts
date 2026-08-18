@@ -1014,7 +1014,8 @@ export function createLocalDemoRepository(): MiseRepository {
         menuItemIngredients: state.menuItemIngredients
           .filter((mapping) => mapping.restaurant_id === restaurantId)
           .map(normalizeMenuItemIngredient),
-        operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone)
+        operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone),
+        timeZone: restaurant.timezone
       };
     },
 

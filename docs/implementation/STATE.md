@@ -24,7 +24,9 @@ Mise remains a **controlled-pilot/private-beta codebase**. The current pilot int
 - an atomic backend binding between the reviewed envelope and Gmail execution;
 - fail-closed Home, Today, Orders, and POS readiness presentation.
 
-This is **not yet a pilot-ready claim**. Provider-identity recipe mapping, count-time-anchored depletion, readiness enforcement at recommendation approval/drafting, durable signal-refresh failure evidence, the complete failure matrix, and controlled hosted provider proof remain open. See `docs/pilot/FIRST_RESTAURANT_GAP_AUDIT.md` and `docs/pilot/FIRST_OPERATING_LOOP_EVIDENCE.md`.
+Count-time-anchored depletion is now implemented (MISE-001): projected on-hand, count freshness, and recommendation suppression derive from verified `inventory_events` count evidence instead of `inventory_items.last_updated`.
+
+This is **not yet a pilot-ready claim**. Provider-identity recipe mapping, readiness enforcement at recommendation approval/drafting, durable signal-refresh failure evidence, the complete failure matrix, and controlled hosted provider proof remain open. See `docs/pilot/FIRST_RESTAURANT_GAP_AUDIT.md` and `docs/pilot/FIRST_OPERATING_LOOP_EVIDENCE.md`.
 
 ## Verification
 

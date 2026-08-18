@@ -1,5 +1,9 @@
 import type { InventoryItem, PurchaseRecommendation } from "../../types/mise";
 import { canonicalInventoryUnit } from "./inventoryUnits";
+import {
+  buildInventoryCountEvidence,
+  type VerifiedCountCandidate
+} from "./inventoryCountAuthority";
 
 export type OrderAutomationDecision = "manual_review" | "automatic_draft" | "automatic_send";
 
@@ -50,6 +54,12 @@ export interface OrderAutomationInput {
   candidates: readonly PurchaseRecommendation[];
   inventoryItems: readonly InventoryItem[];
   recommendationHistory: readonly PurchaseRecommendation[];
+  /**
+   * Verified physical-count evidence from the inventory ledger. Automation stays
+   * blocked on `stale_inventory_count` when an item has no verified count, because
+   * `inventory_items.last_updated` also moves for policy and cost edits.
+   */
+  inventoryCountEvents?: readonly VerifiedCountCandidate[];
   policy?: OrderAutomationPolicy;
   delivery?: OrderAutomationDeliveryReadiness;
   now?: Date;
@@ -111,11 +121,15 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
   if (!policy.enabled) topLevelBlockers.add("automation_disabled");
   if (input.candidates.length === 0) topLevelBlockers.add("no_candidates");
 
-  const inventoryById = new Map(
-    input.inventoryItems
-      .filter((item) => item.restaurant_id === restaurantId)
-      .map((item) => [item.id, item] as const)
-  );
+  const scopedInventory = input.inventoryItems.filter((item) => item.restaurant_id === restaurantId);
+  const inventoryById = new Map(scopedInventory.map((item) => [item.id, item] as const));
+  const countEvidence = buildInventoryCountEvidence({
+    restaurantId,
+    items: scopedInventory,
+    countEvents: input.inventoryCountEvents ?? [],
+    generatedAt: Number.isFinite(now.getTime()) ? now.toISOString() : new Date().toISOString(),
+    maximumCountAgeHours: policy.maximumInventoryAgeHours
+  });
   const candidateItemIds = new Set<string>();
   const lines = input.candidates.map((candidate) => {
     const blockers = new Set<OrderAutomationBlocker>();
@@ -145,10 +159,7 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
         : null;
     if (unitCost === null) blockers.add("missing_unit_cost");
 
-    if (
-      item &&
-      !isFreshTimestamp(item.last_updated, now, policy.maximumInventoryAgeHours)
-    ) {
+    if (item && countEvidence.get(item.id)?.freshness !== "fresh") {
       blockers.add("stale_inventory_count");
     }
     if (!isFreshTimestamp(candidate.created_at, now, policy.maximumRecommendationAgeHours)) {

@@ -369,6 +369,16 @@ export interface InventoryPrediction {
   confidenceCopy: string;
   recommendationCopy: string;
   whyItMatters: string;
+  /** Whether a verified physical count anchors this projection. Never derived from `last_updated`. */
+  countEvidence: "verified_count" | "no_verified_count";
+  /** Authoritative instant of the newest verified physical count for this item. */
+  countedAt: string | null;
+  countAgeHours: number | null;
+  countFreshness: "fresh" | "stale" | "unverified";
+  /** Mapped POS demand a same-operating-day count already absorbed, so it was not subtracted again. */
+  unattributedTodayDepletion: number;
+  /** False whenever Mise cannot fully anchor this projection to verified count time. */
+  isTemporallyAuthoritative: boolean;
 }
 
 export interface InventoryOutlookItem {

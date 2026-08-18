@@ -1,4 +1,12 @@
 import { canonicalInventoryUnit, inventoryUnitsAreCompatible } from "./inventoryUnits.ts";
+import {
+  buildInventoryCountEvidence,
+  dayResolutionConsumptionIsAfterCount,
+  missingInventoryCountEvidence,
+  verifiedCountSupersedes,
+  type VerifiedCountCandidate
+} from "./inventoryCountAuthority.ts";
+import { toDateKeyInTimeZone } from "../../utils/format.ts";
 import type { InsightPresentationDescriptor } from "../../types/presentation.ts";
 
 export interface OperationalInventoryItem {
@@ -10,6 +18,10 @@ export interface OperationalInventoryItem {
   current_quantity: number;
   par_level: number;
   reorder_threshold: number;
+  /**
+   * Row mutation time. Not physical-count evidence: it moves for policy, cost, and
+   * supplier edits. Planning freshness comes from `inventoryCountEvents` instead.
+   */
   last_updated?: string;
 }
 
@@ -69,10 +81,27 @@ export interface OperationalPlanningSnapshot {
   sales: OperationalSale[];
   menuItemIngredients: OperationalRecipeMapping[];
   recommendationHistory: OperationalRecommendationHistory[];
+  /**
+   * Verified physical-count evidence from the append-only inventory ledger.
+   * Absent evidence keeps planning fail-closed: nothing is treated as freshly counted.
+   */
+  inventoryCountEvents?: readonly VerifiedCountCandidate[];
+  /** Restaurant timezone, used to place a count inside the correct operating day. */
+  timeZone?: string | null;
 }
 
 export function calculateOperationalSignals(snapshot: OperationalPlanningSnapshot) {
   const now = new Date().toISOString();
+  const timeZone = snapshot.timeZone;
+  const countEvidence = buildInventoryCountEvidence({
+    restaurantId: snapshot.restaurantId,
+    items: snapshot.inventoryItems.filter((item) => item.restaurant_id === snapshot.restaurantId),
+    countEvents: snapshot.inventoryCountEvents ?? [],
+    generatedAt: now,
+    resolveOperatingDate: timeZone
+      ? (iso) => toDateKeyInTimeZone(new Date(iso), timeZone)
+      : undefined
+  });
   const demand = historicalDailyDemand(snapshot.sales, snapshot.operatingDate);
   const todaySales = snapshot.sales.filter(
     (sale) => sale.restaurant_id === snapshot.restaurantId && sale.sale_date === snapshot.operatingDate
@@ -89,7 +118,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         mapping.inventory_item_id === item.id &&
         inventoryUnitsAreCompatible(item.unit, mapping.unit)
     );
-    const todayUsage = mappings.reduce((sum, mapping) => {
+    const mappedTodayUsage = mappings.reduce((sum, mapping) => {
       const sold = todaySales
         .filter((sale) => normalizeKey(sale.item_name) === normalizeKey(mapping.menu_item_name))
         .reduce((quantity, sale) => quantity + finiteNonNegative(sale.quantity_sold), 0);
@@ -98,17 +127,31 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const baselineUsage = mappings.reduce((sum, mapping) => {
       return sum + (demand.get(normalizeKey(mapping.menu_item_name)) ?? 0) * finiteNonNegative(mapping.quantity_used_per_sale);
     }, 0);
+    const itemCountEvidence =
+      countEvidence.get(item.id) ?? missingInventoryCountEvidence(snapshot.restaurantId, item.id);
+    // A verified count taken inside today's operating day already observed part of
+    // today's day-resolution POS sales, so those sales must not deplete it again.
+    const todayUsage =
+      itemCountEvidence.status !== "verified" ||
+      dayResolutionConsumptionIsAfterCount(
+        itemCountEvidence.countedOperatingDate,
+        snapshot.operatingDate
+      )
+        ? mappedTodayUsage
+        : 0;
     const projectedQuantity = Math.max(0, finiteNonNegative(item.current_quantity) - todayUsage);
     const threshold = finiteNonNegative(item.reorder_threshold);
     const isCritical = projectedQuantity <= 0;
     const isLow = !isCritical && projectedQuantity <= threshold;
     const suggested = Math.max(1, Math.ceil(finiteNonNegative(item.par_level) - projectedQuantity));
     const recentHandled = handled.get(item.id);
-    const changedAfterHandling = recentHandled && item.last_updated
-      ? Date.parse(item.last_updated) > Date.parse(recentHandled.created_at)
+    // Only a newer verified physical count releases a handled recommendation;
+    // policy, cost, supplier, and metadata edits never do.
+    const recountedAfterHandling = recentHandled
+      ? verifiedCountSupersedes(itemCountEvidence, recentHandled.created_at)
       : false;
 
-    if ((isCritical || isLow) && (!recentHandled || changedAfterHandling)) {
+    if ((isCritical || isLow) && (!recentHandled || recountedAfterHandling)) {
       const learnedQuantity = boundedLearnedQuantity(
         learned.get(`${item.id}\u001f${canonicalInventoryUnit(item.unit)}`),
         suggested,
@@ -249,7 +292,11 @@ export function buildRecommendationInserts(
   sales: OperationalSale[],
   menuItemIngredients: OperationalRecipeMapping[],
   recommendationHistory: OperationalRecommendationHistory[] = [],
-  operatingDate = new Date().toISOString().slice(0, 10)
+  operatingDate = new Date().toISOString().slice(0, 10),
+  countEvidence: {
+    inventoryCountEvents?: readonly VerifiedCountCandidate[];
+    timeZone?: string | null;
+  } = {}
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -257,7 +304,9 @@ export function buildRecommendationInserts(
     inventoryItems,
     sales,
     menuItemIngredients,
-    recommendationHistory
+    recommendationHistory,
+    inventoryCountEvents: countEvidence.inventoryCountEvents,
+    timeZone: countEvidence.timeZone
   }).recommendations;
 }
 
@@ -266,7 +315,11 @@ export function buildInsightsFromData(
   inventoryItems: OperationalInventoryItem[],
   sales: OperationalSale[],
   menuItemIngredients: OperationalRecipeMapping[],
-  operatingDate = new Date().toISOString().slice(0, 10)
+  operatingDate = new Date().toISOString().slice(0, 10),
+  countEvidence: {
+    inventoryCountEvents?: readonly VerifiedCountCandidate[];
+    timeZone?: string | null;
+  } = {}
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -274,7 +327,9 @@ export function buildInsightsFromData(
     inventoryItems,
     sales,
     menuItemIngredients,
-    recommendationHistory: []
+    recommendationHistory: [],
+    inventoryCountEvents: countEvidence.inventoryCountEvents,
+    timeZone: countEvidence.timeZone
   }).insights;
 }
 

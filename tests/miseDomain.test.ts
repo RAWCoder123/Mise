@@ -54,6 +54,11 @@ import {
 import { getPosAdapter } from "../services/integrations/posAdapters";
 import { buildSupplierDraftPresentation, parseSupplierOrderLines } from "../utils/orderPresentation";
 import { todayScreenTitle } from "../utils/screenTitles";
+import {
+  buildInventoryCountEvidence,
+  withPendingCountEvidence
+} from "../services/domain/inventoryCountAuthority";
+import type { InventoryItem } from "../types/mise";
 import { addDays, toDateKey, toDateKeyInTimeZone } from "../utils/format";
 
 function isoDaysAgo(days: number) {
@@ -63,6 +68,28 @@ function isoDaysAgo(days: number) {
 /** Operating date matching the demo restaurant's calendar, as demo callers pass it. */
 function demoOperatingDate() {
   return toDateKeyInTimeZone(new Date(), DEMO_RESTAURANT_TIME_ZONE);
+}
+
+/**
+ * Authoritative physical-count evidence for every demo item at one instant.
+ * Planning depends on this ledger evidence, never on `inventory_items.last_updated`.
+ */
+function countEvidenceAt(
+  items: readonly InventoryItem[],
+  countedAt: string,
+  restaurantId: string = DEMO_RESTAURANT_ID
+) {
+  const scoped = items.filter((item) => item.restaurant_id === restaurantId);
+  return buildInventoryCountEvidence({
+    restaurantId,
+    items: scoped,
+    countEvents: withPendingCountEvidence([], {
+      restaurantId,
+      inventoryItemIds: scoped.map((item) => item.id),
+      countedAt
+    }),
+    resolveOperatingDate: (iso) => toDateKeyInTimeZone(new Date(iso), DEMO_RESTAURANT_TIME_ZONE)
+  });
 }
 
 test("restaurant operating dates follow the restaurant timezone", () => {
@@ -338,7 +365,8 @@ test("purchase recommendations learn a bounded median from repeated approved qua
     state.menuItemIngredients,
     history,
     demoOperatingDate(),
-    demoDemandFallback
+    demoDemandFallback,
+    countEvidenceAt(state.inventoryItems, isoDaysAgo(1))
   );
   const pancakeRecommendation = inserts.find((insert) => insert.inventory_item_id === pancakeMix.id);
 
@@ -372,7 +400,8 @@ test("one anomalous approval does not override the calculated recommendation", (
     state.menuItemIngredients,
     history,
     demoOperatingDate(),
-    demoDemandFallback
+    demoDemandFallback,
+    countEvidenceAt(state.inventoryItems, isoDaysAgo(1))
   );
   const pancakeRecommendation = inserts.find((insert) => insert.inventory_item_id === pancakeMix.id);
   assert.equal(pancakeRecommendation?.recommended_quantity, 40);
@@ -404,7 +433,8 @@ test("stale approvals age out of recommendation learning", () => {
     state.menuItemIngredients,
     staleHistory,
     demoOperatingDate(),
-    demoDemandFallback
+    demoDemandFallback,
+    countEvidenceAt(state.inventoryItems, isoDaysAgo(1))
   ).find((entry) => entry.inventory_item_id === pancakeMix.id);
 
   assert.equal(recommendation?.recommended_quantity, 40);
@@ -415,7 +445,7 @@ test("recommendation learning never mixes incompatible purchasing units", () => 
   const state = createInitialDemoState("Toast");
   const pancakeMix = state.inventoryItems.find((item) => item.item_name === "Pancake mix");
   assert.ok(pancakeMix);
-  const incompatibleHistory = [1, 2, 3].map((daysAgo, index) => ({
+  const incompatibleHistory = [2, 3, 4].map((daysAgo, index) => ({
     id: `rec_case_${index}`,
     restaurant_id: DEMO_RESTAURANT_ID,
     inventory_item_id: pancakeMix.id,
@@ -436,7 +466,8 @@ test("recommendation learning never mixes incompatible purchasing units", () => 
     state.menuItemIngredients,
     incompatibleHistory,
     demoOperatingDate(),
-    demoDemandFallback
+    demoDemandFallback,
+    countEvidenceAt(state.inventoryItems, isoDaysAgo(1))
   ).find((entry) => entry.inventory_item_id === pancakeMix.id);
 
   assert.equal(recommendation?.recommended_quantity, 40);
@@ -462,7 +493,7 @@ test("repeated recent approvals move learned quantities as operator behavior cha
       supplier_order_id: null,
       created_at: isoDaysAgo(daysAgo)
     })),
-    ...[5, 4, 3, 2, 1].map((daysAgo, index) => ({
+    ...[6, 5, 4, 3, 2].map((daysAgo, index) => ({
       id: `rec_recent_${index}`,
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: pancakeMix.id,
@@ -484,18 +515,18 @@ test("repeated recent approvals move learned quantities as operator behavior cha
     state.menuItemIngredients,
     history,
     demoOperatingDate(),
-    demoDemandFallback
+    demoDemandFallback,
+    countEvidenceAt(state.inventoryItems, isoDaysAgo(1))
   ).find((entry) => entry.inventory_item_id === pancakeMix.id);
 
   assert.equal(recommendation?.recommended_quantity, 55);
   assert.match(recommendation?.reason ?? "", /stable median/i);
 });
 
-test("handled recommendations stay suppressed until a fresh inventory count", () => {
+test("handled recommendations stay suppressed until a newer verified physical count", () => {
   const state = createInitialDemoState("Toast");
   const chicken = state.inventoryItems.find((item) => item.item_name === "Chicken breast");
   assert.ok(chicken);
-  chicken.last_updated = "2026-06-20T09:00:00.000Z";
   const handledRecommendation = {
     id: "rec_recent_dismissed",
     restaurant_id: DEMO_RESTAURANT_ID,
@@ -508,8 +539,10 @@ test("handled recommendations stay suppressed until a fresh inventory count", ()
     urgency: "high" as const,
     status: "dismissed" as const,
     supplier_order_id: null,
-    created_at: "2026-06-20T09:30:00.000Z"
+    created_at: isoDaysAgo(3)
   };
+  const countBeforeHandling = countEvidenceAt(state.inventoryItems, isoDaysAgo(4));
+  const countAfterHandling = countEvidenceAt(state.inventoryItems, isoDaysAgo(1));
 
   const suppressed = buildRecommendationInserts(
     DEMO_RESTAURANT_ID,
@@ -518,12 +551,27 @@ test("handled recommendations stay suppressed until a fresh inventory count", ()
     state.menuItemIngredients,
     [handledRecommendation],
     demoOperatingDate(),
-    demoDemandFallback
+    demoDemandFallback,
+    countBeforeHandling
   );
-  assert.equal(shouldSuppressRecommendationForItem(DEMO_RESTAURANT_ID, chicken, [handledRecommendation]), true);
+  assert.equal(
+    shouldSuppressRecommendationForItem(DEMO_RESTAURANT_ID, chicken, [handledRecommendation], countBeforeHandling),
+    true
+  );
   assert.equal(suppressed.some((insert) => insert.inventory_item_id === chicken.id), false);
 
-  chicken.last_updated = "2026-06-20T10:00:00.000Z";
+  // A later policy, cost, or supplier edit bumps `last_updated` but is not count evidence.
+  chicken.last_updated = new Date().toISOString();
+  assert.equal(
+    shouldSuppressRecommendationForItem(DEMO_RESTAURANT_ID, chicken, [handledRecommendation], countBeforeHandling),
+    true
+  );
+  // With no verified count at all Mise fails closed and keeps the suppression.
+  assert.equal(
+    shouldSuppressRecommendationForItem(DEMO_RESTAURANT_ID, chicken, [handledRecommendation]),
+    true
+  );
+
   const regenerated = buildRecommendationInserts(
     DEMO_RESTAURANT_ID,
     state.inventoryItems,
@@ -531,9 +579,13 @@ test("handled recommendations stay suppressed until a fresh inventory count", ()
     state.menuItemIngredients,
     [handledRecommendation],
     demoOperatingDate(),
-    demoDemandFallback
+    demoDemandFallback,
+    countAfterHandling
   );
-  assert.equal(shouldSuppressRecommendationForItem(DEMO_RESTAURANT_ID, chicken, [handledRecommendation]), false);
+  assert.equal(
+    shouldSuppressRecommendationForItem(DEMO_RESTAURANT_ID, chicken, [handledRecommendation], countAfterHandling),
+    false
+  );
   assert.equal(regenerated.some((insert) => insert.inventory_item_id === chicken.id), true);
 });
 

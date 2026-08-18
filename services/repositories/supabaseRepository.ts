@@ -792,14 +792,13 @@ export function createSupabaseRepository(): MiseRepository {
       if (inventoryResult.error) throw inventoryResult.error;
       if (mappingResult.error) throw mappingResult.error;
       if (restaurantResult.error) throw restaurantResult.error;
+      const timeZone = (restaurantResult.data as Pick<Restaurant, "timezone">).timezone;
       return {
         inventoryItems: ((inventoryResult.data ?? []) as InventoryItem[]).map(normalizeInventoryItem),
         sales,
         menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
-        operatingDate: toDateKeyInTimeZone(
-          new Date(),
-          (restaurantResult.data as Pick<Restaurant, "timezone">).timezone
-        )
+        operatingDate: toDateKeyInTimeZone(new Date(), timeZone),
+        timeZone
       };
     },
 

@@ -1,4 +1,5 @@
 import { calculateOperationalSignals, type OperationalPlanningSnapshot } from "../../../services/domain/operationalSignals.ts";
+import { withPendingCountEvidence } from "../../../services/domain/inventoryCountAuthority.ts";
 import { inventoryUnitsAreCompatible } from "../../../services/domain/inventoryUnits.ts";
 import {
   firewallBlockedResponse,
@@ -305,6 +306,7 @@ function applyRequestedMutation(
       );
       quantityByItemId.set(itemId, counted);
     }
+    const countedAt = new Date().toISOString();
     return {
       ...snapshot,
       inventoryItems: snapshot.inventoryItems.map((item) =>
@@ -312,10 +314,18 @@ function applyRequestedMutation(
           ? {
               ...item,
               current_quantity: quantityByItemId.get(item.id) as number,
-              last_updated: new Date().toISOString()
+              last_updated: countedAt
             }
           : item
-      )
+      ),
+      // The count rows this approval is about to append are not on the ledger yet.
+      // Anchor the recomputed signals to the count being approved so the freshly
+      // counted quantity is not depleted again by sales the counter already observed.
+      inventoryCountEvents: withPendingCountEvidence(snapshot.inventoryCountEvents ?? [], {
+        restaurantId: snapshot.restaurantId,
+        inventoryItemIds: [...quantityByItemId.keys()],
+        countedAt
+      })
     };
   }
   if (action === "update_inventory") {

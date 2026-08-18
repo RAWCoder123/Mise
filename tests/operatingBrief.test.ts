@@ -75,6 +75,12 @@ function prediction(overrides: Partial<InventoryPrediction> = {}): InventoryPred
     confidenceCopy: "Based on 28 service days",
     recommendationCopy: "Approve reorder before cutoff",
     whyItMatters: "Lunch usage was 24% above forecast.",
+    countEvidence: "verified_count",
+    countedAt: "2026-08-02T11:00:00.000Z",
+    countAgeHours: 4,
+    countFreshness: "fresh",
+    unattributedTodayDepletion: 0,
+    isTemporallyAuthoritative: true,
     ...overrides
   };
 }
@@ -215,4 +221,103 @@ test("healthy restaurant with no approvals is on track", () => {
 
   assert.equal(brief.restaurantStatus.status, "on_track");
   assert.equal(brief.needsApproval.length, 0);
+});
+
+test("brief data freshness comes from verified counts, not from row update time", () => {
+  const generatedAt = "2026-08-02T15:00:00.000Z";
+  const sale = {
+    id: "sale_fresh",
+    restaurant_id: restaurantId,
+    sale_date: "2026-08-02",
+    item_name: "Burger",
+    category: "Entree",
+    quantity_sold: 10,
+    gross_sales: 120,
+    net_sales: 110,
+    source_pos: "Square",
+    created_at: "2026-08-02T14:00:00.000Z"
+  };
+  // `last_updated` is minutes old because of a par/cost edit; there is no count evidence.
+  const editedItem = item({ last_updated: "2026-08-02T14:55:00.000Z", par_level: 90 });
+
+  const withoutCount = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt,
+    sales: [sale],
+    inventoryItems: [editedItem],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: editedItem,
+        prediction: prediction({
+          countEvidence: "no_verified_count",
+          countedAt: null,
+          countAgeHours: null,
+          countFreshness: "unverified",
+          isTemporallyAuthoritative: false
+        })
+      }
+    ]
+  });
+  assert.equal(withoutCount.restaurantStatus.dataFreshness.state, "incomplete");
+  assert.ok(
+    withoutCount.restaurantStatus.dataFreshness.missingData.includes("verified inventory counts")
+  );
+
+  const staleCount = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt,
+    sales: [{ ...sale, created_at: "2026-07-25T14:00:00.000Z" }],
+    inventoryItems: [editedItem],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: editedItem,
+        prediction: prediction({
+          countEvidence: "verified_count",
+          countedAt: "2026-07-25T09:00:00.000Z",
+          countAgeHours: 198,
+          countFreshness: "stale",
+          isTemporallyAuthoritative: true
+        })
+      }
+    ]
+  });
+  assert.equal(staleCount.restaurantStatus.dataFreshness.state, "stale");
+  assert.equal(staleCount.restaurantStatus.dataFreshness.asOf, "2026-07-25T14:00:00.000Z");
+});
+
+test("recommendation confidence credits verified count age only", () => {
+  const generatedAt = "2026-08-02T15:00:00.000Z";
+  const briefFor = (predictionOverrides: Parameters<typeof prediction>[0]) =>
+    buildOperatingBrief({
+      restaurant: restaurant(),
+      operatingDate: "2026-08-02",
+      generatedAt,
+      sales: [],
+      inventoryItems: [item()],
+      recommendations: [recommendation()],
+      orders: [],
+      insights: [],
+      inventoryOutlooks: [{ item: item(), prediction: prediction(predictionOverrides) }]
+    });
+
+  const fresh = briefFor({ countAgeHours: 6, countFreshness: "fresh" });
+  const unverified = briefFor({
+    countEvidence: "no_verified_count",
+    countedAt: null,
+    countAgeHours: null,
+    countFreshness: "unverified",
+    isTemporallyAuthoritative: false
+  });
+
+  assert.match(fresh.needsApproval[0]?.confidenceRationale ?? "", /within 24 hours/i);
+  assert.match(unverified.needsApproval[0]?.confidenceRationale ?? "", /older or unknown inventory count/i);
+  assert.ok((fresh.needsApproval[0]?.confidence ?? 0) > (unverified.needsApproval[0]?.confidence ?? 0));
 });

@@ -5,6 +5,7 @@ import {
   assessOrderAutomation,
   type OrderAutomationPolicy
 } from "../services/domain/orderAutomation";
+import type { VerifiedCountCandidate } from "../services/domain/inventoryCountAuthority";
 import type { InventoryItem, PurchaseRecommendation } from "../types/mise";
 
 const restaurantId = "rest_automation";
@@ -65,6 +66,22 @@ function recommendation(
   };
 }
 
+/**
+ * Ledger `count` evidence. Automation freshness must come from this, never from
+ * `inventory_items.last_updated`, which also moves for policy and cost edits.
+ */
+function verifiedCounts(
+  entries: readonly (readonly [string, string])[]
+): VerifiedCountCandidate[] {
+  return entries.map(([inventoryItemId, effectiveAt], index) => ({
+    restaurantId,
+    inventoryItemId,
+    effectiveAt,
+    eventType: "count",
+    sequence: index + 1
+  }));
+}
+
 function history(itemId: string, quantities: readonly number[]) {
   return quantities.map((quantity, index) =>
     recommendation(`history_${itemId}_${index}`, itemId, quantity, {
@@ -81,6 +98,7 @@ test("stable, fresh, bounded supplier work becomes eligible only for an automati
     candidates: [recommendation("rec_tomatoes", "tomatoes", 20)],
     inventoryItems: [inventory("tomatoes")],
     recommendationHistory: history("tomatoes", [18, 20, 20, 22]),
+    inventoryCountEvents: verifiedCounts([["tomatoes", "2026-07-26T12:00:00.000Z"]]),
     policy,
     delivery: {
       emailConnected: true,
@@ -104,6 +122,7 @@ test("automatic send requires explicit policy plus verified delivery readiness",
     candidates: [recommendation("rec_onions", "onions", 10)],
     inventoryItems: [inventory("onions", { estimated_unit_cost: 2.5 })],
     recommendationHistory: history("onions", [9, 10, 10]),
+    inventoryCountEvents: verifiedCounts([["onions", "2026-07-26T12:00:00.000Z"]]),
     policy: { ...policy, allowAutomaticSend: true },
     now
   };
@@ -136,13 +155,17 @@ test("stale counts, weak history, quantity drift, and missing prices force manua
       recommendation("rec_garlic", "garlic", 8)
     ],
     inventoryItems: [
-      inventory("herbs", { last_updated: "2026-07-24T12:00:00.000Z" }),
+      inventory("herbs"),
       inventory("garlic", { estimated_unit_cost: 0 })
     ],
     recommendationHistory: [
       ...history("herbs", [10, 10, 10]),
       ...history("garlic", [8])
     ],
+    inventoryCountEvents: verifiedCounts([
+      ["herbs", "2026-07-24T12:00:00.000Z"],
+      ["garlic", "2026-07-26T12:00:00.000Z"]
+    ]),
     policy,
     now
   });
@@ -199,4 +222,63 @@ test("automation is off by default and never performs an ordering side effect", 
 
   assert.equal(assessment.decision, "manual_review");
   assert.ok(assessment.blockers.includes("automation_disabled"));
+});
+
+test("automation blocks when no verified count evidence exists, whatever last_updated says", () => {
+  const base = {
+    restaurantId,
+    supplierName,
+    candidates: [recommendation("rec_kale", "kale", 12)],
+    recommendationHistory: history("kale", [11, 12, 12]),
+    policy,
+    delivery: {
+      emailConnected: true,
+      supplierRecipientConfigured: true
+    },
+    now
+  };
+
+  // A freshly bumped `last_updated` is a policy/cost/supplier edit, not count evidence.
+  const withoutEvidence = assessOrderAutomation({
+    ...base,
+    inventoryItems: [inventory("kale", { last_updated: now.toISOString() })]
+  });
+  assert.equal(withoutEvidence.decision, "manual_review");
+  assert.ok(withoutEvidence.blockers.includes("stale_inventory_count"));
+
+  const withEvidence = assessOrderAutomation({
+    ...base,
+    inventoryItems: [inventory("kale")],
+    inventoryCountEvents: verifiedCounts([["kale", "2026-07-26T12:00:00.000Z"]])
+  });
+  assert.equal(withEvidence.decision, "automatic_draft");
+  assert.deepEqual(withEvidence.blockers, []);
+});
+
+test("another restaurant's count evidence cannot make this restaurant's stock look fresh", () => {
+  const assessment = assessOrderAutomation({
+    restaurantId,
+    supplierName,
+    candidates: [recommendation("rec_beets", "beets", 12)],
+    inventoryItems: [inventory("beets")],
+    recommendationHistory: history("beets", [11, 12, 12]),
+    inventoryCountEvents: [
+      {
+        restaurantId: "rest_other_tenant",
+        inventoryItemId: "beets",
+        effectiveAt: "2026-07-26T12:00:00.000Z",
+        eventType: "count",
+        sequence: 1
+      }
+    ],
+    policy,
+    delivery: {
+      emailConnected: true,
+      supplierRecipientConfigured: true
+    },
+    now
+  });
+
+  assert.equal(assessment.decision, "manual_review");
+  assert.ok(assessment.blockers.includes("stale_inventory_count"));
 });

@@ -19,25 +19,72 @@ import {
   requireRecipeBaselineQuantity
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
+import {
+  withPendingCountEvidence,
+  type VerifiedCountCandidate
+} from "../domain/inventoryCountAuthority";
 import { demandFallbackForRestaurant } from "../demoData";
+import {
+  fetchVerifiedInventoryCountEvents,
+  inventoryCountEvidenceFor
+} from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
+
+/**
+ * Planning data plus the authoritative physical-count evidence that anchors it.
+ * Every planning read goes through here so no path can fall back to
+ * `inventory_items.last_updated` as proof that a count happened.
+ */
+async function fetchAnchoredPlanningData(restaurantId: string) {
+  const [data, countEvents] = await Promise.all([
+    repository.fetchPlanningData(restaurantId),
+    fetchVerifiedInventoryCountEvents(restaurantId)
+  ]);
+  return {
+    ...data,
+    countEvents,
+    countEvidence: inventoryCountEvidenceFor({
+      restaurantId,
+      inventoryItems: data.inventoryItems,
+      countEvents,
+      timeZone: data.timeZone
+    })
+  };
+}
+
+/** Count evidence in the shape the operational-signals snapshot accepts. */
+function signalCountEvidence(data: {
+  countEvents: readonly VerifiedCountCandidate[];
+  timeZone: string;
+}) {
+  return { inventoryCountEvents: data.countEvents, timeZone: data.timeZone };
+}
 
 export async function fetchInventoryItems(restaurantId: string) {
   return repository.fetchInventoryItems(restaurantId);
 }
 
+/** Outlooks plus the count evidence that anchored them, for callers that need both. */
+async function fetchAnchoredInventoryOutlooks(restaurantId: string) {
+  const data = await fetchAnchoredPlanningData(restaurantId);
+  return {
+    countEvidence: data.countEvidence,
+    outlooks: buildInventoryOutlooks(
+      restaurantId,
+      data.inventoryItems,
+      data.sales,
+      data.menuItemIngredients,
+      data.operatingDate,
+      demandFallbackForRestaurant(restaurantId),
+      data.countEvidence
+    )
+  };
+}
+
 export async function fetchInventoryOutlookItems(restaurantId: string) {
-  const data = await repository.fetchPlanningData(restaurantId);
-  return buildInventoryOutlooks(
-    restaurantId,
-    data.inventoryItems,
-    data.sales,
-    data.menuItemIngredients,
-    data.operatingDate,
-    demandFallbackForRestaurant(restaurantId)
-  );
+  return (await fetchAnchoredInventoryOutlooks(restaurantId)).outlooks;
 }
 
 export function summarizeInventoryOutlooks(
@@ -72,7 +119,7 @@ export async function updateRecipeBaselineIngredient(
 ) {
   const normalizedQuantity = requireRecipeBaselineQuantity(quantityUsedPerSale);
   const [data, recommendationHistory] = await Promise.all([
-    repository.fetchPlanningData(restaurantId),
+    fetchAnchoredPlanningData(restaurantId),
     repository.fetchRecommendationHistory(restaurantId)
   ]);
   const existing = data.menuItemIngredients.find((mapping) => mapping.id === mappingId);
@@ -86,14 +133,16 @@ export async function updateRecipeBaselineIngredient(
     data.sales,
     planningMappings,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    signalCountEvidence(data)
   );
   const insights = buildInsightsFromData(
     restaurantId,
     data.inventoryItems,
     data.sales,
     planningMappings,
-    data.operatingDate
+    data.operatingDate,
+    signalCountEvidence(data)
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -127,7 +176,7 @@ export async function addRecipeBaselineIngredient(
   if (!unit) throw new Error("Inventory unit is required.");
 
   const [data, recommendationHistory] = await Promise.all([
-    repository.fetchPlanningData(restaurantId),
+    fetchAnchoredPlanningData(restaurantId),
     repository.fetchRecommendationHistory(restaurantId)
   ]);
   const inventoryItem = data.inventoryItems.find((item) => item.id === inventoryItemId);
@@ -161,14 +210,16 @@ export async function addRecipeBaselineIngredient(
     data.sales,
     planningMappings,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    signalCountEvidence(data)
   );
   const insights = buildInsightsFromData(
     restaurantId,
     data.inventoryItems,
     data.sales,
     planningMappings,
-    data.operatingDate
+    data.operatingDate,
+    signalCountEvidence(data)
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -187,9 +238,14 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
   const existing = await repository.findPendingRecommendation(restaurantId, itemId);
   if (existing) return existing;
 
-  const { item, prediction } = await fetchInventoryItemOutlook(restaurantId, itemId);
-  const history = await repository.fetchRecommendationHistory(restaurantId);
-  if (shouldSuppressRecommendationForItem(restaurantId, item, history)) {
+  const [anchored, history] = await Promise.all([
+    fetchAnchoredInventoryOutlooks(restaurantId),
+    repository.fetchRecommendationHistory(restaurantId)
+  ]);
+  const outlook = anchored.outlooks.find((entry) => entry.item.id === itemId);
+  if (!outlook) throw new Error("Inventory item not found");
+  const { item, prediction } = outlook;
+  if (shouldSuppressRecommendationForItem(restaurantId, item, history, anchored.countEvidence)) {
     throw new Error("Update the inventory count first. This item was already handled.");
   }
   return repository.createPurchaseRecommendation({
@@ -209,7 +265,7 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
 export async function updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch) {
   const normalizedPatch = requireInventoryItemPatch(patch);
   const [data, recommendationHistory] = await Promise.all([
-    repository.fetchPlanningData(restaurantId),
+    fetchAnchoredPlanningData(restaurantId),
     repository.fetchRecommendationHistory(restaurantId)
   ]);
   const existing = data.inventoryItems.find((item) => item.id === itemId);
@@ -226,14 +282,16 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     data.sales,
     data.menuItemIngredients,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    signalCountEvidence(data)
   );
   const insights = buildInsightsFromData(
     restaurantId,
     planningInventory,
     data.sales,
     data.menuItemIngredients,
-    data.operatingDate
+    data.operatingDate,
+    signalCountEvidence(data)
   );
   return repository.updateInventoryItemAndSignals(
     restaurantId,
@@ -274,7 +332,7 @@ export async function cancelInventoryCountSession(restaurantId: string, sessionI
 export async function approveInventoryCountSession(restaurantId: string, sessionId: string) {
   const [detail, data, recommendationHistory] = await Promise.all([
     repository.fetchInventoryCountSession(restaurantId, sessionId),
-    repository.fetchPlanningData(restaurantId),
+    fetchAnchoredPlanningData(restaurantId),
     repository.fetchRecommendationHistory(restaurantId)
   ]);
   if (detail.session.status !== "submitted") {
@@ -288,25 +346,38 @@ export async function approveInventoryCountSession(restaurantId: string, session
     inventoryItems: data.inventoryItems,
     lines: detail.lines
   });
+  const countedAt = new Date().toISOString();
   const planningInventory = applyCountApprovalsToInventory(
     data.inventoryItems,
     approvals,
-    new Date().toISOString()
+    countedAt
   );
+  // The count events for this approval are not on the ledger yet, so the recomputed
+  // signals must be anchored to the count being approved rather than the previous one.
+  const pendingCountEvidence = signalCountEvidence({
+    timeZone: data.timeZone,
+    countEvents: withPendingCountEvidence(data.countEvents, {
+      restaurantId,
+      inventoryItemIds: approvals.map((approval) => approval.inventoryItemId),
+      countedAt
+    })
+  });
   const recommendations = buildRecommendationInserts(
     restaurantId,
     planningInventory,
     data.sales,
     data.menuItemIngredients,
     recommendationHistory,
-    data.operatingDate
+    data.operatingDate,
+    pendingCountEvidence
   );
   const insights = buildInsightsFromData(
     restaurantId,
     planningInventory,
     data.sales,
     data.menuItemIngredients,
-    data.operatingDate
+    data.operatingDate,
+    pendingCountEvidence
   );
   return repository.approveInventoryCountSession(
     restaurantId,

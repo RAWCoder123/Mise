@@ -303,7 +303,13 @@ test("buildDailyOpsReport estimates dollars at risk from outlooks", () => {
         depletionCopy: "",
         confidenceCopy: "",
         recommendationCopy: "",
-        whyItMatters: ""
+        whyItMatters: "",
+        countEvidence: "verified_count",
+        countedAt: "2026-08-01T08:00:00.000Z",
+        countAgeHours: 6,
+        countFreshness: "fresh",
+        unattributedTodayDepletion: 0,
+        isTemporallyAuthoritative: true
       }
     }
   ];

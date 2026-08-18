@@ -13,9 +13,41 @@ import {
   type DemoState,
   type StoredDemoState
 } from "../services/demoData";
+import type { InventoryEvent } from "../services/domain/inventoryLedger";
 import type { PurchaseRecommendation, SupplierOrder } from "../types/mise";
 
 const FIXED_NOW = new Date("2026-07-15T16:00:00.000Z");
+
+/** Appends the only evidence that proves a physical count happened. */
+function recordDemoCount(
+  state: DemoState,
+  inventoryItemId: string,
+  effectiveAt: string
+): InventoryEvent {
+  const sequence =
+    (state.inventoryEvents ?? []).reduce((maximum, event) => Math.max(maximum, event.sequence), 0) + 1;
+  const event: InventoryEvent = {
+    id: `demo_count_${sequence}`,
+    sequence,
+    restaurantId: DEMO_RESTAURANT_ID,
+    inventoryItemId,
+    eventType: "count",
+    quantity: 1000,
+    canonicalUnit: "g",
+    effectiveAt,
+    recordedAt: effectiveAt,
+    actorUserId: null,
+    source: "approve_count_session",
+    sourceReference: null,
+    reasonCode: null,
+    clientEventId: `demo_count_${sequence}`,
+    idempotencyKey: `demo_count_${sequence}`,
+    supersedesEventId: null,
+    metadata: {}
+  };
+  state.inventoryEvents = [...(state.inventoryEvents ?? []), event];
+  return event;
+}
 
 function emptyWorkflowState(): DemoState {
   const state = createInitialDemoState("Toast", undefined, FIXED_NOW);
@@ -95,7 +127,7 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
   assert.ok(item);
 
   pending.created_at = "2026-07-15T09:00:00.000Z";
-  item.last_updated = "2026-07-16T09:00:00.000Z";
+  const firstCount = recordDemoCount(state, item.id, "2026-07-16T09:00:00.000Z");
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
 
   const refreshed = state.purchaseRecommendations.find(
@@ -103,7 +135,7 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
   );
   assert.ok(refreshed);
   assert.equal(refreshed.status, "pending");
-  assert.ok(refreshed.created_at.localeCompare(item.last_updated) >= 0);
+  assert.ok(refreshed.created_at.localeCompare(firstCount.effectiveAt) >= 0);
 
   approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, refreshed.id);
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
@@ -116,7 +148,19 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
     false
   );
 
+  // A non-count row mutation must not release the suppression.
   item.last_updated = new Date(Date.now() + 60_000).toISOString();
+  rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
+  assert.equal(
+    state.purchaseRecommendations.some(
+      (recommendation) =>
+        recommendation.inventory_item_id === item.id &&
+        recommendation.status === "pending"
+    ),
+    false
+  );
+
+  recordDemoCount(state, item.id, new Date(Date.now() + 60_000).toISOString());
   rebuildPurchaseRecommendations(state, DEMO_RESTAURANT_ID);
   const nextPending = state.purchaseRecommendations.find(
     (recommendation) =>

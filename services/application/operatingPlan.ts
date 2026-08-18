@@ -11,6 +11,10 @@ import { deriveOperationalTodayTasks } from "../domain/todayTasks";
 import { visibleRestaurantTasksForToday } from "../domain/restaurantTasks";
 import { demandFallbackForRestaurant } from "../demoData";
 import { toDateKeyInTimeZone } from "../../utils/format";
+import {
+  fetchVerifiedInventoryCountEvents,
+  inventoryCountEvidenceFor
+} from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -32,14 +36,23 @@ export async function fetchDailyOperatingPlan(
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const [data, ordersResult, emailConnectionResult, posIntegrationsResult, activityResult, centralTasksResult] =
+  const [
+    data,
+    ordersResult,
+    emailConnectionResult,
+    posIntegrationsResult,
+    activityResult,
+    centralTasksResult,
+    countEvents
+  ] =
     await Promise.all([
       repository.fetchRestaurantData(normalizedRestaurantId),
       repository.fetchSupplierOrders(normalizedRestaurantId),
       repository.fetchEmailConnectionState(normalizedRestaurantId),
       repository.fetchPosIntegrations(normalizedRestaurantId),
       repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }).catch(() => []),
-      repository.listRestaurantTasks(normalizedRestaurantId)
+      repository.listRestaurantTasks(normalizedRestaurantId),
+      fetchVerifiedInventoryCountEvents(normalizedRestaurantId)
     ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
@@ -79,7 +92,13 @@ export async function fetchDailyOperatingPlan(
     sales,
     mappings,
     operatingDate,
-    demandFallback
+    demandFallback,
+    inventoryCountEvidenceFor({
+      restaurantId: normalizedRestaurantId,
+      inventoryItems,
+      countEvents,
+      timeZone: data.restaurant.timezone
+    })
   );
   const setupReadiness = buildSetupReadinessSummary({
     restaurant: data.restaurant,

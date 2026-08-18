@@ -489,7 +489,13 @@ function outlook(
       depletionCopy: "Likely to run out during dinner",
       confidenceCopy: "Based on 14 service days",
       recommendationCopy: "Approve reorder before cutoff",
-      whyItMatters: "Usage is above forecast."
+      whyItMatters: "Usage is above forecast.",
+      countEvidence: "verified_count",
+      countedAt: "2026-08-02T11:00:00.000Z",
+      countAgeHours: 4,
+      countFreshness: "fresh",
+      unattributedTodayDepletion: 0,
+      isTemporallyAuthoritative: true
     }
   };
 }
