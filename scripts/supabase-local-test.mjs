@@ -65,6 +65,7 @@ try {
 
   try {
     cpSync(join(projectRoot, "supabase", "tests"), stagedTests, { recursive: true });
+    runNode("scripts/inventory-projection-concurrency.mjs");
     // Container restarts can briefly complete before Postgres accepts a new
     // connection on macOS. Retry only the read-only test runner, never reset.
     runSupabase(["test", "db", stagedTests], { retries: 2 });
