@@ -11,7 +11,7 @@ import {
 } from "./operationalFindingDecisions";
 import {
   buildInventoryCountEvidence,
-  type VerifiedCountCandidate
+  type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
@@ -102,10 +102,13 @@ export interface DailyOperationalBriefInput {
   insights: readonly Insight[];
   decisions?: readonly OperationalFindingDecision[];
   /**
-   * Verified physical-count evidence from the inventory ledger. Without it an item's
-   * inventory evidence is treated as incomplete rather than dated from `last_updated`.
+   * Ledger rows from the inventory ledger: count rows date the evidence, non-count
+   * rows prove the materialized quantity followed the count boundary. Without them an
+   * item's inventory evidence is incomplete rather than dated from `last_updated`.
    */
-  inventoryCountEvents?: readonly VerifiedCountCandidate[];
+  inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
+  /** False when the caller's bounded ledger read was truncated. */
+  ledgerComplete?: boolean;
 }
 
 function normalizedKey(value: string) {
@@ -177,7 +180,7 @@ function assertTenantScope(input: DailyOperationalBriefInput) {
     input.recommendations,
     input.insights,
     input.decisions ?? [],
-    input.inventoryCountEvents ?? []
+    input.inventoryLedgerEvents ?? []
   ];
   if (collections.some((collection) => collection.some((row) => {
     const restaurantId = "restaurant_id" in row ? row.restaurant_id : row.restaurantId;
@@ -214,7 +217,8 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
   const countEvidence = buildInventoryCountEvidence({
     restaurantId,
     items: input.inventoryItems,
-    countEvents: input.inventoryCountEvents ?? [],
+    ledgerEvents: input.inventoryLedgerEvents ?? [],
+    ledgerComplete: input.ledgerComplete,
     generatedAt
   });
   const mappedInventoryIds = new Set(input.mappings.map((mapping) => mapping.inventory_item_id));

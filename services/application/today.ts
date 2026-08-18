@@ -24,7 +24,7 @@ import {
   isDemoDatasetRestaurantName
 } from "../demoData";
 import {
-  fetchVerifiedInventoryCountEvents,
+  fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
@@ -61,7 +61,7 @@ export async function fetchTodaySummary(
     posIntegrationsResult,
     restaurantTasksResult,
     openCountSession,
-    countEvents
+    ledger
   ] =
     await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
@@ -70,7 +70,7 @@ export async function fetchTodaySummary(
     repository.fetchPosIntegrations(normalizedRestaurantId),
     repository.listRestaurantTasks(normalizedRestaurantId),
     fetchOpenInventoryCountSession(normalizedRestaurantId).catch(() => null),
-    fetchVerifiedInventoryCountEvents(normalizedRestaurantId)
+    fetchInventoryLedgerEvidence(normalizedRestaurantId)
   ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
@@ -98,7 +98,8 @@ export async function fetchTodaySummary(
   const countEvidence = inventoryCountEvidenceFor({
     restaurantId: normalizedRestaurantId,
     inventoryItems,
-    countEvents,
+    ledgerEvents: ledger.events,
+    ledgerComplete: ledger.complete,
     timeZone: data.restaurant.timezone
   });
   const outlooks = buildInventoryOutlooks(
@@ -159,10 +160,10 @@ export async function fetchTodaySummary(
 }
 
 export async function fetchDemoReadinessSummary(restaurantId: string) {
-  const [data, orders, countEvents] = await Promise.all([
+  const [data, orders, ledger] = await Promise.all([
     repository.fetchRestaurantData(restaurantId),
     repository.fetchSupplierOrders(restaurantId),
-    fetchVerifiedInventoryCountEvents(restaurantId)
+    fetchInventoryLedgerEvidence(restaurantId)
   ]);
   return buildDemoReadinessSummary(
     data.restaurant,
@@ -180,7 +181,8 @@ export async function fetchDemoReadinessSummary(restaurantId: string) {
       countEvidence: inventoryCountEvidenceFor({
         restaurantId,
         inventoryItems: data.inventoryItems,
-        countEvents,
+        ledgerEvents: ledger.events,
+        ledgerComplete: ledger.complete,
         timeZone: data.restaurant.timezone
       })
     }

@@ -83,7 +83,7 @@ function countEvidenceAt(
   return buildInventoryCountEvidence({
     restaurantId,
     items: scoped,
-    countEvents: withPendingCountEvidence([], {
+    ledgerEvents: withPendingCountEvidence([], {
       restaurantId,
       inventoryItemIds: scoped.map((item) => item.id),
       countedAt

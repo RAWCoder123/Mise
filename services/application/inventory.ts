@@ -21,11 +21,11 @@ import {
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
 import {
   withPendingCountEvidence,
-  type VerifiedCountCandidate
+  type LedgerProjectionEvent
 } from "../domain/inventoryCountAuthority";
 import { demandFallbackForRestaurant } from "../demoData";
 import {
-  fetchVerifiedInventoryCountEvents,
+  fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
@@ -38,17 +38,19 @@ const repository = getMiseRepository();
  * `inventory_items.last_updated` as proof that a count happened.
  */
 async function fetchAnchoredPlanningData(restaurantId: string) {
-  const [data, countEvents] = await Promise.all([
+  const [data, ledger] = await Promise.all([
     repository.fetchPlanningData(restaurantId),
-    fetchVerifiedInventoryCountEvents(restaurantId)
+    fetchInventoryLedgerEvidence(restaurantId)
   ]);
   return {
     ...data,
-    countEvents,
+    ledgerEvents: ledger.events,
+    ledgerComplete: ledger.complete,
     countEvidence: inventoryCountEvidenceFor({
       restaurantId,
       inventoryItems: data.inventoryItems,
-      countEvents,
+      ledgerEvents: ledger.events,
+      ledgerComplete: ledger.complete,
       timeZone: data.timeZone
     })
   };
@@ -56,10 +58,15 @@ async function fetchAnchoredPlanningData(restaurantId: string) {
 
 /** Count evidence in the shape the operational-signals snapshot accepts. */
 function signalCountEvidence(data: {
-  countEvents: readonly VerifiedCountCandidate[];
+  ledgerEvents: readonly LedgerProjectionEvent[];
+  ledgerComplete: boolean;
   timeZone: string;
 }) {
-  return { inventoryCountEvents: data.countEvents, timeZone: data.timeZone };
+  return {
+    inventoryLedgerEvents: data.ledgerEvents,
+    ledgerComplete: data.ledgerComplete,
+    timeZone: data.timeZone
+  };
 }
 
 export async function fetchInventoryItems(restaurantId: string) {
@@ -361,7 +368,8 @@ export async function approveInventoryCountSession(restaurantId: string, session
   // signals must be anchored to the count being approved rather than the previous one.
   const pendingCountEvidence = signalCountEvidence({
     timeZone: data.timeZone,
-    countEvents: withPendingCountEvidence(data.countEvents, {
+    ledgerComplete: data.ledgerComplete,
+    ledgerEvents: withPendingCountEvidence(data.ledgerEvents, {
       restaurantId,
       inventoryItemIds: approvals.map((approval) => approval.inventoryItemId),
       countedAt

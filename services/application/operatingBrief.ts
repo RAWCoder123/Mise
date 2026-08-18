@@ -4,7 +4,7 @@ import { buildDailyOperationalBrief } from "../domain/operationalFindings";
 import { demandFallbackForRestaurant, isDemoDatasetRestaurantName } from "../demoData";
 import { toDateKeyInTimeZone } from "../../utils/format";
 import {
-  fetchVerifiedInventoryCountEvents,
+  fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
@@ -20,13 +20,13 @@ export async function fetchOperatingBrief(
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const [data, orders, activityEvents, miseActions, findingDecisions, countEvents] = await Promise.all([
+  const [data, orders, activityEvents, miseActions, findingDecisions, ledger] = await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
     repository.fetchSupplierOrders(normalizedRestaurantId),
     repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }).catch(() => []),
     repository.listMiseActions(normalizedRestaurantId, { status: "awaiting_decision", limit: 40 }).catch(() => []),
     repository.fetchOperationalFindingDecisions(normalizedRestaurantId).catch(() => []),
-    fetchVerifiedInventoryCountEvents(normalizedRestaurantId)
+    fetchInventoryLedgerEvidence(normalizedRestaurantId)
   ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
@@ -38,7 +38,8 @@ export async function fetchOperatingBrief(
   const countEvidence = inventoryCountEvidenceFor({
     restaurantId: normalizedRestaurantId,
     inventoryItems: data.inventoryItems,
-    countEvents,
+    ledgerEvents: ledger.events,
+    ledgerComplete: ledger.complete,
     timeZone: data.restaurant.timezone
   });
   const inventoryOutlooks = buildInventoryOutlooks(
@@ -59,7 +60,8 @@ export async function fetchOperatingBrief(
     recommendations: data.purchaseRecommendations,
     insights: data.insights,
     decisions: findingDecisions,
-    inventoryCountEvents: countEvents
+    inventoryLedgerEvents: ledger.events,
+    ledgerComplete: ledger.complete
   }).findings;
 
   return buildOperatingBrief({

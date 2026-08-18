@@ -86,19 +86,22 @@ begin
     -- authoritative baseline and whether the materialized projection is trustworthy.
     -- Count sessions are capped at 250 items, so this stays bounded.
     --
-    --   1. The newest count by ledger SEQUENCE. `apply_inventory_event_projection`
-    --      applies events in insertion order and a count REPLACES
+    --   1. The newest count by ledger SEQUENCE. apply_inventory_event_projection
+    --      applies rows in insertion order and a count REPLACES
     --      inventory_items.current_quantity, so this row is what the materialized
-    --      quantity was last anchored by. It is returned even when future-dated:
-    --      hiding it would hide the contamination it caused.
+    --      quantity was last anchored by. Returned even when future-dated: hiding it
+    --      would hide the contamination it caused.
     --   2. The newest VALID count by effective time, which is the authoritative
     --      baseline. Future-dated rows are excluded here, so a count effective after
     --      now can never be reported as fresh evidence or hide the latest valid count.
     --
+    -- 20260818130000 supersedes this function to also return rows applied out of order
+    -- across the count boundary, once inventory_events.projection_applied exists.
+    --
     -- The two-minute bound is the device/server clock-skew tolerance shared with
     -- COUNT_CLOCK_SKEW_TOLERANCE_MS in services/domain/inventoryCountAuthority.ts and
     -- with the reject_future_dated_inventory_count ledger trigger.
-    'inventoryCountEvents', coalesce((
+    'inventoryLedgerEvents', coalesce((
       select jsonb_agg(
         jsonb_build_object(
           'id', newest_count.id,
@@ -136,4 +139,4 @@ end;
 $$;
 
 comment on function private.fetch_operational_planning_snapshot(uuid, uuid) is
-  'Tenant-scoped planning snapshot. Carries the newest valid verified inventory count per item, the newest count actually applied to the projection, and the restaurant timezone, so projected on-hand is anchored to physical count time rather than inventory_items.last_updated and a tainted projection is detectable.';
+  'Tenant-scoped planning snapshot. Carries the newest valid verified inventory count per item, the newest count actually applied to the projection, any row applied out of order across that count boundary, and the restaurant timezone, so projected on-hand is anchored to physical count time rather than inventory_items.last_updated and a tainted projection is detectable.';

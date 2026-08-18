@@ -2,7 +2,7 @@ import type { InventoryItem, PurchaseRecommendation } from "../../types/mise";
 import { canonicalInventoryUnit } from "./inventoryUnits";
 import {
   buildInventoryCountEvidence,
-  type VerifiedCountCandidate
+  type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
 
 export type OrderAutomationDecision = "manual_review" | "automatic_draft" | "automatic_send";
@@ -55,11 +55,14 @@ export interface OrderAutomationInput {
   inventoryItems: readonly InventoryItem[];
   recommendationHistory: readonly PurchaseRecommendation[];
   /**
-   * Verified physical-count evidence from the inventory ledger. Automation stays
-   * blocked on `stale_inventory_count` when an item has no verified count, because
+   * Ledger rows from the inventory ledger. Automation stays blocked on
+   * `stale_inventory_count` when an item has no verified count or when its
+   * materialized quantity no longer follows the count boundary, because
    * `inventory_items.last_updated` also moves for policy and cost edits.
    */
-  inventoryCountEvents?: readonly VerifiedCountCandidate[];
+  inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
+  /** False when the caller's bounded ledger read was truncated. */
+  ledgerComplete?: boolean;
   policy?: OrderAutomationPolicy;
   delivery?: OrderAutomationDeliveryReadiness;
   now?: Date;
@@ -126,7 +129,8 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
   const countEvidence = buildInventoryCountEvidence({
     restaurantId,
     items: scopedInventory,
-    countEvents: input.inventoryCountEvents ?? [],
+    ledgerEvents: input.inventoryLedgerEvents ?? [],
+    ledgerComplete: input.ledgerComplete,
     generatedAt: Number.isFinite(now.getTime()) ? now.toISOString() : new Date().toISOString(),
     maximumCountAgeHours: policy.maximumInventoryAgeHours
   });

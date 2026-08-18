@@ -48,6 +48,7 @@ export function normalizeInventoryEventRecord(value: unknown): InventoryEvent {
     eventType: eventType as InventoryEventType,
     quantity,
     canonicalUnit,
+    projectionApplied: record.projection_applied === false ? false : true,
     effectiveAt: requireTimestamp(record.effective_at, "effective_at"),
     recordedAt: requireTimestamp(record.recorded_at, "recorded_at"),
     actorUserId: optionalString(record.actor_user_id),

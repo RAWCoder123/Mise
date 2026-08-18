@@ -734,6 +734,9 @@ export function createSupabaseRepository(): MiseRepository {
       if (options?.since) {
         query = query.gte("recorded_at", options.since);
       }
+      if (options?.sinceSequence != null && Number.isFinite(options.sinceSequence)) {
+        query = query.gt("sequence", options.sinceSequence);
+      }
       if (options?.limit != null && Number.isFinite(options.limit) && options.limit >= 0) {
         query = query.limit(options.limit);
       }

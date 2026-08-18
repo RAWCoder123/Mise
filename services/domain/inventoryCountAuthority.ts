@@ -69,8 +69,21 @@ export const COUNT_CLOCK_SKEW_TOLERANCE_MS = 120_000;
  * replaying historical canonical quantities with today's factor is not provably
  * faithful.
  */
+/**
+ * Contamination has two causes, both of which come from the projection applying
+ * events in insertion order while authority is defined by effective time:
+ *
+ *   1. the highest-sequence count is future-dated, so the anchor itself is invalid;
+ *   2. a row inserted after that anchor was effective at or before it, so the old
+ *      trigger applied something the count had already observed — a delayed offline
+ *      receipt, waste, usage, stockout, adjustment, transfer, or correction, or a
+ *      backdated count that clobbered newer physical evidence.
+ *
+ * Either way the materialized quantity is untrustworthy and the item must not drive
+ * quantity-based output until a real recount re-anchors it.
+ */
 export const PROJECTION_CONTAMINATION_RULE =
-  "highest_sequence_count_must_be_temporally_valid" as const;
+  "materialized_quantity_must_follow_the_count_boundary" as const;
 
 /**
  * `contaminated` means the item's materialized on-hand projection
@@ -138,6 +151,23 @@ export interface AuthoritativeConsumptionEntry {
   resolution: "instant" | "operating_day";
   occurredAt?: string;
   operatingDate?: string;
+}
+
+/**
+ * Any ledger row, count or not, in the minimal shape needed to judge whether the
+ * materialized projection followed the count boundary.
+ */
+export interface LedgerProjectionEvent {
+  restaurantId: string;
+  inventoryItemId: string;
+  eventType?: string;
+  effectiveAt: string;
+  sequence?: number;
+  /**
+   * Whether this row moved `inventory_items.current_quantity`. Absent means applied,
+   * which is how every pre-boundary-fix row must be read.
+   */
+  projectionApplied?: boolean;
 }
 
 /** A signed native-unit ledger movement, already recorded against the item. */
@@ -253,41 +283,88 @@ export function resolveVerifiedInventoryCount(
 }
 
 /**
- * `PROJECTION_CONTAMINATION_RULE`: true when the item's highest-sequence count is
- * future-dated, meaning `inventory_items.current_quantity` was last overwritten by
- * invalid evidence and the number itself cannot drive operational decisions.
+ * `PROJECTION_CONTAMINATION_RULE`: true when `inventory_items.current_quantity` for
+ * this item may not reflect the count boundary.
+ *
+ * `ledgerComplete` must be false when the caller's bounded ledger read was truncated;
+ * ordering integrity then cannot be proven and the item fails closed.
  */
-export function projectionContaminatedByFutureCount(
+export function projectionContaminated(
   restaurantId: string,
   inventoryItemId: string,
-  candidates: readonly VerifiedCountCandidate[],
-  options: { asOf?: string; clockSkewToleranceMs?: number } = {}
+  ledgerEvents: readonly LedgerProjectionEvent[],
+  options: { asOf?: string; clockSkewToleranceMs?: number; ledgerComplete?: boolean } = {}
 ): boolean {
   const asOf = options.asOf ?? new Date().toISOString();
   const clockSkewToleranceMs = boundedTolerance(options.clockSkewToleranceMs);
-  let topSequence = Number.NEGATIVE_INFINITY;
-  let contaminated = false;
+  const scoped = ledgerEvents.filter(
+    (event) =>
+      event.restaurantId === restaurantId &&
+      event.inventoryItemId === inventoryItemId &&
+      Number.isFinite(Date.parse(event.effectiveAt))
+  );
 
-  for (const candidate of candidates) {
-    if (candidate.restaurantId !== restaurantId) continue;
-    if (candidate.inventoryItemId !== inventoryItemId) continue;
-    if (candidate.eventType !== undefined && candidate.eventType !== "count") continue;
-    if (!Number.isFinite(Date.parse(candidate.effectiveAt))) continue;
-    const sequence = Number.isFinite(candidate.sequence) ? Number(candidate.sequence) : 0;
-    const invalid = !isTemporallyValidCount(candidate.effectiveAt, asOf, clockSkewToleranceMs);
-    if (sequence > topSequence) {
-      topSequence = sequence;
-      contaminated = invalid;
+  // The anchor is the highest-sequence count: a count replaces the materialized
+  // quantity, and the projection applies rows in insertion order.
+  let anchor: LedgerProjectionEvent | null = null;
+  let anchorSequence = Number.NEGATIVE_INFINITY;
+  let anchorInvalidAtTopSequence = false;
+  for (const event of scoped) {
+    if (event.eventType !== undefined && event.eventType !== "count") continue;
+    const sequence = ledgerSequence(event);
+    const invalid = !isTemporallyValidCount(event.effectiveAt, asOf, clockSkewToleranceMs);
+    if (sequence > anchorSequence) {
+      anchor = event;
+      anchorSequence = sequence;
+      anchorInvalidAtTopSequence = invalid;
       continue;
     }
     // Sequence tie: fail closed, an invalid row at the top sequence contaminates.
-    if (sequence === topSequence && invalid) contaminated = true;
+    if (sequence === anchorSequence && invalid) anchorInvalidAtTopSequence = true;
   }
 
-  return contaminated;
+  if (!anchor) return false;
+  if (anchorInvalidAtTopSequence) return true;
+  if (options.ledgerComplete === false) return true;
+
+  const anchorEffective = Date.parse(anchor.effectiveAt);
+  for (const event of scoped) {
+    const isCount = event.eventType === undefined || event.eventType === "count";
+    const effective = Date.parse(event.effectiveAt);
+    if (isCount) {
+      // A valid count with newer physical evidence but a lower sequence means the
+      // anchor was applied out of order and clobbered it.
+      if (
+        anchor.projectionApplied !== false &&
+        effective > anchorEffective &&
+        ledgerSequence(event) < anchorSequence &&
+        isTemporallyValidCount(event.effectiveAt, asOf, clockSkewToleranceMs)
+      ) {
+        return true;
+      }
+      continue;
+    }
+    // A non-count row inserted after the anchor but effective at or before it was
+    // already inside the counted baseline. Only rows that actually moved the
+    // projection contaminate it: the boundary fix retains later ones without
+    // applying them, and those are harmless.
+    if (
+      event.projectionApplied !== false &&
+      ledgerSequence(event) > anchorSequence &&
+      effective <= anchorEffective
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
-/** Evidence for an item whose materialized projection was tainted by a future count. */
+function ledgerSequence(event: LedgerProjectionEvent) {
+  return Number.isFinite(event.sequence) ? Number(event.sequence) : 0;
+}
+
+/** Evidence for an item whose materialized projection no longer follows the count boundary. */
 export function contaminatedInventoryCountEvidence(
   restaurantId: string,
   inventoryItemId: string
@@ -313,7 +390,17 @@ export function contaminatedInventoryCountEvidence(
 export function buildInventoryCountEvidence(input: {
   restaurantId: string;
   items: readonly { id: string; canonical_quantity_per_unit?: number | null }[];
-  countEvents: readonly VerifiedCountCandidate[];
+  /**
+   * Ledger rows for the restaurant. Count rows supply the authoritative baseline;
+   * non-count rows are needed to prove the materialized quantity followed the count
+   * boundary, so passing counts alone cannot detect an out-of-order projection.
+   */
+  ledgerEvents: readonly LedgerProjectionEvent[];
+  /**
+   * False when the caller's bounded ledger read was truncated. Ordering integrity
+   * cannot be proven from a partial ledger, so counted items then fail closed.
+   */
+  ledgerComplete?: boolean;
   generatedAt?: string;
   maximumCountAgeHours?: number;
   clockSkewToleranceMs?: number;
@@ -331,9 +418,10 @@ export function buildInventoryCountEvidence(input: {
     // planning would start from is untrustworthy, so the item has no usable evidence
     // until a real recount re-anchors it.
     if (
-      projectionContaminatedByFutureCount(restaurantId, item.id, input.countEvents, {
+      projectionContaminated(restaurantId, item.id, input.ledgerEvents, {
         asOf: generatedAt,
-        clockSkewToleranceMs
+        clockSkewToleranceMs,
+        ledgerComplete: input.ledgerComplete
       })
     ) {
       evidence.set(item.id, contaminatedInventoryCountEvidence(restaurantId, item.id));
@@ -342,7 +430,7 @@ export function buildInventoryCountEvidence(input: {
     const count = resolveVerifiedInventoryCount(
       restaurantId,
       item.id,
-      input.countEvents,
+      input.ledgerEvents,
       item.canonical_quantity_per_unit,
       { asOf: generatedAt, clockSkewToleranceMs }
     );

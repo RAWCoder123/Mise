@@ -4,7 +4,7 @@ import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
   verifiedCountSupersedes,
-  type VerifiedCountCandidate
+  type LedgerProjectionEvent
 } from "./inventoryCountAuthority.ts";
 import { toDateKeyInTimeZone } from "../../utils/format.ts";
 import type { InsightPresentationDescriptor } from "../../types/presentation.ts";
@@ -20,7 +20,7 @@ export interface OperationalInventoryItem {
   reorder_threshold: number;
   /**
    * Row mutation time. Not physical-count evidence: it moves for policy, cost, and
-   * supplier edits. Planning freshness comes from `inventoryCountEvents` instead.
+   * supplier edits. Planning freshness comes from `inventoryLedgerEvents` instead.
    */
   last_updated?: string;
 }
@@ -82,10 +82,14 @@ export interface OperationalPlanningSnapshot {
   menuItemIngredients: OperationalRecipeMapping[];
   recommendationHistory: OperationalRecommendationHistory[];
   /**
-   * Verified physical-count evidence from the append-only inventory ledger.
-   * Absent evidence keeps planning fail-closed: nothing is treated as freshly counted.
+   * Ledger rows from the append-only inventory ledger. Count rows supply the
+   * authoritative baseline; non-count rows are needed to prove the materialized
+   * on-hand quantity followed the count boundary. Absent evidence keeps planning
+   * fail-closed: nothing is treated as freshly counted.
    */
-  inventoryCountEvents?: readonly VerifiedCountCandidate[];
+  inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
+  /** False when the caller's bounded ledger read was truncated. */
+  ledgerComplete?: boolean;
   /** Restaurant timezone, used to place a count inside the correct operating day. */
   timeZone?: string | null;
 }
@@ -96,7 +100,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   const countEvidence = buildInventoryCountEvidence({
     restaurantId: snapshot.restaurantId,
     items: snapshot.inventoryItems.filter((item) => item.restaurant_id === snapshot.restaurantId),
-    countEvents: snapshot.inventoryCountEvents ?? [],
+    ledgerEvents: snapshot.inventoryLedgerEvents ?? [],
+    ledgerComplete: snapshot.ledgerComplete,
     generatedAt: now,
     resolveOperatingDate: timeZone
       ? (iso) => toDateKeyInTimeZone(new Date(iso), timeZone)
@@ -298,7 +303,8 @@ export function buildRecommendationInserts(
   recommendationHistory: OperationalRecommendationHistory[] = [],
   operatingDate = new Date().toISOString().slice(0, 10),
   countEvidence: {
-    inventoryCountEvents?: readonly VerifiedCountCandidate[];
+    inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
+    ledgerComplete?: boolean;
     timeZone?: string | null;
   } = {}
 ) {
@@ -309,7 +315,8 @@ export function buildRecommendationInserts(
     sales,
     menuItemIngredients,
     recommendationHistory,
-    inventoryCountEvents: countEvidence.inventoryCountEvents,
+    inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
+    ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone
   }).recommendations;
 }
@@ -321,7 +328,8 @@ export function buildInsightsFromData(
   menuItemIngredients: OperationalRecipeMapping[],
   operatingDate = new Date().toISOString().slice(0, 10),
   countEvidence: {
-    inventoryCountEvents?: readonly VerifiedCountCandidate[];
+    inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
+    ledgerComplete?: boolean;
     timeZone?: string | null;
   } = {}
 ) {
@@ -332,7 +340,8 @@ export function buildInsightsFromData(
     sales,
     menuItemIngredients,
     recommendationHistory: [],
-    inventoryCountEvents: countEvidence.inventoryCountEvents,
+    inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
+    ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone
   }).insights;
 }

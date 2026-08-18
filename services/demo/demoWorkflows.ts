@@ -27,13 +27,18 @@ function demoOperatingDate(state: DemoState, restaurantId: string) {
   return toDateKeyInTimeZone(new Date(), demoTimeZone(state, restaurantId));
 }
 
-/** Verified `count` ledger events are the only physical-count evidence in demo mode too. */
+/**
+ * Ledger `count` rows are the only physical-count evidence in demo mode too, and the
+ * full local ledger is passed so out-of-order projection contamination is detectable.
+ * Demo state holds the complete ledger, so the read is never truncated.
+ */
 function demoCountEvidence(state: DemoState, restaurantId: string) {
   const timeZone = demoTimeZone(state, restaurantId);
   return buildInventoryCountEvidence({
     restaurantId,
     items: state.inventoryItems.filter((item) => item.restaurant_id === restaurantId),
-    countEvents: (state.inventoryEvents ?? []).filter((event) => event.eventType === "count"),
+    ledgerEvents: state.inventoryEvents ?? [],
+    ledgerComplete: true,
     resolveOperatingDate: (iso) => toDateKeyInTimeZone(new Date(iso), timeZone)
   });
 }

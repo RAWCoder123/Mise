@@ -12,7 +12,7 @@ import { visibleRestaurantTasksForToday } from "../domain/restaurantTasks";
 import { demandFallbackForRestaurant } from "../demoData";
 import { toDateKeyInTimeZone } from "../../utils/format";
 import {
-  fetchVerifiedInventoryCountEvents,
+  fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
@@ -43,7 +43,7 @@ export async function fetchDailyOperatingPlan(
     posIntegrationsResult,
     activityResult,
     centralTasksResult,
-    countEvents
+    ledger
   ] =
     await Promise.all([
       repository.fetchRestaurantData(normalizedRestaurantId),
@@ -52,7 +52,7 @@ export async function fetchDailyOperatingPlan(
       repository.fetchPosIntegrations(normalizedRestaurantId),
       repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }).catch(() => []),
       repository.listRestaurantTasks(normalizedRestaurantId),
-      fetchVerifiedInventoryCountEvents(normalizedRestaurantId)
+      fetchInventoryLedgerEvidence(normalizedRestaurantId)
     ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
@@ -96,7 +96,8 @@ export async function fetchDailyOperatingPlan(
     inventoryCountEvidenceFor({
       restaurantId: normalizedRestaurantId,
       inventoryItems,
-      countEvents,
+      ledgerEvents: ledger.events,
+      ledgerComplete: ledger.complete,
       timeZone: data.restaurant.timezone
     })
   );

@@ -29,11 +29,17 @@ export interface InventoryEvent {
   idempotencyKey: string;
   supersedesEventId: string | null;
   metadata: Readonly<Record<string, unknown>>;
+  /**
+   * Whether this row moved the on-hand projection. False when it was retained in
+   * history but fell at or before the item's authoritative count boundary. Absent on
+   * legacy rows, which are read as applied — the fail-closed interpretation.
+   */
+  projectionApplied?: boolean;
 }
 
 export type InventoryEventInput = Omit<
   InventoryEvent,
-  "id" | "sequence" | "recordedAt" | "actorUserId"
+  "id" | "sequence" | "recordedAt" | "actorUserId" | "projectionApplied"
 >;
 
 export type InventoryEventAcceptance =

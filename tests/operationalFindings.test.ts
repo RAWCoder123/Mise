@@ -108,7 +108,7 @@ function build(overrides = {}) {
     mappings: [mapping],
     recommendations: [recommendation],
     insights: [insight],
-    inventoryCountEvents: [verifiedCount("2026-07-27T11:00:00.000Z")],
+    inventoryLedgerEvents: [verifiedCount("2026-07-27T11:00:00.000Z")],
     ...overrides
   });
 }
@@ -148,7 +148,7 @@ test("complete verified evidence produces a fresh high-confidence recommendation
 });
 
 test("stale evidence remains visible but cannot be labeled fresh", () => {
-  const brief = build({ inventoryCountEvents: [verifiedCount("2026-07-20T11:00:00.000Z")] });
+  const brief = build({ inventoryLedgerEvents: [verifiedCount("2026-07-20T11:00:00.000Z")] });
   const finding = brief.findings.find((entry) => entry.id === `finding:recommendation:${recommendation.id}`);
 
   assert.ok(finding);
@@ -161,7 +161,7 @@ test("a non-count row update never dates inventory evidence", () => {
   // `last_updated` moves for a policy, cost, or supplier edit. Without verified count
   // evidence the finding must report incomplete evidence, not fresh evidence.
   const editedItem = { ...item, last_updated: generatedAt, estimated_unit_cost: 9.75 };
-  const brief = build({ inventoryItems: [editedItem], inventoryCountEvents: [] });
+  const brief = build({ inventoryItems: [editedItem], inventoryLedgerEvents: [] });
   const finding = brief.findings.find((entry) => entry.id === `finding:recommendation:${recommendation.id}`);
 
   assert.ok(finding);

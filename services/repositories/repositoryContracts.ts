@@ -439,7 +439,13 @@ export interface MiseRepository {
   fetchInventoryItems(restaurantId: string): Promise<InventoryItem[]>;
   listInventoryEvents(
     restaurantId: string,
-    options?: { eventTypes?: InventoryEventType[]; limit?: number; since?: string }
+    options?: {
+      eventTypes?: InventoryEventType[];
+      limit?: number;
+      since?: string;
+      /** Only rows with a ledger sequence strictly greater than this value. */
+      sinceSequence?: number;
+    }
   ): Promise<InventoryEvent[]>;
   /**
    * Records an append-only, server-authoritative inventory event. Hosted mode

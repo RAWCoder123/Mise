@@ -274,7 +274,7 @@ test("server-shared operational rules are deterministic and reject anomalous his
     })),
     // Verified ledger count evidence, taken after the newest handled approval and
     // before the operating day under test.
-    inventoryCountEvents: [{
+    inventoryLedgerEvents: [{
       restaurantId: "restaurant-1",
       inventoryItemId: "item-1",
       effectiveAt: "2026-07-13T22:00:00.000Z",

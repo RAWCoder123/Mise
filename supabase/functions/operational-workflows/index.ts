@@ -321,7 +321,7 @@ function applyRequestedMutation(
       // The count rows this approval is about to append are not on the ledger yet.
       // Anchor the recomputed signals to the count being approved so the freshly
       // counted quantity is not depleted again by sales the counter already observed.
-      inventoryCountEvents: withPendingCountEvidence(snapshot.inventoryCountEvents ?? [], {
+      inventoryLedgerEvents: withPendingCountEvidence(snapshot.inventoryLedgerEvents ?? [], {
         restaurantId: snapshot.restaurantId,
         inventoryItemIds: [...quantityByItemId.keys()],
         countedAt

@@ -98,7 +98,7 @@ test("stable, fresh, bounded supplier work becomes eligible only for an automati
     candidates: [recommendation("rec_tomatoes", "tomatoes", 20)],
     inventoryItems: [inventory("tomatoes")],
     recommendationHistory: history("tomatoes", [18, 20, 20, 22]),
-    inventoryCountEvents: verifiedCounts([["tomatoes", "2026-07-26T12:00:00.000Z"]]),
+    inventoryLedgerEvents: verifiedCounts([["tomatoes", "2026-07-26T12:00:00.000Z"]]),
     policy,
     delivery: {
       emailConnected: true,
@@ -122,7 +122,7 @@ test("automatic send requires explicit policy plus verified delivery readiness",
     candidates: [recommendation("rec_onions", "onions", 10)],
     inventoryItems: [inventory("onions", { estimated_unit_cost: 2.5 })],
     recommendationHistory: history("onions", [9, 10, 10]),
-    inventoryCountEvents: verifiedCounts([["onions", "2026-07-26T12:00:00.000Z"]]),
+    inventoryLedgerEvents: verifiedCounts([["onions", "2026-07-26T12:00:00.000Z"]]),
     policy: { ...policy, allowAutomaticSend: true },
     now
   };
@@ -162,7 +162,7 @@ test("stale counts, weak history, quantity drift, and missing prices force manua
       ...history("herbs", [10, 10, 10]),
       ...history("garlic", [8])
     ],
-    inventoryCountEvents: verifiedCounts([
+    inventoryLedgerEvents: verifiedCounts([
       ["herbs", "2026-07-24T12:00:00.000Z"],
       ["garlic", "2026-07-26T12:00:00.000Z"]
     ]),
@@ -249,7 +249,7 @@ test("automation blocks when no verified count evidence exists, whatever last_up
   const withEvidence = assessOrderAutomation({
     ...base,
     inventoryItems: [inventory("kale")],
-    inventoryCountEvents: verifiedCounts([["kale", "2026-07-26T12:00:00.000Z"]])
+    inventoryLedgerEvents: verifiedCounts([["kale", "2026-07-26T12:00:00.000Z"]])
   });
   assert.equal(withEvidence.decision, "automatic_draft");
   assert.deepEqual(withEvidence.blockers, []);
@@ -262,7 +262,7 @@ test("another restaurant's count evidence cannot make this restaurant's stock lo
     candidates: [recommendation("rec_beets", "beets", 12)],
     inventoryItems: [inventory("beets")],
     recommendationHistory: history("beets", [11, 12, 12]),
-    inventoryCountEvents: [
+    inventoryLedgerEvents: [
       {
         restaurantId: "rest_other_tenant",
         inventoryItemId: "beets",
