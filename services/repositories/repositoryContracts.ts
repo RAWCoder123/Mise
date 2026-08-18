@@ -38,6 +38,7 @@ import type {
   OperationalFindingDecision,
   OperationalFindingDecisionInput
 } from "../domain/operationalFindingDecisions";
+import type { VerifiedProviderSaleMapping } from "../domain/providerSaleIdentity";
 import type {
   RestaurantMemory,
   RestaurantMemoryStatus
@@ -287,6 +288,7 @@ export interface RestaurantData {
   purchaseRecommendations: PurchaseRecommendation[];
   insights: Insight[];
   menuItemIngredients: MenuItemIngredient[];
+  providerMappings: VerifiedProviderSaleMapping[];
 }
 
 export const RESTAURANT_EXPORT_DATASETS = [
@@ -369,6 +371,7 @@ export interface PlanningData {
   inventoryItems: InventoryItem[];
   sales: PosSale[];
   menuItemIngredients: MenuItemIngredient[];
+  providerMappings: VerifiedProviderSaleMapping[];
   operatingDate: string;
   /** Restaurant timezone, needed to place a verified count inside the right operating day. */
   timeZone: string;
@@ -437,6 +440,7 @@ export interface MiseRepository {
     restaurantId: string
   ): Promise<OperationalFindingDecision[]>;
   fetchInventoryItems(restaurantId: string): Promise<InventoryItem[]>;
+  fetchVerifiedProviderMappings(restaurantId: string): Promise<VerifiedProviderSaleMapping[]>;
   listInventoryEvents(
     restaurantId: string,
     options?: {
@@ -663,7 +667,8 @@ export function normalizeRestaurantData(
   inventoryItems: InventoryItem[],
   purchaseRecommendations: PurchaseRecommendation[],
   insights: Insight[],
-  menuItemIngredients: MenuItemIngredient[]
+  menuItemIngredients: MenuItemIngredient[],
+  providerMappings: VerifiedProviderSaleMapping[] = []
 ): RestaurantData {
   return {
     restaurant: normalizeRestaurant(restaurant),
@@ -671,7 +676,8 @@ export function normalizeRestaurantData(
     inventoryItems: inventoryItems.map(normalizeInventoryItem),
     purchaseRecommendations: purchaseRecommendations.map(normalizePurchaseRecommendation),
     insights: insights.map(normalizeInsight),
-    menuItemIngredients: menuItemIngredients.map(normalizeMenuItemIngredient)
+    menuItemIngredients: menuItemIngredients.map(normalizeMenuItemIngredient),
+    providerMappings: [...providerMappings]
   };
 }
 

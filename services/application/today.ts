@@ -109,7 +109,8 @@ export async function fetchTodaySummary(
     mappings,
     operatingDate,
     demandFallback,
-    countEvidence
+    countEvidence,
+    data.providerMappings
   );
   const setupReadiness = buildSetupReadinessSummary({
     restaurant: data.restaurant,
@@ -128,7 +129,8 @@ export async function fetchTodaySummary(
     mappings,
     operatingDate,
     demandFallback,
-    countEvidence
+    countEvidence,
+    data.providerMappings
   );
 
   const projectedTasks = deriveOperationalTodayTasks({

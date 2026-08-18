@@ -54,6 +54,7 @@ test("Square OAuth URL requests merchant, catalog, and orders scopes without lea
 test("Square order and catalog normalizers produce bounded Mise sales and catalog rows", () => {
   const sales = normalizeOrderSales({
     id: "order-1",
+    location_id: "loc-a",
     closed_at: "2026-07-30T12:00:00.000Z",
     line_items: [
       {
@@ -70,6 +71,7 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
   assert.equal(sales[0]?.item_name, "Burger");
   assert.equal(sales[0]?.quantity_sold, 2);
   assert.equal(sales[0]?.source_record_id, "square_order-1_line-1");
+  assert.equal(sales[0]?.provider_location_id, "loc-a");
   assert.equal(sales[0]?.gross_sales, 24);
   assert.equal(sales[0]?.provider_variation_id, "var-1");
 

@@ -299,9 +299,16 @@ export function buildInventoryOutlooks(
   mappings: MenuItemIngredient[],
   operatingDate: string,
   demandFallback?: DemandFallback,
-  countEvidence?: InventoryCountEvidenceMap
+  countEvidence?: InventoryCountEvidenceMap,
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ): InventoryOutlookItem[] {
-  const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
+  const historicalBaselines = buildHistoricalDemandBaselines(
+    restaurantId,
+    sales,
+    operatingDate,
+    mappings,
+    providerMappings
+  );
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .map((item) => ({
@@ -313,7 +320,8 @@ export function buildInventoryOutlooks(
         operatingDate,
         historicalBaselines,
         demandFallback,
-        inventoryCountEvidenceFor(countEvidence, restaurantId, item.id)
+        inventoryCountEvidenceFor(countEvidence, restaurantId, item.id),
+        providerMappings
       )
     }))
     .sort((a, b) => {
@@ -746,15 +754,23 @@ export function buildRecipeBaselineSummary(
   const restaurantMappings = mappings.filter((mapping) => mapping.restaurant_id === restaurantId);
   const restaurantInventory = inventoryItems.filter((item) => item.restaurant_id === restaurantId);
   const itemNames = new Map(restaurantInventory.map((item) => [item.id, item.item_name]));
-  const saleKey = (sale: PosSale) => saleRequiresVerifiedProviderIdentity(sale)
-    ? sale.source_record_id ?? `${sale.source_pos}:${sale.provider_variation_id ?? sale.provider_catalog_item_id ?? sale.item_name}`
-    : sale.item_name.trim().toLowerCase().replace(/\s+/g, " ");
+  const saleKey = (sale: PosSale) => {
+    if (saleRequiresVerifiedProviderIdentity(sale)) {
+      const menuItemId = saleDemandKey(sale, providerMappings);
+      if (menuItemId) return menuItemId;
+      return sale.source_record_id
+        ?? `${sale.source_pos ?? "provider"}:${sale.provider_location_id ?? "unknown-location"}:${sale.provider_variation_id ?? sale.provider_catalog_item_id ?? sale.item_name}`;
+    }
+    return sale.item_name.trim().toLowerCase().replace(/\s+/g, " ");
+  };
   const soldMenuItems = new Set(restaurantSales.map(saleKey));
   const mappedMenuItems = new Set(restaurantMappings.map((mapping) => mapping.menu_item_name));
   const inventoryItemsLinked = new Set(restaurantMappings.map((mapping) => mapping.inventory_item_id));
-  const posItemsCovered = new Set(restaurantSales
-    .filter((sale) => restaurantMappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
-    .map(saleKey)).size;
+  const posItemsCovered = new Set(
+    restaurantSales
+      .filter((sale) => restaurantMappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
+      .map(saleKey)
+  ).size;
   const posItemsMissingRecipes = restaurantSales
     .filter((sale) => !restaurantMappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
     .map((sale) => sale.item_name)
@@ -839,7 +855,7 @@ export function buildInsightsFromData(
     providerMappings
   );
   const insights: Insight[] = [];
-  const usage = estimateUsage(todaySales, mappings, inventoryItems);
+  const usage = estimateUsage(todaySales, mappings, inventoryItems, providerMappings);
   const outlooks = buildInventoryOutlooks(
     restaurantId,
     inventoryItems,
@@ -847,7 +863,8 @@ export function buildInsightsFromData(
     mappings,
     operatingDate,
     demandFallback,
-    countEvidence
+    countEvidence,
+    providerMappings
   );
 
   outlooks
@@ -981,7 +998,8 @@ export function buildTodaySummary(
   mappings: MenuItemIngredient[] = [],
   operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone),
   demandFallback?: DemandFallback,
-  countEvidence?: InventoryCountEvidenceMap
+  countEvidence?: InventoryCountEvidenceMap,
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ): TodaySummary {
   const todaySales = sales.filter(
     (sale) => sale.restaurant_id === restaurant.id && isToday(sale, operatingDate)
@@ -997,9 +1015,17 @@ export function buildTodaySummary(
     mappings,
     operatingDate,
     demandFallback,
-    countEvidence
+    countEvidence,
+    providerMappings
   );
-  const recipeBaseline = buildRecipeBaselineSummary(restaurant.id, sales, mappings, inventoryItems, operatingDate);
+  const recipeBaseline = buildRecipeBaselineSummary(
+    restaurant.id,
+    sales,
+    mappings,
+    inventoryItems,
+    operatingDate,
+    providerMappings
+  );
   const workflow = {
     posMenuItemsCovered: recipeBaseline.posItemsCovered,
     recipeLinks: recipeBaseline.ingredientMappings,
@@ -1475,6 +1501,7 @@ export function buildDemoReadinessSummary(
     demandFallback?: DemandFallback;
     demoProfileName?: string | null;
     countEvidence?: InventoryCountEvidenceMap;
+    providerMappings?: readonly VerifiedProviderSaleMapping[];
   } = {}
 ): DemoReadinessSummary {
   const restaurantSales = sales.filter((sale) => sale.restaurant_id === restaurant.id);
@@ -1489,7 +1516,8 @@ export function buildDemoReadinessSummary(
     sales,
     mappings,
     inventoryItems,
-    operatingDate
+    operatingDate,
+    options.providerMappings ?? []
   );
   const outlooks = buildInventoryOutlooks(
     restaurant.id,
@@ -1498,7 +1526,8 @@ export function buildDemoReadinessSummary(
     mappings,
     operatingDate,
     options.demandFallback,
-    options.countEvidence
+    options.countEvidence,
+    options.providerMappings ?? []
   );
   const lowOutlookCount = outlooks.filter(
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low"

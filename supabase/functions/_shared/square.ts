@@ -56,6 +56,7 @@ export interface SquareSaleRow {
   gross_sales: number;
   net_sales: number;
   source_record_id: string;
+  provider_location_id?: string;
   provider_catalog_item_id?: string;
   provider_variation_id?: string;
 }
@@ -283,6 +284,7 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
     stringField(record, "created_at", 64) ||
     new Date().toISOString();
   const saleDate = closedAt.slice(0, 10);
+  const providerLocationId = stringField(record, "location_id", 128) || undefined;
   const lineItems = Array.isArray(record.line_items) ? record.line_items : [];
   const rows: SquareSaleRow[] = [];
   for (const [index, line] of lineItems.entries()) {
@@ -307,6 +309,7 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
       gross_sales: clampMoney(gross),
       net_sales: clampMoney(net),
       source_record_id: `square_${orderId}_${uid}`.slice(0, 200),
+      provider_location_id: providerLocationId,
       provider_variation_id: variationId || undefined,
     });
   }

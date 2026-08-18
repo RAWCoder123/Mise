@@ -1,6 +1,7 @@
 export interface VerifiedProviderSaleMapping {
   restaurantId: string;
   sourcePos: string;
+  providerLocationId: string;
   externalCatalogItemId: string;
   externalVariationId: string;
   menuItemId: string;
@@ -10,6 +11,7 @@ interface ProviderSaleIdentity {
   restaurant_id: string;
   item_name: string;
   source_pos?: string | null;
+  provider_location_id?: string | null;
   provider_catalog_item_id?: string | null;
   provider_variation_id?: string | null;
 }
@@ -34,10 +36,13 @@ export function resolveVerifiedProviderMenuItemId(
 ) {
   if (!saleRequiresVerifiedProviderIdentity(sale)) return null;
   if (!sale.provider_variation_id) return null;
+  if (!sale.provider_location_id) return null;
   const sourcePos = normalize(sale.source_pos);
+  const providerLocationId = normalize(sale.provider_location_id);
   return mappings.find((mapping) =>
     mapping.restaurantId === sale.restaurant_id
     && normalize(mapping.sourcePos) === sourcePos
+    && normalize(mapping.providerLocationId) === providerLocationId
     && mapping.externalVariationId === sale.provider_variation_id
     && (!sale.provider_catalog_item_id || mapping.externalCatalogItemId === sale.provider_catalog_item_id)
   )?.menuItemId ?? null;

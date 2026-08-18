@@ -86,6 +86,7 @@ export interface PosSale {
   source_record_id?: string | null;
   provider_catalog_item_id?: string | null;
   provider_variation_id?: string | null;
+  provider_location_id?: string | null;
   sale_date: string;
   item_name: string;
   category: string;

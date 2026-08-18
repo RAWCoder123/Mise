@@ -46,6 +46,7 @@ function squareSale(overrides: Partial<PosSale> = {}): PosSale {
     source_record_id: "square-order-line-1",
     provider_catalog_item_id: "ITEM-A",
     provider_variation_id: "VAR-A",
+    provider_location_id: "loc-a",
     sale_date: operatingDate,
     item_name: "Chicken Sandwich",
     category: "Square",
@@ -61,9 +62,19 @@ function squareSale(overrides: Partial<PosSale> = {}): PosSale {
 const verifiedMappings: VerifiedProviderSaleMapping[] = [{
   restaurantId: restaurantA,
   sourcePos: "square",
+  providerLocationId: "loc-a",
   externalCatalogItemId: "ITEM-A",
   externalVariationId: "VAR-A",
   menuItemId: chickenMenuId
+}];
+
+const locationBMappings: VerifiedProviderSaleMapping[] = [{
+  restaurantId: restaurantA,
+  sourcePos: "square",
+  providerLocationId: "loc-b",
+  externalCatalogItemId: "ITEM-A",
+  externalVariationId: "VAR-A",
+  menuItemId: "menu-rice"
 }];
 
 function depletion(sales: PosSale[], mappings = verifiedMappings) {
@@ -74,6 +85,17 @@ function depletion(sales: PosSale[], mappings = verifiedMappings) {
 test("verified Square variation identity resolves through the menu UUID into recipe consumption", () => {
   assert.equal(resolveVerifiedProviderMenuItemId(squareSale(), verifiedMappings), chickenMenuId);
   assert.equal(depletion([squareSale()]), 2);
+});
+
+test("verified Square identity remains tied to its provider location and survives display-name rename", () => {
+  const renamed = squareSale({
+    item_name: "Renamed Chicken Sandwich",
+    provider_location_id: "loc-a"
+  });
+  assert.equal(resolveVerifiedProviderMenuItemId(renamed, verifiedMappings), chickenMenuId);
+  assert.equal(saleMatchesRecipe(renamed, recipe, verifiedMappings), true);
+  assert.equal(resolveVerifiedProviderMenuItemId(squareSale({ provider_location_id: "loc-b" }), verifiedMappings), null);
+  assert.equal(resolveVerifiedProviderMenuItemId(squareSale({ provider_location_id: "loc-b" }), locationBMappings), "menu-rice");
 });
 
 test("same display name with the wrong variation ID cannot consume the verified recipe", () => {
@@ -100,7 +122,8 @@ test("a manual name match remains manual-only and never authorizes an unmapped S
   const manualSale = squareSale({
     source_pos: "Manual CSV",
     provider_catalog_item_id: null,
-    provider_variation_id: null
+    provider_variation_id: null,
+    provider_location_id: null
   });
   assert.equal(saleMatchesRecipe(manualSale, recipe, []), true);
   assert.equal(saleMatchesRecipe(squareSale({ provider_variation_id: "VAR-NO-MAPPING" }), recipe, []), false);

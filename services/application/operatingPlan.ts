@@ -99,7 +99,8 @@ export async function fetchDailyOperatingPlan(
       ledgerEvents: ledger.events,
       ledgerComplete: ledger.complete,
       timeZone: data.restaurant.timezone
-    })
+    }),
+    data.providerMappings
   );
   const setupReadiness = buildSetupReadinessSummary({
     restaurant: data.restaurant,

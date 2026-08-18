@@ -4,6 +4,7 @@
 
 alter table public.pos_sales
   add column if not exists provider_catalog_item_id text,
+  add column if not exists provider_location_id text,
   add column if not exists provider_variation_id text;
 
 alter table public.pos_sales
@@ -37,6 +38,13 @@ create index if not exists pos_sales_provider_identity_idx
 alter table public.menu_item_ingredients
   add column if not exists menu_item_id uuid;
 
+update public.menu_item_ingredients mapping
+set menu_item_id = item.id
+from public.menu_items item
+where mapping.menu_item_id is null
+  and mapping.restaurant_id = item.restaurant_id
+  and lower(trim(mapping.menu_item_name)) = lower(trim(item.name));
+
 do $$
 begin
   if not exists (
@@ -54,6 +62,8 @@ end $$;
 
 comment on column public.pos_sales.provider_catalog_item_id is
   'Provider catalog item identity. Display names remain non-authoritative hints.';
+comment on column public.pos_sales.provider_location_id is
+  'Provider location identity for sale replay and verified mapping resolution.';
 comment on column public.pos_sales.provider_variation_id is
   'Provider variation/object identity carried by the sale line. Required for provider recipe depletion.';
 comment on column public.menu_item_ingredients.menu_item_id is
@@ -123,20 +133,29 @@ begin
   select timezone into restaurant_time_zone
   from public.restaurants
   where id = p_restaurant_id;
-  operating_date := (now() at time zone coalesce(restaurant_time_zone, 'UTC'))::date;
+  begin
+    operating_date := (now() at time zone coalesce(restaurant_time_zone, 'UTC'))::date;
+  exception when invalid_parameter_value then
+    operating_date := current_date;
+  end;
 
   return jsonb_build_object(
     'revision', current_revision,
     'restaurantId', p_restaurant_id,
-    'operatingDate', operating_date,
+    'operatingDate', coalesce(operating_date, current_date),
     'timeZone', restaurant_time_zone,
     'inventoryItems', coalesce((
-      select jsonb_agg(to_jsonb(item) order by item.item_name)
+      select jsonb_agg(to_jsonb(item) order by item.item_name, item.id)
       from public.inventory_items item where item.restaurant_id = p_restaurant_id
     ), '[]'::jsonb),
     'sales', coalesce((
-      select jsonb_agg(to_jsonb(sale) order by sale.sale_date, sale.created_at, sale.id)
-      from public.pos_sales sale where sale.restaurant_id = p_restaurant_id
+      select jsonb_agg(to_jsonb(sale) order by sale.sale_date desc, sale.item_name, sale.id)
+      from (
+        select * from public.pos_sales
+        where restaurant_id = p_restaurant_id
+        order by sale_date desc, id
+        limit 2000
+      ) sale
     ), '[]'::jsonb),
     'menuItemIngredients', coalesce((
       select jsonb_agg(to_jsonb(mapping) order by mapping.menu_item_name, mapping.id)
@@ -146,6 +165,7 @@ begin
       select jsonb_agg(jsonb_build_object(
         'restaurantId', mapping.restaurant_id,
         'sourcePos', integration.provider,
+        'providerLocationId', location.external_location_id,
         'externalCatalogItemId', mapping.external_catalog_item_id,
         'externalVariationId', mapping.external_variation_id,
         'menuItemId', mapping.menu_item_id
@@ -166,30 +186,48 @@ begin
         and menu_item.active
     ), '[]'::jsonb),
     'recommendationHistory', coalesce((
-      select jsonb_agg(jsonb_build_object(
-        'inventory_item_id', recommendation.inventory_item_id,
-        'recommended_quantity', recommendation.recommended_quantity,
-        'unit', recommendation.unit,
-        'status', recommendation.status,
-        'created_at', recommendation.created_at
-      ) order by recommendation.created_at desc)
-      from public.purchase_recommendations recommendation
-      where recommendation.restaurant_id = p_restaurant_id
+      select jsonb_agg(to_jsonb(recommendation) order by recommendation.created_at desc, recommendation.id)
+      from (
+        select * from public.purchase_recommendations
+        where restaurant_id = p_restaurant_id and status <> 'pending'
+        order by created_at desc, id
+        limit 500
+      ) recommendation
     ), '[]'::jsonb),
     'inventoryLedgerEvents', coalesce((
-      select jsonb_agg(jsonb_build_object(
-        'id', event.id,
-        'restaurantId', event.restaurant_id,
-        'inventoryItemId', event.inventory_item_id,
-        'eventType', event.event_type,
-        'effectiveAt', event.effective_at,
-        'recordedAt', event.recorded_at,
-        'sequence', event.sequence,
-        'projectionApplied', event.projection_applied
-      ) order by event.sequence desc)
-      from public.inventory_events event
-      where event.restaurant_id = p_restaurant_id
-      limit 1000
+      with anchor as (
+        select distinct on (event.inventory_item_id) event.*
+        from public.inventory_events event
+        where event.restaurant_id = p_restaurant_id
+          and event.event_type = 'count'
+        order by event.inventory_item_id, event.sequence desc
+      ),
+      valid_counts as (
+        select distinct on (event.inventory_item_id) event.*
+        from public.inventory_events event
+        where event.restaurant_id = p_restaurant_id
+          and event.event_type = 'count'
+          and event.effective_at <= clock_timestamp() + interval '2 minutes'
+        order by event.inventory_item_id, event.effective_at desc, event.sequence desc
+      )
+      select jsonb_agg(
+        jsonb_build_object(
+          'id', newest_count.id,
+          'restaurantId', newest_count.restaurant_id,
+          'inventoryItemId', newest_count.inventory_item_id,
+          'eventType', newest_count.event_type,
+          'effectiveAt', newest_count.effective_at,
+          'sequence', newest_count.sequence,
+          'quantity', newest_count.quantity,
+          'canonicalUnit', newest_count.canonical_unit
+        )
+        order by newest_count.inventory_item_id, newest_count.sequence
+      )
+      from (
+        (select * from anchor)
+        union
+        (select * from valid_counts)
+      ) newest_count
     ), '[]'::jsonb),
     'ledgerComplete', true
   );
@@ -267,7 +305,7 @@ begin
     insert into public.pos_sales (
       restaurant_id, sale_date, item_name, category, quantity_sold,
       gross_sales, net_sales, source_pos, source_record_id,
-      provider_catalog_item_id, provider_variation_id
+      provider_location_id, provider_catalog_item_id, provider_variation_id
     ) values (
       p_restaurant_id,
       (sale->>'sale_date')::date,
@@ -278,6 +316,7 @@ begin
       least(10000000::numeric, greatest(0::numeric, coalesce((sale->>'net_sales')::numeric, 0))),
       'Square',
       left(sale->>'source_record_id', 200),
+      nullif(left(trim(coalesce(sale->>'provider_location_id', '')), 128), ''),
       nullif(left(trim(coalesce(sale->>'provider_catalog_item_id', '')), 128), ''),
       nullif(left(trim(coalesce(sale->>'provider_variation_id', '')), 128), '')
     )
@@ -290,6 +329,7 @@ begin
       quantity_sold = excluded.quantity_sold,
       gross_sales = excluded.gross_sales,
       net_sales = excluded.net_sales,
+      provider_location_id = excluded.provider_location_id,
       provider_catalog_item_id = excluded.provider_catalog_item_id,
       provider_variation_id = excluded.provider_variation_id;
     processed_count := processed_count + 1;
@@ -340,7 +380,7 @@ begin
     if location_id is not null and resolved_menu_item_id is not null then
       update public.pos_catalog_item_mappings mapping
       set external_name = catalog_external_name,
-        menu_item_id = resolved_menu_item_id,
+        menu_item_id = case when mapping.verification_status = 'verified' then mapping.menu_item_id else resolved_menu_item_id end,
         updated_at = now()
       where mapping.restaurant_id = p_restaurant_id
         and mapping.pos_location_id = location_id

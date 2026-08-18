@@ -346,7 +346,8 @@ export function buildRecommendationInserts(
     inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
     ledgerComplete?: boolean;
     timeZone?: string | null;
-  } = {}
+  } = {},
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -357,7 +358,8 @@ export function buildRecommendationInserts(
     recommendationHistory,
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
-    timeZone: countEvidence.timeZone
+    timeZone: countEvidence.timeZone,
+    providerMappings
   }).recommendations;
 }
 
@@ -371,7 +373,8 @@ export function buildInsightsFromData(
     inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
     ledgerComplete?: boolean;
     timeZone?: string | null;
-  } = {}
+  } = {},
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -382,7 +385,8 @@ export function buildInsightsFromData(
     recommendationHistory: [],
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
-    timeZone: countEvidence.timeZone
+    timeZone: countEvidence.timeZone,
+    providerMappings
   }).insights;
 }
 

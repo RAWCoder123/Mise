@@ -49,7 +49,8 @@ export async function fetchOperatingBrief(
     data.menuItemIngredients,
     operatingDate,
     demandFallback,
-    countEvidence
+    countEvidence,
+    data.providerMappings
   );
   const findings = buildDailyOperationalBrief({
     restaurantId: normalizedRestaurantId,
@@ -57,6 +58,7 @@ export async function fetchOperatingBrief(
     sales: data.sales,
     inventoryItems: data.inventoryItems,
     mappings: data.menuItemIngredients,
+    providerMappings: data.providerMappings,
     recommendations: data.purchaseRecommendations,
     insights: data.insights,
     decisions: findingDecisions,

@@ -51,7 +51,7 @@ function sales(days = 7): PosSale[] {
     id: `sale-${index}`, restaurant_id: restaurantId, source_record_id: `square-${index}`,
     sale_date: `2026-08-${String(7 + index).padStart(2, "0")}`, item_name: "Chicken Bowl",
     category: "Entree", quantity_sold: 10, gross_sales: 120, net_sales: 120,
-    source_pos: "Square", created_at: now
+    source_pos: "Test POS", created_at: now
   }));
 }
 

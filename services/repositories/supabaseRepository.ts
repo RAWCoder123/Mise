@@ -380,6 +380,63 @@ export function createSupabaseRepository(): MiseRepository {
     return ((data ?? []) as PosSale[]).map(normalizePosSale);
   }
 
+  async function fetchVerifiedProviderMappings(restaurantId: string) {
+    const { data, error } = await client!
+      .from("pos_catalog_item_mappings")
+      .select(`
+        restaurant_id,
+        external_catalog_item_id,
+        external_variation_id,
+        menu_item_id,
+        verification_status,
+        effective_from,
+        effective_to,
+        pos_locations!inner(
+          external_location_id,
+          status,
+          pos_integrations!inner(provider, status)
+        ),
+        menu_items!inner(active)
+      `)
+      .eq("restaurant_id", restaurantId);
+    if (error) throw error;
+    const nowIso = new Date().toISOString();
+    return ((data ?? []) as Array<{
+      restaurant_id: string;
+      external_catalog_item_id: string;
+      external_variation_id: string;
+      menu_item_id: string;
+      verification_status: string;
+      effective_from: string;
+      effective_to: string | null;
+      pos_locations?: {
+        external_location_id?: string;
+        status?: string;
+        pos_integrations?: { provider?: string; status?: string };
+      };
+      menu_items?: { active?: boolean };
+    }>).filter((row) => {
+      const location = row.pos_locations;
+      return (
+        row.verification_status === "verified" &&
+        row.effective_from <= nowIso &&
+        (!row.effective_to || row.effective_to > nowIso) &&
+        Boolean(location?.external_location_id) &&
+        location?.status === "active" &&
+        location?.pos_integrations?.provider === "square" &&
+        location?.pos_integrations?.status === "connected" &&
+        row.menu_items?.active === true
+      );
+    }).map((row) => ({
+      restaurantId: row.restaurant_id,
+      sourcePos: String(row.pos_locations?.pos_integrations?.provider ?? "").trim(),
+      providerLocationId: String(row.pos_locations?.external_location_id ?? "").trim(),
+      externalCatalogItemId: row.external_catalog_item_id,
+      externalVariationId: row.external_variation_id,
+      menuItemId: row.menu_item_id
+    })).filter((row) => row.sourcePos && row.providerLocationId);
+  }
+
   async function loadRestaurantTaskDependencyIds(restaurantId: string, taskId: string) {
     const { data, error } = await client!
       .from("restaurant_task_dependencies")
@@ -677,6 +734,7 @@ export function createSupabaseRepository(): MiseRepository {
       if (recommendationsResult.error) throw recommendationsResult.error;
       if (insightsResult.error) throw insightsResult.error;
       if (mappingResult.error) throw mappingResult.error;
+      const providerMappings = await fetchVerifiedProviderMappings(restaurantId);
 
       return normalizeRestaurantData(
         restaurantResult.data as Restaurant,
@@ -684,7 +742,8 @@ export function createSupabaseRepository(): MiseRepository {
         (inventoryResult.data ?? []) as InventoryItem[],
         (recommendationsResult.data ?? []) as PurchaseRecommendation[],
         (insightsResult.data ?? []) as Insight[],
-        (mappingResult.data ?? []) as MenuItemIngredient[]
+        (mappingResult.data ?? []) as MenuItemIngredient[],
+        providerMappings
       );
     },
 
@@ -796,13 +855,19 @@ export function createSupabaseRepository(): MiseRepository {
       if (mappingResult.error) throw mappingResult.error;
       if (restaurantResult.error) throw restaurantResult.error;
       const timeZone = (restaurantResult.data as Pick<Restaurant, "timezone">).timezone;
+      const providerMappings = await fetchVerifiedProviderMappings(restaurantId);
       return {
         inventoryItems: ((inventoryResult.data ?? []) as InventoryItem[]).map(normalizeInventoryItem),
         sales,
         menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
+        providerMappings,
         operatingDate: toDateKeyInTimeZone(new Date(), timeZone),
         timeZone
       };
+    },
+
+    async fetchVerifiedProviderMappings(restaurantId) {
+      return fetchVerifiedProviderMappings(restaurantId);
     },
 
     async saveRestaurantSetupSnapshot(restaurantId, input) {

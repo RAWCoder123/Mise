@@ -1,6 +1,14 @@
-import { createMiseRepository, type MiseRepository } from "../repositories/miseRepository";
+import type { MiseRepository } from "../repositories/miseRepository";
 
-let activeRepository: MiseRepository = createMiseRepository();
+let activeRepository: MiseRepository | null = null;
+
+function resolveActiveRepository(): MiseRepository {
+  if (!activeRepository) {
+    const { createMiseRepository } = require("../repositories/miseRepository") as typeof import("../repositories/miseRepository");
+    activeRepository = createMiseRepository();
+  }
+  return activeRepository;
+}
 
 /**
  * Application modules capture this once at import time, so it returns a
@@ -9,7 +17,7 @@ let activeRepository: MiseRepository = createMiseRepository();
  */
 const repositoryProxy = new Proxy({} as MiseRepository, {
   get(_target, property) {
-    return activeRepository[property as keyof MiseRepository];
+    return resolveActiveRepository()[property as keyof MiseRepository];
   }
 });
 

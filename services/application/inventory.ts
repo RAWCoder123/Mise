@@ -85,7 +85,8 @@ async function fetchAnchoredInventoryOutlooks(restaurantId: string) {
       data.menuItemIngredients,
       data.operatingDate,
       demandFallbackForRestaurant(restaurantId),
-      data.countEvidence
+      data.countEvidence,
+      data.providerMappings
     )
   };
 }
@@ -115,7 +116,8 @@ export async function fetchRecipeBaselineSummary(restaurantId: string) {
     data.sales,
     data.menuItemIngredients,
     data.inventoryItems,
-    data.operatingDate
+    data.operatingDate,
+    data.providerMappings
   );
 }
 
@@ -141,7 +143,8 @@ export async function updateRecipeBaselineIngredient(
     planningMappings,
     recommendationHistory,
     data.operatingDate,
-    signalCountEvidence(data)
+    signalCountEvidence(data),
+    data.providerMappings
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -149,7 +152,8 @@ export async function updateRecipeBaselineIngredient(
     data.sales,
     planningMappings,
     data.operatingDate,
-    signalCountEvidence(data)
+    signalCountEvidence(data),
+    data.providerMappings
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -295,7 +299,8 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     data.menuItemIngredients,
     recommendationHistory,
     data.operatingDate,
-    signalCountEvidence(data)
+    signalCountEvidence(data),
+    data.providerMappings
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -303,7 +308,8 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     data.sales,
     data.menuItemIngredients,
     data.operatingDate,
-    signalCountEvidence(data)
+    signalCountEvidence(data),
+    data.providerMappings
   );
   return repository.updateInventoryItemAndSignals(
     restaurantId,
@@ -382,7 +388,8 @@ export async function approveInventoryCountSession(restaurantId: string, session
     data.menuItemIngredients,
     recommendationHistory,
     data.operatingDate,
-    pendingCountEvidence
+    pendingCountEvidence,
+    data.providerMappings
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -390,7 +397,8 @@ export async function approveInventoryCountSession(restaurantId: string, session
     data.sales,
     data.menuItemIngredients,
     data.operatingDate,
-    pendingCountEvidence
+    pendingCountEvidence,
+    data.providerMappings
   );
   return repository.approveInventoryCountSession(
     restaurantId,
