@@ -1685,6 +1685,10 @@ test("the ledger boundary migration retains history and only narrows the project
   );
   assert.match(migration, /before\s+insert\s+on\s+public\.inventory_events/i);
   assert.match(migration, /add\s+column\s+if\s+not\s+exists\s+projection_applied\s+boolean\s+not\s+null\s+default\s+true/i);
+  assert.match(
+    migration,
+    /from\s+public\.inventory_items\s+item[\s\S]*for\s+update[\s\S]*select\s+max\(prior_count\.effective_at\)/i
+  );
   // The event is still inserted; only the projection update is skipped.
   assert.match(migration, /if\s+not\s+new\.projection_applied\s+then\s*\n\s*return\s+new;/i);
   assert.match(

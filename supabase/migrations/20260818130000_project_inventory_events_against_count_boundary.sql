@@ -63,6 +63,20 @@ as $$
 declare
   count_boundary timestamptz;
 begin
+  -- This is the serialization point for an item's authority decision. The row
+  -- lock is retained through this INSERT and its AFTER projection trigger, so
+  -- a concurrent event cannot read a stale count boundary.
+  perform 1
+  from public.inventory_items item
+  where item.restaurant_id = new.restaurant_id
+    and item.id = new.inventory_item_id
+  for update;
+
+  if not found then
+    raise exception 'Inventory item not found for projection'
+      using errcode = '23503';
+  end if;
+
   -- Newest authoritative count already on the ledger for this tenant-scoped item.
   -- Future-dated rows are excluded so an invalid count is never a boundary.
   select max(prior_count.effective_at)
