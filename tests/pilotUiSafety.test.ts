@@ -14,6 +14,18 @@ test("Home supplier-send review opens the exact draft instead of executing or dr
   assert.match(home, /pathname: "\/orders\/\[id\]", params: \{ id: card\.orderId \}/);
 });
 
+test("Home loads pilot readiness fail-closed and gates one-tap recommendation approve", () => {
+  const home = readFileSync("app/(tabs)/home.tsx", "utf8");
+  assert.match(home, /fetchPilotReadiness\(restaurantId\)/);
+  assert.match(home, /setReadinessLoadError\(!nextReadiness\.ok\)/);
+  assert.match(home, /homePilotReadinessGate\(/);
+  assert.match(home, /if \(!readinessGate\.canOneTapRecommend\)/);
+  assert.match(home, /router\.push\("\/settings\/pos"\)/);
+  assert.match(home, /canOneTapRecommend=\{readinessGate\.canOneTapRecommend\}/);
+  assert.match(home, /home\.readiness\.unavailableTitle/);
+  assert.match(home, /home\.approvals\.reviewSetup/);
+});
+
 test("Today promotes and fully reveals the operator-selected task bucket", () => {
   const today = readFileSync("app/(tabs)/today.tsx", "utf8");
   assert.match(today, /\[focus, \.\.\.GROUP_ORDER\.filter\(\(key\) => key !== focus\)\]/);
