@@ -24,8 +24,9 @@ interface RecipeIdentity {
 
 const providerSources = new Set(["square", "toast", "clover", "lightspeed"]);
 
-export function saleRequiresVerifiedProviderIdentity(sale: Pick<ProviderSaleIdentity, "source_pos" | "provider_catalog_item_id" | "provider_variation_id">) {
+export function saleRequiresVerifiedProviderIdentity(sale: Pick<ProviderSaleIdentity, "source_pos" | "provider_location_id" | "provider_catalog_item_id" | "provider_variation_id">) {
   return providerSources.has(normalize(sale.source_pos))
+    || Boolean(sale.provider_location_id)
     || Boolean(sale.provider_catalog_item_id)
     || Boolean(sale.provider_variation_id);
 }

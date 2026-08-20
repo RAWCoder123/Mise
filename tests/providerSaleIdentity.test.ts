@@ -5,6 +5,7 @@ import { buildInventoryPrediction } from "../services/domain/miseDomain";
 import {
   resolveVerifiedProviderMenuItemId,
   saleMatchesRecipe,
+  saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "../services/domain/providerSaleIdentity";
 import type { InventoryItem, MenuItemIngredient, PosSale } from "../types/mise";
@@ -159,4 +160,26 @@ test("a manual name match remains manual-only and never authorizes an unmapped S
   });
   assert.equal(saleMatchesRecipe(manualSale, recipe, []), true);
   assert.equal(saleMatchesRecipe(squareSale({ provider_variation_id: "VAR-NO-MAPPING" }), recipe, []), false);
+});
+
+test("provider location evidence alone requires verified provider identity and fails closed", () => {
+  const malformedProviderSale = squareSale({
+    source_pos: "unknown",
+    provider_location_id: "loc-a",
+    provider_catalog_item_id: null,
+    provider_variation_id: null
+  });
+  assert.equal(saleRequiresVerifiedProviderIdentity(malformedProviderSale), true);
+  assert.equal(saleMatchesRecipe(malformedProviderSale, recipe, []), false);
+});
+
+test("a true manual sale without provider evidence can still match a recipe by name", () => {
+  const manualSale = squareSale({
+    source_pos: "",
+    provider_location_id: null,
+    provider_catalog_item_id: null,
+    provider_variation_id: null
+  });
+  assert.equal(saleRequiresVerifiedProviderIdentity(manualSale), false);
+  assert.equal(saleMatchesRecipe(manualSale, recipe, []), true);
 });

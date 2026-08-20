@@ -38,6 +38,7 @@ export interface OperationalSale {
   item_name: string;
   quantity_sold: number;
   source_pos?: string | null;
+  provider_location_id?: string | null;
   provider_catalog_item_id?: string | null;
   provider_variation_id?: string | null;
 }

@@ -1,6 +1,6 @@
 begin;
 
-select plan(19);
+select plan(22);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -111,6 +111,56 @@ values
   );
 
 set local role service_role;
+
+select lives_ok(
+  $sql$
+    insert into public.pos_sales (
+      restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales,
+      source_pos, source_record_id, provider_location_id
+    )
+    values (
+      'e0000000-0000-4000-8000-000000000001', '2026-08-10', 'Location check', 'Square',
+      1, 1, 1, 'Square', 'location-check-valid', 'square-location-123'
+    )
+  $sql$,
+  'a normal bounded Square provider location id is accepted'
+);
+
+select throws_ok(
+  $sql$
+    insert into public.pos_sales (
+      restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales,
+      source_pos, source_record_id, provider_location_id
+    )
+    values (
+      'e0000000-0000-4000-8000-000000000001', '2026-08-10', 'Location check', 'Square',
+      1, 1, 1, 'Square', 'location-check-too-long', repeat('x', 129)
+    )
+  $sql$,
+  '23514',
+  'new row for relation "pos_sales" violates check constraint "pos_sales_provider_location_id_check"',
+  'a provider location id longer than 128 characters is rejected'
+);
+
+select throws_ok(
+  $sql$
+    insert into public.pos_sales (
+      restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales,
+      source_pos, source_record_id, provider_location_id
+    )
+    values (
+      'e0000000-0000-4000-8000-000000000001', '2026-08-10', 'Location check', 'Square',
+      1, 1, 1, 'Square', 'location-check-control', E'square\nlocation'
+    )
+  $sql$,
+  '23514',
+  'new row for relation "pos_sales" violates check constraint "pos_sales_provider_location_id_check"',
+  'a provider location id containing a control character is rejected'
+);
+
+delete from public.pos_sales
+where restaurant_id = 'e0000000-0000-4000-8000-000000000001'
+  and source_record_id = 'location-check-valid';
 
 select lives_ok(
   $sql$

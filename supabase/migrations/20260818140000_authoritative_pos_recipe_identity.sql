@@ -20,6 +20,18 @@ alter table public.pos_sales
     );
 
 alter table public.pos_sales
+  drop constraint if exists pos_sales_provider_location_id_check;
+alter table public.pos_sales
+  add constraint pos_sales_provider_location_id_check
+    check (
+      provider_location_id is null
+      or (
+        length(provider_location_id) between 1 and 128
+        and provider_location_id !~ '[[:cntrl:]]'
+      )
+    );
+
+alter table public.pos_sales
   drop constraint if exists pos_sales_provider_variation_id_check;
 alter table public.pos_sales
   add constraint pos_sales_provider_variation_id_check
