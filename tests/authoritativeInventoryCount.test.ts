@@ -427,7 +427,7 @@ test("count evidence anchors the projected on-hand a screen reads", () => {
       quantity_sold: 8,
       gross_sales: 120,
       net_sales: 110,
-      source_pos: "Square",
+      source_pos: "Test POS",
       created_at: "2026-08-17T10:00:00.000Z"
     }
   ];
@@ -1733,7 +1733,7 @@ test("real planning paths cannot double-apply across a verified count", () => {
       quantity_sold: 8,
       gross_sales: 120,
       net_sales: 110,
-      source_pos: "Square",
+      source_pos: "Test POS",
       created_at: "2026-08-17T10:00:00.000Z"
     }
   ];

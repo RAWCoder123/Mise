@@ -672,7 +672,7 @@ test("validation normalizes reads and rejects invalid mutation quantities", () =
     quantity_sold: -2,
     gross_sales: "18.50" as never,
     net_sales: Number.NaN,
-    source_pos: "Toast",
+    source_pos: "Test POS",
     created_at: new Date().toISOString()
   });
 
@@ -904,7 +904,7 @@ test("adding a recipe baseline mapping closes a POS coverage gap", () => {
     quantity_sold: 12,
     gross_sales: 144,
     net_sales: 132,
-    source_pos: "Toast",
+    source_pos: "Test POS",
     created_at: new Date().toISOString()
   });
 

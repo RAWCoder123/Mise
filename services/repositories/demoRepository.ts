@@ -732,13 +732,15 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async fetchRestaurantData(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
+      const providerMappings = await this.fetchVerifiedProviderMappings(restaurantId);
       return normalizeRestaurantData(
         fetchRestaurantFromState(state, restaurantId),
         state.posSales.filter((sale) => sale.restaurant_id === restaurantId),
         state.inventoryItems.filter((item) => item.restaurant_id === restaurantId),
         state.purchaseRecommendations.filter((recommendation) => recommendation.restaurant_id === restaurantId),
         state.insights.filter((insight) => insight.restaurant_id === restaurantId),
-        state.menuItemIngredients.filter((mapping) => mapping.restaurant_id === restaurantId)
+        state.menuItemIngredients.filter((mapping) => mapping.restaurant_id === restaurantId),
+        providerMappings
       );
     },
 
@@ -1055,6 +1057,7 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async fetchPlanningData(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
+      const providerMappings = await this.fetchVerifiedProviderMappings(restaurantId);
       const restaurant = fetchRestaurantFromState(state, restaurantId);
       return {
         inventoryItems: state.inventoryItems.filter((item) => item.restaurant_id === restaurantId).map(normalizeInventoryItem),
@@ -1062,9 +1065,14 @@ export function createLocalDemoRepository(): MiseRepository {
         menuItemIngredients: state.menuItemIngredients
           .filter((mapping) => mapping.restaurant_id === restaurantId)
           .map(normalizeMenuItemIngredient),
+        providerMappings,
         operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone),
         timeZone: restaurant.timezone
       };
+    },
+
+    async fetchVerifiedProviderMappings(_restaurantId) {
+      return [];
     },
 
     async saveRestaurantSetupSnapshot(restaurantId, input) {

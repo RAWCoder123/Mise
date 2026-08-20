@@ -43,6 +43,13 @@ import {
   type InventoryCountEvidenceMap
 } from "./inventoryCountAuthority";
 import { buildRecordedSalesTrend } from "./salesTrends";
+import {
+  recipeDemandKey,
+  saleDemandKey,
+  saleMatchesRecipe,
+  saleRequiresVerifiedProviderIdentity,
+  type VerifiedProviderSaleMapping
+} from "./providerSaleIdentity";
 
 /**
  * Optional seeded demand source for tenants without sales history.
@@ -97,7 +104,9 @@ const minimumObservedItemDays = 3;
 export function buildHistoricalDemandBaselines(
   restaurantId: string,
   sales: PosSale[],
-  operatingDate: string
+  operatingDate: string,
+  _mappings: MenuItemIngredient[] = [],
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ): Map<string, HistoricalDemandBaseline> {
   const historicalSales = sales.filter(
     (sale) =>
@@ -117,7 +126,7 @@ export function buildHistoricalDemandBaselines(
   historicalSales
     .filter((sale) => selectedDays.has(sale.sale_date))
     .forEach((sale) => {
-      const itemKey = normalizeMenuItemKey(sale.item_name);
+      const itemKey = saleDemandKey(sale, providerMappings);
       if (!itemKey) return;
       const daily = quantitiesByItemAndDay.get(itemKey) ?? new Map<string, number>();
       daily.set(sale.sale_date, (daily.get(sale.sale_date) ?? 0) + sale.quantity_sold);
@@ -290,9 +299,16 @@ export function buildInventoryOutlooks(
   mappings: MenuItemIngredient[],
   operatingDate: string,
   demandFallback?: DemandFallback,
-  countEvidence?: InventoryCountEvidenceMap
+  countEvidence?: InventoryCountEvidenceMap,
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ): InventoryOutlookItem[] {
-  const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
+  const historicalBaselines = buildHistoricalDemandBaselines(
+    restaurantId,
+    sales,
+    operatingDate,
+    mappings,
+    providerMappings
+  );
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .map((item) => ({
@@ -304,7 +320,8 @@ export function buildInventoryOutlooks(
         operatingDate,
         historicalBaselines,
         demandFallback,
-        inventoryCountEvidenceFor(countEvidence, restaurantId, item.id)
+        inventoryCountEvidenceFor(countEvidence, restaurantId, item.id),
+        providerMappings
       )
     }))
     .sort((a, b) => {
@@ -390,8 +407,18 @@ export function buildInventoryPrediction(
   operatingDate: string,
   historicalBaselines = buildHistoricalDemandBaselines(item.restaurant_id, sales, operatingDate),
   demandFallback?: DemandFallback,
-  countEvidence: InventoryCountEvidence = missingInventoryCountEvidence(item.restaurant_id, item.id)
+  countEvidence: InventoryCountEvidence = missingInventoryCountEvidence(item.restaurant_id, item.id),
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ): InventoryPrediction {
+  const identityAwareHistoricalBaselines = providerMappings.length > 0
+    ? buildHistoricalDemandBaselines(
+      item.restaurant_id,
+      sales,
+      operatingDate,
+      mappings,
+      providerMappings
+    )
+    : historicalBaselines;
   const safeItem: InventoryItem = {
     ...item,
     current_quantity: finiteNonNegative(item.current_quantity),
@@ -409,7 +436,7 @@ export function buildInventoryPrediction(
   );
   const mappedTodayUsage = relevantMappings.reduce((sum, mapping) => {
     const sold = todaySales
-      .filter((sale) => normalizeMenuItemKey(sale.item_name) === normalizeMenuItemKey(mapping.menu_item_name))
+      .filter((sale) => saleMatchesRecipe(sale, mapping, providerMappings))
       .reduce((saleSum, sale) => saleSum + finiteNonNegative(sale.quantity_sold), 0);
     return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
   }, 0);
@@ -426,7 +453,7 @@ export function buildInventoryPrediction(
   let hasRestaurantHistory = false;
   let hasDemoFallback = false;
   const baselineUsage = relevantMappings.reduce((sum, mapping) => {
-    const learned = historicalBaselines.get(normalizeMenuItemKey(mapping.menu_item_name));
+    const learned = identityAwareHistoricalBaselines.get(recipeDemandKey(mapping));
     if (learned) {
       historySampleDays = Math.max(historySampleDays, learned.sampleDays);
       hasRestaurantHistory = true;
@@ -684,7 +711,8 @@ function buildCredibilitySummary({
 function estimateUsage(
   sales: PosSale[],
   mappings: MenuItemIngredient[],
-  inventoryItems: InventoryItem[]
+  inventoryItems: InventoryItem[],
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ) {
   const itemsById = new Map(inventoryItems.map((item) => [item.id, item]));
   const usage = new Map<string, { itemName: string; quantity: number; unit: string }>();
@@ -694,7 +722,7 @@ function estimateUsage(
       .filter(
         (mapping) =>
           mapping.restaurant_id === sale.restaurant_id &&
-          mapping.menu_item_name === sale.item_name
+          saleMatchesRecipe(sale, mapping, providerMappings)
       )
       .forEach((mapping) => {
         const item = itemsById.get(mapping.inventory_item_id);
@@ -718,19 +746,35 @@ export function buildRecipeBaselineSummary(
   sales: PosSale[],
   mappings: MenuItemIngredient[],
   inventoryItems: InventoryItem[],
-  operatingDate: string
+  operatingDate: string,
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ): RecipeBaselineSummary {
   const restaurantSales = sales.filter((sale) => sale.restaurant_id === restaurantId);
   const todaySales = restaurantSales.filter((sale) => isToday(sale, operatingDate));
   const restaurantMappings = mappings.filter((mapping) => mapping.restaurant_id === restaurantId);
   const restaurantInventory = inventoryItems.filter((item) => item.restaurant_id === restaurantId);
   const itemNames = new Map(restaurantInventory.map((item) => [item.id, item.item_name]));
-  const soldMenuItems = new Set(restaurantSales.map((sale) => sale.item_name));
+  const saleKey = (sale: PosSale) => {
+    if (saleRequiresVerifiedProviderIdentity(sale)) {
+      const menuItemId = saleDemandKey(sale, providerMappings);
+      if (menuItemId) return menuItemId;
+      return sale.source_record_id
+        ?? `${sale.source_pos ?? "provider"}:${sale.provider_location_id ?? "unknown-location"}:${sale.provider_variation_id ?? sale.provider_catalog_item_id ?? sale.item_name}`;
+    }
+    return sale.item_name.trim().toLowerCase().replace(/\s+/g, " ");
+  };
+  const soldMenuItems = new Set(restaurantSales.map(saleKey));
   const mappedMenuItems = new Set(restaurantMappings.map((mapping) => mapping.menu_item_name));
   const inventoryItemsLinked = new Set(restaurantMappings.map((mapping) => mapping.inventory_item_id));
-  const posItemsCovered = [...soldMenuItems].filter((menuItemName) => mappedMenuItems.has(menuItemName)).length;
-  const posItemsMissingRecipes = [...soldMenuItems]
-    .filter((menuItemName) => !mappedMenuItems.has(menuItemName))
+  const posItemsCovered = new Set(
+    restaurantSales
+      .filter((sale) => restaurantMappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
+      .map(saleKey)
+  ).size;
+  const posItemsMissingRecipes = restaurantSales
+    .filter((sale) => !restaurantMappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
+    .map((sale) => sale.item_name)
+    .filter((name, index, names) => names.indexOf(name) === index)
     .sort((a, b) => a.localeCompare(b));
   const coveragePercent =
     soldMenuItems.size > 0
@@ -742,7 +786,7 @@ export function buildRecipeBaselineSummary(
     .map((menuItemName) => {
       const linkedMappings = restaurantMappings.filter((mapping) => mapping.menu_item_name === menuItemName);
       const todayQuantitySold = todaySales
-        .filter((sale) => sale.item_name === menuItemName)
+        .filter((sale) => linkedMappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
         .reduce((sum, sale) => sum + sale.quantity_sold, 0);
 
       return {
@@ -796,15 +840,22 @@ export function buildInsightsFromData(
   mappings: MenuItemIngredient[],
   operatingDate: string,
   demandFallback?: DemandFallback,
-  countEvidence?: InventoryCountEvidenceMap
+  countEvidence?: InventoryCountEvidenceMap,
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ) {
   const now = new Date().toISOString();
   const todaySales = sales.filter(
     (sale) => sale.restaurant_id === restaurantId && isToday(sale, operatingDate)
   );
-  const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
+  const historicalBaselines = buildHistoricalDemandBaselines(
+    restaurantId,
+    sales,
+    operatingDate,
+    mappings,
+    providerMappings
+  );
   const insights: Insight[] = [];
-  const usage = estimateUsage(todaySales, mappings, inventoryItems);
+  const usage = estimateUsage(todaySales, mappings, inventoryItems, providerMappings);
   const outlooks = buildInventoryOutlooks(
     restaurantId,
     inventoryItems,
@@ -812,7 +863,8 @@ export function buildInsightsFromData(
     mappings,
     operatingDate,
     demandFallback,
-    countEvidence
+    countEvidence,
+    providerMappings
   );
 
   outlooks
@@ -946,7 +998,8 @@ export function buildTodaySummary(
   mappings: MenuItemIngredient[] = [],
   operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone),
   demandFallback?: DemandFallback,
-  countEvidence?: InventoryCountEvidenceMap
+  countEvidence?: InventoryCountEvidenceMap,
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ): TodaySummary {
   const todaySales = sales.filter(
     (sale) => sale.restaurant_id === restaurant.id && isToday(sale, operatingDate)
@@ -962,9 +1015,17 @@ export function buildTodaySummary(
     mappings,
     operatingDate,
     demandFallback,
-    countEvidence
+    countEvidence,
+    providerMappings
   );
-  const recipeBaseline = buildRecipeBaselineSummary(restaurant.id, sales, mappings, inventoryItems, operatingDate);
+  const recipeBaseline = buildRecipeBaselineSummary(
+    restaurant.id,
+    sales,
+    mappings,
+    inventoryItems,
+    operatingDate,
+    providerMappings
+  );
   const workflow = {
     posMenuItemsCovered: recipeBaseline.posItemsCovered,
     recipeLinks: recipeBaseline.ingredientMappings,
@@ -1440,6 +1501,7 @@ export function buildDemoReadinessSummary(
     demandFallback?: DemandFallback;
     demoProfileName?: string | null;
     countEvidence?: InventoryCountEvidenceMap;
+    providerMappings?: readonly VerifiedProviderSaleMapping[];
   } = {}
 ): DemoReadinessSummary {
   const restaurantSales = sales.filter((sale) => sale.restaurant_id === restaurant.id);
@@ -1454,7 +1516,8 @@ export function buildDemoReadinessSummary(
     sales,
     mappings,
     inventoryItems,
-    operatingDate
+    operatingDate,
+    options.providerMappings ?? []
   );
   const outlooks = buildInventoryOutlooks(
     restaurant.id,
@@ -1463,7 +1526,8 @@ export function buildDemoReadinessSummary(
     mappings,
     operatingDate,
     options.demandFallback,
-    options.countEvidence
+    options.countEvidence,
+    options.providerMappings ?? []
   );
   const lowOutlookCount = outlooks.filter(
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low"
@@ -1933,10 +1997,17 @@ export function buildRecommendationInserts(
   recommendationHistory: PurchaseRecommendation[],
   operatingDate: string,
   demandFallback?: DemandFallback,
-  countEvidence?: InventoryCountEvidenceMap
+  countEvidence?: InventoryCountEvidenceMap,
+  providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ) {
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
-  const historicalBaselines = buildHistoricalDemandBaselines(restaurantId, sales, operatingDate);
+  const historicalBaselines = buildHistoricalDemandBaselines(
+    restaurantId,
+    sales,
+    operatingDate,
+    mappings,
+    providerMappings
+  );
 
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
@@ -1950,7 +2021,8 @@ export function buildRecommendationInserts(
         operatingDate,
         historicalBaselines,
         demandFallback,
-        inventoryCountEvidenceFor(countEvidence, restaurantId, item.id)
+        inventoryCountEvidenceFor(countEvidence, restaurantId, item.id),
+        providerMappings
       )
     }))
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")

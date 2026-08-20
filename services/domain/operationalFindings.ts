@@ -13,6 +13,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
 const MAX_FINDINGS = 12;
@@ -98,6 +99,7 @@ export interface DailyOperationalBriefInput {
   sales: readonly PosSale[];
   inventoryItems: readonly InventoryItem[];
   mappings: readonly MenuItemIngredient[];
+  providerMappings?: readonly VerifiedProviderSaleMapping[];
   recommendations: readonly PurchaseRecommendation[];
   insights: readonly Insight[];
   decisions?: readonly OperationalFindingDecision[];
@@ -109,10 +111,6 @@ export interface DailyOperationalBriefInput {
   inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
   /** False when the caller's bounded ledger read was truncated. */
   ledgerComplete?: boolean;
-}
-
-function normalizedKey(value: string) {
-  return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
 }
 
 function boundedText(value: string, fallback: string, max = 240) {
@@ -212,6 +210,7 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
 
   const findings: OperationalFinding[] = [];
   const itemById = new Map(input.inventoryItems.map((item) => [item.id, item]));
+  const providerMappings = input.providerMappings ?? [];
   // Inventory evidence is dated from verified physical counts only. `last_updated`
   // moves for policy, cost, and supplier edits and would fake fresh count evidence.
   const countEvidence = buildInventoryCountEvidence({
@@ -402,8 +401,9 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
     });
   }
 
-  const mappedMenuItems = new Set(input.mappings.map((mapping) => normalizedKey(mapping.menu_item_name)));
-  const unmappedSales = todaySales.filter((sale) => !mappedMenuItems.has(normalizedKey(sale.item_name)));
+  const unmappedSales = todaySales.filter(
+    (sale) => !input.mappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings))
+  );
   if (unmappedSales.length > 0) {
     const evidence = unmappedSales.slice(0, MAX_EVIDENCE_PER_FINDING).map((sale) => ({
       type: "pos_sale" as const,

@@ -7,6 +7,7 @@ import type {
   RestaurantEmailConnection,
   SupplierRecipient
 } from "../../types/mise";
+import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export type PilotReadinessStatus = "ready" | "attention" | "blocked" | "external";
 export type PilotReadinessAreaId =
@@ -42,6 +43,7 @@ export interface PilotReadinessInput {
   inventoryItems: readonly InventoryItem[];
   countEvents: readonly InventoryEvent[];
   recipeMappings: readonly MenuItemIngredient[];
+  providerMappings?: readonly VerifiedProviderSaleMapping[];
   supplierRecipients: readonly SupplierRecipient[];
   emailConnection: RestaurantEmailConnection | null;
   minimumSalesDays?: number;
@@ -69,7 +71,7 @@ export function buildPilotReadiness(input: PilotReadinessInput): PilotReadiness 
   const areas = [
     assessPosSales(input.posIntegrations, input.sales, minimumSalesDays, generatedAt),
     assessInventoryCounts(input.inventoryItems, input.countEvents, maximumCountAgeHours, generatedAt),
-    assessRecipeCoverage(input.sales, input.recipeMappings, minimumRecipeCoverage),
+    assessRecipeCoverage(input.sales, input.recipeMappings, input.providerMappings ?? [], minimumRecipeCoverage),
     assessSupplierRouting(input.inventoryItems, input.supplierRecipients),
     assessEmailDelivery(input.emailConnection, input.inventoryItems, input.supplierRecipients)
   ];
@@ -188,18 +190,18 @@ function assessInventoryCounts(
 function assessRecipeCoverage(
   sales: readonly PosSale[],
   mappings: readonly MenuItemIngredient[],
+  providerMappings: readonly VerifiedProviderSaleMapping[],
   minimumCoverage: number
 ): PilotReadinessArea {
-  const mappedNames = new Set(mappings.map((mapping) => normalizeName(mapping.menu_item_name)));
   const totalQuantity = sales.reduce((sum, sale) => sum + positive(sale.quantity_sold), 0);
   const mappedQuantity = sales.reduce(
-    (sum, sale) => sum + (mappedNames.has(normalizeName(sale.item_name)) ? positive(sale.quantity_sold) : 0),
+    (sum, sale) => sum + (mappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)) ? positive(sale.quantity_sold) : 0),
     0
   );
   const coverage = totalQuantity > 0 ? mappedQuantity / totalQuantity : 0;
   const missingNames = new Set(
     sales
-      .filter((sale) => positive(sale.quantity_sold) > 0 && !mappedNames.has(normalizeName(sale.item_name)))
+      .filter((sale) => positive(sale.quantity_sold) > 0 && !mappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
       .map((sale) => sale.item_name.trim())
   );
   const blockers = coverage >= minimumCoverage ? [] : [
