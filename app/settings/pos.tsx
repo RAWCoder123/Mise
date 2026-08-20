@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
-import { ArrowLeft, CheckCircle, FileText, PlugZap } from "lucide-react-native";
+import { ArrowLeft, CheckCircle, FileText, ListChecks, PlugZap } from "lucide-react-native";
 import { Animated, AppState, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -8,6 +8,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { usePressScale } from "../../components/ui/Motion";
 import { OperationalHero } from "../../components/ui/OperationalHero";
+import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { StatusNotice } from "../../components/ui/StatusNotice";
@@ -17,6 +18,7 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   connectRestaurantSquare,
   disconnectRestaurantSquare,
+  fetchPosMappingReviewQueue,
   fetchPilotReadiness,
   fetchSquarePosIntegration,
   isSquareIntegrationError,
@@ -27,7 +29,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import type { PilotReadiness, PilotReadinessAreaId } from "../../services/domain/pilotReadiness";
-import { canDeleteRestaurantData } from "../../services/tenantAccess";
+import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import type { PosIntegration, PosProvider } from "../../types/mise";
 
 const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Manual CSV Upload"];
@@ -47,6 +49,7 @@ export default function POSConnectionScreen() {
   const [pilotReadiness, setPilotReadiness] = useState<PilotReadiness | null>(null);
   const [readinessLoadError, setReadinessLoadError] = useState(false);
   const [loadingIntegration, setLoadingIntegration] = useState(!isDemoMode);
+  const [mappingReviewCount, setMappingReviewCount] = useState<number | null>(null);
   const [busyAction, setBusyAction] = useState<"connect" | "disconnect" | "sync" | null>(null);
   const [hubLoadError, setHubLoadError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -57,9 +60,11 @@ export default function POSConnectionScreen() {
   } | null>(null);
   const requestIdRef = useRef(0);
   const readinessRequestIdRef = useRef(0);
+  const mappingRequestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
   const canManage = canDeleteRestaurantData(memberships, restaurant?.id);
+  const canReviewMappings = canManageRestaurantData(memberships, restaurant?.id);
   const posProviderLabel = posProvider === "Manual CSV Upload" ? t("pos.provider.manualCsv") : posProvider;
 
   useEffect(() => {
@@ -73,12 +78,31 @@ export default function POSConnectionScreen() {
     setMessage(null);
     setBusyAction(null);
     setLoadingProvider(null);
+    setMappingReviewCount(null);
     setLoadingIntegration(Boolean(restaurant) && !isDemoMode);
     if (isDemoMode && restaurant) {
       setLoadedRestaurantId(restaurant.id);
       setLoadingIntegration(false);
     }
   }, [isDemoMode, restaurant?.id]);
+
+  const loadMappingReviewCount = useCallback(async () => {
+    if (isDemoMode || !restaurant || !canReviewMappings) {
+      setMappingReviewCount(null);
+      return;
+    }
+    const restaurantId = restaurant.id;
+    const requestId = ++mappingRequestIdRef.current;
+    try {
+      const queue = await fetchPosMappingReviewQueue(restaurantId);
+      if (requestId !== mappingRequestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setMappingReviewCount(queue.mappings.length);
+    } catch {
+      if (requestId === mappingRequestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        setMappingReviewCount(null);
+      }
+    }
+  }, [canReviewMappings, isDemoMode, restaurant?.id]);
 
   const loadPilotReadiness = useCallback(async () => {
     if (!restaurant) return;
@@ -148,7 +172,8 @@ export default function POSConnectionScreen() {
     useCallback(() => {
       void loadIntegration(false);
       void loadPilotReadiness();
-    }, [loadIntegration, loadPilotReadiness])
+      void loadMappingReviewCount();
+    }, [loadIntegration, loadMappingReviewCount, loadPilotReadiness])
   );
 
   useEffect(() => {
@@ -225,6 +250,7 @@ export default function POSConnectionScreen() {
           message: t("pos.square.connectedBody")
         });
         await loadPilotReadiness();
+        await loadMappingReviewCount();
       }
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -256,6 +282,7 @@ export default function POSConnectionScreen() {
       });
       await loadIntegration(false);
       await loadPilotReadiness();
+      await loadMappingReviewCount();
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
@@ -293,6 +320,7 @@ export default function POSConnectionScreen() {
       });
       await loadIntegration(false);
       await loadPilotReadiness();
+      await loadMappingReviewCount();
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
@@ -516,6 +544,26 @@ export default function POSConnectionScreen() {
                 accessibilityHint={t("pos.provider.hintCsvImport")}
               />
             </View>
+            {visibleSquareConnected && canReviewMappings ? (
+              <View style={styles.mappingReview}>
+                <OperationalRow
+                  title={t("pos.mappings.title")}
+                  subtitle={
+                    mappingReviewCount === null
+                      ? t("pos.mappings.loading")
+                      : mappingReviewCount === 1
+                        ? t("pos.mappings.needReview.one", { count: "1" })
+                        : t("pos.mappings.needReview.other", { count: String(mappingReviewCount) })
+                  }
+                  icon={<ListChecks size={icon.row} color={colors.accentDark} strokeWidth={iconStroke} />}
+                  iconTone={mappingReviewCount ? "warning" : "leaf"}
+                  badgeLabel={mappingReviewCount ? String(mappingReviewCount) : undefined}
+                  badgeTone="warning"
+                  onPress={() => router.push("/settings/pos-mappings" as never)}
+                  accessibilityHint={t("pos.mappings.openHint")}
+                />
+              </View>
+            ) : null}
           </Card>
         )}
       </View>
@@ -636,6 +684,7 @@ const styles = StyleSheet.create({
   restrictedCopy: { ...typography.body, color: colors.muted, marginTop: 6 },
   meta: { ...typography.caption, color: colors.muted, marginTop: spacing.sm },
   actions: { gap: spacing.sm, marginTop: spacing.md },
+  mappingReview: { marginTop: spacing.md },
   pressed: { opacity: 0.92 },
   disabled: { opacity: 0.55 }
 });

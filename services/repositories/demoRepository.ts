@@ -1798,6 +1798,18 @@ export function createLocalDemoRepository(): MiseRepository {
       return integration ? normalizePosIntegration(integration) : null;
     },
 
+    async fetchPosMappingReviewQueue(restaurantId) {
+      const state = await readDemoState();
+      requireActiveDemoRestaurant(state, restaurantId);
+      return { restaurantId, mappings: [], menuItems: [] };
+    },
+
+    async reviewPosCatalogMapping(restaurantId) {
+      const state = await readDemoState();
+      requireActiveDemoRestaurant(state, restaurantId);
+      throw new Error("Demo mode has no live Square mappings to review.");
+    },
+
     async disconnectRestaurantGmail(restaurantId) {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, restaurantId);

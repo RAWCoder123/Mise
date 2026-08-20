@@ -29,6 +29,7 @@ const baseRoutes = [
   "/settings/gmail",
   "/settings/suppliers",
   "/settings/pos",
+  "/settings/pos-mappings",
   "/settings/recipes"
 ];
 const fallbackDetailRoutes = [

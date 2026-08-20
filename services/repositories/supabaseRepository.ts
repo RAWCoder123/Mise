@@ -101,6 +101,10 @@ import {
   type SquareConnectionWorkflowResult,
   type SquareDisconnectWorkflowResult,
   type SquareIntegrationErrorStatus,
+  type PosMappingMenuItemChoice,
+  type PosMappingReviewItem,
+  type PosMappingReviewQueue,
+  type PosMappingReviewResult,
   type SquareSyncWorkflowResult,
   type GmailDisconnectWorkflowResult,
   type GmailIntegrationErrorStatus,
@@ -287,6 +291,120 @@ function parseSquareSyncWorkflowResponse(data: unknown): SquareSyncWorkflowResul
     importId: typeof payload.importId === "string" ? payload.importId : null,
     recordsProcessed: Math.floor(recordsProcessed),
     catalogProcessed: Math.floor(catalogProcessed)
+  };
+}
+
+function requiredPosMappingString(
+  payload: Record<string, unknown>,
+  key: string,
+  maximumLength = 256
+) {
+  const value = payload[key];
+  if (typeof value !== "string" || value.length < 1 || value.length > maximumLength) {
+    throw new SquareIntegrationError("unknown", "Square mapping review returned an invalid response.");
+  }
+  return value;
+}
+
+function optionalPosMappingString(
+  payload: Record<string, unknown>,
+  key: string,
+  maximumLength = 256
+) {
+  const value = payload[key];
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length < 1 || value.length > maximumLength) {
+    throw new SquareIntegrationError("unknown", "Square mapping review returned an invalid response.");
+  }
+  return value;
+}
+
+function parsePosMappingReviewQueue(
+  data: unknown,
+  expectedRestaurantId: string
+): PosMappingReviewQueue {
+  const payload = asUnknownRecord(data);
+  if (
+    payload.restaurantId !== expectedRestaurantId ||
+    !Array.isArray(payload.mappings) ||
+    !Array.isArray(payload.menuItems) ||
+    payload.mappings.length > 100 ||
+    payload.menuItems.length > 200
+  ) {
+    throw new SquareIntegrationError("unknown", "Square mapping review returned an invalid response.");
+  }
+
+  const menuItems = payload.menuItems.map((value): PosMappingMenuItemChoice => {
+    const row = asUnknownRecord(value);
+    if (row.restaurantId !== expectedRestaurantId) {
+      throw new SquareIntegrationError("unknown", "Square mapping review crossed restaurant scope.");
+    }
+    return {
+      id: requiredPosMappingString(row, "id", 64),
+      restaurantId: expectedRestaurantId,
+      name: requiredPosMappingString(row, "name", 160),
+      category: optionalPosMappingString(row, "category", 120)
+    };
+  });
+
+  const mappings = payload.mappings.map((value): PosMappingReviewItem => {
+    const row = asUnknownRecord(value);
+    if (
+      row.restaurantId !== expectedRestaurantId ||
+      row.provider !== "square" ||
+      row.verificationStatus !== "draft"
+    ) {
+      throw new SquareIntegrationError("unknown", "Square mapping review crossed restaurant scope.");
+    }
+    const updatedAt = requiredPosMappingString(row, "updatedAt", 64);
+    if (!Number.isFinite(Date.parse(updatedAt))) {
+      throw new SquareIntegrationError("unknown", "Square mapping review returned an invalid response.");
+    }
+    return {
+      id: requiredPosMappingString(row, "id", 64),
+      restaurantId: expectedRestaurantId,
+      provider: "square",
+      locationId: requiredPosMappingString(row, "locationId", 64),
+      providerLocationId: requiredPosMappingString(row, "providerLocationId", 128),
+      locationName: requiredPosMappingString(row, "locationName", 160),
+      externalCatalogItemId: requiredPosMappingString(row, "externalCatalogItemId", 128),
+      externalVariationId: requiredPosMappingString(row, "externalVariationId", 128),
+      externalName: requiredPosMappingString(row, "externalName", 240),
+      suggestedMenuItemId: optionalPosMappingString(row, "suggestedMenuItemId", 64),
+      suggestedMenuItemName: optionalPosMappingString(row, "suggestedMenuItemName", 160),
+      suggestedMenuItemCategory: optionalPosMappingString(row, "suggestedMenuItemCategory", 120),
+      verificationStatus: "draft",
+      updatedAt
+    };
+  });
+
+  return { restaurantId: expectedRestaurantId, mappings, menuItems };
+}
+
+function parsePosMappingReviewResult(
+  data: unknown,
+  expectedRestaurantId: string,
+  expectedMappingId: string
+): PosMappingReviewResult {
+  const payload = asUnknownRecord(data);
+  const validOutcomes = new Set(["verified", "already_verified", "rejected", "already_rejected"]);
+  if (
+    payload.restaurantId !== expectedRestaurantId ||
+    payload.mappingId !== expectedMappingId ||
+    typeof payload.outcome !== "string" ||
+    !validOutcomes.has(payload.outcome) ||
+    (payload.verificationStatus !== "verified" && payload.verificationStatus !== "rejected")
+  ) {
+    throw new SquareIntegrationError("unknown", "Square mapping review returned an invalid response.");
+  }
+  return {
+    outcome: payload.outcome as PosMappingReviewResult["outcome"],
+    mappingId: expectedMappingId,
+    restaurantId: expectedRestaurantId,
+    menuItemId: optionalPosMappingString(payload, "menuItemId", 64),
+    verificationStatus: payload.verificationStatus,
+    verifiedAt: optionalPosMappingString(payload, "verifiedAt", 64),
+    verifiedBy: optionalPosMappingString(payload, "verifiedBy", 64)
   };
 }
 
@@ -1297,6 +1415,25 @@ export function createSupabaseRepository(): MiseRepository {
         .maybeSingle();
       if (error) throw error;
       return data ? normalizePosIntegration(data as PosIntegration) : null;
+    },
+
+    async fetchPosMappingReviewQueue(restaurantId) {
+      const { data, error } = await client.rpc("list_pos_catalog_mapping_reviews", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throw error;
+      return parsePosMappingReviewQueue(data, restaurantId);
+    },
+
+    async reviewPosCatalogMapping(restaurantId, mappingId, menuItemId, decision) {
+      const { data, error } = await client.rpc("review_pos_catalog_mapping", {
+        p_restaurant_id: restaurantId,
+        p_mapping_id: mappingId,
+        p_menu_item_id: menuItemId,
+        p_decision: decision
+      });
+      if (error) throw error;
+      return parsePosMappingReviewResult(data, restaurantId, mappingId);
     },
 
     async sendSupplierOrderEmail(restaurantId, orderId) {
