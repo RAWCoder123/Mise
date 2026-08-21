@@ -96,7 +96,7 @@ export default function POSConnectionScreen() {
     try {
       const queue = await fetchPosMappingReviewQueue(restaurantId);
       if (requestId !== mappingRequestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      setMappingReviewCount(queue.mappings.length);
+      setMappingReviewCount(queue.pendingCount);
     } catch {
       if (requestId === mappingRequestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
         setMappingReviewCount(null);

@@ -378,7 +378,22 @@ function parsePosMappingReviewQueue(
     };
   });
 
-  return { restaurantId: expectedRestaurantId, mappings, menuItems };
+  if (
+    typeof payload.pendingCount !== "number" ||
+    !Number.isFinite(payload.pendingCount) ||
+    !Number.isInteger(payload.pendingCount) ||
+    payload.pendingCount < 0 ||
+    payload.pendingCount < mappings.length
+  ) {
+    throw new SquareIntegrationError("unknown", "Square mapping review returned an invalid response.");
+  }
+
+  return {
+    restaurantId: expectedRestaurantId,
+    pendingCount: payload.pendingCount,
+    mappings,
+    menuItems
+  };
 }
 
 function parsePosMappingReviewResult(

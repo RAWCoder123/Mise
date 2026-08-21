@@ -1801,7 +1801,7 @@ export function createLocalDemoRepository(): MiseRepository {
     async fetchPosMappingReviewQueue(restaurantId) {
       const state = await readDemoState();
       requireActiveDemoRestaurant(state, restaurantId);
-      return { restaurantId, mappings: [], menuItems: [] };
+      return { restaurantId, pendingCount: 0, mappings: [], menuItems: [] };
     },
 
     async reviewPosCatalogMapping(restaurantId) {

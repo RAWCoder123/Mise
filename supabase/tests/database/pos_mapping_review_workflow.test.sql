@@ -1,6 +1,6 @@
 begin;
 
-select plan(30);
+select plan(45);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -105,6 +105,13 @@ values
     '2ba00000-0000-4000-8000-000000000301', 'draft', 0.6, now() - interval '1 day'
   ),
   (
+    '2ba00000-0000-4000-8000-000000000403',
+    '2ba00000-0000-4000-8000-000000000001',
+    '2ba00000-0000-4000-8000-000000000201',
+    'ITEM-VERIFY', 'VAR-VERIFY', 'Duplicate Square Burger',
+    '2ba00000-0000-4000-8000-000000000301', 'draft', 0.5, now() - interval '2 days'
+  ),
+  (
     '2bb00000-0000-4000-8000-000000000401',
     '2bb00000-0000-4000-8000-000000000001',
     '2bb00000-0000-4000-8000-000000000201',
@@ -156,8 +163,13 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '2b111111-1111-4111-8111-111111111111', true);
 select is(
   jsonb_array_length(public.list_pos_catalog_mapping_reviews('2ba00000-0000-4000-8000-000000000001')->'mappings'),
-  2,
-  'manager sees only the two current same-tenant draft mappings'
+  3,
+  'manager sees all three current same-tenant draft rows before an identity is verified'
+);
+select is(
+  (public.list_pos_catalog_mapping_reviews('2ba00000-0000-4000-8000-000000000001')->>'pendingCount')::integer,
+  3,
+  'review queue reports the truthful total number of current reviewable drafts'
 );
 select is(
   jsonb_array_length(public.list_pos_catalog_mapping_reviews('2ba00000-0000-4000-8000-000000000001')->'menuItems'),
@@ -251,6 +263,56 @@ select is(
   1,
   'verified mapping enters operational planning immediately'
 );
+select is(
+  (
+    select count(*)
+    from public.pos_catalog_item_mappings mapping
+    where mapping.restaurant_id = '2ba00000-0000-4000-8000-000000000001'
+      and mapping.pos_location_id = '2ba00000-0000-4000-8000-000000000201'
+      and mapping.external_catalog_item_id = 'ITEM-VERIFY'
+      and mapping.external_variation_id = 'VAR-VERIFY'
+      and mapping.verification_status = 'verified'
+      and mapping.effective_from <= now()
+      and (mapping.effective_to is null or mapping.effective_to > now())
+  ),
+  1::bigint,
+  'one provider identity has at most one current verified authority'
+);
+select is(
+  (select verification_status from public.pos_catalog_item_mappings where id = '2ba00000-0000-4000-8000-000000000403'),
+  'draft',
+  'the duplicate draft is retained as history instead of being deleted or auto-reviewed'
+);
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '2b111111-1111-4111-8111-111111111111', true);
+select is(
+  public.list_pos_catalog_mapping_reviews('2ba00000-0000-4000-8000-000000000001')->'mappings'
+    @> '[{"id":"2ba00000-0000-4000-8000-000000000403"}]'::jsonb,
+  false,
+  'a draft sibling stops appearing after its provider identity is verified'
+);
+select is(
+  (public.list_pos_catalog_mapping_reviews('2ba00000-0000-4000-8000-000000000001')->>'pendingCount')::integer,
+  1,
+  'the truthful pending total excludes draft siblings of verified identities'
+);
+select is(
+  pg_temp.try_execute($sql$select public.review_pos_catalog_mapping(
+    '2ba00000-0000-4000-8000-000000000001',
+    '2ba00000-0000-4000-8000-000000000403',
+    '2ba00000-0000-4000-8000-000000000301',
+    'verify'
+  )$sql$),
+  false,
+  'a duplicate draft cannot become a second authority after its sibling wins'
+);
+reset role;
+select is(
+  (select verification_status from public.pos_catalog_item_mappings where id = '2ba00000-0000-4000-8000-000000000403'),
+  'draft',
+  'a failed duplicate review leaves the sibling unchanged'
+);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '2b111111-1111-4111-8111-111111111111', true);
@@ -332,6 +394,11 @@ select is(
   0,
   'applied decisions immediately remove both rows from the review queue'
 );
+select is(
+  (public.list_pos_catalog_mapping_reviews('2ba00000-0000-4000-8000-000000000001')->>'pendingCount')::integer,
+  0,
+  'the queue reports completion only when no current reviewable drafts remain'
+);
 reset role;
 
 select is(
@@ -339,6 +406,77 @@ select is(
   1::bigint,
   'rejection replay does not duplicate audit history'
 );
+
+insert into public.pos_catalog_item_mappings (
+  id, restaurant_id, pos_location_id, external_catalog_item_id,
+  external_variation_id, external_name, menu_item_id,
+  verification_status, confidence, effective_from
+)
+select
+  ('2bc00000-0000-4000-8000-' || lpad(sequence_number::text, 12, '0'))::uuid,
+  '2bb00000-0000-4000-8000-000000000001'::uuid,
+  '2bb00000-0000-4000-8000-000000000201'::uuid,
+  'ITEM-BULK-' || sequence_number,
+  'VAR-BULK-' || sequence_number,
+  'Bulk Square Item ' || sequence_number,
+  '2bb00000-0000-4000-8000-000000000301'::uuid,
+  'draft',
+  0.5,
+  now() - interval '1 day'
+from generate_series(1, 101) sequence_number;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '2b333333-3333-4333-8333-333333333333', true);
+select is(
+  jsonb_array_length(public.list_pos_catalog_mapping_reviews('2bb00000-0000-4000-8000-000000000001')->'mappings'),
+  100,
+  'the visible review window remains bounded at 100 rows'
+);
+select is(
+  (public.list_pos_catalog_mapping_reviews('2bb00000-0000-4000-8000-000000000001')->>'pendingCount')::integer,
+  102,
+  'the review response reports the full pending total beyond the visible window'
+);
+select is(
+  public.review_pos_catalog_mapping(
+    '2bb00000-0000-4000-8000-000000000001',
+    '2bb00000-0000-4000-8000-000000000401',
+    '2bb00000-0000-4000-8000-000000000301',
+    'verify'
+  )->>'outcome',
+  'verified',
+  'a visible decision succeeds while more than one bounded page remains'
+);
+select is(
+  jsonb_array_length(public.list_pos_catalog_mapping_reviews('2bb00000-0000-4000-8000-000000000001')->'mappings'),
+  100,
+  'the bounded review window replenishes immediately after a successful decision'
+);
+select is(
+  (public.list_pos_catalog_mapping_reviews('2bb00000-0000-4000-8000-000000000001')->>'pendingCount')::integer,
+  101,
+  'the replenished queue keeps the truthful nonzero pending total'
+);
+reset role;
+
+update public.pos_catalog_item_mappings
+set effective_to = now()
+where restaurant_id = '2bb00000-0000-4000-8000-000000000001'
+  and external_catalog_item_id like 'ITEM-BULK-%';
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '2b333333-3333-4333-8333-333333333333', true);
+select is(
+  (public.list_pos_catalog_mapping_reviews('2bb00000-0000-4000-8000-000000000001')->>'pendingCount')::integer,
+  0,
+  'the server pending total reaches zero only after all reviewable bulk rows leave the current window'
+);
+select is(
+  jsonb_array_length(public.list_pos_catalog_mapping_reviews('2bb00000-0000-4000-8000-000000000001')->'mappings'),
+  0,
+  'a zero pending total is paired with an empty bounded review window'
+);
+reset role;
 
 select * from finish();
 rollback;

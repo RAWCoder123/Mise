@@ -11,6 +11,7 @@ set search_path = ''
 as $$
 declare
   actor_user_id uuid := auth.uid();
+  pending_count bigint;
   review_rows jsonb;
   menu_rows jsonb;
 begin
@@ -24,9 +25,7 @@ begin
     raise exception 'Not authorized for this restaurant' using errcode = '42501';
   end if;
 
-  select coalesce(pg_catalog.jsonb_agg(row_payload order by row_updated_at desc, row_id), '[]'::jsonb)
-  into review_rows
-  from (
+  with reviewable as materialized (
     select
       mapping.id as row_id,
       mapping.updated_at as row_updated_at,
@@ -63,9 +62,34 @@ begin
       and mapping.verification_status = 'draft'
       and mapping.effective_from <= pg_catalog.now()
       and (mapping.effective_to is null or mapping.effective_to > pg_catalog.now())
-    order by mapping.updated_at desc, mapping.id
+      and not exists (
+        select 1
+        from public.pos_catalog_item_mappings verified_mapping
+        where verified_mapping.restaurant_id = mapping.restaurant_id
+          and verified_mapping.pos_location_id = mapping.pos_location_id
+          and verified_mapping.external_catalog_item_id = mapping.external_catalog_item_id
+          and verified_mapping.external_variation_id = mapping.external_variation_id
+          and verified_mapping.verification_status = 'verified'
+          and verified_mapping.effective_from <= pg_catalog.now()
+          and (
+            verified_mapping.effective_to is null
+            or verified_mapping.effective_to > pg_catalog.now()
+          )
+      )
+  ), bounded_reviews as (
+    select *
+    from reviewable
+    order by row_updated_at desc, row_id
     limit 100
-  ) bounded_reviews;
+  )
+  select
+    (select pg_catalog.count(*) from reviewable),
+    coalesce(
+      pg_catalog.jsonb_agg(row_payload order by row_updated_at desc, row_id),
+      '[]'::jsonb
+    )
+  into pending_count, review_rows
+  from bounded_reviews;
 
   select coalesce(pg_catalog.jsonb_agg(row_payload order by row_name, row_id), '[]'::jsonb)
   into menu_rows
@@ -88,6 +112,7 @@ begin
 
   return pg_catalog.jsonb_build_object(
     'restaurantId', p_restaurant_id,
+    'pendingCount', pending_count,
     'mappings', review_rows,
     'menuItems', menu_rows
   );
@@ -95,7 +120,7 @@ end;
 $$;
 
 comment on function public.list_pos_catalog_mapping_reviews(uuid) is
-  'Returns a bounded manager-authorized queue of current Square draft mappings and active same-tenant menu choices. Excludes provider secrets and raw payloads.';
+  'Returns a bounded manager-authorized queue and truthful total of current reviewable Square draft mappings with active same-tenant menu choices. Excludes provider secrets and raw payloads.';
 
 create or replace function public.review_pos_catalog_mapping(
   p_restaurant_id uuid,
@@ -113,7 +138,11 @@ declare
   normalized_decision text := pg_catalog.lower(pg_catalog.btrim(coalesce(p_decision, '')));
   mapping_row public.pos_catalog_item_mappings%rowtype;
   menu_item_row public.menu_items%rowtype;
+  resolved_pos_location_id uuid;
+  resolved_external_catalog_item_id text;
+  resolved_external_variation_id text;
   reviewable boolean := false;
+  verified_sibling_count bigint := 0;
   decision_time timestamptz := pg_catalog.now();
 begin
   if actor_user_id is null
@@ -140,11 +169,47 @@ begin
   into mapping_row
   from public.pos_catalog_item_mappings mapping
   where mapping.id = p_mapping_id
+    and mapping.restaurant_id = p_restaurant_id;
+
+  if not found then
+    raise exception 'Mapping is not available for review' using errcode = '22023';
+  end if;
+
+  resolved_pos_location_id := mapping_row.pos_location_id;
+  resolved_external_catalog_item_id := mapping_row.external_catalog_item_id;
+  resolved_external_variation_id := mapping_row.external_variation_id;
+
+  -- Every reviewer for one authoritative provider identity locks the same
+  -- current rows in the same order before any authority transition.
+  perform mapping.id
+  from public.pos_catalog_item_mappings mapping
+  where mapping.restaurant_id = p_restaurant_id
+    and mapping.pos_location_id = resolved_pos_location_id
+    and mapping.external_catalog_item_id = resolved_external_catalog_item_id
+    and mapping.external_variation_id = resolved_external_variation_id
+    and mapping.effective_from <= pg_catalog.now()
+    and (mapping.effective_to is null or mapping.effective_to > pg_catalog.now())
+  order by mapping.id
+  for update;
+
+  -- The target may have changed while this reviewer waited for the identity
+  -- lock, so all decision checks use a fresh locked row image.
+  select mapping.*
+  into mapping_row
+  from public.pos_catalog_item_mappings mapping
+  where mapping.id = p_mapping_id
     and mapping.restaurant_id = p_restaurant_id
   for update;
 
   if not found then
     raise exception 'Mapping is not available for review' using errcode = '22023';
+  end if;
+
+  if mapping_row.pos_location_id is distinct from resolved_pos_location_id
+    or mapping_row.external_catalog_item_id is distinct from resolved_external_catalog_item_id
+    or mapping_row.external_variation_id is distinct from resolved_external_variation_id
+  then
+    raise exception 'Mapping identity changed during review' using errcode = '55000';
   end if;
 
   select exists (
@@ -164,6 +229,24 @@ begin
 
   if not reviewable then
     raise exception 'Mapping is not available for review' using errcode = '22023';
+  end if;
+
+  select pg_catalog.count(*)
+  into verified_sibling_count
+  from public.pos_catalog_item_mappings sibling
+  where sibling.restaurant_id = mapping_row.restaurant_id
+    and sibling.pos_location_id = mapping_row.pos_location_id
+    and sibling.external_catalog_item_id = mapping_row.external_catalog_item_id
+    and sibling.external_variation_id = mapping_row.external_variation_id
+    and sibling.id <> mapping_row.id
+    and sibling.verification_status = 'verified'
+    and sibling.effective_from <= pg_catalog.now()
+    and (sibling.effective_to is null or sibling.effective_to > pg_catalog.now());
+
+  if verified_sibling_count > 0
+    and (normalized_decision = 'verify' or mapping_row.verification_status = 'verified')
+  then
+    raise exception 'Provider identity already has a verified mapping' using errcode = '55000';
   end if;
 
   if mapping_row.verification_status = 'verified' then
@@ -297,7 +380,7 @@ end;
 $$;
 
 comment on function public.review_pos_catalog_mapping(uuid, uuid, uuid, text) is
-  'Locks and explicitly verifies or rejects one current Square draft mapping for an owner, admin, or manager. Exact decision replays are idempotent.';
+  'Locks an entire current Square provider identity and explicitly verifies or rejects one draft mapping for an owner, admin, or manager. Unambiguous exact decision replays are idempotent.';
 
 revoke insert, update, delete on table public.pos_catalog_item_mappings from authenticated;
 

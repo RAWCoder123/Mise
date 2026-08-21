@@ -253,6 +253,7 @@ export interface PosMappingReviewItem {
 
 export interface PosMappingReviewQueue {
   restaurantId: string;
+  pendingCount: number;
   mappings: PosMappingReviewItem[];
   menuItems: PosMappingMenuItemChoice[];
 }

@@ -123,6 +123,7 @@ export default function PosMappingsScreen() {
             ? t("pos.mappings.notice.verified")
             : t("pos.mappings.notice.rejected")
       });
+      await loadQueue();
     } catch {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({ tone: "danger", message: t("pos.mappings.notice.failed") });
@@ -164,7 +165,7 @@ export default function PosMappingsScreen() {
           />
         ) : loading || !queue ? (
           <Text style={styles.loading}>{t("common.loading")}</Text>
-        ) : queue.mappings.length === 0 ? (
+        ) : queue.pendingCount === 0 ? (
           <Card>
             <View style={styles.emptyState}>
               <CheckCircle size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />
@@ -177,7 +178,7 @@ export default function PosMappingsScreen() {
             <SectionHeader
               eyebrow={t("pos.mappings.eyebrow")}
               title={t("pos.mappings.queueTitle")}
-              action={String(queue.mappings.length)}
+              action={String(queue.pendingCount)}
             />
             {queue.mappings.map((mapping) => {
               const selectedMenuItemId = selectedMenuItemIds[mapping.id] ?? null;
