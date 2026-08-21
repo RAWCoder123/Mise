@@ -15,6 +15,7 @@ import type {
   RecommendationStatus,
   Restaurant,
   RestaurantEmailConnection,
+  RecipeAuthorityState,
   RestaurantMembership,
   RestaurantOpsProfile,
   RestaurantTeamMember,
@@ -39,6 +40,7 @@ import type {
   OperationalFindingDecisionInput
 } from "../domain/operationalFindingDecisions";
 import type { VerifiedProviderSaleMapping } from "../domain/providerSaleIdentity";
+import type { PurchaseAuthorityResult } from "../domain/purchaseAuthority";
 import type {
   RestaurantMemory,
   RestaurantMemoryStatus
@@ -542,12 +544,21 @@ export interface MiseRepository {
   ): Promise<MenuItemIngredient>;
   upsertMenuItemIngredient(input: MenuItemIngredientInput): Promise<MenuItemIngredient>;
   saveRecipeMappingAndSignals(input: RecipeMappingSignalInput): Promise<MenuItemIngredient>;
+  fetchRecipeAuthorities(restaurantId: string): Promise<RecipeAuthorityState[]>;
+  confirmRecipeComplete(
+    restaurantId: string,
+    menuItemId: string,
+    expectedRevision: number
+  ): Promise<RecipeAuthorityState>;
   findPendingRecommendation(restaurantId: string, itemId: string): Promise<PurchaseRecommendation | null>;
   createPurchaseRecommendation(input: PurchaseRecommendationInput): Promise<PurchaseRecommendation>;
   fetchPurchaseRecommendations(
     restaurantId: string,
     status?: RecommendationStatus | "all"
   ): Promise<PurchaseRecommendation[]>;
+  fetchPurchaseRecommendationAuthorities(
+    restaurantId: string
+  ): Promise<Record<string, PurchaseAuthorityResult>>;
   /**
    * Recommendations from the last RECOMMENDATION_HISTORY_DAYS, newest first.
    * Use this (not fetchPurchaseRecommendations(..., "all")) when recomputing

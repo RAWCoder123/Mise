@@ -50,6 +50,7 @@ import {
   saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity";
+import type { PurchaseAuthorityResult } from "./purchaseAuthority";
 
 /**
  * Optional seeded demand source for tenants without sales history.
@@ -1230,10 +1231,11 @@ export function buildSupplierOrderMessage(
 export type RecommendationWorkflowOutcome = "applied" | "already_applied";
 
 export interface RecommendationWorkflowResult {
-  outcome: RecommendationWorkflowOutcome;
+  outcome: RecommendationWorkflowOutcome | "blocked";
   recommendation: PurchaseRecommendation;
   order: SupplierOrder | null;
   previousStatus: RecommendationStatus;
+  authority?: PurchaseAuthorityResult | null;
 }
 
 export interface SupplierOrderSentWorkflowResult {

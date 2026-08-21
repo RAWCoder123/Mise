@@ -1,6 +1,5 @@
 import type { RecommendationStatus, SupplierOrder } from "../../types/mise";
 import {
-  buildDraftsFromRecommendations,
   buildOrderQueueSummary,
   buildSupplierEmailPayload
 } from "../domain/miseDomain";
@@ -11,6 +10,10 @@ import {
 } from "../domain/orderAutomation";
 import { buildSupplierRecipientDirectory } from "../domain/supplierRecipients";
 import { buildSupplierSpendTrend, type SupplierSpendTrendPoint } from "../domain/supplierSpend";
+import {
+  PurchaseAuthorityBlockedError,
+  type PurchaseAuthorityResult
+} from "../domain/purchaseAuthority";
 import {
   buildSupplierReliabilitySummary,
   buildSupplierOrderDeliveryEvidence,
@@ -48,6 +51,14 @@ export async function fetchPurchaseRecommendations(
   return repository.fetchPurchaseRecommendations(restaurantId, status);
 }
 
+export async function fetchPurchaseRecommendationAuthorities(
+  restaurantId: string
+): Promise<Record<string, PurchaseAuthorityResult>> {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  return repository.fetchPurchaseRecommendationAuthorities(normalizedRestaurantId);
+}
+
 export async function approvePurchaseRecommendation(
   restaurantId: string,
   recommendationId: string,
@@ -60,6 +71,27 @@ export async function approvePurchaseRecommendation(
       ? undefined
       : requireRecommendationApprovalQuantity(recommendedQuantity)
   );
+  if (result.outcome === "blocked" || result.authority?.ready === false) {
+    throw new PurchaseAuthorityBlockedError(result.authority ?? {
+      ready: false,
+      blockers: [],
+      evaluatedAt: new Date().toISOString(),
+      planningRevision: null,
+      evidence: {
+        recommendationId,
+        inventoryItemId: result.recommendation.inventory_item_id,
+        countEventId: null,
+        countedAt: null,
+        projectedQuantity: null,
+        canonicalUnit: null,
+        providerWindowFrom: null,
+        providerWindowTo: null,
+        providerWindowCompletedAt: null,
+        recipeRevisions: {},
+        basis: "physical_count_reorder_policy"
+      }
+    });
+  }
   return result.recommendation;
 }
 
@@ -69,43 +101,9 @@ export async function dismissPurchaseRecommendation(restaurantId: string, recomm
 }
 
 export async function generateSupplierOrderDraft(restaurantId: string, supplierName?: string) {
-  const [recommendations, restaurant] = await Promise.all([
-    repository.fetchApprovedRecommendations(restaurantId, supplierName),
-    repository.fetchRestaurant(restaurantId)
-  ]);
-  const drafts = buildDraftsFromRecommendations(restaurantId, recommendations, {
-    timeZone: restaurant.timezone
-  });
-  for (const draft of drafts) {
-    const order = await repository.upsertSupplierOrderDraft(draft);
-    const linkedRecommendations = recommendations.filter(
-      (recommendation) => recommendation.supplier_name === draft.supplier_name
-    );
-    for (const recommendation of linkedRecommendations) {
-      if (recommendation.supplier_order_id === order.id) continue;
-      await repository.updatePurchaseRecommendation(restaurantId, recommendation.id, {
-        supplier_order_id: order.id
-      });
-    }
-  }
-  return drafts;
-}
-
-export async function rebuildSupplierDraftForRecommendationUndo(restaurantId: string, supplierName: string) {
-  const [recommendations, restaurant] = await Promise.all([
-    repository.fetchApprovedRecommendations(restaurantId, supplierName),
-    repository.fetchRestaurant(restaurantId)
-  ]);
-  const drafts = buildDraftsFromRecommendations(restaurantId, recommendations, {
-    timeZone: restaurant.timezone
-  });
-  if (drafts.length === 0) {
-    await repository.deleteSupplierOrderDraft(restaurantId, supplierName);
-    return null;
-  }
-  const draft = drafts[0]!;
-  await repository.upsertSupplierOrderDraft(draft);
-  return draft;
+  void restaurantId;
+  void supplierName;
+  throw new Error("Supplier drafts are created only by the server-authoritative recommendation approval workflow.");
 }
 
 export async function undoPurchaseRecommendationAction(restaurantId: string, recommendationId: string) {

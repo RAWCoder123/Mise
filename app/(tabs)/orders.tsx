@@ -25,11 +25,18 @@ import {
   dismissPurchaseRecommendation,
   fetchEmailConnectionState,
   fetchPurchaseRecommendations,
+  fetchPurchaseRecommendationAuthorities,
   fetchSupplierOrders,
   fetchSupplierSpendTrend,
   undoPurchaseRecommendationAction,
   type SupplierSpendTrendPoint
 } from "../../services/miseService";
+import {
+  isPurchaseAuthorityBlockedError,
+  purchaseAuthorityBlockerMessageKey,
+  type PurchaseAuthorityResult
+} from "../../services/domain/purchaseAuthority";
+import type { MessageKey } from "../../i18n/catalog";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -57,6 +64,7 @@ export default function OrdersScreen() {
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canConnectGmail = canDeleteRestaurantData(memberships, restaurant?.id);
   const [recommendations, setRecommendations] = useState<PurchaseRecommendation[]>([]);
+  const [recommendationAuthorities, setRecommendationAuthorities] = useState<Record<string, PurchaseAuthorityResult>>({});
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
   const [spendTrend, setSpendTrend] = useState<SupplierSpendTrendPoint[]>([]);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
@@ -103,8 +111,9 @@ export default function OrdersScreen() {
       setLoadError(null);
 
       try {
-        const [nextRecommendations, nextOrders, nextEmailConnection, nextSpendTrend] = await Promise.all([
+        const [nextRecommendations, nextAuthorities, nextOrders, nextEmailConnection, nextSpendTrend] = await Promise.all([
           fetchPurchaseRecommendations(restaurantId, "pending"),
+          fetchPurchaseRecommendationAuthorities(restaurantId),
           fetchSupplierOrders(restaurantId),
           fetchEmailConnectionState(restaurantId),
           fetchSupplierSpendTrend(restaurantId)
@@ -112,6 +121,7 @@ export default function OrdersScreen() {
         if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
         setRecommendations(nextRecommendations);
+        setRecommendationAuthorities(nextAuthorities);
         setOrders(nextOrders);
         setEmailConnection(nextEmailConnection);
         setSpendTrend(nextSpendTrend);
@@ -143,6 +153,7 @@ export default function OrdersScreen() {
     recommendationLocksRef.current.clear();
     undoLockRef.current = false;
     setRecommendations([]);
+    setRecommendationAuthorities({});
     setOrders([]);
     setSpendTrend([]);
     setEmailConnection(null);
@@ -375,9 +386,24 @@ export default function OrdersScreen() {
         current.filter((item) => item.id !== recommendation.id)
       );
       showMessage(t("orders.notice.approved", { item: approved.item_name }), restaurantId);
-    } catch {
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
-        showMessage(t("orders.error.approve"), restaurantId, "danger");
+        if (isPurchaseAuthorityBlockedError(error)) {
+          setRecommendationAuthorities((current) => ({
+            ...current,
+            [recommendation.id]: error.authority
+          }));
+          const firstBlocker = error.authority.blockers[0];
+          showMessage(
+            firstBlocker
+              ? t(purchaseAuthorityBlockerMessageKey(firstBlocker.code) as MessageKey)
+              : t("orders.error.approve"),
+            restaurantId,
+            "danger"
+          );
+        } else {
+          showMessage(t("orders.error.approve"), restaurantId, "danger");
+        }
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -669,6 +695,7 @@ export default function OrdersScreen() {
                         onDismiss={() => void dismiss(recommendation)}
                         action={recommendationActions[recommendation.id]}
                         error={quantityErrors[recommendation.id]}
+                        authority={recommendationAuthorities[recommendation.id]}
                         readOnly={!actionsEditable}
                         showDivider={index < supplierRecommendations.length - 1}
                       />

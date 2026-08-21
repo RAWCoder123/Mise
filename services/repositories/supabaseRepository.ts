@@ -14,6 +14,7 @@ import type {
   RecommendationStatus,
   Restaurant,
   RestaurantEmailConnection,
+  RecipeAuthorityState,
   RestaurantMembership,
   RestaurantTeamMember,
   SetupAttachment,
@@ -23,6 +24,7 @@ import type {
 } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
+import { normalizePurchaseAuthorityResult } from "../domain/purchaseAuthority";
 import { TeamMembershipError, teamMembershipErrorFrom } from "../domain/teamMembership";
 import {
   activityEventFromPersistedRow,
@@ -120,6 +122,7 @@ function parseRecommendationWorkflowResponse(data: unknown): RecommendationWorkf
     recommendation?: PurchaseRecommendation;
     order?: SupplierOrder | null;
     previous_status?: RecommendationStatus;
+    authority?: unknown;
   } | null;
   if (!payload?.recommendation || !payload.outcome) {
     throw new Error("Order workflow returned an invalid response.");
@@ -128,7 +131,34 @@ function parseRecommendationWorkflowResponse(data: unknown): RecommendationWorkf
     outcome: payload.outcome,
     recommendation: normalizePurchaseRecommendation(payload.recommendation),
     order: payload.order ? normalizeSupplierOrder(payload.order) : null,
-    previousStatus: payload.previous_status ?? payload.recommendation.status
+    previousStatus: payload.previous_status ?? payload.recommendation.status,
+    authority: payload.authority ? normalizePurchaseAuthorityResult(payload.authority) : null
+  };
+}
+
+function parseRecipeAuthorityState(value: unknown): RecipeAuthorityState {
+  const payload = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const menuItemId = typeof payload.menuItemId === "string" ? payload.menuItemId : "";
+  const menuItemName = typeof payload.menuItemName === "string" ? payload.menuItemName.trim() : "";
+  const recipeRevision = Number(payload.recipeRevision);
+  const confirmedRevision = payload.confirmedRevision === null || payload.confirmedRevision === undefined
+    ? null
+    : Number(payload.confirmedRevision);
+  if (!menuItemId || !menuItemName || !Number.isSafeInteger(recipeRevision) || recipeRevision < 0) {
+    throw new Error("Recipe authority returned an invalid response.");
+  }
+  return {
+    menuItemId,
+    menuItemName,
+    active: payload.active === true,
+    recipeRevision,
+    confirmedRevision: Number.isSafeInteger(confirmedRevision) && Number(confirmedRevision) >= 0
+      ? confirmedRevision
+      : null,
+    confirmedAt: typeof payload.confirmedAt === "string" ? payload.confirmedAt : null,
+    ready: payload.ready === true
   };
 }
 
@@ -1124,6 +1154,25 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizeMenuItemIngredient(response.result as MenuItemIngredient);
     },
 
+    async fetchRecipeAuthorities(restaurantId) {
+      const { data, error } = await client.rpc("list_recipe_authorities", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new Error("Recipe authority returned an invalid response.");
+      return data.map(parseRecipeAuthorityState);
+    },
+
+    async confirmRecipeComplete(restaurantId, menuItemId, expectedRevision) {
+      const { data, error } = await client.rpc("confirm_recipe_complete", {
+        p_restaurant_id: restaurantId,
+        p_menu_item_id: menuItemId,
+        p_expected_revision: expectedRevision
+      });
+      if (error) throw error;
+      return parseRecipeAuthorityState(data);
+    },
+
     async findPendingRecommendation(restaurantId, itemId) {
       const existing = await client
         .from("purchase_recommendations")
@@ -1158,6 +1207,22 @@ export function createSupabaseRepository(): MiseRepository {
       const { data, error } = await query;
       if (error) throw error;
       return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
+    },
+
+    async fetchPurchaseRecommendationAuthorities(restaurantId) {
+      const { data, error } = await client.rpc("list_purchase_recommendation_authority", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throw error;
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        throw new Error("Purchase authority returned an invalid response.");
+      }
+      return Object.fromEntries(
+        Object.entries(data as Record<string, unknown>).map(([recommendationId, authority]) => [
+          recommendationId,
+          normalizePurchaseAuthorityResult(authority)
+        ])
+      );
     },
 
     async fetchRecommendationHistory(restaurantId) {

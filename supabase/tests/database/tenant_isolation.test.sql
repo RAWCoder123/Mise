@@ -1093,6 +1093,30 @@ select is(
   'pending',
   'invalid approval quantities leave workflow state unchanged'
 );
+
+reset role;
+update public.system_operational_controls
+set ordering_policy = 'draft_only', order_drafting_enabled = true
+where singleton;
+update public.restaurant_operational_controls
+set ordering_policy = 'draft_only', order_drafting_enabled = true
+where restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+update public.inventory_items
+set reorder_threshold = 20
+where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
+insert into public.inventory_events (
+  id, restaurant_id, inventory_item_id, event_type, quantity, canonical_unit,
+  effective_at, actor_user_id, source, client_event_id, idempotency_key
+) values (
+  'aaaaaaaa-2727-4727-8727-aaaaaaaaaaaa',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+  'count', 9071.8474, 'g', clock_timestamp(),
+  '22222222-2222-4222-8222-222222222222',
+  'mise-003a-test', 'tenant-a-ready-count', 'tenant-a-ready-count'
+);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 select lives_ok(
   $sql$select public.approve_purchase_recommendation(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
