@@ -227,6 +227,47 @@ export interface SquareSyncWorkflowResult {
   catalogProcessed: number;
 }
 
+export interface PosMappingMenuItemChoice {
+  id: string;
+  restaurantId: string;
+  name: string;
+  category: string | null;
+}
+
+export interface PosMappingReviewItem {
+  id: string;
+  restaurantId: string;
+  provider: "square";
+  locationId: string;
+  providerLocationId: string;
+  locationName: string;
+  externalCatalogItemId: string;
+  externalVariationId: string;
+  externalName: string;
+  suggestedMenuItemId: string | null;
+  suggestedMenuItemName: string | null;
+  suggestedMenuItemCategory: string | null;
+  verificationStatus: "draft";
+  updatedAt: string;
+}
+
+export interface PosMappingReviewQueue {
+  restaurantId: string;
+  pendingCount: number;
+  mappings: PosMappingReviewItem[];
+  menuItems: PosMappingMenuItemChoice[];
+}
+
+export interface PosMappingReviewResult {
+  outcome: "verified" | "already_verified" | "rejected" | "already_rejected";
+  mappingId: string;
+  restaurantId: string;
+  menuItemId: string | null;
+  verificationStatus: "verified" | "rejected";
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+}
+
 export interface SupplierOrderEmailSendResult {
   status: "sent";
   outcome: "applied" | "already_applied" | "already_sent";
@@ -559,6 +600,13 @@ export interface MiseRepository {
     to: string
   ): Promise<SquareSyncWorkflowResult>;
   fetchSquarePosIntegration(restaurantId: string): Promise<PosIntegration | null>;
+  fetchPosMappingReviewQueue(restaurantId: string): Promise<PosMappingReviewQueue>;
+  reviewPosCatalogMapping(
+    restaurantId: string,
+    mappingId: string,
+    menuItemId: string | null,
+    decision: "verify" | "reject"
+  ): Promise<PosMappingReviewResult>;
   sendSupplierOrderEmail(restaurantId: string, orderId: string): Promise<SupplierOrderEmailSendResult>;
   fetchInsights(restaurantId: string): Promise<Insight[]>;
   replaceInsights(restaurantId: string, insights: Insight[]): Promise<void>;

@@ -58,6 +58,7 @@ export default function RootLayout() {
               <Stack.Screen name="more/activity" />
               <Stack.Screen name="more/restaurant-memory" />
               <Stack.Screen name="settings/pos" />
+              <Stack.Screen name="settings/pos-mappings" />
               <Stack.Screen name="settings/recipes" />
               <Stack.Screen name="settings/language" />
               <Stack.Screen name="settings/gmail" />
