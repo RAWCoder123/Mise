@@ -464,7 +464,7 @@ update public.pos_sales set sale_date = current_date - split_part(source_record_
 where restaurant_id = '3a000000-0000-4000-8000-000000000001' and source_record_id like 'sale-%';
 
 select ok(pg_get_functiondef(
-  'private.evaluate_purchase_recommendation_authority(uuid,uuid,timestamptz)'::regprocedure
+  'private.evaluate_purchase_recommendation_authority_mise_003a_base(uuid,uuid,timestamptz)'::regprocedure
 ) like '%supplier_missing%', 'server authority fails closed for malformed legacy supplier identity');
 update public.purchase_recommendations set supplier_name = 'Other Supplier'
 where id = '3a000000-0000-4000-8000-000000000406';

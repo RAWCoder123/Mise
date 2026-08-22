@@ -9,6 +9,7 @@ export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "planning_window_incomplete",
   "demand_history_insufficient",
   "pos_not_connected",
+  "pos_sync_in_progress",
   "pos_sync_stale",
   "provider_identity_incomplete",
   "provider_mapping_missing",
@@ -20,6 +21,7 @@ export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "supplier_missing",
   "supplier_mismatch",
   "draft_authority_incomplete",
+  "draft_authority_stale",
   "ordering_disabled",
   "recommendation_no_longer_actionable"
 ] as const;
@@ -44,6 +46,7 @@ export interface PurchaseAuthorityEvidence {
   providerWindowCompletedAt: string | null;
   recipeRevisions: Record<string, number>;
   basis: "physical_count_reorder_policy";
+  demandBasis: "manual_physical_stock" | "square_history_required" | "non_provider_planning";
 }
 
 export interface PurchaseAuthorityResult {
@@ -116,7 +119,12 @@ export function normalizePurchaseAuthorityResult(value: unknown): PurchaseAuthor
       providerWindowTo: nullableString(evidencePayload.providerWindowTo, 20),
       providerWindowCompletedAt: nullableString(evidencePayload.providerWindowCompletedAt, 80),
       recipeRevisions,
-      basis: "physical_count_reorder_policy"
+      basis: "physical_count_reorder_policy",
+      demandBasis: evidencePayload.demandBasis === "square_history_required"
+        ? "square_history_required"
+        : evidencePayload.demandBasis === "non_provider_planning"
+          ? "non_provider_planning"
+          : "manual_physical_stock"
     }
   };
 }

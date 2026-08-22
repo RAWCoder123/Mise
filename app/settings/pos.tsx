@@ -31,6 +31,7 @@ import {
 import type { PilotReadiness, PilotReadinessAreaId } from "../../services/domain/pilotReadiness";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import type { PosIntegration, PosProvider } from "../../types/mise";
+import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
 
 const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Manual CSV Upload"];
 type PosMessage =
@@ -301,12 +302,12 @@ export default function POSConnectionScreen() {
     setBusyAction("sync");
     setNotice(null);
     try {
-      const to = new Date();
-      const from = new Date(to.getTime() - 28 * 24 * 60 * 60 * 1000);
+      const to = toDateKeyInTimeZone(new Date(), restaurant.timezone);
+      const from = addDaysToDateKey(to, -27);
       const result = await syncSquarePosSales(
         restaurantId,
-        from.toISOString().slice(0, 10),
-        to.toISOString().slice(0, 10)
+        from,
+        to
       );
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setMessage({

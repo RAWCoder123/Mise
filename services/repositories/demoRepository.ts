@@ -187,7 +187,8 @@ function demoPurchaseAuthority(
       providerWindowTo: null,
       providerWindowCompletedAt: null,
       recipeRevisions: {},
-      basis: "physical_count_reorder_policy"
+      basis: "physical_count_reorder_policy",
+      demandBasis: "manual_physical_stock"
     }
   };
 }

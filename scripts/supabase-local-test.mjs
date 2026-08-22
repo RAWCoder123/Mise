@@ -68,6 +68,7 @@ try {
     runNode("scripts/inventory-projection-concurrency.mjs");
     runNode("scripts/pos-mapping-review-concurrency.mjs");
     runNode("scripts/purchase-approval-concurrency.mjs");
+    runNode("scripts/purchase-approval-square-sync-concurrency.mjs");
     // Container restarts can briefly complete before Postgres accepts a new
     // connection on macOS. Retry only the read-only test runner, never reset.
     runSupabase(["test", "db", stagedTests], { retries: 2 });

@@ -32,6 +32,7 @@ test("purchase authority normalizes stable blockers and bounded audit evidence",
       providerWindowTo: null,
       providerWindowCompletedAt: null,
       recipeRevisions: { "menu-1": 4 },
+      demandBasis: "square_history_required",
       basis: "untrusted-client-value"
     }
   });
@@ -44,6 +45,7 @@ test("purchase authority normalizes stable blockers and bounded audit evidence",
   });
   assert.equal(authority.evidence.projectedQuantity, 2.5);
   assert.equal(authority.evidence.basis, "physical_count_reorder_policy");
+  assert.equal(authority.evidence.demandBasis, "square_history_required");
   assert.equal(purchaseAuthorityBlockerMessageKey("inventory_count_stale"), "orders.authority.inventory_count_stale");
 });
 
@@ -86,5 +88,16 @@ test("legacy draft authority gaps remain a stable fail-closed blocker", () => {
   assert.equal(
     purchaseAuthorityBlockerMessageKey("draft_authority_incomplete"),
     "orders.authority.draft_authority_incomplete"
+  );
+});
+
+test("live draft and active sync blockers remain stable typed codes", () => {
+  assert.equal(
+    purchaseAuthorityBlockerMessageKey("draft_authority_stale"),
+    "orders.authority.draft_authority_stale"
+  );
+  assert.equal(
+    purchaseAuthorityBlockerMessageKey("pos_sync_in_progress"),
+    "orders.authority.pos_sync_in_progress"
   );
 });

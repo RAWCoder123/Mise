@@ -319,23 +319,6 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
   return rows;
 }
 
-export function enrichSquareSalesWithCatalogIdentity(
-  sales: SquareSaleRow[],
-  catalogItems: SquareCatalogRow[],
-): SquareSaleRow[] {
-  const catalogItemByVariation = new Map(
-    catalogItems
-      .filter((item) => Boolean(item.external_variation_id) && Boolean(item.external_catalog_item_id))
-      .map((item) => [item.external_variation_id, item.external_catalog_item_id] as const),
-  );
-  return sales.map((sale) => {
-    const catalogItemId = sale.provider_variation_id
-      ? catalogItemByVariation.get(sale.provider_variation_id)
-      : undefined;
-    return catalogItemId ? { ...sale, provider_catalog_item_id: catalogItemId } : sale;
-  });
-}
-
 export function normalizeCatalogItem(object: unknown): SquareCatalogRow[] {
   if (!object || typeof object !== "object") return [];
   const record = object as Record<string, unknown>;
