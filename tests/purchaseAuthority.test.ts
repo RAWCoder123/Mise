@@ -69,3 +69,22 @@ test("a client ready flag cannot override server blockers", () => {
   });
   assert.equal(authority.ready, false);
 });
+
+test("legacy draft authority gaps remain a stable fail-closed blocker", () => {
+  const authority = normalizePurchaseAuthorityResult({
+    ready: false,
+    evaluatedAt: "2026-08-21T12:00:00.000Z",
+    blockers: [{
+      code: "draft_authority_incomplete",
+      description: "This supplier draft contains an approved line without purchase authority.",
+      metadata: { unattestedLineCount: 1 }
+    }],
+    evidence: { recommendationId: "rec-1", inventoryItemId: "item-1", recipeRevisions: {} }
+  });
+
+  assert.equal(authority.blockers[0]?.code, "draft_authority_incomplete");
+  assert.equal(
+    purchaseAuthorityBlockerMessageKey("draft_authority_incomplete"),
+    "orders.authority.draft_authority_incomplete"
+  );
+});

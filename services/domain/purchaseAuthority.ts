@@ -19,6 +19,7 @@ export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "recipe_inventory_reference_missing",
   "supplier_missing",
   "supplier_mismatch",
+  "draft_authority_incomplete",
   "ordering_disabled",
   "recommendation_no_longer_actionable"
 ] as const;

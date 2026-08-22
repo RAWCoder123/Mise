@@ -417,6 +417,7 @@ declare
   catalog_item jsonb;
   import_id uuid := gen_random_uuid();
   processed_count integer := 0;
+  removed_count integer := 0;
   catalog_processed integer := 0;
   resolved_menu_item_id uuid;
   location_id uuid;
@@ -437,12 +438,13 @@ begin
   then
     raise exception 'Square sync payload is invalid' using errcode = '22023';
   end if;
-  if not exists (
-    select 1 from public.pos_integrations integration
-    where integration.id = p_integration_id
-      and integration.restaurant_id = p_restaurant_id
-      and integration.provider = 'square'
-  ) then
+  perform 1
+  from public.pos_integrations integration
+  where integration.id = p_integration_id
+    and integration.restaurant_id = p_restaurant_id
+    and integration.provider = 'square'
+  for update;
+  if not found then
     raise exception 'Square integration not found' using errcode = '22023';
   end if;
 
@@ -453,6 +455,29 @@ begin
     import_id, p_restaurant_id, p_integration_id, 'pos_sync', 'processing',
     0, jsonb_build_object('provider', 'square', 'from', p_from, 'to', p_to), completed_at
   );
+
+  -- The Edge helper supplies a fully paginated snapshot for every active
+  -- location. Reconcile that exact provider scope so orders removed or voided
+  -- at Square cannot survive beside a new authority-window marker.
+  delete from public.pos_sales existing_sale
+  where existing_sale.restaurant_id = p_restaurant_id
+    and existing_sale.source_pos = 'Square'
+    and existing_sale.sale_date between p_from and p_to
+    and exists (
+      select 1
+      from public.pos_locations location
+      where location.restaurant_id = p_restaurant_id
+        and location.pos_integration_id = p_integration_id
+        and location.status = 'active'
+        and location.external_location_id = existing_sale.provider_location_id
+    )
+    and not exists (
+      select 1
+      from jsonb_array_elements(p_sales) incoming_sale
+      where coalesce(incoming_sale->>'source_record_id', '') <> ''
+        and left(incoming_sale->>'source_record_id', 200) = existing_sale.source_record_id
+    );
+  get diagnostics removed_count = row_count;
 
   for sale in select value from jsonb_array_elements(p_sales)
   loop
@@ -558,7 +583,8 @@ begin
   set status = 'completed',
     records_processed = processed_count,
     metadata = jsonb_build_object(
-      'provider', 'square', 'from', p_from, 'to', p_to, 'catalog_processed', catalog_processed
+      'provider', 'square', 'from', p_from, 'to', p_to,
+      'records_removed', removed_count, 'catalog_processed', catalog_processed
     ),
     imported_at = completed_at
   where id = import_id;
@@ -579,13 +605,15 @@ begin
     p_restaurant_id, p_actor_user_id, 'square_sync_completed', 'sales_imports', import_id,
     jsonb_build_object(
       'provider', 'square', 'records_processed', processed_count,
-      'catalog_processed', catalog_processed, 'from', p_from, 'to', p_to
+      'records_removed', removed_count, 'catalog_processed', catalog_processed,
+      'from', p_from, 'to', p_to
     )
   );
 
   return jsonb_build_object(
     'importId', import_id,
     'recordsProcessed', processed_count,
+    'recordsRemoved', removed_count,
     'catalogProcessed', catalog_processed,
     'authorityWindowFrom', p_from,
     'authorityWindowTo', p_to,
@@ -660,6 +688,8 @@ declare
   recipe_revisions jsonb := '{}'::jsonb;
   system_drafting_ready boolean := false;
   restaurant_drafting_ready boolean := false;
+  draft_authority_order_id uuid;
+  draft_authority_gap_count integer := 0;
 begin
   select * into recommendation_row
   from public.purchase_recommendations recommendation
@@ -734,6 +764,51 @@ begin
       blockers, 'supplier_mismatch',
       'The linked supplier draft no longer matches this recommendation.', '{}'::jsonb
     );
+  end if;
+
+  if recommendation_row.supplier_order_id is not null then
+    select existing_order.id into draft_authority_order_id
+    from public.supplier_orders existing_order
+    where existing_order.restaurant_id = p_restaurant_id
+      and existing_order.id = recommendation_row.supplier_order_id
+      and existing_order.status = 'draft'
+      and lower(trim(existing_order.supplier_name)) = lower(trim(recommendation_row.supplier_name));
+  elsif nullif(trim(recommendation_row.supplier_name), '') is not null then
+    select existing_order.id into draft_authority_order_id
+    from public.supplier_orders existing_order
+    where existing_order.restaurant_id = p_restaurant_id
+      and existing_order.supplier_name = recommendation_row.supplier_name
+      and existing_order.status = 'draft'
+    order by existing_order.created_at desc, existing_order.id desc
+    limit 1;
+  end if;
+
+  if draft_authority_order_id is not null then
+    select count(*) into draft_authority_gap_count
+    from public.purchase_recommendations existing_line
+    join public.supplier_orders existing_order
+      on existing_order.restaurant_id = p_restaurant_id
+      and existing_order.id = draft_authority_order_id
+    where existing_line.restaurant_id = p_restaurant_id
+      and existing_line.supplier_order_id = draft_authority_order_id
+      and existing_line.status = 'approved'
+      and (
+        coalesce(jsonb_typeof(existing_line.approval_authority), 'null') <> 'object'
+        or coalesce(existing_line.approval_authority->>'ready', 'false') <> 'true'
+        or not coalesce(existing_order.purchase_authority ? existing_line.id::text, false)
+        or existing_order.purchase_authority->existing_line.id::text
+          is distinct from existing_line.approval_authority
+      );
+    if draft_authority_gap_count > 0 then
+      blockers := private.append_purchase_authority_blocker(
+        blockers, 'draft_authority_incomplete',
+        'This supplier draft contains an approved line without purchase authority.',
+        jsonb_build_object(
+          'supplierOrderId', draft_authority_order_id,
+          'unattestedLineCount', draft_authority_gap_count
+        )
+      );
+    end if;
   end if;
 
   if item_row.id is not null and (

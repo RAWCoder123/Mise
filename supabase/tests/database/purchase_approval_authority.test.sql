@@ -1,6 +1,6 @@
 begin;
 
-select plan(48);
+select plan(56);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -504,6 +504,58 @@ update public.system_operational_controls
 set ordering_policy = 'draft_only', order_drafting_enabled = true
 where singleton;
 
+insert into public.inventory_items (
+  id, restaurant_id, item_name, category, unit, current_quantity, par_level,
+  reorder_threshold, estimated_unit_cost, supplier_name,
+  canonical_unit, canonical_quantity_per_unit, canonical_unit_verification_status,
+  canonical_unit_verified_at, canonical_unit_verified_by
+) values (
+  '3a000000-0000-4000-8000-000000000016', '3a000000-0000-4000-8000-000000000001',
+  'Legacy tomato', 'Produce', 'each', 1, 10, 3, 1, 'Legacy Supplier',
+  'each', 1, 'verified', clock_timestamp(), '3a111111-1111-4111-8111-111111111111'
+);
+insert into public.inventory_events (
+  id, restaurant_id, inventory_item_id, event_type, quantity, canonical_unit,
+  effective_at, actor_user_id, source, client_event_id, idempotency_key
+) values (
+  '3a000000-0000-4000-8000-000000000107', '3a000000-0000-4000-8000-000000000001',
+  '3a000000-0000-4000-8000-000000000016', 'count', 1, 'each', clock_timestamp(),
+  '3a111111-1111-4111-8111-111111111111', 'mise-003a-test', 'legacy-draft-count', 'legacy-draft-count'
+);
+insert into public.supplier_orders (
+  id, restaurant_id, supplier_name, order_message, status, delivery_date
+) values (
+  '3a000000-0000-4000-8000-000000000501', '3a000000-0000-4000-8000-000000000001',
+  'Legacy Supplier', 'Legacy draft unchanged', 'draft', current_date + 1
+);
+insert into public.purchase_recommendations (
+  id, restaurant_id, inventory_item_id, item_name, supplier_name, recommended_quantity,
+  unit, reason, urgency, status, generation_source, supplier_order_id, approval_authority
+) values
+  ('3a000000-0000-4000-8000-000000000407', '3a000000-0000-4000-8000-000000000001',
+   '3a000000-0000-4000-8000-000000000016', 'Legacy onion', 'Legacy Supplier', 2,
+   'each', 'Pre-MISE-003A approved line', 'medium', 'approved', 'manual',
+   '3a000000-0000-4000-8000-000000000501', null),
+  ('3a000000-0000-4000-8000-000000000408', '3a000000-0000-4000-8000-000000000001',
+   '3a000000-0000-4000-8000-000000000016', 'Fresh tomato', 'Legacy Supplier', 3,
+   'each', 'Current recommendation', 'high', 'pending', 'manual', null, null);
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '3a111111-1111-4111-8111-111111111111', true);
+select ok(public.list_purchase_recommendation_authority('3a000000-0000-4000-8000-000000000001')
+  ->'3a000000-0000-4000-8000-000000000408'->'blockers' @> '[{"code":"draft_authority_incomplete"}]'::jsonb,
+  'an unattested approved line blocks reuse of its legacy supplier draft');
+select is((public.approve_purchase_recommendation(
+  '3a000000-0000-4000-8000-000000000001', '3a000000-0000-4000-8000-000000000408', 3
+)->>'outcome'), 'blocked', 'approval fails closed before rebuilding an unattested legacy draft');
+reset role;
+select is((select status from public.purchase_recommendations
+  where id = '3a000000-0000-4000-8000-000000000408'), 'pending',
+  'legacy draft denial leaves the current recommendation unchanged');
+select is((select order_message from public.supplier_orders
+  where id = '3a000000-0000-4000-8000-000000000501'), 'Legacy draft unchanged',
+  'legacy draft denial leaves supplier content unchanged');
+
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '3a111111-1111-4111-8111-111111111111', true);
 select is(pg_temp.try_execute($sql$select public.list_purchase_recommendation_authority(
@@ -519,6 +571,35 @@ select set_config('request.jwt.claim.sub', '3a111111-1111-4111-8111-111111111111
 select ok(public.list_purchase_recommendation_authority('3a000000-0000-4000-8000-000000000001')
   ? '3a000000-0000-4000-8000-000000000406', 'informational blocked recommendation remains visible');
 reset role;
+
+insert into public.pos_sales (
+  restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales,
+  source_pos, source_record_id, provider_location_id, provider_catalog_item_id, provider_variation_id
+) values
+  ('3a000000-0000-4000-8000-000000000001', current_date, 'Removed Square item', 'Entree',
+   1, 10, 9, 'Square', 'snapshot-stale', 'pilot-location', 'stale-item', 'stale-variation'),
+  ('3a000000-0000-4000-8000-000000000001', current_date - 28, 'Older Square item', 'Entree',
+   1, 10, 9, 'Square', 'snapshot-outside', 'pilot-location', 'old-item', 'old-variation');
+
+select ok((private.service_apply_square_sync_result(
+  '3a111111-1111-4111-8111-111111111111',
+  '3a000000-0000-4000-8000-000000000001',
+  '3a000000-0000-4000-8000-000000000201',
+  '[]'::jsonb, '[]'::jsonb, null, current_date - 27, current_date
+)->>'recordsRemoved')::integer > 0,
+  'complete Square snapshots report reconciled provider rows');
+select is((select count(*) from public.pos_sales
+  where restaurant_id = '3a000000-0000-4000-8000-000000000001'
+    and source_record_id = 'snapshot-stale'), 0::bigint,
+  'a provider row absent from the complete replacement snapshot is removed');
+select is((select count(*) from public.pos_sales
+  where restaurant_id = '3a000000-0000-4000-8000-000000000001'
+    and source_record_id = 'snapshot-outside'), 1::bigint,
+  'snapshot reconciliation preserves provider rows outside the declared window');
+select is((select count(*) from public.pos_sales
+  where restaurant_id = '3a000000-0000-4000-8000-000000000001'
+    and source_record_id = 'explicit-manual-sale'), 1::bigint,
+  'snapshot reconciliation preserves non-provider sales inside the declared window');
 
 select * from finish();
 rollback;

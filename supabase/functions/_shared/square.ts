@@ -216,37 +216,40 @@ export async function searchSquareOrders(
   requireOpaqueToken(accessToken, "access credential", 8, 4096);
   if (!Array.isArray(locationIds) || locationIds.length === 0) return [];
   const sales: SquareSaleRow[] = [];
-  let cursor: string | undefined;
-  do {
-    const body: Record<string, unknown> = {
-      location_ids: locationIds.slice(0, 10),
-      query: {
-        filter: {
-          state_filter: { states: ["COMPLETED"] },
-          date_time_filter: {
-            closed_at: {
-              start_at: `${fromIsoDate}T00:00:00.000Z`,
-              end_at: `${toIsoDate}T23:59:59.999Z`,
+  for (let locationOffset = 0; locationOffset < locationIds.length; locationOffset += 10) {
+    const locationBatch = locationIds.slice(locationOffset, locationOffset + 10);
+    let cursor: string | undefined;
+    do {
+      const body: Record<string, unknown> = {
+        location_ids: locationBatch,
+        query: {
+          filter: {
+            state_filter: { states: ["COMPLETED"] },
+            date_time_filter: {
+              closed_at: {
+                start_at: `${fromIsoDate}T00:00:00.000Z`,
+                end_at: `${toIsoDate}T23:59:59.999Z`,
+              },
             },
           },
         },
-      },
-      limit: 100,
-    };
-    if (cursor) body.cursor = cursor;
-    const response = await fetchImpl(`${apiBase(config.environment)}/orders/search`, {
-      method: "POST",
-      headers: squareHeaders(accessToken),
-      body: JSON.stringify(body),
-    });
-    const payload = await readProviderJson(response);
-    if (!response.ok) throw providerHttpError(response.status, "orders_search_failed");
-    const orders = Array.isArray(payload.orders) ? payload.orders : [];
-    for (const order of orders) {
-      sales.push(...normalizeOrderSales(order));
-    }
-    cursor = typeof payload.cursor === "string" ? payload.cursor : undefined;
-  } while (cursor);
+        limit: 100,
+      };
+      if (cursor) body.cursor = cursor;
+      const response = await fetchImpl(`${apiBase(config.environment)}/orders/search`, {
+        method: "POST",
+        headers: squareHeaders(accessToken),
+        body: JSON.stringify(body),
+      });
+      const payload = await readProviderJson(response);
+      if (!response.ok) throw providerHttpError(response.status, "orders_search_failed");
+      const orders = Array.isArray(payload.orders) ? payload.orders : [];
+      for (const order of orders) {
+        sales.push(...normalizeOrderSales(order));
+      }
+      cursor = typeof payload.cursor === "string" ? payload.cursor : undefined;
+    } while (cursor);
+  }
   return sales;
 }
 

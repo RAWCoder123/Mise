@@ -14,12 +14,15 @@ test("MISE-003A approval re-evaluates server authority before supplier mutation"
   assert.match(migration, /generation_source in \('mise_rules', 'legacy_client'\)[\s\S]*signals_revision is distinct from recommendation_row\.planning_revision/i);
   assert.match(migration, /p_evaluated_at - verified_count\.effective_at > interval '36 hours'/i);
   assert.match(migration, /p_evaluated_at - integration\.last_sync_at > interval '24 hours'/i);
+  assert.match(migration, /draft_authority_incomplete[\s\S]*unattestedLineCount/i);
+  assert.match(migration, /existing_order\.purchase_authority\s*\?\s*existing_line\.id::text/i);
   assert.doesNotMatch(migration, /service_claim_supplier_email_send/);
 });
 
 test("MISE-003A persists explicit Square-window and recipe revision authority", () => {
   assert.match(migration, /authority_window_from date[\s\S]*authority_window_completed_at timestamptz/i);
   assert.match(migration, /service_apply_square_sync_result[\s\S]*authority_window_from = p_from[\s\S]*authority_window_to = p_to/i);
+  assert.match(migration, /delete from public\.pos_sales existing_sale[\s\S]*location\.pos_integration_id = p_integration_id[\s\S]*records_removed/i);
   assert.match(migration, /recipe_revision bigint[\s\S]*recipe_confirmed_revision bigint/i);
   assert.match(migration, /invalidate_menu_item_recipe_authority[\s\S]*recipe_revision = recipe_revision \+ 1[\s\S]*recipe_confirmed_revision = null/i);
   assert.match(migration, /confirm_recipe_complete[\s\S]*array\['owner', 'admin', 'manager'\]/i);
