@@ -110,14 +110,59 @@ export async function fetchInventoryItemOutlook(restaurantId: string, itemId: st
 }
 
 export async function fetchRecipeBaselineSummary(restaurantId: string) {
-  const data = await repository.fetchPlanningData(restaurantId);
-  return buildRecipeBaselineSummary(
+  const authorityRead = typeof repository.fetchRecipeAuthorities === "function"
+    ? repository.fetchRecipeAuthorities(restaurantId)
+    : Promise.resolve([]);
+  const [data, authorities] = await Promise.all([
+    repository.fetchPlanningData(restaurantId),
+    authorityRead
+  ]);
+  const summary = buildRecipeBaselineSummary(
     restaurantId,
     data.sales,
     data.menuItemIngredients,
     data.inventoryItems,
     data.operatingDate,
     data.providerMappings
+  );
+  return {
+    ...summary,
+    items: summary.items.map((item) => {
+      const mapping = data.menuItemIngredients.find((entry) =>
+        entry.restaurant_id === restaurantId && entry.menu_item_name === item.menu_item_name
+      );
+      const authority = authorities.find((entry) =>
+        entry.menuItemId === mapping?.menu_item_id
+        || entry.menuItemName.trim().toLowerCase() === item.menu_item_name.trim().toLowerCase()
+      );
+      return {
+        ...item,
+        menuItemId: authority?.menuItemId ?? mapping?.menu_item_id ?? null,
+        recipeRevision: authority?.recipeRevision ?? 0,
+        confirmedRevision: authority?.confirmedRevision ?? null,
+        confirmedAt: authority?.confirmedAt ?? null,
+        authorityReady: authority?.ready ?? false
+      };
+    })
+  };
+}
+
+export async function confirmRecipeBaselineComplete(
+  restaurantId: string,
+  menuItemId: string,
+  expectedRevision: number
+) {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedMenuItemId = menuItemId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!normalizedMenuItemId) throw new Error("Missing menu item.");
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    throw new Error("Recipe revision is invalid.");
+  }
+  return repository.confirmRecipeComplete(
+    normalizedRestaurantId,
+    normalizedMenuItemId,
+    expectedRevision
   );
 }
 

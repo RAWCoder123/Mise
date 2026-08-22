@@ -85,6 +85,25 @@ values (
   'Verified stock is below the service threshold.', 'high', 'pending'
 );
 
+update public.system_operational_controls
+set ordering_policy = 'draft_only', order_drafting_enabled = true
+where singleton;
+update public.restaurant_operational_controls
+set ordering_policy = 'draft_only', order_drafting_enabled = true
+where restaurant_id = 'd0000000-0000-4000-8000-000000000001';
+
+insert into public.inventory_events (
+  id, restaurant_id, inventory_item_id, event_type, quantity, canonical_unit,
+  effective_at, actor_user_id, source, client_event_id, idempotency_key
+) values (
+  'd0000000-0000-4000-8000-000000000091',
+  'd0000000-0000-4000-8000-000000000001',
+  'd0000000-0000-4000-8000-000000000011',
+  'count', 453.59237, 'g', clock_timestamp(),
+  'd2222222-2222-4222-8222-222222222222',
+  'mise-003a-test', 'operational-ready-count', 'operational-ready-count'
+);
+
 select is(
   (
     select count(*) from public.activity_events

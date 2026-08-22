@@ -35,6 +35,16 @@ values (
   'connected'
 );
 
+insert into public.pos_locations (
+  id, restaurant_id, pos_integration_id, external_location_id,
+  display_name, timezone, status
+) values (
+  'd0000000-0000-4000-8000-000000000102',
+  'd0000000-0000-4000-8000-000000000001',
+  'd0000000-0000-4000-8000-000000000101',
+  'loc-a', 'Square location A', 'UTC', 'active'
+);
+
 set local role service_role;
 
 select is(
@@ -48,7 +58,7 @@ select is(
         {"source_record_id":"square-order-1-line-1","sale_date":"2026-08-10","item_name":"Burger","category":"Square","quantity_sold":2,"gross_sales":24,"net_sales":24,"provider_location_id":"loc-a","provider_catalog_item_id":"ITEM-A","provider_variation_id":"VAR-A"},
         {"source_record_id":"square-order-1-line-2","sale_date":"2026-08-10","item_name":"Fries","category":"Square","quantity_sold":1,"gross_sales":6,"net_sales":6}
       ]'::jsonb,
-      '[]'::jsonb,
+      '[{"external_catalog_item_id":"ITEM-A","external_variation_id":"VAR-A","external_name":"Burger","category":"Square"}]'::jsonb,
       null,
       '2026-08-10'::date,
       '2026-08-10'::date
@@ -98,7 +108,7 @@ select lives_ok(
         {"source_record_id":"square-order-1-line-1","sale_date":"2026-08-10","item_name":"Burger","category":"Square","quantity_sold":2,"gross_sales":24,"net_sales":24,"provider_catalog_item_id":"ITEM-A","provider_variation_id":"VAR-A"},
         {"source_record_id":"square-order-1-line-2","sale_date":"2026-08-10","item_name":"Fries","category":"Square","quantity_sold":1,"gross_sales":6,"net_sales":6}
       ]'::jsonb,
-      '[]'::jsonb,
+      '[{"external_catalog_item_id":"ITEM-A","external_variation_id":"VAR-A","external_name":"Burger","category":"Square"}]'::jsonb,
       null,
       '2026-08-10'::date,
       '2026-08-10'::date
@@ -134,11 +144,10 @@ select lives_ok(
 
 select is(
   (select count(*) from public.pos_sales where restaurant_id = 'd0000000-0000-4000-8000-000000000001'),
-  3::bigint,
-  'the overlapping row is deduplicated while the new provider row is retained'
+  2::bigint,
+  'the overlapping row is deduplicated while the partial snapshot reconciles active-location absence and retains the new provider row'
 );
 
 reset role;
 select * from finish();
 rollback;
-

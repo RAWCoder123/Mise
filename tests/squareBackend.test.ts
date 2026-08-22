@@ -5,6 +5,7 @@ import {
   buildSquareAuthorizationUrl,
   normalizeCatalogItem,
   normalizeOrderSales,
+  searchSquareOrders,
   SQUARE_OAUTH_SCOPES,
   sha256Hex,
 } from "../supabase/functions/_shared/square.ts";
@@ -92,6 +93,55 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
   assert.equal(catalog.length, 1);
   assert.equal(catalog[0]?.external_catalog_item_id, "item-1");
   assert.equal(catalog[0]?.external_name, "Burger");
+});
+
+test("Square order search exhausts pagination for every ten-location batch", async () => {
+  const requests: Array<{ locationIds: string[]; cursor?: string }> = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as {
+      location_ids: string[];
+      cursor?: string;
+    };
+    requests.push({ locationIds: body.location_ids, cursor: body.cursor });
+    const requestNumber = requests.length;
+    const orderId = `order-${requestNumber}`;
+    const payload = {
+      orders: [{
+        id: orderId,
+        location_id: body.location_ids[0],
+        closed_at: "2026-08-21T12:00:00.000Z",
+        line_items: [{
+          uid: `line-${requestNumber}`,
+          name: "Burger",
+          quantity: "1",
+          gross_sales_money: { amount: 1200 },
+          total_money: { amount: 1200 },
+        }],
+      }],
+      ...(requestNumber === 1 ? { cursor: "first-batch-page-two" } : {}),
+    };
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const locationIds = Array.from({ length: 11 }, (_, index) => `location-${index + 1}`);
+  const sales = await searchSquareOrders(
+    { environment: "sandbox" },
+    "square-access-token",
+    locationIds,
+    "2026-07-26",
+    "2026-08-22",
+    fetchImpl,
+  );
+
+  assert.equal(sales.length, 3);
+  assert.deepEqual(requests, [
+    { locationIds: locationIds.slice(0, 10), cursor: undefined },
+    { locationIds: locationIds.slice(0, 10), cursor: "first-batch-page-two" },
+    { locationIds: locationIds.slice(10), cursor: undefined },
+  ]);
 });
 
 test("Square migration keeps credentials private and kill-switch gated", () => {

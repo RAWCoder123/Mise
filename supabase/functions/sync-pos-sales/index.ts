@@ -1,5 +1,4 @@
 import {
-  enrichSquareSalesWithCatalogIdentity,
   listSquareCatalogItems,
   refreshSquareAccessToken,
   searchSquareOrders,
@@ -175,11 +174,33 @@ Deno.serve(async (req) => {
       );
     }
 
-    const locationIds = Array.isArray(credential.locationIds)
-      ? credential.locationIds.filter((value: unknown): value is string => typeof value === "string")
-      : [];
+    let locationIds: string[] = [];
 
+    let authoritySyncToken: string | null = null;
     try {
+      const { data: syncBoundary, error: syncBoundaryError } = await securitySupabase.rpc(
+        "service_begin_square_authority_sync",
+        {
+          p_actor_user_id: user.id,
+          p_restaurant_id: restaurantId,
+          p_integration_id: credential.integrationId,
+          p_snapshot_mode: "full",
+          p_from: from,
+          p_to: to,
+        },
+      );
+      if (syncBoundaryError) throw syncBoundaryError;
+      authoritySyncToken = requireUuid(syncBoundary?.syncToken, "syncToken");
+      locationIds = Array.isArray(syncBoundary?.locationIds)
+        ? syncBoundary.locationIds.filter(
+          (value: unknown): value is string =>
+            typeof value === "string" && value.length > 0 && value.length <= 128,
+        )
+        : [];
+      if (locationIds.length === 0) {
+        throw new HttpError(409, "Square has no active location for this synchronization.");
+      }
+
       const tokens = await refreshSquareAccessToken(
         oauthConfig,
         String(credential.refreshToken),
@@ -198,14 +219,15 @@ Deno.serve(async (req) => {
         listSquareCatalogItems(oauthConfig, tokens.accessToken),
       ]);
 
-      const salesWithCatalogIdentity = enrichSquareSalesWithCatalogIdentity(sales, catalogItems);
       const { data: applied, error: applyError } = await securitySupabase.rpc(
-        "service_apply_square_sync_result",
+        "service_apply_square_sync_result_scoped",
         {
           p_actor_user_id: user.id,
           p_restaurant_id: restaurantId,
           p_integration_id: credential.integrationId,
-          p_sales: salesWithCatalogIdentity,
+          p_sync_token: authoritySyncToken,
+          p_snapshot_mode: "full",
+          p_sales: sales,
           p_catalog_items: catalogItems,
           p_sync_cursor: null,
           p_from: from,
@@ -213,6 +235,7 @@ Deno.serve(async (req) => {
         },
       );
       if (applyError) throw applyError;
+      authoritySyncToken = null;
 
       try {
         const refreshResponse = await fetch(
@@ -244,7 +267,7 @@ Deno.serve(async (req) => {
         "pos_sync_completed",
         {
           provider,
-          recordsProcessed: applied?.recordsProcessed ?? salesWithCatalogIdentity.length,
+          recordsProcessed: applied?.recordsProcessed ?? sales.length,
           catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
         },
       );
@@ -252,12 +275,24 @@ Deno.serve(async (req) => {
       return jsonResponse({
         status: "completed",
         importId: applied?.importId ?? null,
-        recordsProcessed: applied?.recordsProcessed ?? salesWithCatalogIdentity.length,
+        recordsProcessed: applied?.recordsProcessed ?? sales.length,
         catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
       });
     } catch (error) {
       const safeCode =
         error instanceof SquareProviderError ? error.safeCode : "square_sync_failed";
+      if (authoritySyncToken) {
+        await securitySupabase.rpc("service_fail_square_authority_sync", {
+          p_actor_user_id: user.id,
+          p_restaurant_id: restaurantId,
+          p_integration_id: credential.integrationId,
+          p_sync_token: authoritySyncToken,
+          p_error_code: safeCode,
+          p_from: from,
+          p_to: to,
+        });
+        authoritySyncToken = null;
+      }
       if (error instanceof SquareProviderError && error.disposition === "reauthorize") {
         await securitySupabase.rpc("service_mark_square_connection_state", {
           p_actor_user_id: user.id,
@@ -266,14 +301,6 @@ Deno.serve(async (req) => {
           p_error_code: safeCode,
         });
       }
-      await securitySupabase.rpc("service_record_square_sync_failure", {
-        p_actor_user_id: user.id,
-        p_restaurant_id: restaurantId,
-        p_integration_id: credential.integrationId,
-        p_error_code: safeCode,
-        p_from: from,
-        p_to: to,
-      });
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
