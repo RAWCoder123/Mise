@@ -1,5 +1,5 @@
 import type { MiseAction } from "../domain/miseActions";
-import type { SupplierSendEnvelope } from "../repositories/repositoryContracts";
+import { requireSupplierSendContentFingerprint } from "../miseValidation";
 import { approvePurchaseRecommendation } from "./orders";
 import { getMiseRepository } from "./repository";
 
@@ -50,39 +50,44 @@ export async function decideMiseAction(
   return action;
 }
 
-export async function approveSupplierSendEnvelope(
+export async function approveSupplierSendContent(
   restaurantId: string,
   actionId: string,
   orderId: string,
-  envelope: SupplierSendEnvelope
+  contentFingerprint: string
 ) {
-  const normalizedRestaurantId = restaurantId.trim();
-  const normalizedActionId = actionId.trim();
-  const normalizedOrderId = orderId.trim();
-  const normalizedEnvelope = {
-    from: envelope.from.trim().toLowerCase(),
-    to: envelope.to.trim().toLowerCase(),
-    subject: envelope.subject.trim()
-  };
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
-  if (!normalizedActionId) throw new Error("Missing supplier send action.");
-  if (!normalizedOrderId) throw new Error("Missing supplier order.");
-  if (!normalizedEnvelope.from || !normalizedEnvelope.to || !normalizedEnvelope.subject) {
-    throw new Error("Supplier send approval requires the reviewed sender, recipient, and subject.");
-  }
-  if (!repository.approveSupplierSendEnvelope) {
-    throw new Error("Supplier send envelope approval is unavailable.");
-  }
-  const action = await repository.approveSupplierSendEnvelope(
+  const normalizedRestaurantId = requireSupplierSendApprovalId(
+    restaurantId,
+    "restaurant workspace"
+  );
+  const normalizedActionId = requireSupplierSendApprovalId(actionId, "supplier send action");
+  const normalizedOrderId = requireSupplierSendApprovalId(orderId, "supplier order");
+  const normalizedFingerprint = requireSupplierSendContentFingerprint(contentFingerprint);
+  const result = await repository.approveSupplierSendContent(
     normalizedRestaurantId,
     normalizedActionId,
     normalizedOrderId,
-    normalizedEnvelope
+    normalizedFingerprint
   );
-  if (action.restaurantId !== normalizedRestaurantId || action.id !== normalizedActionId) {
+  if (
+    (result.outcome === "applied" || result.outcome === "already_applied") &&
+    (
+      result.action.restaurantId !== normalizedRestaurantId ||
+      result.action.id !== normalizedActionId ||
+      result.contentFingerprint !== normalizedFingerprint
+    )
+  ) {
     throw new Error("Supplier send approval failed restaurant scope validation.");
   }
-  return action;
+  return result;
+}
+
+function requireSupplierSendApprovalId(value: string, label: string) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized || normalized.length > 128 || /[\u0000-\u001f\u007f]/.test(normalized)) {
+    throw new Error(`Missing ${label}.`);
+  }
+  return normalized;
 }
 
 /**

@@ -1,6 +1,6 @@
 begin;
 
-select plan(22);
+select plan(23);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -230,6 +230,13 @@ select
   'VAR-A'
 from generate_series(1, 2050) gs;
 
+select is(
+  has_table_privilege('service_role', 'public.purchase_recommendations', 'INSERT'),
+  false,
+  'service role cannot bypass the recommendation workflow with direct inserts'
+);
+
+reset role;
 insert into public.purchase_recommendations (
   restaurant_id, inventory_item_id, item_name, supplier_name, recommended_quantity, unit, reason, urgency, status, supplier_order_id, created_at
 )
@@ -247,6 +254,7 @@ select
   '2026-08-10T00:00:00Z'::timestamptz + (gs || ' minutes')::interval
 from generate_series(1, 520) gs;
 
+set local role service_role;
 insert into public.inventory_events (
   restaurant_id, inventory_item_id, event_type, quantity, canonical_unit,
   effective_at, actor_user_id, source, client_event_id, idempotency_key

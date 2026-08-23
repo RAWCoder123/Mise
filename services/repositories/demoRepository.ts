@@ -13,8 +13,12 @@ import {
   DEMO_RESTAURANT_ID,
   DEMO_USER_ID,
   approveRecommendationInDemoState,
+  bumpDemoSupplierSendContentForExternalChange,
+  bumpDemoSupplierSendContentRevision,
+  demoSupplierSendContentRevision,
   dismissRecommendationInDemoState,
   isRollingDemoCurrentDaySale,
+  markClaimedSupplierOrderSentInDemoState,
   markSupplierOrderSentInDemoState,
   rebuildInsights,
   rebuildPurchaseRecommendations,
@@ -81,6 +85,10 @@ import {
 } from "../domain/inventoryLedger";
 import { isTemporallyValidCount } from "../domain/inventoryCountAuthority";
 import type { PurchaseAuthorityResult } from "../domain/purchaseAuthority";
+import {
+  buildCanonicalSupplierSendContent,
+  SUPPLIER_SEND_CONTENT_VERSION
+} from "../domain/supplierSendContent";
 import {
   assertSessionMutable,
   buildCountSessionLinesFromInventory,
@@ -193,6 +201,72 @@ function demoPurchaseAuthority(
   };
 }
 
+async function buildDemoSupplierSendContent(
+  state: DemoState,
+  restaurantId: string,
+  orderId: string
+) {
+  const restaurant = state.restaurants.find((entry) => entry.id === restaurantId);
+  if (!restaurant) throw new Error("Restaurant not found");
+  const order = state.supplierOrders.find(
+    (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
+  );
+  if (!order) throw new Error("Order draft not found");
+  const emailConnection = state.emailConnections.find(
+    (entry) => entry.restaurant_id === restaurantId && entry.provider === "gmail"
+  ) ?? null;
+  return buildCanonicalSupplierSendContent({
+    restaurant,
+    order,
+    contentRevision: demoSupplierSendContentRevision(state, orderId),
+    emailConnection,
+    recipients: state.supplierRecipients,
+    recommendations: state.purchaseRecommendations
+  });
+}
+
+interface DemoApprovedSendContent {
+  version: string;
+  fingerprint: string;
+  approvedAt: string;
+  lineCount: number;
+  contentRevision: number;
+  from: string;
+  to: string;
+  subject: string;
+}
+
+function readDemoApprovedSendContent(value: unknown): DemoApprovedSendContent | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== SUPPLIER_SEND_CONTENT_VERSION ||
+    typeof candidate.fingerprint !== "string" ||
+    !/^[a-f0-9]{64}$/.test(candidate.fingerprint) ||
+    typeof candidate.approvedAt !== "string" ||
+    typeof candidate.lineCount !== "number" ||
+    !Number.isInteger(candidate.lineCount) ||
+    candidate.lineCount < 1 ||
+    candidate.lineCount > 250 ||
+    typeof candidate.contentRevision !== "number" ||
+    !Number.isInteger(candidate.contentRevision) ||
+    candidate.contentRevision < 1 ||
+    typeof candidate.from !== "string" ||
+    typeof candidate.to !== "string" ||
+    typeof candidate.subject !== "string"
+  ) {
+    return null;
+  }
+  return candidate as unknown as DemoApprovedSendContent;
+}
+
+function withoutLegacyApprovedEnvelope(expectedImpact: Record<string, unknown> | null) {
+  if (!expectedImpact) return {};
+  return Object.fromEntries(
+    Object.entries(expectedImpact).filter(([key]) => key !== "approvedEnvelope")
+  );
+}
+
 async function readReadyDemoState(restaurantId: string = DEMO_RESTAURANT_ID) {
   return mutateDemoState((state) => {
     refreshLocalDemoSalesDate(state, restaurantId);
@@ -206,6 +280,10 @@ async function readReadyDemoState(restaurantId: string = DEMO_RESTAURANT_ID) {
     if (!Array.isArray(state.supplierDeliveries)) state.supplierDeliveries = [];
     if (!Array.isArray(state.supplierDeliveryItems)) state.supplierDeliveryItems = [];
     if (!Array.isArray(state.restaurantTasks)) state.restaurantTasks = [];
+    if (!state.supplierSendContentRevisions) state.supplierSendContentRevisions = {};
+    state.supplierOrders
+      .filter((order) => order.restaurant_id === restaurantId)
+      .forEach((order) => demoSupplierSendContentRevision(state, order.id));
     seedDemoActivityFromState(state);
     if (state.autonomyRules.length === 0) {
       state.autonomyRules = defaultAutonomyRules(restaurantId);
@@ -725,7 +803,11 @@ export function createLocalDemoRepository(): MiseRepository {
       return mutateDemoState((state) => {
         const restaurant = state.restaurants[0];
         if (!restaurant) throw new Error("Demo restaurant missing");
-        restaurant.name = name.trim() || restaurant.name;
+        const nextName = name.trim() || restaurant.name;
+        if (restaurant.name !== nextName) {
+          restaurant.name = nextName;
+          bumpDemoSupplierSendContentForExternalChange(state, restaurant.id);
+        }
         restaurant.cuisine_type = cuisineType?.trim() || restaurant.cuisine_type;
         return normalizeRestaurant(restaurant);
       });
@@ -739,7 +821,11 @@ export function createLocalDemoRepository(): MiseRepository {
       return mutateDemoState((state) => {
         const restaurant = state.restaurants.find((entry) => entry.id === restaurantId);
         if (!restaurant) throw new Error("Restaurant not found");
+        const previousName = restaurant.name;
         Object.assign(restaurant, patch);
+        if (restaurant.name !== previousName) {
+          bumpDemoSupplierSendContentForExternalChange(state, restaurantId);
+        }
         return normalizeRestaurant(restaurant);
       });
     },
@@ -1149,9 +1235,19 @@ export function createLocalDemoRepository(): MiseRepository {
               recipient.supplier_name.trim().toLowerCase() === supplierInput.supplier_name.trim().toLowerCase()
           );
           if (existing) {
+            const previousSupplierName = existing.supplier_name;
+            const materialChange =
+              existing.supplier_name !== supplierInput.supplier_name ||
+              existing.email !== supplierInput.email;
             existing.supplier_name = supplierInput.supplier_name;
             existing.email = supplierInput.email;
             existing.updated_at = now;
+            if (materialChange) {
+              bumpDemoSupplierSendContentForExternalChange(state, restaurantId, [
+                previousSupplierName,
+                supplierInput.supplier_name
+              ]);
+            }
           } else {
             state.supplierRecipients.push({
               ...supplierInput,
@@ -1159,6 +1255,9 @@ export function createLocalDemoRepository(): MiseRepository {
               created_at: now,
               updated_at: now
             });
+            bumpDemoSupplierSendContentForExternalChange(state, restaurantId, [
+              supplierInput.supplier_name
+            ]);
           }
         });
 
@@ -1537,7 +1636,49 @@ export function createLocalDemoRepository(): MiseRepository {
           (item) => item.restaurant_id === restaurantId && item.id === recommendationId
         );
         if (!recommendation) throw new Error("Recommendation not found");
+        const previousMaterial = {
+          status: recommendation.status,
+          supplierOrderId: recommendation.supplier_order_id,
+          inventoryItemId: recommendation.inventory_item_id,
+          itemName: recommendation.item_name,
+          quantity: recommendation.recommended_quantity,
+          unit: recommendation.unit,
+          supplierName: recommendation.supplier_name
+        };
         Object.assign(recommendation, patch);
+        const nextMaterial = {
+          status: recommendation.status,
+          supplierOrderId: recommendation.supplier_order_id,
+          inventoryItemId: recommendation.inventory_item_id,
+          itemName: recommendation.item_name,
+          quantity: recommendation.recommended_quantity,
+          unit: recommendation.unit,
+          supplierName: recommendation.supplier_name
+        };
+        if (JSON.stringify(previousMaterial) !== JSON.stringify(nextMaterial)) {
+          const affectedOrderIds = new Set(
+            [previousMaterial.supplierOrderId, nextMaterial.supplierOrderId]
+              .filter((orderId): orderId is string => Boolean(orderId))
+          );
+          for (const affectedOrderId of affectedOrderIds) {
+            const affectedOrder = state.supplierOrders.find(
+              (order) => order.restaurant_id === restaurantId && order.id === affectedOrderId
+            );
+            if (!affectedOrder || affectedOrder.status !== "draft") continue;
+            const linked = state.purchaseRecommendations.filter(
+              (entry) =>
+                entry.restaurant_id === restaurantId &&
+                entry.supplier_order_id === affectedOrderId &&
+                entry.status === "approved"
+            );
+            affectedOrder.order_message = buildSupplierOrderMessage(
+              affectedOrder.supplier_name,
+              linked,
+              affectedOrder.operator_note
+            );
+            bumpDemoSupplierSendContentRevision(state, affectedOrderId);
+          }
+        }
         return normalizePurchaseRecommendation(recommendation);
       });
     },
@@ -1556,6 +1697,7 @@ export function createLocalDemoRepository(): MiseRepository {
           recommendedQuantity
         );
         if (result.outcome === "applied") {
+          if (result.order) bumpDemoSupplierSendContentRevision(state, result.order.id);
           appendDemoRecommendationActivity(state, result.recommendation, "pending");
           if (result.order) {
             appendDemoSupplierOrderActivity(state, result.order, { previousStatus: null });
@@ -1603,8 +1745,18 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async undoPurchaseRecommendationAction(restaurantId, recommendationId) {
       return mutateDemoState((state) => {
+        const previousOrderId = state.purchaseRecommendations.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === recommendationId
+        )?.supplier_order_id ?? null;
         const result = undoRecommendationInDemoState(state, restaurantId, recommendationId);
         if (result.outcome === "applied") {
+          if (result.previousStatus === "approved" && previousOrderId) {
+            if (state.supplierOrders.some((order) => order.id === previousOrderId)) {
+              bumpDemoSupplierSendContentRevision(state, previousOrderId);
+            } else {
+              delete state.supplierSendContentRevisions[previousOrderId];
+            }
+          }
           appendDemoAuditLog(state, {
             restaurant_id: restaurantId,
             action: "recommendation_undo",
@@ -1679,23 +1831,37 @@ export function createLocalDemoRepository(): MiseRepository {
             order.status === "draft"
         );
         if (existing) {
+          const changed =
+            existing.order_message !== draft.order_message ||
+            existing.delivery_date !== draft.delivery_date;
           existing.order_message = draft.order_message;
           existing.delivery_date = draft.delivery_date;
+          if (changed) bumpDemoSupplierSendContentRevision(state, existing.id);
           return normalizeSupplierOrder(existing);
         }
         state.supplierOrders.push(draft);
+        state.supplierSendContentRevisions[draft.id] = 1;
         return normalizeSupplierOrder(draft);
       });
     },
 
     async deleteSupplierOrderDraft(restaurantId, supplierName) {
       await mutateDemoState((state) => {
+        const removedIds = state.supplierOrders
+          .filter(
+            (order) =>
+              order.restaurant_id === restaurantId &&
+              order.supplier_name === supplierName &&
+              order.status === "draft"
+          )
+          .map((order) => order.id);
         state.supplierOrders = state.supplierOrders.filter(
           (order) =>
             order.restaurant_id !== restaurantId ||
             order.supplier_name !== supplierName ||
             order.status !== "draft"
         );
+        removedIds.forEach((orderId) => delete state.supplierSendContentRevisions[orderId]);
       });
     },
 
@@ -1736,6 +1902,8 @@ export function createLocalDemoRepository(): MiseRepository {
         const order = state.supplierOrders.find((item) => item.restaurant_id === restaurantId && item.id === orderId);
         if (!order) throw new Error("Order draft not found");
         if (order.status !== "draft") throw new Error("Sent orders cannot be edited.");
+        const previousNote = order.operator_note;
+        const previousDeliveryDate = order.delivery_date;
         Object.assign(order, patch);
         if (Object.prototype.hasOwnProperty.call(patch, "operator_note")) {
           order.operator_note = patch.operator_note?.trim() || null;
@@ -1747,32 +1915,25 @@ export function createLocalDemoRepository(): MiseRepository {
           );
           order.order_message = buildSupplierOrderMessage(order.supplier_name, linked, order.operator_note);
         }
+        if (
+          order.operator_note !== previousNote ||
+          order.delivery_date !== previousDeliveryDate
+        ) {
+          bumpDemoSupplierSendContentRevision(state, order.id);
+        }
         return normalizeSupplierOrder(order);
       });
     },
 
     async markSupplierOrderSent(restaurantId, orderId) {
-      return mutateDemoState((state) => {
-        const result = markSupplierOrderSentInDemoState(state, restaurantId, orderId);
-        if (result.outcome === "applied") {
-          appendDemoSupplierOrderActivity(state, result.order, { previousStatus: "draft" });
-          appendDemoAuditLog(state, {
-            restaurant_id: restaurantId,
-            action: "supplier_order_sent",
-            entity_table: "supplier_orders",
-            entity_id: result.order.id,
-            metadata: {
-              supplier_name: result.order.supplier_name,
-              ordered_recommendation_count: result.orderedRecommendations.length
-            }
-          });
-        }
-        return {
-          ...result,
-          order: normalizeSupplierOrder(result.order),
-          orderedRecommendations: result.orderedRecommendations.map(normalizePurchaseRecommendation)
-        };
-      });
+      const state = await readDemoState();
+      requireActiveDemoRestaurant(state, restaurantId);
+      const result = markSupplierOrderSentInDemoState(state, restaurantId, orderId);
+      return {
+        ...result,
+        order: normalizeSupplierOrder(result.order),
+        orderedRecommendations: result.orderedRecommendations.map(normalizePurchaseRecommendation)
+      };
     },
 
     async connectRestaurantGmail(restaurantId) {
@@ -1782,6 +1943,7 @@ export function createLocalDemoRepository(): MiseRepository {
         let connection = state.emailConnections.find(
           (entry) => entry.restaurant_id === restaurantId && entry.provider === "gmail"
         );
+        let materialChange = false;
         if (!connection) {
           connection = {
             id: createId("email_connection"),
@@ -1794,11 +1956,18 @@ export function createLocalDemoRepository(): MiseRepository {
             updated_at: now
           };
           state.emailConnections.push(connection);
+          materialChange = true;
         } else {
+          materialChange =
+            connection.status !== "connected" ||
+            connection.sender_email !== "demo.sender@example.com";
           connection.status = "connected";
           connection.sender_email = "demo.sender@example.com";
           connection.last_verified_at = now;
           connection.updated_at = now;
+        }
+        if (materialChange) {
+          bumpDemoSupplierSendContentForExternalChange(state, restaurantId);
         }
         appendDemoAuditLog(state, {
           restaurant_id: restaurantId,
@@ -1931,10 +2100,15 @@ export function createLocalDemoRepository(): MiseRepository {
         );
         const alreadyDisconnected = !connection || connection.status === "not_connected";
         if (connection) {
+          const materialChange =
+            connection.status !== "not_connected" || connection.sender_email !== null;
           connection.status = "not_connected";
           connection.sender_email = null;
           connection.last_verified_at = null;
           connection.updated_at = new Date().toISOString();
+          if (materialChange) {
+            bumpDemoSupplierSendContentForExternalChange(state, restaurantId);
+          }
         }
         appendDemoAuditLog(state, {
           restaurant_id: restaurantId,
@@ -1950,107 +2124,171 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async previewSupplierSendContent(restaurantId, orderId) {
+      return mutateDemoState(async (state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const built = await buildDemoSupplierSendContent(state, restaurantId, orderId);
+        const content = built.content;
+        return {
+          contentVersion: built.contentVersion,
+          contentFingerprint: built.contentFingerprint,
+          contentRevision: content.contentRevision,
+          restaurantId: content.restaurantId,
+          orderId: content.orderId,
+          supplierName: content.supplierName,
+          to: content.to,
+          from: content.from,
+          subject: content.subject,
+          body: content.body,
+          deliveryDate: content.deliveryDate,
+          operatorNote: content.operatorNote,
+          lines: content.lines,
+          lineCount: built.lineCount,
+          ready: built.ready,
+          blockerCodes: built.blockerCodes,
+          canSend: built.ready,
+          blockedReason: built.ready
+            ? null
+            : "The current simulated supplier email is not ready for approval."
+        };
+      });
+    },
+
     async sendSupplierOrderEmail(restaurantId, orderId) {
-      return mutateDemoState((state) => {
+      return mutateDemoState(async (state) => {
         requireActiveDemoRestaurant(state, restaurantId);
         const order = state.supplierOrders.find(
           (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
         );
         if (!order) throw new Error("Order draft not found");
-        const connection = state.emailConnections.find(
-          (entry) => entry.restaurant_id === restaurantId && entry.provider === "gmail"
-        );
-        if (connection?.status === "needs_reauth") {
-          throw new GmailIntegrationError("needs_reauth", "Reconnect the demo Gmail sender before sending this order.");
-        }
-        if (!connection || connection.status !== "connected") {
-          throw new GmailIntegrationError("gmail_not_connected", "Connect the demo Gmail sender before sending this order.");
-        }
-        if (!connection.sender_email) {
-          throw new GmailIntegrationError("gmail_not_connected", "Verify the demo Gmail sender before sending this order.");
-        }
-        const recipient = state.supplierRecipients.find(
-          (entry) =>
-            entry.restaurant_id === restaurantId &&
-            entry.supplier_name.trim().toLowerCase() === order.supplier_name.trim().toLowerCase()
-        );
-        if (!recipient?.email) {
-          throw new GmailIntegrationError("supplier_email_missing", `Add an email recipient for ${order.supplier_name} before sending.`);
-        }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email)) {
-          throw new GmailIntegrationError("supplier_email_invalid", `Add a valid email recipient for ${order.supplier_name} before sending.`);
-        }
-
         const actionKey = miseActionIdempotencyKey(
           restaurantId,
           "send_supplier_order",
           orderId
         );
-        let existingAction = (state.miseActions ?? []).find(
+        const existingAction = (state.miseActions ?? []).find(
           (entry) => entry.idempotencyKey === actionKey
         );
         if (!existingAction) {
           throw new Error("This supplier order has no prepared action. Rebuild the draft before sending.");
         }
         if (existingAction.status !== "approved" && existingAction.status !== "executed") {
-          throw new GmailIntegrationError("approval_required", "This supplier order action is not approved for sending.");
-        }
-        if (existingAction.status !== "executed") {
-          const restaurant = state.restaurants.find((entry) => entry.id === restaurantId);
-          const approvedEnvelope = existingAction.expectedImpact?.approvedEnvelope;
-          const currentSubject = restaurant
-            ? `${restaurant.name} order for ${order.supplier_name}`
-            : "";
-          const envelopeMatches =
-            approvedEnvelope !== null &&
-            typeof approvedEnvelope === "object" &&
-            !Array.isArray(approvedEnvelope) &&
-            String((approvedEnvelope as Record<string, unknown>).from ?? "").trim().toLowerCase() ===
-              connection.sender_email.trim().toLowerCase() &&
-            String((approvedEnvelope as Record<string, unknown>).to ?? "").trim().toLowerCase() ===
-              recipient.email.trim().toLowerCase() &&
-            String((approvedEnvelope as Record<string, unknown>).subject ?? "") === currentSubject;
-          if (!envelopeMatches) {
-            throw new GmailIntegrationError(
-              "approval_required",
-              "Sender, recipient, or subject changed. Review the current delivery details before sending."
-            );
-          }
+          throw new GmailIntegrationError(
+            "send_content_unapproved",
+            "Review and approve the exact current supplier email before sending.",
+            ["send_content_unapproved"]
+          );
         }
 
-        const wasAlreadySent = order.status === "sent" || order.status === "completed";
-        const result = markSupplierOrderSentInDemoState(state, restaurantId, orderId);
         const providerMessageId = `demo-gmail:${orderId}`;
-        if (!wasAlreadySent) {
-          appendDemoSupplierOrderActivity(state, result.order, { previousStatus: "draft" });
-          const executedAction =
-            existingAction.status === "executed"
-              ? existingAction
-              : markExecuted(existingAction, {
-                  supplierOrderId: orderId,
-                  provider: "gmail",
-                  providerMessageId,
-                  simulated: true
-                });
-          state.miseActions = (state.miseActions ?? []).map((entry) =>
-            entry.id === existingAction.id ? executedAction : entry
+        if (existingAction.status === "executed") {
+          const recommendationIds = existingAction.result?.recommendationIds;
+          if (
+            !Array.isArray(recommendationIds) ||
+            recommendationIds.some((id) => typeof id !== "string")
+          ) {
+            throw new GmailIntegrationError(
+              "delivery_requires_review",
+              "The earlier simulated delivery does not contain a proven line set. Do not retry it.",
+              ["delivery_requires_review"]
+            );
+          }
+          const replay = markClaimedSupplierOrderSentInDemoState(
+            state,
+            restaurantId,
+            orderId,
+            recommendationIds as string[]
           );
-          appendDemoAuditLog(state, {
-            restaurant_id: restaurantId,
-            action: "supplier_email_sent",
-            entity_table: "supplier_orders",
-            entity_id: orderId,
-            metadata: {
-              provider: "gmail",
-              provider_message_id: providerMessageId,
-              simulated: true,
-              ordered_recommendation_count: result.orderedRecommendations.length
-            }
-          });
+          return {
+            status: "sent" as const,
+            outcome: "already_sent" as const,
+            providerMessageId,
+            order: normalizeSupplierOrder(replay.order),
+            orderedRecommendations: replay.orderedRecommendations.map(normalizePurchaseRecommendation)
+          };
         }
+
+        const connection = state.emailConnections.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.provider === "gmail"
+        );
+        if (connection?.status === "needs_reauth") {
+          throw new GmailIntegrationError("needs_reauth", "Reconnect the demo Gmail sender before sending this order.");
+        }
+
+        const built = await buildDemoSupplierSendContent(state, restaurantId, orderId);
+        if (!built.ready || !built.contentFingerprint) {
+          const status = built.blockerCodes.includes("gmail_not_connected")
+            ? "gmail_not_connected"
+            : built.blockerCodes.includes("supplier_email_missing")
+              ? "supplier_email_missing"
+              : built.blockerCodes.includes("supplier_email_invalid")
+                ? "supplier_email_invalid"
+                : "send_content_unapproved";
+          throw new GmailIntegrationError(
+            status,
+            "The current simulated supplier email is not ready for approval.",
+            built.blockerCodes
+          );
+        }
+        const approvedContent = readDemoApprovedSendContent(
+          existingAction.expectedImpact?.approvedSendContent
+        );
+        if (
+          !approvedContent ||
+          approvedContent.version !== built.contentVersion ||
+          approvedContent.fingerprint !== built.contentFingerprint ||
+          approvedContent.contentRevision !== built.content.contentRevision ||
+          approvedContent.lineCount !== built.lineCount ||
+          approvedContent.from !== built.content.from ||
+          approvedContent.to !== built.content.to ||
+          approvedContent.subject !== built.content.subject
+        ) {
+          throw new GmailIntegrationError(
+            "send_content_unapproved",
+            "The exact current supplier email has not been approved.",
+            ["send_content_unapproved"]
+          );
+        }
+
+        const claimedRecommendationIds = built.content.lines.map((line) => line.recommendationId);
+        const result = markClaimedSupplierOrderSentInDemoState(
+          state,
+          restaurantId,
+          orderId,
+          claimedRecommendationIds
+        );
+        appendDemoSupplierOrderActivity(state, result.order, { previousStatus: "draft" });
+        const executedAction = markExecuted(existingAction, {
+          supplierOrderId: orderId,
+          provider: "demo",
+          providerMessageId,
+          contentVersion: built.contentVersion,
+          contentFingerprint: built.contentFingerprint,
+          contentRevision: built.content.contentRevision,
+          recommendationIds: claimedRecommendationIds,
+          simulated: true
+        });
+        state.miseActions = (state.miseActions ?? []).map((entry) =>
+          entry.id === existingAction.id ? executedAction : entry
+        );
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_email_sent",
+          entity_table: "supplier_orders",
+          entity_id: orderId,
+          metadata: {
+            provider: "demo",
+            provider_message_id: providerMessageId,
+            content_version: built.contentVersion,
+            content_fingerprint: built.contentFingerprint,
+            content_revision: built.content.contentRevision,
+            simulated: true,
+            ordered_recommendation_count: result.orderedRecommendations.length
+          }
+        });
         return {
           status: "sent" as const,
-          outcome: wasAlreadySent ? "already_sent" as const : result.outcome,
+          outcome: result.outcome,
           providerMessageId,
           order: normalizeSupplierOrder(result.order),
           orderedRecommendations: result.orderedRecommendations.map(normalizePurchaseRecommendation)
@@ -2145,9 +2383,14 @@ export function createLocalDemoRepository(): MiseRepository {
         if (existing) {
           const changed = existing.supplier_name !== canonicalSupplierName || existing.email !== input.email;
           if (!changed) return normalizeSupplierRecipient(existing);
+          const previousSupplierName = existing.supplier_name;
           existing.supplier_name = canonicalSupplierName;
           existing.email = input.email;
           existing.updated_at = now;
+          bumpDemoSupplierSendContentForExternalChange(state, input.restaurant_id, [
+            previousSupplierName,
+            canonicalSupplierName
+          ]);
           appendDemoAuditLog(state, {
             restaurant_id: input.restaurant_id,
             action: "supplier_recipient_updated",
@@ -2166,6 +2409,9 @@ export function createLocalDemoRepository(): MiseRepository {
           updated_at: now
         };
         state.supplierRecipients.push(recipient);
+        bumpDemoSupplierSendContentForExternalChange(state, input.restaurant_id, [
+          canonicalSupplierName
+        ]);
         appendDemoAuditLog(state, {
           restaurant_id: input.restaurant_id,
           action: "supplier_recipient_created",
@@ -2603,8 +2849,8 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
-    async approveSupplierSendEnvelope(restaurantId, actionId, orderId, envelope) {
-      return mutateDemoState((state) => {
+    async approveSupplierSendContent(restaurantId, actionId, orderId, contentFingerprint) {
+      return mutateDemoState(async (state) => {
         requireActiveDemoRestaurant(state, restaurantId);
         const action = (state.miseActions ?? []).find(
           (entry) => entry.restaurantId === restaurantId && entry.id === actionId
@@ -2624,44 +2870,63 @@ export function createLocalDemoRepository(): MiseRepository {
         if (!order || order.status !== "draft") {
           throw new GmailIntegrationError("approval_required", "Only a draft supplier order can be approved for sending.");
         }
+        if (action.status === "executing") {
+          return {
+            outcome: "send_in_progress" as const,
+            action: null,
+            contentVersion: null,
+            contentFingerprint: null,
+            blockerCodes: ["send_in_progress" as const]
+          };
+        }
+        if (action.status === "unverified" || action.status === "executed") {
+          return {
+            outcome: "delivery_requires_review" as const,
+            action: null,
+            contentVersion: null,
+            contentFingerprint: null,
+            blockerCodes: ["delivery_requires_review" as const]
+          };
+        }
         if (!["prepared", "waiting_for_approval", "approved", "failed"].includes(action.status)) {
           throw new GmailIntegrationError("approval_required", "This supplier order must be reviewed again before sending.");
         }
 
-        const restaurant = state.restaurants.find((entry) => entry.id === restaurantId);
-        const connection = state.emailConnections.find(
-          (entry) => entry.restaurant_id === restaurantId && entry.provider === "gmail"
-        );
-        const recipient = state.supplierRecipients.find(
-          (entry) =>
-            entry.restaurant_id === restaurantId &&
-            entry.supplier_name.trim().toLowerCase() === order.supplier_name.trim().toLowerCase()
-        );
-        const currentEnvelope = {
-          from: connection?.sender_email?.trim().toLowerCase() ?? "",
-          to: recipient?.email?.trim().toLowerCase() ?? "",
-          subject: restaurant ? `${restaurant.name} order for ${order.supplier_name}` : ""
-        };
-        const reviewedEnvelope = {
-          from: envelope.from.trim().toLowerCase(),
-          to: envelope.to.trim().toLowerCase(),
-          subject: envelope.subject.trim()
-        };
+        const built = await buildDemoSupplierSendContent(state, restaurantId, orderId);
         if (
-          connection?.status !== "connected" ||
-          !currentEnvelope.from ||
-          !currentEnvelope.to ||
-          !currentEnvelope.subject ||
-          currentEnvelope.from !== reviewedEnvelope.from ||
-          currentEnvelope.to !== reviewedEnvelope.to ||
-          currentEnvelope.subject !== reviewedEnvelope.subject
+          !built.ready ||
+          !built.contentFingerprint ||
+          !/^[a-f0-9]{64}$/.test(contentFingerprint) ||
+          built.contentFingerprint !== contentFingerprint
         ) {
-          throw new GmailIntegrationError(
-            "approval_required",
-            "Sender, recipient, or subject changed. Review the current delivery details before sending."
-          );
+          return {
+            outcome: "send_content_changed" as const,
+            action: null,
+            contentVersion: null,
+            contentFingerprint: null,
+            blockerCodes: built.blockerCodes.length > 0
+              ? built.blockerCodes
+              : ["send_content_changed" as const]
+          };
         }
 
+        const previousApproval = readDemoApprovedSendContent(
+          action.expectedImpact?.approvedSendContent
+        );
+        if (
+          action.status === "approved" &&
+          previousApproval?.version === built.contentVersion &&
+          previousApproval.fingerprint === built.contentFingerprint &&
+          previousApproval.contentRevision === built.content.contentRevision
+        ) {
+          return {
+            outcome: "already_applied" as const,
+            action,
+            contentVersion: built.contentVersion,
+            contentFingerprint: built.contentFingerprint,
+            blockerCodes: []
+          };
+        }
         const now = new Date().toISOString();
         const approved = action.status === "approved"
           ? action
@@ -2670,8 +2935,17 @@ export function createLocalDemoRepository(): MiseRepository {
           ...approved,
           approvedBy: DEMO_USER_ID,
           expectedImpact: {
-            ...(approved.expectedImpact ?? {}),
-            approvedEnvelope: { ...currentEnvelope, reviewedAt: now }
+            ...withoutLegacyApprovedEnvelope(approved.expectedImpact),
+            approvedSendContent: {
+              version: built.contentVersion,
+              fingerprint: built.contentFingerprint,
+              approvedAt: now,
+              lineCount: built.lineCount,
+              contentRevision: built.content.contentRevision,
+              from: built.content.from!,
+              to: built.content.to!,
+              subject: built.content.subject!
+            }
           },
           updatedAt: now
         };
@@ -2680,12 +2954,25 @@ export function createLocalDemoRepository(): MiseRepository {
         );
         appendDemoAuditLog(state, {
           restaurant_id: restaurantId,
-          action: "supplier_send_envelope_approved",
+          action: "supplier_send_content_approved",
           entity_table: "mise_actions",
           entity_id: actionId,
-          metadata: { supplier_order_id: orderId, simulated: true }
+          metadata: {
+            supplier_order_id: orderId,
+            content_version: built.contentVersion,
+            content_fingerprint: built.contentFingerprint,
+            content_revision: built.content.contentRevision,
+            line_count: built.lineCount,
+            simulated: true
+          }
         });
-        return next;
+        return {
+          outcome: "applied" as const,
+          action: next,
+          contentVersion: built.contentVersion,
+          contentFingerprint: built.contentFingerprint,
+          blockerCodes: []
+        };
       });
     },
 

@@ -24,7 +24,6 @@ import type {
   RestaurantEmailConnection,
   SetupReadinessSummary,
   SetupReadinessStatus,
-  SupplierEmailPayload,
   SupplierOrder,
   SupplierRecipient,
   SupplierOrderStatus,
@@ -1948,7 +1947,7 @@ export function buildSupplierEmailPayload(
   order: SupplierOrder,
   emailConnection: RestaurantEmailConnection | null,
   recipients: SupplierRecipient[] = []
-): SupplierEmailPayload {
+) {
   const recipient = recipients.find(
     (item) =>
       item.restaurant_id === restaurant.id &&

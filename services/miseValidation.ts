@@ -26,11 +26,19 @@ import type {
   SalesImport,
   SetupAttachment,
   SetupAttachmentStatus,
+  SupplierEmailPayload,
   SupplierItem,
   SupplierOrder,
-  SupplierRecipient
+  SupplierRecipient,
+  SupplierSendContentBlockerCode,
+  SupplierSendContentLine
 } from "../types/mise";
 import {
+  SUPPLIER_SEND_CONTENT_BLOCKER_CODES,
+  SUPPLIER_SEND_CONTENT_VERSION
+} from "../types/mise";
+import {
+  ORDER_MESSAGE_MAX_BYTES,
   RESTAURANT_ADDRESS_MAX_CHARACTERS,
   RESTAURANT_CUISINE_MAX_CHARACTERS,
   RESTAURANT_LOGO_URL_MAX_CHARACTERS,
@@ -575,6 +583,285 @@ export function requireSupplierOperatorNote(value: string | null | undefined) {
     throw new Error(`Supplier note is limited to ${SUPPLIER_NOTE_MAX_CHARACTERS.toLocaleString()} characters.`);
   }
   return normalized || null;
+}
+
+const supplierSendContentBlockerCodes = new Set<string>(
+  SUPPLIER_SEND_CONTENT_BLOCKER_CODES
+);
+const supplierSendUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const unsafeSupplierSendMultilineControlPattern =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+
+export function requireSupplierSendContentFingerprint(value: unknown) {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) {
+    throw new Error("Supplier send content fingerprint is invalid.");
+  }
+  return value;
+}
+
+/**
+ * Fail-closed parser for the safe flattened response from
+ * `preview_supplier_send_content`. Both PostgREST's scalar JSON response and
+ * its one-row array representation are accepted; no partial preview is
+ * treated as ready.
+ */
+export function normalizeSupplierSendContentPreview(
+  value: unknown,
+  expectedRestaurantId: string,
+  expectedOrderId: string
+): SupplierEmailPayload {
+  const candidate = Array.isArray(value)
+    ? value.length === 1 ? value[0] : null
+    : value;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    throw new Error("Supplier send preview returned an invalid response.");
+  }
+  const payload = candidate as Record<string, unknown>;
+  const restaurantId = requireExactSupplierSendId(
+    payload.restaurantId,
+    expectedRestaurantId,
+    "restaurant"
+  );
+  const orderId = requireExactSupplierSendId(payload.orderId, expectedOrderId, "order");
+  if (payload.contentVersion !== SUPPLIER_SEND_CONTENT_VERSION) {
+    throw new Error("Supplier send preview returned an unsupported content version.");
+  }
+  const contentRevision = requirePositiveSafeInteger(payload.contentRevision, "content revision");
+  const supplierName = requireExactSupplierSendText(payload.supplierName, "supplier", 160);
+  const from = requireNullableSupplierSendEmail(payload.from, "sender");
+  const to = requireNullableSupplierSendEmail(payload.to, "recipient");
+  const subject = requireNullableSupplierSendText(payload.subject, "subject", 500);
+  const body = requireSupplierSendBody(payload.body);
+  const deliveryDate = requireSupplierSendDeliveryDate(payload.deliveryDate);
+  const operatorNote = requireNullableSupplierSendText(
+    payload.operatorNote,
+    "operator note",
+    SUPPLIER_NOTE_MAX_CHARACTERS,
+    true
+  );
+  const lines = requireSupplierSendLines(payload.lines, supplierName);
+  const lineCount = requireNonNegativeSafeInteger(payload.lineCount, "line count");
+  if (lineCount > 250 || lineCount !== lines.length) {
+    throw new Error("Supplier send preview returned an invalid line count.");
+  }
+  const blockerCodes = requireSupplierSendContentBlockerCodes(payload.blockerCodes);
+  if (typeof payload.ready !== "boolean") {
+    throw new Error("Supplier send preview returned an invalid readiness state.");
+  }
+  const ready = payload.ready;
+  const contentFingerprint = payload.contentFingerprint === null
+    ? null
+    : requireSupplierSendContentFingerprint(payload.contentFingerprint);
+
+  if (
+    ready
+      ? blockerCodes.length !== 0 || lineCount === 0 || !from || !to || !subject || !contentFingerprint
+      : blockerCodes.length === 0 || contentFingerprint !== null
+  ) {
+    throw new Error("Supplier send preview returned inconsistent authority.");
+  }
+
+  return {
+    contentVersion: SUPPLIER_SEND_CONTENT_VERSION,
+    contentFingerprint,
+    contentRevision,
+    restaurantId,
+    orderId,
+    supplierName,
+    from,
+    to,
+    subject,
+    body,
+    deliveryDate,
+    operatorNote,
+    lines,
+    lineCount,
+    ready,
+    blockerCodes,
+    canSend: ready,
+    blockedReason: ready ? null : supplierSendBlockerDescription(blockerCodes[0]!)
+  };
+}
+
+function requireExactSupplierSendId(value: unknown, expected: string, label: string) {
+  const normalizedExpected = typeof expected === "string" ? expected.trim() : "";
+  if (
+    typeof value !== "string" ||
+    !normalizedExpected ||
+    value !== normalizedExpected ||
+    value.length > 128 ||
+    hasControlCharacters(value)
+  ) {
+    throw new Error(`Supplier send preview returned an invalid ${label} identity.`);
+  }
+  return value;
+}
+
+function requireExactSupplierSendText(
+  value: unknown,
+  label: string,
+  maximum: number,
+  allowLineBreaks = false
+) {
+  if (
+    typeof value !== "string" ||
+    value.length < 1 ||
+    value.length > maximum ||
+    value !== value.trim() ||
+    (
+      allowLineBreaks
+        ? unsafeSupplierSendMultilineControlPattern.test(value)
+        : hasControlCharacters(value)
+    )
+  ) {
+    throw new Error(`Supplier send preview returned an invalid ${label}.`);
+  }
+  return value;
+}
+
+function requireNullableSupplierSendText(
+  value: unknown,
+  label: string,
+  maximum: number,
+  allowLineBreaks = false
+) {
+  if (value === null) return null;
+  return requireExactSupplierSendText(value, label, maximum, allowLineBreaks);
+}
+
+function requireNullableSupplierSendEmail(value: unknown, label: string) {
+  if (value === null) return null;
+  const email = requireExactSupplierSendText(value, label, 254);
+  if (email !== email.toLowerCase() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error(`Supplier send preview returned an invalid ${label}.`);
+  }
+  return email;
+}
+
+function requireSupplierSendBody(value: unknown) {
+  if (
+    typeof value !== "string" ||
+    value.length < 1 ||
+    utf8ByteLength(value) > ORDER_MESSAGE_MAX_BYTES ||
+    unsafeSupplierSendMultilineControlPattern.test(value)
+  ) {
+    throw new Error("Supplier send preview returned an invalid body.");
+  }
+  return value;
+}
+
+function requireSupplierSendDeliveryDate(value: unknown) {
+  if (value === null) return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error("Supplier send preview returned an invalid delivery date.");
+  }
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year!, month! - 1, day!));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() + 1 !== month ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new Error("Supplier send preview returned an invalid delivery date.");
+  }
+  return value;
+}
+
+function requireSupplierSendLines(value: unknown, supplierName: string): SupplierSendContentLine[] {
+  if (!Array.isArray(value) || value.length > 250) {
+    throw new Error("Supplier send preview returned invalid lines.");
+  }
+  let previousRecommendationId = "";
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Supplier send preview returned an invalid line.");
+    }
+    const line = entry as Record<string, unknown>;
+    const recommendationId = requireSupplierSendUuid(line.recommendationId, "recommendation");
+    const inventoryItemId = requireSupplierSendUuid(line.inventoryItemId, "inventory item");
+    if (previousRecommendationId && recommendationId <= previousRecommendationId) {
+      throw new Error("Supplier send preview lines are not canonical.");
+    }
+    previousRecommendationId = recommendationId;
+    const itemName = requireExactSupplierSendText(line.itemName, "item name", 160);
+    const unit = requireExactSupplierSendText(line.unit, "unit", 40);
+    const lineSupplierName = requireExactSupplierSendText(line.supplierName, "line supplier", 160);
+    if (lineSupplierName !== supplierName) {
+      throw new Error("Supplier send preview returned a mismatched line supplier.");
+    }
+    if (
+      typeof line.quantity !== "number" ||
+      !Number.isFinite(line.quantity) ||
+      line.quantity <= 0 ||
+      line.quantity > operatingLimits.recommendationQuantity
+    ) {
+      throw new Error("Supplier send preview returned an invalid line quantity.");
+    }
+    return {
+      recommendationId,
+      inventoryItemId,
+      itemName,
+      quantity: line.quantity,
+      unit,
+      supplierName: lineSupplierName
+    };
+  });
+}
+
+function requireSupplierSendUuid(value: unknown, label: string) {
+  if (typeof value !== "string" || !supplierSendUuidPattern.test(value)) {
+    throw new Error(`Supplier send preview returned an invalid ${label} identity.`);
+  }
+  return value;
+}
+
+function requirePositiveSafeInteger(value: unknown, label: string) {
+  const numeric = requireNonNegativeSafeInteger(value, label);
+  if (numeric < 1) throw new Error(`Supplier send preview returned an invalid ${label}.`);
+  return numeric;
+}
+
+function requireNonNegativeSafeInteger(value: unknown, label: string) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`Supplier send preview returned an invalid ${label}.`);
+  }
+  return value;
+}
+
+function requireSupplierSendContentBlockerCodes(value: unknown): SupplierSendContentBlockerCode[] {
+  if (!Array.isArray(value) || value.length > SUPPLIER_SEND_CONTENT_BLOCKER_CODES.length) {
+    throw new Error("Supplier send preview returned invalid blockers.");
+  }
+  const codes = value.map((entry) => {
+    if (typeof entry !== "string" || !supplierSendContentBlockerCodes.has(entry)) {
+      throw new Error("Supplier send preview returned an invalid blocker.");
+    }
+    return entry as SupplierSendContentBlockerCode;
+  });
+  const canonical = [...new Set(codes)].sort();
+  if (canonical.length !== codes.length || canonical.some((code, index) => code !== codes[index])) {
+    throw new Error("Supplier send preview blockers are not canonical.");
+  }
+  return codes;
+}
+
+function supplierSendBlockerDescription(code: SupplierSendContentBlockerCode) {
+  switch (code) {
+    case "gmail_not_connected":
+      return "Connect and verify the restaurant Gmail sender before sending.";
+    case "supplier_email_missing":
+    case "supplier_email_invalid":
+      return "Add a valid supplier email before sending.";
+    case "order_not_draft":
+      return "Only a current supplier draft can be sent.";
+    case "order_lines_missing":
+      return "This supplier draft has no approved order lines.";
+    case "send_subject_invalid":
+    case "send_content_invalid":
+    case "send_content_too_large":
+      return "The current supplier email content is not ready for review.";
+  }
 }
 
 export const SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS = 160;
