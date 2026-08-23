@@ -185,6 +185,11 @@ export interface PurchaseRecommendation {
   status: RecommendationStatus;
   supplier_order_id: string | null;
   created_at: string;
+  generation_source?: "manual" | "mise_rules" | "legacy_client";
+  planning_revision?: number | null;
+  approval_authority?: Record<string, unknown> | null;
+  approval_evaluated_at?: string | null;
+  quantity_overridden?: boolean;
 }
 
 export interface SupplierOrder {
@@ -219,6 +224,9 @@ export interface PosIntegration {
   status: IntegrationStatus;
   external_location_id: string | null;
   last_sync_at: string | null;
+  authority_window_from?: string | null;
+  authority_window_to?: string | null;
+  authority_window_completed_at?: string | null;
   sync_cursor: string | null;
   settings: Record<string, unknown>;
   created_at: string;
@@ -417,11 +425,26 @@ export interface InventoryControlSummary {
 }
 
 export interface RecipeBaselineItem {
+  menuItemId?: string | null;
   menu_item_name: string;
   ingredientCount: number;
   linkedInventoryItems: string[];
   ingredients: RecipeBaselineIngredient[];
   todayQuantitySold: number;
+  recipeRevision?: number;
+  confirmedRevision?: number | null;
+  confirmedAt?: string | null;
+  authorityReady?: boolean;
+}
+
+export interface RecipeAuthorityState {
+  menuItemId: string;
+  menuItemName: string;
+  active: boolean;
+  recipeRevision: number;
+  confirmedRevision: number | null;
+  confirmedAt: string | null;
+  ready: boolean;
 }
 
 export interface RecipeBaselineIngredient {

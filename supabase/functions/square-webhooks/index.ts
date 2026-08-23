@@ -5,7 +5,7 @@ import {
   searchSquareOrders,
   type SquareOAuthConfig,
 } from "../_shared/square.ts";
-import { HttpError, jsonResponse } from "../_shared/mise.ts";
+import { HttpError, jsonResponse, requireUuid } from "../_shared/mise.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -85,32 +85,71 @@ Deno.serve(async (req) => {
       return jsonResponse({ status: "ignored", reason: credential?.outcome ?? "not_ready" }, 200);
     }
 
-    const locationIds = Array.isArray(credential.locationIds)
-      ? credential.locationIds.filter((value: unknown): value is string => typeof value === "string")
-      : [];
+    let locationIds: string[] = [];
     const to = new Date();
     const from = new Date(to.getTime() - 2 * 24 * 60 * 60 * 1000);
     const fromDate = from.toISOString().slice(0, 10);
     const toDate = to.toISOString().slice(0, 10);
 
-    const tokens = await refreshSquareAccessToken(oauthConfig, String(credential.refreshToken));
-    const [sales, catalogItems] = await Promise.all([
-      searchSquareOrders(oauthConfig, tokens.accessToken, locationIds, fromDate, toDate),
-      listSquareCatalogItems(oauthConfig, tokens.accessToken),
-    ]);
-    const { error: applyError } = await securitySupabase.rpc("service_apply_square_sync_result", {
-      p_actor_user_id: target.actorUserId,
-      p_restaurant_id: target.restaurantId,
-      p_integration_id: credential.integrationId,
-      p_sales: sales,
-      p_catalog_items: catalogItems,
-      p_sync_cursor: null,
-      p_from: fromDate,
-      p_to: toDate,
-    });
-    if (applyError) throw applyError;
+    const { data: syncBoundary, error: syncBoundaryError } = await securitySupabase.rpc(
+      "service_begin_square_authority_sync",
+      {
+        p_actor_user_id: target.actorUserId,
+        p_restaurant_id: target.restaurantId,
+        p_integration_id: credential.integrationId,
+        p_snapshot_mode: "partial",
+        p_from: fromDate,
+        p_to: toDate,
+      },
+    );
+    if (syncBoundaryError) throw syncBoundaryError;
+    const authoritySyncToken = requireUuid(syncBoundary?.syncToken, "syncToken");
 
-    return jsonResponse({ status: "accepted", recordsProcessed: sales.length });
+    try {
+      locationIds = Array.isArray(syncBoundary?.locationIds)
+        ? syncBoundary.locationIds.filter(
+          (value: unknown): value is string =>
+            typeof value === "string" && value.length > 0 && value.length <= 128,
+        )
+        : [];
+      if (locationIds.length === 0) {
+        throw new HttpError(409, "Square has no active webhook location.");
+      }
+      const tokens = await refreshSquareAccessToken(oauthConfig, String(credential.refreshToken));
+      const [sales, catalogItems] = await Promise.all([
+        searchSquareOrders(oauthConfig, tokens.accessToken, locationIds, fromDate, toDate),
+        listSquareCatalogItems(oauthConfig, tokens.accessToken),
+      ]);
+      const { error: applyError } = await securitySupabase.rpc(
+        "service_apply_square_sync_result_scoped",
+        {
+          p_actor_user_id: target.actorUserId,
+          p_restaurant_id: target.restaurantId,
+          p_integration_id: credential.integrationId,
+          p_sync_token: authoritySyncToken,
+          p_snapshot_mode: "partial",
+          p_sales: sales,
+          p_catalog_items: catalogItems,
+          p_sync_cursor: null,
+          p_from: fromDate,
+          p_to: toDate,
+        },
+      );
+      if (applyError) throw applyError;
+
+      return jsonResponse({ status: "accepted", recordsProcessed: sales.length });
+    } catch (error) {
+      await securitySupabase.rpc("service_fail_square_authority_sync", {
+        p_actor_user_id: target.actorUserId,
+        p_restaurant_id: target.restaurantId,
+        p_integration_id: credential.integrationId,
+        p_sync_token: authoritySyncToken,
+        p_error_code: "square_webhook_refresh_failed",
+        p_from: fromDate,
+        p_to: toDate,
+      });
+      throw error;
+    }
   } catch (error) {
     if (error instanceof HttpError) {
       return jsonResponse({ error: error.message }, error.status);

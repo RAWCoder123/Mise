@@ -5,6 +5,11 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { colors, icon, iconStroke, radii, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { presentSupportedRecommendationStatus } from "../services/domain/operationalStatus";
+import {
+  purchaseAuthorityBlockerMessageKey,
+  type PurchaseAuthorityResult
+} from "../services/domain/purchaseAuthority";
+import type { MessageKey } from "../i18n/catalog";
 import type { PurchaseRecommendation } from "../types/mise";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
@@ -19,6 +24,7 @@ interface RecommendationDecisionRowProps {
   error?: string;
   showDivider?: boolean;
   readOnly?: boolean;
+  authority?: PurchaseAuthorityResult;
 }
 
 export function RecommendationDecisionRow({
@@ -30,11 +36,14 @@ export function RecommendationDecisionRow({
   action,
   error,
   showDivider,
-  readOnly = false
+  readOnly = false,
+  authority
 }: RecommendationDecisionRowProps) {
   const { formatNumber, t } = useLocale();
   const [expanded, setExpanded] = useState(false);
   const busy = Boolean(action);
+  const approvalBlocked = authority?.ready === false;
+  const authorityBlockers = authority?.blockers ?? [];
   const suggestedQuantity = formatNumber(recommendation.recommended_quantity, {
     maximumFractionDigits: 3
   });
@@ -109,6 +118,22 @@ export function RecommendationDecisionRow({
         </View>
       ) : null}
 
+      {approvalBlocked ? (
+        <View style={styles.blockerPanel} accessibilityLiveRegion="polite">
+          <Text style={styles.blockerTitle}>{t("orders.authority.title")}</Text>
+          {authorityBlockers.slice(0, 3).map((blocker) => (
+            <Text key={blocker.code} style={styles.blockerText}>
+              {t(purchaseAuthorityBlockerMessageKey(blocker.code) as MessageKey)}
+            </Text>
+          ))}
+          {authorityBlockers.length > 3 ? (
+            <Text style={styles.blockerText}>
+              {t("orders.authority.more", { count: authorityBlockers.length - 3 })}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={styles.quantityRow}>
         <View style={styles.quantityCopy}>
           <Text style={styles.quantityLabel}>{t("orders.recommendation.quantity")}</Text>
@@ -165,10 +190,10 @@ export function RecommendationDecisionRow({
             accessibilityLabel={t("orders.recommendation.approveAccessibility", {
               item: recommendation.item_name
             })}
-            accessibilityState={{ disabled: busy }}
+            accessibilityState={{ disabled: busy || approvalBlocked }}
             icon={<Check size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
             onPress={onApprove}
-            disabled={busy}
+            disabled={busy || approvalBlocked}
             style={styles.actionButton}
           />
           <Button
@@ -270,6 +295,24 @@ const styles = StyleSheet.create({
     color: colors.muted,
     ...typography.caption,
     fontWeight: "500"
+  },
+  blockerPanel: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.caution,
+    backgroundColor: colors.cautionSoft,
+    borderRadius: radii.md,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 3
+  },
+  blockerTitle: {
+    color: colors.text,
+    ...typography.caption,
+    fontWeight: "700"
+  },
+  blockerText: {
+    color: colors.muted,
+    ...typography.caption
   },
   quantityRow: {
     flexDirection: "row",

@@ -6,6 +6,7 @@ import type {
   MenuItemIngredient,
   PosSale,
   PurchaseRecommendation,
+  RecipeAuthorityState,
   SupplierRecipient
 } from "../../types/mise";
 import {
@@ -79,6 +80,7 @@ import {
   type InventoryEventInput
 } from "../domain/inventoryLedger";
 import { isTemporallyValidCount } from "../domain/inventoryCountAuthority";
+import type { PurchaseAuthorityResult } from "../domain/purchaseAuthority";
 import {
   assertSessionMutable,
   buildCountSessionLinesFromInventory,
@@ -129,6 +131,67 @@ import {
   type MiseRepository,
   type RestaurantSetupSnapshotSummary
 } from "./repositoryContracts";
+
+const demoConfirmedRecipeFingerprints = new Map<string, string>();
+
+function demoRecipeAuthorityStates(state: DemoState, restaurantId: string): RecipeAuthorityState[] {
+  const grouped = new Map<string, MenuItemIngredient[]>();
+  state.menuItemIngredients
+    .filter((mapping) => mapping.restaurant_id === restaurantId)
+    .forEach((mapping) => {
+      const menuItemId = mapping.menu_item_id ?? `demo-menu:${mapping.menu_item_name.trim().toLowerCase()}`;
+      grouped.set(menuItemId, [...(grouped.get(menuItemId) ?? []), mapping]);
+    });
+  return [...grouped.entries()].map(([menuItemId, mappings]) => {
+    const fingerprint = mappings
+      .slice()
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((mapping) => `${mapping.id}:${mapping.inventory_item_id}:${mapping.quantity_used_per_sale}:${mapping.unit}`)
+      .join("|");
+    const key = `${restaurantId}:${menuItemId}`;
+    if (!demoConfirmedRecipeFingerprints.has(key)) demoConfirmedRecipeFingerprints.set(key, fingerprint);
+    const ready = demoConfirmedRecipeFingerprints.get(key) === fingerprint;
+    return {
+      menuItemId,
+      menuItemName: mappings[0]?.menu_item_name ?? "Menu item",
+      active: true,
+      recipeRevision: fingerprint.length,
+      confirmedRevision: ready ? fingerprint.length : null,
+      confirmedAt: ready ? new Date().toISOString() : null,
+      ready
+    };
+  });
+}
+
+function demoPurchaseAuthority(
+  state: DemoState,
+  restaurantId: string,
+  recommendation: PurchaseRecommendation
+): PurchaseAuthorityResult {
+  const item = state.inventoryItems.find(
+    (entry) => entry.restaurant_id === restaurantId && entry.id === recommendation.inventory_item_id
+  );
+  return {
+    ready: true,
+    blockers: [],
+    evaluatedAt: new Date().toISOString(),
+    planningRevision: null,
+    evidence: {
+      recommendationId: recommendation.id,
+      inventoryItemId: recommendation.inventory_item_id,
+      countEventId: null,
+      countedAt: null,
+      projectedQuantity: item?.current_quantity ?? null,
+      canonicalUnit: item?.canonical_unit ?? null,
+      providerWindowFrom: null,
+      providerWindowTo: null,
+      providerWindowCompletedAt: null,
+      recipeRevisions: {},
+      basis: "physical_count_reorder_policy",
+      demandBasis: "manual_physical_stock"
+    }
+  };
+}
 
 async function readReadyDemoState(restaurantId: string = DEMO_RESTAURANT_ID) {
   return mutateDemoState((state) => {
@@ -1378,6 +1441,38 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async fetchRecipeAuthorities(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return demoRecipeAuthorityStates(state, restaurantId);
+    },
+
+    async confirmRecipeComplete(restaurantId, menuItemId, expectedRevision) {
+      return mutateDemoState((state) => {
+        const authority = demoRecipeAuthorityStates(state, restaurantId)
+          .find((entry) => entry.menuItemId === menuItemId);
+        if (!authority) throw new Error("Menu item not found");
+        if (authority.recipeRevision !== expectedRevision) {
+          throw new Error("Recipe changed; review the current ingredients");
+        }
+        const mappings = state.menuItemIngredients.filter((mapping) =>
+          mapping.restaurant_id === restaurantId
+          && (mapping.menu_item_id ?? `demo-menu:${mapping.menu_item_name.trim().toLowerCase()}`) === menuItemId
+        );
+        const fingerprint = mappings
+          .slice()
+          .sort((left, right) => left.id.localeCompare(right.id))
+          .map((mapping) => `${mapping.id}:${mapping.inventory_item_id}:${mapping.quantity_used_per_sale}:${mapping.unit}`)
+          .join("|");
+        demoConfirmedRecipeFingerprints.set(`${restaurantId}:${menuItemId}`, fingerprint);
+        return {
+          ...authority,
+          confirmedRevision: authority.recipeRevision,
+          confirmedAt: new Date().toISOString(),
+          ready: true
+        };
+      });
+    },
+
     async findPendingRecommendation(restaurantId, itemId) {
       const state = await readReadyDemoState(restaurantId);
       const recommendation = state.purchaseRecommendations.find(
@@ -1414,6 +1509,18 @@ export function createLocalDemoRepository(): MiseRepository {
         .sort((a, b) => severityRankForUrgency(b.urgency) - severityRankForUrgency(a.urgency));
     },
 
+    async fetchPurchaseRecommendationAuthorities(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return Object.fromEntries(
+        state.purchaseRecommendations
+          .filter((recommendation) => recommendation.restaurant_id === restaurantId && recommendation.status === "pending")
+          .map((recommendation) => [
+            recommendation.id,
+            demoPurchaseAuthority(state, restaurantId, recommendation)
+          ])
+      );
+    },
+
     async fetchRecommendationHistory(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
       const cutoff = recommendationHistoryCutoffIso();
@@ -1437,6 +1544,11 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async approvePurchaseRecommendation(restaurantId, recommendationId, recommendedQuantity) {
       return mutateDemoState((state) => {
+        const pendingRecommendation = state.purchaseRecommendations.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === recommendationId
+        );
+        if (!pendingRecommendation) throw new Error("Recommendation not found");
+        const authority = demoPurchaseAuthority(state, restaurantId, pendingRecommendation);
         const result = approveRecommendationInDemoState(
           state,
           restaurantId,
@@ -1463,7 +1575,8 @@ export function createLocalDemoRepository(): MiseRepository {
         return {
           ...result,
           recommendation: normalizePurchaseRecommendation(result.recommendation),
-          order: result.order ? normalizeSupplierOrder(result.order) : null
+          order: result.order ? normalizeSupplierOrder(result.order) : null,
+          authority
         };
       });
     },

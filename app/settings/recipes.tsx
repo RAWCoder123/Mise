@@ -19,6 +19,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   addRecipeBaselineIngredient,
+  confirmRecipeBaselineComplete,
   fetchInventoryItems,
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
@@ -43,6 +44,7 @@ export default function RecipeBaselinesScreen() {
   const [loading, setLoading] = useState(true);
   const [savingMappingId, setSavingMappingId] = useState<string | null>(null);
   const [savingNewLink, setSavingNewLink] = useState(false);
+  const [confirmingMenuItemId, setConfirmingMenuItemId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -70,6 +72,7 @@ export default function RecipeBaselinesScreen() {
     setNewQuantity("1");
     setSavingMappingId(null);
     setSavingNewLink(false);
+    setConfirmingMenuItemId(null);
     setError(null);
     setNotice(null);
     setLoading(Boolean(restaurant));
@@ -132,7 +135,7 @@ export default function RecipeBaselinesScreen() {
     loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
-  const mutationBusy = savingNewLink || savingMappingId !== null;
+  const mutationBusy = savingNewLink || savingMappingId !== null || confirmingMenuItemId !== null;
   const mutationAllowed = canManage && hubReady;
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
@@ -264,6 +267,28 @@ export default function RecipeBaselinesScreen() {
       }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSavingNewLink(false);
+    }
+  }
+
+  async function confirmRecipe(item: RecipeBaselineItem) {
+    if (!restaurant || !item.menuItemId || item.recipeRevision === undefined) return;
+    if (!actionsEditable) {
+      setError(t("recipes.error.readOnly"));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    setConfirmingMenuItemId(item.menuItemId);
+    setError(null);
+    setNotice(null);
+    try {
+      await confirmRecipeBaselineComplete(restaurantId, item.menuItemId, item.recipeRevision);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice(t("recipes.notice.confirmed", { item: item.menu_item_name }));
+      await load();
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) setError(t("recipes.error.confirm"));
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setConfirmingMenuItemId(null);
     }
   }
 
@@ -409,7 +434,9 @@ export default function RecipeBaselinesScreen() {
                   item={item}
                   canManage={actionsEditable}
                   savingMappingId={savingMappingId}
+                  confirming={confirmingMenuItemId === item.menuItemId}
                   onSave={queueIngredientSave}
+                  onConfirm={() => void confirmRecipe(item)}
                 />
               ))
             )}
@@ -585,12 +612,16 @@ function RecipeRow({
   item,
   canManage,
   savingMappingId,
-  onSave
+  confirming,
+  onSave,
+  onConfirm
 }: {
   item: RecipeBaselineItem;
   canManage: boolean;
   savingMappingId: string | null;
+  confirming: boolean;
   onSave: (mappingId: string, quantity: string, options?: { immediate?: boolean; cancel?: boolean }) => void;
+  onConfirm: () => void;
 }) {
   const { formatNumber, parseNumber, t } = useLocale();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -630,6 +661,21 @@ function RecipeRow({
               count: formatNumber(item.ingredientCount)
             })}
           </Text>
+          <View style={styles.authorityRow}>
+            <Badge
+              label={t(item.authorityReady ? "recipes.authority.confirmed" : "recipes.authority.unconfirmed")}
+              tone={item.authorityReady ? "success" : "warning"}
+            />
+            {canManage && !item.authorityReady && item.menuItemId ? (
+              <Button
+                title={t(confirming ? "recipes.action.confirming" : "recipes.action.confirm")}
+                variant="secondary"
+                size="compact"
+                disabled={confirming || savingMappingId !== null}
+                onPress={onConfirm}
+              />
+            ) : null}
+          </View>
           <View style={styles.ingredientList}>
             {item.ingredients.map((ingredient) => {
               const draftValue = drafts[ingredient.mappingId] ?? formatNumber(ingredient.quantityUsedPerSale);
@@ -905,6 +951,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     marginTop: 3
+  },
+  authorityRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8
   },
   ingredientList: {
     gap: 8,
