@@ -11,6 +11,7 @@ import {
 } from "../services/domain/purchaseAuthority";
 import type { MessageKey } from "../i18n/catalog";
 import type { PurchaseRecommendation } from "../types/mise";
+import type { PurchaseDecisionPattern } from "../services/domain/purchaseDecisionMemory";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 
@@ -25,6 +26,7 @@ interface RecommendationDecisionRowProps {
   showDivider?: boolean;
   readOnly?: boolean;
   authority?: PurchaseAuthorityResult;
+  purchaseDecisionPattern?: PurchaseDecisionPattern;
 }
 
 export function RecommendationDecisionRow({
@@ -37,7 +39,8 @@ export function RecommendationDecisionRow({
   error,
   showDivider,
   readOnly = false,
-  authority
+  authority,
+  purchaseDecisionPattern
 }: RecommendationDecisionRowProps) {
   const { formatNumber, t } = useLocale();
   const [expanded, setExpanded] = useState(false);
@@ -64,6 +67,9 @@ export function RecommendationDecisionRow({
           : operationalStatus === "Cancelled"
             ? t("orders.ops.Cancelled")
             : t("orders.ops.Unverified");
+  const patternOutcomeKey = purchaseDecisionPattern
+    ? (`orders.memory.outcome.${purchaseDecisionPattern.dominantOutcome}` as MessageKey)
+    : null;
 
   return (
     <View style={[styles.row, showDivider && styles.rowDivider, busy && styles.rowBusy]}>
@@ -131,6 +137,42 @@ export function RecommendationDecisionRow({
               {t("orders.authority.more", { count: authorityBlockers.length - 3 })}
             </Text>
           ) : null}
+        </View>
+      ) : null}
+
+      {purchaseDecisionPattern && patternOutcomeKey ? (
+        <View style={styles.memoryPanel}>
+          <Text style={styles.memoryTitle}>{t("orders.memory.title")}</Text>
+          <Text style={styles.memoryText}>
+            {t(patternOutcomeKey, {
+              count: formatNumber(purchaseDecisionPattern.sampleCount),
+              exactCount: formatNumber(purchaseDecisionPattern.exactApprovalCount),
+              upwardCount: formatNumber(purchaseDecisionPattern.upwardOverrideCount),
+              downwardCount: formatNumber(purchaseDecisionPattern.downwardOverrideCount),
+              dismissalCount: formatNumber(purchaseDecisionPattern.dismissalCount)
+            })}
+          </Text>
+          {purchaseDecisionPattern.medianQuantityRatio !== null ? (
+            <Text style={styles.memoryText}>
+              {t("orders.memory.median", {
+                adjustment: formatNumber(purchaseDecisionPattern.medianQuantityRatio - 1, {
+                  style: "percent",
+                  maximumFractionDigits: 0,
+                  signDisplay: "always"
+                })
+              })}
+            </Text>
+          ) : null}
+          <Text style={styles.memoryEvidence}>
+            {t("orders.memory.evidence", {
+              count: formatNumber(purchaseDecisionPattern.sampleCount),
+              strength: t(
+                purchaseDecisionPattern.evidenceStrength === "established"
+                  ? "orders.memory.strength.established"
+                  : "orders.memory.strength.emerging"
+              )
+            })}
+          </Text>
         </View>
       ) : null}
 
@@ -311,6 +353,25 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   blockerText: {
+    color: colors.muted,
+    ...typography.caption
+  },
+  memoryPanel: {
+    borderLeftWidth: 2,
+    borderLeftColor: colors.success,
+    paddingLeft: 10,
+    gap: 2
+  },
+  memoryTitle: {
+    color: colors.text,
+    ...typography.caption,
+    fontWeight: "700"
+  },
+  memoryText: {
+    color: colors.text,
+    ...typography.caption
+  },
+  memoryEvidence: {
     color: colors.muted,
     ...typography.caption
   },

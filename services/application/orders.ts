@@ -110,6 +110,17 @@ export async function undoPurchaseRecommendationAction(restaurantId: string, rec
   return result.recommendation;
 }
 
+export async function fetchPurchaseDecisionPatterns(restaurantId: string) {
+  return repository.fetchPurchaseDecisionPatterns(requireWorkflowId(restaurantId, "restaurant"));
+}
+
+export async function excludePurchaseDecisionEvent(restaurantId: string, eventId: string) {
+  return repository.excludePurchaseDecisionEvent(
+    requireWorkflowId(restaurantId, "restaurant"),
+    requireWorkflowId(eventId, "purchase decision event")
+  );
+}
+
 export async function fetchSupplierOrders(restaurantId: string) {
   return repository.fetchSupplierOrders(restaurantId);
 }

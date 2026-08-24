@@ -22,6 +22,7 @@ import type {
 import type { SetupPosSaleDraft } from "../domain/setupDrafts";
 import type { OperationalFindingDecision } from "../domain/operationalFindingDecisions";
 import type { InventoryEvent } from "../domain/inventoryLedger";
+import type { PurchaseDecisionEvent } from "../domain/purchaseDecisionMemory";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
 import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
 import {
@@ -67,7 +68,7 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 12;
+  schema_version: 13;
   restaurants: Restaurant[];
   users: AppUser[];
   /** Durable tenant-scoped supplier identities. Names are presentation only. */
@@ -85,6 +86,8 @@ export interface DemoState {
   aiInsights: AiInsight[];
   auditLogs: AuditLog[];
   operationalFindingDecisions: StoredOperationalFindingDecision[];
+  /** MISE-004A append-only purchase decision evidence. */
+  purchaseDecisionEvents: PurchaseDecisionEvent[];
   emailConnections: RestaurantEmailConnection[];
   supplierRecipients: SupplierRecipient[];
   /** Operator-facing activity mirror of hosted activity_events. */
@@ -352,7 +355,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 12,
+    schema_version: 13,
     restaurants: [restaurant],
     users: [user],
     suppliers: buildDemoSupplierCatalog(
@@ -504,6 +507,7 @@ export function createInitialDemoState(
       }
     ],
     operationalFindingDecisions: [],
+    purchaseDecisionEvents: [],
     activityEvents: [],
     restaurantMemories: [],
     miseActions: [],
@@ -592,7 +596,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const sourceSupplierRecipients = raw.supplierRecipients ?? seeded.supplierRecipients;
   const sourceSupplierItems = raw.supplierItems ?? seeded.supplierItems;
   const sourcePurchaseOrders = raw.purchaseOrders ?? seeded.purchaseOrders;
-  const allowLegacySupplierNameRepair = raw.schema_version !== 12;
+  const allowLegacySupplierNameRepair = raw.schema_version == null || raw.schema_version < 12;
   const suppliers = repairDemoSupplierCatalog(
     raw,
     seeded,
@@ -727,7 +731,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 12,
+    schema_version: 13,
     restaurants,
     users: raw.users ?? seeded.users,
     suppliers,
@@ -745,6 +749,9 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     auditLogs: raw.auditLogs ?? seeded.auditLogs,
     operationalFindingDecisions:
       raw.operationalFindingDecisions ?? seeded.operationalFindingDecisions,
+    purchaseDecisionEvents: Array.isArray(raw.purchaseDecisionEvents)
+      ? raw.purchaseDecisionEvents
+      : seeded.purchaseDecisionEvents,
     emailConnections: raw.emailConnections ?? seeded.emailConnections,
     supplierRecipients,
     activityEvents: Array.isArray(raw.activityEvents) ? raw.activityEvents : seeded.activityEvents,
@@ -798,7 +805,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 12 ||
+      raw.schema_version !== 13 ||
       !Array.isArray(raw.suppliers) ||
       JSON.stringify(raw.suppliers ?? []) !== JSON.stringify(suppliers) ||
       sourceInventoryItems.some(
@@ -834,7 +841,8 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       !Array.isArray(raw.supplierDeliveries) ||
       !Array.isArray(raw.supplierDeliveryItems) ||
       !Array.isArray(raw.restaurantTasks) ||
-      !Array.isArray(raw.recalculationRuns)
+      !Array.isArray(raw.recalculationRuns) ||
+      !Array.isArray(raw.purchaseDecisionEvents)
   };
 }
 

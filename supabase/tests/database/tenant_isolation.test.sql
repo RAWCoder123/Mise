@@ -689,6 +689,7 @@ select is(
     'pos_integrations',
     'pos_locations',
     'pos_sales',
+    'purchase_decision_events',
     'purchase_orders',
     'purchase_recommendations',
     'recalculation_runs',

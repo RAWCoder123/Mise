@@ -26,6 +26,7 @@ import {
   fetchEmailConnectionState,
   fetchPurchaseRecommendations,
   fetchPurchaseRecommendationAuthorities,
+  fetchPurchaseDecisionPatterns,
   fetchSupplierOrders,
   fetchSupplierSpendTrend,
   undoPurchaseRecommendationAction,
@@ -37,6 +38,7 @@ import {
   type PurchaseAuthorityResult
 } from "../../services/domain/purchaseAuthority";
 import type { MessageKey } from "../../i18n/catalog";
+import type { PurchaseDecisionPattern } from "../../services/domain/purchaseDecisionMemory";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -65,6 +67,7 @@ export default function OrdersScreen() {
   const canConnectGmail = canDeleteRestaurantData(memberships, restaurant?.id);
   const [recommendations, setRecommendations] = useState<PurchaseRecommendation[]>([]);
   const [recommendationAuthorities, setRecommendationAuthorities] = useState<Record<string, PurchaseAuthorityResult>>({});
+  const [purchaseDecisionPatterns, setPurchaseDecisionPatterns] = useState<PurchaseDecisionPattern[]>([]);
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
   const [spendTrend, setSpendTrend] = useState<SupplierSpendTrendPoint[]>([]);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
@@ -111,9 +114,10 @@ export default function OrdersScreen() {
       setLoadError(null);
 
       try {
-        const [nextRecommendations, nextAuthorities, nextOrders, nextEmailConnection, nextSpendTrend] = await Promise.all([
+        const [nextRecommendations, nextAuthorities, nextPatterns, nextOrders, nextEmailConnection, nextSpendTrend] = await Promise.all([
           fetchPurchaseRecommendations(restaurantId, "pending"),
           fetchPurchaseRecommendationAuthorities(restaurantId),
+          fetchPurchaseDecisionPatterns(restaurantId),
           fetchSupplierOrders(restaurantId),
           fetchEmailConnectionState(restaurantId),
           fetchSupplierSpendTrend(restaurantId)
@@ -122,6 +126,7 @@ export default function OrdersScreen() {
 
         setRecommendations(nextRecommendations);
         setRecommendationAuthorities(nextAuthorities);
+        setPurchaseDecisionPatterns(nextPatterns);
         setOrders(nextOrders);
         setEmailConnection(nextEmailConnection);
         setSpendTrend(nextSpendTrend);
@@ -214,6 +219,7 @@ export default function OrdersScreen() {
   const visibleOrders = hubReady ? orders : [];
   const visibleSpendTrend = hubReady ? spendTrend : [];
   const visibleEmailConnection = hubReady ? emailConnection : null;
+  const visiblePurchaseDecisionPatterns = hubReady ? purchaseDecisionPatterns : [];
   const visibleMessage = messageRestaurantId === restaurant?.id ? message : null;
   const visibleUndoAction = hubReady && actionsEditable ? undoAction : null;
 
@@ -240,6 +246,19 @@ export default function OrdersScreen() {
       left.supplierId.localeCompare(right.supplierId)
     );
   }, [visibleRecommendations]);
+
+  const purchaseDecisionPatternsByRecommendation = useMemo(() => {
+    const patterns = new Map<string, PurchaseDecisionPattern>();
+    visiblePurchaseDecisionPatterns
+      .filter((pattern) => pattern.eligible && pattern.currentContext)
+      .forEach((pattern) => {
+        patterns.set(
+          `${pattern.inventoryItemId}:${pattern.supplierId}:${pattern.recommendationSource}`,
+          pattern
+        );
+      });
+    return patterns;
+  }, [visiblePurchaseDecisionPatterns]);
 
   const draftOrders = useMemo(
     () => visibleOrders.filter((order) => order.status === "draft"),
@@ -718,6 +737,9 @@ export default function OrdersScreen() {
                         action={recommendationActions[recommendation.id]}
                         error={quantityErrors[recommendation.id]}
                         authority={recommendationAuthorities[recommendation.id]}
+                        purchaseDecisionPattern={purchaseDecisionPatternsByRecommendation.get(
+                          `${recommendation.inventory_item_id}:${recommendation.supplier_id}:${recommendation.generation_source}`
+                        )}
                         readOnly={!actionsEditable}
                         showDivider={index < supplierRecommendations.length - 1}
                       />

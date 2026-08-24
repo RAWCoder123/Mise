@@ -7,13 +7,13 @@ Last verified: 2026-08-24
 ## Authoritative baseline
 
 `origin/main` is the sole authoritative implementation baseline for Mise. The
-MISE-003C work starts from the merged MISE-003B baseline:
+MISE-004A work starts from the exact merged MISE-003C baseline:
 
 ```text
-bc5a8d06c8bdb6aab77c4a1244ea0275517ebd84
+2aa2ac167ec1fef43553b925e09b0d7d7b5cee03
 ```
 
-MISE-001, MISE-002A, MISE-002B, MISE-003A, and MISE-003B are locked complete.
+MISE-001, MISE-002A, MISE-002B, MISE-003A, MISE-003B, and MISE-003C are locked complete.
 Their historical branches remain evidence only and must not be resumed or
 merged wholesale.
 
@@ -24,10 +24,50 @@ establish count-time-anchored inventory authority, exact provider identity and
 mapping, serialized review, current purchase-approval authority, and exact
 supplier-send content/claim/completion integrity.
 
-MISE-003C is limited to replacing mutable supplier-name authority with durable,
-tenant-scoped supplier identity. It does not add a supplier marketplace,
-procurement network, catalog, pricing, payments, EDI, logistics, or Restaurant
-Operating Memory.
+MISE-004A is limited to factual purchase-decision evidence and deterministic,
+read-only pattern summaries. It does not alter recommendation quantities,
+purchase authority, supplier-send authority, or autonomy. It does not add an
+LLM memory layer, embeddings, a vector store, or generic Restaurant Operating
+Memory.
+
+## MISE-004A purchase decision memory
+
+Every applied explicit decision on a Mise-generated purchase recommendation is
+recorded in the same transaction as the mature MISE-003A/003C workflow. The
+append-only `public.purchase_decision_events` ledger distinguishes exact
+approval, approval with quantity override, dismissal, undo, and explicit
+exclusion from pattern learning. Manual recommendations retain their existing
+semantics and do not create system-recommendation learning evidence.
+
+Each base event preserves the exact suggested and chosen purchase-unit
+quantities, the verified action-time canonical conversion and canonical
+quantities, distinct raw and canonical deltas, inventory item ID, durable supplier ID, recommendation source,
+planning revision, actor and role, exact applied audit identity, and a bounded
+allowlist of purchase-authority context. It never copies operator notes, order
+messages, email content, provider payloads, or other unbounded data. Undo and
+exclusion append a reference to the event they compensate; history is never
+rewritten or deleted.
+
+Patterns use the versioned deterministic policy `mise.purchase_pattern.v1`.
+Comparable active evidence is grouped by restaurant, inventory item, durable
+supplier ID, canonical unit, recommendation source, and evidence version.
+Patterns are computed on read from committed events, so there is no derived
+cache or rebuild race. Five active comparable events are required for
+eligibility. Evidence is `established` only when one factual outcome bucket has
+at least 80% agreement; contradictory eligible evidence remains `emerging` and
+is labeled `mixed`. Supplier reassignment or canonical-unit change makes the
+old pattern non-current; a supplier display-name rename does not.
+
+The Orders UI shows only eligible, current-context factual summaries in EN, ES,
+and ZH. It does not prefill, change, rank, approve, suppress, or otherwise feed
+patterns back into recommendations in MISE-004A. Raw actor-level events have no
+authenticated Data API read or write grant. Tenant members receive only the
+bounded aggregate RPC; exclusion requires owner, admin, or manager authority.
+
+No historical backfill is attempted. Existing audits do not contain every
+action-time canonical and context field required by `mise.purchase_decision.v1`,
+so inventing legacy evidence would violate the evidence contract. Collection
+starts forward when MISE-004A is deployed.
 
 ## MISE-003C durable supplier invariant
 
@@ -156,7 +196,7 @@ purposes:
 They must not be used for purchase authority, draft reuse, recipient selection,
 send claims, advisory locking, or cross-record identity matching.
 
-## Exact current-main verification baseline
+## Historical MISE-003C starting baseline
 
 The following results were recorded on the exact starting commit
 `bc5a8d06c8bdb6aab77c4a1244ea0275517ebd84`, before MISE-003C changes. They are
@@ -229,13 +269,71 @@ The completed candidate was compared with the exact baseline above.
 The candidate therefore introduces no new gate failure relative to exact
 current main.
 
+## Exact MISE-004A current-main baseline
+
+The MISE-004A comparison was recorded on exact starting commit
+`2aa2ac167ec1fef43553b925e09b0d7d7b5cee03` before purchase-decision-memory
+changes.
+
+- `npm run typecheck`, `npm run security:backend`,
+  `npm run security:static`, `npm run design:static`, `npm run qa:routes`, and
+  `npm run qa:mobile-layout` passed. Route QA covered 20 routes; mobile QA
+  covered 27 routes at 390x844 with `overflowX=0`.
+- `npm test`: 606 tests total, 605 passed, and 1 failed. The sole failure was
+  `tests/applicationProviderMappings.test.ts:302`, “hosted repository planning
+  data preserves provider identity through the real application outlook path”
+  (`actual 0`, `expected 2`).
+- All existing direct PostgreSQL inventory-projection, POS-mapping,
+  purchase-approval, approval-vs-Square-sync, supplier-send, and durable
+  supplier-identity concurrency suites passed. Supplier-send v2 fingerprint
+  parity also passed.
+- `npm run supabase:test` executed the database proof and exited 1. Each of
+  three pgTAP attempts ran 28 files and 1,114 tests with only the inherited
+  failures: `inventory_count_sessions.test.sql` planned 6/runs 4 because
+  `function_privs_are(unknown, unknown, text[], unknown)` is unavailable, plus
+  `tenant_isolation.test.sql` assertions 117, 171, and 174.
+- A separately run
+  `npx supabase db advisors --local --type security --fail-on error` passed with
+  no issues.
+
+## Final MISE-004A verification
+
+- `npm run typecheck`: passed.
+- `npm test`: 621 tests total, 620 passed, and 1 failed. The sole failure is the
+  exact inherited provider-mapping assertion at
+  `tests/applicationProviderMappings.test.ts:302` (`actual 0`, `expected 2`).
+  All 15 added TypeScript tests pass: 9 deterministic domain tests, 5 static
+  authority/privacy/UI-boundary tests, and 1 demo integration test.
+- `npm run security:backend`, `npm run security:static`, and
+  `npm run design:static`: passed.
+- `npm run qa:routes`: passed for 20 routes.
+- `npm run qa:mobile-layout`: passed for 27 routes at 390x844 with
+  `overflowX=0`.
+- `purchase_decision_memory.test.sql`: 54/54 assertions passed, covering exact,
+  override, dismissal, no-interaction, replay, undo, exclusion, atomic failure,
+  thresholds, mixed evidence, identity changes, privacy, and tenant isolation.
+- The MISE-004A direct PostgreSQL concurrency harness passed all 12 assertions:
+  identical approval replay, approval/undo, approval/dismissal, committed
+  visibility, and cross-tenant isolation. Every pre-existing direct concurrency
+  suite and supplier-send fingerprint parity suite also passed.
+- `npm run supabase:test` executed 29 pgTAP files and 1,168 tests per attempt.
+  It exited 1 only for the unchanged inherited baseline failures:
+  `inventory_count_sessions` planned 6/runs 4 because the pgTAP helper is
+  unavailable, and `tenant_isolation` assertions 117, 171, and 174. All new
+  MISE-004A proofs and every locked-milestone regression passed.
+- The required separate
+  `npx supabase db advisors --local --type security --fail-on error` passed with
+  no issues.
+
+MISE-004A therefore adds no gate failure relative to exact current main.
+
 ## Next milestone gate
 
-MISE-003C may be proposed for merge only after the durable-supplier migration,
-application contracts, demo behavior, UI mutations, RLS/direct-DML controls,
-fingerprint parity, and required concurrency proofs pass with no new failure
-relative to the exact current-main baseline. Do not begin MISE-004 or Restaurant
-Operating Memory as part of this milestone.
+MISE-004A may be proposed for merge only with append-only atomic evidence,
+deterministic factual summaries, hosted/demo parity, privacy controls, and the
+required concurrency proofs showing no new failure relative to exact current
+main. Do not begin MISE-004B or any broader Restaurant Operating Memory work as
+part of this milestone.
 
 ## Documentation authority
 
