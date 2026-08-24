@@ -670,6 +670,8 @@ select is(
     'audit_logs',
     'ingredient_substitutions',
     'insights',
+    'inventory_count_lines',
+    'inventory_count_sessions',
     'inventory_events',
     'inventory_items',
     'menu_item_ingredients',
@@ -1130,16 +1132,17 @@ insert into public.inventory_events (
 );
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
-select lives_ok(
-  $sql$select public.approve_purchase_recommendation(
+select is(
+  (public.approve_purchase_recommendation(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
     12
-  )$sql$,
-  'manager can approve through the guarded workflow RPC'
+  ))->>'outcome',
+  'blocked',
+  'guarded workflow blocks approval without complete current authority evidence'
 );
 reset role;
-select is((select status from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'), 'approved', 'guarded recommendation approval persisted');
+select is((select status from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'), 'pending', 'blocked recommendation approval leaves workflow state unchanged');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
@@ -1158,8 +1161,8 @@ select is(
 );
 select is(
   (select status from public.purchase_recommendations where id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'),
-  'approved',
-  'provider-evidence denial leaves its recommendation approved'
+  'pending',
+  'provider-evidence denial leaves its blocked recommendation pending'
 );
 select is(
   pg_temp.try_execute($sql$select public.mark_supplier_order_sent(

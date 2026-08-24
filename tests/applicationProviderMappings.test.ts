@@ -8,6 +8,7 @@ import type { InventoryEvent } from "../services/domain/inventoryLedger";
 import type { VerifiedProviderSaleMapping } from "../services/domain/providerSaleIdentity";
 import type { PlanningData, MiseRepository } from "../services/repositories/repositoryContracts";
 import type { InventoryItem, MenuItemIngredient, PosSale, PurchaseRecommendation, Insight, Restaurant } from "../types/mise";
+import { toDateKeyInTimeZone } from "../utils/format";
 
 const require = createRequire(import.meta.url);
 
@@ -136,6 +137,7 @@ test("application planning consumes verified provider mappings from repository d
 });
 
 test("hosted repository planning data preserves provider identity through the real application outlook path", async () => {
+  const hostedOperatingDate = toDateKeyInTimeZone(new Date(), "America/Los_Angeles");
   const moduleLoader = require("node:module") as typeof import("node:module") & {
     _load: (request: string, parent: unknown, isMain: boolean) => unknown;
   };
@@ -150,7 +152,11 @@ test("hosted repository planning data preserves provider identity through the re
         data: [{
           id: verifiedSale.id,
           restaurant_id: verifiedSale.restaurant_id,
-          sale_date: verifiedSale.sale_date,
+          // The hosted repository derives its operating date at read time. Keep
+          // this sale on that same restaurant-local date so the test proves
+          // provider identity propagation rather than depending on the wall
+          // clock still being 2026-08-18.
+          sale_date: hostedOperatingDate,
           item_name: verifiedSale.item_name,
           category: verifiedSale.category,
           quantity_sold: verifiedSale.quantity_sold,
