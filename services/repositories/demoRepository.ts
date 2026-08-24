@@ -106,6 +106,11 @@ import {
   normalizeOperationalFindingDecision,
   normalizeOperationalFindingDecisionInput
 } from "../domain/operationalFindingDecisions";
+import {
+  buildPurchaseDecisionPatterns,
+  createPurchaseDecisionBaseEvent,
+  createPurchaseDecisionCompensation
+} from "../domain/purchaseDecisionMemory";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
 import {
   createDemoSupplier,
@@ -320,6 +325,7 @@ async function readReadyDemoState(restaurantId: string = DEMO_RESTAURANT_ID) {
     if (!Array.isArray(state.supplierDeliveries)) state.supplierDeliveries = [];
     if (!Array.isArray(state.supplierDeliveryItems)) state.supplierDeliveryItems = [];
     if (!Array.isArray(state.restaurantTasks)) state.restaurantTasks = [];
+    if (!Array.isArray(state.purchaseDecisionEvents)) state.purchaseDecisionEvents = [];
     if (!state.supplierSendContentRevisions) state.supplierSendContentRevisions = {};
     state.supplierOrders
       .filter((order) => order.restaurant_id === restaurantId)
@@ -448,7 +454,72 @@ function appendDemoAuditLog(state: DemoState, input: AuditLogInput) {
     id: createId("audit"),
     created_at: new Date().toISOString()
   };
-  state.auditLogs.push(normalizeAuditLog(entry));
+  const normalized = normalizeAuditLog(entry);
+  state.auditLogs.push(normalized);
+  return normalized;
+}
+
+function nextDemoPurchaseDecisionSequence(state: DemoState) {
+  return (state.purchaseDecisionEvents ?? []).reduce(
+    (maximum, event) => Math.max(maximum, event.sequence),
+    0
+  ) + 1;
+}
+
+function demoPurchaseDecisionContext(authority?: PurchaseAuthorityResult) {
+  if (!authority) return {};
+  return {
+    planningRevision: authority.planningRevision,
+    authorityEvaluatedAt: authority.evaluatedAt,
+    countEventId: authority.evidence.countEventId,
+    countedAt: authority.evidence.countedAt,
+    projectedQuantity: authority.evidence.projectedQuantity,
+    providerWindowFrom: authority.evidence.providerWindowFrom,
+    providerWindowTo: authority.evidence.providerWindowTo,
+    providerWindowCompletedAt: authority.evidence.providerWindowCompletedAt,
+    demandBasis: authority.evidence.demandBasis,
+    basis: authority.evidence.basis
+  };
+}
+
+function appendDemoPurchaseDecisionBaseEvent(
+  state: DemoState,
+  input: {
+    recommendation: PurchaseRecommendation;
+    decision: "approve" | "dismiss";
+    suggestedQuantity: number;
+    chosenQuantity: number | null;
+    audit: AuditLog;
+    authority?: PurchaseAuthorityResult;
+  }
+) {
+  if (
+    input.recommendation.generation_source !== "mise_rules" &&
+    input.recommendation.generation_source !== "legacy_client"
+  ) return null;
+  const item = state.inventoryItems.find(
+    (candidate) =>
+      candidate.restaurant_id === input.recommendation.restaurant_id &&
+      candidate.id === input.recommendation.inventory_item_id
+  );
+  if (!item) throw new Error("Inventory item not found for purchase decision evidence.");
+  const canonicalItem = normalizeInventoryItem(item);
+  const event = createPurchaseDecisionBaseEvent({
+    id: createId("purchase_decision"),
+    sequence: nextDemoPurchaseDecisionSequence(state),
+    recommendation: input.recommendation,
+    inventoryItem: canonicalItem,
+    decision: input.decision,
+    suggestedQuantity: input.suggestedQuantity,
+    chosenQuantity: input.chosenQuantity,
+    actorUserId: DEMO_USER_ID,
+    actorRole: "owner",
+    sourceAuditLogId: input.audit.id,
+    contextEvidence: demoPurchaseDecisionContext(input.authority),
+    occurredAt: input.audit.created_at
+  });
+  state.purchaseDecisionEvents.push(event);
+  return event;
 }
 
 function findDemoCountSession(
@@ -501,6 +572,37 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   datasets.inventory_items = tenantRows(state.inventoryItems);
   datasets.menu_item_ingredients = tenantRows(state.menuItemIngredients);
   datasets.purchase_recommendations = tenantRows(state.purchaseRecommendations);
+  datasets.purchase_decision_events = state.purchaseDecisionEvents
+    .filter((event) => event.restaurantId === restaurantId)
+    .map((event) => ({
+      id: event.id,
+      restaurant_id: event.restaurantId,
+      actor_user_id: event.actorUserId,
+      actor_role: event.actorRole,
+      decision_type: event.decisionType,
+      purchase_recommendation_id: event.purchaseRecommendationId,
+      inventory_item_id: event.inventoryItemId,
+      supplier_id: event.supplierId,
+      recommendation_source: event.recommendationSource,
+      recommendation_unit: event.recommendationUnit,
+      recommended_quantity: event.recommendedQuantity,
+      chosen_quantity: event.chosenQuantity,
+      canonical_unit: event.canonicalUnit,
+      canonical_quantity_per_unit: event.canonicalQuantityPerUnit,
+      recommended_canonical_quantity: event.recommendedCanonicalQuantity,
+      chosen_canonical_quantity: event.chosenCanonicalQuantity,
+      quantity_delta: event.quantityDelta,
+      canonical_quantity_delta: event.canonicalQuantityDelta,
+      quantity_ratio: event.quantityRatio,
+      planning_revision: event.planningRevision,
+      context_evidence: event.contextEvidence,
+      target_event_id: event.targetEventId,
+      source_audit_log_id: event.sourceAuditLogId,
+      source_event_key: event.sourceEventKey,
+      evidence_version: event.evidenceVersion,
+      occurred_at: event.occurredAt,
+      created_at: event.createdAt
+    }));
   datasets.supplier_orders = tenantRows(state.supplierOrders);
   datasets.pos_integrations = tenantRows(state.posIntegrations);
   datasets.sales_imports = tenantRows(state.salesImports);
@@ -1984,6 +2086,7 @@ export function createLocalDemoRepository(): MiseRepository {
           (entry) => entry.restaurant_id === restaurantId && entry.id === recommendationId
         );
         if (!pendingRecommendation) throw new Error("Recommendation not found");
+        const recommendationSnapshot = { ...pendingRecommendation };
         const authority = demoPurchaseAuthority(state, restaurantId, pendingRecommendation);
         if (!authority.ready) throw new PurchaseAuthorityBlockedError(authority);
         const result = approveRecommendationInDemoState(
@@ -1998,7 +2101,7 @@ export function createLocalDemoRepository(): MiseRepository {
           if (result.order) {
             appendDemoSupplierOrderActivity(state, result.order, { previousStatus: null });
           }
-          appendDemoAuditLog(state, {
+          const audit = appendDemoAuditLog(state, {
             restaurant_id: restaurantId,
             action: "recommendation_approved",
             entity_table: "purchase_recommendations",
@@ -2009,6 +2112,14 @@ export function createLocalDemoRepository(): MiseRepository {
               urgency: result.recommendation.urgency,
               supplier_order_id: result.order?.id ?? null
             }
+          });
+          appendDemoPurchaseDecisionBaseEvent(state, {
+            recommendation: recommendationSnapshot,
+            decision: "approve",
+            suggestedQuantity: recommendationSnapshot.recommended_quantity,
+            chosenQuantity: result.recommendation.recommended_quantity,
+            audit,
+            authority
           });
         }
         return {
@@ -2022,10 +2133,15 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async dismissPurchaseRecommendation(restaurantId, recommendationId) {
       return mutateDemoState((state) => {
+        const pendingRecommendation = state.purchaseRecommendations.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === recommendationId
+        );
+        if (!pendingRecommendation) throw new Error("Recommendation not found");
+        const recommendationSnapshot = { ...pendingRecommendation };
         const result = dismissRecommendationInDemoState(state, restaurantId, recommendationId);
         if (result.outcome === "applied") {
           appendDemoRecommendationActivity(state, result.recommendation, "pending");
-          appendDemoAuditLog(state, {
+          const audit = appendDemoAuditLog(state, {
             restaurant_id: restaurantId,
             action: "recommendation_dismissed",
             entity_table: "purchase_recommendations",
@@ -2036,6 +2152,13 @@ export function createLocalDemoRepository(): MiseRepository {
               urgency: result.recommendation.urgency
             }
           });
+          appendDemoPurchaseDecisionBaseEvent(state, {
+            recommendation: recommendationSnapshot,
+            decision: "dismiss",
+            suggestedQuantity: recommendationSnapshot.recommended_quantity,
+            chosenQuantity: null,
+            audit
+          });
         }
         return { ...result, recommendation: normalizePurchaseRecommendation(result.recommendation) };
       });
@@ -2043,9 +2166,26 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async undoPurchaseRecommendationAction(restaurantId, recommendationId) {
       return mutateDemoState((state) => {
-        const previousOrderId = state.purchaseRecommendations.find(
+        const previousRecommendation = state.purchaseRecommendations.find(
           (entry) => entry.restaurant_id === restaurantId && entry.id === recommendationId
-        )?.supplier_order_id ?? null;
+        );
+        const previousOrderId = previousRecommendation?.supplier_order_id ?? null;
+        const compensatedIds = new Set(
+          state.purchaseDecisionEvents
+            .filter((event) => event.decisionType === "undo")
+            .map((event) => event.targetEventId)
+        );
+        const targetEvent = [...state.purchaseDecisionEvents]
+          .reverse()
+          .find(
+            (event) =>
+              event.restaurantId === restaurantId &&
+              event.purchaseRecommendationId === recommendationId &&
+              !compensatedIds.has(event.id) &&
+              ((previousRecommendation?.status === "approved" &&
+                (event.decisionType === "approve" || event.decisionType === "approve_with_override")) ||
+                (previousRecommendation?.status === "dismissed" && event.decisionType === "dismiss"))
+          );
         const result = undoRecommendationInDemoState(state, restaurantId, recommendationId);
         if (result.outcome === "applied") {
           if (result.previousStatus === "approved" && previousOrderId) {
@@ -2055,7 +2195,7 @@ export function createLocalDemoRepository(): MiseRepository {
               delete state.supplierSendContentRevisions[previousOrderId];
             }
           }
-          appendDemoAuditLog(state, {
+          const audit = appendDemoAuditLog(state, {
             restaurant_id: restaurantId,
             action: "recommendation_undo",
             entity_table: "purchase_recommendations",
@@ -2066,12 +2206,76 @@ export function createLocalDemoRepository(): MiseRepository {
               supplier_name: result.recommendation.supplier_name
             }
           });
+          if (targetEvent) {
+            state.purchaseDecisionEvents.push(createPurchaseDecisionCompensation({
+              id: createId("purchase_decision"),
+              sequence: nextDemoPurchaseDecisionSequence(state),
+              target: targetEvent,
+              decisionType: "undo",
+              actorUserId: DEMO_USER_ID,
+              actorRole: "owner",
+              sourceAuditLogId: audit.id,
+              sourceEventKey: `audit_log:${audit.id}`,
+              occurredAt: audit.created_at
+            }));
+          }
         }
         return {
           ...result,
           recommendation: normalizePurchaseRecommendation(result.recommendation),
           order: result.order ? normalizeSupplierOrder(result.order) : null
         };
+      });
+    },
+
+    async fetchPurchaseDecisionPatterns(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return buildPurchaseDecisionPatterns(
+        state.purchaseDecisionEvents.filter((event) => event.restaurantId === restaurantId),
+        state.inventoryItems
+          .filter((item) => item.restaurant_id === restaurantId)
+          .map(normalizeInventoryItem)
+      );
+    },
+
+    async excludePurchaseDecisionEvent(restaurantId, eventId) {
+      return mutateDemoState((state) => {
+        const target = state.purchaseDecisionEvents.find(
+          (event) => event.restaurantId === restaurantId && event.id === eventId
+        );
+        if (!target || !["approve", "approve_with_override", "dismiss"].includes(target.decisionType)) {
+          throw new Error("Purchase decision event not found.");
+        }
+        const existing = state.purchaseDecisionEvents.find(
+          (event) =>
+            event.restaurantId === restaurantId &&
+            event.targetEventId === eventId &&
+            event.decisionType === "exclude_from_learning"
+        );
+        if (existing) return existing;
+        const audit = appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "purchase_decision_excluded_from_learning",
+          entity_table: "purchase_decision_events",
+          entity_id: eventId,
+          metadata: {
+            target_event_id: eventId,
+            purchase_recommendation_id: target.purchaseRecommendationId
+          }
+        });
+        const exclusion = createPurchaseDecisionCompensation({
+          id: createId("purchase_decision"),
+          sequence: nextDemoPurchaseDecisionSequence(state),
+          target,
+          decisionType: "exclude_from_learning",
+          actorUserId: DEMO_USER_ID,
+          actorRole: "owner",
+          sourceAuditLogId: audit.id,
+          sourceEventKey: `purchase_decision_exclusion:${target.id}`,
+          occurredAt: audit.created_at
+        });
+        state.purchaseDecisionEvents.push(exclusion);
+        return exclusion;
       });
     },
 

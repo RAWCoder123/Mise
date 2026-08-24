@@ -100,6 +100,9 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
     const reason = learnedRecommendationReason(item, prediction, learnedQuantity);
 
     if (pending) {
+      // Demo-generated recommendations carry the same explicit provenance as
+      // hosted signal generation. Explicit `manual` rows retain that source.
+      pending.generation_source ??= "mise_rules";
       pending.item_name = item.item_name;
       pending.supplier_id = supplier.id;
       pending.supplier_name = supplier.display_name;
@@ -129,6 +132,8 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
       urgency: prediction.urgency,
       status: "pending",
       supplier_order_id: null,
+      generation_source: "mise_rules",
+      planning_revision: null,
       created_at: now
     });
   });

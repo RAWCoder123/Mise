@@ -11,6 +11,7 @@ import {
   PurchaseAuthorityBlockedError,
   type PurchaseAuthorityResult
 } from "../domain/purchaseAuthority";
+import { resolveAdvisoryPurchaseDecisionPatterns } from "../domain/purchaseDecisionMemory";
 import {
   buildSupplierReliabilitySummary,
   buildSupplierOrderDeliveryEvidence,
@@ -108,6 +109,29 @@ export async function generateSupplierOrderDraft(restaurantId: string, supplierI
 export async function undoPurchaseRecommendationAction(restaurantId: string, recommendationId: string) {
   const result = await repository.undoPurchaseRecommendationAction(restaurantId, recommendationId);
   return result.recommendation;
+}
+
+export async function fetchPurchaseDecisionPatterns(restaurantId: string) {
+  return repository.fetchPurchaseDecisionPatterns(requireWorkflowId(restaurantId, "restaurant"));
+}
+
+/**
+ * Orders availability must not depend on advisory memory. Invalid workspace
+ * input still fails before the repository call; an isolated pattern-read
+ * failure degrades to no advisory evidence while authoritative datasets load.
+ */
+export async function fetchAdvisoryPurchaseDecisionPatterns(restaurantId: string) {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  return resolveAdvisoryPurchaseDecisionPatterns(
+    () => repository.fetchPurchaseDecisionPatterns(normalizedRestaurantId)
+  );
+}
+
+export async function excludePurchaseDecisionEvent(restaurantId: string, eventId: string) {
+  return repository.excludePurchaseDecisionEvent(
+    requireWorkflowId(restaurantId, "restaurant"),
+    requireWorkflowId(eventId, "purchase decision event")
+  );
 }
 
 export async function fetchSupplierOrders(restaurantId: string) {

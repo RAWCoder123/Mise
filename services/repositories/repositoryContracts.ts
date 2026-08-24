@@ -43,6 +43,10 @@ import type {
   OperationalFindingDecision,
   OperationalFindingDecisionInput
 } from "../domain/operationalFindingDecisions";
+import type {
+  PurchaseDecisionEvent,
+  PurchaseDecisionPattern
+} from "../domain/purchaseDecisionMemory";
 import type { VerifiedProviderSaleMapping } from "../domain/providerSaleIdentity";
 import {
   PURCHASE_AUTHORITY_BLOCKER_CODES,
@@ -407,6 +411,7 @@ export const RESTAURANT_EXPORT_DATASETS = [
   "inventory_events",
   "menu_item_ingredients",
   "purchase_recommendations",
+  "purchase_decision_events",
   "supplier_orders",
   "pos_integrations",
   "sales_imports",
@@ -658,6 +663,11 @@ export interface MiseRepository {
     restaurantId: string,
     recommendationId: string
   ): Promise<RecommendationWorkflowResult>;
+  fetchPurchaseDecisionPatterns(restaurantId: string): Promise<PurchaseDecisionPattern[]>;
+  excludePurchaseDecisionEvent(
+    restaurantId: string,
+    eventId: string
+  ): Promise<PurchaseDecisionEvent>;
   replacePendingRecommendations(restaurantId: string, inserts: PurchaseRecommendationInput[]): Promise<void>;
   fetchSupplierOrders(restaurantId: string): Promise<SupplierOrder[]>;
   /**

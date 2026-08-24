@@ -73,6 +73,10 @@ import {
   operationalFindingDecisionRpcArguments
 } from "../domain/operationalFindingDecisions";
 import {
+  normalizePurchaseDecisionEvent,
+  normalizePurchaseDecisionPattern,
+} from "../domain/purchaseDecisionMemory";
+import {
   normalizeAppUser,
   normalizeInsight,
   normalizeAiInsight,
@@ -1556,6 +1560,23 @@ export function createSupabaseRepository(): MiseRepository {
       });
       if (error) throw error;
       return parseRecommendationWorkflowResponse(data);
+    },
+
+    async fetchPurchaseDecisionPatterns(restaurantId) {
+      const { data, error } = await client.rpc("list_purchase_decision_patterns", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map(normalizePurchaseDecisionPattern);
+    },
+
+    async excludePurchaseDecisionEvent(restaurantId, eventId) {
+      const { data, error } = await client.rpc("exclude_purchase_decision_event", {
+        p_restaurant_id: restaurantId,
+        p_event_id: eventId
+      });
+      if (error) throw error;
+      return normalizePurchaseDecisionEvent(data as Record<string, unknown>);
     },
 
     async replacePendingRecommendations(restaurantId, _inserts) {
