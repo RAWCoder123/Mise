@@ -329,14 +329,58 @@ export interface SetupAttachment {
   updated_at: string;
 }
 
+export const SUPPLIER_SEND_CONTENT_VERSION = "mise.supplier_send.v1" as const;
+
+export type SupplierSendContentVersion = typeof SUPPLIER_SEND_CONTENT_VERSION;
+
+export const SUPPLIER_SEND_CONTENT_BLOCKER_CODES = [
+  "gmail_not_connected",
+  "order_lines_missing",
+  "order_not_draft",
+  "send_content_invalid",
+  "send_content_too_large",
+  "send_subject_invalid",
+  "supplier_email_invalid",
+  "supplier_email_missing"
+] as const;
+
+export type SupplierSendContentBlockerCode =
+  (typeof SUPPLIER_SEND_CONTENT_BLOCKER_CODES)[number];
+
+export interface SupplierSendContentLine {
+  recommendationId: string;
+  inventoryItemId: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  supplierName: string;
+}
+
+/**
+ * Safe, server-authoritative supplier-send review material. The versioned
+ * fingerprint binds the content-revision, identity, delivery, and line fields;
+ * readiness and compatibility presentation fields are derived separately.
+ */
 export interface SupplierEmailPayload {
+  contentVersion: SupplierSendContentVersion;
+  contentFingerprint: string | null;
+  contentRevision: number;
+  restaurantId: string;
   orderId: string;
   supplierName: string;
   to: string | null;
   from: string | null;
-  subject: string;
+  subject: string | null;
   body: string;
+  deliveryDate: string | null;
+  operatorNote: string | null;
+  lines: SupplierSendContentLine[];
+  lineCount: number;
+  ready: boolean;
+  blockerCodes: SupplierSendContentBlockerCode[];
+  /** @deprecated Prefer `ready`. */
   canSend: boolean;
+  /** @deprecated Prefer bounded `blockerCodes`. */
   blockedReason: string | null;
 }
 

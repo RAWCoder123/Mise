@@ -1,6 +1,6 @@
 begin;
 
-select plan(358);
+select plan(362);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -2605,6 +2605,106 @@ select is(
   'OAuth completion exposes only verified connection metadata'
 );
 
+insert into public.pos_locations (
+  id, restaurant_id, pos_integration_id, external_location_id,
+  display_name, timezone, status
+) values (
+  'aaaaaaaa-4545-4454-8454-aaaaaaaaaaaa',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'aaaaaaaa-4444-4444-8444-aaaaaaaaaaaa',
+  'tenant-a-square-location',
+  'Tenant A Square location',
+  'America/New_York',
+  'active'
+);
+
+set local role service_role;
+do $fixture$
+declare
+  operating_date date;
+  sync_boundary jsonb;
+begin
+  select timezone(restaurant.timezone, clock_timestamp())::date
+  into strict operating_date
+  from public.restaurants restaurant
+  where restaurant.id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  sync_boundary := public.service_begin_square_authority_sync(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-4444-4444-8444-aaaaaaaaaaaa',
+    'full',
+    operating_date - 27,
+    operating_date
+  );
+  perform public.service_apply_square_sync_result_scoped(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-4444-4444-8444-aaaaaaaaaaaa',
+    (sync_boundary->>'syncToken')::uuid,
+    'full',
+    '[]'::jsonb,
+    '[]'::jsonb,
+    null,
+    operating_date - 27,
+    operating_date
+  );
+end
+$fixture$;
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+do $fixture$
+declare
+  send_action_id uuid;
+  send_preview jsonb;
+  approval_result jsonb;
+begin
+  perform public.approve_purchase_recommendation(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
+    12
+  );
+  if not exists (
+    select 1
+    from public.purchase_recommendations recommendation
+    where recommendation.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and recommendation.id = 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa'
+      and recommendation.status = 'approved'
+      and recommendation.supplier_order_id = 'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
+  ) then
+    raise exception 'tenant send fixture could not establish an authoritative approved line';
+  end if;
+
+  select action.id into strict send_action_id
+  from public.mise_actions action
+  where action.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    and action.action_type = 'send_supplier_order'
+    and action.idempotency_key = 'send_supplier_order:aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa';
+
+  send_preview := public.preview_supplier_send_content(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
+  );
+  if not coalesce((send_preview->>'ready')::boolean, false) then
+    raise exception 'tenant send fixture is not preview-ready: %', send_preview->'blockerCodes';
+  end if;
+
+  approval_result := public.approve_supplier_send_content(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    send_action_id,
+    'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa',
+    send_preview->>'contentFingerprint'
+  );
+  if approval_result->>'outcome' not in ('applied', 'already_applied') then
+    raise exception 'tenant send fixture content approval failed: %', approval_result;
+  end if;
+end
+$fixture$;
+reset role;
+
 set local role service_role;
 select is(
   pg_temp.try_execute($sql$select public.service_claim_supplier_email_send(
@@ -2682,6 +2782,40 @@ select lives_ok(
   $sql$,
   'known provider rejection releases the deterministic delivery for a safe retry'
 );
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+do $fixture$
+declare
+  send_action_id uuid;
+  send_preview jsonb;
+  approval_result jsonb;
+begin
+  select action.id into strict send_action_id
+  from public.mise_actions action
+  where action.restaurant_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    and action.action_type = 'send_supplier_order'
+    and action.idempotency_key = 'send_supplier_order:aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa';
+
+  send_preview := public.preview_supplier_send_content(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa'
+  );
+  approval_result := public.approve_supplier_send_content(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    send_action_id,
+    'aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa',
+    send_preview->>'contentFingerprint'
+  );
+  if approval_result->>'outcome' not in ('applied', 'already_applied') then
+    raise exception 'tenant retry fixture content approval failed: %', approval_result;
+  end if;
+end
+$fixture$;
+reset role;
+
+set local role service_role;
 select lives_ok(
   $sql$
     with claimed as (

@@ -307,3 +307,115 @@ test("Gmail Edge Functions preserve authenticated firewall entry and single-use 
   );
   assert.doesNotMatch(send, /\.from\("supplier_orders"\)[\s\S]*\.update\(/i);
 });
+
+test("supplier email Edge delivery uses only a strict, durable database claim", () => {
+  const send = readFileSync(
+    "supabase/functions/send-supplier-email/index.ts",
+    "utf8",
+  );
+
+  const observeIndex = send.indexOf(
+    'rpc("service_observe_supplier_email_send"',
+  );
+  const environmentGateIndex = send.indexOf(
+    'Deno.env.get("GMAIL_SEND_ENABLED")',
+  );
+  const claimIndex = send.indexOf('"service_claim_supplier_email_send"');
+  assert.ok(observeIndex > 0);
+  assert.ok(observeIndex < environmentGateIndex);
+  assert.ok(environmentGateIndex < claimIndex);
+  assert.match(
+    send,
+    /supplierSendOutcome\(observationData\) !== "claim_required"/,
+  );
+
+  assert.match(send, /credentialGeneration: number/);
+  assert.match(send, /Number\.isSafeInteger\(claim\.credentialGeneration\)/);
+  assert.match(send, /claim\.credentialGeneration > 0/);
+  assert.match(send, /claim\.contentVersion === "mise\.supplier_send\.v1"/);
+  assert.match(
+    send,
+    /claim\.authorityVersion === "mise\.purchase_authority\.v1"/,
+  );
+  assert.match(send, /SHA256_HEX_PATTERN = \/\^\[0-9a-f\]\{64\}\$\//);
+  assert.match(send, /isCanonicalEmail\(claim\.from\)/);
+  assert.match(send, /isCanonicalEmail\(claim\.to\)/);
+  assert.match(send, /value\.length <= 500/);
+  assert.match(send, /TextEncoder\(\)\.encode\(value\)\.byteLength/);
+  assert.match(send, /claim\.rfcMessageId === expectedMessageId/);
+
+  assert.match(
+    send,
+    /"service_rotate_gmail_refresh_token"[\s\S]*p_expected_credential_generation:\s*claim\.credentialGeneration/,
+  );
+
+  const rawStart = send.indexOf("rawMessage = buildGmailRawMessage({");
+  const rawEnd = send.indexOf("});", rawStart);
+  const rawBuilder = send.slice(rawStart, rawEnd);
+  assert.match(rawBuilder, /from:\s*claim\.from/);
+  assert.match(rawBuilder, /to:\s*claim\.to/);
+  assert.match(rawBuilder, /subject:\s*claim\.subject/);
+  assert.match(rawBuilder, /textBody:\s*claim\.body/);
+  assert.match(rawBuilder, /messageId:\s*claim\.rfcMessageId/);
+  assert.doesNotMatch(
+    rawBuilder,
+    /supplier_orders|order_message|supplier_recipients|restaurant_email_connections/i,
+  );
+
+  const claimedFlowStart = send.indexOf(
+    "actionFailureContext = null;",
+    send.indexOf("database owns an active claim"),
+  );
+  const outerCatch = send.indexOf(
+    "  } catch (error) {\n    if (isPostgresSerializationFailure(error))",
+    claimedFlowStart,
+  );
+  assert.ok(claimedFlowStart > 0 && outerCatch > claimedFlowStart);
+  const claimedFlow = send.slice(claimedFlowStart, outerCatch);
+  assert.doesNotMatch(claimedFlow, /recordMiseActionFailure\(/);
+  assert.match(
+    claimedFlow,
+    /buildGmailRawMessage[\s\S]*failDelivery\([\s\S]*"rejected",[\s\S]*"claimed_snapshot_invalid"[\s\S]*sendGmailMessage/,
+  );
+  assert.match(
+    claimedFlow,
+    /ambiguous \? "unknown" : "rejected"/,
+  );
+  assert.match(
+    claimedFlow,
+    /"unknown",\s*"database_finalize_failed"/,
+  );
+  assert.match(
+    send.slice(outerCatch),
+    /isPostgresSerializationFailure\(error\)[\s\S]*blockerCodes: \["send_verification_race"\][\s\S]*if \(actionFailureContext\)/,
+  );
+});
+
+test("supplier email Edge returns bounded content and authority blockers without failing approval generically", () => {
+  const send = readFileSync(
+    "supabase/functions/send-supplier-email/index.ts",
+    "utf8",
+  );
+  for (const outcome of [
+    "send_content_changed",
+    "send_content_unapproved",
+    "purchase_authority_stale",
+    "draft_authority_incomplete",
+  ]) {
+    assert.match(send, new RegExp(`outcome === "${outcome}"`));
+  }
+  assert.match(send, /SAFE_CODE_PATTERN = \/\^\[a-z0-9_\]\{1,80\}\$\//);
+  assert.match(send, /MAX_BLOCKER_CODES = 20/);
+  assert.match(send, /bounded\.length === MAX_BLOCKER_CODES/);
+  assert.match(send, /status: "request_blocked"/);
+  assert.doesNotMatch(send, /status: "send_claim_failed"/);
+
+  const genericFailureGuard = send.slice(
+    send.indexOf("function shouldRecordPreClaimFailure"),
+    send.indexOf("function boundedBlockerCodes"),
+  );
+  assert.match(genericFailureGuard, /"send_content_changed"/);
+  assert.match(genericFailureGuard, /"send_content_unapproved"/);
+  assert.match(genericFailureGuard, /"purchase_authority_stale"/);
+  assert.match(genericFailureGuard, /"draft_authority_incomplete"/);
+});

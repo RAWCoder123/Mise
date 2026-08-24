@@ -12,11 +12,16 @@ test("Gmail client workflows stay typed, tenant-scoped, and behind backend funct
     "supabase/migrations/20260814130000_supplier_send_envelope_approval.sql",
     "utf8"
   );
+  const sendIntegrityMigration = readFileSync(
+    "supabase/migrations/20260823062101_mise_003b_supplier_send_integrity.sql",
+    "utf8"
+  );
 
   assert.match(application, /export async function connectRestaurantGmail/);
   assert.match(application, /export async function disconnectRestaurantGmail/);
   assert.match(application, /export async function sendSupplierOrderEmail/);
-  assert.match(actionApplication, /export async function approveSupplierSendEnvelope/);
+  assert.match(application, /export async function previewSupplierSendContent/);
+  assert.match(actionApplication, /export async function approveSupplierSendContent/);
   assert.match(application, /requireWorkflowId\(restaurantId, "restaurant"\)/);
   assert.match(application, /requireWorkflowId\(orderId, "supplier order"\)/);
 
@@ -24,22 +29,28 @@ test("Gmail client workflows stay typed, tenant-scoped, and behind backend funct
   assert.match(hostedRepository, /"link-gmail",\s*\{ restaurantId, action: "connect" \}/s);
   assert.match(hostedRepository, /"link-gmail",\s*\{ restaurantId, action: "disconnect" \}/s);
   assert.match(hostedRepository, /"send-supplier-email",\s*\{ restaurantId, orderId \}/s);
-  assert.match(hostedRepository, /client\.rpc\("approve_supplier_send_envelope"/);
+  assert.match(hostedRepository, /client\.rpc\("preview_supplier_send_content"/);
+  assert.match(hostedRepository, /client\.rpc\("approve_supplier_send_content"/);
+  assert.doesNotMatch(hostedRepository, /fingerprintSupplierSendSnapshot|serializeSupplierSendSnapshot/);
+  assert.match(hostedRepository, /p_reviewed_content_fingerprint: reviewedFingerprint/);
+  assert.doesNotMatch(hostedRepository, /client\.rpc\("approve_supplier_send_envelope"/);
   assert.match(hostedRepository, /\.eq\("idempotency_key", `send_supplier_order:\$\{orderId\}`\)/);
   assert.match(demoRepository, /requireActiveDemoRestaurant\(state, restaurantId\)/);
   assert.match(demoRepository, /entry\.restaurant_id === restaurantId && entry\.id === orderId/);
   assert.match(demoRepository, /entry\.restaurant_id === restaurantId && entry\.provider === "gmail"/);
-  assert.match(sendFunction, /explicitly approve this action before sending/i);
-  assert.match(sendFunction, /outcome === "approval_required"/);
+  assert.match(sendFunction, /rpc\(\s*"service_claim_supplier_email_send"/s);
+  assert.match(sendFunction, /isClaimedSupplierEmail\(claimData, requestedMessageId\)/);
+  assert.match(sendFunction, /sentToPreviouslyClaimedRecipient/);
+  assert.match(sendFunction, /externalIdentityChangedDuringClaim/);
+  assert.match(sendFunction, /isPostgresSerializationFailure\(error\)/);
+  assert.match(sendFunction, /blockerCodes: \["send_verification_race"\]/);
+  assert.match(sendFunction, /status: changed \? "send_content_changed" : "send_content_unapproved"/);
   assert.match(
     sendFunction,
-    /response\.outcome !== "in_progress" &&\s*response\.outcome !== "approval_required"/
+    /from: claim\.from,[\s\S]*to: claim\.to,[\s\S]*subject: claim\.subject,[\s\S]*textBody: claim\.body/
   );
-  assert.doesNotMatch(
-    sendFunction.slice(sendFunction.indexOf("async function ensureSupplierSendApproved")),
-    /rpc\("decide_mise_action"/
-  );
-  assert.match(demoRepository, /expectedImpact\?\.approvedEnvelope/);
+  assert.doesNotMatch(sendFunction, /rpc\("decide_mise_action"/);
+  assert.match(demoRepository, /approvedSendContent/);
   assert.match(demoRepository, /throw new GmailIntegrationError\("approval_required"/);
   assert.match(envelopeMigration, /approved_envelope[\s\S]*approval_required/);
   assert.match(envelopeMigration, /for update;[\s\S]*service_claim_supplier_email_send_unchecked/);
@@ -50,6 +61,10 @@ test("Gmail client workflows stay typed, tenant-scoped, and behind backend funct
     envelopeMigration,
     /lower\(trim\(recipient\.supplier_name\)\) = lower\(trim\(order_row\.supplier_name\)\)/
   );
+  assert.match(sendIntegrityMigration, /preview_supplier_send_content/);
+  assert.match(sendIntegrityMigration, /approve_supplier_send_content/);
+  assert.match(sendIntegrityMigration, /revoke all on function public\.approve_supplier_send_envelope/);
+  assert.match(sendIntegrityMigration, /approvedSendContent/);
   assert.doesNotMatch(application, /client_secret|refresh_token|access_token/i);
 });
 
@@ -59,9 +74,14 @@ test("Gmail client validates provider responses and never trusts arbitrary autho
   assert.match(repository, /url\.protocol !== "https:" \|\| url\.hostname !== "accounts\.google\.com"/);
   assert.match(repository, /url\.username \|\| url\.password/);
   assert.match(repository, /order\.id !== orderId \|\| order\.restaurant_id !== restaurantId/);
-  assert.match(repository, /entry\.restaurant_id !== restaurantId \|\| entry\.supplier_order_id !== orderId/);
+  assert.match(repository, /entry\.restaurant_id !== restaurantId/);
+  assert.match(repository, /entry\.supplier_order_id !== orderId/);
+  assert.match(repository, /entry\.status !== "ordered"/);
+  assert.match(repository, /new Set\(orderedRecommendationIds\)\.size !== orderedRecommendationIds\.length/);
   assert.match(repository, /providerMessageId\.length <= 1024/);
   assert.match(repository, /candidateMessage\.trim\(\)\.slice\(0, 320\)/);
+  assert.match(repository, /parseSupplierSendBlockerCodes\(payload\.blockerCodes\)/);
+  assert.match(repository, /normalizeSupplierSendContentPreview\(data, restaurantId, orderId\)/);
 });
 
 test("Gmail settings and order delivery UI preserve roles, simulation disclosure, and safe recovery", () => {
@@ -84,10 +104,18 @@ test("Gmail settings and order delivery UI preserve roles, simulation disclosure
   assert.match(orderDetail, /emailConnection\?\.status !== "connected"/);
   assert.match(orderDetail, /prepareSupplierEmailPayload/);
   assert.match(orderDetail, /orders\.detail\.review\.to/);
-  assert.match(orderDetail, /approveSupplierSendEnvelope/);
+  assert.match(orderDetail, /approveSupplierSendContent/);
   assert.doesNotMatch(orderDetail, /decideMiseAction/);
   assert.match(orderDetail, /await sendSupplierOrderEmail\(restaurantId, savedOrder\.id\)/);
   assert.match(orderDetail, /orders\.detail\.notice\.demoSentBody/);
+  assert.match(orderDetail, /result\.sentToPreviouslyClaimedRecipient/);
+  assert.match(orderDetail, /orders\.detail\.notice\.claimedRecipientBody/);
+  assert.match(orderDetail, /isSupplierSendVerificationRace\(error\)/);
+  assert.match(orderDetail, /orders\.detail\.error\.verificationRaceTitle/);
+  assert.match(orderDetail, /recovery: "retry"/);
+  assert.match(orderDetail, /blockerCodes\.includes\("send_verification_race"\)/);
+  assert.doesNotMatch(orderDetail, /fingerprintSupplierSendSnapshot|serializeSupplierSendSnapshot/);
+  assert.doesNotMatch(orderDetail, /domain\/supplierSendContent/);
   assert.match(catalog, /Mise updated the demo workflow\. No email was sent\./);
   assert.doesNotMatch(orderDetail, /markSupplierOrderSent/);
 

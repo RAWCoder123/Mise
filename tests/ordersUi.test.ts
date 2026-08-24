@@ -76,7 +76,7 @@ test("recommendation actions validate quantity, lock locally, and reload authori
   assert.match(row, /accessibilityState=\{\{ expanded \}\}/);
 });
 
-test("order list routes drafts into explicit recipient review before the Gmail delivery adapter", () => {
+test("order list routes drafts through exact-content review before the Gmail delivery adapter", () => {
   const screen = readFileSync("app/(tabs)/orders.tsx", "utf8");
   const detail = readFileSync("app/orders/[id].tsx", "utf8");
   const card = readFileSync("components/SupplierDraftCard.tsx", "utf8");
@@ -87,8 +87,18 @@ test("order list routes drafts into explicit recipient review before the Gmail d
   assert.doesNotMatch(screen, /markSupplierOrderSent/);
   assert.match(detail, /prepareSupplierEmailPayload\(restaurantId, orderId\)/);
   assert.match(detail, /fetchSupplierSendAction\(restaurantId, orderId\)/);
-  assert.match(detail, /sameDeliveryEnvelope\(emailPayload, refreshedPayload\)/);
-  assert.match(detail, /await approveSupplierSendEnvelope\(/);
+  assert.match(detail, /sameReviewedSendContent\(reviewedPayload, refreshedPayload\)/);
+  assert.match(detail, /left\.orderId === right\.orderId/);
+  assert.match(detail, /left\.contentVersion === right\.contentVersion/);
+  assert.match(detail, /left\.contentFingerprint === right\.contentFingerprint/);
+  assert.doesNotMatch(detail, /sameDeliveryEnvelope/);
+  assert.match(detail, /await approveSupplierSendContent\(/);
+  assert.doesNotMatch(detail, /approveSupplierSendEnvelope/);
+  assert.match(detail, /refreshedPayload\.contentFingerprint/);
+  assert.match(detail, /const preview = await refreshEmailPreview/);
+  assert.match(detail, /setEmailPayload\(preview\)/);
+  assert.doesNotMatch(detail, /\.canSend/);
+  assert.doesNotMatch(detail, /blockedReason/);
   assert.doesNotMatch(detail, /decideMiseAction/);
   assert.match(detail, /await sendSupplierOrderEmail\(restaurantId, savedOrder\.id\)/);
   assert.doesNotMatch(detail, /markSupplierOrderSent/);
@@ -97,10 +107,48 @@ test("order list routes drafts into explicit recipient review before the Gmail d
   assert.match(detail, /orders\.detail\.review\.from/);
   assert.match(detail, /orders\.detail\.review\.to/);
   assert.match(detail, /orders\.detail\.review\.subject/);
+  assert.match(detail, /orders\.detail\.review\.emailBody/);
+  assert.match(detail, /visibleEmailPayload\?\.body/);
+  assert.match(detail, /visibleEmailPayload\.lineCount/);
+  assert.match(detail, /orders\.detail\.review\.pendingTitle/);
+  assert.match(detail, /orders\.detail\.gmail\.inProgressTitle/);
   assert.match(detail, /t\("orders\.detail\.notice\.demoSentBody"\)/);
+  assert.match(detail, /result\.sentToPreviouslyClaimedRecipient/);
+  assert.match(detail, /t\("orders\.detail\.notice\.claimedRecipientBody"\)/);
+  assert.match(detail, /isSupplierSendVerificationRace\(error\)/);
+  assert.match(detail, /recovery: "retry"/);
+  assert.match(detail, /notice\.recovery === "retry"[\s\S]{0,180}load\(false\)/);
   assert.match(catalog, /Mise updated the demo workflow\. No email was sent\./);
+  assert.match(catalog, /Review the exact email below\. Mise will approve only this version/);
   assert.match(detail, /operator_note: operatorNote\.trim\(\) \|\| null/);
-  assert.match(detail, /order\.status !== "draft"/);
+  assert.match(detail, /order\.status === "draft"/);
   assert.match(card, /title=\{busy \? resolvedBusyLabel : resolvedSendLabel\}/);
   assert.doesNotMatch(card, /Send email/i);
+});
+
+test("content approval blockers refresh the authoritative preview without hiding specific recovery", () => {
+  const detail = readFileSync("app/orders/[id].tsx", "utf8");
+
+  assert.match(
+    detail,
+    /approval\.outcome === "send_content_changed" \|\|[\s\S]{0,160}approval\.outcome === "send_content_unapproved"[\s\S]{0,300}await refreshEmailPreview\(restaurantId, savedOrder\.id\)[\s\S]{0,300}setNotice\(supplierSendBlockerNotice\(approvalBlockers, t\)\)[\s\S]{0,80}return;/
+  );
+
+  const noticeHelper = detail.slice(
+    detail.indexOf("function supplierSendBlockerNotice"),
+    detail.indexOf("function purchaseAuthoritySendNotice")
+  );
+  const genericApprovalIndex = noticeHelper.indexOf(
+    'blockerCodes.includes("send_content_unapproved")'
+  );
+  assert.ok(genericApprovalIndex > 0);
+  assert.ok(
+    noticeHelper.indexOf('blockerCodes.includes("supplier_email_missing")') < genericApprovalIndex
+  );
+  assert.ok(
+    noticeHelper.indexOf('blockerCodes.includes("gmail_not_connected")') < genericApprovalIndex
+  );
+  assert.ok(
+    noticeHelper.indexOf('blockerCodes.includes("order_not_draft")') < genericApprovalIndex
+  );
 });

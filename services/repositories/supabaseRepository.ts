@@ -22,6 +22,7 @@ import type {
   SupplierOrder,
   SupplierRecipient
 } from "../../types/mise";
+import { SUPPLIER_SEND_CONTENT_VERSION } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 import { normalizePurchaseAuthorityResult } from "../domain/purchaseAuthority";
@@ -89,11 +90,14 @@ import {
   normalizeSupplierOrder,
   normalizeSupplierDeliveryItemRecord,
   normalizeSupplierDeliveryRecord,
-  normalizeSupplierRecipient
+  normalizeSupplierRecipient,
+  normalizeSupplierSendContentPreview,
+  requireSupplierSendContentFingerprint
 } from "../miseValidation";
 import { toDateKeyInTimeZone } from "../../utils/format";
 import {
   GmailIntegrationError,
+  SUPPLIER_SEND_BLOCKER_CODES,
   normalizeRestaurantDataExport,
   normalizeRestaurantData,
   operationalDecisionHistoryCutoffIso,
@@ -113,6 +117,8 @@ import {
   type MiseRepository,
   type RestaurantDataExport,
   type RestaurantSetupSnapshotSummary,
+  type SupplierSendBlockerCode,
+  type SupplierSendContentApprovalResult,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
 
@@ -181,18 +187,26 @@ function parseSupplierOrderSentWorkflowResponse(data: unknown): SupplierOrderSen
 const gmailIntegrationErrorStatuses = new Set<GmailIntegrationErrorStatus>([
   "approval_required",
   "delivery_requires_review",
+  "draft_authority_incomplete",
   "gmail_not_connected",
   "in_progress",
   "live_sending_disabled",
   "needs_reauth",
+  "provider_not_enabled",
   "provider_rejected",
   "provider_unavailable",
+  "purchase_authority_stale",
   "request_blocked",
+  "send_content_changed",
+  "send_content_unapproved",
+  "send_in_progress",
   "server_configuration_missing",
   "supplier_email_invalid",
   "supplier_email_missing",
   "unknown"
 ]);
+
+const supplierSendBlockerCodes = new Set<string>(SUPPLIER_SEND_BLOCKER_CODES);
 
 function parseGmailConnectionWorkflowResponse(data: unknown): GmailConnectionWorkflowResult {
   const payload = asUnknownRecord(data);
@@ -218,6 +232,71 @@ function parseGmailDisconnectWorkflowResponse(data: unknown): GmailDisconnectWor
   return { status: "not_connected", outcome: payload.outcome };
 }
 
+function parseSupplierSendContentApprovalResponse(
+  data: unknown,
+  restaurantId: string,
+  actionId: string,
+  reviewedFingerprint: string
+): SupplierSendContentApprovalResult {
+  const candidate = Array.isArray(data)
+    ? data.length === 1 ? data[0] : null
+    : data;
+  const payload = asUnknownRecord(candidate);
+  const outcome = payload.outcome;
+  if (outcome === "applied" || outcome === "already_applied") {
+    if (
+      payload.contentVersion !== SUPPLIER_SEND_CONTENT_VERSION ||
+      payload.contentFingerprint !== reviewedFingerprint ||
+      !payload.action ||
+      typeof payload.action !== "object" ||
+      Array.isArray(payload.action)
+    ) {
+      throw new Error("Supplier send approval returned an invalid response.");
+    }
+    const action = miseActionFromPersistedRow(payload.action as PersistedMiseActionRow);
+    const approvedSendContent = asUnknownRecord(
+      asUnknownRecord(action.expectedImpact).approvedSendContent
+    );
+    if (
+      action.restaurantId !== restaurantId ||
+      action.id !== actionId ||
+      action.actionType !== "send_supplier_order" ||
+      action.status !== "approved" ||
+      approvedSendContent.version !== SUPPLIER_SEND_CONTENT_VERSION ||
+      approvedSendContent.fingerprint !== reviewedFingerprint
+    ) {
+      throw new Error("Supplier send approval failed restaurant scope validation.");
+    }
+    return {
+      outcome,
+      action,
+      contentVersion: SUPPLIER_SEND_CONTENT_VERSION,
+      contentFingerprint: reviewedFingerprint,
+      blockerCodes: []
+    };
+  }
+
+  if (
+    outcome !== "send_content_changed" &&
+    outcome !== "send_content_unapproved" &&
+    outcome !== "send_in_progress" &&
+    outcome !== "delivery_requires_review"
+  ) {
+    throw new Error("Supplier send approval returned an invalid response.");
+  }
+  const blockerCodes = parseSupplierSendBlockerCodes(payload.blockerCodes, true);
+  if (outcome !== "send_content_unapproved" && !blockerCodes.includes(outcome)) {
+    throw new Error("Supplier send approval returned inconsistent blockers.");
+  }
+  return {
+    outcome,
+    action: null,
+    contentVersion: null,
+    contentFingerprint: null,
+    blockerCodes
+  };
+}
+
 function parseSupplierEmailSendResponse(
   data: unknown,
   restaurantId: string,
@@ -238,18 +317,37 @@ function parseSupplierEmailSendResponse(
     throw new GmailIntegrationError("unknown", "Gmail delivery returned an invalid supplier order.");
   }
   const rawRecommendations = Array.isArray(payload.orderedRecommendations) ? payload.orderedRecommendations : [];
+  if (
+    rawRecommendations.length > 250 ||
+    (payload.outcome !== "already_sent" && rawRecommendations.length === 0)
+  ) {
+    throw new GmailIntegrationError("unknown", "Gmail delivery returned an invalid line set.");
+  }
   const orderedRecommendations = rawRecommendations.map((entry) => normalizePurchaseRecommendation(entry as PurchaseRecommendation));
-  if (orderedRecommendations.some((entry) => entry.restaurant_id !== restaurantId || entry.supplier_order_id !== orderId)) {
+  const orderedRecommendationIds = orderedRecommendations.map((entry) => entry.id);
+  if (
+    new Set(orderedRecommendationIds).size !== orderedRecommendationIds.length ||
+    orderedRecommendations.some(
+      (entry) =>
+        entry.restaurant_id !== restaurantId ||
+        entry.supplier_order_id !== orderId ||
+        entry.status !== "ordered"
+    )
+  ) {
     throw new GmailIntegrationError("unknown", "Gmail delivery returned invalid order items.");
   }
   const providerMessageId =
     typeof payload.providerMessageId === "string" && payload.providerMessageId.length > 0 && payload.providerMessageId.length <= 1024
       ? payload.providerMessageId
       : null;
+  if (typeof payload.sentToPreviouslyClaimedRecipient !== "boolean") {
+    throw new GmailIntegrationError("unknown", "Gmail delivery returned invalid claim identity evidence.");
+  }
   return {
     status: "sent",
     outcome: payload.outcome,
     providerMessageId,
+    sentToPreviouslyClaimedRecipient: payload.sentToPreviouslyClaimedRecipient,
     order,
     orderedRecommendations
   };
@@ -257,6 +355,30 @@ function parseSupplierEmailSendResponse(
 
 function asUnknownRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function parseSupplierSendBlockerCodes(
+  value: unknown,
+  requireNonEmpty = false
+): SupplierSendBlockerCode[] {
+  if ((value === null || value === undefined) && !requireNonEmpty) return [];
+  if (!Array.isArray(value) || value.length > 20 || (requireNonEmpty && value.length === 0)) {
+    throw new Error("Supplier send workflow returned invalid blockers.");
+  }
+  const codes = value.map((entry) => {
+    if (
+      typeof entry !== "string" ||
+      entry.length > 80 ||
+      !supplierSendBlockerCodes.has(entry)
+    ) {
+      throw new Error("Supplier send workflow returned an invalid blocker.");
+    }
+    return entry as SupplierSendBlockerCode;
+  });
+  if (new Set(codes).size !== codes.length) {
+    throw new Error("Supplier send workflow returned duplicate blockers.");
+  }
+  return codes;
 }
 
 function requireGoogleAuthorizationUrl(value: unknown) {
@@ -497,7 +619,16 @@ async function gmailIntegrationErrorFrom(error: unknown, fallbackMessage: string
       ? payload.error
       : "";
   const message = candidateMessage.trim().slice(0, 320) || fallbackMessage;
-  return new GmailIntegrationError(status, message);
+  let blockerCodes: SupplierSendBlockerCode[] = [];
+  try {
+    blockerCodes = parseSupplierSendBlockerCodes(payload.blockerCodes);
+  } catch {
+    return new GmailIntegrationError(
+      "unknown",
+      "Supplier send workflow returned invalid blockers."
+    );
+  }
+  return new GmailIntegrationError(status, message, blockerCodes);
 }
 
 async function readFunctionErrorPayload(error: unknown) {
@@ -1516,6 +1647,15 @@ export function createSupabaseRepository(): MiseRepository {
       return parsePosMappingReviewResult(data, restaurantId, mappingId);
     },
 
+    async previewSupplierSendContent(restaurantId, orderId) {
+      const { data, error } = await client.rpc("preview_supplier_send_content", {
+        p_restaurant_id: restaurantId,
+        p_order_id: orderId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return normalizeSupplierSendContentPreview(data, restaurantId, orderId);
+    },
+
     async sendSupplierOrderEmail(restaurantId, orderId) {
       const data = await invokeGmailFunction(
         "send-supplier-email",
@@ -1851,32 +1991,21 @@ export function createSupabaseRepository(): MiseRepository {
       return action;
     },
 
-    async approveSupplierSendEnvelope(restaurantId, actionId, orderId, envelope) {
-      const { data, error } = await client.rpc("approve_supplier_send_envelope", {
+    async approveSupplierSendContent(restaurantId, actionId, orderId, contentFingerprint) {
+      const reviewedFingerprint = requireSupplierSendContentFingerprint(contentFingerprint);
+      const { data, error } = await client.rpc("approve_supplier_send_content", {
         p_restaurant_id: restaurantId,
         p_action_id: actionId,
         p_order_id: orderId,
-        p_reviewed_from: envelope.from,
-        p_reviewed_to: envelope.to,
-        p_reviewed_subject: envelope.subject
+        p_reviewed_content_fingerprint: reviewedFingerprint
       });
-      if (error) {
-        const message = typeof error.message === "string" ? error.message : "";
-        if (message.includes("Supplier send approval required")) {
-          throw new GmailIntegrationError(
-            "approval_required",
-            "Sender, recipient, or subject changed. Review the current delivery details before sending."
-          );
-        }
-        throw error;
-      }
-      const row = (Array.isArray(data) ? data[0] : data) as PersistedMiseActionRow | null;
-      if (!row) throw new Error("Supplier send approval returned an empty response.");
-      const action = miseActionFromPersistedRow(row);
-      if (action.restaurantId !== restaurantId || action.id !== actionId) {
-        throw new Error("Supplier send approval failed restaurant scope validation.");
-      }
-      return action;
+      if (error) throwRepositoryError(error, restaurantId);
+      return parseSupplierSendContentApprovalResponse(
+        data,
+        restaurantId,
+        actionId,
+        reviewedFingerprint
+      );
     },
 
     async listRestaurantMemories(restaurantId, options = {}) {

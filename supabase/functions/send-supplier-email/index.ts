@@ -10,7 +10,6 @@ import {
 import {
   firewallBlockedResponse,
   handleError,
-  HttpError,
   type InvocationTerminalContext,
   jsonResponse,
   optionsResponse,
@@ -28,13 +27,27 @@ interface ClaimedSupplierEmail {
   outcome: "claimed";
   claimToken: string;
   credentialId: string;
+  credentialGeneration: number;
   refreshToken: string;
+  contentVersion: "mise.supplier_send.v1";
+  contentFingerprint: string;
+  authorityVersion: "mise.purchase_authority.v1";
+  authorityFingerprint: string;
   from: string;
   to: string;
   subject: string;
   body: string;
   rfcMessageId: string;
 }
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
+const EMAIL_PATTERN =
+  /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i;
+const SAFE_CODE_PATTERN = /^[a-z0-9_]{1,80}$/u;
+const MAX_BLOCKER_CODES = 20;
+const MAX_EMAIL_BODY_BYTES = 64 * 1024;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -77,13 +90,6 @@ Deno.serve(async (req) => {
       "admin",
       "manager",
     ]);
-    await ensureSupplierSendApproved(supabase, restaurantId, orderId);
-    actionFailureContext = {
-      securitySupabase,
-      actorUserId: user.id,
-      restaurantId,
-      orderId,
-    };
     await recordFunctionAuditLog(
       securitySupabase,
       user.id,
@@ -93,6 +99,39 @@ Deno.serve(async (req) => {
       orderId,
       { provider: "gmail" },
     );
+
+    // Observe durable delivery state before deployment/configuration gates so
+    // a replay can always return sent, in-progress, or review-required truth
+    // without creating a second provider attempt.
+    const { data: observationData, error: observationError } =
+      await securitySupabase.rpc("service_observe_supplier_email_send", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_order_id: orderId,
+      });
+    if (observationError) throw observationError;
+    if (supplierSendOutcome(observationData) !== "claim_required") {
+      const response = claimOutcomeResponse(observationData);
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "send-supplier-email",
+        response.eventType,
+        response.action,
+        { orderId, provider: "gmail", outcome: response.outcome },
+      );
+      terminalContext = null;
+      return jsonResponse(response.body, response.status);
+    }
+
+    actionFailureContext = {
+      securitySupabase,
+      actorUserId: user.id,
+      restaurantId,
+      orderId,
+    };
 
     if (Deno.env.get("GMAIL_SEND_ENABLED") !== "true") {
       await recordMiseActionFailure(
@@ -104,6 +143,7 @@ Deno.serve(async (req) => {
         "live_sending_disabled",
         "Supplier order sending is disabled for this environment.",
       );
+      actionFailureContext = null;
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -123,6 +163,7 @@ Deno.serve(async (req) => {
       return jsonResponse(
         {
           status: "live_sending_disabled",
+          blockerCodes: ["live_sending_disabled"],
           message: "Live Gmail sending is disabled for this environment.",
         },
         503,
@@ -140,6 +181,7 @@ Deno.serve(async (req) => {
         "server_configuration_missing",
         "Supplier order sending is not configured for this environment.",
       );
+      actionFailureContext = null;
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -154,12 +196,17 @@ Deno.serve(async (req) => {
       return jsonResponse(
         {
           status: "server_configuration_missing",
+          blockerCodes: ["server_configuration_missing"],
           message: "Gmail sending is not configured for this environment.",
         },
         503,
       );
     }
 
+    const requestedMessageId = gmailMessageId(
+      orderId,
+      Deno.env.get("GMAIL_MESSAGE_ID_DOMAIN") ?? "mail.mise.app",
+    );
     const { data: claimData, error: claimError } = await securitySupabase.rpc(
       "service_claim_supplier_email_send",
       {
@@ -167,21 +214,14 @@ Deno.serve(async (req) => {
         p_restaurant_id: restaurantId,
         p_order_id: orderId,
         p_idempotency_key: orderId,
-        p_rfc_message_id: gmailMessageId(
-          orderId,
-          Deno.env.get("GMAIL_MESSAGE_ID_DOMAIN") ?? "mail.mise.app",
-        ),
+        p_rfc_message_id: requestedMessageId,
       },
     );
     if (claimError) throw claimError;
 
-    if (!isClaimedSupplierEmail(claimData)) {
+    if (supplierSendOutcome(claimData) !== "claimed") {
       const response = claimOutcomeResponse(claimData);
-      if (
-        response.outcome !== "already_sent" &&
-        response.outcome !== "in_progress" &&
-        response.outcome !== "approval_required"
-      ) {
+      if (shouldRecordPreClaimFailure(response.outcome)) {
         await recordMiseActionFailure(
           securitySupabase,
           user.id,
@@ -195,6 +235,7 @@ Deno.serve(async (req) => {
             : "Supplier order sending could not continue.",
         );
       }
+      actionFailureContext = null;
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -208,11 +249,64 @@ Deno.serve(async (req) => {
       terminalContext = null;
       return jsonResponse(response.body, response.status);
     }
+
+    // From here onward the database owns an active claim. Its fail RPC also
+    // updates the action atomically, so the generic pre-claim failure writer
+    // must never race or overwrite that token-fenced result.
+    actionFailureContext = null;
+    if (!isClaimedSupplierEmail(claimData, requestedMessageId)) {
+      const claimToken = claimedTokenForFailure(claimData);
+      if (claimToken) {
+        await failDelivery(
+          securitySupabase,
+          user.id,
+          restaurantId,
+          orderId,
+          claimToken,
+          "rejected",
+          "claimed_snapshot_invalid",
+        );
+      }
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "send-supplier-email",
+        claimToken ? "blocked" : "error",
+        "supplier_email_claim_invalid",
+        { orderId, provider: "gmail", reason: "claimed_snapshot_invalid" },
+      );
+      terminalContext = null;
+      return jsonResponse(
+        claimToken
+          ? {
+            status: "send_content_unapproved",
+            blockerCodes: ["send_content_invalid"],
+            message:
+              "The claimed supplier email was invalid. Review the current email again before sending.",
+          }
+          : {
+            status: "delivery_requires_review",
+            blockerCodes: ["delivery_requires_review"],
+            message:
+              "Mise could not safely verify the delivery claim. Review it before trying again.",
+          },
+        409,
+      );
+    }
     const claim = claimData;
 
     let tokens;
     try {
       tokens = await refreshGoogleAccessToken(oauthConfig, claim.refreshToken);
+      if (!isOpaqueCredential(tokens.accessToken)) {
+        throw new GoogleProviderError(
+          "provider_response_invalid",
+          "rejected",
+          502,
+        );
+      }
       if (tokens.refreshToken) {
         const { error: rotationError } = await securitySupabase.rpc(
           "service_rotate_gmail_refresh_token",
@@ -220,6 +314,7 @@ Deno.serve(async (req) => {
             p_actor_user_id: user.id,
             p_restaurant_id: restaurantId,
             p_credential_id: claim.credentialId,
+            p_expected_credential_generation: claim.credentialGeneration,
             p_credential_material: tokens.refreshToken,
           },
         );
@@ -245,17 +340,6 @@ Deno.serve(async (req) => {
           providerError.safeCode,
         );
       }
-      await recordMiseActionFailure(
-        securitySupabase,
-        user.id,
-        restaurantId,
-        orderId,
-        "failed",
-        providerError?.safeCode ?? "gmail_refresh_failed",
-        providerError?.disposition === "reauthorize"
-          ? "Reconnect Gmail before sending this supplier order."
-          : "Gmail is temporarily unavailable. The supplier order was not sent.",
-      );
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -275,23 +359,60 @@ Deno.serve(async (req) => {
         providerError?.disposition === "reauthorize"
           ? {
             status: "needs_reauth",
+            blockerCodes: ["needs_reauth"],
             message: "Reconnect Gmail before sending this order.",
           }
           : {
             status: "provider_unavailable",
+            blockerCodes: ["provider_unavailable"],
             message: "Gmail is temporarily unavailable. No email was sent.",
           },
         providerError?.disposition === "reauthorize" ? 409 : 502,
       );
     }
 
-    const rawMessage = buildGmailRawMessage({
-      from: claim.from,
-      to: claim.to,
-      subject: claim.subject,
-      textBody: claim.body,
-      messageId: claim.rfcMessageId,
-    });
+    let rawMessage: string;
+    try {
+      // The MIME payload is derived only from the immutable database claim.
+      // No mutable order, recipient, or sender state is re-read here.
+      rawMessage = buildGmailRawMessage({
+        from: claim.from,
+        to: claim.to,
+        subject: claim.subject,
+        textBody: claim.body,
+        messageId: claim.rfcMessageId,
+      });
+    } catch {
+      await failDelivery(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        orderId,
+        claim.claimToken,
+        "rejected",
+        "claimed_snapshot_invalid",
+      );
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "send-supplier-email",
+        "blocked",
+        "supplier_email_claim_invalid",
+        { orderId, provider: "gmail", reason: "claimed_snapshot_invalid" },
+      );
+      terminalContext = null;
+      return jsonResponse(
+        {
+          status: "send_content_unapproved",
+          blockerCodes: ["send_content_invalid"],
+          message:
+            "The claimed supplier email could not be encoded safely. Review the current email again before sending.",
+        },
+        409,
+      );
+    }
 
     let providerMessage;
     try {
@@ -327,17 +448,6 @@ Deno.serve(async (req) => {
           safeCode,
         );
       }
-      await recordMiseActionFailure(
-        securitySupabase,
-        user.id,
-        restaurantId,
-        orderId,
-        ambiguous ? "unverified" : "failed",
-        safeCode,
-        ambiguous
-          ? "Gmail did not return a definitive result. Review the delivery before retrying."
-          : "Gmail rejected the supplier order email.",
-      );
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -355,11 +465,13 @@ Deno.serve(async (req) => {
         ambiguous
           ? {
             status: "delivery_requires_review",
+            blockerCodes: ["delivery_requires_review"],
             message:
               "Gmail did not return a definitive result. Mise will not retry automatically to avoid a duplicate email.",
           }
           : {
             status: "provider_rejected",
+            blockerCodes: ["provider_rejected"],
             message:
               "Gmail rejected the email. Review the connection and try again.",
           },
@@ -389,15 +501,6 @@ Deno.serve(async (req) => {
       } catch {
         // A stale sending claim becomes review-only; it is never auto-retried.
       }
-      await recordMiseActionFailure(
-        securitySupabase,
-        user.id,
-        restaurantId,
-        orderId,
-        "unverified",
-        "database_finalize_failed",
-        "Gmail accepted the message, but Mise could not verify the final order state. Do not resend until it is reviewed.",
-      );
       await recordFunctionSecurityEvent(
         securitySupabase,
         user.id,
@@ -412,6 +515,7 @@ Deno.serve(async (req) => {
       return jsonResponse(
         {
           status: "delivery_requires_review",
+          blockerCodes: ["delivery_requires_review"],
           message:
             "Gmail accepted the email, but Mise could not finalize the order. Do not resend; review the delivery.",
         },
@@ -434,10 +538,24 @@ Deno.serve(async (req) => {
       status: "sent",
       outcome: completion?.outcome ?? "applied",
       providerMessageId: providerMessage.id,
+      sentToPreviouslyClaimedRecipient:
+        completion?.externalIdentityChangedDuringClaim === true,
       order: completion?.order ?? null,
       orderedRecommendations: completion?.ordered_recommendations ?? [],
     });
   } catch (error) {
+    if (isPostgresSerializationFailure(error)) {
+      await recordFunctionTerminalError(terminalContext);
+      return jsonResponse(
+        {
+          status: "request_blocked",
+          blockerCodes: ["send_verification_race"],
+          message:
+            "Mise could not verify the current supplier email because its identity changed concurrently. Refresh and try again.",
+        },
+        409,
+      );
+    }
     if (actionFailureContext) {
       await recordMiseActionFailure(
         actionFailureContext.securitySupabase,
@@ -453,55 +571,6 @@ Deno.serve(async (req) => {
     return handleError(error);
   }
 });
-
-async function ensureSupplierSendApproved(
-  supabase: SupabaseClient,
-  restaurantId: string,
-  orderId: string,
-) {
-  const { data, error } = await supabase
-    .from("mise_actions")
-    .select("id,status")
-    .eq("restaurant_id", restaurantId)
-    .eq("action_type", "send_supplier_order")
-    .eq("idempotency_key", `send_supplier_order:${orderId}`)
-    .maybeSingle();
-  if (error) {
-    throw new HttpError(500, "Unable to verify supplier order approval.");
-  }
-  if (!data) {
-    throw new HttpError(
-      409,
-      "This supplier order has no prepared action. Rebuild the draft before sending.",
-    );
-  }
-
-  const status = String(data.status);
-  if (status === "unverified") {
-    throw new HttpError(
-      409,
-      "Review the prior delivery attempt before sending again to avoid a duplicate order.",
-    );
-  }
-  if (["rejected", "cancelled", "reversed"].includes(status)) {
-    throw new HttpError(
-      409,
-      "This supplier order action is no longer approved for sending.",
-    );
-  }
-  if (["prepared", "waiting_for_approval", "failed"].includes(status)) {
-    throw new HttpError(
-      409,
-      "Review the supplier recipient and explicitly approve this action before sending.",
-    );
-  }
-  if (status !== "approved" && status !== "executed") {
-    throw new HttpError(
-      409,
-      "This supplier order action is not ready to send.",
-    );
-  }
-}
 
 async function recordMiseActionFailure(
   securitySupabase: SupabaseClient,
@@ -536,33 +605,87 @@ function googleOAuthConfig(): GoogleOAuthConfig | null {
   return { clientId, clientSecret, redirectUri };
 }
 
-function isClaimedSupplierEmail(value: unknown): value is ClaimedSupplierEmail {
-  if (!value || typeof value !== "object") return false;
-  const claim = value as Record<string, unknown>;
-  return (
-    claim.outcome === "claimed" &&
-    [
-      "claimToken",
-      "credentialId",
-      "refreshToken",
-      "from",
-      "to",
-      "subject",
-      "body",
-      "rfcMessageId",
-    ].every(
-      (key) =>
-        typeof claim[key] === "string" && (claim[key] as string).length > 0,
-    )
-  );
-}
-
-function claimOutcomeResponse(value: unknown) {
+function supplierSendOutcome(value: unknown) {
   const outcome = value &&
       typeof value === "object" &&
       typeof (value as Record<string, unknown>).outcome === "string"
     ? String((value as Record<string, unknown>).outcome)
-    : "claim_failed";
+    : "";
+  return SAFE_CODE_PATTERN.test(outcome) ? outcome : "claim_failed";
+}
+
+function isClaimedSupplierEmail(
+  value: unknown,
+  expectedMessageId: string,
+): value is ClaimedSupplierEmail {
+  if (!value || typeof value !== "object") return false;
+  const claim = value as Record<string, unknown>;
+  return claim.outcome === "claimed" &&
+    isCanonicalUuid(claim.claimToken) &&
+    isCanonicalUuid(claim.credentialId) &&
+    typeof claim.credentialGeneration === "number" &&
+    Number.isSafeInteger(claim.credentialGeneration) &&
+    claim.credentialGeneration > 0 &&
+    isOpaqueCredential(claim.refreshToken) &&
+    claim.contentVersion === "mise.supplier_send.v1" &&
+    typeof claim.contentFingerprint === "string" &&
+    SHA256_HEX_PATTERN.test(claim.contentFingerprint) &&
+    claim.authorityVersion === "mise.purchase_authority.v1" &&
+    typeof claim.authorityFingerprint === "string" &&
+    SHA256_HEX_PATTERN.test(claim.authorityFingerprint) &&
+    isCanonicalEmail(claim.from) &&
+    isCanonicalEmail(claim.to) &&
+    isCanonicalSubject(claim.subject) &&
+    isBoundedBody(claim.body) &&
+    typeof claim.rfcMessageId === "string" &&
+    claim.rfcMessageId === expectedMessageId &&
+    claim.rfcMessageId.length <= 512 &&
+    /^<[^<>\s@]+@[^<>\s@]+>$/u.test(claim.rfcMessageId);
+}
+
+function claimedTokenForFailure(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const token = (value as Record<string, unknown>).claimToken;
+  return isCanonicalUuid(token) ? token : null;
+}
+
+function isCanonicalUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
+function isCanonicalEmail(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.length >= 3 &&
+    value.length <= 254 &&
+    value === value.trim() &&
+    value === value.toLowerCase() &&
+    !/[\u0000-\u001f\u007f]/u.test(value) &&
+    EMAIL_PATTERN.test(value);
+}
+
+function isCanonicalSubject(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 500 &&
+    value === value.trim() &&
+    !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function isBoundedBody(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const byteLength = new TextEncoder().encode(value).byteLength;
+  return byteLength >= 1 && byteLength <= MAX_EMAIL_BODY_BYTES;
+}
+
+function isOpaqueCredential(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.length >= 8 &&
+    value.length <= 4096 &&
+    !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function claimOutcomeResponse(value: unknown) {
+  const outcome = supplierSendOutcome(value);
   if (outcome === "already_sent") {
     return {
       outcome,
@@ -572,12 +695,13 @@ function claimOutcomeResponse(value: unknown) {
       body: {
         status: "sent",
         outcome: "already_sent",
-        providerMessageId:
-          (value as Record<string, unknown>).providerMessageId ?? null,
+        providerMessageId: boundedProviderMessageId(value),
+        sentToPreviouslyClaimedRecipient:
+          externalIdentityChangedDuringClaim(value),
       },
     };
   }
-  if (outcome === "in_progress") {
+  if (outcome === "in_progress" || outcome === "send_in_progress") {
     return {
       outcome,
       eventType: "blocked" as const,
@@ -585,11 +709,12 @@ function claimOutcomeResponse(value: unknown) {
       status: 409,
       body: {
         status: "in_progress",
+        blockerCodes: boundedBlockerCodes(value, ["send_in_progress"]),
         message: "This supplier email is already being sent.",
       },
     };
   }
-  if (outcome === "requires_review") {
+  if (outcome === "requires_review" || outcome === "delivery_requires_review") {
     return {
       outcome,
       eventType: "blocked" as const,
@@ -597,6 +722,9 @@ function claimOutcomeResponse(value: unknown) {
       status: 409,
       body: {
         status: "delivery_requires_review",
+        blockerCodes: boundedBlockerCodes(value, [
+          "delivery_requires_review",
+        ]),
         message:
           "Review the prior delivery before sending again to avoid a duplicate email.",
       },
@@ -610,8 +738,54 @@ function claimOutcomeResponse(value: unknown) {
       status: 409,
       body: {
         status: "approval_required",
+        blockerCodes: boundedBlockerCodes(value, [
+          "send_content_unapproved",
+        ]),
         message:
-          "Review the current sender, recipient, and subject, then approve again before sending.",
+          "Review the exact current supplier email, then approve it again before sending.",
+      },
+    };
+  }
+  if (
+    outcome === "send_content_unapproved" ||
+    outcome === "send_content_changed" ||
+    outcome === "send_content_invalid" ||
+    outcome === "send_content_too_large"
+  ) {
+    const changed = outcome === "send_content_changed";
+    const tooLarge = outcome === "send_content_too_large";
+    return {
+      outcome,
+      eventType: "blocked" as const,
+      action: changed
+        ? "supplier_email_content_changed"
+        : "supplier_email_content_unapproved",
+      status: 409,
+      body: {
+        status: changed ? "send_content_changed" : "send_content_unapproved",
+        blockerCodes: boundedBlockerCodes(value, [outcome]),
+        message: tooLarge
+          ? "This supplier email is too large to send. Reduce the order content and review it again."
+          : changed
+          ? "This order changed after it was reviewed. Review the current email again."
+          : "Review and approve the exact current supplier email before sending.",
+      },
+    };
+  }
+  if (
+    outcome === "purchase_authority_stale" ||
+    outcome === "draft_authority_incomplete"
+  ) {
+    return {
+      outcome,
+      eventType: "blocked" as const,
+      action: "supplier_email_purchase_authority_blocked",
+      status: 409,
+      body: {
+        status: outcome,
+        blockerCodes: boundedBlockerCodes(value, [outcome]),
+        message:
+          "Inventory or sales evidence changed after this order was approved. Review the blocked purchasing items before sending.",
       },
     };
   }
@@ -623,6 +797,7 @@ function claimOutcomeResponse(value: unknown) {
       status: 503,
       body: {
         status: "provider_not_enabled",
+        blockerCodes: boundedBlockerCodes(value, ["provider_not_enabled"]),
         message:
           "Supplier email delivery is disabled for this restaurant. Copy or export the approved draft and send it outside Mise.",
       },
@@ -639,20 +814,95 @@ function claimOutcomeResponse(value: unknown) {
       status: 409,
       body: {
         status: outcome,
+        blockerCodes: boundedBlockerCodes(value, [outcome]),
         message: "Add a valid supplier email before sending this order.",
+      },
+    };
+  }
+  if (outcome === "gmail_not_connected") {
+    return {
+      outcome,
+      eventType: "blocked" as const,
+      action: "supplier_email_blocked",
+      status: 409,
+      body: {
+        status: "gmail_not_connected",
+        blockerCodes: boundedBlockerCodes(value, ["gmail_not_connected"]),
+        message: "Connect or reconnect Gmail before sending this order.",
       },
     };
   }
   return {
     outcome,
-    eventType: "blocked" as const,
-    action: "supplier_email_blocked",
-    status: 409,
+    eventType: "error" as const,
+    action: "supplier_email_claim_failed",
+    status: 502,
     body: {
-      status: "gmail_not_connected",
-      message: "Connect or reconnect Gmail before sending this order.",
+      status: "request_blocked",
+      blockerCodes: ["request_blocked"],
+      message: "Mise could not establish a safe supplier email claim.",
     },
   };
+}
+
+function shouldRecordPreClaimFailure(outcome: string) {
+  return ![
+    "already_sent",
+    "in_progress",
+    "send_in_progress",
+    "requires_review",
+    "delivery_requires_review",
+    "approval_required",
+    "send_content_unapproved",
+    "send_content_changed",
+    "send_content_invalid",
+    "send_content_too_large",
+    "purchase_authority_stale",
+    "draft_authority_incomplete",
+  ].includes(outcome);
+}
+
+function boundedBlockerCodes(value: unknown, requiredCodes: string[] = []) {
+  const rawCodes = value && typeof value === "object" &&
+      Array.isArray((value as Record<string, unknown>).blockerCodes)
+    ? (value as Record<string, unknown>).blockerCodes as unknown[]
+    : [];
+  const bounded: string[] = [];
+  for (const candidate of [...requiredCodes, ...rawCodes]) {
+    if (
+      typeof candidate === "string" &&
+      SAFE_CODE_PATTERN.test(candidate) &&
+      !bounded.includes(candidate)
+    ) {
+      bounded.push(candidate);
+      if (bounded.length === MAX_BLOCKER_CODES) break;
+    }
+  }
+  return bounded;
+}
+
+function boundedProviderMessageId(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const providerMessageId = (value as Record<string, unknown>)
+    .providerMessageId;
+  return typeof providerMessageId === "string" &&
+      providerMessageId.length >= 1 &&
+      providerMessageId.length <= 512 &&
+      !/[\u0000-\u001f\u007f]/u.test(providerMessageId)
+    ? providerMessageId
+    : null;
+}
+
+function externalIdentityChangedDuringClaim(value: unknown) {
+  return Boolean(
+    value && typeof value === "object" &&
+      (value as Record<string, unknown>).externalIdentityChangedDuringClaim === true,
+  );
+}
+
+function isPostgresSerializationFailure(error: unknown) {
+  return error && typeof error === "object" &&
+      (error as Record<string, unknown>).code === "40001";
 }
 
 async function failDelivery(
@@ -708,5 +958,5 @@ async function markConnectionState(
 }
 
 function safeErrorCode(value: string) {
-  return /^[a-z0-9_]{1,80}$/u.test(value) ? value : "provider_request_failed";
+  return SAFE_CODE_PATTERN.test(value) ? value : "provider_request_failed";
 }

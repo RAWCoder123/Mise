@@ -1,4 +1,7 @@
-import type { SupplierOrder } from "../../types/mise";
+import {
+  SUPPLIER_SEND_CONTENT_VERSION,
+  type SupplierOrder
+} from "../../types/mise";
 import {
   boundedLearnedQuantity,
   buildInsightsFromData,
@@ -274,25 +277,177 @@ export function markSupplierOrderSentInDemoState(
     (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
   );
   if (!order) throw new Error("Order draft not found");
-  const linked = state.purchaseRecommendations.filter(
-    (recommendation) =>
-      recommendation.restaurant_id === restaurantId &&
-      recommendation.supplier_order_id === orderId
+  const executedAction = state.miseActions.find(
+    (action) =>
+      action.restaurantId === restaurantId &&
+      action.actionType === "send_supplier_order" &&
+      action.status === "executed" &&
+      action.result?.supplierOrderId === orderId
   );
+  const result = executedAction?.result;
+  const approvedContent = executedAction?.expectedImpact?.approvedSendContent as
+    | Record<string, unknown>
+    | null
+    | undefined;
+  const recommendationIds = result?.recommendationIds;
+  const durableEvidenceReady =
+    (order.status === "sent" || order.status === "completed") &&
+    executedAction?.executedAt !== null &&
+    typeof executedAction?.executedAt === "string" &&
+    Number.isFinite(Date.parse(executedAction.executedAt)) &&
+    result?.provider === "demo" &&
+    result?.simulated === true &&
+    result?.providerMessageId === `demo-gmail:${orderId}` &&
+    result?.contentVersion === SUPPLIER_SEND_CONTENT_VERSION &&
+    typeof result?.contentFingerprint === "string" &&
+    /^[a-f0-9]{64}$/.test(result.contentFingerprint) &&
+    typeof result?.contentRevision === "number" &&
+    Number.isInteger(result.contentRevision) &&
+    result.contentRevision > 0 &&
+    approvedContent !== null &&
+    typeof approvedContent === "object" &&
+    !Array.isArray(approvedContent) &&
+    approvedContent.version === result.contentVersion &&
+    approvedContent.fingerprint === result.contentFingerprint &&
+    approvedContent.contentRevision === result.contentRevision &&
+    Array.isArray(recommendationIds) &&
+    recommendationIds.length > 0 &&
+    recommendationIds.length <= 250 &&
+    recommendationIds.every((id) => typeof id === "string") &&
+    new Set(recommendationIds).size === recommendationIds.length;
+
+  if (!durableEvidenceReady) {
+    throw new Error("Provider acceptance is required before marking this order sent");
+  }
+  return markClaimedSupplierOrderSentInDemoState(
+    state,
+    restaurantId,
+    orderId,
+    recommendationIds as string[]
+  );
+}
+
+export function demoSupplierSendContentRevision(state: DemoState, orderId: string) {
+  const current = state.supplierSendContentRevisions[orderId];
+  if (typeof current === "number" && Number.isInteger(current) && current > 0) return current;
+  state.supplierSendContentRevisions[orderId] = 1;
+  return 1;
+}
+
+export function bumpDemoSupplierSendContentRevision(state: DemoState, orderId: string) {
+  const next = demoSupplierSendContentRevision(state, orderId) + 1;
+  state.supplierSendContentRevisions[orderId] = next;
+  return next;
+}
+
+/**
+ * External delivery identity is part of the reviewed supplier-send snapshot,
+ * even though it is stored outside supplier_orders. Advancing every affected
+ * draft's monotonic token prevents a sender, recipient, or restaurant-name
+ * A -> B -> A change from reviving an earlier approval in local demo mode.
+ */
+export function bumpDemoSupplierSendContentForExternalChange(
+  state: DemoState,
+  restaurantId: string,
+  supplierNames?: readonly string[]
+) {
+  const supplierKeys = supplierNames
+    ? new Set(supplierNames.map((name) => name.trim().toLowerCase()))
+    : null;
+  const bumpedOrderIds: string[] = [];
+
+  for (const order of state.supplierOrders) {
+    if (
+      order.restaurant_id !== restaurantId ||
+      order.status !== "draft" ||
+      (supplierKeys && !supplierKeys.has(order.supplier_name.trim().toLowerCase()))
+    ) {
+      continue;
+    }
+    bumpDemoSupplierSendContentRevision(state, order.id);
+    bumpedOrderIds.push(order.id);
+  }
+
+  return bumpedOrderIds;
+}
+
+/**
+ * Demo sends are atomic, but completion still uses the exact line identifiers
+ * captured by the simulated claim. This prevents demo mode from teaching the
+ * old "mark every currently approved supplier line ordered" behavior.
+ */
+export function markClaimedSupplierOrderSentInDemoState(
+  state: DemoState,
+  restaurantId: string,
+  orderId: string,
+  claimedRecommendationIds: readonly string[]
+): SupplierOrderSentWorkflowResult {
+  const uniqueClaimedIds = [...new Set(claimedRecommendationIds)].sort();
+  if (
+    uniqueClaimedIds.length === 0 ||
+    uniqueClaimedIds.length > 250 ||
+    uniqueClaimedIds.length !== claimedRecommendationIds.length
+  ) {
+    throw new Error("The simulated supplier send claim has an invalid line set.");
+  }
+
+  const order = state.supplierOrders.find(
+    (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
+  );
+  if (!order) throw new Error("Order draft not found");
+
+  const claimed = uniqueClaimedIds.map((recommendationId) => {
+    const recommendation = state.purchaseRecommendations.find(
+      (entry) =>
+        entry.id === recommendationId &&
+        entry.restaurant_id === restaurantId &&
+        entry.supplier_order_id === orderId
+    );
+    if (!recommendation) throw new Error("The simulated supplier send line set changed.");
+    return recommendation;
+  });
   if (order.status === "sent" || order.status === "completed") {
-    return {
-      outcome: "already_applied",
-      order,
-      orderedRecommendations: linked.filter((recommendation) => recommendation.status === "ordered")
-    };
+    const currentOrderedIds = state.purchaseRecommendations
+      .filter(
+        (recommendation) =>
+          recommendation.restaurant_id === restaurantId &&
+          recommendation.supplier_order_id === orderId &&
+          recommendation.status === "ordered"
+      )
+      .map((recommendation) => recommendation.id)
+      .sort();
+    if (
+      claimed.some((recommendation) => recommendation.status !== "ordered") ||
+      currentOrderedIds.length !== uniqueClaimedIds.length ||
+      currentOrderedIds.some((id, index) => id !== uniqueClaimedIds[index])
+    ) {
+      throw new Error("The simulated supplier send completion is inconsistent.");
+    }
+    return { outcome: "already_applied", order, orderedRecommendations: claimed };
+  }
+
+  const currentApprovedIds = state.purchaseRecommendations
+    .filter(
+      (recommendation) =>
+        recommendation.restaurant_id === restaurantId &&
+        recommendation.supplier_order_id === orderId &&
+        recommendation.status === "approved"
+    )
+    .map((recommendation) => recommendation.id)
+    .sort();
+  if (
+    currentApprovedIds.length !== uniqueClaimedIds.length ||
+    currentApprovedIds.some((id, index) => id !== uniqueClaimedIds[index]) ||
+    claimed.some((recommendation) => recommendation.status !== "approved")
+  ) {
+    throw new Error("The simulated supplier send line set changed.");
   }
 
   order.status = "sent";
-  const orderedRecommendations = linked.filter((recommendation) => recommendation.status === "approved");
-  orderedRecommendations.forEach((recommendation) => {
+  claimed.forEach((recommendation) => {
     recommendation.status = "ordered";
   });
-  return { outcome: "applied", order, orderedRecommendations };
+  return { outcome: "applied", order, orderedRecommendations: claimed };
 }
 
 function findRecommendationForWorkflow(state: DemoState, restaurantId: string, recommendationId: string) {

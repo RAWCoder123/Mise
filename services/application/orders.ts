@@ -1,8 +1,5 @@
 import type { RecommendationStatus, SupplierOrder } from "../../types/mise";
-import {
-  buildOrderQueueSummary,
-  buildSupplierEmailPayload
-} from "../domain/miseDomain";
+import { buildOrderQueueSummary } from "../domain/miseDomain";
 import {
   assessOrderAutomation,
   type OrderAutomationAssessment,
@@ -289,14 +286,25 @@ export async function saveSupplierRecipient(
   return repository.upsertSupplierRecipient(input);
 }
 
+export async function previewSupplierSendContent(restaurantId: string, orderId: string) {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
+  const preview = await repository.previewSupplierSendContent(
+    normalizedRestaurantId,
+    normalizedOrderId
+  );
+  if (
+    preview.restaurantId !== normalizedRestaurantId ||
+    preview.orderId !== normalizedOrderId
+  ) {
+    throw new Error("Supplier send preview failed restaurant scope validation.");
+  }
+  return preview;
+}
+
+/** @deprecated Use `previewSupplierSendContent`; retained for screen compatibility. */
 export async function prepareSupplierEmailPayload(restaurantId: string, orderId: string) {
-  const [restaurant, order, emailConnection, recipients] = await Promise.all([
-    repository.fetchRestaurant(restaurantId),
-    repository.fetchSupplierOrder(restaurantId, orderId),
-    repository.fetchEmailConnectionState(restaurantId),
-    repository.fetchSupplierRecipients(restaurantId)
-  ]);
-  return buildSupplierEmailPayload(restaurant, order, emailConnection, recipients);
+  return previewSupplierSendContent(restaurantId, orderId);
 }
 
 export function summarizeOrderQueue(

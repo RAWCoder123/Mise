@@ -18,7 +18,7 @@ import {
   fetchSupplierSendAction,
   fetchSupplierOrderOperationalDetail,
   isGmailIntegrationError,
-  approveSupplierSendEnvelope,
+  approveSupplierSendContent,
   prepareSupplierEmailPayload,
   receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
@@ -29,6 +29,12 @@ import type {
   SupplierOrderDeliveryEvidence
 } from "../../services/domain/supplierReliability";
 import type { MiseAction } from "../../services/domain/miseActions";
+import { isSupplierSendVerificationRace } from "../../services/domain/supplierSendErrors";
+import {
+  PURCHASE_AUTHORITY_BLOCKER_CODES,
+  purchaseAuthorityBlockerMessageKey,
+  type PurchaseAuthorityBlockerCode
+} from "../../services/domain/purchaseAuthority";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -47,7 +53,7 @@ interface OrderNotice {
   title: string;
   message: string;
   tone: StatusNoticeTone;
-  recovery?: "gmail" | "supplier";
+  recovery?: "gmail" | "supplier" | "retry";
 }
 
 export default function OrderDraftDetailScreen() {
@@ -147,20 +153,39 @@ export default function OrderDraftDetailScreen() {
     void load();
   }, [id, load, restaurant?.id]);
 
-  async function persistNote(): Promise<SupplierOrder> {
-    if (!restaurant || !order) throw new Error(t("orders.detail.unavailable"));
-    if (!actionsEditable) return order;
-    if (order.status !== "draft") return order;
-    if (operatorNote.trim() === (order.operator_note ?? "").trim()) return order;
+  async function refreshEmailPreview(
+    restaurantId: string,
+    orderId: string
+  ): Promise<SupplierEmailPayload> {
+    const preview = await prepareSupplierEmailPayload(restaurantId, orderId);
+    if (preview.orderId !== orderId) {
+      throw new Error(t("orders.detail.orderMismatch"));
+    }
+    if (activeRestaurantIdRef.current === restaurantId) setEmailPayload(preview);
+    return preview;
+  }
 
-    const updated = await updateSupplierOrder(restaurant.id, order.id, {
-      operator_note: operatorNote.trim() || null
-    });
+  async function persistNote(): Promise<{
+    order: SupplierOrder;
+    preview: SupplierEmailPayload;
+  }> {
+    if (!restaurant || !order) throw new Error(t("orders.detail.unavailable"));
+    let updated = order;
+    if (
+      actionsEditable &&
+      order.status === "draft" &&
+      operatorNote.trim() !== (order.operator_note ?? "").trim()
+    ) {
+      updated = await updateSupplierOrder(restaurant.id, order.id, {
+        operator_note: operatorNote.trim() || null
+      });
+    }
+    const preview = await refreshEmailPreview(restaurant.id, updated.id);
     if (activeRestaurantIdRef.current === restaurant.id) {
       setOrder(updated);
       setOperatorNote(updated.operator_note ?? "");
     }
-    return updated;
+    return { order: updated, preview };
   }
 
   async function saveNote() {
@@ -202,7 +227,7 @@ export default function OrderDraftDetailScreen() {
     setBusy(true);
     setNotice(null);
     try {
-      const savedOrder = await persistNote();
+      const { order: savedOrder } = await persistNote();
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await Clipboard.setStringAsync(savedOrder.order_message);
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -235,13 +260,8 @@ export default function OrderDraftDetailScreen() {
       setNotice(gmailConnectionRequiredNotice(emailConnection?.status ?? "not_connected", t));
       return;
     }
-    if (!emailPayload?.canSend) {
-      setNotice({
-        title: t("orders.detail.error.supplierEmailTitle"),
-        message: emailPayload?.blockedReason ?? t("orders.detail.error.supplierEmailBody"),
-        tone: "warning",
-        recovery: emailPayload?.to ? "gmail" : "supplier"
-      });
+    if (!emailPayload?.ready || !emailPayload.contentFingerprint) {
+      setNotice(supplierSendBlockerNotice(emailPayload?.blockerCodes ?? [], t));
       return;
     }
     if (!supplierSendAction || !canApproveSupplierSendAction(supplierSendAction)) {
@@ -257,12 +277,10 @@ export default function OrderDraftDetailScreen() {
     setBusy(true);
     setNotice(null);
     try {
-      const savedOrder = await persistNote();
+      const reviewedPayload = emailPayload;
+      const { order: savedOrder, preview: refreshedPayload } = await persistNote();
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      const refreshedPayload = await prepareSupplierEmailPayload(restaurantId, savedOrder.id);
-      if (activeRestaurantIdRef.current !== restaurantId) return;
-      if (!sameDeliveryEnvelope(emailPayload, refreshedPayload)) {
-        setEmailPayload(refreshedPayload);
+      if (!sameReviewedSendContent(reviewedPayload, refreshedPayload)) {
         setNotice({
           title: t("orders.detail.review.changedTitle"),
           message: t("orders.detail.review.changedBody"),
@@ -270,30 +288,38 @@ export default function OrderDraftDetailScreen() {
         });
         return;
       }
-      if (!refreshedPayload.canSend) {
-        setEmailPayload(refreshedPayload);
-        setNotice({
-          title: t("orders.detail.error.supplierEmailTitle"),
-          message: refreshedPayload.blockedReason ?? t("orders.detail.error.supplierEmailBody"),
-          tone: "warning",
-          recovery: refreshedPayload.to ? "gmail" : "supplier"
-        });
+      if (!refreshedPayload.ready || !refreshedPayload.contentFingerprint) {
+        setNotice(supplierSendBlockerNotice(refreshedPayload.blockerCodes, t));
         return;
       }
       if (!refreshedPayload.from || !refreshedPayload.to) {
         throw new Error(t("orders.detail.approvalMissing.body"));
       }
-      const approvedAction = await approveSupplierSendEnvelope(
+      const approval = await approveSupplierSendContent(
         restaurantId,
         supplierSendAction.id,
         savedOrder.id,
-        {
-          from: refreshedPayload.from,
-          to: refreshedPayload.to,
-          subject: refreshedPayload.subject
-        }
+        refreshedPayload.contentFingerprint
       );
       if (activeRestaurantIdRef.current !== restaurantId) return;
+      if (
+        approval.outcome === "send_content_changed" ||
+        approval.outcome === "send_content_unapproved"
+      ) {
+        const approvalBlockers = [approval.outcome, ...approval.blockerCodes];
+        await refreshEmailPreview(restaurantId, savedOrder.id);
+        if (activeRestaurantIdRef.current !== restaurantId) return;
+        setNotice(supplierSendBlockerNotice(approvalBlockers, t));
+        return;
+      }
+      if (approval.outcome !== "applied" && approval.outcome !== "already_applied") {
+        setNotice(supplierSendBlockerNotice(
+          [approval.outcome, ...approval.blockerCodes],
+          t
+        ));
+        return;
+      }
+      const approvedAction = approval.action;
       setSupplierSendAction(approvedAction);
       if (approvedAction.status !== "approved") {
         throw new Error(t("orders.detail.approvalMissing.body"));
@@ -305,13 +331,17 @@ export default function OrderDraftDetailScreen() {
       setNotice({
         title: usingLocalDemo
           ? t("orders.detail.notice.demoSentTitle")
-          : result.outcome === "already_sent"
-            ? t("orders.detail.notice.alreadySentTitle")
-            : t("orders.detail.notice.acceptedTitle"),
+          : result.sentToPreviouslyClaimedRecipient
+            ? t("orders.detail.notice.claimedRecipientTitle")
+            : result.outcome === "already_sent"
+              ? t("orders.detail.notice.alreadySentTitle")
+              : t("orders.detail.notice.acceptedTitle"),
         message: usingLocalDemo
           ? t("orders.detail.notice.demoSentBody")
-          : t("orders.detail.notice.acceptedBody"),
-        tone: "success"
+          : result.sentToPreviouslyClaimedRecipient
+            ? t("orders.detail.notice.claimedRecipientBody")
+            : t("orders.detail.notice.acceptedBody"),
+        tone: result.sentToPreviouslyClaimedRecipient ? "warning" : "success"
       });
     } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -388,11 +418,18 @@ export default function OrderDraftDetailScreen() {
     hubReady ? deliveryEvidence : [];
   const gmailReady = Boolean(
     visibleEmailConnection?.status === "connected" &&
-    visibleEmailPayload?.canSend &&
+    visibleEmailPayload?.ready &&
+    visibleEmailPayload.contentFingerprint &&
     visibleSupplierSendAction &&
     canApproveSupplierSendAction(visibleSupplierSendAction)
   );
   const generatedMessage = visibleOrder ? generatedOrderMessage(visibleOrder) : "";
+  const noteNeedsPreviewRefresh = Boolean(
+    isDraft && operatorNote.trim() !== (visibleOrder?.operator_note ?? "").trim()
+  );
+  const previewBlockerNotice = visibleEmailPayload && !visibleEmailPayload.ready
+    ? supplierSendBlockerNotice(visibleEmailPayload.blockerCodes, t)
+    : null;
 
   function goBackToOrders() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -560,20 +597,66 @@ export default function OrderDraftDetailScreen() {
                   label={t("orders.detail.review.subject")}
                   value={visibleEmailPayload?.subject ?? t("orders.detail.review.unavailable")}
                 />
+                <View style={styles.emailReviewBodyBlock}>
+                  <View style={styles.emailReviewBodyHeader}>
+                    <Text style={styles.emailReviewBodyLabel}>
+                      {t("orders.detail.review.emailBody")}
+                    </Text>
+                    {visibleEmailPayload ? (
+                      <Text style={styles.emailReviewLineCount}>
+                        {t(
+                          visibleEmailPayload.lineCount === 1
+                            ? "orders.detail.review.lines.one"
+                            : "orders.detail.review.lines.other",
+                          { count: formatNumber(visibleEmailPayload.lineCount) }
+                        )}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text selectable style={styles.orderMessage}>
+                    {visibleEmailPayload?.body || t("orders.detail.review.unavailable")}
+                  </Text>
+                </View>
               </View>
-              {visibleEmailPayload?.blockedReason ? (
+              {noteNeedsPreviewRefresh ? (
                 <StatusNotice
                   tone="warning"
-                  title={visibleEmailPayload.to
-                    ? t("orders.detail.connection.connectTitle")
-                    : t("orders.detail.error.supplierEmailTitle")}
-                  message={visibleEmailPayload.blockedReason}
-                  actionLabel={visibleEmailPayload.to
+                  title={t("orders.detail.review.pendingTitle")}
+                  message={t("orders.detail.review.pendingBody")}
+                />
+              ) : null}
+              {previewBlockerNotice ? (
+                <StatusNotice
+                  tone={previewBlockerNotice.tone}
+                  title={previewBlockerNotice.title}
+                  message={previewBlockerNotice.message}
+                  actionLabel={previewBlockerNotice.recovery === "gmail"
                     ? t("orders.detail.recovery.gmail")
-                    : t("orders.detail.recovery.supplier")}
-                  onAction={() => router.push(
-                    visibleEmailPayload.to ? "/settings/gmail" as never : "/settings/suppliers" as never
-                  )}
+                    : previewBlockerNotice.recovery === "supplier"
+                      ? t("orders.detail.recovery.supplier")
+                      : previewBlockerNotice.recovery === "retry"
+                        ? t("orders.detail.recovery.retry")
+                      : undefined}
+                  onAction={previewBlockerNotice.recovery === "gmail"
+                    ? () => router.push("/settings/gmail" as never)
+                    : previewBlockerNotice.recovery === "supplier"
+                      ? () => router.push("/settings/suppliers" as never)
+                      : previewBlockerNotice.recovery === "retry"
+                        ? () => void load(false)
+                      : undefined}
+                />
+              ) : null}
+              {visibleSupplierSendAction?.status === "unverified" ? (
+                <StatusNotice
+                  tone="warning"
+                  title={t("settings.gmail.error.reviewTitle")}
+                  message={t("orders.detail.gmail.review")}
+                />
+              ) : visibleSupplierSendAction?.status === "executing" ? (
+                <StatusNotice
+                  tone="warning"
+                  title={t("orders.detail.gmail.inProgressTitle")}
+                  message={t("orders.detail.gmail.inProgressBody")}
                 />
               ) : null}
               {!visibleSupplierSendAction ? (
@@ -626,12 +709,16 @@ export default function OrderDraftDetailScreen() {
                 ? t("orders.detail.recovery.gmail")
                 : notice.recovery === "supplier"
                   ? t("orders.detail.recovery.supplier")
+                  : notice.recovery === "retry"
+                    ? t("orders.detail.recovery.retry")
                   : undefined}
               onAction={
                 notice.recovery === "gmail"
                   ? () => router.push("/settings/gmail" as never)
                   : notice.recovery === "supplier"
                     ? () => router.push("/settings/suppliers" as never)
+                    : notice.recovery === "retry"
+                      ? () => void load(false)
                     : undefined
               }
             />
@@ -721,11 +808,11 @@ function canApproveSupplierSendAction(action: MiseAction) {
   );
 }
 
-function sameDeliveryEnvelope(left: SupplierEmailPayload, right: SupplierEmailPayload) {
+function sameReviewedSendContent(left: SupplierEmailPayload, right: SupplierEmailPayload) {
   return left.orderId === right.orderId &&
-    left.to === right.to &&
-    left.from === right.from &&
-    left.subject === right.subject;
+    left.contentVersion === right.contentVersion &&
+    Boolean(left.contentFingerprint) &&
+    left.contentFingerprint === right.contentFingerprint;
 }
 
 function deliveryEvidenceTone(status: SupplierDeliveryStatus): BadgeTone {
@@ -758,23 +845,76 @@ function gmailConnectionRequiredNotice(
 }
 
 function orderSendErrorNotice(error: unknown, t: Translate): OrderNotice {
-  if (!isGmailIntegrationError(error)) {
+  if (isSupplierSendVerificationRace(error)) {
     return {
-      title: t("orders.detail.error.sendTitle"),
-      message: t("orders.detail.error.sendBody"),
-      tone: "danger"
+      title: t("orders.detail.error.verificationRaceTitle"),
+      message: t("orders.detail.error.verificationRaceBody"),
+      tone: "warning",
+      recovery: "retry"
     };
   }
-  if (error.status === "approval_required") {
+  const fallback: OrderNotice = {
+    title: t("orders.detail.error.sendTitle"),
+    message: isGmailIntegrationError(error)
+      ? t("orders.detail.gmail.failed")
+      : t("orders.detail.error.sendBody"),
+    tone: "danger"
+  };
+  if (!isGmailIntegrationError(error)) return fallback;
+  return supplierSendBlockerNotice(
+    [String(error.status), ...safeBlockerCodes(error)],
+    t,
+    fallback
+  );
+}
+
+function supplierSendBlockerNotice(
+  blockerCodes: readonly string[],
+  t: Translate,
+  fallback?: OrderNotice
+): OrderNotice {
+  if (blockerCodes.includes("send_verification_race")) {
+    return {
+      title: t("orders.detail.error.verificationRaceTitle"),
+      message: t("orders.detail.error.verificationRaceBody"),
+      tone: "warning",
+      recovery: "retry"
+    };
+  }
+  if (blockerCodes.includes("send_content_changed") || blockerCodes.includes("content_changed")) {
     return {
       title: t("orders.detail.review.changedTitle"),
       message: t("orders.detail.review.changedBody"),
       tone: "warning"
     };
   }
-  if (error.status === "gmail_not_connected" || error.status === "needs_reauth") {
+  if (blockerCodes.includes("delivery_requires_review")) {
     return {
-      title: error.status === "needs_reauth"
+      title: t("settings.gmail.error.reviewTitle"),
+      message: t("orders.detail.gmail.review"),
+      tone: "warning"
+    };
+  }
+  if (
+    blockerCodes.includes("purchase_authority_stale") ||
+    blockerCodes.includes("draft_authority_incomplete") ||
+    blockerCodes.some(isPurchaseEvidenceBlockerCode)
+  ) {
+    return purchaseAuthoritySendNotice(blockerCodes, t);
+  }
+  if (blockerCodes.includes("send_in_progress") || blockerCodes.includes("in_progress")) {
+    return {
+      title: t("orders.detail.gmail.inProgressTitle"),
+      message: t("orders.detail.gmail.inProgressBody"),
+      tone: "warning"
+    };
+  }
+  if (
+    blockerCodes.includes("gmail_not_connected") ||
+    blockerCodes.includes("needs_reauth")
+  ) {
+    return {
+      title: blockerCodes.includes("needs_reauth")
         ? t("orders.detail.connection.reconnectTitle")
         : t("orders.detail.connection.connectTitle"),
       message: t("orders.detail.gmail.notConnected"),
@@ -782,7 +922,10 @@ function orderSendErrorNotice(error: unknown, t: Translate): OrderNotice {
       recovery: "gmail"
     };
   }
-  if (error.status === "supplier_email_missing" || error.status === "supplier_email_invalid") {
+  if (
+    blockerCodes.includes("supplier_email_missing") ||
+    blockerCodes.includes("supplier_email_invalid")
+  ) {
     return {
       title: t("orders.detail.error.supplierEmailTitle"),
       message: t("orders.detail.error.supplierEmailBody"),
@@ -790,25 +933,81 @@ function orderSendErrorNotice(error: unknown, t: Translate): OrderNotice {
       recovery: "supplier"
     };
   }
-  if (error.status === "delivery_requires_review" || error.status === "in_progress") {
-    return {
-      title: t("settings.gmail.error.reviewTitle"),
-      message: t("orders.detail.gmail.review"),
-      tone: "warning"
-    };
-  }
-  if (error.status === "live_sending_disabled" || error.status === "server_configuration_missing") {
+  if (
+    blockerCodes.includes("provider_not_enabled") ||
+    blockerCodes.includes("live_sending_disabled") ||
+    blockerCodes.includes("server_configuration_missing")
+  ) {
     return {
       title: t("orders.detail.error.sendingDisabledTitle"),
       message: t("orders.detail.error.sendingDisabledBody"),
       tone: "warning"
     };
   }
-  return {
-    title: t("orders.detail.error.sendTitle"),
-    message: t("orders.detail.gmail.failed"),
-    tone: "danger"
+  if (
+    blockerCodes.includes("order_lines_missing") ||
+    blockerCodes.includes("order_not_draft") ||
+    blockerCodes.includes("send_content_invalid") ||
+    blockerCodes.includes("send_content_too_large") ||
+    blockerCodes.includes("send_subject_invalid")
+  ) {
+    return {
+      title: t("orders.detail.content.invalidTitle"),
+      message: t("orders.detail.content.invalidBody"),
+      tone: "warning"
+    };
+  }
+  if (
+    blockerCodes.includes("send_content_unapproved") ||
+    blockerCodes.includes("approval_required")
+  ) {
+    return {
+      title: t("orders.detail.content.approvalTitle"),
+      message: t("orders.detail.content.approvalBody"),
+      tone: "warning"
+    };
+  }
+  return fallback ?? {
+    title: t("orders.detail.error.previewUnavailableTitle"),
+    message: t("orders.detail.error.previewUnavailableBody"),
+    tone: "warning"
   };
+}
+
+function purchaseAuthoritySendNotice(
+  blockerCodes: readonly string[],
+  t: Translate
+): OrderNotice {
+  const purchaseBlocker = blockerCodes.find(isPurchaseEvidenceBlockerCode);
+  return {
+    title: t("orders.detail.authority.changedTitle"),
+    message: purchaseBlocker
+      ? `${t("orders.detail.authority.changedBody")} ${t(purchaseAuthorityBlockerMessageKey(purchaseBlocker) as MessageKey)}`
+      : t("orders.detail.authority.changedBody"),
+    tone: "warning"
+  };
+}
+
+function safeBlockerCodes(error: unknown): string[] {
+  const value = error && typeof error === "object"
+    ? (error as { blockerCodes?: unknown }).blockerCodes
+    : null;
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function isPurchaseAuthorityBlockerCode(code: string): code is PurchaseAuthorityBlockerCode {
+  return (PURCHASE_AUTHORITY_BLOCKER_CODES as readonly string[]).includes(code);
+}
+
+function isPurchaseEvidenceBlockerCode(code: string): code is PurchaseAuthorityBlockerCode {
+  return code !== "send_in_progress" &&
+    code !== "delivery_requires_review" &&
+    isPurchaseAuthorityBlockerCode(code);
 }
 
 function generatedOrderMessage(order: SupplierOrder) {
@@ -931,6 +1130,28 @@ const styles = StyleSheet.create({
     minWidth: 0,
     color: colors.text,
     ...typography.body
+  },
+  emailReviewBodyBlock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: 10,
+    gap: 8
+  },
+  emailReviewBodyHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 12
+  },
+  emailReviewBodyLabel: {
+    flex: 1,
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "700"
+  },
+  emailReviewLineCount: {
+    color: colors.muted,
+    ...typography.caption
   },
   orderMessage: {
     color: colors.text,

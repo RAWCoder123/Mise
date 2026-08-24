@@ -22,6 +22,8 @@ export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "supplier_mismatch",
   "draft_authority_incomplete",
   "draft_authority_stale",
+  "send_in_progress",
+  "delivery_requires_review",
   "ordering_disabled",
   "recommendation_no_longer_actionable"
 ] as const;

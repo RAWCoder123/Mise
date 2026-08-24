@@ -20,9 +20,12 @@ import type {
   RestaurantOpsProfile,
   RestaurantTeamMember,
   SetupAttachment,
+  SupplierEmailPayload,
   SupplierOrder,
-  SupplierRecipient
+  SupplierRecipient,
+  SupplierSendContentVersion
 } from "../../types/mise";
+import { SUPPLIER_SEND_CONTENT_BLOCKER_CODES } from "../../types/mise";
 import type { DemoSetupProfile } from "../demoData";
 import type {
   InventoryEvent,
@@ -40,7 +43,10 @@ import type {
   OperationalFindingDecisionInput
 } from "../domain/operationalFindingDecisions";
 import type { VerifiedProviderSaleMapping } from "../domain/providerSaleIdentity";
-import type { PurchaseAuthorityResult } from "../domain/purchaseAuthority";
+import {
+  PURCHASE_AUTHORITY_BLOCKER_CODES,
+  type PurchaseAuthorityResult
+} from "../domain/purchaseAuthority";
 import type {
   RestaurantMemory,
   RestaurantMemoryStatus
@@ -147,25 +153,57 @@ export const OPERATIONAL_DECISION_HISTORY_DAYS = 180;
 export type GmailIntegrationErrorStatus =
   | "approval_required"
   | "delivery_requires_review"
+  | "draft_authority_incomplete"
   | "gmail_not_connected"
   | "in_progress"
   | "live_sending_disabled"
   | "needs_reauth"
   | "provider_rejected"
+  | "provider_not_enabled"
   | "provider_unavailable"
+  | "purchase_authority_stale"
   | "request_blocked"
+  | "send_content_changed"
+  | "send_content_unapproved"
+  | "send_in_progress"
   | "server_configuration_missing"
   | "supplier_email_invalid"
   | "supplier_email_missing"
   | "unknown";
 
+export const SUPPLIER_SEND_BLOCKER_CODES = [
+  ...SUPPLIER_SEND_CONTENT_BLOCKER_CODES,
+  ...PURCHASE_AUTHORITY_BLOCKER_CODES,
+  "approval_required",
+  "in_progress",
+  "live_sending_disabled",
+  "needs_reauth",
+  "provider_not_enabled",
+  "provider_rejected",
+  "provider_unavailable",
+  "purchase_authority_stale",
+  "request_blocked",
+  "send_content_changed",
+  "send_content_unapproved",
+  "send_verification_race",
+  "server_configuration_missing"
+] as const;
+
+export type SupplierSendBlockerCode = (typeof SUPPLIER_SEND_BLOCKER_CODES)[number];
+
 export class GmailIntegrationError extends Error {
   readonly status: GmailIntegrationErrorStatus;
+  readonly blockerCodes: SupplierSendBlockerCode[];
 
-  constructor(status: GmailIntegrationErrorStatus, message: string) {
+  constructor(
+    status: GmailIntegrationErrorStatus,
+    message: string,
+    blockerCodes: SupplierSendBlockerCode[] = []
+  ) {
     super(message);
     this.name = "GmailIntegrationError";
     this.status = status;
+    this.blockerCodes = blockerCodes;
   }
 }
 
@@ -274,15 +312,30 @@ export interface SupplierOrderEmailSendResult {
   status: "sent";
   outcome: "applied" | "already_applied" | "already_sent";
   providerMessageId: string | null;
+  sentToPreviouslyClaimedRecipient: boolean;
   order: SupplierOrder;
   orderedRecommendations: PurchaseRecommendation[];
 }
 
-export interface SupplierSendEnvelope {
-  from: string;
-  to: string;
-  subject: string;
-}
+export type SupplierSendContentApprovalResult =
+  | {
+      outcome: "applied" | "already_applied";
+      action: MiseAction;
+      contentVersion: SupplierSendContentVersion;
+      contentFingerprint: string;
+      blockerCodes: [];
+    }
+  | {
+      outcome:
+        | "send_content_changed"
+        | "send_content_unapproved"
+        | "send_in_progress"
+        | "delivery_requires_review";
+      action: null;
+      contentVersion: null;
+      contentFingerprint: null;
+      blockerCodes: SupplierSendBlockerCode[];
+    };
 
 export interface RestaurantSetupSnapshotInput {
   inventoryItems: InventoryItemInput[];
@@ -618,6 +671,7 @@ export interface MiseRepository {
     menuItemId: string | null,
     decision: "verify" | "reject"
   ): Promise<PosMappingReviewResult>;
+  previewSupplierSendContent(restaurantId: string, orderId: string): Promise<SupplierEmailPayload>;
   sendSupplierOrderEmail(restaurantId: string, orderId: string): Promise<SupplierOrderEmailSendResult>;
   fetchInsights(restaurantId: string): Promise<Insight[]>;
   replaceInsights(restaurantId: string, insights: Insight[]): Promise<void>;
@@ -667,12 +721,12 @@ export interface MiseRepository {
     actionId: string,
     decision: "approved" | "rejected"
   ): Promise<MiseAction>;
-  approveSupplierSendEnvelope?(
+  approveSupplierSendContent(
     restaurantId: string,
     actionId: string,
     orderId: string,
-    envelope: SupplierSendEnvelope
-  ): Promise<MiseAction>;
+    contentFingerprint: string
+  ): Promise<SupplierSendContentApprovalResult>;
   listRestaurantMemories(
     restaurantId: string,
     options?: { status?: RestaurantMemoryStatus | "actionable"; limit?: number }

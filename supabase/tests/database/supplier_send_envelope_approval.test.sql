@@ -1,20 +1,6 @@
 begin;
 
-select plan(12);
-
-create or replace function pg_temp.try_execute(statement text)
-returns boolean
-language plpgsql
-security invoker
-as $$
-begin
-  execute statement;
-  return true;
-exception
-  when others then
-    return false;
-end;
-$$;
+select plan(27);
 
 select is(
   has_function_privilege(
@@ -23,7 +9,7 @@ select is(
     'EXECUTE'
   ),
   false,
-  'anonymous callers cannot approve a supplier send envelope'
+  'anonymous callers cannot invoke the retired envelope-only approval boundary'
 );
 select is(
   has_function_privilege(
@@ -31,8 +17,8 @@ select is(
     'public.approve_supplier_send_envelope(uuid,uuid,uuid,text,text,text)',
     'EXECUTE'
   ),
-  true,
-  'authenticated callers can reach the role-checked approval boundary'
+  false,
+  'authenticated callers cannot invoke the retired envelope-only approval boundary'
 );
 select is(
   has_function_privilege(
@@ -41,7 +27,63 @@ select is(
     'EXECUTE'
   ),
   false,
-  'the service role cannot forge a user envelope approval'
+  'the service role cannot forge an envelope-only approval'
+);
+
+select is(
+  has_function_privilege(
+    'anon',
+    'public.preview_supplier_send_content(uuid,uuid)',
+    'EXECUTE'
+  ),
+  false,
+  'anonymous callers cannot preview supplier send content'
+);
+select is(
+  has_function_privilege(
+    'authenticated',
+    'public.preview_supplier_send_content(uuid,uuid)',
+    'EXECUTE'
+  ),
+  true,
+  'authenticated members can reach the tenant-checked content preview boundary'
+);
+select is(
+  has_function_privilege(
+    'service_role',
+    'public.preview_supplier_send_content(uuid,uuid)',
+    'EXECUTE'
+  ),
+  false,
+  'the service role cannot bypass the member content preview boundary'
+);
+
+select is(
+  has_function_privilege(
+    'anon',
+    'public.approve_supplier_send_content(uuid,uuid,uuid,text)',
+    'EXECUTE'
+  ),
+  false,
+  'anonymous callers cannot approve supplier send content'
+);
+select is(
+  has_function_privilege(
+    'authenticated',
+    'public.approve_supplier_send_content(uuid,uuid,uuid,text)',
+    'EXECUTE'
+  ),
+  true,
+  'authenticated managers can reach the role-checked content approval boundary'
+);
+select is(
+  has_function_privilege(
+    'service_role',
+    'public.approve_supplier_send_content(uuid,uuid,uuid,text)',
+    'EXECUTE'
+  ),
+  false,
+  'the service role cannot forge a user content approval'
 );
 select is(
   has_function_privilege(
@@ -52,27 +94,6 @@ select is(
   true,
   'the provider boundary remains callable only through the guarded claim'
 );
-select like(
-  pg_get_functiondef(
-    'public.approve_supplier_send_envelope(uuid,uuid,uuid,text,text,text)'::regprocedure
-  ),
-  '%approvedEnvelope%',
-  'approval persists the reviewed delivery envelope'
-);
-select like(
-  pg_get_functiondef(
-    'private.service_claim_supplier_email_send(uuid,uuid,uuid,uuid,text)'::regprocedure
-  ),
-  '%approved_envelope%approval_required%service_claim_supplier_email_send_unchecked%',
-  'the atomic provider claim rejects missing or stale envelope approval before delivery'
-);
-select like(
-  pg_get_functiondef(
-    'private.service_claim_supplier_email_send_unchecked(uuid,uuid,uuid,uuid,text)'::regprocedure
-  ),
-  '%lower(trim(recipient.supplier_name)) = lower(trim(order_row.supplier_name))%',
-  'provider delivery resolves the same normalized supplier identity as review'
-);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -81,7 +102,7 @@ insert into auth.users (
 values (
   'ab111111-1111-4111-8111-111111111111',
   '00000000-0000-0000-0000-000000000000',
-  'authenticated', 'authenticated', 'envelope-manager@mise.test',
+  'authenticated', 'authenticated', 'content-manager@mise.test',
   crypt('password', gen_salt('bf')), now(),
   '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
 );
@@ -111,57 +132,168 @@ values (
   'envelope produce', 'first@produce.test'
 );
 
+insert into public.inventory_items (
+  id, restaurant_id, item_name, category, unit, current_quantity,
+  par_level, reorder_threshold, estimated_unit_cost, supplier_name
+)
+values (
+  'ab000000-0000-4000-8000-000000000011',
+  'ab000000-0000-4000-8000-000000000001',
+  'Roma tomatoes', 'Produce', 'case', 1, 10, 3, 12, 'Envelope Produce'
+);
+
 insert into public.supplier_orders (
   id, restaurant_id, supplier_name, order_message, status, delivery_date
 )
 values (
   'ab000000-0000-4000-8000-000000000201',
   'ab000000-0000-4000-8000-000000000001',
-  'Envelope Produce', 'Ten cases of tomatoes', 'draft', current_date + 1
+  'Envelope Produce', 'Temporary body', 'draft', current_date + 1
 );
+
+insert into public.purchase_recommendations (
+  id, restaurant_id, inventory_item_id, item_name, supplier_name,
+  recommended_quantity, unit, reason, urgency, status, supplier_order_id
+)
+values (
+  'ab000000-0000-4000-8000-000000000101',
+  'ab000000-0000-4000-8000-000000000001',
+  'ab000000-0000-4000-8000-000000000011',
+  'Roma tomatoes', 'Envelope Produce', 10, 'case',
+  'Exact content approval fixture', 'high', 'approved',
+  'ab000000-0000-4000-8000-000000000201'
+);
+
+update public.supplier_orders
+set order_message = 'Order draft for Envelope Produce'
+  || E'\n\nRoma tomatoes - 10 case'
+  || E'\n\nDelivery requested: Tomorrow morning'
+where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
+  and id = 'ab000000-0000-4000-8000-000000000201';
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'ab111111-1111-4111-8111-111111111111', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
+
 select is(
-  (
-    public.approve_supplier_send_envelope(
-      'ab000000-0000-4000-8000-000000000001',
-      (
-        select id from public.mise_actions
-        where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
-          and idempotency_key = 'send_supplier_order:ab000000-0000-4000-8000-000000000201'
-      ),
-      'ab000000-0000-4000-8000-000000000201',
-      'orders@envelope.test',
-      'first@produce.test',
-      'Envelope Kitchen order for Envelope Produce'
-    )
-  ).status,
-  'approved',
-  'a manager can approve the exact visible envelope'
+  (public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'ready')::boolean,
+  true,
+  'the exact complete supplier email snapshot is ready for review'
+);
+select is(
+  (public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'lineCount')::integer,
+  1,
+  'the preview binds the exact approved line set'
+);
+select is(
+  public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'contentVersion',
+  'mise.supplier_send.v1',
+  'the preview exposes the canonical supplier-send content version'
+);
+select is(
+  public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'from',
+  'orders@envelope.test',
+  'the preview exposes the exact server-resolved sender'
+);
+select is(
+  public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'to',
+  'first@produce.test',
+  'the preview exposes the exact server-resolved recipient'
+);
+select is(
+  public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'subject',
+  'Envelope Kitchen order for Envelope Produce',
+  'the preview exposes the exact server-generated subject'
+);
+select is(
+  public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'body',
+  'Order draft for Envelope Produce'
+    || E'\n\nRoma tomatoes - 10 case'
+    || E'\n\nDelivery requested: Tomorrow morning',
+  'the preview exposes the exact complete body instead of an envelope-only summary'
+);
+select ok(
+  (public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'contentFingerprint') ~ '^[a-f0-9]{64}$',
+  'the ready snapshot includes a lowercase SHA-256 fingerprint'
+);
+select set_config(
+  'mise_test.reviewed_content_fingerprint',
+  public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'contentFingerprint',
+  true
+);
+
+select is(
+  public.approve_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    (
+      select id from public.mise_actions
+      where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
+        and idempotency_key = 'send_supplier_order:ab000000-0000-4000-8000-000000000201'
+    ),
+    'ab000000-0000-4000-8000-000000000201',
+    current_setting('mise_test.reviewed_content_fingerprint')
+  )->>'outcome',
+  'applied',
+  'a manager can approve the exact full supplier-send snapshot'
 );
 reset role;
 
 select is(
   (
-    select expected_impact->'approvedEnvelope'->>'to'
+    select expected_impact->'approvedSendContent'->>'fingerprint'
     from public.mise_actions
     where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
       and idempotency_key = 'send_supplier_order:ab000000-0000-4000-8000-000000000201'
   ),
-  'first@produce.test',
-  'the action records the approved recipient'
+  current_setting('mise_test.reviewed_content_fingerprint'),
+  'the action records the exact reviewed content fingerprint'
+);
+select is(
+  (
+    select expected_impact->'approvedSendContent' ? 'body'
+    from public.mise_actions
+    where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
+      and idempotency_key = 'send_supplier_order:ab000000-0000-4000-8000-000000000201'
+  ),
+  false,
+  'the bounded approval attestation does not duplicate the email body'
 );
 select is(
   (
     select count(*)
     from public.audit_logs
     where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
-      and action = 'supplier_send_envelope_approved'
+      and action = 'supplier_send_content_approved'
   ),
   1::bigint,
-  'the envelope review leaves tenant-scoped audit evidence'
+  'full-content approval leaves one tenant-scoped audit record'
 );
 
 update public.supplier_recipients
@@ -171,35 +303,58 @@ where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'ab111111-1111-4111-8111-111111111111', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
 select is(
-  pg_temp.try_execute($sql$
-    select public.approve_supplier_send_envelope(
-      'ab000000-0000-4000-8000-000000000001',
-      (
-        select id from public.mise_actions
-        where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
-          and idempotency_key = 'send_supplier_order:ab000000-0000-4000-8000-000000000201'
-      ),
-      'ab000000-0000-4000-8000-000000000201',
-      'orders@envelope.test',
-      'first@produce.test',
-      'Envelope Kitchen order for Envelope Produce'
-    )
-  $sql$),
-  false,
-  'a changed recipient invalidates the prior review'
+  public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'to',
+  'changed@produce.test',
+  'the current preview reflects a changed supplier recipient'
+);
+select ok(
+  public.preview_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000201'
+  )->>'contentFingerprint'
+    is distinct from current_setting('mise_test.reviewed_content_fingerprint'),
+  'a recipient change invalidates the previously reviewed fingerprint'
+);
+select is(
+  public.approve_supplier_send_content(
+    'ab000000-0000-4000-8000-000000000001',
+    (
+      select id from public.mise_actions
+      where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
+        and idempotency_key = 'send_supplier_order:ab000000-0000-4000-8000-000000000201'
+    ),
+    'ab000000-0000-4000-8000-000000000201',
+    current_setting('mise_test.reviewed_content_fingerprint')
+  )->>'outcome',
+  'send_content_changed',
+  'stale reviewed content cannot be approved after the current snapshot changes'
 );
 reset role;
 
 select is(
   (
-    select expected_impact->'approvedEnvelope'->>'to'
+    select expected_impact->'approvedSendContent'->>'to'
     from public.mise_actions
     where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
       and idempotency_key = 'send_supplier_order:ab000000-0000-4000-8000-000000000201'
   ),
   'first@produce.test',
-  'a failed stale review does not overwrite the approved envelope'
+  'a stale approval attempt does not overwrite the prior bounded attestation'
+);
+select is(
+  (
+    select count(*)
+    from public.audit_logs
+    where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
+      and action = 'supplier_send_content_approved'
+  ),
+  1::bigint,
+  'a stale approval attempt does not duplicate approval audit evidence'
 );
 
 select * from finish();

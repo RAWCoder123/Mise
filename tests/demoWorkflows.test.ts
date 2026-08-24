@@ -6,6 +6,7 @@ import {
   createInitialDemoState,
   DEMO_RESTAURANT_ID,
   dismissRecommendationInDemoState,
+  markClaimedSupplierOrderSentInDemoState,
   markSupplierOrderSentInDemoState,
   rebuildPurchaseRecommendations,
   repairDemoState,
@@ -13,6 +14,12 @@ import {
   type DemoState,
   type StoredDemoState
 } from "../services/demoData";
+import {
+  createPreparedAction,
+  markApproved,
+  markExecuted,
+  miseActionIdempotencyKey
+} from "../services/domain/miseActions";
 import type { InventoryEvent } from "../services/domain/inventoryLedger";
 import type { PurchaseRecommendation, SupplierOrder } from "../types/mise";
 
@@ -293,7 +300,7 @@ test("undo refuses to replace a newer pending recommendation", () => {
   assert.ok(approved.supplier_order_id);
 });
 
-test("marking a supplier draft sent advances only approved linked recommendations", () => {
+test("legacy demo mark-sent observes only durable exact simulated provider completion", () => {
   const state = emptyWorkflowState();
   const carrots = recommendation("carrots", { item_name: "Carrots" });
   const celery = recommendation("celery", { item_name: "Celery" });
@@ -308,17 +315,61 @@ test("marking a supplier draft sent advances only approved linked recommendation
   });
   state.purchaseRecommendations.push(dismissedLinked);
 
-  const sent = markSupplierOrderSentInDemoState(state, DEMO_RESTAURANT_ID, approval.order.id);
-  assert.equal(sent.outcome, "applied");
-  assert.equal(sent.order.status, "sent");
-  assert.deepEqual(sent.orderedRecommendations.map((entry) => entry.id), [carrots.id, celery.id]);
-  assert.equal(carrots.status, "ordered");
-  assert.equal(celery.status, "ordered");
+  assert.throws(
+    () => markSupplierOrderSentInDemoState(state, DEMO_RESTAURANT_ID, approval.order!.id),
+    /Provider acceptance is required/
+  );
+  assert.equal(approval.order.status, "draft");
+  assert.equal(carrots.status, "approved");
+  assert.equal(celery.status, "approved");
   assert.equal(dismissedLinked.status, "dismissed");
 
-  const replay = markSupplierOrderSentInDemoState(state, DEMO_RESTAURANT_ID, approval.order.id);
-  assert.equal(replay.outcome, "already_applied");
-  assert.deepEqual(replay.orderedRecommendations.map((entry) => entry.id), [carrots.id, celery.id]);
+  const claimedIds = [carrots.id, celery.id];
+  markClaimedSupplierOrderSentInDemoState(
+    state,
+    DEMO_RESTAURANT_ID,
+    approval.order.id,
+    claimedIds
+  );
+  const approvedContent = {
+    version: "mise.supplier_send.v1",
+    fingerprint: "a".repeat(64),
+    contentRevision: 1
+  };
+  const prepared = createPreparedAction({
+    restaurantId: DEMO_RESTAURANT_ID,
+    actionType: "send_supplier_order",
+    idempotencyKey: miseActionIdempotencyKey(
+      DEMO_RESTAURANT_ID,
+      "send_supplier_order",
+      approval.order.id
+    ),
+    expectedImpact: { orderId: approval.order.id, approvedSendContent: approvedContent },
+    now: FIXED_NOW.toISOString()
+  });
+  const executed = markExecuted(
+    markApproved(prepared, "demo_user", FIXED_NOW.toISOString()),
+    {
+      supplierOrderId: approval.order.id,
+      provider: "demo",
+      providerMessageId: `demo-gmail:${approval.order.id}`,
+      contentVersion: approvedContent.version,
+      contentFingerprint: approvedContent.fingerprint,
+      contentRevision: approvedContent.contentRevision,
+      recommendationIds: claimedIds,
+      simulated: true
+    },
+    FIXED_NOW.toISOString()
+  );
+  state.miseActions.push(executed);
+
+  const observed = markSupplierOrderSentInDemoState(
+    state,
+    DEMO_RESTAURANT_ID,
+    approval.order.id
+  );
+  assert.equal(observed.outcome, "already_applied");
+  assert.deepEqual(observed.orderedRecommendations.map((entry) => entry.id), claimedIds);
   assert.throws(
     () => markSupplierOrderSentInDemoState(state, "another_restaurant", approval.order!.id),
     /Order draft not found/
@@ -335,6 +386,7 @@ test("demo-state repair retains history, deduplicates pending rows, and restores
   const raw: StoredDemoState = {
     ...seed,
     schema_version: 1,
+    supplierSendContentRevisions: undefined,
     supplierOrders: [legacyOrder],
     purchaseRecommendations: [
       {
@@ -374,7 +426,8 @@ test("demo-state repair retains history, deduplicates pending rows, and restores
   const pending = repaired.state.purchaseRecommendations.find((entry) => entry.status === "pending");
 
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 10);
+  assert.equal(repaired.state.schema_version, 11);
+  assert.equal(repaired.state.supplierSendContentRevisions[legacyOrder.id], 1);
   assert.equal(repaired.state.purchaseRecommendations.length, 3);
   assert.equal(new Set(repaired.state.purchaseRecommendations.map((entry) => entry.id)).size, 3);
   assert.deepEqual(

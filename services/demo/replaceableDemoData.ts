@@ -59,7 +59,7 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 10;
+  schema_version: 11;
   restaurants: Restaurant[];
   users: AppUser[];
   posSales: PosSale[];
@@ -83,6 +83,8 @@ export interface DemoState {
   restaurantMemories: import("../domain/restaurantMemory").RestaurantMemory[];
   /** Prepared/pending Mise actions mirror of hosted mise_actions. */
   miseActions: import("../domain/miseActions").MiseAction[];
+  /** Monotonic per-order token mirroring supplier_orders.send_content_revision. */
+  supplierSendContentRevisions: Record<string, number>;
   /** Restaurant autonomy rules mirror of hosted restaurant_autonomy_rules. */
   autonomyRules: import("../domain/restaurantAutonomy").RestaurantAutonomyRule[];
   /** Action outcome mirror of hosted action_outcomes. */
@@ -331,7 +333,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 10,
+    schema_version: 11,
     restaurants: [restaurant],
     users: [user],
     posSales,
@@ -373,8 +375,8 @@ export function createInitialDemoState(
         restaurant_id: DEMO_RESTAURANT_ID,
         supplier_name: "Local Produce Co.",
         order_message:
-          "Order draft for Local Produce Co.\n\nRoma Tomatoes - 20 lb\nRed Onions - 10 lb\nLemons - 5 lb\nCilantro - 2 bunch\nGarlic - 2 lb\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended based on recent sales and current inventory levels.",
-        operator_note: null,
+          "Order draft for Local Produce Co.\n\nLettuce - 23 heads\nTomatoes - 20 lbs\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended based on recent sales and current inventory levels.",
+        operator_note: "Recommended based on recent sales and current inventory levels.",
         status: "draft",
         delivery_date: tomorrow,
         created_at: now
@@ -466,6 +468,9 @@ export function createInitialDemoState(
     activityEvents: [],
     restaurantMemories: [],
     miseActions: [],
+    supplierSendContentRevisions: {
+      "00000000-0000-4000-8000-000000000601": 1
+    },
     autonomyRules: [],
     actionOutcomes: [],
     inventoryEvents: [],
@@ -513,6 +518,8 @@ export function createInitialDemoState(
  * seeds reviewable waste evidence in the replaceable reference dataset.
  * Version 8 repairs interim reference stores that were created before the
  * seeded waste ledger was included.
+ * Version 11 adds monotonic supplier-send content revisions so edit/revert
+ * cycles cannot revive an older simulated approval.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const referenceRestaurantNameMatches =
@@ -588,7 +595,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 10,
+    schema_version: 11,
     restaurants,
     users: raw.users ?? seeded.users,
     posSales: raw.posSales ?? seeded.posSales,
@@ -612,6 +619,22 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       ? raw.restaurantMemories
       : seeded.restaurantMemories,
     miseActions: Array.isArray(raw.miseActions) ? raw.miseActions : seeded.miseActions,
+    supplierSendContentRevisions:
+      raw.supplierSendContentRevisions &&
+      typeof raw.supplierSendContentRevisions === "object" &&
+      !Array.isArray(raw.supplierSendContentRevisions)
+        ? Object.fromEntries(
+            supplierOrders.map((order) => {
+              const candidate = raw.supplierSendContentRevisions?.[order.id];
+              return [
+                order.id,
+                typeof candidate === "number" && Number.isInteger(candidate) && candidate > 0
+                  ? candidate
+                  : 1
+              ];
+            })
+          )
+        : Object.fromEntries(supplierOrders.map((order) => [order.id, 1])),
     autonomyRules: Array.isArray(raw.autonomyRules) ? raw.autonomyRules : seeded.autonomyRules,
     actionOutcomes: Array.isArray(raw.actionOutcomes) ? raw.actionOutcomes : seeded.actionOutcomes,
     inventoryEvents:
@@ -642,12 +665,13 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 10 ||
+      raw.schema_version !== 11 ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
       !Array.isArray(raw.activityEvents) ||
       !Array.isArray(raw.restaurantMemories) ||
+      !raw.supplierSendContentRevisions ||
       !Array.isArray(raw.actionOutcomes) ||
       !Array.isArray(raw.inventoryEvents) ||
       !Array.isArray(raw.inventoryCountSessions) ||
@@ -951,8 +975,9 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       supplier_name: "Metro Produce Supply",
       order_message:
-        `Order draft for Metro Produce Supply\n\nNapa Cabbage - 18 head\nBell Peppers - 24 lb\nScallions - 12 bunch\nGinger - 6 lb\nGarlic - 8 lb\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended from ${DEMO_DATASET.restaurant.name}'s current dinner pace and close-count levels.`,
-      operator_note: null,
+        `Order draft for Metro Produce Supply\n\nBell peppers - 24 lbs\nNapa cabbage - 18 heads\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended from ${DEMO_DATASET.restaurant.name}'s current dinner pace and close-count levels.`,
+      operator_note:
+        `Recommended from ${DEMO_DATASET.restaurant.name}'s current dinner pace and close-count levels.`,
       status: "draft",
       delivery_date: tomorrow,
       created_at: createdAt

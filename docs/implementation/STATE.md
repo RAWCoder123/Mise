@@ -48,6 +48,18 @@ Finish and merge the first controlled restaurant operating loop. Continuous oper
 - `READY FOR FIRST CONTROLLED RESTAURANT PILOT`; or
 - `READY AFTER EXTERNAL CONFIGURATION` when every remaining blocker is genuinely external.
 
+## Recorded supplier identity debt
+
+MISE-003B supplier-send serialization currently keys its advisory-lock boundary
+and recipient association by `restaurant_id + lower(trim(supplier_name))` rather
+than a durable supplier identifier. A supplier rename can therefore move work
+to a different lock key and makes identity continuity depend on normalized text;
+the current send workflow contains that risk with exact-content revisions,
+immutable claims, and fail-closed revalidation, but it does not remove the
+underlying identity debt. **MISE-003C — Durable Supplier Identity** must add the
+stable supplier identifier and migrate order, recipient, and serialization
+relationships to it before name-based matching can be retired.
+
 ## Documentation authority
 
 Current:
