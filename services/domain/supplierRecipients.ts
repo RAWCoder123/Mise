@@ -1,7 +1,8 @@
-import type { SupplierRecipient } from "../../types/mise";
+import type { Supplier, SupplierRecipient } from "../../types/mise";
 
 export interface SupplierRecipientDirectoryEntry {
   restaurantId: string;
+  supplierId: string;
   supplierName: string;
   email: string | null;
   recipientId: string | null;
@@ -9,30 +10,30 @@ export interface SupplierRecipientDirectoryEntry {
   source: "current" | "saved" | "current_and_saved";
 }
 
-export interface SupplierCatalogReference {
-  restaurantId: string;
-  supplierName: string;
-}
-
 /**
  * Builds the screen-facing supplier directory without inventing recipient rows.
- * Current inventory suppliers remain visible even when no recipient has been saved,
- * while saved recipients remain recoverable after a supplier leaves inventory.
+ * Every tenant supplier remains visible even when no recipient has been saved.
+ * Supplier IDs, not display names, bind saved recipients to their directory row.
  */
 export function buildSupplierRecipientDirectory(
   restaurantId: string,
-  currentSupplierNames: readonly string[],
+  suppliers: readonly Supplier[],
   recipients: readonly SupplierRecipient[]
 ): SupplierRecipientDirectoryEntry[] {
   const entries = new Map<string, SupplierRecipientDirectoryEntry>();
 
-  for (const rawName of currentSupplierNames) {
-    const supplierName = normalizeDisplayName(rawName);
-    if (!supplierName) continue;
-    const key = supplierKey(supplierName);
-    if (entries.has(key)) continue;
-    entries.set(key, {
+  for (const supplier of suppliers) {
+    if (supplier.restaurant_id !== restaurantId) continue;
+    const supplierName = normalizeDisplayName(supplier.display_name);
+    if (!supplier.id || !supplierName) {
+      throw new Error("Supplier directory received an invalid durable identity.");
+    }
+    if (entries.has(supplier.id)) {
+      throw new Error("Supplier directory received a duplicate durable identity.");
+    }
+    entries.set(supplier.id, {
       restaurantId,
+      supplierId: supplier.id,
       supplierName,
       email: null,
       recipientId: null,
@@ -43,24 +44,21 @@ export function buildSupplierRecipientDirectory(
 
   for (const recipient of recipients) {
     if (recipient.restaurant_id !== restaurantId) continue;
-    const savedName = normalizeDisplayName(recipient.supplier_name);
-    if (!savedName) continue;
-    const key = supplierKey(savedName);
-    const existing = entries.get(key);
+    const existing = entries.get(recipient.supplier_id);
+    if (!existing) {
+      throw new Error("Supplier recipient is detached from its durable supplier identity.");
+    }
     if (existing?.recipientId && !isNewer(recipient.updated_at, existing.updatedAt)) {
       continue;
     }
-    entries.set(key, {
+    entries.set(recipient.supplier_id, {
       restaurantId,
-      supplierName: existing?.source === "current" || existing?.source === "current_and_saved"
-        ? existing.supplierName
-        : savedName,
+      supplierId: recipient.supplier_id,
+      supplierName: existing.supplierName,
       email: recipient.email,
       recipientId: recipient.id,
       updatedAt: recipient.updated_at,
-      source: existing?.source === "current" || existing?.source === "current_and_saved"
-        ? "current_and_saved"
-        : "saved"
+      source: "current_and_saved"
     });
   }
 
@@ -68,32 +66,6 @@ export function buildSupplierRecipientDirectory(
     const keyDelta = compareStrings(supplierKey(left.supplierName), supplierKey(right.supplierName));
     return keyDelta || compareStrings(left.supplierName, right.supplierName);
   });
-}
-
-export function supplierRecipientDirectoryKey(supplierName: string) {
-  return supplierKey(normalizeDisplayName(supplierName));
-}
-
-/**
- * Resolves a requested supplier to an existing tenant-scoped catalog identity.
- * References are ordered by authority, so callers can preserve the same source
- * preference as the hosted upsert (inventory first and saved recipients last).
- */
-export function findSupplierRecipientCatalogName(
-  restaurantId: string,
-  requestedSupplierName: string,
-  references: readonly SupplierCatalogReference[]
-) {
-  const requestedKey = supplierRecipientDirectoryKey(requestedSupplierName);
-  if (!requestedKey) return null;
-
-  for (const reference of references) {
-    if (reference.restaurantId !== restaurantId) continue;
-    const canonicalName = normalizeDisplayName(reference.supplierName);
-    if (canonicalName && supplierKey(canonicalName) === requestedKey) return canonicalName;
-  }
-
-  return null;
 }
 
 function normalizeDisplayName(value: string) {

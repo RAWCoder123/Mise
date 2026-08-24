@@ -22,6 +22,7 @@ export interface CanonicalSupplierSendSnapshot {
   contentRevision: number;
   restaurantId: string;
   orderId: string;
+  supplierId: string;
   supplierName: string;
   from: string | null;
   to: string | null;
@@ -162,7 +163,7 @@ export async function buildCanonicalSupplierSendContent(
   const matchingRecipients = input.recipients.filter(
     (recipient) =>
       recipient.restaurant_id === input.restaurant.id &&
-      recipient.supplier_name.trim().toLowerCase() === input.order.supplier_name.trim().toLowerCase()
+      recipient.supplier_id === input.order.supplier_id
   );
   const to = matchingRecipients.length === 1
     ? normalizedEmail(matchingRecipients[0]?.email)
@@ -187,6 +188,15 @@ export async function buildCanonicalSupplierSendContent(
     .sort((left, right) => left.id.localeCompare(right.id));
   if (linked.length === 0) blockers.add("order_lines_missing");
   if (linked.length > CONTENT_MAX_LINES) blockers.add("send_content_too_large");
+  if (
+    linked.some(
+      (recommendation) =>
+        recommendation.supplier_id !== input.order.supplier_id ||
+        recommendation.supplier_name !== input.order.supplier_name
+    )
+  ) {
+    blockers.add("send_content_invalid");
+  }
 
   const expectedBody = buildSupplierOrderMessage(
     input.order.supplier_name,
@@ -204,6 +214,7 @@ export async function buildCanonicalSupplierSendContent(
     contentRevision: input.contentRevision,
     restaurantId: input.restaurant.id,
     orderId: input.order.id,
+    supplierId: input.order.supplier_id,
     supplierName: input.order.supplier_name,
     from,
     to,
@@ -214,6 +225,7 @@ export async function buildCanonicalSupplierSendContent(
     lines: linked.map((recommendation) => ({
       recommendationId: recommendation.id,
       inventoryItemId: recommendation.inventory_item_id,
+      supplierId: recommendation.supplier_id,
       itemName: recommendation.item_name,
       quantity: recommendation.recommended_quantity,
       unit: recommendation.unit,

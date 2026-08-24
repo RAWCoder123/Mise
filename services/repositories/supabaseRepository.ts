@@ -18,6 +18,7 @@ import type {
   RestaurantMembership,
   RestaurantTeamMember,
   SetupAttachment,
+  Supplier,
   SupplierItem,
   SupplierOrder,
   SupplierRecipient
@@ -86,12 +87,14 @@ import {
   normalizeRestaurantMembership,
   normalizeRestaurantTeamMember,
   normalizeSetupAttachment,
+  normalizeSupplier,
   normalizeSupplierItem,
   normalizeSupplierOrder,
   normalizeSupplierDeliveryItemRecord,
   normalizeSupplierDeliveryRecord,
   normalizeSupplierRecipient,
   normalizeSupplierSendContentPreview,
+  requireSupplierDisplayName,
   requireSupplierSendContentFingerprint
 } from "../miseValidation";
 import { toDateKeyInTimeZone } from "../../utils/format";
@@ -121,6 +124,61 @@ import {
   type SupplierSendContentApprovalResult,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
+
+const hostedUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function requireHostedUuid(value: string, label: string) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!hostedUuidPattern.test(normalized)) {
+    throw new Error(`Invalid ${label} identity.`);
+  }
+  return normalized.toLowerCase();
+}
+
+function normalizeHostedSupplier(value: Supplier, expectedRestaurantId: string) {
+  const supplier = normalizeSupplier(value);
+  const restaurantId = requireHostedUuid(supplier.restaurant_id, "restaurant");
+  if (restaurantId !== requireHostedUuid(expectedRestaurantId, "restaurant")) {
+    throw new Error("Supplier returned a mismatched restaurant identity.");
+  }
+  return {
+    ...supplier,
+    id: requireHostedUuid(supplier.id, "supplier"),
+    restaurant_id: restaurantId
+  };
+}
+
+function withCurrentSupplierDisplay(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} returned an invalid supplier relationship.`);
+  }
+  const row = value as Record<string, unknown>;
+  const joinedCandidate = Array.isArray(row.supplier) ? row.supplier[0] : row.supplier;
+  if (!joinedCandidate || typeof joinedCandidate !== "object" || Array.isArray(joinedCandidate)) {
+    throw new Error(`${label} is missing durable supplier identity.`);
+  }
+  const supplier = joinedCandidate as Record<string, unknown>;
+  const rowSupplierId = requireHostedUuid(String(row.supplier_id ?? ""), "supplier");
+  const joinedSupplierId = requireHostedUuid(String(supplier.id ?? ""), "supplier");
+  if (
+    joinedSupplierId !== rowSupplierId ||
+    supplier.restaurant_id !== row.restaurant_id ||
+    typeof supplier.display_name !== "string" ||
+    !supplier.display_name.trim()
+  ) {
+    throw new Error(`${label} returned a mismatched supplier identity.`);
+  }
+  const { supplier: _supplier, ...record } = row;
+  return { ...record, supplier_id: rowSupplierId, supplier_name: supplier.display_name };
+}
+
+const inventorySupplierSelect =
+  "*,supplier:suppliers!inventory_items_supplier_tenant_fkey(id,restaurant_id,display_name)";
+const recommendationSupplierSelect =
+  "*,supplier:suppliers!purchase_recommendations_supplier_tenant_fkey(id,restaurant_id,display_name)";
+const recipientSupplierSelect =
+  "*,supplier:suppliers!supplier_recipients_supplier_tenant_fkey(id,restaurant_id,display_name)";
 
 function parseRecommendationWorkflowResponse(data: unknown): RecommendationWorkflowResult {
   const payload = (Array.isArray(data) ? data[0] : data) as {
@@ -1017,8 +1075,8 @@ export function createSupabaseRepository(): MiseRepository {
         await Promise.all([
           client.from("restaurants").select("*").eq("id", restaurantId).single(),
           fetchBoundedPlanningSales(restaurantId),
-          client.from("inventory_items").select("*").eq("restaurant_id", restaurantId),
-          client.from("purchase_recommendations").select("*").eq("restaurant_id", restaurantId),
+          client.from("inventory_items").select(inventorySupplierSelect).eq("restaurant_id", restaurantId),
+          client.from("purchase_recommendations").select(recommendationSupplierSelect).eq("restaurant_id", restaurantId),
           client.from("insights").select("*").eq("restaurant_id", restaurantId),
           client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId)
         ]);
@@ -1033,8 +1091,14 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizeRestaurantData(
         restaurantResult.data as Restaurant,
         sales,
-        (inventoryResult.data ?? []) as InventoryItem[],
-        (recommendationsResult.data ?? []) as PurchaseRecommendation[],
+        (inventoryResult.data ?? []).map((row) =>
+          normalizeInventoryItem(withCurrentSupplierDisplay(row, "Inventory item") as unknown as InventoryItem)
+        ),
+        (recommendationsResult.data ?? []).map((row) =>
+          normalizePurchaseRecommendation(
+            withCurrentSupplierDisplay(row, "Purchase recommendation") as unknown as PurchaseRecommendation
+          )
+        ),
         (insightsResult.data ?? []) as Insight[],
         (mappingResult.data ?? []) as MenuItemIngredient[],
         providerMappings
@@ -1066,11 +1130,84 @@ export function createSupabaseRepository(): MiseRepository {
     async fetchInventoryItems(restaurantId) {
       const { data, error } = await client
         .from("inventory_items")
-        .select("*")
+        .select(inventorySupplierSelect)
         .eq("restaurant_id", restaurantId)
         .order("item_name");
       if (error) throw error;
-      return ((data ?? []) as InventoryItem[]).map(normalizeInventoryItem);
+      return (data ?? []).map((row) =>
+        normalizeInventoryItem(withCurrentSupplierDisplay(row, "Inventory item") as unknown as InventoryItem)
+      );
+    },
+
+    async fetchSuppliers(restaurantId) {
+      const expectedRestaurantId = requireHostedUuid(restaurantId, "restaurant");
+      const { data, error } = await client
+        .from("suppliers")
+        .select("*")
+        .eq("restaurant_id", expectedRestaurantId)
+        .order("display_name")
+        .order("id");
+      if (error) throwRepositoryError(error, restaurantId);
+      return ((data ?? []) as Supplier[]).map((supplier) =>
+        normalizeHostedSupplier(supplier, expectedRestaurantId)
+      );
+    },
+
+    async createSupplier(restaurantId, displayName) {
+      const { data, error } = await client.rpc("create_supplier", {
+        p_restaurant_id: requireHostedUuid(restaurantId, "restaurant"),
+        p_display_name: requireSupplierDisplayName(displayName)
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const supplier = Array.isArray(data) ? data[0] : data;
+      if (!supplier || typeof supplier !== "object") {
+        throw new Error("Supplier creation returned an invalid response.");
+      }
+      return normalizeHostedSupplier(supplier as Supplier, restaurantId);
+    },
+
+    async renameSupplier(restaurantId, supplierId, displayName) {
+      const expectedSupplierId = requireHostedUuid(supplierId, "supplier");
+      const { data, error } = await client.rpc("rename_supplier", {
+        p_restaurant_id: requireHostedUuid(restaurantId, "restaurant"),
+        p_supplier_id: expectedSupplierId,
+        p_display_name: requireSupplierDisplayName(displayName)
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const supplier = Array.isArray(data) ? data[0] : data;
+      if (!supplier || typeof supplier !== "object") {
+        throw new Error("Supplier rename returned an invalid response.");
+      }
+      const normalizedSupplier = normalizeHostedSupplier(supplier as Supplier, restaurantId);
+      if (normalizedSupplier.id !== expectedSupplierId) {
+        throw new Error("Supplier rename returned mismatched authority.");
+      }
+      return normalizedSupplier;
+    },
+
+    async reassignInventoryItemSupplier(restaurantId, itemId, supplierId) {
+      const expectedRestaurantId = requireHostedUuid(restaurantId, "restaurant");
+      const expectedItemId = requireHostedUuid(itemId, "inventory item");
+      const expectedSupplierId = requireHostedUuid(supplierId, "supplier");
+      const { data, error } = await client.rpc("reassign_inventory_item_supplier", {
+        p_restaurant_id: expectedRestaurantId,
+        p_inventory_item_id: expectedItemId,
+        p_supplier_id: expectedSupplierId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const item = Array.isArray(data) ? data[0] : data;
+      if (!item || typeof item !== "object") {
+        throw new Error("Supplier reassignment returned an invalid response.");
+      }
+      const normalizedItem = normalizeInventoryItem(item as InventoryItem);
+      if (
+        normalizedItem.restaurant_id !== expectedRestaurantId ||
+        normalizedItem.id !== expectedItemId ||
+        normalizedItem.supplier_id !== expectedSupplierId
+      ) {
+        throw new Error("Supplier reassignment returned mismatched authority.");
+      }
+      return normalizedItem;
     },
 
     async listInventoryEvents(restaurantId, options) {
@@ -1140,7 +1277,7 @@ export function createSupabaseRepository(): MiseRepository {
 
     async fetchPlanningData(restaurantId) {
       const [inventoryResult, sales, mappingResult, restaurantResult] = await Promise.all([
-        client.from("inventory_items").select("*").eq("restaurant_id", restaurantId).order("item_name"),
+        client.from("inventory_items").select(inventorySupplierSelect).eq("restaurant_id", restaurantId).order("item_name"),
         fetchBoundedPlanningSales(restaurantId),
         client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
         client.from("restaurants").select("timezone").eq("id", restaurantId).single()
@@ -1151,7 +1288,9 @@ export function createSupabaseRepository(): MiseRepository {
       const timeZone = (restaurantResult.data as Pick<Restaurant, "timezone">).timezone;
       const providerMappings = await fetchVerifiedProviderMappings(restaurantId);
       return {
-        inventoryItems: ((inventoryResult.data ?? []) as InventoryItem[]).map(normalizeInventoryItem),
+        inventoryItems: (inventoryResult.data ?? []).map((row) =>
+          normalizeInventoryItem(withCurrentSupplierDisplay(row, "Inventory item") as unknown as InventoryItem)
+        ),
         sales,
         menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
         providerMappings,
@@ -1307,13 +1446,17 @@ export function createSupabaseRepository(): MiseRepository {
     async findPendingRecommendation(restaurantId, itemId) {
       const existing = await client
         .from("purchase_recommendations")
-        .select("*")
+        .select(recommendationSupplierSelect)
         .eq("restaurant_id", restaurantId)
         .eq("inventory_item_id", itemId)
         .eq("status", "pending")
         .maybeSingle();
       if (existing.error) throw existing.error;
-      return existing.data ? normalizePurchaseRecommendation(existing.data as PurchaseRecommendation) : null;
+      return existing.data
+        ? normalizePurchaseRecommendation(
+          withCurrentSupplierDisplay(existing.data, "Purchase recommendation") as unknown as PurchaseRecommendation
+        )
+        : null;
     },
 
     async createPurchaseRecommendation(input) {
@@ -1331,13 +1474,17 @@ export function createSupabaseRepository(): MiseRepository {
     async fetchPurchaseRecommendations(restaurantId, status = "pending") {
       let query = client
         .from("purchase_recommendations")
-        .select("*")
+        .select(recommendationSupplierSelect)
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false });
       if (status !== "all") query = query.eq("status", status);
       const { data, error } = await query;
       if (error) throw error;
-      return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
+      return (data ?? []).map((row) =>
+        normalizePurchaseRecommendation(
+          withCurrentSupplierDisplay(row, "Purchase recommendation") as unknown as PurchaseRecommendation
+        )
+      );
     },
 
     async fetchPurchaseRecommendationAuthorities(restaurantId) {
@@ -1359,12 +1506,16 @@ export function createSupabaseRepository(): MiseRepository {
     async fetchRecommendationHistory(restaurantId) {
       const { data, error } = await client
         .from("purchase_recommendations")
-        .select("*")
+        .select(recommendationSupplierSelect)
         .eq("restaurant_id", restaurantId)
         .gte("created_at", recommendationHistoryCutoffIso())
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
+      return (data ?? []).map((row) =>
+        normalizePurchaseRecommendation(
+          withCurrentSupplierDisplay(row, "Purchase recommendation") as unknown as PurchaseRecommendation
+        )
+      );
     },
 
     async updatePurchaseRecommendation(restaurantId, recommendationId, patch) {
@@ -1409,87 +1560,6 @@ export function createSupabaseRepository(): MiseRepository {
 
     async replacePendingRecommendations(restaurantId, _inserts) {
       await invokeOperationalWorkflow({ action: "refresh_signals", restaurantId });
-    },
-
-    async fetchApprovedRecommendations(restaurantId, supplierName) {
-      let query = client
-        .from("purchase_recommendations")
-        .select("*")
-        .eq("restaurant_id", restaurantId)
-        .eq("status", "approved");
-      if (supplierName) query = query.eq("supplier_name", supplierName);
-      const { data, error } = await query;
-      if (error) throw error;
-      return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
-    },
-
-    async markApprovedRecommendationsOrdered(restaurantId, supplierName) {
-      const { data, error } = await client
-        .from("purchase_recommendations")
-        .update({ status: "ordered" })
-        .eq("restaurant_id", restaurantId)
-        .eq("supplier_name", supplierName)
-        .eq("status", "approved")
-        .select("*");
-      if (error) throw error;
-      return ((data ?? []) as PurchaseRecommendation[]).map(normalizePurchaseRecommendation);
-    },
-
-    async upsertSupplierOrderDraft(draft) {
-      const existing = await client
-        .from("supplier_orders")
-        .select("*")
-        .eq("restaurant_id", draft.restaurant_id)
-        .eq("supplier_name", draft.supplier_name)
-        .eq("status", "draft")
-        .maybeSingle();
-      if (existing.error) throw existing.error;
-
-      const payload = {
-        restaurant_id: draft.restaurant_id,
-        supplier_name: draft.supplier_name,
-        order_message: draft.order_message,
-        operator_note: draft.operator_note,
-        status: draft.status,
-        delivery_date: draft.delivery_date
-      };
-
-      if (existing.data) {
-        const { data, error } = await client
-          .from("supplier_orders")
-          .update(payload)
-          .eq("restaurant_id", draft.restaurant_id)
-          .eq("id", existing.data.id)
-          .select("*")
-          .single();
-        if (error) throw error;
-        return normalizeSupplierOrder(data as SupplierOrder);
-      }
-      const inserted = await client.from("supplier_orders").insert(payload).select("*").single();
-      if (inserted.error?.code === "23505") {
-        const concurrent = await client
-          .from("supplier_orders")
-          .update(payload)
-          .eq("restaurant_id", draft.restaurant_id)
-          .eq("supplier_name", draft.supplier_name)
-          .eq("status", "draft")
-          .select("*")
-          .single();
-        if (concurrent.error) throw concurrent.error;
-        return normalizeSupplierOrder(concurrent.data as SupplierOrder);
-      }
-      if (inserted.error) throw inserted.error;
-      return normalizeSupplierOrder(inserted.data as SupplierOrder);
-    },
-
-    async deleteSupplierOrderDraft(restaurantId, supplierName) {
-      const { error } = await client
-        .from("supplier_orders")
-        .delete()
-        .eq("restaurant_id", restaurantId)
-        .eq("supplier_name", supplierName)
-        .eq("status", "draft");
-      if (error) throw error;
     },
 
     async fetchSupplierOrders(restaurantId) {
@@ -1710,17 +1780,23 @@ export function createSupabaseRepository(): MiseRepository {
     async fetchSupplierRecipients(restaurantId) {
       const { data, error } = await client
         .from("supplier_recipients")
-        .select("*")
+        .select(recipientSupplierSelect)
         .eq("restaurant_id", restaurantId)
-        .order("supplier_name");
+        .order("supplier_id");
       if (error) throwRepositoryError(error, restaurantId);
-      return ((data ?? []) as SupplierRecipient[]).map(normalizeSupplierRecipient);
+      return (data ?? []).map((row) =>
+        normalizeSupplierRecipient(
+          withCurrentSupplierDisplay(row, "Supplier recipient") as unknown as SupplierRecipient
+        )
+      );
     },
 
     async upsertSupplierRecipient(input) {
+      const expectedRestaurantId = requireHostedUuid(input.restaurant_id, "restaurant");
+      const expectedSupplierId = requireHostedUuid(input.supplier_id, "supplier");
       const { data, error } = await client.rpc("upsert_supplier_recipient", {
-        p_restaurant_id: input.restaurant_id,
-        p_supplier_name: input.supplier_name,
+        p_restaurant_id: expectedRestaurantId,
+        p_supplier_id: expectedSupplierId,
         p_email: input.email
       });
       if (error) throwRepositoryError(error, input.restaurant_id);
@@ -1728,7 +1804,14 @@ export function createSupabaseRepository(): MiseRepository {
       if (!recipient || typeof recipient !== "object") {
         throw new Error("Supplier recipient workflow returned an invalid response.");
       }
-      return normalizeSupplierRecipient(recipient as SupplierRecipient);
+      const normalizedRecipient = normalizeSupplierRecipient(recipient as SupplierRecipient);
+      if (
+        normalizedRecipient.restaurant_id !== expectedRestaurantId ||
+        normalizedRecipient.supplier_id !== expectedSupplierId
+      ) {
+        throw new Error("Supplier recipient workflow returned mismatched authority.");
+      }
+      return normalizedRecipient;
     },
 
     async createSetupAttachment(input) {
@@ -2081,7 +2164,9 @@ export function createSupabaseRepository(): MiseRepository {
         p_requires_approval: input.requiresApproval,
         p_enabled: input.enabled,
         p_spend_limit_cents: input.spendLimitCents ?? null,
-        p_supplier_name: input.supplierName ?? null,
+        p_supplier_id: input.supplierId
+          ? requireHostedUuid(input.supplierId, "supplier")
+          : null,
         p_communication_type: input.communicationType ?? null,
         p_allowed_start_time: input.allowedStartTime ?? null,
         p_allowed_end_time: input.allowedEndTime ?? null

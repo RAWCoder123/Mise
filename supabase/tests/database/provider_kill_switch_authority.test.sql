@@ -54,12 +54,20 @@ values
     'active'
   );
 
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values (
+  'c0000000-0000-4000-8000-000000000010',
+  'c0000000-0000-4000-8000-000000000001',
+  'Provider Test Supplier', 'provider test supplier'
+);
+
 insert into public.supplier_orders (
-  id, restaurant_id, supplier_name, order_message, status, delivery_date
+  id, restaurant_id, supplier_id, supplier_name, order_message, status, delivery_date
 )
 values (
   'c0000000-0000-4000-8000-000000000201',
   'c0000000-0000-4000-8000-000000000001',
+  'c0000000-0000-4000-8000-000000000010',
   'Provider Test Supplier',
   'Provider control proof',
   'draft',

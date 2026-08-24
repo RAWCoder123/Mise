@@ -39,6 +39,7 @@ export interface PurchaseAuthorityBlocker {
 export interface PurchaseAuthorityEvidence {
   recommendationId: string;
   inventoryItemId: string;
+  supplierId: string;
   countEventId: string | null;
   countedAt: string | null;
   projectedQuantity: number | null;
@@ -104,15 +105,17 @@ export function normalizePurchaseAuthorityResult(value: unknown): PurchaseAuthor
         .map(([key, revision]) => [boundedString(key, 80), finiteInteger(revision)!])
     )
     : {};
+  const supplierId = boundedString(evidencePayload.supplierId, 80);
 
   return {
-    ready: payload.ready === true && blockers.length === 0,
+    ready: payload.ready === true && blockers.length === 0 && Boolean(supplierId),
     blockers,
     evaluatedAt: evaluatedAt || new Date(0).toISOString(),
     planningRevision,
     evidence: {
       recommendationId: boundedString(evidencePayload.recommendationId, 80),
       inventoryItemId: boundedString(evidencePayload.inventoryItemId, 80),
+      supplierId,
       countEventId: nullableString(evidencePayload.countEventId, 80),
       countedAt: nullableString(evidencePayload.countedAt, 80),
       projectedQuantity: finiteNumber(evidencePayload.projectedQuantity),

@@ -21,9 +21,15 @@ import {
   miseActionIdempotencyKey
 } from "../services/domain/miseActions";
 import type { InventoryEvent } from "../services/domain/inventoryLedger";
+import { demoSupplierIdForLegacyName } from "../services/demo/demoSupplierIdentity";
 import type { PurchaseRecommendation, SupplierOrder } from "../types/mise";
 
 const FIXED_NOW = new Date("2026-07-15T16:00:00.000Z");
+const WORKFLOW_SUPPLIER_NAME = "Fresh Poultry Supply";
+const WORKFLOW_SUPPLIER_ID = demoSupplierIdForLegacyName(
+  DEMO_RESTAURANT_ID,
+  WORKFLOW_SUPPLIER_NAME
+);
 
 /** Appends the only evidence that proves a physical count happened. */
 function recordDemoCount(
@@ -64,15 +70,17 @@ function emptyWorkflowState(): DemoState {
 }
 
 function recommendation(
+  state: DemoState,
   id: string,
   overrides: Partial<PurchaseRecommendation> = {}
 ): PurchaseRecommendation {
-  return {
+  const built: PurchaseRecommendation = {
     id,
     restaurant_id: DEMO_RESTAURANT_ID,
     inventory_item_id: `item_${id}`,
     item_name: `Item ${id}`,
-    supplier_name: "Neighborhood Produce",
+    supplier_id: WORKFLOW_SUPPLIER_ID,
+    supplier_name: WORKFLOW_SUPPLIER_NAME,
     recommended_quantity: 5,
     unit: "cases",
     reason: "Projected below par.",
@@ -82,12 +90,23 @@ function recommendation(
     created_at: FIXED_NOW.toISOString(),
     ...overrides
   };
+  if (!state.inventoryItems.some((item) => item.id === built.inventory_item_id)) {
+    const template = state.inventoryItems[0]!;
+    state.inventoryItems.push({
+      ...template,
+      id: built.inventory_item_id,
+      item_name: built.item_name,
+      supplier_id: built.supplier_id,
+      supplier_name: built.supplier_name
+    });
+  }
+  return built;
 }
 
 test("approving recommendations reuses one supplier draft and is replay-safe", () => {
   const state = emptyWorkflowState();
-  const zucchini = recommendation("zucchini", { item_name: "Zucchini" });
-  const apples = recommendation("apples", { item_name: "Apples" });
+  const zucchini = recommendation(state, "zucchini", { item_name: "Zucchini" });
+  const apples = recommendation(state, "apples", { item_name: "Apples" });
   state.purchaseRecommendations.push(zucchini, apples);
 
   const first = approveRecommendationInDemoState(
@@ -194,9 +213,9 @@ test("refreshed pending evidence stays suppressed after approval until a newer c
 
 test("recommendation decisions reject invalid quantities, tenants, and handled states", () => {
   const state = emptyWorkflowState();
-  const pending = recommendation("pending");
-  const dismissed = recommendation("dismissed", { status: "dismissed" });
-  const ordered = recommendation("ordered", { status: "ordered" });
+  const pending = recommendation(state, "pending");
+  const dismissed = recommendation(state, "dismissed", { status: "dismissed" });
+  const ordered = recommendation(state, "ordered", { status: "ordered" });
   state.purchaseRecommendations.push(pending, dismissed, ordered);
 
   for (const invalid of [0, Number.NaN, Number.POSITIVE_INFINITY, 1_000_001]) {
@@ -228,7 +247,7 @@ test("recommendation decisions reject invalid quantities, tenants, and handled s
 
 test("dismiss and undo preserve the idempotent recommendation lifecycle", () => {
   const state = emptyWorkflowState();
-  const pending = recommendation("decision");
+  const pending = recommendation(state, "decision");
   state.purchaseRecommendations.push(pending);
 
   const dismissed = dismissRecommendationInDemoState(state, DEMO_RESTAURANT_ID, pending.id);
@@ -257,8 +276,8 @@ test("dismiss and undo preserve the idempotent recommendation lifecycle", () => 
 
 test("undoing approved items rebuilds a shared draft and removes it when empty", () => {
   const state = emptyWorkflowState();
-  const onions = recommendation("onions", { item_name: "Onions" });
-  const peppers = recommendation("peppers", { item_name: "Peppers" });
+  const onions = recommendation(state, "onions", { item_name: "Onions" });
+  const peppers = recommendation(state, "peppers", { item_name: "Peppers" });
   state.purchaseRecommendations.push(onions, peppers);
 
   const firstApproval = approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, onions.id);
@@ -282,11 +301,11 @@ test("undoing approved items rebuilds a shared draft and removes it when empty",
 
 test("undo refuses to replace a newer pending recommendation", () => {
   const state = emptyWorkflowState();
-  const approved = recommendation("approved", { inventory_item_id: "shared_item" });
+  const approved = recommendation(state, "approved", { inventory_item_id: "shared_item" });
   state.purchaseRecommendations.push(approved);
   approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, approved.id);
 
-  const newer = recommendation("newer", {
+  const newer = recommendation(state, "newer", {
     inventory_item_id: approved.inventory_item_id,
     created_at: "2026-07-16T16:00:00.000Z"
   });
@@ -302,14 +321,14 @@ test("undo refuses to replace a newer pending recommendation", () => {
 
 test("legacy demo mark-sent observes only durable exact simulated provider completion", () => {
   const state = emptyWorkflowState();
-  const carrots = recommendation("carrots", { item_name: "Carrots" });
-  const celery = recommendation("celery", { item_name: "Celery" });
+  const carrots = recommendation(state, "carrots", { item_name: "Carrots" });
+  const celery = recommendation(state, "celery", { item_name: "Celery" });
   state.purchaseRecommendations.push(carrots, celery);
   const approval = approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, carrots.id);
   approveRecommendationInDemoState(state, DEMO_RESTAURANT_ID, celery.id);
   assert.ok(approval.order);
 
-  const dismissedLinked = recommendation("dismissed_linked", {
+  const dismissedLinked = recommendation(state, "dismissed_linked", {
     status: "dismissed",
     supplier_order_id: approval.order.id
   });
@@ -332,8 +351,9 @@ test("legacy demo mark-sent observes only durable exact simulated provider compl
     claimedIds
   );
   const approvedContent = {
-    version: "mise.supplier_send.v1",
+    version: "mise.supplier_send.v2",
     fingerprint: "a".repeat(64),
+    supplierId: approval.order.supplier_id,
     contentRevision: 1
   };
   const prepared = createPreparedAction({
@@ -344,13 +364,18 @@ test("legacy demo mark-sent observes only durable exact simulated provider compl
       "send_supplier_order",
       approval.order.id
     ),
-    expectedImpact: { orderId: approval.order.id, approvedSendContent: approvedContent },
+    expectedImpact: {
+      orderId: approval.order.id,
+      supplierId: approval.order.supplier_id,
+      approvedSendContent: approvedContent
+    },
     now: FIXED_NOW.toISOString()
   });
   const executed = markExecuted(
     markApproved(prepared, "demo_user", FIXED_NOW.toISOString()),
     {
       supplierOrderId: approval.order.id,
+      supplierId: approval.order.supplier_id,
       provider: "demo",
       providerMessageId: `demo-gmail:${approval.order.id}`,
       contentVersion: approvedContent.version,
@@ -426,7 +451,7 @@ test("demo-state repair retains history, deduplicates pending rows, and restores
   const pending = repaired.state.purchaseRecommendations.find((entry) => entry.status === "pending");
 
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.schema_version, 11);
+  assert.equal(repaired.state.schema_version, 12);
   assert.equal(repaired.state.supplierSendContentRevisions[legacyOrder.id], 1);
   assert.equal(repaired.state.purchaseRecommendations.length, 3);
   assert.equal(new Set(repaired.state.purchaseRecommendations.map((entry) => entry.id)).size, 3);

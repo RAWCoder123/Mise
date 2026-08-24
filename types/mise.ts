@@ -68,6 +68,19 @@ export interface RestaurantMembership {
   updated_at: string;
 }
 
+/**
+ * Durable, tenant-scoped supplier identity. `display_name` is presentation
+ * data and may change; `id` is the purchasing and delivery authority key.
+ */
+export interface Supplier {
+  id: string;
+  restaurant_id: string;
+  display_name: string;
+  normalized_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** A membership joined with the member's profile name and account email. */
 export interface RestaurantTeamMember {
   restaurant_id: string;
@@ -107,6 +120,8 @@ export interface InventoryItem {
   par_level: number;
   reorder_threshold: number;
   estimated_unit_cost: number;
+  supplier_id: string;
+  /** Display snapshot. Hosted reads overlay the supplier's current name. */
   supplier_name: string;
   last_updated: string;
   canonical_unit?: "g" | "ml" | "each" | null;
@@ -177,6 +192,8 @@ export interface PurchaseRecommendation {
   restaurant_id: string;
   inventory_item_id: string;
   item_name: string;
+  supplier_id: string;
+  /** Display snapshot; never used to establish supplier authority. */
   supplier_name: string;
   recommended_quantity: number;
   unit: string;
@@ -195,6 +212,8 @@ export interface PurchaseRecommendation {
 export interface SupplierOrder {
   id: string;
   restaurant_id: string;
+  supplier_id: string;
+  /** Historical display snapshot for the reviewed/sent order. */
   supplier_name: string;
   order_message: string;
   operator_note: string | null;
@@ -249,6 +268,8 @@ export interface SalesImport {
 export interface SupplierItem {
   id: string;
   restaurant_id: string;
+  /** Nullable only for malformed legacy history that could not be backfilled. */
+  supplier_id?: string | null;
   supplier_name: string;
   supplier_sku: string | null;
   item_name: string;
@@ -263,6 +284,8 @@ export interface SupplierItem {
 export interface PurchaseOrder {
   id: string;
   restaurant_id: string;
+  /** Nullable only for malformed legacy history that could not be backfilled. */
+  supplier_id?: string | null;
   supplier_name: string;
   status: PurchaseOrderStatus;
   order_payload: Record<string, unknown>;
@@ -311,6 +334,8 @@ export interface RestaurantEmailConnection {
 export interface SupplierRecipient {
   id: string;
   restaurant_id: string;
+  supplier_id: string;
+  /** Current supplier display name returned for presentation. */
   supplier_name: string;
   email: string | null;
   created_at: string;
@@ -329,7 +354,7 @@ export interface SetupAttachment {
   updated_at: string;
 }
 
-export const SUPPLIER_SEND_CONTENT_VERSION = "mise.supplier_send.v1" as const;
+export const SUPPLIER_SEND_CONTENT_VERSION = "mise.supplier_send.v2" as const;
 
 export type SupplierSendContentVersion = typeof SUPPLIER_SEND_CONTENT_VERSION;
 
@@ -353,6 +378,7 @@ export interface SupplierSendContentLine {
   itemName: string;
   quantity: number;
   unit: string;
+  supplierId: string;
   supplierName: string;
 }
 
@@ -367,6 +393,7 @@ export interface SupplierEmailPayload {
   contentRevision: number;
   restaurantId: string;
   orderId: string;
+  supplierId: string;
   supplierName: string;
   to: string | null;
   from: string | null;
@@ -661,7 +688,7 @@ export interface TodaySummary {
 }
 
 export type InventoryItemPatch = Partial<
-  Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold" | "supplier_name">
+  Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold">
 >;
 
 export type PosProvider = "Toast" | "Square" | "Clover" | "Lightspeed" | "Manual CSV Upload";

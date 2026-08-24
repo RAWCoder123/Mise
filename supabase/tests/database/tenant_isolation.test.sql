@@ -273,6 +273,13 @@ values
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '44444444-4444-4444-8444-444444444444', 'owner', 'active'),
   ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'owner', 'active');
 
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values
+  ('aaaaaaaa-0001-4001-8001-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Fresh Produce Co.', 'fresh produce co.'),
+  ('aaaaaaaa-0002-4002-8002-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Bounded Supplier', 'bounded supplier'),
+  ('bbbbbbbb-0001-4001-8001-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Cafe Supply', 'cafe supply'),
+  ('cccccccc-0001-4001-8001-cccccccccccc', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Bakery Supply', 'bakery supply');
+
 insert into public.inventory_items (
   id,
   restaurant_id,
@@ -283,12 +290,13 @@ insert into public.inventory_items (
   par_level,
   reorder_threshold,
   estimated_unit_cost,
+  supplier_id,
   supplier_name
 )
 values
-  ('aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Chicken Breast', 'Protein', 'lb', 20, 30, 10, 4.25, 'Fresh Produce Co.'),
-  ('bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Espresso Beans', 'Beverage', 'lb', 10, 16, 6, 7.5, 'Cafe Supply'),
-  ('cccccccc-1111-4111-8111-cccccccccccc', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Bread Flour', 'Dry goods', 'lb', 25, 40, 12, 1.5, 'Bakery Supply');
+  ('aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Chicken Breast', 'Protein', 'lb', 20, 30, 10, 4.25, 'aaaaaaaa-0001-4001-8001-aaaaaaaaaaaa', 'Fresh Produce Co.'),
+  ('bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Espresso Beans', 'Beverage', 'lb', 10, 16, 6, 7.5, 'bbbbbbbb-0001-4001-8001-bbbbbbbbbbbb', 'Cafe Supply'),
+  ('cccccccc-1111-4111-8111-cccccccccccc', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Bread Flour', 'Dry goods', 'lb', 25, 40, 12, 1.5, 'cccccccc-0001-4001-8001-cccccccccccc', 'Bakery Supply');
 
 insert into public.pos_sales (id, restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales, source_pos)
 values
@@ -305,15 +313,15 @@ values
   ('aaaaaaaa-1414-4414-8414-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'inventory', 'Tenant A insight', 'Tenant A only.', 'Review inventory.', 'info'),
   ('bbbbbbbb-1414-4414-8414-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'inventory', 'Tenant B insight', 'Tenant B only.', 'Review inventory.', 'info');
 
-insert into public.supplier_items (id, restaurant_id, supplier_name, item_name, unit, estimated_unit_cost)
+insert into public.supplier_items (id, restaurant_id, supplier_id, supplier_name, item_name, unit, estimated_unit_cost)
 values
-  ('aaaaaaaa-1515-4515-8515-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Fresh Produce Co.', 'Chicken Breast', 'lb', 4.25),
-  ('bbbbbbbb-1515-4515-8515-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Cafe Supply', 'Espresso Beans', 'lb', 7.5);
+  ('aaaaaaaa-1515-4515-8515-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'aaaaaaaa-0001-4001-8001-aaaaaaaaaaaa', 'Fresh Produce Co.', 'Chicken Breast', 'lb', 4.25),
+  ('bbbbbbbb-1515-4515-8515-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'bbbbbbbb-0001-4001-8001-bbbbbbbbbbbb', 'Cafe Supply', 'Espresso Beans', 'lb', 7.5);
 
-insert into public.purchase_orders (id, restaurant_id, supplier_name, status, order_payload, subtotal_estimate)
+insert into public.purchase_orders (id, restaurant_id, supplier_id, supplier_name, status, order_payload, subtotal_estimate)
 values
-  ('aaaaaaaa-1616-4616-8616-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Fresh Produce Co.', 'draft', '{"items":[]}'::jsonb, 0),
-  ('bbbbbbbb-1616-4616-8616-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Cafe Supply', 'draft', '{"items":[]}'::jsonb, 0);
+  ('aaaaaaaa-1616-4616-8616-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'aaaaaaaa-0001-4001-8001-aaaaaaaaaaaa', 'Fresh Produce Co.', 'draft', '{"items":[]}'::jsonb, 0),
+  ('bbbbbbbb-1616-4616-8616-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'bbbbbbbb-0001-4001-8001-bbbbbbbbbbbb', 'Cafe Supply', 'draft', '{"items":[]}'::jsonb, 0);
 
 select is(
   pg_temp.try_execute($sql$insert into public.menu_item_ingredients (restaurant_id, menu_item_name, inventory_item_id, quantity_used_per_sale, unit)
@@ -322,8 +330,8 @@ select is(
   'tenant-safe recipe foreign key rejects a cross-restaurant inventory substitution'
 );
 select is(
-  pg_temp.try_execute($sql$insert into public.purchase_recommendations (restaurant_id, inventory_item_id, item_name, supplier_name, recommended_quantity, unit, reason, urgency)
-    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', 'Forged item', 'Forged supplier', 1, 'lb', 'forged', 'low')$sql$),
+  pg_temp.try_execute($sql$insert into public.purchase_recommendations (restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name, recommended_quantity, unit, reason, urgency)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', 'Forged item', 'aaaaaaaa-0001-4001-8001-aaaaaaaaaaaa', 'Forged supplier', 1, 'lb', 'forged', 'low')$sql$),
   false,
   'tenant-safe recommendation foreign key rejects a cross-restaurant inventory substitution'
 );
@@ -333,6 +341,7 @@ insert into public.purchase_recommendations (
   restaurant_id,
   inventory_item_id,
   item_name,
+  supplier_id,
   supplier_name,
   recommended_quantity,
   unit,
@@ -341,13 +350,13 @@ insert into public.purchase_recommendations (
   status
 )
 values
-  ('aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa', 'Chicken Breast', 'Fresh Produce Co.', 12, 'lb', 'Below par', 'high', 'pending'),
-  ('bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', 'Espresso Beans', 'Cafe Supply', 6, 'lb', 'Below par', 'medium', 'pending');
+  ('aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa', 'Chicken Breast', 'aaaaaaaa-0001-4001-8001-aaaaaaaaaaaa', 'Fresh Produce Co.', 12, 'lb', 'Below par', 'high', 'pending'),
+  ('bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', 'Espresso Beans', 'bbbbbbbb-0001-4001-8001-bbbbbbbbbbbb', 'Cafe Supply', 6, 'lb', 'Below par', 'medium', 'pending');
 
-insert into public.supplier_orders (id, restaurant_id, supplier_name, order_message, status)
+insert into public.supplier_orders (id, restaurant_id, supplier_id, supplier_name, order_message, status)
 values
-  ('aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Fresh Produce Co.', 'Order chicken', 'draft'),
-  ('bbbbbbbb-3333-4333-8333-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Cafe Supply', 'Order beans', 'draft');
+  ('aaaaaaaa-3333-4333-8333-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'aaaaaaaa-0001-4001-8001-aaaaaaaaaaaa', 'Fresh Produce Co.', 'Order chicken', 'draft'),
+  ('bbbbbbbb-3333-4333-8333-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'bbbbbbbb-0001-4001-8001-bbbbbbbbbbbb', 'Cafe Supply', 'Order beans', 'draft');
 
 insert into public.pos_integrations (id, restaurant_id, provider, status)
 values
@@ -402,10 +411,10 @@ values
   ('aaaaaaaa-8888-4888-8888-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'gmail', 'not_connected', null),
   ('bbbbbbbb-8888-4888-8888-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'gmail', 'connected', 'orders@tenant-b.test');
 
-insert into public.supplier_recipients (id, restaurant_id, supplier_name, email)
+insert into public.supplier_recipients (id, restaurant_id, supplier_id, supplier_name, email)
 values
-  ('aaaaaaaa-9999-4999-8999-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Fresh Produce Co.', 'fresh@tenant-a.test'),
-  ('bbbbbbbb-9999-4999-8999-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Cafe Supply', 'cafe@tenant-b.test');
+  ('aaaaaaaa-9999-4999-8999-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'aaaaaaaa-0001-4001-8001-aaaaaaaaaaaa', 'Fresh Produce Co.', 'fresh@tenant-a.test'),
+  ('bbbbbbbb-9999-4999-8999-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'bbbbbbbb-0001-4001-8001-bbbbbbbbbbbb', 'Cafe Supply', 'cafe@tenant-b.test');
 
 insert into public.setup_attachments (id, restaurant_id, kind, label, status, metadata, created_by)
 values
@@ -426,8 +435,8 @@ values
   ),
   (
     'inventory_items',
-    $probe$insert into public.inventory_items (id, restaurant_id, item_name, category, unit, current_quantity, par_level, reorder_threshold, estimated_unit_cost, supplier_name)
-      values ('dddddddd-1002-4002-8002-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Forged inventory', 'Dry goods', 'lb', 1, 2, 1, 1, 'Probe supplier')$probe$
+    $probe$insert into public.inventory_items (id, restaurant_id, item_name, category, unit, current_quantity, par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name)
+      values ('dddddddd-1002-4002-8002-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Forged inventory', 'Dry goods', 'lb', 1, 2, 1, 1, 'cccccccc-0001-4001-8001-cccccccccccc', 'Bakery Supply')$probe$
   ),
   (
     'menu_item_ingredients',
@@ -441,8 +450,8 @@ values
   ),
   (
     'supplier_orders',
-    $probe$insert into public.supplier_orders (id, restaurant_id, supplier_name, order_message, status)
-      values ('dddddddd-1005-4005-8005-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Probe supplier', 'Cross-tenant order probe', 'draft')$probe$
+    $probe$insert into public.supplier_orders (id, restaurant_id, supplier_id, supplier_name, order_message, status)
+      values ('dddddddd-1005-4005-8005-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'cccccccc-0001-4001-8001-cccccccccccc', 'Bakery Supply', 'Cross-tenant order probe', 'draft')$probe$
   ),
   (
     'insights',
@@ -461,13 +470,13 @@ values
   ),
   (
     'supplier_items',
-    $probe$insert into public.supplier_items (id, restaurant_id, supplier_name, item_name, unit, estimated_unit_cost)
-      values ('dddddddd-1009-4009-8009-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Probe supplier', 'Forged supplier item', 'lb', 1)$probe$
+    $probe$insert into public.supplier_items (id, restaurant_id, supplier_id, supplier_name, item_name, unit, estimated_unit_cost)
+      values ('dddddddd-1009-4009-8009-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'cccccccc-0001-4001-8001-cccccccccccc', 'Bakery Supply', 'Forged supplier item', 'lb', 1)$probe$
   ),
   (
     'purchase_orders',
-    $probe$insert into public.purchase_orders (id, restaurant_id, supplier_name, status, order_payload, subtotal_estimate)
-      values ('dddddddd-1010-4010-8010-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Probe supplier', 'draft', '{"items":[]}'::jsonb, 0)$probe$
+    $probe$insert into public.purchase_orders (id, restaurant_id, supplier_id, supplier_name, status, order_payload, subtotal_estimate)
+      values ('dddddddd-1010-4010-8010-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'cccccccc-0001-4001-8001-cccccccccccc', 'Bakery Supply', 'draft', '{"items":[]}'::jsonb, 0)$probe$
   ),
   (
     'ai_insights',
@@ -493,8 +502,8 @@ values
   ),
   (
     'supplier_recipients',
-    $probe$insert into public.supplier_recipients (id, restaurant_id, supplier_name, email)
-      values ('dddddddd-1014-4014-8014-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Probe supplier', 'probe@tenant-c.test')$probe$
+    $probe$insert into public.supplier_recipients (id, restaurant_id, supplier_id, supplier_name, email)
+      values ('dddddddd-1014-4014-8014-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'cccccccc-0001-4001-8001-cccccccccccc', 'Bakery Supply', 'probe@tenant-c.test')$probe$
   ),
   (
     'setup_attachments',
@@ -701,6 +710,7 @@ select is(
     'supplier_order_confirmations',
     'supplier_orders',
     'supplier_recipients',
+    'suppliers',
     'system_operational_controls',
     'users'
   ]::text[],
@@ -825,6 +835,7 @@ select is(
         'supplier_orders', 'insights', 'pos_integrations', 'sales_imports', 'supplier_items',
         'purchase_orders', 'ai_insights', 'audit_logs', 'restaurant_email_connections',
         'supplier_recipients', 'setup_attachments', 'operational_finding_decisions',
+        'suppliers',
         'operational_issues', 'mise_actions', 'action_outcomes', 'restaurant_memories',
         'restaurant_autonomy_rules', 'activity_events', 'supplier_order_confirmations',
         'supplier_deliveries', 'supplier_delivery_items', 'recalculation_runs'
@@ -843,6 +854,7 @@ select is(
       'supplier_orders', 'insights', 'pos_integrations', 'sales_imports', 'supplier_items',
       'purchase_orders', 'ai_insights', 'audit_logs', 'restaurant_email_connections',
       'supplier_recipients', 'setup_attachments', 'operational_finding_decisions',
+      'suppliers',
       'operational_issues', 'mise_actions', 'action_outcomes', 'restaurant_memories',
       'restaurant_autonomy_rules', 'activity_events', 'supplier_order_confirmations',
       'supplier_deliveries', 'supplier_delivery_items', 'recalculation_runs'
@@ -1292,8 +1304,8 @@ select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222
 select lives_ok(
   $sql$select public.save_restaurant_setup(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    '[{"item_name":"Atomic Rice","category":"Setup baseline","unit":"lb","current_quantity":12,"par_level":30,"reorder_threshold":10,"estimated_unit_cost":0,"supplier_name":"Atomic Supply"}]'::jsonb,
-    '[{"supplier_name":"Atomic Supply","email":"orders@atomic.test"}]'::jsonb,
+    '[{"item_name":"Atomic Rice","category":"Setup baseline","unit":"lb","current_quantity":12,"par_level":30,"reorder_threshold":10,"estimated_unit_cost":0,"supplier_client_reference_id":"atomic-supplier"}]'::jsonb,
+    '[{"client_reference_id":"atomic-supplier","display_name":"Atomic Supply","email":"orders@atomic.test"}]'::jsonb,
     '[{"menu_item_name":"Atomic Bowl","inventory_item_name":"Atomic Rice","quantity_used_per_sale":0.5,"unit":"lb"}]'::jsonb,
     jsonb_build_array(jsonb_build_object('source_record_id', 'atomic-row-1', 'sale_date', pg_temp.restaurant_operating_date('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), 'item_name', 'Atomic Bowl', 'category', 'Entree', 'quantity_sold', 5, 'gross_sales', 50, 'net_sales', 46.5, 'source_pos', 'Manual CSV Upload')),
     '[]'::jsonb,
@@ -1304,8 +1316,8 @@ select lives_ok(
 select lives_ok(
   $sql$select public.save_restaurant_setup(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    '[{"item_name":"Atomic Rice","category":"Setup baseline","unit":"lb","current_quantity":12,"par_level":30,"reorder_threshold":10,"estimated_unit_cost":0,"supplier_name":"Atomic Supply"}]'::jsonb,
-    '[{"supplier_name":"Atomic Supply","email":"orders@atomic.test"}]'::jsonb,
+    '[{"item_name":"Atomic Rice","category":"Setup baseline","unit":"lb","current_quantity":12,"par_level":30,"reorder_threshold":10,"estimated_unit_cost":0,"supplier_client_reference_id":"atomic-supplier"}]'::jsonb,
+    '[{"client_reference_id":"atomic-supplier","display_name":"Atomic Supply","email":"orders@atomic.test"}]'::jsonb,
     '[{"menu_item_name":"Atomic Bowl","inventory_item_name":"Atomic Rice","quantity_used_per_sale":0.5,"unit":"lb"}]'::jsonb,
     jsonb_build_array(jsonb_build_object('source_record_id', 'atomic-row-1', 'sale_date', pg_temp.restaurant_operating_date('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), 'item_name', 'Atomic Bowl', 'category', 'Entree', 'quantity_sold', 5, 'gross_sales', 50, 'net_sales', 46.5, 'source_pos', 'Manual CSV Upload')),
     '[]'::jsonb,
@@ -1951,9 +1963,10 @@ select is(
 select is(
   pg_temp.try_execute($sql$insert into public.inventory_items (
     restaurant_id, item_name, category, unit, current_quantity, par_level,
-    reorder_threshold, estimated_unit_cost, supplier_name
+    reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
   ) values (
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Negative inventory', 'Test', 'lb', -1, 2, 1, 1, 'Bounded Supplier'
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Negative inventory', 'Test', 'lb', -1, 2, 1, 1,
+    'aaaaaaaa-0002-4002-8002-aaaaaaaaaaaa', 'Bounded Supplier'
   )$sql$),
   false,
   'inventory table constraint rejects negative quantities'
@@ -1961,9 +1974,10 @@ select is(
 select is(
   pg_temp.try_execute($sql$insert into public.inventory_items (
     restaurant_id, item_name, category, unit, current_quantity, par_level,
-    reorder_threshold, estimated_unit_cost, supplier_name
+    reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
   ) values (
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Non-finite inventory', 'Test', 'lb', 'NaN'::numeric, 2, 1, 1, 'Bounded Supplier'
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Non-finite inventory', 'Test', 'lb', 'NaN'::numeric, 2, 1, 1,
+    'aaaaaaaa-0002-4002-8002-aaaaaaaaaaaa', 'Bounded Supplier'
   )$sql$),
   false,
   'inventory table constraint rejects non-finite quantities'

@@ -13,6 +13,7 @@ import type {
 } from "../types/mise";
 
 const restaurantId = "rest_brief";
+const supplierId = "10000000-0000-4000-8000-000000000010";
 
 function restaurant(): Restaurant {
   return {
@@ -49,6 +50,7 @@ function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
     par_level: 40,
     reorder_threshold: 18,
     estimated_unit_cost: 3.5,
+    supplier_id: supplierId,
     supplier_name: "Metro Produce",
     last_updated: "2026-08-02T11:00:00.000Z",
     ...overrides
@@ -91,6 +93,7 @@ function recommendation(overrides: Partial<PurchaseRecommendation> = {}): Purcha
     restaurant_id: restaurantId,
     inventory_item_id: "inv_chicken",
     item_name: "Chicken thighs",
+    supplier_id: supplierId,
     supplier_name: "Metro Produce",
     recommended_quantity: 18,
     unit: "lb",
@@ -122,6 +125,7 @@ test("operating brief builds approvals, monitoring, and truthful activity withou
     {
       id: "order_1",
       restaurant_id: restaurantId,
+      supplier_id: supplierId,
       supplier_name: "Metro Produce",
       order_message: "Please deliver",
       operator_note: null,

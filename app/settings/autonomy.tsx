@@ -27,7 +27,6 @@ import { captureMiseError } from "../../services/telemetry";
 
 type DraftFields = {
   spendLimitText: string;
-  supplierName: string;
   communicationType: string;
   allowedStartTime: string;
   allowedEndTime: string;
@@ -130,7 +129,7 @@ export default function AutonomySettingsScreen() {
         requiresApproval: patch.requiresApproval ?? rule.requiresApproval,
         enabled: patch.enabled ?? rule.enabled,
         spendLimitCents: spendParsed,
-        supplierName: draft.supplierName.trim() || null,
+        supplierId: rule.supplierId,
         communicationType: draft.communicationType.trim() || null,
         allowedStartTime: normalizeTime(draft.allowedStartTime),
         allowedEndTime: normalizeTime(draft.allowedEndTime)
@@ -249,15 +248,9 @@ export default function AutonomySettingsScreen() {
                       }
                       placeholder="0"
                     />
-                    <Field
+                    <ReadOnlyField
                       label={t("autonomy.field.supplier")}
-                      value={draft.supplierName}
-                      onChange={(value) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [rule.id]: { ...draft, supplierName: value }
-                        }))
-                      }
+                      value={rule.supplierName ?? "—"}
                     />
                     <Field
                       label={t("autonomy.field.communication")}
@@ -351,11 +344,21 @@ function draftFromRule(rule: RestaurantAutonomyRule): DraftFields {
   return {
     spendLimitText:
       rule.spendLimitCents == null ? "" : String(Math.round(rule.spendLimitCents) / 100),
-    supplierName: rule.supplierName ?? "",
     communicationType: rule.communicationType ?? "",
     allowedStartTime: rule.allowedStartTime ?? "",
     allowedEndTime: rule.allowedEndTime ?? ""
   };
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.field} accessible accessibilityLabel={`${label}: ${value}`}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.readOnlyInput}>
+        <Text style={styles.readOnlyValue}>{value}</Text>
+      </View>
+    </View>
+  );
 }
 
 function normalizeTime(value: string): string | null {
@@ -458,6 +461,19 @@ const styles = StyleSheet.create({
     ...conceptTypography.body,
     color: colors.text,
     backgroundColor: colors.surface
+  },
+  readOnlyInput: {
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm
+  },
+  readOnlyValue: {
+    ...conceptTypography.body,
+    color: colors.text
   },
   actions: {
     flexDirection: "row",

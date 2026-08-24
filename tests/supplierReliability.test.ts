@@ -15,11 +15,17 @@ import {
 } from "../services/miseValidation";
 
 const RESTAURANT_ID = "restaurant-a";
+const SUPPLIER_IDS: Record<string, string> = {
+  "Pantry Co.": "00000000-0000-4000-8000-000000000401",
+  "Produce Co.": "00000000-0000-4000-8000-000000000402",
+  Supplier: "00000000-0000-4000-8000-000000000403"
+};
 
 function order(id: string, supplierName: string, deliveryDate: string | null): SupplierOrder {
   return {
     id,
     restaurant_id: RESTAURANT_ID,
+    supplier_id: SUPPLIER_IDS[supplierName] ?? "00000000-0000-4000-8000-000000000404",
     supplier_name: supplierName,
     order_message: "Recorded order",
     operator_note: null,
@@ -175,6 +181,30 @@ test("orphan delivery rows are ignored without inventing a supplier", () => {
   assert.equal(summary.totalDeliveries, 0);
   assert.equal(summary.supplierCount, 0);
   assert.deepEqual(summary.suppliers, []);
+});
+
+test("same display names with different durable IDs remain separate suppliers", () => {
+  const first = order("order-1", "Shared Display", "2026-07-10");
+  const second = {
+    ...order("order-2", "Shared Display", "2026-07-10"),
+    supplier_id: "00000000-0000-4000-8000-000000000405"
+  };
+  const summary = buildSupplierReliabilitySummary({
+    restaurantId: RESTAURANT_ID,
+    restaurantTimeZone: "UTC",
+    orders: [first, second],
+    deliveries: [
+      delivery("delivery-1", first.id, "2026-07-10T09:00:00.000Z"),
+      delivery("delivery-2", second.id, "2026-07-10T10:00:00.000Z")
+    ],
+    items: []
+  });
+
+  assert.equal(summary.supplierCount, 2);
+  assert.deepEqual(
+    new Set(summary.suppliers.map((supplier) => supplier.supplierId)),
+    new Set([first.supplier_id, second.supplier_id])
+  );
 });
 
 test("replaceable demo data provides reviewable reliable and at-risk supplier history", () => {

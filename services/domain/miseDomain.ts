@@ -1191,18 +1191,20 @@ export function buildDraftsFromRecommendations(
     .filter((recommendation) => recommendation.restaurant_id === restaurantId)
     .filter((recommendation) => recommendation.status === "approved")
     .forEach((recommendation) => {
-      const current = grouped.get(recommendation.supplier_name) ?? [];
+      const current = grouped.get(recommendation.supplier_id) ?? [];
       current.push(recommendation);
-      grouped.set(recommendation.supplier_name, current);
+      grouped.set(recommendation.supplier_id, current);
     });
 
   const now = options.now ?? new Date();
   const timeZone = options.timeZone ?? "UTC";
-  return [...grouped.entries()].map(([supplierName, items]) => {
+  return [...grouped.entries()].map(([supplierId, items]) => {
+    const supplierName = items[0]?.supplier_name ?? "Supplier";
     const deliveryDate = nextDateKeyInTimeZone(now, timeZone);
     return {
       id: createId("order"),
       restaurant_id: restaurantId,
+      supplier_id: supplierId,
       supplier_name: supplierName,
       order_message: buildSupplierOrderMessage(supplierName, items),
       operator_note: null,
@@ -1254,10 +1256,10 @@ export function buildOrderQueueSummary(
   const restaurantOrders = orders.filter((order) => order.restaurant_id === restaurantId);
   const draftOrders = restaurantOrders.filter((order) => order.status === "draft");
   const sentOrders = restaurantOrders.filter((order) => order.status === "sent");
-  const activeSupplierNames = pendingRecommendations.length > 0
-    ? pendingRecommendations.map((recommendation) => recommendation.supplier_name)
-    : draftOrders.map((order) => order.supplier_name);
-  const supplierCount = new Set(activeSupplierNames).size;
+  const activeSupplierIds = pendingRecommendations.length > 0
+    ? pendingRecommendations.map((recommendation) => recommendation.supplier_id)
+    : draftOrders.map((order) => order.supplier_id);
+  const supplierCount = new Set(activeSupplierIds).size;
   const highUrgencyItems = pendingRecommendations.filter((recommendation) => recommendation.urgency === "high").length;
   const draftCount = draftOrders.length;
   const sentCount = sentOrders.length;
@@ -1511,7 +1513,7 @@ export function buildDemoReadinessSummary(
   const restaurantInsights = insights.filter((insight) => insight.restaurant_id === restaurant.id);
   const restaurantOrders = orders.filter((order) => order.restaurant_id === restaurant.id);
   const operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone);
-  const suppliers = new Set(restaurantInventory.map((item) => item.supplier_name));
+  const suppliers = new Set(restaurantInventory.map((item) => item.supplier_id));
   const recipeBaseline = buildRecipeBaselineSummary(
     restaurant.id,
     sales,
@@ -1819,7 +1821,7 @@ export function buildSetupReadinessSummary({
 }): SetupReadinessSummary {
   const restaurantInventory = inventoryItems.filter((item) => item.restaurant_id === restaurant.id);
   const restaurantMappings = mappings.filter((mapping) => mapping.restaurant_id === restaurant.id);
-  const supplierNames = [...new Set(restaurantInventory.map((item) => item.supplier_name).filter(Boolean))];
+  const supplierIds = [...new Set(restaurantInventory.map((item) => item.supplier_id).filter(Boolean))];
   // Use the restaurant's own calendar so evening counts west of UTC do not
   // roll into the wrong service day.
   const operatingDate = toDateKeyInTimeZone(new Date(), restaurant.timezone);
@@ -1833,7 +1835,7 @@ export function buildSetupReadinessSummary({
   ].filter((item): item is string => Boolean(item));
   const missingInventory = [
     restaurantInventory.length < 5 ? "at least five current inventory items" : null,
-    supplierNames.length === 0 ? "supplier names" : null,
+    supplierIds.length === 0 ? "supplier identities" : null,
     restaurantInventory.some((item) => !item.unit.trim()) ? "ingredient units" : null,
     restaurantInventory.some((item) => item.par_level <= 0) ? "par levels" : null
   ].filter((item): item is string => Boolean(item));
@@ -1843,7 +1845,7 @@ export function buildSetupReadinessSummary({
       ? `${recipeBaseline.posItemsMissingRecipes.length} unmapped POS menu items`
       : null
   ].filter((item): item is string => Boolean(item));
-  const missingSuppliers = supplierNames.length === 0 ? ["supplier list"] : [];
+  const missingSuppliers = supplierIds.length === 0 ? ["supplier list"] : [];
   const missingEmailSender = emailConnection?.status !== "connected" || !emailConnection.sender_email;
 
   const rawSteps = [
@@ -1858,7 +1860,7 @@ export function buildSetupReadinessSummary({
       label: "Inventory",
       detail:
         missingInventory.length === 0
-          ? `${restaurantInventory.length} items, ${supplierNames.length} suppliers`
+          ? `${restaurantInventory.length} items, ${supplierIds.length} suppliers`
           : "Counts, suppliers, units",
       missing: missingInventory
     },
@@ -1951,7 +1953,7 @@ export function buildSupplierEmailPayload(
   const recipient = recipients.find(
     (item) =>
       item.restaurant_id === restaurant.id &&
-      item.supplier_name.trim().toLowerCase() === order.supplier_name.trim().toLowerCase()
+      item.supplier_id === order.supplier_id
   );
   const to = recipient?.email ?? null;
   const from = emailConnection?.sender_email ?? null;
@@ -1967,6 +1969,7 @@ export function buildSupplierEmailPayload(
 
   return {
     orderId: order.id,
+    supplierId: order.supplier_id,
     supplierName: order.supplier_name,
     to,
     from,
@@ -2033,6 +2036,7 @@ export function buildRecommendationInserts(
         restaurant_id: restaurantId,
         inventory_item_id: item.id,
         item_name: item.item_name,
+        supplier_id: item.supplier_id,
         supplier_name: item.supplier_name,
         recommended_quantity: learnedQuantity ?? prediction.suggestedOrderQuantity,
         unit: item.unit,

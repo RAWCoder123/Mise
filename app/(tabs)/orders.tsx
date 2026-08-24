@@ -218,13 +218,27 @@ export default function OrdersScreen() {
   const visibleUndoAction = hubReady && actionsEditable ? undoAction : null;
 
   const groupedRecommendations = useMemo(() => {
-    const groups = new Map<string, PurchaseRecommendation[]>();
+    const groups = new Map<string, {
+      supplierId: string;
+      supplierName: string;
+      recommendations: PurchaseRecommendation[];
+    }>();
     visibleRecommendations.forEach((recommendation) => {
-      const current = groups.get(recommendation.supplier_name) ?? [];
-      current.push(recommendation);
-      groups.set(recommendation.supplier_name, current);
+      const current = groups.get(recommendation.supplier_id);
+      if (current) {
+        current.recommendations.push(recommendation);
+        return;
+      }
+      groups.set(recommendation.supplier_id, {
+        supplierId: recommendation.supplier_id,
+        supplierName: recommendation.supplier_name,
+        recommendations: [recommendation]
+      });
     });
-    return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+    return [...groups.values()].sort((left, right) =>
+      left.supplierName.localeCompare(right.supplierName) ||
+      left.supplierId.localeCompare(right.supplierId)
+    );
   }, [visibleRecommendations]);
 
   const draftOrders = useMemo(
@@ -379,6 +393,7 @@ export default function OrdersScreen() {
       registerUndo(approved, "approved");
       trackMiseEvent("recommendation_approved", {
         restaurant_id: restaurantId,
+        supplier_id: recommendation.supplier_id,
         supplier_name: recommendation.supplier_name,
         urgency: recommendation.urgency
       });
@@ -429,6 +444,7 @@ export default function OrdersScreen() {
       registerUndo(dismissed, "dismissed");
       trackMiseEvent("recommendation_dismissed", {
         restaurant_id: restaurantId,
+        supplier_id: recommendation.supplier_id,
         supplier_name: recommendation.supplier_name,
         urgency: recommendation.urgency
       });
@@ -467,6 +483,7 @@ export default function OrdersScreen() {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       trackMiseEvent("recommendation_undo", {
         restaurant_id: restaurantId,
+        supplier_id: restored.supplier_id,
         supplier_name: restored.supplier_name,
         action: undoAction.action
       });
@@ -488,6 +505,7 @@ export default function OrdersScreen() {
       await Clipboard.setStringAsync(order.order_message);
       trackMiseEvent("order_copied", {
         restaurant_id: order.restaurant_id,
+        supplier_id: order.supplier_id,
         supplier_name: order.supplier_name,
         status: order.status
       });
@@ -586,7 +604,7 @@ export default function OrdersScreen() {
                   <View style={styles.pendingCopy}>
                     <Text style={styles.pendingTitle} numberOfLines={1}>
                       {groupedRecommendations.length === 1
-                        ? groupedRecommendations[0]?.[0]
+                        ? groupedRecommendations[0]?.supplierName
                         : t("orders.review.title")}
                     </Text>
                     <Text style={styles.pendingBody}>
@@ -661,8 +679,12 @@ export default function OrdersScreen() {
                   )}
                   size="compact"
                 />
-                {groupedRecommendations.map(([supplierName, supplierRecommendations]) => (
-                  <SectionSurface key={supplierName} padding="none">
+                {groupedRecommendations.map(({
+                  supplierId,
+                  supplierName,
+                  recommendations: supplierRecommendations
+                }) => (
+                  <SectionSurface key={supplierId} padding="none">
                     <View style={styles.supplierHeader}>
                       <View style={styles.supplierIcon}>
                         <Truck size={icon.inline} color={colors.success} strokeWidth={iconStroke} />

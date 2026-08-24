@@ -20,6 +20,7 @@ export interface OperationalInventoryItem {
   id: string;
   restaurant_id: string;
   item_name: string;
+  supplier_id: string;
   supplier_name: string;
   unit: string;
   current_quantity: number;
@@ -64,6 +65,7 @@ export interface OperationalRecommendation {
   restaurant_id: string;
   inventory_item_id: string;
   item_name: string;
+  supplier_id: string;
   supplier_name: string;
   recommended_quantity: number;
   unit: string;
@@ -194,6 +196,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         restaurant_id: snapshot.restaurantId,
         inventory_item_id: item.id,
         item_name: item.item_name,
+        supplier_id: item.supplier_id,
         supplier_name: item.supplier_name,
         recommended_quantity: quantity,
         unit: item.unit,

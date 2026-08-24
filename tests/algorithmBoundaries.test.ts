@@ -29,6 +29,15 @@ import { nextDateKeyInTimeZone } from "../utils/format";
 
 const operatingDate = "2026-07-14";
 const fixedNow = "2026-07-14T12:00:00.000Z";
+const genericSupplierId = "10000000-0000-4000-8000-000000000002";
+const freshFoodsSupplierId = "10000000-0000-4000-8000-000000000003";
+const pantrySupplierId = "10000000-0000-4000-8000-000000000004";
+
+function supplierIdForFixture(supplierName: string) {
+  if (supplierName === "Fresh Foods") return freshFoodsSupplierId;
+  if (supplierName === "Pantry Co.") return pantrySupplierId;
+  return genericSupplierId;
+}
 
 function inventoryItem(
   id: string,
@@ -46,6 +55,7 @@ function inventoryItem(
     par_level: 20,
     reorder_threshold: 10,
     estimated_unit_cost: 1,
+    supplier_id: genericSupplierId,
     supplier_name: "Supplier",
     last_updated: fixedNow
   };
@@ -63,6 +73,7 @@ function approvedRecommendation(
     restaurant_id: restaurantId,
     inventory_item_id: `item_${id}`,
     item_name: itemName,
+    supplier_id: supplierIdForFixture(supplierName),
     supplier_name: supplierName,
     recommended_quantity: 2.5,
     unit: "lb",

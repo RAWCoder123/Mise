@@ -26,6 +26,7 @@ test("inventory→order approval cards expose one-tap recommendation ids", () =>
     restaurant_id: DEMO_RESTAURANT_ID,
     inventory_item_id: item.id,
     item_name: item.item_name,
+    supplier_id: item.supplier_id,
     supplier_name: item.supplier_name,
     recommended_quantity: 12,
     unit: item.unit,
@@ -62,6 +63,7 @@ test("awaiting send_supplier_order on draft orders surfaces decide_mise_action c
     ({
       id: "order-draft-1",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: state.suppliers[0]!.id,
       supplier_name: "Demo Supplier",
       order_message: "Order draft",
       operator_note: null,
@@ -74,7 +76,11 @@ test("awaiting send_supplier_order on draft orders surfaces decide_mise_action c
     restaurantId: DEMO_RESTAURANT_ID,
     actionType: "send_supplier_order",
     idempotencyKey: miseActionIdempotencyKey(DEMO_RESTAURANT_ID, "send_supplier_order", draft.id),
-    expectedImpact: { supplierName: draft.supplier_name, orderId: draft.id },
+    expectedImpact: {
+      supplierId: draft.supplier_id,
+      supplierName: draft.supplier_name,
+      orderId: draft.id
+    },
     now: draft.created_at
   });
   assert.equal(action.status, "waiting_for_approval");
@@ -104,6 +110,7 @@ test("delivery lines + outcome complete the inventory→order→receive path", (
   const order: SupplierOrder = {
     id: "order-sent-1",
     restaurant_id: DEMO_RESTAURANT_ID,
+    supplier_id: item.supplier_id,
     supplier_name: item.supplier_name,
     order_message: `${item.item_name} - 10 ${item.unit}`,
     operator_note: null,
@@ -116,6 +123,7 @@ test("delivery lines + outcome complete the inventory→order→receive path", (
     restaurant_id: DEMO_RESTAURANT_ID,
     inventory_item_id: item.id,
     item_name: item.item_name,
+    supplier_id: item.supplier_id,
     supplier_name: item.supplier_name,
     recommended_quantity: 10,
     unit: item.unit,
@@ -143,7 +151,11 @@ test("delivery lines + outcome complete the inventory→order→receive path", (
     restaurantId: DEMO_RESTAURANT_ID,
     actionType: "send_supplier_order",
     idempotencyKey: miseActionIdempotencyKey(DEMO_RESTAURANT_ID, "send_supplier_order", order.id),
-    expectedImpact: { supplierName: order.supplier_name, orderId: order.id },
+    expectedImpact: {
+      supplierId: order.supplier_id,
+      supplierName: order.supplier_name,
+      orderId: order.id
+    },
     now: order.created_at
   });
   action = markApproved(action, "demo-user", receivedAt);

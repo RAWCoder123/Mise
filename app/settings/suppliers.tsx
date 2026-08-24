@@ -17,12 +17,10 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { AppLocale } from "../../i18n/catalog";
 import {
   fetchSupplierRecipientDirectory,
+  renameSupplier,
   saveSupplierRecipient
 } from "../../services/miseService";
-import {
-  supplierRecipientDirectoryKey,
-  type SupplierRecipientDirectoryEntry
-} from "../../services/domain/supplierRecipients";
+import type { SupplierRecipientDirectoryEntry } from "../../services/domain/supplierRecipients";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -42,6 +40,7 @@ export default function SupplierRecipientsScreen() {
   const { memberships, restaurant } = useMiseSession();
   const [entries, setEntries] = useState<SupplierRecipientDirectoryEntry[]>([]);
   const [draftEmails, setDraftEmails] = useState<Record<string, string>>({});
+  const [draftNames, setDraftNames] = useState<Record<string, string>>({});
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -71,7 +70,10 @@ export default function SupplierRecipientsScreen() {
       }
       setEntries(nextEntries);
       setDraftEmails(Object.fromEntries(
-        nextEntries.map((entry) => [supplierRecipientDirectoryKey(entry.supplierName), entry.email ?? ""])
+        nextEntries.map((entry) => [entry.supplierId, entry.email ?? ""])
+      ));
+      setDraftNames(Object.fromEntries(
+        nextEntries.map((entry) => [entry.supplierId, entry.supplierName])
       ));
       setLoadedRestaurantId(restaurantId);
     } catch {
@@ -89,6 +91,7 @@ export default function SupplierRecipientsScreen() {
     actionLocksRef.current.clear();
     setEntries([]);
     setDraftEmails({});
+    setDraftNames({});
     setLoadedRestaurantId(null);
     setLoadError(false);
     setSavingKeys(new Set());
@@ -120,10 +123,10 @@ export default function SupplierRecipientsScreen() {
   });
   const visibleEntries = hubReady ? entries : [];
 
-  async function save(entry: SupplierRecipientDirectoryEntry) {
+  async function saveRecipient(entry: SupplierRecipientDirectoryEntry) {
     if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
-    const key = supplierRecipientDirectoryKey(entry.supplierName);
+    const key = entry.supplierId;
     if (actionLocksRef.current.has(key)) return;
     const email = (draftEmails[key] ?? "").trim();
     if (!isValidRecipientEmail(email)) {
@@ -139,13 +142,12 @@ export default function SupplierRecipientsScreen() {
     setSavingKeys((current) => new Set(current).add(key));
     setNotice(null);
     try {
-      const saved = await saveSupplierRecipient(restaurantId, entry.supplierName, email);
+      const saved = await saveSupplierRecipient(restaurantId, entry.supplierId, email);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setEntries((current) => current.map((currentEntry) =>
-        supplierRecipientDirectoryKey(currentEntry.supplierName) === key
+        currentEntry.supplierId === key
           ? {
               ...currentEntry,
-              supplierName: saved.supplier_name,
               email: saved.email,
               recipientId: saved.id,
               updatedAt: saved.updated_at,
@@ -157,7 +159,7 @@ export default function SupplierRecipientsScreen() {
       setNotice({
         tone: "success",
         title: copy.savedTitle,
-        message: copy.savedBody(saved.supplier_name)
+        message: copy.savedBody(entry.supplierName)
       });
     } catch {
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -165,6 +167,58 @@ export default function SupplierRecipientsScreen() {
         tone: "danger",
         title: copy.saveErrorTitle,
         message: copy.saveErrorBody(entry.supplierName)
+      });
+    } finally {
+      actionLocksRef.current.delete(key);
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setSavingKeys((current) => {
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
+      }
+    }
+  }
+
+  async function rename(entry: SupplierRecipientDirectoryEntry) {
+    if (!restaurant || !actionsEditable) return;
+    const restaurantId = restaurant.id;
+    const key = entry.supplierId;
+    if (actionLocksRef.current.has(key)) return;
+    const requestedName = draftNames[key] ?? "";
+    const displayName = canonicalSupplierName(requestedName);
+    if (!isValidSupplierName(requestedName)) {
+      setNotice({
+        tone: "warning",
+        title: copy.invalidNameTitle,
+        message: copy.invalidNameBody
+      });
+      return;
+    }
+
+    actionLocksRef.current.add(key);
+    setSavingKeys((current) => new Set(current).add(key));
+    setNotice(null);
+    try {
+      await renameSupplier(restaurantId, entry.supplierId, displayName);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setEntries((current) => current.map((currentEntry) =>
+        currentEntry.supplierId === key
+          ? { ...currentEntry, supplierName: displayName }
+          : currentEntry
+      ));
+      setDraftNames((current) => ({ ...current, [key]: displayName }));
+      setNotice({
+        tone: "success",
+        title: copy.renamedTitle,
+        message: copy.renamedBody(displayName)
+      });
+    } catch {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        tone: "danger",
+        title: copy.renameErrorTitle,
+        message: copy.renameErrorBody(entry.supplierName)
       });
     } finally {
       actionLocksRef.current.delete(key);
@@ -234,10 +288,12 @@ export default function SupplierRecipientsScreen() {
               </View>
             ) : (
               visibleEntries.map((entry, index) => {
-                const key = supplierRecipientDirectoryKey(entry.supplierName);
+                const key = entry.supplierId;
                 const draftEmail = draftEmails[key] ?? "";
+                const draftName = draftNames[key] ?? entry.supplierName;
                 const saving = savingKeys.has(key);
-                const unchanged = draftEmail.trim().toLowerCase() === (entry.email ?? "").toLowerCase();
+                const emailUnchanged = draftEmail.trim().toLowerCase() === (entry.email ?? "").toLowerCase();
+                const nameUnchanged = canonicalSupplierName(draftName) === entry.supplierName;
                 return (
                   <View
                     key={key}
@@ -265,6 +321,33 @@ export default function SupplierRecipientsScreen() {
 
                     {canManage ? (
                       <View style={styles.editor}>
+                        <Text style={styles.inputLabel}>{copy.nameLabel}</Text>
+                        <TextInput
+                          accessibilityLabel={copy.nameAccessibility(entry.supplierName)}
+                          accessibilityHint={copy.nameHint}
+                          autoCapitalize="words"
+                          autoCorrect={false}
+                          editable={actionsEditable && !saving}
+                          maxLength={160}
+                          onChangeText={(value) => setDraftNames((current) => ({ ...current, [key]: value }))}
+                          onSubmitEditing={() => {
+                            if (!nameUnchanged && actionsEditable && !saving) void rename(entry);
+                          }}
+                          placeholder={copy.namePlaceholder}
+                          placeholderTextColor={colors.faint}
+                          returnKeyType="done"
+                          style={styles.input}
+                          value={draftName}
+                        />
+                        <Button
+                          title={saving ? copy.saving : copy.rename}
+                          accessibilityLabel={copy.renameAccessibility(entry.supplierName)}
+                          accessibilityHint={copy.renameHint}
+                          variant="secondary"
+                          fullWidth
+                          disabled={!actionsEditable || saving || nameUnchanged}
+                          onPress={() => void rename(entry)}
+                        />
                         <Text style={styles.inputLabel}>{copy.emailLabel}</Text>
                         <TextInput
                           accessibilityLabel={copy.emailAccessibility(entry.supplierName)}
@@ -276,7 +359,7 @@ export default function SupplierRecipientsScreen() {
                           keyboardType="email-address"
                           onChangeText={(value) => setDraftEmails((current) => ({ ...current, [key]: value }))}
                           onSubmitEditing={() => {
-                            if (!unchanged && actionsEditable && !saving) void save(entry);
+                            if (!emailUnchanged && actionsEditable && !saving) void saveRecipient(entry);
                           }}
                           placeholder={copy.emailPlaceholder}
                           placeholderTextColor={colors.faint}
@@ -291,8 +374,8 @@ export default function SupplierRecipientsScreen() {
                           accessibilityHint={copy.saveHint}
                           variant="secondary"
                           fullWidth
-                          disabled={!actionsEditable || saving || unchanged}
-                          onPress={() => void save(entry)}
+                          disabled={!actionsEditable || saving || emailUnchanged}
+                          onPress={() => void saveRecipient(entry)}
                         />
                       </View>
                     ) : (
@@ -319,6 +402,15 @@ function isValidRecipientEmail(value: string) {
   return normalized.length >= 3 && normalized.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
 }
 
+function canonicalSupplierName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function isValidSupplierName(value: string) {
+  const canonical = canonicalSupplierName(value);
+  return canonical.length >= 1 && canonical.length <= 160 && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
 interface SupplierCopy {
   title: string;
   subtitle: string;
@@ -333,10 +425,16 @@ interface SupplierCopy {
   retryAccessibility: string;
   invalidTitle: string;
   invalidBody: (supplier: string) => string;
+  invalidNameTitle: string;
+  invalidNameBody: string;
   savedTitle: string;
   savedBody: (supplier: string) => string;
   saveErrorTitle: string;
   saveErrorBody: (supplier: string) => string;
+  renamedTitle: string;
+  renamedBody: (supplier: string) => string;
+  renameErrorTitle: string;
+  renameErrorBody: (supplier: string) => string;
   safetyTitle: string;
   safetyBody: string;
   sectionTitle: string;
@@ -348,6 +446,13 @@ interface SupplierCopy {
   currentSupplier: string;
   configured: string;
   needsEmail: string;
+  nameLabel: string;
+  namePlaceholder: string;
+  nameAccessibility: (supplier: string) => string;
+  nameHint: string;
+  rename: string;
+  renameAccessibility: (supplier: string) => string;
+  renameHint: string;
   emailLabel: string;
   emailPlaceholder: string;
   emailAccessibility: (supplier: string) => string;
@@ -362,8 +467,8 @@ interface SupplierCopy {
 
 const supplierCopy: Record<AppLocale, SupplierCopy> = {
   en: {
-    title: "Supplier emails",
-    subtitle: "Recipients for approved restaurant orders.",
+    title: "Suppliers",
+    subtitle: "Names and recipients for approved restaurant orders.",
     back: "Back to settings",
     noRestaurantTitle: "No restaurant selected",
     noRestaurantBody: "Open a restaurant workspace before managing supplier recipients.",
@@ -375,14 +480,20 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     retryAccessibility: "Retry loading supplier emails",
     invalidTitle: "Enter a valid email",
     invalidBody: (supplier) => `Add a complete email address for ${supplier}.`,
+    invalidNameTitle: "Enter a valid supplier name",
+    invalidNameBody: "Use 1–160 characters without control characters.",
     savedTitle: "Supplier email saved",
     savedBody: (supplier) => `${supplier} is ready for approved order emails.`,
     saveErrorTitle: "Supplier email was not saved",
     saveErrorBody: (supplier) => `Try saving the recipient for ${supplier} again.`,
+    renamedTitle: "Supplier renamed",
+    renamedBody: (supplier) => `${supplier} keeps its recipient, orders, and purchasing identity.`,
+    renameErrorTitle: "Supplier was not renamed",
+    renameErrorBody: (supplier) => `Try renaming ${supplier} again. The name may already be in use.`,
     safetyTitle: "Restaurant-scoped recipients",
-    safetyBody: "Mise uses these addresses only for manager-approved supplier orders in this restaurant.",
+    safetyBody: "Each supplier keeps one durable restaurant identity. Renaming it does not detach its recipient or create a different supplier.",
     sectionTitle: "Supplier directory",
-    sectionSubtitle: "Current inventory suppliers and previously saved recipients.",
+    sectionSubtitle: "Current suppliers and their approved-order recipients.",
     configuredCount: (configured, total) => `${configured} of ${total} ready`,
     emptyTitle: "No suppliers yet",
     emptyBody: "Add inventory suppliers during setup before configuring order recipients.",
@@ -390,6 +501,13 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     currentSupplier: "Current supplier",
     configured: "Ready",
     needsEmail: "Needs email",
+    nameLabel: "Display name",
+    namePlaceholder: "Supplier name",
+    nameAccessibility: (supplier) => `Display name for ${supplier}`,
+    nameHint: "Renaming preserves this supplier’s identity and recipient.",
+    rename: "Save name",
+    renameAccessibility: (supplier) => `Save a new display name for ${supplier}`,
+    renameHint: "Changes presentation without assigning a different supplier.",
     emailLabel: "Order email",
     emailPlaceholder: "orders@supplier.com",
     emailAccessibility: (supplier) => `Order email for ${supplier}`,
@@ -402,8 +520,8 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     notConfigured: "Not configured"
   },
   es: {
-    title: "Correos de proveedores",
-    subtitle: "Destinatarios de pedidos aprobados del restaurante.",
+    title: "Proveedores",
+    subtitle: "Nombres y destinatarios de pedidos aprobados del restaurante.",
     back: "Volver a Configuración",
     noRestaurantTitle: "No hay restaurante seleccionado",
     noRestaurantBody: "Abre un espacio de restaurante antes de administrar destinatarios.",
@@ -415,14 +533,20 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     retryAccessibility: "Volver a cargar los correos de proveedores",
     invalidTitle: "Ingresa un correo válido",
     invalidBody: (supplier) => `Agrega una dirección de correo completa para ${supplier}.`,
+    invalidNameTitle: "Ingresa un nombre de proveedor válido",
+    invalidNameBody: "Usa entre 1 y 160 caracteres, sin caracteres de control.",
     savedTitle: "Correo del proveedor guardado",
     savedBody: (supplier) => `${supplier} está listo para recibir pedidos aprobados.`,
     saveErrorTitle: "No se guardó el correo",
     saveErrorBody: (supplier) => `Intenta guardar nuevamente el destinatario de ${supplier}.`,
+    renamedTitle: "Proveedor renombrado",
+    renamedBody: (supplier) => `${supplier} conserva su destinatario, pedidos e identidad de compra.`,
+    renameErrorTitle: "No se cambió el nombre",
+    renameErrorBody: (supplier) => `Intenta renombrar ${supplier} nuevamente. Es posible que el nombre ya esté en uso.`,
     safetyTitle: "Destinatarios por restaurante",
-    safetyBody: "Mise usa estas direcciones solo para pedidos aprobados por un gerente en este restaurante.",
+    safetyBody: "Cada proveedor conserva una identidad estable dentro del restaurante. Renombrarlo no desconecta su destinatario ni crea otro proveedor.",
     sectionTitle: "Directorio de proveedores",
-    sectionSubtitle: "Proveedores actuales del inventario y destinatarios guardados anteriormente.",
+    sectionSubtitle: "Proveedores actuales y destinatarios de pedidos aprobados.",
     configuredCount: (configured, total) => `${configured} de ${total} listos`,
     emptyTitle: "Aún no hay proveedores",
     emptyBody: "Agrega proveedores de inventario durante la configuración antes de definir destinatarios.",
@@ -430,6 +554,13 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     currentSupplier: "Proveedor actual",
     configured: "Listo",
     needsEmail: "Falta correo",
+    nameLabel: "Nombre visible",
+    namePlaceholder: "Nombre del proveedor",
+    nameAccessibility: (supplier) => `Nombre visible de ${supplier}`,
+    nameHint: "Cambiar el nombre conserva la identidad y el destinatario del proveedor.",
+    rename: "Guardar nombre",
+    renameAccessibility: (supplier) => `Guardar un nuevo nombre visible para ${supplier}`,
+    renameHint: "Cambia la presentación sin asignar otro proveedor.",
     emailLabel: "Correo para pedidos",
     emailPlaceholder: "pedidos@proveedor.com",
     emailAccessibility: (supplier) => `Correo para pedidos de ${supplier}`,
@@ -442,8 +573,8 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     notConfigured: "Sin configurar"
   },
   "zh-Hans": {
-    title: "供应商邮箱",
-    subtitle: "用于餐厅已批准订单的收件人。",
+    title: "供应商",
+    subtitle: "餐厅已批准订单使用的名称和收件人。",
     back: "返回设置",
     noRestaurantTitle: "未选择餐厅",
     noRestaurantBody: "请先打开餐厅工作区，再管理供应商收件人。",
@@ -455,14 +586,20 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     retryAccessibility: "重新加载供应商邮箱",
     invalidTitle: "请输入有效邮箱",
     invalidBody: (supplier) => `请为 ${supplier} 添加完整的邮箱地址。`,
+    invalidNameTitle: "请输入有效的供应商名称",
+    invalidNameBody: "请使用 1–160 个字符，且不要包含控制字符。",
     savedTitle: "供应商邮箱已保存",
     savedBody: (supplier) => `${supplier} 已可接收批准后的订单邮件。`,
     saveErrorTitle: "未能保存供应商邮箱",
     saveErrorBody: (supplier) => `请重新保存 ${supplier} 的收件人。`,
+    renamedTitle: "供应商已重命名",
+    renamedBody: (supplier) => `${supplier} 的收件人、订单和采购身份均保持不变。`,
+    renameErrorTitle: "未能重命名供应商",
+    renameErrorBody: (supplier) => `请再次尝试重命名 ${supplier}。该名称可能已被使用。`,
     safetyTitle: "餐厅专属收件人",
-    safetyBody: "Mise 仅使用这些地址发送此餐厅经经理批准的供应商订单。",
+    safetyBody: "每个供应商在餐厅内都有一个持久身份。重命名不会断开收件人，也不会创建新的供应商。",
     sectionTitle: "供应商目录",
-    sectionSubtitle: "当前库存供应商和之前保存的收件人。",
+    sectionSubtitle: "当前供应商及其已批准订单的收件人。",
     configuredCount: (configured, total) => `${configured}/${total} 已就绪`,
     emptyTitle: "尚无供应商",
     emptyBody: "请先在设置中添加库存供应商，再配置订单收件人。",
@@ -470,6 +607,13 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     currentSupplier: "当前供应商",
     configured: "已就绪",
     needsEmail: "需要邮箱",
+    nameLabel: "显示名称",
+    namePlaceholder: "供应商名称",
+    nameAccessibility: (supplier) => `${supplier} 的显示名称`,
+    nameHint: "重命名会保留供应商身份和收件人。",
+    rename: "保存名称",
+    renameAccessibility: (supplier) => `保存 ${supplier} 的新显示名称`,
+    renameHint: "仅更改显示内容，不会分配其他供应商。",
     emailLabel: "订单邮箱",
     emailPlaceholder: "orders@supplier.com",
     emailAccessibility: (supplier) => `${supplier} 的订单邮箱`,

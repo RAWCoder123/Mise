@@ -20,6 +20,8 @@ const actorId = "fc111111-1111-4111-8111-111111111111";
 const restaurantId = "fc000000-0000-4000-8000-000000000001";
 const adversarialOrderId = "fc000000-0000-4000-8000-000000000101";
 const boundaryOrderId = "fc000000-0000-4000-8000-000000000102";
+const adversarialSupplierId = "fc000000-0000-4000-8000-000000000201";
+const boundarySupplierId = "fc000000-0000-4000-8000-000000000202";
 const encoder = new TextEncoder();
 
 function byteLength(value) {
@@ -100,44 +102,51 @@ try {
     [restaurantId],
   );
   await client.query(
-    `insert into public.supplier_recipients (restaurant_id, supplier_name, email)
-     values ($1, 'Parity Supplier', 'parity@supplier.test'),
-       ($1, 'Boundary Supplier', 'boundary@supplier.test')`,
-    [restaurantId],
+    `insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+     values ($2, $1, 'Parity Supplier', 'parity supplier'),
+       ($3, $1, 'Boundary Supplier', 'boundary supplier')`,
+    [restaurantId, adversarialSupplierId, boundarySupplierId],
+  );
+  await client.query(
+    `insert into public.supplier_recipients (
+       restaurant_id, supplier_id, supplier_name, email
+     ) values ($1, $2, 'Parity Supplier', 'parity@supplier.test'),
+       ($1, $3, 'Boundary Supplier', 'boundary@supplier.test')`,
+    [restaurantId, adversarialSupplierId, boundarySupplierId],
   );
 
   await client.query(
     `insert into public.inventory_items (
        id, restaurant_id, item_name, category, unit, current_quantity,
-       par_level, reorder_threshold, estimated_unit_cost, supplier_name,
+       par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name,
        canonical_unit, canonical_quantity_per_unit,
        canonical_unit_verification_status, canonical_unit_verified_at,
        canonical_unit_verified_by
      ) values (
        'fc000000-0000-4001-8000-000000000001', $1, 'Parity item',
-       'Test', 'each', 0, 1, 1, 1, 'Parity Supplier',
+       'Test', 'each', 0, 1, 1, 1, $3, 'Parity Supplier',
        'each', 1, 'verified', now(), $2
      )`,
-    [restaurantId, actorId],
+    [restaurantId, actorId, adversarialSupplierId],
   );
   await client.query(
     `insert into public.supplier_orders (
-       id, restaurant_id, supplier_name, order_message, status, delivery_date
-     ) values ($1, $2, 'Parity Supplier', 'pending parity render', 'draft', current_date + 1)`,
-    [adversarialOrderId, restaurantId],
+       id, restaurant_id, supplier_id, supplier_name, order_message, status, delivery_date
+     ) values ($1, $2, $3, 'Parity Supplier', 'pending parity render', 'draft', current_date + 1)`,
+    [adversarialOrderId, restaurantId, adversarialSupplierId],
   );
   await client.query(
     `insert into public.purchase_recommendations (
-       id, restaurant_id, inventory_item_id, item_name, supplier_name,
+       id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
        recommended_quantity, unit, reason, urgency, status,
        generation_source, supplier_order_id
      ) values (
        'fc000000-0000-4002-8000-000000000001', $1,
        'fc000000-0000-4001-8000-000000000001', 'Parity item',
-       'Parity Supplier', 1, 'each', 'Fingerprint parity fixture',
+       $3, 'Parity Supplier', 1, 'each', 'Fingerprint parity fixture',
        'high', 'approved', 'manual', $2
      )`,
-    [restaurantId, adversarialOrderId],
+    [restaurantId, adversarialOrderId, adversarialSupplierId],
   );
   const adversarialNote =
     "emoji 😀; CJK 漢字; CRLF\r\n; quote \"; backslash \\; " +
@@ -159,6 +168,8 @@ try {
     adversarialOrderId,
     "adversarial body",
   );
+  assert.equal(adversarialContent.supplierId, adversarialSupplierId);
+  assert.equal(adversarialContent.lines[0]?.supplierId, adversarialSupplierId);
   for (const required of ["😀", "漢字", "\r\n", '"', "\\", "\u2028", "\u007f", "\u0001", "\u001f"]) {
     assert.equal(adversarialContent.body.includes(required), true, `missing adversarial value ${JSON.stringify(required)}`);
   }
@@ -175,34 +186,41 @@ try {
   await client.query(
     `insert into public.inventory_items (
        id, restaurant_id, item_name, category, unit, current_quantity,
-       par_level, reorder_threshold, estimated_unit_cost, supplier_name,
+       par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name,
        canonical_unit, canonical_quantity_per_unit,
        canonical_unit_verification_status, canonical_unit_verified_at,
        canonical_unit_verified_by
      )
      select fixture.id, $1, fixture.item_name, 'Test', 'each', 0,
-       1, 1, 1, 'Boundary Supplier', 'each', 1, 'verified', now(), $2
+       1, 1, 1, $5, 'Boundary Supplier', 'each', 1, 'verified', now(), $2
      from unnest($3::uuid[], $4::text[]) as fixture(id, item_name)`,
-    [restaurantId, actorId, itemIds, boundaryNames],
+    [restaurantId, actorId, itemIds, boundaryNames, boundarySupplierId],
   );
   await client.query(
     `insert into public.supplier_orders (
-       id, restaurant_id, supplier_name, order_message, status, delivery_date
-     ) values ($1, $2, 'Boundary Supplier', 'pending boundary render', 'draft', current_date + 1)`,
-    [boundaryOrderId, restaurantId],
+       id, restaurant_id, supplier_id, supplier_name, order_message, status, delivery_date
+     ) values ($1, $2, $3, 'Boundary Supplier', 'pending boundary render', 'draft', current_date + 1)`,
+    [boundaryOrderId, restaurantId, boundarySupplierId],
   );
   await client.query(
     `insert into public.purchase_recommendations (
-       id, restaurant_id, inventory_item_id, item_name, supplier_name,
+       id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
        recommended_quantity, unit, reason, urgency, status,
        generation_source, supplier_order_id
      )
      select fixture.recommendation_id, $1, fixture.inventory_item_id,
-       fixture.item_name, 'Boundary Supplier', 1, 'each',
+       fixture.item_name, $6, 'Boundary Supplier', 1, 'each',
        'Fingerprint boundary fixture', 'high', 'approved', 'manual', $2
      from unnest($3::uuid[], $4::uuid[], $5::text[])
        as fixture(recommendation_id, inventory_item_id, item_name)`,
-    [restaurantId, boundaryOrderId, recommendationIds, itemIds, boundaryNames],
+    [
+      restaurantId,
+      boundaryOrderId,
+      recommendationIds,
+      itemIds,
+      boundaryNames,
+      boundarySupplierId,
+    ],
   );
   const bodyWithoutNote = orderBody("Boundary Supplier", boundaryNames, null);
   const notePrefixBytes = byteLength("\n\nNotes:\n");
@@ -226,6 +244,11 @@ try {
     client,
     boundaryOrderId,
     "65536-byte body",
+  );
+  assert.equal(boundaryContent.supplierId, boundarySupplierId);
+  assert.equal(
+    boundaryContent.lines.every((line) => line.supplierId === boundarySupplierId),
+    true,
   );
   assert.equal(byteLength(boundaryContent.body), 65_536);
 

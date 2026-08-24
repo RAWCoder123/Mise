@@ -13,7 +13,7 @@ export function createDemoSetupStarterDrafts(): SetupStarterDrafts {
         quantity: "26",
         unit: "lb",
         parLevel: "95",
-        supplier: "Regional Protein Co."
+        supplierId: "starter_supplier_protein"
       },
       {
         id: "starter_inventory_rice",
@@ -21,7 +21,7 @@ export function createDemoSetupStarterDrafts(): SetupStarterDrafts {
         quantity: "88",
         unit: "lb",
         parLevel: "190",
-        supplier: "Pantry Wholesale"
+        supplierId: "starter_supplier_pantry"
       },
       {
         id: "starter_inventory_peppers",
@@ -29,10 +29,15 @@ export function createDemoSetupStarterDrafts(): SetupStarterDrafts {
         quantity: "18",
         unit: "lb",
         parLevel: "52",
-        supplier: "Metro Produce Supply"
+        supplierId: "starter_supplier_produce"
       }
     ],
     suppliers: [
+      {
+        id: "starter_supplier_protein",
+        name: "Regional Protein Co.",
+        email: "orders@regional-protein.example"
+      },
       {
         id: "starter_supplier_produce",
         name: "Metro Produce Supply",

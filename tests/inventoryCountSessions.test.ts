@@ -28,6 +28,7 @@ const item = (
   par_level: 10,
   reorder_threshold: 4,
   estimated_unit_cost: 1,
+  supplier_id: "10000000-0000-4000-8000-000000000009",
   supplier_name: "Local",
   last_updated: "2026-07-31T00:00:00.000Z",
   canonical_unit: options?.canonical_unit ?? "g",

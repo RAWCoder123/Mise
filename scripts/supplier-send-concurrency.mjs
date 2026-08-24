@@ -69,6 +69,20 @@ const scenarios = {
   },
 };
 
+const supplierIdsByName = new Map(
+  [...new Set(Object.values(scenarios).map((scenario) => scenario.supplier))]
+    .map((supplier, index) => [
+      supplier,
+      `fb000000-0000-4000-8000-${String(index + 51).padStart(12, "0")}`,
+    ]),
+);
+
+function supplierIdForName(supplier) {
+  const supplierId = supplierIdsByName.get(supplier);
+  assert.ok(supplierId, `durable supplier ID exists for ${supplier}`);
+  return supplierId;
+}
+
 const connectionString = process.env.SUPABASE_LOCAL_DB_URL
   ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const connectionUrl = new URL(connectionString);
@@ -157,9 +171,17 @@ async function setup(admin, cleanupState) {
 
   const suppliers = [...new Set(Object.values(scenarios).map((scenario) => scenario.supplier))];
   for (const [index, supplier] of suppliers.entries()) {
+    const supplierId = supplierIdForName(supplier);
     await admin.query(
-      "insert into public.supplier_recipients (restaurant_id, supplier_name, email) values ($1, $2, $3)",
-      [restaurantId, supplier, `supplier-${index + 1}@supplier-send-race.test`],
+      `insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+       values ($1, $2, $3, lower($3))`,
+      [supplierId, restaurantId, supplier],
+    );
+    await admin.query(
+      `insert into public.supplier_recipients (
+        restaurant_id, supplier_id, supplier_name, email
+      ) values ($1, $2, $3, $4)`,
+      [restaurantId, supplierId, supplier, `supplier-${index + 1}@supplier-send-race.test`],
     );
   }
 
@@ -191,15 +213,22 @@ async function setup(admin, cleanupState) {
     await admin.query(
       `insert into public.inventory_items (
         id, restaurant_id, item_name, category, unit, current_quantity,
-        par_level, reorder_threshold, estimated_unit_cost, supplier_name,
+        par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name,
         canonical_unit, canonical_quantity_per_unit,
         canonical_unit_verification_status, canonical_unit_verified_at,
         canonical_unit_verified_by
       ) values (
-        $1, $2, $3, 'Produce', 'each', 0, 8, 2, 1, $4,
-        'each', 1, 'verified', now(), $5
+        $1, $2, $3, 'Produce', 'each', 0, 8, 2, 1, $4, $5,
+        'each', 1, 'verified', now(), $6
       )`,
-      [scenario.itemId, restaurantId, scenario.itemName, scenario.supplier, actorId],
+      [
+        scenario.itemId,
+        restaurantId,
+        scenario.itemName,
+        supplierIdForName(scenario.supplier),
+        scenario.supplier,
+        actorId,
+      ],
     );
     await admin.query(
       `insert into public.inventory_events (
@@ -235,10 +264,10 @@ async function setup(admin, cleanupState) {
   for (const scenario of Object.values(scenarios)) {
     await admin.query(
       `insert into public.purchase_recommendations (
-        id, restaurant_id, inventory_item_id, item_name, supplier_name,
+        id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
         recommended_quantity, unit, reason, urgency, status, generation_source
       ) values (
-        $1, $2, $3, $4, $5, 2, 'each',
+        $1, $2, $3, $4, $5, $6, 2, 'each',
         'MISE-003B concurrency fixture', 'high', 'pending', 'manual'
       )`,
       [
@@ -246,6 +275,7 @@ async function setup(admin, cleanupState) {
         restaurantId,
         scenario.itemId,
         scenario.itemName,
+        supplierIdForName(scenario.supplier),
         scenario.supplier,
       ],
     );
@@ -283,8 +313,8 @@ async function orderForSupplier(admin, supplier) {
   const result = await admin.query(
     `select id, operator_note, delivery_date, send_content_revision
      from public.supplier_orders
-     where restaurant_id = $1 and supplier_name = $2 and status = 'draft'`,
-    [restaurantId, supplier],
+     where restaurant_id = $1 and supplier_id = $2 and status = 'draft'`,
+    [restaurantId, supplierIdForName(supplier)],
   );
   assert.equal(result.rowCount, 1, `one draft exists for ${supplier}`);
   return result.rows[0];

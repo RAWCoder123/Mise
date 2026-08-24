@@ -25,6 +25,7 @@ const sensitiveKeyPattern =
   /(?:^|_)(?:access_token|refresh_token|oauth_token|client_secret|api_key|password|authorization|pkce_verifier|claim_token|credential_id|secret_id)(?:$|_)/i;
 
 const exportDatasets = [
+  { name: "suppliers", order: "id" },
   { name: "pos_sales", order: "id" },
   { name: "inventory_items", order: "id" },
   { name: "inventory_events", order: "id" },

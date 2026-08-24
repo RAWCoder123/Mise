@@ -223,6 +223,7 @@ function recommendation(
     restaurant_id: restaurantId,
     inventory_item_id: "critical_item",
     item_name: "Chicken breast",
+    supplier_id: "10000000-0000-4000-8000-000000000014",
     supplier_name: "Fresh Foods",
     recommended_quantity: 20,
     unit: "lb",
@@ -251,6 +252,7 @@ function outlook(
       par_level: 20,
       reorder_threshold: 5,
       estimated_unit_cost: 2,
+      supplier_id: "10000000-0000-4000-8000-000000000014",
       supplier_name: "Fresh Foods",
       last_updated: "2026-07-18T14:00:00.000Z"
     },
@@ -287,6 +289,7 @@ function order(patch: Partial<SupplierOrder> = {}): SupplierOrder {
   return {
     id: "order_1",
     restaurant_id: restaurantId,
+    supplier_id: "10000000-0000-4000-8000-000000000014",
     supplier_name: "Fresh Foods",
     order_message: "Please prepare the approved items.",
     operator_note: null,

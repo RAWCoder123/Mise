@@ -30,14 +30,22 @@ values (
   'active'
 );
 
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values (
+  'a0000000-0000-4000-8000-000000000010',
+  'a0000000-0000-4000-8000-000000000001',
+  'Metro Produce', 'metro produce'
+);
+
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity,
-  par_level, reorder_threshold, estimated_unit_cost, supplier_name
+  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
 )
 values (
   'a0000000-0000-4000-8000-000000000011',
   'a0000000-0000-4000-8000-000000000001',
-  'Bell peppers', 'Produce', 'lb', 20, 30, 8, 2.35, 'Metro Produce'
+  'Bell peppers', 'Produce', 'lb', 20, 30, 8, 2.35,
+  'a0000000-0000-4000-8000-000000000010', 'Metro Produce'
 );
 
 set local role authenticated;

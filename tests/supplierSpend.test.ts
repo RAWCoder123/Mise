@@ -5,6 +5,7 @@ import { buildSupplierSpendTrend } from "../services/domain/supplierSpend";
 import type { InventoryItem, PurchaseRecommendation, SupplierOrder } from "../types/mise";
 
 const restaurantId = "rest_1";
+const supplierId = "00000000-0000-4000-8000-000000000501";
 
 function inventory(id: string, cost: number): InventoryItem {
   return {
@@ -16,6 +17,7 @@ function inventory(id: string, cost: number): InventoryItem {
     current_quantity: 10,
     par_level: 20,
     reorder_threshold: 5,
+    supplier_id: supplierId,
     supplier_name: "Metro",
     estimated_unit_cost: cost,
     last_updated: "2026-07-20T12:00:00.000Z"
@@ -26,6 +28,7 @@ function order(id: string, status: SupplierOrder["status"], createdAt: string): 
   return {
     id,
     restaurant_id: restaurantId,
+    supplier_id: supplierId,
     supplier_name: "Metro",
     order_message: "hello",
     operator_note: null,
@@ -46,6 +49,7 @@ function recommendation(
     restaurant_id: restaurantId,
     inventory_item_id: itemId,
     item_name: itemId,
+    supplier_id: supplierId,
     supplier_name: "Metro",
     recommended_quantity: quantity,
     unit: "lb",

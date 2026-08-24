@@ -16,6 +16,7 @@ function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
     par_level: 20,
     reorder_threshold: 5,
     estimated_unit_cost: 4,
+    supplier_id: "10000000-0000-4000-8000-000000000008",
     supplier_name: "Supplier A",
     last_updated: "2026-07-26T10:00:00.000Z",
     ...overrides

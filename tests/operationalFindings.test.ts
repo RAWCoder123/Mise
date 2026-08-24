@@ -17,6 +17,7 @@ import type { VerifiedCountCandidate } from "../services/domain/inventoryCountAu
 
 const restaurantId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const generatedAt = "2026-07-27T12:00:00.000Z";
+const supplierId = "10000000-0000-4000-8000-000000000012";
 
 const item: InventoryItem = {
   id: "item-chicken",
@@ -28,6 +29,7 @@ const item: InventoryItem = {
   par_level: 40,
   reorder_threshold: 8,
   estimated_unit_cost: 4.5,
+  supplier_id: supplierId,
   supplier_name: "Fresh Produce Co.",
   last_updated: "2026-07-27T11:00:00.000Z",
   canonical_unit: "g",
@@ -51,6 +53,7 @@ const recommendation: PurchaseRecommendation = {
   restaurant_id: restaurantId,
   inventory_item_id: item.id,
   item_name: item.item_name,
+  supplier_id: supplierId,
   supplier_name: item.supplier_name,
   recommended_quantity: 38,
   unit: "lb",

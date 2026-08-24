@@ -22,6 +22,8 @@ export interface RestaurantAutonomyRule {
   requiresApproval: boolean;
   enabled: boolean;
   spendLimitCents: number | null;
+  supplierId: string | null;
+  /** Presentation snapshot; scope authority uses `supplierId`. */
   supplierName: string | null;
   communicationType: string | null;
   allowedStartTime: string | null;
@@ -40,6 +42,7 @@ export interface PersistedAutonomyRuleRow {
   requires_approval: boolean;
   enabled: boolean;
   spend_limit_cents?: number | null;
+  supplier_id?: string | null;
   supplier_name?: string | null;
   communication_type?: string | null;
   allowed_start_time?: string | null;
@@ -66,6 +69,7 @@ export function autonomyRuleFromPersistedRow(row: PersistedAutonomyRuleRow): Res
       row.spend_limit_cents === null || row.spend_limit_cents === undefined
         ? null
         : Number(row.spend_limit_cents),
+    supplierId: row.supplier_id ?? null,
     supplierName: row.supplier_name ?? null,
     communicationType: row.communication_type ?? null,
     allowedStartTime: row.allowed_start_time ?? null,
@@ -87,6 +91,7 @@ export function defaultAutonomyRules(restaurantId: string, now = new Date().toIS
       requiresApproval: true,
       enabled: true,
       spendLimitCents: 50000,
+      supplierId: null,
       supplierName: null,
       communicationType: null,
       allowedStartTime: null,
@@ -104,6 +109,7 @@ export function defaultAutonomyRules(restaurantId: string, now = new Date().toIS
       requiresApproval: true,
       enabled: false,
       spendLimitCents: 25000,
+      supplierId: null,
       supplierName: null,
       communicationType: "email",
       allowedStartTime: null,
@@ -121,6 +127,7 @@ export function defaultAutonomyRules(restaurantId: string, now = new Date().toIS
       requiresApproval: false,
       enabled: true,
       spendLimitCents: null,
+      supplierId: null,
       supplierName: null,
       communicationType: null,
       allowedStartTime: null,

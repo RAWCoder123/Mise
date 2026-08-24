@@ -68,13 +68,18 @@ values
   ('d0000000-0000-4000-8000-000000000001', 'd2222222-2222-4222-8222-222222222222', 'staff', 'active'),
   ('e0000000-0000-4000-8000-000000000001', 'd3333333-3333-4333-8333-333333333333', 'owner', 'active');
 
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values
+  ('d0000000-0000-4000-8000-000000000010', 'd0000000-0000-4000-8000-000000000001', 'Supplier A', 'supplier a'),
+  ('e0000000-0000-4000-8000-000000000010', 'e0000000-0000-4000-8000-000000000001', 'Supplier B', 'supplier b');
+
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity,
-  par_level, reorder_threshold, estimated_unit_cost, supplier_name
+  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
 )
 values
-  ('d0000000-0000-4000-8000-000000000011', 'd0000000-0000-4000-8000-000000000001', 'Chicken', 'Protein', 'lb', 10, 20, 5, 4, 'Supplier A'),
-  ('e0000000-0000-4000-8000-000000000011', 'e0000000-0000-4000-8000-000000000001', 'Coffee', 'Beverage', 'lb', 10, 20, 5, 8, 'Supplier B');
+  ('d0000000-0000-4000-8000-000000000011', 'd0000000-0000-4000-8000-000000000001', 'Chicken', 'Protein', 'lb', 10, 20, 5, 4, 'd0000000-0000-4000-8000-000000000010', 'Supplier A'),
+  ('e0000000-0000-4000-8000-000000000011', 'e0000000-0000-4000-8000-000000000001', 'Coffee', 'Beverage', 'lb', 10, 20, 5, 8, 'e0000000-0000-4000-8000-000000000010', 'Supplier B');
 
 insert into public.inventory_events (
   restaurant_id, inventory_item_id, event_type, quantity, canonical_unit,

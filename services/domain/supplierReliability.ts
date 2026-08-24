@@ -47,6 +47,7 @@ export type SupplierReliabilityReason =
   | "matched_history";
 
 export interface SupplierReliabilityEntry {
+  supplierId: string;
   supplierName: string;
   status: SupplierReliabilityStatus;
   deliveryCount: number;
@@ -87,6 +88,7 @@ export interface SupplierOrderDeliveryEvidence {
 }
 
 interface SupplierAccumulator {
+  supplierId: string;
   supplierName: string;
   deliveries: SupplierDeliveryRecord[];
   orders: SupplierOrder[];
@@ -128,9 +130,10 @@ export function buildSupplierReliabilitySummary(input: {
   for (const delivery of input.deliveries) {
     const order = ordersById.get(delivery.supplier_order_id);
     if (!order) continue;
-    const key = order.supplier_name.trim().toLocaleLowerCase();
+    const key = order.supplier_id.trim();
     if (!key) continue;
     const current = suppliers.get(key) ?? {
+      supplierId: order.supplier_id,
       supplierName: order.supplier_name.trim(),
       deliveries: [],
       orders: [],
@@ -270,6 +273,7 @@ function summarizeSupplier(
   });
 
   return {
+    supplierId: supplier.supplierId,
     supplierName: supplier.supplierName,
     status,
     deliveryCount,
@@ -352,7 +356,8 @@ function compareReliabilityEntries(left: SupplierReliabilityEntry, right: Suppli
   return (
     rank[left.status] - rank[right.status] ||
     right.lastDeliveryAt.localeCompare(left.lastDeliveryAt) ||
-    left.supplierName.localeCompare(right.supplierName)
+    left.supplierName.localeCompare(right.supplierName) ||
+    left.supplierId.localeCompare(right.supplierId)
   );
 }
 

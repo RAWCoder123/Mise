@@ -414,6 +414,7 @@ export default function SetupScreen() {
                     <InventoryDraftRow
                       key={item.id}
                       item={item}
+                      suppliers={suppliers}
                       onChange={(patch) => updateInventoryItem(item.id, patch, setInventoryItems)}
                       onRemove={() => removeDraft(item.id, setInventoryItems)}
                     />
@@ -443,7 +444,11 @@ export default function SetupScreen() {
                     key={supplier.id}
                     supplier={supplier}
                     onChange={(patch) => updateSupplier(supplier.id, patch, setSuppliers)}
-                    onRemove={() => removeDraft(supplier.id, setSuppliers)}
+                    onRemove={() => removeSupplierDraft(
+                      supplier.id,
+                      setSuppliers,
+                      setInventoryItems
+                    )}
                   />
                 ))
               )}
@@ -590,10 +595,12 @@ export default function SetupScreen() {
 
 function InventoryDraftRow({
   item,
+  suppliers,
   onChange,
   onRemove
 }: {
   item: SetupInventoryDraftItem;
+  suppliers: SetupSupplierDraft[];
   onChange: (patch: Partial<SetupInventoryDraftItem>) => void;
   onRemove: () => void;
 }) {
@@ -620,7 +627,26 @@ function InventoryDraftRow({
         <MiniField label={t("setup.field.unit")} value={item.unit} onChangeText={(unit) => onChange({ unit })} />
         <MiniField label={t("setup.field.par")} value={item.parLevel} onChangeText={(parLevel) => onChange({ parLevel })} keyboardType="decimal-pad" />
       </View>
-      <Field label={t("setup.field.supplier")} value={item.supplier} onChangeText={(supplier) => onChange({ supplier })} compact />
+      <View style={styles.supplierChoiceField}>
+        <Text style={styles.label}>{t("setup.field.supplier")}</Text>
+        {suppliers.length > 0 ? (
+          <View style={styles.chips}>
+            {suppliers.map((supplier, index) => {
+              const label = supplier.name.trim() || t("setup.validation.supplierLabel", { count: String(index + 1) });
+              return (
+                <ChoiceChip
+                  key={supplier.id}
+                  label={label}
+                  selected={item.supplierId === supplier.id}
+                  onPress={() => onChange({ supplierId: supplier.id })}
+                />
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={styles.supplierChoiceHint}>{t("setup.field.addSupplierFirst")}</Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -848,8 +874,19 @@ function removeDraft<T extends { id: string }>(
   setter((current) => current.filter((item) => item.id !== id));
 }
 
+function removeSupplierDraft(
+  supplierId: string,
+  setSuppliers: (update: (current: SetupSupplierDraft[]) => SetupSupplierDraft[]) => void,
+  setInventoryItems: (update: (current: SetupInventoryDraftItem[]) => SetupInventoryDraftItem[]) => void
+) {
+  setSuppliers((current) => current.filter((supplier) => supplier.id !== supplierId));
+  setInventoryItems((current) => current.map((item) =>
+    item.supplierId === supplierId ? { ...item, supplierId: "" } : item
+  ));
+}
+
 function createInventoryDraft(): SetupInventoryDraftItem {
-  return { id: makeLocalId("inventory"), name: "", quantity: "", unit: "lb", parLevel: "", supplier: "" };
+  return { id: makeLocalId("inventory"), name: "", quantity: "", unit: "lb", parLevel: "", supplierId: "" };
 }
 
 function createSupplierDraft(): SetupSupplierDraft {
@@ -893,13 +930,16 @@ function validateSetupDrafts({
 
   for (const [index, item] of inventoryItems.entries()) {
     const hasDraftData = Boolean(
-      item.name.trim() || item.quantity.trim() || item.parLevel.trim() || item.supplier.trim()
+      item.name.trim() || item.quantity.trim() || item.parLevel.trim() || item.supplierId
     );
     if (!hasDraftData) continue;
     const label = item.name.trim() || t("setup.validation.inventoryLabel", { count: formatNumber(index + 1) });
     if (!item.name.trim()) return setupValidationFailure("inventory", t("setup.validation.needsName", { item: label }));
     if (!item.quantity.trim()) return setupValidationFailure("inventory", t("setup.validation.needsQuantity", { item: label }));
     if (!item.unit.trim()) return setupValidationFailure("inventory", t("setup.validation.needsUnit", { item: label }));
+    if (!item.supplierId || !suppliers.some((supplier) => supplier.id === item.supplierId && supplier.name.trim())) {
+      return setupValidationFailure("inventory", t("setup.validation.inventorySupplier", { item: label }));
+    }
     if (!isBoundedSetupNumber(item.quantity, 0, operatingLimits.inventoryQuantity, parseNumber)) {
       return setupValidationFailure(
         "inventory",
@@ -920,8 +960,9 @@ function validateSetupDrafts({
     }
   }
 
+  const seenSupplierNames = new Set<string>();
   for (const [index, supplier] of suppliers.entries()) {
-    const name = supplier.name.trim();
+    const name = supplier.name.trim().replace(/\s+/g, " ");
     const email = supplier.email.trim();
     if (!name && email) {
       return setupValidationFailure(
@@ -931,6 +972,20 @@ function validateSetupDrafts({
         })
       );
     }
+    if (name && (name.length > 160 || /[\u0000-\u001f\u007f]/.test(supplier.name))) {
+      return setupValidationFailure(
+        "inventory",
+        t("setup.validation.supplierNameInvalid", { supplier: name })
+      );
+    }
+    const normalizedName = name.toLocaleLowerCase("en-US");
+    if (normalizedName && seenSupplierNames.has(normalizedName)) {
+      return setupValidationFailure(
+        "inventory",
+        t("setup.validation.supplierDuplicate", { supplier: name })
+      );
+    }
+    if (normalizedName) seenSupplierNames.add(normalizedName);
     if (email && !isValidEmail(email)) {
       return setupValidationFailure(
         "inventory",
@@ -1089,6 +1144,13 @@ const styles = StyleSheet.create({
   },
   compactField: {
     marginTop: 10
+  },
+  supplierChoiceField: {
+    marginTop: 2
+  },
+  supplierChoiceHint: {
+    color: colors.muted,
+    ...typography.body
   },
   label: {
     color: colors.text,

@@ -10,7 +10,8 @@ import type {
 import {
   normalizeRecipeBaselineQuantity,
   normalizeRecommendedQuantity,
-  operatingLimits
+  operatingLimits,
+  requireSupplierDisplayName
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
 import { regenerateOperationalSignals } from "./recalculations";
@@ -36,7 +37,15 @@ export async function saveRestaurantSetup(
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
   validateSetupInput(input);
 
-  const supplierNames = new Map<string, { supplier_name: string; email: string | null }>();
+  const suppliersByReference = new Map<
+    string,
+    {
+      restaurant_id: string;
+      client_reference_id: string;
+      display_name: string;
+      email: string | null;
+    }
+  >();
   const inventoryItemsByName = new Map<
     string,
     {
@@ -48,15 +57,18 @@ export async function saveRestaurantSetup(
       par_level: number;
       reorder_threshold: number;
       estimated_unit_cost: number;
-      supplier_name: string;
+      supplier_client_reference_id: string;
     }
   >();
 
   for (const supplier of input.suppliers) {
-    const supplierName = supplier.name.trim();
-    if (!supplierName) continue;
-    supplierNames.set(supplierName.toLowerCase(), {
-      supplier_name: supplierName,
+    if (!supplier.name.trim() && !supplier.email.trim()) continue;
+    const supplierReferenceId = requireSetupReferenceId(supplier.id, "supplier");
+    const displayName = requireSupplierDisplayName(supplier.name);
+    suppliersByReference.set(supplierReferenceId, {
+      restaurant_id: normalizedRestaurantId,
+      client_reference_id: supplierReferenceId,
+      display_name: displayName,
       email: normalizeOptionalEmail(supplier.email)
     });
   }
@@ -67,9 +79,9 @@ export async function saveRestaurantSetup(
     const currentQuantity = normalizeRecommendedQuantity(draft.quantity);
     const parLevel = normalizeRecommendedQuantity(draft.parLevel || currentQuantity);
     const unit = draft.unit.trim() || "unit";
-    const supplierName = draft.supplier.trim() || firstSupplierName(supplierNames.values()) || "Supplier";
-    if (!supplierNames.has(supplierName.toLowerCase())) {
-      supplierNames.set(supplierName.toLowerCase(), { supplier_name: supplierName, email: null });
+    const supplierReferenceId = requireSetupReferenceId(draft.supplierId, "supplier");
+    if (!suppliersByReference.has(supplierReferenceId)) {
+      throw new Error(`${itemName} references an unavailable supplier.`);
     }
     inventoryItemsByName.set(itemName.toLowerCase(), {
       restaurant_id: normalizedRestaurantId,
@@ -80,7 +92,7 @@ export async function saveRestaurantSetup(
       par_level: parLevel,
       reorder_threshold: Math.max(0, Math.round(parLevel * 0.35 * 100) / 100),
       estimated_unit_cost: 0,
-      supplier_name: supplierName
+      supplier_client_reference_id: supplierReferenceId
     });
   }
 
@@ -104,9 +116,10 @@ export async function saveRestaurantSetup(
       }
 
       if (!inventoryItemsByName.has(ingredientName.toLowerCase())) {
-        const supplierName = firstSupplierName(supplierNames.values()) || "Supplier";
-        if (!supplierNames.has(supplierName.toLowerCase())) {
-          supplierNames.set(supplierName.toLowerCase(), { supplier_name: supplierName, email: null });
+        const supplierReferenceId = firstSupplierReferenceId(suppliersByReference);
+        if (!supplierReferenceId) {
+          skippedRecipeIngredients += 1;
+          continue;
         }
         inventoryItemsByName.set(ingredientName.toLowerCase(), {
           restaurant_id: normalizedRestaurantId,
@@ -117,7 +130,7 @@ export async function saveRestaurantSetup(
           par_level: 0,
           reorder_threshold: 0,
           estimated_unit_cost: 0,
-          supplier_name: supplierName
+          supplier_client_reference_id: supplierReferenceId
         });
       }
 
@@ -138,10 +151,7 @@ export async function saveRestaurantSetup(
 
   const summary = await repository.saveRestaurantSetupSnapshot(normalizedRestaurantId, {
     inventoryItems: [...inventoryItemsByName.values()],
-    suppliers: [...supplierNames.values()].map((supplier) => ({
-      restaurant_id: normalizedRestaurantId,
-      ...supplier
-    })),
+    suppliers: [...suppliersByReference.values()],
     recipeMappings,
     posSales: (input.posSales ?? []).map((sale) => ({
       restaurant_id: normalizedRestaurantId,
@@ -168,7 +178,34 @@ export async function saveRestaurantSetup(
 }
 
 function validateSetupInput(input: SaveRestaurantSetupInput) {
+  const supplierReferences = new Set<string>();
+  const normalizedSupplierNames = new Set<string>();
+  input.suppliers.forEach((supplier) => {
+    const hasDraftData = Boolean(supplier.name.trim() || supplier.email.trim());
+    if (!hasDraftData) return;
+    const supplierReferenceId = requireSetupReferenceId(supplier.id, "supplier");
+    if (supplierReferences.has(supplierReferenceId)) {
+      throw new Error("Setup contains a duplicate supplier reference.");
+    }
+    supplierReferences.add(supplierReferenceId);
+    const displayName = requireSupplierDisplayName(supplier.name);
+    const normalizedName = displayName.toLocaleLowerCase("en-US");
+    if (normalizedSupplierNames.has(normalizedName)) {
+      throw new Error(`Setup contains a duplicate supplier named ${displayName}.`);
+    }
+    normalizedSupplierNames.add(normalizedName);
+    normalizeOptionalEmail(supplier.email);
+  });
+
   input.inventoryItems.forEach((item) => {
+    const hasDraftData = Boolean(
+      item.name.trim() || item.quantity.trim() || item.parLevel.trim() || item.supplierId.trim()
+    );
+    if (!hasDraftData) return;
+    const supplierReferenceId = requireSetupReferenceId(item.supplierId, "supplier");
+    if (!supplierReferences.has(supplierReferenceId)) {
+      throw new Error(`${item.name.trim() || "Inventory item"} requires a configured supplier.`);
+    }
     assertBoundedSetupNumber(item.quantity, 0, operatingLimits.inventoryQuantity, `${item.name || "Inventory item"} quantity`);
     assertBoundedSetupNumber(
       item.parLevel || item.quantity,
@@ -205,11 +242,28 @@ function assertBoundedSetupNumber(value: unknown, minimum: number, maximum: numb
 }
 
 function normalizeOptionalEmail(value: string) {
-  const normalized = value.trim();
+  const normalized = value.trim().toLowerCase();
   if (!normalized) return null;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) ? normalized : null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new Error("Enter a valid supplier email address.");
+  }
+  return normalized;
 }
 
-function firstSupplierName(suppliers: IterableIterator<{ supplier_name: string }>) {
-  return suppliers.next().value?.supplier_name;
+function requireSetupReferenceId(value: unknown, label: string) {
+  const referenceId = typeof value === "string" ? value.trim() : "";
+  if (
+    !referenceId ||
+    referenceId.length > 128 ||
+    /[\u0000-\u001f\u007f]/.test(referenceId)
+  ) {
+    throw new Error(`Setup ${label} reference is invalid.`);
+  }
+  return referenceId;
+}
+
+function firstSupplierReferenceId(
+  suppliers: ReadonlyMap<string, { client_reference_id: string }>
+) {
+  return suppliers.values().next().value?.client_reference_id ?? null;
 }

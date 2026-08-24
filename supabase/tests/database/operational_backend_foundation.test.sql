@@ -62,26 +62,33 @@ values
   ('d0000000-0000-4000-8000-000000000001', 'd3333333-3333-4333-8333-333333333333', 'staff', 'active'),
   ('d0000000-0000-4000-8000-000000000002', 'd4444444-4444-4444-8444-444444444444', 'owner', 'active');
 
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values
+  ('d0000000-0000-4000-8000-000000000010', 'd0000000-0000-4000-8000-000000000001', 'Reliable Produce', 'reliable produce'),
+  ('d0000000-0000-4000-8000-000000000020', 'd0000000-0000-4000-8000-000000000001', 'Fallback Produce', 'fallback produce');
+
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity,
-  par_level, reorder_threshold, estimated_unit_cost, supplier_name
+  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
 )
 values
   (
     'd0000000-0000-4000-8000-000000000011',
     'd0000000-0000-4000-8000-000000000001',
-    'Roma tomatoes', 'Produce', 'lb', 1, 10, 3, 2.5, 'Reliable Produce'
+    'Roma tomatoes', 'Produce', 'lb', 1, 10, 3, 2.5,
+    'd0000000-0000-4000-8000-000000000010', 'Reliable Produce'
   );
 
 insert into public.purchase_recommendations (
-  id, restaurant_id, inventory_item_id, item_name, supplier_name,
+  id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
   recommended_quantity, unit, reason, urgency, status
 )
 values (
   'd0000000-0000-4000-8000-000000000101',
   'd0000000-0000-4000-8000-000000000001',
   'd0000000-0000-4000-8000-000000000011',
-  'Roma tomatoes', 'Reliable Produce', 453.59237, 'g',
+  'Roma tomatoes', 'd0000000-0000-4000-8000-000000000010',
+  'Reliable Produce', 453.59237, 'g',
   'Verified stock is below the service threshold.', 'high', 'pending'
 );
 
@@ -352,10 +359,11 @@ select is((select count(*) from public.supplier_deliveries where client_delivery
 select is((select count(*) from public.inventory_events where source_reference in (select id::text from public.supplier_deliveries where client_delivery_id = 'operational-delivery-1')), 1::bigint, 'delivery replay creates no duplicate inventory receipt');
 
 insert into public.supplier_orders (
-  id, restaurant_id, supplier_name, order_message, status, delivery_date
+  id, restaurant_id, supplier_id, supplier_name, order_message, status, delivery_date
 ) values (
   'd0000000-0000-4000-8000-000000000202',
   'd0000000-0000-4000-8000-000000000001',
+  'd0000000-0000-4000-8000-000000000020',
   'Fallback Produce', 'Prepared failure-path order', 'draft', current_date + 1
 );
 

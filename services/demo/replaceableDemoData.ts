@@ -16,13 +16,21 @@ import type {
   SalesImport,
   SupplierItem,
   SupplierOrder,
-  SupplierRecipient
+  SupplierRecipient,
+  Supplier
 } from "../../types/mise";
 import type { SetupPosSaleDraft } from "../domain/setupDrafts";
 import type { OperationalFindingDecision } from "../domain/operationalFindingDecisions";
 import type { InventoryEvent } from "../domain/inventoryLedger";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
 import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
+import {
+  buildDemoSupplierCatalog,
+  demoSupplierIdForLegacyName,
+  findDemoSupplierById,
+  findDemoSupplierByLegacyName,
+  isDemoSupplierId
+} from "./demoSupplierIdentity";
 
 export const DEMO_RESTAURANT_ID = DEMO_DATASET.restaurant.id;
 export const DEMO_USER_ID = DEMO_DATASET.user.id;
@@ -59,9 +67,11 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 11;
+  schema_version: 12;
   restaurants: Restaurant[];
   users: AppUser[];
+  /** Durable tenant-scoped supplier identities. Names are presentation only. */
+  suppliers: Supplier[];
   posSales: PosSale[];
   inventoryItems: InventoryItem[];
   menuItemIngredients: MenuItemIngredient[];
@@ -185,6 +195,8 @@ export function createInitialDemoState(
   const restaurantTimeZone = DEMO_RESTAURANT_TIME_ZONE;
   const today = toDateKeyInTimeZone(nowDate, restaurantTimeZone);
   const tomorrow = toDateKeyInTimeZone(addDays(nowDate, 1), restaurantTimeZone);
+  const supplierId = (displayName: string) =>
+    demoSupplierIdForLegacyName(DEMO_RESTAURANT_ID, displayName);
 
   const restaurant: Restaurant = {
     id: DEMO_RESTAURANT_ID,
@@ -228,6 +240,7 @@ export function createInitialDemoState(
       par_level: 60,
       reorder_threshold: 25,
       estimated_unit_cost: 3.7,
+      supplier_id: supplierId("Fresh Poultry Supply"),
       supplier_name: "Fresh Poultry Supply",
       last_updated: now
     },
@@ -241,6 +254,7 @@ export function createInitialDemoState(
       par_level: 240,
       reorder_threshold: 100,
       estimated_unit_cost: 0.22,
+      supplier_id: supplierId("Restaurant Depot"),
       supplier_name: "Restaurant Depot",
       last_updated: now
     },
@@ -254,6 +268,7 @@ export function createInitialDemoState(
       par_level: 100,
       reorder_threshold: 40,
       estimated_unit_cost: 0.9,
+      supplier_id: supplierId("Dry Goods Wholesale"),
       supplier_name: "Dry Goods Wholesale",
       last_updated: now
     },
@@ -267,6 +282,7 @@ export function createInitialDemoState(
       par_level: 35,
       reorder_threshold: 15,
       estimated_unit_cost: 1.4,
+      supplier_id: supplierId("Local Produce Co."),
       supplier_name: "Local Produce Co.",
       last_updated: now
     },
@@ -280,6 +296,7 @@ export function createInitialDemoState(
       par_level: 30,
       reorder_threshold: 12,
       estimated_unit_cost: 1.8,
+      supplier_id: supplierId("Local Produce Co."),
       supplier_name: "Local Produce Co.",
       last_updated: now
     },
@@ -293,6 +310,7 @@ export function createInitialDemoState(
       par_level: 120,
       reorder_threshold: 50,
       estimated_unit_cost: 1.65,
+      supplier_id: supplierId("Restaurant Depot"),
       supplier_name: "Restaurant Depot",
       last_updated: now
     },
@@ -306,6 +324,7 @@ export function createInitialDemoState(
       par_level: 50,
       reorder_threshold: 18,
       estimated_unit_cost: 1.2,
+      supplier_id: supplierId("Dry Goods Wholesale"),
       supplier_name: "Dry Goods Wholesale",
       last_updated: now
     }
@@ -333,9 +352,22 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 11,
+    schema_version: 12,
     restaurants: [restaurant],
     users: [user],
+    suppliers: buildDemoSupplierCatalog(
+      [
+        "Fresh Poultry Supply",
+        "Restaurant Depot",
+        "Dry Goods Wholesale",
+        "Local Produce Co."
+      ].map((displayName) => ({
+        restaurantId: DEMO_RESTAURANT_ID,
+        displayName,
+        createdAt: now
+      })),
+      now
+    ),
     posSales,
     inventoryItems,
     menuItemIngredients,
@@ -345,6 +377,7 @@ export function createInitialDemoState(
         restaurant_id: DEMO_RESTAURANT_ID,
         inventory_item_id: itemIds.tomatoes,
         item_name: "Tomatoes",
+        supplier_id: supplierId("Local Produce Co."),
         supplier_name: "Local Produce Co.",
         recommended_quantity: 20,
         unit: "lbs",
@@ -359,6 +392,7 @@ export function createInitialDemoState(
         restaurant_id: DEMO_RESTAURANT_ID,
         inventory_item_id: itemIds.lettuce,
         item_name: "Lettuce",
+        supplier_id: supplierId("Local Produce Co."),
         supplier_name: "Local Produce Co.",
         recommended_quantity: 23,
         unit: "heads",
@@ -373,6 +407,7 @@ export function createInitialDemoState(
       {
         id: "00000000-0000-4000-8000-000000000601",
         restaurant_id: DEMO_RESTAURANT_ID,
+        supplier_id: supplierId("Local Produce Co."),
         supplier_name: "Local Produce Co.",
         order_message:
           "Order draft for Local Produce Co.\n\nLettuce - 23 heads\nTomatoes - 20 lbs\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended based on recent sales and current inventory levels.",
@@ -414,6 +449,7 @@ export function createInitialDemoState(
     supplierItems: inventoryItems.map((item, index) => ({
       id: `00000000-0000-4000-8000-0000000008${String(index).padStart(2, "0")}`,
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: item.supplier_id,
       supplier_name: item.supplier_name,
       supplier_sku: null,
       item_name: item.item_name,
@@ -442,6 +478,7 @@ export function createInitialDemoState(
       {
         id: "00000000-0000-4000-8000-000000000b01",
         restaurant_id: DEMO_RESTAURANT_ID,
+        supplier_id: supplierId("Fresh Poultry Supply"),
         supplier_name: "Fresh Poultry Supply",
         email: "orders@freshpoultry.example",
         created_at: now,
@@ -450,6 +487,7 @@ export function createInitialDemoState(
       {
         id: "00000000-0000-4000-8000-000000000b02",
         restaurant_id: DEMO_RESTAURANT_ID,
+        supplier_id: supplierId("Local Produce Co."),
         supplier_name: "Local Produce Co.",
         email: "produce@local.example",
         created_at: now,
@@ -458,6 +496,7 @@ export function createInitialDemoState(
       {
         id: "00000000-0000-4000-8000-000000000b03",
         restaurant_id: DEMO_RESTAURANT_ID,
+        supplier_id: supplierId("Restaurant Depot"),
         supplier_name: "Restaurant Depot",
         email: null,
         created_at: now,
@@ -520,6 +559,9 @@ export function createInitialDemoState(
  * seeded waste ledger was included.
  * Version 11 adds monotonic supplier-send content revisions so edit/revert
  * cycles cannot revive an older simulated approval.
+ * Version 12 introduces durable tenant-scoped supplier UUIDs. Exact normalized
+ * names are used once to repair legacy state; every subsequent demo workflow
+ * groups, selects recipients, and serializes content by supplier_id.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const referenceRestaurantNameMatches =
@@ -544,11 +586,101 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       ...(restaurant.operational_profile ?? {})
     }
   }));
-  const supplierOrders = (raw.supplierOrders ?? seeded.supplierOrders).map((order) => ({
-    ...order,
+  const sourceInventoryItems = raw.inventoryItems ?? seeded.inventoryItems;
+  const sourceRecommendations = raw.purchaseRecommendations ?? seeded.purchaseRecommendations;
+  const sourceSupplierOrders = raw.supplierOrders ?? seeded.supplierOrders;
+  const sourceSupplierRecipients = raw.supplierRecipients ?? seeded.supplierRecipients;
+  const sourceSupplierItems = raw.supplierItems ?? seeded.supplierItems;
+  const sourcePurchaseOrders = raw.purchaseOrders ?? seeded.purchaseOrders;
+  const allowLegacySupplierNameRepair = raw.schema_version !== 12;
+  const suppliers = repairDemoSupplierCatalog(
+    raw,
+    seeded,
+    [
+      ...sourceSupplierRecipients,
+      ...sourceInventoryItems,
+      ...sourceRecommendations,
+      ...sourceSupplierOrders,
+      ...sourceSupplierItems,
+      ...sourcePurchaseOrders
+    ],
+    allowLegacySupplierNameRepair
+  );
+  const inventoryItems = sourceInventoryItems.map((item) => {
+    const attached = attachDemoSupplierIdentity(
+      item,
+      suppliers,
+      allowLegacySupplierNameRepair
+    );
+    const supplier = findDemoSupplierById(
+      suppliers,
+      attached.restaurant_id,
+      attached.supplier_id
+    );
+    return {
+      ...attached,
+      supplier_name: supplier?.display_name ?? attached.supplier_name
+    };
+  });
+  const supplierOrders = sourceSupplierOrders.map((order) => ({
+    ...attachDemoSupplierIdentity(order, suppliers, allowLegacySupplierNameRepair),
     operator_note: typeof order.operator_note === "string" ? order.operator_note : null
   }));
-  const inputRecommendations = raw.purchaseRecommendations ?? seeded.purchaseRecommendations;
+  const supplierRecipients = sourceSupplierRecipients.map((recipient) => {
+    const attached = attachDemoSupplierIdentity(
+      recipient,
+      suppliers,
+      allowLegacySupplierNameRepair
+    );
+    const supplier = findDemoSupplierById(
+      suppliers,
+      attached.restaurant_id,
+      attached.supplier_id
+    );
+    return {
+      ...attached,
+      supplier_name: supplier?.display_name ?? attached.supplier_name
+    };
+  });
+  const supplierItems = sourceSupplierItems.map((item) => {
+    const attached = attachDemoSupplierIdentity(
+      item,
+      suppliers,
+      allowLegacySupplierNameRepair
+    );
+    const supplier = findDemoSupplierById(
+      suppliers,
+      attached.restaurant_id,
+      attached.supplier_id
+    );
+    return {
+      ...attached,
+      supplier_name: supplier?.display_name ?? attached.supplier_name
+    };
+  });
+  const purchaseOrders = sourcePurchaseOrders.map((order) =>
+    attachDemoSupplierIdentity(order, suppliers, allowLegacySupplierNameRepair)
+  );
+  const sourceAutonomyRules = Array.isArray(raw.autonomyRules)
+    ? raw.autonomyRules
+    : seeded.autonomyRules;
+  const autonomyRules = sourceAutonomyRules.map((rule) => {
+    const supplier = findDemoSupplierById(
+      suppliers,
+      rule.restaurantId,
+      rule.supplierId
+    ) ?? (allowLegacySupplierNameRepair && rule.supplierName
+      ? findDemoSupplierByLegacyName(suppliers, rule.restaurantId, rule.supplierName)
+      : null);
+    return {
+      ...rule,
+      supplierId: supplier?.id ?? null,
+      supplierName: supplier?.display_name ?? null
+    };
+  });
+  const inputRecommendations = sourceRecommendations.map((recommendation) =>
+    attachDemoSupplierIdentity(recommendation, suppliers, allowLegacySupplierNameRepair)
+  );
   const newestPendingByItem = new Map<string, { recommendation: PurchaseRecommendation; index: number }>();
 
   inputRecommendations.forEach((recommendation, index) => {
@@ -595,25 +727,26 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 11,
+    schema_version: 12,
     restaurants,
     users: raw.users ?? seeded.users,
+    suppliers,
     posSales: raw.posSales ?? seeded.posSales,
-    inventoryItems: raw.inventoryItems ?? seeded.inventoryItems,
+    inventoryItems,
     menuItemIngredients: raw.menuItemIngredients ?? seeded.menuItemIngredients,
     purchaseRecommendations,
     supplierOrders,
     insights: raw.insights ?? seeded.insights,
     posIntegrations: raw.posIntegrations ?? seeded.posIntegrations,
     salesImports: raw.salesImports ?? seeded.salesImports,
-    supplierItems: raw.supplierItems ?? seeded.supplierItems,
-    purchaseOrders: raw.purchaseOrders ?? seeded.purchaseOrders,
+    supplierItems,
+    purchaseOrders,
     aiInsights: raw.aiInsights ?? seeded.aiInsights,
     auditLogs: raw.auditLogs ?? seeded.auditLogs,
     operationalFindingDecisions:
       raw.operationalFindingDecisions ?? seeded.operationalFindingDecisions,
     emailConnections: raw.emailConnections ?? seeded.emailConnections,
-    supplierRecipients: raw.supplierRecipients ?? seeded.supplierRecipients,
+    supplierRecipients,
     activityEvents: Array.isArray(raw.activityEvents) ? raw.activityEvents : seeded.activityEvents,
     restaurantMemories: Array.isArray(raw.restaurantMemories)
       ? raw.restaurantMemories
@@ -635,7 +768,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
             })
           )
         : Object.fromEntries(supplierOrders.map((order) => [order.id, 1])),
-    autonomyRules: Array.isArray(raw.autonomyRules) ? raw.autonomyRules : seeded.autonomyRules,
+    autonomyRules,
     actionOutcomes: Array.isArray(raw.actionOutcomes) ? raw.actionOutcomes : seeded.actionOutcomes,
     inventoryEvents:
       Array.isArray(raw.inventoryEvents) &&
@@ -665,7 +798,29 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 11 ||
+      raw.schema_version !== 12 ||
+      !Array.isArray(raw.suppliers) ||
+      JSON.stringify(raw.suppliers ?? []) !== JSON.stringify(suppliers) ||
+      sourceInventoryItems.some(
+        (item, index) =>
+          item.supplier_id !== inventoryItems[index]?.supplier_id ||
+          item.supplier_name !== inventoryItems[index]?.supplier_name
+      ) ||
+      sourceRecommendations.some(
+        (recommendation, index) =>
+          recommendation.supplier_id !== inputRecommendations[index]?.supplier_id
+      ) ||
+      sourceSupplierOrders.some(
+        (order, index) => order.supplier_id !== supplierOrders[index]?.supplier_id
+      ) ||
+      sourceSupplierRecipients.some(
+        (recipient, index) =>
+          recipient.supplier_id !== supplierRecipients[index]?.supplier_id ||
+          recipient.supplier_name !== supplierRecipients[index]?.supplier_name
+      ) ||
+      sourceAutonomyRules.some(
+        (rule, index) => rule.supplierId !== autonomyRules[index]?.supplierId
+      ) ||
       retained.length !== inputRecommendations.length ||
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
@@ -683,6 +838,98 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   };
 }
 
+function repairDemoSupplierCatalog(
+  raw: StoredDemoState,
+  seeded: DemoState,
+  legacyRows: readonly { restaurant_id: string; supplier_name: string }[],
+  allowLegacySupplierNameRepair: boolean
+) {
+  const fallbackNow =
+    raw.restaurants?.[0]?.created_at ?? seeded.restaurants[0]?.created_at ?? new Date().toISOString();
+  const retained: Supplier[] = [];
+  const seenIds = new Set<string>();
+  const seenNormalizedNames = new Set<string>();
+
+  if (Array.isArray(raw.suppliers)) {
+    for (const candidate of raw.suppliers) {
+      try {
+        const rebuilt = buildDemoSupplierCatalog(
+          [{
+            restaurantId: candidate.restaurant_id,
+            displayName: candidate.display_name,
+            createdAt: candidate.created_at
+          }],
+          fallbackNow
+        )[0];
+        if (!rebuilt || !isDemoSupplierId(candidate.id)) continue;
+        const tenantNameKey = `${candidate.restaurant_id}\u0000${rebuilt.normalized_name}`;
+        if (seenIds.has(candidate.id) || seenNormalizedNames.has(tenantNameKey)) continue;
+        seenIds.add(candidate.id);
+        seenNormalizedNames.add(tenantNameKey);
+        retained.push({
+          ...rebuilt,
+          id: candidate.id,
+          created_at: candidate.created_at ?? fallbackNow,
+          updated_at: candidate.updated_at ?? candidate.created_at ?? fallbackNow
+        });
+      } catch {
+        // A malformed local identity is not repaired into new authority.
+      }
+    }
+  }
+
+  const migrated = allowLegacySupplierNameRepair
+    ? buildDemoSupplierCatalog(
+        legacyRows.map((row) => ({
+          restaurantId: row.restaurant_id,
+          displayName: row.supplier_name,
+          createdAt: "created_at" in row && typeof row.created_at === "string"
+            ? row.created_at
+            : fallbackNow
+        })),
+        fallbackNow
+      )
+    : [];
+  for (const supplier of migrated) {
+    const tenantNameKey = `${supplier.restaurant_id}\u0000${supplier.normalized_name}`;
+    if (seenIds.has(supplier.id) || seenNormalizedNames.has(tenantNameKey)) continue;
+    seenIds.add(supplier.id);
+    seenNormalizedNames.add(tenantNameKey);
+    retained.push(supplier);
+  }
+
+  // A seeded state is already v12. Fall back to its catalog only when an old
+  // empty workspace contains no usable supplier-bearing data.
+  if (allowLegacySupplierNameRepair && retained.length === 0) {
+    for (const supplier of seeded.suppliers) {
+      const tenantNameKey = `${supplier.restaurant_id}\u0000${supplier.normalized_name}`;
+      if (seenIds.has(supplier.id) || seenNormalizedNames.has(tenantNameKey)) continue;
+      retained.push(supplier);
+      seenIds.add(supplier.id);
+      seenNormalizedNames.add(tenantNameKey);
+    }
+  }
+  return retained;
+}
+
+function attachDemoSupplierIdentity<
+  TRow extends {
+    restaurant_id: string;
+    supplier_name: string;
+    supplier_id?: string | null;
+  }
+>(
+  row: TRow,
+  suppliers: readonly Supplier[],
+  allowLegacySupplierNameRepair: boolean
+): TRow & { supplier_id: string } {
+  const existing = findDemoSupplierById(suppliers, row.restaurant_id, row.supplier_id);
+  const migrated = existing ?? (allowLegacySupplierNameRepair
+    ? findDemoSupplierByLegacyName(suppliers, row.restaurant_id, row.supplier_name)
+    : null);
+  return { ...row, supplier_id: migrated?.id ?? "" };
+}
+
 function findLegacyRecommendationOrder(
   recommendation: PurchaseRecommendation,
   orders: SupplierOrder[],
@@ -694,12 +941,13 @@ function findLegacyRecommendationOrder(
     (order) =>
       order.id === existingOrderId &&
       order.restaurant_id === recommendation.restaurant_id &&
+      order.supplier_id === recommendation.supplier_id &&
       eligibleStatuses.includes(order.status)
   );
   if (existing) return existing;
   return orders
     .filter((order) => order.restaurant_id === recommendation.restaurant_id)
-    .filter((order) => order.supplier_name === recommendation.supplier_name)
+    .filter((order) => order.supplier_id === recommendation.supplier_id)
     .filter((order) => eligibleStatuses.includes(order.status))
     .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
 }
@@ -718,19 +966,40 @@ export function applyDemoSetupProfile(state: DemoState, setupProfile?: DemoSetup
 
   const supplierNames = normalizeSetupList(setupProfile.supplierNames);
   if (supplierNames.length > 0) {
+    const now = new Date().toISOString();
+    const configuredSuppliers = supplierNames.map((displayName) => {
+      const existing = findDemoSupplierByLegacyName(
+        state.suppliers,
+        DEMO_RESTAURANT_ID,
+        displayName
+      );
+      if (existing) return existing;
+      const created = buildDemoSupplierCatalog(
+        [{ restaurantId: DEMO_RESTAURANT_ID, displayName, createdAt: now }],
+        now
+      )[0];
+      if (!created) throw new Error("Enter a valid supplier name.");
+      state.suppliers.push(created);
+      return created;
+    });
     state.inventoryItems.forEach((item, index) => {
-      item.supplier_name = supplierNames[index % supplierNames.length]!;
+      const supplier = configuredSuppliers[index % configuredSuppliers.length]!;
+      item.supplier_id = supplier.id;
+      item.supplier_name = supplier.display_name;
     });
     state.supplierItems.forEach((item, index) => {
-      item.supplier_name = supplierNames[index % supplierNames.length]!;
+      const supplier = configuredSuppliers[index % configuredSuppliers.length]!;
+      item.supplier_id = supplier.id;
+      item.supplier_name = supplier.display_name;
     });
-    state.supplierRecipients = supplierNames.map((supplierName, index) => ({
+    state.supplierRecipients = configuredSuppliers.map((supplier, index) => ({
       id: `recipient_${index}`,
       restaurant_id: DEMO_RESTAURANT_ID,
-      supplier_name: supplierName,
+      supplier_id: supplier.id,
+      supplier_name: supplier.display_name,
       email: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      created_at: now,
+      updated_at: now
     }));
     const restaurant = state.restaurants[0];
     if (restaurant) {
@@ -795,6 +1064,21 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
   const timeZone = state.restaurants[0]?.timezone ?? DEMO_RESTAURANT_TIME_ZONE;
   const today = toDateKeyInTimeZone(nowDate, timeZone);
   const tomorrow = toDateKeyInTimeZone(addDays(nowDate, 1), timeZone);
+  const supplierId = (displayName: string) =>
+    demoSupplierIdForLegacyName(DEMO_RESTAURANT_ID, displayName);
+  const referenceSupplierNames = [
+    "Metro Produce Supply",
+    "Regional Protein Co.",
+    "Pantry Wholesale"
+  ];
+  state.suppliers = buildDemoSupplierCatalog(
+    referenceSupplierNames.map((displayName) => ({
+      restaurantId: DEMO_RESTAURANT_ID,
+      displayName,
+      createdAt
+    })),
+    createdAt
+  );
   const restaurant = state.restaurants[0];
   if (restaurant) {
     restaurant.name = DEMO_DATASET.restaurant.name;
@@ -831,6 +1115,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       par_level: 500,
       reorder_threshold: 200,
       estimated_unit_cost: 3.65,
+      supplier_id: supplierId("Regional Protein Co."),
       supplier_name: "Regional Protein Co."
     },
     [itemIds.eggs]: {
@@ -841,6 +1126,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       par_level: 1500,
       reorder_threshold: 600,
       estimated_unit_cost: 0.24,
+      supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale"
     },
     [itemIds.rice]: {
@@ -851,6 +1137,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       par_level: 600,
       reorder_threshold: 250,
       estimated_unit_cost: 0.95,
+      supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale"
     },
     [itemIds.lettuce]: {
@@ -861,6 +1148,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       par_level: 46,
       reorder_threshold: 18,
       estimated_unit_cost: 2.1,
+      supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply"
     },
     [itemIds.tomatoes]: {
@@ -871,6 +1159,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       par_level: 200,
       reorder_threshold: 90,
       estimated_unit_cost: 2.35,
+      supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply"
     },
     [itemIds.beef]: {
@@ -881,6 +1170,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       par_level: 140,
       reorder_threshold: 70,
       estimated_unit_cost: 5.45,
+      supplier_id: supplierId("Regional Protein Co."),
       supplier_name: "Regional Protein Co."
     },
     [itemIds.pancakeMix]: {
@@ -891,6 +1181,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       par_level: 180,
       reorder_threshold: 80,
       estimated_unit_cost: 2.2,
+      supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale"
     }
   };
@@ -973,6 +1264,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     {
       id: "00000000-0000-4000-8000-000000000601",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply",
       order_message:
         `Order draft for Metro Produce Supply\n\nBell peppers - 24 lbs\nNapa cabbage - 18 heads\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended from ${DEMO_DATASET.restaurant.name}'s current dinner pace and close-count levels.`,
@@ -985,6 +1277,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     {
       id: "00000000-0000-4000-8000-000000000602",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale",
       order_message:
         "Order draft for Pantry Wholesale\n\nJasmine Rice - 80 lb\nDumpling Wrappers - 24 packs\nSoy Sauce - 6 gal\nSesame Oil - 4 gal\n\nDelivery requested: Today\n\nNotes:\nPantry order drafted from weekly usage and par targets.",
@@ -996,6 +1289,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     {
       id: "00000000-0000-4000-8000-000000000603",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale",
       order_message: "Recorded pantry order: Jasmine rice - 80 lb",
       operator_note: null,
@@ -1006,6 +1300,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     {
       id: "00000000-0000-4000-8000-000000000604",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale",
       order_message: "Recorded pantry order: Dumpling wrappers - 24 packs",
       operator_note: null,
@@ -1016,6 +1311,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     {
       id: "00000000-0000-4000-8000-000000000605",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply",
       order_message: "Recorded produce order: Napa cabbage - 18 head",
       operator_note: "Review the short cabbage delivery.",
@@ -1026,6 +1322,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     {
       id: "00000000-0000-4000-8000-000000000606",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply",
       order_message: "Recorded produce order: Bell peppers - 24 lb",
       operator_note: null,
@@ -1132,6 +1429,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: itemIds.lettuce,
       item_name: "Napa cabbage",
+      supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply",
       recommended_quantity: 18,
       unit: "heads",
@@ -1146,6 +1444,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: itemIds.tomatoes,
       item_name: "Bell peppers",
+      supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply",
       recommended_quantity: 24,
       unit: "lbs",
@@ -1160,6 +1459,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: itemIds.rice,
       item_name: "Jasmine rice",
+      supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale",
       recommended_quantity: 80,
       unit: "lbs",
@@ -1174,6 +1474,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: itemIds.pancakeMix,
       item_name: "Dumpling wrappers",
+      supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale",
       recommended_quantity: 24,
       unit: "packs",
@@ -1188,6 +1489,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
   state.supplierItems = state.inventoryItems.map((item, index) => ({
     id: `00000000-0000-4000-8000-0000000008${String(index).padStart(2, "0")}`,
     restaurant_id: DEMO_RESTAURANT_ID,
+    supplier_id: item.supplier_id,
     supplier_name: item.supplier_name,
     supplier_sku: null,
     item_name: item.item_name,
@@ -1203,6 +1505,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     {
       id: "00000000-0000-4000-8000-000000000b01",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply",
       email: "orders@metroproduce.example",
       created_at: createdAt,
@@ -1211,6 +1514,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     {
       id: "00000000-0000-4000-8000-000000000b02",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: supplierId("Regional Protein Co."),
       supplier_name: "Regional Protein Co.",
       email: "orders@regionalprotein.example",
       created_at: createdAt,
@@ -1219,6 +1523,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     {
       id: "00000000-0000-4000-8000-000000000b03",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale",
       email: null,
       created_at: createdAt,

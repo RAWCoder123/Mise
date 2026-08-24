@@ -9,6 +9,7 @@ import { SUPPLIER_SEND_CONTENT_VERSION } from "../types/mise";
 
 const restaurantId = "10000000-0000-4000-8000-000000000001";
 const orderId = "20000000-0000-4000-8000-000000000001";
+const supplierId = "50000000-0000-4000-8000-000000000001";
 const fingerprint = "a".repeat(64);
 
 function readyPreview(): {
@@ -20,6 +21,7 @@ function readyPreview(): {
   contentRevision: number;
   restaurantId: string;
   orderId: string;
+  supplierId: string;
   supplierName: string;
   from: string | null;
   to: string | null;
@@ -30,6 +32,7 @@ function readyPreview(): {
   lines: Array<{
     recommendationId: string;
     inventoryItemId: string;
+    supplierId: string;
     itemName: string;
     quantity: number;
     unit: string;
@@ -45,6 +48,7 @@ function readyPreview(): {
     contentRevision: 7,
     restaurantId,
     orderId,
+    supplierId,
     supplierName: "Local Produce Co.",
     from: "orders@example.com",
     to: "produce@example.com",
@@ -56,6 +60,7 @@ function readyPreview(): {
       {
         recommendationId: "30000000-0000-4000-8000-000000000001",
         inventoryItemId: "40000000-0000-4000-8000-000000000001",
+        supplierId,
         itemName: "Tomatoes",
         quantity: 4,
         unit: "each",
@@ -64,6 +69,7 @@ function readyPreview(): {
       {
         recommendationId: "30000000-0000-4000-8000-000000000002",
         inventoryItemId: "40000000-0000-4000-8000-000000000002",
+        supplierId,
         itemName: "Onions",
         quantity: 2.5,
         unit: "kg",
@@ -111,6 +117,21 @@ test("supplier send preview parser fails closed on stale scope, malformed author
   assert.throws(
     () => normalizeSupplierSendContentPreview(missingFingerprint, restaurantId, orderId),
     /inconsistent authority/i
+  );
+
+  const malformedSupplierId = readyPreview();
+  malformedSupplierId.supplierId = "not-a-uuid";
+  assert.throws(
+    () => normalizeSupplierSendContentPreview(malformedSupplierId, restaurantId, orderId),
+    /supplier identity/i
+  );
+
+  const mismatchedLineSupplierId = readyPreview();
+  mismatchedLineSupplierId.lines[0]!.supplierId =
+    "50000000-0000-4000-8000-000000000002";
+  assert.throws(
+    () => normalizeSupplierSendContentPreview(mismatchedLineSupplierId, restaurantId, orderId),
+    /mismatched line supplier/i
   );
 
   const mismatchedCount = readyPreview();

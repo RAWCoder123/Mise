@@ -9,6 +9,7 @@ import type { VerifiedCountCandidate } from "../services/domain/inventoryCountAu
 import type { InventoryItem, PurchaseRecommendation } from "../types/mise";
 
 const restaurantId = "rest_automation";
+const supplierId = "00000000-0000-4000-8000-000000000101";
 const supplierName = "Fresh Produce Co.";
 const now = new Date("2026-07-26T16:00:00.000Z");
 const policy: OrderAutomationPolicy = {
@@ -37,6 +38,7 @@ function inventory(
     par_level: 20,
     reorder_threshold: 5,
     estimated_unit_cost: 4,
+    supplier_id: supplierId,
     supplier_name: supplierName,
     last_updated: "2026-07-26T12:00:00.000Z",
     ...overrides
@@ -54,6 +56,7 @@ function recommendation(
     restaurant_id: restaurantId,
     inventory_item_id: itemId,
     item_name: itemId,
+    supplier_id: supplierId,
     supplier_name: supplierName,
     recommended_quantity: quantity,
     unit: "lb",
@@ -94,6 +97,7 @@ function history(itemId: string, quantities: readonly number[]) {
 test("stable, fresh, bounded supplier work becomes eligible only for an automatic draft", () => {
   const assessment = assessOrderAutomation({
     restaurantId,
+    supplierId,
     supplierName,
     candidates: [recommendation("rec_tomatoes", "tomatoes", 20)],
     inventoryItems: [inventory("tomatoes")],
@@ -118,6 +122,7 @@ test("stable, fresh, bounded supplier work becomes eligible only for an automati
 test("automatic send requires explicit policy plus verified delivery readiness", () => {
   const input = {
     restaurantId,
+    supplierId,
     supplierName,
     candidates: [recommendation("rec_onions", "onions", 10)],
     inventoryItems: [inventory("onions", { estimated_unit_cost: 2.5 })],
@@ -149,6 +154,7 @@ test("automatic send requires explicit policy plus verified delivery readiness",
 test("stale counts, weak history, quantity drift, and missing prices force manual review", () => {
   const assessment = assessOrderAutomation({
     restaurantId,
+    supplierId,
     supplierName,
     candidates: [
       recommendation("rec_herbs", "herbs", 30),
@@ -182,11 +188,13 @@ test("tenant, supplier, unit, duplicate, line, and total limits fail closed", ()
   const expensiveItem = inventory("avocado", { estimated_unit_cost: 20 });
   const assessment = assessOrderAutomation({
     restaurantId,
+    supplierId,
     supplierName,
     candidates: [
       recommendation("rec_avocado_1", "avocado", 20),
       recommendation("rec_avocado_2", "avocado", 20, {
         restaurant_id: "another_restaurant",
+        supplier_id: "00000000-0000-4000-8000-000000000102",
         supplier_name: "Another Supplier",
         unit: "case"
       })
@@ -213,6 +221,7 @@ test("tenant, supplier, unit, duplicate, line, and total limits fail closed", ()
 test("automation is off by default and never performs an ordering side effect", () => {
   const assessment = assessOrderAutomation({
     restaurantId,
+    supplierId,
     supplierName,
     candidates: [recommendation("rec_default", "tomatoes", 20)],
     inventoryItems: [inventory("tomatoes")],
@@ -227,6 +236,7 @@ test("automation is off by default and never performs an ordering side effect", 
 test("automation blocks when no verified count evidence exists, whatever last_updated says", () => {
   const base = {
     restaurantId,
+    supplierId,
     supplierName,
     candidates: [recommendation("rec_kale", "kale", 12)],
     recommendationHistory: history("kale", [11, 12, 12]),
@@ -258,6 +268,7 @@ test("automation blocks when no verified count evidence exists, whatever last_up
 test("another restaurant's count evidence cannot make this restaurant's stock look fresh", () => {
   const assessment = assessOrderAutomation({
     restaurantId,
+    supplierId,
     supplierName,
     candidates: [recommendation("rec_beets", "beets", 12)],
     inventoryItems: [inventory("beets")],

@@ -26,6 +26,7 @@ import type {
   SalesImport,
   SetupAttachment,
   SetupAttachmentStatus,
+  Supplier,
   SupplierEmailPayload,
   SupplierItem,
   SupplierOrder,
@@ -359,6 +360,8 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
       : declaredVerificationStatus;
   return {
     ...value,
+    supplier_id: requireSupplierAuthorityId(value.supplier_id),
+    supplier_name: requireSupplierDisplayName(value.supplier_name),
     current_quantity: asBoundedNonNegativeNumber(value.current_quantity, operatingLimits.inventoryQuantity),
     par_level: asBoundedNonNegativeNumber(value.par_level, operatingLimits.inventoryQuantity),
     reorder_threshold: asBoundedNonNegativeNumber(value.reorder_threshold, operatingLimits.inventoryQuantity),
@@ -386,6 +389,8 @@ export function normalizeMenuItemIngredient(value: MenuItemIngredient): MenuItem
 export function normalizePurchaseRecommendation(value: PurchaseRecommendation): PurchaseRecommendation {
   return {
     ...value,
+    supplier_id: requireSupplierAuthorityId(value.supplier_id),
+    supplier_name: requireSupplierDisplayName(value.supplier_name),
     recommended_quantity: normalizeRecommendedQuantity(value.recommended_quantity)
   };
 }
@@ -445,16 +450,6 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
         `${label} must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
       );
     }
-  }
-  if (validated.supplier_name !== undefined) {
-    if (
-      typeof validated.supplier_name !== "string" ||
-      validated.supplier_name.trim().length < 1 ||
-      validated.supplier_name.trim().length > 160
-    ) {
-      throw new Error("Supplier name must be between 1 and 160 characters.");
-    }
-    validated.supplier_name = validated.supplier_name.trim();
   }
   return validated;
 }
@@ -628,6 +623,7 @@ export function normalizeSupplierSendContentPreview(
     throw new Error("Supplier send preview returned an unsupported content version.");
   }
   const contentRevision = requirePositiveSafeInteger(payload.contentRevision, "content revision");
+  const supplierId = requireSupplierSendUuid(payload.supplierId, "supplier");
   const supplierName = requireExactSupplierSendText(payload.supplierName, "supplier", 160);
   const from = requireNullableSupplierSendEmail(payload.from, "sender");
   const to = requireNullableSupplierSendEmail(payload.to, "recipient");
@@ -640,7 +636,7 @@ export function normalizeSupplierSendContentPreview(
     SUPPLIER_NOTE_MAX_CHARACTERS,
     true
   );
-  const lines = requireSupplierSendLines(payload.lines, supplierName);
+  const lines = requireSupplierSendLines(payload.lines, supplierId, supplierName);
   const lineCount = requireNonNegativeSafeInteger(payload.lineCount, "line count");
   if (lineCount > 250 || lineCount !== lines.length) {
     throw new Error("Supplier send preview returned an invalid line count.");
@@ -668,6 +664,7 @@ export function normalizeSupplierSendContentPreview(
     contentRevision,
     restaurantId,
     orderId,
+    supplierId,
     supplierName,
     from,
     to,
@@ -768,7 +765,11 @@ function requireSupplierSendDeliveryDate(value: unknown) {
   return value;
 }
 
-function requireSupplierSendLines(value: unknown, supplierName: string): SupplierSendContentLine[] {
+function requireSupplierSendLines(
+  value: unknown,
+  supplierId: string,
+  supplierName: string
+): SupplierSendContentLine[] {
   if (!Array.isArray(value) || value.length > 250) {
     throw new Error("Supplier send preview returned invalid lines.");
   }
@@ -786,8 +787,9 @@ function requireSupplierSendLines(value: unknown, supplierName: string): Supplie
     previousRecommendationId = recommendationId;
     const itemName = requireExactSupplierSendText(line.itemName, "item name", 160);
     const unit = requireExactSupplierSendText(line.unit, "unit", 40);
+    const lineSupplierId = requireSupplierSendUuid(line.supplierId, "line supplier");
     const lineSupplierName = requireExactSupplierSendText(line.supplierName, "line supplier", 160);
-    if (lineSupplierName !== supplierName) {
+    if (lineSupplierId !== supplierId || lineSupplierName !== supplierName) {
       throw new Error("Supplier send preview returned a mismatched line supplier.");
     }
     if (
@@ -804,6 +806,7 @@ function requireSupplierSendLines(value: unknown, supplierName: string): Supplie
       itemName,
       quantity: line.quantity,
       unit,
+      supplierId: lineSupplierId,
       supplierName: lineSupplierName
     };
   });
@@ -867,13 +870,79 @@ function supplierSendBlockerDescription(code: SupplierSendContentBlockerCode) {
 export const SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS = 160;
 export const SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS = 254;
 
+export function requireSupplierAuthorityId(value: unknown, label = "supplier") {
+  const supplierId = typeof value === "string" ? value.trim() : "";
+  if (
+    !supplierId ||
+    supplierId.length > 128 ||
+    hasControlCharacters(supplierId) ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(supplierId)
+  ) {
+    throw new Error(`Missing ${label} identity.`);
+  }
+  return supplierId;
+}
+
+export function requireSupplierDisplayName(value: unknown) {
+  const rawName = typeof value === "string" ? value : "";
+  const displayName = rawName.trim().replace(/\s+/g, " ");
+  if (
+    displayName.length < 1 ||
+    displayName.length > SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS ||
+    hasControlCharacters(rawName)
+  ) {
+    throw new Error(
+      `Supplier name must be between 1 and ${SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS} characters.`
+    );
+  }
+  return displayName;
+}
+
+function requireSupplierDisplaySnapshot(value: unknown) {
+  if (
+    typeof value !== "string" ||
+    value.trim().length < 1 ||
+    value.length > SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS ||
+    hasControlCharacters(value)
+  ) {
+    throw new Error("Supplier display snapshot is invalid.");
+  }
+  return value;
+}
+
+export function normalizeSupplier(value: Supplier): Supplier {
+  const displayName = requireSupplierDisplayName(value.display_name);
+  const normalizedName = typeof value.normalized_name === "string"
+    ? value.normalized_name
+    : "";
+  if (
+    !normalizedName ||
+    normalizedName.length > SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS ||
+    hasControlCharacters(normalizedName)
+  ) {
+    throw new Error("Supplier identity returned an invalid normalized name.");
+  }
+  if (value.display_name !== displayName) {
+    throw new Error("Supplier identity returned a non-canonical display name.");
+  }
+  return {
+    ...value,
+    id: requireSupplierAuthorityId(value.id),
+    restaurant_id: requireSupplierAuthorityId(value.restaurant_id, "restaurant"),
+    display_name: displayName,
+    normalized_name: normalizedName,
+    created_at: asString(value.created_at),
+    updated_at: asString(value.updated_at, value.created_at)
+  };
+}
+
 export function requireSupplierRecipientInput(input: {
   restaurant_id: unknown;
-  supplier_name: unknown;
+  supplier_id: unknown;
   email: unknown;
 }): {
   restaurant_id: string;
-  supplier_name: string;
+  supplier_id: string;
   email: string;
 } {
   const restaurantId = typeof input.restaurant_id === "string" ? input.restaurant_id.trim() : "";
@@ -881,17 +950,7 @@ export function requireSupplierRecipientInput(input: {
     throw new Error("Missing restaurant workspace.");
   }
 
-  const rawSupplierName = typeof input.supplier_name === "string" ? input.supplier_name : "";
-  const supplierName = rawSupplierName.trim().replace(/\s+/g, " ");
-  if (
-    supplierName.length < 1 ||
-    supplierName.length > SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS ||
-    hasControlCharacters(rawSupplierName)
-  ) {
-    throw new Error(
-      `Supplier name must be between 1 and ${SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS} characters.`
-    );
-  }
+  const supplierId = requireSupplierAuthorityId(input.supplier_id);
 
   const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
   if (
@@ -903,7 +962,7 @@ export function requireSupplierRecipientInput(input: {
     throw new Error("Enter a valid supplier email address.");
   }
 
-  return { restaurant_id: restaurantId, supplier_name: supplierName, email };
+  return { restaurant_id: restaurantId, supplier_id: supplierId, email };
 }
 
 function hasControlCharacters(value: string) {
@@ -1135,15 +1194,14 @@ export function normalizeInventoryItemPatch(patch: InventoryItemPatch): Inventor
       operatingLimits.inventoryQuantity
     );
   }
-  if (normalized.supplier_name !== undefined) {
-    normalized.supplier_name = asString(normalized.supplier_name, "Supplier");
-  }
   return normalized;
 }
 
 export function normalizeSupplierOrder(value: SupplierOrder): SupplierOrder {
   return {
     ...value,
+    supplier_id: requireSupplierAuthorityId(value.supplier_id),
+    supplier_name: requireSupplierDisplaySnapshot(value.supplier_name),
     delivery_date: asNullableString(value.delivery_date)
   };
 }
@@ -1227,7 +1285,8 @@ export function normalizeRestaurantEmailConnection(value: RestaurantEmailConnect
 export function normalizeSupplierRecipient(value: SupplierRecipient): SupplierRecipient {
   return {
     ...value,
-    supplier_name: asString(value.supplier_name, "Supplier"),
+    supplier_id: requireSupplierAuthorityId(value.supplier_id),
+    supplier_name: requireSupplierDisplayName(value.supplier_name),
     email: asNullableString(value.email),
     updated_at: value.updated_at ?? value.created_at
   };
@@ -1277,6 +1336,9 @@ export function normalizeSalesImport(value: SalesImport): SalesImport {
 export function normalizeSupplierItem(value: SupplierItem): SupplierItem {
   return {
     ...value,
+    supplier_id: value.supplier_id === null || value.supplier_id === undefined
+      ? null
+      : requireSupplierAuthorityId(value.supplier_id),
     supplier_name: asString(value.supplier_name, "Supplier"),
     supplier_sku: asNullableString(value.supplier_sku),
     item_name: asString(value.item_name, "Item"),
@@ -1291,6 +1353,9 @@ export function normalizeSupplierItem(value: SupplierItem): SupplierItem {
 export function normalizePurchaseOrder(value: PurchaseOrder): PurchaseOrder {
   return {
     ...value,
+    supplier_id: value.supplier_id === null || value.supplier_id === undefined
+      ? null
+      : requireSupplierAuthorityId(value.supplier_id),
     order_payload: asRecord(value.order_payload),
     subtotal_estimate: asNonNegativeNumber(value.subtotal_estimate),
     expected_delivery_date: asNullableString(value.expected_delivery_date),

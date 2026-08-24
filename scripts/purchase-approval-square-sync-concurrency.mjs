@@ -16,6 +16,8 @@ const gapCountId = "f4000000-0000-4000-8000-000000000023";
 const firstRecommendationId = "f4000000-0000-4000-8000-000000000031";
 const secondRecommendationId = "f4000000-0000-4000-8000-000000000032";
 const gapRecommendationId = "f4000000-0000-4000-8000-000000000033";
+const raceSupplierId = "f4000000-0000-4000-8000-000000000041";
+const gapSupplierId = "f4000000-0000-4000-8000-000000000042";
 
 const connectionString = process.env.SUPABASE_LOCAL_DB_URL
   ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -106,19 +108,25 @@ async function setup(admin) {
     [restaurantId],
   );
   await admin.query(
+    `insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+     values ($1, $3, 'Race Supplier', 'race supplier'),
+       ($2, $3, 'Fetch Gap Supplier', 'fetch gap supplier')`,
+    [raceSupplierId, gapSupplierId, restaurantId],
+  );
+  await admin.query(
     `insert into public.inventory_items (
       id, restaurant_id, item_name, category, unit, current_quantity, par_level,
-      reorder_threshold, estimated_unit_cost, supplier_name, canonical_unit,
+      reorder_threshold, estimated_unit_cost, supplier_id, supplier_name, canonical_unit,
       canonical_quantity_per_unit, canonical_unit_verification_status,
       canonical_unit_verified_at, canonical_unit_verified_by
     ) values
-      ($1, $4, 'Race line A', 'Produce', 'each', 1, 10, 3, 1, 'Race Supplier',
+      ($1, $4, 'Race line A', 'Produce', 'each', 1, 10, 3, 1, $6, 'Race Supplier',
         'each', 1, 'verified', now(), $5),
-      ($2, $4, 'Race line B', 'Produce', 'each', 1, 10, 3, 1, 'Race Supplier',
+      ($2, $4, 'Race line B', 'Produce', 'each', 1, 10, 3, 1, $6, 'Race Supplier',
         'each', 1, 'verified', now(), $5),
-      ($3, $4, 'Fetch gap line', 'Produce', 'each', 1, 10, 3, 1, 'Fetch Gap Supplier',
+      ($3, $4, 'Fetch gap line', 'Produce', 'each', 1, 10, 3, 1, $7, 'Fetch Gap Supplier',
         'each', 1, 'verified', now(), $5)`,
-    [firstItemId, secondItemId, gapItemId, restaurantId, actorId],
+    [firstItemId, secondItemId, gapItemId, restaurantId, actorId, raceSupplierId, gapSupplierId],
   );
   await admin.query(
     `insert into public.inventory_events (
@@ -150,13 +158,13 @@ async function setup(admin) {
   );
   await admin.query(
     `insert into public.purchase_recommendations (
-      id, restaurant_id, inventory_item_id, item_name, supplier_name,
+      id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
       recommended_quantity, unit, reason, urgency, status, generation_source
     ) values
-      ($1, $4, $5, 'Race line A', 'Race Supplier', 2, 'each', 'Race line A', 'high', 'pending', 'manual'),
-      ($2, $4, $6, 'Race line B', 'Race Supplier', 2, 'each', 'Race line B', 'high', 'pending', 'manual'),
-      ($3, $4, $7, 'Fetch gap line', 'Fetch Gap Supplier', 2, 'each', 'Fetch gap line', 'high', 'pending', 'manual')`,
-    [firstRecommendationId, secondRecommendationId, gapRecommendationId, restaurantId, firstItemId, secondItemId, gapItemId],
+      ($1, $4, $5, 'Race line A', $8, 'Race Supplier', 2, 'each', 'Race line A', 'high', 'pending', 'manual'),
+      ($2, $4, $6, 'Race line B', $8, 'Race Supplier', 2, 'each', 'Race line B', 'high', 'pending', 'manual'),
+      ($3, $4, $7, 'Fetch gap line', $9, 'Fetch Gap Supplier', 2, 'each', 'Fetch gap line', 'high', 'pending', 'manual')`,
+    [firstRecommendationId, secondRecommendationId, gapRecommendationId, restaurantId, firstItemId, secondItemId, gapItemId, raceSupplierId, gapSupplierId],
   );
 }
 
@@ -263,8 +271,8 @@ try {
   assert.equal(persisted.rows[0].sync_released, true);
 
   const gapDraft = await admin.query(
-    "select count(*)::integer as count from public.supplier_orders where restaurant_id = $1 and supplier_name = 'Fetch Gap Supplier'",
-    [restaurantId],
+    "select count(*)::integer as count from public.supplier_orders where restaurant_id = $1 and supplier_id = $2",
+    [restaurantId, gapSupplierId],
   );
   assert.equal(gapDraft.rows[0].count, 0);
 

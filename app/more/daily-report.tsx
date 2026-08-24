@@ -461,7 +461,7 @@ export default function DailyReportScreen() {
                   </View>
                   <View style={styles.reliabilityList}>
                     {visibleReport.supplierReliability.suppliers.map((supplier) => (
-                      <View key={supplier.supplierName} style={styles.reliabilityRow}>
+                      <View key={supplier.supplierId} style={styles.reliabilityRow}>
                         <View style={styles.signalHeader}>
                           <Text style={styles.signalType}>{supplier.supplierName}</Text>
                           <Badge

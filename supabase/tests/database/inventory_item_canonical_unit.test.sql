@@ -46,14 +46,19 @@ values
   ('f0000000-0000-4000-8000-000000000001', 'f1111111-1111-4111-8111-111111111111', 'manager', 'active'),
   ('f0000000-0000-4000-8000-000000000001', 'f2222222-2222-4222-8222-222222222222', 'staff', 'active');
 
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values
+  ('f0000000-0000-4000-8000-000000000010', 'f0000000-0000-4000-8000-000000000001', 'Supplier A', 'supplier a'),
+  ('f0000000-0000-4000-8000-000000000020', 'f0000000-0000-4000-8000-000000000002', 'Supplier B', 'supplier b');
+
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity,
-  par_level, reorder_threshold, estimated_unit_cost, supplier_name
+  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
 )
 values
-  ('f0000000-0000-4000-8000-000000000011', 'f0000000-0000-4000-8000-000000000001', 'Chicken', 'Protein', 'lb', 10, 20, 5, 4, 'Supplier A'),
-  ('f0000000-0000-4000-8000-000000000012', 'f0000000-0000-4000-8000-000000000001', 'Eggs', 'Dairy', 'case', 2, 4, 1, 30, 'Supplier A'),
-  ('f0000000-0000-4000-8000-000000000021', 'f0000000-0000-4000-8000-000000000002', 'Coffee', 'Beverage', 'case', 2, 4, 1, 40, 'Supplier B');
+  ('f0000000-0000-4000-8000-000000000011', 'f0000000-0000-4000-8000-000000000001', 'Chicken', 'Protein', 'lb', 10, 20, 5, 4, 'f0000000-0000-4000-8000-000000000010', 'Supplier A'),
+  ('f0000000-0000-4000-8000-000000000012', 'f0000000-0000-4000-8000-000000000001', 'Eggs', 'Dairy', 'case', 2, 4, 1, 30, 'f0000000-0000-4000-8000-000000000010', 'Supplier A'),
+  ('f0000000-0000-4000-8000-000000000021', 'f0000000-0000-4000-8000-000000000002', 'Coffee', 'Beverage', 'case', 2, 4, 1, 40, 'f0000000-0000-4000-8000-000000000020', 'Supplier B');
 
 select is(
   (select canonical_unit from public.inventory_items where id = 'f0000000-0000-4000-8000-000000000011'),
@@ -201,11 +206,12 @@ select is(
   pg_temp.try_execute($sql$
     insert into public.inventory_items (
       id, restaurant_id, item_name, category, unit, current_quantity,
-      par_level, reorder_threshold, estimated_unit_cost, supplier_name
+      par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
     ) values (
       'f0000000-0000-4000-8000-000000000022',
       'f0000000-0000-4000-8000-000000000002',
-      'Service-seeded flour', 'Dry goods', 'lb', 8, 16, 4, 2, 'Supplier B'
+      'Service-seeded flour', 'Dry goods', 'lb', 8, 16, 4, 2,
+      'f0000000-0000-4000-8000-000000000020', 'Supplier B'
     )
   $sql$),
   true,

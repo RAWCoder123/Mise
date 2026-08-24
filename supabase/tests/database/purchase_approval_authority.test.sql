@@ -14,6 +14,34 @@ exception when others then return false;
 end;
 $$;
 
+create or replace function pg_temp.fixture_supplier_id(
+  p_restaurant_id uuid,
+  p_supplier_name text
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  supplier_id uuid;
+  canonical_display_name text := private.normalize_supplier_display_name(p_supplier_name);
+begin
+  insert into public.suppliers (restaurant_id, display_name, normalized_name)
+  values (
+    p_restaurant_id,
+    canonical_display_name,
+    private.normalize_supplier_name(canonical_display_name)
+  )
+  on conflict (restaurant_id, normalized_name) do nothing;
+  select supplier.id into supplier_id
+  from public.suppliers supplier
+  where supplier.restaurant_id = p_restaurant_id
+    and supplier.normalized_name = private.normalize_supplier_name(canonical_display_name);
+  return supplier_id;
+end;
+$$;
+
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at
@@ -44,24 +72,29 @@ where restaurant_id = '3a000000-0000-4000-8000-000000000001';
 
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity, par_level,
-  reorder_threshold, estimated_unit_cost, supplier_name,
+  reorder_threshold, estimated_unit_cost, supplier_id, supplier_name,
   canonical_unit, canonical_quantity_per_unit, canonical_unit_verification_status,
   canonical_unit_verified_at, canonical_unit_verified_by
 ) values
   ('3a000000-0000-4000-8000-000000000011', '3a000000-0000-4000-8000-000000000001',
-   'Ready chicken', 'Protein', 'each', 1, 10, 3, 2, 'Pilot Supplier',
+   'Ready chicken', 'Protein', 'each', 1, 10, 3, 2,
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Pilot Supplier'), 'Pilot Supplier',
    'each', 1, 'verified', now(), '3a111111-1111-4111-8111-111111111111'),
   ('3a000000-0000-4000-8000-000000000012', '3a000000-0000-4000-8000-000000000001',
-   'Missing count item', 'Produce', 'each', 1, 10, 3, 1, 'Missing Supplier',
+   'Missing count item', 'Produce', 'each', 1, 10, 3, 1,
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Missing Supplier'), 'Missing Supplier',
    'each', 1, 'verified', now(), '3a111111-1111-4111-8111-111111111111'),
   ('3a000000-0000-4000-8000-000000000013', '3a000000-0000-4000-8000-000000000001',
-   'Stale count item', 'Produce', 'each', 1, 10, 3, 1, 'Stale Supplier',
+   'Stale count item', 'Produce', 'each', 1, 10, 3, 1,
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Stale Supplier'), 'Stale Supplier',
    'each', 1, 'verified', now(), '3a111111-1111-4111-8111-111111111111'),
   ('3a000000-0000-4000-8000-000000000014', '3a000000-0000-4000-8000-000000000001',
-   'Draft unit item', 'Dry goods', 'case', 1, 10, 3, 1, 'Draft Unit Supplier',
+   'Draft unit item', 'Dry goods', 'case', 1, 10, 3, 1,
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Draft Unit Supplier'), 'Draft Unit Supplier',
    null, null, 'draft', null, null),
   ('3a000000-0000-4000-8000-000000000015', '3a000000-0000-4000-8000-000000000001',
-   'Partial demand item', 'Protein', 'each', 1, 10, 3, 2, 'Partial Supplier',
+   'Partial demand item', 'Protein', 'each', 1, 10, 3, 2,
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Partial Supplier'), 'Partial Supplier',
    'each', 1, 'verified', now(), '3a111111-1111-4111-8111-111111111111');
 
 insert into public.inventory_events (
@@ -132,20 +165,24 @@ select
 from generate_series(0, 7) service_day;
 
 insert into public.purchase_recommendations (
-  id, restaurant_id, inventory_item_id, item_name, supplier_name,
+  id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
   recommended_quantity, unit, reason, urgency, status, generation_source
 ) values
   ('3a000000-0000-4000-8000-000000000401', '3a000000-0000-4000-8000-000000000001',
-   '3a000000-0000-4000-8000-000000000011', 'Ready chicken', 'Pilot Supplier', 4, 'each',
+   '3a000000-0000-4000-8000-000000000011', 'Ready chicken',
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Pilot Supplier'), 'Pilot Supplier', 4, 'each',
    'Informational recommendation', 'high', 'pending', 'manual'),
   ('3a000000-0000-4000-8000-000000000402', '3a000000-0000-4000-8000-000000000001',
-   '3a000000-0000-4000-8000-000000000012', 'Missing count item', 'Missing Supplier', 4, 'each',
+   '3a000000-0000-4000-8000-000000000012', 'Missing count item',
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Missing Supplier'), 'Missing Supplier', 4, 'each',
    'Informational recommendation', 'high', 'pending', 'manual'),
   ('3a000000-0000-4000-8000-000000000403', '3a000000-0000-4000-8000-000000000001',
-   '3a000000-0000-4000-8000-000000000013', 'Stale count item', 'Stale Supplier', 4, 'each',
+   '3a000000-0000-4000-8000-000000000013', 'Stale count item',
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Stale Supplier'), 'Stale Supplier', 4, 'each',
    'Informational recommendation', 'high', 'pending', 'manual'),
   ('3a000000-0000-4000-8000-000000000404', '3a000000-0000-4000-8000-000000000001',
-   '3a000000-0000-4000-8000-000000000014', 'Draft unit item', 'Draft Unit Supplier', 4, 'case',
+   '3a000000-0000-4000-8000-000000000014', 'Draft unit item',
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Draft Unit Supplier'), 'Draft Unit Supplier', 4, 'case',
    'Informational recommendation', 'high', 'pending', 'manual');
 
 select is(has_function_privilege('authenticated', 'public.list_purchase_recommendation_authority(uuid)', 'EXECUTE'), true,
@@ -223,11 +260,12 @@ select is((select status from public.purchase_recommendations where id = '3a0000
   'pending', 'unit denial leaves recommendation pending');
 
 insert into public.purchase_recommendations (
-  id, restaurant_id, inventory_item_id, item_name, supplier_name, recommended_quantity,
+  id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name, recommended_quantity,
   unit, reason, urgency, status, generation_source, planning_revision
 ) values (
   '3a000000-0000-4000-8000-000000000405', '3a000000-0000-4000-8000-000000000001',
-  '3a000000-0000-4000-8000-000000000011', 'Ready chicken', 'Pilot Supplier', 4,
+  '3a000000-0000-4000-8000-000000000011', 'Ready chicken',
+  pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Pilot Supplier'), 'Pilot Supplier', 4,
   'each', 'Stale generated recommendation', 'high', 'pending', 'mise_rules', 0
 );
 update private.restaurant_signal_state
@@ -245,11 +283,12 @@ select is((select status from public.purchase_recommendations where id = '3a0000
   'pending', 'stale generated recommendation remains unchanged');
 
 insert into public.purchase_recommendations (
-  id, restaurant_id, inventory_item_id, item_name, supplier_name, recommended_quantity,
+  id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name, recommended_quantity,
   unit, reason, urgency, status, generation_source
 ) values (
   '3a000000-0000-4000-8000-000000000406', '3a000000-0000-4000-8000-000000000001',
-  '3a000000-0000-4000-8000-000000000015', 'Partial demand item', 'Partial Supplier', 4,
+  '3a000000-0000-4000-8000-000000000015', 'Partial demand item',
+  pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Partial Supplier'), 'Partial Supplier', 4,
   'each', 'Partial provider demand', 'high', 'pending', 'manual'
 );
 insert into public.pos_sales (
@@ -470,9 +509,13 @@ update public.purchase_recommendations set supplier_name = 'Other Supplier'
 where id = '3a000000-0000-4000-8000-000000000406';
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '3a111111-1111-4111-8111-111111111111', true);
-select ok(public.list_purchase_recommendation_authority('3a000000-0000-4000-8000-000000000001')
-  ->'3a000000-0000-4000-8000-000000000406'->'blockers' @> '[{"code":"supplier_mismatch"}]'::jsonb,
-  'recommendation supplier cannot drift from item supplier identity');
+select is(
+  (select recommendation.supplier_name
+   from public.purchase_recommendations recommendation
+   where recommendation.id = '3a000000-0000-4000-8000-000000000406'),
+  'Partial Supplier',
+  'recommendation supplier cannot drift from item supplier identity'
+);
 reset role;
 update public.purchase_recommendations set supplier_name = 'Partial Supplier'
 where id = '3a000000-0000-4000-8000-000000000406';
@@ -506,12 +549,13 @@ where singleton;
 
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity, par_level,
-  reorder_threshold, estimated_unit_cost, supplier_name,
+  reorder_threshold, estimated_unit_cost, supplier_id, supplier_name,
   canonical_unit, canonical_quantity_per_unit, canonical_unit_verification_status,
   canonical_unit_verified_at, canonical_unit_verified_by
 ) values (
   '3a000000-0000-4000-8000-000000000016', '3a000000-0000-4000-8000-000000000001',
-  'Legacy tomato', 'Produce', 'each', 1, 10, 3, 1, 'Legacy Supplier',
+  'Legacy tomato', 'Produce', 'each', 1, 10, 3, 1,
+  pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Legacy Supplier'), 'Legacy Supplier',
   'each', 1, 'verified', clock_timestamp(), '3a111111-1111-4111-8111-111111111111'
 );
 insert into public.inventory_events (
@@ -523,21 +567,24 @@ insert into public.inventory_events (
   '3a111111-1111-4111-8111-111111111111', 'mise-003a-test', 'legacy-draft-count', 'legacy-draft-count'
 );
 insert into public.supplier_orders (
-  id, restaurant_id, supplier_name, order_message, status, delivery_date
+  id, restaurant_id, supplier_id, supplier_name, order_message, status, delivery_date
 ) values (
   '3a000000-0000-4000-8000-000000000501', '3a000000-0000-4000-8000-000000000001',
+  pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Legacy Supplier'),
   'Legacy Supplier', 'Legacy draft unchanged', 'draft', current_date + 1
 );
 insert into public.purchase_recommendations (
-  id, restaurant_id, inventory_item_id, item_name, supplier_name, recommended_quantity,
+  id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name, recommended_quantity,
   unit, reason, urgency, status, generation_source, supplier_order_id, approval_authority
 ) values
   ('3a000000-0000-4000-8000-000000000407', '3a000000-0000-4000-8000-000000000001',
-   '3a000000-0000-4000-8000-000000000016', 'Legacy onion', 'Legacy Supplier', 2,
+   '3a000000-0000-4000-8000-000000000016', 'Legacy onion',
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Legacy Supplier'), 'Legacy Supplier', 2,
    'each', 'Pre-MISE-003A approved line', 'medium', 'approved', 'manual',
    '3a000000-0000-4000-8000-000000000501', null),
   ('3a000000-0000-4000-8000-000000000408', '3a000000-0000-4000-8000-000000000001',
-   '3a000000-0000-4000-8000-000000000016', 'Fresh tomato', 'Legacy Supplier', 3,
+   '3a000000-0000-4000-8000-000000000016', 'Fresh tomato',
+   pg_temp.fixture_supplier_id('3a000000-0000-4000-8000-000000000001', 'Legacy Supplier'), 'Legacy Supplier', 3,
    'each', 'Current recommendation', 'high', 'pending', 'manual', null, null);
 
 set local role authenticated;

@@ -20,6 +20,8 @@ import {
 import { captureMiseError } from "../services/telemetry";
 import { buildSupplierDraftPresentation } from "../utils/orderPresentation";
 
+const SUPPLIER_ID = "00000000-0000-4000-8000-000000000301";
+
 test("Edge JSON reader accepts exactly 64 KiB and rejects oversized or missing lengths", async () => {
   const prefix = '{"value":"';
   const suffix = '"}';
@@ -97,6 +99,7 @@ test("supplier notes, restaurant names, and generated messages stop at their aut
     restaurant_id: "restaurant-1",
     inventory_item_id: "item-1",
     item_name: "Tomatoes",
+    supplier_id: SUPPLIER_ID,
     supplier_name: "Fresh Produce",
     recommended_quantity: 10,
     unit: "lb",
@@ -236,6 +239,7 @@ test("supplier presentation scans only the bounded message and retains the displ
   const presentation = buildSupplierDraftPresentation({
     id: "order-1",
     restaurant_id: "restaurant-1",
+    supplier_id: SUPPLIER_ID,
     supplier_name: "Supplier",
     order_message: orderMessage,
     operator_note: null,
@@ -256,6 +260,7 @@ test("server-shared operational rules are deterministic and reject anomalous his
       id: "item-1",
       restaurant_id: "restaurant-1",
       item_name: "Tomatoes",
+      supplier_id: SUPPLIER_ID,
       supplier_name: "Fresh Produce",
       unit: "lb",
       current_quantity: 1,

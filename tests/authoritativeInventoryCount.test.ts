@@ -37,6 +37,8 @@ import type { InventoryItem, MenuItemIngredient, PosSale, PurchaseRecommendation
 const restaurantA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const restaurantB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const itemId = "item-chicken";
+const freshFoodsSupplierId = "11111111-1111-4111-8111-111111111111";
+const differentSupplierId = "22222222-2222-4222-8222-222222222222";
 const operatingDate = "2026-08-17";
 /** Shared evaluation instant, so validity and freshness do not depend on wall clock. */
 const evaluatedAt = "2026-08-17T23:00:00.000Z";
@@ -60,6 +62,7 @@ function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
     par_level: 40,
     reorder_threshold: 10,
     estimated_unit_cost: 4,
+    supplier_id: freshFoodsSupplierId,
     supplier_name: "Fresh Foods",
     // Deliberately far newer than any count: a policy/cost edit must never read as a count.
     last_updated: "2026-08-17T23:59:00.000Z",
@@ -243,6 +246,7 @@ test("a policy, cost, or supplier edit never makes a stale count look fresh", ()
     last_updated: "2026-08-17T17:59:00.000Z",
     estimated_unit_cost: 9.5,
     par_level: 60,
+    supplier_id: differentSupplierId,
     supplier_name: "Different Supplier"
   });
   const evidence = evidenceFor([staleCount], { item: edited });
@@ -494,6 +498,7 @@ test("server-shared signals anchor depletion and unsuppression to verified count
         id: itemId,
         restaurant_id: restaurantA,
         item_name: "Chicken breast",
+        supplier_id: freshFoodsSupplierId,
         supplier_name: "Fresh Foods",
         unit: "lb",
         current_quantity: 12,
@@ -569,6 +574,7 @@ test("suppression ignores non-count row updates and stays closed without evidenc
     restaurant_id: restaurantA,
     inventory_item_id: itemId,
     item_name: "Chicken breast",
+    supplier_id: freshFoodsSupplierId,
     supplier_name: "Fresh Foods",
     recommended_quantity: 20,
     unit: "lb",
@@ -771,6 +777,7 @@ test("future count evidence cannot release recommendation suppression", () => {
     restaurant_id: restaurantA,
     inventory_item_id: itemId,
     item_name: "Chicken breast",
+    supplier_id: freshFoodsSupplierId,
     supplier_name: "Fresh Foods",
     recommended_quantity: 20,
     unit: "lb",
@@ -823,6 +830,7 @@ test("server-shared signals ignore future count evidence and keep the valid anch
         id: itemId,
         restaurant_id: restaurantA,
         item_name: "Chicken breast",
+        supplier_id: freshFoodsSupplierId,
         supplier_name: "Fresh Foods",
         unit: "lb",
         current_quantity: 12,
@@ -1099,6 +1107,7 @@ test("a legacy future count that already moved current_quantity cannot drive pla
         id: itemId,
         restaurant_id: restaurantA,
         item_name: "Chicken breast",
+        supplier_id: freshFoodsSupplierId,
         supplier_name: "Fresh Foods",
         unit: "lb",
         current_quantity: 100,
@@ -1291,6 +1300,7 @@ test("a contaminated projection cannot release suppression or order readiness", 
     restaurant_id: restaurantA,
     inventory_item_id: itemId,
     item_name: "Chicken breast",
+    supplier_id: freshFoodsSupplierId,
     supplier_name: "Fresh Foods",
     recommended_quantity: 20,
     unit: "lb",
@@ -1308,6 +1318,7 @@ test("a contaminated projection cannot release suppression or order readiness", 
   // Order automation stays on manual review with an explicit stale-count blocker.
   const assessment = assessOrderAutomation({
     restaurantId: restaurantA,
+    supplierId: freshFoodsSupplierId,
     supplierName: "Fresh Foods",
     candidates: [
       {
@@ -1315,6 +1326,7 @@ test("a contaminated projection cannot release suppression or order readiness", 
         restaurant_id: restaurantA,
         inventory_item_id: itemId,
         item_name: "Chicken breast",
+        supplier_id: freshFoodsSupplierId,
         supplier_name: "Fresh Foods",
         recommended_quantity: 12,
         unit: "lb",
@@ -1331,6 +1343,7 @@ test("a contaminated projection cannot release suppression or order readiness", 
       restaurant_id: restaurantA,
       inventory_item_id: itemId,
       item_name: "Chicken breast",
+      supplier_id: freshFoodsSupplierId,
       supplier_name: "Fresh Foods",
       recommended_quantity: quantity,
       unit: "lb",
@@ -1560,6 +1573,7 @@ test("a legacy out-of-order row that already moved the projection fails closed",
         id: itemId,
         restaurant_id: restaurantA,
         item_name: "Chicken breast",
+        supplier_id: freshFoodsSupplierId,
         supplier_name: "Fresh Foods",
         unit: "lb",
         current_quantity: 15,
@@ -1752,6 +1766,7 @@ test("real planning paths cannot double-apply across a verified count", () => {
     id: itemId,
     restaurant_id: restaurantA,
     item_name: "Chicken breast",
+    supplier_id: freshFoodsSupplierId,
     supplier_name: "Fresh Foods",
     unit: "lb",
     current_quantity: 10,

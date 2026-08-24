@@ -319,6 +319,10 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
     "supabase/migrations/20260810130000_service_inventory_policy_only_patches.sql",
     "utf8"
   );
+  const durableSupplierMigration = readFileSync(
+    "supabase/migrations/20260824034152_mise_003c_durable_supplier_identity.sql",
+    "utf8"
+  );
   const projectionMigration = readFileSync(
     "supabase/migrations/20260727203458_inventory_event_projection_authority.sql",
     "utf8"
@@ -326,7 +330,8 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
   const updateWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+updateInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
 
   assert.match(validation, /patch\.current_quantity[\s\S]*remain auditable/i);
-  assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold", "supplier_name"\]\)/i);
+  assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold"\]\)/i);
+  assert.doesNotMatch(edgeWorkflow, /new Set\([^\n]+supplier_name/i);
   assert.match(updateWorkflow, /fetchAnchoredPlanningData[\s\S]*fetchRecommendationHistory/i);
   assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);
   assert.match(updateWorkflow, /updateInventoryItemAndSignals\([\s\S]*existing\.last_updated/i);
@@ -350,6 +355,14 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
     /set\s+current_quantity\s*=\s*item_row\.current_quantity/i
   );
   assert.match(policyOnlyMigration, /On-hand quantity changes must use record_inventory_event/i);
+  assert.match(
+    durableSupplierMigration,
+    /safe_patch\s*-\s*array\['par_level',\s*'reorder_threshold'\]/i
+  );
+  assert.doesNotMatch(
+    durableSupplierMigration,
+    /safe_patch\s*-\s*array\[[^\]]*'supplier_name'/i
+  );
   assert.match(projectionMigration, /after insert on public\.inventory_events/i);
 });
 
@@ -384,18 +397,20 @@ test("Supabase repository keeps demo seed and reset local-only", () => {
 test("supplier draft undo cleanup is tenant-scoped", () => {
   const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const orderWorkflow = readFileSync("services/application/orders.ts", "utf8");
-  const workflowMigration = readFileSync("supabase/migrations/20260712121557_stabilize_order_workflow.sql", "utf8");
-  const deleteDraftBlock =
-    [...repository.matchAll(/async deleteSupplierOrderDraft\([\s\S]*?\n    \},/g)]
-      .map((match) => match[0])
-      .find((block) => block.includes(".from(\"supplier_orders\")")) ?? "";
+  const workflowMigration = readFileSync(
+    "supabase/migrations/20260824034152_mise_003c_durable_supplier_identity.sql",
+    "utf8"
+  );
+  const undoBlock = repository.match(
+    /async undoPurchaseRecommendationAction\([\s\S]*?\n    \},/
+  )?.[0] ?? "";
 
-  assert.match(deleteDraftBlock, /\.from\("supplier_orders"\)[\s\S]*\.delete\(\)[\s\S]*\.eq\("restaurant_id",\s*restaurantId\)/i);
-  assert.match(deleteDraftBlock, /\.eq\("supplier_name",\s*supplierName\)/i);
-  assert.match(deleteDraftBlock, /\.eq\("status",\s*"draft"\)/i);
+  assert.match(undoBlock, /client\.rpc\("undo_purchase_recommendation_action"/i);
+  assert.doesNotMatch(undoBlock, /\.from\("supplier_orders"\)|\.delete\(\)/i);
   assert.match(orderWorkflow, /undoPurchaseRecommendationAction/i);
   assert.match(orderWorkflow, /repository\.undoPurchaseRecommendationAction/i);
-  assert.match(workflowMigration, /action[\s\S]*recommendation_undo/i);
+  assert.match(workflowMigration, /create or replace function public\.undo_purchase_recommendation_action/i);
+  assert.match(workflowMigration, /recommendation_row\.supplier_id/i);
   assert.doesNotMatch(orderWorkflow, /actor_user_id/i);
 });
 

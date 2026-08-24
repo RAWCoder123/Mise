@@ -62,11 +62,23 @@ insert into public.restaurant_email_connections (
   'gmail', 'connected', 'orders@mise-003b.test', clock_timestamp()
 );
 
-insert into public.supplier_recipients (restaurant_id, supplier_name, email)
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
 values
-  ('d3000000-0000-4000-8000-000000000001', 'Alpha Produce', 'alpha@supplier.test'),
-  ('d3000000-0000-4000-8000-000000000001', 'Beta Produce', 'beta@supplier.test'),
-  ('d3000000-0000-4000-8000-000000000001', 'Legacy Envelope', 'legacy@supplier.test');
+  ('d3000000-0000-4000-8000-000000000301', 'd3000000-0000-4000-8000-000000000001', 'Alpha Produce', 'alpha produce'),
+  ('d3000000-0000-4000-8000-000000000302', 'd3000000-0000-4000-8000-000000000001', 'Beta Produce', 'beta produce'),
+  ('d3000000-0000-4000-8000-000000000303', 'd3000000-0000-4000-8000-000000000001', 'Sending Supplier', 'sending supplier'),
+  ('d3000000-0000-4000-8000-000000000304', 'd3000000-0000-4000-8000-000000000001', 'Unknown Supplier', 'unknown supplier'),
+  ('d3000000-0000-4000-8000-000000000305', 'd3000000-0000-4000-8000-000000000001', 'Failed Supplier', 'failed supplier'),
+  ('d3000000-0000-4000-8000-000000000306', 'd3000000-0000-4000-8000-000000000001', 'Unrelated Supplier', 'unrelated supplier'),
+  ('d3000000-0000-4000-8000-000000000307', 'd3000000-0000-4000-8000-000000000001', 'Legacy Sent Supplier', 'legacy sent supplier'),
+  ('d3000000-0000-4000-8000-000000000308', 'd3000000-0000-4000-8000-000000000001', 'Legacy Unknown Supplier', 'legacy unknown supplier'),
+  ('d3000000-0000-4000-8000-000000000309', 'd3000000-0000-4000-8000-000000000001', 'Legacy Envelope', 'legacy envelope');
+
+insert into public.supplier_recipients (restaurant_id, supplier_id, supplier_name, email)
+values
+  ('d3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000301', 'Alpha Produce', 'alpha@supplier.test'),
+  ('d3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000302', 'Beta Produce', 'beta@supplier.test'),
+  ('d3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000309', 'Legacy Envelope', 'legacy@supplier.test');
 
 insert into private.gmail_credentials (
   id, restaurant_id, provider_subject, sender_email,
@@ -87,49 +99,49 @@ select
 
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity,
-  par_level, reorder_threshold, estimated_unit_cost, supplier_name,
+  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name,
   canonical_unit, canonical_quantity_per_unit,
   canonical_unit_verification_status, canonical_unit_verified_at,
   canonical_unit_verified_by
 ) values
-  ('d3000000-0000-4000-8000-000000000011', 'd3000000-0000-4000-8000-000000000001', 'Zucchini', 'Produce', 'case', 1, 8, 2, 10, 'Alpha Produce', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
-  ('d3000000-0000-4000-8000-000000000012', 'd3000000-0000-4000-8000-000000000001', 'Apples', 'Produce', 'case', 1, 8, 2, 10, 'Alpha Produce', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
-  ('d3000000-0000-4000-8000-000000000013', 'd3000000-0000-4000-8000-000000000001', 'Broccoli', 'Produce', 'case', 1, 8, 2, 10, 'Beta Produce', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
-  ('d3000000-0000-4000-8000-000000000014', 'd3000000-0000-4000-8000-000000000001', 'Carrots', 'Produce', 'case', 1, 8, 2, 10, 'Sending Supplier', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
-  ('d3000000-0000-4000-8000-000000000015', 'd3000000-0000-4000-8000-000000000001', 'Dates', 'Produce', 'case', 1, 8, 2, 10, 'Unknown Supplier', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
-  ('d3000000-0000-4000-8000-000000000016', 'd3000000-0000-4000-8000-000000000001', 'Eggplant', 'Produce', 'case', 1, 8, 2, 10, 'Failed Supplier', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
-  ('d3000000-0000-4000-8000-000000000017', 'd3000000-0000-4000-8000-000000000001', 'Fennel', 'Produce', 'case', 1, 8, 2, 10, 'Unrelated Supplier', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
-  ('d3000000-0000-4000-8000-000000000018', 'd3000000-0000-4000-8000-000000000001', 'Grapes', 'Produce', 'case', 1, 8, 2, 10, 'Legacy Envelope', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111');
+  ('d3000000-0000-4000-8000-000000000011', 'd3000000-0000-4000-8000-000000000001', 'Zucchini', 'Produce', 'case', 1, 8, 2, 10, 'd3000000-0000-4000-8000-000000000301', 'Alpha Produce', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
+  ('d3000000-0000-4000-8000-000000000012', 'd3000000-0000-4000-8000-000000000001', 'Apples', 'Produce', 'case', 1, 8, 2, 10, 'd3000000-0000-4000-8000-000000000301', 'Alpha Produce', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
+  ('d3000000-0000-4000-8000-000000000013', 'd3000000-0000-4000-8000-000000000001', 'Broccoli', 'Produce', 'case', 1, 8, 2, 10, 'd3000000-0000-4000-8000-000000000302', 'Beta Produce', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
+  ('d3000000-0000-4000-8000-000000000014', 'd3000000-0000-4000-8000-000000000001', 'Carrots', 'Produce', 'case', 1, 8, 2, 10, 'd3000000-0000-4000-8000-000000000303', 'Sending Supplier', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
+  ('d3000000-0000-4000-8000-000000000015', 'd3000000-0000-4000-8000-000000000001', 'Dates', 'Produce', 'case', 1, 8, 2, 10, 'd3000000-0000-4000-8000-000000000304', 'Unknown Supplier', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
+  ('d3000000-0000-4000-8000-000000000016', 'd3000000-0000-4000-8000-000000000001', 'Eggplant', 'Produce', 'case', 1, 8, 2, 10, 'd3000000-0000-4000-8000-000000000305', 'Failed Supplier', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
+  ('d3000000-0000-4000-8000-000000000017', 'd3000000-0000-4000-8000-000000000001', 'Fennel', 'Produce', 'case', 1, 8, 2, 10, 'd3000000-0000-4000-8000-000000000306', 'Unrelated Supplier', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111'),
+  ('d3000000-0000-4000-8000-000000000018', 'd3000000-0000-4000-8000-000000000001', 'Grapes', 'Produce', 'case', 1, 8, 2, 10, 'd3000000-0000-4000-8000-000000000309', 'Legacy Envelope', 'case', 1, 'verified', now(), 'd3111111-1111-4111-8111-111111111111');
 
 insert into public.supplier_orders (
-  id, restaurant_id, supplier_name, order_message, status, delivery_date,
+  id, restaurant_id, supplier_id, supplier_name, order_message, status, delivery_date,
   email_provider, provider_message_id, sent_at, sent_by_user_id
 ) values
-  ('d3000000-0000-4000-8000-000000000201', 'd3000000-0000-4000-8000-000000000001', 'Alpha Produce', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
-  ('d3000000-0000-4000-8000-000000000202', 'd3000000-0000-4000-8000-000000000001', 'Beta Produce', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
-  ('d3000000-0000-4000-8000-000000000203', 'd3000000-0000-4000-8000-000000000001', 'Sending Supplier', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
-  ('d3000000-0000-4000-8000-000000000204', 'd3000000-0000-4000-8000-000000000001', 'Unknown Supplier', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
-  ('d3000000-0000-4000-8000-000000000205', 'd3000000-0000-4000-8000-000000000001', 'Failed Supplier', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
-  ('d3000000-0000-4000-8000-000000000206', 'd3000000-0000-4000-8000-000000000001', 'Unrelated Supplier', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
-  ('d3000000-0000-4000-8000-000000000207', 'd3000000-0000-4000-8000-000000000001', 'Legacy Sent Supplier', 'legacy already sent', 'sent', current_date + 1, 'gmail', 'legacy-provider-message', now(), 'd3111111-1111-4111-8111-111111111111'),
-  ('d3000000-0000-4000-8000-000000000208', 'd3000000-0000-4000-8000-000000000001', 'Legacy Unknown Supplier', 'legacy uncertain send', 'draft', current_date + 1, null, null, null, null),
-  ('d3000000-0000-4000-8000-000000000209', 'd3000000-0000-4000-8000-000000000001', 'Legacy Envelope', 'fixture pending render', 'draft', current_date + 1, null, null, null, null);
+  ('d3000000-0000-4000-8000-000000000201', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000301', 'Alpha Produce', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
+  ('d3000000-0000-4000-8000-000000000202', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000302', 'Beta Produce', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
+  ('d3000000-0000-4000-8000-000000000203', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000303', 'Sending Supplier', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
+  ('d3000000-0000-4000-8000-000000000204', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000304', 'Unknown Supplier', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
+  ('d3000000-0000-4000-8000-000000000205', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000305', 'Failed Supplier', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
+  ('d3000000-0000-4000-8000-000000000206', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000306', 'Unrelated Supplier', 'fixture pending render', 'draft', current_date + 1, null, null, null, null),
+  ('d3000000-0000-4000-8000-000000000207', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000307', 'Legacy Sent Supplier', 'legacy already sent', 'sent', current_date + 1, 'gmail', 'legacy-provider-message', now(), 'd3111111-1111-4111-8111-111111111111'),
+  ('d3000000-0000-4000-8000-000000000208', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000308', 'Legacy Unknown Supplier', 'legacy uncertain send', 'draft', current_date + 1, null, null, null, null),
+  ('d3000000-0000-4000-8000-000000000209', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000309', 'Legacy Envelope', 'fixture pending render', 'draft', current_date + 1, null, null, null, null);
 
 -- Insert Alpha lines in reverse UUID order. The canonical preview must sort by
 -- recommendation identity, independently of insertion or display-name order.
 insert into public.purchase_recommendations (
-  id, restaurant_id, inventory_item_id, item_name, supplier_name,
+  id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
   recommended_quantity, unit, reason, urgency, status, generation_source,
   supplier_order_id
 ) values
-  ('d3000000-0000-4000-8000-000000000102', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000012', 'Apples', 'Alpha Produce', 2, 'case', 'MISE-003B fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000201'),
-  ('d3000000-0000-4000-8000-000000000101', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000011', 'Zucchini', 'Alpha Produce', 3, 'case', 'MISE-003B fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000201'),
-  ('d3000000-0000-4000-8000-000000000103', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000013', 'Broccoli', 'Beta Produce', 2, 'case', 'Authority blocker fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000202'),
-  ('d3000000-0000-4000-8000-000000000104', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000014', 'Carrots', 'Sending Supplier', 2, 'case', 'Freeze fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000203'),
-  ('d3000000-0000-4000-8000-000000000105', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000015', 'Dates', 'Unknown Supplier', 2, 'case', 'Freeze fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000204'),
-  ('d3000000-0000-4000-8000-000000000106', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000016', 'Eggplant', 'Failed Supplier', 2, 'case', 'Retry fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000205'),
-  ('d3000000-0000-4000-8000-000000000107', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000017', 'Fennel', 'Unrelated Supplier', 2, 'case', 'Unrelated completion fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000206'),
-  ('d3000000-0000-4000-8000-000000000108', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000018', 'Grapes', 'Legacy Envelope', 2, 'case', 'Legacy envelope fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000209');
+  ('d3000000-0000-4000-8000-000000000102', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000012', 'Apples', 'd3000000-0000-4000-8000-000000000301', 'Alpha Produce', 2, 'case', 'MISE-003B fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000201'),
+  ('d3000000-0000-4000-8000-000000000101', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000011', 'Zucchini', 'd3000000-0000-4000-8000-000000000301', 'Alpha Produce', 3, 'case', 'MISE-003B fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000201'),
+  ('d3000000-0000-4000-8000-000000000103', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000013', 'Broccoli', 'd3000000-0000-4000-8000-000000000302', 'Beta Produce', 2, 'case', 'Authority blocker fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000202'),
+  ('d3000000-0000-4000-8000-000000000104', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000014', 'Carrots', 'd3000000-0000-4000-8000-000000000303', 'Sending Supplier', 2, 'case', 'Freeze fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000203'),
+  ('d3000000-0000-4000-8000-000000000105', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000015', 'Dates', 'd3000000-0000-4000-8000-000000000304', 'Unknown Supplier', 2, 'case', 'Freeze fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000204'),
+  ('d3000000-0000-4000-8000-000000000106', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000016', 'Eggplant', 'd3000000-0000-4000-8000-000000000305', 'Failed Supplier', 2, 'case', 'Retry fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000205'),
+  ('d3000000-0000-4000-8000-000000000107', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000017', 'Fennel', 'd3000000-0000-4000-8000-000000000306', 'Unrelated Supplier', 2, 'case', 'Unrelated completion fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000206'),
+  ('d3000000-0000-4000-8000-000000000108', 'd3000000-0000-4000-8000-000000000001', 'd3000000-0000-4000-8000-000000000018', 'Grapes', 'd3000000-0000-4000-8000-000000000309', 'Legacy Envelope', 2, 'case', 'Legacy envelope fixture', 'high', 'approved', 'manual', 'd3000000-0000-4000-8000-000000000209');
 
 update public.supplier_orders orders
 set order_message = private.build_supplier_order_message(
@@ -485,14 +497,14 @@ insert into private.supplier_email_deliveries (
   content_version, content_fingerprint, authority_version,
   authority_fingerprint, approved_action_id, claimed_recommendation_ids,
   claimed_from, claimed_to, claimed_subject, credential_generation,
-  claimed_content_revision, authority_evaluated_at
+  claimed_content_revision, authority_evaluated_at, supplier_id
 )
 select
   orders.restaurant_id, orders.id,
   'd3111111-1111-4111-8111-111111111111', orders.id,
   'd3000000-0000-4000-8000-000000000901', 'sending',
   '<mise-003b-alpha@mise.test>',
-  'mise.supplier_send.v1',
+  'mise.supplier_send.v2',
   action.expected_impact->'approvedSendContent'->>'fingerprint',
   'mise.purchase_authority.v1', repeat('a', 64), action.id,
   array[
@@ -502,7 +514,7 @@ select
   action.expected_impact->'approvedSendContent'->>'from',
   action.expected_impact->'approvedSendContent'->>'to',
   action.expected_impact->'approvedSendContent'->>'subject',
-  1, orders.send_content_revision, clock_timestamp()
+  1, orders.send_content_revision, clock_timestamp(), orders.supplier_id
 from public.supplier_orders orders
 join public.mise_actions action
   on action.restaurant_id = orders.restaurant_id
@@ -614,21 +626,21 @@ insert into private.supplier_email_deliveries (
   content_version, content_fingerprint, authority_version,
   authority_fingerprint, approved_action_id, claimed_recommendation_ids,
   claimed_from, claimed_to, claimed_subject, credential_generation,
-  claimed_content_revision, authority_evaluated_at
+  claimed_content_revision, authority_evaluated_at, supplier_id
 )
 select
   orders.restaurant_id, orders.id,
   'd3111111-1111-4111-8111-111111111111', orders.id,
   'd3000000-0000-4000-8000-000000000902', 'sending',
   '<mise-003b-beta@mise.test>',
-  'mise.supplier_send.v1',
+  'mise.supplier_send.v2',
   action.expected_impact->'approvedSendContent'->>'fingerprint',
   'mise.purchase_authority.v1', repeat('b', 64), action.id,
   array['d3000000-0000-4000-8000-000000000103'::uuid],
   action.expected_impact->'approvedSendContent'->>'from',
   action.expected_impact->'approvedSendContent'->>'to',
   action.expected_impact->'approvedSendContent'->>'subject',
-  1, orders.send_content_revision, clock_timestamp()
+  1, orders.send_content_revision, clock_timestamp(), orders.supplier_id
 from public.supplier_orders orders
 join public.mise_actions action
   on action.restaurant_id = orders.restaurant_id
@@ -799,11 +811,18 @@ select is((select claim_token from private.supplier_email_deliveries
 -- restaurant-owned cascade across orders, actions, and private delivery rows.
 insert into public.restaurants (id, name, cuisine_type, timezone)
 values ('d3ffffff-0000-4000-8000-000000000001', 'Cascade Kitchen', 'Cafe', 'UTC');
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values (
+  'd3ffffff-0000-4000-8000-000000000010',
+  'd3ffffff-0000-4000-8000-000000000001',
+  'Cascade Supplier', 'cascade supplier'
+);
 insert into public.supplier_orders (
-  id, restaurant_id, supplier_name, order_message, status, delivery_date
+  id, restaurant_id, supplier_id, supplier_name, order_message, status, delivery_date
 ) values (
   'd3ffffff-0000-4000-8000-000000000201',
   'd3ffffff-0000-4000-8000-000000000001',
+  'd3ffffff-0000-4000-8000-000000000010',
   'Cascade Supplier', 'Cascade proof body', 'draft', current_date + 1
 );
 insert into private.supplier_email_deliveries (

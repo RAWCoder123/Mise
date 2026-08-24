@@ -13,10 +13,11 @@ import {
 import { GmailIntegrationError } from "../services/repositories/repositoryContracts";
 
 const snapshotVector: CanonicalSupplierSendSnapshot = {
-  version: "mise.supplier_send.v1",
+  version: "mise.supplier_send.v2",
   contentRevision: 7,
   restaurantId: "10000000-0000-4000-8000-000000000001",
   orderId: "20000000-0000-4000-8000-000000000001",
+  supplierId: "50000000-0000-4000-8000-000000000001",
   supplierName: "Local Produce Co.",
   from: "orders@example.com",
   to: "produce@example.com",
@@ -28,6 +29,7 @@ const snapshotVector: CanonicalSupplierSendSnapshot = {
     {
       recommendationId: "30000000-0000-4000-8000-000000000001",
       inventoryItemId: "40000000-0000-4000-8000-000000000001",
+      supplierId: "50000000-0000-4000-8000-000000000001",
       itemName: "Tomatoes",
       quantity: 4,
       unit: "each",
@@ -39,11 +41,11 @@ const snapshotVector: CanonicalSupplierSendSnapshot = {
 test("demo supplier-send serialization matches the PostgreSQL jsonb fingerprint vector", async () => {
   assert.equal(
     serializeSupplierSendSnapshot(snapshotVector),
-    '{"to": "produce@example.com", "body": "Order draft for Local Produce Co.\\n\\nTomatoes - 4 each", "from": "orders@example.com", "lines": [{"unit": "each", "itemName": "Tomatoes", "quantity": 4, "supplierName": "Local Produce Co.", "inventoryItemId": "40000000-0000-4000-8000-000000000001", "recommendationId": "30000000-0000-4000-8000-000000000001"}], "orderId": "20000000-0000-4000-8000-000000000001", "subject": "Mise Cafe order for Local Produce Co.", "version": "mise.supplier_send.v1", "deliveryDate": "2026-08-24", "operatorNote": "Use the side entrance.", "restaurantId": "10000000-0000-4000-8000-000000000001", "supplierName": "Local Produce Co.", "contentRevision": 7}'
+    '{"to": "produce@example.com", "body": "Order draft for Local Produce Co.\\n\\nTomatoes - 4 each", "from": "orders@example.com", "lines": [{"unit": "each", "itemName": "Tomatoes", "quantity": 4, "supplierId": "50000000-0000-4000-8000-000000000001", "supplierName": "Local Produce Co.", "inventoryItemId": "40000000-0000-4000-8000-000000000001", "recommendationId": "30000000-0000-4000-8000-000000000001"}], "orderId": "20000000-0000-4000-8000-000000000001", "subject": "Mise Cafe order for Local Produce Co.", "version": "mise.supplier_send.v2", "supplierId": "50000000-0000-4000-8000-000000000001", "deliveryDate": "2026-08-24", "operatorNote": "Use the side entrance.", "restaurantId": "10000000-0000-4000-8000-000000000001", "supplierName": "Local Produce Co.", "contentRevision": 7}'
   );
   assert.equal(
     await fingerprintSupplierSendSnapshot(snapshotVector),
-    "806f0d656046772f0c89840af2c7d64a979b77087b4e07e36f8ea01cf55206b1"
+    "4c11a3e027502cb6a92f42885fd256ba83bbe566b55a3e5a63b2e33ecfe6cc9a"
   );
 });
 
@@ -53,6 +55,7 @@ test("supplier-send fingerprint binds every operator-reviewed delivery field", a
     { ...snapshotVector, contentRevision: 8 },
     { ...snapshotVector, restaurantId: "10000000-0000-4000-8000-000000000002" },
     { ...snapshotVector, orderId: "20000000-0000-4000-8000-000000000002" },
+    { ...snapshotVector, supplierId: "50000000-0000-4000-8000-000000000002" },
     { ...snapshotVector, supplierName: "Changed Produce Co." },
     { ...snapshotVector, from: "other-sender@example.com" },
     { ...snapshotVector, to: "other-recipient@example.com" },
@@ -67,6 +70,10 @@ test("supplier-send fingerprint binds every operator-reviewed delivery field", a
     {
       ...snapshotVector,
       lines: [{ ...snapshotVector.lines[0]!, inventoryItemId: "40000000-0000-4000-8000-000000000009" }]
+    },
+    {
+      ...snapshotVector,
+      lines: [{ ...snapshotVector.lines[0]!, supplierId: "50000000-0000-4000-8000-000000000009" }]
     },
     {
       ...snapshotVector,
@@ -92,6 +99,7 @@ test("supplier-send fingerprint binds every operator-reviewed delivery field", a
         {
           recommendationId: "30000000-0000-4000-8000-000000000002",
           inventoryItemId: "40000000-0000-4000-8000-000000000002",
+          supplierId: "50000000-0000-4000-8000-000000000001",
           itemName: "Onions",
           quantity: 2,
           unit: "each",
@@ -104,6 +112,33 @@ test("supplier-send fingerprint binds every operator-reviewed delivery field", a
   for (const variant of variants) {
     assert.notEqual(await fingerprintSupplierSendSnapshot(variant), baseline);
   }
+});
+
+test("v2 serializer preserves adversarial Unicode and control bytes exactly", async () => {
+  const body =
+    "emoji 😀; CJK 漢字; CRLF\r\n; quote \"; backslash \\; " +
+    "line separator \u2028; DEL \u007f; C0 \u0000\u0001\u001f";
+  const snapshot = { ...snapshotVector, body };
+  const serialized = serializeSupplierSendSnapshot(snapshot);
+
+  assert.equal((JSON.parse(serialized) as { body: string }).body, body);
+  assert.match(serialized, /CRLF\\r\\n/);
+  assert.match(serialized, /quote \\"/);
+  assert.match(serialized, /backslash \\\\/);
+  assert.match(serialized, /C0 \\u0000\\u0001\\u001f/);
+  assert.equal(
+    await fingerprintSupplierSendSnapshot(snapshot),
+    "b0fcb17a6931d81b9738c97865801f568072093ea78173fb20bf4a569acca6ed"
+  );
+});
+
+test("v2 serializer fingerprints an exact 65536-byte body deterministically", async () => {
+  const body = "x".repeat(65_536);
+  assert.equal(new TextEncoder().encode(body).byteLength, 65_536);
+  assert.equal(
+    await fingerprintSupplierSendSnapshot({ ...snapshotVector, body }),
+    "6ca473069b4dde8386f1d2cdf6efa71c3cdc52462d411bf41a5180aeecf58a3c"
+  );
 });
 
 test("demo approval binds exact content, survives no ABA revert, and completes only claimed lines", async () => {
@@ -218,15 +253,15 @@ test("demo approval binds exact content, survives no ABA revert, and completes o
   )).outcome, "applied");
 
   const recipient = (await repository.fetchSupplierRecipients(DEMO_RESTAURANT_ID))
-    .find((entry) => entry.supplier_name === order.supplier_name)!;
+    .find((entry) => entry.supplier_id === order.supplier_id)!;
   await repository.upsertSupplierRecipient({
     restaurant_id: DEMO_RESTAURANT_ID,
-    supplier_name: order.supplier_name,
+    supplier_id: order.supplier_id,
     email: "temporary-recipient@example.com"
   });
   await repository.upsertSupplierRecipient({
     restaurant_id: DEMO_RESTAURANT_ID,
-    supplier_name: order.supplier_name,
+    supplier_id: order.supplier_id,
     email: recipient.email
   });
   const recipientReverted = await repository.previewSupplierSendContent(

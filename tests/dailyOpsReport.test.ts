@@ -206,6 +206,7 @@ test("buildDailyOpsReport assembles closeout sections", () => {
       overallMatchedDeliveryRate: 0.5,
       suppliers: [
         {
+          supplierId: "00000000-0000-4000-8000-000000000402",
           supplierName: "Produce Co.",
           status: "at_risk",
           deliveryCount: 2,
@@ -279,6 +280,7 @@ test("buildDailyOpsReport estimates dollars at risk from outlooks", () => {
     par_level: 20,
     reorder_threshold: 8,
     estimated_unit_cost: 5,
+    supplier_id: "10000000-0000-4000-8000-000000000005",
     supplier_name: "Sysco",
     last_updated: "2026-08-01T12:00:00.000Z"
   };

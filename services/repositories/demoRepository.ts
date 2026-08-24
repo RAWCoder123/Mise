@@ -20,8 +20,10 @@ import {
   isRollingDemoCurrentDaySale,
   markClaimedSupplierOrderSentInDemoState,
   markSupplierOrderSentInDemoState,
+  reassignInventorySupplierInDemoState,
   rebuildInsights,
   rebuildPurchaseRecommendations,
+  renameSupplierInDemoState,
   undoRecommendationInDemoState,
   type DemoState
 } from "../demoData";
@@ -84,7 +86,10 @@ import {
   type InventoryEventInput
 } from "../domain/inventoryLedger";
 import { isTemporallyValidCount } from "../domain/inventoryCountAuthority";
-import type { PurchaseAuthorityResult } from "../domain/purchaseAuthority";
+import {
+  PurchaseAuthorityBlockedError,
+  type PurchaseAuthorityResult
+} from "../domain/purchaseAuthority";
 import {
   buildCanonicalSupplierSendContent,
   SUPPLIER_SEND_CONTENT_VERSION
@@ -100,11 +105,11 @@ import {
   normalizeOperationalFindingDecision,
   normalizeOperationalFindingDecisionInput
 } from "../domain/operationalFindingDecisions";
-import {
-  findSupplierRecipientCatalogName,
-  supplierRecipientDirectoryKey
-} from "../domain/supplierRecipients";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
+import {
+  createDemoSupplier,
+  demoSupplierNormalizedName
+} from "../demo/demoSupplierIdentity";
 import {
   normalizeAppUser,
   normalizeInsight,
@@ -121,6 +126,7 @@ import {
   normalizeRestaurantMembership,
   normalizeRestaurantTeamMember,
   normalizeSetupAttachment,
+  normalizeSupplier,
   normalizeSupplierItem,
   normalizeSupplierOrder,
   normalizeSupplierDeliveryItemRecord,
@@ -179,14 +185,36 @@ function demoPurchaseAuthority(
   const item = state.inventoryItems.find(
     (entry) => entry.restaurant_id === restaurantId && entry.id === recommendation.inventory_item_id
   );
+  const supplier = state.suppliers.find(
+    (entry) =>
+      entry.restaurant_id === restaurantId && entry.id === recommendation.supplier_id
+  );
+  const blockers: PurchaseAuthorityResult["blockers"] = [];
+  if (!supplier) {
+    blockers.push({
+      code: "supplier_missing",
+      description: "This recommendation has no current supplier identity.",
+      metadata: { supplierId: recommendation.supplier_id || null }
+    });
+  } else if (!item || item.supplier_id !== supplier.id) {
+    blockers.push({
+      code: "supplier_mismatch",
+      description: "The inventory supplier changed after this recommendation was created.",
+      metadata: {
+        recommendationSupplierId: recommendation.supplier_id,
+        inventorySupplierId: item?.supplier_id ?? null
+      }
+    });
+  }
   return {
-    ready: true,
-    blockers: [],
+    ready: blockers.length === 0,
+    blockers,
     evaluatedAt: new Date().toISOString(),
     planningRevision: null,
     evidence: {
       recommendationId: recommendation.id,
       inventoryItemId: recommendation.inventory_item_id,
+      supplierId: recommendation.supplier_id,
       countEventId: null,
       countedAt: null,
       projectedQuantity: item?.current_quantity ?? null,
@@ -212,6 +240,14 @@ async function buildDemoSupplierSendContent(
     (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
   );
   if (!order) throw new Error("Order draft not found");
+  if (
+    !state.suppliers.some(
+      (supplier) =>
+        supplier.restaurant_id === restaurantId && supplier.id === order.supplier_id
+    )
+  ) {
+    throw new Error("Supplier identity is no longer available.");
+  }
   const emailConnection = state.emailConnections.find(
     (entry) => entry.restaurant_id === restaurantId && entry.provider === "gmail"
   ) ?? null;
@@ -228,6 +264,7 @@ async function buildDemoSupplierSendContent(
 interface DemoApprovedSendContent {
   version: string;
   fingerprint: string;
+  supplierId: string;
   approvedAt: string;
   lineCount: number;
   contentRevision: number;
@@ -243,6 +280,8 @@ function readDemoApprovedSendContent(value: unknown): DemoApprovedSendContent | 
     candidate.version !== SUPPLIER_SEND_CONTENT_VERSION ||
     typeof candidate.fingerprint !== "string" ||
     !/^[a-f0-9]{64}$/.test(candidate.fingerprint) ||
+    typeof candidate.supplierId !== "string" ||
+    !candidate.supplierId.trim() ||
     typeof candidate.approvedAt !== "string" ||
     typeof candidate.lineCount !== "number" ||
     !Number.isInteger(candidate.lineCount) ||
@@ -337,7 +376,11 @@ async function readReadyDemoState(restaurantId: string = DEMO_RESTAURANT_ID) {
             restaurantId,
             actionType: "send_supplier_order",
             idempotencyKey: key,
-            expectedImpact: { supplierName: order.supplier_name, orderId: order.id },
+            expectedImpact: {
+              supplierId: order.supplier_id,
+              supplierName: order.supplier_name,
+              orderId: order.id
+            },
             now: order.created_at
           })
         );
@@ -368,6 +411,31 @@ function requireActiveDemoRestaurant(state: DemoState, restaurantId: string) {
   if (state.currentRestaurantId !== restaurantId || !state.restaurants.some((entry) => entry.id === restaurantId)) {
     throw new Error("Restaurant not found");
   }
+}
+
+function authoritativeDemoRecommendationInput<
+  TInput extends Omit<PurchaseRecommendation, "id" | "created_at">
+>(state: DemoState, input: TInput): TInput {
+  const item = state.inventoryItems.find(
+    (candidate) =>
+      candidate.restaurant_id === input.restaurant_id &&
+      candidate.id === input.inventory_item_id
+  );
+  const supplier = item
+    ? state.suppliers.find(
+        (candidate) =>
+          candidate.restaurant_id === input.restaurant_id &&
+          candidate.id === item.supplier_id
+      )
+    : null;
+  if (!item || !supplier || input.supplier_id !== supplier.id) {
+    throw new Error("Inventory supplier identity is not configured.");
+  }
+  return {
+    ...input,
+    supplier_id: supplier.id,
+    supplier_name: supplier.display_name
+  };
 }
 
 function appendDemoAuditLog(state: DemoState, input: AuditLogInput) {
@@ -428,6 +496,7 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
     rows.filter((row) => row.restaurant_id === restaurantId);
 
   datasets.pos_sales = tenantRows(state.posSales);
+  datasets.suppliers = tenantRows(state.suppliers);
   datasets.inventory_items = tenantRows(state.inventoryItems);
   datasets.menu_item_ingredients = tenantRows(state.menuItemIngredients);
   datasets.purchase_recommendations = tenantRows(state.purchaseRecommendations);
@@ -973,6 +1042,95 @@ export function createLocalDemoRepository(): MiseRepository {
         .sort((a, b) => a.item_name.localeCompare(b.item_name));
     },
 
+    async fetchSuppliers(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return state.suppliers
+        .filter((supplier) => supplier.restaurant_id === restaurantId)
+        .map(normalizeSupplier)
+        .sort((left, right) => left.display_name.localeCompare(right.display_name));
+    },
+
+    async createSupplier(restaurantId, displayName) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const normalizedName = demoSupplierNormalizedName(displayName);
+        if (
+          state.suppliers.some(
+            (supplier) =>
+              supplier.restaurant_id === restaurantId &&
+              supplier.normalized_name === normalizedName
+          )
+        ) {
+          throw new Error("A supplier with that name already exists.");
+        }
+        const now = new Date().toISOString();
+        const supplier = createDemoSupplier(restaurantId, displayName, now);
+        state.suppliers.push(supplier);
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_created",
+          entity_table: "suppliers",
+          entity_id: supplier.id,
+          metadata: { supplier_id: supplier.id, simulated: true }
+        });
+        return normalizeSupplier(supplier);
+      });
+    },
+
+    async renameSupplier(restaurantId, supplierId, displayName) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const supplier = renameSupplierInDemoState(
+          state,
+          restaurantId,
+          supplierId,
+          displayName
+        );
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_renamed",
+          entity_table: "suppliers",
+          entity_id: supplier.id,
+          metadata: {
+            supplier_id: supplier.id,
+            display_name: supplier.display_name,
+            simulated: true
+          }
+        });
+        return normalizeSupplier(supplier);
+      });
+    },
+
+    async reassignInventoryItemSupplier(restaurantId, itemId, supplierId) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const previousSupplierId = state.inventoryItems.find(
+          (item) => item.restaurant_id === restaurantId && item.id === itemId
+        )?.supplier_id ?? null;
+        const result = reassignInventorySupplierInDemoState(
+          state,
+          restaurantId,
+          itemId,
+          supplierId
+        );
+        if (previousSupplierId !== supplierId) {
+          appendDemoAuditLog(state, {
+            restaurant_id: restaurantId,
+            action: "inventory_supplier_reassigned",
+            entity_table: "inventory_items",
+            entity_id: itemId,
+            metadata: {
+              previous_supplier_id: previousSupplierId,
+              supplier_id: supplierId,
+              invalidated_recommendation_ids: result.invalidatedRecommendationIds,
+              simulated: true
+            }
+          });
+        }
+        return normalizeInventoryItem(result.item);
+      });
+    },
+
     listInventoryEvents,
 
     recordInventoryEvent,
@@ -1182,7 +1340,7 @@ export function createLocalDemoRepository(): MiseRepository {
               recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
           ),
           ...recommendations.map((recommendation) => ({
-            ...recommendation,
+            ...authoritativeDemoRecommendationInput(demoState, recommendation),
             id: createId("rec"),
             created_at: now
           }))
@@ -1226,53 +1384,102 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async saveRestaurantSetupSnapshot(restaurantId, input) {
       return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
         const now = new Date().toISOString();
+        const supplierByClientReference = new Map<string, (typeof state.suppliers)[number]>();
+        const setupSupplierNames = new Set<string>();
 
         input.suppliers.forEach((supplierInput) => {
+          if (supplierInput.restaurant_id !== restaurantId) {
+            throw new Error("Supplier recipient belongs to a different restaurant.");
+          }
+          const clientReferenceId = supplierInput.client_reference_id.trim();
+          if (
+            !clientReferenceId ||
+            clientReferenceId.length > 128 ||
+            /[\u0000-\u001f\u007f]/.test(supplierInput.client_reference_id) ||
+            supplierByClientReference.has(clientReferenceId)
+          ) {
+            throw new Error("Supplier setup references must be unique.");
+          }
+          const normalizedName = demoSupplierNormalizedName(supplierInput.display_name);
+          if (setupSupplierNames.has(normalizedName)) {
+            throw new Error("Supplier names must be unique within this restaurant.");
+          }
+          setupSupplierNames.add(normalizedName);
+          let supplier = state.suppliers.find(
+            (candidate) =>
+              candidate.restaurant_id === restaurantId &&
+              candidate.normalized_name === normalizedName
+          );
+          if (!supplier) {
+            supplier = createDemoSupplier(
+              restaurantId,
+              supplierInput.display_name,
+              now
+            );
+            state.suppliers.push(supplier);
+          }
+          supplierByClientReference.set(clientReferenceId, supplier);
           const existing = state.supplierRecipients.find(
             (recipient) =>
               recipient.restaurant_id === restaurantId &&
-              recipient.supplier_name.trim().toLowerCase() === supplierInput.supplier_name.trim().toLowerCase()
+              recipient.supplier_id === supplier.id
           );
           if (existing) {
-            const previousSupplierName = existing.supplier_name;
-            const materialChange =
-              existing.supplier_name !== supplierInput.supplier_name ||
-              existing.email !== supplierInput.email;
-            existing.supplier_name = supplierInput.supplier_name;
+            const materialChange = existing.email !== supplierInput.email;
+            existing.supplier_name = supplier.display_name;
             existing.email = supplierInput.email;
             existing.updated_at = now;
             if (materialChange) {
-              bumpDemoSupplierSendContentForExternalChange(state, restaurantId, [
-                previousSupplierName,
-                supplierInput.supplier_name
-              ]);
+              bumpDemoSupplierSendContentForExternalChange(state, restaurantId, [supplier.id]);
             }
           } else {
             state.supplierRecipients.push({
-              ...supplierInput,
+              restaurant_id: restaurantId,
+              supplier_id: supplier.id,
+              supplier_name: supplier.display_name,
+              email: supplierInput.email,
               id: createId("recipient"),
               created_at: now,
               updated_at: now
             });
-            bumpDemoSupplierSendContentForExternalChange(state, restaurantId, [
-              supplierInput.supplier_name
-            ]);
+            bumpDemoSupplierSendContentForExternalChange(state, restaurantId, [supplier.id]);
           }
         });
 
         const inventoryByName = new Map<string, InventoryItem>();
         input.inventoryItems.forEach((inventoryInput) => {
+          if (inventoryInput.restaurant_id !== restaurantId) {
+            throw new Error("Inventory item belongs to a different restaurant.");
+          }
+          const supplierClientReferenceId = inventoryInput.supplier_client_reference_id.trim();
+          if (
+            !supplierClientReferenceId ||
+            supplierClientReferenceId.length > 128 ||
+            /[\u0000-\u001f\u007f]/.test(inventoryInput.supplier_client_reference_id)
+          ) {
+            throw new Error("Inventory supplier setup reference is invalid.");
+          }
+          const supplier = supplierByClientReference.get(supplierClientReferenceId);
+          if (!supplier) throw new Error("Inventory supplier setup reference is invalid.");
+          const { supplier_client_reference_id: _supplierClientReferenceId, ...inventoryFields } =
+            inventoryInput;
+          const authoritativeInput = {
+            ...inventoryFields,
+            supplier_id: supplier.id,
+            supplier_name: supplier.display_name
+          };
           const key = inventoryInput.item_name.trim().toLowerCase();
           const existing = state.inventoryItems.find(
             (item) => item.restaurant_id === restaurantId && item.item_name.trim().toLowerCase() === key
           );
           if (existing) {
-            Object.assign(existing, inventoryInput, { last_updated: now });
+            Object.assign(existing, authoritativeInput, { last_updated: now });
             inventoryByName.set(key, existing);
           } else {
             const item: InventoryItem = {
-              ...inventoryInput,
+              ...authoritativeInput,
               id: createId("item"),
               last_updated: now
             };
@@ -1359,6 +1566,18 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async upsertInventoryItem(input) {
       return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, input.restaurant_id);
+        const supplier = state.suppliers.find(
+          (candidate) =>
+            candidate.restaurant_id === input.restaurant_id &&
+            candidate.id === input.supplier_id
+        );
+        if (!supplier) throw new Error("Supplier is not part of this restaurant catalog");
+        const authoritativeInput = {
+          ...input,
+          supplier_id: supplier.id,
+          supplier_name: supplier.display_name
+        };
         const now = new Date().toISOString();
         const existing = state.inventoryItems.find(
           (item) =>
@@ -1367,12 +1586,12 @@ export function createLocalDemoRepository(): MiseRepository {
         );
 
         if (existing) {
-          Object.assign(existing, input, { last_updated: now });
+          Object.assign(existing, authoritativeInput, { last_updated: now });
           return normalizeInventoryItem(existing);
         }
 
         const item: InventoryItem = {
-          ...input,
+          ...authoritativeInput,
           id: createId("item"),
           last_updated: now
         };
@@ -1430,7 +1649,7 @@ export function createLocalDemoRepository(): MiseRepository {
             (recommendation) => recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
           ),
           ...recommendations.map((recommendation) => ({
-            ...recommendation,
+            ...authoritativeDemoRecommendationInput(state, recommendation),
             id: createId("rec"),
             created_at: new Date().toISOString()
           }))
@@ -1527,7 +1746,7 @@ export function createLocalDemoRepository(): MiseRepository {
             (recommendation) => recommendation.restaurant_id !== input.restaurantId || recommendation.status !== "pending"
           ),
           ...input.recommendations.map((recommendation) => ({
-            ...recommendation,
+            ...authoritativeDemoRecommendationInput(state, recommendation),
             id: createId("rec"),
             created_at: new Date().toISOString()
           }))
@@ -1582,6 +1801,7 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async createPurchaseRecommendation(input) {
       return mutateDemoState((state) => {
+        const authoritativeInput = authoritativeDemoRecommendationInput(state, input);
         const existing = state.purchaseRecommendations.find(
           (recommendation) =>
             recommendation.restaurant_id === input.restaurant_id &&
@@ -1590,7 +1810,7 @@ export function createLocalDemoRepository(): MiseRepository {
         );
         if (existing) return normalizePurchaseRecommendation(existing);
         const recommendation: PurchaseRecommendation = {
-          ...input,
+          ...authoritativeInput,
           id: createId("rec"),
           created_at: new Date().toISOString()
         };
@@ -1643,6 +1863,7 @@ export function createLocalDemoRepository(): MiseRepository {
           itemName: recommendation.item_name,
           quantity: recommendation.recommended_quantity,
           unit: recommendation.unit,
+          supplierId: recommendation.supplier_id,
           supplierName: recommendation.supplier_name
         };
         Object.assign(recommendation, patch);
@@ -1653,6 +1874,7 @@ export function createLocalDemoRepository(): MiseRepository {
           itemName: recommendation.item_name,
           quantity: recommendation.recommended_quantity,
           unit: recommendation.unit,
+          supplierId: recommendation.supplier_id,
           supplierName: recommendation.supplier_name
         };
         if (JSON.stringify(previousMaterial) !== JSON.stringify(nextMaterial)) {
@@ -1671,6 +1893,9 @@ export function createLocalDemoRepository(): MiseRepository {
                 entry.supplier_order_id === affectedOrderId &&
                 entry.status === "approved"
             );
+            if (linked.some((entry) => entry.supplier_id !== affectedOrder.supplier_id)) {
+              throw new Error("Supplier authority changed. Refresh this order before editing it.");
+            }
             affectedOrder.order_message = buildSupplierOrderMessage(
               affectedOrder.supplier_name,
               linked,
@@ -1690,6 +1915,7 @@ export function createLocalDemoRepository(): MiseRepository {
         );
         if (!pendingRecommendation) throw new Error("Recommendation not found");
         const authority = demoPurchaseAuthority(state, restaurantId, pendingRecommendation);
+        if (!authority.ready) throw new PurchaseAuthorityBlockedError(authority);
         const result = approveRecommendationInDemoState(
           state,
           restaurantId,
@@ -1708,6 +1934,7 @@ export function createLocalDemoRepository(): MiseRepository {
             entity_table: "purchase_recommendations",
             entity_id: result.recommendation.id,
             metadata: {
+              supplier_id: result.recommendation.supplier_id,
               supplier_name: result.recommendation.supplier_name,
               urgency: result.recommendation.urgency,
               supplier_order_id: result.order?.id ?? null
@@ -1734,6 +1961,7 @@ export function createLocalDemoRepository(): MiseRepository {
             entity_table: "purchase_recommendations",
             entity_id: result.recommendation.id,
             metadata: {
+              supplier_id: result.recommendation.supplier_id,
               supplier_name: result.recommendation.supplier_name,
               urgency: result.recommendation.urgency
             }
@@ -1764,6 +1992,7 @@ export function createLocalDemoRepository(): MiseRepository {
             entity_id: result.recommendation.id,
             metadata: {
               previous_status: result.previousStatus,
+              supplier_id: result.recommendation.supplier_id,
               supplier_name: result.recommendation.supplier_name
             }
           });
@@ -1779,7 +2008,7 @@ export function createLocalDemoRepository(): MiseRepository {
     async replacePendingRecommendations(restaurantId, inserts) {
       await mutateDemoState((state) => {
         const created = inserts.map((insert) => ({
-          ...insert,
+          ...authoritativeDemoRecommendationInput(state, insert),
           id: createId("rec"),
           created_at: new Date().toISOString()
         }));
@@ -1792,76 +2021,6 @@ export function createLocalDemoRepository(): MiseRepository {
         for (const recommendation of created) {
           appendDemoRecommendationActivity(state, recommendation, null);
         }
-      });
-    },
-
-    async fetchApprovedRecommendations(restaurantId, supplierName) {
-      const state = await readDemoState();
-      return state.purchaseRecommendations
-        .filter(
-          (recommendation) =>
-            recommendation.restaurant_id === restaurantId &&
-            recommendation.status === "approved" &&
-            (!supplierName || recommendation.supplier_name === supplierName)
-        )
-        .map(normalizePurchaseRecommendation);
-    },
-
-    async markApprovedRecommendationsOrdered(restaurantId, supplierName) {
-      return mutateDemoState((state) => {
-        const ordered = state.purchaseRecommendations.filter(
-          (recommendation) =>
-            recommendation.restaurant_id === restaurantId &&
-            recommendation.supplier_name === supplierName &&
-            recommendation.status === "approved"
-        );
-        ordered.forEach((recommendation) => {
-          recommendation.status = "ordered";
-        });
-        return ordered.map(normalizePurchaseRecommendation);
-      });
-    },
-
-    async upsertSupplierOrderDraft(draft) {
-      return mutateDemoState((state) => {
-        const existing = state.supplierOrders.find(
-          (order) =>
-            order.restaurant_id === draft.restaurant_id &&
-            order.supplier_name === draft.supplier_name &&
-            order.status === "draft"
-        );
-        if (existing) {
-          const changed =
-            existing.order_message !== draft.order_message ||
-            existing.delivery_date !== draft.delivery_date;
-          existing.order_message = draft.order_message;
-          existing.delivery_date = draft.delivery_date;
-          if (changed) bumpDemoSupplierSendContentRevision(state, existing.id);
-          return normalizeSupplierOrder(existing);
-        }
-        state.supplierOrders.push(draft);
-        state.supplierSendContentRevisions[draft.id] = 1;
-        return normalizeSupplierOrder(draft);
-      });
-    },
-
-    async deleteSupplierOrderDraft(restaurantId, supplierName) {
-      await mutateDemoState((state) => {
-        const removedIds = state.supplierOrders
-          .filter(
-            (order) =>
-              order.restaurant_id === restaurantId &&
-              order.supplier_name === supplierName &&
-              order.status === "draft"
-          )
-          .map((order) => order.id);
-        state.supplierOrders = state.supplierOrders.filter(
-          (order) =>
-            order.restaurant_id !== restaurantId ||
-            order.supplier_name !== supplierName ||
-            order.status !== "draft"
-        );
-        removedIds.forEach((orderId) => delete state.supplierSendContentRevisions[orderId]);
       });
     },
 
@@ -1913,6 +2072,9 @@ export function createLocalDemoRepository(): MiseRepository {
               recommendation.supplier_order_id === orderId &&
               recommendation.status === "approved"
           );
+          if (linked.some((recommendation) => recommendation.supplier_id !== order.supplier_id)) {
+            throw new Error("Supplier authority changed. Refresh this order before editing it.");
+          }
           order.order_message = buildSupplierOrderMessage(order.supplier_name, linked, order.operator_note);
         }
         if (
@@ -2135,6 +2297,7 @@ export function createLocalDemoRepository(): MiseRepository {
           contentRevision: content.contentRevision,
           restaurantId: content.restaurantId,
           orderId: content.orderId,
+          supplierId: content.supplierId,
           supplierName: content.supplierName,
           to: content.to,
           from: content.from,
@@ -2184,6 +2347,7 @@ export function createLocalDemoRepository(): MiseRepository {
         if (existingAction.status === "executed") {
           const recommendationIds = existingAction.result?.recommendationIds;
           if (
+            existingAction.result?.supplierId !== order.supplier_id ||
             !Array.isArray(recommendationIds) ||
             recommendationIds.some((id) => typeof id !== "string")
           ) {
@@ -2238,6 +2402,7 @@ export function createLocalDemoRepository(): MiseRepository {
           !approvedContent ||
           approvedContent.version !== built.contentVersion ||
           approvedContent.fingerprint !== built.contentFingerprint ||
+          approvedContent.supplierId !== built.content.supplierId ||
           approvedContent.contentRevision !== built.content.contentRevision ||
           approvedContent.lineCount !== built.lineCount ||
           approvedContent.from !== built.content.from ||
@@ -2261,6 +2426,7 @@ export function createLocalDemoRepository(): MiseRepository {
         appendDemoSupplierOrderActivity(state, result.order, { previousStatus: "draft" });
         const executedAction = markExecuted(existingAction, {
           supplierOrderId: orderId,
+          supplierId: built.content.supplierId,
           provider: "demo",
           providerMessageId,
           contentVersion: built.contentVersion,
@@ -2283,6 +2449,7 @@ export function createLocalDemoRepository(): MiseRepository {
             content_version: built.contentVersion,
             content_fingerprint: built.contentFingerprint,
             content_revision: built.content.contentRevision,
+            supplier_id: built.content.supplierId,
             simulated: true,
             ordered_recommendation_count: result.orderedRecommendations.length
           }
@@ -2322,7 +2489,7 @@ export function createLocalDemoRepository(): MiseRepository {
             (recommendation) => recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
           ),
           ...recommendations.map((recommendation) => ({
-            ...recommendation,
+            ...authoritativeDemoRecommendationInput(state, recommendation),
             id: createId("rec"),
             created_at: new Date().toISOString()
           }))
@@ -2346,80 +2513,79 @@ export function createLocalDemoRepository(): MiseRepository {
       const state = await readDemoState();
       return state.supplierRecipients
         .filter((recipient) => recipient.restaurant_id === restaurantId)
-        .map(normalizeSupplierRecipient)
+        .map((recipient) => {
+          const supplier = state.suppliers.find(
+            (candidate) =>
+              candidate.restaurant_id === restaurantId &&
+              candidate.id === recipient.supplier_id
+          );
+          return normalizeSupplierRecipient({
+            ...recipient,
+            supplier_name: supplier?.display_name ?? recipient.supplier_name
+          });
+        })
         .sort((a, b) => a.supplier_name.localeCompare(b.supplier_name));
     },
 
     async upsertSupplierRecipient(input) {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, input.restaurant_id);
-        const catalogReferences = [
-          ...state.inventoryItems.map((item) => ({ restaurantId: item.restaurant_id, supplierName: item.supplier_name })),
-          ...state.supplierItems.map((item) => ({ restaurantId: item.restaurant_id, supplierName: item.supplier_name })),
-          ...state.supplierOrders.map((order) => ({ restaurantId: order.restaurant_id, supplierName: order.supplier_name })),
-          ...state.purchaseRecommendations.map((recommendation) => ({
-            restaurantId: recommendation.restaurant_id,
-            supplierName: recommendation.supplier_name
-          })),
-          ...state.purchaseOrders.map((order) => ({ restaurantId: order.restaurant_id, supplierName: order.supplier_name })),
-          ...state.supplierRecipients.map((recipient) => ({
-            restaurantId: recipient.restaurant_id,
-            supplierName: recipient.supplier_name
-          }))
-        ];
-        const canonicalSupplierName = findSupplierRecipientCatalogName(
-          input.restaurant_id,
-          input.supplier_name,
-          catalogReferences
+        const supplier = state.suppliers.find(
+          (candidate) =>
+            candidate.restaurant_id === input.restaurant_id &&
+            candidate.id === input.supplier_id
         );
-        if (!canonicalSupplierName) throw new Error("Supplier is not part of this restaurant catalog");
+        if (!supplier) throw new Error("Supplier is not part of this restaurant catalog");
 
         const now = new Date().toISOString();
         const existing = state.supplierRecipients.find(
           (recipient) =>
             recipient.restaurant_id === input.restaurant_id &&
-            supplierRecipientDirectoryKey(recipient.supplier_name) ===
-              supplierRecipientDirectoryKey(canonicalSupplierName)
+            recipient.supplier_id === supplier.id
         );
 
         if (existing) {
-          const changed = existing.supplier_name !== canonicalSupplierName || existing.email !== input.email;
+          const changed = existing.email !== input.email;
           if (!changed) return normalizeSupplierRecipient(existing);
-          const previousSupplierName = existing.supplier_name;
-          existing.supplier_name = canonicalSupplierName;
+          existing.supplier_name = supplier.display_name;
           existing.email = input.email;
           existing.updated_at = now;
-          bumpDemoSupplierSendContentForExternalChange(state, input.restaurant_id, [
-            previousSupplierName,
-            canonicalSupplierName
-          ]);
+          bumpDemoSupplierSendContentForExternalChange(state, input.restaurant_id, [supplier.id]);
           appendDemoAuditLog(state, {
             restaurant_id: input.restaurant_id,
             action: "supplier_recipient_updated",
             entity_table: "supplier_recipients",
             entity_id: existing.id,
-            metadata: { supplier_name: canonicalSupplierName, email_configured: true, simulated: true }
+            metadata: {
+              supplier_id: supplier.id,
+              supplier_name: supplier.display_name,
+              email_configured: true,
+              simulated: true
+            }
           });
           return normalizeSupplierRecipient(existing);
         }
 
         const recipient: SupplierRecipient = {
           ...input,
-          supplier_name: canonicalSupplierName,
+          supplier_name: supplier.display_name,
           id: createId("recipient"),
           created_at: now,
           updated_at: now
         };
         state.supplierRecipients.push(recipient);
-        bumpDemoSupplierSendContentForExternalChange(state, input.restaurant_id, [
-          canonicalSupplierName
-        ]);
+        bumpDemoSupplierSendContentForExternalChange(state, input.restaurant_id, [supplier.id]);
         appendDemoAuditLog(state, {
           restaurant_id: input.restaurant_id,
           action: "supplier_recipient_created",
           entity_table: "supplier_recipients",
           entity_id: recipient.id,
-          metadata: { supplier_name: canonicalSupplierName, email_configured: true, simulated: true }
+          metadata: {
+            supplier_id: supplier.id,
+            supplier_name: supplier.display_name,
+            email_configured: true,
+            simulated: true
+          }
         });
         return normalizeSupplierRecipient(recipient);
       });
@@ -2919,6 +3085,7 @@ export function createLocalDemoRepository(): MiseRepository {
           action.status === "approved" &&
           previousApproval?.version === built.contentVersion &&
           previousApproval.fingerprint === built.contentFingerprint &&
+          previousApproval.supplierId === built.content.supplierId &&
           previousApproval.contentRevision === built.content.contentRevision
         ) {
           return {
@@ -2938,9 +3105,12 @@ export function createLocalDemoRepository(): MiseRepository {
           approvedBy: DEMO_USER_ID,
           expectedImpact: {
             ...withoutLegacyApprovedEnvelope(approved.expectedImpact),
+            supplierId: built.content.supplierId,
+            supplierName: built.content.supplierName,
             approvedSendContent: {
               version: built.contentVersion,
               fingerprint: built.contentFingerprint,
+              supplierId: built.content.supplierId,
               approvedAt: now,
               lineCount: built.lineCount,
               contentRevision: built.content.contentRevision,
@@ -3041,11 +3211,20 @@ export function createLocalDemoRepository(): MiseRepository {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, restaurantId);
         const now = new Date().toISOString();
+        const supplier = input.supplierId
+          ? state.suppliers.find(
+              (candidate) =>
+                candidate.restaurant_id === restaurantId && candidate.id === input.supplierId
+            ) ?? null
+          : null;
+        if (input.supplierId && !supplier) {
+          throw new Error("Supplier is not part of this restaurant catalog");
+        }
         const existing = (state.autonomyRules ?? []).find(
           (rule) =>
             rule.restaurantId === restaurantId &&
             rule.actionType === input.actionType &&
-            (rule.supplierName ?? null) === (input.supplierName ?? null) &&
+            (rule.supplierId ?? null) === (input.supplierId ?? null) &&
             (rule.communicationType ?? null) === (input.communicationType ?? null)
         );
         if (existing) {
@@ -3056,7 +3235,8 @@ export function createLocalDemoRepository(): MiseRepository {
             requiresApproval: input.requiresApproval,
             enabled: input.enabled,
             spendLimitCents: input.spendLimitCents ?? null,
-            supplierName: input.supplierName ?? null,
+            supplierId: supplier?.id ?? null,
+            supplierName: supplier?.display_name ?? null,
             communicationType: input.communicationType ?? null,
             allowedStartTime: input.allowedStartTime ?? existing.allowedStartTime,
             allowedEndTime: input.allowedEndTime ?? existing.allowedEndTime,
@@ -3077,7 +3257,8 @@ export function createLocalDemoRepository(): MiseRepository {
           requiresApproval: input.requiresApproval,
           enabled: input.enabled,
           spendLimitCents: input.spendLimitCents ?? null,
-          supplierName: input.supplierName ?? null,
+          supplierId: supplier?.id ?? null,
+          supplierName: supplier?.display_name ?? null,
           communicationType: input.communicationType ?? null,
           allowedStartTime: input.allowedStartTime ?? null,
           allowedEndTime: input.allowedEndTime ?? null,
@@ -3137,7 +3318,11 @@ export function createLocalDemoRepository(): MiseRepository {
             restaurantId,
             actionType: "send_supplier_order",
             idempotencyKey: actionKey,
-            expectedImpact: { supplierName: order.supplier_name, orderId: order.id },
+            expectedImpact: {
+              supplierId: order.supplier_id,
+              supplierName: order.supplier_name,
+              orderId: order.id
+            },
             now: order.created_at
           });
           state.miseActions = [...(state.miseActions ?? []), action];

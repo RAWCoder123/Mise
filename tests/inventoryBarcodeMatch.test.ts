@@ -7,6 +7,10 @@ import {
 } from "../services/domain/inventoryBarcodeMatch";
 import type { InventoryItem } from "../types/mise";
 
+const syscoSupplierId = "10000000-0000-4000-8000-000000000005";
+const localFarmsSupplierId = "10000000-0000-4000-8000-000000000006";
+const syscoProteinsSupplierId = "10000000-0000-4000-8000-000000000007";
+
 function item(partial: Partial<InventoryItem> & Pick<InventoryItem, "id" | "item_name">): InventoryItem {
   return {
     restaurant_id: "r1",
@@ -16,6 +20,7 @@ function item(partial: Partial<InventoryItem> & Pick<InventoryItem, "id" | "item
     par_level: 20,
     reorder_threshold: 8,
     estimated_unit_cost: 2,
+    supplier_id: syscoSupplierId,
     supplier_name: "Sysco",
     last_updated: "2026-08-01T12:00:00.000Z",
     ...partial
@@ -30,7 +35,12 @@ test("normalizeInventoryBarcodeToken strips case punctuation and spaces", () => 
 test("matchInventoryBarcode matches exact id", () => {
   const items = [
     item({ id: "inv-chicken", item_name: "Chicken Thigh" }),
-    item({ id: "inv-tomato", item_name: "Roma Tomato", supplier_name: "Local Farms" })
+    item({
+      id: "inv-tomato",
+      item_name: "Roma Tomato",
+      supplier_id: localFarmsSupplierId,
+      supplier_name: "Local Farms"
+    })
   ];
   const result = matchInventoryBarcode("INV-TOMATO", items);
   assert.equal(result.matches.length, 1);
@@ -39,8 +49,18 @@ test("matchInventoryBarcode matches exact id", () => {
 
 test("matchInventoryBarcode matches normalized item name and supplier", () => {
   const items = [
-    item({ id: "a", item_name: "Roma Tomato", supplier_name: "Local Farms" }),
-    item({ id: "b", item_name: "Chicken Thigh", supplier_name: "Sysco Proteins" })
+    item({
+      id: "a",
+      item_name: "Roma Tomato",
+      supplier_id: localFarmsSupplierId,
+      supplier_name: "Local Farms"
+    }),
+    item({
+      id: "b",
+      item_name: "Chicken Thigh",
+      supplier_id: syscoProteinsSupplierId,
+      supplier_name: "Sysco Proteins"
+    })
   ];
 
   assert.equal(matchInventoryBarcode("roma tomato", items).matches[0]?.id, "a");
