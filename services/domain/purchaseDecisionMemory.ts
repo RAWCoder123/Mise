@@ -72,6 +72,17 @@ export interface PurchaseDecisionPattern {
   currentContext: boolean;
 }
 
+/** Advisory memory must never make an authoritative Orders dataset unavailable. */
+export async function resolveAdvisoryPurchaseDecisionPatterns(
+  load: () => Promise<PurchaseDecisionPattern[]>
+): Promise<PurchaseDecisionPattern[]> {
+  try {
+    return await load();
+  } catch {
+    return [];
+  }
+}
+
 function requireFinitePositive(value: number, label: string) {
   if (!Number.isFinite(value) || value <= 0 || value > 1_000_000_000) {
     throw new Error(`${label} must be a bounded positive quantity.`);

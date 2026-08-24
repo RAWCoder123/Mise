@@ -23,10 +23,10 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   approvePurchaseRecommendation,
   dismissPurchaseRecommendation,
+  fetchAdvisoryPurchaseDecisionPatterns,
   fetchEmailConnectionState,
   fetchPurchaseRecommendations,
   fetchPurchaseRecommendationAuthorities,
-  fetchPurchaseDecisionPatterns,
   fetchSupplierOrders,
   fetchSupplierSpendTrend,
   undoPurchaseRecommendationAction,
@@ -117,7 +117,7 @@ export default function OrdersScreen() {
         const [nextRecommendations, nextAuthorities, nextPatterns, nextOrders, nextEmailConnection, nextSpendTrend] = await Promise.all([
           fetchPurchaseRecommendations(restaurantId, "pending"),
           fetchPurchaseRecommendationAuthorities(restaurantId),
-          fetchPurchaseDecisionPatterns(restaurantId),
+          fetchAdvisoryPurchaseDecisionPatterns(restaurantId),
           fetchSupplierOrders(restaurantId),
           fetchEmailConnectionState(restaurantId),
           fetchSupplierSpendTrend(restaurantId)

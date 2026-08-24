@@ -14,6 +14,10 @@ const purchaseAuthority = readFileSync(
   new URL("../services/domain/purchaseAuthority.ts", import.meta.url),
   "utf8"
 );
+const ordersApplication = readFileSync(
+  new URL("../services/application/orders.ts", import.meta.url),
+  "utf8"
+);
 const supplierSend = readFileSync(
   new URL("../services/domain/supplierSendContent.ts", import.meta.url),
   "utf8"
@@ -49,7 +53,8 @@ test("pattern policy is deterministic and centralized per runtime", () => {
 });
 
 test("Orders displays memory as factual context without changing the quantity input", () => {
-  assert.match(ordersScreen, /fetchPurchaseDecisionPatterns/);
+  assert.match(ordersScreen, /fetchAdvisoryPurchaseDecisionPatterns/);
+  assert.match(ordersApplication, /resolveAdvisoryPurchaseDecisionPatterns/);
   assert.match(ordersScreen, /pattern\.eligible && pattern\.currentContext/);
   assert.doesNotMatch(ordersScreen, /setQuantities\([^)]*purchaseDecisionPattern/);
   assert.doesNotMatch(ordersScreen, /recommended_quantity\s*=\s*purchaseDecisionPattern/);
