@@ -87,6 +87,8 @@ set search_path = ''
 as $$
 declare
   unresolved_required_count integer;
+  conflicting_recipient_count integer;
+  deduplicated_recipient_count integer := 0;
   duplicate_draft_count integer;
   duplicate_rule_count integer;
 begin
@@ -199,6 +201,100 @@ begin
     and supplier.normalized_name = private.normalize_supplier_name(row.supplier_name)
     and row.supplier_id is null;
 
+  -- Legacy recipient uniqueness trimmed only the outer whitespace. Exact
+  -- MISE-003C normalization can therefore map multiple historical rows onto
+  -- one durable supplier ID. Never let the later unique index discover that
+  -- ambiguity accidentally: equivalent email rows are redundant, while any
+  -- differing recipient authority requires an operator to reconcile it.
+  select count(*) into conflicting_recipient_count
+  from (
+    select recipient.restaurant_id, recipient.supplier_id
+    from public.supplier_recipients recipient
+    group by recipient.restaurant_id, recipient.supplier_id
+    having count(*) > 1
+      and count(distinct coalesce(
+        pg_catalog.lower(pg_catalog.btrim(recipient.email)),
+        E'\x1f<null-email>'
+      )) > 1
+  ) conflicting_recipients;
+
+  if conflicting_recipient_count > 0 then
+    raise exception
+      'MISE-003C found % conflicting recipient identities; manual recipient reconciliation is required',
+      conflicting_recipient_count
+      using errcode = '23505',
+        hint = 'Make each same-restaurant normalized supplier recipient resolve to one email before retrying the migration.';
+  end if;
+
+  -- Keep the newest-created row (then UUID for a total order) and record every
+  -- removed redundant identifier without copying recipient email into audit
+  -- metadata. Already-sent delivery claims are not touched.
+  with ranked_recipients as (
+    select recipient.id, recipient.restaurant_id, recipient.supplier_id,
+      pg_catalog.row_number() over (
+        partition by recipient.restaurant_id, recipient.supplier_id
+        order by recipient.created_at desc, recipient.id
+      ) as recipient_rank,
+      count(*) over (
+        partition by recipient.restaurant_id, recipient.supplier_id
+      ) as recipient_count
+    from public.supplier_recipients recipient
+  ), collision_groups as (
+    select ranked.restaurant_id, ranked.supplier_id,
+      (pg_catalog.array_agg(ranked.id order by ranked.recipient_rank))[1] as retained_id,
+      (pg_catalog.array_agg(ranked.id order by ranked.recipient_rank))[2:ranked.recipient_count] as removed_ids,
+      ranked.recipient_count
+    from ranked_recipients ranked
+    where ranked.recipient_count > 1
+    group by ranked.restaurant_id, ranked.supplier_id, ranked.recipient_count
+  )
+  insert into public.audit_logs (
+    restaurant_id, actor_user_id, action, entity_table, entity_id, metadata
+  )
+  select collision.restaurant_id, null,
+    'supplier_recipient_migration_deduplicated', 'supplier_recipients',
+    collision.retained_id,
+    pg_catalog.jsonb_build_object(
+      'supplier_id', collision.supplier_id,
+      'retained_recipient_id', collision.retained_id,
+      'removed_recipient_ids', collision.removed_ids,
+      'removed_count', collision.recipient_count - 1,
+      'normalization', 'mise_003c_exact'
+  )
+  from collision_groups collision;
+
+  with ranked_recipients as (
+    select recipient.id,
+      pg_catalog.row_number() over (
+        partition by recipient.restaurant_id, recipient.supplier_id
+        order by recipient.created_at desc, recipient.id
+      ) as recipient_rank,
+      count(*) over (
+        partition by recipient.restaurant_id, recipient.supplier_id
+      ) as recipient_count
+    from public.supplier_recipients recipient
+  )
+  update public.supplier_recipients recipient
+  set email = nullif(pg_catalog.lower(pg_catalog.btrim(recipient.email)), '')
+  from ranked_recipients ranked
+  where recipient.id = ranked.id
+    and ranked.recipient_count > 1
+    and ranked.recipient_rank = 1;
+
+  with ranked_recipients as (
+    select recipient.id,
+      pg_catalog.row_number() over (
+        partition by recipient.restaurant_id, recipient.supplier_id
+        order by recipient.created_at desc, recipient.id
+      ) as recipient_rank
+    from public.supplier_recipients recipient
+  )
+  delete from public.supplier_recipients recipient
+  using ranked_recipients ranked
+  where recipient.id = ranked.id
+    and ranked.recipient_rank > 1;
+  get diagnostics deduplicated_recipient_count = row_count;
+
   update public.supplier_items row
   set supplier_id = supplier.id
   from public.suppliers supplier
@@ -265,7 +361,8 @@ begin
     'inventoryItemCount', (select count(*) from public.inventory_items where supplier_id is not null),
     'recommendationCount', (select count(*) from public.purchase_recommendations where supplier_id is not null),
     'orderCount', (select count(*) from public.supplier_orders where supplier_id is not null),
-    'recipientCount', (select count(*) from public.supplier_recipients where supplier_id is not null)
+    'recipientCount', (select count(*) from public.supplier_recipients where supplier_id is not null),
+    'recipientDeduplicatedCount', deduplicated_recipient_count
   );
 end;
 $$;
@@ -3317,6 +3414,33 @@ grant execute on function public.upsert_restaurant_autonomy_rule(
   text, uuid, time without time zone, time without time zone
 ) to authenticated;
 
+-- The audit row is the durable initial-setup boundary. Serialize its insertion
+-- with save_restaurant_setup so a concurrent completion cannot land after the
+-- setup RPC checked the marker but before that RPC performs name discovery.
+create or replace function private.lock_setup_completion_boundary()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.action = 'setup_completed' then
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+      new.restaurant_id::text || E'\x1fsetup', 0
+    ));
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function private.lock_setup_completion_boundary()
+from public, anon, authenticated, service_role;
+
+drop trigger if exists audit_lock_setup_completion_boundary on public.audit_logs;
+create trigger audit_lock_setup_completion_boundary
+before insert on public.audit_logs
+for each row execute function private.lock_setup_completion_boundary();
+
 create or replace function public.save_restaurant_setup(
   p_restaurant_id uuid,
   p_inventory_items jsonb default '[]'::jsonb,
@@ -3345,6 +3469,7 @@ declare
   previous_supplier_id uuid;
   canonical_supplier_name text;
   setup_fingerprint text;
+  completed_setup_metadata jsonb;
   supplier_count integer := 0;
   inventory_count integer := 0;
   mapping_count integer := 0;
@@ -3402,8 +3527,50 @@ begin
       using errcode = '22023';
   end if;
 
-  -- Exact normalized-name discovery is bounded to initial setup creation. The
-  -- resulting UUID map, never the name, authorizes every inventory write.
+  setup_fingerprint := pg_catalog.md5(pg_catalog.jsonb_build_object(
+    'inventoryItems', safe_inventory,
+    'suppliers', safe_suppliers,
+    'recipeMappings', safe_mappings,
+    'posSales', safe_sales,
+    'attachments', safe_attachments,
+    'skippedRecipeIngredients', p_skipped_recipe_ingredients
+  )::text);
+
+  if exists (
+    select 1 from public.audit_logs audit
+    where audit.restaurant_id = p_restaurant_id
+      and audit.action = 'setup_completed'
+  ) then
+    select audit.metadata into completed_setup_metadata
+    from public.audit_logs audit
+    where audit.restaurant_id = p_restaurant_id
+      and audit.action = 'setup_completed'
+      and audit.metadata->>'setup_fingerprint' = setup_fingerprint
+    order by audit.created_at, audit.id
+    limit 1;
+
+    if completed_setup_metadata is not null then
+      return pg_catalog.jsonb_build_object(
+        'inventory_items_saved', coalesce((completed_setup_metadata->>'inventory_items_saved')::integer, 0),
+        'supplier_recipients_saved', coalesce((completed_setup_metadata->>'supplier_recipients_saved')::integer, 0),
+        'recipe_mappings_saved', coalesce((completed_setup_metadata->>'recipe_mappings_saved')::integer, 0),
+        'pos_sales_rows_saved', coalesce((completed_setup_metadata->>'pos_sales_rows_saved')::integer, 0),
+        'attachment_metadata_saved', coalesce((completed_setup_metadata->>'attachment_metadata_saved')::integer, 0),
+        'skipped_recipe_ingredients', coalesce((completed_setup_metadata->>'skipped_recipe_ingredients')::integer, 0),
+        'setup_fingerprint', setup_fingerprint,
+        'outcome', 'already_applied'
+      );
+    end if;
+
+    raise exception
+      'Initial setup is already complete; use durable supplier workflows for later changes'
+      using errcode = '55000',
+        hint = 'Use create_supplier, rename_supplier, or reassign_inventory_item_supplier as appropriate.';
+  end if;
+
+  -- Name discovery is reachable only before the durable setup-completion
+  -- boundary above. The resulting UUID map, never the name, authorizes each
+  -- initial inventory write.
   for payload in
     select * from pg_catalog.jsonb_to_recordset(safe_suppliers) as value(
       client_reference_id text, display_name text, email text
@@ -3682,10 +3849,6 @@ begin
     attachment_count := attachment_count + 1;
   end loop;
 
-  setup_fingerprint := pg_catalog.md5(
-    safe_inventory::text || safe_suppliers::text || safe_mappings::text
-      || safe_sales::text || safe_attachments::text
-  );
   if not exists (
     select 1 from public.audit_logs audit
     where audit.restaurant_id = p_restaurant_id

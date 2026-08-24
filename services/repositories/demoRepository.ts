@@ -71,6 +71,7 @@ import {
 } from "../domain/restaurantTasks";
 import type {
   PersistedRecalculationRun,
+  RestaurantSetupSnapshotInput,
   SupplierDeliveryRecordResult
 } from "./repositoryContracts";
 import {
@@ -636,6 +637,51 @@ function deterministicDemoEventId(restaurantId: string, clientEventId: string) {
     hash = Math.imul(hash, 16777619);
   }
   return `demo_inventory_event_${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function deterministicDemoSetupFingerprint(input: RestaurantSetupSnapshotInput) {
+  const canonical = serializeCanonicalDemoValue({
+    inventoryItems: input.inventoryItems,
+    suppliers: input.suppliers,
+    recipeMappings: input.recipeMappings,
+    posSales: input.posSales,
+    attachments: input.attachments,
+    skippedRecipeIngredients: input.skippedRecipeIngredients
+  });
+  return [0x811c9dc5, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35]
+    .map((seed) => hashDemoText(canonical, seed).toString(16).padStart(8, "0"))
+    .join("");
+}
+
+function serializeCanonicalDemoValue(value: unknown): string {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("Setup payload contains an invalid number.");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(serializeCanonicalDemoValue).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${serializeCanonicalDemoValue(entry)}`)
+      .join(",")}}`;
+  }
+  throw new Error("Setup payload contains an unsupported value.");
+}
+
+function hashDemoText(value: string, seed: number) {
+  let hash = seed >>> 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+    hash ^= hash >>> 13;
+  }
+  return hash >>> 0;
 }
 
 export function createLocalDemoRepository(): MiseRepository {
@@ -1385,6 +1431,28 @@ export function createLocalDemoRepository(): MiseRepository {
     async saveRestaurantSetupSnapshot(restaurantId, input) {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, restaurantId);
+        const setupFingerprint = deterministicDemoSetupFingerprint(input);
+        const completedSetups = state.auditLogs.filter(
+          (audit) => audit.restaurant_id === restaurantId && audit.action === "setup_completed"
+        );
+        if (completedSetups.length > 0) {
+          const exactReplay = completedSetups.some(
+            (audit) => audit.metadata.setup_fingerprint === setupFingerprint
+          );
+          if (!exactReplay) {
+            throw new Error(
+              "Initial setup is already complete; use durable supplier workflows for later changes."
+            );
+          }
+          return {
+            inventoryItemsSaved: input.inventoryItems.length,
+            supplierRecipientsSaved: input.suppliers.length,
+            recipeMappingsSaved: input.recipeMappings.length,
+            posSalesRowsSaved: input.posSales.length,
+            attachmentMetadataSaved: input.attachments.length,
+            skippedRecipeIngredients: input.skippedRecipeIngredients
+          };
+        }
         const now = new Date().toISOString();
         const supplierByClientReference = new Map<string, (typeof state.suppliers)[number]>();
         const setupSupplierNames = new Set<string>();
@@ -1557,7 +1625,9 @@ export function createLocalDemoRepository(): MiseRepository {
             recipe_mappings_saved: summary.recipeMappingsSaved,
             pos_sales_rows_saved: summary.posSalesRowsSaved,
             attachment_metadata_saved: summary.attachmentMetadataSaved,
-            skipped_recipe_ingredients: summary.skippedRecipeIngredients
+            skipped_recipe_ingredients: summary.skippedRecipeIngredients,
+            setup_fingerprint: setupFingerprint,
+            supplier_identity: "durable_uuid"
           }
         });
         return summary;

@@ -78,6 +78,21 @@ cannot be safely resolved remain readable and fail closed instead of acquiring
 invented authority. Previously sent delivery evidence and fingerprints are not
 rewritten to pretend they contained supplier IDs.
 
+Legacy recipient rows that collapse to the same exact MISE-003C normalized
+supplier identity are preflighted before durable recipient uniqueness is
+created. Rows are deterministically deduplicated only when every normalized
+email agrees; the retained and removed row IDs are migration-audited without
+copying email addresses into audit metadata. Conflicting email authority aborts
+with a controlled manual-reconciliation error before the unique-index step.
+
+Supplier-name discovery in `save_restaurant_setup` is limited by the existing
+server-owned `setup_completed` audit boundary. The audit insertion and setup RPC
+share one restaurant setup advisory lock. After completion, an exact original
+fingerprint is a no-op; every changed payload fails before name discovery or
+inventory mutation. Later creation, rename, and reassignment must use their
+dedicated durable-ID workflows. Demo mode mirrors the same completed-setup
+boundary.
+
 ## Rename and reassignment semantics
 
 A rename updates the supplier's display name while preserving its supplier ID,
@@ -180,9 +195,9 @@ baseline evidence, not final MISE-003C results.
 The completed candidate was compared with the exact baseline above.
 
 - `npm run typecheck`: passed.
-- `npm test`: 605 tests total, 604 passed, 1 failed. The sole failure is the
+- `npm test`: 606 tests total, 605 passed, 1 failed. The sole failure is the
   exact inherited hosted provider-mapping assertion (`actual 0`, `expected 2`),
-  now at `tests/applicationProviderMappings.test.ts:302`. All six added tests
+  now at `tests/applicationProviderMappings.test.ts:302`. All seven added tests
   pass.
 - `npm run security:backend`: passed.
 - `npm run security:static`: passed.
@@ -195,9 +210,12 @@ The completed candidate was compared with the exact baseline above.
   supplier-send races, and the four MISE-003C supplier-identity races.
 - Supplier-send v2 fingerprint parity passed for the adversarial snapshot and
   exact 65,536-byte body with byte-identical serialization and SHA-256.
-- `durable_supplier_identity.test.sql`: 66/66 assertions passed.
+- `durable_supplier_identity.test.sql`: 98/98 assertions passed, including
+  same-email recipient deduplication, conflicting-email failure, tenant
+  separation, initial setup, exact replay, rename followed by stale replay,
+  post-setup creation/reassignment denial, and the shared completion lock.
 - `npm run supabase:test`: exited 1 after the database proof actually ran. Each
-  of three pgTAP attempts ran 28 files and 1,082 tests. The only failures are
+  of three pgTAP attempts ran 28 files and 1,114 tests. The only failures are
   the exact inherited baseline identities: `inventory_count_sessions` planned
   6/runs 4 because `function_privs_are(unknown, unknown, text[], unknown)` is
   unavailable, plus `tenant_isolation` assertions 117, 171, and 174. Every

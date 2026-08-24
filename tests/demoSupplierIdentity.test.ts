@@ -216,3 +216,85 @@ test("demo reassignment invalidates pending authority and blocks approved draft 
   );
   assert.equal(item.supplier_id, target.id);
 });
+
+test("demo setup name discovery stops at completion and exact stale replay is a no-op", async () => {
+  const values = new Map<string, string>();
+  (globalThis as unknown as { window: { localStorage: Storage } }).window = {
+    localStorage: {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value); },
+      removeItem: (key) => { values.delete(key); },
+      clear: () => { values.clear(); },
+      key: (index) => [...values.keys()][index] ?? null,
+      get length() { return values.size; }
+    }
+  };
+  const { createLocalDemoRepository } = await import("../services/repositories/demoRepository");
+  const repository = createLocalDemoRepository();
+  const restaurant = await repository.resetDemoData(null);
+  const setupInput = (supplierName: string) => ({
+    inventoryItems: [{
+      restaurant_id: restaurant.id,
+      item_name: "Correction Setup Tomatoes",
+      category: "Setup baseline",
+      unit: "case",
+      current_quantity: 4,
+      par_level: 12,
+      reorder_threshold: 4,
+      estimated_unit_cost: 20,
+      supplier_client_reference_id: "correction-supplier-local"
+    }],
+    suppliers: [{
+      restaurant_id: restaurant.id,
+      client_reference_id: "correction-supplier-local",
+      display_name: supplierName,
+      email: "orders@correction-setup.test"
+    }],
+    recipeMappings: [],
+    posSales: [],
+    attachments: [],
+    skippedRecipeIngredients: 0
+  });
+
+  await repository.saveRestaurantSetupSnapshot(
+    restaurant.id,
+    setupInput("Correction Setup Supplier")
+  );
+  const initialSupplier = (await repository.fetchSuppliers(restaurant.id)).find(
+    (supplier) => supplier.normalized_name === "correction setup supplier"
+  );
+  assert.ok(initialSupplier);
+
+  await repository.renameSupplier(
+    restaurant.id,
+    initialSupplier.id,
+    "Correction Setup Supplier & Foods"
+  );
+  await repository.saveRestaurantSetupSnapshot(
+    restaurant.id,
+    setupInput("Correction Setup Supplier")
+  );
+
+  const afterReplay = await repository.fetchSuppliers(restaurant.id);
+  assert.equal(
+    afterReplay.some((supplier) => supplier.normalized_name === "correction setup supplier"),
+    false
+  );
+  assert.equal(
+    afterReplay.find((supplier) => supplier.id === initialSupplier.id)?.display_name,
+    "Correction Setup Supplier & Foods"
+  );
+  await assert.rejects(
+    repository.saveRestaurantSetupSnapshot(
+      restaurant.id,
+      setupInput("Unknown Post Setup Supplier")
+    ),
+    /Initial setup is already complete/
+  );
+  assert.equal(
+    (await repository.fetchSuppliers(restaurant.id)).some(
+      (supplier) => supplier.normalized_name === "unknown post setup supplier"
+    ),
+    false
+  );
+});
