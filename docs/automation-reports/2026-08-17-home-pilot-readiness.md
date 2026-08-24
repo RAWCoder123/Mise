@@ -27,3 +27,8 @@
 - Server-side approval readiness enforcement (open PR #130).
 - Count-time depletion anchoring (open PR #131).
 - POS planning sync stale state (open PR #132).
+
+## Superseded
+
+Rebased onto post–MISE-003C `main` on 2026-08-24. See
+`docs/automation-reports/2026-08-24-home-pilot-readiness.md`.
