@@ -82,6 +82,11 @@ function normalizedSubject(restaurantName: string, supplierName: string) {
 }
 
 /**
+ * Demo-only compatibility serializer. Hosted review and approval never use a
+ * client-computed fingerprint: `preview_supplier_send_content` returns the
+ * server fingerprint that `approve_supplier_send_content` compares. Demo mode
+ * mirrors PostgreSQL jsonb text so its local approval behavior stays faithful.
+ *
  * PostgreSQL jsonb emits object keys by UTF-8 byte length and then byte value,
  * with one space after separators. The send snapshot uses ASCII field names,
  * so this deterministic serializer matches `snapshot::text` without relying

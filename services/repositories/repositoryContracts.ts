@@ -185,6 +185,7 @@ export const SUPPLIER_SEND_BLOCKER_CODES = [
   "request_blocked",
   "send_content_changed",
   "send_content_unapproved",
+  "send_verification_race",
   "server_configuration_missing"
 ] as const;
 
@@ -311,6 +312,7 @@ export interface SupplierOrderEmailSendResult {
   status: "sent";
   outcome: "applied" | "already_applied" | "already_sent";
   providerMessageId: string | null;
+  sentToPreviouslyClaimedRecipient: boolean;
   order: SupplierOrder;
   orderedRecommendations: PurchaseRecommendation[];
 }

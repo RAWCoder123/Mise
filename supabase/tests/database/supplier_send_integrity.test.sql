@@ -1,6 +1,6 @@
 begin;
 
-select plan(82);
+select plan(84);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -657,6 +657,14 @@ select is((public.service_complete_supplier_email_send(
   'mise-003b-provider-beta'
 )->>'outcome'), 'applied',
   'accepted claimed send still completes after Gmail is relinked');
+select is((public.service_complete_supplier_email_send(
+  'd3111111-1111-4111-8111-111111111111',
+  'd3000000-0000-4000-8000-000000000001',
+  'd3000000-0000-4000-8000-000000000202',
+  'd3000000-0000-4000-8000-000000000902',
+  'mise-003b-provider-beta'
+)->>'externalIdentityChangedDuringClaim'), 'true',
+  'successful completion reports that external identity changed after claim');
 reset role;
 select ok((select connection.status = 'connected'
     and connection.sender_email = 'relinked@mise-003b.test'
@@ -719,6 +727,14 @@ select is((public.service_complete_supplier_email_send(
   'd3000000-0000-4000-8000-000000000901',
   'mise-003b-provider-alpha'
 )->>'outcome'), 'already_applied', 'exact completion replay is idempotent');
+select is((public.service_complete_supplier_email_send(
+  'd3111111-1111-4111-8111-111111111111',
+  'd3000000-0000-4000-8000-000000000001',
+  'd3000000-0000-4000-8000-000000000201',
+  'd3000000-0000-4000-8000-000000000901',
+  'mise-003b-provider-alpha'
+)->>'externalIdentityChangedDuringClaim'), 'true',
+  'completion replay preserves the claimed-recipient change disclosure');
 reset role;
 
 select is((select count(*) from public.audit_logs

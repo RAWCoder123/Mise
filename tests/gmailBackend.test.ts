@@ -367,7 +367,7 @@ test("supplier email Edge delivery uses only a strict, durable database claim", 
     send.indexOf("database owns an active claim"),
   );
   const outerCatch = send.indexOf(
-    "  } catch (error) {\n    if (actionFailureContext)",
+    "  } catch (error) {\n    if (isPostgresSerializationFailure(error))",
     claimedFlowStart,
   );
   assert.ok(claimedFlowStart > 0 && outerCatch > claimedFlowStart);
@@ -384,6 +384,10 @@ test("supplier email Edge delivery uses only a strict, durable database claim", 
   assert.match(
     claimedFlow,
     /"unknown",\s*"database_finalize_failed"/,
+  );
+  assert.match(
+    send.slice(outerCatch),
+    /isPostgresSerializationFailure\(error\)[\s\S]*blockerCodes: \["send_verification_race"\][\s\S]*if \(actionFailureContext\)/,
   );
 });
 

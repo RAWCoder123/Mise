@@ -29,6 +29,7 @@ import type {
   SupplierOrderDeliveryEvidence
 } from "../../services/domain/supplierReliability";
 import type { MiseAction } from "../../services/domain/miseActions";
+import { isSupplierSendVerificationRace } from "../../services/domain/supplierSendErrors";
 import {
   PURCHASE_AUTHORITY_BLOCKER_CODES,
   purchaseAuthorityBlockerMessageKey,
@@ -52,7 +53,7 @@ interface OrderNotice {
   title: string;
   message: string;
   tone: StatusNoticeTone;
-  recovery?: "gmail" | "supplier";
+  recovery?: "gmail" | "supplier" | "retry";
 }
 
 export default function OrderDraftDetailScreen() {
@@ -330,13 +331,17 @@ export default function OrderDraftDetailScreen() {
       setNotice({
         title: usingLocalDemo
           ? t("orders.detail.notice.demoSentTitle")
-          : result.outcome === "already_sent"
-            ? t("orders.detail.notice.alreadySentTitle")
-            : t("orders.detail.notice.acceptedTitle"),
+          : result.sentToPreviouslyClaimedRecipient
+            ? t("orders.detail.notice.claimedRecipientTitle")
+            : result.outcome === "already_sent"
+              ? t("orders.detail.notice.alreadySentTitle")
+              : t("orders.detail.notice.acceptedTitle"),
         message: usingLocalDemo
           ? t("orders.detail.notice.demoSentBody")
-          : t("orders.detail.notice.acceptedBody"),
-        tone: "success"
+          : result.sentToPreviouslyClaimedRecipient
+            ? t("orders.detail.notice.claimedRecipientBody")
+            : t("orders.detail.notice.acceptedBody"),
+        tone: result.sentToPreviouslyClaimedRecipient ? "warning" : "success"
       });
     } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -629,11 +634,15 @@ export default function OrderDraftDetailScreen() {
                     ? t("orders.detail.recovery.gmail")
                     : previewBlockerNotice.recovery === "supplier"
                       ? t("orders.detail.recovery.supplier")
+                      : previewBlockerNotice.recovery === "retry"
+                        ? t("orders.detail.recovery.retry")
                       : undefined}
                   onAction={previewBlockerNotice.recovery === "gmail"
                     ? () => router.push("/settings/gmail" as never)
                     : previewBlockerNotice.recovery === "supplier"
                       ? () => router.push("/settings/suppliers" as never)
+                      : previewBlockerNotice.recovery === "retry"
+                        ? () => void load(false)
                       : undefined}
                 />
               ) : null}
@@ -700,12 +709,16 @@ export default function OrderDraftDetailScreen() {
                 ? t("orders.detail.recovery.gmail")
                 : notice.recovery === "supplier"
                   ? t("orders.detail.recovery.supplier")
+                  : notice.recovery === "retry"
+                    ? t("orders.detail.recovery.retry")
                   : undefined}
               onAction={
                 notice.recovery === "gmail"
                   ? () => router.push("/settings/gmail" as never)
                   : notice.recovery === "supplier"
                     ? () => router.push("/settings/suppliers" as never)
+                    : notice.recovery === "retry"
+                      ? () => void load(false)
                     : undefined
               }
             />
@@ -832,6 +845,14 @@ function gmailConnectionRequiredNotice(
 }
 
 function orderSendErrorNotice(error: unknown, t: Translate): OrderNotice {
+  if (isSupplierSendVerificationRace(error)) {
+    return {
+      title: t("orders.detail.error.verificationRaceTitle"),
+      message: t("orders.detail.error.verificationRaceBody"),
+      tone: "warning",
+      recovery: "retry"
+    };
+  }
   const fallback: OrderNotice = {
     title: t("orders.detail.error.sendTitle"),
     message: isGmailIntegrationError(error)
@@ -852,6 +873,14 @@ function supplierSendBlockerNotice(
   t: Translate,
   fallback?: OrderNotice
 ): OrderNotice {
+  if (blockerCodes.includes("send_verification_race")) {
+    return {
+      title: t("orders.detail.error.verificationRaceTitle"),
+      message: t("orders.detail.error.verificationRaceBody"),
+      tone: "warning",
+      recovery: "retry"
+    };
+  }
   if (blockerCodes.includes("send_content_changed") || blockerCodes.includes("content_changed")) {
     return {
       title: t("orders.detail.review.changedTitle"),

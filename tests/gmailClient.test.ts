@@ -31,6 +31,8 @@ test("Gmail client workflows stay typed, tenant-scoped, and behind backend funct
   assert.match(hostedRepository, /"send-supplier-email",\s*\{ restaurantId, orderId \}/s);
   assert.match(hostedRepository, /client\.rpc\("preview_supplier_send_content"/);
   assert.match(hostedRepository, /client\.rpc\("approve_supplier_send_content"/);
+  assert.doesNotMatch(hostedRepository, /fingerprintSupplierSendSnapshot|serializeSupplierSendSnapshot/);
+  assert.match(hostedRepository, /p_reviewed_content_fingerprint: reviewedFingerprint/);
   assert.doesNotMatch(hostedRepository, /client\.rpc\("approve_supplier_send_envelope"/);
   assert.match(hostedRepository, /\.eq\("idempotency_key", `send_supplier_order:\$\{orderId\}`\)/);
   assert.match(demoRepository, /requireActiveDemoRestaurant\(state, restaurantId\)/);
@@ -38,6 +40,10 @@ test("Gmail client workflows stay typed, tenant-scoped, and behind backend funct
   assert.match(demoRepository, /entry\.restaurant_id === restaurantId && entry\.provider === "gmail"/);
   assert.match(sendFunction, /rpc\(\s*"service_claim_supplier_email_send"/s);
   assert.match(sendFunction, /isClaimedSupplierEmail\(claimData, requestedMessageId\)/);
+  assert.match(sendFunction, /sentToPreviouslyClaimedRecipient/);
+  assert.match(sendFunction, /externalIdentityChangedDuringClaim/);
+  assert.match(sendFunction, /isPostgresSerializationFailure\(error\)/);
+  assert.match(sendFunction, /blockerCodes: \["send_verification_race"\]/);
   assert.match(sendFunction, /status: changed \? "send_content_changed" : "send_content_unapproved"/);
   assert.match(
     sendFunction,
@@ -102,6 +108,14 @@ test("Gmail settings and order delivery UI preserve roles, simulation disclosure
   assert.doesNotMatch(orderDetail, /decideMiseAction/);
   assert.match(orderDetail, /await sendSupplierOrderEmail\(restaurantId, savedOrder\.id\)/);
   assert.match(orderDetail, /orders\.detail\.notice\.demoSentBody/);
+  assert.match(orderDetail, /result\.sentToPreviouslyClaimedRecipient/);
+  assert.match(orderDetail, /orders\.detail\.notice\.claimedRecipientBody/);
+  assert.match(orderDetail, /isSupplierSendVerificationRace\(error\)/);
+  assert.match(orderDetail, /orders\.detail\.error\.verificationRaceTitle/);
+  assert.match(orderDetail, /recovery: "retry"/);
+  assert.match(orderDetail, /blockerCodes\.includes\("send_verification_race"\)/);
+  assert.doesNotMatch(orderDetail, /fingerprintSupplierSendSnapshot|serializeSupplierSendSnapshot/);
+  assert.doesNotMatch(orderDetail, /domain\/supplierSendContent/);
   assert.match(catalog, /Mise updated the demo workflow\. No email was sent\./);
   assert.doesNotMatch(orderDetail, /markSupplierOrderSent/);
 

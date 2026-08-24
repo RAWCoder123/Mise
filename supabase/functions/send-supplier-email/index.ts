@@ -538,10 +538,24 @@ Deno.serve(async (req) => {
       status: "sent",
       outcome: completion?.outcome ?? "applied",
       providerMessageId: providerMessage.id,
+      sentToPreviouslyClaimedRecipient:
+        completion?.externalIdentityChangedDuringClaim === true,
       order: completion?.order ?? null,
       orderedRecommendations: completion?.ordered_recommendations ?? [],
     });
   } catch (error) {
+    if (isPostgresSerializationFailure(error)) {
+      await recordFunctionTerminalError(terminalContext);
+      return jsonResponse(
+        {
+          status: "request_blocked",
+          blockerCodes: ["send_verification_race"],
+          message:
+            "Mise could not verify the current supplier email because its identity changed concurrently. Refresh and try again.",
+        },
+        409,
+      );
+    }
     if (actionFailureContext) {
       await recordMiseActionFailure(
         actionFailureContext.securitySupabase,
@@ -682,6 +696,8 @@ function claimOutcomeResponse(value: unknown) {
         status: "sent",
         outcome: "already_sent",
         providerMessageId: boundedProviderMessageId(value),
+        sentToPreviouslyClaimedRecipient:
+          externalIdentityChangedDuringClaim(value),
       },
     };
   }
@@ -875,6 +891,18 @@ function boundedProviderMessageId(value: unknown) {
       !/[\u0000-\u001f\u007f]/u.test(providerMessageId)
     ? providerMessageId
     : null;
+}
+
+function externalIdentityChangedDuringClaim(value: unknown) {
+  return Boolean(
+    value && typeof value === "object" &&
+      (value as Record<string, unknown>).externalIdentityChangedDuringClaim === true,
+  );
+}
+
+function isPostgresSerializationFailure(error: unknown) {
+  return error && typeof error === "object" &&
+      (error as Record<string, unknown>).code === "40001";
 }
 
 async function failDelivery(

@@ -113,6 +113,11 @@ test("order list routes drafts through exact-content review before the Gmail del
   assert.match(detail, /orders\.detail\.review\.pendingTitle/);
   assert.match(detail, /orders\.detail\.gmail\.inProgressTitle/);
   assert.match(detail, /t\("orders\.detail\.notice\.demoSentBody"\)/);
+  assert.match(detail, /result\.sentToPreviouslyClaimedRecipient/);
+  assert.match(detail, /t\("orders\.detail\.notice\.claimedRecipientBody"\)/);
+  assert.match(detail, /isSupplierSendVerificationRace\(error\)/);
+  assert.match(detail, /recovery: "retry"/);
+  assert.match(detail, /notice\.recovery === "retry"[\s\S]{0,180}load\(false\)/);
   assert.match(catalog, /Mise updated the demo workflow\. No email was sent\./);
   assert.match(catalog, /Review the exact email below\. Mise will approve only this version/);
   assert.match(detail, /operator_note: operatorNote\.trim\(\) \|\| null/);

@@ -1465,6 +1465,8 @@ begin
     return jsonb_build_object(
       'outcome', 'already_sent',
       'providerMessageId', delivery.provider_message_id,
+      'externalIdentityChangedDuringClaim',
+        delivery.external_identity_changed_during_claim,
       'orderStatus', order_row.status
     );
   end if;
@@ -1716,6 +1718,8 @@ begin
     return jsonb_build_object(
       'outcome', 'already_sent',
       'providerMessageId', delivery.provider_message_id,
+      'externalIdentityChangedDuringClaim',
+        delivery.external_identity_changed_during_claim,
       'orderStatus', order_row.status
     );
   end if;
@@ -2172,6 +2176,8 @@ begin
       and recommendation.status = 'ordered';
     return jsonb_build_object(
       'outcome', 'already_applied',
+      'externalIdentityChangedDuringClaim',
+        delivery.external_identity_changed_during_claim,
       'order', to_jsonb(order_row),
       'ordered_recommendations', ordered_rows
     );
@@ -2302,6 +2308,8 @@ begin
     and recommendation.status = 'ordered';
   return jsonb_build_object(
     'outcome', 'applied',
+    'externalIdentityChangedDuringClaim',
+      delivery.external_identity_changed_during_claim,
     'order', to_jsonb(order_row),
     'ordered_recommendations', ordered_rows
   );

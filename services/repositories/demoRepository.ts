@@ -2203,6 +2203,7 @@ export function createLocalDemoRepository(): MiseRepository {
             status: "sent" as const,
             outcome: "already_sent" as const,
             providerMessageId,
+            sentToPreviouslyClaimedRecipient: false,
             order: normalizeSupplierOrder(replay.order),
             orderedRecommendations: replay.orderedRecommendations.map(normalizePurchaseRecommendation)
           };
@@ -2290,6 +2291,7 @@ export function createLocalDemoRepository(): MiseRepository {
           status: "sent" as const,
           outcome: result.outcome,
           providerMessageId,
+          sentToPreviouslyClaimedRecipient: false,
           order: normalizeSupplierOrder(result.order),
           orderedRecommendations: result.orderedRecommendations.map(normalizePurchaseRecommendation)
         };

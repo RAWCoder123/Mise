@@ -340,10 +340,14 @@ function parseSupplierEmailSendResponse(
     typeof payload.providerMessageId === "string" && payload.providerMessageId.length > 0 && payload.providerMessageId.length <= 1024
       ? payload.providerMessageId
       : null;
+  if (typeof payload.sentToPreviouslyClaimedRecipient !== "boolean") {
+    throw new GmailIntegrationError("unknown", "Gmail delivery returned invalid claim identity evidence.");
+  }
   return {
     status: "sent",
     outcome: payload.outcome,
     providerMessageId,
+    sentToPreviouslyClaimedRecipient: payload.sentToPreviouslyClaimedRecipient,
     order,
     orderedRecommendations
   };
