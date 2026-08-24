@@ -20,6 +20,7 @@ import type {
   RestaurantOpsProfile,
   RestaurantTeamMember,
   SetupAttachment,
+  Supplier,
   SupplierEmailPayload,
   SupplierOrder,
   SupplierRecipient,
@@ -133,12 +134,14 @@ import {
 } from "../miseValidation";
 
 export type PurchaseRecommendationInput = Omit<PurchaseRecommendation, "id" | "created_at">;
-export type SupplierOrderDraft = SupplierOrder;
 export type AuditLogInput = Pick<AuditLog, "restaurant_id" | "action" | "entity_table"> &
   Partial<Pick<AuditLog, "entity_id" | "metadata">>;
 export type InventoryItemInput = Omit<InventoryItem, "id" | "last_updated">;
 export type PosSaleInput = Omit<PosSale, "id" | "created_at">;
-export type SupplierRecipientInput = Omit<SupplierRecipient, "id" | "created_at" | "updated_at">;
+export type SupplierRecipientInput = Pick<
+  SupplierRecipient,
+  "restaurant_id" | "supplier_id" | "email"
+>;
 export type SetupAttachmentInput = Omit<SetupAttachment, "id" | "created_at" | "updated_at" | "created_by">;
 
 /**
@@ -338,8 +341,18 @@ export type SupplierSendContentApprovalResult =
     };
 
 export interface RestaurantSetupSnapshotInput {
-  inventoryItems: InventoryItemInput[];
-  suppliers: SupplierRecipientInput[];
+  inventoryItems: Array<
+    Omit<InventoryItemInput, "supplier_id" | "supplier_name"> & {
+      /** Local setup reference resolved atomically by the server. */
+      supplier_client_reference_id: string;
+    }
+  >;
+  suppliers: Array<{
+    restaurant_id: string;
+    client_reference_id: string;
+    display_name: string;
+    email: string | null;
+  }>;
   recipeMappings: Array<{
     menu_item_name: string;
     inventory_item_name: string;
@@ -389,6 +402,7 @@ export interface RestaurantData {
 
 export const RESTAURANT_EXPORT_DATASETS = [
   "pos_sales",
+  "suppliers",
   "inventory_items",
   "inventory_events",
   "menu_item_ingredients",
@@ -536,6 +550,14 @@ export interface MiseRepository {
     restaurantId: string
   ): Promise<OperationalFindingDecision[]>;
   fetchInventoryItems(restaurantId: string): Promise<InventoryItem[]>;
+  fetchSuppliers(restaurantId: string): Promise<Supplier[]>;
+  createSupplier(restaurantId: string, displayName: string): Promise<Supplier>;
+  renameSupplier(restaurantId: string, supplierId: string, displayName: string): Promise<Supplier>;
+  reassignInventoryItemSupplier(
+    restaurantId: string,
+    itemId: string,
+    supplierId: string
+  ): Promise<InventoryItem>;
   fetchVerifiedProviderMappings(restaurantId: string): Promise<VerifiedProviderSaleMapping[]>;
   listInventoryEvents(
     restaurantId: string,
@@ -637,10 +659,6 @@ export interface MiseRepository {
     recommendationId: string
   ): Promise<RecommendationWorkflowResult>;
   replacePendingRecommendations(restaurantId: string, inserts: PurchaseRecommendationInput[]): Promise<void>;
-  fetchApprovedRecommendations(restaurantId: string, supplierName?: string): Promise<PurchaseRecommendation[]>;
-  markApprovedRecommendationsOrdered(restaurantId: string, supplierName: string): Promise<PurchaseRecommendation[]>;
-  upsertSupplierOrderDraft(draft: SupplierOrderDraft): Promise<SupplierOrder>;
-  deleteSupplierOrderDraft(restaurantId: string, supplierName: string): Promise<void>;
   fetchSupplierOrders(restaurantId: string): Promise<SupplierOrder[]>;
   /**
    * Bounded, newest-first receipt evidence used for supplier reliability.
@@ -747,7 +765,7 @@ export interface MiseRepository {
       requiresApproval: boolean;
       enabled: boolean;
       spendLimitCents?: number | null;
-      supplierName?: string | null;
+      supplierId?: string | null;
       communicationType?: string | null;
       allowedStartTime?: string | null;
       allowedEndTime?: string | null;

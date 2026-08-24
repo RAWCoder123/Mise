@@ -328,7 +328,7 @@ function buildClosingBrief(
       route: "/orders",
       evidenceReferences: report.supplierReliability.suppliers
         .filter((supplier) => supplier.status === "watch" || supplier.status === "at_risk")
-        .map((supplier) => `supplier:${supplier.supplierName}`)
+        .map((supplier) => `supplier:${supplier.supplierId}`)
     });
   }
   if (report.learning.memoryCopy) {

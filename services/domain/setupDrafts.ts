@@ -13,7 +13,8 @@ export interface SetupInventoryDraftItem {
   quantity: string;
   unit: string;
   parLevel: string;
-  supplier: string;
+  /** Local `SetupSupplierDraft.id`; never a supplier display-name authority key. */
+  supplierId: string;
 }
 
 export interface SetupSupplierDraft {
@@ -126,10 +127,19 @@ export function buildSetupDraftReadiness({
   emailConnected: boolean;
 }): SetupDraftReadiness {
   const profileReady = Boolean(restaurantName.trim() && cuisineType.trim());
-  const supplierReady = suppliers.some((supplier) => supplier.name.trim());
+  const validSupplierIds = new Set(
+    suppliers.filter((supplier) => supplier.id.trim() && supplier.name.trim()).map((supplier) => supplier.id)
+  );
+  const supplierReady = validSupplierIds.size > 0;
   const inventoryReady =
     supplierReady &&
-    inventoryItems.filter((item) => item.name.trim() && item.quantity.trim() && item.unit.trim()).length >= 3;
+    inventoryItems.filter(
+      (item) =>
+        item.name.trim() &&
+        item.quantity.trim() &&
+        item.unit.trim() &&
+        validSupplierIds.has(item.supplierId)
+    ).length >= 3;
   const recipesReady = recipes.some(
     (recipe) =>
       recipe.dishName.trim() &&
@@ -196,9 +206,14 @@ export function buildSetupPersistencePreview({
   posSales?: SetupPosSaleDraft[];
   attachments: SetupAttachmentDraft[];
 }): SetupPersistencePreview {
+  const supplierIds = new Set(
+    suppliers.filter((supplier) => supplier.id.trim() && supplier.name.trim()).map((supplier) => supplier.id)
+  );
   return {
-    inventoryItems: inventoryItems.filter((item) => item.name.trim()).length,
-    suppliers: suppliers.filter((supplier) => supplier.name.trim()).length,
+    inventoryItems: inventoryItems.filter(
+      (item) => item.name.trim() && supplierIds.has(item.supplierId)
+    ).length,
+    suppliers: supplierIds.size,
     recipeMappings: recipes.reduce((count, recipe) => {
       if (!recipe.dishName.trim()) return count;
       return count + recipe.ingredients.filter((ingredient) =>
@@ -375,8 +390,17 @@ export function buildSetupDataHealthSummary({
   emailConnected: boolean;
 }): SetupDataHealthSummary {
   const profileReady = Boolean(restaurantName.trim() && cuisineType.trim());
-  const inventoryCount = inventoryItems.filter((item) => item.name.trim() && item.quantity.trim() && item.unit.trim()).length;
-  const supplierCount = suppliers.filter((supplier) => supplier.name.trim()).length;
+  const validSupplierIds = new Set(
+    suppliers.filter((supplier) => supplier.id.trim() && supplier.name.trim()).map((supplier) => supplier.id)
+  );
+  const inventoryCount = inventoryItems.filter(
+    (item) =>
+      item.name.trim() &&
+      item.quantity.trim() &&
+      item.unit.trim() &&
+      validSupplierIds.has(item.supplierId)
+  ).length;
+  const supplierCount = validSupplierIds.size;
   const recipeCount = recipes.filter((recipe) =>
     recipe.dishName.trim() &&
     recipe.ingredients.some((ingredient) => ingredient.itemName.trim() && ingredient.quantity.trim() && ingredient.unit.trim())

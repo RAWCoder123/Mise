@@ -16,7 +16,8 @@ import {
   requireInventoryCountLineUpdates,
   requireInventoryCountSessionNote,
   requireInventoryItemPatch,
-  requireRecipeBaselineQuantity
+  requireRecipeBaselineQuantity,
+  requireSupplierAuthorityId
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
 import {
@@ -71,6 +72,21 @@ function signalCountEvidence(data: {
 
 export async function fetchInventoryItems(restaurantId: string) {
   return repository.fetchInventoryItems(restaurantId);
+}
+
+export async function reassignInventoryItemSupplier(
+  restaurantId: string,
+  itemId: string,
+  supplierId: string
+) {
+  const normalizedRestaurantId = requireSupplierAuthorityId(restaurantId, "restaurant");
+  const normalizedItemId = requireSupplierAuthorityId(itemId, "inventory item");
+  const normalizedSupplierId = requireSupplierAuthorityId(supplierId);
+  return repository.reassignInventoryItemSupplier(
+    normalizedRestaurantId,
+    normalizedItemId,
+    normalizedSupplierId
+  );
 }
 
 /** Outlooks plus the count evidence that anchored them, for callers that need both. */
@@ -313,6 +329,7 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
     restaurant_id: restaurantId,
     inventory_item_id: item.id,
     item_name: item.item_name,
+    supplier_id: item.supplier_id,
     supplier_name: item.supplier_name,
     recommended_quantity: prediction.suggestedOrderQuantity,
     unit: item.unit,

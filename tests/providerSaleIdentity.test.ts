@@ -14,6 +14,7 @@ const restaurantA = "restaurant-a";
 const restaurantB = "restaurant-b";
 const chickenMenuId = "menu-chicken";
 const chickenItemId = "inventory-chicken";
+const supplierId = "44444444-4444-4444-8444-444444444444";
 const operatingDate = "2026-08-18";
 
 const inventoryItem: InventoryItem = {
@@ -26,6 +27,7 @@ const inventoryItem: InventoryItem = {
   par_level: 30,
   reorder_threshold: 10,
   estimated_unit_cost: 1,
+  supplier_id: supplierId,
   supplier_name: "Supplier",
   last_updated: "2026-08-18T00:00:00.000Z"
 };

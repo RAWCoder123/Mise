@@ -332,7 +332,12 @@ test("supplier email Edge delivery uses only a strict, durable database claim", 
   assert.match(send, /credentialGeneration: number/);
   assert.match(send, /Number\.isSafeInteger\(claim\.credentialGeneration\)/);
   assert.match(send, /claim\.credentialGeneration > 0/);
-  assert.match(send, /claim\.contentVersion === "mise\.supplier_send\.v1"/);
+  assert.match(send, /claim\.contentVersion === "mise\.supplier_send\.v2"/);
+  assert.match(send, /isCanonicalUuid\(claim\.supplierId\)/);
+  assert.match(
+    send,
+    /claim\.contentVersion === "mise\.supplier_send\.v1"[\s\S]*claim\.supplierId === undefined[\s\S]*claim\.supplierId === null/,
+  );
   assert.match(
     send,
     /claim\.authorityVersion === "mise\.purchase_authority\.v1"/,

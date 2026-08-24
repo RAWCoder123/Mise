@@ -50,6 +50,8 @@ export interface OrderAutomationDeliveryReadiness {
 
 export interface OrderAutomationInput {
   restaurantId: string;
+  supplierId: string;
+  /** Presentation only. All supplier matching uses `supplierId`. */
   supplierName: string;
   candidates: readonly PurchaseRecommendation[];
   inventoryItems: readonly InventoryItem[];
@@ -84,6 +86,7 @@ export interface OrderAutomationLineAssessment {
 
 export interface OrderAutomationAssessment {
   restaurantId: string;
+  supplierId: string;
   supplierName: string;
   decision: OrderAutomationDecision;
   estimatedOrderValue: number | null;
@@ -113,6 +116,7 @@ export const DEFAULT_ORDER_AUTOMATION_POLICY: OrderAutomationPolicy = {
  */
 export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomationAssessment {
   const restaurantId = input.restaurantId.trim();
+  const supplierId = input.supplierId.trim();
   const supplierName = input.supplierName.trim();
   const policy = input.policy ?? DEFAULT_ORDER_AUTOMATION_POLICY;
   const now = input.now ?? new Date();
@@ -123,6 +127,7 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
   }
   if (!policy.enabled) topLevelBlockers.add("automation_disabled");
   if (input.candidates.length === 0) topLevelBlockers.add("no_candidates");
+  if (!supplierId) topLevelBlockers.add("supplier_mismatch");
 
   const scopedInventory = input.inventoryItems.filter((item) => item.restaurant_id === restaurantId);
   const inventoryById = new Map(scopedInventory.map((item) => [item.id, item] as const));
@@ -138,7 +143,7 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
   const lines = input.candidates.map((candidate) => {
     const blockers = new Set<OrderAutomationBlocker>();
     if (candidate.restaurant_id !== restaurantId) blockers.add("tenant_mismatch");
-    if (normalizeSupplier(candidate.supplier_name) !== normalizeSupplier(supplierName)) {
+    if (candidate.supplier_id !== supplierId) {
       blockers.add("supplier_mismatch");
     }
     if (candidateItemIds.has(candidate.inventory_item_id)) blockers.add("duplicate_inventory_item");
@@ -146,7 +151,7 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
 
     const item = inventoryById.get(candidate.inventory_item_id);
     if (!item) blockers.add("missing_inventory_item");
-    if (item && normalizeSupplier(item.supplier_name) !== normalizeSupplier(supplierName)) {
+    if (item && item.supplier_id !== supplierId) {
       blockers.add("supplier_catalog_mismatch");
     }
 
@@ -172,7 +177,7 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
 
     const history = matchingHistory(
       restaurantId,
-      supplierName,
+      supplierId,
       candidate,
       input.recommendationHistory,
       now,
@@ -235,6 +240,7 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
 
   return {
     restaurantId,
+    supplierId,
     supplierName,
     decision,
     estimatedOrderValue,
@@ -246,7 +252,7 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
 
 function matchingHistory(
   restaurantId: string,
-  supplierName: string,
+  supplierId: string,
   candidate: PurchaseRecommendation,
   history: readonly PurchaseRecommendation[],
   now: Date,
@@ -259,7 +265,7 @@ function matchingHistory(
     return (
       entry.restaurant_id === restaurantId &&
       entry.inventory_item_id === candidate.inventory_item_id &&
-      normalizeSupplier(entry.supplier_name) === normalizeSupplier(supplierName) &&
+      entry.supplier_id === supplierId &&
       canonicalInventoryUnit(entry.unit) === candidateUnit &&
       (entry.status === "approved" || entry.status === "ordered") &&
       Number.isFinite(entry.recommended_quantity) &&
@@ -323,10 +329,6 @@ function median(values: readonly number[]) {
   if (sorted.length % 2 === 1) return middleValue;
   const previousValue = sorted[middle - 1];
   return previousValue === undefined ? middleValue : (previousValue + middleValue) / 2;
-}
-
-function normalizeSupplier(value: string) {
-  return value.trim().toLocaleLowerCase();
 }
 
 function roundCurrency(value: number) {

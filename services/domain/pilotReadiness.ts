@@ -221,11 +221,13 @@ function assessSupplierRouting(
   items: readonly InventoryItem[],
   recipients: readonly SupplierRecipient[]
 ): PilotReadinessArea {
-  const missingSupplier = items.filter((item) => !item.supplier_name.trim());
+  const missingSupplier = items.filter((item) => !item.supplier_id.trim());
   const missingCost = items.filter((item) => !Number.isFinite(item.estimated_unit_cost) || item.estimated_unit_cost <= 0);
-  const suppliers = new Set(items.map((item) => normalizeName(item.supplier_name)).filter(Boolean));
+  const suppliers = new Set(items.map((item) => item.supplier_id.trim()).filter(Boolean));
   const recipientSuppliers = new Set(
-    recipients.filter((recipient) => Boolean(recipient.email?.trim())).map((recipient) => normalizeName(recipient.supplier_name))
+    recipients
+      .filter((recipient) => Boolean(recipient.email?.trim()))
+      .map((recipient) => recipient.supplier_id.trim())
   );
   const missingRecipients = [...suppliers].filter((supplier) => !recipientSuppliers.has(supplier));
   const blockers: string[] = [];
@@ -247,9 +249,11 @@ function assessEmailDelivery(
   items: readonly InventoryItem[],
   recipients: readonly SupplierRecipient[]
 ): PilotReadinessArea {
-  const suppliers = new Set(items.map((item) => normalizeName(item.supplier_name)).filter(Boolean));
+  const suppliers = new Set(items.map((item) => item.supplier_id.trim()).filter(Boolean));
   const configured = new Set(
-    recipients.filter((recipient) => Boolean(recipient.email?.trim())).map((recipient) => normalizeName(recipient.supplier_name))
+    recipients
+      .filter((recipient) => Boolean(recipient.email?.trim()))
+      .map((recipient) => recipient.supplier_id.trim())
   );
   const missingRecipients = [...suppliers].filter((supplier) => !configured.has(supplier)).length;
   if (connection?.status !== "connected") {
@@ -296,10 +300,6 @@ function boundedThreshold(value: number | undefined, fallback: number, minimum: 
   if (value === undefined) return fallback;
   if (!Number.isFinite(value)) return fallback;
   return Math.min(maximum, Math.max(minimum, value));
-}
-
-function normalizeName(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function positive(value: number) {

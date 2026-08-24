@@ -5,6 +5,7 @@ import pg from "pg";
 const { Client } = pg;
 const restaurantId = "f1000000-0000-4000-8000-000000000002";
 const actorId = "f1000000-0000-4000-8000-000000000001";
+const supplierId = "f1000000-0000-4000-8000-000000000003";
 const items = {
   sequential: "f1000000-0000-4000-8000-000000000011",
   delayed: "f1000000-0000-4000-8000-000000000012",
@@ -135,15 +136,21 @@ async function setup(admin) {
     "insert into public.restaurant_memberships (restaurant_id, user_id, role, status) values ($1, $2, 'manager', 'active')",
     [restaurantId, actorId]
   );
+  await execute(
+    admin,
+    `insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+     values ($1, $2, 'Test', 'test')`,
+    [supplierId, restaurantId]
+  );
   for (const [name, id] of Object.entries(items)) {
     await execute(
       admin,
       `insert into public.inventory_items (
         id, restaurant_id, item_name, category, unit, current_quantity,
-        par_level, reorder_threshold, estimated_unit_cost, supplier_name,
+        par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name,
         canonical_unit, canonical_quantity_per_unit, canonical_unit_verification_status
-      ) values ($1, $2, $3, 'Test', 'each', 1, 20, 5, 1, 'Test', 'each', 1, 'verified')`,
-      [id, restaurantId, name]
+      ) values ($1, $2, $3, 'Test', 'each', 1, 20, 5, 1, $4, 'Test', 'each', 1, 'verified')`,
+      [id, restaurantId, name, supplierId]
     );
   }
 }

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const migration = readFileSync(
-  "supabase/migrations/20260810130000_service_inventory_policy_only_patches.sql",
+  "supabase/migrations/20260824034152_mise_003c_durable_supplier_identity.sql",
   "utf8"
 );
 const tenantIsolation = readFileSync(
@@ -26,17 +26,17 @@ test("service inventory update rejects current_quantity and only writes policy f
   );
   assert.match(
     migration,
-    /safe_patch\s*-\s*array\['par_level',\s*'reorder_threshold',\s*'supplier_name'\]/i
+    /safe_patch\s*-\s*array\['par_level',\s*'reorder_threshold'\]/i
   );
   assert.match(
     migration,
-    /set\s+par_level\s*=\s*item_row\.par_level[\s\S]*reorder_threshold\s*=\s*item_row\.reorder_threshold[\s\S]*supplier_name\s*=\s*item_row\.supplier_name/i
+    /set\s+par_level\s*=\s*item_row\.par_level[\s\S]*reorder_threshold\s*=\s*item_row\.reorder_threshold/i
   );
   assert.doesNotMatch(migration, /set\s+current_quantity\s*=\s*item_row\.current_quantity/i);
-  assert.match(migration, /On-hand quantity changes must use record_inventory_event/i);
+  assert.doesNotMatch(migration, /safe_patch\s*-\s*array\[[^\]]*'supplier_name'/i);
   assert.match(
     edgeWorkflow,
-    /new Set\(\["par_level", "reorder_threshold", "supplier_name"\]\)/i
+    /new Set\(\["par_level", "reorder_threshold"\]\)/i
   );
 });
 

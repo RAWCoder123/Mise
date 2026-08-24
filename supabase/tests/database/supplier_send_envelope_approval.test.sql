@@ -126,40 +126,51 @@ values (
   'gmail', 'connected', 'orders@envelope.test', now()
 );
 
-insert into public.supplier_recipients (restaurant_id, supplier_name, email)
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values (
+  'ab000000-0000-4000-8000-000000000010',
+  'ab000000-0000-4000-8000-000000000001',
+  'Envelope Produce', 'envelope produce'
+);
+
+insert into public.supplier_recipients (restaurant_id, supplier_id, supplier_name, email)
 values (
   'ab000000-0000-4000-8000-000000000001',
+  'ab000000-0000-4000-8000-000000000010',
   'envelope produce', 'first@produce.test'
 );
 
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity,
-  par_level, reorder_threshold, estimated_unit_cost, supplier_name
+  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
 )
 values (
   'ab000000-0000-4000-8000-000000000011',
   'ab000000-0000-4000-8000-000000000001',
-  'Roma tomatoes', 'Produce', 'case', 1, 10, 3, 12, 'Envelope Produce'
+  'Roma tomatoes', 'Produce', 'case', 1, 10, 3, 12,
+  'ab000000-0000-4000-8000-000000000010', 'Envelope Produce'
 );
 
 insert into public.supplier_orders (
-  id, restaurant_id, supplier_name, order_message, status, delivery_date
+  id, restaurant_id, supplier_id, supplier_name, order_message, status, delivery_date
 )
 values (
   'ab000000-0000-4000-8000-000000000201',
   'ab000000-0000-4000-8000-000000000001',
+  'ab000000-0000-4000-8000-000000000010',
   'Envelope Produce', 'Temporary body', 'draft', current_date + 1
 );
 
 insert into public.purchase_recommendations (
-  id, restaurant_id, inventory_item_id, item_name, supplier_name,
+  id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
   recommended_quantity, unit, reason, urgency, status, supplier_order_id
 )
 values (
   'ab000000-0000-4000-8000-000000000101',
   'ab000000-0000-4000-8000-000000000001',
   'ab000000-0000-4000-8000-000000000011',
-  'Roma tomatoes', 'Envelope Produce', 10, 'case',
+  'Roma tomatoes', 'ab000000-0000-4000-8000-000000000010',
+  'Envelope Produce', 10, 'case',
   'Exact content approval fixture', 'high', 'approved',
   'ab000000-0000-4000-8000-000000000201'
 );
@@ -196,7 +207,7 @@ select is(
     'ab000000-0000-4000-8000-000000000001',
     'ab000000-0000-4000-8000-000000000201'
   )->>'contentVersion',
-  'mise.supplier_send.v1',
+  'mise.supplier_send.v2',
   'the preview exposes the canonical supplier-send content version'
 );
 select is(
@@ -299,7 +310,7 @@ select is(
 update public.supplier_recipients
 set email = 'changed@produce.test'
 where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
-  and lower(trim(supplier_name)) = 'envelope produce';
+  and supplier_id = 'ab000000-0000-4000-8000-000000000010';
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'ab111111-1111-4111-8111-111111111111', true);

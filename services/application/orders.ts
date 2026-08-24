@@ -77,6 +77,7 @@ export async function approvePurchaseRecommendation(
       evidence: {
         recommendationId,
         inventoryItemId: result.recommendation.inventory_item_id,
+        supplierId: result.recommendation.supplier_id,
         countEventId: null,
         countedAt: null,
         projectedQuantity: null,
@@ -98,9 +99,9 @@ export async function dismissPurchaseRecommendation(restaurantId: string, recomm
   return result.recommendation;
 }
 
-export async function generateSupplierOrderDraft(restaurantId: string, supplierName?: string) {
+export async function generateSupplierOrderDraft(restaurantId: string, supplierId?: string) {
   void restaurantId;
-  void supplierName;
+  void supplierId;
   throw new Error("Supplier drafts are created only by the server-authoritative recommendation approval workflow.");
 }
 
@@ -190,35 +191,35 @@ export async function fetchSupplierSpendTrend(restaurantId: string): Promise<Sup
  */
 export async function fetchOrderAutomationAssessment(
   restaurantId: string,
-  supplierName: string,
+  supplierId: string,
   policy?: OrderAutomationPolicy
 ): Promise<OrderAutomationAssessment> {
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
-  const normalizedSupplierName = supplierName.trim();
-  if (!normalizedSupplierName || normalizedSupplierName.length > 160) {
-    throw new Error("Missing supplier.");
-  }
+  const normalizedSupplierId = requireWorkflowId(supplierId, "supplier");
 
-  const [pendingRecommendations, recommendationHistory, inventoryItems, emailConnection, recipients] =
+  const [suppliers, pendingRecommendations, recommendationHistory, inventoryItems, emailConnection, recipients] =
     await Promise.all([
+      repository.fetchSuppliers(normalizedRestaurantId),
       repository.fetchPurchaseRecommendations(normalizedRestaurantId, "pending"),
       repository.fetchRecommendationHistory(normalizedRestaurantId),
       repository.fetchInventoryItems(normalizedRestaurantId),
       repository.fetchEmailConnectionState(normalizedRestaurantId),
       repository.fetchSupplierRecipients(normalizedRestaurantId)
     ]);
-  const supplierKey = normalizedSupplierName.toLocaleLowerCase();
+  const supplier = suppliers.find((candidate) => candidate.id === normalizedSupplierId);
+  if (!supplier) throw new Error("Supplier not found.");
   const recipientConfigured = recipients.some(
     (recipient) =>
-      recipient.supplier_name.trim().toLocaleLowerCase() === supplierKey &&
+      recipient.supplier_id === normalizedSupplierId &&
       Boolean(recipient.email?.trim())
   );
 
   return assessOrderAutomation({
     restaurantId: normalizedRestaurantId,
-    supplierName: normalizedSupplierName,
+    supplierId: normalizedSupplierId,
+    supplierName: supplier.display_name,
     candidates: pendingRecommendations.filter(
-      (recommendation) => recommendation.supplier_name.trim().toLocaleLowerCase() === supplierKey
+      (recommendation) => recommendation.supplier_id === normalizedSupplierId
     ),
     inventoryItems,
     recommendationHistory,
@@ -262,25 +263,25 @@ export async function fetchSupplierRecipients(restaurantId: string) {
 
 export async function fetchSupplierRecipientDirectory(restaurantId: string) {
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
-  const [inventoryItems, recipients] = await Promise.all([
-    repository.fetchInventoryItems(normalizedRestaurantId),
+  const [suppliers, recipients] = await Promise.all([
+    repository.fetchSuppliers(normalizedRestaurantId),
     repository.fetchSupplierRecipients(normalizedRestaurantId)
   ]);
   return buildSupplierRecipientDirectory(
     normalizedRestaurantId,
-    inventoryItems.map((item) => item.supplier_name),
+    suppliers,
     recipients
   );
 }
 
 export async function saveSupplierRecipient(
   restaurantId: string,
-  supplierName: string,
+  supplierId: string,
   email: string
 ) {
   const input = requireSupplierRecipientInput({
     restaurant_id: requireWorkflowId(restaurantId, "restaurant"),
-    supplier_name: supplierName,
+    supplier_id: requireWorkflowId(supplierId, "supplier"),
     email
   });
   return repository.upsertSupplierRecipient(input);

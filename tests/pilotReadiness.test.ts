@@ -13,6 +13,7 @@ import type {
 } from "../types/mise";
 
 const restaurantId = "restaurant-pilot";
+const supplierId = "00000000-0000-4000-8000-000000000201";
 const now = "2026-08-14T12:00:00.000Z";
 const integration: PosIntegration = {
   id: "pos-1", restaurant_id: restaurantId, provider: "square", status: "connected",
@@ -22,7 +23,7 @@ const integration: PosIntegration = {
 const inventory: InventoryItem = {
   id: "inventory-1", restaurant_id: restaurantId, item_name: "Chicken", category: "Protein",
   unit: "lb", current_quantity: 20, par_level: 30, reorder_threshold: 10,
-  estimated_unit_cost: 4, supplier_name: "Fresh Foods", last_updated: now,
+  estimated_unit_cost: 4, supplier_id: supplierId, supplier_name: "Fresh Foods", last_updated: now,
   canonical_unit: "g", canonical_quantity_per_unit: 453.592,
   canonical_unit_verification_status: "verified", canonical_unit_verified_at: now,
   canonical_unit_verified_by: "manager-1"
@@ -38,7 +39,8 @@ const mapping: MenuItemIngredient = {
   inventory_item_id: inventory.id, quantity_used_per_sale: 200, unit: "g"
 };
 const recipient: SupplierRecipient = {
-  id: "recipient-1", restaurant_id: restaurantId, supplier_name: "Fresh Foods",
+  id: "recipient-1", restaurant_id: restaurantId, supplier_id: supplierId,
+  supplier_name: "Fresh Foods",
   email: "orders@fresh.example", created_at: now, updated_at: now
 };
 const email: RestaurantEmailConnection = {

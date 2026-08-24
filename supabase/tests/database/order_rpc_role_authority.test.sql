@@ -54,36 +54,41 @@ values
   ('a0000000-0000-4000-8000-000000000001', 'a2222222-2222-4222-8222-222222222222', 'staff', 'active'),
   ('b0000000-0000-4000-8000-000000000001', 'b1111111-1111-4111-8111-111111111111', 'owner', 'active');
 
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values
+  ('a0000000-0000-4000-8000-000000000010', 'a0000000-0000-4000-8000-000000000001', 'Supplier A', 'supplier a'),
+  ('b0000000-0000-4000-8000-000000000010', 'b0000000-0000-4000-8000-000000000001', 'Supplier B', 'supplier b');
+
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity,
-  par_level, reorder_threshold, estimated_unit_cost, supplier_name
+  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
 )
 values
-  ('a0000000-0000-4000-8000-000000000011', 'a0000000-0000-4000-8000-000000000001', 'A approve item', 'Produce', 'case', 1, 4, 2, 8, 'Supplier A'),
-  ('a0000000-0000-4000-8000-000000000012', 'a0000000-0000-4000-8000-000000000001', 'A dismiss item', 'Produce', 'case', 1, 4, 2, 8, 'Supplier A'),
-  ('a0000000-0000-4000-8000-000000000013', 'a0000000-0000-4000-8000-000000000001', 'A undo item', 'Produce', 'case', 1, 4, 2, 8, 'Supplier A'),
-  ('b0000000-0000-4000-8000-000000000011', 'b0000000-0000-4000-8000-000000000001', 'B approve item', 'Beverage', 'case', 1, 4, 2, 8, 'Supplier B'),
-  ('b0000000-0000-4000-8000-000000000012', 'b0000000-0000-4000-8000-000000000001', 'B dismiss item', 'Beverage', 'case', 1, 4, 2, 8, 'Supplier B'),
-  ('b0000000-0000-4000-8000-000000000013', 'b0000000-0000-4000-8000-000000000001', 'B undo item', 'Beverage', 'case', 1, 4, 2, 8, 'Supplier B');
+  ('a0000000-0000-4000-8000-000000000011', 'a0000000-0000-4000-8000-000000000001', 'A approve item', 'Produce', 'case', 1, 4, 2, 8, 'a0000000-0000-4000-8000-000000000010', 'Supplier A'),
+  ('a0000000-0000-4000-8000-000000000012', 'a0000000-0000-4000-8000-000000000001', 'A dismiss item', 'Produce', 'case', 1, 4, 2, 8, 'a0000000-0000-4000-8000-000000000010', 'Supplier A'),
+  ('a0000000-0000-4000-8000-000000000013', 'a0000000-0000-4000-8000-000000000001', 'A undo item', 'Produce', 'case', 1, 4, 2, 8, 'a0000000-0000-4000-8000-000000000010', 'Supplier A'),
+  ('b0000000-0000-4000-8000-000000000011', 'b0000000-0000-4000-8000-000000000001', 'B approve item', 'Beverage', 'case', 1, 4, 2, 8, 'b0000000-0000-4000-8000-000000000010', 'Supplier B'),
+  ('b0000000-0000-4000-8000-000000000012', 'b0000000-0000-4000-8000-000000000001', 'B dismiss item', 'Beverage', 'case', 1, 4, 2, 8, 'b0000000-0000-4000-8000-000000000010', 'Supplier B'),
+  ('b0000000-0000-4000-8000-000000000013', 'b0000000-0000-4000-8000-000000000001', 'B undo item', 'Beverage', 'case', 1, 4, 2, 8, 'b0000000-0000-4000-8000-000000000010', 'Supplier B');
 
 insert into public.purchase_recommendations (
-  id, restaurant_id, inventory_item_id, item_name, supplier_name,
+  id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
   recommended_quantity, unit, reason, urgency, status
 )
 values
-  ('a0000000-0000-4000-8000-000000000101', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000011', 'A approve item', 'Supplier A', 3, 'case', 'Role boundary fixture', 'high', 'pending'),
-  ('a0000000-0000-4000-8000-000000000102', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000012', 'A dismiss item', 'Supplier A', 3, 'case', 'Role boundary fixture', 'medium', 'pending'),
-  ('a0000000-0000-4000-8000-000000000103', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000013', 'A undo item', 'Supplier A', 3, 'case', 'Role boundary fixture', 'low', 'dismissed'),
-  ('b0000000-0000-4000-8000-000000000101', 'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000011', 'B approve item', 'Supplier B', 3, 'case', 'Cross-tenant fixture', 'high', 'pending'),
-  ('b0000000-0000-4000-8000-000000000102', 'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000012', 'B dismiss item', 'Supplier B', 3, 'case', 'Cross-tenant fixture', 'medium', 'pending'),
-  ('b0000000-0000-4000-8000-000000000103', 'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000013', 'B undo item', 'Supplier B', 3, 'case', 'Cross-tenant fixture', 'low', 'dismissed');
+  ('a0000000-0000-4000-8000-000000000101', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000011', 'A approve item', 'a0000000-0000-4000-8000-000000000010', 'Supplier A', 3, 'case', 'Role boundary fixture', 'high', 'pending'),
+  ('a0000000-0000-4000-8000-000000000102', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000012', 'A dismiss item', 'a0000000-0000-4000-8000-000000000010', 'Supplier A', 3, 'case', 'Role boundary fixture', 'medium', 'pending'),
+  ('a0000000-0000-4000-8000-000000000103', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000013', 'A undo item', 'a0000000-0000-4000-8000-000000000010', 'Supplier A', 3, 'case', 'Role boundary fixture', 'low', 'dismissed'),
+  ('b0000000-0000-4000-8000-000000000101', 'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000011', 'B approve item', 'b0000000-0000-4000-8000-000000000010', 'Supplier B', 3, 'case', 'Cross-tenant fixture', 'high', 'pending'),
+  ('b0000000-0000-4000-8000-000000000102', 'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000012', 'B dismiss item', 'b0000000-0000-4000-8000-000000000010', 'Supplier B', 3, 'case', 'Cross-tenant fixture', 'medium', 'pending'),
+  ('b0000000-0000-4000-8000-000000000103', 'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000013', 'B undo item', 'b0000000-0000-4000-8000-000000000010', 'Supplier B', 3, 'case', 'Cross-tenant fixture', 'low', 'dismissed');
 
 insert into public.supplier_orders (
-  id, restaurant_id, supplier_name, order_message, operator_note, status, delivery_date
+  id, restaurant_id, supplier_id, supplier_name, order_message, operator_note, status, delivery_date
 )
 values
-  ('a0000000-0000-4000-8000-000000000201', 'a0000000-0000-4000-8000-000000000001', 'Supplier A', 'Unchanged order A', null, 'draft', current_date + 1),
-  ('b0000000-0000-4000-8000-000000000201', 'b0000000-0000-4000-8000-000000000001', 'Supplier B', 'Unchanged order B', null, 'draft', current_date + 1);
+  ('a0000000-0000-4000-8000-000000000201', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000010', 'Supplier A', 'Unchanged order A', null, 'draft', current_date + 1),
+  ('b0000000-0000-4000-8000-000000000201', 'b0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000010', 'Supplier B', 'Unchanged order B', null, 'draft', current_date + 1);
 
 select is(
   has_function_privilege(

@@ -27,6 +27,7 @@ function item(
     par_level: 30,
     reorder_threshold: 8,
     estimated_unit_cost: id === "tomatoes" ? 2.5 : 4,
+    supplier_id: "10000000-0000-4000-8000-000000000013",
     supplier_name: "Supplier",
     last_updated: "2026-08-03T12:00:00.000Z",
     canonical_unit: "g",

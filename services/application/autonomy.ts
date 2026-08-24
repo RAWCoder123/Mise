@@ -14,6 +14,8 @@ export type AutonomyRuleInput = {
   requiresApproval: boolean;
   enabled: boolean;
   spendLimitCents?: number | null;
+  supplierId?: string | null;
+  /** Presentation only; the server resolves the current name from supplierId. */
   supplierName?: string | null;
   communicationType?: string | null;
   allowedStartTime?: string | null;
@@ -33,6 +35,9 @@ export async function fetchAutonomyRules(restaurantId: string): Promise<Restaura
 export async function saveAutonomyRule(restaurantId: string, input: AutonomyRuleInput) {
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (input.supplierName?.trim() && !input.supplierId?.trim()) {
+    throw new Error("Supplier-scoped autonomy requires a durable supplier identity.");
+  }
   const isExternalSend = input.actionType === "send_supplier_order";
   const rule = await repository.upsertAutonomyRule(normalizedRestaurantId, {
     ...input,
@@ -65,6 +70,7 @@ export async function createSafeDefaultAutonomyRules(
     requiresApproval: true,
     enabled: rule.actionType === "send_supplier_order" ? false : rule.enabled,
     spendLimitCents: rule.spendLimitCents,
+    supplierId: rule.supplierId,
     supplierName: rule.supplierName,
     communicationType: rule.communicationType,
     allowedStartTime: rule.allowedStartTime,

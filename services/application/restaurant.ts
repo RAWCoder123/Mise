@@ -9,7 +9,9 @@ import {
 import {
   requireRestaurantCuisineType,
   requireRestaurantName,
-  requireRestaurantProfilePatch
+  requireRestaurantProfilePatch,
+  requireSupplierAuthorityId,
+  requireSupplierDisplayName
 } from "../miseValidation";
 import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
@@ -154,8 +156,26 @@ export async function resetDemoData(
 }
 
 export async function fetchSuppliers(restaurantId: string) {
-  const inventoryItems = await repository.fetchInventoryItems(restaurantId);
-  return [...new Set(inventoryItems.map((item) => item.supplier_name))].sort();
+  return repository.fetchSuppliers(requireSupplierAuthorityId(restaurantId, "restaurant"));
+}
+
+export async function createSupplier(restaurantId: string, displayName: string) {
+  return repository.createSupplier(
+    requireSupplierAuthorityId(restaurantId, "restaurant"),
+    requireSupplierDisplayName(displayName)
+  );
+}
+
+export async function renameSupplier(
+  restaurantId: string,
+  supplierId: string,
+  displayName: string
+) {
+  return repository.renameSupplier(
+    requireSupplierAuthorityId(restaurantId, "restaurant"),
+    requireSupplierAuthorityId(supplierId),
+    requireSupplierDisplayName(displayName)
+  );
 }
 
 export async function fetchPOSStatus(restaurantId?: string | null) {

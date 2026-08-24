@@ -21,6 +21,7 @@ const restaurantId = "restaurant-pos-review";
 const mappingId = "mapping-pos-review";
 const suggestedMenuItemId = "menu-suggested";
 const operatorMenuItemId = "menu-operator";
+const bakerySupplierId = "55555555-5555-4555-8555-555555555555";
 const inventoryItem: InventoryItem = {
   id: "inventory-buns",
   restaurant_id: restaurantId,
@@ -31,6 +32,7 @@ const inventoryItem: InventoryItem = {
   par_level: 30,
   reorder_threshold: 10,
   estimated_unit_cost: 0.5,
+  supplier_id: bakerySupplierId,
   supplier_name: "Bakery",
   last_updated: "2026-08-20T10:00:00.000Z"
 };

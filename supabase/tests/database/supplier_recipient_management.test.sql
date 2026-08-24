@@ -54,32 +54,41 @@ values
   ('a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', '31313131-3131-4131-8131-313131313131', 'staff', 'active'),
   ('b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1', '41414141-4141-4141-8141-414141414141', 'owner', 'active');
 
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values
+  ('a4a4a4a4-a4a4-44a4-84a4-a4a4a4a4a4a4', 'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', 'Fresh Produce Co.', 'fresh produce co.'),
+  ('b4b4b4b4-b4b4-44b4-84b4-b4b4b4b4b4b4', 'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1', 'Cafe Supply', 'cafe supply');
+
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity,
-  par_level, reorder_threshold, estimated_unit_cost, supplier_name
+  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
 )
 values
   (
     'a2a2a2a2-a2a2-42a2-82a2-a2a2a2a2a2a2',
     'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
-    'Tomatoes', 'Produce', 'lb', 10, 20, 6, 2, 'Fresh Produce Co.'
+    'Tomatoes', 'Produce', 'lb', 10, 20, 6, 2,
+    'a4a4a4a4-a4a4-44a4-84a4-a4a4a4a4a4a4', 'Fresh Produce Co.'
   ),
   (
     'b2b2b2b2-b2b2-42b2-82b2-b2b2b2b2b2b2',
     'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1',
-    'Coffee', 'Beverage', 'lb', 10, 20, 6, 4, 'Cafe Supply'
+    'Coffee', 'Beverage', 'lb', 10, 20, 6, 4,
+    'b4b4b4b4-b4b4-44b4-84b4-b4b4b4b4b4b4', 'Cafe Supply'
   );
 
-insert into public.supplier_recipients (id, restaurant_id, supplier_name, email)
+insert into public.supplier_recipients (id, restaurant_id, supplier_id, supplier_name, email)
 values
   (
     'a3a3a3a3-a3a3-43a3-83a3-a3a3a3a3a3a3',
     'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+    'a4a4a4a4-a4a4-44a4-84a4-a4a4a4a4a4a4',
     'Fresh Produce Co.', 'old@fresh.test'
   ),
   (
     'b3b3b3b3-b3b3-43b3-83b3-b3b3b3b3b3b3',
     'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1',
+    'b4b4b4b4-b4b4-44b4-84b4-b4b4b4b4b4b4',
     'Cafe Supply', 'old@cafe.test'
   );
 
@@ -99,7 +108,7 @@ select is(
   'authenticated clients cannot delete supplier recipients directly'
 );
 select is(
-  has_function_privilege('authenticated', 'public.upsert_supplier_recipient(uuid,text,text)', 'EXECUTE'),
+  has_function_privilege('authenticated', 'public.upsert_supplier_recipient(uuid,uuid,text)', 'EXECUTE'),
   true,
   'authenticated clients can execute the guarded supplier recipient RPC'
 );
@@ -109,7 +118,7 @@ select set_config('request.jwt.claim.sub', '21212121-2121-4121-8121-212121212121
 select lives_ok(
   $sql$select public.upsert_supplier_recipient(
     'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
-    '  fresh   produce co. ',
+    'a4a4a4a4-a4a4-44a4-84a4-a4a4a4a4a4a4',
     ' MANAGER@FRESH.TEST '
   )$sql$,
   'manager can save an allowlisted supplier recipient'
@@ -129,7 +138,7 @@ select is(
 select is(
   (select count(*) from public.supplier_recipients where restaurant_id = 'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1'),
   1::bigint,
-  'case-insensitive upsert preserves one restaurant supplier identity'
+  'supplier-ID upsert preserves one restaurant supplier identity'
 );
 select is(
   (select count(*) from public.audit_logs where action = 'supplier_recipient_updated' and entity_id = 'a3a3a3a3-a3a3-43a3-83a3-a3a3a3a3a3a3'),
@@ -142,7 +151,7 @@ select set_config('request.jwt.claim.sub', '21212121-2121-4121-8121-212121212121
 select lives_ok(
   $sql$select public.upsert_supplier_recipient(
     'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
-    'Fresh Produce Co.',
+    'a4a4a4a4-a4a4-44a4-84a4-a4a4a4a4a4a4',
     'manager@fresh.test'
   )$sql$,
   'replaying the same manager save is idempotent'
@@ -158,7 +167,8 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '31313131-3131-4131-8131-313131313131', true);
 select is(
   pg_temp.try_execute($sql$select public.upsert_supplier_recipient(
-    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', 'Fresh Produce Co.', 'staff@fresh.test'
+    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+    'a4a4a4a4-a4a4-44a4-84a4-a4a4a4a4a4a4', 'staff@fresh.test'
   )$sql$),
   false,
   'staff cannot mutate a supplier recipient through the RPC'
@@ -183,31 +193,34 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '21212121-2121-4121-8121-212121212121', true);
 select is(
   pg_temp.try_execute($sql$select public.upsert_supplier_recipient(
-    'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1', 'Cafe Supply', 'forged@cafe.test'
+    'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1',
+    'b4b4b4b4-b4b4-44b4-84b4-b4b4b4b4b4b4', 'forged@cafe.test'
   )$sql$),
   false,
   'manager cannot write another restaurant recipient'
 );
 select is(
   pg_temp.try_execute($sql$select public.upsert_supplier_recipient(
-    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', 'Invented Supplier', 'orders@invented.test'
+    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+    'a5a5a5a5-a5a5-45a5-85a5-a5a5a5a5a5a5', 'orders@invented.test'
   )$sql$),
   false,
   'manager cannot inject a supplier outside the restaurant catalog'
 );
 select is(
   pg_temp.try_execute($sql$select public.upsert_supplier_recipient(
-    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', 'Fresh Produce Co.', 'not-an-email'
+    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+    'a4a4a4a4-a4a4-44a4-84a4-a4a4a4a4a4a4', 'not-an-email'
   )$sql$),
   false,
   'manager cannot save an invalid supplier email'
 );
 select is(
   pg_temp.try_execute($sql$select public.upsert_supplier_recipient(
-    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', E'Fresh\nProduce Co.', 'orders@fresh.test'
+    'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1', null::uuid, 'orders@fresh.test'
   )$sql$),
   false,
-  'manager cannot save a control-character supplier identity'
+  'manager cannot save a recipient without durable supplier identity'
 );
 reset role;
 
@@ -215,7 +228,8 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '41414141-4141-4141-8141-414141414141', true);
 select lives_ok(
   $sql$select public.upsert_supplier_recipient(
-    'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1', 'Cafe Supply', 'OWNER@CAFE.TEST'
+    'b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1',
+    'b4b4b4b4-b4b4-44b4-84b4-b4b4b4b4b4b4', 'OWNER@CAFE.TEST'
   )$sql$,
   'owner can save their own restaurant supplier recipient'
 );
@@ -245,10 +259,10 @@ select is(
     select count(*)
     from pg_indexes
     where schemaname = 'public'
-      and indexname = 'supplier_recipients_restaurant_normalized_supplier_uidx'
+      and indexname = 'supplier_recipients_restaurant_supplier_id_uidx'
   ),
   1::bigint,
-  'normalized restaurant supplier identity has a unique index'
+  'durable restaurant supplier identity has a unique index'
 );
 select is(
   (

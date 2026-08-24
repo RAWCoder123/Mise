@@ -34,48 +34,57 @@ insert into public.restaurant_email_connections (
   'gmail', 'connected', 'orders@aba.test', clock_timestamp()
 );
 
-insert into public.supplier_recipients (restaurant_id, supplier_name, email)
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
 values
-  ('ab000000-0000-4000-8000-000000000001', 'Alpha Produce', 'alpha@aba.test'),
-  ('ab000000-0000-4000-8000-000000000001', 'Beta Produce', 'beta@aba.test');
+  ('ab000000-0000-4000-8000-000000000010', 'ab000000-0000-4000-8000-000000000001', 'Alpha Produce', 'alpha produce'),
+  ('ab000000-0000-4000-8000-000000000020', 'ab000000-0000-4000-8000-000000000001', 'Beta Produce', 'beta produce');
+
+insert into public.supplier_recipients (restaurant_id, supplier_id, supplier_name, email)
+values
+  ('ab000000-0000-4000-8000-000000000001', 'ab000000-0000-4000-8000-000000000010', 'Alpha Produce', 'alpha@aba.test'),
+  ('ab000000-0000-4000-8000-000000000001', 'ab000000-0000-4000-8000-000000000020', 'Beta Produce', 'beta@aba.test');
 
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity,
-  par_level, reorder_threshold, estimated_unit_cost, supplier_name,
+  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name,
   canonical_unit, canonical_quantity_per_unit,
   canonical_unit_verification_status, canonical_unit_verified_at,
   canonical_unit_verified_by
 ) values (
   'ab000000-0000-4000-8000-000000000011',
   'ab000000-0000-4000-8000-000000000001',
-  'Tomatoes', 'Produce', 'case', 1, 8, 2, 10, 'Alpha Produce',
+  'Tomatoes', 'Produce', 'case', 1, 8, 2, 10,
+  'ab000000-0000-4000-8000-000000000010', 'Alpha Produce',
   'case', 1, 'verified', now(),
   'ab111111-1111-4111-8111-111111111111'
 );
 
 insert into public.supplier_orders (
-  id, restaurant_id, supplier_name, order_message, status, delivery_date
+  id, restaurant_id, supplier_id, supplier_name, order_message, status, delivery_date
 ) values
   (
     'ab000000-0000-4000-8000-000000000201',
     'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000010',
     'Alpha Produce', 'fixture pending render', 'draft', current_date + 1
   ),
   (
     'ab000000-0000-4000-8000-000000000202',
     'ab000000-0000-4000-8000-000000000001',
+    'ab000000-0000-4000-8000-000000000020',
     'Beta Produce', 'unrelated draft', 'draft', current_date + 1
   );
 
 insert into public.purchase_recommendations (
-  id, restaurant_id, inventory_item_id, item_name, supplier_name,
+  id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
   recommended_quantity, unit, reason, urgency, status, generation_source,
   supplier_order_id
 ) values (
   'ab000000-0000-4000-8000-000000000101',
   'ab000000-0000-4000-8000-000000000001',
   'ab000000-0000-4000-8000-000000000011',
-  'Tomatoes', 'Alpha Produce', 2, 'case', 'ABA fixture', 'high',
+  'Tomatoes', 'ab000000-0000-4000-8000-000000000010',
+  'Alpha Produce', 2, 'case', 'ABA fixture', 'high',
   'approved', 'manual', 'ab000000-0000-4000-8000-000000000201'
 );
 
@@ -200,11 +209,11 @@ where orders.id = 'ab000000-0000-4000-8000-000000000201';
 update public.supplier_recipients
 set email = 'temporary@aba.test'
 where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
-  and supplier_name = 'Alpha Produce';
+  and supplier_id = 'ab000000-0000-4000-8000-000000000010';
 update public.supplier_recipients
 set email = 'alpha@aba.test'
 where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
-  and supplier_name = 'Alpha Produce';
+  and supplier_id = 'ab000000-0000-4000-8000-000000000010';
 
 select is(private.build_supplier_send_content(
   'ab000000-0000-4000-8000-000000000001',
@@ -323,7 +332,7 @@ where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
 update public.supplier_recipients
 set email = email
 where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
-  and supplier_name = 'Alpha Produce';
+  and supplier_id = 'ab000000-0000-4000-8000-000000000010';
 update public.restaurants set cuisine_type = 'Bakery'
 where id = 'ab000000-0000-4000-8000-000000000001';
 
@@ -355,20 +364,21 @@ insert into private.supplier_email_deliveries (
   content_fingerprint, authority_version, authority_fingerprint,
   approved_action_id, claimed_recommendation_ids, claimed_from,
   claimed_to, claimed_subject, credential_generation,
-  claimed_content_revision, authority_evaluated_at
+  claimed_content_revision, authority_evaluated_at, supplier_id
 )
 select
   orders.restaurant_id, orders.id,
   'ab111111-1111-4111-8111-111111111111', orders.id,
   'ab000000-0000-4000-8000-000000000901', 'sending',
-  '<mise-003b-active-aba@mise.test>', 'mise.supplier_send.v1',
+  '<mise-003b-active-aba@mise.test>',
+  action.expected_impact->'approvedSendContent'->>'version',
   action.expected_impact->'approvedSendContent'->>'fingerprint',
   'mise.purchase_authority.v1', repeat('a', 64), action.id,
   array['ab000000-0000-4000-8000-000000000101'::uuid],
   action.expected_impact->'approvedSendContent'->>'from',
   action.expected_impact->'approvedSendContent'->>'to',
   action.expected_impact->'approvedSendContent'->>'subject',
-  1, orders.send_content_revision, clock_timestamp()
+  1, orders.send_content_revision, clock_timestamp(), orders.supplier_id
 from public.supplier_orders orders
 join public.mise_actions action
   on action.restaurant_id = orders.restaurant_id

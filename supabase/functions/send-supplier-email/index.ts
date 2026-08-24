@@ -23,13 +23,12 @@ import {
   reserveFunctionInvocation,
 } from "../_shared/mise.ts";
 
-interface ClaimedSupplierEmail {
+interface ClaimedSupplierEmailBase {
   outcome: "claimed";
   claimToken: string;
   credentialId: string;
   credentialGeneration: number;
   refreshToken: string;
-  contentVersion: "mise.supplier_send.v1";
   contentFingerprint: string;
   authorityVersion: "mise.purchase_authority.v1";
   authorityFingerprint: string;
@@ -39,6 +38,23 @@ interface ClaimedSupplierEmail {
   body: string;
   rfcMessageId: string;
 }
+
+interface LegacyClaimedSupplierEmail extends ClaimedSupplierEmailBase {
+  contentVersion: "mise.supplier_send.v1";
+  supplierId?: null;
+}
+
+interface ClaimedSupplierEmailV2 extends ClaimedSupplierEmailBase {
+  contentVersion: "mise.supplier_send.v2";
+  supplierId: string;
+}
+
+// New claims are v2 and bind a durable supplier UUID. The v1 branch exists
+// only so an immutable claim created before MISE-003C can reach its original
+// terminal outcome; it cannot be upgraded by fabricating a supplier identity.
+type ClaimedSupplierEmail =
+  | LegacyClaimedSupplierEmail
+  | ClaimedSupplierEmailV2;
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -627,7 +643,16 @@ function isClaimedSupplierEmail(
     Number.isSafeInteger(claim.credentialGeneration) &&
     claim.credentialGeneration > 0 &&
     isOpaqueCredential(claim.refreshToken) &&
-    claim.contentVersion === "mise.supplier_send.v1" &&
+    (
+      (
+        claim.contentVersion === "mise.supplier_send.v1" &&
+        (claim.supplierId === undefined || claim.supplierId === null)
+      ) ||
+      (
+        claim.contentVersion === "mise.supplier_send.v2" &&
+        isCanonicalUuid(claim.supplierId)
+      )
+    ) &&
     typeof claim.contentFingerprint === "string" &&
     SHA256_HEX_PATTERN.test(claim.contentFingerprint) &&
     claim.authorityVersion === "mise.purchase_authority.v1" &&

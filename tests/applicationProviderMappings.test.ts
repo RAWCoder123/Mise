@@ -12,6 +12,7 @@ import type { InventoryItem, MenuItemIngredient, PosSale, PurchaseRecommendation
 const require = createRequire(import.meta.url);
 
 const restaurantId = "restaurant-app-provider-mappings";
+const bakerySupplierId = "33333333-3333-4333-8333-333333333333";
 const operatingDate = "2026-08-18";
 const inventoryItem: InventoryItem = {
   id: "inventory-burger-buns",
@@ -23,6 +24,7 @@ const inventoryItem: InventoryItem = {
   par_level: 40,
   reorder_threshold: 12,
   estimated_unit_cost: 0.5,
+  supplier_id: bakerySupplierId,
   supplier_name: "Bakery Co.",
   last_updated: "2026-08-18T10:00:00.000Z"
 };
@@ -249,7 +251,14 @@ test("hosted repository planning data preserves provider identity through the re
           }];
 
           const tableData: Record<string, unknown> = {
-            inventory_items: [inventoryItem],
+            inventory_items: [{
+              ...inventoryItem,
+              supplier: {
+                id: bakerySupplierId,
+                restaurant_id: restaurantId,
+                display_name: "Bakery Co."
+              }
+            }],
             menu_item_ingredients: [recipe],
             restaurants: this.filters.get("id") === restaurantId ? restaurant : { timezone: "America/Los_Angeles" },
             pos_catalog_item_mappings: providerRows,

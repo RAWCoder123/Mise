@@ -108,6 +108,9 @@ export default function OrderDraftDetailScreen() {
       if (nextEmailPayload.orderId !== orderId) {
         throw new Error(t("orders.detail.orderMismatch"));
       }
+      if (nextEmailPayload.supplierId !== nextDetail.order.supplier_id) {
+        throw new Error(t("orders.detail.orderMismatch"));
+      }
       setOrder(nextDetail.order);
       setDeliveryEvidence(nextDetail.deliveryEvidence);
       setEmailConnection(nextEmailConnection);
@@ -810,6 +813,7 @@ function canApproveSupplierSendAction(action: MiseAction) {
 
 function sameReviewedSendContent(left: SupplierEmailPayload, right: SupplierEmailPayload) {
   return left.orderId === right.orderId &&
+    left.supplierId === right.supplierId &&
     left.contentVersion === right.contentVersion &&
     Boolean(left.contentFingerprint) &&
     left.contentFingerprint === right.contentFingerprint;

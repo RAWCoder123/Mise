@@ -61,6 +61,12 @@ import {
 import type { InventoryItem } from "../types/mise";
 import { addDays, toDateKey, toDateKeyInTimeZone } from "../utils/format";
 
+const TEST_SUPPLIER_IDS = {
+  freshPoultry: "10000000-0000-4000-8000-000000000001",
+  localProduce: "10000000-0000-4000-8000-000000000002",
+  restaurantDepot: "10000000-0000-4000-8000-000000000003"
+} as const;
+
 function isoDaysAgo(days: number) {
   return addDays(new Date(), -days).toISOString();
 }
@@ -175,6 +181,7 @@ test("real restaurants never inherit static demo demand assumptions", () => {
     par_level: 40,
     reorder_threshold: 10,
     estimated_unit_cost: 4,
+    supplier_id: TEST_SUPPLIER_IDS.freshPoultry,
     supplier_name: "Fresh Co.",
     last_updated: new Date().toISOString()
   };
@@ -252,6 +259,7 @@ test("coverage blends current depletion with learned demand and exposes its evid
     par_level: 50,
     reorder_threshold: 12,
     estimated_unit_cost: 4,
+    supplier_id: TEST_SUPPLIER_IDS.freshPoultry,
     supplier_name: "Fresh Co.",
     last_updated: new Date().toISOString()
   };
@@ -319,6 +327,7 @@ test("purchase recommendations learn a bounded median from repeated approved qua
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: pancakeMix.id,
       item_name: pancakeMix.item_name,
+      supplier_id: pancakeMix.supplier_id,
       supplier_name: pancakeMix.supplier_name,
       recommended_quantity: 32,
       unit: pancakeMix.unit,
@@ -333,6 +342,7 @@ test("purchase recommendations learn a bounded median from repeated approved qua
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: pancakeMix.id,
       item_name: pancakeMix.item_name,
+      supplier_id: pancakeMix.supplier_id,
       supplier_name: pancakeMix.supplier_name,
       recommended_quantity: 54,
       unit: pancakeMix.unit,
@@ -347,6 +357,7 @@ test("purchase recommendations learn a bounded median from repeated approved qua
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: pancakeMix.id,
       item_name: pancakeMix.item_name,
+      supplier_id: pancakeMix.supplier_id,
       supplier_name: pancakeMix.supplier_name,
       recommended_quantity: 50,
       unit: pancakeMix.unit,
@@ -383,6 +394,7 @@ test("one anomalous approval does not override the calculated recommendation", (
     restaurant_id: DEMO_RESTAURANT_ID,
     inventory_item_id: pancakeMix.id,
     item_name: pancakeMix.item_name,
+    supplier_id: pancakeMix.supplier_id,
     supplier_name: pancakeMix.supplier_name,
     recommended_quantity: 1e100,
     unit: pancakeMix.unit,
@@ -417,6 +429,7 @@ test("stale approvals age out of recommendation learning", () => {
     restaurant_id: DEMO_RESTAURANT_ID,
     inventory_item_id: pancakeMix.id,
     item_name: pancakeMix.item_name,
+    supplier_id: pancakeMix.supplier_id,
     supplier_name: pancakeMix.supplier_name,
     recommended_quantity: 55,
     unit: pancakeMix.unit,
@@ -450,6 +463,7 @@ test("recommendation learning never mixes incompatible purchasing units", () => 
     restaurant_id: DEMO_RESTAURANT_ID,
     inventory_item_id: pancakeMix.id,
     item_name: pancakeMix.item_name,
+    supplier_id: pancakeMix.supplier_id,
     supplier_name: pancakeMix.supplier_name,
     recommended_quantity: 6,
     unit: "case",
@@ -484,6 +498,7 @@ test("repeated recent approvals move learned quantities as operator behavior cha
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: pancakeMix.id,
       item_name: pancakeMix.item_name,
+      supplier_id: pancakeMix.supplier_id,
       supplier_name: pancakeMix.supplier_name,
       recommended_quantity: 42,
       unit: pancakeMix.unit,
@@ -498,6 +513,7 @@ test("repeated recent approvals move learned quantities as operator behavior cha
       restaurant_id: DEMO_RESTAURANT_ID,
       inventory_item_id: pancakeMix.id,
       item_name: pancakeMix.item_name,
+      supplier_id: pancakeMix.supplier_id,
       supplier_name: pancakeMix.supplier_name,
       recommended_quantity: 55,
       unit: pancakeMix.unit,
@@ -532,6 +548,7 @@ test("handled recommendations stay suppressed until a newer verified physical co
     restaurant_id: DEMO_RESTAURANT_ID,
     inventory_item_id: chicken.id,
     item_name: chicken.item_name,
+    supplier_id: chicken.supplier_id,
     supplier_name: chicken.supplier_name,
     recommended_quantity: 20,
     unit: chicken.unit,
@@ -608,6 +625,7 @@ test("approved and ordered recommendations also suppress duplicate pending rows"
           restaurant_id: DEMO_RESTAURANT_ID,
           inventory_item_id: rice.id,
           item_name: rice.item_name,
+          supplier_id: rice.supplier_id,
           supplier_name: rice.supplier_name,
           recommended_quantity: 50,
           unit: rice.unit,
@@ -635,6 +653,7 @@ test("demo recommendation rebuild uses full history without browser runtime erro
     restaurant_id: DEMO_RESTAURANT_ID,
     inventory_item_id: chicken.id,
     item_name: chicken.item_name,
+    supplier_id: chicken.supplier_id,
     supplier_name: chicken.supplier_name,
     recommended_quantity: 12,
     unit: chicken.unit,
@@ -660,8 +679,7 @@ test("validation normalizes reads and rejects invalid mutation quantities", () =
   const patch = normalizeInventoryItemPatch({
     current_quantity: -4,
     par_level: Number.NaN,
-    reorder_threshold: "6" as never,
-    supplier_name: 42 as never
+    reorder_threshold: "6" as never
   });
   const sale = normalizePosSale({
     id: "sale_test",
@@ -679,8 +697,7 @@ test("validation normalizes reads and rejects invalid mutation quantities", () =
   assert.deepEqual(patch, {
     current_quantity: 0,
     par_level: 0,
-    reorder_threshold: 6,
-    supplier_name: "Supplier"
+    reorder_threshold: 6
   });
   assert.equal(sale.quantity_sold, 0);
   assert.equal(sale.gross_sales, 18.5);
@@ -752,7 +769,7 @@ test("supplier drafts group approved recommendations by supplier", () => {
   ]);
   const summary = buildOrderQueueSummary(DEMO_RESTAURANT_ID, pendingRecommendations, drafts);
 
-  assert.equal(drafts.length, new Set(pendingRecommendations.map((insert) => insert.supplier_name)).size);
+  assert.equal(drafts.length, new Set(pendingRecommendations.map((insert) => insert.supplier_id)).size);
   assert.ok(drafts.every((draft) => draft.order_message.includes("Delivery requested")));
   assert.ok(drafts.every((draft) => !draft.order_message.includes("Already ordered item")));
   assert.ok(drafts.every((draft) => !draft.order_message.includes("Dismissed item")));
@@ -782,7 +799,7 @@ test("order queue summary counts draft suppliers when recommendations are cleare
   const summary = buildOrderQueueSummary(DEMO_RESTAURANT_ID, [], drafts);
 
   assert.equal(summary.pendingItems, 0);
-  assert.equal(summary.supplierCount, new Set(drafts.map((draft) => draft.supplier_name)).size);
+  assert.equal(summary.supplierCount, new Set(drafts.map((draft) => draft.supplier_id)).size);
   assert.equal(summary.draftCount, drafts.length);
   assert.match(summary.readinessLabel, /drafts ready/i);
   assert.match(summary.operatorCopy, /supplier draft/i);
@@ -1159,11 +1176,15 @@ test("setup draft readiness uses list-style inventory, supplier, recipe, and ema
     restaurantName: "Luna Bistro",
     cuisineType: "Fast casual",
     inventoryItems: [
-      { id: "i1", name: "Chicken breast", quantity: "3.2", unit: "lb", parLevel: "20", supplier: "Fresh Poultry" },
-      { id: "i2", name: "Rice", quantity: "25", unit: "lb", parLevel: "50", supplier: "Depot" },
-      { id: "i3", name: "Roma Tomatoes", quantity: "8", unit: "lb", parLevel: "24", supplier: "Produce Co." }
+      { id: "i1", name: "Chicken breast", quantity: "3.2", unit: "lb", parLevel: "20", supplierId: TEST_SUPPLIER_IDS.freshPoultry },
+      { id: "i2", name: "Rice", quantity: "25", unit: "lb", parLevel: "50", supplierId: TEST_SUPPLIER_IDS.restaurantDepot },
+      { id: "i3", name: "Roma Tomatoes", quantity: "8", unit: "lb", parLevel: "24", supplierId: TEST_SUPPLIER_IDS.localProduce }
     ],
-    suppliers: [{ id: "s1", name: "Produce Co.", email: "" }],
+    suppliers: [
+      { id: TEST_SUPPLIER_IDS.freshPoultry, name: "Fresh Poultry", email: "" },
+      { id: TEST_SUPPLIER_IDS.restaurantDepot, name: "Depot", email: "" },
+      { id: TEST_SUPPLIER_IDS.localProduce, name: "Produce Co.", email: "" }
+    ],
     recipes: [
       {
         id: "r1",
@@ -1293,6 +1314,7 @@ test("conditional analytics appear only when operational data supports them", ()
     {
       id: "order_sent_1",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: TEST_SUPPLIER_IDS.localProduce,
       supplier_name: "Local Produce Co.",
       order_message: "Order one",
       operator_note: null,
@@ -1303,6 +1325,7 @@ test("conditional analytics appear only when operational data supports them", ()
     {
       id: "order_sent_2",
       restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_id: TEST_SUPPLIER_IDS.restaurantDepot,
       supplier_name: "Restaurant Depot",
       order_message: "Order two",
       operator_note: null,
@@ -1328,9 +1351,14 @@ test("conditional analytics appear only when operational data supports them", ()
 test("supplier email payloads stay blocked until Gmail and recipient data are ready", () => {
   const state = createInitialDemoState("Toast");
   const restaurant = state.restaurants[0]!;
+  const localProduceSupplier = state.suppliers.find(
+    (supplier) => supplier.display_name === "Local Produce Co."
+  );
+  assert.ok(localProduceSupplier);
   const order = {
     id: "order_email_test",
     restaurant_id: DEMO_RESTAURANT_ID,
+    supplier_id: localProduceSupplier.id,
     supplier_name: "Local Produce Co.",
     order_message: "Tomatoes - 20 lbs",
     operator_note: null,
@@ -1377,6 +1405,7 @@ test("supplier order presentation itemizes current draft messages", () => {
   const presentation = buildSupplierDraftPresentation({
     id: "order_1",
     restaurant_id: DEMO_RESTAURANT_ID,
+    supplier_id: TEST_SUPPLIER_IDS.localProduce,
     supplier_name: "Local Produce Co.",
     order_message: "Roma Tomatoes - 20 lb\nRed Onions - 10 lb",
     operator_note: null,
@@ -1400,12 +1429,12 @@ test("today screen title personalizes to the active restaurant", () => {
 test("setup persistence preview counts durable tenant writes without raw attachment data", () => {
   const preview = buildSetupPersistencePreview({
     inventoryItems: [
-      { id: "inventory_1", name: "Tomatoes", quantity: "20", unit: "lb", parLevel: "30", supplier: "Fresh Produce Co." },
-      { id: "inventory_2", name: "", quantity: "4", unit: "case", parLevel: "8", supplier: "Dry Goods" }
+      { id: "inventory_1", name: "Tomatoes", quantity: "20", unit: "lb", parLevel: "30", supplierId: TEST_SUPPLIER_IDS.localProduce },
+      { id: "inventory_2", name: "", quantity: "4", unit: "case", parLevel: "8", supplierId: TEST_SUPPLIER_IDS.restaurantDepot }
     ],
     suppliers: [
-      { id: "supplier_1", name: "Fresh Produce Co.", email: "orders@fresh.example" },
-      { id: "supplier_2", name: "", email: "" }
+      { id: TEST_SUPPLIER_IDS.localProduce, name: "Fresh Produce Co.", email: "orders@fresh.example" },
+      { id: TEST_SUPPLIER_IDS.restaurantDepot, name: "", email: "" }
     ],
     recipes: [
       {
@@ -1514,11 +1543,15 @@ test("setup data health summarizes guided restaurant data without making POS or 
     restaurantName: DEMO_DATASET.restaurant.name,
     cuisineType: DEMO_DATASET.restaurant.cuisineType,
     inventoryItems: [
-      { id: "i1", name: "Chicken thigh", quantity: "26", unit: "lb", parLevel: "95", supplier: "Regional Protein Co." },
-      { id: "i2", name: "Jasmine rice", quantity: "88", unit: "lb", parLevel: "190", supplier: "Pantry Wholesale" },
-      { id: "i3", name: "Bell peppers", quantity: "18", unit: "lb", parLevel: "52", supplier: "Metro Produce Supply" }
+      { id: "i1", name: "Chicken thigh", quantity: "26", unit: "lb", parLevel: "95", supplierId: TEST_SUPPLIER_IDS.freshPoultry },
+      { id: "i2", name: "Jasmine rice", quantity: "88", unit: "lb", parLevel: "190", supplierId: TEST_SUPPLIER_IDS.restaurantDepot },
+      { id: "i3", name: "Bell peppers", quantity: "18", unit: "lb", parLevel: "52", supplierId: TEST_SUPPLIER_IDS.localProduce }
     ],
-    suppliers: [{ id: "s1", name: "Metro Produce Supply", email: "orders@example.com" }],
+    suppliers: [
+      { id: TEST_SUPPLIER_IDS.freshPoultry, name: "Regional Protein Co.", email: "" },
+      { id: TEST_SUPPLIER_IDS.restaurantDepot, name: "Pantry Wholesale", email: "" },
+      { id: TEST_SUPPLIER_IDS.localProduce, name: "Metro Produce Supply", email: "orders@example.com" }
+    ],
     recipes: [
       {
         id: "r1",

@@ -25,6 +25,13 @@ values (
   'active'
 );
 
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values (
+  'e0000000-0000-4000-8000-000000000010',
+  'e0000000-0000-4000-8000-000000000001',
+  'Supplier', 'supplier'
+);
+
 insert into public.pos_integrations (id, restaurant_id, provider, status)
 values (
   'e0000000-0000-4000-8000-000000000101',
@@ -46,7 +53,7 @@ values
 
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity, par_level,
-  reorder_threshold, estimated_unit_cost, supplier_name, last_updated
+  reorder_threshold, estimated_unit_cost, supplier_id, supplier_name, last_updated
 )
 values (
   'e0000000-0000-4000-8000-000000000999',
@@ -58,13 +65,14 @@ values (
   0,
   0,
   1,
+  'e0000000-0000-4000-8000-000000000010',
   'Supplier',
   '2026-08-10T00:00:00Z'
 );
 
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity, par_level,
-  reorder_threshold, estimated_unit_cost, supplier_name, last_updated
+  reorder_threshold, estimated_unit_cost, supplier_id, supplier_name, last_updated
 )
 values (
   'e0000000-0000-4000-8000-000000000998',
@@ -76,6 +84,7 @@ values (
   0,
   0,
   1,
+  'e0000000-0000-4000-8000-000000000010',
   'Supplier',
   '2026-08-10T00:00:00Z'
 );
@@ -238,12 +247,13 @@ select is(
 
 reset role;
 insert into public.purchase_recommendations (
-  restaurant_id, inventory_item_id, item_name, supplier_name, recommended_quantity, unit, reason, urgency, status, supplier_order_id, created_at
+  restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name, recommended_quantity, unit, reason, urgency, status, supplier_order_id, created_at
 )
 select
   'e0000000-0000-4000-8000-000000000001',
   'e0000000-0000-4000-8000-000000000999',
   'Bulk recommendation ' || gs::text,
+  'e0000000-0000-4000-8000-000000000010',
   'Supplier',
   1,
   'each',

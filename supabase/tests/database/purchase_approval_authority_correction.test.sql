@@ -21,6 +21,12 @@ insert into public.restaurant_memberships (restaurant_id, user_id, role, status)
   ('c4000000-0000-4000-8000-000000000001', 'c4111111-1111-4111-8111-111111111111', 'manager', 'active'),
   ('c4000000-0000-4000-8000-000000000002', 'c4111111-1111-4111-8111-111111111111', 'manager', 'active');
 
+insert into public.suppliers (id, restaurant_id, display_name, normalized_name)
+values
+  ('c4000000-0000-4000-8000-000000000010', 'c4000000-0000-4000-8000-000000000001', 'Live Supplier', 'live supplier'),
+  ('c4000000-0000-4000-8000-000000000020', 'c4000000-0000-4000-8000-000000000001', 'Generated Supplier', 'generated supplier'),
+  ('c4000000-0000-4000-8000-000000000030', 'c4000000-0000-4000-8000-000000000002', 'Manual Supplier', 'manual supplier');
+
 update public.system_operational_controls
 set ordering_policy = 'draft_only', order_drafting_enabled = true
 where singleton;
@@ -33,24 +39,29 @@ where restaurant_id in (
 
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity, par_level,
-  reorder_threshold, estimated_unit_cost, supplier_name, canonical_unit,
+  reorder_threshold, estimated_unit_cost, supplier_id, supplier_name, canonical_unit,
   canonical_quantity_per_unit, canonical_unit_verification_status,
   canonical_unit_verified_at, canonical_unit_verified_by
 ) values
   ('c4000000-0000-4000-8000-000000000011', 'c4000000-0000-4000-8000-000000000001',
-   'Live line A', 'Produce', 'each', 1, 10, 3, 1, 'Live Supplier',
+   'Live line A', 'Produce', 'each', 1, 10, 3, 1,
+   'c4000000-0000-4000-8000-000000000010', 'Live Supplier',
    'each', 1, 'verified', clock_timestamp(), 'c4111111-1111-4111-8111-111111111111'),
   ('c4000000-0000-4000-8000-000000000012', 'c4000000-0000-4000-8000-000000000001',
-   'Live line B', 'Produce', 'each', 1, 10, 3, 1, 'Live Supplier',
+   'Live line B', 'Produce', 'each', 1, 10, 3, 1,
+   'c4000000-0000-4000-8000-000000000010', 'Live Supplier',
    'each', 1, 'verified', clock_timestamp(), 'c4111111-1111-4111-8111-111111111111'),
   ('c4000000-0000-4000-8000-000000000013', 'c4000000-0000-4000-8000-000000000001',
-   'Live line C', 'Produce', 'each', 1, 10, 3, 1, 'Live Supplier',
+   'Live line C', 'Produce', 'each', 1, 10, 3, 1,
+   'c4000000-0000-4000-8000-000000000010', 'Live Supplier',
    'each', 1, 'verified', clock_timestamp(), 'c4111111-1111-4111-8111-111111111111'),
   ('c4000000-0000-4000-8000-000000000014', 'c4000000-0000-4000-8000-000000000001',
-   'Generated zero demand', 'Produce', 'each', 1, 10, 3, 1, 'Generated Supplier',
+   'Generated zero demand', 'Produce', 'each', 1, 10, 3, 1,
+   'c4000000-0000-4000-8000-000000000020', 'Generated Supplier',
    'each', 1, 'verified', clock_timestamp(), 'c4111111-1111-4111-8111-111111111111'),
   ('c4000000-0000-4000-8000-000000000015', 'c4000000-0000-4000-8000-000000000002',
-   'Manual-only item', 'Produce', 'each', 1, 10, 3, 1, 'Manual Supplier',
+   'Manual-only item', 'Produce', 'each', 1, 10, 3, 1,
+   'c4000000-0000-4000-8000-000000000030', 'Manual Supplier',
    'each', 1, 'verified', clock_timestamp(), 'c4111111-1111-4111-8111-111111111111');
 
 insert into public.inventory_events (
@@ -96,25 +107,30 @@ set signals_revision = planning_revision, status = 'current'
 where restaurant_id = 'c4000000-0000-4000-8000-000000000001';
 
 insert into public.purchase_recommendations (
-  id, restaurant_id, inventory_item_id, item_name, supplier_name,
+  id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
   recommended_quantity, unit, reason, urgency, status, generation_source, planning_revision
 ) values
   ('c4000000-0000-4000-8000-000000000401', 'c4000000-0000-4000-8000-000000000001',
-   'c4000000-0000-4000-8000-000000000011', 'Live line A', 'Live Supplier',
+   'c4000000-0000-4000-8000-000000000011', 'Live line A',
+   'c4000000-0000-4000-8000-000000000010', 'Live Supplier',
    2, 'each', 'Manual stock authority A', 'high', 'pending', 'manual', null),
   ('c4000000-0000-4000-8000-000000000402', 'c4000000-0000-4000-8000-000000000001',
-   'c4000000-0000-4000-8000-000000000012', 'Live line B', 'Live Supplier',
+   'c4000000-0000-4000-8000-000000000012', 'Live line B',
+   'c4000000-0000-4000-8000-000000000010', 'Live Supplier',
    2, 'each', 'Manual stock authority B', 'high', 'pending', 'manual', null),
   ('c4000000-0000-4000-8000-000000000403', 'c4000000-0000-4000-8000-000000000001',
-   'c4000000-0000-4000-8000-000000000013', 'Live line C', 'Live Supplier',
+   'c4000000-0000-4000-8000-000000000013', 'Live line C',
+   'c4000000-0000-4000-8000-000000000010', 'Live Supplier',
    2, 'each', 'Manual stock authority C', 'high', 'pending', 'manual', null),
   ('c4000000-0000-4000-8000-000000000404', 'c4000000-0000-4000-8000-000000000001',
-   'c4000000-0000-4000-8000-000000000014', 'Generated zero demand', 'Generated Supplier',
+   'c4000000-0000-4000-8000-000000000014', 'Generated zero demand',
+   'c4000000-0000-4000-8000-000000000020', 'Generated Supplier',
    2, 'each', 'Generated demand authority', 'high', 'pending', 'mise_rules',
    (select planning_revision from private.restaurant_signal_state
     where restaurant_id = 'c4000000-0000-4000-8000-000000000001')),
   ('c4000000-0000-4000-8000-000000000405', 'c4000000-0000-4000-8000-000000000002',
-   'c4000000-0000-4000-8000-000000000015', 'Manual-only item', 'Manual Supplier',
+   'c4000000-0000-4000-8000-000000000015', 'Manual-only item',
+   'c4000000-0000-4000-8000-000000000030', 'Manual Supplier',
    2, 'each', 'No provider manual behavior', 'high', 'pending', 'manual', null);
 
 select ok((private.evaluate_purchase_recommendation_authority(

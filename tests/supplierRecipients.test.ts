@@ -3,41 +3,56 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  buildSupplierRecipientDirectory,
-  findSupplierRecipientCatalogName,
-  supplierRecipientDirectoryKey
+  buildSupplierRecipientDirectory
 } from "../services/domain/supplierRecipients";
 import {
   requireSupplierRecipientInput,
-  SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS,
-  SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS
+  SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS
 } from "../services/miseValidation";
-import type { SupplierRecipient } from "../types/mise";
+import type { Supplier, SupplierRecipient } from "../types/mise";
 
 const restaurantId = "restaurant_a";
+const freshSupplierId = "10000000-0000-4000-8000-000000000001";
+const bakerySupplierId = "10000000-0000-4000-8000-000000000002";
+const pantrySupplierId = "10000000-0000-4000-8000-000000000003";
 
-test("supplier recipient directory is tenant-scoped, case-insensitive, and keeps saved-only suppliers", () => {
+test("supplier recipient directory is tenant-scoped and binds recipients by durable supplier ID", () => {
+  const suppliers: Supplier[] = [
+    supplier({ id: freshSupplierId, display_name: "Fresh Foods", normalized_name: "fresh foods" }),
+    supplier({ id: bakerySupplierId, display_name: "Legacy Bakery", normalized_name: "legacy bakery" }),
+    supplier({ id: pantrySupplierId, display_name: "Pantry Wholesale", normalized_name: "pantry wholesale" }),
+    supplier({
+      id: "20000000-0000-4000-8000-000000000001",
+      restaurant_id: "restaurant_b",
+      display_name: "Other Tenant Supply",
+      normalized_name: "other tenant supply"
+    })
+  ];
   const recipients: SupplierRecipient[] = [
     recipient({
       id: "fresh_old",
-      supplier_name: "fresh foods",
+      supplier_id: freshSupplierId,
+      supplier_name: "Old presentation snapshot",
       email: "old@fresh.test",
       updated_at: "2026-07-17T10:00:00.000Z"
     }),
     recipient({
       id: "fresh_new",
-      supplier_name: "Fresh Foods",
+      supplier_id: freshSupplierId,
+      supplier_name: "Another stale snapshot",
       email: "orders@fresh.test",
       updated_at: "2026-07-18T10:00:00.000Z"
     }),
     recipient({
       id: "saved_only",
+      supplier_id: bakerySupplierId,
       supplier_name: "Legacy Bakery",
       email: "orders@legacy.test"
     }),
     recipient({
       id: "foreign",
       restaurant_id: "restaurant_b",
+      supplier_id: "20000000-0000-4000-8000-000000000001",
       supplier_name: "Other Tenant Supply",
       email: "orders@other.test"
     })
@@ -45,7 +60,7 @@ test("supplier recipient directory is tenant-scoped, case-insensitive, and keeps
 
   const directory = buildSupplierRecipientDirectory(
     restaurantId,
-    ["  Fresh   Foods ", "fresh foods", "Pantry Wholesale"],
+    suppliers,
     recipients
   );
 
@@ -58,54 +73,35 @@ test("supplier recipient directory is tenant-scoped, case-insensitive, and keeps
   assert.equal(directory[0]?.email, "orders@fresh.test");
   assert.equal(directory[0]?.recipientId, "fresh_new");
   assert.equal(directory[0]?.source, "current_and_saved");
-  assert.equal(directory[1]?.source, "saved");
+  assert.equal(directory[1]?.source, "current_and_saved");
   assert.equal(directory[2]?.source, "current");
   assert.equal(directory.some((entry) => entry.recipientId === "foreign"), false);
-  assert.equal(supplierRecipientDirectoryKey(" Fresh   Foods "), "fresh foods");
+  assert.equal(directory[0]?.supplierId, freshSupplierId);
 });
 
-test("supplier recipient input normalizes bounded names and emails", () => {
+test("supplier recipient input normalizes durable IDs and bounded emails", () => {
   assert.deepEqual(
     requireSupplierRecipientInput({
       restaurant_id: " restaurant_a ",
-      supplier_name: "  Fresh   Foods  ",
+      supplier_id: ` ${freshSupplierId} `,
       email: " ORDERS@Fresh.Example "
     }),
     {
       restaurant_id: "restaurant_a",
-      supplier_name: "Fresh Foods",
+      supplier_id: freshSupplierId,
       email: "orders@fresh.example"
     }
   );
 });
 
-test("supplier recipient catalog matching is tenant-scoped and rejects invented suppliers", () => {
-  const references = [
-    { restaurantId, supplierName: "Fresh Produce Co." },
-    { restaurantId: "restaurant_b", supplierName: "Other Tenant Supply" },
-    { restaurantId, supplierName: "Saved Bakery" }
-  ];
-
-  assert.equal(
-    findSupplierRecipientCatalogName(restaurantId, "  fresh   produce co. ", references),
-    "Fresh Produce Co."
-  );
-  assert.equal(findSupplierRecipientCatalogName(restaurantId, "Other Tenant Supply", references), null);
-  assert.equal(findSupplierRecipientCatalogName(restaurantId, "Invented Supplier", references), null);
-});
-
 test("supplier recipient validation rejects malformed or unbounded identity", () => {
   const valid = {
     restaurant_id: restaurantId,
-    supplier_name: "Fresh Foods",
+    supplier_id: freshSupplierId,
     email: "orders@fresh.test"
   };
   assert.throws(() => requireSupplierRecipientInput({ ...valid, restaurant_id: "" }), /restaurant workspace/i);
-  assert.throws(() => requireSupplierRecipientInput({ ...valid, supplier_name: "Bad\nSupplier" }), /supplier name/i);
-  assert.throws(
-    () => requireSupplierRecipientInput({ ...valid, supplier_name: "s".repeat(SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS + 1) }),
-    /supplier name/i
-  );
+  assert.throws(() => requireSupplierRecipientInput({ ...valid, supplier_id: "not-a-uuid" }), /supplier identity/i);
   assert.throws(() => requireSupplierRecipientInput({ ...valid, email: "not-an-email" }), /valid supplier email/i);
   assert.throws(
     () => requireSupplierRecipientInput({ ...valid, email: `${"a".repeat(SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS)}@x.test` }),
@@ -122,9 +118,8 @@ test("hosted supplier recipient writes use only the guarded RPC while demo write
   const hostedMethod = hostedRepository.slice(hostedStart, hostedRepository.indexOf("async createSetupAttachment", hostedStart));
 
   assert.match(localMethod, /requireActiveDemoRestaurant\(state, input\.restaurant_id\)/);
-  assert.match(localMethod, /findSupplierRecipientCatalogName/);
   assert.match(localMethod, /Supplier is not part of this restaurant catalog/);
-  assert.match(localMethod, /state\.inventoryItems/);
+  assert.match(localMethod, /state\.suppliers/);
   assert.match(localMethod, /state\.supplierRecipients/);
   assert.match(localMethod, /supplier_recipient_(?:created|updated)/);
   assert.match(localMethod, /appendDemoAuditLog/);
@@ -137,19 +132,23 @@ test("hosted supplier recipient writes use only the guarded RPC while demo write
 
 test("supplier recipient migration preserves the tenant-role invariant and direct-DML revocation", () => {
   const migration = readFileSync(
-    "supabase/migrations/20260719214822_supplier_recipient_management.sql",
+    "supabase/migrations/20260824034152_mise_003c_durable_supplier_identity.sql",
     "utf8"
   );
   assert.match(migration, /create or replace function public\.upsert_supplier_recipient/i);
   assert.match(migration, /security definer\s+set search_path = ''/i);
   assert.match(migration, /actor_user_id uuid := auth\.uid\(\)/i);
   assert.match(migration, /private\.has_restaurant_role\(\s*p_restaurant_id,\s*array\['owner', 'admin', 'manager'\]/i);
-  assert.match(migration, /from public\.inventory_items inventory/i);
-  assert.match(migration, /from public\.supplier_recipients saved/i);
+  assert.match(migration, /from public\.suppliers supplier/i);
+  assert.match(migration, /supplier\.id = p_supplier_id/i);
   assert.match(migration, /insert into public\.audit_logs/i);
   assert.match(migration, /supplier_recipient_(?:created|updated)/i);
-  assert.match(migration, /create unique index[^;]+lower\(pg_catalog\.btrim\(supplier_name\)\)/is);
-  assert.match(migration, /revoke insert, update, delete on table public\.supplier_recipients from authenticated/i);
+  assert.match(migration, /create unique index[^;]+supplier_recipients[^;]+restaurant_id, supplier_id/is);
+  const originalMigration = readFileSync(
+    "supabase/migrations/20260719214822_supplier_recipient_management.sql",
+    "utf8"
+  );
+  assert.match(originalMigration, /revoke insert, update, delete on table public\.supplier_recipients from authenticated/i);
   assert.match(migration, /revoke all on function public\.upsert_supplier_recipient[^;]+from public, anon, authenticated, service_role/is);
   assert.match(migration, /grant execute on function public\.upsert_supplier_recipient[^;]+to authenticated/is);
 });
@@ -163,7 +162,8 @@ test("supplier recipient route is stale-response guarded and staff read-only", (
   assert.match(screen, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screen, /canManage \? \(/);
   assert.match(screen, /editable=\{actionsEditable && !saving\}/);
-  assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| unchanged\}/);
+  assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| nameUnchanged\}/);
+  assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| emailUnchanged\}/);
   assert.match(screen, /minHeight: 44/);
   assert.match(screen, /accessibilityLabel=\{copy\.saveAccessibility/);
   assert.match(screen, /Record<AppLocale, SupplierCopy>/);
@@ -173,8 +173,21 @@ function recipient(patch: Partial<SupplierRecipient> = {}): SupplierRecipient {
   return {
     id: "recipient_1",
     restaurant_id: restaurantId,
+    supplier_id: freshSupplierId,
     supplier_name: "Fresh Foods",
     email: null,
+    created_at: "2026-07-01T10:00:00.000Z",
+    updated_at: "2026-07-18T10:00:00.000Z",
+    ...patch
+  };
+}
+
+function supplier(patch: Partial<Supplier> = {}): Supplier {
+  return {
+    id: freshSupplierId,
+    restaurant_id: restaurantId,
+    display_name: "Fresh Foods",
+    normalized_name: "fresh foods",
     created_at: "2026-07-01T10:00:00.000Z",
     updated_at: "2026-07-18T10:00:00.000Z",
     ...patch

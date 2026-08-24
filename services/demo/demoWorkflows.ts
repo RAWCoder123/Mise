@@ -18,6 +18,11 @@ import { buildInventoryCountEvidence } from "../domain/inventoryCountAuthority";
 import { nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../../utils/format";
 import { demoDemandFallback } from "./demandFallback";
 import { DEMO_RESTAURANT_TIME_ZONE, type DemoState } from "./replaceableDemoData";
+import {
+  demoSupplierNormalizedName,
+  findDemoSupplierById,
+  normalizeDemoSupplierDisplayName
+} from "./demoSupplierIdentity";
 
 function demoTimeZone(state: DemoState, restaurantId: string) {
   return (
@@ -64,10 +69,22 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
   const kept = state.purchaseRecommendations.filter((recommendation) => {
     if (recommendation.restaurant_id !== restaurantId) return true;
     if (recommendation.status !== "pending") return true;
-    return lowItemIds.has(recommendation.inventory_item_id);
+    const item = state.inventoryItems.find(
+      (candidate) =>
+        candidate.restaurant_id === restaurantId &&
+        candidate.id === recommendation.inventory_item_id
+    );
+    return (
+      lowItemIds.has(recommendation.inventory_item_id) &&
+      Boolean(item?.supplier_id) &&
+      recommendation.supplier_id === item?.supplier_id &&
+      Boolean(findDemoSupplierById(state.suppliers, restaurantId, item?.supplier_id))
+    );
   });
 
   lowOutlooks.forEach(({ item, prediction }) => {
+    const supplier = findDemoSupplierById(state.suppliers, restaurantId, item.supplier_id);
+    if (!supplier) return;
     const pending = kept.find(
       (recommendation) =>
         recommendation.restaurant_id === restaurantId &&
@@ -84,7 +101,8 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
 
     if (pending) {
       pending.item_name = item.item_name;
-      pending.supplier_name = item.supplier_name;
+      pending.supplier_id = supplier.id;
+      pending.supplier_name = supplier.display_name;
       pending.recommended_quantity = recommendedQuantity;
       pending.unit = item.unit;
       pending.reason = reason;
@@ -103,7 +121,8 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
       restaurant_id: restaurantId,
       inventory_item_id: item.id,
       item_name: item.item_name,
-      supplier_name: item.supplier_name,
+      supplier_id: supplier.id,
+      supplier_name: supplier.display_name,
       recommended_quantity: recommendedQuantity,
       unit: item.unit,
       reason,
@@ -154,6 +173,18 @@ export function approveRecommendationInDemoState(
     }
     recommendation.recommended_quantity = recommendedQuantity;
   }
+  const supplier = findDemoSupplierById(
+    state.suppliers,
+    restaurantId,
+    recommendation.supplier_id
+  );
+  const inventoryItem = state.inventoryItems.find(
+    (item) =>
+      item.restaurant_id === restaurantId && item.id === recommendation.inventory_item_id
+  );
+  if (!supplier || !inventoryItem || inventoryItem.supplier_id !== supplier.id) {
+    throw new Error("Supplier authority changed. Refresh this recommendation before approving it.");
+  }
 
   let order = recommendation.supplier_order_id
     ? state.supplierOrders.find(
@@ -165,13 +196,30 @@ export function approveRecommendationInDemoState(
   if (order && order.status !== "draft") {
     throw new Error("Already handled.");
   }
+  if (order && order.supplier_id !== supplier.id) {
+    throw new Error("Supplier authority changed. Refresh this recommendation before approving it.");
+  }
   if (!order) {
     order = state.supplierOrders.find(
       (entry) =>
         entry.restaurant_id === restaurantId &&
-        entry.supplier_name === recommendation.supplier_name &&
+        entry.supplier_id === supplier.id &&
         entry.status === "draft"
     ) ?? null;
+  }
+  if (order) {
+    const existingLines = linkedApprovedRecommendations(state, order.id);
+    const staleExistingLine = existingLines.find((line) => {
+      if (line.supplier_id !== supplier.id) return true;
+      const lineItem = state.inventoryItems.find(
+        (item) =>
+          item.restaurant_id === restaurantId && item.id === line.inventory_item_id
+      );
+      return !lineItem || lineItem.supplier_id !== supplier.id;
+    });
+    if (staleExistingLine) {
+      throw new Error("An existing supplier draft line is no longer authoritative.");
+    }
   }
   if (!order) {
     const timeZone =
@@ -181,7 +229,8 @@ export function approveRecommendationInDemoState(
     order = {
       id: createId("order"),
       restaurant_id: restaurantId,
-      supplier_name: recommendation.supplier_name,
+      supplier_id: supplier.id,
+      supplier_name: supplier.display_name,
       order_message: "",
       operator_note: null,
       status: "draft",
@@ -191,6 +240,8 @@ export function approveRecommendationInDemoState(
     state.supplierOrders.push(order);
   }
 
+  order.supplier_name = supplier.display_name;
+  recommendation.supplier_name = supplier.display_name;
   recommendation.status = "approved";
   recommendation.supplier_order_id = order.id;
   rebuildDemoDraftMessage(state, order);
@@ -297,6 +348,7 @@ export function markSupplierOrderSentInDemoState(
     Number.isFinite(Date.parse(executedAction.executedAt)) &&
     result?.provider === "demo" &&
     result?.simulated === true &&
+    result?.supplierId === order.supplier_id &&
     result?.providerMessageId === `demo-gmail:${orderId}` &&
     result?.contentVersion === SUPPLIER_SEND_CONTENT_VERSION &&
     typeof result?.contentFingerprint === "string" &&
@@ -309,6 +361,7 @@ export function markSupplierOrderSentInDemoState(
     !Array.isArray(approvedContent) &&
     approvedContent.version === result.contentVersion &&
     approvedContent.fingerprint === result.contentFingerprint &&
+    approvedContent.supplierId === order.supplier_id &&
     approvedContent.contentRevision === result.contentRevision &&
     Array.isArray(recommendationIds) &&
     recommendationIds.length > 0 &&
@@ -349,18 +402,16 @@ export function bumpDemoSupplierSendContentRevision(state: DemoState, orderId: s
 export function bumpDemoSupplierSendContentForExternalChange(
   state: DemoState,
   restaurantId: string,
-  supplierNames?: readonly string[]
+  supplierIds?: readonly string[]
 ) {
-  const supplierKeys = supplierNames
-    ? new Set(supplierNames.map((name) => name.trim().toLowerCase()))
-    : null;
+  const supplierKeys = supplierIds ? new Set(supplierIds) : null;
   const bumpedOrderIds: string[] = [];
 
   for (const order of state.supplierOrders) {
     if (
       order.restaurant_id !== restaurantId ||
       order.status !== "draft" ||
-      (supplierKeys && !supplierKeys.has(order.supplier_name.trim().toLowerCase()))
+      (supplierKeys && !supplierKeys.has(order.supplier_id))
     ) {
       continue;
     }
@@ -404,6 +455,12 @@ export function markClaimedSupplierOrderSentInDemoState(
         entry.supplier_order_id === orderId
     );
     if (!recommendation) throw new Error("The simulated supplier send line set changed.");
+    if (
+      recommendation.supplier_id !== order.supplier_id ||
+      recommendation.supplier_name !== order.supplier_name
+    ) {
+      throw new Error("The simulated supplier send supplier identity changed.");
+    }
     return recommendation;
   });
   if (order.status === "sent" || order.status === "completed") {
@@ -466,9 +523,169 @@ function linkedApprovedRecommendations(state: DemoState, orderId: string) {
 }
 
 function rebuildDemoDraftMessage(state: DemoState, order: SupplierOrder) {
+  const linked = linkedApprovedRecommendations(state, order.id);
+  if (
+    linked.some(
+      (recommendation) =>
+        recommendation.supplier_id !== order.supplier_id ||
+        recommendation.supplier_name !== order.supplier_name
+    )
+  ) {
+    throw new Error("Supplier authority changed. Refresh this order before editing it.");
+  }
   order.order_message = buildSupplierOrderMessage(
     order.supplier_name,
-    linkedApprovedRecommendations(state, order.id),
+    linked,
     order.operator_note
   );
+}
+
+export function renameSupplierInDemoState(
+  state: DemoState,
+  restaurantId: string,
+  supplierId: string,
+  requestedDisplayName: string
+) {
+  const supplier = findDemoSupplierById(state.suppliers, restaurantId, supplierId);
+  if (!supplier) throw new Error("Supplier not found.");
+  const displayName = normalizeDemoSupplierDisplayName(requestedDisplayName);
+  const normalizedName = demoSupplierNormalizedName(displayName);
+  const duplicate = state.suppliers.find(
+    (candidate) =>
+      candidate.restaurant_id === restaurantId &&
+      candidate.id !== supplierId &&
+      candidate.normalized_name === normalizedName
+  );
+  if (duplicate) throw new Error("A supplier with that name already exists.");
+  if (supplier.display_name === displayName) return supplier;
+
+  const previousDisplayName = supplier.display_name;
+  const now = new Date().toISOString();
+  supplier.display_name = displayName;
+  supplier.normalized_name = normalizedName;
+  supplier.updated_at = now;
+
+  // Current operational records follow the new presentation while immutable
+  // sent history retains the exact supplier name that was delivered.
+  state.inventoryItems
+    .filter((item) => item.restaurant_id === restaurantId && item.supplier_id === supplierId)
+    .forEach((item) => {
+      item.supplier_name = displayName;
+    });
+  state.supplierItems
+    .filter((item) => item.restaurant_id === restaurantId && item.supplier_id === supplierId)
+    .forEach((item) => {
+      item.supplier_name = displayName;
+      item.updated_at = now;
+    });
+  state.supplierRecipients
+    .filter((recipient) =>
+      recipient.restaurant_id === restaurantId && recipient.supplier_id === supplierId
+    )
+    .forEach((recipient) => {
+      recipient.supplier_name = displayName;
+      recipient.updated_at = now;
+    });
+  state.autonomyRules
+    .filter((rule) => rule.restaurantId === restaurantId && rule.supplierId === supplierId)
+    .forEach((rule) => {
+      rule.supplierName = displayName;
+      rule.updatedAt = now;
+    });
+
+  const draftOrderIds = new Set(
+    state.supplierOrders
+      .filter((order) =>
+        order.restaurant_id === restaurantId &&
+        order.supplier_id === supplierId &&
+        order.status === "draft"
+      )
+      .map((order) => order.id)
+  );
+  state.purchaseRecommendations
+    .filter((recommendation) =>
+      recommendation.restaurant_id === restaurantId &&
+      recommendation.supplier_id === supplierId &&
+      (recommendation.status === "pending" ||
+        (recommendation.status === "approved" &&
+          Boolean(recommendation.supplier_order_id) &&
+          draftOrderIds.has(recommendation.supplier_order_id!)))
+    )
+    .forEach((recommendation) => {
+      recommendation.supplier_name = displayName;
+    });
+  state.supplierOrders
+    .filter((order) => draftOrderIds.has(order.id))
+    .forEach((order) => {
+      order.supplier_name = displayName;
+      rebuildDemoDraftMessage(state, order);
+      bumpDemoSupplierSendContentRevision(state, order.id);
+    });
+  state.miseActions = state.miseActions.map((action) => {
+    const orderId = action.expectedImpact?.orderId;
+    if (typeof orderId !== "string" || !draftOrderIds.has(orderId)) return action;
+    return {
+      ...action,
+      expectedImpact: {
+        ...action.expectedImpact,
+        supplierId,
+        supplierName: displayName
+      },
+      updatedAt: now
+    };
+  });
+  state.restaurants
+    .filter((restaurant) => restaurant.id === restaurantId)
+    .forEach((restaurant) => {
+      restaurant.operational_profile = {
+        ...restaurant.operational_profile,
+        primarySuppliers: restaurant.operational_profile.primarySuppliers.map((name) =>
+          name === previousDisplayName ? displayName : name
+        )
+      };
+    });
+  return supplier;
+}
+
+export function reassignInventorySupplierInDemoState(
+  state: DemoState,
+  restaurantId: string,
+  inventoryItemId: string,
+  supplierId: string
+) {
+  const item = state.inventoryItems.find(
+    (candidate) =>
+      candidate.restaurant_id === restaurantId && candidate.id === inventoryItemId
+  );
+  if (!item) throw new Error("Inventory item not found.");
+  const supplier = findDemoSupplierById(state.suppliers, restaurantId, supplierId);
+  if (!supplier) throw new Error("Supplier not found.");
+  if (item.supplier_id === supplier.id) {
+    return { item, invalidatedRecommendationIds: [] as string[] };
+  }
+  const approved = state.purchaseRecommendations.find(
+    (recommendation) =>
+      recommendation.restaurant_id === restaurantId &&
+      recommendation.inventory_item_id === inventoryItemId &&
+      recommendation.status === "approved"
+  );
+  if (approved) {
+    throw new Error("Undo the approved supplier draft line before changing this item's supplier.");
+  }
+
+  const invalidatedRecommendationIds = state.purchaseRecommendations
+    .filter((recommendation) =>
+      recommendation.restaurant_id === restaurantId &&
+      recommendation.inventory_item_id === inventoryItemId &&
+      recommendation.status === "pending"
+    )
+    .map((recommendation) => recommendation.id);
+  const invalidated = new Set(invalidatedRecommendationIds);
+  state.purchaseRecommendations = state.purchaseRecommendations.filter(
+    (recommendation) => !invalidated.has(recommendation.id)
+  );
+  item.supplier_id = supplier.id;
+  item.supplier_name = supplier.display_name;
+  item.last_updated = new Date().toISOString();
+  return { item, invalidatedRecommendationIds };
 }

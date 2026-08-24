@@ -121,7 +121,7 @@ export default function SettingsScreen() {
         __DEV__ && isDemoMode ? fetchDemoReadinessSummary(restaurantId) : Promise.resolve(null)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      setSuppliers(nextSuppliers);
+      setSuppliers(nextSuppliers.map((supplier) => supplier.display_name));
       setOpsProfile(nextOpsProfile);
       setEmailConnection(nextEmailConnection);
       setReadiness(nextReadiness);
