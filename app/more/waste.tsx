@@ -25,6 +25,7 @@ import type {
   WasteAnalysisStatus,
   WasteAnalysisTrend
 } from "../../services/domain/wasteAnalysis";
+import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -90,7 +91,13 @@ export default function WasteScreen() {
     }, [load])
   );
 
-  const visibleAnalysis = loadedRestaurantId === restaurant?.id ? analysis : null;
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleAnalysis = hubReady ? analysis : null;
 
   if (!restaurant) {
     return (
