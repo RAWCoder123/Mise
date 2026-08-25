@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { router, useNavigation } from "expo-router";
 import { ArrowLeft, FileSpreadsheet, Upload } from "lucide-react-native";
 import { StyleSheet, Text, TextInput, View } from "react-native";
@@ -30,11 +30,23 @@ export default function SalesImportScreen() {
   const [error, setError] = useState<string | null>(null);
   const [successRows, setSuccessRows] = useState<number | null>(null);
   const submitLockRef = useRef(false);
+  const importRequestIdRef = useRef(0);
+  const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
+  activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   const canImport = Boolean(restaurant) && canManageRestaurantData(memberships, restaurant?.id);
   const parsed = useMemo(() => validateImportedPosSalesRows(csvText), [csvText]);
   const issuePreview = parsed.issues.slice(0, 3);
   const rejectedPreviewCount = Math.max(0, parsed.rejectedRowCount);
+
+  useEffect(() => {
+    importRequestIdRef.current += 1;
+    submitLockRef.current = false;
+    setCsvText("");
+    setSaving(false);
+    setError(null);
+    setSuccessRows(null);
+  }, [restaurant?.id]);
 
   function goBackToSettings() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -61,6 +73,8 @@ export default function SalesImportScreen() {
       return;
     }
 
+    const restaurantId = restaurant.id;
+    const requestId = ++importRequestIdRef.current;
     submitLockRef.current = true;
     setSaving(true);
     setError(null);
@@ -68,25 +82,39 @@ export default function SalesImportScreen() {
     try {
       // Empty inventory/supplier/recipe arrays upsert nothing; POS rows append by
       // (restaurant_id, source_pos, source_record_id) without wiping existing setup.
-      const summary = await saveRestaurantSetup(restaurant.id, {
+      const summary = await saveRestaurantSetup(restaurantId, {
         inventoryItems: [],
         suppliers: [],
         recipes: [],
         posSales: parsed.rows,
         attachments: []
       });
+      if (
+        requestId !== importRequestIdRef.current ||
+        activeRestaurantIdRef.current !== restaurantId
+      ) {
+        return;
+      }
       setSuccessRows(summary.posSalesRowsSaved);
       setCsvText("");
     } catch (importError) {
       captureMiseError(importError, {
         flow: "settings",
         operation: "sales_csv_import",
-        restaurant_id: restaurant.id
+        restaurant_id: restaurantId
       });
+      if (
+        requestId !== importRequestIdRef.current ||
+        activeRestaurantIdRef.current !== restaurantId
+      ) {
+        return;
+      }
       setError(t("salesImport.error.save"));
     } finally {
-      submitLockRef.current = false;
-      setSaving(false);
+      if (requestId === importRequestIdRef.current) {
+        submitLockRef.current = false;
+        setSaving(false);
+      }
     }
   }
 
