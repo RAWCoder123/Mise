@@ -121,6 +121,13 @@ export default function OrdersScreen() {
       const requestId = ++requestIdRef.current;
       if (showLoading || loadedRestaurantRef.current !== restaurantId) setLoading(true);
       setLoadError(null);
+      // Soft refresh keeps hub rows visible, but must invalidate readiness immediately.
+      // Otherwise approve can race on a prior canRecommend window before the replacement
+      // readiness resolves (fail-open against the pilot gate).
+      if (!showLoading && loadedRestaurantRef.current === restaurantId) {
+        setPilotReadiness(null);
+        setReadinessLoadError(false);
+      }
 
       try {
         const [
