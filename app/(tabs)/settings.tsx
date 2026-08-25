@@ -186,6 +186,7 @@ export default function SettingsScreen() {
     loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
+  const hubUnavailable = hubLoadState === "error";
   const restaurantActionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: Boolean(restaurant),
     hubReady,
@@ -247,7 +248,24 @@ export default function SettingsScreen() {
       }
     >
       <View style={styles.stack}>
-        {message ? <StatusNotice title={t(message.key)} tone={message.tone} /> : null}
+        {message ? (
+          <StatusNotice
+            title={t(message.key)}
+            tone={message.tone}
+            message={
+              message.key === "settings.notice.loadError"
+                ? t("settings.notice.loadErrorBody")
+                : undefined
+            }
+            actionLabel={message.key === "settings.notice.loadError" ? t("common.retry") : undefined}
+            actionAccessibilityLabel={
+              message.key === "settings.notice.loadError"
+                ? t("settings.notice.loadErrorRetryAccessibility")
+                : undefined
+            }
+            onAction={message.key === "settings.notice.loadError" ? () => void load() : undefined}
+          />
+        ) : null}
 
         <View style={styles.accountHero}>
           <View style={styles.avatar}>
@@ -372,11 +390,19 @@ export default function SettingsScreen() {
           <OperationalRow
             density="menu"
             title={t("settings.integration.gmail.title")}
-            value={gmailConnectionBadge(visibleEmailConnection, t)}
+            value={gmailConnectionBadge(visibleEmailConnection, t, hubUnavailable)}
             icon={
               <Mail
                 size={icon.emphasis}
-                color={gmailConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
+                color={
+                  hubUnavailable
+                    ? colors.danger
+                    : gmailConnected
+                      ? colors.success
+                      : gmailNeedsAttention
+                        ? colors.caution
+                        : colors.muted
+                }
                 strokeWidth={iconStroke}
               />
             }
@@ -403,7 +429,13 @@ export default function SettingsScreen() {
           <OperationalRow
             density="menu"
             title={t("settings.operations.suppliers.title")}
-            value={formatNumber(visibleSuppliers.length)}
+            value={
+              hubUnavailable
+                ? t("settings.operations.suppliers.unavailable")
+                : hubReady
+                  ? formatNumber(visibleSuppliers.length)
+                  : undefined
+            }
             icon={<Truck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/suppliers" as never)}
@@ -591,7 +623,12 @@ function SettingsSection({ title, children }: { title: string; children: ReactNo
   );
 }
 
-function gmailConnectionBadge(connection: RestaurantEmailConnection | null, t: Translator) {
+function gmailConnectionBadge(
+  connection: RestaurantEmailConnection | null,
+  t: Translator,
+  hubUnavailable = false
+) {
+  if (hubUnavailable) return t("settings.gmail.status.unavailable");
   if (connection?.status === "connected") return t("settings.gmail.status.connected");
   if (connection?.status === "needs_reauth") return t("settings.gmail.status.needsReauth");
   if (connection?.status === "restricted") return t("settings.gmail.status.restricted");
