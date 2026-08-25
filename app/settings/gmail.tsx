@@ -24,10 +24,12 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
+import { captureMiseError } from "../../services/telemetry";
 import type { RestaurantEmailConnection } from "../../types/mise";
 
 type GmailAction = "connect" | "disconnect" | "refresh";
 type Translate = ReturnType<typeof useLocale>["t"];
+type GmailStatusPresentation = RestaurantEmailConnection["status"] | "unavailable";
 
 interface GmailNotice {
   tone: StatusNoticeTone;
@@ -74,11 +76,13 @@ export default function GmailConnectionScreen() {
       setHubLoadError(false);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      // Soft-refresh keeps last-known connection in state, but hub readiness
+      // fail-closes so the card never presents stale authority as live truth.
       setHubLoadError(true);
-      setNotice({
-        tone: "danger",
-        title: t("settings.gmail.error.loadTitle"),
-        message: t("settings.gmail.error.loadBody")
+      captureMiseError(loadError, {
+        flow: "gmail",
+        operation: "load",
+        restaurant_id: restaurantId
       });
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
@@ -231,18 +235,31 @@ export default function GmailConnectionScreen() {
     loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
+  const hubUnavailable = hubLoadState === "error";
   const mutationAllowed = canManageConnection && hubReady;
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManageConnection,
     hubReady,
     busy: Boolean(busyAction)
   });
+  // Fail closed: never render restaurant connection authority while the hub is
+  // error/loading. Soft-refresh may keep `connection` in state for recovery.
   const visibleConnection = hubReady ? connection : null;
-  const status = visibleConnection?.status ?? "not_connected";
+  const status: GmailStatusPresentation = hubUnavailable
+    ? "unavailable"
+    : (visibleConnection?.status ?? "not_connected");
   const statusPresentation = gmailStatusPresentation(status, t);
   const connectLabel = status === "needs_reauth" || status === "restricted"
     ? t("settings.gmail.action.reconnect")
     : t("settings.gmail.action.connect");
+  const senderValue = hubUnavailable
+    ? t("settings.gmail.detail.unavailable")
+    : (visibleConnection?.sender_email ?? t("settings.gmail.status.notConnected"));
+  const lastVerifiedValue = hubUnavailable
+    ? t("settings.gmail.detail.unavailable")
+    : visibleConnection?.last_verified_at
+      ? formatDate(visibleConnection.last_verified_at, { dateStyle: "medium", timeStyle: "short" })
+      : t("settings.gmail.detail.notVerified");
 
   return (
     <Screen
@@ -277,7 +294,20 @@ export default function GmailConnectionScreen() {
             />
           ) : null}
 
-          {notice ? <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} /> : null}
+          {hubLoadError ? (
+            <StatusNotice
+              tone="danger"
+              title={t("settings.gmail.error.loadTitle")}
+              message={t("settings.gmail.error.loadBody")}
+              actionLabel={t("common.retry")}
+              actionAccessibilityLabel={t("settings.gmail.error.retryAccessibility")}
+              onAction={() => void load(true)}
+            />
+          ) : null}
+
+          {notice && !hubLoadError ? (
+            <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
+          ) : null}
 
           <Card>
             <View style={styles.connectionHeader}>
@@ -285,7 +315,11 @@ export default function GmailConnectionScreen() {
                 {status === "connected" ? (
                   <CheckCircle2 size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />
                 ) : (
-                  <Mail size={icon.emphasis} color={colors.accent} strokeWidth={iconStroke} />
+                  <Mail
+                    size={icon.emphasis}
+                    color={hubUnavailable ? colors.danger : colors.accent}
+                    strokeWidth={iconStroke}
+                  />
                 )}
               </IconBadge>
               <View style={styles.connectionTitleBlock}>
@@ -296,14 +330,10 @@ export default function GmailConnectionScreen() {
             </View>
 
             <View style={styles.detailRows}>
-              <ConnectionDetail label={t("settings.gmail.detail.sender")} value={visibleConnection?.sender_email ?? t("settings.gmail.status.notConnected")} />
+              <ConnectionDetail label={t("settings.gmail.detail.sender")} value={senderValue} />
               <ConnectionDetail
                 label={t("settings.gmail.detail.lastVerified")}
-                value={
-                  visibleConnection?.last_verified_at
-                    ? formatDate(visibleConnection.last_verified_at, { dateStyle: "medium", timeStyle: "short" })
-                    : t("settings.gmail.detail.notVerified")
-                }
+                value={lastVerifiedValue}
               />
             </View>
 
@@ -396,11 +426,14 @@ function ConnectionDetail({ label, value }: { label: string; value: string }) {
   );
 }
 
-function gmailStatusPresentation(status: RestaurantEmailConnection["status"], t: Translate): {
+function gmailStatusPresentation(status: GmailStatusPresentation, t: Translate): {
   label: string;
   badgeTone: "neutral" | "success" | "warning" | "danger";
   iconTone: "brand" | "leaf" | "warning" | "danger";
 } {
+  if (status === "unavailable") {
+    return { label: t("settings.gmail.status.unavailable"), badgeTone: "danger", iconTone: "danger" };
+  }
   if (status === "connected") return { label: t("settings.gmail.status.connected"), badgeTone: "success", iconTone: "leaf" };
   if (status === "needs_reauth") return { label: t("settings.gmail.status.needsReauth"), badgeTone: "warning", iconTone: "warning" };
   if (status === "restricted") return { label: t("settings.gmail.status.restricted"), badgeTone: "danger", iconTone: "danger" };
