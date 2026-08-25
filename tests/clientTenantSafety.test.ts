@@ -40,6 +40,9 @@ test("operational screens reject late requests and render only active-restaurant
 
   assert.match(screens.today, /hubReady\s*\?\s*summary\s*:\s*null/);
   assert.match(screens.inventory, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
+  assert.match(screens.inventory, /hubUnavailable/);
+  assert.match(screens.inventory, /inventory\.emptyMatches\.unavailable\.title/);
+  assert.match(screens.inventory, /hubUnavailable \? \([\s\S]*emptyMatches\.unavailable[\s\S]*\) : hubReady \?/);
   assert.match(screens.insights, /hubReady\s*\?\s*insights\s*:\s*\[\]/);
   assert.match(screens.settings, /hubReady\s*\?\s*suppliers\s*:\s*\[\]/);
   assert.match(screens.settings, /presentRestaurantScopedHubActionsEditable/);
