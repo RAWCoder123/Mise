@@ -58,3 +58,14 @@ test("Orders gates recommendation approve on the same fail-closed pilot readines
   assert.match(orders, /router\.push\("\/settings\/pos"\)/);
   assert.match(orders, /OrdersPilotReadinessNotice/);
 });
+
+test("Orders soft reload invalidates pilot readiness before replacement data arrives", () => {
+  const orders = readFileSync("app/(tabs)/orders.tsx", "utf8");
+  // Soft refresh must clear readiness immediately so approve cannot race on a stale gate.
+  assert.match(
+    orders,
+    /if \(!showLoading && loadedRestaurantRef\.current === restaurantId\) \{\s*setPilotReadiness\(null\);\s*setReadinessLoadError\(false\);\s*\}/
+  );
+  assert.match(orders, /pilotRecommendUiGate\(pilotReadiness, readinessLoadError\)/);
+  assert.match(orders, /if \(!readinessGate\.canOneTapRecommend\)/);
+});
