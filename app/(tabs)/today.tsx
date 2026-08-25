@@ -22,10 +22,12 @@ import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDe
 import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
 import type { DailyOperatingPlan, OperatingPlanBucket } from "../../services/domain/operatingPlan";
+import type { PilotReadiness } from "../../services/domain/pilotReadiness";
 import {
   completeOperatorTask,
   fetchDailyOperatingPlan,
   fetchDailyOperationalBrief,
+  fetchPilotReadiness,
   fetchQueuedOperationalFindingDecisions,
   flushQueuedOperationalFindingDecisions,
   listOpenOperatorTasks,
@@ -37,6 +39,11 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import {
+  todayPilotReadinessAreaLabelKey,
+  todayPilotReadinessGate,
+  type TodayPilotReadinessGate
+} from "../../services/presentation/todayPilotReadiness";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -59,6 +66,8 @@ export default function TodayScreen() {
   const [brief, setBrief] = useState<DailyOperationalBrief | null>(null);
   const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
   const [floorNotes, setFloorNotes] = useState<OperatorTask[]>([]);
+  const [pilotReadiness, setPilotReadiness] = useState<PilotReadiness | null>(null);
+  const [readinessLoadError, setReadinessLoadError] = useState(false);
   const [focus, setFocus] = useState<TaskFilter>("now");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +88,8 @@ export default function TodayScreen() {
     setBrief(null);
     setFindingQueue([]);
     setFloorNotes([]);
+    setPilotReadiness(null);
+    setReadinessLoadError(false);
     setLoadedRestaurantId(null);
     setFocus("now");
     setError(null);
@@ -102,21 +113,37 @@ export default function TodayScreen() {
     setLoading(true);
     setError(null);
     setBriefError(false);
+    // Fail closed: never leave a prior restaurant's readiness actionable during reload.
+    setPilotReadiness(null);
+    setReadinessLoadError(false);
     try {
       await flushQueuedOperationalFindingDecisions(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
-      const [nextSummary, nextBrief, nextQueue, nextFloorNotes] = await Promise.all([
+      const [nextSummary, nextBrief, nextQueue, nextFloorNotes, nextReadiness] = await Promise.all([
         fetchDailyOperatingPlan(restaurantId, { includeCompletedTasks: true }),
         fetchDailyOperationalBrief(restaurantId),
         fetchQueuedOperationalFindingDecisions(restaurantId),
-        listOpenOperatorTasks(restaurantId).catch(() => [] as OperatorTask[])
+        listOpenOperatorTasks(restaurantId).catch(() => [] as OperatorTask[]),
+        fetchPilotReadiness(restaurantId).then(
+          (readiness) => ({ ok: true as const, readiness }),
+          (readinessError) => {
+            captureMiseError(readinessError, {
+              flow: "today",
+              operation: "pilot_readiness",
+              restaurant_id: restaurantId
+            });
+            return { ok: false as const, readiness: null };
+          }
+        )
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
       setBrief(nextBrief);
       setFindingQueue(nextQueue);
       setFloorNotes(nextFloorNotes);
+      setPilotReadiness(nextReadiness.ok ? nextReadiness.readiness : null);
+      setReadinessLoadError(!nextReadiness.ok);
       setLoadedRestaurantId(restaurantId);
       setFloorNoteMessage(null);
     } catch (loadError) {
@@ -124,6 +151,10 @@ export default function TodayScreen() {
       captureMiseError(loadError, { flow: "today", operation: "load", restaurant_id: restaurantId });
       setError(t("today.error"));
       setBriefError(true);
+      // Fail closed: never leave a prior restaurant's readiness visible after a load failure.
+      setPilotReadiness(null);
+      setReadinessLoadError(true);
+      setLoadedRestaurantId(null);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
@@ -237,6 +268,10 @@ export default function TodayScreen() {
   const visibleBrief = hubReady ? brief : null;
   const visibleFindingQueue = hubReady ? findingQueue : [];
   const visibleFloorNotes = hubReady ? floorNotes : [];
+  const visibleReadiness = loadedRestaurantId === restaurant?.id ? pilotReadiness : null;
+  const visibleReadinessLoadError =
+    loadedRestaurantId === restaurant?.id ? readinessLoadError : false;
+  const readinessGate = todayPilotReadinessGate(visibleReadiness, visibleReadinessLoadError);
   const groupedFloorNotes = useMemo(() => {
     const buckets: Record<"now" | "up_next" | "later", OperatorTask[]> = {
       now: [],
@@ -339,6 +374,14 @@ export default function TodayScreen() {
             message={t("dailyBrief.loadError")}
             retryLabel={t("common.retry")}
             accessibilityLabel={t("dailyBrief.retry.accessibility")}
+            onRetry={() => void load()}
+          />
+        ) : null}
+
+        {!error ? (
+          <TodayPilotReadinessNotice
+            gate={readinessGate}
+            t={t}
             onRetry={() => void load()}
           />
         ) : null}
@@ -479,6 +522,73 @@ function describeFindingFlush(
   return t("dailyBrief.result.queued");
 }
 
+function TodayPilotReadinessNotice({
+  gate,
+  t,
+  onRetry
+}: {
+  gate: TodayPilotReadinessGate;
+  t: Translator;
+  onRetry: () => void;
+}) {
+  if (!gate.showBanner) return null;
+
+  if (gate.bannerKind === "unavailable") {
+    return (
+      <StatusNotice
+        tone="danger"
+        title={t("today.readiness.unavailableTitle")}
+        message={t("today.readiness.unavailableBody")}
+        actionLabel={t("common.retry")}
+        onAction={onRetry}
+      />
+    );
+  }
+
+  const areas = gate.attentionAreaIds
+    .map((areaId) => t(todayPilotReadinessAreaLabelKey(areaId)))
+    .join(", ");
+  const primaryRoute = gate.primaryRoute;
+
+  return (
+    <View style={styles.readinessBlock}>
+      <StatusNotice
+        tone={gate.bannerKind === "blocked" ? "warning" : "caution"}
+        title={
+          gate.bannerKind === "blocked"
+            ? t("today.readiness.blockedTitle")
+            : t("today.readiness.attentionTitle")
+        }
+        message={
+          gate.bannerKind === "blocked"
+            ? t("today.readiness.blockedBody", { areas })
+            : t("today.readiness.attentionBody", { areas })
+        }
+        actionLabel={t("today.readiness.action")}
+        onAction={primaryRoute ? () => router.push(primaryRoute as never) : undefined}
+      />
+      {gate.actions.length > 0 ? (
+        <View
+          accessibilityLabel={t("today.readiness.actionsAccessibility")}
+          style={styles.readinessActions}
+        >
+          {gate.actions.map((action) => (
+            <Pressable
+              key={action.areaId}
+              accessibilityRole="button"
+              accessibilityLabel={t(action.labelKey)}
+              onPress={() => router.push(action.route as never)}
+              style={({ pressed }) => [styles.readinessActionChip, pressed && styles.readinessActionChipPressed]}
+            >
+              <Text style={styles.readinessActionLabel}>{t(action.labelKey)}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function emptyBuckets(): Record<TaskFilter, DailyOperatingPlan["buckets"][TaskFilter]> {
   return { now: [], up_next: [], later: [], done: [] };
 }
@@ -514,6 +624,31 @@ const styles = StyleSheet.create({
   floorNotesSection: {
     marginTop: 4,
     gap: 6
+  },
+  readinessBlock: {
+    gap: 8
+  },
+  readinessActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  readinessActionChip: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    justifyContent: "center"
+  },
+  readinessActionChipPressed: {
+    opacity: 0.85
+  },
+  readinessActionLabel: {
+    ...conceptTypography.caption,
+    color: colors.text
   },
   floorNotesGroup: {
     gap: 6
