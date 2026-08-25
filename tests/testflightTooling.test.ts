@@ -8,6 +8,7 @@ test("TestFlight commands use one pinned EAS CLI and fail closed on account prer
   };
   const scripts = packageJson.scripts;
   const accountCheck = readFileSync("scripts/eas-account-prereq.mjs", "utf8");
+  const environmentCheck = readFileSync("scripts/eas-testflight-env-prereq.mjs", "utf8");
   const archiveCheck = readFileSync("scripts/eas-archive-prereq.mjs", "utf8");
   const easIgnore = readFileSync(".easignore", "utf8");
   const easConfig = JSON.parse(readFileSync("eas.json", "utf8")) as {
@@ -27,9 +28,11 @@ test("TestFlight commands use one pinned EAS CLI and fail closed on account prer
 
   assert.equal(script("qa:eas-account"), "node scripts/eas-account-prereq.mjs");
   assert.equal(script("qa:eas-archive"), "node scripts/eas-archive-prereq.mjs");
+  assert.match(script("qa:eas-testflight-env"), /eas-testflight-env-prereq\.mjs/);
   assert.match(script("ios:testflight:check"), /qa:ios-prereq/);
   assert.match(script("ios:testflight:check"), /qa:eas-account/);
   assert.match(script("ios:testflight:check"), /qa:eas-archive/);
+  assert.match(script("ios:testflight:check"), /qa:eas-testflight-env/);
   assert.match(script("ios:testflight:check"), /testflight:ready/);
   assert.doesNotMatch(script("ios:testflight:check"), /demo:ready/);
   assert.equal(
@@ -50,6 +53,10 @@ test("TestFlight commands use one pinned EAS CLI and fail closed on account prer
   assert.match(accountCheck, /\["--yes", `eas-cli@\$\{EAS_CLI_VERSION\}`, "whoami"\]/);
   assert.match(accountCheck, /publicQaEnv/);
   assert.doesNotMatch(accountCheck, /EXPO_TOKEN|password|access[_-]?token/i);
+  assert.match(environmentCheck, /eas-cli@\$\{EAS_CLI_VERSION\}/);
+  assert.match(environmentCheck, /"env:get"/);
+  assert.match(environmentCheck, /"--non-interactive"/);
+  assert.doesNotMatch(environmentCheck, /console\.(?:log|error)\([^\n]*(?:stdout|stderr)/);
   for (const excludedPath of [
     ".mise-staging.env",
     ".cursor/",
