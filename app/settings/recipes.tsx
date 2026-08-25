@@ -38,6 +38,7 @@ export default function RecipeBaselinesScreen() {
   const { memberships, restaurant } = useMiseSession();
   const [summary, setSummary] = useState<RecipeBaselineSummary | null>(null);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [draftQuantities, setDraftQuantities] = useState<Record<string, string>>({});
   const [newMenuItemName, setNewMenuItemName] = useState("");
   const [newInventoryItemName, setNewInventoryItemName] = useState("");
   const [newQuantity, setNewQuantity] = useState("1");
@@ -50,6 +51,7 @@ export default function RecipeBaselinesScreen() {
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [hubLoadError, setHubLoadError] = useState(false);
   const requestIdRef = useRef(0);
+  const hasLoadedRef = useRef(false);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
@@ -57,6 +59,7 @@ export default function RecipeBaselinesScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoadedRef.current = false;
     if (reloadTimerRef.current) {
       clearTimeout(reloadTimerRef.current);
       reloadTimerRef.current = null;
@@ -67,6 +70,7 @@ export default function RecipeBaselinesScreen() {
     setHubLoadError(false);
     setSummary(null);
     setInventoryItems([]);
+    setDraftQuantities({});
     setNewMenuItemName("");
     setNewInventoryItemName("");
     setNewQuantity("1");
@@ -85,9 +89,16 @@ export default function RecipeBaselinesScreen() {
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
-    setError(null);
-    setHubLoadError(false);
+    const soft = hasLoadedRef.current && activeRestaurantIdRef.current === restaurantId;
+    if (soft) {
+      // Invalidate readiness during soft refresh so mutations stay closed until proof returns.
+      setLoadedRestaurantId(null);
+    } else {
+      setLoading(true);
+      setError(null);
+      setHubLoadError(false);
+      setNotice(null);
+    }
     try {
       const [nextSummary, nextInventoryItems] = await Promise.all([
         fetchRecipeBaselineSummary(restaurantId),
@@ -98,14 +109,39 @@ export default function RecipeBaselinesScreen() {
       setInventoryItems(nextInventoryItems);
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
+      // Soft refresh must preserve operator-entered ingredient quantity and builder drafts.
+      if (soft) {
+        setDraftQuantities((current) =>
+          Object.fromEntries(
+            nextSummary.items.flatMap((item) =>
+              item.ingredients.map((ingredient) => [
+                ingredient.mappingId,
+                ingredient.mappingId in current
+                  ? current[ingredient.mappingId]!
+                  : formatNumber(ingredient.quantityUsedPerSale)
+              ])
+            )
+          )
+        );
+      } else {
+        setDraftQuantities(draftQuantitiesFromSummary(nextSummary, formatNumber));
+      }
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      // Fail closed for display/actions, but keep local drafts and prior baselines for retry.
       setHubLoadError(true);
       setError(t("recipes.error.load"));
+      if (!soft) {
+        setSummary(null);
+        setInventoryItems([]);
+      }
     } finally {
-      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
+      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoadedRef.current = true;
+        setLoading(false);
+      }
     }
-  }, [restaurant?.id, t]);
+  }, [formatNumber, restaurant?.id, t]);
 
   // Coalesces refetches when the operator saves several ingredient quantities
   // in a row, so each save does not immediately re-pull all planning data.
@@ -435,6 +471,10 @@ export default function RecipeBaselinesScreen() {
                   canManage={actionsEditable}
                   savingMappingId={savingMappingId}
                   confirming={confirmingMenuItemId === item.menuItemId}
+                  draftQuantities={draftQuantities}
+                  onDraftChange={(mappingId, value) => {
+                    setDraftQuantities((current) => ({ ...current, [mappingId]: value }));
+                  }}
                   onSave={queueIngredientSave}
                   onConfirm={() => void confirmRecipe(item)}
                 />
@@ -608,11 +648,27 @@ function SuggestionChip({
   );
 }
 
+function draftQuantitiesFromSummary(
+  summary: RecipeBaselineSummary,
+  formatNumber: (value: number) => string
+): Record<string, string> {
+  return Object.fromEntries(
+    summary.items.flatMap((item) =>
+      item.ingredients.map((ingredient) => [
+        ingredient.mappingId,
+        formatNumber(ingredient.quantityUsedPerSale)
+      ])
+    )
+  );
+}
+
 function RecipeRow({
   item,
   canManage,
   savingMappingId,
   confirming,
+  draftQuantities,
+  onDraftChange,
   onSave,
   onConfirm
 }: {
@@ -620,17 +676,12 @@ function RecipeRow({
   canManage: boolean;
   savingMappingId: string | null;
   confirming: boolean;
+  draftQuantities: Record<string, string>;
+  onDraftChange: (mappingId: string, value: string) => void;
   onSave: (mappingId: string, quantity: string, options?: { immediate?: boolean; cancel?: boolean }) => void;
   onConfirm: () => void;
 }) {
   const { formatNumber, parseNumber, t } = useLocale();
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    setDrafts(
-      Object.fromEntries(item.ingredients.map((ingredient) => [ingredient.mappingId, formatNumber(ingredient.quantityUsedPerSale)]))
-    );
-  }, [formatNumber, item]);
 
   function parsedQuantity(draftValue: string) {
     try {
@@ -678,7 +729,8 @@ function RecipeRow({
           </View>
           <View style={styles.ingredientList}>
             {item.ingredients.map((ingredient) => {
-              const draftValue = drafts[ingredient.mappingId] ?? formatNumber(ingredient.quantityUsedPerSale);
+              const draftValue =
+                draftQuantities[ingredient.mappingId] ?? formatNumber(ingredient.quantityUsedPerSale);
               const isSaving = savingMappingId === ingredient.mappingId;
               const isBusy = savingMappingId !== null;
               const parsed = parsedQuantity(draftValue);
@@ -696,7 +748,7 @@ function RecipeRow({
                         <TextInput
                           value={draftValue}
                           onChangeText={(value) => {
-                            setDrafts((current) => ({ ...current, [ingredient.mappingId]: value }));
+                            onDraftChange(ingredient.mappingId, value);
                             const next = parsedQuantity(value);
                             if (next === null) {
                               onSave(ingredient.mappingId, value, { cancel: true });
