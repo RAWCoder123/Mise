@@ -800,6 +800,7 @@ select is(
     'gmail_credentials',
     'gmail_oauth_flows',
     'operational_mode_changes',
+    'pilot_operational_control_changes',
     'restaurant_signal_state',
     'restaurant_workspace_allocations',
     'square_credentials',

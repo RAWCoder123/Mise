@@ -64,9 +64,15 @@ the restaurant UUID once and use it for every founder command.
    npm run pilot:controls -- \
      --restaurant-id <restaurant-uuid> \
      --action enable-square-sync \
+     --actor-user-id <active-owner-or-admin-uuid> \
+     --request-id <stable-request-uuid> \
+     --reason pilot_square_enable \
      --apply \
      --confirm-project-ref <staging-project-ref>
    ```
+
+   The apply is one database transaction. Record the returned `auditId`; an
+   exact retry must reuse the same request UUID and inputs.
 
 7. In Settings → POS, run Sync sales now. It requests the exact current
    restaurant-local 28-day window. Record processed rows, last sync, and every
@@ -87,6 +93,9 @@ the restaurant UUID once and use it for every founder command.
     npm run pilot:controls -- \
       --restaurant-id <restaurant-uuid> \
       --action enable-order-drafting \
+      --actor-user-id <active-owner-or-admin-uuid> \
+      --request-id <new-stable-request-uuid> \
+      --reason pilot_drafting_enable \
       --apply \
       --confirm-project-ref <staging-project-ref>
     ```
@@ -112,6 +121,9 @@ the restaurant UUID once and use it for every founder command.
    npm run pilot:controls -- \
      --restaurant-id <restaurant-uuid> \
      --action enable-gmail-delivery \
+     --actor-user-id <active-owner-or-admin-uuid> \
+     --request-id <new-stable-request-uuid> \
+     --reason pilot_gmail_enable \
      --apply \
      --confirm-project-ref <staging-project-ref>
    ```
@@ -129,6 +141,9 @@ the restaurant UUID once and use it for every founder command.
     npm run pilot:controls -- \
       --restaurant-id <restaurant-uuid> \
       --action disable-gmail-delivery \
+      --actor-user-id <active-owner-or-admin-uuid> \
+      --request-id <new-stable-request-uuid> \
+      --reason pilot_test_complete \
       --apply \
       --confirm-project-ref <staging-project-ref>
     ```

@@ -19,22 +19,34 @@ purchase-decision rows to make a retry possible.
 
 3. Stop only the affected path:
 
+   Every apply requires the target restaurant's active owner/admin UUID, a new
+   stable request UUID, and a bounded reason code. Record the returned
+   `auditId`; state and evidence commit atomically.
+
    ```bash
    # Stop supplier delivery; drafts remain readable.
    npm run pilot:controls -- --restaurant-id <restaurant-uuid> \
-     --action disable-gmail-delivery --apply --confirm-project-ref <staging-project-ref>
+     --action disable-gmail-delivery --actor-user-id <owner-or-admin-uuid> \
+     --request-id <stable-request-uuid> --reason incident_gmail_stop \
+     --apply --confirm-project-ref <staging-project-ref>
 
    # Stop new authoritative drafts.
    npm run pilot:controls -- --restaurant-id <restaurant-uuid> \
-     --action disable-order-drafting --apply --confirm-project-ref <staging-project-ref>
+     --action disable-order-drafting --actor-user-id <owner-or-admin-uuid> \
+     --request-id <new-stable-request-uuid> --reason incident_drafting_stop \
+     --apply --confirm-project-ref <staging-project-ref>
 
    # Stop Square sync and webhook work for this tenant.
    npm run pilot:controls -- --restaurant-id <restaurant-uuid> \
-     --action disable-square --apply --confirm-project-ref <staging-project-ref>
+     --action disable-square --actor-user-id <owner-or-admin-uuid> \
+     --request-id <new-stable-request-uuid> --reason incident_square_stop \
+     --apply --confirm-project-ref <staging-project-ref>
 
    # Close every external tenant gate at once.
    npm run pilot:controls -- --restaurant-id <restaurant-uuid> \
-     --action disable-external --apply --confirm-project-ref <staging-project-ref>
+     --action disable-external --actor-user-id <owner-or-admin-uuid> \
+     --request-id <new-stable-request-uuid> --reason incident_external_stop \
+     --apply --confirm-project-ref <staging-project-ref>
    ```
 
 4. If multiple tenants or an unknown provider incident are involved, pause all
@@ -42,7 +54,9 @@ purchase-decision rows to make a retry possible.
 
    ```bash
    npm run pilot:controls -- --restaurant-id <restaurant-uuid> \
-     --action pause-integrations --apply --confirm-project-ref <staging-project-ref>
+     --action pause-integrations --actor-user-id <owner-or-admin-uuid> \
+     --request-id <new-stable-request-uuid> --reason incident_global_pause \
+     --apply --confirm-project-ref <staging-project-ref>
    ```
 
    The app remains readable. Resume normal only after diagnosis and a recorded
@@ -94,6 +108,8 @@ into tickets.
 - supplier order status and exact send preview version/fingerprint;
 - private supplier email delivery status, immutable claim, and safe error code;
 - `audit_logs` and Edge function security events;
+- immutable `private.pilot_operational_control_changes` evidence by returned
+  audit/request ID (service-authorized founder inspection only);
 - latest `purchase_decision_events` sequence for the affected recommendation.
 
 ## Application rollback

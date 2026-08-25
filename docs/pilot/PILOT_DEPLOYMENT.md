@@ -93,7 +93,9 @@ Edge secret and receives only the bounded `square=` or `gmail=` status.
    submit with `npm run ios:testflight:submit`, and install that exact build.
 9. Provision only restaurant #1. Advance provider controls with
    `npm run pilot:controls` according to the onboarding checklist—never by
-   authenticated client DML or ad hoc SQL.
+   authenticated client DML or ad hoc SQL. Applied commands require an active
+   owner/admin actor UUID and stable request UUID. The service-only atomic RPC
+   returns an immutable audit ID; record it with the deployment evidence.
 
 ## Manual external acceptance
 
