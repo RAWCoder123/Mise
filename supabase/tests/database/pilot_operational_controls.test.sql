@@ -1,6 +1,6 @@
 begin;
 
-select plan(40);
+select plan(43);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -178,6 +178,42 @@ select is(
   'exact request replay returns immutable prior evidence'
 );
 select is((select count(*) from private.pilot_operational_control_changes where request_id = 'e0000000-0000-4000-8000-000000000101'), 1::bigint, 'request replay creates no duplicate audit row');
+update public.restaurant_operational_controls
+set square_sync_enabled = false
+where restaurant_id = 'e0000000-0000-4000-8000-000000000001';
+select is(
+  (public.service_apply_pilot_operational_control(
+    'e0000000-0000-4000-8000-000000000101',
+    'e0000000-0000-4000-8000-000000000001',
+    'enable-square-sync',
+    'e1111111-1111-4111-8111-111111111111',
+    'pgtap_square_enable'
+  ) #>> '{state,restaurant,square_sync_enabled}')::boolean,
+  false,
+  'replay returns the current locked restaurant state after a later change'
+);
+select is(
+  (public.service_apply_pilot_operational_control(
+    'e0000000-0000-4000-8000-000000000101',
+    'e0000000-0000-4000-8000-000000000001',
+    'enable-square-sync',
+    'e1111111-1111-4111-8111-111111111111',
+    'pgtap_square_enable'
+  ) #>> '{appliedState,restaurant,square_sync_enabled}')::boolean,
+  true,
+  'replay separately returns immutable original applied evidence'
+);
+select is(
+  (public.service_apply_pilot_operational_control(
+    'e0000000-0000-4000-8000-000000000101',
+    'e0000000-0000-4000-8000-000000000001',
+    'enable-square-sync',
+    'e1111111-1111-4111-8111-111111111111',
+    'pgtap_square_enable'
+  )->>'stateMatchesApplied')::boolean,
+  false,
+  'replay explicitly marks current state that no longer matches applied evidence'
+);
 select is(
   pg_temp.try_execute($sql$
     select public.service_apply_pilot_operational_control(

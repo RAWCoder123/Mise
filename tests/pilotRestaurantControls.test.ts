@@ -49,7 +49,9 @@ function applied(action: string, nextState: ReturnType<typeof state>) {
     action,
     reasonCode: action.replaceAll("-", "_"),
     changed: true,
-    state: nextState
+    state: nextState,
+    appliedState: nextState,
+    stateMatchesApplied: true
   };
 }
 
@@ -111,6 +113,31 @@ test("read-only status never invokes the mutation RPC", async () => {
   assert.equal(result.state.operationalMode, "normal");
 });
 
+test("an exact replay reports live state separately from immutable applied evidence", async () => {
+  const appliedState = state({
+    system: { ...state().system, square_sync_enabled: true },
+    restaurant: { ...state().restaurant, square_sync_enabled: true }
+  });
+  const currentState = state();
+  const result = await executePilotControlAction(
+    { restaurantId, action: "enable-square-sync", requestId, actorUserId },
+    {
+      fetchState: async () => { throw new Error("replay state must come from the atomic RPC"); },
+      applyControl: async () => ({
+        ...applied("enable-square-sync", appliedState),
+        outcome: "already_applied",
+        changed: false,
+        state: currentState,
+        stateMatchesApplied: false
+      })
+    }
+  );
+  assert.equal(result.outcome, "already_applied");
+  assert.equal(result.state.square.restaurantSync, false);
+  assert.equal(result.appliedState.square.restaurantSync, true);
+  assert.equal(result.stateMatchesApplied, false);
+});
+
 test("RPC authority mismatches and missing audit evidence fail closed", async () => {
   const request = { restaurantId, action: "disable-square", requestId, actorUserId };
   await assert.rejects(
@@ -167,6 +194,8 @@ test("the migration pins locking, actor verification, atomic audit, and service-
   assert.match(migration, /order by controls\.restaurant_id[\s\S]*for update/i);
   assert.match(migration, /membership\.role in \('owner', 'admin'\)/i);
   assert.match(migration, /insert into private\.pilot_operational_control_changes/i);
+  assert.match(migration, /'appliedState', existing_change\.after_state/i);
+  assert.match(migration, /'stateMatchesApplied', after_state = existing_change\.after_state/i);
   assert.match(migration, /set search_path = ''/i);
   assert.match(migration, /grant execute[\s\S]*to service_role/i);
   assert.match(migration, /revoke all[\s\S]*authenticated/i);

@@ -244,18 +244,6 @@ begin
         errcode = '23505',
         message = 'Pilot control request conflicts with existing immutable evidence.';
     end if;
-
-    return jsonb_build_object(
-      'outcome', 'already_applied',
-      'auditId', existing_change.id,
-      'requestId', existing_change.request_id,
-      'restaurantId', existing_change.restaurant_id,
-      'actorUserId', existing_change.actor_user_id,
-      'action', existing_change.requested_action,
-      'reasonCode', existing_change.reason_code,
-      'changed', existing_change.changed,
-      'state', existing_change.after_state
-    );
   end if;
 
   -- All widening commands take the shared row first, then the target row.
@@ -277,6 +265,27 @@ begin
 
   if not found then
     raise exception using errcode = '55000', message = 'Restaurant operational controls are unavailable.';
+  end if;
+
+  if existing_change.id is not null then
+    -- The immutable applied state proves what the original request committed,
+    -- while state is rebuilt under the same live control locks used by a new
+    -- mutation. A replay must never present old evidence as current state.
+    after_state := private.build_pilot_operational_control_state(p_restaurant_id);
+    return jsonb_build_object(
+      'outcome', 'already_applied',
+      'auditId', existing_change.id,
+      'requestId', existing_change.request_id,
+      'restaurantId', existing_change.restaurant_id,
+      'actorUserId', existing_change.actor_user_id,
+      'action', existing_change.requested_action,
+      'reasonCode', existing_change.reason_code,
+      'changed', false,
+      'appliedChanged', existing_change.changed,
+      'state', after_state,
+      'appliedState', existing_change.after_state,
+      'stateMatchesApplied', after_state = existing_change.after_state
+    );
   end if;
 
   -- The requested human actor must be a current configuration authority for
@@ -510,7 +519,10 @@ begin
     'action', inserted_change.requested_action,
     'reasonCode', inserted_change.reason_code,
     'changed', inserted_change.changed,
-    'state', inserted_change.after_state
+    'appliedChanged', inserted_change.changed,
+    'state', inserted_change.after_state,
+    'appliedState', inserted_change.after_state,
+    'stateMatchesApplied', true
   );
 end;
 $$;

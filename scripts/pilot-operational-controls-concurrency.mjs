@@ -23,6 +23,7 @@ const requests = {
   concurrentB: "e5000000-0000-4000-8000-000000000102",
   failedAudit: "e5000000-0000-4000-8000-000000000103",
   duplicate: "e5000000-0000-4000-8000-000000000104",
+  replayStateChange: "e5000000-0000-4000-8000-000000000108",
   disableIsolation: "e5000000-0000-4000-8000-000000000105",
   squareDomain: "e5000000-0000-4000-8000-000000000106",
   gmailDomain: "e5000000-0000-4000-8000-000000000107"
@@ -307,6 +308,36 @@ try {
     [requests.duplicate]
   )).rows[0].count), 1);
 
+  // A later request may legitimately supersede an earlier action. Replaying
+  // the earlier request must retain its immutable audit proof while returning
+  // the currently locked state instead of mislabeling old evidence as live.
+  await first.query("set role service_role");
+  const laterStateChange = await applyControl(first, {
+    requestId: requests.replayStateChange,
+    restaurantId: restaurants.a,
+    action: "enable-square-sync",
+    actorId: actors.a,
+    reason: "later_square_state_change"
+  });
+  const staleReplay = await applyControl(first, {
+    requestId: requests.duplicate,
+    restaurantId: restaurants.a,
+    action: "disable-square",
+    actorId: actors.a,
+    reason: "concurrent_exact_retry"
+  });
+  await first.query("reset role");
+  assert.equal(laterStateChange.outcome, "applied");
+  assert.equal(staleReplay.outcome, "already_applied");
+  assert.equal(staleReplay.auditId, firstDuplicate.auditId);
+  assert.equal(staleReplay.state.restaurant.square_sync_enabled, true);
+  assert.equal(staleReplay.appliedState.restaurant.square_sync_enabled, false);
+  assert.equal(staleReplay.stateMatchesApplied, false);
+  assert.equal(Number((await admin.query(
+    "select count(*) count from private.pilot_operational_control_changes where request_id = any($1::uuid[])",
+    [[requests.duplicate, requests.replayStateChange]]
+  )).rows[0].count), 2);
+
   // Narrow disable remains isolated even if another restaurant's same-domain
   // tenant gate is already on.
   await admin.query("update public.system_operational_controls set gmail_delivery_enabled = true where singleton");
@@ -372,7 +403,7 @@ try {
   assert.equal(independentState.rows[0].gmail_b, true);
   assert.equal(Number(independentState.rows[0].audit_count), 2);
 
-  console.log("Atomic pilot operational control concurrency regressions passed (22 assertions).");
+  console.log("Atomic pilot operational control concurrency regressions passed (29 assertions).");
 } finally {
   for (const connection of [first, second]) {
     try { await connection.query("rollback"); } catch {}

@@ -109,7 +109,9 @@ export async function executePilotControlAction(request, operations) {
     action: mutation.action,
     reasonCode: mutation.reasonCode,
     mutations: plannedPilotControlMutations(mutation.action),
-    state: summarizePilotControlState(applied.state)
+    state: summarizePilotControlState(applied.state),
+    appliedState: summarizePilotControlState(applied.appliedState),
+    stateMatchesApplied: applied.stateMatchesApplied
   };
 }
 
@@ -169,7 +171,11 @@ function assertAppliedResult(request, result) {
     throw new Error("Pilot control RPC returned mismatched reason authority.");
   }
   assertState(request.restaurantId, result.state);
-  assertApplied(request.action, result.state);
+  assertState(request.restaurantId, result.appliedState);
+  if (typeof result.stateMatchesApplied !== "boolean") {
+    throw new Error("Pilot control RPC returned no replay freshness evidence.");
+  }
+  assertApplied(request.action, result.outcome === "applied" ? result.state : result.appliedState);
 }
 
 function assertApplied(action, state) {
