@@ -97,6 +97,7 @@ export default function CreateOperatorTaskScreen() {
   const [hubLoadError, setHubLoadError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const hasLoadedRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -104,6 +105,7 @@ export default function CreateOperatorTaskScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoadedRef.current = false;
     setTasks([]);
     setSharedTasks([]);
     setTeam([]);
@@ -113,6 +115,21 @@ export default function CreateOperatorTaskScreen() {
     setError(null);
     setSaved(false);
     setBusyTaskId(null);
+    // Hard-reset create-form drafts so restaurant switches cannot leak mid-edit text.
+    setScope("restaurant");
+    setTitle("");
+    setBody("");
+    setPriority("normal");
+    setDueDateText("");
+    setTiming("now");
+    setFocus("none");
+    setServiceWindow("none");
+    setRequiredRole("member");
+    setVerificationMethod("none");
+    setChecklistText("");
+    setAssigneeUserId(null);
+    setDependencyId(null);
+    setShowCompleted(false);
   }, [restaurant?.id]);
 
   const priorityOptions = useMemo<readonly SegmentOption<OperatorTaskPriority>[]>(
@@ -208,8 +225,14 @@ export default function CreateOperatorTaskScreen() {
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setListError(null);
-    setHubLoadError(false);
+    const soft = hasLoadedRef.current && activeRestaurantIdRef.current === restaurantId;
+    if (soft) {
+      // Invalidate readiness during soft refresh so mutations stay closed until proof returns.
+      setLoadedRestaurantId(null);
+    } else {
+      setListError(null);
+      setHubLoadError(false);
+    }
     try {
       const [next, nextShared, nextTeam] = await Promise.all([
         listOperatorTasks(restaurantId),
@@ -223,6 +246,7 @@ export default function CreateOperatorTaskScreen() {
       setLoadedRestaurantId(restaurantId);
       setListError(null);
       setHubLoadError(false);
+      // Soft refresh must preserve operator-entered create-form drafts (title/body/checklist).
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, {
@@ -230,8 +254,18 @@ export default function CreateOperatorTaskScreen() {
         operation: "list",
         restaurant_id: restaurantId
       });
+      // Fail closed for display/actions, but keep local drafts and prior lists for retry.
       setHubLoadError(true);
       setListError(t("operatorTasks.error.load"));
+      if (!soft) {
+        setTasks([]);
+        setSharedTasks([]);
+        setTeam([]);
+      }
+    } finally {
+      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoadedRef.current = true;
+      }
     }
   }, [restaurant?.id, t]);
 
