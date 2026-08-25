@@ -96,6 +96,17 @@ test("restaurant-scoped hub consumers use the shared fail-closed helper", () => 
   );
 });
 
+test("inventory stock browser does not claim empty matches after soft-refresh errors", () => {
+  const inventory = readFileSync("app/(tabs)/inventory.tsx", "utf8");
+  assert.match(inventory, /const hubUnavailable = hubLoadState === "error"/);
+  assert.match(inventory, /inventory\.emptyMatches\.unavailable\.title/);
+  assert.match(inventory, /inventory\.emptyMatches\.unavailable\.body/);
+  assert.match(
+    inventory,
+    /hubUnavailable \? \([\s\S]*emptyMatches\.unavailable[\s\S]*\) : hubReady \? \([\s\S]*emptyMatches\.title/
+  );
+});
+
 test("restaurant-scoped hub actions stay non-editable until the hub is ready", () => {
   assert.equal(
     presentRestaurantScopedHubActionsEditable({
