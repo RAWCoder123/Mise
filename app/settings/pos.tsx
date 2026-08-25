@@ -30,6 +30,7 @@ import {
 } from "../../services/presentation/hubLoadState";
 import type { PilotReadiness, PilotReadinessAreaId } from "../../services/domain/pilotReadiness";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
+import { captureMiseError } from "../../services/telemetry";
 import type { PosIntegration, PosProvider } from "../../types/mise";
 import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
 
@@ -140,20 +141,23 @@ export default function POSConnectionScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setIntegration(next);
       setLoadedRestaurantId(restaurantId);
-    } catch {
+      setHubLoadError(false);
+    } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      // Soft-refresh keeps last-known integration in state, but hub readiness
+      // fail-closes so the hero never presents a false not-connected status.
       setHubLoadError(true);
-      setNotice({
-        tone: "danger",
-        title: t("pos.error.loadTitle"),
-        message: t("pos.error.loadBody")
+      captureMiseError(loadError, {
+        flow: "pos",
+        operation: "load",
+        restaurant_id: restaurantId
       });
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
         setLoadingIntegration(false);
       }
     }
-  }, [isDemoMode, restaurant?.id, t]);
+  }, [isDemoMode, restaurant?.id]);
 
   const hubLoadState = resolveRestaurantScopedHubLoadState({
     restaurantId: restaurant?.id,
@@ -161,13 +165,45 @@ export default function POSConnectionScreen() {
     loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
+  const hubUnavailable = hubLoadState === "error";
+  const hubLoading = hubLoadState === "loading" || loadingIntegration;
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
     busy: busyAction !== null || loadingProvider !== null
   });
+  // Fail closed: never render Square connection authority while the hub is
+  // error/loading. Soft-refresh may keep `integration` in state for recovery.
   const visibleIntegration = hubReady ? integration : null;
   const visibleSquareConnected = visibleIntegration?.status === "connected";
+  const liveHeroConnected = !hubUnavailable && visibleSquareConnected;
+  const liveHeroTone = hubUnavailable ? "danger" : liveHeroConnected ? "leaf" : "caution";
+  const liveHeroTitle = hubUnavailable
+    ? t("pos.hero.unavailable")
+    : liveHeroConnected
+      ? t("pos.hero.connected", { provider: "Square" })
+      : t("pos.hero.connectSource");
+  const liveHeroBody = hubUnavailable
+    ? t("pos.status.unavailable")
+    : liveHeroConnected
+      ? t("pos.status.squareConnected")
+      : t("pos.status.squareReady");
+  const liveHeroMeta = hubUnavailable
+    ? t("pos.status.unavailableBadge")
+    : liveHeroConnected
+      ? t("common.live")
+      : t("pos.value.beta");
+  const squareConnectionMeta = hubLoading
+    ? t("common.loading")
+    : hubUnavailable
+      ? t("pos.square.unavailableMeta")
+      : visibleSquareConnected
+        ? t("pos.square.lastSync", {
+            value: visibleIntegration?.last_sync_at
+              ? formatDate(visibleIntegration.last_sync_at)
+              : t("common.none")
+          })
+        : t("pos.square.notConnectedMeta");
 
   useFocusEffect(
     useCallback(() => {
@@ -357,32 +393,34 @@ export default function POSConnectionScreen() {
               ? posProviderLabel
                 ? t("pos.hero.connected", { provider: posProviderLabel })
                 : t("pos.hero.connectSource")
-              : visibleSquareConnected
-                ? t("pos.hero.connected", { provider: "Square" })
-                : t("pos.hero.connectSource")
+              : liveHeroTitle
           }
           body={
             isDemoMode
               ? posProviderLabel
                 ? t("pos.status.demoConnected", { provider: posProviderLabel })
                 : t("pos.status.demoMode")
-              : visibleSquareConnected
-                ? t("pos.status.squareConnected")
-                : t("pos.status.squareReady")
+              : liveHeroBody
           }
           meta={
             isDemoMode
               ? posProviderLabel ?? t("common.demo")
-              : visibleSquareConnected
-                ? t("common.live")
-                : t("pos.value.beta")
+              : liveHeroMeta
           }
-          tone={isDemoMode ? (posProvider ? "leaf" : "caution") : visibleSquareConnected ? "leaf" : "caution"}
+          tone={isDemoMode ? (posProvider ? "leaf" : "caution") : liveHeroTone}
           icon={
             <PlugZap
               size={icon.emphasis}
               color={
-                (isDemoMode ? posProvider : visibleSquareConnected) ? colors.success : colors.caution
+                isDemoMode
+                  ? posProvider
+                    ? colors.success
+                    : colors.caution
+                  : hubUnavailable
+                    ? colors.danger
+                    : liveHeroConnected
+                      ? colors.success
+                      : colors.caution
               }
               strokeWidth={iconStroke}
             />
@@ -394,10 +432,20 @@ export default function POSConnectionScreen() {
                 ? posProvider
                   ? t("common.on")
                   : t("common.none")
-                : visibleSquareConnected
-                  ? t("common.on")
-                  : t("common.none"),
-              tone: (isDemoMode ? posProvider : visibleSquareConnected) ? "leaf" : "caution"
+                : hubUnavailable
+                  ? t("pos.status.unavailableBadge")
+                  : liveHeroConnected
+                    ? t("common.on")
+                    : t("common.none"),
+              tone: isDemoMode
+                ? posProvider
+                  ? "leaf"
+                  : "caution"
+                : hubUnavailable
+                  ? "danger"
+                  : liveHeroConnected
+                    ? "leaf"
+                    : "caution"
             },
             {
               label: t("pos.stat.mode"),
@@ -408,13 +456,22 @@ export default function POSConnectionScreen() {
           ]}
         />
 
-        {notice ? (
+        {hubLoadError ? (
+          <StatusNotice
+            tone="danger"
+            title={t("pos.error.loadTitle")}
+            message={t("pos.error.loadBody")}
+            actionLabel={t("common.retry")}
+            actionAccessibilityLabel={t("pos.error.retryAccessibility")}
+            onAction={() => void loadIntegration(true)}
+          />
+        ) : null}
+
+        {notice && !hubLoadError ? (
           <StatusNotice
             tone={notice.tone}
             title={notice.title}
             message={notice.message}
-            actionLabel={hubLoadError ? t("common.retry") : undefined}
-            onAction={hubLoadError ? () => void loadIntegration(true) : undefined}
           />
         ) : null}
 
@@ -487,19 +544,7 @@ export default function POSConnectionScreen() {
           <Card>
             <Text style={styles.restrictedTitle}>{t("pos.square.cardTitle")}</Text>
             <Text style={styles.restrictedCopy}>{t("pos.square.cardBody")}</Text>
-            {loadingIntegration || !hubReady ? (
-              <Text style={styles.meta}>{t("common.loading")}</Text>
-            ) : (
-              <Text style={styles.meta}>
-                {visibleSquareConnected
-                  ? t("pos.square.lastSync", {
-                      value: visibleIntegration?.last_sync_at
-                        ? formatDate(visibleIntegration.last_sync_at)
-                        : t("common.none")
-                    })
-                  : t("pos.square.notConnectedMeta")}
-              </Text>
-            )}
+            <Text style={styles.meta}>{squareConnectionMeta}</Text>
             <View style={styles.actions}>
               {actionsEditable ? (
                 visibleSquareConnected ? (
