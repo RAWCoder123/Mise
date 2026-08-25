@@ -147,3 +147,22 @@ test("manual tab controls expose their selected state on web", () => {
     assert.match(screen, /<(?:FilterRow|SegmentedControl)/);
   }
 });
+
+test("language preference soft-loads fail closed with sticky loadError and RetryNotice", () => {
+  const localeContext = source("contexts/LocaleContext.tsx");
+  const languageScreen = source("app/settings/language.tsx");
+  const preferencePresentation = source("services/presentation/preferenceSettingsPresentation.ts");
+
+  assert.match(localeContext, /Soft-refresh keeps loadError sticky until success/);
+  assert.match(localeContext, /isTenantAuthorizationError\(saveError\)/);
+  assert.match(localeContext, /loadedScopeRef/);
+  assert.match(localeContext, /reload:\s*\(showLoading\?: boolean\) => void/);
+  assert.match(languageScreen, /RetryNotice/);
+  assert.match(languageScreen, /onRetry=\{\(\) => reload\(true\)\}/);
+  assert.match(languageScreen, /resolvePreferenceSettingsLoadState/);
+  assert.match(languageScreen, /presentLanguageSettingsSelection/);
+  assert.match(
+    preferencePresentation,
+    /if \(!input\.sessionReady \|\| !input\.ready\) return "loading";\s*if \(input\.loadError\) return "error";/
+  );
+});
