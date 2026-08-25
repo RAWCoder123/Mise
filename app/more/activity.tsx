@@ -21,6 +21,7 @@ import {
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
 import { fetchActivityEvents } from "../../services/miseService";
+import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 
 const dateRanges: ActivityDateRange[] = ["all", "today", "yesterday", "this_week"];
@@ -36,6 +37,8 @@ export default function ActivityHistoryScreen() {
   const [error, setError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const hasLoaded = useRef(false);
+  const loadedQueryRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -64,6 +67,8 @@ export default function ActivityHistoryScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoaded.current = false;
+    loadedQueryRef.current = null;
     setEvents([]);
     setLoadedRestaurantId(null);
     setError(false);
@@ -78,7 +83,15 @@ export default function ActivityHistoryScreen() {
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
+    const queryKey = `${filter}:${range}`;
+    const queryChanged = loadedQueryRef.current !== null && loadedQueryRef.current !== queryKey;
+    if (queryChanged) {
+      setEvents([]);
+      setLoadedRestaurantId(null);
+      setLoading(true);
+    } else if (!hasLoaded.current) {
+      setLoading(true);
+    }
     setError(false);
     try {
       const bounds = activityDateRangeBounds(range);
@@ -92,12 +105,14 @@ export default function ActivityHistoryScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setEvents(next);
       setLoadedRestaurantId(restaurantId);
+      loadedQueryRef.current = queryKey;
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "activity", operation: "load", restaurant_id: restaurantId });
       setError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoaded.current = true;
         setLoading(false);
       }
     }
@@ -109,7 +124,13 @@ export default function ActivityHistoryScreen() {
     }, [load])
   );
 
-  const visible = loadedRestaurantId === restaurant?.id ? events : [];
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const visible = hubReady ? events : [];
 
   return (
     <Screen
@@ -150,7 +171,7 @@ export default function ActivityHistoryScreen() {
           />
         ) : null}
 
-        {!error && visible.length === 0 ? (
+        {!error && hubReady && visible.length === 0 ? (
           <EmptyState title={t("activity.empty.title")} body={t("activity.empty.body")} />
         ) : null}
 
