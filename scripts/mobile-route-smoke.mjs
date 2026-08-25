@@ -16,6 +16,7 @@ const routes = [
   "/settings",
   "/settings/export",
   "/settings/privacy",
+  "/settings/terms",
   "/settings/support",
   "/settings/language",
   "/settings/gmail",

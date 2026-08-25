@@ -7,9 +7,14 @@ const support = readFileSync("docs/store/support.md", "utf8");
 const listing = readFileSync("docs/store/app-store-listing.md", "utf8");
 const login = readFileSync("app/(auth)/login.tsx", "utf8");
 const privacyRoute = readFileSync("app/settings/privacy.tsx", "utf8");
+const termsRoute = readFileSync("app/settings/terms.tsx", "utf8");
 const supportRoute = readFileSync("app/settings/support.tsx", "utf8");
+const settingsHub = readFileSync("app/(tabs)/settings.tsx", "utf8");
 const routeSmoke = readFileSync("scripts/mobile-route-smoke.mjs", "utf8");
 const layoutSmoke = readFileSync("scripts/mobile-layout-smoke.mjs", "utf8");
+const appConfig = readFileSync("lib/appConfig.ts", "utf8");
+const envExample = readFileSync(".env.example", "utf8");
+const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
 
 test("beta privacy policy names actual data flows and disabled providers", () => {
   assert.match(privacy, /Effective date: August 3, 2026/);
@@ -52,8 +57,9 @@ test("store listing matches invite-only draft-only beta behavior", () => {
   assert.doesNotMatch(listing, /create via in-app sign-up/i);
 });
 
-test("privacy and support remain discoverable before sign-in", () => {
+test("privacy, terms, and support remain discoverable before sign-in", () => {
   assert.match(login, /router\.push\("\/settings\/privacy"/);
+  assert.match(login, /router\.push\("\/settings\/terms"/);
   assert.match(login, /router\.push\("\/settings\/support"/);
   assert.match(login, /accessibilityRole="link"/);
   assert.doesNotMatch(
@@ -62,8 +68,10 @@ test("privacy and support remain discoverable before sign-in", () => {
     "the legal-link container must not collapse its independently accessible links",
   );
   assert.doesNotMatch(privacyRoute, /if\s*\(\s*!user\s*\)/);
+  assert.doesNotMatch(termsRoute, /if\s*\(\s*!user\s*\)/);
   assert.doesNotMatch(supportRoute, /if\s*\(\s*!user\s*\)/);
   assert.match(privacyRoute, /signedIn\s*\?\s*"\/settings"\s*:\s*"\/login"/);
+  assert.match(termsRoute, /signedIn\s*\?\s*"\/settings"\s*:\s*"\/login"/);
   assert.match(supportRoute, /signedIn\s*\?\s*"\/settings"\s*:\s*"\/login"/);
 });
 
@@ -91,10 +99,18 @@ test("contact and policy actions transmit only bounded public destinations", () 
   );
   assert.match(privacyRoute, /privacy\.hosting\.title/);
   assert.match(supportRoute, /support\.monitoring\.title/);
+  assert.match(termsRoute, /readPublicAppConfig\(\)\.termsUrl/);
+  assert.match(termsRoute, /disabled=\{opening \|\| !termsUrl\}/);
+  assert.match(termsRoute, /Linking\.canOpenURL\(termsUrl\)[\s\S]*Linking\.openURL\(termsUrl\)/);
+  assert.match(appConfig, /EXPO_PUBLIC_TERMS_URL/);
+  assert.match(appConfig, /normalizeOptionalHttpsUrl/);
+  assert.match(envExample, /EXPO_PUBLIC_TERMS_URL=/);
+  assert.match(securityStatic, /EXPO_PUBLIC_TERMS_URL/);
+  assert.match(settingsHub, /router\.push\("\/settings\/terms"/);
 });
 
-test("privacy and support routes are part of shell and localized mobile QA", () => {
-  for (const route of ["/settings/privacy", "/settings/support"]) {
+test("privacy, terms, and support routes are part of shell and localized mobile QA", () => {
+  for (const route of ["/settings/privacy", "/settings/terms", "/settings/support"]) {
     assert.match(routeSmoke, new RegExp(`"${route}"`));
     assert.match(layoutSmoke, new RegExp(`"${route}"`));
   }
