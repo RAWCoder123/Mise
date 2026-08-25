@@ -30,6 +30,8 @@ test("TestFlight commands use one pinned EAS CLI and fail closed on account prer
   assert.match(script("ios:testflight:check"), /qa:ios-prereq/);
   assert.match(script("ios:testflight:check"), /qa:eas-account/);
   assert.match(script("ios:testflight:check"), /qa:eas-archive/);
+  assert.match(script("ios:testflight:check"), /testflight:ready/);
+  assert.doesNotMatch(script("ios:testflight:check"), /demo:ready/);
   assert.equal(
     script("ios:testflight:build"),
     "npx --yes eas-cli@21.4.0 build --platform ios --profile testflight"
@@ -60,6 +62,44 @@ test("TestFlight commands use one pinned EAS CLI and fail closed on account prer
     assert.match(easIgnore, new RegExp(`^${excludedPath.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}$`, "m"));
     assert.match(archiveCheck, new RegExp(excludedPath.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")));
   }
+});
+
+test("TestFlight readiness uses a staging non-demo QA contract", () => {
+  const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
+    scripts: Record<string, string>;
+  };
+  const script = (name: string) => {
+    const value = packageJson.scripts[name];
+    if (typeof value !== "string") throw new Error(`missing package script ${name}`);
+    return value;
+  };
+  const mobileSmoke = readFileSync("scripts/mobile-layout-smoke.mjs", "utf8");
+  const exportScript = readFileSync("scripts/testflight-web-export.mjs", "utf8");
+
+  assert.match(script("qa:interactions"), /MISE_QA_INTERACTIONS=demo/);
+  assert.match(script("qa:interactions:testflight"), /MISE_QA_INTERACTIONS=testflight/);
+  assert.match(script("qa:interactions:testflight"), /--env-file-if-exists=\.mise-staging\.env/);
+  assert.match(script("testflight:ready"), /export:testflight/);
+  assert.match(script("testflight:ready"), /qa:interactions:testflight/);
+  assert.doesNotMatch(script("testflight:ready"), /qa:interactions(?:\s|$)/);
+  assert.match(mobileSmoke, /\["none", "demo", "testflight"\]/);
+  assert.match(mobileSmoke, /testflightPublicQaEnv/);
+  assert.match(mobileSmoke, /runDemoInteractionQa/);
+  assert.match(mobileSmoke, /runTestFlightInteractionQa/);
+  assert.match(mobileSmoke, /TestFlight interaction QA must launch its own staging-configured Expo server/);
+  for (const demoOnlyText of [
+    "Open demo data",
+    "Customize setup first",
+    "Open demo kitchen",
+    "Restore demo data",
+    "Simulate send",
+    "Approve & simulate",
+    "Start Local Demo"
+  ]) {
+    assert.match(mobileSmoke, new RegExp(JSON.stringify(demoOnlyText).slice(1, -1)));
+  }
+  assert.match(exportScript, /testflightPublicQaEnv/);
+  assert.doesNotMatch(exportScript, /SECRET|SERVICE_ROLE|PASSWORD/);
 });
 
 test("restaurant export is covered by shell, mobile, and localized route harnesses", () => {
