@@ -85,6 +85,50 @@ export function summarizeCountSessionProgress(
   };
 }
 
+export type InventoryCountDraftMaps = {
+  counts: Record<string, string>;
+  notes: Record<string, string>;
+};
+
+type CountDraftLine = Pick<InventoryCountLine, "inventory_item_id" | "counted_quantity" | "note">;
+
+/** Seed local count/note drafts from authoritative session lines (replace mode). */
+export function seedInventoryCountDraftMaps(lines: readonly CountDraftLine[]): InventoryCountDraftMaps {
+  return {
+    counts: Object.fromEntries(
+      lines.map((line) => [
+        line.inventory_item_id,
+        line.counted_quantity == null ? "" : String(line.counted_quantity)
+      ])
+    ),
+    notes: Object.fromEntries(lines.map((line) => [line.inventory_item_id, line.note ?? ""]))
+  };
+}
+
+/**
+ * Soft-refresh merge: keep operator-entered drafts for existing line ids,
+ * adopt server values only for newly appearing ids, and drop removed ids.
+ * Soft-refresh load failures must preserve `previous` entirely instead of calling this.
+ */
+export function mergeInventoryCountDraftMaps(
+  previous: InventoryCountDraftMaps,
+  lines: readonly CountDraftLine[]
+): InventoryCountDraftMaps {
+  const seeded = seedInventoryCountDraftMaps(lines);
+  const counts: Record<string, string> = {};
+  const notes: Record<string, string> = {};
+  for (const line of lines) {
+    const id = line.inventory_item_id;
+    counts[id] = Object.prototype.hasOwnProperty.call(previous.counts, id)
+      ? previous.counts[id]!
+      : seeded.counts[id]!;
+    notes[id] = Object.prototype.hasOwnProperty.call(previous.notes, id)
+      ? previous.notes[id]!
+      : seeded.notes[id]!;
+  }
+  return { counts, notes };
+}
+
 export function planCountSessionApprovals(input: {
   inventoryItems: readonly InventoryItem[];
   lines: readonly InventoryCountLine[];
