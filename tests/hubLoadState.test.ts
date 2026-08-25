@@ -137,3 +137,39 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
     true
   );
 });
+
+test("recipes preserve ingredient quantity drafts on soft-refresh fail-closed", () => {
+  const source = readFileSync("app/settings/recipes.tsx", "utf8");
+  assert.match(source, /hasLoadedRef/);
+  assert.match(
+    source,
+    /const soft = hasLoadedRef\.current && activeRestaurantIdRef\.current === restaurantId/
+  );
+  assert.match(
+    source,
+    /\/\/ Invalidate readiness during soft refresh so mutations stay closed until proof returns\.\s*setLoadedRestaurantId\(null\);/
+  );
+  assert.match(
+    source,
+    /\/\/ Soft refresh must preserve operator-entered ingredient quantity and builder drafts\.\s*if \(soft\) \{/
+  );
+  assert.match(
+    source,
+    /ingredient\.mappingId in current\s*\?\s*current\[ingredient\.mappingId\]!\s*:\s*formatNumber\(ingredient\.quantityUsedPerSale\)/
+  );
+  assert.match(
+    source,
+    /\/\/ Fail closed for display\/actions, but keep local drafts and prior baselines for retry\.\s*setHubLoadError\(true\);/
+  );
+  assert.match(source, /if \(!soft\) \{\s*setSummary\(null\);\s*setInventoryItems\(\[\]\);\s*\}/);
+  assert.match(source, /hasLoadedRef\.current = false/);
+  assert.match(source, /setDraftQuantities\(\{\}\)/);
+  assert.match(source, /setNewMenuItemName\(""\)/);
+  assert.match(source, /setNewInventoryItemName\(""\)/);
+  assert.match(source, /setNewQuantity\("1"\)/);
+  assert.doesNotMatch(
+    source,
+    /setDrafts\(\s*Object\.fromEntries\(item\.ingredients\.map/,
+    "RecipeRow must not reseed local drafts from item on every summary refresh"
+  );
+});
