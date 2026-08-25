@@ -16,6 +16,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
 import { fetchInventoryItems } from "../../services/miseService";
+import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
 import type { InventoryItem } from "../../types/mise";
 
 const CAMERA_SUPPORTED = Platform.OS === "ios" || Platform.OS === "android";
@@ -99,7 +100,13 @@ export default function ScanItemScreen() {
     }, [load])
   );
 
-  const visibleItems = loadedRestaurantId === restaurant?.id ? items : [];
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleItems = hubReady ? items : [];
   const searchMatches = useMemo(
     () => visibleItems.filter((item) => matchesQuery(item, query)).slice(0, 40),
     [query, visibleItems]
