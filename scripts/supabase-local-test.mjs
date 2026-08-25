@@ -70,6 +70,7 @@ try {
     runNode("scripts/purchase-approval-concurrency.mjs");
     runNode("scripts/purchase-approval-square-sync-concurrency.mjs");
     runNode("scripts/purchase-decision-memory-concurrency.mjs");
+    runNode("scripts/pilot-operational-controls-concurrency.mjs");
     runNode("scripts/supplier-send-concurrency.mjs");
     runNode("scripts/supplier-identity-concurrency.mjs");
     runNode("scripts/supplier-send-fingerprint-parity.mjs", ["--import", "tsx"]);

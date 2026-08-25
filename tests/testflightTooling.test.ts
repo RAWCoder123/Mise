@@ -41,7 +41,7 @@ test("TestFlight commands use one pinned EAS CLI and fail closed on account prer
   assert.equal(easConfig.build.testflight?.distribution, "store");
   assert.equal(easConfig.build.testflight?.environment, "preview");
   assert.equal(easConfig.build.testflight?.env?.EXPO_PUBLIC_APP_ENV, "staging");
-  assert.equal(easConfig.build.testflight?.env?.EXPO_PUBLIC_ENABLE_DEMO_MODE, "true");
+  assert.equal(easConfig.build.testflight?.env?.EXPO_PUBLIC_ENABLE_DEMO_MODE, "false");
   assert.equal(easConfig.build.testflight?.env?.EXPO_PUBLIC_RELEASE, "mise-mobile@0.1.0+2");
   assert.deepEqual(easConfig.submit.testflight?.ios, {});
   assert.match(accountCheck, /expo\?\.extra\?\.eas\?\.projectId/);
