@@ -49,6 +49,8 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.recipes, /hubReady\s*\?\s*summary\s*:\s*null/);
   assert.match(screens.team, /hubReady\s*\?\s*members\s*:\s*\[\]/);
   assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);
+  assert.match(screens.suppliers, /hasLoadedRef/);
+  assert.match(screens.suppliers, /Soft refresh must preserve operator-entered name\/email drafts/);
   assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
   assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
   assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);

@@ -160,6 +160,8 @@ test("supplier recipient route is stale-response guarded and staff read-only", (
   assert.match(screen, /requestId !== requestIdRef\.current/);
   assert.match(screen, /resolveRestaurantScopedHubLoadState/);
   assert.match(screen, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screen, /hasLoadedRef/);
+  assert.match(screen, /Soft refresh must preserve operator-entered name\/email drafts/);
   assert.match(screen, /canManage \? \(/);
   assert.match(screen, /editable=\{actionsEditable && !saving\}/);
   assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| nameUnchanged\}/);
