@@ -48,6 +48,8 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.orders, /hubReady\s*\?\s*orders\s*:\s*\[\]/);
   assert.match(screens.recipes, /hubReady\s*\?\s*summary\s*:\s*null/);
   assert.match(screens.team, /hubReady\s*\?\s*members\s*:\s*\[\]/);
+  assert.match(screens.team, /hasLoadedRef/);
+  assert.match(screens.team, /Soft refresh must preserve operator-entered invite email\/role drafts/);
   assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);
   assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
   assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
@@ -57,6 +59,8 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.restaurantMemory, /hubReady\s*\?\s*memories\s*:\s*\[\]/);
   assert.match(screens.logDelivery, /hubReady\s*\?\s*items\s*:\s*\[\]/);
   assert.match(screens.logDelivery, /hubReady\s*\?\s*history\s*:\s*\[\]/);
+  assert.match(screens.logDelivery, /hasLoadedRef/);
+  assert.match(screens.logDelivery, /Soft refresh must preserve operator-entered quantity\/note drafts and selection/);
   assert.match(screens.pos, /visibleIntegration/);
   assert.match(screens.pos, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.createTask, /presentRestaurantScopedHubActionsEditable/);

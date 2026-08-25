@@ -10,7 +10,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
-import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -63,6 +63,7 @@ export default function TeamSettingsScreen() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [notice, setNotice] = useState<TeamNotice | null>(null);
   const requestIdRef = useRef(0);
+  const hasLoadedRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -76,19 +77,33 @@ export default function TeamSettingsScreen() {
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
-    setLoadError(false);
+    const soft = hasLoadedRef.current && activeRestaurantIdRef.current === restaurantId;
+    if (soft) {
+      // Invalidate readiness during soft refresh so mutations stay closed until proof returns.
+      setLoadedRestaurantId(null);
+    } else {
+      setLoading(true);
+      setLoadError(false);
+      setNotice(null);
+    }
     try {
       const nextMembers = sortTeamMembers(await fetchRestaurantTeam(restaurantId));
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setMembers(nextMembers);
       setLoadedRestaurantId(restaurantId);
+      setLoadError(false);
+      // Soft refresh must preserve operator-entered invite email/role drafts.
     } catch (error) {
       captureMiseError(error, { flow: "team", operation: "load", restaurant_id: restaurantId });
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      // Fail closed for display/actions, but keep local invite drafts and prior members for retry.
       setLoadError(true);
+      if (!soft) {
+        setMembers([]);
+      }
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoadedRef.current = true;
         setLoading(false);
       }
     }
@@ -96,6 +111,7 @@ export default function TeamSettingsScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoadedRef.current = false;
     setMembers([]);
     setLoadedRestaurantId(null);
     setLoadError(false);
@@ -263,10 +279,12 @@ export default function TeamSettingsScreen() {
         <SectionSurface title={t("team.section.members")} padding="comfortable">
           {loading ? <Text style={styles.helper}>{t("team.loading")}</Text> : null}
           {loadError ? (
-            <EmptyState
+            <RetryNotice
               title={t("team.empty.errorTitle")}
-              body={t("team.empty.errorBody")}
-              framed
+              message={t("team.empty.errorBody")}
+              retryLabel={t("team.empty.retry")}
+              accessibilityLabel={t("team.empty.retryAccessibility")}
+              onRetry={() => void load()}
             />
           ) : null}
           {!loading && !loadError && visibleMembers.length === 0 ? (
