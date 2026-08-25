@@ -100,6 +100,9 @@ export default function SettingsScreen() {
     setReadiness(null);
     setDiagnosticsOpen(false);
     setMessage(null);
+    setDeleteConfirmOpen(false);
+    setDeleteConfirmText("");
+    setDeletingAccount(false);
   }, [restaurant?.id]);
 
   const load = useCallback(async () => {

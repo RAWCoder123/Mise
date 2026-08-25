@@ -113,6 +113,22 @@ export default function CreateOperatorTaskScreen() {
     setError(null);
     setSaved(false);
     setBusyTaskId(null);
+    setSaving(false);
+    // Clear in-progress create drafts so restaurant B never inherits A’s form.
+    setScope("restaurant");
+    setTitle("");
+    setBody("");
+    setPriority("normal");
+    setDueDateText("");
+    setTiming("now");
+    setFocus("none");
+    setServiceWindow("none");
+    setRequiredRole("member");
+    setVerificationMethod("none");
+    setChecklistText("");
+    setAssigneeUserId(null);
+    setDependencyId(null);
+    setShowCompleted(false);
   }, [restaurant?.id]);
 
   const priorityOptions = useMemo<readonly SegmentOption<OperatorTaskPriority>[]>(

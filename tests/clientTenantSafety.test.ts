@@ -99,6 +99,39 @@ test("workspace mutations stop stale continuations and session state is latest-w
   assert.match(session, /AppState\.addEventListener\("change"/);
 });
 
+test("mutation drafts clear on restaurant switch so tenant B never inherits tenant A form state", () => {
+  const createTask = source("app/more/create-task.tsx");
+  const askMise = source("app/ask-mise.tsx");
+  const restaurantMemory = source("app/more/restaurant-memory.tsx");
+  const settings = source("app/(tabs)/settings.tsx");
+
+  assert.match(
+    createTask,
+    /setTasks\(\[\]\);[\s\S]*setTitle\(""\);[\s\S]*setBody\(""\);[\s\S]*setAssigneeUserId\(null\);[\s\S]*\}, \[restaurant\?\.id\]\)/,
+    "create-task must clear create drafts in the restaurant-switch effect"
+  );
+  assert.match(createTask, /setChecklistText\(""\)/);
+  assert.match(createTask, /setDependencyId\(null\)/);
+
+  assert.match(
+    askMise,
+    /setMessages\(\[\]\);[\s\S]*setInput\(""\);[\s\S]*\}, \[restaurant\?\.id\]\)/,
+    "ask-mise must clear the pending question draft on restaurant switch"
+  );
+
+  assert.match(
+    restaurantMemory,
+    /setCorrectionDrafts\(\{\}\);[\s\S]*\}, \[restaurant\?\.id\]\)/,
+    "restaurant-memory must drop correction drafts on restaurant switch"
+  );
+
+  assert.match(
+    settings,
+    /setDeleteConfirmOpen\(false\);[\s\S]*setDeleteConfirmText\(""\);[\s\S]*\}, \[restaurant\?\.id\]\)/,
+    "settings must close and clear account-deletion confirmation on restaurant switch"
+  );
+});
+
 test("membership changes are pushed over Realtime scoped to the signed-in user", () => {
   const session = source("contexts/MiseSessionContext.tsx");
 
