@@ -16,7 +16,7 @@ import { Card } from "../../components/ui/Card";
 import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { FilterRow, type SegmentOption } from "../../components/ui/SegmentedControl";
-import { StatusNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, inventoryStatusColors, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -63,6 +63,8 @@ export default function InventoryDetailScreen() {
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [hubLoadError, setHubLoadError] = useState(false);
   const requestIdRef = useRef(0);
+  const hasLoadedRef = useRef(false);
+  const loadedItemIdRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -76,10 +78,16 @@ export default function InventoryDetailScreen() {
     const restaurantId = restaurant.id;
     const itemId = id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
-    setMessage(null);
-    setMessageIsError(false);
-    setHubLoadError(false);
+    const soft = hasLoadedRef.current && loadedItemIdRef.current === itemId;
+    if (soft) {
+      // Invalidate readiness during soft refresh so mutations stay closed until proof returns.
+      setLoadedRestaurantId(null);
+    } else {
+      setLoading(true);
+      setMessage(null);
+      setMessageIsError(false);
+      setHubLoadError(false);
+    }
     try {
       const [nextOutlook, nextQueue] = await Promise.all([
         fetchInventoryItemOutlook(restaurantId, itemId),
@@ -90,7 +98,9 @@ export default function InventoryDetailScreen() {
       setQueueEntries(nextQueue.filter((entry) => entry.event.inventoryItemId === itemId));
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
-      if (nextOutlook) {
+      loadedItemIdRef.current = itemId;
+      // Soft refresh must preserve operator-entered par/reorder and ops drafts.
+      if (nextOutlook && !soft) {
         setParLevel(
           formatNumber(nextOutlook.item.par_level, { maximumFractionDigits: 2, useGrouping: false })
         );
@@ -104,13 +114,17 @@ export default function InventoryDetailScreen() {
       }
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      setOutlook(null);
-      setQueueEntries([]);
+      // Fail closed for display/actions, but keep local drafts and prior outlook for retry.
       setHubLoadError(true);
       setMessage(t("inventory.detail.loadError"));
       setMessageIsError(true);
+      if (!soft) {
+        setOutlook(null);
+        setQueueEntries([]);
+      }
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoadedRef.current = true;
         setLoading(false);
       }
     }
@@ -118,6 +132,8 @@ export default function InventoryDetailScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoadedRef.current = false;
+    loadedItemIdRef.current = null;
     setLoadedRestaurantId(null);
     setHubLoadError(false);
     setOutlook(null);
@@ -134,14 +150,17 @@ export default function InventoryDetailScreen() {
     setMessage(null);
     setMessageIsError(false);
     setLoading(Boolean(restaurant && id));
-    void load();
-  }, [id, load, restaurant?.id]);
+  }, [id, restaurant?.id]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
     }, [load])
   );
+
+  useEffect(() => {
+    void load();
+  }, [id, load, restaurant?.id]);
 
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const hubLoadState = resolveRestaurantScopedHubLoadState({
@@ -356,6 +375,16 @@ export default function InventoryDetailScreen() {
         </ActionIcon>
       }
     >
+      {hubLoadError ? (
+        <RetryNotice
+          title={t("inventory.retry.title")}
+          message={t("inventory.detail.loadError")}
+          onRetry={() => void load()}
+          retryLabel={t("common.retry")}
+          accessibilityLabel={t("inventory.retry.accessibility")}
+        />
+      ) : null}
+
       {item && status && prediction && localizedPrediction ? (
         <View style={styles.stack}>
           <OperationalHero
