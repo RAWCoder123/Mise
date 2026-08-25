@@ -19,6 +19,7 @@ test("operational screens reject late requests and render only active-restaurant
     gmail: source("app/settings/gmail.tsx"),
     autonomy: source("app/settings/autonomy.tsx"),
     pos: source("app/settings/pos.tsx"),
+    posMappings: source("app/settings/pos-mappings.tsx"),
     inventoryDetail: source("app/inventory/[id].tsx"),
     orderDetail: source("app/orders/[id].tsx"),
     restaurantMemory: source("app/more/restaurant-memory.tsx"),
@@ -59,6 +60,11 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.logDelivery, /hubReady\s*\?\s*history\s*:\s*\[\]/);
   assert.match(screens.pos, /visibleIntegration/);
   assert.match(screens.pos, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.posMappings, /hubReady\s*\?\s*queue\s*:\s*null/);
+  assert.match(screens.posMappings, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.posMappings, /hasLoadedRef/);
+  assert.match(screens.posMappings, /Soft refresh must preserve operator menu-item selections/);
+  assert.match(screens.posMappings, /if \(!soft\) \{\s*setQueue\(null\)/);
   assert.match(screens.createTask, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.settings, /!restaurantActionsEditable/);
   assert.match(
