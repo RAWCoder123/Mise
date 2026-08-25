@@ -97,7 +97,18 @@ test("Gmail settings and order delivery UI preserve roles, simulation disclosure
   assert.match(settings, /Linking\.openURL\(result\.authorizationUrl\)/);
   assert.match(settings, /activeRestaurantIdRef\.current !== restaurantId/);
   assert.match(settings, /settings\.gmail\.demo\.body/);
+  assert.match(settings, /hubUnavailable\s*\?\s*"unavailable"/);
+  assert.match(settings, /hubLoadError\s*\?/);
+  assert.match(settings, /actionLabel=\{t\("common\.retry"\)\}/);
+  assert.match(settings, /onAction=\{\(\) => void load\(true\)\}/);
+  assert.match(settings, /settings\.gmail\.status\.unavailable/);
+  assert.match(settings, /settings\.gmail\.detail\.unavailable/);
+  assert.match(settings, /captureMiseError\(loadError/);
+  assert.match(settings, /presentRestaurantScopedHubActionsEditable/);
   assert.doesNotMatch(settings, /refresh[_ ]?token|client[_ ]?secret|access[_ ]?token/i);
+  assert.match(catalog, /"settings\.gmail\.status\.unavailable"/);
+  assert.match(catalog, /"settings\.gmail\.detail\.unavailable"/);
+  assert.match(catalog, /"settings\.gmail\.error\.retryAccessibility"/);
 
   assert.match(orderDetail, /canManageRestaurantData\(memberships, restaurant\?\.id\)/);
   assert.match(orderDetail, /canDeleteRestaurantData\(memberships, restaurant\?\.id\)/);
