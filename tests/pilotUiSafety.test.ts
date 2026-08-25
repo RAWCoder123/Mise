@@ -38,3 +38,31 @@ test("POS readiness failures remain visible and retryable instead of failing ope
   assert.match(pos, /onAction=\{\(\) => void loadPilotReadiness\(\)\}/);
   assert.match(pos, /readinessLoadError \? \(/);
 });
+
+test("POS soft-refresh load failures present unavailable status instead of false not-connected", () => {
+  const pos = readFileSync("app/settings/pos.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(pos, /hubUnavailable\s*=\s*hubLoadState === "error"/);
+  assert.match(pos, /hubReady\s*\?\s*integration\s*:\s*null/);
+  assert.match(pos, /hubLoadError\s*\?/);
+  assert.match(pos, /actionLabel=\{t\("common\.retry"\)\}/);
+  assert.match(pos, /actionAccessibilityLabel=\{t\("pos\.error\.retryAccessibility"\)\}/);
+  assert.match(pos, /onAction=\{\(\) => void loadIntegration\(true\)\}/);
+  assert.match(pos, /pos\.hero\.unavailable/);
+  assert.match(pos, /pos\.status\.unavailable/);
+  assert.match(pos, /pos\.square\.unavailableMeta/);
+  assert.match(pos, /captureMiseError\(loadError/);
+  assert.match(pos, /presentRestaurantScopedHubActionsEditable/);
+  assert.doesNotMatch(
+    pos,
+    /setNotice\(\{\s*tone: "danger",\s*title: t\("pos\.error\.loadTitle"\)/
+  );
+
+  assert.match(catalog, /"pos\.hero\.unavailable"/);
+  assert.match(catalog, /"pos\.status\.unavailable"/);
+  assert.match(catalog, /"pos\.status\.unavailableBadge"/);
+  assert.match(catalog, /"pos\.square\.unavailableMeta"/);
+  assert.match(catalog, /"pos\.error\.retryAccessibility"/);
+  assert.match(catalog, /Connect, disconnect, and sync stay locked/);
+});
