@@ -73,6 +73,11 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.scanItem, /hubReady\s*\?\s*items\s*:\s*\[\]/);
   assert.match(screens.scanItem, /hubReady\s*\?\s*barcodeMatches\s*:\s*null/);
   assert.match(screens.scanItem, /!hubReady \? null : listItems\.length === 0/);
+  // Successful soft-refresh retry must re-derive barcode matches from fresh inventory.
+  assert.match(
+    screens.scanItem,
+    /setBarcodeMatches\(\(prev\) => \{\s*if \(prev === null\) return null;\s*if \(!lastScannedCode\) return null;\s*return matchInventoryBarcode\(lastScannedCode, nextItems\)\.matches;\s*\}\)/
+  );
   assert.match(screens.taskDetail, /hubReady\s*\?\s*task\s*:\s*null/);
   assert.match(screens.taskDetail, /hubReady\s*\?\s*sharedTask\s*:\s*null/);
   assert.match(screens.taskDetail, /presentRestaurantScopedHubActionsEditable/);

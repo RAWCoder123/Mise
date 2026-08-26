@@ -83,6 +83,14 @@ export default function ScanItemScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setItems(nextItems);
       setLoadedRestaurantId(restaurantId);
+      // Successful soft-refresh retry must not restore barcode match objects from
+      // the prior inventory snapshot (stale qty/name/deleted rows). Re-derive from
+      // the fresh items, or clear when no active barcode search remains.
+      setBarcodeMatches((prev) => {
+        if (prev === null) return null;
+        if (!lastScannedCode) return null;
+        return matchInventoryBarcode(lastScannedCode, nextItems).matches;
+      });
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setError(true);
@@ -91,7 +99,7 @@ export default function ScanItemScreen() {
         setLoading(false);
       }
     }
-  }, [restaurant?.id]);
+  }, [lastScannedCode, restaurant?.id]);
 
   useFocusEffect(
     useCallback(() => {
