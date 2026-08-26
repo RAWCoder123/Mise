@@ -24,6 +24,7 @@ export type OperationalTodayTaskSourceKind =
   | "setup"
   | "integration"
   | "insight"
+  | "recipe"
   | "restaurant_task";
 
 export type OperationalTodayTaskPriority = "urgent" | "high" | "normal";
@@ -42,6 +43,7 @@ export type OperationalTodayTaskActionIntent =
   | "connect_pos"
   | "manage_pos_connection"
   | "repair_pos_connection"
+  | "map_unmapped_pos_items"
   | "review_insight"
   | "open_restaurant_task";
 
@@ -56,10 +58,14 @@ export type OperationalTodayTaskRoute =
   | "/settings"
   | "/settings/pos"
   | "/settings/recipes"
+  | `/settings/recipes?menuItem=${string}`
   | `/tasks/${string}`;
 
 /** Stable synthetic source id for the suggested begin-count task (not a DB session id). */
 export const SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID = "suggested_begin";
+
+/** Stable synthetic source id for sold POS dishes still missing recipe baselines. */
+export const UNMAPPED_POS_RECIPE_SOURCE_ID = "unmapped_pos_items";
 
 export interface OperationalTodayTaskAction {
   intent: OperationalTodayTaskActionIntent;
@@ -105,6 +111,11 @@ export interface DeriveOperationalTodayTasksInput {
   /** Undefined means integration readiness was not loaded; [] means no POS connection exists. */
   posIntegrations?: readonly PosIntegration[];
   insights: readonly Insight[];
+  /**
+   * Sold POS menu item names still missing recipe baselines.
+   * Undefined means recipe coverage was not loaded; [] means coverage is complete.
+   */
+  posItemsMissingRecipes?: readonly string[];
   openCountSession?: InventoryCountSession | null;
   now?: Date;
   includeCompleted?: boolean;
@@ -383,8 +394,60 @@ export function deriveOperationalTodayTasks(
     );
   }
 
+  const missingPosRecipes = normalizeMissingPosRecipeNames(input.posItemsMissingRecipes);
+  const hasUnmappedPosRecipes = missingPosRecipes !== null && missingPosRecipes.length > 0;
+  if (missingPosRecipes !== null) {
+    const focusMenuItem = missingPosRecipes[0] ?? null;
+    const isComplete = missingPosRecipes.length === 0;
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "recipe",
+        sourceId: UNMAPPED_POS_RECIPE_SOURCE_ID,
+        sourceStatus: isComplete ? "mapped" : "unmapped",
+        title: isComplete
+          ? "POS recipe mapping complete"
+          : missingPosRecipes.length === 1
+            ? `Map recipe for ${missingPosRecipes[0]}`
+            : `Map recipes for ${missingPosRecipes.length} sold POS items`,
+        detail: isComplete
+          ? "Sold POS menu items have recipe baselines for depletion."
+          : missingPosRecipes.length === 1
+            ? `${missingPosRecipes[0]} has sales without a dish-to-stock recipe, so inventory will not deplete from those sales.`
+            : `${missingPosRecipes.length} sold POS menu items lack dish-to-stock recipes, so inventory will not deplete from those sales.`,
+        presentation: {
+          code: isComplete ? "today.recipe.mapped" : "today.recipe.map_unmapped",
+          values: isComplete
+            ? { missingCount: 0, focusMenuItem: null }
+            : {
+                missingCount: missingPosRecipes.length,
+                focusMenuItem
+              }
+        },
+        priority: "high",
+        action: {
+          intent: "map_unmapped_pos_items",
+          label: isComplete ? "Review recipes" : "Map recipes",
+          route: focusMenuItem
+            ? `/settings/recipes?menuItem=${encodeURIComponent(focusMenuItem)}`
+            : "/settings/recipes",
+          entityId: focusMenuItem
+        },
+        requiredRole: "manager",
+        isComplete,
+        completionReason: isComplete
+          ? "Sold POS menu items have recipe baselines."
+          : "Sold POS menu items still lack recipe baselines."
+      }),
+      includeCompleted
+    );
+  }
+
   if (input.setupReadiness) {
     for (const step of input.setupReadiness.steps) {
+      // Prefer the sold-POS recipe repair task over the generic setup recipes step.
+      if (step.id === "recipes" && hasUnmappedPosRecipes) continue;
       pushIfVisible(tasks, buildSetupTask(restaurantId, step, input.setupReadiness), includeCompleted);
     }
   }
@@ -734,6 +797,21 @@ function pushIfVisible(
   includeCompleted: boolean
 ) {
   if (task.status === "open" || includeCompleted) tasks.push(task);
+}
+
+function normalizeMissingPosRecipeNames(value: readonly string[] | undefined): string[] | null {
+  if (value === undefined) return null;
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const entry of value) {
+    const name = entry.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names.sort((left, right) => compareStrings(left, right));
 }
 
 function priorityForUrgency(urgency: PurchaseRecommendation["urgency"]): OperationalTodayTaskPriority {

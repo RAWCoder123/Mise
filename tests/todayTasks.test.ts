@@ -7,6 +7,7 @@ import {
   deriveOperationalTodayTasks,
   operationalTodayTaskId,
   sortOperationalTodayTasks,
+  UNMAPPED_POS_RECIPE_SOURCE_ID,
   type OperationalTodayTask
 } from "../services/domain/todayTasks";
 import type {
@@ -164,6 +165,79 @@ test("completed tasks are projections of changed source state and keep stable ID
   assert.deepEqual(defaultQueue, []);
 });
 
+test("surfaces sold POS dishes missing recipes and suppresses duplicate setup recipes work", () => {
+  const incompleteRecipesSetup = setupReadiness({
+    recipesStatus: "active",
+    recipesMissing: ["Link sold menu items"]
+  });
+  const open = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [],
+    setupReadiness: incompleteRecipesSetup,
+    posIntegrations: [integration({ status: "connected" })],
+    insights: [],
+    posItemsMissingRecipes: [" Veggie Bowl ", "Veggie Bowl", "Chicken Bowl"],
+    now
+  });
+
+  const recipeTask = open.find((task) => task.source.id === UNMAPPED_POS_RECIPE_SOURCE_ID);
+  assert.ok(recipeTask);
+  assert.equal(recipeTask?.source.kind, "recipe");
+  assert.equal(recipeTask?.action.intent, "map_unmapped_pos_items");
+  assert.equal(recipeTask?.requiredRole, "manager");
+  assert.equal(recipeTask?.priority, "high");
+  assert.equal(recipeTask?.status, "open");
+  assert.equal(recipeTask?.action.entityId, "Chicken Bowl");
+  assert.equal(
+    recipeTask?.action.route,
+    `/settings/recipes?menuItem=${encodeURIComponent("Chicken Bowl")}`
+  );
+  assert.equal(recipeTask?.presentation?.code, "today.recipe.map_unmapped");
+  assert.equal(open.some((task) => task.source.kind === "setup" && task.source.id === "recipes"), false);
+
+  const completed = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [],
+    setupReadiness: setupReadiness({ complete: true }),
+    posIntegrations: [integration({ status: "connected" })],
+    insights: [],
+    posItemsMissingRecipes: [],
+    includeCompleted: true,
+    now
+  });
+  const mappedTask = completed.find((task) => task.source.id === UNMAPPED_POS_RECIPE_SOURCE_ID);
+  assert.ok(mappedTask);
+  assert.equal(mappedTask?.status, "completed");
+  assert.equal(mappedTask?.id, recipeTask?.id);
+  assert.equal(mappedTask?.action.route, "/settings/recipes");
+  assert.equal(mappedTask?.presentation?.code, "today.recipe.mapped");
+
+  const withoutCoverageSignal = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [],
+    setupReadiness: incompleteRecipesSetup,
+    posIntegrations: [integration({ status: "connected" })],
+    insights: [],
+    now
+  });
+  assert.equal(
+    withoutCoverageSignal.some((task) => task.source.id === UNMAPPED_POS_RECIPE_SOURCE_ID),
+    false
+  );
+  assert.ok(
+    withoutCoverageSignal.some((task) => task.source.kind === "setup" && task.source.id === "recipes")
+  );
+});
+
 test("classifies and sorts exact instants and local delivery dates in the restaurant timezone", () => {
   const options = { restaurantTimeZone: "America/New_York", now };
   const overdue = task("overdue", { dueAt: "2026-07-19T03:00:00.000Z", priority: "normal" });
@@ -300,8 +374,16 @@ function order(patch: Partial<SupplierOrder> = {}): SupplierOrder {
   };
 }
 
-function setupReadiness(options: { complete?: boolean } = {}): SetupReadinessSummary {
+function setupReadiness(
+  options: {
+    complete?: boolean;
+    recipesStatus?: SetupReadinessSummary["steps"][number]["status"];
+    recipesMissing?: string[];
+  } = {}
+): SetupReadinessSummary {
   const complete = options.complete ?? false;
+  const recipesStatus = options.recipesStatus ?? "complete";
+  const recipesMissing = options.recipesMissing ?? [];
   return {
     percent: complete ? 100 : 25,
     currentStep: complete ? "email" : "profile",
@@ -323,9 +405,9 @@ function setupReadiness(options: { complete?: boolean } = {}): SetupReadinessSum
       {
         id: "recipes",
         label: "Recipes",
-        detail: "Recipes ready",
-        status: "complete",
-        missing: []
+        detail: recipesStatus === "complete" ? "Recipes ready" : "Recipes need attention",
+        status: recipesStatus,
+        missing: recipesMissing
       },
       {
         id: "email",
@@ -336,7 +418,7 @@ function setupReadiness(options: { complete?: boolean } = {}): SetupReadinessSum
       }
     ],
     missingInventory: [],
-    missingRecipes: [],
+    missingRecipes: recipesMissing,
     missingSuppliers: [],
     missingEmailSender: false,
     canShowSalesRhythm: true,
