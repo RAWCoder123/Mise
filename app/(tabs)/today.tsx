@@ -110,7 +110,9 @@ export default function TodayScreen() {
         fetchDailyOperatingPlan(restaurantId, { includeCompletedTasks: true }),
         fetchDailyOperationalBrief(restaurantId),
         fetchQueuedOperationalFindingDecisions(restaurantId),
-        listOpenOperatorTasks(restaurantId).catch(() => [] as OperatorTask[])
+        // Floor notes must fail closed with the hub. An empty catch claims no
+        // open notes while RetryNotice is absent and actions stay editable.
+        listOpenOperatorTasks(restaurantId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
