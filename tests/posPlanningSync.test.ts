@@ -103,8 +103,13 @@ test("today tasks keep connected POS incomplete when planning refresh failed", (
 
 test("POS planning sync migration keeps the recorder service-role only", () => {
   assert.match(migration, /planning_sync_status text not null default 'unknown'/i);
+  assert.match(migration, /planning_sync_generation uuid/i);
   assert.match(migration, /pos_integrations_planning_sync_status_check/i);
   assert.match(migration, /create or replace function private\.service_record_pos_planning_sync_state/i);
+  assert.match(migration, /p_generation uuid default null/i);
+  assert.match(migration, /p_match_generation boolean default false/i);
+  assert.match(migration, /planning_sync_generation is not distinct from p_generation/i);
+  assert.match(migration, /pos_planning_sync_skipped/i);
   assert.match(migration, /grant execute on function public\.service_record_pos_planning_sync_state/i);
   assert.match(
     migration,
@@ -124,10 +129,29 @@ test("Square sync records planning stale when signal refresh fails and clears on
   assert.match(syncPos, /service_record_pos_planning_sync_state/i);
   assert.match(syncPos, /signal_refresh_failed/i);
   assert.match(syncPos, /planningSyncStatus/i);
-  assert.match(syncPos, /p_status:\s*"stale"/i);
-  assert.match(syncPos, /p_status:\s*"fresh"/i);
+  assert.match(syncPos, /planning_state_persist_failed/i);
+  assert.match(syncPos, /planningSyncPersisted/i);
+  assert.match(syncPos, /p_match_generation:\s*args\.matchGeneration/i);
+  assert.match(syncPos, /p_generation:\s*args\.generation/i);
+  assert.match(syncPos, /matchGeneration:\s*true/i);
+  assert.match(syncPos, /matchGeneration:\s*false/i);
+  assert.match(syncPos, /p_status:\s*"stale"|status:\s*"stale"/i);
+  assert.match(syncPos, /status:\s*"fresh"/i);
   assert.doesNotMatch(syncPos, /Sales persisted; signal refresh can retry from the client/i);
   assert.match(workflows, /planningFreshActions/i);
   assert.match(workflows, /service_record_pos_planning_sync_state/i);
+  assert.match(workflows, /p_match_generation:\s*false/i);
   assert.match(workflows, /p_status:\s*"fresh"/i);
+});
+
+test("hosted Square sync parser fails closed when planning status is missing", () => {
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  assert.match(
+    repository,
+    /payload\.planningSyncStatus === "fresh" \|\| payload\.planningSyncStatus === "stale"[\s\S]*\? payload\.planningSyncStatus[\s\S]*: "stale"/
+  );
+  assert.doesNotMatch(
+    repository,
+    /payload\.planningSyncStatus === "fresh" \|\| payload\.planningSyncStatus === "stale"[\s\S]*\? payload\.planningSyncStatus[\s\S]*: "fresh"/
+  );
 });
