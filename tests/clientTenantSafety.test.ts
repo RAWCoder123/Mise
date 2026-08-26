@@ -39,6 +39,9 @@ test("operational screens reject late requests and render only active-restaurant
   }
 
   assert.match(screens.today, /hubReady\s*\?\s*summary\s*:\s*null/);
+  assert.match(screens.today, /hubUnavailable/);
+  assert.match(screens.today, /today\.unavailable\.title/);
+  assert.match(screens.today, /hubUnavailable \? \([\s\S]*StatusNotice[\s\S]*today\.unavailable/);
   assert.match(screens.inventory, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
   assert.match(screens.insights, /hubReady\s*\?\s*insights\s*:\s*\[\]/);
   assert.match(screens.settings, /hubReady\s*\?\s*suppliers\s*:\s*\[\]/);
@@ -49,6 +52,7 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.recipes, /hubReady\s*\?\s*summary\s*:\s*null/);
   assert.match(screens.team, /hubReady\s*\?\s*members\s*:\s*\[\]/);
   assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);
+  assert.match(screens.suppliers, /!hubReady \? null : visibleEntries\.length === 0/);
   assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
   assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
   assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);
@@ -57,6 +61,8 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.restaurantMemory, /hubReady\s*\?\s*memories\s*:\s*\[\]/);
   assert.match(screens.logDelivery, /hubReady\s*\?\s*items\s*:\s*\[\]/);
   assert.match(screens.logDelivery, /hubReady\s*\?\s*history\s*:\s*\[\]/);
+  assert.match(screens.logDelivery, /hubUnavailable/);
+  assert.match(screens.logDelivery, /hubUnavailable\s*\?\s*null\s*:\s*filtered\.length === 0/);
   assert.match(screens.pos, /visibleIntegration/);
   assert.match(screens.pos, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.createTask, /presentRestaurantScopedHubActionsEditable/);

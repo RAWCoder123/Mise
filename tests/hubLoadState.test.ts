@@ -137,3 +137,19 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
     true
   );
 });
+
+test("Today, suppliers, and log-delivery suppress false empty claims when hubs are unavailable", () => {
+  const today = readFileSync("app/(tabs)/today.tsx", "utf8");
+  const suppliers = readFileSync("app/settings/suppliers.tsx", "utf8");
+  const logDelivery = readFileSync("app/more/log-delivery.tsx", "utf8");
+
+  assert.match(today, /const hubUnavailable = hubLoadState === "error"/);
+  assert.match(today, /today\.unavailable\.title/);
+  assert.match(
+    today,
+    /hubUnavailable \? \([\s\S]*today\.unavailable[\s\S]*\) : \([\s\S]*DailyBriefBoard/
+  );
+  assert.match(suppliers, /!hubReady \? null : visibleEntries\.length === 0/);
+  assert.match(logDelivery, /const hubUnavailable = hubLoadState === "error"/);
+  assert.match(logDelivery, /hubUnavailable\s*\?\s*null\s*:\s*filtered\.length === 0/);
+});
