@@ -38,3 +38,11 @@ test("POS readiness failures remain visible and retryable instead of failing ope
   assert.match(pos, /onAction=\{\(\) => void loadPilotReadiness\(\)\}/);
   assert.match(pos, /readinessLoadError \? \(/);
 });
+
+test("Create Task suppresses false-empty list claims until the hub is ready", () => {
+  const createTask = readFileSync("app/more/create-task.tsx", "utf8");
+  assert.match(createTask, /!hubReady \? null : \(scope === "restaurant"/);
+  assert.match(createTask, /!hubReady\s*\?\s*undefined\s*:\s*showCompleted/);
+  assert.match(createTask, /disabled=\{!hubReady\}/);
+  assert.match(createTask, /operatorTasks\.list\.emptyOpenTitle/);
+});

@@ -623,17 +623,21 @@ export default function CreateOperatorTaskScreen() {
                 : t("operatorTasks.list.openTitle")
             }
             subtitle={
-              showCompleted
-                ? t("operatorTasks.list.completedSubtitle", {
-                    count:
-                      scope === "restaurant"
-                        ? visibleCompletedSharedTasks.length
-                        : visibleList.length
-                  })
-                : t("operatorTasks.list.openSubtitle", {
-                    count:
-                      scope === "restaurant" ? visibleOpenSharedTasks.length : visibleList.length
-                  })
+              !hubReady
+                ? undefined
+                : showCompleted
+                  ? t("operatorTasks.list.completedSubtitle", {
+                      count:
+                        scope === "restaurant"
+                          ? visibleCompletedSharedTasks.length
+                          : visibleList.length
+                    })
+                  : t("operatorTasks.list.openSubtitle", {
+                      count:
+                        scope === "restaurant"
+                          ? visibleOpenSharedTasks.length
+                          : visibleList.length
+                    })
             }
           />
           <Pressable
@@ -643,8 +647,10 @@ export default function CreateOperatorTaskScreen() {
                 ? t("operatorTasks.list.showOpen")
                 : t("operatorTasks.list.showCompleted")
             }
+            accessibilityState={{ disabled: !hubReady }}
+            disabled={!hubReady}
             onPress={() => setShowCompleted((current) => !current)}
-            style={({ pressed }) => [styles.toggle, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.toggle, pressed && styles.pressed, !hubReady && styles.toggleDisabled]}
           >
             <Text style={styles.toggleLabel}>
               {showCompleted
@@ -664,7 +670,7 @@ export default function CreateOperatorTaskScreen() {
           />
         ) : null}
 
-        {(scope === "restaurant"
+        {!hubReady ? null : (scope === "restaurant"
           ? showCompleted
             ? visibleCompletedSharedTasks
             : visibleOpenSharedTasks
@@ -908,6 +914,9 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingVertical: 6,
     paddingHorizontal: 2
+  },
+  toggleDisabled: {
+    opacity: 0.4
   },
   toggleLabel: {
     ...typography.caption,
