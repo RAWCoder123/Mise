@@ -18,6 +18,7 @@ import {
   fromPurchaseRecommendationApproved,
   fromPurchaseRecommendationCreated,
   fromPurchaseRecommendationDismissed,
+  fromRecalculationRunActivity,
   fromSupplierOrderDrafted,
   fromSupplierOrderSent,
   groupRelatedActivities,
@@ -280,4 +281,46 @@ test("activity history exposes all feed filters and local date ranges", () => {
   const week = activityDateRangeBounds("this_week", new Date("2026-08-02T15:30:00.000Z"));
   assert.ok(week.since);
   assert.ok(week.until);
+});
+
+test("recalculation activity emits opening and closing success beats but not mid_shift", () => {
+  const base = {
+    id: "run_1",
+    restaurantId,
+    operatingDate: "2026-08-05",
+    status: "succeeded" as const,
+    attempt: 1,
+    maxAttempts: 4,
+    jobName: "recalculation.daily_open",
+    monitoringOwner: "manager",
+    completedAt: "2026-08-05T09:05:00.000Z",
+    durationMs: 4000,
+    timedOut: false,
+    failureReason: null,
+    cycleKey: `recalc:${restaurantId}:2026-08-05:daily_open`
+  };
+
+  const open = fromRecalculationRunActivity({ ...base, cycle: "daily_open" });
+  assert.ok(open);
+  assert.equal(open!.title, "Opening recalculation completed");
+
+  const mid = fromRecalculationRunActivity({
+    ...base,
+    cycle: "mid_shift",
+    jobName: "recalculation.mid_shift",
+    cycleKey: `recalc:${restaurantId}:2026-08-05:mid_shift`
+  });
+  assert.equal(mid, null);
+
+  const close = fromRecalculationRunActivity({
+    ...base,
+    cycle: "close",
+    jobName: "recalculation.close",
+    monitoringOwner: "owner_admin",
+    completedAt: "2026-08-05T22:05:00.000Z",
+    cycleKey: `recalc:${restaurantId}:2026-08-05:close`
+  });
+  assert.ok(close);
+  assert.equal(close!.title, "Closing reconciliation completed");
+  assert.match(close!.summary, /waste, count variance/);
 });

@@ -39,26 +39,28 @@ function fakeLedger(overrides: Partial<RecalculationLedger> = {}) {
   return { ledger, recorded };
 }
 
-test("several due cycles share one recompute but each records its own ledger row", async () => {
+test("open and mid-shift share one planning recompute; close runs reconciliation separately", async () => {
   const { ledger, recorded } = fakeLedger();
-  let recomputes = 0;
+  const cycles: string[] = [];
 
   const report = await runDueRecalculationCycles({
     restaurantId,
     restaurantTimeZone,
     ports: createRecalculationPorts({
       ledger,
-      runCycleWork: async () => {
-        recomputes += 1;
+      runCycleWork: async (_restaurantId, cycle) => {
+        cycles.push(cycle);
       }
     }),
     now: eveningUtc
   });
   assert.equal(report.executions.length, 3);
 
-  // The three cycles drive identical work today, so recomputing three times
-  // would churn derived ids for no gain -- but coverage still needs three rows.
-  assert.equal(recomputes, 1);
+  // Open and mid-shift share planning work. Close is differentiated so it can
+  // merge waste / variance / stock reconciliation without rewriting earlier cycles.
+  assert.equal(cycles.length, 2);
+  assert.equal(cycles[0], "daily_open");
+  assert.equal(cycles[1], "close");
   assert.equal(recorded.length, 3);
   assert.deepEqual(
     recorded.map((run) => run.cycle),
