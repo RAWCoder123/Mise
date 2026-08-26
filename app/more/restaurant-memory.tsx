@@ -45,6 +45,8 @@ export default function RestaurantMemoryScreen() {
     setLoadedRestaurantId(null);
     setError(false);
     setNotice(null);
+    setBusyId(null);
+    setCorrectionDrafts({});
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 

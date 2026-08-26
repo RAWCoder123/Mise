@@ -91,6 +91,7 @@ export default function AskMiseScreen() {
     setMessages([]);
     setThinking(null);
     setAsking(false);
+    setInput("");
     seededRef.current = false;
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
