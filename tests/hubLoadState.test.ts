@@ -23,7 +23,8 @@ const HUB_CONSUMER_FILES = [
   "app/orders/[id].tsx",
   "app/more/restaurant-memory.tsx",
   "app/more/log-delivery.tsx",
-  "app/more/create-task.tsx"
+  "app/more/create-task.tsx",
+  "app/ask-mise.tsx"
 ];
 
 test("restaurant-scoped hub load state fails closed on soft-refresh errors", () => {
@@ -135,5 +136,21 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
       hubReady: true
     }),
     true
+  );
+});
+
+test("Ask Mise fails closed on soft-refresh load errors", () => {
+  const source = readFileSync("app/ask-mise.tsx", "utf8");
+  assert.match(source, /resolveRestaurantScopedHubLoadState/);
+  assert.match(source, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(source, /hubReady\s*\?\s*summary\s*:\s*null/);
+  assert.match(source, /hubReady\s*\?\s*insights\s*:\s*\[\]/);
+  assert.match(source, /hubReady\s*\?\s*messages\s*:\s*\[\]/);
+  assert.match(source, /if \(!trimmed \|\| !visibleSummary \|\| !restaurant \|\| asking \|\| !hubReady\) return;/);
+  assert.match(source, /editable=\{askEditable\}/);
+  assert.match(source, /visibleSummary && askEditable/);
+  assert.doesNotMatch(
+    source,
+    /const visibleSummary = loadedRestaurantId === restaurant\?\.id \? summary : null;/
   );
 });
