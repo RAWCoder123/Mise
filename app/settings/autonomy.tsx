@@ -43,17 +43,20 @@ export default function AutonomySettingsScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const hasLoadedRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
   const canEdit = canDeleteRestaurantData(memberships, restaurant?.id);
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoadedRef.current = false;
     setRules([]);
     setDrafts({});
     setLoadedRestaurantId(null);
     setError(false);
     setNotice(null);
+    setBusyKey(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
@@ -64,20 +67,45 @@ export default function AutonomySettingsScreen() {
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
-    setError(false);
+    const soft = hasLoadedRef.current && activeRestaurantIdRef.current === restaurantId;
+    if (soft) {
+      // Invalidate readiness during soft refresh so mutations stay closed until proof returns.
+      setLoadedRestaurantId(null);
+    } else {
+      setLoading(true);
+      setError(false);
+      setNotice(null);
+    }
     try {
       const next = await fetchAutonomyRules(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setRules(next);
-      setDrafts(Object.fromEntries(next.map((rule) => [rule.id, draftFromRule(rule)])));
       setLoadedRestaurantId(restaurantId);
+      setError(false);
+      // Soft refresh must preserve operator-entered autonomy draft fields.
+      if (soft) {
+        setDrafts((current) =>
+          Object.fromEntries(
+            next.map((rule) => [
+              rule.id,
+              rule.id in current ? current[rule.id]! : draftFromRule(rule)
+            ])
+          )
+        );
+      } else {
+        setDrafts(Object.fromEntries(next.map((rule) => [rule.id, draftFromRule(rule)])));
+      }
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "autonomy", operation: "load", restaurant_id: restaurantId });
+      // Fail closed for display/actions, but keep local drafts and prior rules for retry.
       setError(true);
+      if (!soft) {
+        setRules([]);
+      }
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoadedRef.current = true;
         setLoading(false);
       }
     }
