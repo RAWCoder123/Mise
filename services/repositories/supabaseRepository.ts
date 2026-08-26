@@ -1428,6 +1428,14 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizeMenuItemIngredient(response.result as MenuItemIngredient);
     },
 
+    async deleteRecipeMappingAndSignals(input) {
+      await invokeOperationalWorkflow({
+        action: "delete_recipe",
+        restaurantId: input.restaurantId,
+        mappingId: input.mappingId
+      });
+    },
+
     async fetchRecipeAuthorities(restaurantId) {
       const { data, error } = await client.rpc("list_recipe_authorities", {
         p_restaurant_id: restaurantId
