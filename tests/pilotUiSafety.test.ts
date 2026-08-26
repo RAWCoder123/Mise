@@ -38,3 +38,35 @@ test("POS readiness failures remain visible and retryable instead of failing ope
   assert.match(pos, /onAction=\{\(\) => void loadPilotReadiness\(\)\}/);
   assert.match(pos, /readinessLoadError \? \(/);
 });
+
+test("Today soft-refresh errors do not claim an all-clear empty operating day", () => {
+  const today = readFileSync("app/(tabs)/today.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(today, /const hubUnavailable = hubLoadState === "error"/);
+  assert.match(today, /today\.unavailable\.title/);
+  assert.match(today, /today\.unavailable\.body/);
+  assert.match(today, /hubUnavailable \? \(/);
+  assert.match(today, /DailyBriefBoard/);
+  assert.doesNotMatch(
+    today,
+    /hubUnavailable[\s\S]{0,80}DailyBriefBoard/,
+    "Daily Brief must not render while the hub is unavailable"
+  );
+  assert.match(catalog, /"today\.unavailable\.title": "Today’s plan is unavailable"/);
+  assert.match(catalog, /"today\.unavailable\.body":/);
+  assert.equal((catalog.match(/"today\.unavailable\.title":/g) || []).length, 3);
+  assert.equal((catalog.match(/"today\.unavailable\.body":/g) || []).length, 3);
+});
+
+test("Log delivery and suppliers suppress false empty claims while hubs are unavailable", () => {
+  const logDelivery = readFileSync("app/more/log-delivery.tsx", "utf8");
+  const suppliers = readFileSync("app/settings/suppliers.tsx", "utf8");
+
+  assert.match(logDelivery, /const hubUnavailable = hubLoadState === "error"/);
+  assert.match(logDelivery, /hubUnavailable\s*\?\s*null\s*:\s*filtered\.length === 0/);
+  assert.match(logDelivery, /hubUnavailable\s*\?\s*null\s*:[\s\S]{0,80}visibleHistory\.length === 0/);
+  assert.match(logDelivery, /disabled=\{hubUnavailable\}/);
+  assert.match(suppliers, /!hubReady \? null : visibleEntries\.length === 0/);
+  assert.match(suppliers, /!hubReady\s*\?\s*undefined\s*:\s*copy\.configuredCount/);
+});

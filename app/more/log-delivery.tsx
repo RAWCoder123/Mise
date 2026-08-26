@@ -163,6 +163,8 @@ export default function LogDeliveryScreen() {
     loadError: error
   });
   const hubReady = hubLoadState === "ready";
+  // Soft-refresh errors must not claim “no deliveries” / “no matching items”.
+  const hubUnavailable = hubLoadState === "error";
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
@@ -324,53 +326,62 @@ export default function LogDeliveryScreen() {
           <>
             <SectionHeader
               title={t("logDelivery.history.title")}
-              subtitle={t("logDelivery.history.count", {
-                count: formatNumber(visibleHistory.length)
-              })}
+              subtitle={
+                hubUnavailable
+                  ? undefined
+                  : t("logDelivery.history.count", {
+                      count: formatNumber(visibleHistory.length)
+                    })
+              }
             />
-            {visibleHistory.length === 0 && !loading ? (
-              <EmptyState
-                title={t("logDelivery.history.emptyTitle")}
-                body={t("logDelivery.history.emptyBody")}
-              />
-            ) : (
-              <View style={styles.historyList}>
-                {visibleHistory.map((entry) => (
-                  <View key={entry.id} style={styles.historyCard}>
-                    <View style={styles.historyMain}>
-                      <Text style={styles.historyTitle}>{entry.itemName}</Text>
-                      <Text style={styles.historyMeta}>
-                        {t("logDelivery.history.quantity", {
-                          qty: formatNumber(entry.quantity, { maximumFractionDigits: 2 }),
-                          unit: t(
-                            `inventory.ops.unit.${entry.canonicalUnit}` as
-                              | "inventory.ops.unit.g"
-                              | "inventory.ops.unit.ml"
-                              | "inventory.ops.unit.each"
-                          )
-                        })}
-                      </Text>
-                      <Text style={styles.historyWhen}>
-                        {formatWhen(entry.effectiveAt)}
-                      </Text>
-                      {entry.note ? (
-                        <Text numberOfLines={2} style={styles.historyNote}>
-                          {entry.note}
-                        </Text>
-                      ) : null}
-                    </View>
-                    {entry.syncing ? (
-                      <Badge label={t("logDelivery.history.syncing")} tone="warning" />
-                    ) : null}
+            {hubUnavailable
+              ? null
+              : visibleHistory.length === 0 && !loading
+                ? (
+                  <EmptyState
+                    title={t("logDelivery.history.emptyTitle")}
+                    body={t("logDelivery.history.emptyBody")}
+                  />
+                )
+                : (
+                  <View style={styles.historyList}>
+                    {visibleHistory.map((entry) => (
+                      <View key={entry.id} style={styles.historyCard}>
+                        <View style={styles.historyMain}>
+                          <Text style={styles.historyTitle}>{entry.itemName}</Text>
+                          <Text style={styles.historyMeta}>
+                            {t("logDelivery.history.quantity", {
+                              qty: formatNumber(entry.quantity, { maximumFractionDigits: 2 }),
+                              unit: t(
+                                `inventory.ops.unit.${entry.canonicalUnit}` as
+                                  | "inventory.ops.unit.g"
+                                  | "inventory.ops.unit.ml"
+                                  | "inventory.ops.unit.each"
+                              )
+                            })}
+                          </Text>
+                          <Text style={styles.historyWhen}>
+                            {formatWhen(entry.effectiveAt)}
+                          </Text>
+                          {entry.note ? (
+                            <Text numberOfLines={2} style={styles.historyNote}>
+                              {entry.note}
+                            </Text>
+                          ) : null}
+                        </View>
+                        {entry.syncing ? (
+                          <Badge label={t("logDelivery.history.syncing")} tone="warning" />
+                        ) : null}
+                      </View>
+                    ))}
                   </View>
-                ))}
-              </View>
-            )}
+                )}
             <Button
               title={t("logDelivery.history.logNew")}
               icon={<Truck size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => setTab("log")}
               fullWidth
+              disabled={hubUnavailable}
             />
           </>
         ) : !selected ? (
@@ -384,9 +395,10 @@ export default function LogDeliveryScreen() {
               onChangeText={setQuery}
               autoCapitalize="none"
               autoCorrect={false}
+              editable={!hubUnavailable}
               style={styles.input}
             />
-            {filtered.length === 0 ? (
+            {hubUnavailable ? null : filtered.length === 0 ? (
               <EmptyState title={t("logDelivery.empty.title")} body={t("logDelivery.empty.body")} />
             ) : (
               <View style={styles.list}>

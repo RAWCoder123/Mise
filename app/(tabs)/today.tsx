@@ -149,6 +149,9 @@ export default function TodayScreen() {
     loadError: Boolean(error)
   });
   const hubReady = hubLoadState === "ready";
+  // Soft-refresh errors must not render Daily Brief / filter chrome as an
+  // all-clear empty plan beside RetryNotice.
+  const hubUnavailable = hubLoadState === "error";
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManageBrief,
     hubReady,
@@ -343,121 +346,131 @@ export default function TodayScreen() {
           />
         ) : null}
 
-        <SegmentedControl
-          accessibilityLabel={t("today.filter.accessibility")}
-          options={filterOptions}
-          value={focus}
-          onValueChange={setFocus}
-          variant="pills"
-          scrollable
-        />
-
-        {visibleSummary ? (
-          <OperatingPlanTimeline
-            groups={timelineGroups}
-            focus={focus}
-            locale={locale}
-            role={role ?? "staff"}
-            restaurantTimeZone={visibleSummary.restaurantTimeZone}
-            t={t}
+        {hubUnavailable ? (
+          <StatusNotice
+            tone="danger"
+            title={t("today.unavailable.title")}
+            message={t("today.unavailable.body")}
           />
-        ) : null}
-
-        {visibleFloorNotes.length > 0 || floorNoteMessage ? (
-          <View style={styles.floorNotesSection}>
-            <SectionHeader
-              title={t("today.floorNotes.title")}
-              subtitle={
-                visibleFloorNotes.length > 0
-                  ? t("today.floorNotes.subtitle", { count: formatNumber(visibleFloorNotes.length) })
-                  : undefined
-              }
+        ) : (
+          <>
+            <SegmentedControl
+              accessibilityLabel={t("today.filter.accessibility")}
+              options={filterOptions}
+              value={focus}
+              onValueChange={setFocus}
+              variant="pills"
+              scrollable
             />
-            {floorNoteMessage ? (
-              <StatusNotice tone="danger" title={t("common.error")} message={floorNoteMessage} />
-            ) : null}
-            {(["now", "up_next", "later"] as const).map((timing) => {
-              const notes = groupedFloorNotes[timing];
-              if (notes.length === 0) return null;
-              return (
-                <View key={timing} style={styles.floorNotesGroup}>
-                  <Text style={styles.groupLabel}>
-                    {t(
-                      timing === "now"
-                        ? "floorNotes.timing.now"
-                        : timing === "up_next"
-                          ? "floorNotes.timing.upNext"
-                          : "floorNotes.timing.later"
-                    )}
-                  </Text>
-                  {notes.map((note) => {
-                    const focusRoute = operatorTaskFocusRoute(note.focusArea);
-                    return (
-                      <View key={note.id} style={styles.floorNoteCard}>
-                        <Pressable
-                          accessibilityRole={focusRoute ? "button" : undefined}
-                          accessibilityLabel={t("today.floorNotes.rowAccessibility", { title: note.title })}
-                          disabled={!focusRoute}
-                          onPress={focusRoute ? () => router.push(focusRoute as never) : undefined}
-                          style={({ pressed }) => [styles.floorNoteMain, pressed && focusRoute && styles.pressed]}
-                        >
-                          <View style={styles.floorNoteCopy}>
-                            <Text style={styles.floorNoteTitle}>{note.title}</Text>
-                            {note.body ? (
-                              <Text numberOfLines={2} style={styles.floorNoteDetail}>
-                                {note.body}
-                              </Text>
-                            ) : null}
-                          </View>
-                          {note.focusArea ? (
-                            <Badge
-                              label={t(
-                                note.focusArea === "inventory"
-                                  ? "floorNotes.focus.inventory"
-                                  : note.focusArea === "orders"
-                                    ? "floorNotes.focus.orders"
-                                    : note.focusArea === "insights"
-                                      ? "floorNotes.focus.insights"
-                                      : "floorNotes.focus.ask"
-                              )}
-                              tone="neutral"
-                            />
-                          ) : null}
-                        </Pressable>
-                        <Button
-                          title={
-                            busyFloorNoteId === note.id
-                              ? t("common.saving")
-                              : t("today.floorNotes.markDone")
-                          }
-                          size="compact"
-                          variant="secondary"
-                          onPress={() => void markFloorNoteDone(note)}
-                          disabled={!floorNotesEditable}
-                          style={styles.floorNoteDone}
-                        />
-                      </View>
-                    );
-                  })}
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
 
-        <View style={styles.briefContinuation}>
-          <DailyBriefBoard
-            brief={visibleBrief}
-            queue={visibleFindingQueue}
-            canManage={actionsEditable}
-            busyFindingId={busyFindingId}
-            message={briefMessage}
-            messageIsError={briefMessageIsError}
-            onSubmitFeedback={submitFindingFeedback}
-            compact
-            onOpen={() => router.push("/insights")}
-          />
-        </View>
+            {visibleSummary ? (
+              <OperatingPlanTimeline
+                groups={timelineGroups}
+                focus={focus}
+                locale={locale}
+                role={role ?? "staff"}
+                restaurantTimeZone={visibleSummary.restaurantTimeZone}
+                t={t}
+              />
+            ) : null}
+
+            {visibleFloorNotes.length > 0 || floorNoteMessage ? (
+              <View style={styles.floorNotesSection}>
+                <SectionHeader
+                  title={t("today.floorNotes.title")}
+                  subtitle={
+                    visibleFloorNotes.length > 0
+                      ? t("today.floorNotes.subtitle", { count: formatNumber(visibleFloorNotes.length) })
+                      : undefined
+                  }
+                />
+                {floorNoteMessage ? (
+                  <StatusNotice tone="danger" title={t("common.error")} message={floorNoteMessage} />
+                ) : null}
+                {(["now", "up_next", "later"] as const).map((timing) => {
+                  const notes = groupedFloorNotes[timing];
+                  if (notes.length === 0) return null;
+                  return (
+                    <View key={timing} style={styles.floorNotesGroup}>
+                      <Text style={styles.groupLabel}>
+                        {t(
+                          timing === "now"
+                            ? "floorNotes.timing.now"
+                            : timing === "up_next"
+                              ? "floorNotes.timing.upNext"
+                              : "floorNotes.timing.later"
+                        )}
+                      </Text>
+                      {notes.map((note) => {
+                        const focusRoute = operatorTaskFocusRoute(note.focusArea);
+                        return (
+                          <View key={note.id} style={styles.floorNoteCard}>
+                            <Pressable
+                              accessibilityRole={focusRoute ? "button" : undefined}
+                              accessibilityLabel={t("today.floorNotes.rowAccessibility", { title: note.title })}
+                              disabled={!focusRoute}
+                              onPress={focusRoute ? () => router.push(focusRoute as never) : undefined}
+                              style={({ pressed }) => [styles.floorNoteMain, pressed && focusRoute && styles.pressed]}
+                            >
+                              <View style={styles.floorNoteCopy}>
+                                <Text style={styles.floorNoteTitle}>{note.title}</Text>
+                                {note.body ? (
+                                  <Text numberOfLines={2} style={styles.floorNoteDetail}>
+                                    {note.body}
+                                  </Text>
+                                ) : null}
+                              </View>
+                              {note.focusArea ? (
+                                <Badge
+                                  label={t(
+                                    note.focusArea === "inventory"
+                                      ? "floorNotes.focus.inventory"
+                                      : note.focusArea === "orders"
+                                        ? "floorNotes.focus.orders"
+                                        : note.focusArea === "insights"
+                                          ? "floorNotes.focus.insights"
+                                          : "floorNotes.focus.ask"
+                                  )}
+                                  tone="neutral"
+                                />
+                              ) : null}
+                            </Pressable>
+                            <Button
+                              title={
+                                busyFloorNoteId === note.id
+                                  ? t("common.saving")
+                                  : t("today.floorNotes.markDone")
+                              }
+                              size="compact"
+                              variant="secondary"
+                              onPress={() => void markFloorNoteDone(note)}
+                              disabled={!floorNotesEditable}
+                              style={styles.floorNoteDone}
+                            />
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            <View style={styles.briefContinuation}>
+              <DailyBriefBoard
+                brief={visibleBrief}
+                queue={visibleFindingQueue}
+                canManage={actionsEditable}
+                busyFindingId={busyFindingId}
+                message={briefMessage}
+                messageIsError={briefMessageIsError}
+                onSubmitFeedback={submitFindingFeedback}
+                compact
+                onOpen={() => router.push("/insights")}
+              />
+            </View>
+          </>
+        )}
       </View>
     </Screen>
   );
