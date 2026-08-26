@@ -2,6 +2,17 @@ begin;
 
 select plan(28);
 
+create or replace function pg_temp.try_execute(statement text)
+returns boolean
+language plpgsql
+as $$
+begin
+  execute statement;
+  return true;
+exception when others then return false;
+end;
+$$;
+
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at
@@ -101,6 +112,42 @@ insert into public.pos_locations (
   'c4000000-0000-4000-8000-000000000201',
   'zero-location', 'Zero Location', 'UTC', 'active'
 );
+
+insert into public.pos_integrations (
+  id, restaurant_id, provider, status, last_sync_at
+) values (
+  'c4000000-0000-4000-8000-000000000203',
+  'c4000000-0000-4000-8000-000000000002',
+  'manual_csv', 'connected', clock_timestamp()
+);
+
+insert into public.menu_items (id, restaurant_id, name, category, active) values
+  ('c4000000-0000-4000-8000-000000000301', 'c4000000-0000-4000-8000-000000000001', 'Live Bowl', 'Entree', true),
+  ('c4000000-0000-4000-8000-000000000302', 'c4000000-0000-4000-8000-000000000002', 'Manual Bowl', 'Entree', true);
+
+insert into public.menu_item_ingredients (
+  id, restaurant_id, menu_item_id, menu_item_name, inventory_item_id, quantity_used_per_sale, unit
+) values
+  ('c4000000-0000-4000-8000-000000000311', 'c4000000-0000-4000-8000-000000000001',
+   'c4000000-0000-4000-8000-000000000301', 'Live Bowl',
+   'c4000000-0000-4000-8000-000000000011', 1, 'each'),
+  ('c4000000-0000-4000-8000-000000000312', 'c4000000-0000-4000-8000-000000000002',
+   'c4000000-0000-4000-8000-000000000302', 'Manual Bowl',
+   'c4000000-0000-4000-8000-000000000015', 1, 'each');
+
+insert into public.pos_sales (
+  restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales,
+  source_pos, source_record_id
+)
+select
+  'c4000000-0000-4000-8000-000000000001', current_date - service_day,
+  'Live Bowl', 'Entree', 2, 20, 18, 'Manual CSV Upload', 'correction-sale-a-' || service_day
+from generate_series(0, 7) service_day
+union all
+select
+  'c4000000-0000-4000-8000-000000000002', current_date - service_day,
+  'Manual Bowl', 'Entree', 2, 20, 18, 'Manual CSV Upload', 'correction-sale-b-' || service_day
+from generate_series(0, 7) service_day;
 
 update private.restaurant_signal_state
 set signals_revision = planning_revision, status = 'current'
@@ -226,13 +273,12 @@ where id = 'c4000000-0000-4000-8000-000000000101';
 set session_replication_role = origin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'c4111111-1111-4111-8111-111111111111', true);
-select is(public.approve_purchase_recommendation(
+select ok(not pg_temp.try_execute($sql$select public.approve_purchase_recommendation(
   'c4000000-0000-4000-8000-000000000001', 'c4000000-0000-4000-8000-000000000402', 2
-)->>'outcome', 'blocked', 'a stale existing line blocks attachment of ready line B');
-select ok(public.approve_purchase_recommendation(
-  'c4000000-0000-4000-8000-000000000001', 'c4000000-0000-4000-8000-000000000402', 2
-)->'authority'->'blockers' @> '[{"code":"draft_authority_stale"}]'::jsonb,
-  'stale draft revalidation returns the deterministic structured blocker');
+)$sql$), 'stale restaurant count evidence fails closed at pilot readiness before draft mutation');
+select ok(public.list_purchase_recommendation_authority('c4000000-0000-4000-8000-000000000001')
+  ->'c4000000-0000-4000-8000-000000000401'->'blockers' @> '[{"code":"inventory_count_stale"}]'::jsonb,
+  'stale existing draft line still surfaces through authority read models');
 reset role;
 select is((select status from public.purchase_recommendations
   where id = 'c4000000-0000-4000-8000-000000000402'), 'pending',

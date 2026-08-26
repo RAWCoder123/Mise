@@ -1131,6 +1131,24 @@ insert into public.inventory_events (
   '22222222-2222-4222-8222-222222222222',
   'mise-003a-test', 'tenant-a-ready-count', 'tenant-a-ready-count'
 );
+update public.inventory_items
+set canonical_unit = 'g',
+    canonical_quantity_per_unit = 453.592,
+    canonical_unit_verification_status = 'verified',
+    canonical_unit_verified_at = clock_timestamp(),
+    canonical_unit_verified_by = '22222222-2222-4222-8222-222222222222'
+where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
+update public.pos_integrations
+set last_sync_at = clock_timestamp()
+where id = 'aaaaaaaa-4444-4444-8444-aaaaaaaaaaaa';
+insert into public.pos_sales (
+  restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales,
+  source_pos, source_record_id
+)
+select
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', current_date - service_day,
+  'Chicken Bowl', 'Entree', 2, 20, 18, 'Fixture POS', 'tenant-a-ready-sale-' || service_day
+from generate_series(1, 7) service_day;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 select is(

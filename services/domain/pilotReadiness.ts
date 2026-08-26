@@ -58,6 +58,59 @@ const statusRank: Record<PilotReadinessStatus, number> = {
   blocked: 3
 };
 
+const RECOMMENDATION_AREA_IDS: readonly PilotReadinessAreaId[] = [
+  "pos_sales",
+  "inventory_counts",
+  "recipe_coverage"
+];
+
+export class PilotReadinessBlockedError extends Error {
+  readonly readiness: PilotReadiness;
+
+  constructor(readiness: PilotReadiness) {
+    const incomplete = readiness.areas
+      .filter((area) => RECOMMENDATION_AREA_IDS.includes(area.id) && area.status !== "ready")
+      .map((area) => area.summary);
+    super(
+      incomplete[0] ??
+        "Pilot readiness is incomplete, so purchase recommendations cannot proceed yet."
+    );
+    this.name = "PilotReadinessBlockedError";
+    this.readiness = readiness;
+  }
+}
+
+export class PilotReadinessUnavailableError extends Error {
+  constructor(message = "Pilot readiness could not be verified for this restaurant.") {
+    super(message);
+    this.name = "PilotReadinessUnavailableError";
+  }
+}
+
+/** Fail closed: recommendation writes require POS, counts, and recipe readiness. */
+export function assertPilotCanRecommend(readiness: PilotReadiness): void {
+  if (!readiness.canRecommend) {
+    throw new PilotReadinessBlockedError(readiness);
+  }
+}
+
+export function isPilotReadinessBlockedError(
+  error: unknown
+): error is PilotReadinessBlockedError {
+  return error instanceof PilotReadinessBlockedError;
+}
+
+export function isPilotReadinessUnavailableError(
+  error: unknown
+): error is PilotReadinessUnavailableError {
+  return error instanceof PilotReadinessUnavailableError;
+}
+
+export function isPilotReadinessRpcBlockedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /Pilot readiness is incomplete/i.test(message);
+}
+
 export function buildPilotReadiness(input: PilotReadinessInput): PilotReadiness {
   const restaurantId = input.restaurantId.trim();
   if (!restaurantId) throw new Error("Pilot readiness requires a restaurant id.");

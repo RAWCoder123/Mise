@@ -1,6 +1,6 @@
 begin;
 
-select plan(56);
+select plan(60);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -109,7 +109,24 @@ insert into public.inventory_events (
    '3a111111-1111-4111-8111-111111111111', 'mise-003a-test', 'stale-count', 'stale-count'),
   ('3a000000-0000-4000-8000-000000000103', '3a000000-0000-4000-8000-000000000001',
    '3a000000-0000-4000-8000-000000000015', 'count', 1, 'each', clock_timestamp(),
-   '3a111111-1111-4111-8111-111111111111', 'mise-003a-test', 'partial-count', 'partial-count');
+   '3a111111-1111-4111-8111-111111111111', 'mise-003a-test', 'partial-count', 'partial-count'),
+  ('3a000000-0000-4000-8000-000000000107', '3a000000-0000-4000-8000-000000000001',
+   '3a000000-0000-4000-8000-000000000012', 'count', 1, 'each', clock_timestamp(),
+   '3a111111-1111-4111-8111-111111111111', 'mise-003a-test', 'missing-count-seed', 'missing-count-seed'),
+  ('3a000000-0000-4000-8000-000000000108', '3a000000-0000-4000-8000-000000000001',
+   '3a000000-0000-4000-8000-000000000013', 'count', 1, 'each', clock_timestamp(),
+   '3a111111-1111-4111-8111-111111111111', 'mise-003a-test', 'stale-count-refresh', 'stale-count-refresh'),
+  ('3a000000-0000-4000-8000-000000000109', '3a000000-0000-4000-8000-000000000001',
+   '3a000000-0000-4000-8000-000000000014', 'count', 1, 'each', clock_timestamp(),
+   '3a111111-1111-4111-8111-111111111111', 'mise-003a-test', 'draft-unit-count', 'draft-unit-count');
+
+update public.inventory_items
+set canonical_unit = 'each',
+    canonical_quantity_per_unit = 1,
+    canonical_unit_verification_status = 'verified',
+    canonical_unit_verified_at = clock_timestamp(),
+    canonical_unit_verified_by = '3a111111-1111-4111-8111-111111111111'
+where id = '3a000000-0000-4000-8000-000000000014';
 
 insert into public.pos_integrations (
   id, restaurant_id, provider, status, last_sync_at,
@@ -229,35 +246,77 @@ select is((select count(*) from public.audit_logs where entity_id = '3a000000-00
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '3a111111-1111-4111-8111-111111111111', true);
-select ok((public.approve_purchase_recommendation(
+set session_replication_role = replica;
+delete from public.inventory_events where id = '3a000000-0000-4000-8000-000000000107';
+set session_replication_role = origin;
+select ok(public.list_purchase_recommendation_authority('3a000000-0000-4000-8000-000000000001')
+  ->'3a000000-0000-4000-8000-000000000402'->'blockers' @> '[{"code":"inventory_count_missing"}]'::jsonb,
+  'missing physical count still surfaces in authority read models');
+select ok(not pg_temp.try_execute($sql$select public.approve_purchase_recommendation(
   '3a000000-0000-4000-8000-000000000001', '3a000000-0000-4000-8000-000000000402', 4
-)->'authority'->'blockers') @> '[{"code":"inventory_count_missing"}]'::jsonb,
-  'missing physical count blocks approval');
+)$sql$), 'missing physical count fails closed at pilot readiness before approval mutation');
 reset role;
 select is((select status from public.purchase_recommendations where id = '3a000000-0000-4000-8000-000000000402'),
   'pending', 'missing-count denial leaves recommendation informational');
 select is((select count(*) from public.supplier_orders where supplier_name = 'Missing Supplier'), 0::bigint,
   'missing-count denial creates no order');
+insert into public.inventory_events (
+  id, restaurant_id, inventory_item_id, event_type, quantity, canonical_unit,
+  effective_at, actor_user_id, source, client_event_id, idempotency_key
+) values (
+  '3a000000-0000-4000-8000-000000000107', '3a000000-0000-4000-8000-000000000001',
+  '3a000000-0000-4000-8000-000000000012', 'count', 1, 'each', clock_timestamp(),
+  '3a111111-1111-4111-8111-111111111111', 'mise-003a-test', 'missing-count-seed', 'missing-count-seed'
+);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '3a111111-1111-4111-8111-111111111111', true);
-select ok((public.approve_purchase_recommendation(
+set session_replication_role = replica;
+delete from public.inventory_events where id = '3a000000-0000-4000-8000-000000000108';
+set session_replication_role = origin;
+select ok(public.list_purchase_recommendation_authority('3a000000-0000-4000-8000-000000000001')
+  ->'3a000000-0000-4000-8000-000000000403'->'blockers' @> '[{"code":"inventory_count_stale"}]'::jsonb,
+  'count older than 36 hours still surfaces in authority read models');
+select ok(not pg_temp.try_execute($sql$select public.approve_purchase_recommendation(
   '3a000000-0000-4000-8000-000000000001', '3a000000-0000-4000-8000-000000000403', 4
-)->'authority'->'blockers') @> '[{"code":"inventory_count_stale"}]'::jsonb,
-  'count older than 36 hours blocks approval');
+)$sql$), 'stale counts fail closed at pilot readiness before approval mutation');
 reset role;
 select is((select status from public.purchase_recommendations where id = '3a000000-0000-4000-8000-000000000403'),
   'pending', 'stale-count denial leaves recommendation pending');
+insert into public.inventory_events (
+  id, restaurant_id, inventory_item_id, event_type, quantity, canonical_unit,
+  effective_at, actor_user_id, source, client_event_id, idempotency_key
+) values (
+  '3a000000-0000-4000-8000-000000000108', '3a000000-0000-4000-8000-000000000001',
+  '3a000000-0000-4000-8000-000000000013', 'count', 1, 'each', clock_timestamp(),
+  '3a111111-1111-4111-8111-111111111111', 'mise-003a-test', 'stale-count-refresh', 'stale-count-refresh'
+);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '3a111111-1111-4111-8111-111111111111', true);
-select ok((public.approve_purchase_recommendation(
+update public.inventory_items
+set canonical_unit = null,
+    canonical_quantity_per_unit = null,
+    canonical_unit_verification_status = 'draft',
+    canonical_unit_verified_at = null,
+    canonical_unit_verified_by = null
+where id = '3a000000-0000-4000-8000-000000000014';
+select ok(public.list_purchase_recommendation_authority('3a000000-0000-4000-8000-000000000001')
+  ->'3a000000-0000-4000-8000-000000000404'->'blockers' @> '[{"code":"canonical_unit_unverified"}]'::jsonb,
+  'unverified canonical unit still surfaces in authority read models');
+select ok(not pg_temp.try_execute($sql$select public.approve_purchase_recommendation(
   '3a000000-0000-4000-8000-000000000001', '3a000000-0000-4000-8000-000000000404', 4
-)->'authority'->'blockers') @> '[{"code":"canonical_unit_unverified"}]'::jsonb,
-  'unverified canonical unit blocks approval');
+)$sql$), 'unverified units fail closed at pilot readiness before approval mutation');
 reset role;
 select is((select status from public.purchase_recommendations where id = '3a000000-0000-4000-8000-000000000404'),
   'pending', 'unit denial leaves recommendation pending');
+update public.inventory_items
+set canonical_unit = 'each',
+    canonical_quantity_per_unit = 1,
+    canonical_unit_verification_status = 'verified',
+    canonical_unit_verified_at = clock_timestamp(),
+    canonical_unit_verified_by = '3a111111-1111-4111-8111-111111111111'
+where id = '3a000000-0000-4000-8000-000000000014';
 
 insert into public.purchase_recommendations (
   id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name, recommended_quantity,
@@ -301,13 +360,19 @@ insert into public.pos_sales (
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '3a111111-1111-4111-8111-111111111111', true);
-select ok((public.approve_purchase_recommendation(
+select ok(public.list_purchase_recommendation_authority('3a000000-0000-4000-8000-000000000001')
+  ->'3a000000-0000-4000-8000-000000000406'->'blockers' @> '[{"code":"provider_mapping_missing"}]'::jsonb,
+  'unresolved provider demand still surfaces in authority read models');
+select ok(not pg_temp.try_execute($sql$select public.approve_purchase_recommendation(
   '3a000000-0000-4000-8000-000000000001', '3a000000-0000-4000-8000-000000000406', 4
-)->'authority'->'blockers') @> '[{"code":"provider_mapping_missing"}]'::jsonb,
-  'unresolved provider demand blocks the mapped subset from becoming authority');
+)$sql$), 'unresolved provider demand fails closed at pilot readiness before approval mutation');
 reset role;
 select is((select status from public.purchase_recommendations where id = '3a000000-0000-4000-8000-000000000406'),
   'pending', 'partial-demand denial leaves recommendation pending');
+
+delete from public.pos_sales
+where restaurant_id = '3a000000-0000-4000-8000-000000000001'
+  and source_record_id = 'unmapped-sale';
 
 update public.restaurant_operational_controls
 set ordering_policy = 'off', order_drafting_enabled = false
@@ -340,10 +405,6 @@ reset role;
 update public.restaurant_operational_controls
 set ordering_policy = 'draft_only', order_drafting_enabled = true
 where restaurant_id = '3a000000-0000-4000-8000-000000000001';
-delete from public.pos_sales
-where restaurant_id = '3a000000-0000-4000-8000-000000000001'
-  and source_record_id = 'unmapped-sale';
-
 set session_replication_role = replica;
 insert into public.inventory_events (
   id, restaurant_id, inventory_item_id, event_type, quantity, canonical_unit,

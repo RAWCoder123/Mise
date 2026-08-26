@@ -69,6 +69,34 @@ insert into public.inventory_events (
    '4a000000-0000-4000-8000-000000000203', 'count', 1, 'ml', now(),
    '4a111111-1111-4111-8111-111111111111', 'mise-004a-test', 'memory-count-3', 'memory-count-3');
 
+insert into public.pos_integrations (
+  id, restaurant_id, provider, status, last_sync_at
+) values (
+  '4a000000-0000-4000-8000-000000000350', '4a000000-0000-4000-8000-000000000001',
+  'manual_csv', 'connected', now()
+);
+
+insert into public.menu_items (id, restaurant_id, name, category, active)
+values ('4a000000-0000-4000-8000-000000000360', '4a000000-0000-4000-8000-000000000001',
+  'Memory Bowl', 'Entree', true);
+
+insert into public.menu_item_ingredients (
+  id, restaurant_id, menu_item_id, menu_item_name, inventory_item_id, quantity_used_per_sale, unit
+) values (
+  '4a000000-0000-4000-8000-000000000361', '4a000000-0000-4000-8000-000000000001',
+  '4a000000-0000-4000-8000-000000000360', 'Memory Bowl',
+  '4a000000-0000-4000-8000-000000000201', 1, 'each'
+);
+
+insert into public.pos_sales (
+  restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales,
+  source_pos, source_record_id
+)
+select
+  '4a000000-0000-4000-8000-000000000001', current_date - service_day,
+  'Memory Bowl', 'Entree', 2, 20, 18, 'Manual CSV Upload', 'memory-sale-' || service_day
+from generate_series(0, 7) service_day;
+
 update public.system_operational_controls
 set ordering_policy = 'draft_only', order_drafting_enabled = true where singleton;
 update public.restaurant_operational_controls
