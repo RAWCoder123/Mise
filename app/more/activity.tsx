@@ -38,6 +38,7 @@ export default function ActivityHistoryScreen() {
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const hasLoaded = useRef(false);
+  const readyProofRestaurantIdRef = useRef<string | null>(null);
   const loadedQueryRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -68,6 +69,7 @@ export default function ActivityHistoryScreen() {
   useEffect(() => {
     requestIdRef.current += 1;
     hasLoaded.current = false;
+    readyProofRestaurantIdRef.current = null;
     loadedQueryRef.current = null;
     setEvents([]);
     setLoadedRestaurantId(null);
@@ -85,13 +87,19 @@ export default function ActivityHistoryScreen() {
     const requestId = ++requestIdRef.current;
     const queryKey = `${filter}:${range}`;
     const queryChanged = loadedQueryRef.current !== null && loadedQueryRef.current !== queryKey;
+    // Soft refresh may keep the prior feed, but Retry after a failed load
+    // (including initial failure where hasLoaded is true and ready proof is
+    // null) must show loading feedback instead of a blank feed.
+    const needsBlockingLoad =
+      queryChanged ||
+      !hasLoaded.current ||
+      readyProofRestaurantIdRef.current !== restaurantId;
     if (queryChanged) {
       setEvents([]);
+      readyProofRestaurantIdRef.current = null;
       setLoadedRestaurantId(null);
-      setLoading(true);
-    } else if (!hasLoaded.current) {
-      setLoading(true);
     }
+    if (needsBlockingLoad) setLoading(true);
     setError(false);
     try {
       const bounds = activityDateRangeBounds(range);
@@ -104,11 +112,14 @@ export default function ActivityHistoryScreen() {
       });
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setEvents(next);
+      readyProofRestaurantIdRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
       loadedQueryRef.current = queryKey;
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "activity", operation: "load", restaurant_id: restaurantId });
+      readyProofRestaurantIdRef.current = null;
+      setLoadedRestaurantId(null);
       setError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {

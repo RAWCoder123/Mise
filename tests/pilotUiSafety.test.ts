@@ -23,6 +23,13 @@ test("Home soft-refresh load errors fail closed before approval stays actionable
   assert.match(home, /presentRestaurantScopedHubActionsEditable/);
   assert.match(home, /if \(!restaurant \|\| !actionsEditable \|\| approvingId\) return;/);
   assert.match(home, /disabled=\{!actionsEditable \|\| Boolean\(approvingId\)\}/);
+  // Greptile P1: Retry must not reopen stale approvals while a replacement load is in flight.
+  assert.match(home, /readyProofRestaurantIdRef/);
+  assert.match(home, /readyProofRestaurantIdRef\.current = null;\s*setLoadedRestaurantId\(null\);\s*setError/);
+  assert.match(
+    home,
+    /needsBlockingLoad\s*=\s*!hasLoaded\.current \|\| readyProofRestaurantIdRef\.current !== restaurantId/
+  );
 });
 
 test("Activity History soft-refresh load errors fail closed instead of keeping the prior feed", () => {
@@ -31,6 +38,16 @@ test("Activity History soft-refresh load errors fail closed instead of keeping t
   assert.match(activity, /loadError: error/);
   assert.match(activity, /hubReady \? events : \[\]/);
   assert.match(activity, /!error && hubReady && visible\.length === 0/);
+  // Greptile P1: initial failure + Retry must block with loading, not a blank feed.
+  assert.match(activity, /readyProofRestaurantIdRef/);
+  assert.match(
+    activity,
+    /readyProofRestaurantIdRef\.current = null;\s*setLoadedRestaurantId\(null\);\s*setError\(true\)/
+  );
+  assert.match(
+    activity,
+    /needsBlockingLoad\s*=\s*queryChanged \|\|\s*!hasLoaded\.current \|\|\s*readyProofRestaurantIdRef\.current !== restaurantId/
+  );
 });
 
 test("Today promotes and fully reveals the operator-selected task bucket", () => {

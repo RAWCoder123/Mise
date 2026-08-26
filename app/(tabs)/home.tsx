@@ -81,6 +81,7 @@ export default function HomeScreen() {
     useState<RecalculationAttentionSummary | null>(null);
   const requestIdRef = useRef(0);
   const hasLoaded = useRef(false);
+  const readyProofRestaurantIdRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   const lastSeenSessionRef = useRef<{ restaurantId: string; value: string } | null>(null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -88,6 +89,7 @@ export default function HomeScreen() {
   useEffect(() => {
     requestIdRef.current += 1;
     hasLoaded.current = false;
+    readyProofRestaurantIdRef.current = null;
     setSummary(null);
     setBrief(null);
     setLoadedRestaurantId(null);
@@ -107,8 +109,13 @@ export default function HomeScreen() {
 
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
+    // Soft refresh may keep last-known values, but Retry after a failed load
+    // must not clear error while retaining ready proof — that briefly reopens
+    // stale one-tap approvals. Missing ready proof always blocks until refresh.
+    const needsBlockingLoad =
+      !hasLoaded.current || readyProofRestaurantIdRef.current !== restaurantId;
     setError(null);
-    if (!hasLoaded.current) setLoading(true);
+    if (needsBlockingLoad) setLoading(true);
     try {
       let lastSeenAt = lastSeenSessionRef.current?.restaurantId === restaurantId
         ? lastSeenSessionRef.current.value
@@ -142,10 +149,13 @@ export default function HomeScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
       setBrief(nextBrief);
+      readyProofRestaurantIdRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "home", operation: "load", restaurant_id: restaurantId });
+      readyProofRestaurantIdRef.current = null;
+      setLoadedRestaurantId(null);
       setError(t("home.error"));
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
