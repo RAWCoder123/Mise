@@ -60,6 +60,8 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.pos, /visibleIntegration/);
   assert.match(screens.pos, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.createTask, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.createTask, /!hubReady \? null : \(scope === "restaurant"/);
+  assert.match(screens.createTask, /!hubReady\s*\?\s*undefined\s*:\s*showCompleted/);
   assert.match(screens.settings, /!restaurantActionsEditable/);
   assert.match(
     source("services/presentation/hubLoadState.ts"),
