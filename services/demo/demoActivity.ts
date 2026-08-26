@@ -1,6 +1,8 @@
 import {
   activityIdempotencyKey,
   fromInventoryWasteRecorded,
+  fromPosPlanningSignalsRefreshed,
+  fromPosSyncCompleted,
   fromPurchaseRecommendationApproved,
   fromPurchaseRecommendationCreated,
   fromPurchaseRecommendationDismissed,
@@ -69,6 +71,40 @@ export function appendDemoRecommendationActivity(
     );
   }
   return null;
+}
+
+export function appendDemoPosSyncPlanningActivity(
+  state: DemoState,
+  input: {
+    restaurantId: string;
+    importId: string;
+    occurredAt: string;
+    recordsProcessed: number;
+    provider?: string | null;
+    recommendationCount: number;
+    insightCount?: number;
+  }
+) {
+  upsertActivity(
+    state,
+    fromPosSyncCompleted({
+      restaurantId: input.restaurantId,
+      occurredAt: input.occurredAt,
+      importId: input.importId,
+      recordsProcessed: input.recordsProcessed,
+      provider: input.provider ?? "Square"
+    })
+  );
+  upsertActivity(
+    state,
+    fromPosPlanningSignalsRefreshed({
+      restaurantId: input.restaurantId,
+      occurredAt: input.occurredAt,
+      importId: input.importId,
+      recommendationCount: input.recommendationCount,
+      insightCount: input.insightCount
+    })
+  );
 }
 
 export function appendDemoSupplierOrderActivity(

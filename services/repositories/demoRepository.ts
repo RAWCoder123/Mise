@@ -28,6 +28,7 @@ import {
   type DemoState
 } from "../demoData";
 import {
+  appendDemoPosSyncPlanningActivity,
   appendDemoRecommendationActivity,
   appendDemoSupplierOrderActivity,
   seedDemoActivityFromState
@@ -2497,10 +2498,54 @@ export function createLocalDemoRepository(): MiseRepository {
     async syncSquarePosSales(restaurantId, _from, _to) {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, restaurantId);
+        const now = new Date().toISOString();
+        const importId =
+          typeof globalThis.crypto?.randomUUID === "function"
+            ? globalThis.crypto.randomUUID()
+            : createId("sales_import").replace(/^sales_import_/, "");
         const salesCount = state.posSales.filter((sale) => sale.restaurant_id === restaurantId).length;
+        const integration = state.posIntegrations.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.provider === "square"
+        );
+        state.salesImports = [
+          ...(state.salesImports ?? []),
+          {
+            id: importId,
+            restaurant_id: restaurantId,
+            pos_integration_id: integration?.id ?? null,
+            import_type: "pos_sync",
+            status: "completed",
+            source_file_name: null,
+            records_processed: salesCount,
+            error_message: null,
+            metadata: { provider: "square", simulated: true },
+            imported_at: now
+          }
+        ];
+        if (integration) {
+          integration.last_sync_at = now;
+          integration.updated_at = now;
+        }
+        rebuildPurchaseRecommendations(state, restaurantId);
+        rebuildInsights(state, restaurantId);
+        const recommendationCount = (state.purchaseRecommendations ?? []).filter(
+          (entry) => entry.restaurant_id === restaurantId && entry.status === "pending"
+        ).length;
+        const insightCount = (state.insights ?? []).filter(
+          (entry) => entry.restaurant_id === restaurantId
+        ).length;
+        appendDemoPosSyncPlanningActivity(state, {
+          restaurantId,
+          importId,
+          occurredAt: now,
+          recordsProcessed: salesCount,
+          provider: "Square",
+          recommendationCount,
+          insightCount
+        });
         return {
           status: "completed" as const,
-          importId: null,
+          importId,
           recordsProcessed: salesCount,
           catalogProcessed: 0
         };

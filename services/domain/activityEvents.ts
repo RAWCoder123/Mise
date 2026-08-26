@@ -935,13 +935,27 @@ export function fromOperationalFinding(
   });
 }
 
+/**
+ * Stable activity sequence for one POS sales import and the planning refresh
+ * it causes. Matches hosted `sales_imports` activity (`pos-sync:{importId}`).
+ */
+export function posSyncPlanningSequenceId(importId: string | null | undefined): string | null {
+  if (typeof importId !== "string") return null;
+  const normalized = importId.trim();
+  if (!normalized) return null;
+  return `pos-sync:${normalized}`;
+}
+
 export function fromPosSyncCompleted(input: {
   restaurantId: string;
   occurredAt: string;
   importId: string | null;
   recordsProcessed: number;
   provider?: string | null;
+  sequenceId?: string | null;
 }): ActivityEvent {
+  const sequenceId =
+    input.sequenceId !== undefined ? input.sequenceId : posSyncPlanningSequenceId(input.importId);
   return buildEvent({
     restaurantId: input.restaurantId,
     occurredAt: input.occurredAt,
@@ -957,6 +971,7 @@ export function fromPosSyncCompleted(input: {
     status: "completed",
     relatedEntityType: "pos_import",
     relatedEntityId: input.importId,
+    sequenceId,
     sourceSystems: ["mise", "pos", input.provider ?? "unknown"].filter(Boolean) as string[],
     metadata: {
       recordsProcessed: input.recordsProcessed,
@@ -964,6 +979,59 @@ export function fromPosSyncCompleted(input: {
       importId: input.importId
     },
     idempotencyKey: `pos_sync:${input.importId ?? input.occurredAt}`
+  });
+}
+
+/**
+ * Operator-visible beat after POS sync successfully refreshes planning signals.
+ * Shares `pos-sync:{importId}` with the import completion event so Activity can
+ * tell one sync→recompute story without rewriting inventory-order sequences.
+ */
+export function fromPosPlanningSignalsRefreshed(input: {
+  restaurantId: string;
+  occurredAt: string;
+  importId: string;
+  recommendationCount: number;
+  insightCount?: number;
+}): ActivityEvent {
+  const sequenceId = posSyncPlanningSequenceId(input.importId);
+  if (!sequenceId) {
+    throw new Error("POS planning refresh activity requires an import id.");
+  }
+  const recommendationCount = Math.max(0, Math.floor(input.recommendationCount));
+  const insightCount =
+    input.insightCount === undefined || input.insightCount === null
+      ? null
+      : Math.max(0, Math.floor(input.insightCount));
+  return buildEvent({
+    restaurantId: input.restaurantId,
+    occurredAt: input.occurredAt,
+    activityType: "forecast_updated",
+    category: "inventory",
+    title: "Planning refreshed after POS sync",
+    summary:
+      insightCount === null
+        ? `Forecasts and purchase signals were recomputed from import ${input.importId} (${recommendationCount} recommendation${
+            recommendationCount === 1 ? "" : "s"
+          }).`
+        : `Forecasts and purchase signals were recomputed from import ${input.importId} (${recommendationCount} recommendation${
+            recommendationCount === 1 ? "" : "s"
+          }, ${insightCount} insight${insightCount === 1 ? "" : "s"}).`,
+    triggerType: "pos_sync_planning_refresh",
+    triggerReference: input.importId,
+    autonomyLevel: 4,
+    status: "completed",
+    relatedEntityType: "pos_import",
+    relatedEntityId: input.importId,
+    sequenceId,
+    sourceSystems: ["mise", "pos"],
+    metadata: {
+      importId: input.importId,
+      recommendationCount,
+      insightCount,
+      causedBy: "pos_sync"
+    },
+    idempotencyKey: `pos_planning_refresh:${input.importId}`
   });
 }
 
@@ -1183,6 +1251,7 @@ export function fromForecastUpdated(input: {
   operatingDate: string;
   sales: readonly PosSale[];
   deltaPercent?: number | null;
+  sequenceId?: string | null;
 }): ActivityEvent {
   const todaySales = input.sales.filter(
     (sale) => sale.restaurant_id === input.restaurantId && sale.sale_date === input.operatingDate
@@ -1206,6 +1275,7 @@ export function fromForecastUpdated(input: {
     triggerReference: input.operatingDate,
     autonomyLevel: 4,
     status: "completed",
+    sequenceId: input.sequenceId ?? null,
     sourceSystems: ["mise", "pos"],
     metadata: {
       operatingDate: input.operatingDate,
@@ -1214,4 +1284,43 @@ export function fromForecastUpdated(input: {
     },
     idempotencyKey: `forecast_updated:${input.restaurantId}:${input.operatingDate}:${input.occurredAt.slice(0, 13)}`
   });
+}
+
+/** RPC parameter bag for service_append_activity_event from a domain event. */
+export function activityEventToServiceAppendParams(
+  event: ActivityEvent,
+  options: { actorUserId?: string | null; correlationId?: string | null; causationId?: string | null } = {}
+): Record<string, unknown> {
+  return {
+    p_restaurant_id: event.restaurantId,
+    p_event_type: event.activityType,
+    p_category: event.category,
+    p_title: event.title,
+    p_summary: event.summary,
+    p_occurred_at: event.occurredAt,
+    p_source: typeof event.metadata.source === "string" ? event.metadata.source : "mise",
+    p_actor_type: typeof event.metadata.actorType === "string" ? event.metadata.actorType : "mise",
+    p_actor_user_id: options.actorUserId ?? null,
+    p_trigger_type: event.triggerType,
+    p_trigger_reference: event.triggerReference,
+    p_evidence_references: event.evidenceReferences,
+    p_source_systems: event.sourceSystems,
+    p_action_id: event.actionId,
+    p_recommendation_id: event.recommendationId,
+    p_autonomy_level: event.autonomyLevel,
+    p_confidence: event.confidence,
+    p_status: event.status,
+    p_requires_attention: event.requiresAttention,
+    p_attention_deadline: event.attentionDeadline,
+    p_related_entity_type: event.relatedEntityType,
+    p_related_entity_id: event.relatedEntityId,
+    p_sequence_id: event.sequenceId,
+    p_correlation_id: options.correlationId ?? null,
+    p_causation_id: options.causationId ?? null,
+    p_idempotency_key: activityIdempotencyKey(event),
+    p_metadata: event.metadata,
+    p_error_code: event.errorCode,
+    p_error_message: event.errorMessage,
+    p_location_id: event.locationId
+  };
 }
