@@ -71,9 +71,12 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.dailyBrief, /hubReady\s*\?\s*briefs\s*:\s*null/);
   assert.match(screens.dailyReport, /hubReady\s*\?\s*report\s*:\s*null/);
   assert.match(screens.scanItem, /hubReady\s*\?\s*items\s*:\s*\[\]/);
+  assert.match(screens.scanItem, /hubReady\s*\?\s*barcodeMatches\s*:\s*null/);
+  assert.match(screens.scanItem, /!hubReady \? null : listItems\.length === 0/);
   assert.match(screens.taskDetail, /hubReady\s*\?\s*task\s*:\s*null/);
   assert.match(screens.taskDetail, /hubReady\s*\?\s*sharedTask\s*:\s*null/);
   assert.match(screens.taskDetail, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.taskDetail, /setMutating\(false\)/);
   assert.match(screens.posMappings, /hubReady\s*\?\s*queue\s*:\s*null/);
   assert.match(screens.posMappings, /presentRestaurantScopedHubActionsEditable/);
   assert.match(

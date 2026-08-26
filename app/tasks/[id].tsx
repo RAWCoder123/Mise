@@ -77,6 +77,7 @@ export default function TaskDetailScreen() {
     setChecked({});
     setCompletionResult("");
     setCompletionEvidence("");
+    setMutating(false);
     setHubLoadError(false);
     setError(null);
     setLoadedRestaurantId(null);

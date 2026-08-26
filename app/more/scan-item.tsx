@@ -107,6 +107,10 @@ export default function ScanItemScreen() {
   });
   const hubReady = hubLoadState === "ready";
   const visibleItems = hubReady ? items : [];
+  // Soft-refresh errors must also hide prior barcode matches; otherwise
+  // listItems prefers stale barcodeMatches while visibleItems is empty.
+  const visibleBarcodeMatches = hubReady ? barcodeMatches : null;
+  const visibleLastScannedCode = hubReady ? lastScannedCode : null;
   const searchMatches = useMemo(
     () => visibleItems.filter((item) => matchesQuery(item, query)).slice(0, 40),
     [query, visibleItems]
@@ -115,7 +119,7 @@ export default function ScanItemScreen() {
   const handleBarcode = useCallback(
     (result: BarcodeScanningResult) => {
       const code = result.data?.trim() ?? "";
-      if (!code || scanPaused) return;
+      if (!code || scanPaused || !hubReady) return;
       const now = Date.now();
       if (now - lastScanAtRef.current < SCAN_COOLDOWN_MS) return;
       lastScanAtRef.current = now;
@@ -139,7 +143,7 @@ export default function ScanItemScreen() {
       setBarcodeMatches([]);
       setQuery(code);
     },
-    [scanPaused, visibleItems]
+    [hubReady, scanPaused, visibleItems]
   );
 
   if (!restaurant) {
@@ -151,10 +155,13 @@ export default function ScanItemScreen() {
   }
 
   const showCamera = CAMERA_SUPPORTED && permission?.granted;
-  const listItems = barcodeMatches && barcodeMatches.length > 0 ? barcodeMatches : searchMatches;
+  const listItems =
+    visibleBarcodeMatches && visibleBarcodeMatches.length > 0
+      ? visibleBarcodeMatches
+      : searchMatches;
   const listTitle =
-    barcodeMatches && barcodeMatches.length > 1
-      ? t("scanItem.barcode.multi", { count: formatNumber(barcodeMatches.length) })
+    visibleBarcodeMatches && visibleBarcodeMatches.length > 1
+      ? t("scanItem.barcode.multi", { count: formatNumber(visibleBarcodeMatches.length) })
       : query.trim()
         ? t("scanItem.results", { count: formatNumber(listItems.length) })
         : t("scanItem.allItems", { count: formatNumber(visibleItems.length) });
@@ -178,7 +185,7 @@ export default function ScanItemScreen() {
                 barcodeScannerSettings={{
                   barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"]
                 }}
-                onBarcodeScanned={scanPaused ? undefined : handleBarcode}
+                onBarcodeScanned={scanPaused || !hubReady ? undefined : handleBarcode}
               />
               <View style={styles.cameraOverlay} pointerEvents="none">
                 <View style={styles.viewfinder} />
@@ -209,11 +216,11 @@ export default function ScanItemScreen() {
           />
         )}
 
-        {lastScannedCode && barcodeMatches?.length === 0 ? (
+        {visibleLastScannedCode && visibleBarcodeMatches?.length === 0 ? (
           <StatusNotice
             tone="warning"
             title={t("scanItem.barcode.noneTitle")}
-            message={t("scanItem.barcode.noneBody", { code: lastScannedCode })}
+            message={t("scanItem.barcode.noneBody", { code: visibleLastScannedCode })}
           />
         ) : null}
 
@@ -235,6 +242,7 @@ export default function ScanItemScreen() {
             placeholder={t("scanItem.search.placeholder")}
             placeholderTextColor={colors.faint}
             value={query}
+            editable={hubReady}
             onChangeText={(value) => {
               setQuery(value);
               setBarcodeMatches(null);
@@ -246,9 +254,9 @@ export default function ScanItemScreen() {
           />
         </View>
 
-        <SectionHeader title={listTitle} />
+        {hubReady ? <SectionHeader title={listTitle} /> : null}
 
-        {listItems.length === 0 ? (
+        {!hubReady ? null : listItems.length === 0 ? (
           <EmptyState
             title={t("scanItem.empty.title")}
             body={t("scanItem.empty.body")}
