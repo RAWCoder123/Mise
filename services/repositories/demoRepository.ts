@@ -57,6 +57,7 @@ import {
   measureOutcome,
   miseActionIdempotencyKey
 } from "../domain/miseActions";
+import { buildPurchaseLoopReceiveOutcomeMeasurement } from "../domain/purchaseLoopOutcome";
 import {
   defaultAutonomyRules,
   type RestaurantAutonomyRule
@@ -3611,17 +3612,45 @@ export function createLocalDemoRepository(): MiseRepository {
           entry.idempotencyKey === actionKey ? action! : entry
         );
 
-        const outcome = measureOutcome({
+        const linkedRecommendations = state.recommendations.filter(
+          (recommendation) =>
+            recommendation.restaurant_id === restaurantId &&
+            recommendation.supplier_order_id === order.id &&
+            (recommendation.status === "ordered" || recommendation.status === "approved")
+        );
+        const purchaseLoop = buildPurchaseLoopReceiveOutcomeMeasurement({
+          supplierOrderId: order.id,
+          deliveryId,
+          deliveryStatus: status === "discrepancy" ? "discrepancy" : "received",
+          hasDiscrepancy,
+          recommendations: linkedRecommendations.map((recommendation) => ({
+            id: recommendation.id,
+            inventoryItemId: recommendation.inventory_item_id,
+            recommendedQuantity: recommendation.recommended_quantity,
+            unit: recommendation.unit,
+            status: recommendation.status
+          })),
+          lines: input.lines.map((line) => ({
+            inventoryItemId: line.inventoryItemId,
+            orderedQuantity: line.orderedQuantity ?? null,
+            receivedQuantity: line.receivedQuantity,
+            damagedQuantity: line.damagedQuantity ?? 0,
+            missingQuantity: line.missingQuantity ?? 0,
+            canonicalUnit: line.canonicalUnit
+          }))
+        });
+        const measured = measureOutcome({
           restaurantId,
           actionId: action.id,
-          expectedResult: { deliveryStatus: "received" },
-          actualResult: { deliveryStatus: status, deliveryId, lineCount: input.lines.length },
+          expectedResult: purchaseLoop.expectedResult,
+          actualResult: purchaseLoop.actualResult,
           measuredAt: input.receivedAt,
-          lesson:
-            status === "received"
-              ? "The supplier order was received as expected."
-              : "Review this supplier outcome before adjusting reliability."
+          lesson: purchaseLoop.lesson
         });
+        const outcome = {
+          ...measured,
+          variance: purchaseLoop.variance
+        };
         state.actionOutcomes = [...(state.actionOutcomes ?? []), outcome];
         state.supplierDeliveries = [
           ...(state.supplierDeliveries ?? []),

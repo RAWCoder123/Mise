@@ -9,6 +9,7 @@ import {
   measureOutcome,
   miseActionIdempotencyKey
 } from "../services/domain/miseActions";
+import { buildPurchaseLoopReceiveOutcomeMeasurement } from "../services/domain/purchaseLoopOutcome";
 import { buildOperatingBrief } from "../services/domain/operatingBrief";
 import {
   buildDeliveryLinesFromOrderRecommendations,
@@ -160,21 +161,44 @@ test("delivery lines + outcome complete the inventory→order→receive path", (
   });
   action = markApproved(action, "demo-user", receivedAt);
   action = markExecuted(action, { deliveryId: "delivery-1", status: "received" }, receivedAt);
-  const outcome = measureOutcome({
-    restaurantId: DEMO_RESTAURANT_ID,
-    actionId: action.id,
-    expectedResult: { deliveryStatus: "received" },
-    actualResult: {
-      deliveryStatus: "received",
-      deliveryId: "delivery-1",
-      lineCount: built.lines.length
-    },
-    measuredAt: receivedAt,
-    lesson: "The supplier order was received as expected."
+  const purchaseLoop = buildPurchaseLoopReceiveOutcomeMeasurement({
+    supplierOrderId: order.id,
+    deliveryId: "delivery-1",
+    deliveryStatus: "received",
+    recommendations: recommendations
+      .filter((recommendation) => recommendation.supplier_order_id === order.id)
+      .map((recommendation) => ({
+        id: recommendation.id,
+        inventoryItemId: recommendation.inventory_item_id,
+        recommendedQuantity: recommendation.recommended_quantity,
+        unit: recommendation.unit,
+        status: recommendation.status
+      })),
+    lines: built.lines.map((line) => ({
+      inventoryItemId: line.inventoryItemId,
+      orderedQuantity: line.orderedQuantity ?? null,
+      receivedQuantity: line.receivedQuantity,
+      damagedQuantity: line.damagedQuantity ?? 0,
+      missingQuantity: line.missingQuantity ?? 0,
+      canonicalUnit: line.canonicalUnit
+    }))
   });
+  const outcome = {
+    ...measureOutcome({
+      restaurantId: DEMO_RESTAURANT_ID,
+      actionId: action.id,
+      expectedResult: purchaseLoop.expectedResult,
+      actualResult: purchaseLoop.actualResult,
+      measuredAt: receivedAt,
+      lesson: purchaseLoop.lesson
+    }),
+    variance: purchaseLoop.variance
+  };
 
   assert.equal(action.status, "executed");
   assert.equal(outcome.actionId, action.id);
   assert.equal(outcome.actualResult.deliveryStatus, "received");
-  assert.deepEqual(outcome.variance, {});
+  assert.equal(outcome.actualResult.evidenceVersion, "mise.purchase_loop_outcome.v1");
+  assert.equal(outcome.variance.countVariancePending, true);
+  assert.equal(typeof outcome.variance.predictedQuantity, "number");
 });
