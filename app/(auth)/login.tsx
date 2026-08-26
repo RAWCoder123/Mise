@@ -362,6 +362,18 @@ export default function LoginScreen() {
             </Text>
             <Pressable
               accessibilityRole="link"
+              accessibilityLabel={t("login.legal.termsAccessibility")}
+              accessibilityHint={t("login.legal.termsHint")}
+              onPress={() => router.push("/settings/terms" as never)}
+              style={({ pressed }) => [styles.legalLink, pressed && styles.legalLinkPressed]}
+            >
+              <Text style={styles.legalLinkText}>{t("login.legal.terms")}</Text>
+            </Pressable>
+            <Text style={styles.legalSeparator} accessible={false}>
+              ·
+            </Text>
+            <Pressable
+              accessibilityRole="link"
               accessibilityLabel={t("login.legal.supportAccessibility")}
               accessibilityHint={t("login.legal.supportHint")}
               onPress={() => router.push("/settings/support" as never)}

@@ -8,6 +8,7 @@ import {
   ChevronUp,
   Database,
   Download,
+  FileText,
   Languages,
   LifeBuoy,
   ArrowLeft,
@@ -268,6 +269,12 @@ export default function SettingsScreen() {
             title={t("settings.account.privacy.title")}
             icon={<ShieldCheck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/privacy" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("settings.account.terms.title")}
+            icon={<FileText size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/settings/terms" as never)}
           />
           <OperationalRow
             density="menu"

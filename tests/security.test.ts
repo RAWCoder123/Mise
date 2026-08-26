@@ -65,7 +65,11 @@ test("tenant role helper keeps staff read-only and lets managers operate invento
 });
 
 test("production mode does not expose demo credentials or demo access", () => {
-  const productionConfig = { appEnv: "production" as const, enableDemoMode: true };
+  const productionConfig = {
+    appEnv: "production" as const,
+    enableDemoMode: true,
+    termsUrl: null
+  };
   const credentials = getInitialLoginCredentials(productionConfig);
 
   assert.equal(canUseDemoMode(productionConfig), false);
@@ -100,6 +104,33 @@ test("development builds default to local demo mode unless explicitly disabled",
       delete process.env.EXPO_PUBLIC_ENABLE_DEMO_MODE;
     } else {
       process.env.EXPO_PUBLIC_ENABLE_DEMO_MODE = previousDemoMode;
+    }
+  }
+});
+
+test("terms URL accepts HTTPS only and fails closed otherwise", () => {
+  const previous = process.env.EXPO_PUBLIC_TERMS_URL;
+
+  try {
+    process.env.EXPO_PUBLIC_TERMS_URL = "https://getmise.app/terms";
+    assert.equal(readPublicAppConfig().termsUrl, "https://getmise.app/terms");
+
+    process.env.EXPO_PUBLIC_TERMS_URL = "http://getmise.app/terms";
+    assert.equal(readPublicAppConfig().termsUrl, null);
+
+    process.env.EXPO_PUBLIC_TERMS_URL = "ftp://getmise.app/terms";
+    assert.equal(readPublicAppConfig().termsUrl, null);
+
+    process.env.EXPO_PUBLIC_TERMS_URL = "not-a-url";
+    assert.equal(readPublicAppConfig().termsUrl, null);
+
+    delete process.env.EXPO_PUBLIC_TERMS_URL;
+    assert.equal(readPublicAppConfig().termsUrl, null);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.EXPO_PUBLIC_TERMS_URL;
+    } else {
+      process.env.EXPO_PUBLIC_TERMS_URL = previous;
     }
   }
 });
