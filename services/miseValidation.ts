@@ -55,6 +55,7 @@ import type {
   InventoryEventInput,
   InventoryEventType
 } from "./domain/inventoryLedger";
+import { assertCanonicalUnitVerificationInput } from "./domain/inventoryCanonicalUnit";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
 import type {
   SupplierDeliveryItemRecord,
@@ -452,6 +453,13 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
     }
   }
   return validated;
+}
+
+export function requireCanonicalUnitVerificationInput(input: {
+  canonicalUnit: unknown;
+  canonicalQuantityPerUnit: unknown;
+}) {
+  return assertCanonicalUnitVerificationInput(input);
 }
 
 const inventoryCountSessionStatuses = new Set([

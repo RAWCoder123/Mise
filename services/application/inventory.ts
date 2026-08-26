@@ -11,8 +11,10 @@ import {
   planCountSessionApprovals,
   summarizeCountSessionProgress
 } from "../domain/inventoryCountSessions";
+import { assertCanonicalUnitMatchesSuggestion } from "../domain/inventoryCanonicalUnit";
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
 import {
+  requireCanonicalUnitVerificationInput,
   requireInventoryCountLineUpdates,
   requireInventoryCountSessionNote,
   requireInventoryItemPatch,
@@ -380,6 +382,36 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     normalizedPatch,
     recommendations,
     insights
+  );
+}
+
+/**
+ * Manager-authorized canonical-unit verification. Hosted mode uses the
+ * guarded RPC; demo mirrors the same role and conversion rules.
+ */
+export async function verifyInventoryItemCanonicalUnit(
+  restaurantId: string,
+  itemId: string,
+  canonicalUnit: unknown,
+  canonicalQuantityPerUnit: unknown
+) {
+  const verified = requireCanonicalUnitVerificationInput({
+    canonicalUnit,
+    canonicalQuantityPerUnit
+  });
+  const items = await repository.fetchInventoryItems(restaurantId);
+  const existing = items.find((item) => item.id === itemId);
+  if (!existing) throw new Error("Inventory item not found");
+  assertCanonicalUnitMatchesSuggestion(
+    existing.unit,
+    verified.canonicalUnit,
+    verified.canonicalQuantityPerUnit
+  );
+  return repository.verifyInventoryItemCanonicalUnit(
+    restaurantId,
+    itemId,
+    verified.canonicalUnit,
+    verified.canonicalQuantityPerUnit
   );
 }
 
