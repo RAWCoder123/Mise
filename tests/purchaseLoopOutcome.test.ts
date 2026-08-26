@@ -69,7 +69,8 @@ test("purchase-loop receive outcome records short ships and prediction gaps", ()
   const shortShip = buildPurchaseLoopReceiveOutcomeMeasurement({
     supplierOrderId: "order_2",
     deliveryId: "delivery_2",
-    deliveryStatus: "received",
+    deliveryStatus: "partially_received",
+    hasPartialReceipt: true,
     recommendations: [
       {
         id: "rec_3",
@@ -85,15 +86,15 @@ test("purchase-loop receive outcome records short ships and prediction gaps", ()
         orderedQuantity: 20,
         receivedQuantity: 15,
         damagedQuantity: 0,
-        missingQuantity: 5,
+        missingQuantity: 0,
         canonicalUnit: "each"
       }
     ]
   });
 
-  assert.equal(shortShip.lessonCode, "purchase_loop.receive.quantity_short");
+  assert.equal(shortShip.lessonCode, "purchase_loop.receive.partial");
   assert.equal(shortShip.variance.receivedVersusOrderedDelta, -5);
-  assert.equal(shortShip.actualResult.missingQuantity, 5);
+  assert.equal(shortShip.actualResult.receivedQuantity, 15);
 
   const predictionGap = buildPurchaseLoopReceiveOutcomeMeasurement({
     supplierOrderId: "order_3",

@@ -3612,7 +3612,7 @@ export function createLocalDemoRepository(): MiseRepository {
           entry.idempotencyKey === actionKey ? action! : entry
         );
 
-        const linkedRecommendations = state.recommendations.filter(
+        const linkedRecommendations = state.purchaseRecommendations.filter(
           (recommendation) =>
             recommendation.restaurant_id === restaurantId &&
             recommendation.supplier_order_id === order.id &&
