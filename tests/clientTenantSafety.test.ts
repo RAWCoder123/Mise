@@ -19,11 +19,17 @@ test("operational screens reject late requests and render only active-restaurant
     gmail: source("app/settings/gmail.tsx"),
     autonomy: source("app/settings/autonomy.tsx"),
     pos: source("app/settings/pos.tsx"),
+    posMappings: source("app/settings/pos-mappings.tsx"),
     inventoryDetail: source("app/inventory/[id].tsx"),
     orderDetail: source("app/orders/[id].tsx"),
+    taskDetail: source("app/tasks/[id].tsx"),
     restaurantMemory: source("app/more/restaurant-memory.tsx"),
     logDelivery: source("app/more/log-delivery.tsx"),
-    createTask: source("app/more/create-task.tsx")
+    createTask: source("app/more/create-task.tsx"),
+    waste: source("app/more/waste.tsx"),
+    dailyBrief: source("app/more/daily-brief.tsx"),
+    dailyReport: source("app/more/daily-report.tsx"),
+    scanItem: source("app/more/scan-item.tsx")
   };
 
   for (const [name, screen] of Object.entries(screens)) {
@@ -61,6 +67,28 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.pos, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.createTask, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.settings, /!restaurantActionsEditable/);
+  assert.match(screens.waste, /hubReady\s*\?\s*analysis\s*:\s*null/);
+  assert.match(screens.dailyBrief, /hubReady\s*\?\s*briefs\s*:\s*null/);
+  assert.match(screens.dailyReport, /hubReady\s*\?\s*report\s*:\s*null/);
+  assert.match(screens.scanItem, /hubReady\s*\?\s*items\s*:\s*\[\]/);
+  assert.match(screens.scanItem, /hubReady\s*\?\s*barcodeMatches\s*:\s*null/);
+  assert.match(screens.scanItem, /!hubReady \? null : listItems\.length === 0/);
+  // Successful soft-refresh retry must re-derive barcode matches from fresh inventory
+  // via a ref so ordinary scans do not recreate the focus-load callback identity.
+  assert.match(screens.scanItem, /const lastScannedCodeRef = useRef<string \| null>\(null\)/);
+  assert.match(screens.scanItem, /lastScannedCodeRef\.current = lastScannedCode/);
+  assert.match(
+    screens.scanItem,
+    /const activeCode = lastScannedCodeRef\.current;\s*setBarcodeMatches\(\(prev\) => \{\s*if \(prev === null\) return null;\s*if \(!activeCode\) return null;\s*return matchInventoryBarcode\(activeCode, nextItems\)\.matches;\s*\}\)/
+  );
+  assert.match(screens.scanItem, /\}, \[restaurant\?\.id\]\);\s*useFocusEffect/);
+  assert.doesNotMatch(screens.scanItem, /\}, \[lastScannedCode, restaurant\?\.id\]\)/);
+  assert.match(screens.taskDetail, /hubReady\s*\?\s*task\s*:\s*null/);
+  assert.match(screens.taskDetail, /hubReady\s*\?\s*sharedTask\s*:\s*null/);
+  assert.match(screens.taskDetail, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.taskDetail, /setMutating\(false\)/);
+  assert.match(screens.posMappings, /hubReady\s*\?\s*queue\s*:\s*null/);
+  assert.match(screens.posMappings, /presentRestaurantScopedHubActionsEditable/);
   assert.match(
     source("services/presentation/hubLoadState.ts"),
     /if \(input\.loadError\) return "error";\s*if \(input\.loadedRestaurantId === input\.restaurantId\) return "ready";/
