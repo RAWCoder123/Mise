@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildPilotReadiness } from "../services/domain/pilotReadiness";
+import { buildPilotReadiness, assertPilotCanRecommend, isPilotReadinessBlockedError } from "../services/domain/pilotReadiness";
 import type { InventoryEvent } from "../services/domain/inventoryLedger";
 import type {
   InventoryItem,
@@ -122,4 +122,13 @@ test("pilot readiness rejects cross-restaurant evidence", () => {
     }),
     /restaurant scope validation/i
   );
+});
+
+test("assertPilotCanRecommend fails closed when recommendation areas are incomplete", () => {
+  const blocked = buildPilotReadiness({ ...readyInput(), countEvents: [] });
+  assert.throws(
+    () => assertPilotCanRecommend(blocked),
+    (error: unknown) => isPilotReadinessBlockedError(error) && error.readiness.canRecommend === false
+  );
+  assert.doesNotThrow(() => assertPilotCanRecommend(buildPilotReadiness(readyInput())));
 });
