@@ -2694,6 +2694,9 @@ export function createLocalDemoRepository(): MiseRepository {
             external_location_id: "demo-square-location",
             last_sync_at: now,
             sync_cursor: null,
+            planning_sync_status: "fresh",
+            planning_synced_at: now,
+            planning_sync_error_code: null,
             settings: {},
             created_at: now,
             updated_at: now
@@ -2703,6 +2706,9 @@ export function createLocalDemoRepository(): MiseRepository {
           integration.status = "connected";
           integration.updated_at = now;
           integration.last_sync_at = now;
+          integration.planning_sync_status = "fresh";
+          integration.planning_synced_at = now;
+          integration.planning_sync_error_code = null;
         }
         state.posProvider = "Square";
         state.posConnectedAt = now;
@@ -2760,7 +2766,9 @@ export function createLocalDemoRepository(): MiseRepository {
           status: "completed" as const,
           importId: null,
           recordsProcessed: salesCount,
-          catalogProcessed: 0
+          catalogProcessed: 0,
+          planningSyncStatus: "fresh" as const,
+          planningSyncErrorCode: null
         };
       });
     },

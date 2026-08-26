@@ -11,6 +11,7 @@ import type {
   SupplierOrder
 } from "../../types/mise";
 import type { TodayTaskPresentationDescriptor } from "../../types/presentation";
+import { posPlanningNeedsOperatorAttention } from "./posPlanningSync";
 
 /**
  * Today tasks are projections of authoritative workflow state. They are never
@@ -422,7 +423,8 @@ export function deriveOperationalTodayTasks(
       );
     } else {
       for (const integration of integrations) {
-        const isComplete = integration.status === "connected";
+        const planningAttention = posPlanningNeedsOperatorAttention(integration);
+        const isComplete = integration.status === "connected" && !planningAttention;
         const provider = providerLabel(integration.provider);
         pushIfVisible(
           tasks,
@@ -430,29 +432,45 @@ export function deriveOperationalTodayTasks(
             restaurantId,
             sourceKind: "integration",
             sourceId: integration.id,
-            sourceStatus: integration.status,
-            title: isComplete ? `${provider} sales connected` : `Fix ${provider} sales connection`,
+            sourceStatus: planningAttention ? "planning_stale" : integration.status,
+            title: planningAttention
+              ? `Refresh ${provider} planning after sales sync`
+              : isComplete
+                ? `${provider} sales connected`
+                : `Fix ${provider} sales connection`,
             detail: integrationDetail(integration),
             presentation: {
-              code: isComplete ? "today.integration.connected" : "today.integration.repair",
+              code: planningAttention
+                ? "today.integration.planningStale"
+                : isComplete
+                  ? "today.integration.connected"
+                  : "today.integration.repair",
               values: {
                 providerName: provider,
                 status: integration.status,
-                lastSyncAt: integration.last_sync_at
+                lastSyncAt: integration.last_sync_at,
+                planningSyncStatus: integration.planning_sync_status,
+                planningSyncErrorCode: integration.planning_sync_error_code
               }
             },
-            priority: integration.status === "error" ? "urgent" : "high",
+            priority: integration.status === "error" || planningAttention ? "urgent" : "high",
             action: {
               intent: "manage_pos_connection",
-              label: isComplete ? "View connection" : "Review connection",
+              label: planningAttention
+                ? "Refresh planning"
+                : isComplete
+                  ? "View connection"
+                  : "Review connection",
               route: "/settings/pos",
               entityId: integration.id
             },
             requiredRole: "owner_admin",
             isComplete,
-            completionReason: isComplete
-              ? "POS integration reports a connected source state."
-              : `POS integration reports ${integration.status}.`
+            completionReason: planningAttention
+              ? "Sales synced, but operational planning refresh failed and must be retried."
+              : isComplete
+                ? "POS integration reports a connected source state."
+                : `POS integration reports ${integration.status}.`
           }),
           includeCompleted
         );
@@ -749,6 +767,9 @@ function providerLabel(provider: PosIntegration["provider"]) {
 }
 
 function integrationDetail(integration: PosIntegration) {
+  if (posPlanningNeedsOperatorAttention(integration)) {
+    return "Sales synced, but inventory planning did not refresh. Open POS settings and sync again or refresh signals.";
+  }
   if (integration.status === "connected") {
     return integration.last_sync_at
       ? `Last successful sync: ${integration.last_sync_at}.`
