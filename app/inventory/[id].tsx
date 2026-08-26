@@ -28,8 +28,14 @@ import {
   fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
-  updateInventoryItem
+  updateInventoryItem,
+  verifyInventoryItemCanonicalUnit
 } from "../../services/miseService";
+import {
+  isCanonicalUnitReady,
+  suggestCanonicalUnitVerification
+} from "../../services/domain/inventoryCanonicalUnit";
+import type { CanonicalOperationalUnit } from "../../services/domain/operationalMapping";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -53,6 +59,11 @@ export default function InventoryDetailScreen() {
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
+  const [verifyUnit, setVerifyUnit] = useState<CanonicalOperationalUnit>("each");
+  const [verifyQuantityText, setVerifyQuantityText] = useState("");
+  const [verifyQuantityError, setVerifyQuantityError] = useState<string | undefined>();
+  const [verifyLocked, setVerifyLocked] = useState(false);
+  const [verifyingCanonical, setVerifyingCanonical] = useState(false);
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
   const [savingSettings, setSavingSettings] = useState(false);
@@ -101,6 +112,8 @@ export default function InventoryDetailScreen() {
           })
         );
         setSettingErrors({});
+        seedCanonicalVerificationDraft(nextOutlook.item, formatNumber, setVerifyUnit, setVerifyQuantityText, setVerifyLocked);
+        setVerifyQuantityError(undefined);
       }
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -131,6 +144,11 @@ export default function InventoryDetailScreen() {
     setSettingErrors({});
     setSavingSettings(false);
     setSubmittingOperation(false);
+    setVerifyingCanonical(false);
+    setVerifyUnit("each");
+    setVerifyQuantityText("");
+    setVerifyQuantityError(undefined);
+    setVerifyLocked(false);
     setMessage(null);
     setMessageIsError(false);
     setLoading(Boolean(restaurant && id));
@@ -154,7 +172,7 @@ export default function InventoryDetailScreen() {
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
-    busy: submittingOperation || savingSettings
+    busy: submittingOperation || savingSettings || verifyingCanonical
   });
   const visibleOutlook = hubReady ? outlook : null;
   const visibleQueue = hubReady ? queueEntries : [];
@@ -192,9 +210,86 @@ export default function InventoryDetailScreen() {
     [t]
   );
 
+  const verifyUnitOptions = useMemo<readonly SegmentOption<CanonicalOperationalUnit>[]>(
+    () => [
+      {
+        value: "g",
+        label: t("inventory.ops.unit.g"),
+        accessibilityLabel: t("inventory.ops.verify.unitOption.g"),
+        disabled: verifyLocked
+      },
+      {
+        value: "ml",
+        label: t("inventory.ops.unit.ml"),
+        accessibilityLabel: t("inventory.ops.verify.unitOption.ml"),
+        disabled: verifyLocked
+      },
+      {
+        value: "each",
+        label: t("inventory.ops.unit.each"),
+        accessibilityLabel: t("inventory.ops.verify.unitOption.each"),
+        disabled: verifyLocked
+      }
+    ],
+    [t, verifyLocked]
+  );
+
   function goBackToInventory() {
     if (navigation.canGoBack()) navigation.goBack();
     else router.replace("/inventory");
+  }
+
+  async function submitCanonicalVerification() {
+    if (!restaurant || !item) return;
+    if (!actionsEditable) {
+      setMessage(t("inventory.ops.verify.viewOnly"));
+      setMessageIsError(true);
+      return;
+    }
+
+    const suggestion = suggestCanonicalUnitVerification(item.unit);
+    const quantity = verifyLocked
+      ? suggestion.kind === "standard"
+        ? suggestion.canonicalQuantityPerUnit
+        : null
+      : parseNumber(verifyQuantityText);
+    const unit = verifyLocked && suggestion.kind === "standard" ? suggestion.canonicalUnit : verifyUnit;
+    const nextQuantityError =
+      quantity === null || !Number.isFinite(quantity) || quantity <= 0
+        ? t("inventory.ops.verify.quantityInvalid")
+        : undefined;
+    if (nextQuantityError || quantity === null) {
+      setVerifyQuantityError(nextQuantityError);
+      setMessage(t("inventory.ops.verify.reviewQuantity"));
+      setMessageIsError(true);
+      return;
+    }
+
+    const restaurantId = restaurant.id;
+    setVerifyQuantityError(undefined);
+    setVerifyingCanonical(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      await verifyInventoryItemCanonicalUnit(restaurantId, item.id, unit, quantity);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(t("inventory.ops.verify.success"));
+      setMessageIsError(false);
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : t("inventory.ops.verify.error")
+      );
+      setMessageIsError(true);
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setVerifyingCanonical(false);
+      }
+    }
   }
 
   async function submitOperation() {
@@ -342,7 +437,7 @@ export default function InventoryDetailScreen() {
     }
   }
 
-  const busy = submittingOperation || savingSettings;
+  const busy = submittingOperation || savingSettings || verifyingCanonical;
 
   return (
     <Screen
@@ -491,11 +586,62 @@ export default function InventoryDetailScreen() {
             <Text style={styles.cardTitle}>{t("inventory.ops.title")}</Text>
             <Text style={styles.opsBody}>{t("inventory.ops.body")}</Text>
             {!canonicalReady ? (
-              <StatusNotice
-                tone="warning"
-                title={t("inventory.ops.unverified.title")}
-                message={t("inventory.ops.unverified.body")}
-              />
+              <>
+                <StatusNotice
+                  tone="warning"
+                  title={t("inventory.ops.unverified.title")}
+                  message={
+                    mutationAllowed
+                      ? t("inventory.ops.verify.body")
+                      : t("inventory.ops.unverified.body")
+                  }
+                />
+                {mutationAllowed ? (
+                  <>
+                    <Text style={styles.opsBody}>
+                      {verifyLocked
+                        ? t("inventory.ops.verify.standardHint", { unit: item.unit })
+                        : t("inventory.ops.verify.manualHint", { unit: item.unit })}
+                    </Text>
+                    <FilterRow
+                      accessibilityLabel={t("inventory.ops.verify.unitAccessibility")}
+                      options={verifyUnitOptions}
+                      value={verifyUnit}
+                      onValueChange={(value) => {
+                        if (verifyLocked) return;
+                        setVerifyUnit(value);
+                        setVerifyQuantityError(undefined);
+                      }}
+                    />
+                    <Field
+                      label={t("inventory.ops.verify.quantity", {
+                        storageUnit: item.unit,
+                        canonicalUnit: t(`inventory.ops.unit.${verifyUnit}` as "inventory.ops.unit.g")
+                      })}
+                      value={verifyQuantityText}
+                      onChangeText={(value) => {
+                        if (verifyLocked) return;
+                        setVerifyQuantityText(value);
+                        setVerifyQuantityError(undefined);
+                      }}
+                      editable={actionsEditable && !busy && !verifyLocked}
+                      error={verifyQuantityError}
+                    />
+                    <Button
+                      title={
+                        verifyingCanonical
+                          ? t("inventory.ops.verify.submitting")
+                          : t("inventory.ops.verify.submit")
+                      }
+                      accessibilityHint={t("inventory.ops.verify.submitHint")}
+                      onPress={() => void submitCanonicalVerification()}
+                      disabled={!actionsEditable || busy}
+                      fullWidth
+                      style={styles.saveButton}
+                    />
+                  </>
+                ) : null}
+              </>
             ) : (
               <>
                 <Text style={styles.canonicalMeta}>
@@ -698,11 +844,41 @@ interface InventorySettingErrors {
   reorderThreshold?: string;
 }
 
-function isCanonicalUnitReady(item: InventoryItem) {
-  return (
-    item.canonical_unit_verification_status === "verified" &&
-    (item.canonical_unit === "g" || item.canonical_unit === "ml" || item.canonical_unit === "each")
-  );
+function seedCanonicalVerificationDraft(
+  item: InventoryItem,
+  formatNumber: ReturnType<typeof useLocale>["formatNumber"],
+  setVerifyUnit: (value: CanonicalOperationalUnit) => void,
+  setVerifyQuantityText: (value: string) => void,
+  setVerifyLocked: (value: boolean) => void
+) {
+  if (isCanonicalUnitReady(item)) {
+    setVerifyLocked(false);
+    setVerifyUnit(item.canonical_unit === "g" || item.canonical_unit === "ml" ? item.canonical_unit : "each");
+    setVerifyQuantityText(
+      item.canonical_quantity_per_unit != null
+        ? formatNumber(item.canonical_quantity_per_unit, {
+            maximumFractionDigits: 6,
+            useGrouping: false
+          })
+        : ""
+    );
+    return;
+  }
+  const suggestion = suggestCanonicalUnitVerification(item.unit);
+  if (suggestion.kind === "standard") {
+    setVerifyLocked(true);
+    setVerifyUnit(suggestion.canonicalUnit);
+    setVerifyQuantityText(
+      formatNumber(suggestion.canonicalQuantityPerUnit, {
+        maximumFractionDigits: 6,
+        useGrouping: false
+      })
+    );
+    return;
+  }
+  setVerifyLocked(false);
+  setVerifyUnit("each");
+  setVerifyQuantityText("");
 }
 
 function queueStatusKey(entry: InventoryOutboxEntry) {
