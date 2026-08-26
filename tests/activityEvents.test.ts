@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   ACTIVITY_FEED_FILTERS,
   activityDateRangeBounds,
+  activityEventToServiceAppendParams,
   activityIdempotencyKey,
   assertTenantScoped,
   dedupeActivityEvents,
@@ -14,6 +15,7 @@ import {
   fromInventoryWasteRecorded,
   fromLearningMemoryUpdated,
   fromOperationalFinding,
+  fromPosPlanningSignalsRefreshed,
   fromPosSyncCompleted,
   fromPurchaseRecommendationApproved,
   fromPurchaseRecommendationCreated,
@@ -21,6 +23,7 @@ import {
   fromSupplierOrderDrafted,
   fromSupplierOrderSent,
   groupRelatedActivities,
+  posSyncPlanningSequenceId,
   summarizeActivityWindow,
   type ActivityEvent
 } from "../services/domain/activityEvents";
@@ -191,6 +194,50 @@ test("finding and POS sync builders preserve structured evidence", () => {
   });
   assert.equal(sync.activityType, "pos_sync_completed");
   assert.match(sync.summary, /620/);
+  assert.equal(sync.sequenceId, "pos-sync:import_1");
+  assert.equal(posSyncPlanningSequenceId("import_1"), "pos-sync:import_1");
+  assert.equal(posSyncPlanningSequenceId("  "), null);
+});
+
+test("groups POS sync completion with the planning refresh it caused", () => {
+  const importId = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+  const sync = fromPosSyncCompleted({
+    restaurantId,
+    occurredAt: "2026-08-26T18:00:00.000Z",
+    importId,
+    recordsProcessed: 42,
+    provider: "Square"
+  });
+  const planning = fromPosPlanningSignalsRefreshed({
+    restaurantId,
+    occurredAt: "2026-08-26T18:00:02.000Z",
+    importId,
+    recommendationCount: 3,
+    insightCount: 1
+  });
+  assert.equal(sync.sequenceId, planning.sequenceId);
+  assert.equal(planning.activityType, "forecast_updated");
+  assert.equal(planning.triggerType, "pos_sync_planning_refresh");
+
+  const stories = groupRelatedActivities([sync, planning]);
+  const story = stories.find((entry) => entry.sequenceId === `pos-sync:${importId}`);
+  assert.ok(story);
+  assert.equal(story!.events.length, 2);
+  assert.equal(
+    story!.events.some((event) => event.activityType === "pos_sync_completed"),
+    true
+  );
+  assert.equal(
+    story!.events.some((event) => event.triggerType === "pos_sync_planning_refresh"),
+    true
+  );
+
+  const rpcParams = activityEventToServiceAppendParams(planning, {
+    actorUserId: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"
+  });
+  assert.equal(rpcParams.p_sequence_id, `pos-sync:${importId}`);
+  assert.equal(rpcParams.p_event_type, "forecast_updated");
+  assert.equal(rpcParams.p_idempotency_key, `pos_planning_refresh:${importId}`);
 });
 
 test("dedupe and group related shortage activities into one story", () => {
