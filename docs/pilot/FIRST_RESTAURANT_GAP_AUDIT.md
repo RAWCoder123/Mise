@@ -45,7 +45,7 @@ Mise already contains most of the component workflows for a controlled operating
 | Ambiguous Gmail result | delivery becomes `unknown`; action becomes `unverified`; later claims return review-required | READY | No operator resolution workflow exists beyond blocking resend | Add a reviewed resolution action before any future resend capability |
 | Send verification / final state | provider message ID → atomic delivery/order/recommendation update | READY | External send not run | Prove with controlled sender and recipient; redact IDs in evidence |
 | Delivery outcome | `record_supplier_delivery` → delivery rows + inventory receipt events + order completed | READY | Physical receipt was not proven against a real order | Run one controlled receipt and discrepancy case |
-| Activity trail | triggers on sales imports, recommendations, orders, inventory events, outcomes | PARTIAL | Square import activity now receives the truthful processed count; sync-to-recompute causality is not represented as one stable sequence | Carry a correlation/sequence through sync and planning |
+| Activity trail | triggers on sales imports, recommendations, orders, inventory events, outcomes | PARTIAL | Square import activity receives the truthful processed count; sync→planning now shares `pos-sync:{importId}` via domain + Edge/demo handoff (PR #191); recommendation stories remain `inventory-order:{itemId}` | Land #191; keep inventory-order sequences for shortage stories |
 | Home | operating brief, activity, approvals, data freshness | PARTIAL | Freshness now reports verified count evidence only and goes incomplete without it; explicit Gmail readiness is still missing | Consume the pilot readiness model; warn only on material blockers |
 | Today | authoritative projections for POS, counts, recommendations, drafts, and shared tasks | PARTIAL | Connected POS is treated complete even when last sync is stale; Gmail/recipient readiness is indirect | Add readiness-derived reconnect/mapping/recipient work |
 | Ask Mise | deterministic shared restaurant data via `fetchAskMiseAnswer` | PARTIAL | It cannot yet answer verified recipient/delivery ambiguity or mapping-readiness questions | Add grounded deterministic answers only after readiness data is authoritative |
@@ -71,5 +71,5 @@ Mise already contains most of the component workflows for a controlled operating
 1. ~~Separate verified inventory-count freshness from generic item update time and anchor depletion to count time.~~ Done in MISE-001.
 2. Connect provider catalog/variation identity to verified menu mapping and recipe consumption.
 3. Enforce the readiness contract at recommendation approval and draft generation with structured provenance.
-4. Persist explicit signal-refresh failure state and sync-to-recompute correlation.
+4. Persist explicit signal-refresh failure state and sync-to-recompute correlation. (#185 draft for stale state; #191 for activity sequence correlation)
 5. Prove the controlled loop in staging and record only redacted evidence.
