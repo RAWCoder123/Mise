@@ -20,6 +20,7 @@ const HUB_CONSUMER_FILES = [
   "app/settings/autonomy.tsx",
   "app/settings/pos.tsx",
   "app/inventory/[id].tsx",
+  "app/inventory/count.tsx",
   "app/orders/[id].tsx",
   "app/more/restaurant-memory.tsx",
   "app/more/log-delivery.tsx",
@@ -135,5 +136,24 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
       hubReady: true
     }),
     true
+  );
+});
+
+test("inventory count separates hub load errors from mutation errors and preserves drafts", () => {
+  const source = readFileSync("app/inventory/count.tsx", "utf8");
+  assert.match(source, /const \[hubLoadError, setHubLoadError\]/);
+  assert.match(source, /loadError:\s*hubLoadError/);
+  assert.match(source, /visibleDetail\s*=\s*hubReady\s*\?\s*detail\s*:\s*null/);
+  assert.match(source, /approveEditable/);
+  assert.match(source, /mergeInventoryCountDraftMaps/);
+  assert.match(source, /seedInventoryCountDraftMaps/);
+  assert.match(
+    source,
+    /\/\/ Fail closed for display\/actions, but keep local drafts and prior detail for retry\.\s*setHubLoadError\(true\);/
+  );
+  assert.doesNotMatch(
+    source,
+    /loadError:\s*Boolean\(error\)/,
+    "mutation errors must not lock the inventory count hub as a load failure"
   );
 });
