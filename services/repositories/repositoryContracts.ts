@@ -178,6 +178,18 @@ export type GmailIntegrationErrorStatus =
   | "supplier_email_missing"
   | "unknown";
 
+export type SupplierEmailDeliveryResolution = import("../domain/supplierEmailDeliveryReview").SupplierEmailDeliveryResolution;
+export type SupplierEmailDeliveryReview = import("../domain/supplierEmailDeliveryReview").SupplierEmailDeliveryReview;
+
+export interface SupplierEmailDeliveryResolutionResult {
+  outcome: "applied" | "already_applied";
+  resolution: SupplierEmailDeliveryResolution;
+  order: import("../../types/mise").SupplierOrder;
+  actionStatus: string | null;
+  orderedRecommendations?: import("../../types/mise").PurchaseRecommendation[];
+  deliveryStatus?: string | null;
+}
+
 export const SUPPLIER_SEND_BLOCKER_CODES = [
   ...SUPPLIER_SEND_CONTENT_BLOCKER_CODES,
   ...PURCHASE_AUTHORITY_BLOCKER_CODES,
@@ -755,6 +767,17 @@ export interface MiseRepository {
     orderId: string,
     contentFingerprint: string
   ): Promise<SupplierSendContentApprovalResult>;
+  fetchSupplierEmailDeliveryReview?(
+    restaurantId: string,
+    orderId: string
+  ): Promise<SupplierEmailDeliveryReview>;
+  resolveSupplierEmailDelivery?(
+    restaurantId: string,
+    orderId: string,
+    resolution: SupplierEmailDeliveryResolution,
+    confirmation: string,
+    providerMessageId?: string | null
+  ): Promise<SupplierEmailDeliveryResolutionResult>;
   listRestaurantMemories(
     restaurantId: string,
     options?: { status?: RestaurantMemoryStatus | "actionable"; limit?: number }

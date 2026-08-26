@@ -128,6 +128,7 @@ import {
   type SupplierSendContentApprovalResult,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
+import { normalizeSupplierEmailDeliveryReview } from "../domain/supplierEmailDeliveryReview";
 
 const hostedUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -2110,6 +2111,60 @@ export function createSupabaseRepository(): MiseRepository {
         actionId,
         reviewedFingerprint
       );
+    },
+
+    async fetchSupplierEmailDeliveryReview(restaurantId, orderId) {
+      const { data, error } = await client.rpc("get_supplier_email_delivery_review", {
+        p_restaurant_id: restaurantId,
+        p_order_id: orderId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return normalizeSupplierEmailDeliveryReview(data, restaurantId, orderId);
+    },
+
+    async resolveSupplierEmailDelivery(
+      restaurantId,
+      orderId,
+      resolution,
+      confirmation,
+      providerMessageId = null
+    ) {
+      const { data, error } = await client.rpc("resolve_supplier_email_delivery", {
+        p_restaurant_id: restaurantId,
+        p_order_id: orderId,
+        p_resolution: resolution,
+        p_confirmation: confirmation,
+        p_provider_message_id: providerMessageId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const payload = (data && typeof data === "object" ? data : {}) as {
+        outcome?: "applied" | "already_applied";
+        resolution?: "confirm_sent" | "allow_retry";
+        order?: SupplierOrder;
+        actionStatus?: string | null;
+        ordered_recommendations?: unknown;
+        deliveryStatus?: string | null;
+      };
+      if (!payload.order) {
+        throw new GmailIntegrationError(
+          "unknown",
+          "Supplier email delivery resolution did not return the order."
+        );
+      }
+      const order = normalizeSupplierOrder(payload.order as SupplierOrder);
+      if (order.restaurant_id !== restaurantId || order.id !== orderId) {
+        throw new Error("Supplier email delivery resolution failed restaurant scope validation.");
+      }
+      return {
+        outcome: payload.outcome === "already_applied" ? "already_applied" : "applied",
+        resolution: payload.resolution === "allow_retry" ? "allow_retry" : "confirm_sent",
+        order,
+        actionStatus: typeof payload.actionStatus === "string" ? payload.actionStatus : null,
+        orderedRecommendations: Array.isArray(payload.ordered_recommendations)
+          ? (payload.ordered_recommendations as PurchaseRecommendation[])
+          : undefined,
+        deliveryStatus: typeof payload.deliveryStatus === "string" ? payload.deliveryStatus : null
+      };
     },
 
     async listRestaurantMemories(restaurantId, options = {}) {
