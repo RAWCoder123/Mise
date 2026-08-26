@@ -6,6 +6,12 @@ export type RestaurantScopedHubLoadState = "loading" | "ready" | "error";
  * Soft-refresh may keep last-known values in component state, but a loadError
  * must never keep the hub "ready". Otherwise revoked-tenant or stale operational
  * data stays visible/actionable while RetryNotice is already showing.
+ *
+ * Consumers that clear `loadError` at the start of Retry must also clear
+ * `loadedRestaurantId` (invalidate the prior ready proof) when a load fails.
+ * Otherwise Retry briefly reports ready with stale actions until replacement
+ * data arrives. Initial load failures that never established a ready proof
+ * must also take a blocking loading path on Retry.
  */
 export function resolveRestaurantScopedHubLoadState(input: {
   restaurantId: string | null | undefined;

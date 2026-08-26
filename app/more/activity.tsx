@@ -21,6 +21,7 @@ import {
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
 import { fetchActivityEvents } from "../../services/miseService";
+import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 
 const dateRanges: ActivityDateRange[] = ["all", "today", "yesterday", "this_week"];
@@ -36,6 +37,9 @@ export default function ActivityHistoryScreen() {
   const [error, setError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const hasLoaded = useRef(false);
+  const readyProofRestaurantIdRef = useRef<string | null>(null);
+  const loadedQueryRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -64,6 +68,9 @@ export default function ActivityHistoryScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoaded.current = false;
+    readyProofRestaurantIdRef.current = null;
+    loadedQueryRef.current = null;
     setEvents([]);
     setLoadedRestaurantId(null);
     setError(false);
@@ -78,7 +85,21 @@ export default function ActivityHistoryScreen() {
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
+    const queryKey = `${filter}:${range}`;
+    const queryChanged = loadedQueryRef.current !== null && loadedQueryRef.current !== queryKey;
+    // Soft refresh may keep the prior feed, but Retry after a failed load
+    // (including initial failure where hasLoaded is true and ready proof is
+    // null) must show loading feedback instead of a blank feed.
+    const needsBlockingLoad =
+      queryChanged ||
+      !hasLoaded.current ||
+      readyProofRestaurantIdRef.current !== restaurantId;
+    if (queryChanged) {
+      setEvents([]);
+      readyProofRestaurantIdRef.current = null;
+      setLoadedRestaurantId(null);
+    }
+    if (needsBlockingLoad) setLoading(true);
     setError(false);
     try {
       const bounds = activityDateRangeBounds(range);
@@ -91,13 +112,18 @@ export default function ActivityHistoryScreen() {
       });
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setEvents(next);
+      readyProofRestaurantIdRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
+      loadedQueryRef.current = queryKey;
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "activity", operation: "load", restaurant_id: restaurantId });
+      readyProofRestaurantIdRef.current = null;
+      setLoadedRestaurantId(null);
       setError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoaded.current = true;
         setLoading(false);
       }
     }
@@ -109,7 +135,13 @@ export default function ActivityHistoryScreen() {
     }, [load])
   );
 
-  const visible = loadedRestaurantId === restaurant?.id ? events : [];
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const visible = hubReady ? events : [];
 
   return (
     <Screen
@@ -150,7 +182,7 @@ export default function ActivityHistoryScreen() {
           />
         ) : null}
 
-        {!error && visible.length === 0 ? (
+        {!error && hubReady && visible.length === 0 ? (
           <EmptyState title={t("activity.empty.title")} body={t("activity.empty.body")} />
         ) : null}
 

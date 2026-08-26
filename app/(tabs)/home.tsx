@@ -45,6 +45,10 @@ import {
   inventoryHealthTier,
   type InventoryHealthTier
 } from "../../services/presentation/inventoryHealthPresentation";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { taskRoleLabelKey } from "../../services/presentation/taskRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
@@ -76,12 +80,16 @@ export default function HomeScreen() {
   const [recalcAttention, setRecalcAttention] =
     useState<RecalculationAttentionSummary | null>(null);
   const requestIdRef = useRef(0);
+  const hasLoaded = useRef(false);
+  const readyProofRestaurantIdRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   const lastSeenSessionRef = useRef<{ restaurantId: string; value: string } | null>(null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoaded.current = false;
+    readyProofRestaurantIdRef.current = null;
     setSummary(null);
     setBrief(null);
     setLoadedRestaurantId(null);
@@ -101,8 +109,13 @@ export default function HomeScreen() {
 
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
+    // Soft refresh may keep last-known values, but Retry after a failed load
+    // must not clear error while retaining ready proof — that briefly reopens
+    // stale one-tap approvals. Missing ready proof always blocks until refresh.
+    const needsBlockingLoad =
+      !hasLoaded.current || readyProofRestaurantIdRef.current !== restaurantId;
     setError(null);
-    setLoading(true);
+    if (needsBlockingLoad) setLoading(true);
     try {
       let lastSeenAt = lastSeenSessionRef.current?.restaurantId === restaurantId
         ? lastSeenSessionRef.current.value
@@ -136,13 +149,19 @@ export default function HomeScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
       setBrief(nextBrief);
+      readyProofRestaurantIdRef.current = restaurantId;
       setLoadedRestaurantId(restaurantId);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "home", operation: "load", restaurant_id: restaurantId });
+      readyProofRestaurantIdRef.current = null;
+      setLoadedRestaurantId(null);
       setError(t("home.error"));
     } finally {
-      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
+      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoaded.current = true;
+        setLoading(false);
+      }
     }
   }, [restaurant?.id, restaurant?.timezone, t]);
 
@@ -165,8 +184,20 @@ export default function HomeScreen() {
     router.replace("/home");
   }
 
-  const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
-  const visibleBrief = loadedRestaurantId === restaurant?.id ? brief : null;
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: Boolean(error)
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: true,
+    hubReady,
+    busy: Boolean(approvingId)
+  });
+  const visibleSummary = hubReady ? summary : null;
+  const visibleBrief = hubReady ? brief : null;
+  const visibleRecalcAttention = hubReady ? recalcAttention : null;
 
   if (!restaurant) {
     return (
@@ -213,18 +244,18 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {recalcAttention ? (
+        {visibleRecalcAttention ? (
           <StatusNotice
             tone="warning"
             title={t("home.recalculation.title")}
             message={
-              recalcAttention.state === "unavailable"
+              visibleRecalcAttention.state === "unavailable"
                 ? t("home.recalculation.unavailable")
                 : t(
-                    recalcAttention.deadLetteredCount === 1
+                    visibleRecalcAttention.deadLetteredCount === 1
                       ? "home.recalculation.body.one"
                       : "home.recalculation.body.other",
-                    { count: formatNumber(recalcAttention.deadLetteredCount) }
+                    { count: formatNumber(visibleRecalcAttention.deadLetteredCount) }
                   )
             }
             actionLabel={t("home.recalculation.action")}
@@ -265,9 +296,10 @@ export default function HomeScreen() {
           <ApprovalsSection
             brief={visibleBrief}
             approvingId={approvingId}
+            actionsEditable={actionsEditable}
             t={t}
             onApprove={async (card) => {
-              if (!restaurant || approvingId) return;
+              if (!restaurant || !actionsEditable || approvingId) return;
               if (!card.recommendationId) {
                 if (card.actionId && card.orderId) {
                   router.push({ pathname: "/orders/[id]", params: { id: card.orderId } });
@@ -360,11 +392,13 @@ function RestaurantStatusCard({
 function ApprovalsSection({
   brief,
   approvingId,
+  actionsEditable,
   t,
   onApprove
 }: {
   brief: OperatingBrief;
   approvingId: string | null;
+  actionsEditable: boolean;
   t: Translator;
   onApprove: (card: OperatingBriefApprovalCard) => void | Promise<void>;
 }) {
@@ -396,7 +430,7 @@ function ApprovalsSection({
                         : t("home.approvals.review")
                   }
                   onPress={() => void onApprove(card)}
-                  disabled={Boolean(approvingId)}
+                  disabled={!actionsEditable || Boolean(approvingId)}
                   style={styles.approvalButton}
                 />
               </View>

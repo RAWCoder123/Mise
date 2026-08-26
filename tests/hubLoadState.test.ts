@@ -8,6 +8,7 @@ import {
 } from "../services/presentation/hubLoadState";
 
 const HUB_CONSUMER_FILES = [
+  "app/(tabs)/home.tsx",
   "app/(tabs)/today.tsx",
   "app/(tabs)/inventory.tsx",
   "app/(tabs)/orders.tsx",
@@ -23,7 +24,8 @@ const HUB_CONSUMER_FILES = [
   "app/orders/[id].tsx",
   "app/more/restaurant-memory.tsx",
   "app/more/log-delivery.tsx",
-  "app/more/create-task.tsx"
+  "app/more/create-task.tsx",
+  "app/more/activity.tsx"
 ];
 
 test("restaurant-scoped hub load state fails closed on soft-refresh errors", () => {
@@ -94,6 +96,31 @@ test("restaurant-scoped hub consumers use the shared fail-closed helper", () => 
     helper,
     /if \(input\.loadError\) return "error";\s*if \(input\.loadedRestaurantId === input\.restaurantId\) return "ready";/
   );
+});
+
+test("Home and Activity invalidate ready proof on load failure so Retry cannot reopen stale hubs", () => {
+  const home = readFileSync("app/(tabs)/home.tsx", "utf8");
+  const activity = readFileSync("app/more/activity.tsx", "utf8");
+  for (const [path, source] of [
+    ["app/(tabs)/home.tsx", home],
+    ["app/more/activity.tsx", activity]
+  ] as const) {
+    assert.match(
+      source,
+      /readyProofRestaurantIdRef/,
+      `${path} must track an explicit ready-proof restaurant id`
+    );
+    assert.match(
+      source,
+      /readyProofRestaurantIdRef\.current = null;\s*setLoadedRestaurantId\(null\)/,
+      `${path} must clear ready proof and loadedRestaurantId on load failure`
+    );
+    assert.match(
+      source,
+      /needsBlockingLoad/,
+      `${path} must force a blocking load when ready proof is missing`
+    );
+  }
 });
 
 test("restaurant-scoped hub actions stay non-editable until the hub is ready", () => {
