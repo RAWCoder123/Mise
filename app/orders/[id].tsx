@@ -20,10 +20,15 @@ import {
   isGmailIntegrationError,
   approveSupplierSendContent,
   prepareSupplierEmailPayload,
+  previewSupplierOrderDelivery,
   receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
+import type {
+  SupplierDeliveryLineAdjustment,
+  SupplierDeliveryReceivePreviewLine
+} from "../../services/domain/supplierDelivery";
 import type {
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
@@ -40,7 +45,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
-import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
+import { operatingLimits, SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type {
   RestaurantEmailConnection,
   SupplierEmailPayload,
@@ -56,16 +61,30 @@ interface OrderNotice {
   recovery?: "gmail" | "supplier" | "retry";
 }
 
+interface ReceiveDraftLine {
+  inventoryItemId: string;
+  itemName: string;
+  displayUnit: string;
+  orderedQuantity: number;
+  receivedText: string;
+  damagedText: string;
+  reasonText: string;
+  receivedError?: string;
+  damagedError?: string;
+}
+
 export default function OrderDraftDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
-  const { formatDate, formatNumber, t } = useLocale();
+  const { formatDate, formatNumber, parseNumber, t } = useLocale();
   const { memberships, restaurant, usingLocalDemo } = useMiseSession();
   const [order, setOrder] = useState<SupplierOrder | null>(null);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
+  const [receiveDrafts, setReceiveDrafts] = useState<ReceiveDraftLine[]>([]);
+  const [receivePreviewError, setReceivePreviewError] = useState(false);
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -119,10 +138,32 @@ export default function OrderDraftDetailScreen() {
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       setOperatorNote(nextDetail.order.operator_note ?? "");
+
+      if (nextDetail.order.status === "sent") {
+        try {
+          const preview = await previewSupplierOrderDelivery(restaurantId, orderId);
+          if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+            return;
+          }
+          setReceiveDrafts(preview.lines.map((line) => receiveDraftFromPreview(line, formatNumber)));
+          setReceivePreviewError(false);
+        } catch {
+          if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+            return;
+          }
+          setReceiveDrafts([]);
+          setReceivePreviewError(true);
+        }
+      } else {
+        setReceiveDrafts([]);
+        setReceivePreviewError(false);
+      }
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setDeliveryEvidence([]);
+      setReceiveDrafts([]);
+      setReceivePreviewError(false);
       setEmailPayload(null);
       setSupplierSendAction(null);
       setHubLoadError(true);
@@ -137,7 +178,7 @@ export default function OrderDraftDetailScreen() {
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
-  }, [id, restaurant?.id, t]);
+  }, [formatNumber, id, restaurant?.id, t]);
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -146,6 +187,8 @@ export default function OrderDraftDetailScreen() {
     setHubLoadError(false);
     setOrder(null);
     setDeliveryEvidence([]);
+    setReceiveDrafts([]);
+    setReceivePreviewError(false);
     setEmailConnection(null);
     setEmailPayload(null);
     setSupplierSendAction(null);
@@ -363,12 +406,42 @@ export default function OrderDraftDetailScreen() {
       setNotice(viewOnlyNotice(t));
       return;
     }
+    if (receivePreviewError) {
+      setNotice({
+        title: t("orders.detail.receive.loadFailedTitle"),
+        message: t("orders.detail.receive.loadFailedBody"),
+        tone: "danger"
+      });
+      return;
+    }
+    if (receiveDrafts.length === 0) {
+      setNotice({
+        title: t("orders.detail.receive.emptyTitle"),
+        message: t("orders.detail.receive.emptyBody"),
+        tone: "warning"
+      });
+      return;
+    }
+
+    const validated = validateReceiveDrafts(receiveDrafts, parseNumber, formatNumber, t);
+    setReceiveDrafts(validated.drafts);
+    if (!validated.ok || !validated.lineAdjustments) {
+      setNotice({
+        title: t("orders.detail.receive.validationTitle"),
+        message: t("orders.detail.receive.validationBody"),
+        tone: "danger"
+      });
+      return;
+    }
+
     const restaurantId = restaurant.id;
     actionLockRef.current = true;
     setBusy(true);
     setNotice(null);
     try {
-      const result = await receiveSupplierOrderDelivery(restaurantId, order.id);
+      const result = await receiveSupplierOrderDelivery(restaurantId, order.id, {
+        lineAdjustments: validated.lineAdjustments
+      });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await load(false);
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -395,6 +468,37 @@ export default function OrderDraftDetailScreen() {
       actionLockRef.current = false;
       if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
     }
+  }
+
+  function updateReceiveDraft(
+    inventoryItemId: string,
+    patch: Partial<Pick<ReceiveDraftLine, "receivedText" | "damagedText" | "reasonText">>
+  ) {
+    setReceiveDrafts((current) =>
+      current.map((line) =>
+        line.inventoryItemId === inventoryItemId
+          ? {
+              ...line,
+              ...patch,
+              receivedError: patch.receivedText !== undefined ? undefined : line.receivedError,
+              damagedError: patch.damagedText !== undefined ? undefined : line.damagedError
+            }
+          : line
+      )
+    );
+  }
+
+  function resetReceiveAsOrdered() {
+    setReceiveDrafts((current) =>
+      current.map((line) => ({
+        ...line,
+        receivedText: formatNumber(line.orderedQuantity, { maximumFractionDigits: 3 }),
+        damagedText: formatNumber(0),
+        reasonText: "",
+        receivedError: undefined,
+        damagedError: undefined
+      }))
+    );
   }
 
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
@@ -775,6 +879,141 @@ export default function OrderDraftDetailScreen() {
           ) : null}
 
           {isSent && actionsEditable ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.receive.title")}</Text>
+              <Text style={styles.sectionBody}>{t("orders.detail.receive.body")}</Text>
+              {receivePreviewError ? (
+                <StatusNotice
+                  tone="danger"
+                  title={t("orders.detail.receive.loadFailedTitle")}
+                  message={t("orders.detail.receive.loadFailedBody")}
+                  actionLabel={t("common.retry")}
+                  onAction={() => void load(false)}
+                />
+              ) : receiveDrafts.length === 0 ? (
+                <StatusNotice
+                  tone="warning"
+                  title={t("orders.detail.receive.emptyTitle")}
+                  message={t("orders.detail.receive.emptyBody")}
+                />
+              ) : (
+                <View style={styles.receiveList}>
+                  {receiveDrafts.map((line, index) => {
+                    const receivedValue = parseNumber(line.receivedText);
+                    const missingPreview =
+                      receivedValue == null
+                        ? null
+                        : Math.max(0, Math.round((line.orderedQuantity - receivedValue) * 1000) / 1000);
+                    return (
+                      <View
+                        key={line.inventoryItemId}
+                        style={[
+                          styles.receiveRow,
+                          index < receiveDrafts.length - 1 && styles.receiveRowDivider
+                        ]}
+                      >
+                        <Text style={styles.receiveItemName}>{line.itemName}</Text>
+                        <Text style={styles.receiveOrdered}>
+                          {t("orders.detail.receive.ordered", {
+                            quantity: formatNumber(line.orderedQuantity, {
+                              maximumFractionDigits: 3
+                            }),
+                            unit: line.displayUnit
+                          })}
+                        </Text>
+                        <View style={styles.receiveQuantityRow}>
+                          <View style={styles.receiveField}>
+                            <Text style={styles.receiveFieldLabel}>
+                              {t("orders.detail.receive.received")}
+                            </Text>
+                            <TextInput
+                              accessibilityLabel={t("orders.detail.receive.receivedAccessibility", {
+                                item: line.itemName
+                              })}
+                              accessibilityState={{ disabled: busy }}
+                              value={line.receivedText}
+                              onChangeText={(value) =>
+                                updateReceiveDraft(line.inventoryItemId, { receivedText: value })
+                              }
+                              editable={!busy}
+                              keyboardType="decimal-pad"
+                              style={[
+                                styles.receiveInput,
+                                line.receivedError ? styles.receiveInputError : null
+                              ]}
+                            />
+                            {line.receivedError ? (
+                              <Text style={styles.receiveFieldError}>{line.receivedError}</Text>
+                            ) : null}
+                          </View>
+                          <View style={styles.receiveField}>
+                            <Text style={styles.receiveFieldLabel}>
+                              {t("orders.detail.receive.damaged")}
+                            </Text>
+                            <TextInput
+                              accessibilityLabel={t("orders.detail.receive.damagedAccessibility", {
+                                item: line.itemName
+                              })}
+                              accessibilityState={{ disabled: busy }}
+                              value={line.damagedText}
+                              onChangeText={(value) =>
+                                updateReceiveDraft(line.inventoryItemId, { damagedText: value })
+                              }
+                              editable={!busy}
+                              keyboardType="decimal-pad"
+                              style={[
+                                styles.receiveInput,
+                                line.damagedError ? styles.receiveInputError : null
+                              ]}
+                            />
+                            {line.damagedError ? (
+                              <Text style={styles.receiveFieldError}>{line.damagedError}</Text>
+                            ) : null}
+                          </View>
+                        </View>
+                        {missingPreview != null && missingPreview > 0 ? (
+                          <Text style={styles.receiveMissing}>
+                            {t("orders.detail.receive.missing", {
+                              quantity: formatNumber(missingPreview, { maximumFractionDigits: 3 }),
+                              unit: line.displayUnit
+                            })}
+                          </Text>
+                        ) : null}
+                        <Text style={styles.receiveFieldLabel}>
+                          {t("orders.detail.receive.reason")}
+                        </Text>
+                        <TextInput
+                          accessibilityLabel={t("orders.detail.receive.reasonAccessibility", {
+                            item: line.itemName
+                          })}
+                          accessibilityState={{ disabled: busy }}
+                          value={line.reasonText}
+                          onChangeText={(value) =>
+                            updateReceiveDraft(line.inventoryItemId, { reasonText: value })
+                          }
+                          editable={!busy}
+                          maxLength={500}
+                          placeholder={t("orders.detail.receive.reasonPlaceholder")}
+                          placeholderTextColor={colors.faint}
+                          style={styles.receiveReasonInput}
+                        />
+                      </View>
+                    );
+                  })}
+                  <Button
+                    title={t("orders.detail.receive.resetAsOrdered")}
+                    accessibilityLabel={t("orders.detail.receive.resetAsOrderedAccessibility")}
+                    variant="secondary"
+                    onPress={resetReceiveAsOrdered}
+                    disabled={busy}
+                    style={styles.receiveResetButton}
+                  />
+                </View>
+              )}
+            </View>
+          ) : null}
+
+          {isSent && actionsEditable ? (
             <Button
               title={busy ? t("orders.detail.action.receiving") : t("orders.detail.action.markReceived")}
               accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
@@ -782,7 +1021,7 @@ export default function OrderDraftDetailScreen() {
               })}
               icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void markReceived()}
-              disabled={busy}
+              disabled={busy || receivePreviewError || receiveDrafts.length === 0}
               fullWidth
             />
           ) : null}
@@ -1023,6 +1262,92 @@ function generatedOrderMessage(order: SupplierOrder) {
     : order.order_message;
 }
 
+function receiveDraftFromPreview(
+  line: SupplierDeliveryReceivePreviewLine,
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string
+): ReceiveDraftLine {
+  return {
+    inventoryItemId: line.inventoryItemId,
+    itemName: line.itemName,
+    displayUnit: line.displayUnit,
+    orderedQuantity: line.orderedQuantity,
+    receivedText: formatNumber(line.receivedQuantity, { maximumFractionDigits: 3 }),
+    damagedText: formatNumber(line.damagedQuantity, { maximumFractionDigits: 3 }),
+    reasonText: line.discrepancyReason ?? "",
+    receivedError: undefined,
+    damagedError: undefined
+  };
+}
+
+function validateReceiveDrafts(
+  drafts: readonly ReceiveDraftLine[],
+  parseNumber: (value: string) => number | null,
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string,
+  t: Translate
+): {
+  ok: boolean;
+  drafts: ReceiveDraftLine[];
+  lineAdjustments: SupplierDeliveryLineAdjustment[] | null;
+} {
+  const nextDrafts: ReceiveDraftLine[] = [];
+  const lineAdjustments: SupplierDeliveryLineAdjustment[] = [];
+  let ok = true;
+
+  for (const draft of drafts) {
+    const received = parseNumber(draft.receivedText.trim());
+    const damagedRaw = draft.damagedText.trim();
+    const damaged = damagedRaw.length === 0 ? 0 : parseNumber(damagedRaw);
+    let receivedError: string | undefined;
+    let damagedError: string | undefined;
+
+    if (
+      received == null ||
+      !Number.isFinite(received) ||
+      received < 0 ||
+      received > operatingLimits.recommendationQuantity
+    ) {
+      receivedError = t("orders.detail.receive.validation.received", {
+        max: formatNumber(operatingLimits.recommendationQuantity)
+      });
+      ok = false;
+    }
+
+    if (
+      damaged == null ||
+      !Number.isFinite(damaged) ||
+      damaged < 0 ||
+      damaged > operatingLimits.recommendationQuantity
+    ) {
+      damagedError = t("orders.detail.receive.validation.damaged");
+      ok = false;
+    } else if (received != null && damaged > received) {
+      damagedError = t("orders.detail.receive.validation.damagedExceeds");
+      ok = false;
+    }
+
+    nextDrafts.push({
+      ...draft,
+      receivedError,
+      damagedError
+    });
+
+    if (!receivedError && !damagedError && received != null && damaged != null) {
+      lineAdjustments.push({
+        inventoryItemId: draft.inventoryItemId,
+        receivedQuantity: received,
+        damagedQuantity: damaged,
+        discrepancyReason: draft.reasonText
+      });
+    }
+  }
+
+  return {
+    ok,
+    drafts: nextDrafts,
+    lineAdjustments: ok ? lineAdjustments : null
+  };
+}
+
 const styles = StyleSheet.create({
   stack: {
     gap: 20,
@@ -1202,5 +1527,83 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1
+  },
+  receiveList: {
+    marginTop: 8,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: "hidden"
+  },
+  receiveRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 8
+  },
+  receiveRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border
+  },
+  receiveItemName: {
+    color: colors.text,
+    ...typography.cardTitle
+  },
+  receiveOrdered: {
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "500"
+  },
+  receiveQuantityRow: {
+    flexDirection: "row",
+    gap: 10
+  },
+  receiveField: {
+    flex: 1,
+    gap: 4
+  },
+  receiveFieldLabel: {
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "700"
+  },
+  receiveInput: {
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  receiveInputError: {
+    borderColor: colors.danger
+  },
+  receiveFieldError: {
+    color: colors.danger,
+    ...typography.caption
+  },
+  receiveMissing: {
+    color: colors.warning,
+    ...typography.caption,
+    fontWeight: "600"
+  },
+  receiveReasonInput: {
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  receiveResetButton: {
+    margin: 12
   }
 });
