@@ -18,9 +18,12 @@ current main and closes Greptile P1 findings:
 1. Task mutation `mutating` surviving restaurant switch (reset `setMutating(false)`).
 2. Scan barcode matches bypassing hub readiness (gate matches + EmptyState on `hubReady`).
 3. Scan successful soft-refresh retry restoring stale `barcodeMatches` objects — re-derive
-   from `nextItems` via `matchInventoryBarcode(lastScannedCode, nextItems)` (or clear).
+   from `nextItems` via `matchInventoryBarcode` against the active scanned code (or clear).
+4. Scan ordinary no-match / multi-match updates must not put `lastScannedCode` on the
+   `load` callback identity (that recreates `useFocusEffect`, refetches inventory, and
+   replaces the camera with a blocking spinner). Keep re-derive via `lastScannedCodeRef`.
 
-Avoided overlap with open drafts #145–#150, #152–#174, #176–#177, and #130–#135 / #146.
+Avoided overlap with open drafts #145–#150, #152–#174, #176–#180, and #130–#135 / #146.
 
 ## Changes
 
@@ -29,7 +32,7 @@ Fail-close restaurant-scoped visibility (and mutations where applicable) on:
 - `app/more/waste.tsx`
 - `app/more/daily-brief.tsx`
 - `app/more/daily-report.tsx`
-- `app/more/scan-item.tsx` (items, barcode matches, EmptyState, camera scan)
+- `app/more/scan-item.tsx` (items, barcode matches, EmptyState, camera scan; ref-stable load)
 - `app/tasks/[id].tsx` (separate `hubLoadError` vs mutation `error`; mutating cleared on switch)
 - `app/settings/pos-mappings.tsx`
 

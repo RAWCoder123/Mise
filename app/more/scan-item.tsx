@@ -56,7 +56,12 @@ export default function ScanItemScreen() {
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   const lastScanAtRef = useRef(0);
+  // Keep the latest scanned code off the load callback identity so ordinary
+  // no-match / multi-match scans do not recreate useFocusEffect and replace
+  // the camera with a blocking inventory reload spinner.
+  const lastScannedCodeRef = useRef<string | null>(null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
+  lastScannedCodeRef.current = lastScannedCode;
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -64,6 +69,7 @@ export default function ScanItemScreen() {
     setQuery("");
     setBarcodeMatches(null);
     setLastScannedCode(null);
+    lastScannedCodeRef.current = null;
     setLoadedRestaurantId(null);
     setError(false);
     setLoading(Boolean(restaurant));
@@ -85,11 +91,12 @@ export default function ScanItemScreen() {
       setLoadedRestaurantId(restaurantId);
       // Successful soft-refresh retry must not restore barcode match objects from
       // the prior inventory snapshot (stale qty/name/deleted rows). Re-derive from
-      // the fresh items, or clear when no active barcode search remains.
+      // the fresh items via ref, or clear when no active barcode search remains.
+      const activeCode = lastScannedCodeRef.current;
       setBarcodeMatches((prev) => {
         if (prev === null) return null;
-        if (!lastScannedCode) return null;
-        return matchInventoryBarcode(lastScannedCode, nextItems).matches;
+        if (!activeCode) return null;
+        return matchInventoryBarcode(activeCode, nextItems).matches;
       });
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -99,7 +106,7 @@ export default function ScanItemScreen() {
         setLoading(false);
       }
     }
-  }, [lastScannedCode, restaurant?.id]);
+  }, [restaurant?.id]);
 
   useFocusEffect(
     useCallback(() => {

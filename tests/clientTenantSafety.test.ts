@@ -73,11 +73,16 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.scanItem, /hubReady\s*\?\s*items\s*:\s*\[\]/);
   assert.match(screens.scanItem, /hubReady\s*\?\s*barcodeMatches\s*:\s*null/);
   assert.match(screens.scanItem, /!hubReady \? null : listItems\.length === 0/);
-  // Successful soft-refresh retry must re-derive barcode matches from fresh inventory.
+  // Successful soft-refresh retry must re-derive barcode matches from fresh inventory
+  // via a ref so ordinary scans do not recreate the focus-load callback identity.
+  assert.match(screens.scanItem, /const lastScannedCodeRef = useRef<string \| null>\(null\)/);
+  assert.match(screens.scanItem, /lastScannedCodeRef\.current = lastScannedCode/);
   assert.match(
     screens.scanItem,
-    /setBarcodeMatches\(\(prev\) => \{\s*if \(prev === null\) return null;\s*if \(!lastScannedCode\) return null;\s*return matchInventoryBarcode\(lastScannedCode, nextItems\)\.matches;\s*\}\)/
+    /const activeCode = lastScannedCodeRef\.current;\s*setBarcodeMatches\(\(prev\) => \{\s*if \(prev === null\) return null;\s*if \(!activeCode\) return null;\s*return matchInventoryBarcode\(activeCode, nextItems\)\.matches;\s*\}\)/
   );
+  assert.match(screens.scanItem, /\}, \[restaurant\?\.id\]\);\s*useFocusEffect/);
+  assert.doesNotMatch(screens.scanItem, /\}, \[lastScannedCode, restaurant\?\.id\]\)/);
   assert.match(screens.taskDetail, /hubReady\s*\?\s*task\s*:\s*null/);
   assert.match(screens.taskDetail, /hubReady\s*\?\s*sharedTask\s*:\s*null/);
   assert.match(screens.taskDetail, /presentRestaurantScopedHubActionsEditable/);
