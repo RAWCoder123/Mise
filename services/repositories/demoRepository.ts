@@ -53,10 +53,16 @@ import {
   createPreparedAction,
   markApproved,
   markExecuted,
+  markFailed,
   markRejected,
   measureOutcome,
   miseActionIdempotencyKey
 } from "../domain/miseActions";
+import {
+  AUTHORIZED_RETRY_AFTER_REVIEW,
+  CONFIRM_SENT_AFTER_REVIEW,
+  normalizeSupplierEmailDeliveryReview
+} from "../domain/supplierEmailDeliveryReview";
 import {
   defaultAutonomyRules,
   type RestaurantAutonomyRule
@@ -3228,6 +3234,149 @@ export function createLocalDemoRepository(): MiseRepository {
           (action.expectedImpact?.orderId === orderId ||
             action.idempotencyKey.endsWith(`send_supplier_order:${orderId}`))
       ) ?? null;
+    },
+
+    async fetchSupplierEmailDeliveryReview(restaurantId, orderId) {
+      const state = await readReadyDemoState(restaurantId);
+      const order = state.supplierOrders.find(
+        (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
+      );
+      if (!order) throw new Error("Order draft not found");
+      const action = (state.miseActions ?? []).find(
+        (entry) =>
+          entry.restaurantId === restaurantId &&
+          entry.actionType === "send_supplier_order" &&
+          (entry.expectedImpact?.orderId === orderId ||
+            entry.idempotencyKey.endsWith(`send_supplier_order:${orderId}`))
+      );
+      const requiresReview = action?.status === "unverified";
+      return normalizeSupplierEmailDeliveryReview(
+        {
+          requiresReview,
+          orderStatus: order.status,
+          deliveryStatus: requiresReview ? "unknown" : action?.status === "executed" ? "sent" : null,
+          lastErrorCode: requiresReview ? "demo_delivery_requires_review" : null,
+          updatedAt: action?.updatedAt ?? null,
+          providerMessageIdPresent: false,
+          resolution: null,
+          actionId: action?.id ?? null,
+          actionStatus: action?.status ?? null
+        },
+        restaurantId,
+        orderId
+      );
+    },
+
+    async resolveSupplierEmailDelivery(
+      restaurantId,
+      orderId,
+      resolution,
+      confirmation,
+      providerMessageId = null
+    ) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const order = state.supplierOrders.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
+        );
+        if (!order) throw new Error("Order draft not found");
+        const action = (state.miseActions ?? []).find(
+          (entry) =>
+            entry.restaurantId === restaurantId &&
+            entry.actionType === "send_supplier_order" &&
+            (entry.expectedImpact?.orderId === orderId ||
+              entry.idempotencyKey.endsWith(`send_supplier_order:${orderId}`))
+        );
+        if (!action || action.status !== "unverified") {
+          throw new GmailIntegrationError(
+            "delivery_requires_review",
+            "This supplier email delivery is not waiting for review."
+          );
+        }
+        if (order.status === "sent" || order.status === "completed") {
+          return {
+            outcome: "already_applied" as const,
+            resolution: "confirm_sent" as const,
+            order,
+            actionStatus: action.status
+          };
+        }
+        if (order.status !== "draft") {
+          throw new Error("Only draft supplier orders can resolve email delivery review.");
+        }
+
+        const now = new Date().toISOString();
+        if (resolution === "confirm_sent") {
+          if (confirmation !== CONFIRM_SENT_AFTER_REVIEW) {
+            throw new Error("Supplier email confirm requires explicit confirmation.");
+          }
+          const result = markSupplierOrderSentInDemoState(state, restaurantId, orderId);
+          const nextProviderMessageId =
+            providerMessageId?.trim() || `manager_attested:${orderId}`;
+          appendDemoSupplierOrderActivity(state, result.order, { previousStatus: "draft" });
+          const executed = {
+            ...action,
+            status: "executed" as const,
+            executedAt: now,
+            result: {
+              supplierOrderId: orderId,
+              provider: "gmail",
+              providerMessageId: nextProviderMessageId,
+              resolution: "confirm_sent",
+              simulated: true
+            },
+            error: null,
+            updatedAt: now
+          };
+          state.miseActions = (state.miseActions ?? []).map((entry) =>
+            entry.id === action.id ? executed : entry
+          );
+          appendDemoAuditLog(state, {
+            restaurant_id: restaurantId,
+            action: "supplier_email_delivery_confirmed_after_review",
+            entity_table: "supplier_orders",
+            entity_id: orderId,
+            metadata: {
+              provider: "gmail",
+              resolution: "confirm_sent",
+              simulated: true
+            }
+          });
+          return {
+            outcome: "applied" as const,
+            resolution: "confirm_sent" as const,
+            order: result.order,
+            actionStatus: executed.status,
+            orderedRecommendations: result.orderedRecommendations
+          };
+        }
+
+        if (confirmation !== AUTHORIZED_RETRY_AFTER_REVIEW) {
+          throw new Error("Supplier email retry requires explicit confirmation.");
+        }
+        const failed = markFailed(
+          action,
+          "Manager authorized another send after reviewing the ambiguous delivery.",
+          now
+        );
+        state.miseActions = (state.miseActions ?? []).map((entry) =>
+          entry.id === action.id ? failed : entry
+        );
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_email_delivery_retry_authorized",
+          entity_table: "supplier_orders",
+          entity_id: orderId,
+          metadata: { provider: "gmail", resolution: "allow_retry", simulated: true }
+        });
+        return {
+          outcome: "applied" as const,
+          resolution: "allow_retry" as const,
+          order,
+          actionStatus: failed.status,
+          deliveryStatus: "failed"
+        };
+      });
     },
 
     async decideMiseAction(restaurantId, actionId, decision) {
