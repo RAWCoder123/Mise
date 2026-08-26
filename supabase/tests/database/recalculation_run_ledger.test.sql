@@ -1,6 +1,6 @@
 begin;
 
-select plan(11);
+select plan(15);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -193,6 +193,53 @@ select is(
   ),
   true,
   'the dead-lettered attempt raises an activity event that demands a human'
+);
+
+select ok(
+  (public.record_recalculation_run(
+    'a0000000-0000-4000-8000-000000000001',
+    'close', '2026-08-06', 'succeeded', 1::smallint,
+    'recalculation.close', 'owner_admin',
+    '2026-08-06T22:00:00Z', '2026-08-06T22:02:00Z', 120000, false, null,
+    'recalc:a0000000-0000-4000-8000-000000000001:2026-08-06:close',
+    'recalc:a0000000-0000-4000-8000-000000000001:2026-08-06:close:attempt-1'
+  )).id is not null,
+  'a close success is recorded'
+);
+
+select is(
+  (
+    select title
+    from public.activity_events
+    where restaurant_id = 'a0000000-0000-4000-8000-000000000001'
+      and event_type = 'forecast_updated'
+      and sequence_id = 'recalculation:2026-08-06:close'
+  ),
+  'Closing reconciliation completed',
+  'close success projects a reconciliation activity beat'
+);
+
+select ok(
+  (public.record_recalculation_run(
+    'a0000000-0000-4000-8000-000000000001',
+    'mid_shift', '2026-08-06', 'succeeded', 1::smallint,
+    'recalculation.mid_shift', 'manager',
+    '2026-08-06T15:00:00Z', '2026-08-06T15:01:00Z', 60000, false, null,
+    'recalc:a0000000-0000-4000-8000-000000000001:2026-08-06:mid_shift',
+    'recalc:a0000000-0000-4000-8000-000000000001:2026-08-06:mid_shift:attempt-1'
+  )).id is not null,
+  'a mid_shift success is recorded'
+);
+
+select is(
+  (
+    select count(*)::integer
+    from public.activity_events
+    where restaurant_id = 'a0000000-0000-4000-8000-000000000001'
+      and sequence_id = 'recalculation:2026-08-06:mid_shift'
+  ),
+  0,
+  'mid_shift success stays ledger-only'
 );
 
 -- Tenant isolation ---------------------------------------------------------

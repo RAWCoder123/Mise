@@ -36,7 +36,8 @@ export async function runScheduledRecalculations(input: {
       restaurantTimeZone,
       ports: createRecalculationPorts({
         ledger: repository,
-        runCycleWork: regenerateOperationalSignals
+        runCycleWork: (restaurantId, cycle) =>
+          regenerateOperationalSignals(restaurantId, { cycle })
       }),
       now: input.now
     });

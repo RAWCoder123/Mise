@@ -360,9 +360,9 @@ export function fromRestaurantTaskActivity(
 /**
  * Demo-mode mirror of `private.capture_recalculation_run_activity`. Emission is
  * deliberately sparing and must stay in step with that trigger: one success beat
- * for the opening cycle, every failure, and attention only once attempts are
- * exhausted. Takes a structural record rather than the repository DTO so the
- * activity module stays free of repository imports.
+ * for the opening cycle, one for closing reconciliation, every failure, and
+ * attention only once attempts are exhausted. Takes a structural record rather
+ * than the repository DTO so the activity module stays free of repository imports.
  */
 export function fromRecalculationRunActivity(run: {
   id: string;
@@ -381,17 +381,26 @@ export function fromRecalculationRunActivity(run: {
   cycleKey: string;
 }): ActivityEvent | null {
   const succeeded = run.status === "succeeded";
-  // mid_shift and close successes stay in the ledger only.
-  if (succeeded && run.cycle !== "daily_open") return null;
+  // mid_shift successes stay in the ledger only. Close emits a reconciliation
+  // beat so owners see waste/variance/stock carryover work finished.
+  if (succeeded && run.cycle === "mid_shift") return null;
+  if (succeeded && run.cycle !== "daily_open" && run.cycle !== "close") return null;
 
+  const closeSuccess = succeeded && run.cycle === "close";
   return buildEvent({
     restaurantId: run.restaurantId,
     occurredAt: run.completedAt,
     activityType: succeeded ? "forecast_updated" : "automation_failed",
     category: succeeded ? "inventory" : "system",
-    title: succeeded ? "Opening recalculation completed" : "Scheduled recalculation failed",
+    title: succeeded
+      ? closeSuccess
+        ? "Closing reconciliation completed"
+        : "Opening recalculation completed"
+      : "Scheduled recalculation failed",
     summary: succeeded
-      ? "Mise refreshed forecasts, recommendations, and insights for the operating day."
+      ? closeSuccess
+        ? "Mise reconciled waste, count variance, and carryover stock risk for the operating day, then refreshed tomorrow's planning signals."
+        : "Mise refreshed forecasts, recommendations, and insights for the operating day."
       : `Attempt ${run.attempt} of the ${run.cycle.replace(/_/g, " ")} recalculation did not complete. ${
           run.failureReason ?? "No failure reason was recorded."
         }`,
