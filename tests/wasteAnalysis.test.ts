@@ -184,20 +184,28 @@ test("the replaceable demo dataset carries reviewable persisted waste evidence",
   assert.equal(summary.trend, "up");
 
   seedDemoActivityFromState(state);
+  const wasteEventCount = state.inventoryEvents.filter((event) => event.eventType === "waste").length;
   assert.equal(
     state.activityEvents.filter((event) => event.activityType === "waste_analysis_completed")
       .length,
-    state.inventoryEvents.length
+    wasteEventCount
   );
   seedDemoActivityFromState(state);
   assert.equal(
     state.activityEvents.filter((event) => event.activityType === "waste_analysis_completed")
       .length,
-    state.inventoryEvents.length
+    wasteEventCount
   );
 
   const { inventoryEvents: _events, ...legacy } = state;
   const repaired = repairDemoState({ ...legacy, schema_version: 7 });
   assert.equal(repaired.migrated, true);
-  assert.equal(repaired.state.inventoryEvents.length, 5);
+  assert.equal(
+    repaired.state.inventoryEvents.filter((event) => event.eventType === "waste").length,
+    5
+  );
+  assert.equal(
+    repaired.state.inventoryEvents.filter((event) => event.eventType === "count").length,
+    repaired.state.inventoryItems.length
+  );
 });
