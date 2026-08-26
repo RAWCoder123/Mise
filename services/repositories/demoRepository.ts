@@ -1931,6 +1931,31 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async deleteRecipeMappingAndSignals(input) {
+      await mutateDemoState((state) => {
+        const index = state.menuItemIngredients.findIndex(
+          (entry) => entry.restaurant_id === input.restaurantId && entry.id === input.mappingId
+        );
+        if (index < 0) throw new Error("Recipe mapping not found");
+        state.menuItemIngredients.splice(index, 1);
+        state.purchaseRecommendations = [
+          ...state.purchaseRecommendations.filter(
+            (recommendation) => recommendation.restaurant_id !== input.restaurantId || recommendation.status !== "pending"
+          ),
+          ...input.recommendations.map((recommendation) => ({
+            ...authoritativeDemoRecommendationInput(state, recommendation),
+            id: createId("rec"),
+            created_at: new Date().toISOString()
+          }))
+        ];
+        state.insights = [
+          ...state.insights.filter((insight) => insight.restaurant_id !== input.restaurantId),
+          ...input.insights
+        ];
+        return null;
+      });
+    },
+
     async fetchRecipeAuthorities(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
       return demoRecipeAuthorityStates(state, restaurantId);
