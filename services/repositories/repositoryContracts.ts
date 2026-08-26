@@ -272,6 +272,8 @@ export interface SquareSyncWorkflowResult {
   importId: string | null;
   recordsProcessed: number;
   catalogProcessed: number;
+  planningSyncStatus: "fresh" | "stale";
+  planningSyncErrorCode: string | null;
 }
 
 export interface PosMappingMenuItemChoice {

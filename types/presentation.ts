@@ -35,6 +35,7 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.integration.connect",
   "today.integration.connected",
   "today.integration.repair",
+  "today.integration.planningStale",
   "today.insight.review"
 ] as const;
 
@@ -107,11 +108,13 @@ export type TodayTaskPresentationDescriptor =
       values: Record<never, never>;
     }
   | {
-      code: "today.integration.connected" | "today.integration.repair";
+      code: "today.integration.connected" | "today.integration.repair" | "today.integration.planningStale";
       values: {
         providerName: string;
         status: "not_connected" | "connected" | "paused" | "error";
         lastSyncAt: string | null;
+        planningSyncStatus?: "fresh" | "stale" | "unknown";
+        planningSyncErrorCode?: string | null;
       };
     }
   | {

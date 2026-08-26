@@ -18,7 +18,8 @@ const now = "2026-08-14T12:00:00.000Z";
 const integration: PosIntegration = {
   id: "pos-1", restaurant_id: restaurantId, provider: "square", status: "connected",
   external_location_id: "location-1", last_sync_at: "2026-08-14T11:00:00.000Z",
-  sync_cursor: null, settings: {}, created_at: now, updated_at: now
+  sync_cursor: null, planning_sync_status: "fresh", planning_synced_at: "2026-08-14T11:00:00.000Z",
+  planning_sync_error_code: null, settings: {}, created_at: now, updated_at: now
 };
 const inventory: InventoryItem = {
   id: "inventory-1", restaurant_id: restaurantId, item_name: "Chicken", category: "Protein",

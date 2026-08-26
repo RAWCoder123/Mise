@@ -52,6 +52,16 @@ test("every allowlisted Today presentation code renders in all locales and prese
       values: { providerName, status: "error", lastSyncAt: null }
     },
     {
+      code: "today.integration.planningStale",
+      values: {
+        providerName,
+        status: "connected",
+        lastSyncAt: "2026-07-19T12:00:00.000Z",
+        planningSyncStatus: "stale",
+        planningSyncErrorCode: "signal_refresh_failed"
+      }
+    },
+    {
       code: "today.insight.review",
       values: {
         insightType: "sales",

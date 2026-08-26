@@ -430,6 +430,9 @@ export function createInitialDemoState(
         external_location_id: provider ? "demo-location" : null,
         last_sync_at: provider ? now : null,
         sync_cursor: null,
+        planning_sync_status: provider ? "fresh" : "unknown",
+        planning_synced_at: provider ? now : null,
+        planning_sync_error_code: null,
         settings: { mode: "demo", importsSales: true, storesCredentials: false },
         created_at: now,
         updated_at: now

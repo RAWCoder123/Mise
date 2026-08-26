@@ -42,6 +42,13 @@ const staffOperationalActions = new Set<OperationalAction>([
   "save_count_lines",
   "submit_count_session"
 ]);
+const planningFreshActions = new Set<OperationalAction>([
+  "refresh_signals",
+  "update_inventory",
+  "upsert_recipe",
+  "save_setup",
+  "approve_count_session"
+]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -117,6 +124,18 @@ Deno.serve(async (req) => {
       result = await runCountSessionDraftAction(securitySupabase, user.id, restaurantId, action, body);
     } else {
       result = await refreshWithRetry(securitySupabase, user.id, restaurantId, action, body, false, {});
+    }
+
+    if (planningFreshActions.has(action)) {
+      await serviceRpc(securitySupabase, "service_record_pos_planning_sync_state", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_integration_id: null,
+        p_status: "fresh",
+        p_error_code: null,
+        p_generation: null,
+        p_match_generation: false
+      });
     }
 
     await recordFunctionAuditLog(
