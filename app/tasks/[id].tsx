@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
-import { ArrowLeft, CheckCircle2, Circle, ClipboardList, Clock3, Package, ShoppingCart, Sparkles } from "lucide-react-native";
+import { ArrowLeft, BookOpen, CheckCircle2, Circle, ClipboardList, Clock3, Package, ShoppingCart, Sparkles } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -548,6 +548,9 @@ function checklistKeysForIntent(intent: OperationalTodayTaskActionIntent): reado
   if (intent === "finish_setup") {
     return ["tasks.checklist.setup.1", "tasks.checklist.setup.2", "tasks.checklist.setup.3", "tasks.checklist.generic.3"];
   }
+  if (intent === "map_unmapped_pos_items") {
+    return ["tasks.checklist.setup.1", "tasks.checklist.setup.2", "tasks.checklist.setup.3", "tasks.checklist.generic.3"];
+  }
   return ["tasks.checklist.generic.1", "tasks.checklist.generic.2", "tasks.checklist.generic.3", "tasks.checklist.inventory.3"];
 }
 
@@ -558,6 +561,7 @@ function relatedLabelFor(task: OperationalTodayTask, t: (key: MessageKey) => str
   if (task.source.kind === "order" || task.source.kind === "recommendation") return t("tasks.related.orders");
   if (task.source.kind === "integration") return t("tasks.related.integrations");
   if (task.source.kind === "insight") return t("tasks.related.insights");
+  if (task.source.kind === "recipe" || task.source.kind === "setup") return t("tasks.related.operations");
   return t("tasks.related.operations");
 }
 
@@ -568,6 +572,7 @@ function taskIcon(task: OperationalTodayTask, color: string): ReactNode {
   }
   if (task.source.kind === "recommendation" || task.source.kind === "order") return <ShoppingCart {...props} />;
   if (task.source.kind === "integration") return <ClipboardList {...props} />;
+  if (task.source.kind === "recipe") return <BookOpen {...props} />;
   if (task.status === "completed") return <CheckCircle2 {...props} />;
   if (task.dueAt || task.dueDate) return <Clock3 {...props} />;
   return <Sparkles {...props} />;

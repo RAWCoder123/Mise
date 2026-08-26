@@ -288,6 +288,7 @@ function intentKey(intent: OperationalTodayTaskActionIntent): MessageKey {
   if (intent === "prepare_supplier_draft") return "today.intent.prepareDraft";
   if (intent === "send_supplier_order") return "today.intent.sendOrder";
   if (intent === "finish_setup") return "today.intent.finishSetup";
+  if (intent === "map_unmapped_pos_items") return "today.intent.mapRecipes";
   if (intent === "connect_pos") return "today.intent.connectPos";
   if (intent === "review_insight") return "today.intent.reviewInsight";
   return "today.intent.manageConnection";

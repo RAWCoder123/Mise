@@ -35,6 +35,8 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.integration.connect",
   "today.integration.connected",
   "today.integration.repair",
+  "today.recipe.map_unmapped",
+  "today.recipe.mapped",
   "today.insight.review"
 ] as const;
 
@@ -112,6 +114,13 @@ export type TodayTaskPresentationDescriptor =
         providerName: string;
         status: "not_connected" | "connected" | "paused" | "error";
         lastSyncAt: string | null;
+      };
+    }
+  | {
+      code: "today.recipe.map_unmapped" | "today.recipe.mapped";
+      values: {
+        missingCount: number;
+        focusMenuItem: string | null;
       };
     }
   | {

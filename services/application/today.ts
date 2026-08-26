@@ -142,6 +142,7 @@ export async function fetchTodaySummary(
     setupReadiness,
     posIntegrations,
     insights,
+    posItemsMissingRecipes: summary.recipeBaseline.posItemsMissingRecipes,
     openCountSession: openCountSession?.session ?? null,
     includeCompleted: options.includeCompletedTasks
   });
