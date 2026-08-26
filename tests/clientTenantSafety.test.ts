@@ -147,3 +147,25 @@ test("manual tab controls expose their selected state on web", () => {
     assert.match(screen, /<(?:FilterRow|SegmentedControl)/);
   }
 });
+
+test("sales import clears draft status on restaurant switch and rejects late saves", () => {
+  const salesImport = source("app/settings/sales-import.tsx");
+
+  assert.match(salesImport, /activeRestaurantIdRef/, "needs active-restaurant identity");
+  assert.match(salesImport, /importRequestIdRef/, "needs import request generations");
+  assert.match(
+    salesImport,
+    /useEffect\(\(\) => \{[\s\S]*importRequestIdRef\.current \+= 1;[\s\S]*setCsvText\(""\);[\s\S]*setError\(null\);[\s\S]*setSuccessRows\(null\);[\s\S]*\}, \[restaurant\?\.id\]\)/,
+    "restaurant switch must clear CSV draft, error, and success"
+  );
+  assert.match(
+    salesImport,
+    /requestId\s*!==\s*importRequestIdRef\.current\s*\|\|\s*activeRestaurantIdRef\.current\s*!==\s*restaurantId/,
+    "late import completion must not update another restaurant's UI"
+  );
+  assert.match(
+    salesImport,
+    /if \(requestId === importRequestIdRef\.current\) \{\s*submitLockRef\.current = false;\s*setSaving\(false\);/,
+    "only the latest import request may clear saving lock"
+  );
+});
