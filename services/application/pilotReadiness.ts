@@ -4,6 +4,14 @@ import { getMiseRepository } from "./repository";
 const repository = getMiseRepository();
 
 export type { PilotReadiness };
+export {
+  assertPilotCanRecommend,
+  isPilotReadinessBlockedError,
+  isPilotReadinessUnavailableError,
+  isPilotReadinessRpcBlockedError,
+  PilotReadinessBlockedError,
+  PilotReadinessUnavailableError
+} from "../domain/pilotReadiness";
 
 export async function fetchPilotReadiness(restaurantId: string): Promise<PilotReadiness> {
   const normalizedRestaurantId = restaurantId.trim();

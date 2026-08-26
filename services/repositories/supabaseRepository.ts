@@ -27,6 +27,11 @@ import { SUPPLIER_SEND_CONTENT_VERSION } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 import { normalizePurchaseAuthorityResult } from "../domain/purchaseAuthority";
+import {
+  isPilotReadinessRpcBlockedError,
+  PilotReadinessBlockedError,
+  type PilotReadiness
+} from "../domain/pilotReadiness";
 import { TeamMembershipError, teamMembershipErrorFrom } from "../domain/teamMembership";
 import {
   activityEventFromPersistedRow,
@@ -202,6 +207,22 @@ function parseRecommendationWorkflowResponse(data: unknown): RecommendationWorkf
     previousStatus: payload.previous_status ?? payload.recommendation.status,
     authority: payload.authority ? normalizePurchaseAuthorityResult(payload.authority) : null
   };
+}
+
+function mapPilotReadinessRpcError(error: unknown, restaurantId: string): never {
+  if (isPilotReadinessRpcBlockedError(error)) {
+    const blocked: PilotReadiness = {
+      restaurantId,
+      generatedAt: new Date().toISOString(),
+      status: "blocked",
+      areas: [],
+      canRecommend: false,
+      canDraft: false,
+      canSend: false
+    };
+    throw new PilotReadinessBlockedError(blocked);
+  }
+  throw error;
 }
 
 function parseRecipeAuthorityState(value: unknown): RecipeAuthorityState {
@@ -1471,7 +1492,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_reason: input.reason,
         p_urgency: input.urgency
       });
-      if (error) throw error;
+      if (error) throw mapPilotReadinessRpcError(error, input.restaurant_id);
       return normalizePurchaseRecommendation(data as PurchaseRecommendation);
     },
 
@@ -1540,7 +1561,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_recommendation_id: recommendationId,
         p_recommended_quantity: recommendedQuantity ?? null
       });
-      if (error) throw error;
+      if (error) throw mapPilotReadinessRpcError(error, restaurantId);
       return parseRecommendationWorkflowResponse(data);
     },
 
