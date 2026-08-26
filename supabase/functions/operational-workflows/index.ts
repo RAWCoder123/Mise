@@ -132,7 +132,9 @@ Deno.serve(async (req) => {
         p_restaurant_id: restaurantId,
         p_integration_id: null,
         p_status: "fresh",
-        p_error_code: null
+        p_error_code: null,
+        p_generation: null,
+        p_match_generation: false
       });
     }
 

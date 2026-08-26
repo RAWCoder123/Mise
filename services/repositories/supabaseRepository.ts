@@ -503,7 +503,7 @@ function parseSquareSyncWorkflowResponse(data: unknown): SquareSyncWorkflowResul
   const planningSyncStatus =
     payload.planningSyncStatus === "fresh" || payload.planningSyncStatus === "stale"
       ? payload.planningSyncStatus
-      : "fresh";
+      : "stale";
   const planningSyncErrorCode =
     typeof payload.planningSyncErrorCode === "string" && payload.planningSyncErrorCode.trim()
       ? payload.planningSyncErrorCode.trim().slice(0, 120)
