@@ -165,14 +165,12 @@ test("delivery lines + outcome complete the inventory→order→receive path", (
     supplierOrderId: order.id,
     deliveryId: "delivery-1",
     deliveryStatus: "received",
-    recommendations: recommendations
-      .filter((recommendation) => recommendation.supplier_order_id === order.id)
-      .map((recommendation) => ({
-        id: recommendation.id,
-        inventoryItemId: recommendation.inventory_item_id,
-        recommendedQuantity: recommendation.recommended_quantity,
-        unit: recommendation.unit,
-        status: recommendation.status
+    recommendations: [recommendation].map((entry) => ({
+        id: entry.id,
+        inventoryItemId: entry.inventory_item_id,
+        recommendedQuantity: entry.recommended_quantity,
+        unit: entry.unit,
+        status: entry.status
       })),
     lines: built.lines.map((line) => ({
       inventoryItemId: line.inventoryItemId,
