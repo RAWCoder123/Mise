@@ -8,7 +8,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -39,6 +39,7 @@ export default function InventoryCountSessionScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hubLoadError, setHubLoadError] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
@@ -53,6 +54,7 @@ export default function InventoryCountSessionScreen() {
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
     setLoading(true);
+    setHubLoadError(false);
     setError(null);
     try {
       const open = await fetchOpenInventoryCountSession(restaurantId);
@@ -70,8 +72,14 @@ export default function InventoryCountSessionScreen() {
         Object.fromEntries((open?.lines ?? []).map((line) => [line.inventory_item_id, line.note ?? ""]))
       );
       setLoadedRestaurantId(restaurantId);
+      setHubLoadError(false);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setDetail(null);
+      setDraftCounts({});
+      setDraftNotes({});
+      setLoadedRestaurantId(null);
+      setHubLoadError(true);
       setError(t("inventory.count.loadError"));
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
@@ -88,6 +96,7 @@ export default function InventoryCountSessionScreen() {
     setDraftNotes({});
     setSaving(false);
     setError(null);
+    setHubLoadError(false);
     setNotice(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
@@ -98,15 +107,20 @@ export default function InventoryCountSessionScreen() {
     }, [load])
   );
 
-  const visibleDetail = loadedRestaurantId === restaurant?.id ? detail : null;
   const hubLoadState = resolveRestaurantScopedHubLoadState({
     restaurantId: restaurant?.id,
     loadedRestaurantId,
-    loadError: Boolean(error)
+    loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
+  const visibleDetail = hubReady ? detail : null;
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canDraft,
+    hubReady,
+    busy: saving
+  });
+  const approveEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canApprove,
     hubReady,
     busy: saving
   });
@@ -239,7 +253,7 @@ export default function InventoryCountSessionScreen() {
   }
 
   async function approveSession() {
-    if (!restaurant || !visibleDetail || !canApprove) return;
+    if (!restaurant || !visibleDetail || !approveEditable) return;
     const restaurantId = restaurant.id;
     setSaving(true);
     setError(null);
@@ -258,7 +272,7 @@ export default function InventoryCountSessionScreen() {
   }
 
   function confirmCancel() {
-    if (!restaurant || !visibleDetail || !canApprove) return;
+    if (!restaurant || !visibleDetail || !approveEditable) return;
     const restaurantId = restaurant.id;
     const sessionId = visibleDetail.session.id;
     Alert.alert(t("inventory.count.cancelTitle"), t("inventory.count.cancelBody"), [
@@ -316,20 +330,24 @@ export default function InventoryCountSessionScreen() {
       loading={loading}
     >
       <View style={styles.stack}>
-        {error ? (
+        {hubLoadError ? (
           <RetryNotice
             title={t("inventory.count.retryTitle")}
-            message={error}
+            message={t("inventory.count.loadError")}
             onRetry={() => void load()}
             retryLabel={t("common.retry")}
             accessibilityLabel={t("inventory.count.retryAccessibility")}
           />
+        ) : error ? (
+          <StatusNotice tone="danger" title={t("inventory.count.retryTitle")} message={error} />
         ) : null}
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
-        {!visibleDetail ||
-        visibleDetail.session.status === "approved" ||
-        visibleDetail.session.status === "cancelled" ? (
+        {hubLoadError ? null : !(
+          visibleDetail &&
+          visibleDetail.session.status !== "approved" &&
+          visibleDetail.session.status !== "cancelled"
+        ) ? (
           <MotionView distance={3} duration={240}>
             <SectionSurface
               title={t("inventory.count.startTitle")}
@@ -338,7 +356,7 @@ export default function InventoryCountSessionScreen() {
               <Button
                 title={t("inventory.count.startAction")}
                 onPress={() => void startSession()}
-                disabled={!canDraft || saving}
+                disabled={!actionsEditable}
                 fullWidth
                 accessibilityLabel={t("inventory.count.startAccessibility")}
               />
@@ -475,7 +493,7 @@ export default function InventoryCountSessionScreen() {
                   />
                 </>
               ) : null}
-              {visibleDetail.session.status === "submitted" && canApprove ? (
+              {visibleDetail.session.status === "submitted" && approveEditable ? (
                 <Button
                   title={t("inventory.count.approveAction")}
                   onPress={() => void approveSession()}
@@ -486,7 +504,7 @@ export default function InventoryCountSessionScreen() {
               {visibleDetail.session.status === "submitted" && !canApprove ? (
                 <Text style={styles.help}>{t("inventory.count.staffAwaitingApproval")}</Text>
               ) : null}
-              {canApprove ? (
+              {approveEditable ? (
                 <Button
                   title={t("inventory.count.cancelAction")}
                   variant="secondary"
