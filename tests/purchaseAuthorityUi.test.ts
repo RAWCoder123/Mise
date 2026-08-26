@@ -38,7 +38,7 @@ test("recipe settings exposes explicit confirmation and hosted changes remain RP
   assert.doesNotMatch(screen, /\.from\("menu_items"\)/);
 });
 
-test("hosted UI readiness is presentation-only and approval stays on one server RPC", async () => {
+test("hosted UI readiness remains advisory while approval revalidates pilot readiness then one server RPC", async () => {
   const [ordersApplication, repository] = await Promise.all([
     source("services/application/orders.ts"),
     source("services/repositories/supabaseRepository.ts")
@@ -47,6 +47,8 @@ test("hosted UI readiness is presentation-only and approval stays on one server 
   assert.match(repository, /client\.rpc\("list_purchase_recommendation_authority"/);
   assert.match(repository, /client\.rpc\("approve_purchase_recommendation"/);
   assert.match(ordersApplication, /PurchaseAuthorityBlockedError/);
+  assert.match(ordersApplication, /assertPilotCanRecommend\(readiness\)/);
+  assert.match(ordersApplication, /fetchPilotReadiness\(normalizedRestaurantId\)/);
   assert.match(
     ordersApplication,
     /Supplier drafts are created only by the server-authoritative recommendation approval workflow/

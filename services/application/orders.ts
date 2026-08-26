@@ -11,6 +11,11 @@ import {
   PurchaseAuthorityBlockedError,
   type PurchaseAuthorityResult
 } from "../domain/purchaseAuthority";
+import {
+  assertPilotCanRecommend,
+  isPilotReadinessBlockedError,
+  PilotReadinessUnavailableError
+} from "../domain/pilotReadiness";
 import { resolveAdvisoryPurchaseDecisionPatterns } from "../domain/purchaseDecisionMemory";
 import {
   buildSupplierReliabilitySummary,
@@ -23,6 +28,7 @@ import {
   requireSupplierOperatorNote,
   requireSupplierRecipientInput
 } from "../miseValidation";
+import { fetchPilotReadiness } from "./pilotReadiness";
 import { getMiseRepository } from "./repository";
 import { GmailIntegrationError } from "../repositories/miseRepository";
 import type {
@@ -62,8 +68,27 @@ export async function approvePurchaseRecommendation(
   recommendationId: string,
   recommendedQuantity?: number
 ) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+
+  // Fail closed before the approval RPC: UI gates are not authorization.
+  let readiness;
+  try {
+    readiness = await fetchPilotReadiness(normalizedRestaurantId);
+  } catch (error) {
+    if (isPilotReadinessBlockedError(error) || error instanceof PilotReadinessUnavailableError) {
+      throw error;
+    }
+    throw new PilotReadinessUnavailableError(
+      error instanceof Error && error.message.trim()
+        ? error.message
+        : "Pilot readiness could not be verified for this restaurant."
+    );
+  }
+  assertPilotCanRecommend(readiness);
+
   const result = await repository.approvePurchaseRecommendation(
-    restaurantId,
+    normalizedRestaurantId,
     recommendationId,
     recommendedQuantity === undefined
       ? undefined
