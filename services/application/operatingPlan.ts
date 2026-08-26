@@ -50,7 +50,9 @@ export async function fetchDailyOperatingPlan(
       repository.fetchSupplierOrders(normalizedRestaurantId),
       repository.fetchEmailConnectionState(normalizedRestaurantId),
       repository.fetchPosIntegrations(normalizedRestaurantId),
-      repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }).catch(() => []),
+      // Activity must fail closed with the plan. An empty catch would claim no
+      // recent operational change while the Today hub still renders as ready.
+      repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }),
       repository.listRestaurantTasks(normalizedRestaurantId),
       fetchInventoryLedgerEvidence(normalizedRestaurantId)
     ]);
