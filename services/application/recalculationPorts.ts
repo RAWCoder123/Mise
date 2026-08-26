@@ -29,20 +29,19 @@ const LEDGER_LIMIT = 64;
 /**
  * Binds the pure recalculation executor to a durable ledger.
  *
- * One factory instance serves one dispatch pass. That matters: `runCycle` is
- * memoized per instance, so when two or three cycles come due at once the
- * recompute happens once while the ledger still records an attempt per cycle.
- * The three cycles differ in *when* they run and *who is accountable*, not yet
- * in *what* is computed, so recomputing three times would churn derived ids for
- * no gain while recording one row would understate coverage.
+ * Open and mid-shift still share one planning recompute when they come due
+ * together: they differ in timing and accountability, not in signal math.
+ * Close runs separately so it can merge waste, count-variance, and carryover
+ * stock reconciliation without writing that close-only evidence into earlier
+ * cycles.
  */
 export function createRecalculationPorts(deps: {
   ledger: RecalculationLedger;
-  runCycleWork: (restaurantId: string) => Promise<void>;
+  runCycleWork: (restaurantId: string, cycle: RecalculationCycle) => Promise<void>;
   now?: () => Date;
 }): RecalculationPorts {
   const clock = deps.now ?? (() => new Date());
-  let inFlight: Promise<void> | null = null;
+  let planningInFlight: Promise<void> | null = null;
 
   return {
     async loadRuns(restaurantId: string): Promise<readonly RecalculationRunRecord[]> {
@@ -92,11 +91,14 @@ export function createRecalculationPorts(deps: {
     },
 
     async runCycle(cycle: RecalculationCycle, context) {
-      // Every cycle drives the same recompute today, so the first to arrive
-      // owns the work and the rest await it.
-      void cycle;
-      inFlight ??= deps.runCycleWork(context.restaurantId);
-      await inFlight;
+      if (cycle === "close") {
+        // Close owns reconciliation evidence and must not reuse the open/mid
+        // planning memo, which would omit close-only insight merges.
+        await deps.runCycleWork(context.restaurantId, cycle);
+        return;
+      }
+      planningInFlight ??= deps.runCycleWork(context.restaurantId, cycle);
+      await planningInFlight;
     }
   };
 }

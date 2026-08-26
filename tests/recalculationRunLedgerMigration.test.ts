@@ -106,7 +106,7 @@ test("run outcomes project into the operator feed using existing activity vocabu
   // Only the dead-lettered attempt demands a human.
   assert.match(migration, /event_attention := new\.attempt >= 4/i);
   assert.match(migration, /event_attention := false/i);
-  // mid_shift and close successes stay in the ledger only.
+  // Original ledger migration kept mid_shift and close successes ledger-only.
   assert.match(migration, /new\.cycle <> 'daily_open'[\s\S]*return new;/i);
 
   assert.match(migration, /format\('recalculation_run:%s', new\.id\)/i);
@@ -116,6 +116,22 @@ test("run outcomes project into the operator feed using existing activity vocabu
     migration,
     /revoke all on function private\.capture_recalculation_run_activity\(\)\s*from public, anon, authenticated, service_role/i
   );
+});
+
+test("close-cycle migration projects closing reconciliation success into activity", () => {
+  const closeMigration = readFileSync(
+    new URL(
+      "../supabase/migrations/20260826220000_close_cycle_reconciliation_activity.sql",
+      import.meta.url
+    ),
+    "utf8"
+  );
+  assert.match(closeMigration, /Closing reconciliation completed/);
+  assert.match(closeMigration, /new\.cycle = 'mid_shift'[\s\S]*return new;/i);
+  assert.match(closeMigration, /new\.cycle <> 'daily_open' and new\.cycle <> 'close'/i);
+  assert.match(closeMigration, /Opening recalculation completed/);
+  assert.match(pgTap, /Closing reconciliation completed/);
+  assert.match(pgTap, /mid_shift success stays ledger-only/);
 });
 
 test("the pgTAP suite covers the authority, replay, and isolation scenarios", () => {
