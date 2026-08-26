@@ -17,8 +17,10 @@ current main and closes Greptile P1 findings:
 
 1. Task mutation `mutating` surviving restaurant switch (reset `setMutating(false)`).
 2. Scan barcode matches bypassing hub readiness (gate matches + EmptyState on `hubReady`).
+3. Scan successful soft-refresh retry restoring stale `barcodeMatches` objects — re-derive
+   from `nextItems` via `matchInventoryBarcode(lastScannedCode, nextItems)` (or clear).
 
-Avoided overlap with open drafts #145–#150, #152–#174, and #130–#135 / #146.
+Avoided overlap with open drafts #145–#150, #152–#174, #176–#177, and #130–#135 / #146.
 
 ## Changes
 
