@@ -1312,12 +1312,21 @@ export function normalizeSetupAttachment(value: SetupAttachment): SetupAttachmen
 }
 
 export function normalizePosIntegration(value: PosIntegration): PosIntegration {
+  const planningStatus =
+    value.planning_sync_status === "fresh" ||
+    value.planning_sync_status === "stale" ||
+    value.planning_sync_status === "unknown"
+      ? value.planning_sync_status
+      : "unknown";
   return {
     ...value,
     status: normalizeIntegrationStatus(value.status),
     external_location_id: asNullableString(value.external_location_id),
     last_sync_at: asNullableString(value.last_sync_at),
     sync_cursor: asNullableString(value.sync_cursor),
+    planning_sync_status: planningStatus,
+    planning_synced_at: asNullableString(value.planning_synced_at),
+    planning_sync_error_code: asNullableString(value.planning_sync_error_code),
     settings: asRecord(value.settings),
     updated_at: value.updated_at ?? value.created_at
   };

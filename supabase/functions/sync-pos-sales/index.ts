@@ -237,6 +237,16 @@ Deno.serve(async (req) => {
       if (applyError) throw applyError;
       authoritySyncToken = null;
 
+      let planningSyncStatus: "fresh" | "stale" = "stale";
+      let planningSyncErrorCode: string | null = null;
+      await securitySupabase.rpc("service_record_pos_planning_sync_state", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId,
+        p_integration_id: credential.integrationId,
+        p_status: "stale",
+        p_error_code: null,
+      });
+
       try {
         const refreshResponse = await fetch(
           `${Deno.env.get("SUPABASE_URL")}/functions/v1/operational-workflows`,
@@ -250,11 +260,35 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ action: "refresh_signals", restaurantId }),
           },
         );
-        if (!refreshResponse.ok) {
-          // Sales persisted; signal refresh can retry from the client.
+        if (refreshResponse.ok) {
+          await securitySupabase.rpc("service_record_pos_planning_sync_state", {
+            p_actor_user_id: user.id,
+            p_restaurant_id: restaurantId,
+            p_integration_id: credential.integrationId,
+            p_status: "fresh",
+            p_error_code: null,
+          });
+          planningSyncStatus = "fresh";
+          planningSyncErrorCode = null;
+        } else {
+          planningSyncErrorCode = "signal_refresh_failed";
+          await securitySupabase.rpc("service_record_pos_planning_sync_state", {
+            p_actor_user_id: user.id,
+            p_restaurant_id: restaurantId,
+            p_integration_id: credential.integrationId,
+            p_status: "stale",
+            p_error_code: planningSyncErrorCode,
+          });
         }
       } catch {
-        // Sales persisted; signal refresh can retry from the client.
+        planningSyncErrorCode = "signal_refresh_failed";
+        await securitySupabase.rpc("service_record_pos_planning_sync_state", {
+          p_actor_user_id: user.id,
+          p_restaurant_id: restaurantId,
+          p_integration_id: credential.integrationId,
+          p_status: "stale",
+          p_error_code: planningSyncErrorCode,
+        });
       }
 
       await recordFunctionSecurityEvent(
@@ -269,6 +303,8 @@ Deno.serve(async (req) => {
           provider,
           recordsProcessed: applied?.recordsProcessed ?? sales.length,
           catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
+          planningSyncStatus,
+          planningSyncErrorCode,
         },
       );
       terminalContext = null;
@@ -277,6 +313,8 @@ Deno.serve(async (req) => {
         importId: applied?.importId ?? null,
         recordsProcessed: applied?.recordsProcessed ?? sales.length,
         catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
+        planningSyncStatus,
+        planningSyncErrorCode,
       });
     } catch (error) {
       const safeCode =
