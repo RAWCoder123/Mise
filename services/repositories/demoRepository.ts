@@ -275,7 +275,7 @@ async function buildDemoSupplierSendContent(
     contentRevision: demoSupplierSendContentRevision(state, orderId),
     emailConnection,
     recipients: state.supplierRecipients,
-    recommendations: state.purchaseRecommendations
+    orderLines: state.supplierOrderLines ?? []
   });
 }
 
