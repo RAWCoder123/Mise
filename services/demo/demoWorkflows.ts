@@ -14,6 +14,12 @@ import {
   type RecommendationWorkflowResult,
   type SupplierOrderSentWorkflowResult
 } from "../domain/miseDomain";
+import {
+  applyPurchaseLoopCountBias,
+  extractPurchaseLoopCountSamples,
+  buildPurchaseLoopCountBiasByItem,
+  purchaseLoopCountBiasReasonFragment
+} from "../domain/purchaseLoopLearning";
 import { buildInventoryCountEvidence } from "../domain/inventoryCountAuthority";
 import { nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../../utils/format";
 import { demoDemandFallback } from "./demandFallback";
@@ -56,6 +62,11 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
   const recommendationHistory = [...state.purchaseRecommendations];
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
   const countEvidence = demoCountEvidence(state, restaurantId);
+  const purchaseLoopCountHistory = extractPurchaseLoopCountSamples(
+    state.actionOutcomes ?? [],
+    restaurantId
+  );
+  const countBiasByItem = buildPurchaseLoopCountBiasByItem(purchaseLoopCountHistory);
   const lowOutlooks = buildInventoryOutlooks(
     restaurantId,
     state.inventoryItems,
@@ -96,8 +107,18 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
     }
 
     const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
-    const recommendedQuantity = learnedQuantity ?? prediction.suggestedOrderQuantity;
-    const reason = learnedRecommendationReason(item, prediction, learnedQuantity);
+    const afterApprovalLearning = learnedQuantity ?? prediction.suggestedOrderQuantity;
+    const countBias = countBiasByItem.get(item.id);
+    const paddedQuantity = applyPurchaseLoopCountBias(afterApprovalLearning, countBias, {
+      calculated: prediction.suggestedOrderQuantity,
+      par: item.par_level
+    });
+    const recommendedQuantity = paddedQuantity ?? afterApprovalLearning;
+    const countBiasReason =
+      countBias?.isChronic && paddedQuantity != null && paddedQuantity !== afterApprovalLearning
+        ? purchaseLoopCountBiasReasonFragment(countBias)
+        : undefined;
+    const reason = learnedRecommendationReason(item, prediction, learnedQuantity, countBiasReason);
 
     if (pending) {
       // Demo-generated recommendations carry the same explicit provenance as
@@ -149,7 +170,9 @@ export function rebuildInsights(state: DemoState, restaurantId: string) {
     state.menuItemIngredients,
     demoOperatingDate(state, restaurantId),
     demoDemandFallback,
-    demoCountEvidence(state, restaurantId)
+    demoCountEvidence(state, restaurantId),
+    [],
+    extractPurchaseLoopCountSamples(state.actionOutcomes ?? [], restaurantId)
   );
   state.insights = [
     ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),

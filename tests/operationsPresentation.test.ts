@@ -105,6 +105,15 @@ test("rules-based Insight codes localize structured values while opaque copy is 
     },
     { code: "insight.rule.waste.overstock", values: { itemName, quantity: 44.5, unit: "lb" } },
     {
+      code: "insight.rule.ordering.chronic_count_short",
+      values: {
+        itemName,
+        supplierName,
+        countPercent: 78,
+        sampleCount: 4
+      }
+    },
+    {
       code: "insight.evidence.opaque",
       values: {
         insightType: "cost",
@@ -130,7 +139,9 @@ test("rules-based Insight codes localize structured values while opaque copy is 
               ? "sales"
               : presentation.code.includes("prep")
                 ? "prep"
-                : "waste",
+                : presentation.code.includes("ordering")
+                  ? "ordering"
+                  : "waste",
         title: "Raw title remains unchanged",
         description: "Raw description remains unchanged",
         why_it_matters: "Raw why remains unchanged",

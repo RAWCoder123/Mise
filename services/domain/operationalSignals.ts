@@ -15,6 +15,14 @@ import {
   saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity.ts";
+import {
+  applyPurchaseLoopCountBias,
+  buildChronicCountShortInsightInput,
+  buildPurchaseLoopCountBiasByItem,
+  purchaseLoopCountBiasReasonFragment,
+  type PurchaseLoopCountBias,
+  type PurchaseLoopCountSample
+} from "./purchaseLoopLearning.ts";
 
 export interface OperationalInventoryItem {
   id: string;
@@ -107,6 +115,8 @@ export interface OperationalPlanningSnapshot {
   ledgerComplete?: boolean;
   /** Restaurant timezone, used to place a count inside the correct operating day. */
   timeZone?: string | null;
+  /** Count-phase purchase-loop samples for chronic post-receive undercount learning. */
+  purchaseLoopCountHistory?: readonly PurchaseLoopCountSample[];
 }
 
 export function calculateOperationalSignals(snapshot: OperationalPlanningSnapshot) {
@@ -134,8 +144,10 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   );
   const handled = latestHandledByItem(snapshot.recommendationHistory);
   const learned = learnedQuantities(snapshot.recommendationHistory);
+  const countBiasByItem = buildPurchaseLoopCountBiasByItem(snapshot.purchaseLoopCountHistory ?? []);
   const recommendations: OperationalRecommendation[] = [];
   const insights: OperationalInsight[] = [];
+  const chronicCountShortInsights: OperationalInsight[] = [];
 
   for (const item of snapshot.inventoryItems.filter((entry) => entry.restaurant_id === snapshot.restaurantId)) {
     const mappings = snapshot.menuItemIngredients.filter(
@@ -180,6 +192,14 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const recountedAfterHandling = recentHandled
       ? verifiedCountSupersedes(itemCountEvidence, recentHandled.created_at)
       : false;
+    const countBias = countBiasByItem.get(item.id);
+    const chronicInsight = buildChronicCountShortInsight(
+      item,
+      countBias,
+      now,
+      snapshot.restaurantId
+    );
+    if (chronicInsight) chronicCountShortInsights.push(chronicInsight);
 
     if ((isCritical || isLow) && (!recentHandled || recountedAfterHandling)) {
       const learnedQuantity = boundedLearnedQuantity(
@@ -187,11 +207,22 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         suggested,
         item.par_level
       );
-      const quantity = learnedQuantity ?? suggested;
+      const afterApprovalLearning = learnedQuantity ?? suggested;
+      const paddedQuantity = applyPurchaseLoopCountBias(afterApprovalLearning, countBias, {
+        calculated: suggested,
+        par: item.par_level
+      });
+      const quantity = paddedQuantity ?? afterApprovalLearning;
       const coverage = baselineUsage > 0 ? projectedQuantity / baselineUsage : null;
-      const reason = coverage === null
+      const baseReason = coverage === null
         ? `${item.item_name} is at or below its reorder level. Mise recommends restoring it to par.`
         : `${item.item_name} has about ${round(coverage)} service days of projected coverage based on mapped demand.`;
+      const reason =
+        countBias?.isChronic && paddedQuantity != null && paddedQuantity !== afterApprovalLearning
+          ? `${baseReason} ${purchaseLoopCountBiasReasonFragment(countBias)}`
+          : learnedQuantity !== undefined && learnedQuantity !== suggested
+            ? `${baseReason} Mise is using a stable median from recent approved orders: ${learnedQuantity} ${item.unit}.`
+            : baseReason;
       recommendations.push({
         restaurant_id: snapshot.restaurantId,
         inventory_item_id: item.id,
@@ -336,6 +367,9 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     }
   }
 
+  // Prefer chronic count-short insights ahead of lower-priority sales spikes inside the insight cap.
+  insights.unshift(...chronicCountShortInsights.slice(0, 2));
+
   return { recommendations: recommendations.slice(0, 250), insights: dedupeInsights(insights).slice(0, 8) };
 }
 
@@ -351,7 +385,8 @@ export function buildRecommendationInserts(
     ledgerComplete?: boolean;
     timeZone?: string | null;
   } = {},
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  purchaseLoopCountHistory: readonly PurchaseLoopCountSample[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -363,7 +398,8 @@ export function buildRecommendationInserts(
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone,
-    providerMappings
+    providerMappings,
+    purchaseLoopCountHistory
   }).recommendations;
 }
 
@@ -378,7 +414,8 @@ export function buildInsightsFromData(
     ledgerComplete?: boolean;
     timeZone?: string | null;
   } = {},
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  purchaseLoopCountHistory: readonly PurchaseLoopCountSample[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -390,8 +427,41 @@ export function buildInsightsFromData(
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone,
-    providerMappings
+    providerMappings,
+    purchaseLoopCountHistory
   }).insights;
+}
+
+function buildChronicCountShortInsight(
+  item: OperationalInventoryItem,
+  bias: PurchaseLoopCountBias | undefined,
+  createdAt: string,
+  restaurantId: string
+): OperationalInsight | null {
+  if (!bias) return null;
+  const input = buildChronicCountShortInsightInput(bias);
+  if (!input) return null;
+  return {
+    id: `insight_count_short_${item.id}`,
+    restaurant_id: restaurantId,
+    insight_type: input.insightType,
+    title: `${item.item_name} often counts short after receive`,
+    description: `Recent post-receive counts for ${item.item_name} averaged about ${input.countPercent}% of system quantity across ${bias.sampleCount} purchase-loop counts.`,
+    why_it_matters:
+      "Chronic post-receive undercounts mean on-hand is lower than the system expected and can create avoidable stockouts.",
+    recommended_action: `Pad the next ${item.supplier_name} ticket and recount ${item.item_name.toLowerCase()} after the next delivery.`,
+    severity: input.severity,
+    created_at: createdAt,
+    presentation: {
+      code: "insight.rule.ordering.chronic_count_short",
+      values: {
+        itemName: item.item_name,
+        supplierName: item.supplier_name,
+        countPercent: input.countPercent,
+        sampleCount: bias.sampleCount
+      }
+    }
+  };
 }
 
 function historicalDailyDemand(

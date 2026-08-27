@@ -38,6 +38,7 @@ import type {
   ActivityEvent,
   ActivityFeedFilter
 } from "../domain/activityEvents";
+import type { PurchaseLoopCountSample } from "../domain/purchaseLoopLearning";
 import type { MiseAction } from "../domain/miseActions";
 import type {
   OperationalFindingDecision,
@@ -490,6 +491,8 @@ export interface PlanningData {
   operatingDate: string;
   /** Restaurant timezone, needed to place a verified count inside the right operating day. */
   timeZone: string;
+  /** Count-phase purchase-loop samples for chronic post-receive undercount learning. */
+  purchaseLoopCountHistory: PurchaseLoopCountSample[];
 }
 
 export interface MiseRepository {

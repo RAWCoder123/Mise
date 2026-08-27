@@ -103,7 +103,8 @@ function createReviewRepository(): MiseRepository {
     menuItemIngredients: [recipe],
     providerMappings: providerMapping(),
     operatingDate: "2026-08-20",
-    timeZone: "America/New_York"
+    timeZone: "America/New_York",
+    purchaseLoopCountHistory: []
   });
 
   const repository: Partial<MiseRepository> = {

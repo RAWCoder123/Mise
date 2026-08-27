@@ -68,7 +68,8 @@ const planningData: PlanningData = {
   menuItemIngredients: [recipe],
   providerMappings: verifiedProviderMappings,
   operatingDate,
-  timeZone: "America/Los_Angeles"
+  timeZone: "America/Los_Angeles",
+  purchaseLoopCountHistory: []
 };
 
 function makeRepository(providerMappings: readonly VerifiedProviderSaleMapping[]): MiseRepository {
@@ -268,7 +269,8 @@ test("hosted repository planning data preserves provider identity through the re
             menu_item_ingredients: [recipe],
             restaurants: this.filters.get("id") === restaurantId ? restaurant : { timezone: "America/Los_Angeles" },
             pos_catalog_item_mappings: providerRows,
-            inventory_events: []
+            inventory_events: [],
+            action_outcomes: []
           };
 
           const data = tableData[this.tableName];
