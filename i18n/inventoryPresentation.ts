@@ -58,15 +58,25 @@ export function inventoryStatusLabel(t: Translate, status: InventoryStatus): str
   return t("inventory.status.good");
 }
 
-function coverageCopy(
+/**
+ * Localizes coverage from the same thresholds as domain `getCoverageLabel`.
+ * Used by inventory rows and Home watching detail.
+ */
+export function localizeInventoryCoverage(
   t: Translate,
   formatNumber: FormatNumber,
-  item: InventoryItem,
-  prediction: InventoryPrediction
+  input: {
+    daysCoverage: number | null;
+    averageDailyUsage: number;
+    projectedQuantity: number;
+    parLevel: number;
+  }
 ): string {
-  const days = prediction.daysCoverage;
-  if (days === null || prediction.averageDailyUsage <= 0) return t("inventory.prediction.coverage.learning");
-  if (prediction.projectedQuantity > item.par_level * 1.35 || days >= 8) return t("inventory.prediction.coverage.high");
+  const days = input.daysCoverage;
+  if (days === null || input.averageDailyUsage <= 0) return t("inventory.prediction.coverage.learning");
+  if (input.projectedQuantity > input.parLevel * 1.35 || days >= 8) {
+    return t("inventory.prediction.coverage.high");
+  }
   if (days <= 0.75) return t("inventory.prediction.coverage.today");
   if (days <= 1.5) return t("inventory.prediction.coverage.tomorrow");
   if (days <= 3) {
@@ -74,6 +84,20 @@ function coverageCopy(
   }
   if (days >= 5) return t("inventory.prediction.coverage.days", { count: formatNumber(Math.floor(days)) });
   return t("inventory.prediction.coverage.several");
+}
+
+function coverageCopy(
+  t: Translate,
+  formatNumber: FormatNumber,
+  item: InventoryItem,
+  prediction: InventoryPrediction
+): string {
+  return localizeInventoryCoverage(t, formatNumber, {
+    daysCoverage: prediction.daysCoverage,
+    averageDailyUsage: prediction.averageDailyUsage,
+    projectedQuantity: prediction.projectedQuantity,
+    parLevel: item.par_level
+  });
 }
 
 function actionCopy(
