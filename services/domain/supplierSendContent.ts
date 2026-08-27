@@ -1,15 +1,15 @@
 import {
   SUPPLIER_SEND_CONTENT_VERSION,
-  type PurchaseRecommendation,
   type Restaurant,
   type RestaurantEmailConnection,
   type SupplierOrder,
+  type SupplierOrderLine,
   type SupplierRecipient,
   type SupplierSendContentBlockerCode,
   type SupplierSendContentLine
 } from "../../types/mise";
-import { buildSupplierOrderMessage } from "./miseDomain";
-import { utf8ByteLength } from "./securityLimits";
+import { formatQuantity } from "../../utils/format";
+import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8, utf8ByteLength } from "./securityLimits";
 
 export { SUPPLIER_SEND_CONTENT_VERSION } from "../../types/mise";
 
@@ -48,7 +48,35 @@ interface BuildSupplierSendContentInput {
   contentRevision: number;
   emailConnection: RestaurantEmailConnection | null;
   recipients: readonly SupplierRecipient[];
-  recommendations: readonly PurchaseRecommendation[];
+  /** Durable approve/send snapshots; never live recommendation rebuilds. */
+  orderLines: readonly SupplierOrderLine[];
+}
+
+/**
+ * Builds the expected order_message body from durable supplier order lines so
+ * send fingerprint validation cannot silently follow later recommendation edits.
+ */
+export function buildSupplierOrderMessageFromOrderLines(
+  supplierName: string,
+  orderLines: readonly SupplierOrderLine[],
+  operatorNote: string | null = null
+) {
+  const lines = orderLines
+    .slice()
+    .sort(
+      (left, right) =>
+        left.item_name.localeCompare(right.item_name) ||
+        (left.purchase_recommendation_id ?? "").localeCompare(
+          right.purchase_recommendation_id ?? ""
+        )
+    )
+    .map(
+      (line) =>
+        `${line.item_name} - ${formatQuantity(line.ordered_quantity)} ${line.unit}`
+    );
+  const base = `Order draft for ${supplierName}\n\n${lines.join("\n")}\n\nDelivery requested: Tomorrow morning`;
+  const note = operatorNote?.trim();
+  return truncateUtf8(note ? `${base}\n\nNotes:\n${note}` : base, ORDER_MESSAGE_MAX_BYTES);
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -177,36 +205,46 @@ export async function buildCanonicalSupplierSendContent(
   const subject = normalizedSubject(input.restaurant.name, input.order.supplier_name);
   if (!subject) blockers.add("send_subject_invalid");
 
-  const linked = input.recommendations
+  const linked = input.orderLines
     .filter(
-      (recommendation) =>
-        recommendation.restaurant_id === input.restaurant.id &&
-        recommendation.supplier_order_id === input.order.id &&
-        recommendation.status === "approved"
+      (line) =>
+        line.restaurant_id === input.restaurant.id &&
+        line.supplier_order_id === input.order.id
     )
     .slice()
-    .sort((left, right) => left.id.localeCompare(right.id));
-  if (linked.length === 0) blockers.add("order_lines_missing");
-  if (linked.length > CONTENT_MAX_LINES) blockers.add("send_content_too_large");
-  if (
-    linked.some(
-      (recommendation) =>
-        recommendation.supplier_id !== input.order.supplier_id ||
-        recommendation.supplier_name !== input.order.supplier_name
-    )
-  ) {
-    blockers.add("send_content_invalid");
-  }
-
-  const expectedBody = buildSupplierOrderMessage(
-    input.order.supplier_name,
-    linked,
-    input.order.operator_note
-  );
-  if (utf8ByteLength(input.order.order_message) > CONTENT_MAX_BYTES) {
+    .sort((left, right) =>
+      (left.purchase_recommendation_id ?? "").localeCompare(
+        right.purchase_recommendation_id ?? ""
+      )
+    );
+  if (linked.length === 0) {
+    blockers.add("order_lines_missing");
+  } else if (linked.length > CONTENT_MAX_LINES) {
     blockers.add("send_content_too_large");
-  } else if (input.order.order_message !== expectedBody) {
-    blockers.add("send_content_invalid");
+  } else {
+    if (
+      linked.some(
+        (line) =>
+          !line.purchase_recommendation_id ||
+          !Number.isFinite(line.ordered_quantity) ||
+          line.ordered_quantity <= 0 ||
+          !line.item_name.trim() ||
+          !line.unit.trim()
+      )
+    ) {
+      blockers.add("send_content_invalid");
+    }
+
+    const expectedBody = buildSupplierOrderMessageFromOrderLines(
+      input.order.supplier_name,
+      linked,
+      input.order.operator_note
+    );
+    if (utf8ByteLength(input.order.order_message) > CONTENT_MAX_BYTES) {
+      blockers.add("send_content_too_large");
+    } else if (input.order.order_message !== expectedBody) {
+      blockers.add("send_content_invalid");
+    }
   }
 
   const snapshot: CanonicalSupplierSendSnapshot = {
@@ -222,14 +260,14 @@ export async function buildCanonicalSupplierSendContent(
     body: input.order.order_message,
     deliveryDate: input.order.delivery_date,
     operatorNote: input.order.operator_note,
-    lines: linked.map((recommendation) => ({
-      recommendationId: recommendation.id,
-      inventoryItemId: recommendation.inventory_item_id,
-      supplierId: recommendation.supplier_id,
-      itemName: recommendation.item_name,
-      quantity: recommendation.recommended_quantity,
-      unit: recommendation.unit,
-      supplierName: recommendation.supplier_name
+    lines: linked.map((line) => ({
+      recommendationId: line.purchase_recommendation_id ?? "",
+      inventoryItemId: line.inventory_item_id,
+      supplierId: input.order.supplier_id,
+      itemName: line.item_name,
+      quantity: line.ordered_quantity,
+      unit: line.unit,
+      supplierName: input.order.supplier_name
     }))
   };
   const blockerCodes = [...blockers].sort();
