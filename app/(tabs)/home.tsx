@@ -50,7 +50,8 @@ import { presentOperationalTodayTask } from "../../services/presentation/operati
 import {
   presentOperatingBriefApproval,
   presentOperatingBriefMonitoringRow,
-  presentOperatingBriefPulseSummary
+  presentOperatingBriefPulseSummary,
+  presentRestaurantStatusEvidence
 } from "../../services/presentation/operatingBriefPresentation";
 import { taskRoleLabelKey } from "../../services/presentation/taskRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
@@ -357,6 +358,11 @@ function RestaurantStatusCard({
     ? presentOperatingBriefApproval(locale, primaryApproval)
     : null;
   const pulseSummary = presentOperatingBriefPulseSummary(locale, brief);
+  const statusEvidence = presentRestaurantStatusEvidence(locale, brief.restaurantStatus);
+  // Prefer structured inventory/approval risk signals over English freshness prose.
+  const freshnessIsOnlyRisk =
+    topRisk === brief.restaurantStatus.dataFreshness.label &&
+    brief.restaurantStatus.dataFreshness.state === "incomplete";
 
   return (
     <StatusNotice
@@ -367,7 +373,14 @@ function RestaurantStatusCard({
           ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
           : presentedApproval?.title || t(statusKey)
       }
-      message={topRisk ? t(statusKey) : presentedApproval?.whyItMatters ?? pulseSummary}
+      message={
+        freshnessIsOnlyRisk
+          ? statusEvidence.freshnessLabel
+          : topRisk
+            ? t(statusKey)
+            : presentedApproval?.whyItMatters ?? pulseSummary
+      }
+      meta={statusEvidence.metaLine}
       onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
     />
   );
@@ -407,9 +420,9 @@ function ApprovalsSection({
               <Text style={styles.metaLine}>
                 {t("home.approvals.why")}: {presented.whyItMatters}
               </Text>
-              {presented.confidenceRationale ? (
+              {presented.confidenceLine ? (
                 <Text style={styles.metaLine}>
-                  {t("home.approvals.confidence.label")}: {presented.confidenceRationale}
+                  {t("home.approvals.confidence.label")}: {presented.confidenceLine}
                 </Text>
               ) : null}
               <View style={styles.approvalActions}>

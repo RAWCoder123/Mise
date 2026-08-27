@@ -6,10 +6,13 @@ import type {
   OperatingBriefApprovalCard
 } from "../services/domain/operatingBrief";
 import {
+  presentDataFreshnessLabel,
   presentOperatingBriefApproval,
   presentOperatingBriefMonitoringRow,
-  presentOperatingBriefPulseSummary
+  presentOperatingBriefPulseSummary,
+  presentRestaurantStatusEvidence
 } from "../services/presentation/operatingBriefPresentation";
+import type { DataFreshnessDescriptor } from "../services/domain/operatingBrief";
 
 const locales = ["en", "es", "zh-Hans"] as const;
 const itemName = "龙门 Tomato";
@@ -146,7 +149,9 @@ test("presentOperatingBriefPulseSummary localizes status copy from structured co
         state: "fresh" as const,
         asOf: "2026-08-27T12:00:00.000Z",
         label: "fresh",
-        missingData: []
+        missingData: [],
+        missingCodes: [],
+        ageHours: 2
       },
       confidence: 0.7,
       confidenceRationale: "ok",
@@ -258,21 +263,26 @@ test("presentOperatingBriefApproval localizes structured confidence rationale fr
   assert.match(en.confidenceRationale ?? "", /Based on/);
   assert.match(en.confidenceRationale ?? "", /9 restaurant service-day samples/);
   assert.match(en.confidenceRationale ?? "", /within 24 hours/);
+  assert.match(en.confidenceLine ?? "", /^72% · /);
+  assert.ok((en.confidenceLine ?? "").includes(en.confidenceRationale ?? ""));
 
   const es = presentOperatingBriefApproval("es", card);
   assert.match(es.confidenceRationale ?? "", /Basado en/i);
   assert.match(es.confidenceRationale ?? "", /9/);
   assert.match(es.confidenceRationale ?? "", /24 horas/);
   assert.ok(!(es.confidenceRationale ?? "").includes("Based on"));
+  assert.match(es.confidenceLine ?? "", /72\s*%/);
 
   const zh = presentOperatingBriefApproval("zh-Hans", card);
   assert.match(zh.confidenceRationale ?? "", /基于/);
   assert.match(zh.confidenceRationale ?? "", /24/);
   assert.ok(!(zh.confidenceRationale ?? "").includes("Based on"));
+  assert.match(zh.confidenceLine ?? "", /72%/);
 
   const unavailable = presentOperatingBriefApproval(
     "es",
     recommendationCard({
+      confidence: null,
       confidenceReasons: [{ code: "unavailable" }],
       confidenceRationale:
         "Confidence is unavailable until Mise can calculate this item's demand and count freshness."
@@ -280,4 +290,59 @@ test("presentOperatingBriefApproval localizes structured confidence rationale fr
   );
   assert.match(unavailable.confidenceRationale ?? "", /confianza no está disponible/i);
   assert.ok(!(unavailable.confidenceRationale ?? "").includes("Confidence is unavailable"));
+  assert.equal(unavailable.confidenceLine, unavailable.confidenceRationale);
+});
+
+test("presentDataFreshnessLabel and restaurant status evidence localize structured freshness", () => {
+  const incomplete: DataFreshnessDescriptor = {
+    state: "incomplete",
+    asOf: "2026-08-27T12:00:00.000Z",
+    label: "Incomplete: missing POS sales, verified inventory counts.",
+    missingData: ["POS sales", "verified inventory counts"],
+    missingCodes: ["pos_sales", "verified_inventory_counts"],
+    ageHours: null
+  };
+  const stale: DataFreshnessDescriptor = {
+    state: "stale",
+    asOf: "2026-08-25T12:00:00.000Z",
+    label: "Last operational update was about 48 hours ago.",
+    missingData: [],
+    missingCodes: [],
+    ageHours: 48
+  };
+  const fresh: DataFreshnessDescriptor = {
+    state: "fresh",
+    asOf: "2026-08-27T12:00:00.000Z",
+    label: "Operational data is current enough for service decisions.",
+    missingData: [],
+    missingCodes: [],
+    ageHours: 3
+  };
+
+  const esIncomplete = presentDataFreshnessLabel("es", incomplete);
+  assert.match(esIncomplete, /Incompleto/i);
+  assert.match(esIncomplete, /ventas POS/i);
+  assert.ok(!esIncomplete.includes("POS sales"));
+
+  const zhStale = presentDataFreshnessLabel("zh-Hans", stale);
+  assert.match(zhStale, /48/);
+  assert.ok(!zhStale.includes("Last operational update"));
+
+  const evidence = presentRestaurantStatusEvidence("es", {
+    status: "attention_needed",
+    summary: "English only summary",
+    lastUpdated: fresh.asOf,
+    dataFreshness: fresh,
+    confidence: 0.82,
+    confidenceRationale: "Confidence reflects current inventory and sales coverage with no major data gaps.",
+    topRisk: null,
+    topOpportunity: null,
+    nextDecisionDeadline: null
+  });
+  assert.match(evidence.confidenceRationale, /confianza refleja/i);
+  assert.ok(!evidence.confidenceRationale.includes("Confidence reflects"));
+  assert.match(evidence.confidenceScore, /82\s*%/);
+  assert.match(evidence.metaLine, /Datos:/i);
+  assert.match(evidence.metaLine, /Confianza/i);
+  assert.ok(!evidence.metaLine.includes("English only summary"));
 });

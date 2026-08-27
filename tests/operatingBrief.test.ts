@@ -270,6 +270,9 @@ test("brief data freshness comes from verified counts, not from row update time"
   assert.ok(
     withoutCount.restaurantStatus.dataFreshness.missingData.includes("verified inventory counts")
   );
+  assert.ok(
+    withoutCount.restaurantStatus.dataFreshness.missingCodes.includes("verified_inventory_counts")
+  );
 
   const staleCount = buildOperatingBrief({
     restaurant: restaurant(),
