@@ -68,7 +68,7 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 13;
+  schema_version: 14;
   restaurants: Restaurant[];
   users: AppUser[];
   /** Durable tenant-scoped supplier identities. Names are presentation only. */
@@ -104,6 +104,10 @@ export interface DemoState {
   actionOutcomes: import("../domain/miseActions").Outcome[];
   /** Append-only inventory ledger mirror of hosted inventory_events. */
   inventoryEvents: InventoryEvent[];
+  /** Station registry mirror of hosted storage_locations. */
+  storageLocations: import("../../types/mise").StorageLocation[];
+  /** Per-station balances mirror of hosted inventory_location_balances. */
+  inventoryLocationBalances: import("../../types/mise").InventoryLocationBalance[];
   /** Open and historical inventory count sessions. */
   inventoryCountSessions: InventoryCountSessionDetail[];
   /** Supplier delivery mirror of hosted supplier_deliveries. */
@@ -355,7 +359,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 13,
+    schema_version: 14,
     restaurants: [restaurant],
     users: [user],
     suppliers: buildDemoSupplierCatalog(
@@ -373,6 +377,36 @@ export function createInitialDemoState(
     ),
     posSales,
     inventoryItems,
+    storageLocations: [
+      {
+        id: "00000000-0000-4000-8000-000000000701",
+        restaurant_id: DEMO_RESTAURANT_ID,
+        name: "Main",
+        sort_order: 0,
+        is_active: true,
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000702",
+        restaurant_id: DEMO_RESTAURANT_ID,
+        name: "Walk-in",
+        sort_order: 10,
+        is_active: true,
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000703",
+        restaurant_id: DEMO_RESTAURANT_ID,
+        name: "Line",
+        sort_order: 20,
+        is_active: true,
+        created_at: now,
+        updated_at: now
+      }
+    ],
+    inventoryLocationBalances: [],
     menuItemIngredients,
     purchaseRecommendations: [
       {
@@ -566,6 +600,9 @@ export function createInitialDemoState(
  * Version 12 introduces durable tenant-scoped supplier UUIDs. Exact normalized
  * names are used once to repair legacy state; every subsequent demo workflow
  * groups, selects recipients, and serializes content by supplier_id.
+ * Version 13 locks purchase-decision memory and pilot control mirrors.
+ * Version 14 adds storage locations and per-station inventory balances for
+ * transfers without changing restaurant on-hand totals.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const referenceRestaurantNameMatches =
@@ -731,7 +768,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 13,
+    schema_version: 14,
     restaurants,
     users: raw.users ?? seeded.users,
     suppliers,
@@ -782,6 +819,12 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       !(usesReferenceDataset && raw.inventoryEvents.length === 0)
         ? raw.inventoryEvents
         : seeded.inventoryEvents,
+    storageLocations: Array.isArray(raw.storageLocations)
+      ? raw.storageLocations
+      : seeded.storageLocations,
+    inventoryLocationBalances: Array.isArray(raw.inventoryLocationBalances)
+      ? raw.inventoryLocationBalances
+      : seeded.inventoryLocationBalances,
     inventoryCountSessions: Array.isArray(raw.inventoryCountSessions)
       ? raw.inventoryCountSessions
       : seeded.inventoryCountSessions,
@@ -805,7 +848,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 13 ||
+      raw.schema_version !== 14 ||
       !Array.isArray(raw.suppliers) ||
       JSON.stringify(raw.suppliers ?? []) !== JSON.stringify(suppliers) ||
       sourceInventoryItems.some(

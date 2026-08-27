@@ -33,6 +33,12 @@ import {
   seedDemoActivityFromState
 } from "../demo/demoActivity";
 import {
+  createDemoStorageLocation,
+  listDemoInventoryLocationBalances,
+  listDemoStorageLocations,
+  transferDemoInventory
+} from "../demo/storageLocations";
+import {
   filterActivities,
   fromInventoryWasteRecorded,
   fromRecalculationRunActivity,
@@ -856,6 +862,8 @@ export function createLocalDemoRepository(): MiseRepository {
               ? item.current_quantity + nativeQuantity
               : input.eventType === "waste" || input.eventType === "usage"
                 ? item.current_quantity - nativeQuantity
+                : input.eventType === "transfer"
+                  ? item.current_quantity
                 : item.current_quantity + nativeQuantity;
       if (
         !Number.isFinite(projectedQuantity) ||
@@ -1282,6 +1290,70 @@ export function createLocalDemoRepository(): MiseRepository {
     listInventoryEvents,
 
     recordInventoryEvent,
+
+    async fetchStorageLocations(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      requireActiveDemoRestaurant(state, restaurantId);
+      return listDemoStorageLocations(state, restaurantId);
+    },
+
+    async createStorageLocation(restaurantId, name) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        return createDemoStorageLocation(state, restaurantId, name);
+      });
+    },
+
+    async fetchInventoryLocationBalances(restaurantId, itemId) {
+      const state = await readReadyDemoState(restaurantId);
+      requireActiveDemoRestaurant(state, restaurantId);
+      return listDemoInventoryLocationBalances(state, restaurantId, itemId);
+    },
+
+    async transferInventory(
+      restaurantId,
+      itemId,
+      fromStorageLocationId,
+      toStorageLocationId,
+      quantity,
+      note
+    ) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const item = state.inventoryItems.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === itemId
+        );
+        if (!item) throw new Error("Inventory item not found");
+        const onHandBefore = item.current_quantity;
+        const result = transferDemoInventory({
+          state,
+          restaurantId,
+          item,
+          fromStorageLocationId,
+          toStorageLocationId,
+          quantity,
+          note,
+          actorUserId: DEMO_USER_ID
+        });
+        if (result.item.current_quantity !== onHandBefore) {
+          throw new Error("Transfer must not change restaurant on-hand quantity");
+        }
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "inventory_event.recorded",
+          entity_table: "inventory_events",
+          entity_id: result.event.id,
+          metadata: {
+            event_type: "transfer",
+            quantity_moved: quantity,
+            from_storage_location_id: fromStorageLocationId,
+            to_storage_location_id: toStorageLocationId,
+            simulated: true
+          }
+        });
+        return normalizeInventoryItem(result.item);
+      });
+    },
 
     async verifyInventoryItemCanonicalUnit(
       restaurantId,

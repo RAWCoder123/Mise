@@ -49,7 +49,9 @@ const restaurantOwnedTables = new Set([
   "supplier_delivery_items",
   "recalculation_runs",
   "inventory_count_sessions",
-  "inventory_count_lines"
+  "inventory_count_lines",
+  "storage_locations",
+  "inventory_location_balances"
 ]);
 
 const tenantAuthorizationTables = new Set(["restaurant_memberships"]);
@@ -163,7 +165,9 @@ const selectOnlyAuthenticatedTables = new Set([
   "pos_sales",
   "setup_attachments",
   "inventory_count_sessions",
-  "inventory_count_lines"
+  "inventory_count_lines",
+  "storage_locations",
+  "inventory_location_balances"
 ]);
 
 runRequired("Running existing static security checks...", process.execPath, ["scripts/security-static.mjs"]);
