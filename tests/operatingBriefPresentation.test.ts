@@ -353,7 +353,7 @@ test("presentDataFreshnessLabel and restaurant status evidence localize structur
   const incompleteEvidence = presentRestaurantStatusEvidence("en", {
     status: "at_risk",
     summary: "At risk",
-    lastUpdated: null,
+    lastUpdated: incomplete.asOf,
     dataFreshness: incomplete,
     confidence: 0.34,
     confidenceRationale: incomplete.label,
