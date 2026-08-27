@@ -15,6 +15,12 @@ import {
   type SupplierOrderSentWorkflowResult
 } from "../domain/miseDomain";
 import { buildInventoryCountEvidence } from "../domain/inventoryCountAuthority";
+import {
+  applyEstablishedPatternAdvisoryQuantity,
+  buildPurchaseDecisionPatterns,
+  describePurchaseDecisionAdvisoryQuantity,
+  selectAdvisoryPurchaseDecisionPattern
+} from "../domain/purchaseDecisionMemory";
 import { nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../../utils/format";
 import { demoDemandFallback } from "./demandFallback";
 import { DEMO_RESTAURANT_TIME_ZONE, type DemoState } from "./replaceableDemoData";
@@ -56,6 +62,10 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
   const recommendationHistory = [...state.purchaseRecommendations];
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
   const countEvidence = demoCountEvidence(state, restaurantId);
+  const purchaseDecisionPatterns = buildPurchaseDecisionPatterns(
+    (state.purchaseDecisionEvents ?? []).filter((event) => event.restaurantId === restaurantId),
+    state.inventoryItems.filter((item) => item.restaurant_id === restaurantId)
+  );
   const lowOutlooks = buildInventoryOutlooks(
     restaurantId,
     state.inventoryItems,
@@ -95,9 +105,29 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
       return;
     }
 
-    const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
-    const recommendedQuantity = learnedQuantity ?? prediction.suggestedOrderQuantity;
-    const reason = learnedRecommendationReason(item, prediction, learnedQuantity);
+    const patternAdvisory = applyEstablishedPatternAdvisoryQuantity({
+      calculatedQuantity: prediction.suggestedOrderQuantity,
+      parLevel: item.par_level,
+      pattern: selectAdvisoryPurchaseDecisionPattern(purchaseDecisionPatterns, {
+        inventoryItemId: item.id,
+        supplierId: item.supplier_id,
+        canonicalUnit:
+          item.canonical_unit_verification_status === "verified" ? item.canonical_unit : null,
+        recommendationSource: "mise_rules"
+      })
+    });
+    const learnedQuantity = patternAdvisory.applied
+      ? undefined
+      : boundedLearnedQuantity(item, prediction, learnedQuantities);
+    const recommendedQuantity = patternAdvisory.applied
+      ? patternAdvisory.quantity
+      : learnedQuantity ?? prediction.suggestedOrderQuantity;
+    const reason = learnedRecommendationReason(
+      item,
+      prediction,
+      learnedQuantity,
+      describePurchaseDecisionAdvisoryQuantity(item.unit, patternAdvisory)
+    );
 
     if (pending) {
       // Demo-generated recommendations carry the same explicit provenance as

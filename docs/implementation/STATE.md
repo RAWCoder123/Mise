@@ -59,15 +59,34 @@ is labeled `mixed`. Supplier reassignment or canonical-unit change makes the
 old pattern non-current; a supplier display-name rename does not.
 
 The Orders UI shows only eligible, current-context factual summaries in EN, ES,
-and ZH. It does not prefill, change, rank, approve, suppress, or otherwise feed
-patterns back into recommendations in MISE-004A. Raw actor-level events have no
-authenticated Data API read or write grant. Tenant members receive only the
-bounded aggregate RPC; exclusion requires owner, admin, or manager authority.
+and ZH. MISE-004A itself does not prefill, change, rank, approve, or suppress
+recommendations. MISE-004B (separate milestone) may apply an established
+`medianQuantityRatio` as a bounded advisory adjustment to calculated suggestion
+quantities only. Raw actor-level events have no authenticated Data API read or
+write grant. Tenant members receive only the bounded aggregate RPC; exclusion
+requires owner, admin, or manager authority.
 
 No historical backfill is attempted. Existing audits do not contain every
 action-time canonical and context field required by `mise.purchase_decision.v1`,
 so inventing legacy evidence would violate the evidence contract. Collection
 starts forward when MISE-004A is deployed.
+
+## MISE-004B bounded pattern advisory quantity
+
+MISE-004B feeds established purchase-decision patterns back into recommendation
+quantity calculation only. When a pattern is `eligible`, `established`,
+`currentContext`, and dominant outcome is `exact`, `upward`, or `downward`, the
+calculated suggestion is multiplied by `medianQuantityRatio`, then clamped to the
+same absolute bounds used by historical approved medians (`0.5×`–`1.75×`
+calculated, with the existing par ceiling). Emerging, mixed, insufficient, and
+dismissal-dominant patterns never change quantity and never suppress a
+recommendation.
+
+Approve, dismiss, undo, send, and Orders quantity inputs remain human-authorized.
+Pattern influence is disclosed in recommendation reason text. Hosted planning
+snapshots include the same factual aggregates via
+`private.purchase_decision_patterns_json`; demo rebuild uses
+`buildPurchaseDecisionPatterns` for parity.
 
 ## MISE-003C durable supplier invariant
 

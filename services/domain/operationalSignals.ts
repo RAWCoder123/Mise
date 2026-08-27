@@ -15,6 +15,13 @@ import {
   saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity.ts";
+import {
+  applyEstablishedPatternAdvisoryQuantity,
+  describePurchaseDecisionAdvisoryQuantity,
+  normalizePurchaseDecisionPattern,
+  selectAdvisoryPurchaseDecisionPattern,
+  type PurchaseDecisionPattern
+} from "./purchaseDecisionMemory.ts";
 
 export interface OperationalInventoryItem {
   id: string;
@@ -26,6 +33,8 @@ export interface OperationalInventoryItem {
   current_quantity: number;
   par_level: number;
   reorder_threshold: number;
+  canonical_unit?: string | null;
+  canonical_unit_verification_status?: string | null;
   /**
    * Row mutation time. Not physical-count evidence: it moves for policy, cost, and
    * supplier edits. Planning freshness comes from `inventoryLedgerEvents` instead.
@@ -97,6 +106,12 @@ export interface OperationalPlanningSnapshot {
   providerMappings?: readonly VerifiedProviderSaleMapping[];
   recommendationHistory: OperationalRecommendationHistory[];
   /**
+   * Optional MISE-004A/004B purchase-decision patterns. Hosted snapshots may
+   * supply snake_case RPC rows or already-normalized domain patterns. Missing
+   * or malformed rows never invent quantities.
+   */
+  purchaseDecisionPatterns?: readonly PurchaseDecisionPattern[] | readonly Record<string, unknown>[];
+  /**
    * Ledger rows from the append-only inventory ledger. Count rows supply the
    * authoritative baseline; non-count rows are needed to prove the materialized
    * on-hand quantity followed the count boundary. Absent evidence keeps planning
@@ -134,6 +149,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   );
   const handled = latestHandledByItem(snapshot.recommendationHistory);
   const learned = learnedQuantities(snapshot.recommendationHistory);
+  const purchaseDecisionPatterns = normalizeSnapshotPatterns(snapshot.purchaseDecisionPatterns);
   const recommendations: OperationalRecommendation[] = [];
   const insights: OperationalInsight[] = [];
 
@@ -182,16 +198,37 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       : false;
 
     if ((isCritical || isLow) && (!recentHandled || recountedAfterHandling)) {
-      const learnedQuantity = boundedLearnedQuantity(
-        learned.get(`${item.id}\u001f${canonicalInventoryUnit(item.unit)}`),
-        suggested,
-        item.par_level
-      );
-      const quantity = learnedQuantity ?? suggested;
+      const patternAdvisory = applyEstablishedPatternAdvisoryQuantity({
+        calculatedQuantity: suggested,
+        parLevel: item.par_level,
+        pattern: selectAdvisoryPurchaseDecisionPattern(purchaseDecisionPatterns, {
+          inventoryItemId: item.id,
+          supplierId: item.supplier_id,
+          canonicalUnit:
+            item.canonical_unit_verification_status === "verified" ? item.canonical_unit : null,
+          recommendationSource: "mise_rules"
+        })
+      });
+      const learnedQuantity = patternAdvisory.applied
+        ? undefined
+        : boundedLearnedQuantity(
+            learned.get(`${item.id}\u001f${canonicalInventoryUnit(item.unit)}`),
+            suggested,
+            item.par_level
+          );
+      const quantity = patternAdvisory.applied
+        ? patternAdvisory.quantity
+        : learnedQuantity ?? suggested;
       const coverage = baselineUsage > 0 ? projectedQuantity / baselineUsage : null;
-      const reason = coverage === null
+      const baseReason = coverage === null
         ? `${item.item_name} is at or below its reorder level. Mise recommends restoring it to par.`
         : `${item.item_name} has about ${round(coverage)} service days of projected coverage based on mapped demand.`;
+      const patternReason = describePurchaseDecisionAdvisoryQuantity(item.unit, patternAdvisory);
+      const reason = patternReason
+        ? `${baseReason} ${patternReason}`
+        : learnedQuantity !== undefined && learnedQuantity !== suggested
+          ? `${baseReason} Mise is using a stable median from recent approved orders: ${learnedQuantity} ${item.unit}.`
+          : baseReason;
       recommendations.push({
         restaurant_id: snapshot.restaurantId,
         inventory_item_id: item.id,
@@ -350,6 +387,7 @@ export function buildRecommendationInserts(
     inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
     ledgerComplete?: boolean;
     timeZone?: string | null;
+    purchaseDecisionPatterns?: OperationalPlanningSnapshot["purchaseDecisionPatterns"];
   } = {},
   providerMappings: readonly VerifiedProviderSaleMapping[] = []
 ) {
@@ -363,7 +401,8 @@ export function buildRecommendationInserts(
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone,
-    providerMappings
+    providerMappings,
+    purchaseDecisionPatterns: countEvidence.purchaseDecisionPatterns
   }).recommendations;
 }
 
@@ -437,6 +476,31 @@ function latestHandledByItem(history: OperationalRecommendationHistory[]) {
       if (!result.has(entry.inventory_item_id)) result.set(entry.inventory_item_id, entry);
     });
   return result;
+}
+
+function normalizeSnapshotPatterns(
+  patterns: OperationalPlanningSnapshot["purchaseDecisionPatterns"]
+): PurchaseDecisionPattern[] {
+  if (!patterns?.length) return [];
+  const normalized: PurchaseDecisionPattern[] = [];
+  for (const entry of patterns) {
+    try {
+      if (
+        entry &&
+        typeof entry === "object" &&
+        "inventoryItemId" in entry &&
+        "evidenceStrength" in entry &&
+        "medianQuantityRatio" in entry
+      ) {
+        normalized.push(entry as PurchaseDecisionPattern);
+        continue;
+      }
+      normalized.push(normalizePurchaseDecisionPattern(entry as Record<string, unknown>));
+    } catch {
+      // Malformed advisory rows are skipped; they must never invent quantities.
+    }
+  }
+  return normalized;
 }
 
 function learnedQuantities(history: OperationalRecommendationHistory[]) {

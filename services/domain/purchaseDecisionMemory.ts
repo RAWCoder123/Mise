@@ -83,6 +83,118 @@ export async function resolveAdvisoryPurchaseDecisionPatterns(
   }
 }
 
+/** MISE-004B keeps advisory ratio influence inside the same absolute bounds as history medians. */
+export const PURCHASE_DECISION_ADVISORY_RATIO_MIN = 0.5;
+export const PURCHASE_DECISION_ADVISORY_RATIO_MAX = 1.75;
+
+export interface PurchaseDecisionAdvisoryQuantityResult {
+  quantity: number;
+  applied: boolean;
+  medianQuantityRatio: number | null;
+  sampleCount: number | null;
+  dominantOutcome: PurchaseDecisionOutcome | null;
+}
+
+/**
+ * Selects an established, current-context pattern that may advise quantity.
+ * Dismissal-dominant and emerging/insufficient patterns never qualify.
+ */
+export function selectAdvisoryPurchaseDecisionPattern(
+  patterns: readonly PurchaseDecisionPattern[] | undefined,
+  input: {
+    inventoryItemId: string;
+    supplierId: string | null | undefined;
+    canonicalUnit: string | null | undefined;
+    recommendationSource?: "mise_rules" | "legacy_client";
+  }
+): PurchaseDecisionPattern | null {
+  if (!patterns?.length || !input.supplierId || !input.canonicalUnit) return null;
+  const recommendationSource = input.recommendationSource ?? "mise_rules";
+  const match = patterns.find(
+    (pattern) =>
+      pattern.inventoryItemId === input.inventoryItemId &&
+      pattern.supplierId === input.supplierId &&
+      pattern.canonicalUnit === input.canonicalUnit &&
+      pattern.recommendationSource === recommendationSource &&
+      pattern.eligible &&
+      pattern.evidenceStrength === "established" &&
+      pattern.currentContext &&
+      pattern.medianQuantityRatio !== null &&
+      Number.isFinite(pattern.medianQuantityRatio) &&
+      (pattern.dominantOutcome === "exact" ||
+        pattern.dominantOutcome === "upward" ||
+        pattern.dominantOutcome === "downward")
+  );
+  return match ?? null;
+}
+
+/**
+ * Applies an established chosen-to-suggested median ratio to a calculated quantity.
+ * Never invents a base quantity, never suppresses recommendations, and never
+ * escapes the existing absolute learning bounds.
+ */
+export function applyEstablishedPatternAdvisoryQuantity(input: {
+  calculatedQuantity: number;
+  parLevel: number;
+  pattern: PurchaseDecisionPattern | null | undefined;
+}): PurchaseDecisionAdvisoryQuantityResult {
+  const calculated = Math.max(1, Math.ceil(Number(input.calculatedQuantity) || 0));
+  const empty: PurchaseDecisionAdvisoryQuantityResult = {
+    quantity: calculated,
+    applied: false,
+    medianQuantityRatio: null,
+    sampleCount: null,
+    dominantOutcome: null
+  };
+  const pattern = input.pattern;
+  const ratio = pattern?.medianQuantityRatio ?? null;
+  if (
+    !pattern ||
+    !pattern.eligible ||
+    pattern.evidenceStrength !== "established" ||
+    !pattern.currentContext ||
+    (pattern.dominantOutcome !== "exact" &&
+      pattern.dominantOutcome !== "upward" &&
+      pattern.dominantOutcome !== "downward") ||
+    ratio === null ||
+    !Number.isFinite(ratio) ||
+    ratio < PURCHASE_DECISION_ADVISORY_RATIO_MIN ||
+    ratio > PURCHASE_DECISION_ADVISORY_RATIO_MAX
+  ) {
+    return empty;
+  }
+  const adjusted = Math.max(1, Math.ceil(calculated * ratio));
+  const minimum = Math.max(1, calculated * PURCHASE_DECISION_ADVISORY_RATIO_MIN);
+  const maximum = Math.max(
+    calculated * PURCHASE_DECISION_ADVISORY_RATIO_MAX,
+    (Number.isFinite(input.parLevel) ? input.parLevel : 0) * 1.25,
+    1
+  );
+  if (adjusted < minimum || adjusted > maximum) {
+    return empty;
+  }
+  return {
+    quantity: adjusted,
+    applied: true,
+    medianQuantityRatio: ratio,
+    sampleCount: pattern.sampleCount,
+    dominantOutcome: pattern.dominantOutcome
+  };
+}
+
+export function describePurchaseDecisionAdvisoryQuantity(
+  unit: string,
+  advisory: PurchaseDecisionAdvisoryQuantityResult
+) {
+  if (!advisory.applied || advisory.medianQuantityRatio === null || advisory.sampleCount === null) {
+    return null;
+  }
+  const ratioLabel = Number.isInteger(advisory.medianQuantityRatio)
+    ? String(advisory.medianQuantityRatio)
+    : advisory.medianQuantityRatio.toFixed(2).replace(/\.?0+$/, "");
+  return `Mise adjusted using an established purchase-decision pattern (median ratio ${ratioLabel} from ${advisory.sampleCount} decisions) to ${advisory.quantity} ${unit}.`;
+}
+
 function requireFinitePositive(value: number, label: string) {
   if (!Number.isFinite(value) || value <= 0 || value > 1_000_000_000) {
     throw new Error(`${label} must be a bounded positive quantity.`);
