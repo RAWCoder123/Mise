@@ -143,11 +143,16 @@ export type { SupplierOrderDeliveryEvidence };
 export async function fetchSupplierOrderOperationalDetail(
   restaurantId: string,
   orderId: string
-): Promise<{ order: SupplierOrder; deliveryEvidence: SupplierOrderDeliveryEvidence[] }> {
+): Promise<{
+  order: SupplierOrder;
+  lines: import("../../types/mise").SupplierOrderLine[];
+  deliveryEvidence: SupplierOrderDeliveryEvidence[];
+}> {
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
   const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
-  const [order, history, restaurant] = await Promise.all([
+  const [order, lines, history, restaurant] = await Promise.all([
     repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
+    repository.fetchSupplierOrderLines(normalizedRestaurantId, normalizedOrderId),
     repository.fetchSupplierDeliveryHistory(normalizedRestaurantId),
     repository.fetchRestaurant(normalizedRestaurantId)
   ]);
@@ -156,6 +161,7 @@ export async function fetchSupplierOrderOperationalDetail(
   }
   return {
     order,
+    lines,
     deliveryEvidence: buildSupplierOrderDeliveryEvidence({
       restaurantId: normalizedRestaurantId,
       restaurantTimeZone: restaurant.timezone,

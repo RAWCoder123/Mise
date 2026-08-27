@@ -44,7 +44,8 @@ import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type {
   RestaurantEmailConnection,
   SupplierEmailPayload,
-  SupplierOrder
+  SupplierOrder,
+  SupplierOrderLine
 } from "../../types/mise";
 
 type Translate = ReturnType<typeof useLocale>["t"];
@@ -62,6 +63,7 @@ export default function OrderDraftDetailScreen() {
   const { formatDate, formatNumber, t } = useLocale();
   const { memberships, restaurant, usingLocalDemo } = useMiseSession();
   const [order, setOrder] = useState<SupplierOrder | null>(null);
+  const [orderLines, setOrderLines] = useState<SupplierOrderLine[]>([]);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
@@ -112,6 +114,7 @@ export default function OrderDraftDetailScreen() {
         throw new Error(t("orders.detail.orderMismatch"));
       }
       setOrder(nextDetail.order);
+      setOrderLines(nextDetail.lines);
       setDeliveryEvidence(nextDetail.deliveryEvidence);
       setEmailConnection(nextEmailConnection);
       setEmailPayload(nextEmailPayload);
@@ -122,6 +125,7 @@ export default function OrderDraftDetailScreen() {
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
+      setOrderLines([]);
       setDeliveryEvidence([]);
       setEmailPayload(null);
       setSupplierSendAction(null);
@@ -145,6 +149,7 @@ export default function OrderDraftDetailScreen() {
     setLoadedRestaurantId(null);
     setHubLoadError(false);
     setOrder(null);
+    setOrderLines([]);
     setDeliveryEvidence([]);
     setEmailConnection(null);
     setEmailPayload(null);
@@ -419,6 +424,7 @@ export default function OrderDraftDetailScreen() {
   const visibleSupplierSendAction = hubReady ? supplierSendAction : null;
   const visibleDeliveryEvidence =
     hubReady ? deliveryEvidence : [];
+  const visibleOrderLines = hubReady ? orderLines : [];
   const gmailReady = Boolean(
     visibleEmailConnection?.status === "connected" &&
     visibleEmailPayload?.ready &&
@@ -570,6 +576,25 @@ export default function OrderDraftDetailScreen() {
               ))}
             </View>
           ) : null}
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t("orders.detail.lines.title")}</Text>
+            <Text style={styles.sectionBody}>{t("orders.detail.lines.body")}</Text>
+            {visibleOrderLines.length > 0 ? (
+              <View style={styles.linesPanel}>
+                {visibleOrderLines.map((line) => (
+                  <View key={line.id} style={styles.lineRow}>
+                    <Text style={styles.lineName}>{line.item_name}</Text>
+                    <Text style={styles.lineQty}>
+                      {formatNumber(line.ordered_quantity)} {line.unit}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.sectionBody}>{t("orders.detail.lines.empty.body")}</Text>
+            )}
+          </View>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("orders.detail.generated.title")}</Text>
@@ -1100,6 +1125,32 @@ const styles = StyleSheet.create({
   deliveryEvidenceNote: {
     color: colors.muted,
     ...typography.caption
+  },
+  linesPanel: {
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 4
+  },
+  lineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border
+  },
+  lineName: {
+    flex: 1,
+    color: colors.text,
+    ...typography.body
+  },
+  lineQty: {
+    color: colors.muted,
+    ...typography.body
   },
   messagePanel: {
     borderRadius: radii.lg,
