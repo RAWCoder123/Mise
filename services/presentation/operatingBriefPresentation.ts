@@ -3,6 +3,8 @@ import { translate } from "../../i18n/catalog";
 import { formatLocalizedNumber } from "../../i18n/formatters";
 import { localizeInventoryCoverage } from "../../i18n/inventoryPresentation";
 import type {
+  DataFreshnessDescriptor,
+  DataFreshnessMissingCode,
   MonitoringRow,
   OperatingBrief,
   OperatingBriefApprovalCard,
@@ -19,12 +21,23 @@ export interface PresentedOperatingBriefApproval {
   expectedOperationalImpact: string;
   riskIfIgnored: string;
   workAlreadyCompleted: string[];
+  /** Localized rationale only (no score). */
   confidenceRationale: string | null;
+  /** Localized "score · rationale" line for Home approval cards. */
+  confidenceLine: string | null;
 }
 
 export interface PresentedMonitoringRow {
   title: string;
   detail: string;
+}
+
+export interface PresentedRestaurantStatusEvidence {
+  freshnessLabel: string;
+  confidenceRationale: string;
+  confidenceScore: string;
+  /** Compact provenance line for StatusNotice meta. */
+  metaLine: string;
 }
 
 type Translate = (key: MessageKey, values?: MessageValues) => string;
@@ -36,6 +49,11 @@ function tFor(locale: AppLocale): Translate {
 function formatQuantity(locale: AppLocale, quantity: number | null): string | null {
   if (quantity === null || !Number.isFinite(quantity)) return null;
   return formatLocalizedNumber(locale, quantity, { maximumFractionDigits: 2 });
+}
+
+function formatConfidencePercent(locale: AppLocale, score: number): string {
+  const percent = Math.round(Math.max(0, Math.min(1, score)) * 100);
+  return `${formatLocalizedNumber(locale, percent, { maximumFractionDigits: 0 })}%`;
 }
 
 const ACTION_TYPE_KEYS: Partial<Record<MiseActionType, MessageKey>> = {
@@ -71,6 +89,13 @@ const CONFIDENCE_REASON_KEYS: Record<
   count_within_72h: "home.approvals.confidence.reason.count72h",
   count_older_or_unknown: "home.approvals.confidence.reason.countOlder",
   coverage_below_reorder: "home.approvals.confidence.reason.belowReorder"
+};
+
+const FRESHNESS_MISSING_KEYS: Record<DataFreshnessMissingCode, MessageKey> = {
+  pos_sales: "home.status.freshness.missing.pos_sales",
+  inventory_counts: "home.status.freshness.missing.inventory_counts",
+  inventory_projections: "home.status.freshness.missing.inventory_projections",
+  verified_inventory_counts: "home.status.freshness.missing.verified_inventory_counts"
 };
 
 function actionTypeLabel(t: Translate, actionType: string | null): string {
@@ -129,6 +154,20 @@ export function presentRecommendationConfidenceRationale(
   });
 }
 
+function withConfidenceScore(
+  locale: AppLocale,
+  score: number | null,
+  rationale: string | null
+): string | null {
+  if (!rationale) return null;
+  if (score === null || !Number.isFinite(score)) return rationale;
+  const t = tFor(locale);
+  return t("home.approvals.confidence.withScore", {
+    score: formatConfidencePercent(locale, score),
+    rationale
+  });
+}
+
 /**
  * Localizes structured Home approval copy. Keeps stored tenant prose
  * (`recommendation.reason`, finding explanations, custom action titles) unchanged.
@@ -148,6 +187,11 @@ export function presentOperatingBriefApproval(
       quantity && unit
         ? t("home.approvals.quantity.withUnit", { quantity, unit })
         : quantity ?? unit;
+    const confidenceRationale = presentRecommendationConfidenceRationale(
+      locale,
+      card.confidenceReasons,
+      card.confidenceRationale
+    );
 
     return {
       title: t("home.approvals.card.reorderTitle", { item }),
@@ -170,11 +214,8 @@ export function presentOperatingBriefApproval(
         t("home.approvals.card.work.comparedDemand"),
         t("home.approvals.card.work.preparedQuantity")
       ],
-      confidenceRationale: presentRecommendationConfidenceRationale(
-        locale,
-        card.confidenceReasons,
-        card.confidenceRationale
-      )
+      confidenceRationale,
+      confidenceLine: withConfidenceScore(locale, card.confidence, confidenceRationale)
     };
   }
 
@@ -204,11 +245,13 @@ export function presentOperatingBriefApproval(
         t("home.approvals.card.action.work.prepared"),
         t("home.approvals.card.action.work.gates")
       ],
-      confidenceRationale: null
+      confidenceRationale: null,
+      confidenceLine: null
     };
   }
 
   // Findings and any unknown source keep stored evidence prose.
+  const confidenceRationale = card.confidenceRationale;
   return {
     title: card.title,
     recommendedAction: card.recommendedAction,
@@ -217,7 +260,73 @@ export function presentOperatingBriefApproval(
     expectedOperationalImpact: card.expectedOperationalImpact,
     riskIfIgnored: card.riskIfIgnored,
     workAlreadyCompleted: [...card.workAlreadyCompleted],
-    confidenceRationale: card.confidenceRationale
+    confidenceRationale,
+    confidenceLine: withConfidenceScore(locale, card.confidence, confidenceRationale)
+  };
+}
+
+/**
+ * Localizes structured data-freshness labels for the Home restaurant-status card.
+ */
+export function presentDataFreshnessLabel(
+  locale: AppLocale,
+  freshness: DataFreshnessDescriptor
+): string {
+  const t = tFor(locale);
+  if (freshness.state === "incomplete") {
+    const items = joinReasonFragments(
+      locale,
+      freshness.missingCodes.map((code) => t(FRESHNESS_MISSING_KEYS[code]))
+    );
+    return t("home.status.freshness.incomplete", { items });
+  }
+  if (freshness.state === "stale") {
+    const hours = Math.round(freshness.ageHours ?? 0);
+    return t("home.status.freshness.stale", {
+      hours: formatLocalizedNumber(locale, hours, { maximumFractionDigits: 0 })
+    });
+  }
+  if (freshness.state === "unknown") {
+    return t("home.status.freshness.unknown");
+  }
+  return t("home.status.freshness.fresh");
+}
+
+/**
+ * Localizes restaurant-status confidence rationale from structured freshness.
+ * English `confidenceRationale` remains available for audits/back-compat.
+ */
+export function presentRestaurantStatusConfidenceRationale(
+  locale: AppLocale,
+  status: Pick<OperatingBrief["restaurantStatus"], "dataFreshness" | "confidenceRationale">
+): string {
+  if (status.dataFreshness.state === "fresh") {
+    return tFor(locale)("home.status.confidence.rationale.fresh");
+  }
+  return presentDataFreshnessLabel(locale, status.dataFreshness);
+}
+
+/**
+ * Builds localized freshness + confidence provenance for StatusNotice meta.
+ */
+export function presentRestaurantStatusEvidence(
+  locale: AppLocale,
+  status: OperatingBrief["restaurantStatus"]
+): PresentedRestaurantStatusEvidence {
+  const t = tFor(locale);
+  const freshnessLabel = presentDataFreshnessLabel(locale, status.dataFreshness);
+  const confidenceRationale = presentRestaurantStatusConfidenceRationale(locale, status);
+  const confidenceScore = formatConfidencePercent(locale, status.confidence);
+  const freshnessLine = t("home.status.freshness", { label: freshnessLabel });
+  const confidenceLine = t("home.status.confidence", { score: confidenceScore });
+  return {
+    freshnessLabel,
+    confidenceRationale,
+    confidenceScore,
+    metaLine: t("home.status.meta", {
+      freshness: freshnessLine,
+      confidence: confidenceLine
+    })
   };
 }
 

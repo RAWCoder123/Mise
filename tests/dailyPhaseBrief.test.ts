@@ -144,7 +144,9 @@ function fixtures(options: { allTasksComplete?: boolean } = {}) {
         state: "fresh",
         asOf: "2026-08-03T12:00:00.000Z",
         label: "Fresh",
-        missingData: []
+        missingData: [],
+        missingCodes: [],
+        ageHours: 1
       },
       confidence: 0.84,
       confidenceRationale: "Verified sales and counts agree.",

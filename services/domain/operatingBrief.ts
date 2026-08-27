@@ -25,11 +25,26 @@ import {
 
 export type RestaurantPulseStatus = "on_track" | "attention_needed" | "at_risk";
 
+/**
+ * Structured missing-data codes for operating-brief freshness.
+ * Presentation localizes these; `missingData` / `label` keep English for audits.
+ */
+export type DataFreshnessMissingCode =
+  | "pos_sales"
+  | "inventory_counts"
+  | "inventory_projections"
+  | "verified_inventory_counts";
+
 export interface DataFreshnessDescriptor {
   state: "fresh" | "stale" | "incomplete" | "unknown";
   asOf: string;
+  /** English audit/back-compat label. Prefer structured fields + presentation. */
   label: string;
+  /** English missing labels for older callers. Prefer `missingCodes`. */
   missingData: string[];
+  missingCodes: DataFreshnessMissingCode[];
+  /** Age of the newest usable sales/count evidence relative to brief generation. */
+  ageHours: number | null;
 }
 
 export type OperatingBriefApprovalSource = "recommendation" | "action" | "finding";
@@ -189,12 +204,37 @@ function hoursBetween(laterIso: string, earlierIso: string) {
   return (later - earlier) / (60 * 60 * 1000);
 }
 
+const FRESHNESS_MISSING_EN: Record<DataFreshnessMissingCode, string> = {
+  pos_sales: "POS sales",
+  inventory_counts: "inventory counts",
+  inventory_projections: "inventory projections",
+  verified_inventory_counts: "verified inventory counts"
+};
+
+function englishFreshnessLabel(
+  state: DataFreshnessDescriptor["state"],
+  missingCodes: readonly DataFreshnessMissingCode[],
+  ageHours: number | null
+): string {
+  if (state === "incomplete") {
+    const missingData = missingCodes.map((code) => FRESHNESS_MISSING_EN[code]);
+    return `Incomplete: missing ${missingData.join(", ")}.`;
+  }
+  if (state === "stale") {
+    return `Last operational update was about ${Math.round(ageHours ?? 0)} hours ago.`;
+  }
+  if (state === "unknown") {
+    return "Data freshness could not be determined.";
+  }
+  return "Operational data is current enough for service decisions.";
+}
+
 function buildDataFreshness(input: OperatingBriefInput, generatedAt: string): DataFreshnessDescriptor {
-  const missingData: string[] = [];
-  if (input.sales.length === 0) missingData.push("POS sales");
-  if (input.inventoryItems.length === 0) missingData.push("inventory counts");
+  const missingCodes: DataFreshnessMissingCode[] = [];
+  if (input.sales.length === 0) missingCodes.push("pos_sales");
+  if (input.inventoryItems.length === 0) missingCodes.push("inventory_counts");
   if ((input.inventoryOutlooks?.length ?? 0) === 0 && input.inventoryItems.length > 0) {
-    missingData.push("inventory projections");
+    missingCodes.push("inventory_projections");
   }
 
   // Physical-inventory freshness comes only from verified count evidence carried on
@@ -206,7 +246,7 @@ function buildDataFreshness(input: OperatingBriefInput, generatedAt: string): Da
     .sort()
     .at(-1);
   if (input.inventoryItems.length > 0 && !latestInventory) {
-    missingData.push("verified inventory counts");
+    missingCodes.push("verified_inventory_counts");
   }
   const latestSale = input.sales
     .map((sale) => sale.created_at)
@@ -219,36 +259,45 @@ function buildDataFreshness(input: OperatingBriefInput, generatedAt: string): Da
       : latestSale
     : latestInventory ?? latestSale ?? generatedAt;
   const ageHours = hoursBetween(generatedAt, asOf);
+  const missingData = missingCodes.map((code) => FRESHNESS_MISSING_EN[code]);
 
-  if (missingData.length > 0) {
+  if (missingCodes.length > 0) {
     return {
       state: "incomplete",
       asOf,
-      label: `Incomplete: missing ${missingData.join(", ")}.`,
-      missingData
+      label: englishFreshnessLabel("incomplete", missingCodes, ageHours),
+      missingData,
+      missingCodes,
+      ageHours
     };
   }
   if (ageHours !== null && ageHours > 36) {
     return {
       state: "stale",
       asOf,
-      label: `Last operational update was about ${Math.round(ageHours)} hours ago.`,
-      missingData
+      label: englishFreshnessLabel("stale", missingCodes, ageHours),
+      missingData,
+      missingCodes,
+      ageHours
     };
   }
   if (ageHours === null) {
     return {
       state: "unknown",
       asOf,
-      label: "Data freshness could not be determined.",
-      missingData
+      label: englishFreshnessLabel("unknown", missingCodes, ageHours),
+      missingData,
+      missingCodes,
+      ageHours
     };
   }
   return {
     state: "fresh",
     asOf,
-    label: "Operational data is current enough for service decisions.",
-    missingData
+    label: englishFreshnessLabel("fresh", missingCodes, ageHours),
+    missingData,
+    missingCodes,
+    ageHours
   };
 }
 
@@ -726,6 +775,8 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
         freshness.state === "fresh"
           ? "Confidence reflects current inventory and sales coverage with no major data gaps."
           : freshness.label,
+      // topRisk may still carry English freshness when incomplete; Home presents
+      // localized freshness via structured dataFreshness instead of this string.
       topRisk,
       topOpportunity,
       nextDecisionDeadline: approvals.find((card) => card.deadline)?.deadline ?? null
