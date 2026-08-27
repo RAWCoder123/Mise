@@ -141,7 +141,12 @@ test("completed tasks are projections of changed source state and keep stable ID
 
   for (const sourceId of ["rec_transition", "order_transition", "pos_transition", "profile"]) {
     const before = open.find((task) => task.source.id === sourceId);
-    const after = completed.find((task) => task.source.id === sourceId);
+    const after =
+      sourceId === "order_transition"
+        ? completed.find(
+            (task) => task.source.id === sourceId && task.action.intent === "send_supplier_order"
+          )
+        : completed.find((task) => task.source.id === sourceId);
     assert.ok(before, `expected open source ${sourceId}`);
     assert.ok(after, `expected completed source ${sourceId}`);
     assert.equal(after.id, before.id);
@@ -149,6 +154,13 @@ test("completed tasks are projections of changed source state and keep stable ID
     assert.equal(after.completion.derivedFromSource, true);
     assert.equal(after.completion.canToggleDirectly, false);
   }
+
+  const openReceive = completed.find(
+    (task) => task.source.id === "order_transition" && task.action.intent === "receive_supplier_order"
+  );
+  assert.ok(openReceive, "sent orders project an open receive task");
+  assert.equal(openReceive.status, "open");
+  assert.equal(openReceive.presentation?.code, "today.order.receive");
 
   const defaultQueue = deriveOperationalTodayTasks({
     restaurantId,
@@ -158,6 +170,52 @@ test("completed tasks are projections of changed source state and keep stable ID
     orders: [order({ id: "order_transition", status: "sent" })],
     setupReadiness: setupReadiness({ complete: true }),
     posIntegrations: [integration({ id: "pos_transition", status: "connected" })],
+    insights: [],
+    now
+  });
+  assert.equal(defaultQueue.length, 1);
+  assert.equal(defaultQueue[0]?.action.intent, "receive_supplier_order");
+  assert.equal(defaultQueue[0]?.status, "open");
+});
+
+test("completed receives close the open receive task while preserving send completion", () => {
+  const sent = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [order({ id: "order_receive", status: "sent", delivery_date: "2026-07-18" })],
+    insights: [],
+    now
+  });
+  const received = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [order({ id: "order_receive", status: "completed", delivery_date: "2026-07-18" })],
+    insights: [],
+    includeCompleted: true,
+    now
+  });
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.action.intent, "receive_supplier_order");
+  assert.equal(sent[0]?.status, "open");
+
+  const sendTask = received.find((task) => task.action.intent === "send_supplier_order");
+  const receiveTask = received.find((task) => task.action.intent === "receive_supplier_order");
+  assert.equal(sendTask?.status, "completed");
+  assert.equal(receiveTask?.status, "completed");
+  assert.equal(receiveTask?.id, sent[0]?.id);
+  assert.equal(receiveTask?.presentation?.code, "today.order.received");
+
+  const defaultQueue = deriveOperationalTodayTasks({
+    restaurantId,
+    restaurantTimeZone: "UTC",
+    inventoryOutlooks: [],
+    recommendations: [],
+    orders: [order({ id: "order_receive", status: "completed", delivery_date: "2026-07-18" })],
     insights: [],
     now
   });
