@@ -43,6 +43,7 @@ export const INSIGHT_PRESENTATION_CODES = [
   "insight.rule.sales.demand_rising",
   "insight.rule.prep.low_stock",
   "insight.rule.waste.overstock",
+  "insight.rule.ordering.chronic_count_short",
   "insight.evidence.opaque"
 ] as const;
 
@@ -147,6 +148,15 @@ export type InsightPresentationDescriptor =
   | {
       code: "insight.rule.waste.overstock";
       values: { itemName: string; quantity: number; unit: string };
+    }
+  | {
+      code: "insight.rule.ordering.chronic_count_short";
+      values: {
+        itemName: string;
+        supplierName: string;
+        countPercent: number;
+        sampleCount: number;
+      };
     }
   | {
       code: "insight.evidence.opaque";

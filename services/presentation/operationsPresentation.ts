@@ -98,6 +98,14 @@ interface OperationsCopy {
     wasteDescription: (itemName: string, quantity: string, unit: string) => string;
     wasteWhy: string;
     wasteAction: (itemName: string) => string;
+    countShortTitle: (itemName: string) => string;
+    countShortDescription: (
+      itemName: string,
+      countPercentLabel: string,
+      sampleCountLabel: string
+    ) => string;
+    countShortWhy: string;
+    countShortAction: (supplierName: string, itemName: string) => string;
   };
   memory: {
     reliableLabel: string;
@@ -209,7 +217,14 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       wasteTitle: (itemName) => `${itemName} may be overstocked`,
       wasteDescription: (itemName, quantity, unit) => `${itemName} has about ${quantity} ${unit}, more than projected use.`,
       wasteWhy: "Extra on hand can spoil or tie up cash before the next rush needs it.",
-      wasteAction: (itemName) => `Skip or trim the next ${itemName} order unless tonight’s sales stay hot.`
+      wasteAction: (itemName) => `Skip or trim the next ${itemName} order unless tonight’s sales stay hot.`,
+      countShortTitle: (itemName) => `${itemName} often counts short after receive`,
+      countShortDescription: (itemName, countPercentLabel, sampleCountLabel) =>
+        `Recent post-receive counts for ${itemName} averaged about ${countPercentLabel} of system quantity across ${sampleCountLabel} purchase-loop counts.`,
+      countShortWhy:
+        "Chronic post-receive undercounts mean on-hand is lower than the system expected and can create avoidable stockouts.",
+      countShortAction: (supplierName, itemName) =>
+        `Pad the next ${supplierName} ticket and recount ${itemName} after the next delivery.`
     },
     memory: {
       reliableLabel: "Mise memory is reliable",
@@ -321,7 +336,14 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       wasteTitle: (itemName) => `${itemName} podría tener exceso de existencias`,
       wasteDescription: (itemName, quantity, unit) => `Hay cerca de ${quantity} ${unit} de ${itemName}, más que el uso proyectado.`,
       wasteWhy: "El exceso de existencias puede inmovilizar efectivo o aumentar el riesgo de desperdicio.",
-      wasteAction: (itemName) => `Retrasa el próximo pedido de ${itemName} salvo que aumenten las ventas.`
+      wasteAction: (itemName) => `Retrasa el próximo pedido de ${itemName} salvo que aumenten las ventas.`,
+      countShortTitle: (itemName) => `${itemName} suele contar corto después de recibir`,
+      countShortDescription: (itemName, countPercentLabel, sampleCountLabel) =>
+        `Los conteos posteriores a la recepción de ${itemName} promedian cerca del ${countPercentLabel} de la cantidad del sistema en ${sampleCountLabel} ciclos de compra.`,
+      countShortWhy:
+        "Los faltantes crónicos después de recibir dejan menos existencias de las previstas y pueden causar quiebres evitables.",
+      countShortAction: (supplierName, itemName) =>
+        `Ajusta el próximo pedido de ${supplierName} y vuelve a contar ${itemName} después de la siguiente entrega.`
     },
     memory: {
       reliableLabel: "La memoria de Mise es confiable",
@@ -431,7 +453,13 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       wasteTitle: (itemName) => `${itemName} 可能库存过多`,
       wasteDescription: (itemName, quantity, unit) => `${itemName} 约有 ${quantity} ${unit}，高于预计用量。`,
       wasteWhy: "库存过多可能占用现金或增加损耗风险。",
-      wasteAction: (itemName) => `除非销量上升，否则请推迟下一次 ${itemName} 订货。`
+      wasteAction: (itemName) => `除非销量上升，否则请推迟下一次 ${itemName} 订货。`,
+      countShortTitle: (itemName) => `${itemName} 收货后盘点常偏少`,
+      countShortDescription: (itemName, countPercentLabel, sampleCountLabel) =>
+        `${itemName} 最近收货后的盘点平均约为系统数量的 ${countPercentLabel}，基于 ${sampleCountLabel} 次采购闭环盘点。`,
+      countShortWhy: "收货后持续盘点偏少意味着实际库存低于系统预期，可能导致可避免的缺货。",
+      countShortAction: (supplierName, itemName) =>
+        `为下一次 ${supplierName} 订单加量，并在下次到货后重新盘点 ${itemName}。`
     },
     memory: {
       reliableLabel: "Mise 运营记忆可靠",
@@ -613,6 +641,19 @@ export function presentInsight(locale: AppLocale, insight: Insight): PresentedIn
       ),
       whyItMatters: copy.insight.wasteWhy,
       recommendedAction: copy.insight.wasteAction(values.itemName),
+      evidenceOnly: false
+    };
+  }
+  if (code === "insight.rule.ordering.chronic_count_short") {
+    return {
+      title: copy.insight.countShortTitle(values.itemName),
+      description: copy.insight.countShortDescription(
+        values.itemName,
+        formatPercent(locale, values.countPercent),
+        formatQuantity(locale, values.sampleCount)
+      ),
+      whyItMatters: copy.insight.countShortWhy,
+      recommendedAction: copy.insight.countShortAction(values.supplierName, values.itemName),
       evidenceOnly: false
     };
   }

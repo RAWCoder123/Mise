@@ -62,6 +62,7 @@ import {
   buildPurchaseLoopReceiveOutcomeMeasurement,
   selectPendingPurchaseLoopReceiveLines
 } from "../domain/purchaseLoopOutcome";
+import { extractPurchaseLoopCountSamples } from "../domain/purchaseLoopLearning";
 import {
   defaultAutonomyRules,
   type RestaurantAutonomyRule
@@ -1602,7 +1603,8 @@ export function createLocalDemoRepository(): MiseRepository {
           .map(normalizeMenuItemIngredient),
         providerMappings,
         operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone),
-        timeZone: restaurant.timezone
+        timeZone: restaurant.timezone,
+        purchaseLoopCountHistory: extractPurchaseLoopCountSamples(state.actionOutcomes ?? [], restaurantId)
       };
     },
 

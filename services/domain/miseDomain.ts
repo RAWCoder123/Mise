@@ -50,6 +50,13 @@ import {
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity";
 import type { PurchaseAuthorityResult } from "./purchaseAuthority";
+import {
+  applyPurchaseLoopCountBias,
+  buildChronicCountShortInsightInput,
+  buildPurchaseLoopCountBiasByItem,
+  purchaseLoopCountBiasReasonFragment,
+  type PurchaseLoopCountSample
+} from "./purchaseLoopLearning";
 
 /**
  * Optional seeded demand source for tenants without sales history.
@@ -172,13 +179,15 @@ export function recommendationReason(item: InventoryItem, prediction?: Inventory
 export function learnedRecommendationReason(
   item: InventoryItem,
   prediction: InventoryPrediction,
-  learnedQuantity: number | undefined
+  learnedQuantity: number | undefined,
+  countBiasReason?: string
 ) {
   const reason = recommendationReason(item, prediction);
-  if (learnedQuantity === undefined || learnedQuantity === prediction.suggestedOrderQuantity) {
-    return reason;
-  }
-  return `${reason} Mise is using a stable median from recent approved orders: ${formatQuantity(learnedQuantity)} ${item.unit}.`;
+  const withApprovalLearning =
+    learnedQuantity === undefined || learnedQuantity === prediction.suggestedOrderQuantity
+      ? reason
+      : `${reason} Mise is using a stable median from recent approved orders: ${formatQuantity(learnedQuantity)} ${item.unit}.`;
+  return countBiasReason ? `${withApprovalLearning} ${countBiasReason}` : withApprovalLearning;
 }
 
 export function buildLearnedOrderQuantities(restaurantId: string, history: PurchaseRecommendation[] = []) {
@@ -841,7 +850,8 @@ export function buildInsightsFromData(
   operatingDate: string,
   demandFallback?: DemandFallback,
   countEvidence?: InventoryCountEvidenceMap,
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  purchaseLoopCountHistory: readonly PurchaseLoopCountSample[] = []
 ) {
   const now = new Date().toISOString();
   const todaySales = sales.filter(
@@ -986,7 +996,13 @@ export function buildInsightsFromData(
       });
     });
 
-  return insights.slice(0, 8);
+  const chronicCountShortInsights = buildChronicCountShortOrderingInsights(
+    restaurantId,
+    inventoryItems,
+    purchaseLoopCountHistory,
+    now
+  );
+  return [...chronicCountShortInsights, ...insights].slice(0, 8);
 }
 
 export function buildTodaySummary(
@@ -2002,7 +2018,8 @@ export function buildRecommendationInserts(
   operatingDate: string,
   demandFallback?: DemandFallback,
   countEvidence?: InventoryCountEvidenceMap,
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  purchaseLoopCountHistory: readonly PurchaseLoopCountSample[] = []
 ) {
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
   const historicalBaselines = buildHistoricalDemandBaselines(
@@ -2012,6 +2029,7 @@ export function buildRecommendationInserts(
     mappings,
     providerMappings
   );
+  const countBiasByItem = buildPurchaseLoopCountBiasByItem(purchaseLoopCountHistory);
 
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
@@ -2032,20 +2050,69 @@ export function buildRecommendationInserts(
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
     .map(({ item, prediction }) => {
       const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
+      const afterApprovalLearning = learnedQuantity ?? prediction.suggestedOrderQuantity;
+      const countBias = countBiasByItem.get(item.id);
+      const paddedQuantity = applyPurchaseLoopCountBias(afterApprovalLearning, countBias, {
+        calculated: prediction.suggestedOrderQuantity,
+        par: item.par_level
+      });
+      const recommendedQuantity = paddedQuantity ?? afterApprovalLearning;
+      const countBiasReason =
+        countBias?.isChronic && paddedQuantity != null && paddedQuantity !== afterApprovalLearning
+          ? purchaseLoopCountBiasReasonFragment(countBias)
+          : undefined;
       return {
         restaurant_id: restaurantId,
         inventory_item_id: item.id,
         item_name: item.item_name,
         supplier_id: item.supplier_id,
         supplier_name: item.supplier_name,
-        recommended_quantity: learnedQuantity ?? prediction.suggestedOrderQuantity,
+        recommended_quantity: recommendedQuantity,
         unit: item.unit,
-        reason: learnedRecommendationReason(item, prediction, learnedQuantity),
+        reason: learnedRecommendationReason(item, prediction, learnedQuantity, countBiasReason),
         urgency: prediction.urgency,
         status: "pending" as RecommendationStatus,
         supplier_order_id: null
       };
     });
+}
+
+export function buildChronicCountShortOrderingInsights(
+  restaurantId: string,
+  inventoryItems: InventoryItem[],
+  purchaseLoopCountHistory: readonly PurchaseLoopCountSample[] = [],
+  createdAt = new Date().toISOString()
+): Insight[] {
+  const countBiasByItem = buildPurchaseLoopCountBiasByItem(purchaseLoopCountHistory);
+  const insights: Insight[] = [];
+  for (const item of inventoryItems.filter((entry) => entry.restaurant_id === restaurantId)) {
+    const bias = countBiasByItem.get(item.id);
+    if (!bias) continue;
+    const input = buildChronicCountShortInsightInput(bias);
+    if (!input) continue;
+    insights.push({
+      id: `insight_count_short_${item.id}`,
+      restaurant_id: restaurantId,
+      insight_type: input.insightType,
+      title: `${item.item_name} often counts short after receive`,
+      description: `Recent post-receive counts for ${item.item_name} averaged about ${input.countPercent}% of system quantity across ${bias.sampleCount} purchase-loop counts.`,
+      why_it_matters:
+        "Chronic post-receive undercounts mean on-hand is lower than the system expected and can create avoidable stockouts.",
+      recommended_action: `Pad the next ${item.supplier_name} ticket and recount ${item.item_name.toLowerCase()} after the next delivery.`,
+      severity: input.severity,
+      created_at: createdAt,
+      presentation: {
+        code: "insight.rule.ordering.chronic_count_short",
+        values: {
+          itemName: item.item_name,
+          supplierName: item.supplier_name,
+          countPercent: input.countPercent,
+          sampleCount: bias.sampleCount
+        }
+      }
+    });
+  }
+  return insights.slice(0, 2);
 }
 
 export function severityRankForUrgency(urgency: Urgency) {

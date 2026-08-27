@@ -76,6 +76,7 @@ import {
   normalizePurchaseDecisionEvent,
   normalizePurchaseDecisionPattern,
 } from "../domain/purchaseDecisionMemory";
+import { extractPurchaseLoopCountSamples } from "../domain/purchaseLoopLearning";
 import {
   normalizeAppUser,
   normalizeInsight,
@@ -1280,17 +1281,53 @@ export function createSupabaseRepository(): MiseRepository {
     },
 
     async fetchPlanningData(restaurantId) {
-      const [inventoryResult, sales, mappingResult, restaurantResult] = await Promise.all([
+      const [inventoryResult, sales, mappingResult, restaurantResult, outcomeResult] = await Promise.all([
         client.from("inventory_items").select(inventorySupplierSelect).eq("restaurant_id", restaurantId).order("item_name"),
         fetchBoundedPlanningSales(restaurantId),
         client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
-        client.from("restaurants").select("timezone").eq("id", restaurantId).single()
+        client.from("restaurants").select("timezone").eq("id", restaurantId).single(),
+        client
+          .from("action_outcomes")
+          .select("id, restaurant_id, measured_at, actual_result")
+          .eq("restaurant_id", restaurantId)
+          .order("measured_at", { ascending: false })
+          .limit(200)
       ]);
       if (inventoryResult.error) throw inventoryResult.error;
       if (mappingResult.error) throw mappingResult.error;
       if (restaurantResult.error) throw restaurantResult.error;
+      if (outcomeResult.error) throw outcomeResult.error;
       const timeZone = (restaurantResult.data as Pick<Restaurant, "timezone">).timezone;
       const providerMappings = await fetchVerifiedProviderMappings(restaurantId);
+      const purchaseLoopCountHistory = extractPurchaseLoopCountSamples(
+        (outcomeResult.data ?? [])
+          .filter((row) => Boolean(row) && typeof row === "object")
+          .map((row) => {
+            const record = row as {
+              id?: unknown;
+              restaurant_id?: unknown;
+              measured_at?: unknown;
+              actual_result?: unknown;
+            };
+            return {
+              id: typeof record.id === "string" ? record.id : String(record.id ?? ""),
+              restaurantId:
+                typeof record.restaurant_id === "string"
+                  ? record.restaurant_id
+                  : String(record.restaurant_id ?? ""),
+              measuredAt:
+                typeof record.measured_at === "string"
+                  ? record.measured_at
+                  : String(record.measured_at ?? ""),
+              actualResult:
+                record.actual_result && typeof record.actual_result === "object"
+                  ? (record.actual_result as Record<string, unknown>)
+                  : {}
+            };
+          })
+          .filter((row) => row.id && row.restaurantId && row.measuredAt),
+        restaurantId
+      );
       return {
         inventoryItems: (inventoryResult.data ?? []).map((row) =>
           normalizeInventoryItem(withCurrentSupplierDisplay(row, "Inventory item") as unknown as InventoryItem)
@@ -1299,7 +1336,8 @@ export function createSupabaseRepository(): MiseRepository {
         menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
         providerMappings,
         operatingDate: toDateKeyInTimeZone(new Date(), timeZone),
-        timeZone
+        timeZone,
+        purchaseLoopCountHistory
       };
     },
 
