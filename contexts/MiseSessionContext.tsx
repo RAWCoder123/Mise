@@ -186,6 +186,24 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // Commit membership authorization before restaurant loads so a later
+      // preferred-workspace failure cannot preserve a revoked membership/role.
+      setMemberships(nextMemberships);
+      const preferredId = preferredRestaurantId ?? activeRestaurantIdRef.current;
+      const membershipForPreferred = activeMembershipForRestaurant(nextMemberships, preferredId);
+      if (preferredId && !membershipForPreferred) {
+        activeRestaurantIdRef.current = null;
+        setRestaurant(null);
+        setAvailableRestaurants([]);
+        setRole(null);
+        setUser(appUserFromAuth(nextAuthUser, null, null));
+        await refreshPOS(null);
+        if (sessionRequestId !== sessionRequestIdRef.current) return;
+      } else if (membershipForPreferred) {
+        setRole(membershipForPreferred.role);
+        setUser(appUserFromAuth(nextAuthUser, membershipForPreferred.restaurant_id, membershipForPreferred.role));
+      }
+
       // Tolerate per-membership restaurant failures so one orphan/denied workspace
       // cannot block every other restaurant. Fail closed only when the preferred
       // workspace (or every workspace) cannot load.
@@ -343,6 +361,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
 
     let mounted = true;
     let refreshing = false;
+    let pendingDenialRevalidation = false;
 
     const membershipSignature = (items: RestaurantMembership[]) =>
       items
@@ -350,41 +369,64 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
         .sort()
         .join("|");
 
-    const revalidateLiveMemberships = async () => {
-      if (!mounted || refreshing) return;
+    const clearUnverifiedWorkspaceAccess = async () => {
+      sessionRequestIdRef.current += 1;
+      switchRequestIdRef.current += 1;
+      posRequestIdRef.current += 1;
+      activeRestaurantIdRef.current = null;
+      setRestaurant(null);
+      setAvailableRestaurants([]);
+      setMemberships([]);
+      setRole(null);
+      setUser(appUserFromAuth(authUser, null, null));
+      setPosProvider(null);
+      setPosStatusLabel("Not connected");
+      await saveSnapshot({ activeRestaurantId: null, isDemoMode: false });
+    };
+
+    const revalidateLiveMemberships = async (options?: { failClosedOnError?: boolean }) => {
+      if (!mounted) return;
+      if (options?.failClosedOnError) pendingDenialRevalidation = true;
+      if (refreshing) return;
       refreshing = true;
+      const failClosedOnError = pendingDenialRevalidation;
+      pendingDenialRevalidation = false;
       try {
         const nextMemberships = await fetchMembershipsForAuthUser(authUser.id);
         if (!mounted || membershipSignature(nextMemberships) === membershipSignature(memberships)) return;
 
+        // Commit latest membership authorization before restaurant hydration so a
+        // later hydrate failure cannot preserve revoked roles or tenants.
+        setMemberships(nextMemberships);
+
         const activeId = activeRestaurantIdRef.current;
         const activeMembership = activeMembershipForRestaurant(nextMemberships, activeId);
         if (activeId && !activeMembership) {
-          sessionRequestIdRef.current += 1;
-          switchRequestIdRef.current += 1;
-          posRequestIdRef.current += 1;
-          activeRestaurantIdRef.current = null;
-          setRestaurant(null);
-          setAvailableRestaurants([]);
-          setMemberships([]);
-          setRole(null);
-          setUser(appUserFromAuth(authUser, null, null));
-          setPosProvider(null);
-          setPosStatusLabel("Not connected");
-          await saveSnapshot({ activeRestaurantId: null, isDemoMode: false });
+          await clearUnverifiedWorkspaceAccess();
           if (!mounted) return;
+        } else if (activeMembership) {
+          setRole(activeMembership.role);
+          setUser(appUserFromAuth(authUser, activeMembership.restaurant_id, activeMembership.role));
         }
 
         await hydrateSupabaseUser(authUser, activeMembership?.restaurant_id ?? null);
       } catch (error) {
         captureMiseError(error, { flow: "membership_revalidation" });
+        // After a tenant-authorization denial, do not keep stale restaurant/role UI when
+        // live membership cannot be re-proven. Periodic/foreground blips stay soft.
+        if (failClosedOnError && mounted) {
+          await clearUnverifiedWorkspaceAccess();
+        }
       } finally {
         refreshing = false;
+        if (pendingDenialRevalidation && mounted) {
+          void revalidateLiveMemberships({ failClosedOnError: true });
+        }
       }
     };
 
     const unsubscribeDenials = subscribeToTenantAuthorizationDenials(() => {
-      void revalidateLiveMemberships();
+      void revalidateLiveMemberships({ failClosedOnError: true });
     });
     const appStateSubscription = AppState.addEventListener("change", (state) => {
       if (state === "active") void revalidateLiveMemberships();
