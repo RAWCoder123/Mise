@@ -18,7 +18,9 @@ import { AppErrorBoundary } from "../components/AppErrorBoundary";
 import { colors, fontFamilies } from "../constants/theme";
 import { LocaleProvider } from "../contexts/LocaleContext";
 import { MiseSessionProvider } from "../contexts/MiseSessionContext";
+import { NotificationPreferencesProvider } from "../contexts/NotificationPreferencesContext";
 import { hostedLocalePreferenceAdapter } from "../services/localePreferences";
+import { hostedNotificationPreferenceAdapter } from "../services/notificationPreferences";
 import { initMiseTelemetry } from "../services/telemetry";
 
 // Initialize before first render so the error boundary and session context can
@@ -43,29 +45,34 @@ export default function RootLayout() {
       <AppErrorBoundary>
         <MiseSessionProvider>
           <LocaleProvider hostedPreferenceAdapter={hostedLocalePreferenceAdapter}>
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="inventory/[id]" />
-              <Stack.Screen name="inventory/count" />
-              <Stack.Screen name="orders/[id]" />
-              <Stack.Screen name="more/create-task" />
-              <Stack.Screen name="more/log-delivery" />
-              <Stack.Screen name="more/scan-item" />
-              <Stack.Screen name="more/daily-report" />
-              <Stack.Screen name="more/daily-brief" />
-              <Stack.Screen name="more/waste" />
-              <Stack.Screen name="more/activity" />
-              <Stack.Screen name="more/restaurant-memory" />
-              <Stack.Screen name="settings/pos" />
-              <Stack.Screen name="settings/pos-mappings" />
-              <Stack.Screen name="settings/recipes" />
-              <Stack.Screen name="settings/language" />
-              <Stack.Screen name="settings/gmail" />
-              <Stack.Screen name="settings/suppliers" />
-              <Stack.Screen name="settings/autonomy" />
-            </Stack>
-            <StatusBar style="dark" />
+            <NotificationPreferencesProvider
+              hostedPreferenceAdapter={hostedNotificationPreferenceAdapter}
+            >
+              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="inventory/[id]" />
+                <Stack.Screen name="inventory/count" />
+                <Stack.Screen name="orders/[id]" />
+                <Stack.Screen name="more/create-task" />
+                <Stack.Screen name="more/log-delivery" />
+                <Stack.Screen name="more/scan-item" />
+                <Stack.Screen name="more/daily-report" />
+                <Stack.Screen name="more/daily-brief" />
+                <Stack.Screen name="more/waste" />
+                <Stack.Screen name="more/activity" />
+                <Stack.Screen name="more/restaurant-memory" />
+                <Stack.Screen name="settings/pos" />
+                <Stack.Screen name="settings/pos-mappings" />
+                <Stack.Screen name="settings/recipes" />
+                <Stack.Screen name="settings/language" />
+                <Stack.Screen name="settings/notifications" />
+                <Stack.Screen name="settings/gmail" />
+                <Stack.Screen name="settings/suppliers" />
+                <Stack.Screen name="settings/autonomy" />
+              </Stack>
+              <StatusBar style="dark" />
+            </NotificationPreferencesProvider>
           </LocaleProvider>
         </MiseSessionProvider>
       </AppErrorBoundary>

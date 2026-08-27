@@ -16,11 +16,13 @@ import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { useNotificationPreferences } from "../../contexts/NotificationPreferencesContext";
 import type { MessageKey, MessageValues } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
 import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDecisionOutbox";
 import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { filterOperatingPlanByNotificationPreferences } from "../../services/domain/notificationPreferences";
 import type { DailyOperatingPlan, OperatingPlanBucket } from "../../services/domain/operatingPlan";
 import {
   completeOperatorTask,
@@ -55,6 +57,7 @@ const GROUP_ORDER: readonly TaskFilter[] = ["now", "up_next", "later", "done"];
 export default function TodayScreen() {
   const { canUseDemoMode, continueWithDemo, memberships, restaurant, role } = useMiseSession();
   const { formatNumber, t, locale } = useLocale();
+  const { preferences: notificationPreferences } = useNotificationPreferences();
   const [summary, setSummary] = useState<DailyOperatingPlan | null>(null);
   const [brief, setBrief] = useState<DailyOperationalBrief | null>(null);
   const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
@@ -233,7 +236,10 @@ export default function TodayScreen() {
     router.replace("/today");
   }
 
-  const visibleSummary = hubReady ? summary : null;
+  const visibleSummary = useMemo(() => {
+    if (!hubReady || !summary) return null;
+    return filterOperatingPlanByNotificationPreferences(summary, notificationPreferences);
+  }, [hubReady, notificationPreferences, summary]);
   const visibleBrief = hubReady ? brief : null;
   const visibleFindingQueue = hubReady ? findingQueue : [];
   const visibleFloorNotes = hubReady ? floorNotes : [];

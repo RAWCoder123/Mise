@@ -38,7 +38,10 @@ test("operational screens reject late requests and render only active-restaurant
     assert.match(screen, /hubReady/, `${name} must gate restaurant-scoped data on hub readiness`);
   }
 
-  assert.match(screens.today, /hubReady\s*\?\s*summary\s*:\s*null/);
+  assert.match(
+    screens.today,
+    /hubReady\s*\?\s*summary\s*:\s*null|if\s*\(\s*!hubReady\s*\|\|\s*!summary\s*\)\s*return\s*null/
+  );
   assert.match(screens.inventory, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
   assert.match(screens.insights, /hubReady\s*\?\s*insights\s*:\s*\[\]/);
   assert.match(screens.settings, /hubReady\s*\?\s*suppliers\s*:\s*\[\]/);
