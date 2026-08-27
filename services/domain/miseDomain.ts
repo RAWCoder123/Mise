@@ -50,6 +50,12 @@ import {
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity";
 import type { PurchaseAuthorityResult } from "./purchaseAuthority";
+import {
+  applyEstablishedPatternAdvisoryQuantity,
+  describePurchaseDecisionAdvisoryQuantity,
+  selectAdvisoryPurchaseDecisionPattern,
+  type PurchaseDecisionPattern
+} from "./purchaseDecisionMemory";
 
 /**
  * Optional seeded demand source for tenants without sales history.
@@ -172,9 +178,13 @@ export function recommendationReason(item: InventoryItem, prediction?: Inventory
 export function learnedRecommendationReason(
   item: InventoryItem,
   prediction: InventoryPrediction,
-  learnedQuantity: number | undefined
+  learnedQuantity: number | undefined,
+  patternNote?: string | null
 ) {
   const reason = recommendationReason(item, prediction);
+  if (patternNote) {
+    return `${reason} ${patternNote}`;
+  }
   if (learnedQuantity === undefined || learnedQuantity === prediction.suggestedOrderQuantity) {
     return reason;
   }
@@ -2002,7 +2012,8 @@ export function buildRecommendationInserts(
   operatingDate: string,
   demandFallback?: DemandFallback,
   countEvidence?: InventoryCountEvidenceMap,
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  purchaseDecisionPatterns: readonly PurchaseDecisionPattern[] = []
 ) {
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
   const historicalBaselines = buildHistoricalDemandBaselines(
@@ -2031,16 +2042,37 @@ export function buildRecommendationInserts(
     }))
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
     .map(({ item, prediction }) => {
-      const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
+      const patternAdvisory = applyEstablishedPatternAdvisoryQuantity({
+        calculatedQuantity: prediction.suggestedOrderQuantity,
+        parLevel: item.par_level,
+        pattern: selectAdvisoryPurchaseDecisionPattern(purchaseDecisionPatterns, {
+          inventoryItemId: item.id,
+          supplierId: item.supplier_id,
+          canonicalUnit:
+            item.canonical_unit_verification_status === "verified" ? item.canonical_unit : null,
+          recommendationSource: "mise_rules"
+        })
+      });
+      const learnedQuantity = patternAdvisory.applied
+        ? undefined
+        : boundedLearnedQuantity(item, prediction, learnedQuantities);
+      const recommendedQuantity = patternAdvisory.applied
+        ? patternAdvisory.quantity
+        : learnedQuantity ?? prediction.suggestedOrderQuantity;
       return {
         restaurant_id: restaurantId,
         inventory_item_id: item.id,
         item_name: item.item_name,
         supplier_id: item.supplier_id,
         supplier_name: item.supplier_name,
-        recommended_quantity: learnedQuantity ?? prediction.suggestedOrderQuantity,
+        recommended_quantity: recommendedQuantity,
         unit: item.unit,
-        reason: learnedRecommendationReason(item, prediction, learnedQuantity),
+        reason: learnedRecommendationReason(
+          item,
+          prediction,
+          learnedQuantity,
+          describePurchaseDecisionAdvisoryQuantity(item.unit, patternAdvisory)
+        ),
         urgency: prediction.urgency,
         status: "pending" as RecommendationStatus,
         supplier_order_id: null
