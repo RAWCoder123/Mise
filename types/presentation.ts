@@ -23,6 +23,8 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.inventory_count_session.approve",
   "today.order.send",
   "today.order.review",
+  "today.order.receive",
+  "today.order.received",
   "today.setup.profile.open",
   "today.setup.profile.complete",
   "today.setup.inventory.open",
@@ -85,7 +87,7 @@ export type TodayTaskPresentationDescriptor =
       values: { status: string };
     }
   | {
-      code: "today.order.send" | "today.order.review";
+      code: "today.order.send" | "today.order.review" | "today.order.receive" | "today.order.received";
       values: { supplierName: string; deliveryDate: string | null };
     }
   | {
