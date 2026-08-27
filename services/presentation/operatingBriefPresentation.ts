@@ -36,7 +36,18 @@ export interface PresentedRestaurantStatusEvidence {
   freshnessLabel: string;
   confidenceRationale: string;
   confidenceScore: string;
-  /** Compact provenance line for StatusNotice meta. */
+  /**
+   * True when confidence rationale adds information beyond the freshness label
+   * (e.g. fresh coverage rationale). False when rationale duplicates freshness
+   * for incomplete/stale/unknown states.
+   */
+  rationaleDistinctFromFreshness: boolean;
+  /** Compact provenance: freshness · score (no rationale). */
+  metaLineCompact: string;
+  /**
+   * Provenance for StatusNotice meta. Includes confidence rationale beside the
+   * score when it is distinct from freshness.
+   */
   metaLine: string;
 }
 
@@ -308,6 +319,9 @@ export function presentRestaurantStatusConfidenceRationale(
 
 /**
  * Builds localized freshness + confidence provenance for StatusNotice meta.
+ * When the confidence rationale is distinct from freshness, the meta confidence
+ * segment includes that rationale beside the score so operators see why the
+ * score is high or low — not only the numeral.
  */
 export function presentRestaurantStatusEvidence(
   locale: AppLocale,
@@ -317,12 +331,26 @@ export function presentRestaurantStatusEvidence(
   const freshnessLabel = presentDataFreshnessLabel(locale, status.dataFreshness);
   const confidenceRationale = presentRestaurantStatusConfidenceRationale(locale, status);
   const confidenceScore = formatConfidencePercent(locale, status.confidence);
+  const rationaleDistinctFromFreshness =
+    confidenceRationale.trim() !== freshnessLabel.trim();
   const freshnessLine = t("home.status.freshness", { label: freshnessLabel });
-  const confidenceLine = t("home.status.confidence", { score: confidenceScore });
+  const scoreOnlyConfidence = t("home.status.confidence", { score: confidenceScore });
+  const confidenceLine = rationaleDistinctFromFreshness
+    ? t("home.status.confidence.withRationale", {
+        score: confidenceScore,
+        rationale: confidenceRationale
+      })
+    : scoreOnlyConfidence;
+  const metaLineCompact = t("home.status.meta", {
+    freshness: freshnessLine,
+    confidence: scoreOnlyConfidence
+  });
   return {
     freshnessLabel,
     confidenceRationale,
     confidenceScore,
+    rationaleDistinctFromFreshness,
+    metaLineCompact,
     metaLine: t("home.status.meta", {
       freshness: freshnessLine,
       confidence: confidenceLine
