@@ -516,11 +516,13 @@ export interface MiseRepository {
   updateMyProfile(name: string): Promise<AppUser>;
   /**
    * Permanently deletes the signed-in operator's account. Hosted mode invokes
-   * the delete-account Edge Function with the active restaurant for firewall /
-   * audit reservation (sole-owner restaurants cascade away and the auth user
-   * is removed); demo mode resets the on-device demo store.
+   * the delete-account Edge Function. When `restaurantId` is provided, the
+   * restaurant-scoped firewall / audit reservation runs (sole-owner restaurants
+   * cascade away and the auth user is removed). When omitted/null, the caller
+   * must have zero active memberships and only the Auth account is removed.
+   * Demo mode resets the on-device demo store.
    */
-  deleteAccount(restaurantId: string): Promise<void>;
+  deleteAccount(restaurantId?: string | null): Promise<void>;
   exportRestaurantData(restaurantId: string): Promise<RestaurantDataExport>;
   createRestaurantWithOwner(name: string, cuisineType?: string | null): Promise<Restaurant>;
   fetchRestaurant(restaurantId: string): Promise<Restaurant>;

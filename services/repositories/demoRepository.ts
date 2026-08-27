@@ -1007,7 +1007,7 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
-    async deleteAccount(_restaurantId) {
+    async deleteAccount(_restaurantId?) {
       // Demo accounts live only on this device; deletion resets the local store.
       await resetDemoStore();
     },

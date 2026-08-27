@@ -247,12 +247,35 @@ export interface InvocationTerminalContext {
   securitySupabase: SupabaseClient;
   actorUserId: string;
   reservationId: string;
-  restaurantId: string;
+  restaurantId: string | null;
   functionName: EdgeFunctionName;
+  membershipless?: boolean;
 }
 
 export async function recordFunctionTerminalError(context: InvocationTerminalContext | null) {
   if (!context) return;
+  if (context.membershipless || context.restaurantId === null) {
+    const { error } = await context.securitySupabase.rpc(
+      "service_record_membershipless_account_deletion_event",
+      {
+        p_actor_user_id: context.actorUserId,
+        p_reservation_id: context.reservationId,
+        p_event_type: "error",
+        action_name: "function_error",
+        metadata: { reason: "unexpected_function_error", membershipless: true }
+      }
+    );
+    if (error) {
+      captureFunctionError(error, {
+        functionName: context.functionName,
+        eventType: "error",
+        actionName: "function_error",
+        restaurantId: null
+      });
+    }
+    return;
+  }
+
   const { error } = await context.securitySupabase.rpc("record_edge_function_security_event", {
     target_restaurant_id: context.restaurantId,
     p_actor_user_id: context.actorUserId,

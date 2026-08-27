@@ -14,6 +14,7 @@ import {
   requireEnum,
   requireRestaurantRole,
   requireUuid,
+  type FunctionInvocationReservation,
   type InvocationTerminalContext
 } from "../_shared/mise.ts";
 
@@ -31,10 +32,21 @@ function asNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function optionalRestaurantId(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string") {
+    throw new HttpError(400, "restaurantId must be a UUID string when provided.");
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return requireUuid(trimmed, "restaurantId");
+}
+
 // Recoverable account deletion (Apple App Store requirement).
 //
 // Order (critical invariant):
-//   1) Authorize against the caller's active restaurant membership.
+//   1) Authorize against the caller's active restaurant membership, OR prove
+//      zero active memberships for the membershipless branch.
 //   2) Write a durable deletion *plan* without removing tenant data.
 //   3) auth.admin.deleteUser
 //   4) Finalize tenant cleanup by audit_id (works after auth user is gone).
@@ -55,46 +67,124 @@ Deno.serve(async (req) => {
     const { supabase, securitySupabase, user } = await requireAuthenticatedContext(req);
     const body = await readJsonObject(req);
     requireEnum(body.confirmation, "confirmation", ["delete_my_account"] as const);
-    const restaurantId = requireUuid(body.restaurantId, "restaurantId");
+    const restaurantId = optionalRestaurantId(body.restaurantId);
+    const membershipless = restaurantId === null;
 
-    const reservation = await reserveFunctionInvocation(
-      securitySupabase,
-      user.id,
-      restaurantId,
-      "delete-account",
-      "account_deletion_requested"
-    );
+    let reservation: FunctionInvocationReservation;
+    if (membershipless) {
+      const { data, error } = await securitySupabase.rpc(
+        "service_reserve_membershipless_account_deletion",
+        {
+          p_actor_user_id: user.id,
+          action_name: "account_deletion_requested",
+          metadata: { confirmation: "delete_my_account", membershipless: true }
+        }
+      );
+      if (error) {
+        captureFunctionError(error, {
+          functionName: "delete-account",
+          actionName: "account_deletion_requested",
+          restaurantId: null
+        });
+        throw new HttpError(500, "Unable to verify this function request.");
+      }
+      reservation = data as FunctionInvocationReservation;
+      if (
+        !reservation ||
+        typeof reservation.allowed !== "boolean" ||
+        (reservation.allowed && typeof reservation.reservation_id !== "string")
+      ) {
+        throw new HttpError(500, "Unable to verify this function request.");
+      }
+    } else {
+      reservation = await reserveFunctionInvocation(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        "delete-account",
+        "account_deletion_requested"
+      );
+    }
+
     if (!reservation.allowed) return firewallBlockedResponse(reservation);
     terminalContext = {
       securitySupabase,
       actorUserId: user.id,
       reservationId: reservation.reservation_id!,
       restaurantId,
-      functionName: "delete-account"
+      functionName: "delete-account",
+      membershipless
     };
 
-    await requireRestaurantRole(supabase, user.id, restaurantId, ["owner", "admin", "manager", "staff"]);
-    await recordFunctionAuditLog(
-      securitySupabase,
-      user.id,
-      restaurantId,
-      "account_deletion_requested",
-      "users",
-      user.id,
-      { confirmation: "delete_my_account", phase: "authorization" }
-    );
+    if (membershipless) {
+      const { count, error: membershipError } = await supabase
+        .from("restaurant_memberships")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("status", "active");
+      if (membershipError) {
+        throw new HttpError(500, "Unable to verify restaurant access.");
+      }
+      if ((count ?? 0) > 0) {
+        throw new HttpError(
+          403,
+          "Delete your account from Settings while a restaurant workspace is still assigned."
+        );
+      }
+    } else {
+      await requireRestaurantRole(supabase, user.id, restaurantId, [
+        "owner",
+        "admin",
+        "manager",
+        "staff"
+      ]);
+      await recordFunctionAuditLog(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        "account_deletion_requested",
+        "users",
+        user.id,
+        { confirmation: "delete_my_account", phase: "authorization" }
+      );
+    }
 
-    // Close the firewall reservation as authorization only. Tenant data still exists.
-    await recordFunctionSecurityEvent(
-      securitySupabase,
-      user.id,
-      reservation.reservation_id!,
-      restaurantId,
-      "delete-account",
-      "completed",
-      "account_deletion_authorized",
-      { confirmation: "delete_my_account", phase: "authorization" }
-    );
+    if (membershipless) {
+      const { error: closeError } = await securitySupabase.rpc(
+        "service_record_membershipless_account_deletion_event",
+        {
+          p_actor_user_id: user.id,
+          p_reservation_id: reservation.reservation_id!,
+          p_event_type: "completed",
+          action_name: "account_deletion_authorized",
+          metadata: {
+            confirmation: "delete_my_account",
+            phase: "authorization",
+            membershipless: true
+          }
+        }
+      );
+      if (closeError) {
+        captureFunctionError(closeError, {
+          functionName: "delete-account",
+          eventType: "completed",
+          actionName: "account_deletion_authorized",
+          restaurantId: null
+        });
+        throw new HttpError(500, "Unable to finalize this function request.");
+      }
+    } else {
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        user.id,
+        reservation.reservation_id!,
+        restaurantId,
+        "delete-account",
+        "completed",
+        "account_deletion_authorized",
+        { confirmation: "delete_my_account", phase: "authorization" }
+      );
+    }
     terminalContext = null;
 
     const { data: planData, error: planError } = await securitySupabase.rpc(
@@ -152,10 +242,12 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Memberships are still intact, so the client can retry delete-account.
+      // Memberships are still intact (or still absent), so the client can retry.
       throw new HttpError(
         500,
-        "Your sign-in account could not be deleted. Your restaurant access is unchanged — try again."
+        membershipless
+          ? "Your sign-in account could not be deleted. Try again."
+          : "Your sign-in account could not be deleted. Your restaurant access is unchanged — try again."
       );
     }
 
@@ -221,7 +313,8 @@ Deno.serve(async (req) => {
       status: "deleted",
       auditId,
       restaurantsDeleted: asNumber(finalized.restaurants_deleted),
-      membershipsRemoved: asNumber(finalized.memberships_removed)
+      membershipsRemoved: asNumber(finalized.memberships_removed),
+      membershipless
     });
   } catch (error) {
     await recordFunctionTerminalError(terminalContext);
