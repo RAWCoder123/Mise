@@ -2,6 +2,7 @@ import type {
   Insight,
   InventoryItem,
   InventoryPrediction,
+  PosIntegration,
   PosSale,
   PurchaseRecommendation,
   Restaurant,
@@ -63,6 +64,9 @@ export interface OperatingOutlook {
   staffingDetail: string;
   deliveryStatus: "none" | "expected" | "overdue" | "unknown";
   deliveryDetail: string;
+  /** Evidenced POS connection health for Home / phase briefs. Never invents sync success. */
+  posConnectionStatus: "ok" | "error" | "none" | "unknown";
+  posConnectionDetail: string;
   menuRisks: Array<{ itemName: string; label: InventoryHealthLabel; detail: string }>;
   supplierCutoffDeadlines: string[];
   preventableLoss: string | null;
@@ -122,6 +126,11 @@ export interface OperatingBriefInput {
   activityEvents?: readonly ActivityEvent[];
   miseActions?: readonly MiseAction[];
   inventoryOutlooks?: readonly OperatingBriefInventoryOutlook[];
+  /**
+   * Undefined means POS integrations were not loaded for this brief.
+   * An empty array means the restaurant has no configured POS connection.
+   */
+  posIntegrations?: readonly PosIntegration[];
   demoLabeled?: boolean;
 }
 
@@ -418,13 +427,16 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
   const criticalCount = outlooks.filter(
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0
   ).length;
+  const posConnection = classifyPosConnectionOutlook(input.posIntegrations, input.restaurant.id);
 
   return {
     expectedSales: todaySales.length > 0 ? expectedSales : null,
     expectedSalesContext:
-      todaySales.length > 0
-        ? `Recorded net sales so far on ${input.operatingDate}.`
-        : "Connect or sync POS sales to show expected sales context.",
+      posConnection.posConnectionStatus === "error"
+        ? posConnection.posConnectionDetail
+        : todaySales.length > 0
+          ? `Recorded net sales so far on ${input.operatingDate}.`
+          : "Connect or sync POS sales to show expected sales context.",
     prepReadiness: criticalCount > 0 ? "gaps" : outlooks.length > 0 ? "ready" : "unknown",
     prepReadinessDetail:
       criticalCount > 0
@@ -441,6 +453,8 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
         : draftOrders.length > 0
           ? `${draftOrders.length} draft order${draftOrders.length === 1 ? "" : "s"} prepared but not sent.`
           : "No open supplier deliveries are currently tracked.",
+    posConnectionStatus: posConnection.posConnectionStatus,
+    posConnectionDetail: posConnection.posConnectionDetail,
     menuRisks,
     supplierCutoffDeadlines: [],
     preventableLoss:
@@ -450,12 +464,82 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
   };
 }
 
+/**
+ * Classify restaurant-scoped POS integrations for Home / phase briefs.
+ * Error means an integration row evidences `status === "error"` — never invent sync success.
+ */
+export function classifyPosConnectionOutlook(
+  posIntegrations: readonly PosIntegration[] | undefined,
+  restaurantId: string
+): Pick<OperatingOutlook, "posConnectionStatus" | "posConnectionDetail"> & {
+  errorIntegrations: PosIntegration[];
+} {
+  if (posIntegrations === undefined) {
+    return {
+      posConnectionStatus: "unknown",
+      posConnectionDetail: "POS connection health was not loaded for this brief.",
+      errorIntegrations: []
+    };
+  }
+
+  const scoped = posIntegrations.filter((row) => row.restaurant_id === restaurantId);
+  if (scoped.length === 0) {
+    return {
+      posConnectionStatus: "none",
+      posConnectionDetail: "No POS integration is configured for this restaurant.",
+      errorIntegrations: []
+    };
+  }
+
+  const errorIntegrations = scoped.filter((row) => row.status === "error");
+  if (errorIntegrations.length > 0) {
+    const sole = errorIntegrations[0]!;
+    const provider = providerLabel(sole.provider);
+    return {
+      posConnectionStatus: "error",
+      posConnectionDetail:
+        errorIntegrations.length === 1
+          ? `${provider} reports a connection error. Reconnect before relying on live sales.`
+          : `${errorIntegrations.length} POS connections report errors. Reconnect before relying on live sales.`,
+      errorIntegrations
+    };
+  }
+
+  return {
+    posConnectionStatus: "ok",
+    posConnectionDetail: "Connected POS sources are not reporting errors.",
+    errorIntegrations: []
+  };
+}
+
+function providerLabel(provider: PosIntegration["provider"]) {
+  if (provider === "manual_csv") return "Manual CSV";
+  if (provider === "demo") return "Demo POS";
+  return `${provider.charAt(0).toUpperCase()}${provider.slice(1)}`;
+}
+
 function buildMonitoringRows(
   input: OperatingBriefInput,
   approvals: readonly OperatingBriefApprovalCard[],
-  generatedAt: string
+  generatedAt: string,
+  posConnection: ReturnType<typeof classifyPosConnectionOutlook>
 ): MonitoringRow[] {
   const rows: MonitoringRow[] = [];
+
+  for (const integration of posConnection.errorIntegrations.slice(0, 3)) {
+    const provider = providerLabel(integration.provider);
+    rows.push({
+      id: `watch_pos_${integration.id}`,
+      title: `${provider} sales connection needs repair`,
+      detail: integration.last_sync_at
+        ? `Provider reports an error. Last successful sync: ${integration.last_sync_at}.`
+        : "Provider reports an error. No successful sync is recorded.",
+      startedAt: integration.updated_at || generatedAt,
+      status: "waiting",
+      relatedEntityType: "pos_integration",
+      relatedEntityId: integration.id
+    });
+  }
 
   for (const outlook of (input.inventoryOutlooks ?? []).slice(0, 8)) {
     const label = resolveInventoryHealthLabel({
@@ -511,8 +595,14 @@ function pulseStatus(input: {
   pendingApprovals: number;
   freshness: DataFreshnessDescriptor;
   urgentFindings: number;
+  posConnectionErrors: number;
 }): RestaurantPulseStatus {
-  if (input.criticalCount > 0 || input.urgentFindings > 0 || input.freshness.state === "incomplete") {
+  if (
+    input.criticalCount > 0 ||
+    input.urgentFindings > 0 ||
+    input.freshness.state === "incomplete" ||
+    input.posConnectionErrors > 0
+  ) {
     return "at_risk";
   }
   if (input.pendingApprovals > 0 || input.freshness.state === "stale") {
@@ -530,6 +620,9 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
   requireScoped(input.recommendations, restaurantId, "Recommendations");
   requireScoped(input.orders, restaurantId, "Orders");
   requireScoped(input.insights, restaurantId, "Insights");
+  if (input.posIntegrations !== undefined) {
+    requireScoped(input.posIntegrations, restaurantId, "POS integrations");
+  }
 
   const generatedAt = input.generatedAt
     ? new Date(input.generatedAt).toISOString()
@@ -538,6 +631,7 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
   const approvals = buildApprovalCards(input);
   const freshness = buildDataFreshness(input, generatedAt);
   const outlook = buildOutlook(input);
+  const posConnection = classifyPosConnectionOutlook(input.posIntegrations, restaurantId);
   const criticalCount = (input.inventoryOutlooks ?? []).filter(
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0
   ).length;
@@ -546,7 +640,8 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
     criticalCount,
     pendingApprovals: approvals.length,
     freshness,
-    urgentFindings
+    urgentFindings,
+    posConnectionErrors: posConnection.errorIntegrations.length
   });
 
   const lastSeenAt = input.lastSeenAt ? new Date(input.lastSeenAt).toISOString() : null;
@@ -564,6 +659,7 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
   const liveActivity = [...activity].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
   const topRisk =
     outlook.menuRisks[0]?.detail ??
+    (outlook.posConnectionStatus === "error" ? outlook.posConnectionDetail : null) ??
     approvals[0]?.riskIfIgnored ??
     (freshness.state === "incomplete" ? freshness.label : null);
   const topOpportunity =
@@ -573,7 +669,16 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
   const confidenceBase =
     freshness.state === "fresh" ? 0.82 : freshness.state === "stale" ? 0.58 : freshness.state === "incomplete" ? 0.34 : 0.45;
   const confidence = Number(
-    Math.max(0.2, Math.min(0.95, confidenceBase - criticalCount * 0.03 + Math.min(0.08, activity.length * 0.01))).toFixed(2)
+    Math.max(
+      0.2,
+      Math.min(
+        0.95,
+        confidenceBase -
+          criticalCount * 0.03 -
+          posConnection.errorIntegrations.length * 0.08 +
+          Math.min(0.08, activity.length * 0.01)
+      )
+    ).toFixed(2)
   );
 
   const summary =
@@ -583,7 +688,9 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
         }.`
       : status === "attention_needed"
         ? `Attention needed: ${approvals.length} approval${approvals.length === 1 ? "" : "s"} and ${outlook.menuRisks.length} inventory watch item${outlook.menuRisks.length === 1 ? "" : "s"} are open.`
-        : (() => {
+        : outlook.posConnectionStatus === "error"
+          ? `At risk: ${outlook.posConnectionDetail}`
+          : (() => {
           const issueCount = criticalCount || urgentFindings || approvals.length;
           return `At risk: ${issueCount} operational issue${issueCount === 1 ? "" : "s"} ${
             issueCount === 1 ? "needs" : "need"
@@ -613,7 +720,7 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
     liveActivity,
     needsApproval: approvals,
     outlook,
-    miseIsWatching: buildMonitoringRows(input, approvals, generatedAt),
+    miseIsWatching: buildMonitoringRows(input, approvals, generatedAt, posConnection),
     activityWindowSummary: lastSeenAt ? summarizeActivityWindow(activity, lastSeenAt) : null,
     demoLabeled: Boolean(input.demoLabeled)
   };

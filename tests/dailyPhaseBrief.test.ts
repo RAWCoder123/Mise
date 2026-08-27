@@ -115,6 +115,39 @@ test("phase brief identity and operating-date mismatches fail closed", () => {
   );
 });
 
+test("evidenced POS connection errors surface urgent morning and pre-service findings", () => {
+  const evidence = fixtures();
+  const brokenBrief: OperatingBrief = {
+    ...evidence.operatingBrief,
+    outlook: {
+      ...evidence.operatingBrief.outlook,
+      posConnectionStatus: "error",
+      posConnectionDetail: "Square reports a connection error. Reconnect before relying on live sales."
+    },
+    restaurantStatus: {
+      ...evidence.operatingBrief.restaurantStatus,
+      status: "at_risk",
+      topRisk: "Square reports a connection error. Reconnect before relying on live sales."
+    }
+  };
+  const result = buildDailyPhaseBriefs({
+    restaurantId,
+    ...evidence,
+    operatingBrief: brokenBrief,
+    now: new Date("2026-08-03T12:00:00.000Z")
+  });
+
+  for (const phase of ["morning", "pre_service"] as const) {
+    const finding = result.briefs[phase].findings.find((entry) =>
+      entry.id.includes("pos-connection")
+    );
+    assert.ok(finding, `${phase} should include a POS connection finding`);
+    assert.equal(finding!.tone, "urgent");
+    assert.equal(finding!.route, "/settings/pos");
+    assert.match(finding!.interpretation, /Square reports a connection error/i);
+  }
+});
+
 function fixtures(options: { allTasksComplete?: boolean } = {}) {
   const item = planItem(options.allTasksComplete ? "completed" : "open");
   const plan: DailyOperatingPlan = {
@@ -185,6 +218,8 @@ function fixtures(options: { allTasksComplete?: boolean } = {}) {
       staffingDetail: "Requires schedule integration.",
       deliveryStatus: "expected",
       deliveryDetail: "One sent order is awaiting confirmation.",
+      posConnectionStatus: "ok",
+      posConnectionDetail: "Connected POS sources are not reporting errors.",
       menuRisks: [
         { itemName: "Bell peppers", label: "Watch", detail: "Coverage is below two days." }
       ],

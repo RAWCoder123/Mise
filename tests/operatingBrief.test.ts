@@ -6,6 +6,7 @@ import { buildOperatingBrief } from "../services/domain/operatingBrief";
 import type {
   InventoryItem,
   InventoryPrediction,
+  PosIntegration,
   PosSale,
   PurchaseRecommendation,
   Restaurant,
@@ -324,4 +325,169 @@ test("recommendation confidence credits verified count age only", () => {
   assert.match(fresh.needsApproval[0]?.confidenceRationale ?? "", /within 24 hours/i);
   assert.match(unverified.needsApproval[0]?.confidenceRationale ?? "", /older or unknown inventory count/i);
   assert.ok((fresh.needsApproval[0]?.confidence ?? 0) > (unverified.needsApproval[0]?.confidence ?? 0));
+});
+
+function posIntegration(overrides: Partial<PosIntegration> = {}): PosIntegration {
+  return {
+    id: "pos_square",
+    restaurant_id: restaurantId,
+    provider: "square",
+    status: "connected",
+    external_location_id: "loc_1",
+    last_sync_at: "2026-08-02T14:00:00.000Z",
+    sync_cursor: null,
+    settings: {},
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-08-02T14:00:00.000Z",
+    ...overrides
+  };
+}
+
+test("evidenced POS connection error escalates Home pulse without inventing sales", () => {
+  const healthy = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt: "2026-08-02T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_1",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-02",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 10,
+        gross_sales: 120,
+        net_sales: 110,
+        source_pos: "Square",
+        created_at: "2026-08-02T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 40, last_updated: "2026-08-02T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 40 }),
+        prediction: prediction({
+          projectedQuantity: 30,
+          projectedStatus: "Good",
+          daysCoverage: 3,
+          whyItMatters: "Coverage is stable."
+        })
+      }
+    ],
+    posIntegrations: [posIntegration()]
+  });
+  assert.equal(healthy.restaurantStatus.status, "on_track");
+  assert.equal(healthy.outlook.posConnectionStatus, "ok");
+
+  const broken = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt: "2026-08-02T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_1",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-02",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 10,
+        gross_sales: 120,
+        net_sales: 110,
+        source_pos: "Square",
+        created_at: "2026-08-02T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 40, last_updated: "2026-08-02T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 40 }),
+        prediction: prediction({
+          projectedQuantity: 30,
+          projectedStatus: "Good",
+          daysCoverage: 3,
+          whyItMatters: "Coverage is stable."
+        })
+      }
+    ],
+    posIntegrations: [
+      posIntegration({
+        status: "error",
+        last_sync_at: "2026-08-01T09:00:00.000Z",
+        updated_at: "2026-08-02T13:00:00.000Z"
+      })
+    ]
+  });
+
+  assert.equal(broken.restaurantStatus.status, "at_risk");
+  assert.equal(broken.outlook.posConnectionStatus, "error");
+  assert.match(broken.outlook.posConnectionDetail, /Square reports a connection error/i);
+  assert.match(broken.restaurantStatus.topRisk ?? "", /Square reports a connection error/i);
+  assert.match(broken.restaurantStatus.summary, /Square reports a connection error/i);
+  assert.ok(
+    broken.miseIsWatching.some(
+      (row) => row.relatedEntityType === "pos_integration" && /Square/.test(row.title)
+    )
+  );
+  assert.doesNotMatch(broken.outlook.posConnectionDetail, /\d+\s*(sale|order|item)/i);
+});
+
+test("operating brief rejects cross-tenant POS integrations", () => {
+  assert.throws(() =>
+    buildOperatingBrief({
+      restaurant: restaurant(),
+      operatingDate: "2026-08-02",
+      sales: [],
+      inventoryItems: [],
+      recommendations: [],
+      orders: [],
+      insights: [],
+      posIntegrations: [posIntegration({ restaurant_id: "other" })]
+    })
+  );
+});
+
+test("unloaded POS integrations stay unknown and do not escalate pulse alone", () => {
+  const brief = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt: "2026-08-02T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_1",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-02",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 10,
+        gross_sales: 120,
+        net_sales: 110,
+        source_pos: "Square",
+        created_at: "2026-08-02T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 40, last_updated: "2026-08-02T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 40 }),
+        prediction: prediction({
+          projectedQuantity: 30,
+          projectedStatus: "Good",
+          daysCoverage: 3,
+          whyItMatters: "Coverage is stable."
+        })
+      }
+    ]
+  });
+
+  assert.equal(brief.outlook.posConnectionStatus, "unknown");
+  assert.equal(brief.restaurantStatus.status, "on_track");
 });
