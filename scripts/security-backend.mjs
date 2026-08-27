@@ -276,7 +276,9 @@ const serviceOnlyPublicFunctions = new Set([
   "public.record_edge_function_security_event",
   "public.service_create_rules_engine_ai_insight",
   "public.service_apply_pilot_operational_control",
-  "public.service_set_system_operational_mode"
+  "public.service_set_system_operational_mode",
+  "public.service_reserve_membershipless_account_deletion",
+  "public.service_record_membershipless_account_deletion_event"
 ]);
 const globalServiceOnlyPublicFunctions = new Set([
   "public.service_claim_outreach_enrollment",

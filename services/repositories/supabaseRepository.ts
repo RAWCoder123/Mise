@@ -940,10 +940,12 @@ export function createSupabaseRepository(): MiseRepository {
     },
 
     async deleteAccount(restaurantId) {
+      const normalizedRestaurantId =
+        typeof restaurantId === "string" ? restaurantId.trim() : "";
       const { data, error } = await client.functions.invoke("delete-account", {
         body: {
           confirmation: "delete_my_account",
-          restaurantId
+          ...(normalizedRestaurantId ? { restaurantId: normalizedRestaurantId } : {})
         }
       });
       if (error) {

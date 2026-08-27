@@ -35,9 +35,9 @@ import {
   DEMO_SETUP_POS_SALES_PLACEHOLDER,
   isDemoDatasetRestaurantName
 } from "../../services/demoData";
-import { saveRestaurantSetup, updateRestaurantProfile } from "../../services/miseService";
+import { deleteAccount, saveRestaurantSetup, updateRestaurantProfile } from "../../services/miseService";
 import { canUpdateRestaurantProfile } from "../../services/tenantAccess";
-import { trackMiseEvent } from "../../services/telemetry";
+import { captureMiseError, trackMiseEvent } from "../../services/telemetry";
 import { operatingLimits } from "../../services/miseValidation";
 import type { PosProvider } from "../../types/mise";
 
@@ -66,6 +66,10 @@ export default function SetupScreen() {
     (restaurant && canUpdateRestaurantProfile(memberships, restaurant.id))
   );
   const [signingOut, setSigningOut] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState(false);
   const starterDrafts = useMemo(() => createDemoSetupStarterDrafts(), []);
   const submissionLockRef = useRef(false);
   const [activeStep, setActiveStep] = useState<SetupStepId>("profile");
@@ -276,6 +280,25 @@ export default function SetupScreen() {
     }
 
     if (needsProvisioning) {
+      async function handlePendingDeleteAccount() {
+        if (deletingAccount || signingOut) return;
+        setDeletingAccount(true);
+        setDeleteError(false);
+        try {
+          await deleteAccount(null);
+          await signOut();
+          router.replace("/login");
+        } catch (error) {
+          captureMiseError(error, { flow: "setup", operation: "delete_account_membershipless" });
+          setDeleteError(true);
+          setDeletingAccount(false);
+        }
+      }
+
+      const confirmWord = t("settings.account.deleteConfirmWord");
+      const confirmReady =
+        deleteConfirmText.trim().toLowerCase() === confirmWord.toLowerCase();
+
       return (
         <Screen title={t("setup.title")} subtitle={t("setup.access.pendingSubtitle")}>
           <StatusNotice
@@ -283,13 +306,79 @@ export default function SetupScreen() {
             title={t("setup.access.pendingTitle")}
             message={t("setup.access.pendingBody")}
           />
+          <View style={styles.pendingDeleteZone}>
+            <Text style={styles.pendingDeleteTitle}>{t("setup.access.deleteTitle")}</Text>
+            <Text style={styles.pendingDeleteBody}>{t("setup.access.deleteBody")}</Text>
+            {deleteError ? (
+              <StatusNotice
+                tone="danger"
+                title={t("setup.access.deleteErrorTitle")}
+                message={t("setup.access.deleteErrorBody")}
+              />
+            ) : null}
+            {deleteConfirmOpen ? (
+              <View style={styles.pendingDeleteConfirm}>
+                <StatusNotice
+                  tone="danger"
+                  title={t("settings.account.deleteWarningTitle")}
+                  message={t("setup.access.deleteWarningBody")}
+                />
+                <Text style={styles.pendingDeleteConfirmLabel}>
+                  {t("settings.account.deleteConfirmLabel", { word: confirmWord })}
+                </Text>
+                <TextInput
+                  value={deleteConfirmText}
+                  onChangeText={setDeleteConfirmText}
+                  accessibilityLabel={t("settings.account.deleteConfirmAccessibility")}
+                  accessibilityHint={t("settings.account.deleteConfirmHint", { word: confirmWord })}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  editable={!deletingAccount && !signingOut}
+                  placeholder={confirmWord}
+                  placeholderTextColor={colors.faint}
+                  style={styles.pendingDeleteConfirmInput}
+                />
+                <Button
+                  title={t(
+                    deletingAccount ? "settings.account.deleting" : "settings.account.deleteConfirm"
+                  )}
+                  variant="danger"
+                  icon={<Trash2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
+                  onPress={() => void handlePendingDeleteAccount()}
+                  disabled={!confirmReady || deletingAccount || signingOut}
+                  fullWidth
+                />
+                <Button
+                  title={t("common.cancel")}
+                  variant="ghost"
+                  onPress={() => {
+                    setDeleteConfirmOpen(false);
+                    setDeleteConfirmText("");
+                    setDeleteError(false);
+                  }}
+                  disabled={deletingAccount}
+                  fullWidth
+                />
+              </View>
+            ) : (
+              <Button
+                title={t("setup.access.deleteTitle")}
+                accessibilityHint={t("settings.account.deleteOpenHint")}
+                variant="secondary"
+                icon={<Trash2 size={icon.row} color={colors.danger} strokeWidth={iconStroke} />}
+                onPress={() => setDeleteConfirmOpen(true)}
+                disabled={deletingAccount || signingOut}
+                fullWidth
+              />
+            )}
+          </View>
           <Button
             title={signingOut ? t("setup.access.signingOutAction") : t("setup.access.signOutAction")}
             accessibilityLabel={t("setup.access.signOutAction")}
             accessibilityHint={t("setup.access.signOutHint")}
-            accessibilityState={{ disabled: signingOut, busy: signingOut }}
+            accessibilityState={{ disabled: signingOut || deletingAccount, busy: signingOut }}
             onPress={() => void handlePendingSignOut()}
-            disabled={signingOut}
+            disabled={signingOut || deletingAccount}
             fullWidth
             style={styles.accessButton}
           />
@@ -1318,6 +1407,36 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 10
+  },
+  pendingDeleteZone: {
+    marginTop: spacing.md,
+    gap: spacing.sm
+  },
+  pendingDeleteTitle: {
+    color: colors.text,
+    ...typography.sectionTitle
+  },
+  pendingDeleteBody: {
+    color: colors.muted,
+    ...typography.body
+  },
+  pendingDeleteConfirm: {
+    gap: spacing.sm
+  },
+  pendingDeleteConfirmLabel: {
+    color: colors.text,
+    ...typography.caption,
+    fontFamily: fontFamilies.semibold
+  },
+  pendingDeleteConfirmInput: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    ...typography.body,
+    paddingHorizontal: 12
   },
   accessButton: {
     marginTop: spacing.md
