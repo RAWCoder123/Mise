@@ -333,3 +333,35 @@ function planItem(status: "open" | "completed"): OperatingPlanItem {
     sourceRestaurantTask: null
   };
 }
+
+test("pre-service overdue delivery finding stays urgent without inventing receipt counts", () => {
+  const evidence = fixtures();
+  const overdueBrief: OperatingBrief = {
+    ...evidence.operatingBrief,
+    outlook: {
+      ...evidence.operatingBrief.outlook,
+      deliveryStatus: "overdue",
+      deliveryDetail:
+        "Metro Produce delivery was due 2026-08-02 and still needs receipt confirmation."
+    }
+  };
+  const overdueReport: DailyOpsReport = {
+    ...evidence.dailyReport,
+    deliveriesToday: { count: 0, lines: [] }
+  };
+  const result = buildDailyPhaseBriefs({
+    restaurantId,
+    ...evidence,
+    operatingBrief: overdueBrief,
+    dailyReport: overdueReport,
+    now: new Date("2026-08-03T16:00:00.000Z")
+  });
+  const finding = result.briefs.pre_service.findings.find(
+    (entry) => entry.id === "pre-service-deliveries"
+  );
+  assert.ok(finding);
+  assert.equal(finding?.tone, "urgent");
+  assert.equal(finding?.title, "Supplier delivery is overdue");
+  assert.match(finding?.interpretation ?? "", /Metro Produce/);
+  assert.equal(finding?.route, "/orders");
+});

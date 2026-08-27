@@ -341,18 +341,31 @@ function RestaurantStatusCard({
   const topRisk = brief.restaurantStatus.topRisk?.trim();
   const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
+  const overdueDelivery = brief.outlook.deliveryStatus === "overdue";
 
   return (
     <StatusNotice
       variant="row"
-      tone={brief.restaurantStatus.status === "attention_needed" ? "warning" : "danger"}
+      tone={
+        overdueDelivery || brief.restaurantStatus.status === "at_risk" ? "danger" : "warning"
+      }
       title={
         primaryMenuRisk
           ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
-          : primaryApproval?.title || t(statusKey)
+          : overdueDelivery
+            ? t("home.alert.deliveryOverdue.title")
+            : primaryApproval?.title || t(statusKey)
       }
-      message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
-      onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
+      message={
+        overdueDelivery
+          ? brief.outlook.deliveryDetail
+          : topRisk
+            ? t(statusKey)
+            : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary
+      }
+      onPress={() =>
+        router.push(overdueDelivery || primaryApproval ? "/orders" : "/today")
+      }
     />
   );
 }
