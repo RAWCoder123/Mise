@@ -1,17 +1,20 @@
 /**
- * Purchase-loop outcome measurement (receive phase).
+ * Purchase-loop outcome measurement (receive + post-count phases).
  *
- * Links predicted (recommendation) quantity, ordered quantity, and received
- * quantity into one append-only action_outcome payload. Later count variance is
- * intentionally left pending until a verified count measurement exists.
+ * Receive links predicted (recommendation) quantity, ordered quantity, and
+ * received quantity into one append-only action_outcome payload and leaves
+ * later count variance pending. Count approval closes that loop by comparing
+ * counted quantity to the system quantity at count start for items that still
+ * have pending receive-phase purchase-loop evidence.
  *
- * Quantities share the same unit basis the delivery workflow already uses:
- * recommendation `recommended_quantity` paired with delivery-line canonical
- * quantities (demo and hosted receive currently treat those as comparable).
+ * Quantities share the same unit basis the delivery/count workflows already use:
+ * recommendation `recommended_quantity` paired with delivery-line / count-line
+ * purchase units (demo and hosted paths currently treat those as comparable).
  */
 
 export const PURCHASE_LOOP_OUTCOME_EVIDENCE_VERSION = "mise.purchase_loop_outcome.v1" as const;
 export const PURCHASE_LOOP_RECEIVE_PHASE = "receive" as const;
+export const PURCHASE_LOOP_COUNT_PHASE = "count" as const;
 
 export type PurchaseLoopDeliveryStatus = "received" | "discrepancy" | "partially_received";
 
@@ -22,6 +25,12 @@ export type PurchaseLoopLessonCode =
   | "purchase_loop.receive.discrepancy"
   | "purchase_loop.receive.partial"
   | "purchase_loop.receive.prediction_gap";
+
+export type PurchaseLoopCountLessonCode =
+  | "purchase_loop.count.matched"
+  | "purchase_loop.count.short"
+  | "purchase_loop.count.over"
+  | "purchase_loop.count.mixed";
 
 export interface PurchaseLoopRecommendationInput {
   id: string;
@@ -334,6 +343,398 @@ export function buildPurchaseLoopReceiveOutcomeMeasurement(input: {
     actualResult,
     variance,
     lesson: lessonTextForPurchaseLoopCode(lessonCode),
+    lessonCode
+  };
+}
+
+export interface PurchaseLoopPriorReceiveLine {
+  inventoryItemId: string;
+  recommendationId: string | null;
+  unit: string;
+  predictedQuantity: number | null;
+  orderedQuantity: number | null;
+  receivedQuantity: number;
+  usableReceivedQuantity: number;
+  deliveryId: string | null;
+  supplierOrderId: string | null;
+  receiveOutcomeId: string | null;
+  measuredAt: string | null;
+}
+
+export interface PurchaseLoopCountLineInput {
+  inventoryItemId: string;
+  unit: string;
+  systemQuantityAtStart: number;
+  countedQuantity: number;
+  quantityBefore: number;
+  quantityAfter: number;
+}
+
+export interface PurchaseLoopCountLineMeasurement {
+  inventoryItemId: string;
+  recommendationId: string | null;
+  unit: string;
+  predictedQuantity: number | null;
+  orderedQuantity: number | null;
+  receivedQuantity: number;
+  usableReceivedQuantity: number;
+  systemQuantityAtStart: number;
+  countedQuantity: number;
+  quantityBefore: number;
+  quantityAfter: number;
+  varianceFromSystem: number;
+  countedVersusUsableReceivedDelta: number;
+  deliveryId: string | null;
+  supplierOrderId: string | null;
+  receiveOutcomeId: string | null;
+}
+
+export interface PurchaseLoopCountOutcomeMeasurement {
+  evidenceVersion: typeof PURCHASE_LOOP_OUTCOME_EVIDENCE_VERSION;
+  phase: typeof PURCHASE_LOOP_COUNT_PHASE;
+  expectedResult: Record<string, unknown>;
+  actualResult: Record<string, unknown>;
+  variance: Record<string, unknown>;
+  lesson: string;
+  lessonCode: PurchaseLoopCountLessonCode;
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function asOptionalString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Reads pending receive-phase purchase-loop lines from stored action outcomes.
+ * Prefers the newest pending receive evidence per inventory item.
+ */
+export function selectPendingPurchaseLoopReceiveLines(input: {
+  outcomes: readonly {
+    id: string;
+    restaurantId: string;
+    measuredAt: string;
+    actualResult: Record<string, unknown>;
+  }[];
+  restaurantId: string;
+  inventoryItemIds?: ReadonlySet<string> | readonly string[];
+}): PurchaseLoopPriorReceiveLine[] {
+  const restaurantId = input.restaurantId.trim();
+  if (!restaurantId) return [];
+
+  const allowedIds =
+    input.inventoryItemIds == null
+      ? null
+      : input.inventoryItemIds instanceof Set
+        ? input.inventoryItemIds
+        : new Set(
+            [...input.inventoryItemIds]
+              .map((id) => id.trim())
+              .filter((id) => id.length > 0)
+          );
+
+  const byItem = new Map<string, PurchaseLoopPriorReceiveLine>();
+
+  const sorted = [...input.outcomes]
+    .filter((outcome) => outcome.restaurantId === restaurantId)
+    .sort((left, right) => {
+      const leftAt = Date.parse(left.measuredAt);
+      const rightAt = Date.parse(right.measuredAt);
+      if (Number.isFinite(leftAt) && Number.isFinite(rightAt) && leftAt !== rightAt) {
+        return rightAt - leftAt;
+      }
+      return right.id.localeCompare(left.id);
+    });
+
+  for (const outcome of sorted) {
+    const actual = outcome.actualResult ?? {};
+    if (actual.evidenceVersion !== PURCHASE_LOOP_OUTCOME_EVIDENCE_VERSION) continue;
+    if (actual.phase !== PURCHASE_LOOP_RECEIVE_PHASE) continue;
+    if (actual.countVariancePending !== true) continue;
+
+    const deliveryId = asOptionalString(actual.deliveryId);
+    const supplierOrderId = asOptionalString(actual.supplierOrderId);
+    const lines = Array.isArray(actual.lines) ? actual.lines : [];
+
+    for (const rawLine of lines) {
+      if (!rawLine || typeof rawLine !== "object") continue;
+      const line = rawLine as Record<string, unknown>;
+      const inventoryItemId = asOptionalString(line.inventoryItemId);
+      if (!inventoryItemId) continue;
+      if (allowedIds && !allowedIds.has(inventoryItemId)) continue;
+      if (byItem.has(inventoryItemId)) continue;
+
+      const receivedQuantity = asFiniteNumber(line.receivedQuantity);
+      const usableReceivedQuantity = asFiniteNumber(line.usableReceivedQuantity);
+      if (receivedQuantity === null || usableReceivedQuantity === null) continue;
+      if (receivedQuantity < 0 || usableReceivedQuantity < 0) continue;
+
+      byItem.set(inventoryItemId, {
+        inventoryItemId,
+        recommendationId: asOptionalString(line.recommendationId),
+        unit: asOptionalString(line.unit) ?? "each",
+        predictedQuantity: asFiniteNumber(line.predictedQuantity),
+        orderedQuantity: asFiniteNumber(line.orderedQuantity),
+        receivedQuantity: requireFiniteNonNegative(receivedQuantity, "Received quantity"),
+        usableReceivedQuantity: requireFiniteNonNegative(
+          usableReceivedQuantity,
+          "Usable received quantity"
+        ),
+        deliveryId,
+        supplierOrderId,
+        receiveOutcomeId: outcome.id,
+        measuredAt: outcome.measuredAt
+      });
+    }
+  }
+
+  return [...byItem.values()];
+}
+
+export function selectPurchaseLoopCountLessonCode(input: {
+  shortCount: number;
+  overCount: number;
+  matchedCount: number;
+}): PurchaseLoopCountLessonCode {
+  if (input.shortCount > 0 && input.overCount > 0) {
+    return "purchase_loop.count.mixed";
+  }
+  if (input.shortCount > 0) {
+    return "purchase_loop.count.short";
+  }
+  if (input.overCount > 0) {
+    return "purchase_loop.count.over";
+  }
+  return "purchase_loop.count.matched";
+}
+
+export function lessonTextForPurchaseLoopCountCode(code: PurchaseLoopCountLessonCode): string {
+  switch (code) {
+    case "purchase_loop.count.matched":
+      return "Post-receive count matched the system quantity for purchase-loop items.";
+    case "purchase_loop.count.short":
+      return "Post-receive count was short of the system quantity; review waste or depletion before trusting pars.";
+    case "purchase_loop.count.over":
+      return "Post-receive count exceeded the system quantity; confirm receiving or conversion before adjusting pars.";
+    case "purchase_loop.count.mixed":
+      return "Post-receive count showed both short and over variances across purchase-loop items.";
+    default: {
+      const _exhaustive: never = code;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Builds the count-phase purchase-loop outcome for items that still have
+ * pending receive-phase evidence. Returns null when no overlapping items exist
+ * so callers do not invent an empty learning record.
+ */
+export function buildPurchaseLoopCountVarianceMeasurement(input: {
+  countSessionId: string;
+  priorReceiveLines: readonly PurchaseLoopPriorReceiveLine[];
+  countLines: readonly PurchaseLoopCountLineInput[];
+}): PurchaseLoopCountOutcomeMeasurement | null {
+  const countSessionId = input.countSessionId.trim();
+  if (!countSessionId) throw new Error("Purchase-loop count outcomes require a count session id.");
+  if (input.countLines.length < 1 || input.countLines.length > 500) {
+    throw new Error("Purchase-loop count outcomes require between 1 and 500 count lines.");
+  }
+  if (input.priorReceiveLines.length > 200) {
+    throw new Error("Purchase-loop count outcomes accept at most 200 prior receive lines.");
+  }
+
+  const priorByItem = new Map<string, PurchaseLoopPriorReceiveLine>();
+  for (const prior of input.priorReceiveLines) {
+    const inventoryItemId = prior.inventoryItemId.trim();
+    if (!inventoryItemId) continue;
+    if (!priorByItem.has(inventoryItemId)) {
+      priorByItem.set(inventoryItemId, {
+        ...prior,
+        inventoryItemId,
+        unit: prior.unit.trim() || "each",
+        predictedQuantity:
+          prior.predictedQuantity === null
+            ? null
+            : requireFiniteNonNegative(prior.predictedQuantity, "Predicted quantity"),
+        orderedQuantity:
+          prior.orderedQuantity === null
+            ? null
+            : requireFiniteNonNegative(prior.orderedQuantity, "Ordered quantity"),
+        receivedQuantity: requireFiniteNonNegative(prior.receivedQuantity, "Received quantity"),
+        usableReceivedQuantity: requireFiniteNonNegative(
+          prior.usableReceivedQuantity,
+          "Usable received quantity"
+        )
+      });
+    }
+  }
+
+  const lineMeasurements: PurchaseLoopCountLineMeasurement[] = [];
+  for (const line of input.countLines) {
+    const inventoryItemId = line.inventoryItemId.trim();
+    if (!inventoryItemId) {
+      throw new Error("Count lines require an inventory item id.");
+    }
+    const prior = priorByItem.get(inventoryItemId);
+    if (!prior) continue;
+
+    const systemQuantityAtStart = requireFiniteNonNegative(
+      Number(line.systemQuantityAtStart),
+      "System quantity at start"
+    );
+    const countedQuantity = requireFiniteNonNegative(
+      Number(line.countedQuantity),
+      "Counted quantity"
+    );
+    const quantityBefore = requireFiniteNonNegative(Number(line.quantityBefore), "Quantity before");
+    const quantityAfter = requireFiniteNonNegative(Number(line.quantityAfter), "Quantity after");
+
+    lineMeasurements.push({
+      inventoryItemId,
+      recommendationId: prior.recommendationId,
+      unit: (line.unit || prior.unit || "each").trim(),
+      predictedQuantity: prior.predictedQuantity,
+      orderedQuantity: prior.orderedQuantity,
+      receivedQuantity: prior.receivedQuantity,
+      usableReceivedQuantity: prior.usableReceivedQuantity,
+      systemQuantityAtStart,
+      countedQuantity,
+      quantityBefore,
+      quantityAfter,
+      varianceFromSystem: roundQuantity(countedQuantity - systemQuantityAtStart),
+      countedVersusUsableReceivedDelta: roundQuantity(
+        countedQuantity - prior.usableReceivedQuantity
+      ),
+      deliveryId: prior.deliveryId,
+      supplierOrderId: prior.supplierOrderId,
+      receiveOutcomeId: prior.receiveOutcomeId
+    });
+  }
+
+  if (lineMeasurements.length < 1) {
+    return null;
+  }
+
+  let shortCount = 0;
+  let overCount = 0;
+  let matchedCount = 0;
+  for (const line of lineMeasurements) {
+    if (line.varianceFromSystem < -0.000001) shortCount += 1;
+    else if (line.varianceFromSystem > 0.000001) overCount += 1;
+    else matchedCount += 1;
+  }
+
+  const lessonCode = selectPurchaseLoopCountLessonCode({
+    shortCount,
+    overCount,
+    matchedCount
+  });
+
+  const predictedQuantity = sumNullable(
+    lineMeasurements.map((line) => line.predictedQuantity)
+  );
+  const orderedQuantity = sumNullable(lineMeasurements.map((line) => line.orderedQuantity));
+  const receivedQuantity = roundQuantity(
+    lineMeasurements.reduce((total, line) => total + line.receivedQuantity, 0)
+  );
+  const usableReceivedQuantity = roundQuantity(
+    lineMeasurements.reduce((total, line) => total + line.usableReceivedQuantity, 0)
+  );
+  const systemQuantityAtStart = roundQuantity(
+    lineMeasurements.reduce((total, line) => total + line.systemQuantityAtStart, 0)
+  );
+  const countedQuantity = roundQuantity(
+    lineMeasurements.reduce((total, line) => total + line.countedQuantity, 0)
+  );
+  const varianceFromSystem = roundQuantity(countedQuantity - systemQuantityAtStart);
+
+  const expectedResult: Record<string, unknown> = {
+    evidenceVersion: PURCHASE_LOOP_OUTCOME_EVIDENCE_VERSION,
+    phase: PURCHASE_LOOP_COUNT_PHASE,
+    countSessionId,
+    predictedQuantity,
+    orderedQuantity,
+    receivedQuantity: usableReceivedQuantity,
+    usableReceivedQuantity,
+    systemQuantityAtStart,
+    countedQuantity: systemQuantityAtStart
+  };
+
+  const actualResult: Record<string, unknown> = {
+    evidenceVersion: PURCHASE_LOOP_OUTCOME_EVIDENCE_VERSION,
+    phase: PURCHASE_LOOP_COUNT_PHASE,
+    countSessionId,
+    lineCount: lineMeasurements.length,
+    predictedQuantity,
+    orderedQuantity,
+    receivedQuantity,
+    usableReceivedQuantity,
+    systemQuantityAtStart,
+    countedQuantity,
+    countVariancePending: false,
+    linkedReceiveOutcomeIds: [
+      ...new Set(
+        lineMeasurements
+          .map((line) => line.receiveOutcomeId)
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      )
+    ],
+    lines: lineMeasurements.map((line) => ({
+      inventoryItemId: line.inventoryItemId,
+      recommendationId: line.recommendationId,
+      unit: line.unit,
+      predictedQuantity: line.predictedQuantity,
+      orderedQuantity: line.orderedQuantity,
+      receivedQuantity: line.receivedQuantity,
+      usableReceivedQuantity: line.usableReceivedQuantity,
+      systemQuantityAtStart: line.systemQuantityAtStart,
+      countedQuantity: line.countedQuantity,
+      quantityBefore: line.quantityBefore,
+      quantityAfter: line.quantityAfter,
+      varianceFromSystem: line.varianceFromSystem,
+      countedVersusUsableReceivedDelta: line.countedVersusUsableReceivedDelta,
+      deliveryId: line.deliveryId,
+      supplierOrderId: line.supplierOrderId,
+      receiveOutcomeId: line.receiveOutcomeId
+    }))
+  };
+
+  const variance: Record<string, unknown> = {
+    evidenceVersion: PURCHASE_LOOP_OUTCOME_EVIDENCE_VERSION,
+    phase: PURCHASE_LOOP_COUNT_PHASE,
+    countSessionId,
+    countVariancePending: false,
+    predictedQuantity,
+    orderedQuantity,
+    receivedQuantity,
+    usableReceivedQuantity,
+    systemQuantityAtStart,
+    countedQuantity,
+    varianceFromSystem,
+    countedVersusUsableReceivedDelta: roundQuantity(countedQuantity - usableReceivedQuantity),
+    shortCount,
+    overCount,
+    matchedCount,
+    lineCount: lineMeasurements.length
+  };
+
+  return {
+    evidenceVersion: PURCHASE_LOOP_OUTCOME_EVIDENCE_VERSION,
+    phase: PURCHASE_LOOP_COUNT_PHASE,
+    expectedResult,
+    actualResult,
+    variance,
+    lesson: lessonTextForPurchaseLoopCountCode(lessonCode),
     lessonCode
   };
 }

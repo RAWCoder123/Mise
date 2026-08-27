@@ -57,7 +57,11 @@ import {
   measureOutcome,
   miseActionIdempotencyKey
 } from "../domain/miseActions";
-import { buildPurchaseLoopReceiveOutcomeMeasurement } from "../domain/purchaseLoopOutcome";
+import {
+  buildPurchaseLoopCountVarianceMeasurement,
+  buildPurchaseLoopReceiveOutcomeMeasurement,
+  selectPendingPurchaseLoopReceiveLines
+} from "../domain/purchaseLoopOutcome";
 import {
   defaultAutonomyRules,
   type RestaurantAutonomyRule
@@ -1498,6 +1502,81 @@ export function createLocalDemoRepository(): MiseRepository {
           ...demoState.insights.filter((insight) => insight.restaurant_id !== restaurantId),
           ...insights
         ];
+
+        const priorReceiveLines = selectPendingPurchaseLoopReceiveLines({
+          restaurantId,
+          outcomes: demoState.actionOutcomes ?? [],
+          inventoryItemIds: approvals.map((approval) => approval.inventoryItemId)
+        });
+        const purchaseLoopCount = buildPurchaseLoopCountVarianceMeasurement({
+          countSessionId: sessionId,
+          priorReceiveLines,
+          countLines: approvals.map((approval) => ({
+            inventoryItemId: approval.inventoryItemId,
+            unit: approval.unit,
+            systemQuantityAtStart: approval.systemQuantityAtStart,
+            countedQuantity: approval.countedQuantity,
+            quantityBefore: approval.quantityBefore,
+            quantityAfter: approval.quantityAfter
+          }))
+        });
+        if (purchaseLoopCount) {
+          const actionKey = miseActionIdempotencyKey(
+            restaurantId,
+            "measure_outcome",
+            `purchase_loop_count:${sessionId}`
+          );
+          let action = (demoState.miseActions ?? []).find(
+            (entry) => entry.idempotencyKey === actionKey
+          );
+          if (!action) {
+            action = createPreparedAction({
+              restaurantId,
+              actionType: "measure_outcome",
+              idempotencyKey: actionKey,
+              expectedImpact: {
+                countSessionId: sessionId,
+                phase: purchaseLoopCount.phase,
+                evidenceVersion: purchaseLoopCount.evidenceVersion
+              },
+              now
+            });
+            action = markExecuted(
+              action,
+              {
+                countSessionId: sessionId,
+                lessonCode: purchaseLoopCount.lessonCode,
+                lineCount: purchaseLoopCount.actualResult.lineCount
+              },
+              now
+            );
+            demoState.miseActions = [...(demoState.miseActions ?? []), action];
+          }
+          const alreadyMeasured = (demoState.actionOutcomes ?? []).some(
+            (entry) =>
+              entry.actionId === action!.id &&
+              entry.actualResult.phase === "count" &&
+              entry.actualResult.countSessionId === sessionId
+          );
+          if (!alreadyMeasured) {
+            const measured = measureOutcome({
+              restaurantId,
+              actionId: action.id,
+              expectedResult: purchaseLoopCount.expectedResult,
+              actualResult: purchaseLoopCount.actualResult,
+              measuredAt: now,
+              lesson: purchaseLoopCount.lesson
+            });
+            demoState.actionOutcomes = [
+              ...(demoState.actionOutcomes ?? []),
+              {
+                ...measured,
+                variance: purchaseLoopCount.variance
+              }
+            ];
+          }
+        }
+
         return replaceDemoCountSession(demoState, {
           session: {
             ...current.session,
