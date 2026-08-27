@@ -75,7 +75,9 @@ const restaurantOwnedTables = new Set([
   "activity_events",
   "supplier_order_confirmations",
   "supplier_deliveries",
-  "supplier_delivery_items"
+  "supplier_delivery_items",
+  "storage_locations",
+  "inventory_location_balances"
 ]);
 
 const serviceOnlyPublicTables = new Set([

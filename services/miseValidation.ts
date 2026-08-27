@@ -1177,6 +1177,36 @@ export function normalizeRecipeBaselineQuantity(value: unknown) {
   return asBoundedNonNegativeNumber(value, operatingLimits.recipeQuantityPerSale);
 }
 
+export function requireStorageLocationName(value: unknown) {
+  if (typeof value !== "string") {
+    throw new Error("Storage location name is required.");
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("Storage location name is required.");
+  }
+  if (trimmed.length > 80) {
+    throw new Error("Storage location name is limited to 80 characters.");
+  }
+  if (trimmed.toLowerCase() === "main") {
+    throw new Error('"Main" is reserved and created automatically.');
+  }
+  return trimmed;
+}
+
+export function requireInventoryTransferQuantity(value: unknown) {
+  const parsed = asNumber(value, Number.NaN);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("Transfer quantity must be greater than zero.");
+  }
+  if (parsed > operatingLimits.inventoryQuantity) {
+    throw new Error(
+      `Transfer quantity must be no more than ${operatingLimits.inventoryQuantity.toLocaleString()}.`
+    );
+  }
+  return parsed;
+}
+
 export function normalizeInventoryItemPatch(patch: InventoryItemPatch): InventoryItemPatch {
   const normalized: InventoryItemPatch = { ...patch };
   if (normalized.current_quantity !== undefined) {

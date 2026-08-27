@@ -131,6 +131,28 @@ export interface InventoryItem {
   canonical_unit_verified_by?: string | null;
 }
 
+/** Restaurant storage station (walk-in, line, dry). Main is reserved and auto-created. */
+export interface StorageLocation {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Per-station quantity breakdown. Restaurant total remains inventory_items.current_quantity. */
+export interface InventoryLocationBalance {
+  id: string;
+  restaurant_id: string;
+  inventory_item_id: string;
+  storage_location_id: string;
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export type InventoryCountSessionStatus = "in_progress" | "submitted" | "approved" | "cancelled";
 
 export interface InventoryCountSession {

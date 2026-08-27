@@ -11,12 +11,15 @@ import {
   planCountSessionApprovals,
   summarizeCountSessionProgress
 } from "../domain/inventoryCountSessions";
+import { planInventoryTransfer, planStorageLocationCreate } from "../domain/inventoryTransfer";
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
 import {
   requireInventoryCountLineUpdates,
   requireInventoryCountSessionNote,
   requireInventoryItemPatch,
+  requireInventoryTransferQuantity,
   requireRecipeBaselineQuantity,
+  requireStorageLocationName,
   requireSupplierAuthorityId
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
@@ -72,6 +75,62 @@ function signalCountEvidence(data: {
 
 export async function fetchInventoryItems(restaurantId: string) {
   return repository.fetchInventoryItems(restaurantId);
+}
+
+export async function fetchStorageLocations(restaurantId: string) {
+  return repository.fetchStorageLocations(restaurantId);
+}
+
+export async function createStorageLocation(restaurantId: string, name: string) {
+  const planned = planStorageLocationCreate({ name: requireStorageLocationName(name) });
+  return repository.createStorageLocation(restaurantId, planned.name);
+}
+
+export async function fetchInventoryLocationBalances(restaurantId: string, itemId: string) {
+  return repository.fetchInventoryLocationBalances(restaurantId, itemId);
+}
+
+export async function transferInventory(
+  restaurantId: string,
+  itemId: string,
+  fromStorageLocationId: string,
+  toStorageLocationId: string,
+  quantity: number,
+  note: string | null
+) {
+  const transferQuantity = requireInventoryTransferQuantity(quantity);
+  const [item, locations, balances] = await Promise.all([
+    repository.fetchInventoryItems(restaurantId).then((items) => items.find((entry) => entry.id === itemId)),
+    repository.fetchStorageLocations(restaurantId),
+    repository.fetchInventoryLocationBalances(restaurantId, itemId)
+  ]);
+  if (!item) {
+    throw new Error("Inventory item not found.");
+  }
+  if (locations.length === 0) {
+    throw new Error("Create a storage location before transferring stock.");
+  }
+  const main = locations.find((location) => location.name.toLowerCase() === "main") ?? locations[0]!;
+  planInventoryTransfer({
+    onHandQuantity: item.current_quantity,
+    balances: balances.map((balance) => ({
+      storageLocationId: balance.storage_location_id,
+      quantity: balance.quantity
+    })),
+    fromStorageLocationId,
+    toStorageLocationId,
+    quantity: transferQuantity,
+    note,
+    mainStorageLocationId: main.id
+  });
+  return repository.transferInventory(
+    restaurantId,
+    itemId,
+    fromStorageLocationId,
+    toStorageLocationId,
+    transferQuantity,
+    typeof note === "string" && note.trim() ? note.trim() : null
+  );
 }
 
 export async function reassignInventoryItemSupplier(
