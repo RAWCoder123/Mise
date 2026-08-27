@@ -79,6 +79,12 @@ interface OperationsCopy {
     repairSalesDisconnectedDetail: string;
     reviewInsightTitle: (typeLabel: string) => string;
     reviewInsightDetail: string;
+    chronicShortShipTitle: (itemName: string) => string;
+    chronicShortShipDetail: (
+      supplierName: string,
+      fillPercentLabel: string,
+      sampleCountLabel: string
+    ) => string;
   };
   insight: {
     inventoryCriticalTitle: (itemName: string) => string;
@@ -98,6 +104,15 @@ interface OperationsCopy {
     wasteDescription: (itemName: string, quantity: string, unit: string) => string;
     wasteWhy: string;
     wasteAction: (itemName: string) => string;
+    shortShipTitle: (itemName: string) => string;
+    shortShipDescription: (
+      supplierName: string,
+      itemName: string,
+      fillPercentLabel: string,
+      sampleCountLabel: string
+    ) => string;
+    shortShipWhy: string;
+    shortShipAction: (supplierName: string) => string;
   };
   memory: {
     reliableLabel: string;
@@ -190,7 +205,10 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesPausedDetail: "Sales synchronization is paused. Review the connection to resume current signals.",
       repairSalesDisconnectedDetail: "This sales source is not connected.",
       reviewInsightTitle: (typeLabel) => `Review ${typeLabel}`,
-      reviewInsightDetail: "Open the evidence and recommended action before the next service window."
+      reviewInsightDetail: "Open the evidence and recommended action before the next service window.",
+      chronicShortShipTitle: (itemName) => `${itemName} is often short-shipped`,
+      chronicShortShipDetail: (supplierName, fillPercentLabel, sampleCountLabel) =>
+        `Recent ${supplierName} deliveries averaged about ${fillPercentLabel} of ordered across ${sampleCountLabel} receives.`
     },
     insight: {
       inventoryCriticalTitle: (itemName) => `${itemName} may run out today`,
@@ -209,7 +227,13 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       wasteTitle: (itemName) => `${itemName} may be overstocked`,
       wasteDescription: (itemName, quantity, unit) => `${itemName} has about ${quantity} ${unit}, more than projected use.`,
       wasteWhy: "Extra on hand can spoil or tie up cash before the next rush needs it.",
-      wasteAction: (itemName) => `Skip or trim the next ${itemName} order unless tonight’s sales stay hot.`
+      wasteAction: (itemName) => `Skip or trim the next ${itemName} order unless tonight’s sales stay hot.`,
+      shortShipTitle: (itemName) => `${itemName} is often short-shipped`,
+      shortShipDescription: (supplierName, itemName, fillPercentLabel, sampleCountLabel) =>
+        `Recent ${supplierName} deliveries for ${itemName} averaged about ${fillPercentLabel} of the ordered quantity across ${sampleCountLabel} receives.`,
+      shortShipWhy: "Chronic short-ships leave less on hand than Mise ordered and can create avoidable stockouts.",
+      shortShipAction: (supplierName) =>
+        `Order slightly more from ${supplierName}, or confirm counts carefully when receiving.`
     },
     memory: {
       reliableLabel: "Mise memory is reliable",
@@ -302,7 +326,10 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesPausedDetail: "La sincronización de ventas está pausada. Revisa la conexión para reanudar las señales.",
       repairSalesDisconnectedDetail: "Esta fuente de ventas no está conectada.",
       reviewInsightTitle: (typeLabel) => `Revisar ${typeLabel}`,
-      reviewInsightDetail: "Abre la evidencia y la acción recomendada antes del próximo servicio."
+      reviewInsightDetail: "Abre la evidencia y la acción recomendada antes del próximo servicio.",
+      chronicShortShipTitle: (itemName) => `${itemName} suele llegar incompleto`,
+      chronicShortShipDetail: (supplierName, fillPercentLabel, sampleCountLabel) =>
+        `Las entregas recientes de ${supplierName} promedian cerca del ${fillPercentLabel} de lo pedido en ${sampleCountLabel} recepciones.`
     },
     insight: {
       inventoryCriticalTitle: (itemName) => `${itemName} podría agotarse hoy`,
@@ -321,7 +348,13 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       wasteTitle: (itemName) => `${itemName} podría tener exceso de existencias`,
       wasteDescription: (itemName, quantity, unit) => `Hay cerca de ${quantity} ${unit} de ${itemName}, más que el uso proyectado.`,
       wasteWhy: "El exceso de existencias puede inmovilizar efectivo o aumentar el riesgo de desperdicio.",
-      wasteAction: (itemName) => `Retrasa el próximo pedido de ${itemName} salvo que aumenten las ventas.`
+      wasteAction: (itemName) => `Retrasa el próximo pedido de ${itemName} salvo que aumenten las ventas.`,
+      shortShipTitle: (itemName) => `${itemName} suele llegar incompleto`,
+      shortShipDescription: (supplierName, itemName, fillPercentLabel, sampleCountLabel) =>
+        `Las entregas recientes de ${supplierName} para ${itemName} promedian cerca del ${fillPercentLabel} de lo pedido en ${sampleCountLabel} recepciones.`,
+      shortShipWhy: "Los short-ships crónicos dejan menos existencias de las pedidas y pueden provocar quiebres evitables.",
+      shortShipAction: (supplierName) =>
+        `Pide un poco más a ${supplierName}, o confirma los conteos con cuidado al recibir.`
     },
     memory: {
       reliableLabel: "La memoria de Mise es confiable",
@@ -412,7 +445,10 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesPausedDetail: "销售同步已暂停。请检查连接以恢复当前信号。",
       repairSalesDisconnectedDetail: "此销售数据源尚未连接。",
       reviewInsightTitle: (typeLabel) => `查看${typeLabel}`,
-      reviewInsightDetail: "请在下一个营业时段前查看依据和建议操作。"
+      reviewInsightDetail: "请在下一个营业时段前查看依据和建议操作。",
+      chronicShortShipTitle: (itemName) => `${itemName} 经常短交`,
+      chronicShortShipDetail: (supplierName, fillPercentLabel, sampleCountLabel) =>
+        `最近 ${supplierName} 的到货量约为订购量的 ${fillPercentLabel}（基于 ${sampleCountLabel} 次收货）。`
     },
     insight: {
       inventoryCriticalTitle: (itemName) => `${itemName} 今天可能用完`,
@@ -431,7 +467,13 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       wasteTitle: (itemName) => `${itemName} 可能库存过多`,
       wasteDescription: (itemName, quantity, unit) => `${itemName} 约有 ${quantity} ${unit}，高于预计用量。`,
       wasteWhy: "库存过多可能占用现金或增加损耗风险。",
-      wasteAction: (itemName) => `除非销量上升，否则请推迟下一次 ${itemName} 订货。`
+      wasteAction: (itemName) => `除非销量上升，否则请推迟下一次 ${itemName} 订货。`,
+      shortShipTitle: (itemName) => `${itemName} 经常短交`,
+      shortShipDescription: (supplierName, itemName, fillPercentLabel, sampleCountLabel) =>
+        `最近 ${supplierName} 对 ${itemName} 的到货量约为订购量的 ${fillPercentLabel}（基于 ${sampleCountLabel} 次收货）。`,
+      shortShipWhy: "长期短交会让实际到货少于订购量，并可能造成可避免的缺货。",
+      shortShipAction: (supplierName) =>
+        `可向 ${supplierName} 略微加订，或在收货时仔细核对数量。`
     },
     memory: {
       reliableLabel: "Mise 运营记忆可靠",
@@ -543,6 +585,16 @@ export function presentOperationalTodayTask(
       copy.today.reviewInsightDetail
     );
   }
+  if (code === "today.ordering.chronic_short_ship") {
+    return result(
+      copy.today.chronicShortShipTitle(values.itemName),
+      copy.today.chronicShortShipDetail(
+        values.supplierName,
+        formatPercent(locale, values.fillPercent),
+        formatQuantity(locale, values.sampleCount)
+      )
+    );
+  }
 
   throw new Error(`Unsupported Today task presentation code: ${String(code)}`);
 }
@@ -613,6 +665,20 @@ export function presentInsight(locale: AppLocale, insight: Insight): PresentedIn
       ),
       whyItMatters: copy.insight.wasteWhy,
       recommendedAction: copy.insight.wasteAction(values.itemName),
+      evidenceOnly: false
+    };
+  }
+  if (code === "insight.rule.ordering.chronic_short_ship") {
+    return {
+      title: copy.insight.shortShipTitle(values.itemName),
+      description: copy.insight.shortShipDescription(
+        values.supplierName,
+        values.itemName,
+        formatPercent(locale, values.fillPercent),
+        formatQuantity(locale, values.sampleCount)
+      ),
+      whyItMatters: copy.insight.shortShipWhy,
+      recommendedAction: copy.insight.shortShipAction(values.supplierName),
       evidenceOnly: false
     };
   }

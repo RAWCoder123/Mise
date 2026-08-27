@@ -38,6 +38,7 @@ import type {
   ActivityEvent,
   ActivityFeedFilter
 } from "../domain/activityEvents";
+import type { ReceiveDiscrepancySample } from "../domain/receiveDiscrepancyLearning";
 import type { MiseAction } from "../domain/miseActions";
 import type {
   OperationalFindingDecision,
@@ -490,6 +491,8 @@ export interface PlanningData {
   operatingDate: string;
   /** Restaurant timezone, needed to place a verified count inside the right operating day. */
   timeZone: string;
+  /** Receiving ledger samples for short-ship fill-rate learning. */
+  receivingHistory: ReceiveDiscrepancySample[];
 }
 
 export interface MiseRepository {

@@ -52,7 +52,7 @@ Mise already contains most of the component workflows for a controlled operating
 | Tenant isolation | RLS, service RPC checks, `tenant_isolation.test.sql`, role-specific tests | READY | Latest chain not executed through Docker in this run | Run full migration + pgTAP chain before staging claim |
 | Role enforcement | owner/admin/manager/staff gates in Edge, RPCs, and UI | READY | Role matrix was not previously centralized for the pilot | Maintain `PILOT_ROLE_MATRIX.md` and add tests for new readiness/approval paths |
 | Observability | bounded Edge security events, audit logs, activity, telemetry redaction | PARTIAL | Required milestone event vocabulary is split across security telemetry, audit, and activity; refresh failures are easy to miss | Normalize pilot-stage telemetry without storing provider payloads or message bodies |
-| Future learning | approved quantities, recommendation decisions, outcomes, memories | PARTIAL | No single outcome links predicted consumption, ordered quantity, received quantity, and later variance | Add outcome measurement after the authoritative loop is proven |
+| Future learning | approved quantities, recommendation decisions, outcomes, memories; chronic short-ship fill-rate advisory from delivery ledger | PARTIAL | Predicted/ordered/received/count variance linkage still open in #193/#194; 004B pattern advisory open in #200 | Land measurement stacks, then optional variance multipliers |
 
 ## Failure-matrix coverage summary
 

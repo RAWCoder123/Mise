@@ -63,6 +63,7 @@ import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord
 } from "../domain/supplierReliability";
+import { extractReceiveSamplesFromDeliveries } from "../domain/receiveDiscrepancyLearning";
 import {
   inventoryEventRejectionFromRpcError,
   inventoryEventRpcArguments,
@@ -1280,11 +1281,12 @@ export function createSupabaseRepository(): MiseRepository {
     },
 
     async fetchPlanningData(restaurantId) {
-      const [inventoryResult, sales, mappingResult, restaurantResult] = await Promise.all([
+      const [inventoryResult, sales, mappingResult, restaurantResult, deliveryHistory] = await Promise.all([
         client.from("inventory_items").select(inventorySupplierSelect).eq("restaurant_id", restaurantId).order("item_name"),
         fetchBoundedPlanningSales(restaurantId),
         client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
-        client.from("restaurants").select("timezone").eq("id", restaurantId).single()
+        client.from("restaurants").select("timezone").eq("id", restaurantId).single(),
+        this.fetchSupplierDeliveryHistory(restaurantId)
       ]);
       if (inventoryResult.error) throw inventoryResult.error;
       if (mappingResult.error) throw mappingResult.error;
@@ -1299,7 +1301,11 @@ export function createSupabaseRepository(): MiseRepository {
         menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
         providerMappings,
         operatingDate: toDateKeyInTimeZone(new Date(), timeZone),
-        timeZone
+        timeZone,
+        receivingHistory: extractReceiveSamplesFromDeliveries(
+          deliveryHistory.deliveries,
+          deliveryHistory.items
+        )
       };
     },
 

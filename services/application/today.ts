@@ -10,6 +10,11 @@ import {
   type OperationalTodayTask
 } from "../domain/todayTasks";
 import {
+  buildChronicShortShipInsightInput,
+  buildReceiveFillBiasByItem,
+  extractReceiveSamplesFromDeliveries
+} from "../domain/receiveDiscrepancyLearning";
+import {
   fetchOpenInventoryCountSession
 } from "./inventory";
 import {
@@ -61,7 +66,8 @@ export async function fetchTodaySummary(
     posIntegrationsResult,
     restaurantTasksResult,
     openCountSession,
-    ledger
+    ledger,
+    deliveryHistory
   ] =
     await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
@@ -70,7 +76,8 @@ export async function fetchTodaySummary(
     repository.fetchPosIntegrations(normalizedRestaurantId),
     repository.listRestaurantTasks(normalizedRestaurantId),
     fetchOpenInventoryCountSession(normalizedRestaurantId).catch(() => null),
-    fetchInventoryLedgerEvidence(normalizedRestaurantId)
+    fetchInventoryLedgerEvidence(normalizedRestaurantId),
+    repository.fetchSupplierDeliveryHistory(normalizedRestaurantId)
   ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
@@ -133,6 +140,22 @@ export async function fetchTodaySummary(
     data.providerMappings
   );
 
+  const receiveBiasByItem = buildReceiveFillBiasByItem(
+    extractReceiveSamplesFromDeliveries(deliveryHistory.deliveries, deliveryHistory.items)
+  );
+  const chronicShortShipItems = inventoryItems.flatMap((item) => {
+    const bias = receiveBiasByItem.get(item.id);
+    const marker = bias ? buildChronicShortShipInsightInput(bias) : null;
+    if (!bias || !marker) return [];
+    return [{
+      inventoryItemId: item.id,
+      itemName: item.item_name,
+      supplierName: item.supplier_name,
+      fillPercent: marker.fillPercent,
+      sampleCount: bias.sampleCount
+    }];
+  });
+
   const projectedTasks = deriveOperationalTodayTasks({
     restaurantId: normalizedRestaurantId,
     restaurantTimeZone: data.restaurant.timezone,
@@ -143,6 +166,7 @@ export async function fetchTodaySummary(
     posIntegrations,
     insights,
     openCountSession: openCountSession?.session ?? null,
+    chronicShortShipItems,
     includeCompleted: options.includeCompletedTasks
   });
   const sharedTasks = visibleRestaurantTasksForToday(restaurantTasksResult, {
