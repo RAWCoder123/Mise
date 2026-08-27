@@ -272,7 +272,11 @@ function englishConfidenceRationale(reasons: readonly RecommendationConfidenceRe
     return "Confidence is unavailable until Mise can calculate this item's demand and count freshness.";
   }
   const fragments = reasons
-    .filter((reason) => reason.code !== "unavailable")
+    .filter(
+      (reason): reason is RecommendationConfidenceReason & {
+        code: Exclude<RecommendationConfidenceReasonCode, "unavailable">;
+      } => reason.code !== "unavailable"
+    )
     .map((reason) => CONFIDENCE_REASON_EN[reason.code](reason));
   return `Based on ${fragments.join(", ")}.`;
 }
