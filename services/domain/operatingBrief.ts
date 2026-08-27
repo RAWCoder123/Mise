@@ -413,11 +413,10 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
     .slice(0, 5);
 
-  const draftOrders = input.orders.filter((order) => order.status === "draft");
-  const sentOrders = input.orders.filter((order) => order.status === "sent");
   const criticalCount = outlooks.filter(
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0
   ).length;
+  const deliveryOutlook = classifySupplierDeliveryOutlook(input.orders, input.operatingDate);
 
   return {
     expectedSales: todaySales.length > 0 ? expectedSales : null,
@@ -434,19 +433,84 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
           : "Prep readiness is unavailable until inventory projections exist.",
     staffingCoverage: "unknown",
     staffingDetail: "Staffing coverage requires schedule integration before Mise can assess it.",
-    deliveryStatus: sentOrders.length > 0 ? "expected" : draftOrders.length > 0 ? "unknown" : "none",
-    deliveryDetail:
-      sentOrders.length > 0
-        ? `${sentOrders.length} sent order${sentOrders.length === 1 ? "" : "s"} awaiting delivery confirmation.`
-        : draftOrders.length > 0
-          ? `${draftOrders.length} draft order${draftOrders.length === 1 ? "" : "s"} prepared but not sent.`
-          : "No open supplier deliveries are currently tracked.",
+    deliveryStatus: deliveryOutlook.deliveryStatus,
+    deliveryDetail: deliveryOutlook.deliveryDetail,
     menuRisks,
     supplierCutoffDeadlines: [],
     preventableLoss:
       menuRisks.length > 0
         ? "Preventable stockouts are possible on items already below coverage thresholds."
         : null
+  };
+}
+
+function validOperatingDateKey(value: string | null | undefined): value is string {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+/**
+ * Classify open supplier orders for Home / phase briefs.
+ * Overdue means a non-completed order has an evidenced delivery date before the
+ * restaurant operating date and still needs receipt confirmation.
+ */
+export function classifySupplierDeliveryOutlook(
+  orders: readonly SupplierOrder[],
+  operatingDate: string
+): Pick<OperatingOutlook, "deliveryStatus" | "deliveryDetail"> & {
+  overdueOrders: SupplierOrder[];
+} {
+  const draftOrders = orders.filter((order) => order.status === "draft");
+  const sentOrders = orders.filter((order) => order.status === "sent");
+  const openOrders = orders.filter((order) => order.status === "draft" || order.status === "sent");
+  const overdueOrders = openOrders.filter(
+    (order) =>
+      validOperatingDateKey(order.delivery_date) &&
+      validOperatingDateKey(operatingDate) &&
+      order.delivery_date < operatingDate
+  );
+  const expectedSentOrders = sentOrders.filter(
+    (order) =>
+      !validOperatingDateKey(order.delivery_date) ||
+      !validOperatingDateKey(operatingDate) ||
+      order.delivery_date >= operatingDate
+  );
+
+  if (overdueOrders.length > 0) {
+    const sole = overdueOrders[0]!;
+    return {
+      deliveryStatus: "overdue",
+      deliveryDetail:
+        overdueOrders.length === 1
+          ? `${sole.supplier_name} delivery was due ${sole.delivery_date} and still needs receipt confirmation.`
+          : `${overdueOrders.length} supplier deliveries are past their due date and still need receipt confirmation.`,
+      overdueOrders
+    };
+  }
+
+  if (expectedSentOrders.length > 0) {
+    return {
+      deliveryStatus: "expected",
+      deliveryDetail: `${expectedSentOrders.length} sent order${
+        expectedSentOrders.length === 1 ? "" : "s"
+      } awaiting delivery confirmation.`,
+      overdueOrders
+    };
+  }
+
+  if (draftOrders.length > 0) {
+    return {
+      deliveryStatus: "unknown",
+      deliveryDetail: `${draftOrders.length} draft order${
+        draftOrders.length === 1 ? "" : "s"
+      } prepared but not sent.`,
+      overdueOrders
+    };
+  }
+
+  return {
+    deliveryStatus: "none",
+    deliveryDetail: "No open supplier deliveries are currently tracked.",
+    overdueOrders
   };
 }
 
@@ -477,13 +541,40 @@ function buildMonitoringRows(
     }
   }
 
-  for (const order of input.orders.filter((entry) => entry.status === "sent").slice(0, 5)) {
+  const openOrders = input.orders.filter(
+    (entry) => entry.status === "sent" || entry.status === "draft"
+  );
+  const rankedOrders = [...openOrders].sort((left, right) => {
+    const leftOverdue =
+      validOperatingDateKey(left.delivery_date) &&
+      validOperatingDateKey(input.operatingDate) &&
+      left.delivery_date < input.operatingDate;
+    const rightOverdue =
+      validOperatingDateKey(right.delivery_date) &&
+      validOperatingDateKey(input.operatingDate) &&
+      right.delivery_date < input.operatingDate;
+    if (leftOverdue !== rightOverdue) return leftOverdue ? -1 : 1;
+    if (left.status !== right.status) return left.status === "sent" ? -1 : 1;
+    return left.created_at.localeCompare(right.created_at);
+  });
+
+  for (const order of rankedOrders.slice(0, 5)) {
+    const overdue =
+      validOperatingDateKey(order.delivery_date) &&
+      validOperatingDateKey(input.operatingDate) &&
+      order.delivery_date < input.operatingDate;
     rows.push({
       id: `watch_order_${order.id}`,
-      title: `Waiting for ${order.supplier_name} confirmation`,
-      detail: order.delivery_date
-        ? `Expected delivery ${order.delivery_date}.`
-        : "Delivery date not yet confirmed.",
+      title: overdue
+        ? `Overdue ${order.supplier_name} receipt`
+        : order.status === "sent"
+          ? `Waiting for ${order.supplier_name} confirmation`
+          : `Draft ${order.supplier_name} order not sent`,
+      detail: overdue
+        ? `Delivery was due ${order.delivery_date} and still needs receipt confirmation.`
+        : order.delivery_date
+          ? `Expected delivery ${order.delivery_date}.`
+          : "Delivery date not yet confirmed.",
       startedAt: order.created_at,
       status: "waiting",
       relatedEntityType: "supplier_order",
@@ -511,11 +602,16 @@ function pulseStatus(input: {
   pendingApprovals: number;
   freshness: DataFreshnessDescriptor;
   urgentFindings: number;
+  overdueDeliveries: number;
 }): RestaurantPulseStatus {
   if (input.criticalCount > 0 || input.urgentFindings > 0 || input.freshness.state === "incomplete") {
     return "at_risk";
   }
-  if (input.pendingApprovals > 0 || input.freshness.state === "stale") {
+  if (
+    input.pendingApprovals > 0 ||
+    input.freshness.state === "stale" ||
+    input.overdueDeliveries > 0
+  ) {
     return "attention_needed";
   }
   return "on_track";
@@ -542,11 +638,13 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0
   ).length;
   const urgentFindings = (input.findings ?? []).filter((finding) => finding.severity === "urgent").length;
+  const overdueDeliveries = outlook.deliveryStatus === "overdue" ? 1 : 0;
   const status = pulseStatus({
     criticalCount,
     pendingApprovals: approvals.length,
     freshness,
-    urgentFindings
+    urgentFindings,
+    overdueDeliveries
   });
 
   const lastSeenAt = input.lastSeenAt ? new Date(input.lastSeenAt).toISOString() : null;
@@ -563,9 +661,11 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
 
   const liveActivity = [...activity].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
   const topRisk =
-    outlook.menuRisks[0]?.detail ??
-    approvals[0]?.riskIfIgnored ??
-    (freshness.state === "incomplete" ? freshness.label : null);
+    outlook.deliveryStatus === "overdue"
+      ? outlook.deliveryDetail
+      : outlook.menuRisks[0]?.detail ??
+        approvals[0]?.riskIfIgnored ??
+        (freshness.state === "incomplete" ? freshness.label : null);
   const topOpportunity =
     approvals[0]?.expectedOperationalImpact ??
     (input.insights.find((insight) => insight.severity !== "urgent")?.recommended_action ?? null);
@@ -582,7 +682,9 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
           approvals.length > 0 ? `, and ${approvals.length} decision${approvals.length === 1 ? "" : "s"} still need approval` : ""
         }.`
       : status === "attention_needed"
-        ? `Attention needed: ${approvals.length} approval${approvals.length === 1 ? "" : "s"} and ${outlook.menuRisks.length} inventory watch item${outlook.menuRisks.length === 1 ? "" : "s"} are open.`
+        ? outlook.deliveryStatus === "overdue"
+          ? `Attention needed: ${outlook.deliveryDetail}`
+          : `Attention needed: ${approvals.length} approval${approvals.length === 1 ? "" : "s"} and ${outlook.menuRisks.length} inventory watch item${outlook.menuRisks.length === 1 ? "" : "s"} are open.`
         : (() => {
           const issueCount = criticalCount || urgentFindings || approvals.length;
           return `At risk: ${issueCount} operational issue${issueCount === 1 ? "" : "s"} ${
