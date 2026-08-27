@@ -9,6 +9,7 @@ import type {
   PosSale,
   PurchaseRecommendation,
   Restaurant,
+  RestaurantEmailConnection,
   SupplierOrder
 } from "../types/mise";
 
@@ -324,4 +325,208 @@ test("recommendation confidence credits verified count age only", () => {
   assert.match(fresh.needsApproval[0]?.confidenceRationale ?? "", /within 24 hours/i);
   assert.match(unverified.needsApproval[0]?.confidenceRationale ?? "", /older or unknown inventory count/i);
   assert.ok((fresh.needsApproval[0]?.confidence ?? 0) > (unverified.needsApproval[0]?.confidence ?? 0));
+});
+
+function emailConnection(
+  overrides: Partial<RestaurantEmailConnection> = {}
+): RestaurantEmailConnection {
+  return {
+    id: "email_gmail",
+    restaurant_id: restaurantId,
+    provider: "gmail",
+    status: "connected",
+    sender_email: "kitchen@harbor.example",
+    last_verified_at: "2026-08-02T14:00:00.000Z",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-08-02T14:00:00.000Z",
+    ...overrides
+  };
+}
+
+test("evidenced Gmail sender repair escalates Home pulse without inventing send success", () => {
+  const healthy = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt: "2026-08-02T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_1",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-02",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 10,
+        gross_sales: 120,
+        net_sales: 110,
+        source_pos: "Square",
+        created_at: "2026-08-02T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 40, last_updated: "2026-08-02T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 40 }),
+        prediction: prediction({
+          projectedQuantity: 30,
+          projectedStatus: "Good",
+          daysCoverage: 3,
+          whyItMatters: "Coverage is stable."
+        })
+      }
+    ],
+    emailConnection: emailConnection()
+  });
+  assert.equal(healthy.restaurantStatus.status, "on_track");
+  assert.equal(healthy.outlook.emailConnectionStatus, "ok");
+
+  const broken = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt: "2026-08-02T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_1",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-02",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 10,
+        gross_sales: 120,
+        net_sales: 110,
+        source_pos: "Square",
+        created_at: "2026-08-02T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 40, last_updated: "2026-08-02T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 40 }),
+        prediction: prediction({
+          projectedQuantity: 30,
+          projectedStatus: "Good",
+          daysCoverage: 3,
+          whyItMatters: "Coverage is stable."
+        })
+      }
+    ],
+    emailConnection: emailConnection({
+      status: "needs_reauth",
+      last_verified_at: "2026-08-01T09:00:00.000Z",
+      updated_at: "2026-08-02T13:00:00.000Z"
+    })
+  });
+
+  assert.equal(broken.restaurantStatus.status, "at_risk");
+  assert.equal(broken.outlook.emailConnectionStatus, "error");
+  assert.match(broken.outlook.emailConnectionDetail, /Gmail authorization must be renewed/i);
+  assert.match(broken.restaurantStatus.topRisk ?? "", /Gmail authorization must be renewed/i);
+  assert.match(broken.restaurantStatus.summary, /Gmail authorization must be renewed/i);
+  assert.ok(
+    broken.miseIsWatching.some(
+      (row) => row.relatedEntityType === "restaurant_email_connection" && /Gmail sender needs repair/i.test(row.title)
+    )
+  );
+  assert.doesNotMatch(broken.outlook.emailConnectionDetail, /\b(sent|delivered|message-?id)\b/i);
+});
+
+test("operating brief rejects cross-tenant email connections", () => {
+  assert.throws(() =>
+    buildOperatingBrief({
+      restaurant: restaurant(),
+      operatingDate: "2026-08-02",
+      sales: [],
+      inventoryItems: [],
+      recommendations: [],
+      orders: [],
+      insights: [],
+      emailConnection: emailConnection({ restaurant_id: "other" })
+    })
+  );
+});
+
+test("unloaded Gmail sender state stays unknown and does not escalate pulse alone", () => {
+  const brief = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt: "2026-08-02T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_1",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-02",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 10,
+        gross_sales: 120,
+        net_sales: 110,
+        source_pos: "Square",
+        created_at: "2026-08-02T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 40, last_updated: "2026-08-02T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 40 }),
+        prediction: prediction({
+          projectedQuantity: 30,
+          projectedStatus: "Good",
+          daysCoverage: 3,
+          whyItMatters: "Coverage is stable."
+        })
+      }
+    ]
+  });
+
+  assert.equal(brief.outlook.emailConnectionStatus, "unknown");
+  assert.equal(brief.restaurantStatus.status, "on_track");
+});
+
+test("missing Gmail sender stays none without escalating pulse alone", () => {
+  const brief = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt: "2026-08-02T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_1",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-02",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 10,
+        gross_sales: 120,
+        net_sales: 110,
+        source_pos: "Square",
+        created_at: "2026-08-02T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 40, last_updated: "2026-08-02T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 40 }),
+        prediction: prediction({
+          projectedQuantity: 30,
+          projectedStatus: "Good",
+          daysCoverage: 3,
+          whyItMatters: "Coverage is stable."
+        })
+      }
+    ],
+    emailConnection: null
+  });
+
+  assert.equal(brief.outlook.emailConnectionStatus, "none");
+  assert.equal(brief.restaurantStatus.status, "on_track");
 });

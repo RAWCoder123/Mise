@@ -12,6 +12,7 @@ export type DailyPhaseBriefRoute =
   | "/inventory/count"
   | "/orders"
   | "/insights"
+  | "/settings/gmail"
   | "/more/daily-report"
   | "/more/waste";
 
@@ -126,6 +127,17 @@ function buildMorningBrief(
   if (brief.needsApproval.length > 0) {
     candidates.push(approvalFinding("morning", brief.needsApproval.length));
   }
+  if (brief.outlook.emailConnectionStatus === "error") {
+    candidates.push({
+      id: "morning-gmail-connection",
+      rank: 0,
+      tone: "urgent",
+      title: "Repair the Gmail sender before sending supplier orders",
+      interpretation: brief.outlook.emailConnectionDetail,
+      route: "/settings/gmail",
+      evidenceReferences: ["operating-brief:email-connection"]
+    });
+  }
   if (report.throughput.completedTasks > 0) {
     candidates.push({
       id: "morning-completed",
@@ -235,6 +247,17 @@ function buildPreServiceBrief(
   }
   if (brief.needsApproval.length > 0) {
     candidates.push(approvalFinding("pre-service", brief.needsApproval.length));
+  }
+  if (brief.outlook.emailConnectionStatus === "error") {
+    candidates.push({
+      id: "pre-service-gmail-connection",
+      rank: 0,
+      tone: "urgent",
+      title: "Gmail sender needs repair before supplier delivery",
+      interpretation: brief.outlook.emailConnectionDetail,
+      route: "/settings/gmail",
+      evidenceReferences: ["operating-brief:email-connection"]
+    });
   }
   const unverified = plan.items.filter(
     (item) => item.status === "open" && item.verificationMethod !== "none"

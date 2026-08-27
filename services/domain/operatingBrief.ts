@@ -5,6 +5,7 @@ import type {
   PosSale,
   PurchaseRecommendation,
   Restaurant,
+  RestaurantEmailConnection,
   SupplierOrder
 } from "../../types/mise";
 import {
@@ -63,6 +64,9 @@ export interface OperatingOutlook {
   staffingDetail: string;
   deliveryStatus: "none" | "expected" | "overdue" | "unknown";
   deliveryDetail: string;
+  /** Evidenced Gmail sender health for Home / phase briefs. Never invents send success. */
+  emailConnectionStatus: "ok" | "error" | "none" | "unknown";
+  emailConnectionDetail: string;
   menuRisks: Array<{ itemName: string; label: InventoryHealthLabel; detail: string }>;
   supplierCutoffDeadlines: string[];
   preventableLoss: string | null;
@@ -122,6 +126,11 @@ export interface OperatingBriefInput {
   activityEvents?: readonly ActivityEvent[];
   miseActions?: readonly MiseAction[];
   inventoryOutlooks?: readonly OperatingBriefInventoryOutlook[];
+  /**
+   * Undefined means Gmail sender state was not loaded for this brief.
+   * Null means the restaurant has no configured Gmail connection row.
+   */
+  emailConnection?: RestaurantEmailConnection | null;
   demoLabeled?: boolean;
 }
 
@@ -418,6 +427,7 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
   const criticalCount = outlooks.filter(
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0
   ).length;
+  const emailConnection = classifyEmailConnectionOutlook(input.emailConnection, input.restaurant.id);
 
   return {
     expectedSales: todaySales.length > 0 ? expectedSales : null,
@@ -436,11 +446,15 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
     staffingDetail: "Staffing coverage requires schedule integration before Mise can assess it.",
     deliveryStatus: sentOrders.length > 0 ? "expected" : draftOrders.length > 0 ? "unknown" : "none",
     deliveryDetail:
-      sentOrders.length > 0
-        ? `${sentOrders.length} sent order${sentOrders.length === 1 ? "" : "s"} awaiting delivery confirmation.`
-        : draftOrders.length > 0
-          ? `${draftOrders.length} draft order${draftOrders.length === 1 ? "" : "s"} prepared but not sent.`
-          : "No open supplier deliveries are currently tracked.",
+      emailConnection.emailConnectionStatus === "error" && draftOrders.length > 0
+        ? emailConnection.emailConnectionDetail
+        : sentOrders.length > 0
+          ? `${sentOrders.length} sent order${sentOrders.length === 1 ? "" : "s"} awaiting delivery confirmation.`
+          : draftOrders.length > 0
+            ? `${draftOrders.length} draft order${draftOrders.length === 1 ? "" : "s"} prepared but not sent.`
+            : "No open supplier deliveries are currently tracked.",
+    emailConnectionStatus: emailConnection.emailConnectionStatus,
+    emailConnectionDetail: emailConnection.emailConnectionDetail,
     menuRisks,
     supplierCutoffDeadlines: [],
     preventableLoss:
@@ -450,12 +464,84 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
   };
 }
 
+export function classifyEmailConnectionOutlook(
+  emailConnection: RestaurantEmailConnection | null | undefined,
+  restaurantId: string
+): Pick<OperatingOutlook, "emailConnectionStatus" | "emailConnectionDetail"> & {
+  needsRepair: boolean;
+  connection: RestaurantEmailConnection | null;
+} {
+  if (emailConnection === undefined) {
+    return {
+      emailConnectionStatus: "unknown",
+      emailConnectionDetail: "Gmail sender health was not loaded for this brief.",
+      needsRepair: false,
+      connection: null
+    };
+  }
+
+  if (emailConnection === null) {
+    return {
+      emailConnectionStatus: "none",
+      emailConnectionDetail: "No Gmail sender is configured for this restaurant.",
+      needsRepair: false,
+      connection: null
+    };
+  }
+
+  if (emailConnection.restaurant_id !== restaurantId) {
+    throw new Error("Email connection failed restaurant scope validation.");
+  }
+
+  if (emailConnection.status === "needs_reauth" || emailConnection.status === "restricted") {
+    const reason =
+      emailConnection.status === "restricted"
+        ? "Gmail sender access is restricted"
+        : "Gmail authorization must be renewed";
+    return {
+      emailConnectionStatus: "error",
+      emailConnectionDetail: `${reason}. Reconnect before sending supplier orders.`,
+      needsRepair: true,
+      connection: emailConnection
+    };
+  }
+
+  if (emailConnection.status === "connected" && emailConnection.sender_email) {
+    return {
+      emailConnectionStatus: "ok",
+      emailConnectionDetail: `Gmail sender ${emailConnection.sender_email} is ready.`,
+      needsRepair: false,
+      connection: emailConnection
+    };
+  }
+
+  return {
+    emailConnectionStatus: "none",
+    emailConnectionDetail: "No connected Gmail sender is ready for supplier delivery.",
+    needsRepair: false,
+    connection: emailConnection
+  };
+}
+
 function buildMonitoringRows(
   input: OperatingBriefInput,
   approvals: readonly OperatingBriefApprovalCard[],
-  generatedAt: string
+  generatedAt: string,
+  emailConnection: ReturnType<typeof classifyEmailConnectionOutlook>
 ): MonitoringRow[] {
   const rows: MonitoringRow[] = [];
+
+  if (emailConnection.needsRepair && emailConnection.connection) {
+    rows.push({
+      id: `watch_email_${emailConnection.connection.id}`,
+      title: "Gmail sender needs repair",
+      detail: emailConnection.emailConnectionDetail,
+      startedAt: emailConnection.connection.updated_at || generatedAt,
+      status: "waiting",
+      relatedEntityType: "restaurant_email_connection",
+      relatedEntityId: emailConnection.connection.id
+    });
+  }
 
   for (const outlook of (input.inventoryOutlooks ?? []).slice(0, 8)) {
     const label = resolveInventoryHealthLabel({
@@ -511,8 +597,14 @@ function pulseStatus(input: {
   pendingApprovals: number;
   freshness: DataFreshnessDescriptor;
   urgentFindings: number;
+  emailConnectionNeedsRepair: boolean;
 }): RestaurantPulseStatus {
-  if (input.criticalCount > 0 || input.urgentFindings > 0 || input.freshness.state === "incomplete") {
+  if (
+    input.criticalCount > 0 ||
+    input.urgentFindings > 0 ||
+    input.freshness.state === "incomplete" ||
+    input.emailConnectionNeedsRepair
+  ) {
     return "at_risk";
   }
   if (input.pendingApprovals > 0 || input.freshness.state === "stale") {
@@ -538,6 +630,7 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
   const approvals = buildApprovalCards(input);
   const freshness = buildDataFreshness(input, generatedAt);
   const outlook = buildOutlook(input);
+  const emailConnection = classifyEmailConnectionOutlook(input.emailConnection, restaurantId);
   const criticalCount = (input.inventoryOutlooks ?? []).filter(
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0
   ).length;
@@ -546,7 +639,8 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
     criticalCount,
     pendingApprovals: approvals.length,
     freshness,
-    urgentFindings
+    urgentFindings,
+    emailConnectionNeedsRepair: emailConnection.needsRepair
   });
 
   const lastSeenAt = input.lastSeenAt ? new Date(input.lastSeenAt).toISOString() : null;
@@ -564,6 +658,7 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
   const liveActivity = [...activity].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
   const topRisk =
     outlook.menuRisks[0]?.detail ??
+    (outlook.emailConnectionStatus === "error" ? outlook.emailConnectionDetail : null) ??
     approvals[0]?.riskIfIgnored ??
     (freshness.state === "incomplete" ? freshness.label : null);
   const topOpportunity =
@@ -573,7 +668,16 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
   const confidenceBase =
     freshness.state === "fresh" ? 0.82 : freshness.state === "stale" ? 0.58 : freshness.state === "incomplete" ? 0.34 : 0.45;
   const confidence = Number(
-    Math.max(0.2, Math.min(0.95, confidenceBase - criticalCount * 0.03 + Math.min(0.08, activity.length * 0.01))).toFixed(2)
+    Math.max(
+      0.2,
+      Math.min(
+        0.95,
+        confidenceBase -
+          criticalCount * 0.03 -
+          (emailConnection.needsRepair ? 0.08 : 0) +
+          Math.min(0.08, activity.length * 0.01)
+      )
+    ).toFixed(2)
   );
 
   const summary =
@@ -583,7 +687,9 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
         }.`
       : status === "attention_needed"
         ? `Attention needed: ${approvals.length} approval${approvals.length === 1 ? "" : "s"} and ${outlook.menuRisks.length} inventory watch item${outlook.menuRisks.length === 1 ? "" : "s"} are open.`
-        : (() => {
+        : outlook.emailConnectionStatus === "error"
+          ? `At risk: ${outlook.emailConnectionDetail}`
+          : (() => {
           const issueCount = criticalCount || urgentFindings || approvals.length;
           return `At risk: ${issueCount} operational issue${issueCount === 1 ? "" : "s"} ${
             issueCount === 1 ? "needs" : "need"
@@ -613,7 +719,7 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
     liveActivity,
     needsApproval: approvals,
     outlook,
-    miseIsWatching: buildMonitoringRows(input, approvals, generatedAt),
+    miseIsWatching: buildMonitoringRows(input, approvals, generatedAt, emailConnection),
     activityWindowSummary: lastSeenAt ? summarizeActivityWindow(activity, lastSeenAt) : null,
     demoLabeled: Boolean(input.demoLabeled)
   };
