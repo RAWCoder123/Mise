@@ -20,6 +20,8 @@ import {
   isGmailIntegrationError,
   approveSupplierSendContent,
   prepareSupplierEmailPayload,
+  isSupplierDeliveryLinesSkippedError,
+  isSupplierOrderLinesMissingError,
   receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
   updateSupplierOrder
@@ -54,7 +56,7 @@ interface OrderNotice {
   title: string;
   message: string;
   tone: StatusNoticeTone;
-  recovery?: "gmail" | "supplier" | "retry";
+  recovery?: "gmail" | "supplier" | "retry" | "inventory";
 }
 
 export default function OrderDraftDetailScreen() {
@@ -388,13 +390,9 @@ export default function OrderDraftDetailScreen() {
             : t("orders.detail.notice.receivedBody"),
         tone: result.status === "discrepancy" ? "warning" : "success"
       });
-    } catch {
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
-        setNotice({
-          title: t("orders.detail.notice.receiveFailedTitle"),
-          message: t("orders.detail.notice.receiveFailedBody"),
-          tone: "danger"
-        });
+        setNotice(orderReceiveErrorNotice(error, t));
       }
     } finally {
       actionLockRef.current = false;
@@ -737,6 +735,8 @@ export default function OrderDraftDetailScreen() {
                 ? t("orders.detail.recovery.gmail")
                 : notice.recovery === "supplier"
                   ? t("orders.detail.recovery.supplier")
+                  : notice.recovery === "inventory"
+                    ? t("orders.detail.recovery.inventory")
                   : notice.recovery === "retry"
                     ? t("orders.detail.recovery.retry")
                   : undefined}
@@ -745,6 +745,8 @@ export default function OrderDraftDetailScreen() {
                   ? () => router.push("/settings/gmail" as never)
                   : notice.recovery === "supplier"
                     ? () => router.push("/settings/suppliers" as never)
+                    : notice.recovery === "inventory"
+                      ? () => router.push("/inventory" as never)
                     : notice.recovery === "retry"
                       ? () => void load(false)
                     : undefined
@@ -870,6 +872,35 @@ function gmailConnectionRequiredNotice(
     message: t("orders.detail.gmail.notConnected"),
     tone: "warning",
     recovery: "gmail"
+  };
+}
+
+function orderReceiveErrorNotice(error: unknown, t: Translate): OrderNotice {
+  if (isSupplierOrderLinesMissingError(error)) {
+    return {
+      title: t("orders.detail.notice.receiveLinesMissingTitle"),
+      message: t("orders.detail.notice.receiveLinesMissingBody"),
+      tone: "danger"
+    };
+  }
+  if (isSupplierDeliveryLinesSkippedError(error)) {
+    const names = error.skippedItemNames.filter(Boolean);
+    return {
+      title: t("orders.detail.notice.receiveUnverifiedTitle"),
+      message:
+        names.length > 0
+          ? t("orders.detail.notice.receiveUnverifiedBodyNamed", {
+              items: names.join(", ")
+            })
+          : t("orders.detail.notice.receiveUnverifiedBody"),
+      tone: "danger",
+      recovery: "inventory"
+    };
+  }
+  return {
+    title: t("orders.detail.notice.receiveFailedTitle"),
+    message: t("orders.detail.notice.receiveFailedBody"),
+    tone: "danger"
   };
 }
 

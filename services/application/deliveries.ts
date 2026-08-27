@@ -4,13 +4,23 @@ import {
   type DeliveryHistoryEntry
 } from "./deliveryHistoryMerge";
 import {
-  buildDeliveryLinesFromOrderRecommendations,
+  assertDurableSupplierOrderLinesPresent,
+  assertReceivableDeliveryLines,
+  buildDeliveryLinesFromSupplierOrderLines,
   deliveryClientIdForOrder
 } from "../domain/supplierDelivery";
 import { getMiseRepository } from "./repository";
 
 export type { DeliveryHistoryEntry } from "./deliveryHistoryMerge";
 export { mergeDeliveryHistoryEntries } from "./deliveryHistoryMerge";
+export {
+  isSupplierDeliveryLinesSkippedError,
+  isSupplierOrderLinesMissingError,
+  SUPPLIER_DELIVERY_LINES_SKIPPED_CODE,
+  SUPPLIER_ORDER_LINES_MISSING_CODE,
+  SupplierDeliveryLinesSkippedError,
+  SupplierOrderLinesMissingError
+} from "../domain/supplierDelivery";
 
 /**
  * Receipt history for the delivery log screen: accepted ledger receipts plus
@@ -40,6 +50,9 @@ export async function fetchDeliveryHistory(restaurantId: string): Promise<Delive
 /**
  * Operator receive path: records a supplier delivery, projects inventory
  * receipts, and measures the related Mise action outcome when present.
+ *
+ * Ordered quantities come from durable `supplier_order_lines` snapshots so
+ * later recommendation edits cannot rewrite what was approved/sent.
  */
 export async function receiveSupplierOrderDelivery(
   restaurantId: string,
@@ -52,9 +65,9 @@ export async function receiveSupplierOrderDelivery(
   if (!normalizedOrderId) throw new Error("Missing supplier order.");
 
   const repository = getMiseRepository();
-  const [order, recommendations, inventoryItems] = await Promise.all([
+  const [order, orderLines, inventoryItems] = await Promise.all([
     repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
-    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
+    repository.fetchSupplierOrderLines(normalizedRestaurantId, normalizedOrderId),
     repository.fetchInventoryItems(normalizedRestaurantId)
   ]);
 
@@ -65,21 +78,17 @@ export async function receiveSupplierOrderDelivery(
     throw new Error("Only sent orders can be received.");
   }
 
-  let built = buildDeliveryLinesFromOrderRecommendations({
+  assertDurableSupplierOrderLinesPresent(orderLines);
+
+  const built = buildDeliveryLinesFromSupplierOrderLines({
     order,
-    recommendations,
+    orderLines,
     inventoryItems,
     requireVerifiedCanonicalUnit: true
   });
-  if (built.lines.length === 0) {
-    // Demo / incomplete unit setup: still allow as-ordered receive when items exist.
-    built = buildDeliveryLinesFromOrderRecommendations({
-      order,
-      recommendations,
-      inventoryItems,
-      requireVerifiedCanonicalUnit: false
-    });
-  }
+  // Never fall back to unverified units, never rebuild from live recommendations,
+  // and never silently receive a verified subset while other ordered lines are skipped.
+  assertReceivableDeliveryLines({ built, inventoryItems });
   if (built.lines.length === 0) {
     throw new Error("No receivable lines are ready for this supplier order.");
   }
