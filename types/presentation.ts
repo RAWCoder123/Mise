@@ -35,7 +35,8 @@ export const TODAY_TASK_PRESENTATION_CODES = [
   "today.integration.connect",
   "today.integration.connected",
   "today.integration.repair",
-  "today.insight.review"
+  "today.insight.review",
+  "today.ordering.chronic_short_ship"
 ] as const;
 
 export const INSIGHT_PRESENTATION_CODES = [
@@ -43,6 +44,7 @@ export const INSIGHT_PRESENTATION_CODES = [
   "insight.rule.sales.demand_rising",
   "insight.rule.prep.low_stock",
   "insight.rule.waste.overstock",
+  "insight.rule.ordering.chronic_short_ship",
   "insight.evidence.opaque"
 ] as const;
 
@@ -122,6 +124,15 @@ export type TodayTaskPresentationDescriptor =
         rawTitle: string;
         rawEvidence: string;
       };
+    }
+  | {
+      code: "today.ordering.chronic_short_ship";
+      values: {
+        itemName: string;
+        supplierName: string;
+        fillPercent: number;
+        sampleCount: number;
+      };
     };
 
 export type InsightPresentationDescriptor =
@@ -147,6 +158,15 @@ export type InsightPresentationDescriptor =
   | {
       code: "insight.rule.waste.overstock";
       values: { itemName: string; quantity: number; unit: string };
+    }
+  | {
+      code: "insight.rule.ordering.chronic_short_ship";
+      values: {
+        itemName: string;
+        supplierName: string;
+        fillPercent: number;
+        sampleCount: number;
+      };
     }
   | {
       code: "insight.evidence.opaque";

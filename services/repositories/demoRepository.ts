@@ -62,6 +62,7 @@ import {
   type RestaurantAutonomyRule
 } from "../domain/restaurantAutonomy";
 import type { ActivityEvent } from "../domain/activityEvents";
+import { extractReceiveSamplesFromDeliveries } from "../domain/receiveDiscrepancyLearning";
 import {
   canRestaurantRoleCompleteSharedTask,
   normalizeCompleteRestaurantTaskInput,
@@ -1514,6 +1515,14 @@ export function createLocalDemoRepository(): MiseRepository {
       const state = await readReadyDemoState(restaurantId);
       const providerMappings = await this.fetchVerifiedProviderMappings(restaurantId);
       const restaurant = fetchRestaurantFromState(state, restaurantId);
+      const deliveries = (state.supplierDeliveries ?? [])
+        .filter((delivery) => delivery.restaurant_id === restaurantId)
+        .sort((left, right) => right.received_at.localeCompare(left.received_at))
+        .slice(0, 100);
+      const deliveryIds = new Set(deliveries.map((delivery) => delivery.id));
+      const items = (state.supplierDeliveryItems ?? []).filter(
+        (item) => item.restaurant_id === restaurantId && deliveryIds.has(item.delivery_id)
+      );
       return {
         inventoryItems: state.inventoryItems.filter((item) => item.restaurant_id === restaurantId).map(normalizeInventoryItem),
         sales: state.posSales.filter((sale) => sale.restaurant_id === restaurantId).map(normalizePosSale),
@@ -1522,7 +1531,8 @@ export function createLocalDemoRepository(): MiseRepository {
           .map(normalizeMenuItemIngredient),
         providerMappings,
         operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone),
-        timeZone: restaurant.timezone
+        timeZone: restaurant.timezone,
+        receivingHistory: extractReceiveSamplesFromDeliveries(deliveries, items)
       };
     },
 
