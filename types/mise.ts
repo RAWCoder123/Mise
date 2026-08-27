@@ -222,6 +222,23 @@ export interface SupplierOrder {
   created_at: string;
 }
 
+/** Durable structured line snapshot for a supplier order draft or send. */
+export interface SupplierOrderLine {
+  id: string;
+  restaurant_id: string;
+  supplier_order_id: string;
+  inventory_item_id: string;
+  purchase_recommendation_id: string | null;
+  item_name: string;
+  ordered_quantity: number;
+  unit: string;
+  canonical_unit: "g" | "ml" | "each" | null;
+  estimated_unit_cost: number | null;
+  line_position: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Insight {
   id: string;
   restaurant_id: string;

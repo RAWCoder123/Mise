@@ -33,6 +33,7 @@ const exportDatasets = [
   { name: "purchase_recommendations", order: "id" },
   { name: "purchase_decision_events", order: "id" },
   { name: "supplier_orders", order: "id" },
+  { name: "supplier_order_lines", order: "id" },
   { name: "pos_integrations", order: "id" },
   { name: "sales_imports", order: "id" },
   { name: "insights", order: "id" },

@@ -17,6 +17,10 @@ import {
 import { buildInventoryCountEvidence } from "../domain/inventoryCountAuthority";
 import { nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../../utils/format";
 import { demoDemandFallback } from "./demandFallback";
+import {
+  buildSupplierOrderLineSnapshots,
+  replaceSupplierOrderLinesForOrder
+} from "../domain/supplierOrderLines";
 import { DEMO_RESTAURANT_TIME_ZONE, type DemoState } from "./replaceableDemoData";
 import {
   demoSupplierNormalizedName,
@@ -250,6 +254,7 @@ export function approveRecommendationInDemoState(
   recommendation.status = "approved";
   recommendation.supplier_order_id = order.id;
   rebuildDemoDraftMessage(state, order);
+  rebuildDemoOrderLines(state, order);
   return {
     outcome: previousStatus === "approved" ? "already_applied" : "applied",
     recommendation,
@@ -317,8 +322,13 @@ export function undoRecommendationInDemoState(
     const remaining = linkedApprovedRecommendations(state, order.id);
     if (remaining.length === 0) {
       state.supplierOrders = state.supplierOrders.filter((entry) => entry.id !== order.id);
+      state.supplierOrderLines = (state.supplierOrderLines ?? []).filter(
+        (line) =>
+          !(line.restaurant_id === restaurantId && line.supplier_order_id === order.id)
+      );
     } else {
       order.order_message = buildSupplierOrderMessage(order.supplier_name, remaining, order.operator_note);
+      rebuildDemoOrderLines(state, order);
     }
   }
   return { outcome: "applied", recommendation, order, previousStatus };
@@ -509,6 +519,7 @@ export function markClaimedSupplierOrderSentInDemoState(
   claimed.forEach((recommendation) => {
     recommendation.status = "ordered";
   });
+  rebuildDemoOrderLines(state, order);
   return { outcome: "applied", order, orderedRecommendations: claimed };
 }
 
@@ -542,6 +553,22 @@ function rebuildDemoDraftMessage(state: DemoState, order: SupplierOrder) {
     order.supplier_name,
     linked,
     order.operator_note
+  );
+}
+
+function rebuildDemoOrderLines(state: DemoState, order: SupplierOrder) {
+  const nextLines = buildSupplierOrderLineSnapshots({
+    order,
+    recommendations: state.purchaseRecommendations,
+    inventoryItems: state.inventoryItems,
+    idFactory: (inventoryItemId, recommendationId) =>
+      `line_${order.id}_${inventoryItemId}_${recommendationId}`
+  });
+  state.supplierOrderLines = replaceSupplierOrderLinesForOrder(
+    state.supplierOrderLines ?? [],
+    order.restaurant_id,
+    order.id,
+    nextLines
   );
 }
 
