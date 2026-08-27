@@ -16,6 +16,7 @@ import type {
   SalesImport,
   SupplierItem,
   SupplierOrder,
+  SupplierOrderLine,
   SupplierRecipient,
   Supplier
 } from "../../types/mise";
@@ -23,6 +24,10 @@ import type { SetupPosSaleDraft } from "../domain/setupDrafts";
 import type { OperationalFindingDecision } from "../domain/operationalFindingDecisions";
 import type { InventoryEvent } from "../domain/inventoryLedger";
 import type { PurchaseDecisionEvent } from "../domain/purchaseDecisionMemory";
+import {
+  buildSupplierOrderLineSnapshots,
+  replaceSupplierOrderLinesForOrder
+} from "../domain/supplierOrderLines";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
 import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
 import {
@@ -78,6 +83,8 @@ export interface DemoState {
   menuItemIngredients: MenuItemIngredient[];
   purchaseRecommendations: PurchaseRecommendation[];
   supplierOrders: SupplierOrder[];
+  /** Durable structured lines mirroring hosted supplier_order_lines. */
+  supplierOrderLines: import("../../types/mise").SupplierOrderLine[];
   insights: Insight[];
   posIntegrations: PosIntegration[];
   salesImports: SalesImport[];
@@ -420,6 +427,7 @@ export function createInitialDemoState(
         created_at: now
       }
     ],
+    supplierOrderLines: [],
     insights: [],
     posIntegrations: [
       {
@@ -540,7 +548,7 @@ export function createInitialDemoState(
   };
 
   const presetState = applyDemoPreset(state, provider, now, setupProfile?.preset, nowDate);
-  return applyDemoSetupProfile(presetState, setupProfile);
+  return syncDemoSupplierOrderLines(applyDemoSetupProfile(presetState, setupProfile));
 }
 
 /**
@@ -740,6 +748,9 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     menuItemIngredients: raw.menuItemIngredients ?? seeded.menuItemIngredients,
     purchaseRecommendations,
     supplierOrders,
+    supplierOrderLines: Array.isArray(raw.supplierOrderLines)
+      ? (raw.supplierOrderLines as SupplierOrderLine[])
+      : seeded.supplierOrderLines,
     insights: raw.insights ?? seeded.insights,
     posIntegrations: raw.posIntegrations ?? seeded.posIntegrations,
     salesImports: raw.salesImports ?? seeded.salesImports,
@@ -802,11 +813,14 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     posConnectedAt: raw.posConnectedAt ?? seeded.posConnectedAt
   };
 
+  const synced = syncDemoSupplierOrderLines(state);
+
   return {
-    state,
+    state: synced,
     migrated:
       raw.schema_version !== 13 ||
       !Array.isArray(raw.suppliers) ||
+      !Array.isArray(raw.supplierOrderLines) ||
       JSON.stringify(raw.suppliers ?? []) !== JSON.stringify(suppliers) ||
       sourceInventoryItems.some(
         (item, index) =>
@@ -1567,7 +1581,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     }
   ];
 
-  return state;
+  return syncDemoSupplierOrderLines(state);
 }
 
 function buildDefaultDemoCurrentSales(today: string, sourcePos: string, createdAt: string) {
@@ -1668,6 +1682,22 @@ export function providerToIntegrationProvider(provider: PosProvider | null) {
   if (provider === "Lightspeed") return "lightspeed";
   if (provider === "Manual CSV Upload") return "manual_csv";
   return "demo";
+}
+
+function syncDemoSupplierOrderLines(state: DemoState): DemoState {
+  let lines: SupplierOrderLine[] = [];
+  for (const order of state.supplierOrders) {
+    const next = buildSupplierOrderLineSnapshots({
+      order,
+      recommendations: state.purchaseRecommendations,
+      inventoryItems: state.inventoryItems,
+      idFactory: (inventoryItemId, recommendationId) =>
+        `line_${order.id}_${inventoryItemId}_${recommendationId}`
+    });
+    lines = replaceSupplierOrderLinesForOrder(lines, order.restaurant_id, order.id, next);
+  }
+  state.supplierOrderLines = lines;
+  return state;
 }
 
 function normalizeSetupList(values?: string[]) {

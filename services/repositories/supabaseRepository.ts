@@ -94,6 +94,7 @@ import {
   normalizeSupplier,
   normalizeSupplierItem,
   normalizeSupplierOrder,
+  normalizeSupplierOrderLine,
   normalizeSupplierDeliveryItemRecord,
   normalizeSupplierDeliveryRecord,
   normalizeSupplierRecipient,
@@ -1591,6 +1592,21 @@ export function createSupabaseRepository(): MiseRepository {
         .order("created_at", { ascending: false });
       if (error) throw error;
       return ((data ?? []) as SupplierOrder[]).map(normalizeSupplierOrder);
+    },
+
+    async fetchSupplierOrderLines(restaurantId, orderId) {
+      const { data, error } = await client
+        .from("supplier_order_lines")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("supplier_order_id", orderId)
+        .order("line_position", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(1000);
+      if (error) throw error;
+      return ((data ?? []) as import("../../types/mise").SupplierOrderLine[]).map(
+        normalizeSupplierOrderLine
+      );
     },
 
     async fetchSupplierDeliveryHistory(restaurantId) {
