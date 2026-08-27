@@ -579,6 +579,23 @@ export interface MiseRepository {
    * must use record_inventory_event; clients never insert into the ledger.
    */
   recordInventoryEvent(input: InventoryEventInput): Promise<InventoryEventAcceptance>;
+  fetchStorageLocations(restaurantId: string): Promise<import("../../types/mise").StorageLocation[]>;
+  createStorageLocation(
+    restaurantId: string,
+    name: string
+  ): Promise<import("../../types/mise").StorageLocation>;
+  fetchInventoryLocationBalances(
+    restaurantId: string,
+    itemId: string
+  ): Promise<import("../../types/mise").InventoryLocationBalance[]>;
+  transferInventory(
+    restaurantId: string,
+    itemId: string,
+    fromStorageLocationId: string,
+    toStorageLocationId: string,
+    quantity: number,
+    note: string | null
+  ): Promise<import("../../types/mise").InventoryItem>;
   verifyInventoryItemCanonicalUnit(
     restaurantId: string,
     itemId: string,

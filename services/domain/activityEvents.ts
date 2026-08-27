@@ -40,7 +40,8 @@ export type ActivityType =
   | "recommendation_dismissed"
   | "recommendation_outcome_measured"
   | "restaurant_memory_updated"
-  | "inventory_count_recorded";
+  | "inventory_count_recorded"
+  | "inventory_transfer_recorded";
 
 export type ActivityCategory =
   | "inventory"

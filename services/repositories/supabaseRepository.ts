@@ -6,6 +6,7 @@ import type {
   InventoryItem,
   InventoryCountLine,
   InventoryCountSessionDetail,
+  InventoryLocationBalance,
   MenuItemIngredient,
   PosIntegration,
   PosProvider,
@@ -18,6 +19,7 @@ import type {
   RestaurantMembership,
   RestaurantTeamMember,
   SetupAttachment,
+  StorageLocation,
   Supplier,
   SupplierItem,
   SupplierOrder,
@@ -1254,6 +1256,64 @@ export function createSupabaseRepository(): MiseRepository {
         status: "accepted",
         event: normalizeInventoryEventRecord(data)
       };
+    },
+
+    async fetchStorageLocations(restaurantId) {
+      const { data, error } = await client.rpc("ensure_restaurant_storage_locations", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return ((data ?? []) as StorageLocation[]).slice().sort(
+        (left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name)
+      );
+    },
+
+    async createStorageLocation(restaurantId, name) {
+      const { data, error } = await client.rpc("create_storage_location", {
+        p_restaurant_id: restaurantId,
+        p_name: name
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const location = Array.isArray(data) ? data[0] : data;
+      if (!location || typeof location !== "object") {
+        throw new Error("Storage location create returned an invalid response.");
+      }
+      return location as StorageLocation;
+    },
+
+    async fetchInventoryLocationBalances(restaurantId, itemId) {
+      const { data, error } = await client
+        .from("inventory_location_balances")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_item_id", itemId)
+        .order("storage_location_id", { ascending: true });
+      if (error) throwRepositoryError(error, restaurantId);
+      return (data ?? []) as InventoryLocationBalance[];
+    },
+
+    async transferInventory(
+      restaurantId,
+      itemId,
+      fromStorageLocationId,
+      toStorageLocationId,
+      quantity,
+      note
+    ) {
+      const { data, error } = await client.rpc("transfer_inventory", {
+        p_restaurant_id: restaurantId,
+        p_inventory_item_id: itemId,
+        p_from_storage_location_id: fromStorageLocationId,
+        p_to_storage_location_id: toStorageLocationId,
+        p_quantity: quantity,
+        p_note: note
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const payload = Array.isArray(data) ? data[0] : data;
+      if (!payload || typeof payload !== "object") {
+        throw new Error("Inventory transfer returned an invalid response.");
+      }
+      return normalizeInventoryItem(payload as InventoryItem);
     },
 
     async verifyInventoryItemCanonicalUnit(

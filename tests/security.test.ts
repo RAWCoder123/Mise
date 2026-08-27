@@ -981,3 +981,35 @@ test("inventory count sessions are service-owned with ledger approve path", () =
   assert.doesNotMatch(staffActionsBlock, /approve_count_session/);
   assert.doesNotMatch(staffActionsBlock, /cancel_count_session/);
 });
+
+test("storage locations and transfers stay select-only with guarded RPCs", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260827220000_storage_locations_and_transfer.sql",
+    "utf8"
+  );
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+  const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
+  const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
+
+  assert.match(migration, /create table if not exists public\.storage_locations/i);
+  assert.match(migration, /create table if not exists public\.inventory_location_balances/i);
+  assert.match(migration, /revoke all on table public\.storage_locations from public, anon, authenticated/i);
+  assert.match(migration, /grant select on public\.storage_locations to authenticated/i);
+  assert.match(migration, /revoke all on table public\.inventory_location_balances from public, anon, authenticated/i);
+  assert.match(migration, /grant select on public\.inventory_location_balances to authenticated/i);
+  assert.match(migration, /create or replace function public\.transfer_inventory/i);
+  assert.match(migration, /array\['owner', 'admin', 'manager', 'staff'\]/);
+  assert.match(migration, /grant execute on function public\.transfer_inventory[\s\S]*to authenticated/i);
+  assert.doesNotMatch(
+    migration,
+    /grant execute on function public\.transfer_inventory[\s\S]*to service_role/i
+  );
+  assert.match(migration, /when new\.event_type = 'transfer' then prior_quantity/);
+  assert.match(migration, /Transfer ledger events must use quantity 0/);
+  assert.match(migration, /inventory_transfer_recorded/);
+  assert.match(securityBackend, /"storage_locations"/);
+  assert.match(securityBackend, /"inventory_location_balances"/);
+  assert.match(securityStatic, /"storage_locations"/);
+  assert.match(tenantAccess, /canTransferInventory/);
+  assert.match(tenantAccess, /canManageStorageLocations/);
+});
