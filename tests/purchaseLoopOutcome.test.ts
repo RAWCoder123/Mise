@@ -3,8 +3,12 @@ import test from "node:test";
 
 import {
   PURCHASE_LOOP_OUTCOME_EVIDENCE_VERSION,
+  buildPurchaseLoopCountVarianceMeasurement,
   buildPurchaseLoopReceiveOutcomeMeasurement,
   lessonTextForPurchaseLoopCode,
+  lessonTextForPurchaseLoopCountCode,
+  selectPendingPurchaseLoopReceiveLines,
+  selectPurchaseLoopCountLessonCode,
   selectPurchaseLoopLessonCode
 } from "../services/domain/purchaseLoopOutcome";
 
@@ -194,4 +198,108 @@ test("purchase-loop receive outcome rejects impossible damaged quantities", () =
       }),
     /Damaged quantity cannot exceed/
   );
+});
+
+test("purchase-loop count variance links prior receive evidence to counted quantity", () => {
+  const receive = buildPurchaseLoopReceiveOutcomeMeasurement({
+    supplierOrderId: "order_6",
+    deliveryId: "delivery_6",
+    deliveryStatus: "received",
+    recommendations: [
+      {
+        id: "rec_6",
+        inventoryItemId: "item_g",
+        recommendedQuantity: 10,
+        unit: "each",
+        status: "ordered"
+      }
+    ],
+    lines: [
+      {
+        inventoryItemId: "item_g",
+        orderedQuantity: 10,
+        receivedQuantity: 10,
+        damagedQuantity: 0,
+        missingQuantity: 0,
+        canonicalUnit: "each"
+      }
+    ]
+  });
+
+  const pending = selectPendingPurchaseLoopReceiveLines({
+    restaurantId: "rest_1",
+    outcomes: [
+      {
+        id: "outcome_receive_1",
+        restaurantId: "rest_1",
+        measuredAt: "2026-08-26T12:00:00.000Z",
+        actualResult: receive.actualResult
+      }
+    ],
+    inventoryItemIds: ["item_g"]
+  });
+
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0]?.usableReceivedQuantity, 10);
+
+  const measurement = buildPurchaseLoopCountVarianceMeasurement({
+    countSessionId: "session_1",
+    priorReceiveLines: pending,
+    countLines: [
+      {
+        inventoryItemId: "item_g",
+        unit: "each",
+        systemQuantityAtStart: 12,
+        countedQuantity: 11,
+        quantityBefore: 12,
+        quantityAfter: 11
+      }
+    ]
+  });
+
+  assert.ok(measurement);
+  assert.equal(measurement?.phase, "count");
+  assert.equal(measurement?.lessonCode, "purchase_loop.count.short");
+  assert.equal(measurement?.actualResult.countVariancePending, false);
+  assert.equal(measurement?.actualResult.countedQuantity, 11);
+  assert.equal(measurement?.actualResult.systemQuantityAtStart, 12);
+  assert.equal(measurement?.actualResult.predictedQuantity, 10);
+  assert.equal(measurement?.actualResult.usableReceivedQuantity, 10);
+  assert.equal(measurement?.variance.varianceFromSystem, -1);
+  assert.deepEqual(measurement?.actualResult.linkedReceiveOutcomeIds, ["outcome_receive_1"]);
+  assert.match(measurement?.lesson ?? "", /short/i);
+});
+
+test("purchase-loop count variance returns null without overlapping receive evidence", () => {
+  const measurement = buildPurchaseLoopCountVarianceMeasurement({
+    countSessionId: "session_2",
+    priorReceiveLines: [],
+    countLines: [
+      {
+        inventoryItemId: "item_h",
+        unit: "each",
+        systemQuantityAtStart: 4,
+        countedQuantity: 4,
+        quantityBefore: 4,
+        quantityAfter: 4
+      }
+    ]
+  });
+  assert.equal(measurement, null);
+});
+
+test("purchase-loop count lesson codes cover matched over and mixed", () => {
+  assert.equal(
+    selectPurchaseLoopCountLessonCode({ shortCount: 0, overCount: 0, matchedCount: 2 }),
+    "purchase_loop.count.matched"
+  );
+  assert.equal(
+    selectPurchaseLoopCountLessonCode({ shortCount: 0, overCount: 1, matchedCount: 1 }),
+    "purchase_loop.count.over"
+  );
+  assert.equal(
+    selectPurchaseLoopCountLessonCode({ shortCount: 1, overCount: 1, matchedCount: 0 }),
+    "purchase_loop.count.mixed"
+  );
+  assert.match(lessonTextForPurchaseLoopCountCode("purchase_loop.count.mixed"), /both short and over/i);
 });
