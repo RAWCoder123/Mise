@@ -324,4 +324,20 @@ test("recommendation confidence credits verified count age only", () => {
   assert.match(fresh.needsApproval[0]?.confidenceRationale ?? "", /within 24 hours/i);
   assert.match(unverified.needsApproval[0]?.confidenceRationale ?? "", /older or unknown inventory count/i);
   assert.ok((fresh.needsApproval[0]?.confidence ?? 0) > (unverified.needsApproval[0]?.confidence ?? 0));
+  assert.deepEqual(
+    fresh.needsApproval[0]?.confidenceReasons?.map((reason) => reason.code),
+    ["restaurant_history_samples", "count_within_24h", "coverage_below_reorder"]
+  );
+  assert.equal(fresh.needsApproval[0]?.confidenceReasons?.[0]?.sampleDays, 28);
+  assert.ok(
+    unverified.needsApproval[0]?.confidenceReasons?.some((reason) => reason.code === "count_older_or_unknown")
+  );
+  assert.equal(
+    fresh.miseIsWatching.find((row) => row.kind === "inventory")?.inventoryCoverage?.daysCoverage,
+    0.4
+  );
+  assert.equal(
+    fresh.miseIsWatching.find((row) => row.kind === "inventory")?.inventoryCoverage?.parLevel,
+    40
+  );
 });

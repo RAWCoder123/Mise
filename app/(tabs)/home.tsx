@@ -407,6 +407,11 @@ function ApprovalsSection({
               <Text style={styles.metaLine}>
                 {t("home.approvals.why")}: {presented.whyItMatters}
               </Text>
+              {presented.confidenceRationale ? (
+                <Text style={styles.metaLine}>
+                  {t("home.approvals.confidence.label")}: {presented.confidenceRationale}
+                </Text>
+              ) : null}
               <View style={styles.approvalActions}>
                 <Button
                   title={

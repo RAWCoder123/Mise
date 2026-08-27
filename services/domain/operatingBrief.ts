@@ -34,6 +34,27 @@ export interface DataFreshnessDescriptor {
 
 export type OperatingBriefApprovalSource = "recommendation" | "action" | "finding";
 
+/**
+ * Structured fragments for recommendation confidence copy. Presentation localizes
+ * these; `confidenceRationale` keeps the English join for audits and older callers.
+ */
+export type RecommendationConfidenceReasonCode =
+  | "unavailable"
+  | "restaurant_history_samples"
+  | "demo_demand_pattern"
+  | "current_day_sales"
+  | "limited_demand_history"
+  | "count_within_24h"
+  | "count_within_72h"
+  | "count_older_or_unknown"
+  | "coverage_below_reorder";
+
+export interface RecommendationConfidenceReason {
+  code: RecommendationConfidenceReasonCode;
+  /** Present for `restaurant_history_samples`. */
+  sampleDays?: number;
+}
+
 export interface OperatingBriefApprovalCard {
   id: string;
   source: OperatingBriefApprovalSource;
@@ -50,6 +71,8 @@ export interface OperatingBriefApprovalCard {
   deadline: string | null;
   confidence: number | null;
   confidenceRationale: string | null;
+  /** Structured confidence fragments for recommendation cards; null for actions/findings. */
+  confidenceReasons: RecommendationConfidenceReason[] | null;
   expectedOperationalImpact: string;
   estimatedFinancialImpact: string | null;
   riskIfIgnored: string;
@@ -77,6 +100,14 @@ export interface OperatingOutlook {
 
 export type MonitoringRowKind = "inventory" | "supplier_order" | "approvals";
 
+/** Enough prediction evidence to localize coverage without re-running the forecast. */
+export interface MonitoringInventoryCoverage {
+  daysCoverage: number | null;
+  averageDailyUsage: number;
+  projectedQuantity: number;
+  parLevel: number;
+}
+
 export interface MonitoringRow {
   id: string;
   kind: MonitoringRowKind;
@@ -87,6 +118,8 @@ export interface MonitoringRow {
   subjectName: string | null;
   deliveryDate: string | null;
   approvalCount: number | null;
+  /** Present for inventory watch rows so presentation can localize coverage. */
+  inventoryCoverage: MonitoringInventoryCoverage | null;
   relatedEntityType: string | null;
   relatedEntityId: string | null;
 }
@@ -219,44 +252,82 @@ function buildDataFreshness(input: OperatingBriefInput, generatedAt: string): Da
   };
 }
 
+const CONFIDENCE_REASON_EN: Record<
+  Exclude<RecommendationConfidenceReasonCode, "unavailable">,
+  (reason: RecommendationConfidenceReason) => string
+> = {
+  restaurant_history_samples: (reason) =>
+    `${reason.sampleDays ?? 0} restaurant service-day samples`,
+  demo_demand_pattern: () => "a labeled demo demand pattern",
+  current_day_sales: () => "current-day mapped sales only",
+  limited_demand_history: () => "limited demand history",
+  count_within_24h: () => "an inventory count updated within 24 hours",
+  count_within_72h: () => "an inventory count updated within 72 hours",
+  count_older_or_unknown: () => "an older or unknown inventory count",
+  coverage_below_reorder: () => "projected coverage below the reorder threshold"
+};
+
+function englishConfidenceRationale(reasons: readonly RecommendationConfidenceReason[]): string {
+  if (reasons.length === 1 && reasons[0]?.code === "unavailable") {
+    return "Confidence is unavailable until Mise can calculate this item's demand and count freshness.";
+  }
+  const fragments = reasons
+    .filter(
+      (reason): reason is RecommendationConfidenceReason & {
+        code: Exclude<RecommendationConfidenceReasonCode, "unavailable">;
+      } => reason.code !== "unavailable"
+    )
+    .map((reason) => CONFIDENCE_REASON_EN[reason.code](reason));
+  return `Based on ${fragments.join(", ")}.`;
+}
+
 function recommendationConfidence(
   input: OperatingBriefInput,
   recommendation: PurchaseRecommendation
-): { score: number | null; rationale: string } {
+): {
+  score: number | null;
+  rationale: string;
+  reasons: RecommendationConfidenceReason[];
+} {
   const outlook = (input.inventoryOutlooks ?? []).find(
     (entry) => entry.item.id === recommendation.inventory_item_id
   );
   if (!outlook) {
+    const reasons: RecommendationConfidenceReason[] = [{ code: "unavailable" }];
     return {
       score: null,
-      rationale: "Confidence is unavailable until Mise can calculate this item's demand and count freshness."
+      rationale: englishConfidenceRationale(reasons),
+      reasons
     };
   }
 
   // Verified count age only. An unverified item scores as "older or unknown".
   const countAgeHours = outlook.prediction.countAgeHours;
   let score = 0.25;
-  const reasons: string[] = [];
+  const reasons: RecommendationConfidenceReason[] = [];
   if (outlook.prediction.historySource === "restaurant_history") {
     score += Math.min(0.3, 0.12 + outlook.prediction.historySampleDays * 0.02);
-    reasons.push(`${outlook.prediction.historySampleDays} restaurant service-day samples`);
+    reasons.push({
+      code: "restaurant_history_samples",
+      sampleDays: outlook.prediction.historySampleDays
+    });
   } else if (outlook.prediction.historySource === "demo_fallback") {
     score += 0.12;
-    reasons.push("a labeled demo demand pattern");
+    reasons.push({ code: "demo_demand_pattern" });
   } else if (outlook.prediction.historySource === "current_day") {
     score += 0.1;
-    reasons.push("current-day mapped sales only");
+    reasons.push({ code: "current_day_sales" });
   } else {
-    reasons.push("limited demand history");
+    reasons.push({ code: "limited_demand_history" });
   }
   if (countAgeHours !== null && countAgeHours <= 24) {
     score += 0.2;
-    reasons.push("an inventory count updated within 24 hours");
+    reasons.push({ code: "count_within_24h" });
   } else if (countAgeHours !== null && countAgeHours <= 72) {
     score += 0.1;
-    reasons.push("an inventory count updated within 72 hours");
+    reasons.push({ code: "count_within_72h" });
   } else {
-    reasons.push("an older or unknown inventory count");
+    reasons.push({ code: "count_older_or_unknown" });
   }
   if (input.sales.length > 0) score += 0.1;
   if (
@@ -264,11 +335,12 @@ function recommendationConfidence(
     outlook.prediction.projectedStatus === "Low"
   ) {
     score += 0.1;
-    reasons.push("projected coverage below the reorder threshold");
+    reasons.push({ code: "coverage_below_reorder" });
   }
   return {
     score: Number(Math.min(0.92, score).toFixed(2)),
-    rationale: `Based on ${reasons.join(", ")}.`
+    rationale: englishConfidenceRationale(reasons),
+    reasons
   };
 }
 
@@ -292,6 +364,7 @@ function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalC
       deadline: null,
       confidence: confidence.score,
       confidenceRationale: confidence.rationale,
+      confidenceReasons: confidence.reasons,
       expectedOperationalImpact: `Protects ${recommendation.item_name} availability through the next service window.`,
       estimatedFinancialImpact: null,
       riskIfIgnored: `Ignoring this can force an 86 or emergency purchase for ${recommendation.item_name}.`,
@@ -346,6 +419,7 @@ function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalC
       deadline: null,
       confidence: null,
       confidenceRationale: null,
+      confidenceReasons: null,
       expectedOperationalImpact:
         typeof impact.summary === "string" ? impact.summary : "Continues the prepared operational workflow.",
       estimatedFinancialImpact:
@@ -380,6 +454,7 @@ function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalC
       deadline: null,
       confidence: finding.confidence.score,
       confidenceRationale: finding.confidence.rationale,
+      confidenceReasons: null,
       expectedOperationalImpact: finding.affectedWorkflow,
       estimatedFinancialImpact: null,
       riskIfIgnored: finding.explanation,
@@ -501,6 +576,12 @@ function buildMonitoringRows(
         subjectName: outlook.item.item_name,
         deliveryDate: null,
         approvalCount: null,
+        inventoryCoverage: {
+          daysCoverage: outlook.prediction.daysCoverage,
+          averageDailyUsage: outlook.prediction.averageDailyUsage,
+          projectedQuantity: outlook.prediction.projectedQuantity,
+          parLevel: outlook.item.par_level
+        },
         relatedEntityType: "inventory_item",
         relatedEntityId: outlook.item.id
       });
@@ -520,6 +601,7 @@ function buildMonitoringRows(
       subjectName: order.supplier_name,
       deliveryDate: order.delivery_date,
       approvalCount: null,
+      inventoryCoverage: null,
       relatedEntityType: "supplier_order",
       relatedEntityId: order.id
     });
@@ -536,6 +618,7 @@ function buildMonitoringRows(
       subjectName: null,
       deliveryDate: null,
       approvalCount: approvals.length,
+      inventoryCoverage: null,
       relatedEntityType: null,
       relatedEntityId: null
     });

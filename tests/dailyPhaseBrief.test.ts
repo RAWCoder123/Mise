@@ -169,6 +169,7 @@ function fixtures(options: { allTasksComplete?: boolean } = {}) {
         deadline: null,
         confidence: 0.8,
         confidenceRationale: "Verified count.",
+        confidenceReasons: [{ code: "count_within_24h" }],
         expectedOperationalImpact: "Protect lunch prep.",
         estimatedFinancialImpact: null,
         riskIfIgnored: "Prep may be constrained.",

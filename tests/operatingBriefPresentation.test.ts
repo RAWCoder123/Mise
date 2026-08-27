@@ -33,6 +33,7 @@ function recommendationCard(
     deadline: null,
     confidence: 0.72,
     confidenceRationale: "Based on an inventory count updated within 24 hours.",
+    confidenceReasons: [{ code: "count_within_24h" }],
     expectedOperationalImpact: `Protects ${itemName} availability through the next service window.`,
     estimatedFinancialImpact: null,
     riskIfIgnored: `Ignoring this can force an 86 or emergency purchase for ${itemName}.`,
@@ -65,6 +66,7 @@ function actionCard(overrides: Partial<OperatingBriefApprovalCard> = {}): Operat
     deadline: null,
     confidence: null,
     confidenceRationale: null,
+    confidenceReasons: null,
     expectedOperationalImpact: "Continues the prepared operational workflow.",
     estimatedFinancialImpact: null,
     riskIfIgnored: "Leaving this undecided blocks the prepared workflow.",
@@ -179,12 +181,18 @@ test("presentOperatingBriefMonitoringRow localizes inventory, order, and approva
     id: "watch_inventory_1",
     kind: "inventory",
     title: `Tracking ${itemName} usage`,
-    detail: "Under 1 service day of coverage",
+    detail: "May run out today",
     startedAt: "2026-08-27T12:00:00.000Z",
     status: "monitoring",
     subjectName: itemName,
     deliveryDate: null,
     approvalCount: null,
+    inventoryCoverage: {
+      daysCoverage: 0.5,
+      averageDailyUsage: 10,
+      projectedQuantity: 4,
+      parLevel: 20
+    },
     relatedEntityType: "inventory_item",
     relatedEntityId: "inv_1"
   };
@@ -198,6 +206,7 @@ test("presentOperatingBriefMonitoringRow localizes inventory, order, and approva
     subjectName: supplierName,
     deliveryDate: "2026-08-28",
     approvalCount: null,
+    inventoryCoverage: null,
     relatedEntityType: "supplier_order",
     relatedEntityId: "order_1"
   };
@@ -211,6 +220,7 @@ test("presentOperatingBriefMonitoringRow localizes inventory, order, and approva
     subjectName: null,
     deliveryDate: null,
     approvalCount: 2,
+    inventoryCoverage: null,
     relatedEntityType: null,
     relatedEntityId: null
   };
@@ -218,7 +228,11 @@ test("presentOperatingBriefMonitoringRow localizes inventory, order, and approva
   const zhInventory = presentOperatingBriefMonitoringRow("zh-Hans", inventory);
   assert.ok(zhInventory.title.includes(itemName));
   assert.match(zhInventory.title, /跟踪/);
-  assert.equal(zhInventory.detail, inventory.detail);
+  assert.match(zhInventory.detail, /今日可能用完/);
+  assert.notEqual(zhInventory.detail, inventory.detail);
+
+  const esInventory = presentOperatingBriefMonitoringRow("es", inventory);
+  assert.match(esInventory.detail, /Podría agotarse hoy/);
 
   const esOrder = presentOperatingBriefMonitoringRow("es", order);
   assert.ok(esOrder.title.includes(supplierName));
@@ -227,4 +241,43 @@ test("presentOperatingBriefMonitoringRow localizes inventory, order, and approva
   const esApprovals = presentOperatingBriefMonitoringRow("es", approvals);
   assert.match(esApprovals.detail, /2/);
   assert.ok(!esApprovals.title.includes("Watching open"));
+});
+
+test("presentOperatingBriefApproval localizes structured confidence rationale fragments", () => {
+  const card = recommendationCard({
+    confidenceReasons: [
+      { code: "restaurant_history_samples", sampleDays: 9 },
+      { code: "count_within_24h" },
+      { code: "coverage_below_reorder" }
+    ],
+    confidenceRationale:
+      "Based on 9 restaurant service-day samples, an inventory count updated within 24 hours, projected coverage below the reorder threshold."
+  });
+
+  const en = presentOperatingBriefApproval("en", card);
+  assert.match(en.confidenceRationale ?? "", /Based on/);
+  assert.match(en.confidenceRationale ?? "", /9 restaurant service-day samples/);
+  assert.match(en.confidenceRationale ?? "", /within 24 hours/);
+
+  const es = presentOperatingBriefApproval("es", card);
+  assert.match(es.confidenceRationale ?? "", /Basado en/i);
+  assert.match(es.confidenceRationale ?? "", /9/);
+  assert.match(es.confidenceRationale ?? "", /24 horas/);
+  assert.ok(!(es.confidenceRationale ?? "").includes("Based on"));
+
+  const zh = presentOperatingBriefApproval("zh-Hans", card);
+  assert.match(zh.confidenceRationale ?? "", /基于/);
+  assert.match(zh.confidenceRationale ?? "", /24/);
+  assert.ok(!(zh.confidenceRationale ?? "").includes("Based on"));
+
+  const unavailable = presentOperatingBriefApproval(
+    "es",
+    recommendationCard({
+      confidenceReasons: [{ code: "unavailable" }],
+      confidenceRationale:
+        "Confidence is unavailable until Mise can calculate this item's demand and count freshness."
+    })
+  );
+  assert.match(unavailable.confidenceRationale ?? "", /confianza no está disponible/i);
+  assert.ok(!(unavailable.confidenceRationale ?? "").includes("Confidence is unavailable"));
 });

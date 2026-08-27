@@ -1,10 +1,13 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import { translate } from "../../i18n/catalog";
 import { formatLocalizedNumber } from "../../i18n/formatters";
+import { localizeInventoryCoverage } from "../../i18n/inventoryPresentation";
 import type {
   MonitoringRow,
   OperatingBrief,
-  OperatingBriefApprovalCard
+  OperatingBriefApprovalCard,
+  RecommendationConfidenceReason,
+  RecommendationConfidenceReasonCode
 } from "../domain/operatingBrief";
 import type { MiseActionType } from "../domain/miseActions";
 
@@ -56,10 +59,74 @@ const ACTION_TYPE_KEYS: Partial<Record<MiseActionType, MessageKey>> = {
   measure_outcome: "home.approvals.actionType.measure_outcome"
 };
 
+const CONFIDENCE_REASON_KEYS: Record<
+  Exclude<RecommendationConfidenceReasonCode, "unavailable">,
+  MessageKey
+> = {
+  restaurant_history_samples: "home.approvals.confidence.reason.restaurantHistory",
+  demo_demand_pattern: "home.approvals.confidence.reason.demoPattern",
+  current_day_sales: "home.approvals.confidence.reason.currentDaySales",
+  limited_demand_history: "home.approvals.confidence.reason.limitedHistory",
+  count_within_24h: "home.approvals.confidence.reason.count24h",
+  count_within_72h: "home.approvals.confidence.reason.count72h",
+  count_older_or_unknown: "home.approvals.confidence.reason.countOlder",
+  coverage_below_reorder: "home.approvals.confidence.reason.belowReorder"
+};
+
 function actionTypeLabel(t: Translate, actionType: string | null): string {
   if (!actionType) return t("home.approvals.actionType.fallback");
   const key = ACTION_TYPE_KEYS[actionType as MiseActionType];
   return key ? t(key) : actionType.replace(/_/g, " ");
+}
+
+function joinReasonFragments(locale: AppLocale, parts: string[]): string {
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0] ?? "";
+  try {
+    const tag = locale === "zh-Hans" ? "zh-Hans" : locale;
+    return new Intl.ListFormat(tag, { style: "long", type: "conjunction" }).format(parts);
+  } catch {
+    return parts.join(", ");
+  }
+}
+
+function presentConfidenceReason(
+  locale: AppLocale,
+  t: Translate,
+  reason: RecommendationConfidenceReason
+): string {
+  if (reason.code === "unavailable") {
+    return t("home.approvals.confidence.unavailable");
+  }
+  const key = CONFIDENCE_REASON_KEYS[reason.code];
+  if (reason.code === "restaurant_history_samples") {
+    return t(key, {
+      count: formatLocalizedNumber(locale, reason.sampleDays ?? 0, { maximumFractionDigits: 0 })
+    });
+  }
+  return t(key);
+}
+
+/**
+ * Localizes structured recommendation confidence fragments. Findings keep stored prose.
+ */
+export function presentRecommendationConfidenceRationale(
+  locale: AppLocale,
+  reasons: readonly RecommendationConfidenceReason[] | null | undefined,
+  fallback: string | null
+): string | null {
+  if (!reasons || reasons.length === 0) return fallback;
+  const t = tFor(locale);
+  if (reasons.length === 1 && reasons[0]?.code === "unavailable") {
+    return t("home.approvals.confidence.unavailable");
+  }
+  const fragments = reasons
+    .filter((reason) => reason.code !== "unavailable")
+    .map((reason) => presentConfidenceReason(locale, t, reason));
+  if (fragments.length === 0) return fallback;
+  return t("home.approvals.confidence.basedOn", {
+    reasons: joinReasonFragments(locale, fragments)
+  });
 }
 
 /**
@@ -103,7 +170,11 @@ export function presentOperatingBriefApproval(
         t("home.approvals.card.work.comparedDemand"),
         t("home.approvals.card.work.preparedQuantity")
       ],
-      confidenceRationale: card.confidenceRationale
+      confidenceRationale: presentRecommendationConfidenceRationale(
+        locale,
+        card.confidenceReasons,
+        card.confidenceRationale
+      )
     };
   }
 
@@ -133,7 +204,7 @@ export function presentOperatingBriefApproval(
         t("home.approvals.card.action.work.prepared"),
         t("home.approvals.card.action.work.gates")
       ],
-      confidenceRationale: card.confidenceRationale
+      confidenceRationale: null
     };
   }
 
@@ -192,10 +263,17 @@ export function presentOperatingBriefMonitoringRow(
 
   if (row.kind === "inventory") {
     const item = row.subjectName?.trim() || t("home.approvals.item.fallback");
+    const coverage = row.inventoryCoverage
+      ? localizeInventoryCoverage(t, (value, options) => formatLocalizedNumber(locale, value, options), {
+          daysCoverage: row.inventoryCoverage.daysCoverage,
+          averageDailyUsage: row.inventoryCoverage.averageDailyUsage,
+          projectedQuantity: row.inventoryCoverage.projectedQuantity,
+          parLevel: row.inventoryCoverage.parLevel
+        })
+      : row.detail;
     return {
       title: t("home.watching.inventory.title", { item }),
-      // Coverage labels remain prediction prose until inventory presentation is wired here.
-      detail: row.detail
+      detail: coverage
     };
   }
 
