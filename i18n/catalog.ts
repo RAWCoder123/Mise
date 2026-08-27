@@ -1515,6 +1515,7 @@ const en = {
   "home.status.freshness.missing.inventory_projections": "inventory projections",
   "home.status.freshness.missing.verified_inventory_counts": "verified inventory counts",
   "home.status.confidence": "Confidence {score}",
+  "home.status.confidence.withRationale": "Confidence {score}: {rationale}",
   "home.status.confidence.rationale.fresh":
     "Confidence reflects current inventory and sales coverage with no major data gaps.",
   "home.status.meta": "{freshness} · {confidence}",
@@ -3882,6 +3883,7 @@ const es = {
   "home.status.freshness.missing.inventory_projections": "proyecciones de inventario",
   "home.status.freshness.missing.verified_inventory_counts": "conteos de inventario verificados",
   "home.status.confidence": "Confianza {score}",
+  "home.status.confidence.withRationale": "Confianza {score}: {rationale}",
   "home.status.confidence.rationale.fresh":
     "La confianza refleja cobertura actual de inventario y ventas sin lagunas importantes de datos.",
   "home.status.meta": "{freshness} · {confidence}",
@@ -6254,6 +6256,7 @@ const zhHans = {
   "home.status.freshness.missing.inventory_projections": "库存预测",
   "home.status.freshness.missing.verified_inventory_counts": "已验证的库存盘点",
   "home.status.confidence": "置信度 {score}",
+  "home.status.confidence.withRationale": "置信度 {score}：{rationale}",
   "home.status.confidence.rationale.fresh":
     "置信度反映当前库存与销售覆盖，且无重大数据缺口。",
   "home.status.meta": "{freshness} · {confidence}",

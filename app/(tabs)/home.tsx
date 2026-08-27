@@ -363,6 +363,19 @@ function RestaurantStatusCard({
   const freshnessIsOnlyRisk =
     topRisk === brief.restaurantStatus.dataFreshness.label &&
     brief.restaurantStatus.dataFreshness.state === "incomplete";
+  // Prefer grounded approval copy, then confidence rationale (when it adds more
+  // than freshness), then a localized status qualifier / pulse summary.
+  const statusMessage = freshnessIsOnlyRisk
+    ? statusEvidence.freshnessLabel
+    : presentedApproval?.whyItMatters ??
+      (statusEvidence.rationaleDistinctFromFreshness
+        ? statusEvidence.confidenceRationale
+        : topRisk
+          ? t(statusKey)
+          : pulseSummary);
+  const rationaleShownInMessage =
+    statusMessage === statusEvidence.confidenceRationale &&
+    statusEvidence.rationaleDistinctFromFreshness;
 
   return (
     <StatusNotice
@@ -373,14 +386,8 @@ function RestaurantStatusCard({
           ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
           : presentedApproval?.title || t(statusKey)
       }
-      message={
-        freshnessIsOnlyRisk
-          ? statusEvidence.freshnessLabel
-          : topRisk
-            ? t(statusKey)
-            : presentedApproval?.whyItMatters ?? pulseSummary
-      }
-      meta={statusEvidence.metaLine}
+      message={statusMessage}
+      meta={rationaleShownInMessage ? statusEvidence.metaLineCompact : statusEvidence.metaLine}
       onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
     />
   );

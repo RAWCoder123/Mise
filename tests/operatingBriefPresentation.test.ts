@@ -342,7 +342,28 @@ test("presentDataFreshnessLabel and restaurant status evidence localize structur
   assert.match(evidence.confidenceRationale, /confianza refleja/i);
   assert.ok(!evidence.confidenceRationale.includes("Confidence reflects"));
   assert.match(evidence.confidenceScore, /82\s*%/);
+  assert.equal(evidence.rationaleDistinctFromFreshness, true);
   assert.match(evidence.metaLine, /Datos:/i);
   assert.match(evidence.metaLine, /Confianza/i);
+  assert.match(evidence.metaLine, /confianza refleja/i);
+  assert.match(evidence.metaLineCompact, /Confianza/i);
+  assert.ok(!evidence.metaLineCompact.includes("confianza refleja"));
   assert.ok(!evidence.metaLine.includes("English only summary"));
+
+  const incompleteEvidence = presentRestaurantStatusEvidence("en", {
+    status: "at_risk",
+    summary: "At risk",
+    lastUpdated: incomplete.asOf,
+    dataFreshness: incomplete,
+    confidence: 0.34,
+    confidenceRationale: incomplete.label,
+    topRisk: incomplete.label,
+    topOpportunity: null,
+    nextDecisionDeadline: null
+  });
+  assert.equal(incompleteEvidence.rationaleDistinctFromFreshness, false);
+  assert.equal(incompleteEvidence.metaLine, incompleteEvidence.metaLineCompact);
+  assert.match(incompleteEvidence.metaLine, /Confidence 34\s*%/);
+  assert.ok(!incompleteEvidence.metaLine.includes("Confidence 34%:"));
+  assert.match(incompleteEvidence.confidenceRationale, /Incomplete/i);
 });
