@@ -22,6 +22,7 @@ import type {
   SetupAttachment,
   Supplier,
   SupplierEmailPayload,
+  SupplierItem,
   SupplierOrder,
   SupplierRecipient,
   SupplierSendContentVersion
@@ -555,6 +556,12 @@ export interface MiseRepository {
     restaurantId: string
   ): Promise<OperationalFindingDecision[]>;
   fetchInventoryItems(restaurantId: string): Promise<InventoryItem[]>;
+  fetchSupplierItems(restaurantId: string): Promise<SupplierItem[]>;
+  captureInventoryItemSupplierSku(
+    restaurantId: string,
+    inventoryItemId: string,
+    supplierSku: string
+  ): Promise<SupplierItem>;
   fetchSuppliers(restaurantId: string): Promise<Supplier[]>;
   createSupplier(restaurantId: string, displayName: string): Promise<Supplier>;
   renameSupplier(restaurantId: string, supplierId: string, displayName: string): Promise<Supplier>;
