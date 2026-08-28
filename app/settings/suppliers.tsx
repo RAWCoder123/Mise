@@ -16,6 +16,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { AppLocale } from "../../i18n/catalog";
 import {
+  createSupplier,
   fetchSupplierRecipientDirectory,
   renameSupplier,
   saveSupplierRecipient
@@ -26,6 +27,8 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+
+const CREATE_ACTION_KEY = "__create__";
 
 interface SupplierNotice {
   tone: StatusNoticeTone;
@@ -41,6 +44,7 @@ export default function SupplierRecipientsScreen() {
   const [entries, setEntries] = useState<SupplierRecipientDirectoryEntry[]>([]);
   const [draftEmails, setDraftEmails] = useState<Record<string, string>>({});
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
+  const [draftCreateName, setDraftCreateName] = useState("");
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -92,6 +96,7 @@ export default function SupplierRecipientsScreen() {
     setEntries([]);
     setDraftEmails({});
     setDraftNames({});
+    setDraftCreateName("");
     setLoadedRestaurantId(null);
     setLoadError(false);
     setSavingKeys(new Set());
@@ -232,10 +237,76 @@ export default function SupplierRecipientsScreen() {
     }
   }
 
+  async function create() {
+    if (!restaurant || !actionsEditable) return;
+    const restaurantId = restaurant.id;
+    if (actionLocksRef.current.has(CREATE_ACTION_KEY)) return;
+    const requestedName = draftCreateName;
+    const displayName = canonicalSupplierName(requestedName);
+    if (!isValidSupplierName(requestedName)) {
+      setNotice({
+        tone: "warning",
+        title: copy.invalidNameTitle,
+        message: copy.invalidNameBody
+      });
+      return;
+    }
+
+    actionLocksRef.current.add(CREATE_ACTION_KEY);
+    setSavingKeys((current) => new Set(current).add(CREATE_ACTION_KEY));
+    setNotice(null);
+    try {
+      const created = await createSupplier(restaurantId, displayName);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      if (created.restaurant_id !== restaurantId) {
+        throw new Error("Supplier creation returned a foreign restaurant identity.");
+      }
+      const nextEntry: SupplierRecipientDirectoryEntry = {
+        restaurantId,
+        supplierId: created.id,
+        supplierName: created.display_name,
+        email: null,
+        recipientId: null,
+        updatedAt: null,
+        source: "current"
+      };
+      setEntries((current) => sortSupplierDirectoryEntries([
+        ...current.filter((entry) => entry.supplierId !== created.id),
+        nextEntry
+      ]));
+      setDraftNames((current) => ({ ...current, [created.id]: created.display_name }));
+      setDraftEmails((current) => ({ ...current, [created.id]: current[created.id] ?? "" }));
+      setDraftCreateName("");
+      setNotice({
+        tone: "success",
+        title: copy.createdTitle,
+        message: copy.createdBody(created.display_name)
+      });
+    } catch {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        tone: "danger",
+        title: copy.createErrorTitle,
+        message: copy.createErrorBody(displayName)
+      });
+    } finally {
+      actionLocksRef.current.delete(CREATE_ACTION_KEY);
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setSavingKeys((current) => {
+          const next = new Set(current);
+          next.delete(CREATE_ACTION_KEY);
+          return next;
+        });
+      }
+    }
+  }
+
   const configuredCount = useMemo(
     () => visibleEntries.filter((entry) => Boolean(entry.email)).length,
     [visibleEntries]
   );
+  const creating = savingKeys.has(CREATE_ACTION_KEY);
+  const createNameReady = isValidSupplierName(draftCreateName);
 
   return (
     <Screen
@@ -275,6 +346,43 @@ export default function SupplierRecipientsScreen() {
             title={copy.safetyTitle}
             message={copy.safetyBody}
           />
+
+          {canManage ? (
+            <SectionSurface
+              title={copy.createSectionTitle}
+              subtitle={copy.createSectionSubtitle}
+              padding="none"
+            >
+              <View style={styles.createWrap}>
+                <Text style={styles.inputLabel}>{copy.createNameLabel}</Text>
+                <TextInput
+                  accessibilityLabel={copy.createNameAccessibility}
+                  accessibilityHint={copy.createNameHint}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  editable={actionsEditable && !creating}
+                  maxLength={160}
+                  onChangeText={setDraftCreateName}
+                  onSubmitEditing={() => {
+                    if (createNameReady && actionsEditable && !creating) void create();
+                  }}
+                  placeholder={copy.createNamePlaceholder}
+                  placeholderTextColor={colors.faint}
+                  returnKeyType="done"
+                  style={styles.input}
+                  value={draftCreateName}
+                />
+                <Button
+                  title={creating ? copy.creating : copy.create}
+                  accessibilityLabel={copy.createAccessibility}
+                  accessibilityHint={copy.createHint}
+                  fullWidth
+                  disabled={!actionsEditable || creating || !createNameReady}
+                  onPress={() => void create()}
+                />
+              </View>
+            </SectionSurface>
+          ) : null}
 
           <SectionSurface
             title={copy.sectionTitle}
@@ -411,6 +519,20 @@ function isValidSupplierName(value: string) {
   return canonical.length >= 1 && canonical.length <= 160 && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
+function sortSupplierDirectoryEntries(entries: SupplierRecipientDirectoryEntry[]) {
+  return [...entries].sort((left, right) => {
+    const keyDelta = compareSupplierKeys(
+      left.supplierName.toLocaleLowerCase("en-US"),
+      right.supplierName.toLocaleLowerCase("en-US")
+    );
+    return keyDelta || compareSupplierKeys(left.supplierName, right.supplierName);
+  });
+}
+
+function compareSupplierKeys(left: string, right: string) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 interface SupplierCopy {
   title: string;
   subtitle: string;
@@ -435,8 +557,22 @@ interface SupplierCopy {
   renamedBody: (supplier: string) => string;
   renameErrorTitle: string;
   renameErrorBody: (supplier: string) => string;
+  createdTitle: string;
+  createdBody: (supplier: string) => string;
+  createErrorTitle: string;
+  createErrorBody: (supplier: string) => string;
   safetyTitle: string;
   safetyBody: string;
+  createSectionTitle: string;
+  createSectionSubtitle: string;
+  createNameLabel: string;
+  createNamePlaceholder: string;
+  createNameAccessibility: string;
+  createNameHint: string;
+  create: string;
+  creating: string;
+  createAccessibility: string;
+  createHint: string;
   sectionTitle: string;
   sectionSubtitle: string;
   configuredCount: (configured: string, total: string) => string;
@@ -490,13 +626,27 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     renamedBody: (supplier) => `${supplier} keeps its recipient, orders, and purchasing identity.`,
     renameErrorTitle: "Supplier was not renamed",
     renameErrorBody: (supplier) => `Try renaming ${supplier} again. The name may already be in use.`,
+    createdTitle: "Supplier added",
+    createdBody: (supplier) => `${supplier} now has a durable restaurant identity. Add an order email when ready.`,
+    createErrorTitle: "Supplier was not added",
+    createErrorBody: (supplier) => `Try adding ${supplier} again. The name may already be in use.`,
     safetyTitle: "Restaurant-scoped recipients",
-    safetyBody: "Each supplier keeps one durable restaurant identity. Renaming it does not detach its recipient or create a different supplier.",
+    safetyBody: "Each supplier keeps one durable restaurant identity. Adding or renaming does not invent recipients or cross restaurants.",
+    createSectionTitle: "Add supplier",
+    createSectionSubtitle: "Creates a durable supplier identity for this restaurant only.",
+    createNameLabel: "Display name",
+    createNamePlaceholder: "New supplier name",
+    createNameAccessibility: "New supplier display name",
+    createNameHint: "Creates a new supplier identity. It does not send orders.",
+    create: "Add supplier",
+    creating: "Adding",
+    createAccessibility: "Add a supplier to this restaurant",
+    createHint: "Creates a durable supplier identity without sending orders.",
     sectionTitle: "Supplier directory",
     sectionSubtitle: "Current suppliers and their approved-order recipients.",
     configuredCount: (configured, total) => `${configured} of ${total} ready`,
     emptyTitle: "No suppliers yet",
-    emptyBody: "Add inventory suppliers during setup before configuring order recipients.",
+    emptyBody: "Add a supplier above, then configure its order email.",
     savedRecipient: "Saved recipient",
     currentSupplier: "Current supplier",
     configured: "Ready",
@@ -543,13 +693,27 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     renamedBody: (supplier) => `${supplier} conserva su destinatario, pedidos e identidad de compra.`,
     renameErrorTitle: "No se cambió el nombre",
     renameErrorBody: (supplier) => `Intenta renombrar ${supplier} nuevamente. Es posible que el nombre ya esté en uso.`,
+    createdTitle: "Proveedor agregado",
+    createdBody: (supplier) => `${supplier} ahora tiene una identidad estable en el restaurante. Agrega un correo de pedidos cuando esté listo.`,
+    createErrorTitle: "No se agregó el proveedor",
+    createErrorBody: (supplier) => `Intenta agregar ${supplier} nuevamente. Es posible que el nombre ya esté en uso.`,
     safetyTitle: "Destinatarios por restaurante",
-    safetyBody: "Cada proveedor conserva una identidad estable dentro del restaurante. Renombrarlo no desconecta su destinatario ni crea otro proveedor.",
+    safetyBody: "Cada proveedor conserva una identidad estable dentro del restaurante. Agregarlo o renombrarlo no inventa destinatarios ni cruza restaurantes.",
+    createSectionTitle: "Agregar proveedor",
+    createSectionSubtitle: "Crea una identidad durable de proveedor solo para este restaurante.",
+    createNameLabel: "Nombre visible",
+    createNamePlaceholder: "Nombre del nuevo proveedor",
+    createNameAccessibility: "Nombre visible del nuevo proveedor",
+    createNameHint: "Crea una nueva identidad de proveedor. No envía pedidos.",
+    create: "Agregar proveedor",
+    creating: "Agregando",
+    createAccessibility: "Agregar un proveedor a este restaurante",
+    createHint: "Crea una identidad durable de proveedor sin enviar pedidos.",
     sectionTitle: "Directorio de proveedores",
     sectionSubtitle: "Proveedores actuales y destinatarios de pedidos aprobados.",
     configuredCount: (configured, total) => `${configured} de ${total} listos`,
     emptyTitle: "Aún no hay proveedores",
-    emptyBody: "Agrega proveedores de inventario durante la configuración antes de definir destinatarios.",
+    emptyBody: "Agrega un proveedor arriba y luego configura su correo de pedidos.",
     savedRecipient: "Destinatario guardado",
     currentSupplier: "Proveedor actual",
     configured: "Listo",
@@ -596,13 +760,27 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     renamedBody: (supplier) => `${supplier} 的收件人、订单和采购身份均保持不变。`,
     renameErrorTitle: "未能重命名供应商",
     renameErrorBody: (supplier) => `请再次尝试重命名 ${supplier}。该名称可能已被使用。`,
+    createdTitle: "已添加供应商",
+    createdBody: (supplier) => `${supplier} 现已拥有此餐厅的持久身份。准备好后可添加订单邮箱。`,
+    createErrorTitle: "未能添加供应商",
+    createErrorBody: (supplier) => `请再次尝试添加 ${supplier}。该名称可能已被使用。`,
     safetyTitle: "餐厅专属收件人",
-    safetyBody: "每个供应商在餐厅内都有一个持久身份。重命名不会断开收件人，也不会创建新的供应商。",
+    safetyBody: "每个供应商在餐厅内都有一个持久身份。添加或重命名不会凭空创建收件人，也不会跨餐厅。",
+    createSectionTitle: "添加供应商",
+    createSectionSubtitle: "仅为当前餐厅创建持久的供应商身份。",
+    createNameLabel: "显示名称",
+    createNamePlaceholder: "新供应商名称",
+    createNameAccessibility: "新供应商显示名称",
+    createNameHint: "创建新的供应商身份，不会发送订单。",
+    create: "添加供应商",
+    creating: "正在添加",
+    createAccessibility: "向此餐厅添加供应商",
+    createHint: "创建持久供应商身份，不会发送订单。",
     sectionTitle: "供应商目录",
     sectionSubtitle: "当前供应商及其已批准订单的收件人。",
     configuredCount: (configured, total) => `${configured}/${total} 已就绪`,
     emptyTitle: "尚无供应商",
-    emptyBody: "请先在设置中添加库存供应商，再配置订单收件人。",
+    emptyBody: "请先在上方添加供应商，然后配置其订单邮箱。",
     savedRecipient: "已保存的收件人",
     currentSupplier: "当前供应商",
     configured: "已就绪",
@@ -633,6 +811,11 @@ const styles = StyleSheet.create({
   },
   emptyWrap: {
     padding: 14
+  },
+  createWrap: {
+    padding: 14,
+    gap: 8,
+    backgroundColor: colors.surface
   },
   recipientRow: {
     padding: 14,
