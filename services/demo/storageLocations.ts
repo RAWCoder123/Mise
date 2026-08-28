@@ -2,8 +2,14 @@ import { createId } from "../domain/miseDomain";
 import {
   MAIN_STORAGE_LOCATION_NAME,
   planInventoryTransfer,
+  planLocationBalanceReconcile,
+  planReceiveLocationPutaway,
   planStorageLocationCreate
 } from "../domain/inventoryTransfer";
+import {
+  assertWasteStationAvailability,
+  planWasteLocationDeduction
+} from "../domain/inventoryWaste";
 import type { DemoState } from "./replaceableDemoData";
 import type { InventoryItem, InventoryLocationBalance, StorageLocation } from "../../types/mise";
 import type { InventoryEvent } from "../domain/inventoryLedger";
@@ -129,6 +135,167 @@ function upsertDemoBalance(
   };
   state.inventoryLocationBalances.push(created);
   return created;
+}
+
+/** Align location balances with restaurant on-hand after create/count/waste/receive. */
+export function reconcileDemoLocationBalancesToOnHand(
+  state: DemoState,
+  restaurantId: string,
+  item: InventoryItem,
+  now = new Date().toISOString()
+): void {
+  const main = ensureDemoMainStorageLocation(state, restaurantId, now);
+  const balances = listDemoInventoryLocationBalances(state, restaurantId, item.id);
+  const planned = planLocationBalanceReconcile({
+    onHandQuantity: item.current_quantity,
+    balances: balances.map((balance) => ({
+      storageLocationId: balance.storage_location_id,
+      quantity: balance.quantity
+    })),
+    mainStorageLocationId: main.id
+  });
+  if (!planned.changed) return;
+  for (const update of planned.balanceUpdates) {
+    upsertDemoBalance(
+      state,
+      restaurantId,
+      item.id,
+      update.storageLocationId,
+      update.quantityAfter,
+      now
+    );
+  }
+}
+
+/**
+ * After on-hand increases from a receive, land the increase on Main then move
+ * it onto the chosen put-away station. Empty balances stay lazy unless a
+ * non-Main station is chosen.
+ */
+export function applyDemoReceiveLocationPutaway(
+  state: DemoState,
+  restaurantId: string,
+  item: InventoryItem,
+  storageLocationId: string | null | undefined,
+  quantityReceived: number,
+  now = new Date().toISOString()
+): void {
+  if (!(quantityReceived > 0)) return;
+  const main = ensureDemoMainStorageLocation(state, restaurantId, now);
+  const targetId = typeof storageLocationId === "string" ? storageLocationId.trim() : "";
+  const locations = listDemoStorageLocations(state, restaurantId);
+  const target =
+    (targetId ? locations.find((location) => location.id === targetId) : null) ?? main;
+  if (!target) {
+    throw new Error("Storage location not found.");
+  }
+
+  const balances = listDemoInventoryLocationBalances(state, restaurantId, item.id);
+  if (balances.length === 0) {
+    if (target.id === main.id) {
+      return;
+    }
+    const priorOnHand = Math.max(0, item.current_quantity - quantityReceived);
+    upsertDemoBalance(state, restaurantId, item.id, main.id, priorOnHand, now);
+    upsertDemoBalance(state, restaurantId, item.id, target.id, quantityReceived, now);
+    return;
+  }
+
+  reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
+  if (target.id === main.id) return;
+
+  const afterReconcile = listDemoInventoryLocationBalances(state, restaurantId, item.id);
+  const planned = planReceiveLocationPutaway({
+    mainStorageLocationId: main.id,
+    storageLocationId: target.id,
+    quantityReceived,
+    balances: afterReconcile.map((balance) => ({
+      storageLocationId: balance.storage_location_id,
+      quantity: balance.quantity
+    }))
+  });
+  if (!planned) return;
+  for (const update of planned.balanceUpdates) {
+    upsertDemoBalance(
+      state,
+      restaurantId,
+      item.id,
+      update.storageLocationId,
+      update.quantityAfter,
+      now
+    );
+  }
+}
+
+/**
+ * Attribute waste to a station after on-hand was reduced.
+ * Caller must pass balances/on-hand captured before the quantity write.
+ */
+export function applyDemoWasteLocationDeduction(
+  state: DemoState,
+  restaurantId: string,
+  item: InventoryItem,
+  storageLocationId: string | null | undefined,
+  quantityRemovedApplied: number,
+  onHandQuantityBefore: number,
+  balancesBefore: InventoryLocationBalance[],
+  now = new Date().toISOString()
+): StorageLocation {
+  const main = ensureDemoMainStorageLocation(state, restaurantId, now);
+  const locations = listDemoStorageLocations(state, restaurantId);
+  const requestedId = typeof storageLocationId === "string" ? storageLocationId.trim() : "";
+  const target =
+    (requestedId ? locations.find((location) => location.id === requestedId) : null) ?? main;
+  if (!target) {
+    throw new Error("Storage location not found.");
+  }
+
+  const mainQuantityBefore =
+    balancesBefore.find((balance) => balance.storage_location_id === main.id)?.quantity ??
+    (balancesBefore.length === 0 ? onHandQuantityBefore : 0);
+
+  assertWasteStationAvailability({
+    onHandQuantity: onHandQuantityBefore,
+    quantityRemovedApplied,
+    storageLocationId: target.id,
+    mainStorageLocationId: main.id,
+    balancesBefore: balancesBefore.map((balance) => ({
+      storageLocationId: balance.storage_location_id,
+      quantity: balance.quantity
+    }))
+  });
+
+  if (balancesBefore.length === 0) {
+    if (target.id === main.id) return target;
+    throw new Error("Insufficient quantity at the selected storage location.");
+  }
+
+  reconcileDemoLocationBalancesToOnHand(state, restaurantId, item, now);
+
+  const balancesAfter = listDemoInventoryLocationBalances(state, restaurantId, item.id);
+  const planned = planWasteLocationDeduction({
+    mainStorageLocationId: main.id,
+    storageLocationId: target.id,
+    quantityRemoved: quantityRemovedApplied,
+    mainQuantityBefore,
+    balancesAfterReconcile: balancesAfter.map((balance) => ({
+      storageLocationId: balance.storage_location_id,
+      quantity: balance.quantity
+    }))
+  });
+  if (!planned) return target;
+
+  for (const update of planned.balanceUpdates) {
+    upsertDemoBalance(
+      state,
+      restaurantId,
+      item.id,
+      update.storageLocationId,
+      update.quantityAfter,
+      now
+    );
+  }
+  return target;
 }
 
 export function transferDemoInventory(input: {

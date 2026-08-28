@@ -2277,7 +2277,10 @@ export function createSupabaseRepository(): MiseRepository {
           canonicalUnit: line.canonicalUnit,
           substitutionInventoryItemId: line.substitutionInventoryItemId ?? null,
           unitPrice: line.unitPrice ?? null,
-          discrepancyReason: line.discrepancyReason ?? null
+          discrepancyReason: line.discrepancyReason ?? null,
+          ...(line.storageLocationId
+            ? { storageLocationId: line.storageLocationId }
+            : {})
         })),
         p_invoice_total: input.invoiceTotal ?? null,
         p_notes: input.notes ?? null

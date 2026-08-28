@@ -118,6 +118,7 @@ export interface SupplierDeliveryLineInput {
   substitutionInventoryItemId?: string | null;
   unitPrice?: number | null;
   discrepancyReason?: string | null;
+  storageLocationId?: string | null;
 }
 
 export interface SupplierDeliveryRecordResult {
