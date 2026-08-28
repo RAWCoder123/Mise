@@ -44,7 +44,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
-import { canDeleteRestaurantData } from "../../services/tenantAccess";
+import { canDeleteRestaurantData, canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type {
   DemoReadinessSummary,
@@ -227,6 +227,7 @@ export default function SettingsScreen() {
   const gmailConnected = visibleEmailConnection?.status === "connected";
   const gmailNeedsAttention = visibleEmailConnection?.status === "needs_reauth" || visibleEmailConnection?.status === "restricted";
   const canExportRestaurant = Boolean(restaurant) && canDeleteRestaurantData(memberships, restaurant?.id);
+  const canEditRestaurantIdentity = canUpdateRestaurantProfile(memberships, restaurant?.id);
   const localizedRole = role ? roleLabel(role, t) : null;
 
 
@@ -292,6 +293,18 @@ export default function SettingsScreen() {
           />
           {restaurant ? (
             <>
+              <OperationalRow
+                density="menu"
+                title={t("settings.restaurant.entryTitle")}
+                subtitle={
+                  canEditRestaurantIdentity
+                    ? t("settings.restaurant.entryBody")
+                    : t("settings.restaurant.entryReadOnlyBody")
+                }
+                icon={<Store size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />}
+                iconTone="brand"
+                onPress={() => router.push("/settings/restaurant" as never)}
+              />
               <OperationalRow
                 density="menu"
                 title={t("settings.profile.timezone")}
@@ -408,6 +421,15 @@ export default function SettingsScreen() {
             disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/suppliers" as never)}
           />
+          {restaurant ? (
+            <OperationalRow
+              density="menu"
+              title={t("settings.operations.service.title")}
+              value={`${serviceStyleLabel(restaurant.service_style, t)} · ${restaurant.timezone} · ${restaurant.currency}`}
+              icon={<ShieldCheck size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />}
+              onPress={() => router.push("/settings/restaurant" as never)}
+            />
+          ) : null}
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.data")}>
