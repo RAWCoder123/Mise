@@ -1007,6 +1007,13 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async fetchMyDisplayName() {
+      const state = await readReadyDemoState();
+      const user = state.users[0];
+      const name = typeof user?.name === "string" ? user.name.trim() : "";
+      return name.length > 0 ? name : null;
+    },
+
     async deleteAccount(_restaurantId) {
       // Demo accounts live only on this device; deletion resets the local store.
       await resetDemoStore();

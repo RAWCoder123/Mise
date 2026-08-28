@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  CircleUserRound,
   Database,
   Download,
   Languages,
@@ -347,6 +348,17 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.preferences")}>
+          <OperationalRow
+            density="menu"
+            title={t("settings.preference.profile")}
+            value={
+              user?.name?.trim()
+                ? user.name.trim()
+                : t("settings.preference.profile.empty")
+            }
+            icon={<CircleUserRound size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/settings/profile" as never)}
+          />
           <OperationalRow
             density="menu"
             title={t("settings.preference.language")}
