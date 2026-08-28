@@ -8,6 +8,9 @@ const listing = readFileSync("docs/store/app-store-listing.md", "utf8");
 const login = readFileSync("app/(auth)/login.tsx", "utf8");
 const privacyRoute = readFileSync("app/settings/privacy.tsx", "utf8");
 const supportRoute = readFileSync("app/settings/support.tsx", "utf8");
+const appConfig = readFileSync("lib/appConfig.ts", "utf8");
+const envExample = readFileSync(".env.example", "utf8");
+const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
 const routeSmoke = readFileSync("scripts/mobile-route-smoke.mjs", "utf8");
 const layoutSmoke = readFileSync("scripts/mobile-layout-smoke.mjs", "utf8");
 
@@ -81,6 +84,23 @@ test("contact and policy actions transmit only bounded public destinations", () 
     /Linking\.canOpenURL\(url\)[\s\S]*Linking\.openURL\(url\)/,
   );
   assert.doesNotMatch(supportRoute, /[?&](?:body|cc|bcc)=/i);
+  assert.doesNotMatch(
+    supportRoute,
+    /const SUPPORT_PAGE_URL\s*=\s*"https:\/\/getmise\.app\/support"/,
+  );
+  assert.match(supportRoute, /readPublicAppConfig\(\)\.supportUrl/);
+  assert.match(supportRoute, /disabled=\{opening \|\| !supportUrl\}/);
+  assert.match(
+    supportRoute,
+    /Linking\.canOpenURL\(supportUrl\)[\s\S]*Linking\.openURL\(supportUrl\)/,
+  );
+  assert.match(supportRoute, /support\.missing\.title/);
+  assert.match(supportRoute, /support\.hosting\.title/);
+  assert.match(supportRoute, /support\.monitoring\.title/);
+  assert.match(appConfig, /EXPO_PUBLIC_SUPPORT_URL/);
+  assert.match(appConfig, /normalizeOptionalHttpsUrl/);
+  assert.match(envExample, /EXPO_PUBLIC_SUPPORT_URL=/);
+  assert.match(securityStatic, /EXPO_PUBLIC_SUPPORT_URL/);
   assert.match(
     privacyRoute,
     /const PRIVACY_POLICY_URL = "https:\/\/getmise\.app\/privacy"/,
@@ -90,7 +110,6 @@ test("contact and policy actions transmit only bounded public destinations", () 
     /Linking\.canOpenURL\(PRIVACY_POLICY_URL\)[\s\S]*Linking\.openURL\(PRIVACY_POLICY_URL\)/,
   );
   assert.match(privacyRoute, /privacy\.hosting\.title/);
-  assert.match(supportRoute, /support\.monitoring\.title/);
 });
 
 test("privacy and support routes are part of shell and localized mobile QA", () => {

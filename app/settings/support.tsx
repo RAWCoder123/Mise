@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
 import { router, useNavigation } from "expo-router";
-import { ArrowLeft, LifeBuoy, Mail } from "lucide-react-native";
+import { ArrowLeft, ExternalLink, LifeBuoy, Mail } from "lucide-react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Button } from "../../components/ui/Button";
@@ -12,6 +12,7 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { readPublicAppConfig } from "../../lib/appConfig";
 
 const SUPPORT_MAILTO = "mailto:support@getmise.app?subject=Mise%20beta%20support";
 const PRIVACY_MAILTO = "mailto:privacy@getmise.app?subject=Mise%20beta%20privacy";
@@ -20,6 +21,7 @@ export default function SupportSettingsScreen() {
   const navigation = useNavigation();
   const { t } = useLocale();
   const { restaurant, user } = useMiseSession();
+  const supportUrl = useMemo(() => readPublicAppConfig().supportUrl, []);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const signedIn = Boolean(user);
@@ -50,6 +52,24 @@ export default function SupportSettingsScreen() {
     }
   }
 
+  async function openSupportUrl() {
+    if (opening || !supportUrl) return;
+    setOpening(true);
+    setLinkError(null);
+    try {
+      const canOpen = await Linking.canOpenURL(supportUrl);
+      if (!canOpen) {
+        setLinkError(t("support.link.urlUnavailable"));
+        return;
+      }
+      await Linking.openURL(supportUrl);
+    } catch {
+      setLinkError(t("support.link.urlUnavailable"));
+    } finally {
+      setOpening(false);
+    }
+  }
+
   return (
     <Screen
       title={t("support.title")}
@@ -69,6 +89,15 @@ export default function SupportSettingsScreen() {
     >
       <View style={styles.stack}>
         <StatusNotice tone="caution" title={t("support.beta.title")} message={t("support.beta.body")} />
+        {supportUrl ? (
+          <StatusNotice tone="caution" title={t("support.hosting.title")} message={t("support.hosting.body")} />
+        ) : (
+          <StatusNotice
+            tone="caution"
+            title={t("support.missing.title")}
+            message={t("support.missing.body")}
+          />
+        )}
         <StatusNotice
           tone="caution"
           title={t("support.monitoring.title")}
@@ -94,10 +123,20 @@ export default function SupportSettingsScreen() {
         {linkError ? <StatusNotice tone="danger" title={t("support.link.errorTitle")} message={linkError} /> : null}
 
         <Button
+          title={t("support.action.openSupportUrl")}
+          accessibilityLabel={t("support.action.openSupportUrlAccessibility")}
+          accessibilityHint={t("support.action.openSupportUrlHint")}
+          icon={<ExternalLink size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
+          onPress={() => void openSupportUrl()}
+          disabled={opening || !supportUrl}
+          fullWidth
+        />
+        <Button
           title={t("support.action.emailSupport")}
+          variant="secondary"
           accessibilityLabel={t("support.action.emailSupportAccessibility")}
           accessibilityHint={t("support.action.emailSupportHint")}
-          icon={<Mail size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
+          icon={<Mail size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
           onPress={() => void openBoundedMailto(SUPPORT_MAILTO)}
           disabled={opening}
           fullWidth
