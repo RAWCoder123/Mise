@@ -152,3 +152,23 @@ test("content approval blockers refresh the authoritative preview without hiding
     noticeHelper.indexOf('blockerCodes.includes("order_not_draft")') < genericApprovalIndex
   );
 });
+
+test("order detail receive offers default and per-line put-away stations", () => {
+  const detail = readFileSync("app/orders/[id].tsx", "utf8");
+  const deliveries = readFileSync("services/application/deliveries.ts", "utf8");
+  const domain = readFileSync("services/domain/supplierDelivery.ts", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(detail, /receiveStorageLocationIdsByItemId/);
+  assert.match(detail, /storageLocationIdsByItemId: receiveStorageLocationIdsByItemId/);
+  assert.match(detail, /orders\.detail\.receive\.putAwayDefault/);
+  assert.match(detail, /orders\.detail\.receive\.putAwayLine/);
+  assert.match(detail, /emailPayload\?\.lines/);
+  assert.match(deliveries, /storageLocationIdsByItemId/);
+  assert.match(domain, /resolveDeliveryLineStorageLocationId/);
+  assert.match(domain, /storageLocationIdsByItemId/);
+  assert.match(catalog, /"orders\.detail\.receive\.putAwayDefault": "Default for all lines"/);
+  assert.match(catalog, /"orders\.detail\.receive\.putAwayDefault": "Predeterminado para todas las líneas"/);
+  assert.match(catalog, /"orders\.detail\.receive\.putAwayDefault": "全部明细默认位置"/);
+  assert.match(catalog, /"orders\.detail\.receive\.putAwayLine": "Put away \{item\}"/);
+});

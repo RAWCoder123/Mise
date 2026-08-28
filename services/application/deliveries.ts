@@ -49,6 +49,8 @@ export async function receiveSupplierOrderDelivery(
     receivedAt?: string;
     clientDeliveryId?: string;
     storageLocationId?: string | null;
+    /** Optional per-line put-away; blank/missing falls back to storageLocationId. */
+    storageLocationIdsByItemId?: Readonly<Record<string, string | null | undefined>>;
   } = {}
 ) {
   const normalizedRestaurantId = restaurantId.trim();
@@ -74,13 +76,15 @@ export async function receiveSupplierOrderDelivery(
     typeof options.storageLocationId === "string" && options.storageLocationId.trim()
       ? options.storageLocationId.trim()
       : null;
+  const storageLocationIdsByItemId = options.storageLocationIdsByItemId;
 
   let built = buildDeliveryLinesFromOrderRecommendations({
     order,
     recommendations,
     inventoryItems,
     requireVerifiedCanonicalUnit: true,
-    storageLocationId
+    storageLocationId,
+    storageLocationIdsByItemId
   });
   if (built.lines.length === 0) {
     // Demo / incomplete unit setup: still allow as-ordered receive when items exist.
@@ -89,7 +93,8 @@ export async function receiveSupplierOrderDelivery(
       recommendations,
       inventoryItems,
       requireVerifiedCanonicalUnit: false,
-      storageLocationId
+      storageLocationId,
+      storageLocationIdsByItemId
     });
   }
   if (built.lines.length === 0) {

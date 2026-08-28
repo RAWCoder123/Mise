@@ -7,9 +7,32 @@ export interface DeliveryLineBuildResult {
 }
 
 /**
+ * Resolves put-away for one receive line: explicit per-item station wins,
+ * otherwise the shared default. Blank values stay null (Main on apply).
+ */
+export function resolveDeliveryLineStorageLocationId(input: {
+  inventoryItemId: string;
+  storageLocationId?: string | null;
+  storageLocationIdsByItemId?: Readonly<Record<string, string | null | undefined>>;
+}): string | null {
+  const rawLine = input.storageLocationIdsByItemId?.[input.inventoryItemId];
+  if (typeof rawLine === "string" && rawLine.trim()) {
+    return rawLine.trim();
+  }
+  if (typeof input.storageLocationId === "string" && input.storageLocationId.trim()) {
+    return input.storageLocationId.trim();
+  }
+  return null;
+}
+
+/**
  * Builds idempotent as-ordered delivery lines from recommendations linked to a
  * supplier order. Hosted RPC requires verified canonical units; unverified
  * items are skipped and reported so the operator can finish unit setup.
+ *
+ * When storage locations exist, callers may stamp a shared default put-away
+ * and optional per-line overrides. Each line carries its resolved
+ * `storageLocationId` so demo and hosted put-away stay line-accurate.
  */
 export function buildDeliveryLinesFromOrderRecommendations(input: {
   order: SupplierOrder;
@@ -17,12 +40,9 @@ export function buildDeliveryLinesFromOrderRecommendations(input: {
   inventoryItems: readonly InventoryItem[];
   requireVerifiedCanonicalUnit?: boolean;
   storageLocationId?: string | null;
+  storageLocationIdsByItemId?: Readonly<Record<string, string | null | undefined>>;
 }): DeliveryLineBuildResult {
   const requireVerified = input.requireVerifiedCanonicalUnit !== false;
-  const storageLocationId =
-    typeof input.storageLocationId === "string" && input.storageLocationId.trim()
-      ? input.storageLocationId.trim()
-      : null;
   const linked = input.recommendations.filter(
     (recommendation) =>
       recommendation.restaurant_id === input.order.restaurant_id &&
@@ -52,6 +72,11 @@ export function buildDeliveryLinesFromOrderRecommendations(input: {
       continue;
     }
     const quantity = Math.max(0, Number(recommendation.recommended_quantity) || 0);
+    const storageLocationId = resolveDeliveryLineStorageLocationId({
+      inventoryItemId: item.id,
+      storageLocationId: input.storageLocationId,
+      storageLocationIdsByItemId: input.storageLocationIdsByItemId
+    });
     lines.push({
       inventoryItemId: item.id,
       orderedQuantity: quantity,

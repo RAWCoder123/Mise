@@ -71,6 +71,9 @@ export default function OrderDraftDetailScreen() {
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
   const [receiveStorageLocationId, setReceiveStorageLocationId] = useState("");
+  const [receiveStorageLocationIdsByItemId, setReceiveStorageLocationIdsByItemId] = useState<
+    Record<string, string>
+  >({});
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -131,6 +134,15 @@ export default function OrderDraftDetailScreen() {
           ? current
           : main?.id ?? ""
       );
+      setReceiveStorageLocationIdsByItemId((current) => {
+        const next: Record<string, string> = {};
+        for (const [itemId, locationId] of Object.entries(current)) {
+          if (locationId && nextLocations.some((location) => location.id === locationId)) {
+            next[itemId] = locationId;
+          }
+        }
+        return next;
+      });
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       setOperatorNote(nextDetail.order.operator_note ?? "");
@@ -165,6 +177,8 @@ export default function OrderDraftDetailScreen() {
     setEmailPayload(null);
     setSupplierSendAction(null);
     setOperatorNote("");
+    setReceiveStorageLocationId("");
+    setReceiveStorageLocationIdsByItemId({});
     setBusy(false);
     setNotice(null);
     setLoading(Boolean(restaurant && id));
@@ -378,17 +392,32 @@ export default function OrderDraftDetailScreen() {
       setNotice(viewOnlyNotice(t));
       return;
     }
-    if (
-      storageLocations.length > 0 &&
-      (!receiveStorageLocationId ||
-        !storageLocations.some((location) => location.id === receiveStorageLocationId))
-    ) {
-      setNotice({
-        title: t("orders.detail.receive.storageRequiredTitle"),
-        message: t("orders.detail.receive.storageRequired"),
-        tone: "warning"
+    const receiveLines = emailPayload?.lines ?? [];
+    if (storageLocations.length > 0) {
+      const defaultValid =
+        Boolean(receiveStorageLocationId) &&
+        storageLocations.some((location) => location.id === receiveStorageLocationId);
+      if (!defaultValid) {
+        setNotice({
+          title: t("orders.detail.receive.storageRequiredTitle"),
+          message: t("orders.detail.receive.storageRequired"),
+          tone: "warning"
+        });
+        return;
+      }
+      const invalidLine = receiveLines.find((line) => {
+        const locationId =
+          receiveStorageLocationIdsByItemId[line.inventoryItemId] || receiveStorageLocationId;
+        return !locationId || !storageLocations.some((location) => location.id === locationId);
       });
-      return;
+      if (invalidLine) {
+        setNotice({
+          title: t("orders.detail.receive.storageRequiredTitle"),
+          message: t("orders.detail.receive.storageRequired"),
+          tone: "warning"
+        });
+        return;
+      }
     }
     const restaurantId = restaurant.id;
     actionLockRef.current = true;
@@ -396,7 +425,8 @@ export default function OrderDraftDetailScreen() {
     setNotice(null);
     try {
       const result = await receiveSupplierOrderDelivery(restaurantId, order.id, {
-        storageLocationId: receiveStorageLocationId || null
+        storageLocationId: receiveStorageLocationId || null,
+        storageLocationIdsByItemId: receiveStorageLocationIdsByItemId
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await load(false);
@@ -807,17 +837,82 @@ export default function OrderDraftDetailScreen() {
             <View style={styles.receiveBlock}>
               {storageLocations.length > 0 ? (
                 <View style={styles.receivePutAway}>
-                  <Text style={styles.sectionLabel}>{t("orders.detail.receive.putAway")}</Text>
+                  <Text style={styles.sectionLabel}>
+                    {t(
+                      (emailPayload?.lines.length ?? 0) > 1
+                        ? "orders.detail.receive.putAwayDefault"
+                        : "orders.detail.receive.putAway"
+                    )}
+                  </Text>
                   <Text style={styles.helper}>{t("orders.detail.receive.putAwayHelp")}</Text>
                   <FilterRow
-                    accessibilityLabel={t("orders.detail.receive.putAway")}
+                    accessibilityLabel={t("orders.detail.receive.putAwayOption", {
+                      location:
+                        storageLocations.find((location) => location.id === receiveStorageLocationId)
+                          ?.name ?? ""
+                    })}
                     options={storageLocations.map((location) => ({
                       value: location.id,
                       label: location.name
                     }))}
                     value={receiveStorageLocationId}
-                    onValueChange={setReceiveStorageLocationId}
+                    onValueChange={(nextDefault) => {
+                      setReceiveStorageLocationId(nextDefault);
+                      setReceiveStorageLocationIdsByItemId((current) => {
+                        const next: Record<string, string> = {};
+                        for (const [itemId, locationId] of Object.entries(current)) {
+                          if (locationId && locationId !== receiveStorageLocationId) {
+                            next[itemId] = locationId;
+                          }
+                        }
+                        return next;
+                      });
+                    }}
                   />
+                  {(emailPayload?.lines.length ?? 0) > 1
+                    ? emailPayload!.lines.map((line) => {
+                        const lineLocationId =
+                          receiveStorageLocationIdsByItemId[line.inventoryItemId] ||
+                          receiveStorageLocationId;
+                        return (
+                          <View key={line.inventoryItemId} style={styles.receiveLinePutAway}>
+                            <Text style={styles.receiveLinePutAwayLabel}>
+                              {t("orders.detail.receive.putAwayLine", { item: line.itemName })}
+                            </Text>
+                            <Text style={styles.helper}>
+                              {formatNumber(line.quantity)} {line.unit}
+                            </Text>
+                            <FilterRow
+                              accessibilityLabel={t("orders.detail.receive.putAwayLineOption", {
+                                item: line.itemName,
+                                location:
+                                  storageLocations.find((location) => location.id === lineLocationId)
+                                    ?.name ?? ""
+                              })}
+                              options={storageLocations.map((location) => ({
+                                value: location.id,
+                                label: location.name
+                              }))}
+                              value={lineLocationId}
+                              onValueChange={(nextLocationId) => {
+                                setReceiveStorageLocationIdsByItemId((current) => {
+                                  if (nextLocationId === receiveStorageLocationId) {
+                                    if (!(line.inventoryItemId in current)) return current;
+                                    const next = { ...current };
+                                    delete next[line.inventoryItemId];
+                                    return next;
+                                  }
+                                  return {
+                                    ...current,
+                                    [line.inventoryItemId]: nextLocationId
+                                  };
+                                });
+                              }}
+                            />
+                          </View>
+                        );
+                      })
+                    : null}
                 </View>
               ) : null}
               <Button
@@ -1113,6 +1208,15 @@ const styles = StyleSheet.create({
   },
   receivePutAway: {
     gap: 8
+  },
+  receiveLinePutAway: {
+    gap: 6,
+    marginTop: 4
+  },
+  receiveLinePutAwayLabel: {
+    color: colors.text,
+    ...typography.cardTitle,
+    fontSize: 14
   },
   sectionLabel: {
     color: colors.text,
