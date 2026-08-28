@@ -18,6 +18,9 @@ test("restaurant identity settings gate edits to owner/admin and save through se
   assert.match(restaurantScreen, /canUpdateRestaurantProfile/);
   assert.match(restaurantScreen, /updateRestaurantProfile/);
   assert.match(restaurantScreen, /buildRestaurantIdentityPatch/);
+  assert.match(restaurantScreen, /brand_color|brandColor/);
+  assert.match(restaurantScreen, /accent_color|accentColor/);
+  assert.match(restaurantScreen, /logo_url|logoUrl/);
   assert.match(application, /requireRestaurantProfilePatch/);
   const hostedSave =
     repository.match(/async updateRestaurantProfile\([\s\S]*?\n    \},/)?.[0] ?? "";
