@@ -1,4 +1,4 @@
-import type { InventoryItemPatch } from "../../types/mise";
+import type { InventoryItemCreateInput, InventoryItemPatch } from "../../types/mise";
 import {
   buildInventoryControlSummary,
   buildInventoryOutlooks,
@@ -6,6 +6,11 @@ import {
   recommendationReason,
   shouldSuppressRecommendationForItem
 } from "../domain/miseDomain";
+import {
+  assertInventoryItemCreateCapacity,
+  findDuplicateInventoryItemName,
+  planInventoryItemCreate
+} from "../domain/inventoryItemCreate";
 import {
   applyCountApprovalsToInventory,
   planCountSessionApprovals,
@@ -15,6 +20,7 @@ import { buildInsightsFromData, buildRecommendationInserts } from "../domain/ope
 import {
   requireInventoryCountLineUpdates,
   requireInventoryCountSessionNote,
+  requireInventoryItemCreateInput,
   requireInventoryItemPatch,
   requireRecipeBaselineQuantity,
   requireSupplierAuthorityId
@@ -86,6 +92,81 @@ export async function reassignInventoryItemSupplier(
     normalizedRestaurantId,
     normalizedItemId,
     normalizedSupplierId
+  );
+}
+
+export async function createInventoryItem(restaurantId: string, input: InventoryItemCreateInput) {
+  const normalizedRestaurantId = requireSupplierAuthorityId(restaurantId, "restaurant");
+  const normalized = requireInventoryItemCreateInput(input);
+  const planned = planInventoryItemCreate(normalized);
+  const [data, recommendationHistory] = await Promise.all([
+    fetchAnchoredPlanningData(normalizedRestaurantId),
+    repository.fetchRecommendationHistory(normalizedRestaurantId)
+  ]);
+  assertInventoryItemCreateCapacity(data.inventoryItems.length);
+  const duplicate = findDuplicateInventoryItemName(
+    data.inventoryItems.map((item) => item.item_name),
+    planned.item_name
+  );
+  if (duplicate) {
+    throw new Error(`An inventory item named "${duplicate}" already exists.`);
+  }
+
+  const supplier = (await repository.fetchSuppliers(normalizedRestaurantId)).find(
+    (entry) => entry.id === planned.supplier_id
+  );
+  if (!supplier) {
+    throw new Error("Supplier is not part of this restaurant catalog.");
+  }
+
+  const createdForPlanning = {
+    id: `pending_inventory_${planned.item_name}`,
+    restaurant_id: normalizedRestaurantId,
+    item_name: planned.item_name,
+    category: planned.category,
+    unit: planned.unit,
+    current_quantity: planned.current_quantity,
+    par_level: planned.par_level,
+    reorder_threshold: planned.reorder_threshold,
+    estimated_unit_cost: planned.estimated_unit_cost,
+    supplier_id: supplier.id,
+    supplier_name: supplier.display_name,
+    last_updated: new Date().toISOString()
+  };
+  const planningInventory = [...data.inventoryItems, createdForPlanning];
+  const recommendations = buildRecommendationInserts(
+    normalizedRestaurantId,
+    planningInventory,
+    data.sales,
+    data.menuItemIngredients,
+    recommendationHistory,
+    data.operatingDate,
+    signalCountEvidence(data),
+    data.providerMappings
+  );
+  const insights = buildInsightsFromData(
+    normalizedRestaurantId,
+    planningInventory,
+    data.sales,
+    data.menuItemIngredients,
+    data.operatingDate,
+    signalCountEvidence(data),
+    data.providerMappings
+  );
+  return repository.createInventoryItemAndSignals(
+    normalizedRestaurantId,
+    {
+      item_name: planned.item_name,
+      category: planned.category,
+      unit: planned.unit,
+      current_quantity: planned.current_quantity,
+      par_level: planned.par_level,
+      reorder_threshold: planned.reorder_threshold,
+      estimated_unit_cost: planned.estimated_unit_cost,
+      supplier_id: planned.supplier_id
+    },
+    recommendations,
+    insights
   );
 }
 

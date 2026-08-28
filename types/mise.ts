@@ -691,4 +691,17 @@ export type InventoryItemPatch = Partial<
   Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold">
 >;
 
+/** Day-2 catalog create after setup. Supplier authority is the durable UUID. */
+export type InventoryItemCreateInput = Pick<
+  InventoryItem,
+  | "item_name"
+  | "category"
+  | "unit"
+  | "current_quantity"
+  | "par_level"
+  | "reorder_threshold"
+  | "estimated_unit_cost"
+  | "supplier_id"
+>;
+
 export type PosProvider = "Toast" | "Square" | "Clover" | "Lightspeed" | "Manual CSV Upload";

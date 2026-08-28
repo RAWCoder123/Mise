@@ -86,6 +86,11 @@ import {
   type InventoryEvent,
   type InventoryEventInput
 } from "../domain/inventoryLedger";
+import {
+  assertInventoryItemCreateCapacity,
+  findDuplicateInventoryItemName,
+  planInventoryItemCreate
+} from "../domain/inventoryItemCreate";
 import { isTemporallyValidCount } from "../domain/inventoryCountAuthority";
 import {
   PurchaseAuthorityBlockedError,
@@ -1768,6 +1773,117 @@ export function createLocalDemoRepository(): MiseRepository {
           last_updated: now
         };
         state.inventoryItems.push(item);
+        return normalizeInventoryItem(item);
+      });
+    },
+
+    async createInventoryItemAndSignals(restaurantId, input, recommendations, insights) {
+      const planned = planInventoryItemCreate(input);
+      const created = await mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const restaurantItems = state.inventoryItems.filter(
+          (item) => item.restaurant_id === restaurantId
+        );
+        assertInventoryItemCreateCapacity(restaurantItems.length);
+        const duplicate = findDuplicateInventoryItemName(
+          restaurantItems.map((item) => item.item_name),
+          planned.item_name
+        );
+        if (duplicate) {
+          throw new Error(`An inventory item named "${duplicate}" already exists.`);
+        }
+        const supplier = state.suppliers.find(
+          (candidate) =>
+            candidate.restaurant_id === restaurantId && candidate.id === planned.supplier_id
+        );
+        if (!supplier) throw new Error("Supplier is not part of this restaurant catalog");
+
+        const now = new Date().toISOString();
+        const item: InventoryItem = {
+          id: createId("item"),
+          restaurant_id: restaurantId,
+          item_name: planned.item_name,
+          category: planned.category,
+          unit: planned.unit,
+          current_quantity: planned.current_quantity,
+          par_level: planned.par_level,
+          reorder_threshold: planned.reorder_threshold,
+          estimated_unit_cost: planned.estimated_unit_cost,
+          supplier_id: supplier.id,
+          supplier_name: supplier.display_name,
+          last_updated: now
+        };
+        state.inventoryItems.push(item);
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "inventory_item_created",
+          entity_table: "inventory_items",
+          entity_id: item.id,
+          metadata: {
+            item_name: item.item_name,
+            supplier_id: supplier.id,
+            opening_quantity: item.current_quantity,
+            simulated: true
+          }
+        });
+        return normalizeInventoryItem(item);
+      });
+
+      const normalized = normalizeInventoryItem(created);
+      if (
+        normalized.canonical_unit_verification_status === "verified" &&
+        normalized.canonical_unit &&
+        normalized.canonical_quantity_per_unit
+      ) {
+        const stableEventKey = `create_inventory_item:${normalized.id}`;
+        const result = await recordInventoryEvent({
+          restaurantId,
+          inventoryItemId: normalized.id,
+          eventType: "count",
+          quantity: planned.current_quantity * normalized.canonical_quantity_per_unit,
+          canonicalUnit: normalized.canonical_unit,
+          effectiveAt: new Date().toISOString(),
+          source: "create_inventory_item",
+          sourceReference: null,
+          reasonCode: null,
+          clientEventId: stableEventKey,
+          idempotencyKey: stableEventKey,
+          supersedesEventId: null,
+          metadata: {
+            created: true,
+            item_name: planned.item_name,
+            category: planned.category,
+            unit: planned.unit,
+            supplier_id: planned.supplier_id,
+            opening_quantity: planned.current_quantity
+          }
+        });
+        if (result.status !== "accepted" && result.status !== "duplicate") {
+          throw new Error("reason" in result ? result.reason : "Opening count event was rejected");
+        }
+      }
+
+      return mutateDemoState((state) => {
+        const item = state.inventoryItems.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === created.id
+        );
+        if (!item) throw new Error("Inventory item not found");
+        const now = new Date().toISOString();
+        state.purchaseRecommendations = [
+          ...state.purchaseRecommendations.filter(
+            (recommendation) =>
+              recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"
+          ),
+          ...recommendations.map((recommendation) => ({
+            ...authoritativeDemoRecommendationInput(state, recommendation),
+            id: createId("rec"),
+            created_at: now
+          }))
+        ];
+        state.insights = [
+          ...state.insights.filter((insight) => insight.restaurant_id !== restaurantId),
+          ...insights
+        ];
         return normalizeInventoryItem(item);
       });
     },

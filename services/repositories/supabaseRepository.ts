@@ -1393,6 +1393,17 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizeInventoryItem(response.result as InventoryItem);
     },
 
+    async createInventoryItemAndSignals(restaurantId, input, _recommendations, _insights) {
+      const response = await invokeOperationalWorkflow({
+        action: "create_inventory_item",
+        restaurantId,
+        item: input
+      });
+      return normalizeInventoryItem(
+        withCurrentSupplierDisplay(response.result, "Inventory item") as unknown as InventoryItem
+      );
+    },
+
     async updateMenuItemIngredientQuantity(restaurantId, mappingId, quantityUsedPerSale) {
       const { data, error } = await client
         .from("menu_item_ingredients")

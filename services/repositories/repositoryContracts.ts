@@ -591,6 +591,22 @@ export interface MiseRepository {
     input: RestaurantSetupSnapshotInput
   ): Promise<RestaurantSetupSnapshotSummary>;
   upsertInventoryItem(input: InventoryItemInput): Promise<InventoryItem>;
+  createInventoryItemAndSignals(
+    restaurantId: string,
+    input: Pick<
+      InventoryItem,
+      | "item_name"
+      | "category"
+      | "unit"
+      | "current_quantity"
+      | "par_level"
+      | "reorder_threshold"
+      | "estimated_unit_cost"
+      | "supplier_id"
+    >,
+    recommendations: PurchaseRecommendationInput[],
+    insights: Insight[]
+  ): Promise<InventoryItem>;
   createPosSale(input: PosSaleInput): Promise<PosSale>;
   updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch): Promise<InventoryItem>;
   updateInventoryItemAndSignals(
