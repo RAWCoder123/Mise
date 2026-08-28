@@ -8,6 +8,7 @@ import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Screen } from "../../components/ui/Screen";
+import { FilterRow } from "../../components/ui/SegmentedControl";
 import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
@@ -17,6 +18,7 @@ import {
   fetchEmailConnectionState,
   fetchSupplierSendAction,
   fetchSupplierOrderOperationalDetail,
+  fetchStorageLocations,
   isGmailIntegrationError,
   approveSupplierSendContent,
   prepareSupplierEmailPayload,
@@ -43,6 +45,7 @@ import { canDeleteRestaurantData, canManageRestaurantData } from "../../services
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type {
   RestaurantEmailConnection,
+  StorageLocation,
   SupplierEmailPayload,
   SupplierOrder
 } from "../../types/mise";
@@ -66,6 +69,8 @@ export default function OrderDraftDetailScreen() {
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
+  const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
+  const [receiveStorageLocationId, setReceiveStorageLocationId] = useState("");
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -95,12 +100,14 @@ export default function OrderDraftDetailScreen() {
     setNotice(null);
     setHubLoadError(false);
     try {
-      const [nextDetail, nextEmailConnection, nextEmailPayload, nextSendAction] = await Promise.all([
-        fetchSupplierOrderOperationalDetail(restaurantId, orderId),
-        fetchEmailConnectionState(restaurantId),
-        prepareSupplierEmailPayload(restaurantId, orderId),
-        fetchSupplierSendAction(restaurantId, orderId)
-      ]);
+      const [nextDetail, nextEmailConnection, nextEmailPayload, nextSendAction, nextLocations] =
+        await Promise.all([
+          fetchSupplierOrderOperationalDetail(restaurantId, orderId),
+          fetchEmailConnectionState(restaurantId),
+          prepareSupplierEmailPayload(restaurantId, orderId),
+          fetchSupplierSendAction(restaurantId, orderId),
+          fetchStorageLocations(restaurantId).catch(() => [] as StorageLocation[])
+        ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       if (nextEmailConnection && nextEmailConnection.restaurant_id !== restaurantId) {
         throw new Error(t("orders.detail.connectionMismatch"));
@@ -116,6 +123,14 @@ export default function OrderDraftDetailScreen() {
       setEmailConnection(nextEmailConnection);
       setEmailPayload(nextEmailPayload);
       setSupplierSendAction(nextSendAction);
+      setStorageLocations(nextLocations);
+      const main =
+        nextLocations.find((location) => location.name.toLowerCase() === "main") ?? nextLocations[0];
+      setReceiveStorageLocationId((current) =>
+        current && nextLocations.some((location) => location.id === current)
+          ? current
+          : main?.id ?? ""
+      );
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       setOperatorNote(nextDetail.order.operator_note ?? "");
@@ -363,12 +378,26 @@ export default function OrderDraftDetailScreen() {
       setNotice(viewOnlyNotice(t));
       return;
     }
+    if (
+      storageLocations.length > 0 &&
+      (!receiveStorageLocationId ||
+        !storageLocations.some((location) => location.id === receiveStorageLocationId))
+    ) {
+      setNotice({
+        title: t("orders.detail.receive.storageRequiredTitle"),
+        message: t("orders.detail.receive.storageRequired"),
+        tone: "warning"
+      });
+      return;
+    }
     const restaurantId = restaurant.id;
     actionLockRef.current = true;
     setBusy(true);
     setNotice(null);
     try {
-      const result = await receiveSupplierOrderDelivery(restaurantId, order.id);
+      const result = await receiveSupplierOrderDelivery(restaurantId, order.id, {
+        storageLocationId: receiveStorageLocationId || null
+      });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await load(false);
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -775,16 +804,33 @@ export default function OrderDraftDetailScreen() {
           ) : null}
 
           {isSent && actionsEditable ? (
-            <Button
-              title={busy ? t("orders.detail.action.receiving") : t("orders.detail.action.markReceived")}
-              accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
-                supplier: visibleOrder.supplier_name
-              })}
-              icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
-              onPress={() => void markReceived()}
-              disabled={busy}
-              fullWidth
-            />
+            <View style={styles.receiveBlock}>
+              {storageLocations.length > 0 ? (
+                <View style={styles.receivePutAway}>
+                  <Text style={styles.sectionLabel}>{t("orders.detail.receive.putAway")}</Text>
+                  <Text style={styles.helper}>{t("orders.detail.receive.putAwayHelp")}</Text>
+                  <FilterRow
+                    accessibilityLabel={t("orders.detail.receive.putAway")}
+                    options={storageLocations.map((location) => ({
+                      value: location.id,
+                      label: location.name
+                    }))}
+                    value={receiveStorageLocationId}
+                    onValueChange={setReceiveStorageLocationId}
+                  />
+                </View>
+              ) : null}
+              <Button
+                title={busy ? t("orders.detail.action.receiving") : t("orders.detail.action.markReceived")}
+                accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
+                  supplier: visibleOrder.supplier_name
+                })}
+                icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
+                onPress={() => void markReceived()}
+                disabled={busy}
+                fullWidth
+              />
+            </View>
           ) : null}
         </View>
       ) : (
@@ -1061,6 +1107,21 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: 6
+  },
+  receiveBlock: {
+    gap: 12
+  },
+  receivePutAway: {
+    gap: 8
+  },
+  sectionLabel: {
+    color: colors.text,
+    ...typography.cardTitle,
+    fontSize: 15
+  },
+  helper: {
+    color: colors.muted,
+    ...typography.caption
   },
   sectionTitle: {
     color: colors.text,

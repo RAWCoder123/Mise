@@ -98,6 +98,7 @@ export interface InventoryOperationClientInput {
   sourceReference?: unknown;
   reasonCode?: unknown;
   note?: unknown;
+  storageLocationId?: unknown;
 }
 
 export type ValidatedInventoryOperation = Omit<
@@ -129,6 +130,14 @@ export function requireInventoryOperation(
   const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
   const reasonCode = optionalBoundedText(input.reasonCode, "reason", 80);
   const note = optionalBoundedText(input.note, "note", 500);
+  const storageLocationId = optionalBoundedText(
+    input.storageLocationId,
+    "storage location",
+    80
+  );
+  if (storageLocationId && eventType !== "waste" && eventType !== "receipt") {
+    throw new Error("Storage location is only supported for waste and receive events.");
+  }
   return {
     restaurantId,
     inventoryItemId,
@@ -140,7 +149,10 @@ export function requireInventoryOperation(
     sourceReference,
     reasonCode,
     supersedesEventId: null,
-    metadata: note ? { note } : {}
+    metadata: {
+      ...(note ? { note } : {}),
+      ...(storageLocationId ? { storage_location_id: storageLocationId } : {})
+    }
   };
 }
 
