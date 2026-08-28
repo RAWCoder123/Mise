@@ -1143,6 +1143,33 @@ export function createSupabaseRepository(): MiseRepository {
       );
     },
 
+    async fetchSupplierItems(restaurantId) {
+      const expectedRestaurantId = requireHostedUuid(restaurantId, "restaurant");
+      const { data, error } = await client
+        .from("supplier_items")
+        .select("*")
+        .eq("restaurant_id", expectedRestaurantId)
+        .order("item_name");
+      if (error) throwRepositoryError(error, restaurantId);
+      return ((data ?? []) as SupplierItem[]).map(normalizeSupplierItem);
+    },
+
+    async captureInventoryItemSupplierSku(restaurantId, inventoryItemId, supplierSku) {
+      const expectedRestaurantId = requireHostedUuid(restaurantId, "restaurant");
+      const expectedItemId = requireHostedUuid(inventoryItemId, "inventory item");
+      const { data, error } = await client.rpc("capture_inventory_item_supplier_sku", {
+        p_restaurant_id: expectedRestaurantId,
+        p_inventory_item_id: expectedItemId,
+        p_supplier_sku: supplierSku
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") {
+        throw new Error("Barcode capture returned an invalid response.");
+      }
+      return normalizeSupplierItem(row as SupplierItem);
+    },
+
     async fetchSuppliers(restaurantId) {
       const expectedRestaurantId = requireHostedUuid(restaurantId, "restaurant");
       const { data, error } = await client

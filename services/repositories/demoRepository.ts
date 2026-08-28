@@ -1190,6 +1190,126 @@ export function createLocalDemoRepository(): MiseRepository {
         .sort((a, b) => a.item_name.localeCompare(b.item_name));
     },
 
+    async fetchSupplierItems(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return state.supplierItems
+        .filter((item) => item.restaurant_id === restaurantId)
+        .map(normalizeSupplierItem)
+        .sort((left, right) => left.item_name.localeCompare(right.item_name));
+    },
+
+    async captureInventoryItemSupplierSku(restaurantId, inventoryItemId, supplierSku) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const inventoryItem = state.inventoryItems.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === inventoryItemId
+        );
+        if (!inventoryItem) throw new Error("Inventory item not found");
+
+        const normalizedSku = supplierSku.trim();
+        const normalizeToken = (value: string | null | undefined) =>
+          typeof value === "string"
+            ? value
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "")
+            : "";
+        const targetToken = normalizeToken(normalizedSku);
+        if (!targetToken) throw new Error("Supplier SKU barcode is required.");
+
+        const conflicting = state.supplierItems.find((entry) => {
+          if (entry.restaurant_id !== restaurantId) return false;
+          if (normalizeToken(entry.supplier_sku) !== targetToken) return false;
+          if (entry.inventory_item_id && entry.inventory_item_id === inventoryItemId) return false;
+          if (
+            !entry.inventory_item_id &&
+            entry.supplier_id === inventoryItem.supplier_id &&
+            entry.item_name.trim().toLowerCase() === inventoryItem.item_name.trim().toLowerCase() &&
+            entry.unit.trim().toLowerCase() === inventoryItem.unit.trim().toLowerCase()
+          ) {
+            return false;
+          }
+          return true;
+        });
+        if (conflicting) {
+          throw new Error("That barcode is already linked to another inventory item.");
+        }
+
+        const now = new Date().toISOString();
+        let supplierItem = state.supplierItems.find(
+          (entry) =>
+            entry.restaurant_id === restaurantId &&
+            entry.inventory_item_id === inventoryItemId &&
+            entry.preferred
+        );
+        if (!supplierItem) {
+          supplierItem = state.supplierItems.find(
+            (entry) =>
+              entry.restaurant_id === restaurantId &&
+              entry.supplier_id === inventoryItem.supplier_id &&
+              entry.item_name.trim().toLowerCase() === inventoryItem.item_name.trim().toLowerCase() &&
+              entry.unit.trim().toLowerCase() === inventoryItem.unit.trim().toLowerCase()
+          );
+        }
+
+        if (supplierItem) {
+          const unchanged =
+            (supplierItem.supplier_sku ?? "").trim() === normalizedSku &&
+            supplierItem.inventory_item_id === inventoryItemId;
+          supplierItem.supplier_sku = normalizedSku;
+          supplierItem.inventory_item_id = inventoryItemId;
+          supplierItem.supplier_id = inventoryItem.supplier_id;
+          supplierItem.supplier_name = inventoryItem.supplier_name;
+          supplierItem.item_name = inventoryItem.item_name;
+          supplierItem.unit = inventoryItem.unit;
+          supplierItem.updated_at = now;
+          if (!unchanged) {
+            appendDemoAuditLog(state, {
+              restaurant_id: restaurantId,
+              action: "inventory_barcode_sku_captured",
+              entity_table: "supplier_items",
+              entity_id: supplierItem.id,
+              metadata: {
+                inventory_item_id: inventoryItemId,
+                supplier_id: inventoryItem.supplier_id,
+                simulated: true
+              }
+            });
+          }
+          return normalizeSupplierItem(supplierItem);
+        }
+
+        const created = {
+          id: createId("supplier_item"),
+          restaurant_id: restaurantId,
+          supplier_id: inventoryItem.supplier_id,
+          supplier_name: inventoryItem.supplier_name,
+          supplier_sku: normalizedSku,
+          inventory_item_id: inventoryItemId,
+          item_name: inventoryItem.item_name,
+          unit: inventoryItem.unit,
+          pack_size: null as string | null,
+          estimated_unit_cost: inventoryItem.estimated_unit_cost,
+          preferred: true,
+          created_at: now,
+          updated_at: now
+        };
+        state.supplierItems.push(created);
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "inventory_barcode_sku_captured",
+          entity_table: "supplier_items",
+          entity_id: created.id,
+          metadata: {
+            inventory_item_id: inventoryItemId,
+            supplier_id: inventoryItem.supplier_id,
+            simulated: true
+          }
+        });
+        return normalizeSupplierItem(created);
+      });
+    },
+
     async fetchSuppliers(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
       return state.suppliers
