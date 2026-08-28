@@ -3,7 +3,10 @@ import type {
   CreateRestaurantTaskInput,
   RestaurantTask
 } from "../domain/restaurantTasks";
-import { isOpenRestaurantTask } from "../domain/restaurantTasks";
+import {
+  assertStructuredVerificationEvidence,
+  isOpenRestaurantTask
+} from "../domain/restaurantTasks";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -46,6 +49,21 @@ export async function createSharedRestaurantTask(
 export async function completeSharedRestaurantTask(
   input: CompleteRestaurantTaskInput
 ): Promise<RestaurantTask> {
+  const restaurantId = input.restaurantId.trim();
+  const taskId = input.taskId.trim();
+  if (!restaurantId || !taskId) {
+    throw new Error("Restaurant and task are required.");
+  }
+  const tasks = await repository.listRestaurantTasks(restaurantId);
+  const current = tasks.find((task) => task.id === taskId);
+  if (!current || current.restaurantId !== restaurantId) {
+    throw new Error("Restaurant task not found.");
+  }
+  assertStructuredVerificationEvidence(
+    current.verificationMethod,
+    input.completionEvidence ?? [],
+    { relatedOrderId: current.relatedOrderId }
+  );
   return repository.completeRestaurantTask(input);
 }
 

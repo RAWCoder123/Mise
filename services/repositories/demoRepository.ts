@@ -63,7 +63,10 @@ import {
 } from "../domain/restaurantAutonomy";
 import type { ActivityEvent } from "../domain/activityEvents";
 import {
+  assertStructuredVerificationEvidence,
   canRestaurantRoleCompleteSharedTask,
+  extractCountSessionEvidenceId,
+  extractSupplierReceiptEvidenceId,
   normalizeCompleteRestaurantTaskInput,
   normalizeCreateRestaurantTaskInput,
   restaurantTaskMatchesCreateRequest,
@@ -1335,6 +1338,20 @@ export function createLocalDemoRepository(): MiseRepository {
       const detail = findDemoCountSession(state, restaurantId, sessionId);
       if (!detail) throw new Error("Count session not found");
       return normalizeInventoryCountSessionDetail(detail);
+    },
+
+    async listEligibleCountSessionsForVerification(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return (state.inventoryCountSessions ?? [])
+        .map((detail) => detail.session)
+        .filter(
+          (session) =>
+            session.restaurant_id === restaurantId &&
+            (session.status === "submitted" || session.status === "approved")
+        )
+        .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+        .slice(0, 5)
+        .map((session) => ({ ...session }));
     },
 
     async beginInventoryCountSession(restaurantId, note) {
@@ -3031,6 +3048,35 @@ export function createLocalDemoRepository(): MiseRepository {
         if (incompleteDependency) throw new Error("Task prerequisites are not complete.");
         if (current.verificationRequired && normalized.completionEvidence.length === 0) {
           throw new Error("Verification evidence is required for this task.");
+        }
+        assertStructuredVerificationEvidence(
+          current.verificationMethod,
+          normalized.completionEvidence,
+          { relatedOrderId: current.relatedOrderId }
+        );
+        if (current.verificationMethod === "count") {
+          const sessionId = extractCountSessionEvidenceId(normalized.completionEvidence);
+          const detail = sessionId
+            ? findDemoCountSession(state, normalized.restaurantId, sessionId)
+            : null;
+          if (
+            !detail ||
+            (detail.session.status !== "submitted" && detail.session.status !== "approved")
+          ) {
+            throw new Error(
+              "Count verification requires a submitted or approved inventory count session."
+            );
+          }
+        }
+        if (current.verificationMethod === "receipt") {
+          const orderId = extractSupplierReceiptEvidenceId(normalized.completionEvidence);
+          const order = (state.supplierOrders ?? []).find(
+            (candidate) =>
+              candidate.restaurant_id === normalized.restaurantId && candidate.id === orderId
+          );
+          if (!order || order.status !== "completed") {
+            throw new Error("Receipt verification requires a completed supplier order receipt.");
+          }
         }
         const now = new Date().toISOString();
         const completed: RestaurantTask = {

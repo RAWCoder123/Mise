@@ -1,6 +1,6 @@
 begin;
 
-select plan(35);
+select plan(36);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -145,16 +145,54 @@ select is(
   'verification-required tasks reject evidence-free completion'
 );
 
+select is(
+  pg_temp.try_execute($sql$
+    select public.complete_restaurant_task(
+      'a0000000-0000-4000-8000-000000000001',
+      (select id from public.restaurant_tasks where client_task_id = 'task-count-chicken'),
+      'Counted 18 lb',
+      '[{"type":"count","quantity":18,"unit":"lb"}]'::jsonb
+    )
+  $sql$),
+  false,
+  'count verification rejects free-text count notes without a live session'
+);
+
+reset role;
+
+insert into public.inventory_count_sessions (
+  id, restaurant_id, status, started_by, submitted_by,
+  started_at, submitted_at, note, created_at, updated_at
+) values (
+  'a5555555-5555-4555-8555-555555555555',
+  'a0000000-0000-4000-8000-000000000001',
+  'submitted',
+  'a3333333-3333-4333-8333-333333333333',
+  'a3333333-3333-4333-8333-333333333333',
+  now() - interval '20 minutes',
+  now() - interval '5 minutes',
+  'Chicken walk-in count',
+  now() - interval '20 minutes',
+  now() - interval '5 minutes'
+);
+
+set local role authenticated;
 select set_config('request.jwt.claim.sub', 'a3333333-3333-4333-8333-333333333333', true);
 select is(
   (public.complete_restaurant_task(
     'a0000000-0000-4000-8000-000000000001',
     (select id from public.restaurant_tasks where client_task_id = 'task-count-chicken'),
     'Counted 18 lb; count entered at 3:12 PM.',
-    '[{"type":"count","quantity":18,"unit":"lb"}]'::jsonb
+    jsonb_build_array(
+      jsonb_build_object(
+        'type', 'count_session',
+        'countSessionId', 'a5555555-5555-4555-8555-555555555555',
+        'status', 'submitted'
+      )
+    )
   )).status,
   'completed',
-  'the assigned staff member can complete with a truthful result and evidence'
+  'the assigned staff member can complete with a linked submitted count session'
 );
 reset role;
 

@@ -16,6 +16,8 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
   canRestaurantRoleCompleteSharedTask,
+  buildCountSessionCompletionEvidence,
+  buildSupplierReceiptCompletionEvidence,
   type RestaurantTask
 } from "../../services/domain/restaurantTasks";
 import {
@@ -25,12 +27,16 @@ import {
 } from "../../services/domain/todayTasks";
 import {
   completeSharedRestaurantTask,
+  fetchSupplierOrder,
+  fetchSupplierOrders,
   fetchTodaySummary,
+  listEligibleCountSessionsForVerification,
   listSharedRestaurantTasks,
   reopenSharedRestaurantTask
 } from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { captureMiseError } from "../../services/telemetry";
+import type { InventoryCountSession, SupplierOrder } from "../../types/mise";
 
 function BackAction() {
   const { t } = useLocale();
@@ -52,6 +58,10 @@ export default function TaskDetailScreen() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [completionResult, setCompletionResult] = useState("");
   const [completionEvidence, setCompletionEvidence] = useState("");
+  const [linkedCountSession, setLinkedCountSession] = useState<InventoryCountSession | null>(null);
+  const [eligibleCountSessions, setEligibleCountSessions] = useState<InventoryCountSession[]>([]);
+  const [linkedReceiptOrder, setLinkedReceiptOrder] = useState<SupplierOrder | null>(null);
+  const [eligibleReceiptOrders, setEligibleReceiptOrders] = useState<SupplierOrder[]>([]);
   const [mutating, setMutating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +81,10 @@ export default function TaskDetailScreen() {
     setChecked({});
     setCompletionResult("");
     setCompletionEvidence("");
+    setLinkedCountSession(null);
+    setEligibleCountSessions([]);
+    setLinkedReceiptOrder(null);
+    setEligibleReceiptOrders([]);
     setError(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id, id]);
@@ -91,9 +105,44 @@ export default function TaskDetailScreen() {
         listSharedRestaurantTasks(restaurantId, { includeCompleted: true })
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      const nextShared = sharedTasks.find((candidate) => candidate.id === id) ?? null;
       setTask(summary.operationalTasks.find((candidate) => candidate.id === id) ?? null);
-      setSharedTask(sharedTasks.find((candidate) => candidate.id === id) ?? null);
+      setSharedTask(nextShared);
       setRestaurantTimeZone(summary.restaurantTimeZone);
+
+      if (nextShared?.verificationMethod === "count" && nextShared.status !== "completed") {
+        const sessions = await listEligibleCountSessionsForVerification(restaurantId);
+        if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+        setEligibleCountSessions(sessions);
+        setLinkedCountSession((current) =>
+          current && sessions.some((session) => session.id === current.id)
+            ? sessions.find((session) => session.id === current.id) ?? current
+            : current
+        );
+      } else {
+        setEligibleCountSessions([]);
+      }
+
+      if (nextShared?.verificationMethod === "receipt" && nextShared.status !== "completed") {
+        if (nextShared.relatedOrderId) {
+          const order = await fetchSupplierOrder(restaurantId, nextShared.relatedOrderId);
+          if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+          setEligibleReceiptOrders(order.status === "completed" ? [order] : []);
+          if (order.status === "completed") {
+            setLinkedReceiptOrder(order);
+          }
+        } else {
+          const orders = await fetchSupplierOrders(restaurantId);
+          if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+          const completed = orders
+            .filter((order) => order.status === "completed")
+            .sort((left, right) => right.created_at.localeCompare(left.created_at))
+            .slice(0, 5);
+          setEligibleReceiptOrders(completed);
+        }
+      } else {
+        setEligibleReceiptOrders([]);
+      }
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "task_detail", operation: "load", restaurant_id: restaurantId });
@@ -155,7 +204,17 @@ export default function TaskDetailScreen() {
       setError(t("tasks.shared.resultRequired"));
       return;
     }
-    if (
+    if (sharedTask.verificationRequired && sharedTask.verificationMethod === "count") {
+      if (!linkedCountSession || (linkedCountSession.status !== "submitted" && linkedCountSession.status !== "approved")) {
+        setError(t("tasks.shared.countEvidenceRequired"));
+        return;
+      }
+    } else if (sharedTask.verificationRequired && sharedTask.verificationMethod === "receipt") {
+      if (!linkedReceiptOrder || linkedReceiptOrder.status !== "completed") {
+        setError(t("tasks.shared.receiptEvidenceRequired"));
+        return;
+      }
+    } else if (
       sharedTask.verificationRequired &&
       sharedTask.verificationMethod !== "checklist" &&
       !completionEvidence.trim()
@@ -166,20 +225,36 @@ export default function TaskDetailScreen() {
     setMutating(true);
     setError(null);
     try {
+      const checklistEvidence = sharedTask.checklist.map((entry) => ({
+        type: "checklist_item",
+        label: entry.label ?? entry.type ?? "Completed checklist item",
+        completed: true
+      }));
+      const evidence =
+        sharedTask.verificationMethod === "count" && linkedCountSession
+          ? buildCountSessionCompletionEvidence({
+              countSessionId: linkedCountSession.id,
+              status: linkedCountSession.status === "approved" ? "approved" : "submitted",
+              note: completionEvidence.trim() || null,
+              checklist: checklistEvidence
+            })
+          : sharedTask.verificationMethod === "receipt" && linkedReceiptOrder
+            ? buildSupplierReceiptCompletionEvidence({
+                supplierOrderId: linkedReceiptOrder.id,
+                note: completionEvidence.trim() || null,
+                checklist: checklistEvidence
+              })
+            : [
+                ...checklistEvidence,
+                ...(completionEvidence.trim()
+                  ? [{ type: sharedTask.verificationMethod, note: completionEvidence.trim() }]
+                  : [])
+              ];
       await completeSharedRestaurantTask({
         restaurantId: restaurant.id,
         taskId: sharedTask.id,
         completionResult,
-        completionEvidence: [
-          ...sharedTask.checklist.map((entry) => ({
-            type: "checklist_item",
-            label: entry.label ?? entry.type ?? "Completed checklist item",
-            completed: true
-          })),
-          ...(completionEvidence.trim()
-            ? [{ type: sharedTask.verificationMethod, note: completionEvidence.trim() }]
-            : [])
-        ]
+        completionEvidence: evidence
       });
       await load();
     } catch (completionError) {
@@ -325,7 +400,17 @@ export default function TaskDetailScreen() {
               <Text style={styles.instructionsBody}>{sharedTask.completionResult}</Text>
               {sharedTask.completionEvidence.map((entry, index) => (
                 <Text key={index} style={styles.evidenceText}>
-                  {String(entry.note ?? entry.label ?? entry.type ?? t("tasks.shared.evidence"))}
+                  {String(
+                    entry.type === "count_session"
+                      ? t(
+                          entry.status === "approved"
+                            ? "tasks.shared.countSessionApproved"
+                            : "tasks.shared.countSessionSubmitted"
+                        )
+                      : entry.type === "supplier_receipt"
+                        ? t("tasks.shared.receiptOrderCompleted")
+                        : entry.note ?? entry.label ?? entry.type ?? t("tasks.shared.evidence")
+                  )}
                 </Text>
               ))}
               {canReopen ? (
@@ -352,7 +437,102 @@ export default function TaskDetailScreen() {
                 maxLength={1000}
                 textAlignVertical="top"
               />
-              {sharedTask.verificationRequired && sharedTask.verificationMethod !== "checklist" ? (
+              {sharedTask.verificationRequired && sharedTask.verificationMethod === "count" ? (
+                <View style={styles.evidencePanel}>
+                  <Text style={styles.evidenceHint}>{t("tasks.shared.countEvidenceHint")}</Text>
+                  <Button
+                    title={t("tasks.shared.openCountSession")}
+                    variant="secondary"
+                    onPress={() => router.push("/inventory/count" as never)}
+                    fullWidth
+                  />
+                  {eligibleCountSessions.length === 0 ? (
+                    <Text style={styles.restricted}>{t("tasks.shared.countEvidenceEmpty")}</Text>
+                  ) : (
+                    eligibleCountSessions.map((session) => {
+                      const selected = linkedCountSession?.id === session.id;
+                      return (
+                        <Pressable
+                          key={session.id}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          onPress={() => setLinkedCountSession(session)}
+                          style={({ pressed }) => [
+                            styles.evidenceChoice,
+                            selected && styles.evidenceChoiceSelected,
+                            pressed && styles.pressed
+                          ]}
+                        >
+                          <Text style={styles.evidenceChoiceTitle}>
+                            {t(
+                              session.status === "approved"
+                                ? "tasks.shared.countSessionApproved"
+                                : "tasks.shared.countSessionSubmitted"
+                            )}
+                          </Text>
+                          <Text style={styles.evidenceChoiceMeta}>
+                            {session.submitted_at
+                              ? formatDate(session.submitted_at, {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  ...(restaurantTimeZone ? { timeZone: restaurantTimeZone } : {})
+                                })
+                              : session.id}
+                          </Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
+                </View>
+              ) : null}
+              {sharedTask.verificationRequired && sharedTask.verificationMethod === "receipt" ? (
+                <View style={styles.evidencePanel}>
+                  <Text style={styles.evidenceHint}>{t("tasks.shared.receiptEvidenceHint")}</Text>
+                  <Button
+                    title={t("tasks.shared.openOrders")}
+                    variant="secondary"
+                    onPress={() =>
+                      router.push(
+                        (sharedTask.relatedOrderId
+                          ? `/orders/${sharedTask.relatedOrderId}`
+                          : "/orders") as never
+                      )
+                    }
+                    fullWidth
+                  />
+                  {eligibleReceiptOrders.length === 0 ? (
+                    <Text style={styles.restricted}>{t("tasks.shared.receiptEvidenceEmpty")}</Text>
+                  ) : (
+                    eligibleReceiptOrders.map((order) => {
+                      const selected = linkedReceiptOrder?.id === order.id;
+                      return (
+                        <Pressable
+                          key={order.id}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          onPress={() => setLinkedReceiptOrder(order)}
+                          style={({ pressed }) => [
+                            styles.evidenceChoice,
+                            selected && styles.evidenceChoiceSelected,
+                            pressed && styles.pressed
+                          ]}
+                        >
+                          <Text style={styles.evidenceChoiceTitle}>{order.supplier_name}</Text>
+                          <Text style={styles.evidenceChoiceMeta}>
+                            {t("tasks.shared.receiptOrderCompleted")}
+                          </Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
+                </View>
+              ) : null}
+              {sharedTask.verificationRequired &&
+              sharedTask.verificationMethod !== "checklist" &&
+              sharedTask.verificationMethod !== "count" &&
+              sharedTask.verificationMethod !== "receipt" ? (
                 <TextInput
                   accessibilityLabel={t("tasks.shared.evidence")}
                   placeholder={t("tasks.shared.evidencePlaceholder")}
@@ -652,6 +832,35 @@ const styles = StyleSheet.create({
   },
   resultInput: {
     minHeight: 96
+  },
+  evidencePanel: {
+    gap: 8
+  },
+  evidenceHint: {
+    color: colors.muted,
+    ...conceptTypography.caption
+  },
+  evidenceChoice: {
+    minHeight: 48,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 2
+  },
+  evidenceChoiceSelected: {
+    borderColor: colors.accentDark,
+    backgroundColor: colors.panel
+  },
+  evidenceChoiceTitle: {
+    color: colors.text,
+    ...conceptTypography.rowTitle
+  },
+  evidenceChoiceMeta: {
+    color: colors.muted,
+    ...conceptTypography.caption
   },
   divider: {
     height: StyleSheet.hairlineWidth,

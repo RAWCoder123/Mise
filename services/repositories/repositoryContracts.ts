@@ -5,6 +5,7 @@ import type {
   Insight,
   InventoryItem,
   InventoryItemPatch,
+  InventoryCountSession,
   InventoryCountSessionDetail,
   MenuItemIngredient,
   MenuItemIngredientInput,
@@ -603,6 +604,13 @@ export interface MiseRepository {
   ): Promise<InventoryItem>;
   fetchOpenInventoryCountSession(restaurantId: string): Promise<InventoryCountSessionDetail | null>;
   fetchInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
+  /**
+   * Recent submitted/approved count sessions usable as shared-task count verification evidence.
+   * Newest first; bounded to keep task detail loads small.
+   */
+  listEligibleCountSessionsForVerification(
+    restaurantId: string
+  ): Promise<InventoryCountSession[]>;
   beginInventoryCountSession(restaurantId: string, note: string | null): Promise<InventoryCountSessionDetail>;
   saveInventoryCountLines(
     restaurantId: string,
