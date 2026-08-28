@@ -20,8 +20,10 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import { getInitialLoginCredentials } from "../../lib/appConfig";
+import { readPendingInviteToken } from "../../lib/pendingInvite";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { DEMO_DATASET } from "../../services/demoData";
+import { buildInviteClaimPath } from "../../services/domain/teamInvites";
 import { captureMiseError } from "../../services/telemetry";
 
 type LoginStep = "identity" | "password";
@@ -73,11 +75,30 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (!ready) return;
-    if (restaurant) {
-      router.replace("/home");
-    } else if (user) {
-      router.replace("/setup");
-    }
+    let cancelled = false;
+    void (async () => {
+      const pendingInviteToken = await readPendingInviteToken();
+      if (cancelled) return;
+      if (pendingInviteToken) {
+        router.replace(buildInviteClaimPath(pendingInviteToken));
+        return;
+      }
+      if (restaurant) {
+        router.replace("/home");
+      } else if (user) {
+        router.replace("/setup");
+      }
+    })().catch(() => {
+      if (cancelled) return;
+      if (restaurant) {
+        router.replace("/home");
+      } else if (user) {
+        router.replace("/setup");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [ready, restaurant, user]);
 
   if (!ready) {

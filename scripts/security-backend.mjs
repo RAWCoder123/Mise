@@ -62,7 +62,8 @@ const serviceOnlyPublicTables = new Set([
   "outreach_events",
   "outreach_leads",
   "outreach_messages",
-  "outreach_suppressions"
+  "outreach_suppressions",
+  "restaurant_member_invites"
 ]);
 const edgeFunctionNames = [
   "sync-pos-sales",

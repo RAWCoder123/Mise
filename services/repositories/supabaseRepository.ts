@@ -17,6 +17,8 @@ import type {
   RecipeAuthorityState,
   RestaurantMembership,
   RestaurantTeamMember,
+  RestaurantMemberInvite,
+  CreatedRestaurantMemberInvite,
   SetupAttachment,
   Supplier,
   SupplierItem,
@@ -910,6 +912,82 @@ export function createSupabaseRepository(): MiseRepository {
         p_role: role
       });
       if (error) throwRepositoryError(error, restaurantId);
+      return normalizeRestaurantMembership(data as RestaurantMembership);
+    },
+
+    async createRestaurantMemberInvite(restaurantId, email, role, expiresInHours) {
+      const { data, error } = await client.rpc("create_restaurant_member_invite", {
+        p_restaurant_id: restaurantId,
+        p_email: email,
+        p_role: role,
+        p_expires_in_hours: expiresInHours ?? null
+      });
+      if (error) {
+        if (isTenantAuthorizationError(error)) throwRepositoryError(error, restaurantId);
+        throw teamMembershipErrorFrom(error);
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") {
+        throw new Error("Invite could not be created.");
+      }
+      const invite = row as CreatedRestaurantMemberInvite;
+      return {
+        id: invite.id,
+        restaurant_id: invite.restaurant_id,
+        email: invite.email,
+        role: invite.role,
+        status: invite.status,
+        expires_at: invite.expires_at,
+        created_at: invite.created_at,
+        claimed_at: invite.claimed_at ?? null,
+        revoked_at: invite.revoked_at ?? null,
+        claim_token: invite.claim_token
+      };
+    },
+
+    async fetchRestaurantMemberInvites(restaurantId) {
+      const { data, error } = await client.rpc("list_restaurant_member_invites", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return ((data ?? []) as RestaurantMemberInvite[]).map((invite) => ({
+        id: invite.id,
+        restaurant_id: invite.restaurant_id,
+        email: invite.email,
+        role: invite.role,
+        status: invite.status,
+        expires_at: invite.expires_at,
+        created_at: invite.created_at,
+        claimed_at: invite.claimed_at ?? null,
+        revoked_at: invite.revoked_at ?? null
+      }));
+    },
+
+    async revokeRestaurantMemberInvite(restaurantId, inviteId) {
+      const { data, error } = await client.rpc("revoke_restaurant_member_invite", {
+        p_restaurant_id: restaurantId,
+        p_invite_id: inviteId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const invite = data as RestaurantMemberInvite;
+      return {
+        id: invite.id,
+        restaurant_id: invite.restaurant_id,
+        email: invite.email,
+        role: invite.role,
+        status: invite.status,
+        expires_at: invite.expires_at,
+        created_at: invite.created_at,
+        claimed_at: invite.claimed_at ?? null,
+        revoked_at: invite.revoked_at ?? null
+      };
+    },
+
+    async claimRestaurantMemberInvite(claimToken) {
+      const { data, error } = await client.rpc("claim_restaurant_member_invite", {
+        p_claim_token: claimToken
+      });
+      if (error) throwRepositoryError(error);
       return normalizeRestaurantMembership(data as RestaurantMembership);
     },
 
