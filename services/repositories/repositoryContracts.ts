@@ -630,6 +630,11 @@ export interface MiseRepository {
     menuItemId: string,
     expectedRevision: number
   ): Promise<RecipeAuthorityState>;
+  setMenuItemActive(
+    restaurantId: string,
+    menuItemId: string,
+    active: boolean
+  ): Promise<RecipeAuthorityState>;
   findPendingRecommendation(restaurantId: string, itemId: string): Promise<PurchaseRecommendation | null>;
   createPurchaseRecommendation(input: PurchaseRecommendationInput): Promise<PurchaseRecommendation>;
   fetchPurchaseRecommendations(
