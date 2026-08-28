@@ -15,6 +15,7 @@ import Svg, { Path } from "react-native-svg";
 import { BrandLockup } from "../../components/ui/BrandLockup";
 import { Button } from "../../components/ui/Button";
 import { Screen } from "../../components/ui/Screen";
+import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -22,9 +23,42 @@ import type { MessageKey } from "../../i18n/catalog";
 import { getInitialLoginCredentials } from "../../lib/appConfig";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { DEMO_DATASET } from "../../services/demoData";
+import {
+  presentLoginNoticeCopy,
+  resolveLoginResetRequestFailureReason,
+  type LoginNoticeReason
+} from "../../services/presentation/authLoginPresentation";
 import { captureMiseError } from "../../services/telemetry";
 
 type LoginStep = "identity" | "password";
+
+type LoginNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
+
+const RESET_NOTICE_COPY_KEYS: Record<
+  Extract<LoginNoticeReason, "emailRequired" | "resetRequestFailed" | "resetLinkInvalid" | "resetSent">,
+  { title: MessageKey; message: MessageKey }
+> = {
+  emailRequired: {
+    title: "login.notice.emailRequiredTitle",
+    message: "login.error.emailRequired"
+  },
+  resetRequestFailed: {
+    title: "login.notice.resetRequestFailedTitle",
+    message: "login.reset.error.requestFailed"
+  },
+  resetLinkInvalid: {
+    title: "login.notice.resetLinkInvalidTitle",
+    message: "login.reset.error.linkInvalid"
+  },
+  resetSent: {
+    title: "login.notice.resetSentTitle",
+    message: "login.reset.sent"
+  }
+};
 
 function GoogleMark() {
   return (
@@ -62,23 +96,79 @@ function AppleMark() {
 
 export default function LoginScreen() {
   const { t } = useLocale();
-  const { canUseDemoMode, continueWithDemo, ready, restaurant, signIn, signInWithProvider, user, usingLocalDemo } =
-    useMiseSession();
+  const {
+    canUseDemoMode,
+    clearPasswordRecoveryLinkError,
+    continueWithDemo,
+    passwordRecoveryLinkError,
+    passwordRecoveryPending,
+    ready,
+    requestPasswordReset,
+    restaurant,
+    signIn,
+    signInWithProvider,
+    user,
+    usingLocalDemo
+  } = useMiseSession();
   const initialCredentials = getInitialLoginCredentials();
   const [step, setStep] = useState<LoginStep>("identity");
   const [email, setEmail] = useState(initialCredentials.email);
   const [password, setPassword] = useState(initialCredentials.password);
   const [loading, setLoading] = useState(false);
   const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetNotice, setResetNotice] = useState<LoginNotice | null>(null);
+
+  function resetNoticeFor(
+    reason: Extract<LoginNoticeReason, "emailRequired" | "resetRequestFailed" | "resetLinkInvalid" | "resetSent">
+  ): LoginNotice {
+    const localized = (
+      Object.keys(RESET_NOTICE_COPY_KEYS) as Array<keyof typeof RESET_NOTICE_COPY_KEYS>
+    ).reduce(
+      (acc, key) => {
+        acc[key] = {
+          title: t(RESET_NOTICE_COPY_KEYS[key].title),
+          message: t(RESET_NOTICE_COPY_KEYS[key].message)
+        };
+        return acc;
+      },
+      {} as Record<keyof typeof RESET_NOTICE_COPY_KEYS, { title: string; message: string }>
+    );
+    return presentLoginNoticeCopy(reason, {
+      emailRequired: localized.emailRequired,
+      passwordRequired: { title: "", message: "" },
+      signInFailed: { title: "", message: "" },
+      demoFailed: { title: "", message: "" },
+      resetRequestFailed: localized.resetRequestFailed,
+      resetLinkInvalid: localized.resetLinkInvalid,
+      resetSent: localized.resetSent
+    });
+  }
 
   useEffect(() => {
     if (!ready) return;
+    if (passwordRecoveryPending) {
+      router.replace("/reset-password");
+      return;
+    }
+    if (passwordRecoveryLinkError) {
+      setResetNotice(resetNoticeFor("resetLinkInvalid"));
+      clearPasswordRecoveryLinkError();
+      return;
+    }
     if (restaurant) {
       router.replace("/home");
     } else if (user) {
       router.replace("/setup");
     }
-  }, [ready, restaurant, user]);
+  }, [
+    clearPasswordRecoveryLinkError,
+    passwordRecoveryLinkError,
+    passwordRecoveryPending,
+    ready,
+    restaurant,
+    user
+  ]);
 
   if (!ready) {
     return <Screen title={t("boot.title")} subtitle={t("boot.subtitle")} loading />;
@@ -91,6 +181,7 @@ export default function LoginScreen() {
       return;
     }
     setErrorKey(null);
+    setResetNotice(null);
     setStep("password");
   }
 
@@ -107,6 +198,7 @@ export default function LoginScreen() {
 
     setLoading(true);
     setErrorKey(null);
+    setResetNotice(null);
     try {
       await signIn(normalizedEmail, password);
       router.replace("/");
@@ -118,9 +210,35 @@ export default function LoginScreen() {
     }
   }
 
+  async function handleForgotPassword() {
+    const formFailure = resolveLoginResetRequestFailureReason({ email });
+    if (formFailure) {
+      setErrorKey(null);
+      setResetNotice(resetNoticeFor(formFailure));
+      return;
+    }
+
+    const normalizedEmail = email.trim();
+    setLoading(true);
+    setErrorKey(null);
+    setResetNotice(null);
+    setResetSent(false);
+    try {
+      await requestPasswordReset(normalizedEmail);
+      setResetSent(true);
+      setResetNotice(resetNoticeFor("resetSent"));
+    } catch (resetError) {
+      captureMiseError(resetError, { flow: "login", operation: "password_reset" });
+      setResetNotice(resetNoticeFor("resetRequestFailed"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleOAuth(provider: "google" | "apple") {
     setLoading(true);
     setErrorKey(null);
+    setResetNotice(null);
     try {
       await signInWithProvider(provider);
       if (Platform.OS !== "web") {
@@ -137,6 +255,7 @@ export default function LoginScreen() {
   async function handleDemo() {
     setLoading(true);
     setErrorKey(null);
+    setResetNotice(null);
     try {
       await continueWithDemo({
         preset: DEMO_DATASET.id,
@@ -168,6 +287,15 @@ export default function LoginScreen() {
           </Text>
           <Text style={styles.subtitle}>{t("login.form.body")}</Text>
           <Text style={styles.inviteNote}>{t("login.invite.supportHint")}</Text>
+
+          {resetNotice ? (
+            <StatusNotice
+              tone={resetNotice.tone}
+              title={resetNotice.title}
+              message={resetNotice.message}
+              style={styles.resetNotice}
+            />
+          ) : null}
 
           {step === "identity" ? (
             <>
@@ -315,6 +443,19 @@ export default function LoginScreen() {
                 fullWidth
                 style={styles.primaryButton}
               />
+              <Button
+                title={
+                  loading && !resetSent
+                    ? t("login.action.sendingReset")
+                    : resetSent
+                      ? t("login.action.resetSent")
+                      : t("login.action.forgotPassword")
+                }
+                variant="ghost"
+                onPress={() => void handleForgotPassword()}
+                disabled={loading || cloudUnavailable}
+                fullWidth
+              />
             </>
           )}
 
@@ -410,6 +551,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 22,
     textAlign: "center"
+  },
+  resetNotice: {
+    marginBottom: 16
   },
   field: {
     marginTop: 4
