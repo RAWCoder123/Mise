@@ -1447,6 +1447,16 @@ export function createSupabaseRepository(): MiseRepository {
       return parseRecipeAuthorityState(data);
     },
 
+    async setMenuItemActive(restaurantId, menuItemId, active) {
+      const { data, error } = await client.rpc("set_menu_item_active", {
+        p_restaurant_id: restaurantId,
+        p_menu_item_id: menuItemId,
+        p_active: active
+      });
+      if (error) throw error;
+      return parseRecipeAuthorityState(data);
+    },
+
     async findPendingRecommendation(restaurantId, itemId) {
       const existing = await client
         .from("purchase_recommendations")

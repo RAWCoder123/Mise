@@ -22,6 +22,7 @@ import {
   confirmRecipeBaselineComplete,
   fetchInventoryItems,
   fetchRecipeBaselineSummary,
+  setRecipeMenuItemActive,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
 import {
@@ -45,6 +46,7 @@ export default function RecipeBaselinesScreen() {
   const [savingMappingId, setSavingMappingId] = useState<string | null>(null);
   const [savingNewLink, setSavingNewLink] = useState(false);
   const [confirmingMenuItemId, setConfirmingMenuItemId] = useState<string | null>(null);
+  const [togglingMenuItemId, setTogglingMenuItemId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -73,6 +75,7 @@ export default function RecipeBaselinesScreen() {
     setSavingMappingId(null);
     setSavingNewLink(false);
     setConfirmingMenuItemId(null);
+    setTogglingMenuItemId(null);
     setError(null);
     setNotice(null);
     setLoading(Boolean(restaurant));
@@ -135,7 +138,8 @@ export default function RecipeBaselinesScreen() {
     loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
-  const mutationBusy = savingNewLink || savingMappingId !== null || confirmingMenuItemId !== null;
+  const mutationBusy =
+    savingNewLink || savingMappingId !== null || confirmingMenuItemId !== null || togglingMenuItemId !== null;
   const mutationAllowed = canManage && hubReady;
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
@@ -276,6 +280,10 @@ export default function RecipeBaselinesScreen() {
       setError(t("recipes.error.readOnly"));
       return;
     }
+    if (item.active === false) {
+      setError(t("recipes.error.inactiveConfirm"));
+      return;
+    }
     const restaurantId = restaurant.id;
     setConfirmingMenuItemId(item.menuItemId);
     setError(null);
@@ -289,6 +297,33 @@ export default function RecipeBaselinesScreen() {
       if (activeRestaurantIdRef.current === restaurantId) setError(t("recipes.error.confirm"));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setConfirmingMenuItemId(null);
+    }
+  }
+
+  async function toggleMenuItemActive(item: RecipeBaselineItem) {
+    if (!restaurant || !item.menuItemId) return;
+    if (!actionsEditable) {
+      setError(t("recipes.error.readOnly"));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    const nextActive = item.active === false;
+    setTogglingMenuItemId(item.menuItemId);
+    setError(null);
+    setNotice(null);
+    try {
+      await setRecipeMenuItemActive(restaurantId, item.menuItemId, nextActive);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice(
+        t(nextActive ? "recipes.notice.activated" : "recipes.notice.deactivated", {
+          item: item.menu_item_name
+        })
+      );
+      await load();
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) setError(t("recipes.error.active"));
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setTogglingMenuItemId(null);
     }
   }
 
@@ -435,8 +470,10 @@ export default function RecipeBaselinesScreen() {
                   canManage={actionsEditable}
                   savingMappingId={savingMappingId}
                   confirming={confirmingMenuItemId === item.menuItemId}
+                  toggling={togglingMenuItemId === item.menuItemId}
                   onSave={queueIngredientSave}
                   onConfirm={() => void confirmRecipe(item)}
+                  onToggleActive={() => void toggleMenuItemActive(item)}
                 />
               ))
             )}
@@ -613,18 +650,23 @@ function RecipeRow({
   canManage,
   savingMappingId,
   confirming,
+  toggling,
   onSave,
-  onConfirm
+  onConfirm,
+  onToggleActive
 }: {
   item: RecipeBaselineItem;
   canManage: boolean;
   savingMappingId: string | null;
   confirming: boolean;
+  toggling: boolean;
   onSave: (mappingId: string, quantity: string, options?: { immediate?: boolean; cancel?: boolean }) => void;
   onConfirm: () => void;
+  onToggleActive: () => void;
 }) {
   const { formatNumber, parseNumber, t } = useLocale();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const isActive = item.active !== false;
 
   useEffect(() => {
     setDrafts(
@@ -642,14 +684,14 @@ function RecipeRow({
 
   return (
     <View style={styles.recipeRow}>
-      <View style={styles.statusRail} />
+      <View style={[styles.statusRail, !isActive && styles.statusRailInactive]} />
       <View style={styles.recipeLead}>
-        <IconBadge tone="leaf">
-          <Link2 size={icon.row} color={colors.success} strokeWidth={iconStroke} />
+        <IconBadge tone={isActive ? "leaf" : "neutral"}>
+          <Link2 size={icon.row} color={isActive ? colors.success : colors.muted} strokeWidth={iconStroke} />
         </IconBadge>
         <View style={styles.recipeText}>
           <View style={styles.recipeTop}>
-            <Text style={styles.recipeName}>{item.menu_item_name}</Text>
+            <Text style={[styles.recipeName, !isActive && styles.recipeNameInactive]}>{item.menu_item_name}</Text>
             <Text style={styles.soldText}>
               {t(item.todayQuantitySold === 1 ? "recipes.row.sold.one" : "recipes.row.sold.other", {
                 count: formatNumber(item.todayQuantitySold)
@@ -662,17 +704,42 @@ function RecipeRow({
             })}
           </Text>
           <View style={styles.authorityRow}>
-            <Badge
-              label={t(item.authorityReady ? "recipes.authority.confirmed" : "recipes.authority.unconfirmed")}
-              tone={item.authorityReady ? "success" : "warning"}
-            />
-            {canManage && !item.authorityReady && item.menuItemId ? (
+            {!isActive ? (
+              <Badge label={t("recipes.authority.inactive")} tone="neutral" />
+            ) : (
+              <Badge
+                label={t(item.authorityReady ? "recipes.authority.confirmed" : "recipes.authority.unconfirmed")}
+                tone={item.authorityReady ? "success" : "warning"}
+              />
+            )}
+            {canManage && isActive && !item.authorityReady && item.menuItemId ? (
               <Button
                 title={t(confirming ? "recipes.action.confirming" : "recipes.action.confirm")}
                 variant="secondary"
                 size="compact"
-                disabled={confirming || savingMappingId !== null}
+                disabled={confirming || toggling || savingMappingId !== null}
                 onPress={onConfirm}
+              />
+            ) : null}
+            {canManage && item.menuItemId ? (
+              <Button
+                title={t(
+                  toggling
+                    ? isActive
+                      ? "recipes.action.deactivating"
+                      : "recipes.action.activating"
+                    : isActive
+                      ? "recipes.action.deactivate"
+                      : "recipes.action.activate"
+                )}
+                variant="ghost"
+                size="compact"
+                disabled={confirming || toggling || savingMappingId !== null}
+                onPress={onToggleActive}
+                accessibilityLabel={t(
+                  isActive ? "recipes.action.deactivateAccessibility" : "recipes.action.activateAccessibility",
+                  { item: item.menu_item_name }
+                )}
               />
             ) : null}
           </View>
@@ -919,6 +986,9 @@ const styles = StyleSheet.create({
     width: 4,
     backgroundColor: colors.success
   },
+  statusRailInactive: {
+    backgroundColor: colors.border
+  },
   recipeLead: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -940,6 +1010,9 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 22,
     fontWeight: "900"
+  },
+  recipeNameInactive: {
+    color: colors.muted
   },
   soldText: {
     color: colors.success,

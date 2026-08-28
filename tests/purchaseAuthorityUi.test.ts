@@ -32,9 +32,12 @@ test("recipe settings exposes explicit confirmation and hosted changes remain RP
 
   assert.match(screen, /confirmRecipeBaselineComplete\(restaurantId, item\.menuItemId, item\.recipeRevision\)/);
   assert.match(screen, /item\.authorityReady \? "recipes\.authority\.confirmed"/);
+  assert.match(screen, /setRecipeMenuItemActive\(restaurantId, item\.menuItemId, nextActive\)/);
   assert.match(inventoryApplication, /repository\.confirmRecipeComplete\(/);
+  assert.match(inventoryApplication, /repository\.setMenuItemActive\(/);
   assert.match(repository, /client\.rpc\("confirm_recipe_complete"/);
   assert.match(repository, /client\.rpc\("list_recipe_authorities"/);
+  assert.match(repository, /client\.rpc\("set_menu_item_active"/);
   assert.doesNotMatch(screen, /\.from\("menu_items"\)/);
 });
 

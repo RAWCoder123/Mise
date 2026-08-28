@@ -153,6 +153,12 @@ import {
 } from "./repositoryContracts";
 
 const demoConfirmedRecipeFingerprints = new Map<string, string>();
+/** Session-scoped inactive menu items for demo (mirrors menu_items.active). */
+const demoInactiveMenuItemIds = new Set<string>();
+
+function demoMenuItemKey(restaurantId: string, menuItemId: string) {
+  return `${restaurantId}:${menuItemId}`;
+}
 
 function demoRecipeAuthorityStates(state: DemoState, restaurantId: string): RecipeAuthorityState[] {
   const grouped = new Map<string, MenuItemIngredient[]>();
@@ -168,17 +174,18 @@ function demoRecipeAuthorityStates(state: DemoState, restaurantId: string): Reci
       .sort((left, right) => left.id.localeCompare(right.id))
       .map((mapping) => `${mapping.id}:${mapping.inventory_item_id}:${mapping.quantity_used_per_sale}:${mapping.unit}`)
       .join("|");
-    const key = `${restaurantId}:${menuItemId}`;
+    const key = demoMenuItemKey(restaurantId, menuItemId);
     if (!demoConfirmedRecipeFingerprints.has(key)) demoConfirmedRecipeFingerprints.set(key, fingerprint);
-    const ready = demoConfirmedRecipeFingerprints.get(key) === fingerprint;
+    const confirmed = demoConfirmedRecipeFingerprints.get(key) === fingerprint;
+    const active = !demoInactiveMenuItemIds.has(key);
     return {
       menuItemId,
       menuItemName: mappings[0]?.menu_item_name ?? "Menu item",
-      active: true,
+      active,
       recipeRevision: fingerprint.length,
-      confirmedRevision: ready ? fingerprint.length : null,
-      confirmedAt: ready ? new Date().toISOString() : null,
-      ready
+      confirmedRevision: confirmed ? fingerprint.length : null,
+      confirmedAt: confirmed ? new Date().toISOString() : null,
+      ready: active && confirmed
     };
   });
 }
@@ -1941,6 +1948,9 @@ export function createLocalDemoRepository(): MiseRepository {
         const authority = demoRecipeAuthorityStates(state, restaurantId)
           .find((entry) => entry.menuItemId === menuItemId);
         if (!authority) throw new Error("Menu item not found");
+        if (!authority.active) {
+          throw new Error("Inactive menu items cannot confirm recipes");
+        }
         if (authority.recipeRevision !== expectedRevision) {
           throw new Error("Recipe changed; review the current ingredients");
         }
@@ -1953,13 +1963,29 @@ export function createLocalDemoRepository(): MiseRepository {
           .sort((left, right) => left.id.localeCompare(right.id))
           .map((mapping) => `${mapping.id}:${mapping.inventory_item_id}:${mapping.quantity_used_per_sale}:${mapping.unit}`)
           .join("|");
-        demoConfirmedRecipeFingerprints.set(`${restaurantId}:${menuItemId}`, fingerprint);
+        demoConfirmedRecipeFingerprints.set(demoMenuItemKey(restaurantId, menuItemId), fingerprint);
         return {
           ...authority,
+          active: true,
           confirmedRevision: authority.recipeRevision,
           confirmedAt: new Date().toISOString(),
           ready: true
         };
+      });
+    },
+
+    async setMenuItemActive(restaurantId, menuItemId, active) {
+      return mutateDemoState((state) => {
+        const authority = demoRecipeAuthorityStates(state, restaurantId)
+          .find((entry) => entry.menuItemId === menuItemId);
+        if (!authority) throw new Error("Menu item not found");
+        const key = demoMenuItemKey(restaurantId, menuItemId);
+        if (active) demoInactiveMenuItemIds.delete(key);
+        else demoInactiveMenuItemIds.add(key);
+        const next = demoRecipeAuthorityStates(state, restaurantId)
+          .find((entry) => entry.menuItemId === menuItemId);
+        if (!next) throw new Error("Menu item not found");
+        return next;
       });
     },
 
