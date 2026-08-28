@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   buildSupplierReliabilitySummary,
   buildSupplierOrderDeliveryEvidence,
+  buildCompletedSupplierOrderReceiveSummary,
+  SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX,
   type SupplierDeliveryItemRecord,
   type SupplierDeliveryRecord
 } from "../services/domain/supplierReliability";
@@ -256,4 +258,125 @@ test("order delivery evidence exposes the exact late shortage behind a reliabili
   assert.equal(evidence[0]?.lineCount, 2);
   assert.equal(evidence[0]?.discrepancyLineCount, 1);
   assert.equal(evidence[0]?.missingLineCount, 1);
+});
+
+test("completed order receive summary exposes ordered-versus-received lines", () => {
+  const targetOrder = order("order-1", "Produce Co.", "2026-07-10");
+  const summary = buildCompletedSupplierOrderReceiveSummary({
+    restaurantId: RESTAURANT_ID,
+    order: targetOrder,
+    deliveries: [
+      delivery("delivery-1", targetOrder.id, "2026-07-11T15:00:00.000Z", "discrepancy")
+    ],
+    items: [
+      line("line-1", "delivery-1", 20, 15, {
+        missing_quantity: 5,
+        discrepancy_reason: "Five cases short."
+      }),
+      line("line-2", "delivery-1", 10, 12, { damaged_quantity: 0 })
+    ],
+    inventoryItems: [
+      {
+        id: "item-line-1",
+        restaurant_id: RESTAURANT_ID,
+        item_name: "Napa cabbage",
+        unit: "heads"
+      },
+      {
+        id: "item-line-2",
+        restaurant_id: RESTAURANT_ID,
+        item_name: "Bell peppers",
+        unit: "lb"
+      }
+    ]
+  });
+
+  assert.equal(summary.orderId, targetOrder.id);
+  assert.equal(summary.lines.length, 2);
+  assert.equal(summary.discrepancyCount, 2);
+  assert.equal(summary.shortShipCount, 1);
+  assert.equal(summary.overReceiveCount, 1);
+  assert.equal(summary.lines[0]?.itemName, "Napa cabbage");
+  assert.equal(summary.lines[0]?.shortShip, true);
+  assert.equal(summary.lines[0]?.discrepancy, -5);
+  assert.equal(summary.lines[0]?.discrepancyReason, "Five cases short.");
+  assert.equal(summary.lines[1]?.overReceive, true);
+  assert.equal(summary.lines[1]?.discrepancy, 2);
+});
+
+test("completed order receive summary ignores other-order deliveries and caps lines", () => {
+  const targetOrder = order("order-keep", "Produce Co.", "2026-07-10");
+  const otherOrder = order("order-other", "Produce Co.", "2026-07-09");
+  const deliveries = [
+    delivery("delivery-keep", targetOrder.id, "2026-07-10T12:00:00.000Z"),
+    delivery("delivery-other", otherOrder.id, "2026-07-09T12:00:00.000Z")
+  ];
+  const items: SupplierDeliveryItemRecord[] = [
+    line("keep-1", "delivery-keep", 4, 4),
+    line("other-1", "delivery-other", 9, 8, { missing_quantity: 1 })
+  ];
+  for (let index = 0; index < SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX + 5; index += 1) {
+    items.push(line(`extra-${index}`, "delivery-keep", 1, 1));
+  }
+
+  const summary = buildCompletedSupplierOrderReceiveSummary({
+    restaurantId: RESTAURANT_ID,
+    order: targetOrder,
+    deliveries,
+    items
+  });
+
+  assert.equal(summary.lines.length, SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX);
+  assert.equal(
+    summary.lines.every((entry) => entry.deliveryId === "delivery-keep"),
+    true
+  );
+  assert.equal(
+    summary.lines.some((entry) => entry.inventoryItemId === "item-other-1"),
+    false
+  );
+});
+
+test("completed order receive summary rejects cross-tenant inventory rows", () => {
+  const targetOrder = order("order-1", "Produce Co.", "2026-07-10");
+  assert.throws(
+    () =>
+      buildCompletedSupplierOrderReceiveSummary({
+        restaurantId: RESTAURANT_ID,
+        order: targetOrder,
+        deliveries: [delivery("delivery-1", targetOrder.id, "2026-07-11T15:00:00.000Z")],
+        items: [line("line-1", "delivery-1", 4, 4)],
+        inventoryItems: [
+          {
+            id: "item-line-1",
+            restaurant_id: "restaurant-b",
+            item_name: "Leaked item",
+            unit: "lb"
+          }
+        ]
+      }),
+    /cross-restaurant inventory/
+  );
+});
+
+test("demo supplier deliveries include a short-ship receive summary fixture", () => {
+  const state = createInitialDemoState(
+    "Toast",
+    { preset: DEMO_DATASET.id },
+    new Date("2026-08-03T16:00:00.000Z")
+  );
+  const orderRow = state.supplierOrders.find(
+    (row) => row.id === "00000000-0000-4000-8000-000000000605"
+  );
+  assert.ok(orderRow);
+  const summary = buildCompletedSupplierOrderReceiveSummary({
+    restaurantId: state.restaurants[0]!.id,
+    order: orderRow!,
+    deliveries: state.supplierDeliveries.map(normalizeSupplierDeliveryRecord),
+    items: state.supplierDeliveryItems.map(normalizeSupplierDeliveryItemRecord),
+    inventoryItems: state.inventoryItems
+  });
+  assert.equal(summary.shortShipCount, 1);
+  assert.equal(summary.discrepancyCount, 1);
+  assert.match(summary.lines[0]?.discrepancyReason ?? "", /missing/i);
 });
