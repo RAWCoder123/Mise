@@ -44,7 +44,12 @@ export async function fetchDeliveryHistory(restaurantId: string): Promise<Delive
 export async function receiveSupplierOrderDelivery(
   restaurantId: string,
   supplierOrderId: string,
-  options: { notes?: string | null; receivedAt?: string; clientDeliveryId?: string } = {}
+  options: {
+    notes?: string | null;
+    receivedAt?: string;
+    clientDeliveryId?: string;
+    storageLocationId?: string | null;
+  } = {}
 ) {
   const normalizedRestaurantId = restaurantId.trim();
   const normalizedOrderId = supplierOrderId.trim();
@@ -65,11 +70,17 @@ export async function receiveSupplierOrderDelivery(
     throw new Error("Only sent orders can be received.");
   }
 
+  const storageLocationId =
+    typeof options.storageLocationId === "string" && options.storageLocationId.trim()
+      ? options.storageLocationId.trim()
+      : null;
+
   let built = buildDeliveryLinesFromOrderRecommendations({
     order,
     recommendations,
     inventoryItems,
-    requireVerifiedCanonicalUnit: true
+    requireVerifiedCanonicalUnit: true,
+    storageLocationId
   });
   if (built.lines.length === 0) {
     // Demo / incomplete unit setup: still allow as-ordered receive when items exist.
@@ -77,7 +88,8 @@ export async function receiveSupplierOrderDelivery(
       order,
       recommendations,
       inventoryItems,
-      requireVerifiedCanonicalUnit: false
+      requireVerifiedCanonicalUnit: false,
+      storageLocationId
     });
   }
   if (built.lines.length === 0) {

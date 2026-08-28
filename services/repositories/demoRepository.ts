@@ -33,6 +33,8 @@ import {
   seedDemoActivityFromState
 } from "../demo/demoActivity";
 import {
+  applyDemoReceiveLocationPutaway,
+  applyDemoWasteLocationDeduction,
   createDemoStorageLocation,
   listDemoInventoryLocationBalances,
   listDemoStorageLocations,
@@ -895,8 +897,46 @@ export function createLocalDemoRepository(): MiseRepository {
       const recordedEvent = { ...acceptance.event, projectionApplied };
       state.inventoryEvents = [...(state.inventoryEvents ?? []), recordedEvent];
       if (projectionApplied) {
+        const onHandBefore = item.current_quantity;
+        const balancesBefore = listDemoInventoryLocationBalances(
+          state,
+          input.restaurantId,
+          item.id
+        );
         item.current_quantity = projectedQuantity;
         item.last_updated = recordedEvent.recordedAt;
+        if (input.eventType === "waste") {
+          const quantityRemovedApplied = Math.max(0, onHandBefore - projectedQuantity);
+          const station = applyDemoWasteLocationDeduction(
+            state,
+            input.restaurantId,
+            item,
+            typeof input.metadata?.storage_location_id === "string"
+              ? input.metadata.storage_location_id
+              : null,
+            quantityRemovedApplied,
+            onHandBefore,
+            balancesBefore,
+            recordedEvent.recordedAt
+          );
+          recordedEvent.metadata = {
+            ...recordedEvent.metadata,
+            storage_location_id: station.id,
+            storage_location_name: station.name
+          };
+        } else if (input.eventType === "receipt") {
+          const quantityReceived = Math.max(0, projectedQuantity - onHandBefore);
+          applyDemoReceiveLocationPutaway(
+            state,
+            input.restaurantId,
+            item,
+            typeof input.metadata?.storage_location_id === "string"
+              ? input.metadata.storage_location_id
+              : null,
+            quantityReceived,
+            recordedEvent.recordedAt
+          );
+        }
       }
       if (projectionApplied && input.eventType === "waste") {
         const timeZone = state.restaurants.find(
@@ -3876,6 +3916,14 @@ export function createLocalDemoRepository(): MiseRepository {
           const receivedNet = Math.max(0, line.receivedQuantity - (line.damagedQuantity ?? 0));
           item.current_quantity = Math.round((item.current_quantity + receivedNet) * 1000) / 1000;
           item.last_updated = input.receivedAt;
+          applyDemoReceiveLocationPutaway(
+            state,
+            restaurantId,
+            item,
+            line.storageLocationId ?? null,
+            receivedNet,
+            input.receivedAt
+          );
         }
 
         appendDemoAuditLog(state, {

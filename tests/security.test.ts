@@ -987,6 +987,10 @@ test("storage locations and transfers stay select-only with guarded RPCs", () =>
     "supabase/migrations/20260827220000_storage_locations_and_transfer.sql",
     "utf8"
   );
+  const putawayMigration = readFileSync(
+    "supabase/migrations/20260828010000_receive_putaway_waste_station_attribution.sql",
+    "utf8"
+  );
   const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
   const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
   const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
@@ -1007,6 +1011,9 @@ test("storage locations and transfers stay select-only with guarded RPCs", () =>
   assert.match(migration, /when new\.event_type = 'transfer' then prior_quantity/);
   assert.match(migration, /Transfer ledger events must use quantity 0/);
   assert.match(migration, /inventory_transfer_recorded/);
+  assert.match(putawayMigration, /apply_inventory_receive_putaway/);
+  assert.match(putawayMigration, /apply_inventory_waste_station_deduction/);
+  assert.match(putawayMigration, /storageLocationId/);
   assert.match(securityBackend, /"storage_locations"/);
   assert.match(securityBackend, /"inventory_location_balances"/);
   assert.match(securityStatic, /"storage_locations"/);

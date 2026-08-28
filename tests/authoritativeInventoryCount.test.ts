@@ -1725,7 +1725,10 @@ test("the ledger boundary migration retains history and only narrows the project
   // Demo mode mirrors the same boundary so both paths agree.
   const demoRepository = readFileSync("services/repositories/demoRepository.ts", "utf8");
   assert.match(demoRepository, /function inventoryEventMovesProjection/);
-  assert.match(demoRepository, /if \(projectionApplied\) \{\n\s*item\.current_quantity = projectedQuantity;/);
+  assert.match(
+    demoRepository,
+    /if \(projectionApplied\) \{[\s\S]*?item\.current_quantity = projectedQuantity;/
+  );
 });
 
 // ---------------------------------------------------------------------------

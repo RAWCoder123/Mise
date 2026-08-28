@@ -86,6 +86,7 @@ export default function InventoryDetailScreen() {
   const [transferErrors, setTransferErrors] = useState<TransferFieldErrors>({});
   const [submittingTransfer, setSubmittingTransfer] = useState(false);
   const [addingLocation, setAddingLocation] = useState(false);
+  const [operationStorageLocationId, setOperationStorageLocationId] = useState("");
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -131,6 +132,11 @@ export default function InventoryDetailScreen() {
         current !== (main?.id ?? "")
           ? current
           : secondary?.id ?? ""
+      );
+      setOperationStorageLocationId((current) =>
+        current && nextLocations.some((location) => location.id === current)
+          ? current
+          : main?.id ?? ""
       );
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
@@ -415,7 +421,11 @@ export default function InventoryDetailScreen() {
         quantity,
         canonicalUnit: item.canonical_unit,
         effectiveAt: new Date().toISOString(),
-        note: noteText.trim() || undefined
+        note: noteText.trim() || undefined,
+        storageLocationId:
+          (operation === "waste" || operation === "receipt") && operationStorageLocationId
+            ? operationStorageLocationId
+            : undefined
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
@@ -849,6 +859,34 @@ export default function InventoryDetailScreen() {
                         error={quantityError}
                       />
                     )}
+                    {(operation === "waste" || operation === "receipt") &&
+                    storageLocations.length > 0 ? (
+                      <View style={styles.opsStation}>
+                        <Text style={styles.label}>
+                          {operation === "waste"
+                            ? t("inventory.ops.wasteStation")
+                            : t("inventory.ops.receiveStation")}
+                        </Text>
+                        <Text style={styles.copy}>
+                          {operation === "waste"
+                            ? t("inventory.ops.wasteStationHelp")
+                            : t("inventory.ops.receiveStationHelp")}
+                        </Text>
+                        <FilterRow
+                          accessibilityLabel={
+                            operation === "waste"
+                              ? t("inventory.ops.wasteStation")
+                              : t("inventory.ops.receiveStation")
+                          }
+                          options={storageLocations.map((location) => ({
+                            value: location.id,
+                            label: location.name
+                          }))}
+                          value={operationStorageLocationId}
+                          onValueChange={setOperationStorageLocationId}
+                        />
+                      </View>
+                    ) : null}
                     <Field
                       label={t("inventory.ops.note")}
                       value={noteText}
@@ -1203,6 +1241,10 @@ const styles = StyleSheet.create({
   },
   balanceList: {
     gap: 4,
+    marginBottom: 8
+  },
+  opsStation: {
+    gap: 8,
     marginBottom: 8
   },
   locationCreate: {

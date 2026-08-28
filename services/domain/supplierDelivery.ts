@@ -16,8 +16,13 @@ export function buildDeliveryLinesFromOrderRecommendations(input: {
   recommendations: readonly PurchaseRecommendation[];
   inventoryItems: readonly InventoryItem[];
   requireVerifiedCanonicalUnit?: boolean;
+  storageLocationId?: string | null;
 }): DeliveryLineBuildResult {
   const requireVerified = input.requireVerifiedCanonicalUnit !== false;
+  const storageLocationId =
+    typeof input.storageLocationId === "string" && input.storageLocationId.trim()
+      ? input.storageLocationId.trim()
+      : null;
   const linked = input.recommendations.filter(
     (recommendation) =>
       recommendation.restaurant_id === input.order.restaurant_id &&
@@ -56,7 +61,8 @@ export function buildDeliveryLinesFromOrderRecommendations(input: {
       canonicalUnit: unit,
       substitutionInventoryItemId: null,
       unitPrice: null,
-      discrepancyReason: null
+      discrepancyReason: null,
+      ...(storageLocationId ? { storageLocationId } : {})
     });
   }
 
