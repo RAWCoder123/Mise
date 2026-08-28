@@ -157,6 +157,24 @@ test("attaches dependency ids only when evidenced by recommendation→draft→or
   assert.ok(send?.dependencyIds.includes(reviewId));
 });
 
+test("receive tasks depend on the completed send task for the same supplier order", () => {
+  const orders = [order({ id: "order_sent", status: "sent", delivery_date: "2026-08-05" })];
+  const tasks = deriveTasks({
+    recommendations: [],
+    orders,
+    includeCompleted: true
+  });
+  const plan = buildDailyOperatingPlan(baseInput({ tasks, recommendations: [], orders }));
+
+  const sendId = operationalTodayTaskId("order", "order_sent", "send_supplier_order");
+  const receiveId = operationalTodayTaskId("order", "order_sent", "receive_supplier_order");
+  const receive = plan.items.find((item) => item.id === receiveId);
+  assert.ok(receive);
+  assert.equal(receive?.status, "open");
+  assert.deepEqual(receive?.dependencyIds, [sendId]);
+  assert.equal(receive?.verificationMethod, "receipt");
+});
+
 test("merges tenant-scoped shared tasks with roles, windows, dependencies, and truthful results", () => {
   const prerequisite = restaurantTask({
     id: "task_prerequisite",
@@ -230,8 +248,16 @@ test("merges tenant-scoped shared tasks with roles, windows, dependencies, and t
 test("completion results come from matching activity or source state, never invented prose", () => {
   const orders = [order({ id: "order_sent", status: "sent", delivery_date: "2026-08-01" })];
   const tasks = deriveTasks({ orders, includeCompleted: true });
-  const sentTask = tasks.find((task) => task.source.id === "order_sent");
+  const sentTask = tasks.find(
+    (task) => task.source.id === "order_sent" && task.action.intent === "send_supplier_order"
+  );
+  const receiveTask = tasks.find(
+    (task) => task.source.id === "order_sent" && task.action.intent === "receive_supplier_order"
+  );
   assert.ok(sentTask);
+  assert.equal(sentTask?.status, "completed");
+  assert.ok(receiveTask);
+  assert.equal(receiveTask?.status, "open");
 
   const sentOrder = order({
     id: "order_sent",
@@ -255,6 +281,11 @@ test("completion results come from matching activity or source state, never inve
   assert.ok(completed?.completionResult);
   assert.equal(completed?.completionResult, activity[0]?.summary);
   assert.equal(completed?.reprioritization, null);
+
+  const openReceive = plan.items.find((item) => item.id === receiveTask?.id);
+  assert.equal(openReceive?.status, "open");
+  assert.equal(openReceive?.kind, "mise_task");
+  assert.equal(openReceive?.completionResult, null);
 
   const withoutActivity = buildDailyOperatingPlan(baseInput({ tasks, orders, activityEvents: [] }));
   const fallback = withoutActivity.items.find((item) => item.id === sentTask?.id);
