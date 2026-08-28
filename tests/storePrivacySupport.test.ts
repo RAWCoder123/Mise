@@ -10,6 +10,9 @@ const privacyRoute = readFileSync("app/settings/privacy.tsx", "utf8");
 const supportRoute = readFileSync("app/settings/support.tsx", "utf8");
 const routeSmoke = readFileSync("scripts/mobile-route-smoke.mjs", "utf8");
 const layoutSmoke = readFileSync("scripts/mobile-layout-smoke.mjs", "utf8");
+const appConfig = readFileSync("lib/appConfig.ts", "utf8");
+const envExample = readFileSync(".env.example", "utf8");
+const securityStatic = readFileSync("scripts/security-static.mjs", "utf8");
 
 test("beta privacy policy names actual data flows and disabled providers", () => {
   assert.match(privacy, /Effective date: August 3, 2026/);
@@ -81,15 +84,22 @@ test("contact and policy actions transmit only bounded public destinations", () 
     /Linking\.canOpenURL\(url\)[\s\S]*Linking\.openURL\(url\)/,
   );
   assert.doesNotMatch(supportRoute, /[?&](?:body|cc|bcc)=/i);
+  assert.doesNotMatch(
+    privacyRoute,
+    /const PRIVACY_POLICY_URL\s*=\s*"https:\/\/getmise\.app\/privacy"/,
+  );
+  assert.match(privacyRoute, /readPublicAppConfig\(\)\.privacyUrl/);
+  assert.match(privacyRoute, /disabled=\{opening \|\| !privacyUrl\}/);
   assert.match(
     privacyRoute,
-    /const PRIVACY_POLICY_URL = "https:\/\/getmise\.app\/privacy"/,
+    /Linking\.canOpenURL\(privacyUrl\)[\s\S]*Linking\.openURL\(privacyUrl\)/,
   );
-  assert.match(
-    privacyRoute,
-    /Linking\.canOpenURL\(PRIVACY_POLICY_URL\)[\s\S]*Linking\.openURL\(PRIVACY_POLICY_URL\)/,
-  );
+  assert.match(privacyRoute, /privacy\.missing\.title/);
   assert.match(privacyRoute, /privacy\.hosting\.title/);
+  assert.match(appConfig, /EXPO_PUBLIC_PRIVACY_URL/);
+  assert.match(appConfig, /normalizeOptionalHttpsUrl/);
+  assert.match(envExample, /EXPO_PUBLIC_PRIVACY_URL=/);
+  assert.match(securityStatic, /EXPO_PUBLIC_PRIVACY_URL/);
   assert.match(supportRoute, /support\.monitoring\.title/);
 });
 

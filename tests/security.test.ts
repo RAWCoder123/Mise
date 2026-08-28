@@ -65,7 +65,11 @@ test("tenant role helper keeps staff read-only and lets managers operate invento
 });
 
 test("production mode does not expose demo credentials or demo access", () => {
-  const productionConfig = { appEnv: "production" as const, enableDemoMode: true };
+  const productionConfig = {
+    appEnv: "production" as const,
+    enableDemoMode: true,
+    privacyUrl: null
+  };
   const credentials = getInitialLoginCredentials(productionConfig);
 
   assert.equal(canUseDemoMode(productionConfig), false);
@@ -100,6 +104,33 @@ test("development builds default to local demo mode unless explicitly disabled",
       delete process.env.EXPO_PUBLIC_ENABLE_DEMO_MODE;
     } else {
       process.env.EXPO_PUBLIC_ENABLE_DEMO_MODE = previousDemoMode;
+    }
+  }
+});
+
+test("privacy URL accepts HTTPS only and fails closed otherwise", () => {
+  const previous = process.env.EXPO_PUBLIC_PRIVACY_URL;
+
+  try {
+    process.env.EXPO_PUBLIC_PRIVACY_URL = "https://getmise.app/privacy";
+    assert.equal(readPublicAppConfig().privacyUrl, "https://getmise.app/privacy");
+
+    process.env.EXPO_PUBLIC_PRIVACY_URL = "http://getmise.app/privacy";
+    assert.equal(readPublicAppConfig().privacyUrl, null);
+
+    process.env.EXPO_PUBLIC_PRIVACY_URL = "ftp://getmise.app/privacy";
+    assert.equal(readPublicAppConfig().privacyUrl, null);
+
+    process.env.EXPO_PUBLIC_PRIVACY_URL = "not-a-url";
+    assert.equal(readPublicAppConfig().privacyUrl, null);
+
+    delete process.env.EXPO_PUBLIC_PRIVACY_URL;
+    assert.equal(readPublicAppConfig().privacyUrl, null);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.EXPO_PUBLIC_PRIVACY_URL;
+    } else {
+      process.env.EXPO_PUBLIC_PRIVACY_URL = previous;
     }
   }
 });

@@ -27,7 +27,8 @@ const allowedPublicEnv = new Set([
   "EXPO_PUBLIC_APP_ENV",
   "EXPO_PUBLIC_SENTRY_DSN",
   "EXPO_PUBLIC_POSTHOG_KEY",
-  "EXPO_PUBLIC_POSTHOG_HOST"
+  "EXPO_PUBLIC_POSTHOG_HOST",
+  "EXPO_PUBLIC_PRIVACY_URL"
 ]);
 
 const sqlChecks = [
