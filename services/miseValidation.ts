@@ -451,7 +451,22 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
       );
     }
   }
+  if (validated.item_name !== undefined) {
+    validated.item_name = requireInventoryPolicyText(validated.item_name, "Item name", 160);
+  }
+  if (validated.category !== undefined) {
+    validated.category = requireInventoryPolicyText(validated.category, "Category", 120);
+  }
   return validated;
+}
+
+function requireInventoryPolicyText(value: unknown, label: string, maximum: number) {
+  if (typeof value !== "string") throw new Error(`Enter a valid ${label.toLowerCase()}.`);
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized || normalized.length > maximum || /[\u0000-\u001F\u007F]/.test(normalized)) {
+    throw new Error(`${label} must be between 1 and ${maximum.toLocaleString()} characters.`);
+  }
+  return normalized;
 }
 
 const inventoryCountSessionStatuses = new Set([
@@ -1193,6 +1208,18 @@ export function normalizeInventoryItemPatch(patch: InventoryItemPatch): Inventor
       normalized.reorder_threshold,
       operatingLimits.inventoryQuantity
     );
+  }
+  if (normalized.item_name !== undefined) {
+    normalized.item_name =
+      typeof normalized.item_name === "string"
+        ? normalized.item_name.trim().replace(/\s+/g, " ").slice(0, 160)
+        : "";
+  }
+  if (normalized.category !== undefined) {
+    normalized.category =
+      typeof normalized.category === "string"
+        ? normalized.category.trim().replace(/\s+/g, " ").slice(0, 120)
+        : "";
   }
   return normalized;
 }

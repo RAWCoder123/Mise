@@ -330,7 +330,7 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
   const updateWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+updateInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
 
   assert.match(validation, /patch\.current_quantity[\s\S]*remain auditable/i);
-  assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold"\]\)/i);
+  assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold", "item_name", "category"\]\)/i);
   assert.doesNotMatch(edgeWorkflow, /new Set\([^\n]+supplier_name/i);
   assert.match(updateWorkflow, /fetchAnchoredPlanningData[\s\S]*fetchRecommendationHistory/i);
   assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);
@@ -363,6 +363,15 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
     durableSupplierMigration,
     /safe_patch\s*-\s*array\[[^\]]*'supplier_name'/i
   );
+  const categoryRenameMigration = readFileSync(
+    "supabase/migrations/20260828190000_inventory_policy_category_rename.sql",
+    "utf8"
+  );
+  assert.match(
+    categoryRenameMigration,
+    /safe_patch\s*-\s*array\['par_level',\s*'reorder_threshold',\s*'item_name',\s*'category'\]/i
+  );
+  assert.match(categoryRenameMigration, /On-hand quantity changes must use record_inventory_event/i);
   assert.match(projectionMigration, /after insert on public\.inventory_events/i);
 });
 
