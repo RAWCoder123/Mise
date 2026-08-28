@@ -8,6 +8,7 @@ import type {
   InventoryCountSessionDetail,
   MenuItemIngredient,
   PosIntegration,
+  PosLocation,
   PosProvider,
   PosSale,
   PurchaseRecommendation,
@@ -85,6 +86,7 @@ import {
   normalizeInventoryCountSessionDetail,
   normalizeMenuItemIngredient,
   normalizePosIntegration,
+  normalizePosLocation,
   normalizePosSale,
   normalizePurchaseRecommendation,
   normalizeRestaurant,
@@ -1717,6 +1719,27 @@ export function createSupabaseRepository(): MiseRepository {
         .maybeSingle();
       if (error) throw error;
       return data ? normalizePosIntegration(data as PosIntegration) : null;
+    },
+
+    async fetchPosLocations(restaurantId) {
+      const { data, error } = await client
+        .from("pos_locations")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("display_name", { ascending: true })
+        .order("external_location_id", { ascending: true });
+      if (error) throwRepositoryError(error, restaurantId);
+      return ((data ?? []) as PosLocation[]).map(normalizePosLocation);
+    },
+
+    async setPosLocationStatus(restaurantId, locationId, status) {
+      const { data, error } = await client.rpc("set_pos_location_status", {
+        p_restaurant_id: restaurantId,
+        p_location_id: locationId,
+        p_status: status
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return normalizePosLocation(data as PosLocation);
     },
 
     async fetchPosMappingReviewQueue(restaurantId) {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
-import { ArrowLeft, CheckCircle, FileText, ListChecks, PlugZap } from "lucide-react-native";
+import { ArrowLeft, CheckCircle, FileText, ListChecks, MapPin, PlugZap } from "lucide-react-native";
 import { Animated, AppState, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -18,10 +18,12 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   connectRestaurantSquare,
   disconnectRestaurantSquare,
+  fetchPosLocations,
   fetchPosMappingReviewQueue,
   fetchPilotReadiness,
   fetchSquarePosIntegration,
   isSquareIntegrationError,
+  setPosLocationStatus,
   syncSquarePosSales
 } from "../../services/miseService";
 import {
@@ -30,7 +32,7 @@ import {
 } from "../../services/presentation/hubLoadState";
 import type { PilotReadiness, PilotReadinessAreaId } from "../../services/domain/pilotReadiness";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
-import type { PosIntegration, PosProvider } from "../../types/mise";
+import type { PosIntegration, PosLocation, PosProvider } from "../../types/mise";
 import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
 
 const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Manual CSV Upload"];
@@ -51,6 +53,9 @@ export default function POSConnectionScreen() {
   const [readinessLoadError, setReadinessLoadError] = useState(false);
   const [loadingIntegration, setLoadingIntegration] = useState(!isDemoMode);
   const [mappingReviewCount, setMappingReviewCount] = useState<number | null>(null);
+  const [locations, setLocations] = useState<PosLocation[]>([]);
+  const [locationsLoadError, setLocationsLoadError] = useState(false);
+  const [busyLocationId, setBusyLocationId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<"connect" | "disconnect" | "sync" | null>(null);
   const [hubLoadError, setHubLoadError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -62,6 +67,7 @@ export default function POSConnectionScreen() {
   const requestIdRef = useRef(0);
   const readinessRequestIdRef = useRef(0);
   const mappingRequestIdRef = useRef(0);
+  const locationsRequestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
   const canManage = canDeleteRestaurantData(memberships, restaurant?.id);
@@ -80,6 +86,9 @@ export default function POSConnectionScreen() {
     setBusyAction(null);
     setLoadingProvider(null);
     setMappingReviewCount(null);
+    setLocations([]);
+    setLocationsLoadError(false);
+    setBusyLocationId(null);
     setLoadingIntegration(Boolean(restaurant) && !isDemoMode);
     if (isDemoMode && restaurant) {
       setLoadedRestaurantId(restaurant.id);
@@ -104,6 +113,29 @@ export default function POSConnectionScreen() {
       }
     }
   }, [canReviewMappings, isDemoMode, restaurant?.id]);
+
+  const loadPosLocations = useCallback(async () => {
+    if (isDemoMode || !restaurant) {
+      setLocations([]);
+      setLocationsLoadError(false);
+      return;
+    }
+    const restaurantId = restaurant.id;
+    const requestId = ++locationsRequestIdRef.current;
+    try {
+      const next = await fetchPosLocations(restaurantId);
+      if (requestId !== locationsRequestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+        return;
+      }
+      setLocations(next);
+      setLocationsLoadError(false);
+    } catch {
+      if (requestId === locationsRequestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        setLocations([]);
+        setLocationsLoadError(true);
+      }
+    }
+  }, [isDemoMode, restaurant?.id]);
 
   const loadPilotReadiness = useCallback(async () => {
     if (!restaurant) return;
@@ -164,9 +196,8 @@ export default function POSConnectionScreen() {
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
-    busy: busyAction !== null || loadingProvider !== null
-  });
-  const visibleIntegration = hubReady ? integration : null;
+    busy: busyAction !== null || loadingProvider !== null || busyLocationId !== null
+  });  const visibleIntegration = hubReady ? integration : null;
   const visibleSquareConnected = visibleIntegration?.status === "connected";
 
   useFocusEffect(
@@ -174,15 +205,19 @@ export default function POSConnectionScreen() {
       void loadIntegration(false);
       void loadPilotReadiness();
       void loadMappingReviewCount();
-    }, [loadIntegration, loadMappingReviewCount, loadPilotReadiness])
+      void loadPosLocations();
+    }, [loadIntegration, loadMappingReviewCount, loadPilotReadiness, loadPosLocations])
   );
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active" && !isDemoMode) void loadIntegration(false);
+      if (state === "active" && !isDemoMode) {
+        void loadIntegration(false);
+        void loadPosLocations();
+      }
     });
     return () => subscription.remove();
-  }, [isDemoMode, loadIntegration]);
+  }, [isDemoMode, loadIntegration, loadPosLocations]);
 
   useEffect(() => {
     if (square === "connected") {
@@ -192,6 +227,7 @@ export default function POSConnectionScreen() {
         message: t("pos.square.connectedBody")
       });
       void loadIntegration(false);
+      void loadPosLocations();
     } else if (square === "connection_failed") {
       setNotice({
         tone: "warning",
@@ -199,7 +235,7 @@ export default function POSConnectionScreen() {
         message: t("pos.square.failedBody")
       });
     }
-  }, [square, loadIntegration, t]);
+  }, [square, loadIntegration, loadPosLocations, t]);
 
   async function connect(provider: PosProvider) {
     if (provider === "Manual CSV Upload") {
@@ -252,6 +288,7 @@ export default function POSConnectionScreen() {
         });
         await loadPilotReadiness();
         await loadMappingReviewCount();
+        await loadPosLocations();
       }
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -276,6 +313,7 @@ export default function POSConnectionScreen() {
       setIntegration((current) =>
         current ? { ...current, status: "not_connected", last_sync_at: null } : current
       );
+      setLocations([]);
       setNotice({
         tone: "neutral",
         title: t("pos.square.disconnectedTitle"),
@@ -284,6 +322,7 @@ export default function POSConnectionScreen() {
       await loadIntegration(false);
       await loadPilotReadiness();
       await loadMappingReviewCount();
+      await loadPosLocations();
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
@@ -322,6 +361,7 @@ export default function POSConnectionScreen() {
       await loadIntegration(false);
       await loadPilotReadiness();
       await loadMappingReviewCount();
+      await loadPosLocations();
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
@@ -331,6 +371,43 @@ export default function POSConnectionScreen() {
       });
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setBusyAction(null);
+    }
+  }
+
+  async function toggleLocationStatus(location: PosLocation) {
+    if (!restaurant || !actionsEditable) return;
+    if (location.status !== "active" && location.status !== "paused") return;
+    const restaurantId = restaurant.id;
+    const nextStatus = location.status === "active" ? "paused" : "active";
+    setBusyLocationId(location.id);
+    setNotice(null);
+    try {
+      const updated = await setPosLocationStatus(restaurantId, location.id, nextStatus);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setLocations((current) =>
+        current.map((entry) => (entry.id === updated.id ? updated : entry))
+      );
+      setNotice({
+        tone: nextStatus === "active" ? "success" : "neutral",
+        title:
+          nextStatus === "active"
+            ? t("pos.locations.authorizedTitle")
+            : t("pos.locations.pausedTitle"),
+        message:
+          nextStatus === "active"
+            ? t("pos.locations.authorizedBody", { name: updated.display_name })
+            : t("pos.locations.pausedBody", { name: updated.display_name })
+      });
+      await loadPilotReadiness();
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        tone: "danger",
+        title: t("pos.locations.errorTitle"),
+        message: isSquareIntegrationError(error) ? error.message : t("pos.locations.errorBody")
+      });
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setBusyLocationId(null);
     }
   }
 
@@ -565,11 +642,97 @@ export default function POSConnectionScreen() {
                 />
               </View>
             ) : null}
+            {visibleSquareConnected ? (
+              <View style={styles.locations}>
+                <Text style={styles.locationsTitle}>{t("pos.locations.title")}</Text>
+                <Text style={styles.locationsCopy}>{t("pos.locations.body")}</Text>
+                {locationsLoadError ? (
+                  <StatusNotice
+                    tone="danger"
+                    title={t("pos.locations.loadErrorTitle")}
+                    message={t("pos.locations.loadErrorBody")}
+                    actionLabel={t("common.retry")}
+                    onAction={() => void loadPosLocations()}
+                  />
+                ) : locations.length === 0 ? (
+                  <Text style={styles.meta}>{t("pos.locations.empty")}</Text>
+                ) : (
+                  <View style={styles.locationList}>
+                    {locations.map((location) => {
+                      const actionable =
+                        location.status === "active" || location.status === "paused";
+                      const busy = busyLocationId === location.id;
+                      return (
+                        <View key={location.id} style={styles.locationRow}>
+                          <View style={styles.locationIcon}>
+                            <MapPin
+                              size={icon.row}
+                              color={
+                                location.status === "active" ? colors.success : colors.muted
+                              }
+                              strokeWidth={iconStroke}
+                            />
+                          </View>
+                          <View style={styles.locationCopy}>
+                            <Text style={styles.locationTitle}>{location.display_name}</Text>
+                            <Text style={styles.locationBody}>
+                              {locationStatusLabel(location.status, t)}
+                              {location.external_location_id
+                                ? ` · ${location.external_location_id}`
+                                : ""}
+                            </Text>
+                          </View>
+                          {actionsEditable && actionable ? (
+                            <Button
+                              title={
+                                busy
+                                  ? t("common.saving")
+                                  : location.status === "active"
+                                    ? t("pos.locations.pause")
+                                    : t("pos.locations.authorize")
+                              }
+                              variant="secondary"
+                              onPress={() => void toggleLocationStatus(location)}
+                              disabled={!actionsEditable || busyLocationId !== null || busyAction !== null}
+                              accessibilityHint={
+                                location.status === "active"
+                                  ? t("pos.locations.pauseHint")
+                                  : t("pos.locations.authorizeHint")
+                              }
+                            />
+                          ) : (
+                            <Text style={styles.locationActionMeta}>
+                              {canManage
+                                ? locationStatusLabel(location.status, t)
+                                : t("pos.locations.ownerRequired")}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            ) : null}
           </Card>
         )}
       </View>
     </Screen>
   );
+}
+
+function locationStatusLabel(
+  status: PosLocation["status"],
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  switch (status) {
+    case "active":
+      return t("pos.locations.status.active");
+    case "paused":
+      return t("pos.locations.status.paused");
+    case "disconnected":
+      return t("pos.locations.status.disconnected");
+  }
 }
 
 function pilotReadinessAreaLabel(
@@ -686,6 +849,32 @@ const styles = StyleSheet.create({
   meta: { ...typography.caption, color: colors.muted, marginTop: spacing.sm },
   actions: { gap: spacing.sm, marginTop: spacing.md },
   mappingReview: { marginTop: spacing.md },
+  locations: { marginTop: spacing.md, gap: spacing.sm },
+  locationsTitle: { ...typography.cardTitle, color: colors.text },
+  locationsCopy: { ...typography.body, color: colors.muted },
+  locationList: { gap: spacing.sm },
+  locationRow: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm
+  },
+  locationIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surface
+  },
+  locationCopy: { flex: 1, gap: 2 },
+  locationTitle: { ...typography.cardTitle, color: colors.text },
+  locationBody: { ...typography.caption, color: colors.muted },
+  locationActionMeta: { ...typography.caption, color: colors.muted, maxWidth: 96, textAlign: "right" },
   pressed: { opacity: 0.92 },
   disabled: { opacity: 0.55 }
 });
