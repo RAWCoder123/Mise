@@ -1,6 +1,6 @@
 begin;
 
-select plan(362);
+select plan(367);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -1235,6 +1235,58 @@ select lives_ok(
 reset role;
 select is((select par_level from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 42::numeric, 'atomic inventory policy update persisted');
 select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 20::numeric, 'policy patch does not rewrite on-hand quantity');
+
+set local role service_role;
+select lives_ok(
+  $sql$select public.service_update_inventory_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '{"estimated_unit_cost":3.75}'::jsonb,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$,
+  'trusted workflow updates estimated unit cost without rewriting on-hand quantity'
+);
+reset role;
+select is(
+  (select estimated_unit_cost from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  3.75::numeric,
+  'estimated unit cost policy update persisted'
+);
+select is(
+  (select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  20::numeric,
+  'estimated unit cost patch leaves on-hand unchanged'
+);
+
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_update_inventory_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '{"unit_cost":9}'::jsonb,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$),
+  false,
+  'service inventory workflow rejects unsupported cost-adjacent patch fields'
+);
+reset role;
+select is(
+  (select estimated_unit_cost from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  3.75::numeric,
+  'rejected unsupported cost patch leaves estimated unit cost unchanged'
+);
 
 set local role service_role;
 select is(
