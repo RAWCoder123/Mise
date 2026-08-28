@@ -13,6 +13,7 @@ import type {
   PurchaseRecommendation,
   Restaurant,
   RestaurantEmailConnection,
+  RestaurantMembership,
   SalesImport,
   SupplierItem,
   SupplierOrder,
@@ -67,10 +68,29 @@ export type StoredOperationalFindingDecision = {
   recorded_at: string;
 };
 
+export interface DemoMemberInviteRecord {
+  id: string;
+  restaurant_id: string;
+  email: string;
+  role: Exclude<RestaurantMembership["role"], "owner">;
+  status: "pending" | "claimed" | "revoked" | "expired";
+  token_hash: string;
+  created_by: string;
+  claimed_by: string | null;
+  expires_at: string;
+  created_at: string;
+  claimed_at: string | null;
+  revoked_at: string | null;
+}
+
 export interface DemoState {
-  schema_version: 13;
+  schema_version: 14;
   restaurants: Restaurant[];
   users: AppUser[];
+  /** Active demo memberships used for team directory and invite claim. */
+  memberships: RestaurantMembership[];
+  /** Pending/claimed member invites with hashed claim tokens. */
+  memberInvites: DemoMemberInviteRecord[];
   /** Durable tenant-scoped supplier identities. Names are presentation only. */
   suppliers: Supplier[];
   posSales: PosSale[];
@@ -355,9 +375,21 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 13,
+    schema_version: 14,
     restaurants: [restaurant],
     users: [user],
+    memberships: [
+      {
+        id: "00000000-0000-4000-8000-000000000021",
+        restaurant_id: DEMO_RESTAURANT_ID,
+        user_id: DEMO_USER_ID,
+        role: "owner",
+        status: "active",
+        created_at: now,
+        updated_at: now
+      }
+    ],
+    memberInvites: [],
     suppliers: buildDemoSupplierCatalog(
       [
         "Fresh Poultry Supply",
@@ -566,6 +598,8 @@ export function createInitialDemoState(
  * Version 12 introduces durable tenant-scoped supplier UUIDs. Exact normalized
  * names are used once to repair legacy state; every subsequent demo workflow
  * groups, selects recipients, and serializes content by supplier_id.
+ * Version 14 adds team memberships and hashed member-invite storage so demo
+ * invite create/claim mirrors the hosted claim-token path.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const referenceRestaurantNameMatches =
@@ -731,9 +765,13 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 13,
+    schema_version: 14,
     restaurants,
     users: raw.users ?? seeded.users,
+    memberships: Array.isArray(raw.memberships) && raw.memberships.length > 0
+      ? raw.memberships
+      : seeded.memberships,
+    memberInvites: Array.isArray(raw.memberInvites) ? raw.memberInvites : seeded.memberInvites,
     suppliers,
     posSales: raw.posSales ?? seeded.posSales,
     inventoryItems,
@@ -805,7 +843,9 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 13 ||
+      raw.schema_version !== 14 ||
+      !Array.isArray(raw.memberships) ||
+      !Array.isArray(raw.memberInvites) ||
       !Array.isArray(raw.suppliers) ||
       JSON.stringify(raw.suppliers ?? []) !== JSON.stringify(suppliers) ||
       sourceInventoryItems.some(

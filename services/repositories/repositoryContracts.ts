@@ -19,6 +19,8 @@ import type {
   RestaurantMembership,
   RestaurantOpsProfile,
   RestaurantTeamMember,
+  RestaurantMemberInvite,
+  CreatedRestaurantMemberInvite,
   SetupAttachment,
   Supplier,
   SupplierEmailPayload,
@@ -498,8 +500,8 @@ export interface MiseRepository {
   fetchRestaurantTeam(restaurantId: string): Promise<RestaurantTeamMember[]>;
   /**
    * Adds an existing Mise account to the restaurant by email. Throws
-   * TeamMembershipError("account_not_found") when no account uses the email —
-   * there is no pending-invite system.
+   * TeamMembershipError("account_not_found") when no account uses the email.
+   * Prefer createRestaurantMemberInvite when the teammate still needs a login.
    */
   addRestaurantMemberByEmail(
     restaurantId: string,
@@ -507,6 +509,16 @@ export interface MiseRepository {
     role: Exclude<RestaurantMembership["role"], "owner">
   ): Promise<RestaurantTeamMember>;
   addRestaurantMember(restaurantId: string, targetUserId: string, role: RestaurantMembership["role"]): Promise<RestaurantMembership>;
+  /** Creates a pending invite and returns the one-time claim token. */
+  createRestaurantMemberInvite(
+    restaurantId: string,
+    email: string,
+    role: Exclude<RestaurantMembership["role"], "owner">,
+    expiresInHours?: number
+  ): Promise<CreatedRestaurantMemberInvite>;
+  fetchRestaurantMemberInvites(restaurantId: string): Promise<RestaurantMemberInvite[]>;
+  revokeRestaurantMemberInvite(restaurantId: string, inviteId: string): Promise<RestaurantMemberInvite>;
+  claimRestaurantMemberInvite(claimToken: string): Promise<RestaurantMembership>;
   updateRestaurantMember(
     restaurantId: string,
     targetUserId: string,

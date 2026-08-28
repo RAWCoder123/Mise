@@ -52,6 +52,41 @@ export async function addRestaurantMember(
   return repository.addRestaurantMember(restaurantId, targetUserId, role);
 }
 
+export async function createRestaurantMemberInvite(
+  restaurantId: string,
+  email: string,
+  role: AssignableTeamRole,
+  expiresInHours?: number
+) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedEmail = normalizeTeamMemberEmail(email);
+  if (!normalizedEmail) throw new Error("Enter a valid teammate email.");
+  return repository.createRestaurantMemberInvite(
+    normalizedRestaurantId,
+    normalizedEmail,
+    role,
+    expiresInHours
+  );
+}
+
+export async function fetchRestaurantMemberInvites(restaurantId: string) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  return repository.fetchRestaurantMemberInvites(normalizedRestaurantId);
+}
+
+export async function revokeRestaurantMemberInvite(restaurantId: string, inviteId: string) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!inviteId.trim()) throw new Error("Invite is required.");
+  return repository.revokeRestaurantMemberInvite(normalizedRestaurantId, inviteId.trim());
+}
+
+export async function claimRestaurantMemberInvite(claimToken: string) {
+  return repository.claimRestaurantMemberInvite(claimToken);
+}
+
 export async function updateRestaurantMember(
   restaurantId: string,
   targetUserId: string,

@@ -28,6 +28,12 @@ import {
   type DemoState
 } from "../demoData";
 import {
+  claimDemoMemberInvite,
+  createDemoMemberInvite,
+  listDemoMemberInvites,
+  revokeDemoMemberInvite
+} from "../demo/memberInvites";
+import {
   appendDemoRecommendationActivity,
   appendDemoSupplierOrderActivity,
   seedDemoActivityFromState
@@ -988,6 +994,27 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async addRestaurantMember() {
       throw new Error("Team membership management is available only for authenticated restaurant workspaces.");
+    },
+
+    async createRestaurantMemberInvite(restaurantId, email, role, expiresInHours) {
+      return mutateDemoState((state) =>
+        createDemoMemberInvite(state, restaurantId, email, role, DEMO_USER_ID, expiresInHours)
+      );
+    },
+
+    async fetchRestaurantMemberInvites(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return listDemoMemberInvites(state, restaurantId, DEMO_USER_ID);
+    },
+
+    async revokeRestaurantMemberInvite(restaurantId, inviteId) {
+      return mutateDemoState((state) =>
+        revokeDemoMemberInvite(state, restaurantId, inviteId, DEMO_USER_ID)
+      );
+    },
+
+    async claimRestaurantMemberInvite(claimToken) {
+      return mutateDemoState((state) => claimDemoMemberInvite(state, claimToken, DEMO_USER_ID));
     },
 
     async updateRestaurantMember() {
