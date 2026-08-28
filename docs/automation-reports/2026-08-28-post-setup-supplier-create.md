@@ -14,7 +14,12 @@
 
 - Static pins in `tests/supplierRecipients.test.ts` for UI + guarded create path.
 - Demo integration in `tests/demoSupplierIdentity.test.ts`.
-- `npm run typecheck`, `npm test`, `npm run security:backend`, `npm run security:static` (recorded at tip).
+- Tip `472c6f0` on `cursor/mise-product-inspection-f0df`:
+  - `npm run typecheck` passed
+  - `npm test` 641 total / 634 pass / 0 fail / 7 cancelled (known recalculationCycles flake)
+  - `npm run security:backend` passed
+  - `npm run security:static` passed
+  - `npm run design:static` passed
 
 ## Out of scope
 
