@@ -298,3 +298,42 @@ test("demo setup name discovery stops at completion and exact stale replay is a 
     false
   );
 });
+
+test("demo createSupplier adds a post-setup durable identity visible in the recipient directory", async () => {
+  const { createLocalDemoRepository } = await import("../services/repositories/demoRepository");
+  const { buildSupplierRecipientDirectory } = await import("../services/domain/supplierRecipients");
+  const repository = createLocalDemoRepository();
+  const restaurant = await repository.resetDemoData("Square", { preset: "default" });
+  const before = await repository.fetchSuppliers(restaurant.id);
+  assert.ok(before.length > 0);
+
+  const created = await repository.createSupplier(restaurant.id, "  Post Setup Greens Co  ");
+  assert.equal(created.restaurant_id, restaurant.id);
+  assert.equal(created.display_name, "Post Setup Greens Co");
+  assert.equal(created.normalized_name, "post setup greens co");
+  assert.match(created.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+  const after = await repository.fetchSuppliers(restaurant.id);
+  assert.equal(after.some((supplier) => supplier.id === created.id), true);
+  assert.equal(after.length, before.length + 1);
+
+  await assert.rejects(
+    () => repository.createSupplier(restaurant.id, "post setup greens co"),
+    /already exists/i
+  );
+
+  const foreignRestaurantId = "10000000-0000-4000-8000-000000000099";
+  await assert.rejects(
+    () => repository.createSupplier(foreignRestaurantId, "Foreign Tenant Supply"),
+    /restaurant/i
+  );
+
+  const recipients = await repository.fetchSupplierRecipients(restaurant.id);
+  const directory = buildSupplierRecipientDirectory(restaurant.id, after, recipients);
+  const createdEntry = directory.find((entry) => entry.supplierId === created.id);
+  assert.ok(createdEntry);
+  assert.equal(createdEntry.restaurantId, restaurant.id);
+  assert.equal(createdEntry.supplierName, "Post Setup Greens Co");
+  assert.equal(createdEntry.email, null);
+  assert.equal(createdEntry.source, "current");
+});

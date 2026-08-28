@@ -161,12 +161,61 @@ test("supplier recipient route is stale-response guarded and staff read-only", (
   assert.match(screen, /resolveRestaurantScopedHubLoadState/);
   assert.match(screen, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screen, /canManage \? \(/);
+  assert.match(screen, /createSupplier\(/);
+  assert.match(screen, /created\.restaurant_id !== restaurantId/);
+  assert.match(screen, /CREATE_ACTION_KEY/);
+  assert.match(screen, /setDraftCreateName\(""\)/);
+  assert.match(screen, /editable=\{actionsEditable && !creating\}/);
+  assert.match(screen, /disabled=\{!actionsEditable \|\| creating \|\| !createNameReady\}/);
   assert.match(screen, /editable=\{actionsEditable && !saving\}/);
   assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| nameUnchanged\}/);
   assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| emailUnchanged\}/);
   assert.match(screen, /minHeight: 44/);
   assert.match(screen, /accessibilityLabel=\{copy\.saveAccessibility/);
+  assert.match(screen, /accessibilityLabel=\{copy\.createAccessibility/);
   assert.match(screen, /Record<AppLocale, SupplierCopy>/);
+  assert.match(screen, /createSectionTitle:/);
+  assert.match(screen, /createdTitle:/);
+});
+
+test("post-setup supplier creation stays on guarded create_supplier paths", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260824034152_mise_003c_durable_supplier_identity.sql",
+    "utf8"
+  );
+  const application = readFileSync("services/application/restaurant.ts", "utf8");
+  const demoRepository = readFileSync("services/repositories/demoRepository.ts", "utf8");
+  const hostedRepository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  const createAppStart = application.indexOf("export async function createSupplier(");
+  const createApp = application.slice(
+    createAppStart,
+    application.indexOf("export async function renameSupplier(", createAppStart)
+  );
+  const demoStart = demoRepository.indexOf("async createSupplier(restaurantId, displayName)");
+  const demoMethod = demoRepository.slice(
+    demoStart,
+    demoRepository.indexOf("async renameSupplier(restaurantId, supplierId, displayName)", demoStart)
+  );
+  const hostedStart = hostedRepository.indexOf("async createSupplier(restaurantId, displayName)");
+  const hostedMethod = hostedRepository.slice(
+    hostedStart,
+    hostedRepository.indexOf("async renameSupplier(restaurantId, supplierId, displayName)", hostedStart)
+  );
+
+  assert.match(migration, /create or replace function public\.create_supplier/i);
+  assert.match(migration, /private\.has_restaurant_role\(\s*p_restaurant_id,\s*array\['owner', 'admin', 'manager'\]/i);
+  assert.match(migration, /action, entity_table, entity_id, metadata[\s\S]*'supplier_created'/i);
+  assert.match(migration, /grant execute on function public\.create_supplier\(uuid, text\) to authenticated/i);
+  assert.match(createApp, /requireSupplierAuthorityId\(restaurantId, "restaurant"\)/);
+  assert.match(createApp, /requireSupplierDisplayName\(displayName\)/);
+  assert.match(createApp, /repository\.createSupplier\(/);
+  assert.match(demoMethod, /requireActiveDemoRestaurant\(state, restaurantId\)/);
+  assert.match(demoMethod, /appendDemoAuditLog/);
+  assert.match(demoMethod, /supplier_created/);
+  assert.match(hostedMethod, /client\.rpc\("create_supplier"/);
+  assert.match(hostedMethod, /throwRepositoryError\(error, restaurantId\)/);
+  assert.doesNotMatch(hostedMethod, /\.from\("suppliers"\)/);
+  assert.doesNotMatch(hostedMethod, /\.(?:insert|update|upsert|delete)\(/);
 });
 
 function recipient(patch: Partial<SupplierRecipient> = {}): SupplierRecipient {
