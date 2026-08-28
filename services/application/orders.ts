@@ -15,6 +15,8 @@ import { resolveAdvisoryPurchaseDecisionPatterns } from "../domain/purchaseDecis
 import {
   buildSupplierReliabilitySummary,
   buildSupplierOrderDeliveryEvidence,
+  buildCompletedSupplierOrderReceiveSummary,
+  type CompletedSupplierOrderReceiveSummary,
   type SupplierOrderDeliveryEvidence,
   type SupplierReliabilitySummary
 } from "../domain/supplierReliability";
@@ -138,18 +140,23 @@ export async function fetchSupplierOrders(restaurantId: string) {
   return repository.fetchSupplierOrders(restaurantId);
 }
 
-export type { SupplierOrderDeliveryEvidence };
+export type { SupplierOrderDeliveryEvidence, CompletedSupplierOrderReceiveSummary };
 
 export async function fetchSupplierOrderOperationalDetail(
   restaurantId: string,
   orderId: string
-): Promise<{ order: SupplierOrder; deliveryEvidence: SupplierOrderDeliveryEvidence[] }> {
+): Promise<{
+  order: SupplierOrder;
+  deliveryEvidence: SupplierOrderDeliveryEvidence[];
+  receiveSummary: CompletedSupplierOrderReceiveSummary;
+}> {
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
   const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
-  const [order, history, restaurant] = await Promise.all([
+  const [order, history, restaurant, inventoryItems] = await Promise.all([
     repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
     repository.fetchSupplierDeliveryHistory(normalizedRestaurantId),
-    repository.fetchRestaurant(normalizedRestaurantId)
+    repository.fetchRestaurant(normalizedRestaurantId),
+    repository.fetchInventoryItems(normalizedRestaurantId)
   ]);
   if (order.restaurant_id !== normalizedRestaurantId) {
     throw new Error("Supplier order belongs to another restaurant.");
@@ -162,6 +169,13 @@ export async function fetchSupplierOrderOperationalDetail(
       order,
       deliveries: history.deliveries,
       items: history.items
+    }),
+    receiveSummary: buildCompletedSupplierOrderReceiveSummary({
+      restaurantId: normalizedRestaurantId,
+      order,
+      deliveries: history.deliveries,
+      items: history.items,
+      inventoryItems
     })
   };
 }

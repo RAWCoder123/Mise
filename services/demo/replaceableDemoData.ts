@@ -128,6 +128,7 @@ export interface DemoState {
     damaged_quantity: number;
     missing_quantity: number;
     canonical_unit: string;
+    discrepancy_reason?: string | null;
   }>;
   /** Shared operating-task mirror of hosted restaurant_tasks. */
   restaurantTasks: import("../domain/restaurantTasks").RestaurantTask[];
@@ -1415,7 +1416,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       received_quantity: 15,
       damaged_quantity: 0,
       missing_quantity: 3,
-      canonical_unit: "each"
+      canonical_unit: "each",
+      discrepancy_reason: "Three heads were missing from the delivery."
     },
     {
       id: "00000000-0000-4000-8000-000000000e04",

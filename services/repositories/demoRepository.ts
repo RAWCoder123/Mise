@@ -3647,7 +3647,8 @@ export function createLocalDemoRepository(): MiseRepository {
             received_quantity: line.receivedQuantity,
             damaged_quantity: line.damagedQuantity ?? 0,
             missing_quantity: line.missingQuantity ?? 0,
-            canonical_unit: line.canonicalUnit
+            canonical_unit: line.canonicalUnit,
+            discrepancy_reason: line.discrepancyReason ?? null
           }))
         ];
 
