@@ -2289,6 +2289,18 @@ export function createSupabaseRepository(): MiseRepository {
       });
     },
 
+    async listEligibleCountSessionsForVerification(restaurantId) {
+      const { data, error } = await client
+        .from("inventory_count_sessions")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .in("status", ["submitted", "approved"])
+        .order("updated_at", { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return (data ?? []) as InventoryCountSessionDetail["session"][];
+    },
+
     async beginInventoryCountSession(restaurantId, note) {
       const response = await invokeOperationalWorkflow({
         action: "begin_count_session",

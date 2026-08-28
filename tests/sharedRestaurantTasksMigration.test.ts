@@ -6,6 +6,10 @@ const migration = readFileSync(
   "supabase/migrations/20260802222329_shared_restaurant_tasks.sql",
   "utf8"
 );
+const structuredEvidenceMigration = readFileSync(
+  "supabase/migrations/20260828030000_task_verification_structured_evidence.sql",
+  "utf8"
+);
 const pgTap = readFileSync(
   "supabase/tests/database/shared_restaurant_tasks.test.sql",
   "utf8"
@@ -42,12 +46,39 @@ test("shared task RPCs derive actor authority and preserve verified completion t
   );
 });
 
+test("count and receipt verification bind to live tenant operational evidence", () => {
+  assert.match(
+    structuredEvidenceMigration,
+    /Count verification requires a linked inventory count session/i
+  );
+  assert.match(
+    structuredEvidenceMigration,
+    /Count verification requires a submitted or approved count session/i
+  );
+  assert.match(
+    structuredEvidenceMigration,
+    /Receipt verification requires a completed supplier order/i
+  );
+  assert.match(structuredEvidenceMigration, /inventory_count_sessions/);
+  assert.match(structuredEvidenceMigration, /supplier_orders/);
+  assert.match(
+    structuredEvidenceMigration,
+    /grant execute on function public\.complete_restaurant_task[\s\S]*to authenticated/i
+  );
+  assert.doesNotMatch(
+    structuredEvidenceMigration,
+    /grant execute on function public\.complete_restaurant_task[\s\S]*to anon/i
+  );
+});
+
 test("database coverage exercises isolation, assignment, cycles, evidence, and unblocking", () => {
   for (const phrase of [
     "RLS hides another tenant task rows",
     "a task cannot be assigned to another tenant member",
     "dependency cycles are rejected",
     "verification-required tasks reject evidence-free completion",
+    "count verification rejects free-text count notes without a live session",
+    "the assigned staff member can complete with a linked submitted count session",
     "completing the prerequisite unblocks its dependent task",
     "staff cannot fabricate a Mise-created task"
   ]) {
