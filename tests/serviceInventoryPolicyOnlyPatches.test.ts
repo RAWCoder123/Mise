@@ -34,9 +34,17 @@ test("service inventory update rejects current_quantity and only writes policy f
   );
   assert.doesNotMatch(migration, /set\s+current_quantity\s*=\s*item_row\.current_quantity/i);
   assert.doesNotMatch(migration, /safe_patch\s*-\s*array\[[^\]]*'supplier_name'/i);
+  const categoryRenameMigration = readFileSync(
+    "supabase/migrations/20260828190000_inventory_policy_category_rename.sql",
+    "utf8"
+  );
+  assert.match(
+    categoryRenameMigration,
+    /safe_patch\s*-\s*array\['par_level',\s*'reorder_threshold',\s*'item_name',\s*'category'\]/i
+  );
   assert.match(
     edgeWorkflow,
-    /new Set\(\["par_level", "reorder_threshold"\]\)/i
+    /new Set\(\["par_level", "reorder_threshold", "item_name", "category"\]\)/i
   );
 });
 

@@ -53,6 +53,8 @@ export default function InventoryDetailScreen() {
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
+  const [itemName, setItemName] = useState("");
+  const [category, setCategory] = useState("");
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
   const [savingSettings, setSavingSettings] = useState(false);
@@ -91,6 +93,8 @@ export default function InventoryDetailScreen() {
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       if (nextOutlook) {
+        setItemName(nextOutlook.item.item_name);
+        setCategory(nextOutlook.item.category);
         setParLevel(
           formatNumber(nextOutlook.item.par_level, { maximumFractionDigits: 2, useGrouping: false })
         );
@@ -127,6 +131,8 @@ export default function InventoryDetailScreen() {
     setNoteText("");
     setParLevel("");
     setReorderThreshold("");
+    setItemName("");
+    setCategory("");
     setQuantityError(undefined);
     setSettingErrors({});
     setSavingSettings(false);
@@ -271,6 +277,20 @@ export default function InventoryDetailScreen() {
     }
 
     const nextSettingErrors: InventorySettingErrors = {
+      itemName: validateInventoryText(
+        itemName,
+        t("inventory.detail.field.itemName"),
+        160,
+        formatNumber,
+        t
+      ),
+      category: validateInventoryText(
+        category,
+        t("inventory.detail.field.category"),
+        120,
+        formatNumber,
+        t
+      ),
       parLevel: validateInventoryNumber(
         parLevel,
         t("inventory.detail.field.parLevel"),
@@ -300,6 +320,8 @@ export default function InventoryDetailScreen() {
     setMessageIsError(false);
     try {
       await updateInventoryItem(restaurantId, item.id, {
+        item_name: itemName.trim().replace(/\s+/g, " "),
+        category: category.trim().replace(/\s+/g, " "),
         par_level: parseNumber(parLevel) ?? 0,
         reorder_threshold: parseNumber(reorderThreshold) ?? 0
       });
@@ -573,8 +595,30 @@ export default function InventoryDetailScreen() {
 
           <Card>
             <Text style={styles.cardTitle}>
-              {canManage ? t("inventory.detail.parSettings") : t("inventory.detail.countSettings")}
+              {canManage ? t("inventory.detail.itemSettings") : t("inventory.detail.countSettings")}
             </Text>
+            <Field
+              label={t("inventory.detail.itemName")}
+              value={itemName}
+              onChangeText={(value) => {
+                setItemName(value);
+                setSettingErrors((current) => ({ ...current, itemName: undefined }));
+              }}
+              editable={actionsEditable && !busy}
+              error={settingErrors.itemName}
+              keyboardType="default"
+            />
+            <Field
+              label={t("inventory.detail.category")}
+              value={category}
+              onChangeText={(value) => {
+                setCategory(value);
+                setSettingErrors((current) => ({ ...current, category: undefined }));
+              }}
+              editable={actionsEditable && !busy}
+              error={settingErrors.category}
+              keyboardType="default"
+            />
             <Field
               label={t("inventory.detail.parLevel", { unit: item.unit })}
               value={parLevel}
@@ -694,6 +738,8 @@ function Field({
 }
 
 interface InventorySettingErrors {
+  itemName?: string;
+  category?: string;
   parLevel?: string;
   reorderThreshold?: string;
 }
@@ -780,6 +826,24 @@ function validateInventoryNumber(
     return t("inventory.detail.fieldRange", {
       field: label,
       maximum: formatNumber(operatingLimits.inventoryQuantity)
+    });
+  }
+  return undefined;
+}
+
+function validateInventoryText(
+  value: string,
+  label: string,
+  maximum: number,
+  formatNumber: ReturnType<typeof useLocale>["formatNumber"],
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized) return t("inventory.detail.fieldRequired", { field: label });
+  if (normalized.length > maximum || /[\u0000-\u001F\u007F]/.test(normalized)) {
+    return t("inventory.detail.fieldTextRange", {
+      field: label,
+      maximum: formatNumber(maximum)
     });
   }
   return undefined;

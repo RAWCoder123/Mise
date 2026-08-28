@@ -712,6 +712,9 @@ test("validation normalizes reads and rejects invalid mutation quantities", () =
     );
   }
   assert.deepEqual(requireInventoryItemPatch({ par_level: 10 }), { par_level: 10 });
+  assert.deepEqual(requireInventoryItemPatch({ item_name: "  Rice  Flour " }), {
+    item_name: "Rice Flour"
+  });
   assert.throws(
     () => requireInventoryItemPatch({ current_quantity: 0 }),
     /remain auditable/
@@ -719,6 +722,7 @@ test("validation normalizes reads and rejects invalid mutation quantities", () =
   for (const invalid of [-1, Number.NaN, Number.POSITIVE_INFINITY, 1_000_001]) {
     assert.throws(() => requireInventoryItemPatch({ par_level: invalid }), /Par level must be between/);
   }
+  assert.throws(() => requireInventoryItemPatch({ category: "" }), /Category must be between/);
   assert.equal(requireRecipeBaselineQuantity(0.5), 0.5);
   for (const invalid of [-1, 0, Number.NaN, Number.POSITIVE_INFINITY, 10_001]) {
     assert.throws(() => requireRecipeBaselineQuantity(invalid), /Enter a baseline quantity/);

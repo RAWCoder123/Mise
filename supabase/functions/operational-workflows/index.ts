@@ -408,7 +408,7 @@ function requireBoundedInteger(value: unknown, fieldName: string, minimum: numbe
 
 function requireInventoryPatch(value: unknown) {
   const patch = requireRecord(value, "patch");
-  const allowed = new Set(["par_level", "reorder_threshold"]);
+  const allowed = new Set(["par_level", "reorder_threshold", "item_name", "category"]);
   if (Object.keys(patch).length === 0 || Object.keys(patch).some((key) => !allowed.has(key))) {
     throw new HttpError(400, "patch contains unsupported fields.");
   }
@@ -416,7 +416,21 @@ function requireInventoryPatch(value: unknown) {
   for (const field of ["par_level", "reorder_threshold"] as const) {
     if (patch[field] !== undefined) normalized[field] = requireBoundedNumber(patch[field], field, 0, 1_000_000);
   }
+  if (patch.item_name !== undefined) {
+    normalized.item_name = requireInventoryPolicyText(patch.item_name, "item_name", 160);
+  }
+  if (patch.category !== undefined) {
+    normalized.category = requireInventoryPolicyText(patch.category, "category", 120);
+  }
   return normalized;
+}
+
+function requireInventoryPolicyText(value: unknown, fieldName: string, maximumLength: number) {
+  const text = requireBoundedString(value, fieldName, maximumLength).replace(/\s+/g, " ");
+  if (!text || text.length > maximumLength || /[\u0000-\u001F\u007F]/.test(text)) {
+    throw new HttpError(400, `${fieldName} is outside supported limits.`);
+  }
+  return text;
 }
 
 function requireCountLineUpdates(value: unknown) {

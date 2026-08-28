@@ -1237,6 +1237,63 @@ select is((select par_level from public.inventory_items where id = 'aaaaaaaa-111
 select is((select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), 20::numeric, 'policy patch does not rewrite on-hand quantity');
 
 set local role service_role;
+select lives_ok(
+  $sql$select public.service_update_inventory_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '{"item_name":"Airline Chicken","category":"Proteins"}'::jsonb,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$,
+  'trusted workflow updates inventory item name and category without rewriting on-hand quantity'
+);
+reset role;
+select is(
+  (select item_name from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  'Airline Chicken',
+  'inventory item name policy update persisted'
+);
+select is(
+  (select category from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  'Proteins',
+  'inventory category policy update persisted'
+);
+select is(
+  (select current_quantity from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  20::numeric,
+  'name and category patch leaves on-hand unchanged'
+);
+
+set local role service_role;
+select is(
+  pg_temp.try_execute($sql$select public.service_update_inventory_and_signals(
+    '22222222-2222-4222-8222-222222222222',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+    (public.service_fetch_operational_planning_snapshot(
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    )->>'revision')::bigint,
+    '{"supplier_name":"Forged"}'::jsonb,
+    '[]'::jsonb,
+    '[]'::jsonb
+  )$sql$),
+  false,
+  'service inventory workflow rejects unsupported identity-adjacent patch fields'
+);
+reset role;
+select is(
+  (select item_name from public.inventory_items where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'),
+  'Airline Chicken',
+  'rejected unsupported identity patch leaves item name unchanged'
+);
+
+set local role service_role;
 select is(
   pg_temp.try_execute($sql$select public.service_update_inventory_and_signals(
     '22222222-2222-4222-8222-222222222222',
