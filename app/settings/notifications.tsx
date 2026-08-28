@@ -34,6 +34,10 @@ const CATEGORY_COPY: Record<NotificationCategory, { titleKey: MessageKey; bodyKe
     titleKey: "settings.notifications.category.orders.title",
     bodyKey: "settings.notifications.category.orders.body"
   },
+  deliveries: {
+    titleKey: "settings.notifications.category.deliveries.title",
+    bodyKey: "settings.notifications.category.deliveries.body"
+  },
   waste: {
     titleKey: "settings.notifications.category.waste.title",
     bodyKey: "settings.notifications.category.waste.body"

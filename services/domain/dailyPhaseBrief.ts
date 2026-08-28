@@ -221,16 +221,25 @@ function buildPreServiceBrief(
     });
   }
   if (report.deliveriesToday.count > 0 || brief.outlook.deliveryStatus !== "none") {
+    const overdue = brief.outlook.deliveryStatus === "overdue";
     candidates.push({
       id: "pre-service-deliveries",
-      rank: brief.outlook.deliveryStatus === "overdue" ? 0 : 2,
-      tone: brief.outlook.deliveryStatus === "overdue" ? "urgent" : "neutral",
-      title: `${report.deliveriesToday.count} deliver${report.deliveriesToday.count === 1 ? "y" : "ies"} logged for this operating day`,
+      rank: overdue ? 0 : 2,
+      tone: overdue ? "urgent" : "neutral",
+      title: overdue
+        ? "Supplier delivery is overdue"
+        : report.deliveriesToday.count > 0
+          ? `${report.deliveriesToday.count} deliver${report.deliveriesToday.count === 1 ? "y" : "ies"} logged for this operating day`
+          : brief.outlook.deliveryStatus === "expected"
+            ? "Supplier delivery awaiting confirmation"
+            : "Supplier delivery status needs review",
       interpretation: report.deliveriesToday.count > 0
         ? "Received quantities are already reflected in the inventory ledger."
         : brief.outlook.deliveryDetail,
       route: "/orders",
-      evidenceReferences: report.deliveriesToday.lines.map((line) => `delivery:${line.id}`)
+      evidenceReferences: report.deliveriesToday.lines.length > 0
+        ? report.deliveriesToday.lines.map((line) => `delivery:${line.id}`)
+        : [`operating-brief:delivery-${brief.outlook.deliveryStatus}`]
     });
   }
   if (brief.needsApproval.length > 0) {

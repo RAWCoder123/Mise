@@ -20,6 +20,7 @@ import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, fontFamilies, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { useNotificationPreferences } from "../../contexts/NotificationPreferencesContext";
 import type { MessageKey, MessageValues } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
 import type { ActivityEvent } from "../../services/domain/activityEvents";
@@ -27,6 +28,10 @@ import type {
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
+import {
+  filterOperatingBriefByNotificationPreferences,
+  filterOperationalTodayTasksByNotificationPreferences
+} from "../../services/domain/notificationPreferences";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
   classifyOperationalTodayTaskTiming,
@@ -65,6 +70,7 @@ const HEALTH_TIER_TONE: Record<InventoryHealthTier, "success" | "warning" | "neu
 
 export default function HomeScreen() {
   const { canUseDemoMode, continueWithDemo, restaurant, user } = useMiseSession();
+  const { preferences: notificationPreferences } = useNotificationPreferences();
   const { formatCurrency, formatDate, formatNumber, t, locale } = useLocale();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [brief, setBrief] = useState<OperatingBrief | null>(null);
@@ -165,8 +171,20 @@ export default function HomeScreen() {
     router.replace("/home");
   }
 
-  const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
-  const visibleBrief = loadedRestaurantId === restaurant?.id ? brief : null;
+  const visibleSummary =
+    loadedRestaurantId === restaurant?.id && summary
+      ? {
+          ...summary,
+          operationalTasks: filterOperationalTodayTasksByNotificationPreferences(
+            summary.operationalTasks,
+            notificationPreferences
+          )
+        }
+      : null;
+  const visibleBrief =
+    loadedRestaurantId === restaurant?.id && brief
+      ? filterOperatingBriefByNotificationPreferences(brief, notificationPreferences)
+      : null;
 
   if (!restaurant) {
     return (
@@ -341,18 +359,31 @@ function RestaurantStatusCard({
   const topRisk = brief.restaurantStatus.topRisk?.trim();
   const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
+  const overdueDelivery = brief.outlook.deliveryStatus === "overdue";
 
   return (
     <StatusNotice
       variant="row"
-      tone={brief.restaurantStatus.status === "attention_needed" ? "warning" : "danger"}
+      tone={
+        overdueDelivery || brief.restaurantStatus.status === "at_risk" ? "danger" : "warning"
+      }
       title={
         primaryMenuRisk
           ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
-          : primaryApproval?.title || t(statusKey)
+          : overdueDelivery
+            ? t("home.alert.deliveryOverdue.title")
+            : primaryApproval?.title || t(statusKey)
       }
-      message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
-      onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
+      message={
+        overdueDelivery
+          ? brief.outlook.deliveryDetail
+          : topRisk
+            ? t(statusKey)
+            : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary
+      }
+      onPress={() =>
+        router.push(overdueDelivery || primaryApproval ? "/orders" : "/today")
+      }
     />
   );
 }

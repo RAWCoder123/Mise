@@ -6,12 +6,17 @@ const migration = readFileSync(
   "supabase/migrations/20260827140000_operator_notification_preferences.sql",
   "utf8"
 );
+const deliveriesMigration = readFileSync(
+  "supabase/migrations/20260828123000_operator_notification_deliveries_category.sql",
+  "utf8"
+);
 const adapter = readFileSync("services/notificationPreferences.ts", "utf8");
 const preferenceContext = readFileSync("contexts/NotificationPreferencesContext.tsx", "utf8");
 const rootLayout = readFileSync("app/_layout.tsx", "utf8");
 const settingsHub = readFileSync("app/(tabs)/settings.tsx", "utf8");
 const notificationsScreen = readFileSync("app/settings/notifications.tsx", "utf8");
 const todayScreen = readFileSync("app/(tabs)/today.tsx", "utf8");
+const homeScreen = readFileSync("app/(tabs)/home.tsx", "utf8");
 const localeSecurity = readFileSync("tests/localePersistenceSecurity.test.ts", "utf8");
 
 test("operator notification preference schema is allowlisted metadata with no direct mutation grant", () => {
@@ -66,11 +71,28 @@ test("Expo notification preference persistence loads and saves through identity-
   assert.match(rootLayout, /settings\/notifications/);
 });
 
-test("settings and today wire notification categories without push provider secrets", () => {
+test("settings, today, and home wire notification categories without push provider secrets", () => {
   assert.match(settingsHub, /settings\.preference\.notifications/);
   assert.match(settingsHub, /\/settings\/notifications/);
   assert.match(notificationsScreen, /NOTIFICATION_CATEGORIES/);
+  assert.match(notificationsScreen, /deliveries/);
   assert.match(todayScreen, /filterOperatingPlanByNotificationPreferences/);
+  assert.match(homeScreen, /filterOperatingBriefByNotificationPreferences/);
+  assert.match(homeScreen, /filterOperationalTodayTasksByNotificationPreferences/);
   assert.doesNotMatch(notificationsScreen, /expo-notifications|FCM|APNs|push.?token/i);
   assert.doesNotMatch(adapter, /expo-notifications|FCM|APNs|push.?token/i);
+});
+
+test("deliveries category remains allowlisted RPC metadata and never an authorization input", () => {
+  assert.match(deliveriesMigration, /'deliveries'/);
+  assert.match(deliveriesMigration, /never use for restaurant authorization/i);
+  assert.match(
+    deliveriesMigration,
+    /revoke update \(notification_preferences\) on table public\.users from authenticated/i
+  );
+  assert.match(
+    deliveriesMigration,
+    /key not in \([\s\S]*'deliveries'[\s\S]*\)/
+  );
+  assert.doesNotMatch(deliveriesMigration, /grant update[^;]*notification_preferences[^;]*authenticated/i);
 });
