@@ -939,6 +939,12 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizeAppUser(data as AppUser);
     },
 
+    async fetchMyDisplayName() {
+      const { data, error } = await client.rpc("get_my_display_name");
+      if (error) throwRepositoryError(error);
+      return typeof data === "string" && data.trim() ? data.trim() : null;
+    },
+
     async deleteAccount(restaurantId) {
       const { data, error } = await client.functions.invoke("delete-account", {
         body: {

@@ -515,6 +515,11 @@ export interface MiseRepository {
   removeRestaurantMember(restaurantId: string, targetUserId: string): Promise<RestaurantMembership>;
   updateMyProfile(name: string): Promise<AppUser>;
   /**
+   * Identity-free read of the signed-in operator's stored display name.
+   * Returns null when unset; never accepts a caller-selected user id.
+   */
+  fetchMyDisplayName(): Promise<string | null>;
+  /**
    * Permanently deletes the signed-in operator's account. Hosted mode invokes
    * the delete-account Edge Function with the active restaurant for firewall /
    * audit reservation (sole-owner restaurants cascade away and the auth user
