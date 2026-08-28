@@ -712,6 +712,14 @@ test("validation normalizes reads and rejects invalid mutation quantities", () =
     );
   }
   assert.deepEqual(requireInventoryItemPatch({ par_level: 10 }), { par_level: 10 });
+  assert.deepEqual(
+    requireInventoryItemPatch({ estimated_unit_cost: 2.5 }),
+    { estimated_unit_cost: 2.5 }
+  );
+  assert.throws(
+    () => requireInventoryItemPatch({ estimated_unit_cost: -1 }),
+    /Estimated unit cost must be between/
+  );
   assert.throws(
     () => requireInventoryItemPatch({ current_quantity: 0 }),
     /remain auditable/
