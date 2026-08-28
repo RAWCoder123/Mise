@@ -366,6 +366,54 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
   assert.match(projectionMigration, /after insert on public\.inventory_events/i);
 });
 
+test("inventory item create is service-owned with durable supplier and opening ledger count", () => {
+  const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
+  const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  const demoRepository = readFileSync("services/repositories/demoRepository.ts", "utf8");
+  const edge = readFileSync("supabase/functions/operational-workflows/index.ts", "utf8");
+  const migration = readFileSync("supabase/migrations/20260828080000_create_inventory_item.sql", "utf8");
+  const list = readFileSync("app/(tabs)/inventory.tsx", "utf8");
+  const createScreen = readFileSync("app/inventory/new.tsx", "utf8");
+  const createWorkflow =
+    inventoryWorkflow.match(/export\s+async\s+function\s+createInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
+
+  assert.match(createWorkflow, /requireInventoryItemCreateInput/);
+  assert.match(createWorkflow, /planInventoryItemCreate/);
+  assert.match(createWorkflow, /assertInventoryItemCreateCapacity/);
+  assert.match(createWorkflow, /findDuplicateInventoryItemName/);
+  assert.match(createWorkflow, /createInventoryItemAndSignals/);
+  assert.match(createWorkflow, /supplier_id:\s*planned\.supplier_id/);
+  assert.match(repository, /action:\s*"create_inventory_item"/i);
+  assert.match(demoRepository, /async createInventoryItemAndSignals/);
+  assert.match(demoRepository, /source:\s*"create_inventory_item"/);
+  assert.match(edge, /"create_inventory_item"/);
+  assert.match(edge, /service_create_inventory_item_and_signals/);
+  assert.match(edge, /inventory_item_created/);
+  assert.match(edge, /supplier_id: requireUuid\(item\.supplier_id/);
+  assert.doesNotMatch(
+    edge.match(/function requireInventoryCreate[\s\S]*?\n\}/)?.[0] ?? "",
+    /supplier_name/
+  );
+  assert.match(migration, /create\s+or\s+replace\s+function\s+private\.service_create_inventory_item_and_signals/i);
+  assert.match(migration, /insert into public\.inventory_events/i);
+  assert.match(migration, /source,\s*[\s\S]*'create_inventory_item'/i);
+  assert.match(migration, /event_type,\s*[\s\S]*'count'/i);
+  assert.doesNotMatch(migration, /inventory_movements/i);
+  assert.match(migration, /lock_supplier_authority/i);
+  assert.match(
+    migration,
+    /revoke\s+all\s+on\s+function\s+public\.service_create_inventory_item_and_signals[\s\S]*authenticated/i
+  );
+  assert.match(
+    migration,
+    /grant\s+execute\s+on\s+function\s+public\.service_create_inventory_item_and_signals[\s\S]*service_role/i
+  );
+  assert.match(list, /inventory\/new/);
+  assert.match(createScreen, /createInventoryItem/);
+  assert.match(createScreen, /createSupplier/);
+  assert.match(createScreen, /supplier_id/);
+});
+
 test("recipe baseline edits and regenerated guidance commit through one optimistic workflow", () => {
   const inventoryWorkflow = readFileSync("services/application/inventory.ts", "utf8");
   const repository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
@@ -790,6 +838,7 @@ test("hosted Edge and service RPC checks forge every privileged tenant boundary"
     "service_mark_operational_signals_pending",
     "service_commit_operational_signals",
     "service_update_inventory_and_signals",
+    "service_create_inventory_item_and_signals",
     "service_begin_inventory_count_session",
     "service_approve_inventory_count_session",
     "service_save_recipe_and_signals",

@@ -8,6 +8,7 @@ import {
   LeafyGreen,
   Milk,
   Package,
+  PackagePlus,
   Search,
   ShoppingCart,
   Wheat
@@ -42,7 +43,7 @@ import {
   summarizeInventoryOutlooks
 } from "../../services/miseService";
 import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
-import { canDraftInventoryCount } from "../../services/tenantAccess";
+import { canDraftInventoryCount, canManageRestaurantData } from "../../services/tenantAccess";
 import type { InventoryItem, InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
@@ -51,6 +52,7 @@ export default function InventoryScreen() {
   const { formatNumber, t } = useLocale();
   const { restaurant, memberships } = useMiseSession();
   const canDraftCount = canDraftInventoryCount(memberships, restaurant?.id ?? "");
+  const canManageInventory = canManageRestaurantData(memberships, restaurant?.id ?? "");
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
   const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
@@ -212,6 +214,14 @@ export default function InventoryScreen() {
       loading={loading}
       action={
         <View style={styles.headerActions}>
+          {canManageInventory ? (
+            <ActionIcon
+              accessibilityLabel={t("inventory.create.listAccessibility")}
+              onPress={() => router.push("/inventory/new")}
+            >
+              <PackagePlus size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
+            </ActionIcon>
+          ) : null}
           <ActionIcon
             accessibilityLabel={t("inventory.search.accessibility")}
             onPress={() => {
