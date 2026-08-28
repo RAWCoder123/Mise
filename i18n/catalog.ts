@@ -2166,14 +2166,17 @@ const en = {
   "settings.language.sessionPersistence": "Applied for this session. Account sync is not configured yet.",
 
   "settings.notifications.title": "Today alerts",
-  "settings.notifications.subtitle": "Choose which attention categories appear on Today.",
+  "settings.notifications.subtitle": "Choose which attention categories appear on Today and Home.",
   "settings.notifications.sectionTitle": "Attention categories",
   "settings.notifications.sectionBody":
-    "Muting a category hides those Today tasks for you. It does not change restaurant data or teammate views.",
+    "Muting a category hides those Today and Home attention items for you. It does not change restaurant data or teammate views.",
   "settings.notifications.category.inventory.title": "Inventory counts and stock risk",
   "settings.notifications.category.inventory.body": "Count sessions, low stock, and count-shrink patterns.",
   "settings.notifications.category.orders.title": "Orders and purchasing",
-  "settings.notifications.category.orders.body": "Recommendations, drafts, deliveries, and ordering patterns.",
+  "settings.notifications.category.orders.body": "Recommendations, drafts to send, and ordering patterns.",
+  "settings.notifications.category.deliveries.title": "Deliveries and overdue receipts",
+  "settings.notifications.category.deliveries.body":
+    "Sent orders awaiting receipt, past-due deliveries, and Home delivery alerts.",
   "settings.notifications.category.waste.title": "Waste patterns",
   "settings.notifications.category.waste.body": "Chronic waste signals that need a closer look.",
   "settings.notifications.category.recipesPos.title": "Recipes and POS",
@@ -2189,7 +2192,7 @@ const en = {
   "settings.notifications.hostedPersistence": "Saved securely to your Mise operator profile.",
   "settings.notifications.sessionPersistence":
     "Applied for this session. Account sync is not configured yet.",
-  "settings.notifications.mutedSummary": "{count} categories muted on Today for you.",
+  "settings.notifications.mutedSummary": "{count} categories muted on Today and Home for you.",
 
   "home.approvals.approve": "Approve",
   "home.approvals.approving": "Approving…",
@@ -4497,14 +4500,17 @@ const es = {
   "settings.language.sessionPersistence": "Aplicado durante esta sesión. La sincronización de la cuenta aún no está configurada.",
 
   "settings.notifications.title": "Alertas de Hoy",
-  "settings.notifications.subtitle": "Elige qué categorías de atención aparecen en Hoy.",
+  "settings.notifications.subtitle": "Elige qué categorías de atención aparecen en Hoy e Inicio.",
   "settings.notifications.sectionTitle": "Categorías de atención",
   "settings.notifications.sectionBody":
-    "Silenciar una categoría oculta esas tareas de Hoy para ti. No cambia los datos del restaurante ni la vista de tus compañeros.",
+    "Silenciar una categoría oculta esas alertas de Hoy e Inicio para ti. No cambia los datos del restaurante ni la vista de tus compañeros.",
   "settings.notifications.category.inventory.title": "Conteos e inventario en riesgo",
   "settings.notifications.category.inventory.body": "Sesiones de conteo, stock bajo y patrones de merma en conteos.",
   "settings.notifications.category.orders.title": "Pedidos y compras",
-  "settings.notifications.category.orders.body": "Recomendaciones, borradores, entregas y patrones de compra.",
+  "settings.notifications.category.orders.body": "Recomendaciones, borradores por enviar y patrones de compra.",
+  "settings.notifications.category.deliveries.title": "Entregas y recepciones atrasadas",
+  "settings.notifications.category.deliveries.body":
+    "Pedidos enviados por recibir, entregas vencidas y alertas de entrega en Inicio.",
   "settings.notifications.category.waste.title": "Patrones de desperdicio",
   "settings.notifications.category.waste.body": "Señales de desperdicio crónico que conviene revisar.",
   "settings.notifications.category.recipesPos.title": "Recetas y POS",
@@ -4520,7 +4526,7 @@ const es = {
   "settings.notifications.hostedPersistence": "Guardado de forma segura en tu perfil de operador de Mise.",
   "settings.notifications.sessionPersistence":
     "Aplicado durante esta sesión. La sincronización de la cuenta aún no está configurada.",
-  "settings.notifications.mutedSummary": "{count} categorías silenciadas en Hoy para ti.",
+  "settings.notifications.mutedSummary": "{count} categorías silenciadas en Hoy e Inicio para ti.",
 
   "home.approvals.approve": "Aprobar",
   "home.approvals.approving": "Aprobando…",
@@ -6824,14 +6830,16 @@ const zhHans = {
   "settings.language.sessionPersistence": "已应用于当前会话。账户同步尚未配置。",
 
   "settings.notifications.title": "今日提醒",
-  "settings.notifications.subtitle": "选择哪些关注类别显示在今日页。",
+  "settings.notifications.subtitle": "选择哪些关注类别显示在今日页和首页。",
   "settings.notifications.sectionTitle": "关注类别",
   "settings.notifications.sectionBody":
-    "静音某个类别只会隐藏你在今日页看到的相关任务，不会改变餐厅数据或同事视图。",
+    "静音某个类别只会隐藏你在今日页和首页看到的相关关注项，不会改变餐厅数据或同事视图。",
   "settings.notifications.category.inventory.title": "盘点和库存风险",
   "settings.notifications.category.inventory.body": "盘点会话、低库存以及盘点短缺模式。",
   "settings.notifications.category.orders.title": "订单与采购",
-  "settings.notifications.category.orders.body": "推荐、草稿、收货以及采购模式。",
+  "settings.notifications.category.orders.body": "推荐、待发送草稿以及采购模式。",
+  "settings.notifications.category.deliveries.title": "收货与逾期送达",
+  "settings.notifications.category.deliveries.body": "已发送待收货订单、逾期送达以及首页收货提醒。",
   "settings.notifications.category.waste.title": "损耗模式",
   "settings.notifications.category.waste.body": "需要关注的长期损耗信号。",
   "settings.notifications.category.recipesPos.title": "食谱与 POS",
@@ -6846,7 +6854,7 @@ const zhHans = {
   "settings.notifications.demoPersistence": "已为演示体验保存到此设备。",
   "settings.notifications.hostedPersistence": "已安全保存到您的 Mise 操作员资料。",
   "settings.notifications.sessionPersistence": "已应用于当前会话。账户同步尚未配置。",
-  "settings.notifications.mutedSummary": "已为你在今日页静音 {count} 个类别。",
+  "settings.notifications.mutedSummary": "已为你在今日页和首页静音 {count} 个类别。",
 
   "home.approvals.approve": "批准",
   "home.approvals.approving": "正在批准…",

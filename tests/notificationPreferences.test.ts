@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   NOTIFICATION_CATEGORIES,
+  filterOperatingBriefByNotificationPreferences,
   filterOperatingPlanByNotificationPreferences,
   filterOperationalTodayTasksByNotificationPreferences,
   normalizeNotificationPreferences,
@@ -13,6 +14,7 @@ import {
   type OperatorNotificationPreferences
 } from "../services/domain/notificationPreferences";
 import type { DailyOperatingPlan, OperatingPlanItem } from "../services/domain/operatingPlan";
+import type { OperatingBrief } from "../services/domain/operatingBrief";
 import type { OperationalTodayTask } from "../services/domain/todayTasks";
 
 function task(partial: {
@@ -115,6 +117,14 @@ test("notificationCategoryForTodayTask maps presentation families", () => {
     "orders"
   );
   assert.equal(
+    notificationCategoryForTodayTask(task({ id: "receive", code: "today.order.receive" })),
+    "deliveries"
+  );
+  assert.equal(
+    notificationCategoryForTodayTask(task({ id: "received", code: "today.order.received" })),
+    "deliveries"
+  );
+  assert.equal(
     notificationCategoryForTodayTask(task({ id: "waste", code: "today.waste.chronic_waste" })),
     "waste"
   );
@@ -139,23 +149,157 @@ test("notificationCategoryForTodayTask maps presentation families", () => {
   );
 });
 
+test("delivery_overdue plan items map to deliveries even without a source task", () => {
+  const overdue = planItem({ id: "late", kind: "mise_task", sourceTask: null });
+  overdue.reprioritization = {
+    code: "delivery_overdue",
+    reason: "Supplier delivery date is past."
+  };
+  assert.equal(notificationCategoryForOperatingPlanItem(overdue), "deliveries");
+});
+
 test("filterOperationalTodayTasksByNotificationPreferences hides muted categories only", () => {
   const muted: OperatorNotificationPreferences = {
     ...DEFAULT_NOTIFICATION_PREFERENCES,
     waste: false,
-    insights: false
+    insights: false,
+    deliveries: false
   };
   const tasks = [
     task({ id: "inventory", code: "today.inventory.resolve_stock" }),
     task({ id: "waste", code: "today.waste.chronic_waste" }),
     task({ id: "insight", code: "today.insight.review" }),
-    task({ id: "orders", code: "today.recommendation.review" })
+    task({ id: "orders", code: "today.recommendation.review" }),
+    task({ id: "receive", code: "today.order.receive" }),
+    task({ id: "send", code: "today.order.send" })
   ];
 
   const filtered = filterOperationalTodayTasksByNotificationPreferences(tasks, muted);
   assert.deepEqual(
     filtered.map((entry) => entry.id),
-    ["inventory", "orders"]
+    ["inventory", "orders", "send"]
+  );
+});
+
+test("muting deliveries keeps purchasing recommendations and send drafts visible", () => {
+  const muted: OperatorNotificationPreferences = {
+    ...DEFAULT_NOTIFICATION_PREFERENCES,
+    deliveries: false
+  };
+  const plan: DailyOperatingPlan = {
+    restaurantId: "restaurant_a",
+    operatingDate: "2026-08-28",
+    restaurantTimeZone: "America/New_York",
+    generatedAt: "2026-08-28T12:00:00.000Z",
+    serviceWindows: [],
+    items: [
+      planItem({
+        id: "receive",
+        bucket: "now",
+        sourceTask: task({ id: "receive", code: "today.order.receive" })
+      }),
+      planItem({
+        id: "recommend",
+        bucket: "up_next",
+        sourceTask: task({ id: "recommend", code: "today.recommendation.review" })
+      }),
+      planItem({
+        id: "send",
+        bucket: "later",
+        sourceTask: task({ id: "send", code: "today.order.send" })
+      })
+    ],
+    buckets: {
+      now: [],
+      up_next: [],
+      later: [],
+      done: []
+    }
+  };
+  plan.buckets.now = [plan.items[0]!];
+  plan.buckets.up_next = [plan.items[1]!];
+  plan.buckets.later = [plan.items[2]!];
+
+  const filtered = filterOperatingPlanByNotificationPreferences(plan, muted);
+  assert.deepEqual(
+    filtered.items.map((item) => item.id),
+    ["recommend", "send"]
+  );
+  assert.equal(filtered.buckets.now.length, 0);
+});
+
+test("filterOperatingBriefByNotificationPreferences clears overdue delivery Home attention", () => {
+  const brief: OperatingBrief = {
+    restaurantId: "restaurant_a",
+    restaurantName: "Demo",
+    operatingDate: "2026-08-28",
+    generatedAt: "2026-08-28T12:00:00.000Z",
+    restaurantStatus: {
+      status: "attention_needed",
+      summary: "Attention needed: overdue delivery",
+      lastUpdated: "2026-08-28T12:00:00.000Z",
+      dataFreshness: {
+        state: "fresh",
+        label: "Fresh",
+        asOf: "2026-08-28T12:00:00.000Z",
+        missingData: []
+      },
+      confidence: 0.8,
+      confidenceRationale: "Fresh coverage.",
+      topRisk: "Acme delivery was due 2026-08-27 and still needs receipt confirmation.",
+      topOpportunity: null,
+      nextDecisionDeadline: null
+    },
+    sinceYouWereAway: [],
+    liveActivity: [],
+    needsApproval: [],
+    outlook: {
+      expectedSales: null,
+      expectedSalesContext: null,
+      prepReadiness: "ready",
+      prepReadinessDetail: "Ready",
+      staffingCoverage: "unknown",
+      staffingDetail: "Labor coverage is not connected.",
+      deliveryStatus: "overdue",
+      deliveryDetail: "Acme delivery was due 2026-08-27 and still needs receipt confirmation.",
+      menuRisks: [],
+      supplierCutoffDeadlines: [],
+      preventableLoss: null
+    },
+    miseIsWatching: [
+      {
+        id: "watch_order_1",
+        title: "Overdue Acme receipt",
+        detail: "Delivery was due 2026-08-27 and still needs receipt confirmation.",
+        startedAt: "2026-08-27T12:00:00.000Z",
+        status: "waiting",
+        relatedEntityType: "supplier_order",
+        relatedEntityId: "order_1"
+      },
+      {
+        id: "watch_order_2",
+        title: "Draft Baker order not sent",
+        detail: "Delivery date not yet confirmed.",
+        startedAt: "2026-08-28T09:00:00.000Z",
+        status: "waiting",
+        relatedEntityType: "supplier_order",
+        relatedEntityId: "order_2"
+      }
+    ],
+    activityWindowSummary: null,
+    demoLabeled: false
+  };
+
+  const filtered = filterOperatingBriefByNotificationPreferences(brief, {
+    ...DEFAULT_NOTIFICATION_PREFERENCES,
+    deliveries: false
+  });
+
+  assert.equal(filtered.outlook.deliveryStatus, "none");
+  assert.equal(filtered.restaurantStatus.status, "on_track");
+  assert.deepEqual(
+    filtered.miseIsWatching.map((row) => row.id),
+    ["watch_order_2"]
   );
 });
 

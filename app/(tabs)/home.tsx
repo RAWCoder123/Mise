@@ -20,6 +20,7 @@ import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, fontFamilies, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { useNotificationPreferences } from "../../contexts/NotificationPreferencesContext";
 import type { MessageKey, MessageValues } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
 import type { ActivityEvent } from "../../services/domain/activityEvents";
@@ -27,6 +28,10 @@ import type {
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
+import {
+  filterOperatingBriefByNotificationPreferences,
+  filterOperationalTodayTasksByNotificationPreferences
+} from "../../services/domain/notificationPreferences";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
   classifyOperationalTodayTaskTiming,
@@ -65,6 +70,7 @@ const HEALTH_TIER_TONE: Record<InventoryHealthTier, "success" | "warning" | "neu
 
 export default function HomeScreen() {
   const { canUseDemoMode, continueWithDemo, restaurant, user } = useMiseSession();
+  const { preferences: notificationPreferences } = useNotificationPreferences();
   const { formatCurrency, formatDate, formatNumber, t, locale } = useLocale();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [brief, setBrief] = useState<OperatingBrief | null>(null);
@@ -165,8 +171,20 @@ export default function HomeScreen() {
     router.replace("/home");
   }
 
-  const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
-  const visibleBrief = loadedRestaurantId === restaurant?.id ? brief : null;
+  const visibleSummary =
+    loadedRestaurantId === restaurant?.id && summary
+      ? {
+          ...summary,
+          operationalTasks: filterOperationalTodayTasksByNotificationPreferences(
+            summary.operationalTasks,
+            notificationPreferences
+          )
+        }
+      : null;
+  const visibleBrief =
+    loadedRestaurantId === restaurant?.id && brief
+      ? filterOperatingBriefByNotificationPreferences(brief, notificationPreferences)
+      : null;
 
   if (!restaurant) {
     return (

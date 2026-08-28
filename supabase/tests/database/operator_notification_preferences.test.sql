@@ -1,6 +1,6 @@
 begin;
 
-select plan(16);
+select plan(18);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -67,7 +67,7 @@ select is(
 );
 select is(
   public.update_my_notification_preferences(
-    '{"inventory":false,"orders":true,"waste":true,"recipes_pos":true,"insights":false,"setup":true}'::jsonb
+    '{"inventory":false,"orders":true,"deliveries":true,"waste":true,"recipes_pos":true,"insights":false,"setup":true}'::jsonb
   ) ->> 'inventory',
   'false',
   'operator A can mute inventory attention for their own profile'
@@ -124,10 +124,17 @@ select is(
 );
 select is(
   public.update_my_notification_preferences(
-    '{"inventory":true,"orders":false,"waste":true,"recipes_pos":true,"insights":true,"setup":true}'::jsonb
+    '{"inventory":true,"orders":false,"deliveries":true,"waste":true,"recipes_pos":true,"insights":true,"setup":true}'::jsonb
   ) ->> 'orders',
   'false',
   'operator B can mute orders independently'
+);
+select is(
+  public.update_my_notification_preferences(
+    '{"inventory":true,"orders":false,"deliveries":false,"waste":true,"recipes_pos":true,"insights":true,"setup":true}'::jsonb
+  ) ->> 'deliveries',
+  'false',
+  'operator B can mute deliveries independently from purchasing'
 );
 reset role;
 
@@ -155,7 +162,7 @@ select set_config('request.jwt.claim.sub', '30303030-3030-4030-8030-303030303030
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select is(
   public.update_my_notification_preferences(
-    '{"inventory":true,"orders":true,"waste":true,"recipes_pos":true,"insights":true,"setup":true}'::jsonb
+    '{"inventory":true,"orders":true,"deliveries":true,"waste":true,"recipes_pos":true,"insights":true,"setup":true}'::jsonb
   ) ->> 'inventory',
   'true',
   'operator A can restore all attention categories'
@@ -164,6 +171,11 @@ select is(
   public.get_my_notification_preferences() ->> 'insights',
   'true',
   'operator A restored insights attention'
+);
+select is(
+  public.get_my_notification_preferences() ->> 'deliveries',
+  'true',
+  'normalize fills deliveries as enabled for restored profiles'
 );
 reset role;
 
