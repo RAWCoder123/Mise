@@ -9,6 +9,7 @@ import type {
   MenuItemIngredient,
   MenuItemIngredientInput,
   PosIntegration,
+  PosLocation,
   PosProvider,
   PosSale,
   PurchaseRecommendation,
@@ -692,6 +693,12 @@ export interface MiseRepository {
     to: string
   ): Promise<SquareSyncWorkflowResult>;
   fetchSquarePosIntegration(restaurantId: string): Promise<PosIntegration | null>;
+  fetchPosLocations(restaurantId: string): Promise<PosLocation[]>;
+  setPosLocationStatus(
+    restaurantId: string,
+    locationId: string,
+    status: "active" | "paused"
+  ): Promise<PosLocation>;
   fetchPosMappingReviewQueue(restaurantId: string): Promise<PosMappingReviewQueue>;
   reviewPosCatalogMapping(
     restaurantId: string,
