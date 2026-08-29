@@ -124,6 +124,7 @@ import {
   type MiseRepository,
   type RestaurantDataExport,
   type RestaurantSetupSnapshotSummary,
+  type ManualPosSalesImportSnapshotSummary,
   type SupplierSendBlockerCode,
   type SupplierSendContentApprovalResult,
   type SupplierOrderEmailSendResult
@@ -721,6 +722,21 @@ function parseSetupSnapshotSummary(data: unknown): RestaurantSetupSnapshotSummar
     posSalesRowsSaved: count("pos_sales_rows_saved"),
     attachmentMetadataSaved: count("attachment_metadata_saved"),
     skippedRecipeIngredients: count("skipped_recipe_ingredients")
+  };
+}
+
+function parseManualPosSalesImportSummary(data: unknown): ManualPosSalesImportSnapshotSummary {
+  const payload = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  const rowsSaved = Number(payload?.pos_sales_rows_saved);
+  if (!Number.isFinite(rowsSaved) || rowsSaved < 0) {
+    throw new Error("Manual POS import returned an invalid response.");
+  }
+  const importIdRaw = payload?.import_id;
+  const importId =
+    typeof importIdRaw === "string" && importIdRaw.trim().length > 0 ? importIdRaw.trim() : null;
+  return {
+    posSalesRowsSaved: Math.floor(rowsSaved),
+    importId
   };
 }
 export function createSupabaseRepository(): MiseRepository {
@@ -1321,6 +1337,15 @@ export function createSupabaseRepository(): MiseRepository {
         }
       });
       return parseSetupSnapshotSummary(response.setupSummary);
+    },
+
+    async importManualPosSalesSnapshot(restaurantId, posSales) {
+      const response = await invokeOperationalWorkflow({
+        action: "import_manual_pos_sales",
+        restaurantId,
+        posSales: posSales.map(({ restaurant_id: _restaurantId, ...sale }) => sale)
+      });
+      return parseManualPosSalesImportSummary(response.result);
     },
 
     async upsertInventoryItem(input) {

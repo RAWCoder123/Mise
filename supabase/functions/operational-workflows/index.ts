@@ -25,6 +25,7 @@ const actions = [
   "update_inventory",
   "upsert_recipe",
   "save_setup",
+  "import_manual_pos_sales",
   "begin_count_session",
   "save_count_lines",
   "submit_count_session",
@@ -113,6 +114,26 @@ Deno.serve(async (req) => {
         true,
         requireRecord(data, "setup summary")
       );
+    } else if (action === "import_manual_pos_sales") {
+      await serviceRpc(securitySupabase, "service_mark_operational_signals_pending", {
+        p_actor_user_id: user.id,
+        p_restaurant_id: restaurantId
+      });
+      const { data, error } = await supabase.rpc("import_manual_pos_sales", {
+        p_restaurant_id: restaurantId,
+        p_pos_sales: requireArray(body.posSales, "posSales", 1000)
+      });
+      if (error) throw error;
+      await refreshWithRetry(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        action,
+        body,
+        false,
+        {}
+      );
+      result = data;
     } else if (countSessionDraftActions.has(action) || action === "cancel_count_session") {
       result = await runCountSessionDraftAction(securitySupabase, user.id, restaurantId, action, body);
     } else {
@@ -464,6 +485,7 @@ function auditAction(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_updated";
   if (action === "upsert_recipe") return "recipe_baseline_updated";
   if (action === "save_setup") return "setup_signals_completed";
+  if (action === "import_manual_pos_sales") return "manual_pos_sales_import_signals_completed";
   if (action === "begin_count_session") return "inventory_count_session_started";
   if (action === "save_count_lines") return "inventory_count_lines_saved";
   if (action === "submit_count_session") return "inventory_count_session_submitted";
@@ -475,6 +497,7 @@ function auditAction(action: OperationalAction) {
 function auditEntityTable(action: OperationalAction) {
   if (action === "update_inventory") return "inventory_items";
   if (action === "upsert_recipe") return "menu_item_ingredients";
+  if (action === "import_manual_pos_sales") return "sales_imports";
   if (
     action === "begin_count_session" ||
     action === "save_count_lines" ||
@@ -490,6 +513,10 @@ function auditEntityTable(action: OperationalAction) {
 function auditEntityId(action: OperationalAction, body: Record<string, unknown>, result: unknown) {
   if (action === "update_inventory") return requireUuid(body.itemId, "itemId");
   if (action === "upsert_recipe" && body.mappingId != null) return requireUuid(body.mappingId, "mappingId");
+  if (action === "import_manual_pos_sales" && result && typeof result === "object") {
+    const importId = (result as { import_id?: unknown }).import_id;
+    return typeof importId === "string" ? importId : null;
+  }
   if (
     action === "save_count_lines" ||
     action === "submit_count_session" ||

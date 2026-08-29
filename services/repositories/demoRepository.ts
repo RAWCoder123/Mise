@@ -1736,6 +1736,77 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async importManualPosSalesSnapshot(restaurantId, posSales) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        if (posSales.length === 0) {
+          throw new Error("Paste at least one valid sales row before importing.");
+        }
+        const now = new Date().toISOString();
+        let rowsSaved = 0;
+        for (const saleInput of posSales) {
+          if (saleInput.restaurant_id !== restaurantId) {
+            throw new Error("POS sale belongs to a different restaurant.");
+          }
+          if (saleInput.source_pos !== "Manual CSV Upload") {
+            throw new Error("Only Manual CSV Upload rows can use this import path.");
+          }
+          const sourceRecordId = saleInput.source_record_id?.trim() ?? "";
+          if (!sourceRecordId) {
+            throw new Error("POS sale identity is invalid.");
+          }
+          const existing = state.posSales.find(
+            (sale) =>
+              sale.restaurant_id === restaurantId &&
+              sale.source_pos === saleInput.source_pos &&
+              sale.source_record_id === sourceRecordId
+          );
+          if (existing) {
+            Object.assign(existing, saleInput);
+          } else {
+            state.posSales.push({
+              ...saleInput,
+              id: createId("sale"),
+              created_at: now
+            });
+          }
+          rowsSaved += 1;
+        }
+
+        const importId = createId("sales_import");
+        state.salesImports.push({
+          id: importId,
+          restaurant_id: restaurantId,
+          pos_integration_id: null,
+          import_type: "csv_upload",
+          status: "completed",
+          source_file_name: null,
+          records_processed: rowsSaved,
+          error_message: null,
+          metadata: {
+            source: "manual_csv_import",
+            storage_status: "rows_only",
+            raw_file_stored: false
+          },
+          imported_at: now
+        });
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "manual_pos_sales_imported",
+          entity_table: "sales_imports",
+          entity_id: importId,
+          metadata: {
+            pos_sales_rows_saved: rowsSaved,
+            source_pos: "Manual CSV Upload"
+          }
+        });
+        return {
+          posSalesRowsSaved: rowsSaved,
+          importId
+        };
+      });
+    },
+
     async upsertInventoryItem(input) {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, input.restaurant_id);
