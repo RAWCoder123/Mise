@@ -495,6 +495,18 @@ export interface InventoryControlSummary {
   nextStep: string;
 }
 
+export type RecipeTheoreticalFoodCostStatus = "complete" | "incomplete" | "empty";
+
+/** Dish food cost from qty × estimated_unit_cost; incomplete when any ingredient cost is missing or ≤ 0. */
+export interface RecipeTheoreticalFoodCost {
+  status: RecipeTheoreticalFoodCostStatus;
+  /** Rounded currency amount when at least one ingredient is priced; null when none are. */
+  amount: number | null;
+  pricedIngredientCount: number;
+  missingCostIngredientCount: number;
+  ingredientCount: number;
+}
+
 export interface RecipeBaselineItem {
   menuItemId?: string | null;
   menu_item_name: string;
@@ -502,6 +514,7 @@ export interface RecipeBaselineItem {
   linkedInventoryItems: string[];
   ingredients: RecipeBaselineIngredient[];
   todayQuantitySold: number;
+  theoreticalFoodCost?: RecipeTheoreticalFoodCost;
   recipeRevision?: number;
   confirmedRevision?: number | null;
   confirmedAt?: string | null;

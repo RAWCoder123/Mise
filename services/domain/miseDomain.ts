@@ -34,6 +34,7 @@ import { formatQuantity, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../.
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
+import { computeRecipeTheoreticalFoodCost } from "./recipeTheoreticalCost";
 import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
@@ -788,23 +789,25 @@ export function buildRecipeBaselineSummary(
       const todayQuantitySold = todaySales
         .filter((sale) => linkedMappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
         .reduce((sum, sale) => sum + sale.quantity_sold, 0);
+      const ingredients = linkedMappings
+        .map((mapping) => ({
+          mappingId: mapping.id,
+          inventoryItemId: mapping.inventory_item_id,
+          itemName: itemNames.get(mapping.inventory_item_id) ?? "Inventory item",
+          quantityUsedPerSale: mapping.quantity_used_per_sale,
+          unit: mapping.unit
+        }))
+        .sort((a, b) => a.itemName.localeCompare(b.itemName));
 
       return {
         menu_item_name: menuItemName,
         ingredientCount: linkedMappings.length,
-        ingredients: linkedMappings
-          .map((mapping) => ({
-            mappingId: mapping.id,
-            inventoryItemId: mapping.inventory_item_id,
-            itemName: itemNames.get(mapping.inventory_item_id) ?? "Inventory item",
-            quantityUsedPerSale: mapping.quantity_used_per_sale,
-            unit: mapping.unit
-          }))
-          .sort((a, b) => a.itemName.localeCompare(b.itemName)),
+        ingredients,
         linkedInventoryItems: linkedMappings
           .map((mapping) => itemNames.get(mapping.inventory_item_id) ?? "Inventory item")
           .sort((a, b) => a.localeCompare(b)),
-        todayQuantitySold
+        todayQuantitySold,
+        theoreticalFoodCost: computeRecipeTheoreticalFoodCost(ingredients, restaurantInventory)
       };
     })
     .sort((a, b) => b.todayQuantitySold - a.todayQuantitySold || a.menu_item_name.localeCompare(b.menu_item_name));
