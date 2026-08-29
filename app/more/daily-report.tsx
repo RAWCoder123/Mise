@@ -43,6 +43,8 @@ import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
 } from "../../services/domain/wasteAnalysis";
+import { presentDailyReportMemory } from "../../services/presentation/dailyReportMemoryLabel";
+import type { AppLocale } from "../../i18n/catalog";
 
 function BackAction() {
   const { t } = useLocale();
@@ -54,7 +56,7 @@ function BackAction() {
 }
 
 export default function DailyReportScreen() {
-  const { formatCompactCurrency, formatNumber, t } = useLocale();
+  const { formatCompactCurrency, formatNumber, locale, t } = useLocale();
   const { restaurant } = useMiseSession();
   const [report, setReport] = useState<DailyOpsReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,7 @@ export default function DailyReportScreen() {
     setLoadedRestaurantId(null);
     setError(false);
     setLoading(Boolean(restaurant));
-  }, [restaurant?.id]);
+  }, [restaurant?.id, locale]);
 
   const load = useCallback(async () => {
     if (!restaurant) {
@@ -82,7 +84,7 @@ export default function DailyReportScreen() {
     setLoading(true);
     setError(false);
     try {
-      const nextReport = await fetchDailyOpsReport(restaurantId);
+      const nextReport = await fetchDailyOpsReport(restaurantId, { locale });
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setReport(nextReport);
       setLoadedRestaurantId(restaurantId);
@@ -99,7 +101,7 @@ export default function DailyReportScreen() {
         setLoading(false);
       }
     }
-  }, [restaurant?.id]);
+  }, [restaurant?.id, locale]);
 
   useFocusEffect(
     useCallback(() => {
@@ -547,20 +549,7 @@ export default function DailyReportScreen() {
             </Card>
 
             <SectionHeader title={t("dailyReport.section.learning")} />
-            <Card>
-              <Text style={styles.blockLabel}>{visibleReport.learning.credibilityLabel}</Text>
-              <Text style={styles.summaryCopy}>
-                {t("dailyReport.learning.score", {
-                  score: formatNumber(visibleReport.learning.credibilityScore)
-                })}
-              </Text>
-              {visibleReport.learning.memoryCopy ? (
-                <Text style={styles.summaryCopy}>{visibleReport.learning.memoryCopy}</Text>
-              ) : null}
-              <Text style={styles.metaLine}>
-                {visibleReport.learning.memoryNextStep ?? visibleReport.learning.credibilityNextStep}
-              </Text>
-            </Card>
+            <LearningMemoryCard learning={visibleReport.learning} locale={locale} t={t} formatNumber={formatNumber} />
 
             <SectionHeader title={t("dailyReport.section.advice")} />
             <Card>
@@ -590,6 +579,34 @@ export default function DailyReportScreen() {
         ) : null}
       </View>
     </Screen>
+  );
+}
+
+function LearningMemoryCard({
+  learning,
+  locale,
+  t,
+  formatNumber
+}: {
+  learning: DailyOpsReport["learning"];
+  locale: AppLocale;
+  t: ReturnType<typeof useLocale>["t"];
+  formatNumber: ReturnType<typeof useLocale>["formatNumber"];
+}) {
+  const presented = presentDailyReportMemory(locale, learning);
+  return (
+    <Card>
+      <Text style={styles.blockLabel}>{learning.credibilityLabel}</Text>
+      <Text style={styles.summaryCopy}>
+        {t("dailyReport.learning.score", {
+          score: formatNumber(learning.credibilityScore)
+        })}
+      </Text>
+      {presented.memoryCopy ? <Text style={styles.summaryCopy}>{presented.memoryCopy}</Text> : null}
+      <Text style={styles.metaLine}>
+        {presented.memoryNextStep ?? learning.credibilityNextStep}
+      </Text>
+    </Card>
   );
 }
 
