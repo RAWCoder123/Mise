@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  autonomyLevelLabel,
   explicitActionStatusLabel,
   mapLegacyInventoryStatus,
   mapRecommendationToOrderStatus,
@@ -68,4 +69,12 @@ test("order and action status helpers stay explicit", () => {
   assert.equal(presentSupportedSupplierOrderStatus("completed"), "Received");
   assert.equal(presentSupportedRecommendationStatus("pending"), "WaitingForApproval");
   assert.equal(orderOperationalStatusLabel("DraftedByMise"), "Drafted by Mise");
+});
+
+test("autonomy level English fallbacks stay stable for domain callers", () => {
+  assert.equal(autonomyLevelLabel(1), "Observe");
+  assert.equal(autonomyLevelLabel(2), "Recommend");
+  assert.equal(autonomyLevelLabel(3), "Prepare");
+  assert.equal(autonomyLevelLabel(4), "Execute");
+  assert.equal(autonomyLevelLabel(5), "Optimize");
 });

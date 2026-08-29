@@ -11,13 +11,17 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
-import { autonomyLevelLabel } from "../../services/domain/operationalStatus";
 import type { RestaurantAutonomyRule } from "../../services/domain/restaurantAutonomy";
 import {
   createSafeDefaultAutonomyRules,
   fetchAutonomyRules,
   saveAutonomyRule
 } from "../../services/miseService";
+import {
+  presentAutonomyActionTypeLabel,
+  presentAutonomyCategoryLabel,
+  presentAutonomyLevelLabel
+} from "../../services/presentation/autonomyLabels";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -218,12 +222,12 @@ export default function AutonomySettingsScreen() {
           const isSend = rule.actionType === "send_supplier_order";
           return (
             <View key={rule.id} style={styles.card}>
-              <Text style={styles.title}>{String(rule.actionType).replace(/_/g, " ")}</Text>
+              <Text style={styles.title}>{presentAutonomyActionTypeLabel(String(rule.actionType), t)}</Text>
               <Text style={styles.meta}>
-                {rule.operationalCategory}
+                {presentAutonomyCategoryLabel(rule.operationalCategory, t)}
                 {" · "}
                 {t("autonomy.level", {
-                  level: `${formatNumber(rule.maximumAutonomyLevel)} (${autonomyLevelLabel(rule.maximumAutonomyLevel)})`
+                  level: `${formatNumber(rule.maximumAutonomyLevel)} (${presentAutonomyLevelLabel(rule.maximumAutonomyLevel, t)})`
                 })}
               </Text>
               <Text style={styles.status}>
