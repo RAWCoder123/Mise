@@ -317,7 +317,10 @@ test("mapping review UI presents suggestions as provisional and updates the queu
   assert.match(screen, /mapping\.externalName/);
   assert.match(screen, /mapping\.suggestedMenuItemName/);
   assert.match(screen, /pos\.mappings\.suggestionBody/);
-  assert.match(screen, /queue\.menuItems\.map/);
+  assert.match(screen, /filterPosMappingMenuItemsBySearch/);
+  assert.match(screen, /POS_MAPPING_MENU_ITEM_SEARCH_THRESHOLD/);
+  assert.match(screen, /filteredMenuItems\.map/);
+  assert.match(screen, /pos\.mappings\.search\.placeholder/);
   assert.match(screen, /accessibilityRole="radio"/);
   assert.match(screen, /reviewPosCatalogMapping/);
   assert.match(screen, /mappings: current\.mappings\.filter\(\(mapping\) => mapping\.id !== mappingId\)/);
