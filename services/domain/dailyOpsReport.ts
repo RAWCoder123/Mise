@@ -7,6 +7,7 @@ import type {
   PosSale,
   TodaySummary
 } from "../../types/mise";
+import type { LearningMemoryPresentationDescriptor } from "../../types/presentation";
 import type { OperationalTodayTask } from "./todayTasks";
 import type { RecordedSalesTrendPoint } from "./salesTrends";
 import {
@@ -114,6 +115,8 @@ export interface DailyOpsReport {
     memoryLabel: string | null;
     memoryCopy: string | null;
     memoryNextStep: string | null;
+    /** Locale-neutral codes so the UI can present memory copy without inventing facts. */
+    memoryPresentation: LearningMemoryPresentationDescriptor | null;
   };
   managerAdvice: {
     actions: DailyOpsManagerAction[];
@@ -214,7 +217,8 @@ export function buildDailyOpsReport(input: DailyOpsReportInput): DailyOpsReport 
       credibilityNextStep: summary.credibility.nextStep,
       memoryLabel: learningMemory?.label ?? null,
       memoryCopy: learningMemory?.operatorCopy ?? null,
-      memoryNextStep: learningMemory?.nextStep ?? null
+      memoryNextStep: learningMemory?.nextStep ?? null,
+      memoryPresentation: learningMemory?.presentation ?? null
     },
     managerAdvice: {
       actions: rankManagerActions({

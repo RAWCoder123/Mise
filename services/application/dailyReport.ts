@@ -1,4 +1,4 @@
-import { translate } from "../../i18n/catalog";
+import { translate, type AppLocale } from "../../i18n/catalog";
 import {
   buildDailyOpsReport,
   type DailyOpsDeliveryLine,
@@ -20,12 +20,23 @@ import { fetchWasteAnalysis } from "./waste";
 
 export type { DailyOpsReport, DailyOpsDeliveryLine };
 
+export interface FetchDailyOpsReportOptions {
+  /** Operator UI locale for Ask Mise closeout briefing text. Defaults to English. */
+  locale?: AppLocale;
+}
+
 /**
  * Loads closeout inputs and builds a structured daily ops report.
  */
-export async function fetchDailyOpsReport(restaurantId: string): Promise<DailyOpsReport> {
+export async function fetchDailyOpsReport(
+  restaurantId: string,
+  options?: FetchDailyOpsReportOptions
+): Promise<DailyOpsReport> {
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+
+  const locale: AppLocale = options?.locale ?? "en";
+  const intlLocale = locale === "zh-Hans" ? "zh-CN" : locale;
 
   const [
     restaurant,
@@ -62,12 +73,12 @@ export async function fetchDailyOpsReport(restaurantId: string): Promise<DailyOp
       summary,
       insights,
       helpers: {
-        locale: "en",
-        t: (key, values) => translate("en", key, values),
+        locale,
+        t: (key, values) => translate(locale, key, values),
         formatNumber: (value) =>
-          new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value),
+          new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 1 }).format(value),
         formatCompactCurrency: (value, currency = restaurant.currency) =>
-          new Intl.NumberFormat("en-US", {
+          new Intl.NumberFormat(intlLocale, {
             style: "currency",
             currency,
             notation: "compact",

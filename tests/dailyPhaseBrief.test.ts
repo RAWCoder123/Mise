@@ -300,7 +300,8 @@ function fixtures(options: { allTasksComplete?: boolean } = {}) {
       credibilityNextStep: "Keep reviewing outcomes.",
       memoryLabel: "Friday demand",
       memoryCopy: "Friday dinner demand is usually higher.",
-      memoryNextStep: "Review the next Friday."
+      memoryNextStep: "Review the next Friday.",
+      memoryPresentation: null
     },
     managerAdvice: { actions: [], askBriefingText: null }
   };
