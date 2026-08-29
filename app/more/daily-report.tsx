@@ -34,6 +34,7 @@ import {
   fetchDailyOpsReport,
   type DailyOpsReport
 } from "../../services/miseService";
+import { presentOperatingSummaryLabel } from "../../services/presentation/operatingSummaryLabel";
 import { captureMiseError } from "../../services/telemetry";
 import type {
   SupplierReliabilityReason,
@@ -149,7 +150,9 @@ export default function DailyReportScreen() {
             <Card>
               <Text style={styles.closeoutEyebrow}>{t("dailyReport.closeout.eyebrow")}</Text>
               <Text style={styles.closeoutTitle}>{visibleReport.day.restaurantName}</Text>
-              <Text style={styles.summaryCopy}>{visibleReport.day.operatingSummary}</Text>
+              <Text style={styles.summaryCopy}>
+                {presentOperatingSummaryLabel(visibleReport.day.operatingSummary, t)}
+              </Text>
               <View style={styles.badgeRow}>
                 <Badge label={visibleReport.day.miseStatus} tone="warning" />
                 <Badge
