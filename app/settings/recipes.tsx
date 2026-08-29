@@ -623,7 +623,7 @@ function RecipeRow({
   onSave: (mappingId: string, quantity: string, options?: { immediate?: boolean; cancel?: boolean }) => void;
   onConfirm: () => void;
 }) {
-  const { formatNumber, parseNumber, t } = useLocale();
+  const { formatCurrency, formatNumber, parseNumber, t } = useLocale();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -639,6 +639,18 @@ function RecipeRow({
       return null;
     }
   }
+
+  const foodCost = item.theoreticalFoodCost;
+  const foodCostLabel =
+    foodCost?.status === "complete" && foodCost.amount !== null
+      ? t("recipes.row.foodCost.complete", { amount: formatCurrency(foodCost.amount, { maximumFractionDigits: 2 }) })
+      : foodCost?.status === "incomplete" && foodCost.amount !== null
+        ? t("recipes.row.foodCost.incompletePartial", {
+            amount: formatCurrency(foodCost.amount, { maximumFractionDigits: 2 })
+          })
+        : foodCost?.status === "incomplete"
+          ? t("recipes.row.foodCost.incomplete")
+          : null;
 
   return (
     <View style={styles.recipeRow}>
@@ -661,6 +673,17 @@ function RecipeRow({
               count: formatNumber(item.ingredientCount)
             })}
           </Text>
+          {foodCostLabel ? (
+            <Text
+              style={[
+                styles.foodCostText,
+                foodCost?.status === "incomplete" ? styles.foodCostIncomplete : null
+              ]}
+              accessibilityLabel={foodCostLabel}
+            >
+              {foodCostLabel}
+            </Text>
+          ) : null}
           <View style={styles.authorityRow}>
             <Badge
               label={t(item.authorityReady ? "recipes.authority.confirmed" : "recipes.authority.unconfirmed")}
@@ -951,6 +974,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     marginTop: 3
+  },
+  foodCostText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
+    marginTop: 4
+  },
+  foodCostIncomplete: {
+    color: colors.caution,
+    fontWeight: "500"
   },
   authorityRow: {
     flexDirection: "row",
