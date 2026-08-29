@@ -38,3 +38,15 @@ test("POS readiness failures remain visible and retryable instead of failing ope
   assert.match(pos, /onAction=\{\(\) => void loadPilotReadiness\(\)\}/);
   assert.match(pos, /readinessLoadError \? \(/);
 });
+
+test("Ask Mise briefing presents known miseStatus through shared i18n labels", () => {
+  const askMise = readFileSync("services/ai/askMise.ts", "utf8");
+  assert.match(askMise, /presentMiseStatusLabel\(summary\.miseStatus, t\)/);
+  assert.doesNotMatch(
+    askMise,
+    /ask\.answer\.briefing\.lead[\s\S]{0,120}status:\s*summary\.miseStatus/
+  );
+
+  const dailyReport = readFileSync("app/more/daily-report.tsx", "utf8");
+  assert.match(dailyReport, /presentMiseStatusLabel\(visibleReport\.day\.miseStatus, t\)/);
+});

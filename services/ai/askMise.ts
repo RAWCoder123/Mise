@@ -1,6 +1,7 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
 import type { OperationalTodayTask } from "../domain/todayTasks";
+import { presentMiseStatusLabel } from "../presentation/miseStatusLabel";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
 export type AskMiseIntent = "priorities" | "stock" | "orders" | "sales" | "briefing" | "prep" | "waste" | "general";
@@ -201,7 +202,7 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       const answer = [
         t("ask.answer.briefing.lead", {
           restaurant: restaurant.name,
-          status: summary.miseStatus
+          status: presentMiseStatusLabel(summary.miseStatus, t)
         }),
         t("ask.answer.briefing.board", {
           tasks: helpers.formatNumber(openTasks.length),
