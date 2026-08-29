@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { ArrowLeft, ClipboardList } from "lucide-react-native";
+import { ArrowLeft, ClipboardList, Search } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -15,6 +15,10 @@ import { colors, icon, iconStroke, radii, typography } from "../../constants/the
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import {
+  filterRestaurantTaskDependenciesBySearch,
+  RESTAURANT_TASK_DEPENDENCY_SEARCH_THRESHOLD
+} from "../../services/domain/restaurantTaskDependencySearch";
 import {
   completeOperatorTask,
   createSharedRestaurantTask,
@@ -70,7 +74,7 @@ function formatDueLabel(dueAt: string | null, t: ReturnType<typeof useLocale>["t
 }
 
 export default function CreateOperatorTaskScreen() {
-  const { t } = useLocale();
+  const { formatNumber, t } = useLocale();
   const { restaurant, role, user } = useMiseSession();
   const [scope, setScope] = useState<TaskScope>("restaurant");
   const [title, setTitle] = useState("");
@@ -91,6 +95,7 @@ export default function CreateOperatorTaskScreen() {
   const [checklistText, setChecklistText] = useState("");
   const [assigneeUserId, setAssigneeUserId] = useState<string | null>(null);
   const [dependencyId, setDependencyId] = useState<string | null>(null);
+  const [dependencyQuery, setDependencyQuery] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -113,6 +118,7 @@ export default function CreateOperatorTaskScreen() {
     setError(null);
     setSaved(false);
     setBusyTaskId(null);
+    setDependencyQuery("");
   }, [restaurant?.id]);
 
   const priorityOptions = useMemo<readonly SegmentOption<OperatorTaskPriority>[]>(
@@ -265,6 +271,20 @@ export default function CreateOperatorTaskScreen() {
   );
   const visibleOpenSharedTasks = hubReady ? openSharedTasks : [];
   const visibleCompletedSharedTasks = hubReady ? completedSharedTasks : [];
+  const showDependencySearch =
+    visibleOpenSharedTasks.length > RESTAURANT_TASK_DEPENDENCY_SEARCH_THRESHOLD;
+  const filteredDependencyTasks = useMemo(
+    () =>
+      filterRestaurantTaskDependenciesBySearch(
+        visibleOpenSharedTasks,
+        showDependencySearch ? dependencyQuery : ""
+      ),
+    [dependencyQuery, showDependencySearch, visibleOpenSharedTasks]
+  );
+  const dependencySearchNoMatches =
+    showDependencySearch &&
+    dependencyQuery.trim().length > 0 &&
+    filteredDependencyTasks.length === 0;
   const assignableTeam = useMemo(
     () =>
       (hubReady ? team : []).filter(
@@ -587,22 +607,56 @@ export default function CreateOperatorTaskScreen() {
             />
 
             <SectionHeader title={t("operatorTasks.field.dependency")} subtitle={t("operatorTasks.field.dependencyHint")} />
-            <View style={styles.choiceList}>
+            <View style={styles.choiceList} accessibilityRole="radiogroup">
+              {showDependencySearch ? (
+                <View style={styles.dependencySearchBox}>
+                  <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
+                  <TextInput
+                    accessibilityLabel={t("operatorTasks.dependency.search.accessibility")}
+                    accessibilityHint={t("operatorTasks.dependency.search.hint")}
+                    accessibilityState={{ disabled: !actionsEditable }}
+                    value={dependencyQuery}
+                    onChangeText={setDependencyQuery}
+                    editable={actionsEditable}
+                    placeholder={t("operatorTasks.dependency.search.placeholder")}
+                    placeholderTextColor={colors.faint}
+                    returnKeyType="search"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    style={styles.dependencySearchInput}
+                  />
+                </View>
+              ) : null}
+              {showDependencySearch ? (
+                <Text style={styles.dependencySearchMeta} accessibilityLiveRegion="polite">
+                  {t("operatorTasks.dependency.search.showing", {
+                    shown: formatNumber(filteredDependencyTasks.length),
+                    total: formatNumber(visibleOpenSharedTasks.length)
+                  })}
+                </Text>
+              ) : null}
               <ChoiceRow
                 label={t("operatorTasks.dependency.none")}
                 selected={!dependencyId}
                 onPress={() => setDependencyId(null)}
+                disabled={!actionsEditable}
               />
-              {visibleOpenSharedTasks.slice(0, 12).map((task) => (
-                <ChoiceRow
-                  key={task.id}
-                  label={task.title}
-                  detail={task.status}
-                  selected={dependencyId === task.id}
-                  onPress={() => setDependencyId(task.id)}
-                  disabled={!actionsEditable}
-                />
-              ))}
+              {dependencySearchNoMatches ? (
+                <Text style={styles.dependencySearchEmpty} accessibilityLiveRegion="polite">
+                  {t("operatorTasks.dependency.search.empty")}
+                </Text>
+              ) : (
+                filteredDependencyTasks.map((task) => (
+                  <ChoiceRow
+                    key={task.id}
+                    label={task.title}
+                    detail={task.status}
+                    selected={dependencyId === task.id}
+                    onPress={() => setDependencyId(task.id)}
+                    disabled={!actionsEditable}
+                  />
+                ))
+              )}
             </View>
           </>
         ) : null}
@@ -859,6 +913,33 @@ const styles = StyleSheet.create({
   },
   choiceList: {
     gap: 8
+  },
+  dependencySearchBox: {
+    minHeight: 48,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  dependencySearchInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    color: colors.text,
+    ...typography.body
+  },
+  dependencySearchMeta: {
+    ...typography.caption,
+    color: colors.muted
+  },
+  dependencySearchEmpty: {
+    ...typography.body,
+    color: colors.muted,
+    paddingVertical: 4
   },
   choiceRow: {
     minHeight: 44,
