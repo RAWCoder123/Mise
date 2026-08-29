@@ -1957,8 +1957,52 @@ const en = {
   "dailyReport.signal.inventory": "Inventory",
   "dailyReport.signal.sales": "Sales",
   "dailyReport.signal.cost": "Cost",
+  "dailyReport.signal.empty.waste": "No waste signal for closeout.",
+  "dailyReport.signal.empty.prep": "No prep signal for closeout.",
+  "dailyReport.signal.empty.inventory": "No inventory signal for closeout.",
+  "dailyReport.signal.empty.sales": "No sales signal for closeout.",
+  "dailyReport.signal.empty.cost": "No cost signal for closeout.",
   "dailyReport.learning.score": "Credibility score {score}",
+  "dailyReport.learning.credibility.high": "Automation credibility high",
+  "dailyReport.learning.credibility.building": "Credibility building",
+  "dailyReport.learning.credibility.needsEvidence": "More operator evidence needed",
+  "dailyReport.learning.nextStep.addRecipes":
+    "Add missing recipe baselines before trusting automated ordering.",
+  "dailyReport.learning.nextStep.approveOrders":
+    "Approve or adjust the supplier queue so Mise learns your ordering judgment.",
+  "dailyReport.learning.nextStep.updateCounts":
+    "Keep updating counts after service so Mise can sharpen reorder timing.",
   "dailyReport.advice.open": "Open",
+  "dailyReport.advice.stockRisk.title.one": "{count} stock item needs attention",
+  "dailyReport.advice.stockRisk.title.other": "{count} stock items need attention",
+  "dailyReport.advice.stockRisk.detail":
+    "Review critical and low projected coverage before the next service.",
+  "dailyReport.advice.pendingOrders.title.one": "{count} order recommendation waiting",
+  "dailyReport.advice.pendingOrders.title.other": "{count} order recommendations waiting",
+  "dailyReport.advice.pendingOrders.detail":
+    "Approve or dismiss pending purchase recommendations.",
+  "dailyReport.advice.openWork.title.one": "{count} open task still on the board",
+  "dailyReport.advice.openWork.title.other": "{count} open tasks still on the board",
+  "dailyReport.advice.openWork.detail":
+    "Close out workflow and operator tasks before leaving.",
+  "dailyReport.advice.allClear.title": "Closeout looks clear",
+  "dailyReport.advice.allClear.detail":
+    "No urgent stock, order, or task blockers for this operating day.",
+  "dailyReport.advice.inventoryAlerts.title.one": "{count} inventory alert needs review",
+  "dailyReport.advice.inventoryAlerts.title.other": "{count} inventory alerts need review",
+  "dailyReport.advice.inventoryAlerts.detail":
+    "Mise found stock counts that may need a count update or supplier order.",
+  "dailyReport.advice.inventoryAlerts.context":
+    "Coverage is based on current counts and recent sales.",
+  "dailyReport.advice.suggestedOrder.title": "Suggested order is ready to approve",
+  "dailyReport.advice.suggestedOrder.prepared.one":
+    "Mise prepared {count} item for supplier review.",
+  "dailyReport.advice.suggestedOrder.prepared.other":
+    "Mise prepared {count} items for supplier review.",
+  "dailyReport.advice.suggestedOrder.detail":
+    "Approve only what you want sent or copied today.",
+  "dailyReport.advice.stable.title": "{item} looks stable",
+  "dailyReport.advice.stable.detail": "No supplier action needed right now.",
   "dailyReport.severity.urgent": "Urgent",
   "dailyReport.severity.warning": "Warning",
   "dailyReport.severity.info": "Info",
@@ -4255,8 +4299,53 @@ const es = {
   "dailyReport.signal.inventory": "Inventario",
   "dailyReport.signal.sales": "Ventas",
   "dailyReport.signal.cost": "Costo",
+  "dailyReport.signal.empty.waste": "Sin señal de desperdicio para el cierre.",
+  "dailyReport.signal.empty.prep": "Sin señal de prep para el cierre.",
+  "dailyReport.signal.empty.inventory": "Sin señal de inventario para el cierre.",
+  "dailyReport.signal.empty.sales": "Sin señal de ventas para el cierre.",
+  "dailyReport.signal.empty.cost": "Sin señal de costo para el cierre.",
   "dailyReport.learning.score": "Puntaje de credibilidad {score}",
+  "dailyReport.learning.credibility.high": "Credibilidad de automatización alta",
+  "dailyReport.learning.credibility.building": "Credibilidad en construcción",
+  "dailyReport.learning.credibility.needsEvidence": "Se necesita más evidencia del operador",
+  "dailyReport.learning.nextStep.addRecipes":
+    "Agrega las bases de recetas faltantes antes de confiar en el pedido automatizado.",
+  "dailyReport.learning.nextStep.approveOrders":
+    "Aprueba o ajusta la cola de proveedores para que Mise aprenda tu criterio de pedido.",
+  "dailyReport.learning.nextStep.updateCounts":
+    "Sigue actualizando conteos después del servicio para que Mise afine el momento de reorden.",
   "dailyReport.advice.open": "Abrir",
+  "dailyReport.advice.stockRisk.title.one": "{count} artículo de stock necesita atención",
+  "dailyReport.advice.stockRisk.title.other": "{count} artículos de stock necesitan atención",
+  "dailyReport.advice.stockRisk.detail":
+    "Revisa la cobertura crítica y baja proyectada antes del próximo servicio.",
+  "dailyReport.advice.pendingOrders.title.one": "{count} recomendación de pedido en espera",
+  "dailyReport.advice.pendingOrders.title.other": "{count} recomendaciones de pedido en espera",
+  "dailyReport.advice.pendingOrders.detail":
+    "Aprueba o descarta las recomendaciones de compra pendientes.",
+  "dailyReport.advice.openWork.title.one": "{count} tarea abierta sigue en el tablero",
+  "dailyReport.advice.openWork.title.other": "{count} tareas abiertas siguen en el tablero",
+  "dailyReport.advice.openWork.detail":
+    "Cierra las tareas de flujo y de operador antes de salir.",
+  "dailyReport.advice.allClear.title": "El cierre se ve despejado",
+  "dailyReport.advice.allClear.detail":
+    "No hay bloqueos urgentes de stock, pedidos o tareas para este día operativo.",
+  "dailyReport.advice.inventoryAlerts.title.one": "{count} alerta de inventario necesita revisión",
+  "dailyReport.advice.inventoryAlerts.title.other":
+    "{count} alertas de inventario necesitan revisión",
+  "dailyReport.advice.inventoryAlerts.detail":
+    "Mise encontró conteos de stock que pueden necesitar actualización o un pedido al proveedor.",
+  "dailyReport.advice.inventoryAlerts.context":
+    "La cobertura se basa en conteos actuales y ventas recientes.",
+  "dailyReport.advice.suggestedOrder.title": "El pedido sugerido está listo para aprobar",
+  "dailyReport.advice.suggestedOrder.prepared.one":
+    "Mise preparó {count} artículo para revisión del proveedor.",
+  "dailyReport.advice.suggestedOrder.prepared.other":
+    "Mise preparó {count} artículos para revisión del proveedor.",
+  "dailyReport.advice.suggestedOrder.detail":
+    "Aprueba solo lo que quieras enviar o copiar hoy.",
+  "dailyReport.advice.stable.title": "{item} se ve estable",
+  "dailyReport.advice.stable.detail": "No se necesita acción del proveedor ahora.",
   "dailyReport.severity.urgent": "Urgente",
   "dailyReport.severity.warning": "Advertencia",
   "dailyReport.severity.info": "Info",
@@ -6549,8 +6638,41 @@ const zhHans = {
   "dailyReport.signal.inventory": "库存",
   "dailyReport.signal.sales": "销售",
   "dailyReport.signal.cost": "成本",
+  "dailyReport.signal.empty.waste": "收工时无损耗信号。",
+  "dailyReport.signal.empty.prep": "收工时无备餐信号。",
+  "dailyReport.signal.empty.inventory": "收工时无库存信号。",
+  "dailyReport.signal.empty.sales": "收工时无销售信号。",
+  "dailyReport.signal.empty.cost": "收工时无成本信号。",
   "dailyReport.learning.score": "可信度分数 {score}",
+  "dailyReport.learning.credibility.high": "自动化可信度高",
+  "dailyReport.learning.credibility.building": "可信度建设中",
+  "dailyReport.learning.credibility.needsEvidence": "需要更多运营方证据",
+  "dailyReport.learning.nextStep.addRecipes": "在信任自动订货前，先补全缺失的配方基线。",
+  "dailyReport.learning.nextStep.approveOrders": "批准或调整供应商队列，让 Mise 学习你的订货判断。",
+  "dailyReport.learning.nextStep.updateCounts": "服务结束后继续更新盘点，以便 Mise 精进补货时机。",
   "dailyReport.advice.open": "打开",
+  "dailyReport.advice.stockRisk.title.one": "{count} 个库存品需要关注",
+  "dailyReport.advice.stockRisk.title.other": "{count} 个库存品需要关注",
+  "dailyReport.advice.stockRisk.detail": "在下一服务时段前复查预计覆盖不足的危急与偏低品项。",
+  "dailyReport.advice.pendingOrders.title.one": "{count} 条订货建议待处理",
+  "dailyReport.advice.pendingOrders.title.other": "{count} 条订货建议待处理",
+  "dailyReport.advice.pendingOrders.detail": "批准或驳回待处理的采购建议。",
+  "dailyReport.advice.openWork.title.one": "{count} 项未完成任务仍在看板",
+  "dailyReport.advice.openWork.title.other": "{count} 项未完成任务仍在看板",
+  "dailyReport.advice.openWork.detail": "离开前先完成工作流与操作员任务。",
+  "dailyReport.advice.allClear.title": "收工状态清晰",
+  "dailyReport.advice.allClear.detail": "本营业日无紧急库存、订货或任务阻塞。",
+  "dailyReport.advice.inventoryAlerts.title.one": "{count} 条库存预警需要复查",
+  "dailyReport.advice.inventoryAlerts.title.other": "{count} 条库存预警需要复查",
+  "dailyReport.advice.inventoryAlerts.detail":
+    "Mise 发现可能需要更新盘点或向供应商下单的库存数量。",
+  "dailyReport.advice.inventoryAlerts.context": "覆盖依据当前盘点与近期销售。",
+  "dailyReport.advice.suggestedOrder.title": "建议订单已可批准",
+  "dailyReport.advice.suggestedOrder.prepared.one": "Mise 已准备 {count} 个品项供供应商复核。",
+  "dailyReport.advice.suggestedOrder.prepared.other": "Mise 已准备 {count} 个品项供供应商复核。",
+  "dailyReport.advice.suggestedOrder.detail": "只批准你今天想发送或复制的内容。",
+  "dailyReport.advice.stable.title": "{item} 看起来稳定",
+  "dailyReport.advice.stable.detail": "目前无需供应商操作。",
   "dailyReport.severity.urgent": "紧急",
   "dailyReport.severity.warning": "警告",
   "dailyReport.severity.info": "信息",

@@ -43,6 +43,15 @@ import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
 } from "../../services/domain/wasteAnalysis";
+import {
+  presentCredibilityLabel,
+  presentCredibilityNextStep
+} from "../../services/presentation/credibilityLabel";
+import {
+  presentManagerAdviceDetail,
+  presentManagerAdviceTitle
+} from "../../services/presentation/dailyReportAdviceLabel";
+import { presentDailyReportSignalLine } from "../../services/presentation/dailyReportSignalLine";
 
 function BackAction() {
   const { t } = useLocale();
@@ -541,14 +550,18 @@ export default function DailyReportScreen() {
                       />
                     ) : null}
                   </View>
-                  <Text style={styles.signalLine}>{signal.line}</Text>
+                  <Text style={styles.signalLine}>
+                    {presentDailyReportSignalLine(signal.line, t)}
+                  </Text>
                 </View>
               ))}
             </Card>
 
             <SectionHeader title={t("dailyReport.section.learning")} />
             <Card>
-              <Text style={styles.blockLabel}>{visibleReport.learning.credibilityLabel}</Text>
+              <Text style={styles.blockLabel}>
+                {presentCredibilityLabel(visibleReport.learning.credibilityLabel, t)}
+              </Text>
               <Text style={styles.summaryCopy}>
                 {t("dailyReport.learning.score", {
                   score: formatNumber(visibleReport.learning.credibilityScore)
@@ -558,7 +571,9 @@ export default function DailyReportScreen() {
                 <Text style={styles.summaryCopy}>{visibleReport.learning.memoryCopy}</Text>
               ) : null}
               <Text style={styles.metaLine}>
-                {visibleReport.learning.memoryNextStep ?? visibleReport.learning.credibilityNextStep}
+                {visibleReport.learning.memoryNextStep
+                  ? visibleReport.learning.memoryNextStep
+                  : presentCredibilityNextStep(visibleReport.learning.credibilityNextStep, t)}
               </Text>
             </Card>
 
@@ -573,8 +588,12 @@ export default function DailyReportScreen() {
               {visibleReport.managerAdvice.actions.map((action) => (
                 <View key={action.id} style={styles.adviceRow}>
                   <View style={styles.adviceCopy}>
-                    <Text style={styles.adviceTitle}>{action.title}</Text>
-                    <Text style={styles.summaryCopy}>{action.detail}</Text>
+                    <Text style={styles.adviceTitle}>
+                      {presentManagerAdviceTitle(action.title, t)}
+                    </Text>
+                    <Text style={styles.summaryCopy}>
+                      {presentManagerAdviceDetail(action.detail, t)}
+                    </Text>
                   </View>
                   <Button
                     title={t("dailyReport.advice.open")}
