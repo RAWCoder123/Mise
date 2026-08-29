@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
-import { ArrowLeft, Check, CheckCircle, ChevronDown, MapPin, X } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ArrowLeft, Check, CheckCircle, ChevronDown, MapPin, Search, X } from "lucide-react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Button } from "../../components/ui/Button";
@@ -13,6 +13,10 @@ import { colors, icon, iconStroke, radii, spacing, typography } from "../../cons
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
+  filterPosMappingMenuItemsBySearch,
+  POS_MAPPING_MENU_ITEM_SEARCH_THRESHOLD
+} from "../../services/domain/posMappingMenuItemSearch";
+import {
   fetchPosMappingReviewQueue,
   reviewPosCatalogMapping,
   type PosMappingReviewQueue
@@ -21,12 +25,13 @@ import { canManageRestaurantData } from "../../services/tenantAccess";
 
 export default function PosMappingsScreen() {
   const navigation = useNavigation();
-  const { t } = useLocale();
+  const { formatNumber, t } = useLocale();
   const { memberships, restaurant } = useMiseSession();
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const [queue, setQueue] = useState<PosMappingReviewQueue | null>(null);
   const [selectedMenuItemIds, setSelectedMenuItemIds] = useState<Record<string, string>>({});
   const [expandedMappingId, setExpandedMappingId] = useState<string | null>(null);
+  const [menuItemQuery, setMenuItemQuery] = useState("");
   const [busyMappingId, setBusyMappingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(restaurant && canManage));
   const [loadError, setLoadError] = useState(false);
@@ -40,11 +45,16 @@ export default function PosMappingsScreen() {
     setQueue(null);
     setSelectedMenuItemIds({});
     setExpandedMappingId(null);
+    setMenuItemQuery("");
     setBusyMappingId(null);
     setNotice(null);
     setLoadError(false);
     setLoading(Boolean(restaurant && canManage));
   }, [canManage, restaurant?.id]);
+
+  useEffect(() => {
+    setMenuItemQuery("");
+  }, [expandedMappingId]);
 
   const loadQueue = useCallback(async () => {
     if (!restaurant || !canManage) {
@@ -91,6 +101,20 @@ export default function PosMappingsScreen() {
     () => new Map(queue?.menuItems.map((item) => [item.id, item]) ?? []),
     [queue?.menuItems]
   );
+
+  const showMenuItemSearch = (queue?.menuItems.length ?? 0) > POS_MAPPING_MENU_ITEM_SEARCH_THRESHOLD;
+  const filteredMenuItems = useMemo(
+    () =>
+      filterPosMappingMenuItemsBySearch(
+        queue?.menuItems ?? [],
+        showMenuItemSearch ? menuItemQuery : ""
+      ),
+    [menuItemQuery, queue?.menuItems, showMenuItemSearch]
+  );
+  const menuItemSearchNoMatches =
+    showMenuItemSearch &&
+    menuItemQuery.trim().length > 0 &&
+    filteredMenuItems.length === 0;
 
   async function decide(mappingId: string, decision: "verify" | "reject") {
     if (!restaurant || !canManage || busyMappingId) return;
@@ -229,34 +253,67 @@ export default function PosMappingsScreen() {
 
                   {expanded ? (
                     <View style={styles.choiceList} accessibilityRole="radiogroup">
-                      {queue.menuItems.map((menuItem) => {
-                        const selected = selectedMenuItemId === menuItem.id;
-                        return (
-                          <Pressable
-                            key={menuItem.id}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected, disabled: busy }}
-                            disabled={busy}
-                            onPress={() => {
-                              setSelectedMenuItemIds((current) => ({ ...current, [mapping.id]: menuItem.id }));
-                              setExpandedMappingId(null);
-                            }}
-                            style={({ pressed }) => [
-                              styles.choiceRow,
-                              selected && styles.choiceRowSelected,
-                              pressed && !busy && styles.pressed
-                            ]}
-                          >
-                            <View style={[styles.choiceDot, selected && styles.choiceDotSelected]}>
-                              {selected ? <Check size={12} color={colors.surface} strokeWidth={3} /> : null}
-                            </View>
-                            <View style={styles.mappingCopy}>
-                              <Text style={styles.choiceValue}>{menuItem.name}</Text>
-                              {menuItem.category ? <Text style={styles.mappingMeta}>{menuItem.category}</Text> : null}
-                            </View>
-                          </Pressable>
-                        );
-                      })}
+                      {showMenuItemSearch ? (
+                        <View style={styles.menuSearchBox}>
+                          <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
+                          <TextInput
+                            accessibilityLabel={t("pos.mappings.search.accessibility")}
+                            accessibilityHint={t("pos.mappings.search.hint")}
+                            accessibilityState={{ disabled: busy }}
+                            value={menuItemQuery}
+                            onChangeText={setMenuItemQuery}
+                            editable={!busy}
+                            placeholder={t("pos.mappings.search.placeholder")}
+                            placeholderTextColor={colors.faint}
+                            returnKeyType="search"
+                            autoCorrect={false}
+                            autoCapitalize="none"
+                            style={styles.menuSearchInput}
+                          />
+                        </View>
+                      ) : null}
+                      {showMenuItemSearch ? (
+                        <Text style={styles.menuSearchMeta} accessibilityLiveRegion="polite">
+                          {t("pos.mappings.search.showing", {
+                            shown: formatNumber(filteredMenuItems.length),
+                            total: formatNumber(queue.menuItems.length)
+                          })}
+                        </Text>
+                      ) : null}
+                      {menuItemSearchNoMatches ? (
+                        <Text style={styles.menuSearchEmpty} accessibilityLiveRegion="polite">
+                          {t("pos.mappings.search.empty")}
+                        </Text>
+                      ) : (
+                        filteredMenuItems.map((menuItem) => {
+                          const selected = selectedMenuItemId === menuItem.id;
+                          return (
+                            <Pressable
+                              key={menuItem.id}
+                              accessibilityRole="radio"
+                              accessibilityState={{ selected, disabled: busy }}
+                              disabled={busy}
+                              onPress={() => {
+                                setSelectedMenuItemIds((current) => ({ ...current, [mapping.id]: menuItem.id }));
+                                setExpandedMappingId(null);
+                              }}
+                              style={({ pressed }) => [
+                                styles.choiceRow,
+                                selected && styles.choiceRowSelected,
+                                pressed && !busy && styles.pressed
+                              ]}
+                            >
+                              <View style={[styles.choiceDot, selected && styles.choiceDotSelected]}>
+                                {selected ? <Check size={12} color={colors.surface} strokeWidth={3} /> : null}
+                              </View>
+                              <View style={styles.mappingCopy}>
+                                <Text style={styles.choiceValue}>{menuItem.name}</Text>
+                                {menuItem.category ? <Text style={styles.mappingMeta}>{menuItem.category}</Text> : null}
+                              </View>
+                            </Pressable>
+                          );
+                        })
+                      )}
                     </View>
                   ) : null}
 
@@ -344,6 +401,37 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     marginTop: spacing.xs,
     overflow: "hidden"
+  },
+  menuSearchBox: {
+    minHeight: 48,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs
+  },
+  menuSearchInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  menuSearchMeta: {
+    ...typography.caption,
+    color: colors.muted,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+    paddingBottom: 4
+  },
+  menuSearchEmpty: {
+    ...typography.body,
+    color: colors.muted,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm
   },
   choiceRow: {
     minHeight: 48,
