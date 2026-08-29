@@ -37,6 +37,10 @@ import type {
   DailyPhaseFinding,
   DailyPhaseFindingTone
 } from "../../services/domain/dailyPhaseBrief";
+import {
+  presentDailyPhaseFinding,
+  presentUnavailableSignals
+} from "../../services/presentation/dailyPhaseBriefPresentation";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -115,6 +119,13 @@ export default function DailyPhaseBriefScreen() {
       { value: "closing", label: t("dailyPhaseBrief.phase.closing") }
     ],
     [t]
+  );
+  const unavailableSignalsLabel = useMemo(
+    () =>
+      phaseBrief
+        ? presentUnavailableSignals(phaseBrief.unavailableSignals, t)
+        : "",
+    [phaseBrief, t]
   );
 
   if (!restaurant) {
@@ -215,7 +226,7 @@ export default function DailyPhaseBriefScreen() {
                 <Text style={styles.boundaryTitle}>{t("dailyPhaseBrief.boundary.title")}</Text>
                 <Text style={styles.boundaryBody}>
                   {t("dailyPhaseBrief.boundary.body", {
-                    signals: phaseBrief.unavailableSignals.join(", ")
+                    signals: unavailableSignalsLabel
                   })}
                 </Text>
               </View>
@@ -245,10 +256,12 @@ function FindingRow({
   index: number;
   onPress?: () => void;
 }) {
+  const { t } = useLocale();
+  const presented = presentDailyPhaseFinding(finding, t);
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={`${finding.title}. ${finding.interpretation}`}
+      accessibilityLabel={`${presented.title}. ${presented.interpretation}`}
       disabled={!onPress}
       onPress={onPress}
       style={({ pressed }) => [styles.findingRow, pressed && styles.pressed]}
@@ -263,8 +276,8 @@ function FindingRow({
         )}
       </View>
       <View style={styles.findingCopy}>
-        <Text style={styles.findingTitle}>{finding.title}</Text>
-        <Text style={styles.findingBody}>{finding.interpretation}</Text>
+        <Text style={styles.findingTitle}>{presented.title}</Text>
+        <Text style={styles.findingBody}>{presented.interpretation}</Text>
       </View>
       {onPress ? (
         <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={iconStroke} />
