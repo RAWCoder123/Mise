@@ -17,7 +17,13 @@ test("Home supplier-send review opens the exact draft instead of executing or dr
 test("Today promotes and fully reveals the operator-selected task bucket", () => {
   const today = readFileSync("app/(tabs)/today.tsx", "utf8");
   assert.match(today, /\[focus, \.\.\.GROUP_ORDER\.filter\(\(key\) => key !== focus\)\]/);
-  assert.match(today, /key === focus \? grouped\[key\] : grouped\[key\]\.slice\(0, GROUP_CAPS\[key\]\)/);
+  assert.match(
+    today,
+    /key === focus \? filteredFocusedItems : grouped\[key\]\.slice\(0, GROUP_CAPS\[key\]\)/
+  );
+  assert.match(today, /filterOperatingPlanTasksBySearch\(focusedBucketItems, taskQuery\)/);
+  assert.match(today, /OPERATING_PLAN_TASK_SEARCH_THRESHOLD/);
+  assert.match(today, /if \(searchingFocusedBucket\) \{/);
 });
 
 test("Today keeps floor-note completion behind the restaurant role gate", () => {
