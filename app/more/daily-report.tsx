@@ -34,6 +34,7 @@ import {
   fetchDailyOpsReport,
   type DailyOpsReport
 } from "../../services/miseService";
+import { presentMiseStatusLabel } from "../../services/presentation/miseStatusLabel";
 import { captureMiseError } from "../../services/telemetry";
 import type {
   SupplierReliabilityReason,
@@ -151,7 +152,7 @@ export default function DailyReportScreen() {
               <Text style={styles.closeoutTitle}>{visibleReport.day.restaurantName}</Text>
               <Text style={styles.summaryCopy}>{visibleReport.day.operatingSummary}</Text>
               <View style={styles.badgeRow}>
-                <Badge label={visibleReport.day.miseStatus} tone="warning" />
+                <Badge label={presentMiseStatusLabel(visibleReport.day.miseStatus, t)} tone="warning" />
                 <Badge
                   label={t("dailyReport.closeout.dateBadge", {
                     date: visibleReport.day.operatingDate
