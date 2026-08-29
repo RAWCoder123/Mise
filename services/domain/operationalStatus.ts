@@ -199,6 +199,7 @@ export function explicitActionStatusLabel(status: ExplicitActionStatus): string 
   }
 }
 
+/** English fallback for autonomy levels. Operator UI uses i18n `autonomy.levelName.*`. */
 export function autonomyLevelLabel(level: AutonomyLevel): string {
   switch (level) {
     case 1:
