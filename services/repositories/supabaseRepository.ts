@@ -1222,6 +1222,9 @@ export function createSupabaseRepository(): MiseRepository {
         .order("recorded_at", { ascending: false })
         .order("sequence", { ascending: false });
 
+      if (options?.inventoryItemId) {
+        query = query.eq("inventory_item_id", options.inventoryItemId);
+      }
       if (options?.eventTypes?.length) {
         query = query.in("event_type", options.eventTypes);
       }

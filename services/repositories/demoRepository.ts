@@ -796,6 +796,10 @@ export function createLocalDemoRepository(): MiseRepository {
     let events = (state.inventoryEvents ?? []).filter(
       (event) => event.restaurantId === restaurantId
     );
+    if (options?.inventoryItemId) {
+      const inventoryItemId = options.inventoryItemId;
+      events = events.filter((event) => event.inventoryItemId === inventoryItemId);
+    }
     if (options?.eventTypes?.length) {
       const allowed = new Set(options.eventTypes);
       events = events.filter((event) => allowed.has(event.eventType));

@@ -568,6 +568,8 @@ export interface MiseRepository {
     restaurantId: string,
     options?: {
       eventTypes?: InventoryEventType[];
+      /** Restrict to one inventory item within the restaurant tenant. */
+      inventoryItemId?: string;
       limit?: number;
       since?: string;
       /** Only rows with a ledger sequence strictly greater than this value. */

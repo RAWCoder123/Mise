@@ -21,15 +21,23 @@ import { colors, icon, iconStroke, inventoryStatusColors, radii } from "../../co
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
+import type { MessageKey } from "../../i18n/catalog";
+import type { InventoryEvent } from "../../services/domain/inventoryLedger";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   addInventoryItemToOrder,
+  fetchInventoryItemLedgerHistory,
   fetchInventoryItemOutlook,
   fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
+import {
+  inventoryLedgerEventMessageKey,
+  inventoryLedgerQuantityKind,
+  inventoryLedgerSignedQuantity
+} from "../../services/presentation/inventoryLedgerPresentation";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -42,12 +50,14 @@ import { statusTone } from "../../utils/inventory";
 type InventoryOperatorAction = "count" | "receipt" | "waste" | "stockout";
 
 export default function InventoryDetailScreen() {
-  const { formatNumber, parseNumber, t } = useLocale();
+  const { formatDate, formatNumber, parseNumber, t } = useLocale();
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const { memberships, restaurant } = useMiseSession();
   const [outlook, setOutlook] = useState<InventoryOutlookItem | null>(null);
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
+  const [ledgerEvents, setLedgerEvents] = useState<InventoryEvent[]>([]);
+  const [ledgerTruncated, setLedgerTruncated] = useState(false);
   const [operation, setOperation] = useState<InventoryOperatorAction>("count");
   const [quantityText, setQuantityText] = useState("");
   const [noteText, setNoteText] = useState("");
@@ -81,13 +91,16 @@ export default function InventoryDetailScreen() {
     setMessageIsError(false);
     setHubLoadError(false);
     try {
-      const [nextOutlook, nextQueue] = await Promise.all([
+      const [nextOutlook, nextQueue, nextHistory] = await Promise.all([
         fetchInventoryItemOutlook(restaurantId, itemId),
-        fetchQueuedInventoryEvents(restaurantId)
+        fetchQueuedInventoryEvents(restaurantId),
+        fetchInventoryItemLedgerHistory(restaurantId, itemId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(nextOutlook);
       setQueueEntries(nextQueue.filter((entry) => entry.event.inventoryItemId === itemId));
+      setLedgerEvents(nextHistory.events);
+      setLedgerTruncated(nextHistory.truncated);
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       if (nextOutlook) {
@@ -106,6 +119,8 @@ export default function InventoryDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(null);
       setQueueEntries([]);
+      setLedgerEvents([]);
+      setLedgerTruncated(false);
       setHubLoadError(true);
       setMessage(t("inventory.detail.loadError"));
       setMessageIsError(true);
@@ -122,6 +137,8 @@ export default function InventoryDetailScreen() {
     setHubLoadError(false);
     setOutlook(null);
     setQueueEntries([]);
+    setLedgerEvents([]);
+    setLedgerTruncated(false);
     setOperation("count");
     setQuantityText("");
     setNoteText("");
@@ -158,6 +175,8 @@ export default function InventoryDetailScreen() {
   });
   const visibleOutlook = hubReady ? outlook : null;
   const visibleQueue = hubReady ? queueEntries : [];
+  const visibleLedgerEvents = hubReady ? ledgerEvents : [];
+  const visibleLedgerTruncated = hubReady ? ledgerTruncated : false;
   const item = visibleOutlook?.item ?? null;
   const prediction = visibleOutlook?.prediction ?? null;
   const localizedPrediction =
@@ -572,6 +591,28 @@ export default function InventoryDetailScreen() {
           </Card>
 
           <Card>
+            <Text style={styles.cardTitle}>{t("inventory.detail.history.title")}</Text>
+            {visibleLedgerEvents.length === 0 ? (
+              <Text style={styles.copy}>{t("inventory.detail.history.empty")}</Text>
+            ) : (
+              <View style={styles.queueList}>
+                {visibleLedgerEvents.map((event) => (
+                  <LedgerHistoryRow
+                    key={event.id}
+                    event={event}
+                    formatDate={formatDate}
+                    formatNumber={formatNumber}
+                    t={t}
+                  />
+                ))}
+              </View>
+            )}
+            {visibleLedgerTruncated ? (
+              <Text style={styles.historyNote}>{t("inventory.detail.history.truncated")}</Text>
+            ) : null}
+          </Card>
+
+          <Card>
             <Text style={styles.cardTitle}>
               {canManage ? t("inventory.detail.parSettings") : t("inventory.detail.countSettings")}
             </Text>
@@ -651,6 +692,65 @@ function QueueEvidenceRow({
         </Text>
       </View>
       <Badge label={statusLabel} tone={tone} />
+    </View>
+  );
+}
+
+function LedgerHistoryRow({
+  event,
+  formatDate,
+  formatNumber,
+  t
+}: {
+  event: InventoryEvent;
+  formatDate: ReturnType<typeof useLocale>["formatDate"];
+  formatNumber: ReturnType<typeof useLocale>["formatNumber"];
+  t: ReturnType<typeof useLocale>["t"];
+}) {
+  const actionLabel = t(inventoryLedgerEventMessageKey(event.eventType) as MessageKey);
+  const unitLabel = t(`inventory.ops.unit.${event.canonicalUnit}` as MessageKey);
+  const dateLabel = formatDate(event.effectiveAt, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+  const quantityKind = inventoryLedgerQuantityKind(event.eventType);
+  const detail =
+    quantityKind === "stockout"
+      ? t("inventory.detail.history.meta.stockout", { date: dateLabel })
+      : quantityKind === "set"
+        ? t("inventory.detail.history.meta.set", {
+            quantity: formatNumber(event.quantity, { maximumFractionDigits: 2 }),
+            unit: unitLabel,
+            date: dateLabel
+          })
+        : t("inventory.detail.history.meta.delta", {
+            quantity: formatNumber(inventoryLedgerSignedQuantity(event), {
+              maximumFractionDigits: 2,
+              signDisplay: "exceptZero"
+            }),
+            unit: unitLabel,
+            date: dateLabel
+          });
+  const notApplied = event.projectionApplied === false;
+
+  return (
+    <View
+      style={styles.queueRow}
+      accessible
+      accessibilityLabel={t("inventory.detail.history.rowAccessibility", {
+        action: actionLabel,
+        detail
+      })}
+    >
+      <View style={styles.queueCopy}>
+        <Text style={styles.queueTitle}>{actionLabel}</Text>
+        <Text style={styles.queueMeta}>{detail}</Text>
+      </View>
+      {notApplied ? (
+        <Badge label={t("inventory.detail.history.notApplied")} tone="neutral" />
+      ) : null}
     </View>
   );
 }
@@ -893,6 +993,7 @@ const styles = StyleSheet.create({
   queueCopy: { flex: 1, minWidth: 0, gap: 3 },
   queueTitle: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: "800" },
   queueMeta: { color: colors.muted, fontSize: 12, lineHeight: 16, fontWeight: "700" },
+  historyNote: { color: colors.muted, fontSize: 12, lineHeight: 17, fontWeight: "600", marginTop: 10 },
   message: { color: colors.text, fontSize: 13, lineHeight: 19, marginBottom: 12 },
   error: { color: colors.danger }
 });

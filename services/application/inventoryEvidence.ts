@@ -78,6 +78,45 @@ export async function fetchVerifiedInventoryCountEvents(restaurantId: string) {
 }
 
 /**
+ * Bounded per-item ledger history for inventory detail. Newest recorded rows first.
+ * Truncation is reported so the UI never pretends the window is complete.
+ */
+export const ITEM_LEDGER_HISTORY_LIMIT = 40;
+
+export async function fetchInventoryItemLedgerHistory(
+  restaurantId: string,
+  inventoryItemId: string,
+  options: { limit?: number } = {}
+): Promise<{ events: InventoryEvent[]; truncated: boolean }> {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedItemId = inventoryItemId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!normalizedItemId) throw new Error("Missing inventory item.");
+
+  const limit =
+    options.limit != null && Number.isFinite(options.limit) && options.limit >= 0
+      ? Math.floor(options.limit)
+      : ITEM_LEDGER_HISTORY_LIMIT;
+
+  const events = await repository.listInventoryEvents(normalizedRestaurantId, {
+    inventoryItemId: normalizedItemId,
+    limit
+  });
+
+  // Defensive tenant/item scope: repository filters should already enforce this.
+  const scoped = events.filter(
+    (event) =>
+      event.restaurantId === normalizedRestaurantId &&
+      event.inventoryItemId === normalizedItemId
+  );
+
+  return {
+    events: scoped,
+    truncated: events.length === limit
+  };
+}
+
+/**
  * Turns ledger evidence into per-item count evidence, placing each count inside the
  * restaurant's own operating day so a midday count is not depleted twice, and marking
  * items whose materialized quantity no longer follows the count boundary.
