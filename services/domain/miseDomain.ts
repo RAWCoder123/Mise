@@ -1245,6 +1245,33 @@ export interface SupplierOrderSentWorkflowResult {
   orderedRecommendations: PurchaseRecommendation[];
 }
 
+/**
+ * Approved recommendation lines still bound to a draft supplier order.
+ * Used for persistent per-line undo after the Orders hub toast expires.
+ */
+export function linkedApprovedRecommendationsForOrder(
+  restaurantId: string,
+  orderId: string,
+  recommendations: readonly PurchaseRecommendation[]
+): PurchaseRecommendation[] {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedOrderId = orderId.trim();
+  if (!normalizedRestaurantId || !normalizedOrderId) return [];
+
+  return recommendations
+    .filter(
+      (recommendation) =>
+        recommendation.restaurant_id === normalizedRestaurantId &&
+        recommendation.supplier_order_id === normalizedOrderId &&
+        recommendation.status === "approved"
+    )
+    .slice()
+    .sort(
+      (left, right) =>
+        left.item_name.localeCompare(right.item_name) || left.id.localeCompare(right.id)
+    );
+}
+
 export function buildOrderQueueSummary(
   restaurantId: string,
   recommendations: PurchaseRecommendation[],
