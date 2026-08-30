@@ -444,7 +444,16 @@ function ActivitySection({
         action={t("home.activity.history")}
         onAction={() => router.push("/more/activity" as never)}
       />
-      {windowSentence ? <Text style={styles.windowSentence}>{windowSentence}</Text> : null}
+      {windowSentence ? (
+        <View
+          style={styles.sinceAwayBlock}
+          accessibilityRole="summary"
+          accessibilityLabel={`${t("home.sinceAway.title")}. ${windowSentence}`}
+        >
+          <Text style={styles.sinceAwayTitle}>{t("home.sinceAway.title")}</Text>
+          <Text style={styles.windowSentence}>{windowSentence}</Text>
+        </View>
+      ) : null}
       {events.length === 0 ? (
         <Text style={styles.emptyCopy}>{t("home.activity.empty")}</Text>
       ) : (
@@ -921,12 +930,19 @@ const styles = StyleSheet.create({
     // separator on top of the stack gap and pushed Top tasks out of the fold.
     gap: 0
   },
+  sinceAwayBlock: {
+    gap: 2,
+    marginBottom: 6
+  },
+  sinceAwayTitle: {
+    color: colors.text,
+    ...conceptTypography.rowTitle
+  },
   windowSentence: {
     color: colors.muted,
     ...conceptTypography.caption,
     fontFamily: conceptTypography.body.fontFamily,
-    lineHeight: 16,
-    marginBottom: 4
+    lineHeight: 16
   },
   emptyCopy: {
     color: colors.muted,
