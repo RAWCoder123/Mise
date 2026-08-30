@@ -152,6 +152,15 @@ await assertDeniedRpc(
   "count session approve rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
+  "service_return_inventory_count_session",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_session_id: "00000000-0000-4000-8000-000000009999"
+  },
+  "count session return rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
   "service_create_rules_engine_ai_insight",
   {
     p_actor_user_id: managerA.id,
