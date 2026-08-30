@@ -22,6 +22,7 @@ import {
   prepareSupplierEmailPayload,
   receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
+  undoPurchaseRecommendationAction,
   updateSupplierOrder
 } from "../../services/miseService";
 import type {
@@ -40,8 +41,10 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
+import { trackMiseEvent } from "../../services/telemetry";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type {
+  PurchaseRecommendation,
   RestaurantEmailConnection,
   SupplierEmailPayload,
   SupplierOrder
@@ -62,18 +65,21 @@ export default function OrderDraftDetailScreen() {
   const { formatDate, formatNumber, t } = useLocale();
   const { memberships, restaurant, usingLocalDemo } = useMiseSession();
   const [order, setOrder] = useState<SupplierOrder | null>(null);
+  const [linkedRecommendations, setLinkedRecommendations] = useState<PurchaseRecommendation[]>([]);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [undoingRecommendationId, setUndoingRecommendationId] = useState<string | null>(null);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [hubLoadError, setHubLoadError] = useState(false);
   const requestIdRef = useRef(0);
   const actionLockRef = useRef(false);
+  const undoLockRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -112,6 +118,7 @@ export default function OrderDraftDetailScreen() {
         throw new Error(t("orders.detail.orderMismatch"));
       }
       setOrder(nextDetail.order);
+      setLinkedRecommendations(nextDetail.linkedRecommendations);
       setDeliveryEvidence(nextDetail.deliveryEvidence);
       setEmailConnection(nextEmailConnection);
       setEmailPayload(nextEmailPayload);
@@ -122,6 +129,7 @@ export default function OrderDraftDetailScreen() {
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
+      setLinkedRecommendations([]);
       setDeliveryEvidence([]);
       setEmailPayload(null);
       setSupplierSendAction(null);
@@ -145,12 +153,15 @@ export default function OrderDraftDetailScreen() {
     setLoadedRestaurantId(null);
     setHubLoadError(false);
     setOrder(null);
+    setLinkedRecommendations([]);
     setDeliveryEvidence([]);
     setEmailConnection(null);
     setEmailPayload(null);
     setSupplierSendAction(null);
     setOperatorNote("");
     setBusy(false);
+    setUndoingRecommendationId(null);
+    undoLockRef.current = false;
     setNotice(null);
     setLoading(Boolean(restaurant && id));
     void load();
@@ -397,6 +408,56 @@ export default function OrderDraftDetailScreen() {
     }
   }
 
+  async function undoLinkedRecommendation(recommendation: PurchaseRecommendation) {
+    if (!restaurant || !order || order.status !== "draft" || undoLockRef.current) return;
+    if (!actionsEditable) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    undoLockRef.current = true;
+    setUndoingRecommendationId(recommendation.id);
+    setNotice(null);
+    try {
+      const undoResult = await undoPurchaseRecommendationAction(restaurantId, recommendation.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      const restored = undoResult.recommendation;
+      trackMiseEvent("recommendation_undo", {
+        restaurant_id: restaurantId,
+        supplier_id: restored.supplier_id,
+        supplier_name: restored.supplier_name,
+        action: "approved"
+      });
+      if (!undoResult.order) {
+        setNotice({
+          title: t("orders.detail.lines.draftRemovedTitle"),
+          message: t("orders.detail.lines.draftRemovedBody", { item: restored.item_name }),
+          tone: "success"
+        });
+        goBackToOrders();
+        return;
+      }
+      await load(false);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        title: t("orders.detail.lines.undoneTitle"),
+        message: t("orders.detail.lines.undoneBody", { item: restored.item_name }),
+        tone: "success"
+      });
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setNotice({
+          title: t("orders.detail.lines.undoFailedTitle"),
+          message: t("orders.detail.lines.undoFailedBody"),
+          tone: "danger"
+        });
+      }
+    } finally {
+      undoLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setUndoingRecommendationId(null);
+    }
+  }
+
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canManageGmail = canDeleteRestaurantData(memberships, restaurant?.id);
   const hubLoadState = resolveRestaurantScopedHubLoadState({
@@ -405,15 +466,18 @@ export default function OrderDraftDetailScreen() {
     loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
+  const lineUndoBusy = Boolean(undoingRecommendationId);
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
-    busy
+    busy: busy || lineUndoBusy
   });
   const visibleOrder = hubReady ? order : null;
   const isDraft = visibleOrder?.status === "draft";
   const isSent = visibleOrder?.status === "sent";
   const canEditDraft = Boolean(isDraft && actionsEditable);
+  const visibleLinkedRecommendations = hubReady && isDraft ? linkedRecommendations : [];
+  const canUndoLinkedLines = Boolean(isDraft && canManage && hubReady);
   const visibleEmailConnection = hubReady ? emailConnection : null;
   const visibleEmailPayload = hubReady ? emailPayload : null;
   const visibleSupplierSendAction = hubReady ? supplierSendAction : null;
@@ -568,6 +632,42 @@ export default function OrderDraftDetailScreen() {
                   ) : null}
                 </View>
               ))}
+            </View>
+          ) : null}
+
+          {visibleLinkedRecommendations.length > 0 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.lines.title")}</Text>
+              <Text style={styles.sectionBody}>{t("orders.detail.lines.body")}</Text>
+              {visibleLinkedRecommendations.map((recommendation) => {
+                const undoing = undoingRecommendationId === recommendation.id;
+                const quantityLabel = t("orders.detail.lines.quantity", {
+                  quantity: formatNumber(recommendation.recommended_quantity, {
+                    maximumFractionDigits: 3
+                  }),
+                  unit: recommendation.unit
+                });
+                return (
+                  <View key={recommendation.id} style={styles.linkedLineRow}>
+                    <View style={styles.linkedLineCopy}>
+                      <Text style={styles.linkedLineName}>{recommendation.item_name}</Text>
+                      <Text style={styles.linkedLineMeta}>{quantityLabel}</Text>
+                    </View>
+                    {canUndoLinkedLines ? (
+                      <Button
+                        title={undoing ? t("orders.undo.busy") : t("orders.undo.action")}
+                        accessibilityLabel={t("orders.detail.lines.undoAccessibility", {
+                          item: recommendation.item_name
+                        })}
+                        variant="secondary"
+                        onPress={() => void undoLinkedRecommendation(recommendation)}
+                        disabled={busy || lineUndoBusy}
+                        style={styles.linkedLineUndo}
+                      />
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
           ) : null}
 
@@ -1071,6 +1171,37 @@ const styles = StyleSheet.create({
   sectionBody: {
     color: colors.muted,
     ...typography.body
+  },
+  linkedLineRow: {
+    marginTop: 4,
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingVertical: 10,
+    paddingHorizontal: 12
+  },
+  linkedLineCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2
+  },
+  linkedLineName: {
+    color: colors.text,
+    ...typography.cardTitle
+  },
+  linkedLineMeta: {
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "500"
+  },
+  linkedLineUndo: {
+    flexShrink: 0,
+    minWidth: 96
   },
   deliveryEvidencePanel: {
     marginTop: 4,

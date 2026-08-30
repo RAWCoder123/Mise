@@ -495,11 +495,12 @@ export default function OrdersScreen() {
     undoLockRef.current = true;
     setUndoAction((current) => (current ? { ...current, busy: true } : current));
     try {
-      const restored = await undoPurchaseRecommendationAction(
+      const undoResult = await undoPurchaseRecommendationAction(
         restaurantId,
         undoAction.recommendation.id
       );
       if (activeRestaurantIdRef.current !== restaurantId) return;
+      const restored = undoResult.recommendation;
       trackMiseEvent("recommendation_undo", {
         restaurant_id: restaurantId,
         supplier_id: restored.supplier_id,
