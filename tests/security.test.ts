@@ -401,8 +401,15 @@ test("supplier draft undo cleanup is tenant-scoped", () => {
     "supabase/migrations/20260824034152_mise_003c_durable_supplier_identity.sql",
     "utf8"
   );
+  const cancelMigration = readFileSync(
+    "supabase/migrations/20260830160000_cancel_supplier_order_draft.sql",
+    "utf8"
+  );
   const undoBlock = repository.match(
     /async undoPurchaseRecommendationAction\([\s\S]*?\n    \},/
+  )?.[0] ?? "";
+  const cancelBlock = repository.match(
+    /async cancelSupplierOrderDraft\([\s\S]*?\n    \},/
   )?.[0] ?? "";
 
   assert.match(undoBlock, /client\.rpc\("undo_purchase_recommendation_action"/i);
@@ -412,6 +419,14 @@ test("supplier draft undo cleanup is tenant-scoped", () => {
   assert.match(workflowMigration, /create or replace function public\.undo_purchase_recommendation_action/i);
   assert.match(workflowMigration, /recommendation_row\.supplier_id/i);
   assert.doesNotMatch(orderWorkflow, /actor_user_id/i);
+  assert.match(cancelBlock, /client\.rpc\("cancel_supplier_order_draft"/i);
+  assert.doesNotMatch(cancelBlock, /\.from\("supplier_orders"\)|\.delete\(\)/i);
+  assert.match(orderWorkflow, /cancelSupplierOrderDraft/i);
+  assert.match(orderWorkflow, /repository\.cancelSupplierOrderDraft/i);
+  assert.match(cancelMigration, /create or replace function public\.cancel_supplier_order_draft/i);
+  assert.match(cancelMigration, /undo_purchase_recommendation_action/i);
+  assert.match(cancelMigration, /supplier_order_draft_cancelled/i);
+  assert.match(cancelMigration, /grant execute on function public\.cancel_supplier_order_draft/i);
 });
 
 test("Edge Functions validate contracts, sanitize metadata, and audit attempts", () => {

@@ -2,6 +2,7 @@ import {
   SUPPLIER_SEND_CONTENT_VERSION,
   type SupplierOrder
 } from "../../types/mise";
+import type { PurchaseRecommendation } from "../../types/mise";
 import {
   boundedLearnedQuantity,
   buildInsightsFromData,
@@ -277,6 +278,72 @@ export function dismissRecommendationInDemoState(
     recommendation,
     order: null,
     previousStatus
+  };
+}
+
+export function cancelSupplierOrderDraftInDemoState(
+  state: DemoState,
+  restaurantId: string,
+  orderId: string
+): {
+  orderId: string;
+  supplierId: string;
+  supplierName: string;
+  restoredRecommendations: PurchaseRecommendation[];
+} {
+  const order = state.supplierOrders.find(
+    (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
+  );
+  if (!order) throw new Error("Order draft not found");
+  if (order.status !== "draft") {
+    throw new Error("Only draft supplier orders can be cancelled.");
+  }
+
+  const approved = linkedApprovedRecommendations(state, order.id)
+    .slice()
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  for (const recommendation of approved) {
+    const newerPending = state.purchaseRecommendations.find(
+      (entry) =>
+        entry.id !== recommendation.id &&
+        entry.restaurant_id === restaurantId &&
+        entry.inventory_item_id === recommendation.inventory_item_id &&
+        entry.status === "pending"
+    );
+    if (newerPending) throw new Error("A newer recommendation is already pending.");
+  }
+
+  const restoredRecommendations = approved.map((recommendation) => {
+    const result = undoRecommendationInDemoState(state, restaurantId, recommendation.id);
+    return result.recommendation;
+  });
+
+  if (state.supplierOrders.some((entry) => entry.id === order.id)) {
+    state.supplierOrders = state.supplierOrders.filter((entry) => entry.id !== order.id);
+  }
+  delete state.supplierSendContentRevisions[order.id];
+
+  const sendAction = state.miseActions.find(
+    (action) =>
+      action.restaurantId === restaurantId &&
+      action.idempotencyKey === `send_supplier_order:${order.id}`
+  );
+  if (
+    sendAction &&
+    ["prepared", "waiting_for_approval", "approved", "failed", "rejected"].includes(
+      sendAction.status
+    )
+  ) {
+    sendAction.status = "cancelled";
+    sendAction.updatedAt = new Date().toISOString();
+  }
+
+  return {
+    orderId: order.id,
+    supplierId: order.supplier_id,
+    supplierName: order.supplier_name,
+    restoredRecommendations
   };
 }
 

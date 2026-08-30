@@ -25,7 +25,7 @@ import type {
 } from "../../types/mise";
 import { SUPPLIER_SEND_CONTENT_VERSION } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
-import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
+import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult, CancelSupplierOrderDraftResult } from "../domain/miseDomain";
 import { normalizePurchaseAuthorityResult } from "../domain/purchaseAuthority";
 import { TeamMembershipError, teamMembershipErrorFrom } from "../domain/teamMembership";
 import {
@@ -201,6 +201,40 @@ function parseRecommendationWorkflowResponse(data: unknown): RecommendationWorkf
     order: payload.order ? normalizeSupplierOrder(payload.order) : null,
     previousStatus: payload.previous_status ?? payload.recommendation.status,
     authority: payload.authority ? normalizePurchaseAuthorityResult(payload.authority) : null
+  };
+}
+
+function parseCancelSupplierOrderDraftResponse(data: unknown): CancelSupplierOrderDraftResult {
+  const payload = (Array.isArray(data) ? data[0] : data) as {
+    outcome?: string;
+    orderId?: string;
+    supplierId?: string;
+    supplierName?: string;
+    restoredCount?: number;
+    restoredRecommendationIds?: unknown;
+  } | null;
+  const restoredRecommendationIds = Array.isArray(payload?.restoredRecommendationIds)
+    ? payload.restoredRecommendationIds.filter((value): value is string => typeof value === "string")
+    : [];
+  const restoredCount = Number(payload?.restoredCount);
+  if (
+    payload?.outcome !== "applied" ||
+    typeof payload.orderId !== "string" ||
+    typeof payload.supplierId !== "string" ||
+    typeof payload.supplierName !== "string" ||
+    !Number.isInteger(restoredCount) ||
+    restoredCount < 0 ||
+    restoredCount !== restoredRecommendationIds.length
+  ) {
+    throw new Error("Cancel draft workflow returned an invalid response.");
+  }
+  return {
+    outcome: "applied",
+    orderId: payload.orderId,
+    supplierId: payload.supplierId,
+    supplierName: payload.supplierName,
+    restoredCount,
+    restoredRecommendationIds
   };
 }
 
@@ -1560,6 +1594,15 @@ export function createSupabaseRepository(): MiseRepository {
       });
       if (error) throw error;
       return parseRecommendationWorkflowResponse(data);
+    },
+
+    async cancelSupplierOrderDraft(restaurantId, orderId) {
+      const { data, error } = await client.rpc("cancel_supplier_order_draft", {
+        p_restaurant_id: restaurantId,
+        p_order_id: orderId
+      });
+      if (error) throw error;
+      return parseCancelSupplierOrderDraftResponse(data);
     },
 
     async fetchPurchaseDecisionPatterns(restaurantId) {
