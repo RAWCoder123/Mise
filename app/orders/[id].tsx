@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { ArrowLeft, CheckCircle2, Copy, FileText, Save, Send } from "lucide-react-native";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
@@ -14,6 +14,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
+  closeSupplierOrderAcceptingShort,
   fetchEmailConnectionState,
   fetchSupplierSendAction,
   fetchSupplierOrderOperationalDetail,
@@ -24,10 +25,12 @@ import {
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
+import { SupplierOrderReceiveBlockedError } from "../../services/application/deliveries";
 import type {
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
 } from "../../services/domain/supplierReliability";
+import type { SupplierOrderReceiveOutlook } from "../../services/domain/supplierDelivery";
 import type { MiseAction } from "../../services/domain/miseActions";
 import { isSupplierSendVerificationRace } from "../../services/domain/supplierSendErrors";
 import {
@@ -66,6 +69,7 @@ export default function OrderDraftDetailScreen() {
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
+  const [receiveOutlook, setReceiveOutlook] = useState<SupplierOrderReceiveOutlook | null>(null);
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -113,6 +117,7 @@ export default function OrderDraftDetailScreen() {
       }
       setOrder(nextDetail.order);
       setDeliveryEvidence(nextDetail.deliveryEvidence);
+      setReceiveOutlook(nextDetail.receiveOutlook);
       setEmailConnection(nextEmailConnection);
       setEmailPayload(nextEmailPayload);
       setSupplierSendAction(nextSendAction);
@@ -123,6 +128,7 @@ export default function OrderDraftDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setDeliveryEvidence([]);
+      setReceiveOutlook(null);
       setEmailPayload(null);
       setSupplierSendAction(null);
       setHubLoadError(true);
@@ -146,6 +152,7 @@ export default function OrderDraftDetailScreen() {
     setHubLoadError(false);
     setOrder(null);
     setDeliveryEvidence([]);
+    setReceiveOutlook(null);
     setEmailConnection(null);
     setEmailPayload(null);
     setSupplierSendAction(null);
@@ -363,6 +370,14 @@ export default function OrderDraftDetailScreen() {
       setNotice(viewOnlyNotice(t));
       return;
     }
+    if (receiveOutlook && !receiveOutlook.canReceiveRemaining) {
+      setNotice({
+        title: t("orders.detail.notice.nothingRemainingTitle"),
+        message: t("orders.detail.notice.nothingRemainingBody"),
+        tone: "warning"
+      });
+      return;
+    }
     const restaurantId = restaurant.id;
     actionLockRef.current = true;
     setBusy(true);
@@ -383,11 +398,72 @@ export default function OrderDraftDetailScreen() {
             : t("orders.detail.notice.receivedBody"),
         tone: result.status === "discrepancy" ? "warning" : "success"
       });
+    } catch (error) {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        if (error instanceof SupplierOrderReceiveBlockedError && error.code === "nothing_remaining") {
+          setNotice({
+            title: t("orders.detail.notice.nothingRemainingTitle"),
+            message: t("orders.detail.notice.nothingRemainingBody"),
+            tone: "warning"
+          });
+        } else {
+          setNotice({
+            title: t("orders.detail.notice.receiveFailedTitle"),
+            message: t("orders.detail.notice.receiveFailedBody"),
+            tone: "danger"
+          });
+        }
+      }
+    } finally {
+      actionLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
+    }
+  }
+
+  function confirmCloseAcceptingShort() {
+    if (!restaurant || !order || order.status !== "sent" || actionLockRef.current) return;
+    if (!actionsEditable) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    Alert.alert(
+      t("orders.detail.closeShort.title"),
+      t("orders.detail.closeShort.body", { supplier: order.supplier_name }),
+      [
+        { text: t("orders.detail.closeShort.keep"), style: "cancel" },
+        {
+          text: t("orders.detail.closeShort.confirm"),
+          style: "destructive",
+          onPress: () => void closeAcceptingShort()
+        }
+      ]
+    );
+  }
+
+  async function closeAcceptingShort() {
+    if (!restaurant || !order || order.status !== "sent" || actionLockRef.current) return;
+    const restaurantId = restaurant.id;
+    actionLockRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await closeSupplierOrderAcceptingShort(restaurantId, order.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load(false);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        title:
+          result.outcome === "already_completed"
+            ? t("orders.detail.closeShort.alreadyTitle")
+            : t("orders.detail.closeShort.successTitle"),
+        message: t("orders.detail.closeShort.successBody"),
+        tone: "success"
+      });
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
         setNotice({
-          title: t("orders.detail.notice.receiveFailedTitle"),
-          message: t("orders.detail.notice.receiveFailedBody"),
+          title: t("orders.detail.closeShort.failedTitle"),
+          message: t("orders.detail.closeShort.failedBody"),
           tone: "danger"
         });
       }
@@ -419,6 +495,7 @@ export default function OrderDraftDetailScreen() {
   const visibleSupplierSendAction = hubReady ? supplierSendAction : null;
   const visibleDeliveryEvidence =
     hubReady ? deliveryEvidence : [];
+  const visibleReceiveOutlook = hubReady ? receiveOutlook : null;
   const gmailReady = Boolean(
     visibleEmailConnection?.status === "connected" &&
     visibleEmailPayload?.ready &&
@@ -774,16 +851,42 @@ export default function OrderDraftDetailScreen() {
             />
           ) : null}
 
-          {isSent && actionsEditable ? (
+          {isSent && actionsEditable && visibleReceiveOutlook?.canReceiveRemaining ? (
             <Button
-              title={busy ? t("orders.detail.action.receiving") : t("orders.detail.action.markReceived")}
-              accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
-                supplier: visibleOrder.supplier_name
-              })}
+              title={busy
+                ? t("orders.detail.action.receiving")
+                : visibleReceiveOutlook.priorDeliveryCount > 0
+                  ? t("orders.detail.action.receiveRemaining")
+                  : t("orders.detail.action.markReceived")}
+              accessibilityLabel={
+                visibleReceiveOutlook.priorDeliveryCount > 0
+                  ? t("orders.detail.action.receiveRemainingAccessibility", {
+                      supplier: visibleOrder.supplier_name
+                    })
+                  : t("orders.detail.action.markReceivedAccessibility", {
+                      supplier: visibleOrder.supplier_name
+                    })
+              }
               icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void markReceived()}
               disabled={busy}
               fullWidth
+            />
+          ) : null}
+
+          {isSent && actionsEditable && visibleReceiveOutlook?.canCloseAcceptingShort ? (
+            <Button
+              title={busy
+                ? t("orders.detail.closeShort.busy")
+                : t("orders.detail.closeShort.action")}
+              accessibilityLabel={t("orders.detail.closeShort.accessibility", {
+                supplier: visibleOrder.supplier_name
+              })}
+              variant="secondary"
+              onPress={confirmCloseAcceptingShort}
+              disabled={busy}
+              fullWidth
+              style={styles.actionButton}
             />
           ) : null}
         </View>
