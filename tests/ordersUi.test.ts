@@ -32,6 +32,28 @@ test("orders presents reference-aligned draft, sent, and history lanes with safe
   assert.doesNotMatch(screen, /orderTab === "history"/);
 });
 
+test("orders sent and history lanes surface delivery attention from verified receipt evidence", () => {
+  const screen = readFileSync("app/(tabs)/orders.tsx", "utf8");
+  const card = readFileSync("components/SupplierDraftCard.tsx", "utf8");
+  const application = readFileSync("services/application/orders.ts", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(screen, /fetchLatestSupplierOrderDeliveryEvidence/);
+  assert.match(screen, /sentAttentionCount/);
+  assert.match(screen, /orders\.lane\.sentAttentionAccessibility/);
+  assert.match(screen, /deliveryEvidence=\{visibleOrderDeliveryEvidence\[order\.id\] \?\? null\}/);
+  assert.match(application, /export async function fetchLatestSupplierOrderDeliveryEvidence/);
+  assert.match(application, /indexLatestSupplierOrderDeliveryEvidence/);
+  assert.match(card, /deliveryEvidence\?:/);
+  assert.match(card, /supplierOrderLaneDeliveryAttentionStatus/);
+  assert.match(card, /orders\.card\.openWithDeliveryAccessibility/);
+  assert.match(card, /orders\.card\.deliveryAttention\./);
+  assert.match(catalog, /"orders\.card\.openWithDeliveryAccessibility"/);
+  assert.match(catalog, /"orders\.card\.deliveryAttention\.one"/);
+  assert.match(catalog, /"orders\.lane\.sentAttentionAccessibility"/);
+  assert.doesNotMatch(screen, /partially_received.*hard.?code/i);
+});
+
 test("orders keeps staff read-only while preserving review, copy, and detail access", () => {
   const screen = readFileSync("app/(tabs)/orders.tsx", "utf8");
   const row = readFileSync("components/RecommendationDecisionRow.tsx", "utf8");
