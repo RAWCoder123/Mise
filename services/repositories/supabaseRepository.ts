@@ -2317,6 +2317,15 @@ export function createSupabaseRepository(): MiseRepository {
       return parseCountSessionWorkflowResult(response.result);
     },
 
+    async returnInventoryCountSession(restaurantId, sessionId) {
+      const response = await invokeOperationalWorkflow({
+        action: "return_count_session",
+        restaurantId,
+        sessionId
+      });
+      return parseCountSessionWorkflowResult(response.result);
+    },
+
     async cancelInventoryCountSession(restaurantId, sessionId) {
       const response = await invokeOperationalWorkflow({
         action: "cancel_count_session",

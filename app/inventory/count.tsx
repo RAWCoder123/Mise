@@ -22,6 +22,7 @@ import {
   beginInventoryCountSession,
   cancelInventoryCountSession,
   fetchOpenInventoryCountSession,
+  returnInventoryCountSession,
   saveInventoryCountLines,
   submitInventoryCountSession
 } from "../../services/miseService";
@@ -257,6 +258,38 @@ export default function InventoryCountSessionScreen() {
     }
   }
 
+  function confirmReturn() {
+    if (!restaurant || !visibleDetail || !canApprove) return;
+    if (visibleDetail.session.status !== "submitted") return;
+    const restaurantId = restaurant.id;
+    const sessionId = visibleDetail.session.id;
+    Alert.alert(t("inventory.count.returnTitle"), t("inventory.count.returnBody"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("inventory.count.returnAction"),
+        onPress: () => {
+          void (async () => {
+            setSaving(true);
+            setError(null);
+            try {
+              const next = await returnInventoryCountSession(restaurantId, sessionId);
+              if (activeRestaurantIdRef.current !== restaurantId) return;
+              setDetail(next);
+              syncDraftsFromDetail(next);
+              setLoadedRestaurantId(restaurantId);
+              setNotice(t("inventory.count.returned"));
+            } catch (caught) {
+              if (activeRestaurantIdRef.current !== restaurantId) return;
+              setError(caught instanceof Error ? caught.message : t("inventory.count.returnError"));
+            } finally {
+              if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
+            }
+          })();
+        }
+      }
+    ]);
+  }
+
   function confirmCancel() {
     if (!restaurant || !visibleDetail || !canApprove) return;
     const restaurantId = restaurant.id;
@@ -476,12 +509,22 @@ export default function InventoryCountSessionScreen() {
                 </>
               ) : null}
               {visibleDetail.session.status === "submitted" && canApprove ? (
-                <Button
-                  title={t("inventory.count.approveAction")}
-                  onPress={() => void approveSession()}
-                  disabled={saving}
-                  fullWidth
-                />
+                <>
+                  <Button
+                    title={t("inventory.count.approveAction")}
+                    onPress={() => void approveSession()}
+                    disabled={saving}
+                    fullWidth
+                  />
+                  <Button
+                    title={t("inventory.count.returnAction")}
+                    variant="secondary"
+                    onPress={confirmReturn}
+                    disabled={saving}
+                    fullWidth
+                    style={styles.secondaryAction}
+                  />
+                </>
               ) : null}
               {visibleDetail.session.status === "submitted" && !canApprove ? (
                 <Text style={styles.help}>{t("inventory.count.staffAwaitingApproval")}</Text>

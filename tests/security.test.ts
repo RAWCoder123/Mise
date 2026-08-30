@@ -952,11 +952,15 @@ test("inventory count sessions are service-owned with ledger approve path", () =
   assert.match(inventoryWorkflow, /approveInventoryCountSession[\s\S]*planCountSessionApprovals/);
   assert.match(repository, /action:\s*"begin_count_session"/i);
   assert.match(repository, /action:\s*"approve_count_session"/i);
+  assert.match(repository, /action:\s*"return_count_session"/i);
   assert.match(edge, /"begin_count_session"/);
   assert.match(edge, /"approve_count_session"/);
+  assert.match(edge, /"return_count_session"/);
   assert.match(edge, /staffOperationalActions/);
   assert.match(edge, /service_approve_inventory_count_session/);
+  assert.match(edge, /service_return_inventory_count_session/);
   assert.match(edge, /inventory_count_session_approved/);
+  assert.match(edge, /inventory_count_session_returned/);
   assert.match(edge, /requireCountLineUpdates[\s\S]*note/);
   assert.match(migration, /create table if not exists public\.inventory_count_sessions/i);
   assert.match(migration, /create table if not exists public\.inventory_count_lines/i);
@@ -970,6 +974,17 @@ test("inventory count sessions are service-owned with ledger approve path", () =
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_approve_inventory_count_session[\s\S]*service_role/i);
   assert.match(migration, /grant select on public\.inventory_count_sessions to authenticated/i);
   assert.doesNotMatch(migration, /grant insert on table public\.inventory_count_sessions to authenticated/i);
+  const returnMigration = readFileSync(
+    "supabase/migrations/20260830170000_return_inventory_count_session.sql",
+    "utf8"
+  );
+  assert.match(returnMigration, /service_return_inventory_count_session/i);
+  assert.match(returnMigration, /Only a submitted count session can be returned for revision/i);
+  assert.match(returnMigration, /submitted_by = null/i);
+  assert.match(returnMigration, /submitted_at = null/i);
+  assert.match(returnMigration, /status = 'in_progress'/i);
+  assert.match(returnMigration, /revoke\s+all\s+on\s+function\s+public\.service_return_inventory_count_session[\s\S]*authenticated/i);
+  assert.match(returnMigration, /grant\s+execute\s+on\s+function\s+public\.service_return_inventory_count_session[\s\S]*service_role/i);
   assert.match(validation, /requireInventoryCountLineNote/);
   assert.match(tenantAccess, /canDraftInventoryCount/);
   assert.match(tenantAccess, /canApproveInventoryCount/);
@@ -979,5 +994,6 @@ test("inventory count sessions are service-owned with ledger approve path", () =
   assert.match(staffActionsBlock, /"save_count_lines"/);
   assert.match(staffActionsBlock, /"submit_count_session"/);
   assert.doesNotMatch(staffActionsBlock, /approve_count_session/);
+  assert.doesNotMatch(staffActionsBlock, /return_count_session/);
   assert.doesNotMatch(staffActionsBlock, /cancel_count_session/);
 });

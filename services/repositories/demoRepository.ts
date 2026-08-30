@@ -1404,6 +1404,25 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async returnInventoryCountSession(restaurantId, sessionId) {
+      return mutateDemoState((state) => {
+        const detail = findDemoCountSession(state, restaurantId, sessionId);
+        if (!detail) throw new Error("Count session not found");
+        assertSessionMutable(detail.session, "return");
+        const now = new Date().toISOString();
+        return replaceDemoCountSession(state, {
+          session: {
+            ...detail.session,
+            status: "in_progress",
+            submitted_by: null,
+            submitted_at: null,
+            updated_at: now
+          },
+          lines: detail.lines
+        });
+      });
+    },
+
     async cancelInventoryCountSession(restaurantId, sessionId) {
       return mutateDemoState((state) => {
         const detail = findDemoCountSession(state, restaurantId, sessionId);

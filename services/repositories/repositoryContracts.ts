@@ -610,6 +610,7 @@ export interface MiseRepository {
     lines: Array<{ inventoryItemId: string; countedQuantity: number; note?: string | null }>
   ): Promise<InventoryCountSessionDetail>;
   submitInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
+  returnInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
   cancelInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
   approveInventoryCountSession(
     restaurantId: string,
