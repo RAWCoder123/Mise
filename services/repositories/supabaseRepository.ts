@@ -1214,6 +1214,38 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizedItem;
     },
 
+    async setInventoryItemActive(restaurantId, itemId, active) {
+      const expectedRestaurantId = requireHostedUuid(restaurantId, "restaurant");
+      const expectedItemId = requireHostedUuid(itemId, "inventory item");
+      if (typeof active !== "boolean") {
+        throw new Error("Inventory item active state is invalid.");
+      }
+      const { error } = await client.rpc("set_inventory_item_active", {
+        p_restaurant_id: expectedRestaurantId,
+        p_inventory_item_id: expectedItemId,
+        p_active: active
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const { data: row, error: readError } = await client
+        .from("inventory_items")
+        .select(inventorySupplierSelect)
+        .eq("restaurant_id", expectedRestaurantId)
+        .eq("id", expectedItemId)
+        .single();
+      if (readError) throwRepositoryError(readError, restaurantId);
+      const normalizedItem = normalizeInventoryItem(
+        withCurrentSupplierDisplay(row, "Inventory item") as unknown as InventoryItem
+      );
+      if (
+        normalizedItem.restaurant_id !== expectedRestaurantId ||
+        normalizedItem.id !== expectedItemId ||
+        normalizedItem.active !== active
+      ) {
+        throw new Error("Inventory active toggle returned mismatched authority.");
+      }
+      return normalizedItem;
+    },
+
     async listInventoryEvents(restaurantId, options) {
       let query = client
         .from("inventory_events")

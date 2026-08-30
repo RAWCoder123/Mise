@@ -265,13 +265,24 @@ export default function InventoryScreen() {
 
         <InventoryGroup
           title={t("inventory.group.lowStock")}
-          outlooks={visibleOutlooks.filter(({ prediction }) => prediction.projectedStatus === "Low").slice(0, 3)}
+          outlooks={visibleOutlooks
+            .filter(
+              ({ item, prediction }) =>
+                item.active !== false && prediction.projectedStatus === "Low"
+            )
+            .slice(0, 3)}
           queue={visibleQueue}
           onHeaderPress={() => setFilter("At risk")}
         />
         <InventoryGroup
           title={t("inventory.group.stockAlerts")}
-          outlooks={visibleOutlooks.filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Watch").slice(0, 3)}
+          outlooks={visibleOutlooks
+            .filter(
+              ({ item, prediction }) =>
+                item.active !== false &&
+                (prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Watch")
+            )
+            .slice(0, 3)}
           queue={visibleQueue}
           onHeaderPress={() => setFilter("Watch")}
         />
@@ -453,23 +464,45 @@ function InventoryListRow({
   const isLow = prediction.projectedStatus === "Low";
   const isWatch = prediction.projectedStatus === "Watch";
   const isGood = prediction.projectedStatus === "Good";
+  const isInactive = item.active === false;
   const canonicalReady = isCanonicalUnitReady(item);
-  const entryHint = !canonicalReady
-    ? t("inventory.row.needsVerification")
-    : queueCount > 0
-      ? t(queueCount === 1 ? "inventory.row.queued.one" : "inventory.row.queued.other", {
-          count: formatNumber(queueCount)
-        })
-      : t("inventory.row.openOps");
-  const statusColor = isCritical
-    ? inventoryStatusColors.Critical
-    : isLow
-      ? inventoryStatusColors.Low
-      : isGood
-        ? colors.success
-        : inventoryStatusColors.Watch;
-  const iconTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "leaf";
-  const badgeTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "success";
+  const entryHint = isInactive
+    ? t("inventory.row.inactive")
+    : !canonicalReady
+      ? t("inventory.row.needsVerification")
+      : queueCount > 0
+        ? t(queueCount === 1 ? "inventory.row.queued.one" : "inventory.row.queued.other", {
+            count: formatNumber(queueCount)
+          })
+        : t("inventory.row.openOps");
+  const statusColor = isInactive
+    ? colors.muted
+    : isCritical
+      ? inventoryStatusColors.Critical
+      : isLow
+        ? inventoryStatusColors.Low
+        : isGood
+          ? colors.success
+          : inventoryStatusColors.Watch;
+  const iconTone = isInactive
+    ? "neutral"
+    : isCritical
+      ? "danger"
+      : isLow
+        ? "warning"
+        : isWatch
+          ? "caution"
+          : "leaf";
+  const badgeTone = isInactive
+    ? "neutral"
+    : isCritical
+      ? "danger"
+      : isLow
+        ? "warning"
+        : isWatch
+          ? "caution"
+          : "success";
+  const badgeLabel = isInactive ? t("inventory.authority.inactive") : localized.status;
 
   return (
     <OperationalRow
@@ -478,11 +511,11 @@ function InventoryListRow({
       subtitle={`${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${item.unit} · ${localized.coverage}`}
       icon={categoryIcon(item.category, statusColor)}
       iconTone={iconTone}
-      badgeLabel={localized.status}
+      badgeLabel={badgeLabel}
       badgeTone={badgeTone}
       accessibilityLabel={t("inventory.row.accessibilityLedger", {
         item: item.item_name,
-        status: localized.status,
+        status: badgeLabel,
         coverage: localized.coverage,
         action: localized.action,
         confidence: localized.confidence,

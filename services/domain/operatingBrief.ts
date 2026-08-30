@@ -22,6 +22,7 @@ import {
   resolveInventoryHealthLabel,
   type InventoryHealthLabel
 } from "./operationalStatus";
+import { isActiveInventoryItem } from "./inventoryActivity";
 
 export type RestaurantPulseStatus = "on_track" | "attention_needed" | "at_risk";
 
@@ -394,7 +395,7 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
     (sale) => sale.restaurant_id === input.restaurant.id && sale.sale_date === input.operatingDate
   );
   const expectedSales = todaySales.reduce((sum, sale) => sum + sale.net_sales, 0);
-  const outlooks = input.inventoryOutlooks ?? [];
+  const outlooks = (input.inventoryOutlooks ?? []).filter(({ item }) => isActiveInventoryItem(item));
   const menuRisks = outlooks
     .map(({ item, prediction }) => {
       const label = resolveInventoryHealthLabel({
@@ -539,7 +540,9 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
   const freshness = buildDataFreshness(input, generatedAt);
   const outlook = buildOutlook(input);
   const criticalCount = (input.inventoryOutlooks ?? []).filter(
-    ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0
+    ({ item, prediction }) =>
+      isActiveInventoryItem(item) &&
+      (prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0)
   ).length;
   const urgentFindings = (input.findings ?? []).filter((finding) => finding.severity === "urgent").length;
   const status = pulseStatus({

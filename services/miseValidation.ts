@@ -366,6 +366,7 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
     par_level: asBoundedNonNegativeNumber(value.par_level, operatingLimits.inventoryQuantity),
     reorder_threshold: asBoundedNonNegativeNumber(value.reorder_threshold, operatingLimits.inventoryQuantity),
     estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost),
+    active: value.active !== false,
     canonical_unit: canonicalUnit,
     canonical_quantity_per_unit: canonicalQuantityPerUnit,
     canonical_unit_verification_status: verificationStatus,
