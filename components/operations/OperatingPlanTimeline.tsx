@@ -190,6 +190,11 @@ function OperatingPlanItemRow({
                 {presentation.windowLabel}
               </Text>
             ) : null}
+            {!isDone && presentation.reprioritizationReason ? (
+              <Text numberOfLines={2} style={styles.reprioritized}>
+                {presentation.reprioritizationReason}
+              </Text>
+            ) : null}
             {isDone && presentation.completionResult ? (
               <Text numberOfLines={1} style={styles.result}>
                 {t("today.plan.result", { result: presentation.completionResult })}
@@ -435,6 +440,13 @@ const styles = StyleSheet.create({
   },
   result: {
     color: colors.success,
+    ...conceptTypography.body,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2
+  },
+  reprioritized: {
+    color: colors.danger,
     ...conceptTypography.body,
     fontSize: 12,
     lineHeight: 16,

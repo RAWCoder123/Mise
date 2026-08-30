@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { createInitialDemoState } from "../services/demoData";
@@ -6,7 +7,8 @@ import { buildLearningMemorySummary } from "../services/domain/miseDomain";
 import {
   presentInsight,
   presentLearningMemory,
-  presentOperationalTodayTask
+  presentOperationalTodayTask,
+  presentOperatingPlanItem
 } from "../services/presentation/operationsPresentation";
 import type { Insight } from "../types/mise";
 import {
@@ -201,4 +203,72 @@ test("learning memory emits complete structured signal values and localized next
   }
   assert.notEqual(presentLearningMemory("es", memory).nextStep, memory.nextStep);
   assert.notEqual(presentLearningMemory("zh-Hans", memory).signals[0]?.detail, memory.signals[0]?.detail);
+});
+
+test("presentOperatingPlanItem localizes reprioritization by code without English reason freeze", () => {
+  const baseItem = {
+    id: "plan-item-1",
+    restaurantId: "rest-1",
+    kind: "approval" as const,
+    title: "Approve chicken",
+    detail: "Coverage drops below one service day.",
+    why: "Coverage drops below one service day.",
+    neededBy: "2026-08-30T12:00:00.000Z",
+    effect: "Keeps reorder decisions operator-approved.",
+    serviceWindow: "before_prep" as const,
+    bucket: "now" as const,
+    priority: "urgent" as const,
+    relatedRefs: [],
+    dependencyIds: [],
+    verificationMethod: "review" as const,
+    completionResult: null,
+    requiredRole: "manager" as const,
+    status: "open" as const,
+    sourceTask: null,
+    sourceRestaurantTask: null
+  };
+
+  const stockRisk = presentOperatingPlanItem("es", {
+    ...baseItem,
+    reprioritization: {
+      code: "stock_risk",
+      reason: "Projected stock risk requires attention before the next service window."
+    }
+  });
+  assert.equal(stockRisk.reprioritizationReason, "Movida a Ahora: riesgo de stock proyectado.");
+  assert.notEqual(stockRisk.reprioritizationReason, stockRisk.why);
+
+  const deliveryDue = presentOperatingPlanItem("zh-Hans", {
+    ...baseItem,
+    kind: "mise_task",
+    reprioritization: {
+      code: "delivery_due_today",
+      reason: "Supplier delivery is needed today (2026-08-30).",
+      deliveryDate: "2026-08-30"
+    }
+  });
+  assert.equal(
+    deliveryDue.reprioritizationReason,
+    "已调至现在：今日（2026-08-30）需要送货。"
+  );
+
+  const overdueEn = presentOperatingPlanItem("en", {
+    ...baseItem,
+    reprioritization: {
+      code: "delivery_overdue",
+      reason: "Delivery date 2026-08-28 is past operating date 2026-08-30.",
+      deliveryDate: "2026-08-28"
+    }
+  });
+  assert.equal(overdueEn.reprioritizationReason, "Moved to Now: delivery date 2026-08-28 is past.");
+
+  const none = presentOperatingPlanItem("en", { ...baseItem, reprioritization: null });
+  assert.equal(none.reprioritizationReason, null);
+});
+
+test("Today operating-plan timeline surfaces localized reprioritization reasons", () => {
+  const timeline = readFileSync("components/operations/OperatingPlanTimeline.tsx", "utf8");
+  assert.match(timeline, /presentation\.reprioritizationReason/);
+  assert.match(timeline, /styles\.reprioritized/);
+  assert.doesNotMatch(timeline, /item\.reprioritization\.reason/);
 });
