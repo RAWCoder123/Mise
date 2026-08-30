@@ -17,6 +17,7 @@ import type {
 } from "../domain/operatingPlan";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 import { presentOperatingPlanEffect } from "./operatingPlanEffectCopy";
+import { presentOperatingPlanWhy } from "./operatingPlanWhyCopy";
 
 export interface PresentedOperationalCopy {
   title: string;
@@ -884,7 +885,7 @@ export function presentOperatingPlanItem(
   return {
     title: taskCopy.title,
     detail: taskCopy.detail,
-    why: item.why,
+    why: presentOperatingPlanWhy(locale, item, taskCopy.detail),
     effect: presentOperatingPlanEffect(locale, item),
     neededByLabel: item.neededBy,
     windowLabel: copy.windows[item.serviceWindow],
