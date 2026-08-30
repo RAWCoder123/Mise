@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
 import { ArrowLeft, UserPlus, UsersRound } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
-import { Badge } from "../../components/ui/Badge";
+import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { IconBadge } from "../../components/ui/IconBadge";
@@ -25,6 +25,8 @@ import {
   assignableTeamRoles,
   canEditTeamMember,
   canManageTeam,
+  isTeamMemberAccessDisabled,
+  nextTeamMemberAccessStatus,
   normalizeTeamMemberEmail,
   sortTeamMembers,
   TeamMembershipError,
@@ -34,7 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
-import type { RestaurantRole, RestaurantTeamMember } from "../../types/mise";
+import type { RestaurantMembershipStatus, RestaurantRole, RestaurantTeamMember } from "../../types/mise";
 import { captureMiseError } from "../../services/telemetry";
 
 interface TeamNotice {
@@ -48,6 +50,18 @@ const roleKeys: Record<RestaurantRole, MessageKey> = {
   admin: "settings.role.admin",
   manager: "settings.role.manager",
   staff: "settings.role.staff"
+};
+
+const statusKeys: Record<RestaurantMembershipStatus, MessageKey> = {
+  active: "team.member.status.active",
+  disabled: "team.member.status.disabled",
+  invited: "team.member.status.invited"
+};
+
+const statusTones: Record<RestaurantMembershipStatus, BadgeTone> = {
+  active: "success",
+  disabled: "danger",
+  invited: "caution"
 };
 
 export default function TeamSettingsScreen() {
@@ -188,6 +202,50 @@ export default function TeamSettingsScreen() {
     }
   }
 
+  async function applyAccessStatus(
+    member: RestaurantTeamMember,
+    nextStatus: "active" | "disabled"
+  ) {
+    if (!restaurant || !actionsEditable) return;
+    setBusyKey(`status:${member.user_id}`);
+    setNotice(null);
+    try {
+      await updateRestaurantMember(restaurant.id, member.user_id, { status: nextStatus });
+      setNotice({
+        tone: "success",
+        titleKey: nextStatus === "disabled" ? "team.notice.disabled" : "team.notice.enabled"
+      });
+      await load();
+    } catch (error) {
+      captureMiseError(error, {
+        flow: "team",
+        operation: "update_status",
+        restaurant_id: restaurant.id
+      });
+      setNotice({ tone: "danger", titleKey: "team.notice.statusError" });
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  function toggleAccess(member: RestaurantTeamMember) {
+    if (!restaurant || !actionsEditable) return;
+    const nextStatus = nextTeamMemberAccessStatus(member.status);
+    if (!nextStatus) return;
+    if (nextStatus === "active") {
+      void applyAccessStatus(member, "active");
+      return;
+    }
+    Alert.alert(t("team.member.disableConfirmTitle"), t("team.member.disableConfirmBody"), [
+      { text: t("team.member.disableConfirmCancel"), style: "cancel" },
+      {
+        text: t("team.member.disableConfirmAction"),
+        style: "destructive",
+        onPress: () => void applyAccessStatus(member, "disabled")
+      }
+    ]);
+  }
+
   async function removeMember(member: RestaurantTeamMember) {
     if (!restaurant || !actionsEditable) return;
     setBusyKey(`remove:${member.user_id}`);
@@ -279,7 +337,11 @@ export default function TeamSettingsScreen() {
           ) : null}
           {visibleMembers.map((member) => {
             const isSelf = member.user_id === user?.id;
-            const editable = mutationAllowed && canEditTeamMember(role, { role: member.role, isSelf });
+            const editable =
+              mutationAllowed &&
+              canEditTeamMember(role, { role: member.role, isSelf, status: member.status });
+            const accessDisabled = isTeamMemberAccessDisabled(member.status);
+            const statusBusy = busyKey === `status:${member.user_id}`;
             return (
               <View key={`${member.restaurant_id}:${member.user_id}`} style={styles.memberCard}>
                 <View style={styles.memberHeader}>
@@ -293,7 +355,14 @@ export default function TeamSettingsScreen() {
                     </Text>
                     <Text style={styles.memberEmail}>{member.email?.trim() || t("team.member.emailMissing")}</Text>
                   </View>
-                  <Badge label={t(roleKeys[member.role])} tone="neutral" />
+                  <View style={styles.badgeColumn}>
+                    <Badge label={t(roleKeys[member.role])} tone="neutral" />
+                    <Badge
+                      label={t(statusKeys[member.status])}
+                      tone={statusTones[member.status]}
+                      uppercase
+                    />
+                  </View>
                 </View>
                 {editable ? (
                   <View style={styles.memberActions}>
@@ -317,6 +386,23 @@ export default function TeamSettingsScreen() {
                         );
                       })}
                     </View>
+                    <Button
+                      title={t(
+                        accessDisabled
+                          ? statusBusy
+                            ? "team.member.enabling"
+                            : "team.member.enable"
+                          : statusBusy
+                            ? "team.member.disabling"
+                            : "team.member.disable"
+                      )}
+                      variant={accessDisabled ? "secondary" : "soft"}
+                      onPress={() => toggleAccess(member)}
+                      disabled={!actionsEditable}
+                      accessibilityLabel={t(
+                        accessDisabled ? "team.member.enable" : "team.member.disable"
+                      )}
+                    />
                     <Button
                       title={t(busyKey === `remove:${member.user_id}` ? "team.member.removing" : "team.member.remove")}
                       variant="secondary"
@@ -392,6 +478,10 @@ const styles = StyleSheet.create({
   memberCopy: {
     flex: 1,
     gap: 2
+  },
+  badgeColumn: {
+    gap: spacing.xs,
+    alignItems: "flex-end"
   },
   memberName: {
     ...typography.cardTitle,
