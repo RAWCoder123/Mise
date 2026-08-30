@@ -45,9 +45,11 @@ import {
   inventoryHealthTier,
   type InventoryHealthTier
 } from "../../services/presentation/inventoryHealthPresentation";
+import { presentActivityWindowSentence } from "../../services/presentation/activityWindowCopy";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { taskRoleLabelKey } from "../../services/presentation/taskRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
+import type { AppLocale } from "../../i18n/catalog";
 
 type Translator = (key: MessageKey, values?: MessageValues) => string;
 
@@ -303,7 +305,15 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {visibleBrief ? <ActivitySection brief={visibleBrief} formatDate={formatDate} t={t} /> : null}
+        {visibleBrief ? (
+          <ActivitySection
+            brief={visibleBrief}
+            formatDate={formatDate}
+            locale={locale}
+            timeZone={restaurant?.timezone}
+            t={t}
+          />
+        ) : null}
 
         <Button
           title={t("home.ask.entry")}
@@ -411,13 +421,22 @@ function ApprovalsSection({
 function ActivitySection({
   brief,
   formatDate,
+  locale,
+  timeZone,
   t
 }: {
   brief: OperatingBrief;
   formatDate: (value: string, options?: Intl.DateTimeFormatOptions) => string;
+  locale: AppLocale;
+  timeZone?: string | null;
   t: Translator;
 }) {
   const events = brief.liveActivity.slice(0, 5);
+  const windowSentence = brief.activityWindowSummary
+    ? presentActivityWindowSentence(locale, brief.activityWindowSummary, {
+        timeZone: timeZone ?? undefined
+      })
+    : null;
   return (
     <View style={styles.section}>
       <SectionHeader
@@ -425,6 +444,7 @@ function ActivitySection({
         action={t("home.activity.history")}
         onAction={() => router.push("/more/activity" as never)}
       />
+      {windowSentence ? <Text style={styles.windowSentence}>{windowSentence}</Text> : null}
       {events.length === 0 ? (
         <Text style={styles.emptyCopy}>{t("home.activity.empty")}</Text>
       ) : (
@@ -900,6 +920,13 @@ const styles = StyleSheet.create({
     // whitespace and the section label alone. A divider here added a second
     // separator on top of the stack gap and pushed Top tasks out of the fold.
     gap: 0
+  },
+  windowSentence: {
+    color: colors.muted,
+    ...conceptTypography.caption,
+    fontFamily: conceptTypography.body.fontFamily,
+    lineHeight: 16,
+    marginBottom: 4
   },
   emptyCopy: {
     color: colors.muted,
