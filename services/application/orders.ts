@@ -19,6 +19,10 @@ import {
   type SupplierReliabilitySummary
 } from "../domain/supplierReliability";
 import {
+  buildSupplierOrderReceiveOutlook,
+  type SupplierOrderReceiveOutlook
+} from "../domain/supplierDelivery";
+import {
   requireRecommendationApprovalQuantity,
   requireSupplierOperatorNote,
   requireSupplierRecipientInput
@@ -39,6 +43,7 @@ export type {
   GmailIntegrationErrorStatus,
   SupplierOrderEmailSendResult
 };
+export type { SupplierOrderReceiveOutlook };
 
 const repository = getMiseRepository();
 
@@ -143,13 +148,19 @@ export type { SupplierOrderDeliveryEvidence };
 export async function fetchSupplierOrderOperationalDetail(
   restaurantId: string,
   orderId: string
-): Promise<{ order: SupplierOrder; deliveryEvidence: SupplierOrderDeliveryEvidence[] }> {
+): Promise<{
+  order: SupplierOrder;
+  deliveryEvidence: SupplierOrderDeliveryEvidence[];
+  receiveOutlook: SupplierOrderReceiveOutlook;
+}> {
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
   const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
-  const [order, history, restaurant] = await Promise.all([
+  const [order, history, restaurant, recommendations, inventoryItems] = await Promise.all([
     repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
     repository.fetchSupplierDeliveryHistory(normalizedRestaurantId),
-    repository.fetchRestaurant(normalizedRestaurantId)
+    repository.fetchRestaurant(normalizedRestaurantId),
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
+    repository.fetchInventoryItems(normalizedRestaurantId)
   ]);
   if (order.restaurant_id !== normalizedRestaurantId) {
     throw new Error("Supplier order belongs to another restaurant.");
@@ -162,6 +173,13 @@ export async function fetchSupplierOrderOperationalDetail(
       order,
       deliveries: history.deliveries,
       items: history.items
+    }),
+    receiveOutlook: buildSupplierOrderReceiveOutlook({
+      order,
+      recommendations,
+      inventoryItems,
+      deliveries: history.deliveries,
+      deliveryItems: history.items
     })
   };
 }

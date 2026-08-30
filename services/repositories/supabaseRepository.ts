@@ -2243,6 +2243,34 @@ export function createSupabaseRepository(): MiseRepository {
       };
     },
 
+    async closeSupplierOrderAcceptingShort(restaurantId, supplierOrderId) {
+      const { data, error } = await client.rpc("complete_supplier_order_accepting_short", {
+        p_restaurant_id: restaurantId,
+        p_order_id: supplierOrderId
+      });
+      if (error) throw error;
+      const payload = (Array.isArray(data) ? data[0] : data) as {
+        outcome?: "applied" | "already_completed";
+        orderId?: string;
+        supplierId?: string;
+        priorDeliveryCount?: number;
+      } | null;
+      if (
+        !payload?.outcome ||
+        typeof payload.orderId !== "string" ||
+        typeof payload.supplierId !== "string" ||
+        typeof payload.priorDeliveryCount !== "number"
+      ) {
+        throw new Error("Supplier order short-close returned an invalid response.");
+      }
+      return {
+        outcome: payload.outcome,
+        orderId: payload.orderId,
+        supplierId: payload.supplierId,
+        priorDeliveryCount: payload.priorDeliveryCount
+      };
+    },
+
     async fetchOpenInventoryCountSession(restaurantId) {
       const { data: session, error } = await client
         .from("inventory_count_sessions")

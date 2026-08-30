@@ -792,6 +792,17 @@ export interface MiseRepository {
       notes?: string | null;
     }
   ): Promise<SupplierDeliveryRecordResult>;
+  closeSupplierOrderAcceptingShort(
+    restaurantId: string,
+    supplierOrderId: string
+  ): Promise<CloseSupplierOrderAcceptingShortResult>;
+}
+
+export interface CloseSupplierOrderAcceptingShortResult {
+  outcome: "applied" | "already_completed";
+  orderId: string;
+  supplierId: string;
+  priorDeliveryCount: number;
 }
 
 export function recommendationHistoryCutoffIso(now = Date.now()): string {

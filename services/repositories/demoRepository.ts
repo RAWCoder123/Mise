@@ -70,6 +70,7 @@ import {
   type RestaurantTask
 } from "../domain/restaurantTasks";
 import type {
+  CloseSupplierOrderAcceptingShortResult,
   PersistedRecalculationRun,
   RestaurantSetupSnapshotInput,
   SupplierDeliveryRecordResult
@@ -3825,6 +3826,111 @@ export function createLocalDemoRepository(): MiseRepository {
           deliveryId,
           supplierOrderId: order.id,
           outcomeId: outcome.id
+        };
+      });
+    },
+
+    async closeSupplierOrderAcceptingShort(
+      restaurantId,
+      supplierOrderId
+    ): Promise<CloseSupplierOrderAcceptingShortResult> {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const order = state.supplierOrders.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === supplierOrderId
+        );
+        if (!order) throw new Error("Supplier order not found");
+        if (order.status === "completed") {
+          const priorDeliveryCount = (state.supplierDeliveries ?? []).filter(
+            (delivery) =>
+              delivery.restaurant_id === restaurantId &&
+              delivery.supplier_order_id === supplierOrderId
+          ).length;
+          return {
+            outcome: "already_completed",
+            orderId: order.id,
+            supplierId: order.supplier_id,
+            priorDeliveryCount
+          };
+        }
+        if (order.status !== "sent") {
+          throw new Error(
+            "Only sent supplier orders with prior delivery evidence can be closed as short-accepted."
+          );
+        }
+        const priorDeliveries = (state.supplierDeliveries ?? []).filter(
+          (delivery) =>
+            delivery.restaurant_id === restaurantId &&
+            delivery.supplier_order_id === supplierOrderId
+        );
+        if (priorDeliveries.length === 0) {
+          throw new Error(
+            "Only sent supplier orders with prior delivery evidence can be closed as short-accepted."
+          );
+        }
+
+        order.status = "completed";
+        const closedAt = new Date().toISOString();
+        const activityEvent: ActivityEvent = {
+          id: createId("activity"),
+          restaurantId,
+          locationId: null,
+          occurredAt: closedAt,
+          createdAt: closedAt,
+          activityType: "delivery_logged",
+          category: "orders",
+          title: "Supplier order closed after short",
+          summary: `${order.supplier_name} order closed after prior delivery evidence. Remaining short was accepted without another receipt.`,
+          triggerType: "supplier_order_short_close",
+          triggerReference: order.id,
+          evidenceReferences: [
+            {
+              type: "supplier_order",
+              id: order.id,
+              summary: order.supplier_name,
+              observedAt: closedAt
+            }
+          ],
+          sourceSystems: ["mise", "orders"],
+          actionId: null,
+          recommendationId: null,
+          autonomyLevel: 5,
+          confidence: null,
+          status: "confirmed",
+          requiresAttention: false,
+          attentionDeadline: null,
+          relatedEntityType: "supplier_order",
+          relatedEntityId: order.id,
+          parentActivityId: null,
+          sequenceId: `supplier-order:${order.id}`,
+          metadata: {
+            priorDeliveryCount: priorDeliveries.length,
+            outcome: "short_accepted",
+            idempotencyKey: `supplier_order_short_close:${order.id}`
+          },
+          errorCode: null,
+          errorMessage: null,
+          resolvedAt: null,
+          resolvedBy: null
+        };
+        state.activityEvents = [...(state.activityEvents ?? []), activityEvent];
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_order_short_accepted",
+          entity_table: "supplier_orders",
+          entity_id: order.id,
+          metadata: {
+            supplier_id: order.supplier_id,
+            supplier_name: order.supplier_name,
+            prior_delivery_count: priorDeliveries.length
+          }
+        });
+
+        return {
+          outcome: "applied",
+          orderId: order.id,
+          supplierId: order.supplier_id,
+          priorDeliveryCount: priorDeliveries.length
         };
       });
     }
