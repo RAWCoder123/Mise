@@ -111,6 +111,13 @@ export async function undoPurchaseRecommendationAction(restaurantId: string, rec
   return result.recommendation;
 }
 
+export async function cancelSupplierOrderDraft(restaurantId: string, orderId: string) {
+  return repository.cancelSupplierOrderDraft(
+    requireWorkflowId(restaurantId, "restaurant"),
+    requireWorkflowId(orderId, "supplier order")
+  );
+}
+
 export async function fetchPurchaseDecisionPatterns(restaurantId: string) {
   return repository.fetchPurchaseDecisionPatterns(requireWorkflowId(restaurantId, "restaurant"));
 }

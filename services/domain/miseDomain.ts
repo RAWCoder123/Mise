@@ -1239,6 +1239,15 @@ export interface RecommendationWorkflowResult {
   authority?: PurchaseAuthorityResult | null;
 }
 
+export interface CancelSupplierOrderDraftResult {
+  outcome: "applied";
+  orderId: string;
+  supplierId: string;
+  supplierName: string;
+  restoredCount: number;
+  restoredRecommendationIds: string[];
+}
+
 export interface SupplierOrderSentWorkflowResult {
   outcome: RecommendationWorkflowOutcome;
   order: SupplierOrder;

@@ -15,6 +15,7 @@ import {
   approveRecommendationInDemoState,
   bumpDemoSupplierSendContentForExternalChange,
   bumpDemoSupplierSendContentRevision,
+  cancelSupplierOrderDraftInDemoState,
   demoSupplierSendContentRevision,
   dismissRecommendationInDemoState,
   isRollingDemoCurrentDaySale,
@@ -2224,6 +2225,102 @@ export function createLocalDemoRepository(): MiseRepository {
           ...result,
           recommendation: normalizePurchaseRecommendation(result.recommendation),
           order: result.order ? normalizeSupplierOrder(result.order) : null
+        };
+      });
+    },
+
+    async cancelSupplierOrderDraft(restaurantId, orderId) {
+      return mutateDemoState((state) => {
+        const previousOrder = state.supplierOrders.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === orderId
+        );
+        if (!previousOrder) throw new Error("Order draft not found");
+        if (previousOrder.status !== "draft") {
+          throw new Error("Only draft supplier orders can be cancelled.");
+        }
+
+        const approvedBefore = state.purchaseRecommendations
+          .filter(
+            (entry) =>
+              entry.restaurant_id === restaurantId &&
+              entry.supplier_order_id === orderId &&
+              entry.status === "approved"
+          )
+          .slice()
+          .sort((left, right) => left.id.localeCompare(right.id));
+
+        const compensatedIds = new Set(
+          state.purchaseDecisionEvents
+            .filter((event) => event.decisionType === "undo")
+            .map((event) => event.targetEventId)
+        );
+        const targetEvents = approvedBefore.map((recommendation) => {
+          const targetEvent = [...state.purchaseDecisionEvents]
+            .reverse()
+            .find(
+              (event) =>
+                event.restaurantId === restaurantId &&
+                event.purchaseRecommendationId === recommendation.id &&
+                !compensatedIds.has(event.id) &&
+                (event.decisionType === "approve" || event.decisionType === "approve_with_override")
+            );
+          return { recommendationId: recommendation.id, targetEvent };
+        });
+
+        const cancelled = cancelSupplierOrderDraftInDemoState(state, restaurantId, orderId);
+
+        for (const { recommendationId, targetEvent } of targetEvents) {
+          const restored = cancelled.restoredRecommendations.find(
+            (entry) => entry.id === recommendationId
+          );
+          if (!restored) continue;
+          const undoAudit = appendDemoAuditLog(state, {
+            restaurant_id: restaurantId,
+            action: "recommendation_undo",
+            entity_table: "purchase_recommendations",
+            entity_id: restored.id,
+            metadata: {
+              previous_status: "approved",
+              supplier_id: restored.supplier_id,
+              supplier_name: restored.supplier_name,
+              via: "cancel_supplier_order_draft"
+            }
+          });
+          if (targetEvent) {
+            state.purchaseDecisionEvents.push(createPurchaseDecisionCompensation({
+              id: createId("purchase_decision"),
+              sequence: nextDemoPurchaseDecisionSequence(state),
+              target: targetEvent,
+              decisionType: "undo",
+              actorUserId: DEMO_USER_ID,
+              actorRole: "owner",
+              sourceAuditLogId: undoAudit.id,
+              sourceEventKey: `audit_log:${undoAudit.id}`,
+              occurredAt: undoAudit.created_at
+            }));
+          }
+        }
+
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_order_draft_cancelled",
+          entity_table: "supplier_orders",
+          entity_id: cancelled.orderId,
+          metadata: {
+            supplier_id: cancelled.supplierId,
+            supplier_name: cancelled.supplierName,
+            restored_count: cancelled.restoredRecommendations.length,
+            recommendation_ids: cancelled.restoredRecommendations.map((entry) => entry.id)
+          }
+        });
+
+        return {
+          outcome: "applied" as const,
+          orderId: cancelled.orderId,
+          supplierId: cancelled.supplierId,
+          supplierName: cancelled.supplierName,
+          restoredCount: cancelled.restoredRecommendations.length,
+          restoredRecommendationIds: cancelled.restoredRecommendations.map((entry) => entry.id)
         };
       });
     },
