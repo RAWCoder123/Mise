@@ -16,6 +16,7 @@ import type {
   VerificationMethod
 } from "../domain/operatingPlan";
 import type { OperationalTodayTask } from "../domain/todayTasks";
+import { presentOperatingPlanEffect } from "./operatingPlanEffectCopy";
 
 export interface PresentedOperationalCopy {
   title: string;
@@ -884,7 +885,7 @@ export function presentOperatingPlanItem(
     title: taskCopy.title,
     detail: taskCopy.detail,
     why: item.why,
-    effect: item.effect,
+    effect: presentOperatingPlanEffect(locale, item),
     neededByLabel: item.neededBy,
     windowLabel: copy.windows[item.serviceWindow],
     verificationLabel: copy.verification[item.verificationMethod],
