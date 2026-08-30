@@ -15,6 +15,7 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
   fetchEmailConnectionState,
+  fetchManualReceiptConflictsForSupplierOrder,
   fetchSupplierSendAction,
   fetchSupplierOrderOperationalDetail,
   isGmailIntegrationError,
@@ -22,8 +23,10 @@ import {
   prepareSupplierEmailPayload,
   receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
-  updateSupplierOrder
+  updateSupplierOrder,
+  type ManualReceiptBeforeOrderReceiveConflict
 } from "../../services/miseService";
+import { captureMiseError } from "../../services/telemetry";
 import type {
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
@@ -72,7 +75,14 @@ export default function OrderDraftDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [hubLoadError, setHubLoadError] = useState(false);
+  const [manualReceiptConflicts, setManualReceiptConflicts] = useState<
+    ManualReceiptBeforeOrderReceiveConflict[]
+  >([]);
+  const [manualReceiptConflictLoadError, setManualReceiptConflictLoadError] = useState(false);
+  const [manualReceiptConflictLoading, setManualReceiptConflictLoading] = useState(false);
+  const [overrideManualReceiptConflict, setOverrideManualReceiptConflict] = useState(false);
   const requestIdRef = useRef(0);
+  const conflictRequestIdRef = useRef(0);
   const actionLockRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -119,6 +129,53 @@ export default function OrderDraftDetailScreen() {
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       setOperatorNote(nextDetail.order.operator_note ?? "");
+      setOverrideManualReceiptConflict(false);
+      if (nextDetail.order.status === "sent") {
+        const conflictRequestId = ++conflictRequestIdRef.current;
+        setManualReceiptConflictLoading(true);
+        setManualReceiptConflictLoadError(false);
+        try {
+          const conflicts = await fetchManualReceiptConflictsForSupplierOrder(
+            restaurantId,
+            orderId
+          );
+          if (
+            conflictRequestId !== conflictRequestIdRef.current ||
+            requestId !== requestIdRef.current ||
+            activeRestaurantIdRef.current !== restaurantId
+          ) {
+            return;
+          }
+          setManualReceiptConflicts(conflicts);
+        } catch (conflictError) {
+          if (
+            conflictRequestId !== conflictRequestIdRef.current ||
+            requestId !== requestIdRef.current ||
+            activeRestaurantIdRef.current !== restaurantId
+          ) {
+            return;
+          }
+          captureMiseError(conflictError, {
+            flow: "supplier_order_receive",
+            operation: "manual_receipt_conflict_check",
+            restaurant_id: restaurantId
+          });
+          setManualReceiptConflicts([]);
+          setManualReceiptConflictLoadError(true);
+        } finally {
+          if (
+            conflictRequestId === conflictRequestIdRef.current &&
+            activeRestaurantIdRef.current === restaurantId
+          ) {
+            setManualReceiptConflictLoading(false);
+          }
+        }
+      } else {
+        conflictRequestIdRef.current += 1;
+        setManualReceiptConflicts([]);
+        setManualReceiptConflictLoadError(false);
+        setManualReceiptConflictLoading(false);
+      }
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
@@ -126,6 +183,10 @@ export default function OrderDraftDetailScreen() {
       setEmailPayload(null);
       setSupplierSendAction(null);
       setHubLoadError(true);
+      setManualReceiptConflicts([]);
+      setManualReceiptConflictLoadError(false);
+      setManualReceiptConflictLoading(false);
+      setOverrideManualReceiptConflict(false);
       setNotice({
         title: t("orders.detail.load.title"),
         message:
@@ -141,6 +202,7 @@ export default function OrderDraftDetailScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    conflictRequestIdRef.current += 1;
     actionLockRef.current = false;
     setLoadedRestaurantId(null);
     setHubLoadError(false);
@@ -152,6 +214,10 @@ export default function OrderDraftDetailScreen() {
     setOperatorNote("");
     setBusy(false);
     setNotice(null);
+    setManualReceiptConflicts([]);
+    setManualReceiptConflictLoadError(false);
+    setManualReceiptConflictLoading(false);
+    setOverrideManualReceiptConflict(false);
     setLoading(Boolean(restaurant && id));
     void load();
   }, [id, load, restaurant?.id]);
@@ -361,6 +427,34 @@ export default function OrderDraftDetailScreen() {
     if (!restaurant || !order || order.status !== "sent" || actionLockRef.current) return;
     if (!actionsEditable) {
       setNotice(viewOnlyNotice(t));
+      return;
+    }
+    if (manualReceiptConflictLoading) {
+      setNotice({
+        title: t("orders.detail.conflict.checkingTitle"),
+        message: t("orders.detail.conflict.checking"),
+        tone: "warning"
+      });
+      return;
+    }
+    if (manualReceiptConflictLoadError) {
+      setNotice({
+        title: t("orders.detail.conflict.checkFailedTitle"),
+        message: t("orders.detail.conflict.checkFailed"),
+        tone: "danger",
+        recovery: "retry"
+      });
+      return;
+    }
+    if (manualReceiptConflicts.length > 0 && !overrideManualReceiptConflict) {
+      setOverrideManualReceiptConflict(true);
+      setNotice({
+        title: t("orders.detail.conflict.manualReceiptTitle"),
+        message: t("orders.detail.conflict.manualReceiptConfirm", {
+          count: formatNumber(manualReceiptConflicts.length)
+        }),
+        tone: "warning"
+      });
       return;
     }
     const restaurantId = restaurant.id;
@@ -775,16 +869,54 @@ export default function OrderDraftDetailScreen() {
           ) : null}
 
           {isSent && actionsEditable ? (
-            <Button
-              title={busy ? t("orders.detail.action.receiving") : t("orders.detail.action.markReceived")}
-              accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
-                supplier: visibleOrder.supplier_name
-              })}
-              icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
-              onPress={() => void markReceived()}
-              disabled={busy}
-              fullWidth
-            />
+            <>
+              {manualReceiptConflictLoading ? (
+                <StatusNotice
+                  tone="neutral"
+                  title={t("orders.detail.conflict.checkingTitle")}
+                  message={t("orders.detail.conflict.checking")}
+                />
+              ) : null}
+              {manualReceiptConflictLoadError ? (
+                <StatusNotice
+                  tone="danger"
+                  title={t("orders.detail.conflict.checkFailedTitle")}
+                  message={t("orders.detail.conflict.checkFailed")}
+                  actionLabel={t("common.retry")}
+                  onAction={() => void load(false)}
+                />
+              ) : null}
+              {manualReceiptConflicts.length > 0 ? (
+                <StatusNotice
+                  tone={overrideManualReceiptConflict ? "danger" : "warning"}
+                  title={t("orders.detail.conflict.manualReceiptTitle")}
+                  message={t("orders.detail.conflict.manualReceiptBody", {
+                    count: formatNumber(manualReceiptConflicts.length)
+                  })}
+                  actionLabel={t("orders.detail.conflict.openLogDelivery")}
+                  actionAccessibilityLabel={t("orders.detail.conflict.openLogDeliveryAccessibility")}
+                  onAction={() => router.push("/more/log-delivery" as never)}
+                />
+              ) : null}
+              <Button
+                title={
+                  busy
+                    ? t("orders.detail.action.receiving")
+                    : manualReceiptConflicts.length > 0 && !overrideManualReceiptConflict
+                      ? t("orders.detail.conflict.confirmOverride")
+                      : manualReceiptConflicts.length > 0 && overrideManualReceiptConflict
+                        ? t("orders.detail.conflict.receiveAnyway")
+                        : t("orders.detail.action.markReceived")
+                }
+                accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
+                  supplier: visibleOrder.supplier_name
+                })}
+                icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
+                onPress={() => void markReceived()}
+                disabled={busy || manualReceiptConflictLoading || manualReceiptConflictLoadError}
+                fullWidth
+              />
+            </>
           ) : null}
         </View>
       ) : (

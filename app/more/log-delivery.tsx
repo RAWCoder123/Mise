@@ -18,9 +18,11 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   fetchDeliveryHistory,
   fetchInventoryItems,
+  fetchOpenSentOrderConflictsForInventoryItem,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
-  type DeliveryHistoryEntry
+  type DeliveryHistoryEntry,
+  type OpenSentOrderReceiptConflict
 } from "../../services/miseService";
 import {
   presentRestaurantScopedHubActionsEditable,
@@ -92,7 +94,12 @@ export default function LogDeliveryScreen() {
   const [messageIsError, setMessageIsError] = useState(false);
   const [lastLoggedItemId, setLastLoggedItemId] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [openOrderConflicts, setOpenOrderConflicts] = useState<OpenSentOrderReceiptConflict[]>([]);
+  const [conflictLoadError, setConflictLoadError] = useState(false);
+  const [conflictLoading, setConflictLoading] = useState(false);
+  const [overrideOpenOrderConflict, setOverrideOpenOrderConflict] = useState(false);
   const requestIdRef = useRef(0);
+  const conflictRequestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -118,6 +125,10 @@ export default function LogDeliveryScreen() {
     setMessageIsError(false);
     setLastLoggedItemId(null);
     setLoadedRestaurantId(null);
+    setOpenOrderConflicts([]);
+    setConflictLoadError(false);
+    setConflictLoading(false);
+    setOverrideOpenOrderConflict(false);
     setError(false);
     setTab("history");
     setLoading(Boolean(restaurant));
@@ -189,6 +200,43 @@ export default function LogDeliveryScreen() {
     setNoteText("");
     setMessage(null);
     setMessageIsError(false);
+    setOpenOrderConflicts([]);
+    setConflictLoadError(false);
+    setConflictLoading(false);
+    setOverrideOpenOrderConflict(false);
+  }
+
+  async function loadOpenOrderConflicts(restaurantId: string, inventoryItemId: string) {
+    const requestId = ++conflictRequestIdRef.current;
+    setConflictLoading(true);
+    setConflictLoadError(false);
+    setOpenOrderConflicts([]);
+    setOverrideOpenOrderConflict(false);
+    try {
+      const conflicts = await fetchOpenSentOrderConflictsForInventoryItem(
+        restaurantId,
+        inventoryItemId
+      );
+      if (requestId !== conflictRequestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+        return;
+      }
+      setOpenOrderConflicts(conflicts);
+    } catch (conflictError) {
+      if (requestId !== conflictRequestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+        return;
+      }
+      captureMiseError(conflictError, {
+        flow: "log_delivery",
+        operation: "open_order_conflict_check",
+        restaurant_id: restaurantId
+      });
+      setConflictLoadError(true);
+      setOpenOrderConflicts([]);
+    } finally {
+      if (requestId === conflictRequestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        setConflictLoading(false);
+      }
+    }
   }
 
   async function submitReceipt() {
@@ -201,6 +249,22 @@ export default function LogDeliveryScreen() {
     if (!isCanonicalUnitReady(selected)) {
       setMessage(t("inventory.ops.unverified.body"));
       setMessageIsError(true);
+      return;
+    }
+    if (conflictLoading) {
+      setMessage(t("logDelivery.conflict.checking"));
+      setMessageIsError(true);
+      return;
+    }
+    if (conflictLoadError) {
+      setMessage(t("logDelivery.conflict.checkFailed"));
+      setMessageIsError(true);
+      return;
+    }
+    if (openOrderConflicts.length > 0 && !overrideOpenOrderConflict) {
+      setOverrideOpenOrderConflict(true);
+      setMessage(null);
+      setMessageIsError(false);
       return;
     }
 
@@ -411,6 +475,10 @@ export default function LogDeliveryScreen() {
                       setLastLoggedItemId(null);
                       setQuantityText("");
                       setNoteText("");
+                      setOverrideOpenOrderConflict(false);
+                      if (restaurant?.id) {
+                        void loadOpenOrderConflicts(restaurant.id, item.id);
+                      }
                     }}
                     accessibilityLabel={t("logDelivery.row.accessibility", { item: item.item_name })}
                   />
@@ -438,6 +506,44 @@ export default function LogDeliveryScreen() {
                   : t("inventory.ops.unverified.body")
               }
             />
+
+            {conflictLoading ? (
+              <StatusNotice
+                tone="neutral"
+                title={t("logDelivery.conflict.checkingTitle")}
+                message={t("logDelivery.conflict.checking")}
+              />
+            ) : null}
+
+            {conflictLoadError ? (
+              <RetryNotice
+                title={t("logDelivery.conflict.checkFailedTitle")}
+                message={t("logDelivery.conflict.checkFailed")}
+                retryLabel={t("common.retry")}
+                accessibilityLabel={t("logDelivery.conflict.retryAccessibility")}
+                onRetry={() => {
+                  if (restaurant?.id && selected) {
+                    void loadOpenOrderConflicts(restaurant.id, selected.id);
+                  }
+                }}
+              />
+            ) : null}
+
+            {openOrderConflicts.length > 0 ? (
+              <StatusNotice
+                tone={overrideOpenOrderConflict ? "danger" : "warning"}
+                title={t("logDelivery.conflict.openOrderTitle")}
+                message={t("logDelivery.conflict.openOrderBody", {
+                  supplier: openOrderConflicts[0]!.supplierName,
+                  count: formatNumber(openOrderConflicts.length)
+                })}
+                actionLabel={t("logDelivery.conflict.openOrderAction")}
+                actionAccessibilityLabel={t("logDelivery.conflict.openOrderActionAccessibility", {
+                  supplier: openOrderConflicts[0]!.supplierName
+                })}
+                onAction={() => router.push(`/orders/${openOrderConflicts[0]!.orderId}` as never)}
+              />
+            ) : null}
 
             <SectionHeader
               title={
@@ -489,10 +595,23 @@ export default function LogDeliveryScreen() {
             />
 
             <Button
-              title={submitting ? t("common.saving") : t("logDelivery.submit")}
+              title={
+                submitting
+                  ? t("common.saving")
+                  : openOrderConflicts.length > 0 && !overrideOpenOrderConflict
+                    ? t("logDelivery.conflict.confirmOverride")
+                    : openOrderConflicts.length > 0 && overrideOpenOrderConflict
+                      ? t("logDelivery.conflict.submitAnyway")
+                      : t("logDelivery.submit")
+              }
               icon={<Truck size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void submitReceipt()}
-              disabled={!actionsEditable || !isCanonicalUnitReady(selected)}
+              disabled={
+                !actionsEditable ||
+                !isCanonicalUnitReady(selected) ||
+                conflictLoading ||
+                conflictLoadError
+              }
               fullWidth
             />
 
