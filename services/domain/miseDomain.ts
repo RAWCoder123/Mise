@@ -1272,6 +1272,34 @@ export function linkedApprovedRecommendationsForOrder(
     );
 }
 
+/**
+ * Draft line quantity revise is only valid while the recommendation remains
+ * approved and bound to the open draft. Hosted approve rejects quantity changes
+ * once status is approved, so the application composes undo then re-approve.
+ */
+export function canReviseDraftRecommendationQuantity(
+  recommendation: PurchaseRecommendation,
+  orderId: string
+): boolean {
+  const normalizedOrderId = orderId.trim();
+  return (
+    Boolean(normalizedOrderId) &&
+    recommendation.status === "approved" &&
+    recommendation.supplier_order_id === normalizedOrderId
+  );
+}
+
+export function draftRecommendationQuantityUnchanged(
+  currentQuantity: number,
+  nextQuantity: number
+): boolean {
+  return (
+    Number.isFinite(currentQuantity) &&
+    Number.isFinite(nextQuantity) &&
+    currentQuantity === nextQuantity
+  );
+}
+
 export function buildOrderQueueSummary(
   restaurantId: string,
   recommendations: PurchaseRecommendation[],
