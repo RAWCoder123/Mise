@@ -20,7 +20,7 @@ import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, fontFamilies, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
-import type { MessageKey, MessageValues } from "../../i18n/catalog";
+import type { MessageKey, MessageValues, AppLocale } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
 import type { ActivityEvent } from "../../services/domain/activityEvents";
 import type {
@@ -46,6 +46,7 @@ import {
   type InventoryHealthTier
 } from "../../services/presentation/inventoryHealthPresentation";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
+import { presentPurchaseRecommendationReason } from "../../services/presentation/purchaseRecommendationPresentation";
 import { taskRoleLabelKey } from "../../services/presentation/taskRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -232,7 +233,7 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {visibleBrief ? <RestaurantStatusCard brief={visibleBrief} t={t} /> : null}
+        {visibleBrief ? <RestaurantStatusCard brief={visibleBrief} t={t} locale={locale} /> : null}
 
         {visibleSummary ? (
           <>
@@ -266,6 +267,7 @@ export default function HomeScreen() {
             brief={visibleBrief}
             approvingId={approvingId}
             t={t}
+            locale={locale}
             onApprove={async (card) => {
               if (!restaurant || approvingId) return;
               if (!card.recommendationId) {
@@ -320,10 +322,12 @@ export default function HomeScreen() {
 
 function RestaurantStatusCard({
   brief,
-  t
+  t,
+  locale
 }: {
   brief: OperatingBrief;
   t: Translator;
+  locale: AppLocale;
 }) {
   // A healthy morning needs no banner at all — the concept only shows this
   // block when something is actually wrong.
@@ -341,6 +345,9 @@ function RestaurantStatusCard({
   const topRisk = brief.restaurantStatus.topRisk?.trim();
   const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
+  const approvalWhy = primaryApproval
+    ? presentApprovalWhy(locale, primaryApproval)
+    : null;
 
   return (
     <StatusNotice
@@ -351,21 +358,48 @@ function RestaurantStatusCard({
           ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
           : primaryApproval?.title || t(statusKey)
       }
-      message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
+      message={topRisk ? t(statusKey) : approvalWhy ?? brief.restaurantStatus.summary}
       onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
     />
   );
+}
+
+function presentApprovalWhy(
+  locale: AppLocale,
+  card: OperatingBriefApprovalCard
+) {
+  if (
+    card.recommendationId &&
+    card.itemName &&
+    card.quantity != null &&
+    card.unit &&
+    card.supplierName &&
+    card.urgency
+  ) {
+    return presentPurchaseRecommendationReason(locale, {
+      item_name: card.itemName,
+      recommended_quantity: card.quantity,
+      unit: card.unit,
+      supplier_name: card.supplierName,
+      urgency: card.urgency,
+      reason: card.whyItMatters,
+      presentation: card.reasonPresentation ?? undefined
+    });
+  }
+  return card.whyItMatters;
 }
 
 function ApprovalsSection({
   brief,
   approvingId,
   t,
+  locale,
   onApprove
 }: {
   brief: OperatingBrief;
   approvingId: string | null;
   t: Translator;
+  locale: AppLocale;
   onApprove: (card: OperatingBriefApprovalCard) => void | Promise<void>;
 }) {
   const cards = brief.needsApproval.slice(0, 3);
@@ -381,11 +415,12 @@ function ApprovalsSection({
       ) : (
         cards.map((card) => {
           const canOneTap = Boolean(card.recommendationId);
+          const why = presentApprovalWhy(locale, card);
           return (
             <View key={card.id} style={styles.briefCard}>
               <Text style={styles.cardTitle}>{card.title}</Text>
               <Text style={styles.cardBody}>{card.recommendedAction}</Text>
-              <Text style={styles.metaLine}>{t("home.approvals.why")}: {card.whyItMatters}</Text>
+              <Text style={styles.metaLine}>{t("home.approvals.why")}: {why}</Text>
               <View style={styles.approvalActions}>
                 <Button
                   title={
