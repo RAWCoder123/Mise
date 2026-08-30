@@ -1,8 +1,11 @@
-import type { MessageKey, MessageValues } from "../../i18n/catalog";
+import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type {
   DailyPhaseFinding,
   DailyPhaseFindingPresentation
 } from "../domain/dailyPhaseBrief";
+import { presentOperatingPlanEffect } from "./operatingPlanEffectCopy";
+import { presentOperatingPlanWhy } from "./operatingPlanWhyCopy";
+import { presentOperationalTodayTask } from "./operationsPresentation";
 
 type Translate = (key: MessageKey, values?: MessageValues) => string;
 
@@ -47,33 +50,46 @@ export interface PresentedDailyPhaseFinding {
 /**
  * Localizes structured daily-phase finding templates. Free-form upstream
  * tenant prose (task titles, memory copy, opportunity text) is interpolated
- * unchanged so the UI never invents operational facts.
+ * unchanged so the UI never invents operational facts. Plan why/effect use
+ * the same structured presenters as Today so wrapper templates do not freeze
+ * durable English operating-plan copy into ES/zh-Hans briefs.
  */
 export function presentDailyPhaseFinding(
   finding: DailyPhaseFinding,
-  t: Translate
+  t: Translate,
+  locale: AppLocale
 ): PresentedDailyPhaseFinding {
   if (!finding.presentation) {
     return { title: finding.title, interpretation: finding.interpretation };
   }
-  return presentFromDescriptor(finding.presentation, t, finding);
+  return presentFromDescriptor(finding.presentation, t, finding, locale);
 }
 
 function presentFromDescriptor(
   presentation: DailyPhaseFindingPresentation,
   t: Translate,
-  fallback: DailyPhaseFinding
+  fallback: DailyPhaseFinding,
+  locale: AppLocale
 ): PresentedDailyPhaseFinding {
   switch (presentation.kind) {
-    case "start_with_task":
+    case "start_with_task": {
+      const taskCopy = presentation.planWhy.sourceTask
+        ? presentOperationalTodayTask(locale, presentation.planWhy.sourceTask)
+        : null;
+      const why = presentOperatingPlanWhy(
+        locale,
+        presentation.planWhy,
+        taskCopy?.detail
+      );
       return {
         title: t("dailyPhaseBrief.finding.startWithTask.title", {
-          task: presentation.taskTitle
+          task: taskCopy?.title ?? presentation.taskTitle
         }),
         interpretation: t("dailyPhaseBrief.finding.startWithTask.body", {
-          why: presentation.why
+          why
         })
       };
+    }
     case "approvals":
       return {
         title: t(
@@ -109,16 +125,21 @@ function presentFromDescriptor(
         title: t("dailyPhaseBrief.finding.protectOpportunity.title"),
         interpretation: presentation.opportunity
       };
-    case "next_readiness_move":
+    case "next_readiness_move": {
+      const taskCopy = presentation.planEffect.sourceTask
+        ? presentOperationalTodayTask(locale, presentation.planEffect.sourceTask)
+        : null;
+      const effect = presentOperatingPlanEffect(locale, presentation.planEffect);
       return {
         title: t("dailyPhaseBrief.finding.nextReadinessMove.title", {
-          task: presentation.taskTitle
+          task: taskCopy?.title ?? presentation.taskTitle
         }),
         interpretation: t("dailyPhaseBrief.finding.nextReadinessMove.body", {
-          effect: presentation.effect,
+          effect,
           verification: presentVerification(presentation.verificationMethod, t)
         })
       };
+    }
     case "ingredients_constrain":
       return {
         title: t(

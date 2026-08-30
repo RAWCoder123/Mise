@@ -71,6 +71,22 @@ test("phase briefs prioritize three to five interpreted findings without fabrica
       "every emitted finding should carry a structured presentation descriptor"
     );
   }
+  const morningPriority = result.briefs.morning.findings.find(
+    (finding) => finding.presentation?.kind === "start_with_task"
+  );
+  assert.ok(morningPriority?.presentation?.kind === "start_with_task");
+  assert.equal(
+    morningPriority.presentation.planWhy.why,
+    morningPriority.presentation.why
+  );
+  const preServicePriority = result.briefs.pre_service.findings.find(
+    (finding) => finding.presentation?.kind === "next_readiness_move"
+  );
+  assert.ok(preServicePriority?.presentation?.kind === "next_readiness_move");
+  assert.equal(
+    preServicePriority.presentation.planEffect.effect,
+    preServicePriority.presentation.effect
+  );
   assert.ok(result.briefs.morning.unavailableSignals.includes("staffing schedule"));
   assert.ok(result.briefs.pre_service.unavailableSignals.includes("reservation load"));
   assert.ok(result.briefs.closing.unavailableSignals.includes("forecast accuracy"));

@@ -16,12 +16,28 @@ export type DailyPhaseBriefRoute =
   | "/more/waste";
 
 /**
+ * Structured plan-item fields needed to localize operating-plan why/effect
+ * at Daily Brief read time without rewriting durable English strings.
+ */
+export type DailyPhasePlanWhySource = Pick<OperatingPlanItem, "why" | "sourceTask">;
+export type DailyPhasePlanEffectSource = Pick<
+  OperatingPlanItem,
+  "effect" | "sourceTask" | "sourceRestaurantTask"
+>;
+
+/**
  * Structured presentation payload for locale-aware Daily Brief copy.
  * Free-form tenant prose (task titles, memory, opportunity text) stays as
  * values; templates never invent operational facts.
  */
 export type DailyPhaseFindingPresentation =
-  | { kind: "start_with_task"; taskTitle: string; why: string }
+  | {
+      kind: "start_with_task";
+      taskTitle: string;
+      why: string;
+      /** When set, presentation localizes why via operating-plan why copy. */
+      planWhy: DailyPhasePlanWhySource;
+    }
   | { kind: "approvals"; count: number }
   | { kind: "tasks_completed"; count: number }
   | {
@@ -36,6 +52,8 @@ export type DailyPhaseFindingPresentation =
       taskTitle: string;
       effect: string;
       verificationMethod: string;
+      /** When set, presentation localizes effect via operating-plan effect copy. */
+      planEffect: DailyPhasePlanEffectSource;
     }
   | { kind: "ingredients_constrain"; count: number; detail: string }
   | { kind: "coverage_supports_prep"; detail: string }
@@ -180,7 +198,11 @@ function buildMorningBrief(
       presentation: {
         kind: "start_with_task",
         taskTitle: firstNow.title,
-        why: firstNow.why
+        why: firstNow.why,
+        planWhy: {
+          why: firstNow.why,
+          sourceTask: firstNow.sourceTask
+        }
       },
       route: routeForPlanItem(firstNow),
       evidenceReferences: referencesForItem(firstNow)
@@ -278,7 +300,12 @@ function buildPreServiceBrief(
         kind: "next_readiness_move",
         taskTitle: firstNow.title,
         effect: firstNow.effect,
-        verificationMethod: firstNow.verificationMethod
+        verificationMethod: firstNow.verificationMethod,
+        planEffect: {
+          effect: firstNow.effect,
+          sourceTask: firstNow.sourceTask,
+          sourceRestaurantTask: firstNow.sourceRestaurantTask
+        }
       },
       route: routeForPlanItem(firstNow),
       evidenceReferences: referencesForItem(firstNow)

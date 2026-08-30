@@ -256,8 +256,8 @@ function FindingRow({
   index: number;
   onPress?: () => void;
 }) {
-  const { t } = useLocale();
-  const presented = presentDailyPhaseFinding(finding, t);
+  const { locale, t } = useLocale();
+  const presented = presentDailyPhaseFinding(finding, t, locale);
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
