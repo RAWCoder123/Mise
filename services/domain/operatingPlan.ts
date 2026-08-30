@@ -98,7 +98,10 @@ export interface OperatingPlanItem {
   completionResult: string | null;
   reprioritization: {
     code: ReprioritizationCode;
+    /** Durable English audit string; UI localizes via `code` (+ optional deliveryDate). */
     reason: string;
+    /** ISO date key when the code is delivery-scoped; null otherwise. */
+    deliveryDate?: string | null;
   } | null;
   requiredRole: "member" | "manager" | "owner_admin";
   status: "open" | "completed";
@@ -677,13 +680,15 @@ function reprioritizationForTask(input: {
     if (order.delivery_date < operatingDate && order.status !== "completed") {
       return {
         code: "delivery_overdue",
-        reason: `Delivery date ${order.delivery_date} is past operating date ${operatingDate}.`
+        reason: `Delivery date ${order.delivery_date} is past operating date ${operatingDate}.`,
+        deliveryDate: order.delivery_date
       };
     }
     if (order.delivery_date === operatingDate && order.status === "draft") {
       return {
         code: "delivery_due_today",
-        reason: `Supplier delivery is needed today (${order.delivery_date}).`
+        reason: `Supplier delivery is needed today (${order.delivery_date}).`,
+        deliveryDate: order.delivery_date
       };
     }
   }

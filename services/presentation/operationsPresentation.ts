@@ -749,7 +749,12 @@ const operatingPlanCopyByLocale: Readonly<
       windows: Record<ServiceWindowId, string>;
       verification: Record<VerificationMethod, string>;
       kinds: Record<OperatingPlanItemKind, string>;
-      reprioritization: Record<ReprioritizationCode, (detail: string) => string>;
+      /**
+       * Locale templates keyed by durable reprioritization code.
+       * Never prefer the English `reason` audit string — that freezes EN into ES/zh-Hans.
+       * Delivery-scoped codes may interpolate an optional ISO date key.
+       */
+      reprioritization: Record<ReprioritizationCode, (deliveryDate: string | null) => string>;
     }
   >
 > = {
@@ -781,12 +786,18 @@ const operatingPlanCopyByLocale: Readonly<
       failed: "Failed"
     },
     reprioritization: {
-      overdue_deadline: (detail) => detail || "Moved to Now: evidenced deadline is overdue.",
-      delivery_overdue: (detail) => detail || "Moved to Now: delivery date is past.",
-      delivery_due_today: (detail) => detail || "Moved to Now: delivery is needed today.",
-      due_soon: (detail) => detail || "Moved to Now: deadline is due soon.",
-      stock_risk: (detail) => detail || "Moved to Now: projected stock risk.",
-      provider_failure: (detail) => detail || "Moved to Now: sales connection failed."
+      overdue_deadline: () => "Moved to Now: evidenced deadline is overdue.",
+      delivery_overdue: (deliveryDate) =>
+        deliveryDate
+          ? `Moved to Now: delivery date ${deliveryDate} is past.`
+          : "Moved to Now: delivery date is past.",
+      delivery_due_today: (deliveryDate) =>
+        deliveryDate
+          ? `Moved to Now: delivery is needed today (${deliveryDate}).`
+          : "Moved to Now: delivery is needed today.",
+      due_soon: () => "Moved to Now: deadline is due soon.",
+      stock_risk: () => "Moved to Now: projected stock risk.",
+      provider_failure: () => "Moved to Now: sales connection failed."
     }
   },
   es: {
@@ -817,12 +828,18 @@ const operatingPlanCopyByLocale: Readonly<
       failed: "Fallida"
     },
     reprioritization: {
-      overdue_deadline: (detail) => detail || "Movida a Ahora: la fecha límite evidenciada ya pasó.",
-      delivery_overdue: (detail) => detail || "Movida a Ahora: la entrega está atrasada.",
-      delivery_due_today: (detail) => detail || "Movida a Ahora: la entrega se necesita hoy.",
-      due_soon: (detail) => detail || "Movida a Ahora: la fecha límite es pronto.",
-      stock_risk: (detail) => detail || "Movida a Ahora: riesgo de stock proyectado.",
-      provider_failure: (detail) => detail || "Movida a Ahora: falló la conexión de ventas."
+      overdue_deadline: () => "Movida a Ahora: la fecha límite evidenciada ya pasó.",
+      delivery_overdue: (deliveryDate) =>
+        deliveryDate
+          ? `Movida a Ahora: la fecha de entrega ${deliveryDate} ya pasó.`
+          : "Movida a Ahora: la entrega está atrasada.",
+      delivery_due_today: (deliveryDate) =>
+        deliveryDate
+          ? `Movida a Ahora: la entrega se necesita hoy (${deliveryDate}).`
+          : "Movida a Ahora: la entrega se necesita hoy.",
+      due_soon: () => "Movida a Ahora: la fecha límite es pronto.",
+      stock_risk: () => "Movida a Ahora: riesgo de stock proyectado.",
+      provider_failure: () => "Movida a Ahora: falló la conexión de ventas."
     }
   },
   "zh-Hans": {
@@ -853,12 +870,18 @@ const operatingPlanCopyByLocale: Readonly<
       failed: "失败"
     },
     reprioritization: {
-      overdue_deadline: (detail) => detail || "已调至现在：有证据的截止时间已过。",
-      delivery_overdue: (detail) => detail || "已调至现在：送货日期已过。",
-      delivery_due_today: (detail) => detail || "已调至现在：今日需要送货。",
-      due_soon: (detail) => detail || "已调至现在：截止时间将至。",
-      stock_risk: (detail) => detail || "已调至现在：存在库存风险。",
-      provider_failure: (detail) => detail || "已调至现在：销售连接失败。"
+      overdue_deadline: () => "已调至现在：有证据的截止时间已过。",
+      delivery_overdue: (deliveryDate) =>
+        deliveryDate
+          ? `已调至现在：送货日期 ${deliveryDate} 已过。`
+          : "已调至现在：送货日期已过。",
+      delivery_due_today: (deliveryDate) =>
+        deliveryDate
+          ? `已调至现在：今日（${deliveryDate}）需要送货。`
+          : "已调至现在：今日需要送货。",
+      due_soon: () => "已调至现在：截止时间将至。",
+      stock_risk: () => "已调至现在：存在库存风险。",
+      provider_failure: () => "已调至现在：销售连接失败。"
     }
   }
 };
@@ -891,7 +914,7 @@ export function presentOperatingPlanItem(
     kindLabel: copy.kinds[item.kind],
     completionResult: item.completionResult,
     reprioritizationReason: item.reprioritization
-      ? copy.reprioritization[item.reprioritization.code](item.reprioritization.reason)
+      ? copy.reprioritization[item.reprioritization.code](item.reprioritization.deliveryDate ?? null)
       : null,
     evidenceOnly: taskCopy.evidenceOnly
   };
