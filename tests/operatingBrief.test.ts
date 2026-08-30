@@ -127,6 +127,7 @@ test("operating brief builds approvals, monitoring, and truthful activity withou
       restaurant_id: restaurantId,
       supplier_id: supplierId,
       supplier_name: "Metro Produce",
+      message_locale: "en" as const,
       order_message: "Please deliver",
       operator_note: null,
       status: "sent",

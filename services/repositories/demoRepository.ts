@@ -2071,7 +2071,8 @@ export function createLocalDemoRepository(): MiseRepository {
             affectedOrder.order_message = buildSupplierOrderMessage(
               affectedOrder.supplier_name,
               linked,
-              affectedOrder.operator_note
+              affectedOrder.operator_note,
+              affectedOrder.message_locale ?? "en"
             );
             bumpDemoSupplierSendContentRevision(state, affectedOrderId);
           }
@@ -2349,7 +2350,12 @@ export function createLocalDemoRepository(): MiseRepository {
           if (linked.some((recommendation) => recommendation.supplier_id !== order.supplier_id)) {
             throw new Error("Supplier authority changed. Refresh this order before editing it.");
           }
-          order.order_message = buildSupplierOrderMessage(order.supplier_name, linked, order.operator_note);
+          order.order_message = buildSupplierOrderMessage(
+            order.supplier_name,
+            linked,
+            order.operator_note,
+            order.message_locale ?? "en"
+          );
         }
         if (
           order.operator_note !== previousNote ||

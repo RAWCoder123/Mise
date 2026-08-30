@@ -412,6 +412,7 @@ export function createInitialDemoState(
         restaurant_id: DEMO_RESTAURANT_ID,
         supplier_id: supplierId("Local Produce Co."),
         supplier_name: "Local Produce Co.",
+        message_locale: "en",
         order_message:
           "Order draft for Local Produce Co.\n\nLettuce - 23 heads\nTomatoes - 20 lbs\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended based on recent sales and current inventory levels.",
         operator_note: "Recommended based on recent sales and current inventory levels.",
@@ -628,7 +629,12 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   });
   const supplierOrders = sourceSupplierOrders.map((order) => ({
     ...attachDemoSupplierIdentity(order, suppliers, allowLegacySupplierNameRepair),
-    operator_note: typeof order.operator_note === "string" ? order.operator_note : null
+    operator_note: typeof order.operator_note === "string" ? order.operator_note : null,
+    message_locale: (
+      order.message_locale === "es" || order.message_locale === "zh-Hans"
+        ? order.message_locale
+        : "en"
+    ) as SupplierOrder["message_locale"]
   }));
   const supplierRecipients = sourceSupplierRecipients.map((recipient) => {
     const attached = attachDemoSupplierIdentity(
@@ -1274,6 +1280,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply",
+      message_locale: "en",
       order_message:
         `Order draft for Metro Produce Supply\n\nBell peppers - 24 lbs\nNapa cabbage - 18 heads\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended from ${DEMO_DATASET.restaurant.name}'s current dinner pace and close-count levels.`,
       operator_note:
@@ -1287,6 +1294,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale",
+      message_locale: "en",
       order_message:
         "Order draft for Pantry Wholesale\n\nJasmine Rice - 80 lb\nDumpling Wrappers - 24 packs\nSoy Sauce - 6 gal\nSesame Oil - 4 gal\n\nDelivery requested: Today\n\nNotes:\nPantry order drafted from weekly usage and par targets.",
       operator_note: null,
@@ -1299,6 +1307,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale",
+      message_locale: "en",
       order_message: "Recorded pantry order: Jasmine rice - 80 lb",
       operator_note: null,
       status: "completed",
@@ -1310,6 +1319,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale",
+      message_locale: "en",
       order_message: "Recorded pantry order: Dumpling wrappers - 24 packs",
       operator_note: null,
       status: "completed",
@@ -1321,6 +1331,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply",
+      message_locale: "en",
       order_message: "Recorded produce order: Napa cabbage - 18 head",
       operator_note: "Review the short cabbage delivery.",
       status: "completed",
@@ -1332,6 +1343,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       restaurant_id: DEMO_RESTAURANT_ID,
       supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply",
+      message_locale: "en",
       order_message: "Recorded produce order: Bell peppers - 24 lb",
       operator_note: null,
       status: "completed",
