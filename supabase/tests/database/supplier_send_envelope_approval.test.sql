@@ -178,7 +178,7 @@ values (
 update public.supplier_orders
 set order_message = 'Order draft for Envelope Produce'
   || E'\n\nRoma tomatoes - 10 case'
-  || E'\n\nDelivery requested: Tomorrow morning'
+  || E'\n\nDelivery requested: ' || to_char(current_date + 1, 'YYYY-MM-DD')
 where restaurant_id = 'ab000000-0000-4000-8000-000000000001'
   and id = 'ab000000-0000-4000-8000-000000000201';
 
@@ -241,7 +241,7 @@ select is(
   )->>'body',
   'Order draft for Envelope Produce'
     || E'\n\nRoma tomatoes - 10 case'
-    || E'\n\nDelivery requested: Tomorrow morning',
+    || E'\n\nDelivery requested: ' || to_char(current_date + 1, 'YYYY-MM-DD'),
   'the preview exposes the exact complete body instead of an envelope-only summary'
 );
 select ok(
