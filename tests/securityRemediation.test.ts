@@ -241,6 +241,7 @@ test("supplier presentation scans only the bounded message and retains the displ
     restaurant_id: "restaurant-1",
     supplier_id: SUPPLIER_ID,
     supplier_name: "Supplier",
+    message_locale: "en" as const,
     order_message: orderMessage,
     operator_note: null,
     status: "draft",

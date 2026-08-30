@@ -216,6 +216,11 @@ export interface SupplierOrder {
   /** Historical display snapshot for the reviewed/sent order. */
   supplier_name: string;
   order_message: string;
+  /**
+   * Locale frozen into the fingerprinted supplier-send body/subject at draft
+   * creation. Rebuilds and send approval must use the same locale.
+   */
+  message_locale: "en" | "es" | "zh-Hans";
   operator_note: string | null;
   status: SupplierOrderStatus;
   delivery_date: string | null;

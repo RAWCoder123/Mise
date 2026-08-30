@@ -30,6 +30,7 @@ function order(id: string, status: SupplierOrder["status"], createdAt: string): 
     restaurant_id: restaurantId,
     supplier_id: supplierId,
     supplier_name: "Metro",
+    message_locale: "en" as const,
     order_message: "hello",
     operator_note: null,
     status,
