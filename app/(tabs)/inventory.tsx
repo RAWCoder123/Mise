@@ -35,6 +35,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import { computeInventoryValuation } from "../../services/domain/inventoryValuation";
 import {
   fetchInventoryOutlookItems,
   fetchOpenInventoryCountSession,
@@ -48,7 +49,7 @@ import type { InventoryItem, InventoryOutlookItem, InventoryStatus } from "../..
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
 
 export default function InventoryScreen() {
-  const { formatNumber, t } = useLocale();
+  const { formatCurrency, formatNumber, t } = useLocale();
   const { restaurant, memberships } = useMiseSession();
   const canDraftCount = canDraftInventoryCount(memberships, restaurant?.id ?? "");
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
@@ -177,6 +178,27 @@ export default function InventoryScreen() {
     formatPercentage: (value) => formatNumber(value / 100, { style: "percent", maximumFractionDigits: 0 })
   });
 
+  const valuation = useMemo(() => computeInventoryValuation(visibleOutlooks), [visibleOutlooks]);
+  const valuationCurrency = restaurant?.currency ?? "USD";
+  const valuationTitle = t("inventory.valuation.title");
+  const valuationCoverageSubtitle =
+    valuation.onHandValue == null
+      ? null
+      : valuation.costCoverageComplete
+        ? t("inventory.valuation.body.complete", {
+            count: formatNumber(valuation.pricedItemCount)
+          })
+        : t("inventory.valuation.body.partial", {
+            priced: formatNumber(valuation.pricedItemCount),
+            total: formatNumber(valuation.itemCount)
+          });
+  const valuationAtRiskSubtitle =
+    valuation.atRiskValue != null && valuation.atRiskValue > 0
+      ? t("inventory.valuation.atRisk", {
+          value: formatCurrency(valuation.atRiskValue, { currency: valuationCurrency })
+        })
+      : null;
+
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return visibleOutlooks.filter(({ item, prediction }) => {
@@ -261,6 +283,40 @@ export default function InventoryScreen() {
           body={healthBody}
           accessibilityLabel={healthAccessibilityLabel}
         />
+        ) : null}
+
+        {healthTotal > 0 ? (
+          <View style={styles.group}>
+            <SectionHeader title={valuationTitle} />
+            <RowGroup>
+              <OperationalRow
+                density="operational"
+                title={
+                  valuation.onHandValue == null
+                    ? t("inventory.valuation.missing")
+                    : formatCurrency(valuation.onHandValue, { currency: valuationCurrency })
+                }
+                subtitle={
+                  valuation.onHandValue == null
+                    ? undefined
+                    : [valuationCoverageSubtitle, valuationAtRiskSubtitle].filter(Boolean).join(" · ") ||
+                      undefined
+                }
+                icon={<Package size={icon.row} color={colors.accentDark} strokeWidth={iconStroke} />}
+                iconTone="brand"
+                accessibilityLabel={
+                  valuation.onHandValue == null
+                    ? t("inventory.valuation.accessibility.missing")
+                    : t("inventory.valuation.accessibility")
+                }
+                onPress={
+                  valuation.atRiskValue != null && valuation.atRiskValue > 0
+                    ? () => router.push("/orders")
+                    : undefined
+                }
+              />
+            </RowGroup>
+          </View>
         ) : null}
 
         <InventoryGroup
