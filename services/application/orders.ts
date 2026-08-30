@@ -15,6 +15,7 @@ import { resolveAdvisoryPurchaseDecisionPatterns } from "../domain/purchaseDecis
 import {
   buildSupplierReliabilitySummary,
   buildSupplierOrderDeliveryEvidence,
+  indexLatestSupplierOrderDeliveryEvidence,
   type SupplierOrderDeliveryEvidence,
   type SupplierReliabilitySummary
 } from "../domain/supplierReliability";
@@ -164,6 +165,28 @@ export async function fetchSupplierOrderOperationalDetail(
       items: history.items
     })
   };
+}
+
+/**
+ * Latest receipt evidence keyed by supplier order id for Orders hub lane cards.
+ * Read-only; never invents partial/discrepancy state without delivery rows.
+ */
+export async function fetchLatestSupplierOrderDeliveryEvidence(
+  restaurantId: string
+): Promise<Record<string, SupplierOrderDeliveryEvidence>> {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const [orders, history, restaurant] = await Promise.all([
+    repository.fetchSupplierOrders(normalizedRestaurantId),
+    repository.fetchSupplierDeliveryHistory(normalizedRestaurantId),
+    repository.fetchRestaurant(normalizedRestaurantId)
+  ]);
+  return indexLatestSupplierOrderDeliveryEvidence({
+    restaurantId: normalizedRestaurantId,
+    restaurantTimeZone: restaurant.timezone,
+    orders,
+    deliveries: history.deliveries,
+    items: history.items
+  });
 }
 
 export type { SupplierReliabilitySummary };

@@ -3,10 +3,15 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, conceptTypography, icon, iconStroke, radii } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
+import type { MessageKey } from "../i18n/catalog";
 import { presentSupportedSupplierOrderStatus } from "../services/domain/operationalStatus";
+import {
+  supplierOrderLaneDeliveryAttentionStatus,
+  type SupplierOrderDeliveryEvidence
+} from "../services/domain/supplierReliability";
 import type { SupplierOrder } from "../types/mise";
 import { buildSupplierDraftPresentation } from "../utils/orderPresentation";
-import { Badge } from "./ui/Badge";
+import { Badge, type BadgeTone } from "./ui/Badge";
 import { Button } from "./ui/Button";
 
 interface SupplierDraftCardProps {
@@ -23,6 +28,8 @@ interface SupplierDraftCardProps {
   sendAccessibilityLabel?: string;
   sendDisabledHint?: string;
   busy?: boolean;
+  /** Latest receipt evidence; attention statuses surface on sent/history cards. */
+  deliveryEvidence?: SupplierOrderDeliveryEvidence | null;
 }
 
 export function SupplierDraftCard({
@@ -38,7 +45,8 @@ export function SupplierDraftCard({
   busyLabel,
   sendAccessibilityLabel,
   sendDisabledHint,
-  busy
+  busy,
+  deliveryEvidence
 }: SupplierDraftCardProps) {
   const { formatCurrency, formatDate, formatNumber, t } = useLocale();
   const isDraft = order.status === "draft";
@@ -50,13 +58,22 @@ export function SupplierDraftCard({
   const resolvedBusyLabel = busyLabel ?? t("orders.card.action.markingSent");
   const presentation = buildSupplierDraftPresentation(order);
   const operationalStatus = presentSupportedSupplierOrderStatus(order.status);
-  const statusLabel =
+  const orderStatusLabel =
     operationalStatus === "DraftedByMise"
       ? t("orders.card.status.draft")
       : operationalStatus === "Sent"
         ? t("orders.ops.Sent")
         : t("orders.ops.Received");
-  const statusTone = order.status === "sent" ? "success" : "neutral";
+  const attentionStatus = supplierOrderLaneDeliveryAttentionStatus(deliveryEvidence);
+  const attentionLabel = attentionStatus
+    ? t(`orders.detail.deliveryEvidence.status.${attentionStatus}` as MessageKey)
+    : null;
+  const statusLabel = attentionLabel ?? orderStatusLabel;
+  const statusTone: BadgeTone = attentionStatus
+    ? deliveryEvidenceTone(attentionStatus)
+    : order.status === "sent"
+      ? "success"
+      : "neutral";
   const deliveryLabel = order.delivery_date
     ? formatDate(`${order.delivery_date}T12:00:00.000Z`, {
         month: "short",
@@ -68,15 +85,22 @@ export function SupplierDraftCard({
     ? formatCurrency(presentation.estimatedTotalCents / 100)
     : null;
   const showSendButton = Boolean(isDraft && sendIsVisible && sendAction);
+  const openAccessibilityLabel = attentionLabel
+    ? t("orders.card.openWithDeliveryAccessibility", {
+        supplier: order.supplier_name,
+        status: orderStatusLabel,
+        delivery: attentionLabel
+      })
+    : t("orders.card.openAccessibility", {
+        supplier: order.supplier_name,
+        status: statusLabel
+      });
 
   return (
     <View style={[styles.card, isDraft && styles.cardDraft]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t("orders.card.openAccessibility", {
-          supplier: order.supplier_name,
-          status: statusLabel
-        })}
+        accessibilityLabel={openAccessibilityLabel}
         onPress={onOpen}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
       >
@@ -90,6 +114,16 @@ export function SupplierDraftCard({
           <Text style={styles.status}>{deliveryLabel}</Text>
           {totalLabel ? <Text style={styles.total}>{totalLabel}</Text> : null}
         </View>
+        {attentionStatus && deliveryEvidence && deliveryEvidence.discrepancyLineCount > 0 ? (
+          <Text style={styles.attentionMeta} numberOfLines={1}>
+            {t(
+              deliveryEvidence.discrepancyLineCount === 1
+                ? "orders.card.deliveryAttention.one"
+                : "orders.card.deliveryAttention.other",
+              { count: formatNumber(deliveryEvidence.discrepancyLineCount) }
+            )}
+          </Text>
+        ) : null}
       </Pressable>
 
       {presentation.lines.length > 0 ? (
@@ -136,10 +170,7 @@ export function SupplierDraftCard({
       <View style={styles.actions}>
         <Button
           title={isDraft ? t("orders.card.action.editDraft") : t("orders.card.action.open")}
-          accessibilityLabel={t("orders.card.openAccessibility", {
-            supplier: order.supplier_name,
-            status: statusLabel
-          })}
+          accessibilityLabel={openAccessibilityLabel}
           variant="secondary"
           onPress={onOpen}
           style={styles.actionButton}
@@ -182,6 +213,16 @@ export function SupplierDraftCard({
       </View>
     </View>
   );
+}
+
+function deliveryEvidenceTone(
+  status: Extract<
+    NonNullable<ReturnType<typeof supplierOrderLaneDeliveryAttentionStatus>>,
+    string
+  >
+): BadgeTone {
+  if (status === "failed" || status === "discrepancy") return "danger";
+  return "warning";
 }
 
 const styles = StyleSheet.create({
@@ -230,6 +271,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...conceptTypography.metricValue,
     textAlign: "right"
+  },
+  attentionMeta: {
+    color: colors.caution,
+    ...conceptTypography.caption,
+    marginTop: 1
   },
   lines: {
     gap: 2
