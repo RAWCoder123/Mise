@@ -21,12 +21,13 @@ import {
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
 import { fetchActivityEvents } from "../../services/miseService";
+import { presentActivityEvidenceSummary } from "../../services/presentation/activityEvidenceCopy";
 import { captureMiseError } from "../../services/telemetry";
 
 const dateRanges: ActivityDateRange[] = ["all", "today", "yesterday", "this_week"];
 
 export default function ActivityHistoryScreen() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { restaurant } = useMiseSession();
   const [filter, setFilter] = useState<ActivityFeedFilter>("all");
   const [range, setRange] = useState<ActivityDateRange>("all");
@@ -211,7 +212,8 @@ export default function ActivityHistoryScreen() {
                         <Text style={styles.detailLine}>{t("activity.detail.evidence")}</Text>
                         {event.evidenceReferences.slice(0, 4).map((evidence) => (
                           <Text key={`${evidence.type}:${evidence.id}`} style={styles.evidenceLine}>
-                            {evidence.type.replace(/_/g, " ")} — {evidence.summary}
+                            {evidence.type.replace(/_/g, " ")} —{" "}
+                            {presentActivityEvidenceSummary(locale, evidence, event)}
                           </Text>
                         ))}
                       </View>
