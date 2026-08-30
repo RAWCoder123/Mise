@@ -413,7 +413,7 @@ export function createInitialDemoState(
         supplier_id: supplierId("Local Produce Co."),
         supplier_name: "Local Produce Co.",
         order_message:
-          "Order draft for Local Produce Co.\n\nLettuce - 23 heads\nTomatoes - 20 lbs\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended based on recent sales and current inventory levels.",
+          `Order draft for Local Produce Co.\n\nLettuce - 23 heads\nTomatoes - 20 lbs\n\nDelivery requested: ${tomorrow}\n\nNotes:\nRecommended based on recent sales and current inventory levels.`,
         operator_note: "Recommended based on recent sales and current inventory levels.",
         status: "draft",
         delivery_date: tomorrow,
@@ -1275,7 +1275,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       supplier_id: supplierId("Metro Produce Supply"),
       supplier_name: "Metro Produce Supply",
       order_message:
-        `Order draft for Metro Produce Supply\n\nBell peppers - 24 lbs\nNapa cabbage - 18 heads\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended from ${DEMO_DATASET.restaurant.name}'s current dinner pace and close-count levels.`,
+        `Order draft for Metro Produce Supply\n\nBell peppers - 24 lbs\nNapa cabbage - 18 heads\n\nDelivery requested: ${tomorrow}\n\nNotes:\nRecommended from ${DEMO_DATASET.restaurant.name}'s current dinner pace and close-count levels.`,
       operator_note:
         `Recommended from ${DEMO_DATASET.restaurant.name}'s current dinner pace and close-count levels.`,
       status: "draft",
@@ -1288,7 +1288,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       supplier_id: supplierId("Pantry Wholesale"),
       supplier_name: "Pantry Wholesale",
       order_message:
-        "Order draft for Pantry Wholesale\n\nJasmine Rice - 80 lb\nDumpling Wrappers - 24 packs\nSoy Sauce - 6 gal\nSesame Oil - 4 gal\n\nDelivery requested: Today\n\nNotes:\nPantry order drafted from weekly usage and par targets.",
+        `Order draft for Pantry Wholesale\n\nJasmine Rice - 80 lb\nDumpling Wrappers - 24 packs\nSoy Sauce - 6 gal\nSesame Oil - 4 gal\n\nDelivery requested: ${today}\n\nNotes:\nPantry order drafted from weekly usage and par targets.`,
       operator_note: null,
       status: "sent",
       delivery_date: today,

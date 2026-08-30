@@ -1206,7 +1206,7 @@ export function buildDraftsFromRecommendations(
       restaurant_id: restaurantId,
       supplier_id: supplierId,
       supplier_name: supplierName,
-      order_message: buildSupplierOrderMessage(supplierName, items),
+      order_message: buildSupplierOrderMessage(supplierName, items, null, deliveryDate),
       operator_note: null,
       status: "draft" as SupplierOrderStatus,
       delivery_date: deliveryDate,
@@ -1215,16 +1215,26 @@ export function buildDraftsFromRecommendations(
   });
 }
 
+/** Canonical delivery line for supplier-send body/fingerprint parity (hosted SQL mirrors this). */
+export function formatSupplierOrderDeliveryLine(deliveryDate: string | null | undefined) {
+  const date = deliveryDate?.trim() ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return `Delivery requested: ${date}`;
+  }
+  return "Delivery requested: To be confirmed";
+}
+
 export function buildSupplierOrderMessage(
   supplierName: string,
   recommendations: PurchaseRecommendation[],
-  operatorNote: string | null = null
+  operatorNote: string | null = null,
+  deliveryDate: string | null = null
 ) {
   const lines = recommendations
     .slice()
     .sort((a, b) => a.item_name.localeCompare(b.item_name) || a.id.localeCompare(b.id))
     .map((item) => `${item.item_name} - ${formatQuantity(item.recommended_quantity)} ${item.unit}`);
-  const base = `Order draft for ${supplierName}\n\n${lines.join("\n")}\n\nDelivery requested: Tomorrow morning`;
+  const base = `Order draft for ${supplierName}\n\n${lines.join("\n")}\n\n${formatSupplierOrderDeliveryLine(deliveryDate)}`;
   const note = operatorNote?.trim();
   return truncateUtf8(note ? `${base}\n\nNotes:\n${note}` : base, ORDER_MESSAGE_MAX_BYTES);
 }

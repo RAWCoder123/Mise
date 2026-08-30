@@ -2071,7 +2071,8 @@ export function createLocalDemoRepository(): MiseRepository {
             affectedOrder.order_message = buildSupplierOrderMessage(
               affectedOrder.supplier_name,
               linked,
-              affectedOrder.operator_note
+              affectedOrder.operator_note,
+              affectedOrder.delivery_date
             );
             bumpDemoSupplierSendContentRevision(state, affectedOrderId);
           }
@@ -2331,15 +2332,28 @@ export function createLocalDemoRepository(): MiseRepository {
     },
 
     async updateSupplierOrder(restaurantId, orderId, patch) {
+      if (Object.prototype.hasOwnProperty.call(patch, "delivery_date")) {
+        const nextDate = patch.delivery_date?.trim() || null;
+        if (nextDate && !/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+          throw new Error("Delivery date must use YYYY-MM-DD.");
+        }
+      }
       return mutateDemoState((state) => {
         const order = state.supplierOrders.find((item) => item.restaurant_id === restaurantId && item.id === orderId);
         if (!order) throw new Error("Order draft not found");
         if (order.status !== "draft") throw new Error("Sent orders cannot be edited.");
         const previousNote = order.operator_note;
         const previousDeliveryDate = order.delivery_date;
-        Object.assign(order, patch);
         if (Object.prototype.hasOwnProperty.call(patch, "operator_note")) {
           order.operator_note = patch.operator_note?.trim() || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, "delivery_date")) {
+          order.delivery_date = patch.delivery_date?.trim() || null;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(patch, "operator_note") ||
+          Object.prototype.hasOwnProperty.call(patch, "delivery_date")
+        ) {
           const linked = state.purchaseRecommendations.filter(
             (recommendation) =>
               recommendation.restaurant_id === restaurantId &&
@@ -2349,7 +2363,12 @@ export function createLocalDemoRepository(): MiseRepository {
           if (linked.some((recommendation) => recommendation.supplier_id !== order.supplier_id)) {
             throw new Error("Supplier authority changed. Refresh this order before editing it.");
           }
-          order.order_message = buildSupplierOrderMessage(order.supplier_name, linked, order.operator_note);
+          order.order_message = buildSupplierOrderMessage(
+            order.supplier_name,
+            linked,
+            order.operator_note,
+            order.delivery_date
+          );
         }
         if (
           order.operator_note !== previousNote ||
