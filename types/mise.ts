@@ -1,7 +1,8 @@
 import type {
   InsightPresentationDescriptor,
   LearningMemoryPresentationDescriptor,
-  LearningMemorySignalPresentationDescriptor
+  LearningMemorySignalPresentationDescriptor,
+  PurchaseRecommendationPresentationDescriptor
 } from "./presentation";
 
 export type Urgency = "low" | "medium" | "high";
@@ -207,6 +208,8 @@ export interface PurchaseRecommendation {
   approval_authority?: Record<string, unknown> | null;
   approval_evaluated_at?: string | null;
   quantity_overridden?: boolean;
+  /** Additive locale-neutral metadata for Mise-generated rules. */
+  presentation?: PurchaseRecommendationPresentationDescriptor;
 }
 
 export interface SupplierOrder {

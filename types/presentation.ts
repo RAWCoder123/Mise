@@ -46,6 +46,11 @@ export const INSIGHT_PRESENTATION_CODES = [
   "insight.evidence.opaque"
 ] as const;
 
+export const PURCHASE_RECOMMENDATION_PRESENTATION_CODES = [
+  "purchase.recommendation.stock_risk",
+  "purchase.recommendation.opaque"
+] as const;
+
 export const LEARNING_MEMORY_SIGNAL_PRESENTATION_CODES = [
   "memory.signal.recipe_coverage",
   "memory.signal.pos_depletion",
@@ -157,6 +162,28 @@ export type InsightPresentationDescriptor =
         rawWhyItMatters: string | null;
         rawRecommendedAction: string;
       };
+    };
+
+/**
+ * Locale-neutral purchase recommendation reason. Domain emits codes + values;
+ * Orders/Home present in the operator locale. Item/supplier names stay values.
+ */
+export type PurchaseRecommendationPresentationDescriptor =
+  | {
+      code: "purchase.recommendation.stock_risk";
+      values: {
+        itemName: string;
+        suggestedOrderQuantity: number;
+        unit: string;
+        supplierName: string;
+        status: "Low" | "Critical";
+        /** When set, Mise adjusted the rule quantity using recent approvals. */
+        learnedQuantity: number | null;
+      };
+    }
+  | {
+      code: "purchase.recommendation.opaque";
+      values: { rawReason: string };
     };
 
 export type LearningMemoryLabelCode =
