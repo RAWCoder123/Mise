@@ -124,6 +124,11 @@ export interface InventoryItem {
   /** Display snapshot. Hosted reads overlay the supplier's current name. */
   supplier_name: string;
   last_updated: string;
+  /**
+   * When false, the item stays readable for reactivation and ledger history but
+   * is excluded from purchase planning and new count sessions. Defaults to true.
+   */
+  active?: boolean;
   canonical_unit?: "g" | "ml" | "each" | null;
   canonical_quantity_per_unit?: number | null;
   canonical_unit_verification_status?: "draft" | "verified" | "rejected" | "expired";

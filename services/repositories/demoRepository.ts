@@ -1279,6 +1279,39 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async setInventoryItemActive(restaurantId, itemId, active) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const index = state.inventoryItems.findIndex(
+          (item) => item.restaurant_id === restaurantId && item.id === itemId
+        );
+        if (index < 0) throw new Error("Inventory item not found");
+        const existing = state.inventoryItems[index]!;
+        const currentlyActive = existing.active !== false;
+        if (currentlyActive === active) {
+          return normalizeInventoryItem(existing);
+        }
+        const updated = normalizeInventoryItem({
+          ...existing,
+          active,
+          last_updated: new Date().toISOString()
+        });
+        state.inventoryItems[index] = updated;
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: active ? "inventory_item_activated" : "inventory_item_deactivated",
+          entity_table: "inventory_items",
+          entity_id: itemId,
+          metadata: {
+            active,
+            item_name: updated.item_name,
+            simulated: true
+          }
+        });
+        return updated;
+      });
+    },
+
     listInventoryEvents,
 
     recordInventoryEvent,

@@ -317,6 +317,9 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
   const outlook = anchored.outlooks.find((entry) => entry.item.id === itemId);
   if (!outlook) throw new Error("Inventory item not found");
   const { item, prediction } = outlook;
+  if (item.active === false) {
+    throw new Error("Reactivate this inventory item before adding it to an order.");
+  }
   if (prediction.countEvidence === "contaminated_projection") {
     throw new Error(
       "Record a new physical count for this item first. Its on-hand number came from an invalid future-dated count."
@@ -338,6 +341,23 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
     status: "pending",
     supplier_order_id: null
   });
+}
+
+export async function setInventoryItemActive(
+  restaurantId: string,
+  itemId: string,
+  active: boolean
+) {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedItemId = itemId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!normalizedItemId) throw new Error("Missing inventory item.");
+  if (typeof active !== "boolean") throw new Error("Inventory item active state is invalid.");
+  return repository.setInventoryItemActive(
+    normalizedRestaurantId,
+    normalizedItemId,
+    active
+  );
 }
 
 export async function updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch) {

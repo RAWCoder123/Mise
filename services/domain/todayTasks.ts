@@ -11,6 +11,7 @@ import type {
   SupplierOrder
 } from "../../types/mise";
 import type { TodayTaskPresentationDescriptor } from "../../types/presentation";
+import { isActiveInventoryItem } from "./inventoryActivity";
 
 /**
  * Today tasks are projections of authoritative workflow state. They are never
@@ -181,7 +182,9 @@ export function deriveOperationalTodayTasks(
   } else {
     const riskOutlooks = input.inventoryOutlooks.filter(
       (outlook) =>
-        outlook.item.restaurant_id === restaurantId && outlook.prediction.projectedStatus !== "Good"
+        outlook.item.restaurant_id === restaurantId &&
+        isActiveInventoryItem(outlook.item) &&
+        outlook.prediction.projectedStatus !== "Good"
     );
     if (riskOutlooks.length > 0) {
       const hasCritical = riskOutlooks.some(
@@ -292,13 +295,16 @@ export function deriveOperationalTodayTasks(
     Boolean(openCountSession) ||
     input.inventoryOutlooks.some(
       (outlook) =>
-        outlook.item.restaurant_id === restaurantId && outlook.prediction.projectedStatus !== "Good"
+        outlook.item.restaurant_id === restaurantId &&
+        isActiveInventoryItem(outlook.item) &&
+        outlook.prediction.projectedStatus !== "Good"
     );
 
   for (const outlook of input.inventoryOutlooks) {
     if (suppressPerItemInventoryOutlookTasks) break;
     const { item, prediction } = outlook;
     if (item.restaurant_id !== restaurantId) continue;
+    if (!isActiveInventoryItem(item)) continue;
     if (prediction.projectedStatus === "Good") continue;
     if (activeRecommendationItemIds.has(item.id)) continue;
 
