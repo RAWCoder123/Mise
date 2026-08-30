@@ -21,12 +21,16 @@ import {
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
 import { fetchActivityEvents } from "../../services/miseService";
+import {
+  presentActivitySummary,
+  presentActivityTitle
+} from "../../services/presentation/activityEventCopy";
 import { captureMiseError } from "../../services/telemetry";
 
 const dateRanges: ActivityDateRange[] = ["all", "today", "yesterday", "this_week"];
 
 export default function ActivityHistoryScreen() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { restaurant } = useMiseSession();
   const [filter, setFilter] = useState<ActivityFeedFilter>("all");
   const [range, setRange] = useState<ActivityDateRange>("all");
@@ -156,12 +160,14 @@ export default function ActivityHistoryScreen() {
 
         {visible.map((event) => {
           const expanded = Boolean(expandedIds[event.id]);
+          const title = presentActivityTitle(locale, event);
+          const summary = presentActivitySummary(locale, event);
           return (
             <Pressable
               key={event.id}
               accessibilityRole="button"
               accessibilityState={{ expanded }}
-              accessibilityLabel={t("activity.expand.accessibility", { title: event.title })}
+              accessibilityLabel={t("activity.expand.accessibility", { title })}
               onPress={() =>
                 setExpandedIds((current) => ({ ...current, [event.id]: !current[event.id] }))
               }
@@ -171,7 +177,7 @@ export default function ActivityHistoryScreen() {
               <View style={styles.copy}>
                 <View style={styles.titleRow}>
                   <Text style={styles.title} numberOfLines={expanded ? undefined : 2}>
-                    {event.title}
+                    {title}
                   </Text>
                   {event.requiresAttention ? (
                     <Badge tone="danger" label={t("activity.attention")} />
@@ -183,7 +189,7 @@ export default function ActivityHistoryScreen() {
                   )}
                 </View>
                 <Text style={styles.summary} numberOfLines={expanded ? undefined : 3}>
-                  {event.summary}
+                  {summary}
                 </Text>
                 <Text style={styles.meta} numberOfLines={1}>
                   {event.category}
