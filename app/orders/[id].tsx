@@ -21,6 +21,7 @@ import {
   approveSupplierSendContent,
   prepareSupplierEmailPayload,
   receiveSupplierOrderDelivery,
+  reviseDraftPurchaseRecommendationQuantity,
   sendSupplierOrderEmail,
   undoPurchaseRecommendationAction,
   updateSupplierOrder
@@ -33,6 +34,7 @@ import type { MiseAction } from "../../services/domain/miseActions";
 import { isSupplierSendVerificationRace } from "../../services/domain/supplierSendErrors";
 import {
   PURCHASE_AUTHORITY_BLOCKER_CODES,
+  isPurchaseAuthorityBlockedError,
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityBlockerCode
 } from "../../services/domain/purchaseAuthority";
@@ -42,7 +44,10 @@ import {
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { trackMiseEvent } from "../../services/telemetry";
-import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
+import {
+  operatingLimits,
+  SUPPLIER_NOTE_MAX_CHARACTERS
+} from "../../services/miseValidation";
 import type {
   PurchaseRecommendation,
   RestaurantEmailConnection,
@@ -62,10 +67,14 @@ interface OrderNotice {
 export default function OrderDraftDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
-  const { formatDate, formatNumber, t } = useLocale();
+  const { formatDate, formatNumber, parseNumber, t } = useLocale();
   const { memberships, restaurant, usingLocalDemo } = useMiseSession();
   const [order, setOrder] = useState<SupplierOrder | null>(null);
   const [linkedRecommendations, setLinkedRecommendations] = useState<PurchaseRecommendation[]>([]);
+  const [lineQuantities, setLineQuantities] = useState<Record<string, string>>({});
+  const [lineQuantityErrors, setLineQuantityErrors] = useState<Record<string, string | undefined>>(
+    {}
+  );
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
@@ -73,6 +82,7 @@ export default function OrderDraftDetailScreen() {
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [undoingRecommendationId, setUndoingRecommendationId] = useState<string | null>(null);
+  const [revisingRecommendationId, setRevisingRecommendationId] = useState<string | null>(null);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -80,6 +90,7 @@ export default function OrderDraftDetailScreen() {
   const requestIdRef = useRef(0);
   const actionLockRef = useRef(false);
   const undoLockRef = useRef(false);
+  const reviseLockRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -119,6 +130,15 @@ export default function OrderDraftDetailScreen() {
       }
       setOrder(nextDetail.order);
       setLinkedRecommendations(nextDetail.linkedRecommendations);
+      setLineQuantities(
+        Object.fromEntries(
+          nextDetail.linkedRecommendations.map((recommendation) => [
+            recommendation.id,
+            formatNumber(recommendation.recommended_quantity, { maximumFractionDigits: 3 })
+          ])
+        )
+      );
+      setLineQuantityErrors({});
       setDeliveryEvidence(nextDetail.deliveryEvidence);
       setEmailConnection(nextEmailConnection);
       setEmailPayload(nextEmailPayload);
@@ -130,6 +150,8 @@ export default function OrderDraftDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setLinkedRecommendations([]);
+      setLineQuantities({});
+      setLineQuantityErrors({});
       setDeliveryEvidence([]);
       setEmailPayload(null);
       setSupplierSendAction(null);
@@ -145,7 +167,7 @@ export default function OrderDraftDetailScreen() {
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
-  }, [id, restaurant?.id, t]);
+  }, [formatNumber, id, restaurant?.id, t]);
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -409,7 +431,15 @@ export default function OrderDraftDetailScreen() {
   }
 
   async function undoLinkedRecommendation(recommendation: PurchaseRecommendation) {
-    if (!restaurant || !order || order.status !== "draft" || undoLockRef.current) return;
+    if (
+      !restaurant ||
+      !order ||
+      order.status !== "draft" ||
+      undoLockRef.current ||
+      reviseLockRef.current
+    ) {
+      return;
+    }
     if (!actionsEditable) {
       setNotice(viewOnlyNotice(t));
       return;
@@ -458,6 +488,132 @@ export default function OrderDraftDetailScreen() {
     }
   }
 
+  async function reviseLinkedRecommendation(recommendation: PurchaseRecommendation) {
+    if (
+      !restaurant ||
+      !order ||
+      order.status !== "draft" ||
+      reviseLockRef.current ||
+      undoLockRef.current
+    ) {
+      return;
+    }
+    if (!actionsEditable) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+
+    const restaurantId = restaurant.id;
+    const orderId = order.id;
+    const rawQuantity = lineQuantities[recommendation.id]?.trim() ?? "";
+    const nextQuantity = parseNumber(rawQuantity);
+    if (
+      !rawQuantity ||
+      nextQuantity === null ||
+      nextQuantity <= 0 ||
+      nextQuantity > operatingLimits.recommendationQuantity
+    ) {
+      setLineQuantityErrors((current) => ({
+        ...current,
+        [recommendation.id]: t("orders.validation.quantityRange", {
+          maximum: formatNumber(operatingLimits.recommendationQuantity)
+        })
+      }));
+      return;
+    }
+
+    setLineQuantityErrors((current) => ({ ...current, [recommendation.id]: undefined }));
+    reviseLockRef.current = true;
+    setRevisingRecommendationId(recommendation.id);
+    setNotice(null);
+    try {
+      const reviseResult = await reviseDraftPurchaseRecommendationQuantity(
+        restaurantId,
+        recommendation.id,
+        nextQuantity,
+        orderId
+      );
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      trackMiseEvent("recommendation_quantity_revised", {
+        restaurant_id: restaurantId,
+        supplier_id: reviseResult.recommendation.supplier_id,
+        supplier_name: reviseResult.recommendation.supplier_name,
+        outcome: reviseResult.outcome
+      });
+      if (reviseResult.outcome === "unchanged") {
+        setNotice({
+          title: t("orders.detail.lines.reviseUnchangedTitle"),
+          message: t("orders.detail.lines.reviseUnchangedBody", {
+            item: reviseResult.recommendation.item_name
+          }),
+          tone: "neutral"
+        });
+        return;
+      }
+      if (!reviseResult.order) {
+        setNotice({
+          title: t("orders.detail.lines.reviseFailedTitle"),
+          message: t("orders.detail.lines.reviseFailedBody"),
+          tone: "danger"
+        });
+        await load(false);
+        return;
+      }
+      // Undoing the last approved line removes the draft; re-approve recreates it.
+      if (reviseResult.order.id !== orderId) {
+        setNotice({
+          title: t("orders.detail.lines.revisedTitle"),
+          message: t("orders.detail.lines.revisedBody", {
+            item: reviseResult.recommendation.item_name,
+            quantity: formatNumber(reviseResult.recommendation.recommended_quantity, {
+              maximumFractionDigits: 3
+            }),
+            unit: reviseResult.recommendation.unit
+          }),
+          tone: "success"
+        });
+        router.replace(`/orders/${reviseResult.order.id}`);
+        return;
+      }
+      await load(false);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        title: t("orders.detail.lines.revisedTitle"),
+        message: t("orders.detail.lines.revisedBody", {
+          item: reviseResult.recommendation.item_name,
+          quantity: formatNumber(reviseResult.recommendation.recommended_quantity, {
+            maximumFractionDigits: 3
+          }),
+          unit: reviseResult.recommendation.unit
+        }),
+        tone: "success"
+      });
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load(false);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      if (isPurchaseAuthorityBlockedError(error)) {
+        const firstBlocker = error.authority.blockers[0];
+        setNotice({
+          title: t("orders.detail.lines.reviseFailedTitle"),
+          message: firstBlocker
+            ? t(purchaseAuthorityBlockerMessageKey(firstBlocker.code) as MessageKey)
+            : t("orders.detail.lines.reviseAuthorityBody"),
+          tone: "danger"
+        });
+        return;
+      }
+      setNotice({
+        title: t("orders.detail.lines.reviseFailedTitle"),
+        message: t("orders.detail.lines.reviseFailedBody"),
+        tone: "danger"
+      });
+    } finally {
+      reviseLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setRevisingRecommendationId(null);
+    }
+  }
+
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canManageGmail = canDeleteRestaurantData(memberships, restaurant?.id);
   const hubLoadState = resolveRestaurantScopedHubLoadState({
@@ -466,18 +622,18 @@ export default function OrderDraftDetailScreen() {
     loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
-  const lineUndoBusy = Boolean(undoingRecommendationId);
+  const lineMutationBusy = Boolean(undoingRecommendationId || revisingRecommendationId);
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
-    busy: busy || lineUndoBusy
+    busy: busy || lineMutationBusy
   });
   const visibleOrder = hubReady ? order : null;
   const isDraft = visibleOrder?.status === "draft";
   const isSent = visibleOrder?.status === "sent";
   const canEditDraft = Boolean(isDraft && actionsEditable);
   const visibleLinkedRecommendations = hubReady && isDraft ? linkedRecommendations : [];
-  const canUndoLinkedLines = Boolean(isDraft && canManage && hubReady);
+  const canMutateLinkedLines = Boolean(isDraft && canManage && hubReady);
   const visibleEmailConnection = hubReady ? emailConnection : null;
   const visibleEmailPayload = hubReady ? emailPayload : null;
   const visibleSupplierSendAction = hubReady ? supplierSendAction : null;
@@ -641,30 +797,80 @@ export default function OrderDraftDetailScreen() {
               <Text style={styles.sectionBody}>{t("orders.detail.lines.body")}</Text>
               {visibleLinkedRecommendations.map((recommendation) => {
                 const undoing = undoingRecommendationId === recommendation.id;
-                const quantityLabel = t("orders.detail.lines.quantity", {
-                  quantity: formatNumber(recommendation.recommended_quantity, {
-                    maximumFractionDigits: 3
-                  }),
-                  unit: recommendation.unit
-                });
+                const revising = revisingRecommendationId === recommendation.id;
+                const quantityError = lineQuantityErrors[recommendation.id];
+                const quantityValue =
+                  lineQuantities[recommendation.id] ??
+                  formatNumber(recommendation.recommended_quantity, { maximumFractionDigits: 3 });
                 return (
                   <View key={recommendation.id} style={styles.linkedLineRow}>
-                    <View style={styles.linkedLineCopy}>
-                      <Text style={styles.linkedLineName}>{recommendation.item_name}</Text>
-                      <Text style={styles.linkedLineMeta}>{quantityLabel}</Text>
-                    </View>
-                    {canUndoLinkedLines ? (
-                      <Button
-                        title={undoing ? t("orders.undo.busy") : t("orders.undo.action")}
-                        accessibilityLabel={t("orders.detail.lines.undoAccessibility", {
-                          item: recommendation.item_name
+                    <Text style={styles.linkedLineName}>{recommendation.item_name}</Text>
+                    {canMutateLinkedLines ? (
+                      <>
+                        <View style={styles.linkedLineQuantityRow}>
+                          <TextInput
+                            value={quantityValue}
+                            onChangeText={(value) => {
+                              setLineQuantities((current) => ({
+                                ...current,
+                                [recommendation.id]: value
+                              }));
+                              setLineQuantityErrors((current) => ({
+                                ...current,
+                                [recommendation.id]: undefined
+                              }));
+                            }}
+                            keyboardType="decimal-pad"
+                            editable={!busy && !lineMutationBusy}
+                            accessibilityLabel={t("orders.detail.lines.quantityAccessibility", {
+                              item: recommendation.item_name
+                            })}
+                            style={[
+                              styles.linkedLineQuantityInput,
+                              quantityError ? styles.linkedLineQuantityInputError : null
+                            ]}
+                          />
+                          <Text style={styles.linkedLineUnit}>{recommendation.unit}</Text>
+                        </View>
+                        {quantityError ? (
+                          <Text style={styles.linkedLineError}>{quantityError}</Text>
+                        ) : null}
+                        <View style={styles.linkedLineActions}>
+                          <Button
+                            title={
+                              revising
+                                ? t("orders.detail.lines.reviseBusy")
+                                : t("orders.detail.lines.reviseAction")
+                            }
+                            accessibilityLabel={t("orders.detail.lines.reviseAccessibility", {
+                              item: recommendation.item_name
+                            })}
+                            onPress={() => void reviseLinkedRecommendation(recommendation)}
+                            disabled={busy || lineMutationBusy}
+                            style={styles.linkedLineAction}
+                          />
+                          <Button
+                            title={undoing ? t("orders.undo.busy") : t("orders.undo.action")}
+                            accessibilityLabel={t("orders.detail.lines.undoAccessibility", {
+                              item: recommendation.item_name
+                            })}
+                            variant="secondary"
+                            onPress={() => void undoLinkedRecommendation(recommendation)}
+                            disabled={busy || lineMutationBusy}
+                            style={styles.linkedLineAction}
+                          />
+                        </View>
+                      </>
+                    ) : (
+                      <Text style={styles.linkedLineMeta}>
+                        {t("orders.detail.lines.quantity", {
+                          quantity: formatNumber(recommendation.recommended_quantity, {
+                            maximumFractionDigits: 3
+                          }),
+                          unit: recommendation.unit
                         })}
-                        variant="secondary"
-                        onPress={() => void undoLinkedRecommendation(recommendation)}
-                        disabled={busy || lineUndoBusy}
-                        style={styles.linkedLineUndo}
-                      />
-                    ) : null}
+                      </Text>
+                    )}
                   </View>
                 );
               })}
@@ -1174,21 +1380,13 @@ const styles = StyleSheet.create({
   },
   linkedLineRow: {
     marginTop: 4,
-    minHeight: 56,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    gap: 10,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 12
-  },
-  linkedLineCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2
   },
   linkedLineName: {
     color: colors.text,
@@ -1199,9 +1397,43 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: "500"
   },
-  linkedLineUndo: {
-    flexShrink: 0,
-    minWidth: 96
+  linkedLineQuantityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  linkedLineQuantityInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceWarm,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  linkedLineQuantityInputError: {
+    borderColor: colors.danger
+  },
+  linkedLineUnit: {
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "700"
+  },
+  linkedLineError: {
+    color: colors.danger,
+    ...typography.caption
+  },
+  linkedLineActions: {
+    flexDirection: "row",
+    gap: 8
+  },
+  linkedLineAction: {
+    flex: 1
   },
   deliveryEvidencePanel: {
     marginTop: 4,

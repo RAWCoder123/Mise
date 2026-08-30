@@ -1,6 +1,8 @@
 import type { PurchaseRecommendation, RecommendationStatus, SupplierOrder } from "../../types/mise";
 import {
   buildOrderQueueSummary,
+  canReviseDraftRecommendationQuantity,
+  draftRecommendationQuantityUnchanged,
   linkedApprovedRecommendationsForOrder,
   type RecommendationWorkflowResult
 } from "../domain/miseDomain";
@@ -115,6 +117,94 @@ export async function undoPurchaseRecommendationAction(
   recommendationId: string
 ): Promise<RecommendationWorkflowResult> {
   return repository.undoPurchaseRecommendationAction(restaurantId, recommendationId);
+}
+
+export type ReviseDraftPurchaseRecommendationResult = {
+  outcome: "applied" | "unchanged";
+  recommendation: PurchaseRecommendation;
+  order: SupplierOrder | null;
+};
+
+/**
+ * Change an approved draft line quantity by undoing authority and re-approving
+ * with the new quantity. Hosted approve is intentionally idempotent once
+ * approved, so a dedicated revise RPC is not required.
+ */
+export async function reviseDraftPurchaseRecommendationQuantity(
+  restaurantId: string,
+  recommendationId: string,
+  recommendedQuantity: number,
+  expectedOrderId: string
+): Promise<ReviseDraftPurchaseRecommendationResult> {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const normalizedRecommendationId = requireWorkflowId(recommendationId, "recommendation");
+  const normalizedOrderId = requireWorkflowId(expectedOrderId, "supplier order");
+  const quantity = requireRecommendationApprovalQuantity(recommendedQuantity);
+
+  const approved = await repository.fetchPurchaseRecommendations(
+    normalizedRestaurantId,
+    "approved"
+  );
+  const current = approved.find((entry) => entry.id === normalizedRecommendationId);
+  if (!current || !canReviseDraftRecommendationQuantity(current, normalizedOrderId)) {
+    throw new Error("Approved draft line not found.");
+  }
+  if (draftRecommendationQuantityUnchanged(current.recommended_quantity, quantity)) {
+    const order = await repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId);
+    return {
+      outcome: "unchanged",
+      recommendation: current,
+      order
+    };
+  }
+
+  const undoResult = await repository.undoPurchaseRecommendationAction(
+    normalizedRestaurantId,
+    normalizedRecommendationId
+  );
+  if (undoResult.recommendation.status === "approved") {
+    throw new Error("Could not return this line for quantity revision.");
+  }
+
+  const approveResult = await repository.approvePurchaseRecommendation(
+    normalizedRestaurantId,
+    normalizedRecommendationId,
+    quantity
+  );
+  if (approveResult.outcome === "blocked" || approveResult.authority?.ready === false) {
+    throw new PurchaseAuthorityBlockedError(
+      approveResult.authority ?? {
+        ready: false,
+        blockers: [],
+        evaluatedAt: new Date().toISOString(),
+        planningRevision: null,
+        evidence: {
+          recommendationId: normalizedRecommendationId,
+          inventoryItemId: approveResult.recommendation.inventory_item_id,
+          supplierId: approveResult.recommendation.supplier_id,
+          countEventId: null,
+          countedAt: null,
+          projectedQuantity: null,
+          canonicalUnit: null,
+          providerWindowFrom: null,
+          providerWindowTo: null,
+          providerWindowCompletedAt: null,
+          recipeRevisions: {},
+          basis: "physical_count_reorder_policy",
+          demandBasis: "manual_physical_stock"
+        }
+      }
+    );
+  }
+  if (approveResult.recommendation.status !== "approved") {
+    throw new Error("Could not re-approve this line with the revised quantity.");
+  }
+
+  return {
+    outcome: "applied",
+    recommendation: approveResult.recommendation,
+    order: approveResult.order
+  };
 }
 
 export async function fetchPurchaseDecisionPatterns(restaurantId: string) {
