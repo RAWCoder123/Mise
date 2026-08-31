@@ -5,7 +5,8 @@ import {
   PurchaseAuthorityBlockedError,
   isPurchaseAuthorityBlockedError,
   normalizePurchaseAuthorityResult,
-  purchaseAuthorityBlockerMessageKey
+  purchaseAuthorityBlockerMessageKey,
+  resolvePurchaseAuthorityBlockerRecovery
 } from "../services/domain/purchaseAuthority";
 
 test("purchase authority normalizes stable blockers and bounded audit evidence", () => {
@@ -99,5 +100,54 @@ test("live draft and active sync blockers remain stable typed codes", () => {
   assert.equal(
     purchaseAuthorityBlockerMessageKey("pos_sync_in_progress"),
     "orders.authority.pos_sync_in_progress"
+  );
+});
+
+test("purchase authority blockers resolve to existing recovery surfaces", () => {
+  const evidence = { inventoryItemId: "item-42" };
+
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("inventory_count_stale", evidence),
+    { href: "/inventory/count", labelKey: "orders.authority.recovery.count" }
+  );
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("canonical_unit_unverified", evidence),
+    { href: "/inventory/item-42", labelKey: "orders.authority.recovery.inventoryItem" }
+  );
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("provider_mapping_missing", evidence),
+    { href: "/settings/pos-mappings", labelKey: "orders.authority.recovery.posMappings" }
+  );
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("recipe_incomplete", evidence),
+    { href: "/settings/recipes", labelKey: "orders.authority.recovery.recipes" }
+  );
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("pos_not_connected", evidence),
+    { href: "/settings/pos", labelKey: "orders.authority.recovery.pos" }
+  );
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("supplier_missing", evidence),
+    { href: "/inventory/item-42", labelKey: "orders.authority.recovery.inventoryItem" }
+  );
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("supplier_missing", { inventoryItemId: "" }),
+    { href: "/settings/suppliers", labelKey: "orders.authority.recovery.suppliers" }
+  );
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("draft_authority_incomplete", evidence),
+    { href: "/orders", labelKey: "orders.authority.recovery.orders" }
+  );
+  assert.equal(
+    resolvePurchaseAuthorityBlockerRecovery("ordering_disabled", evidence),
+    null
+  );
+  assert.equal(
+    resolvePurchaseAuthorityBlockerRecovery("recommendation_no_longer_actionable", evidence),
+    null
+  );
+  assert.equal(
+    resolvePurchaseAuthorityBlockerRecovery("send_in_progress", evidence),
+    null
   );
 });
