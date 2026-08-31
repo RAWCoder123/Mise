@@ -45,6 +45,7 @@ import {
   inventoryHealthTier,
   type InventoryHealthTier
 } from "../../services/presentation/inventoryHealthPresentation";
+import { resolveRestaurantStatusCardHref } from "../../services/presentation/homeStatusPresentation";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { taskRoleLabelKey } from "../../services/presentation/taskRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
@@ -341,6 +342,10 @@ function RestaurantStatusCard({
   const topRisk = brief.restaurantStatus.topRisk?.trim();
   const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
+  const statusHref = resolveRestaurantStatusCardHref({
+    hasPrimaryMenuRisk: Boolean(primaryMenuRisk),
+    hasPrimaryApproval: Boolean(primaryApproval)
+  });
 
   return (
     <StatusNotice
@@ -352,7 +357,7 @@ function RestaurantStatusCard({
           : primaryApproval?.title || t(statusKey)
       }
       message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
-      onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
+      onPress={() => router.push(statusHref)}
     />
   );
 }
