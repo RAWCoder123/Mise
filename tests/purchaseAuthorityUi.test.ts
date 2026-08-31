@@ -41,6 +41,24 @@ test("blocked purchase recommendations surface blocker-specific recovery deep li
   assert.doesNotMatch(row, /\.from\("purchase_recommendations"\)/);
 });
 
+test("home one-tap approve surfaces purchase-authority blockers with recovery deep links", async () => {
+  const [home, domain] = await Promise.all([
+    source("app/(tabs)/home.tsx"),
+    source("services/domain/purchaseAuthority.ts")
+  ]);
+
+  assert.match(domain, /export function resolvePurchaseAuthorityBlockerRecovery/);
+  assert.match(home, /isPurchaseAuthorityBlockedError\(approveError\)/);
+  assert.match(home, /purchaseAuthorityBlockerMessageKey\(firstBlocker\.code\)/);
+  assert.match(home, /setApprovalAuthorities\(/);
+  assert.match(home, /approvalAuthorities=\{approvalAuthorities\}/);
+  assert.match(home, /resolvePurchaseAuthorityBlockerRecovery\(blocker\.code, authority\.evidence\)/);
+  assert.match(home, /router\.push\(recovery\.href as never\)/);
+  assert.match(home, /disabled=\{Boolean\(approvingId\) \|\| \(canOneTap && approvalBlocked\)\}/);
+  assert.doesNotMatch(home, /\.from\("purchase_recommendations"\)/);
+  assert.doesNotMatch(home, /client\.rpc\(/);
+});
+
 test("recipe settings exposes explicit confirmation and hosted changes remain RPC-only", async () => {
   const [screen, inventoryApplication, repository] = await Promise.all([
     source("app/settings/recipes.tsx"),
