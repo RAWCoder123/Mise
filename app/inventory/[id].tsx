@@ -163,8 +163,15 @@ export default function InventoryDetailScreen() {
   const localizedPrediction =
     item && prediction ? localizeInventoryPrediction(t, formatNumber, item, prediction) : null;
   const status = prediction?.projectedStatus ?? null;
+  const contaminatedProjection = localizedPrediction?.contaminatedProjection === true;
   const canonicalReady = item ? isCanonicalUnitReady(item) : false;
   const canonicalUnit = canonicalReady ? item!.canonical_unit! : null;
+
+  useEffect(() => {
+    if (contaminatedProjection) {
+      setOperation("count");
+    }
+  }, [contaminatedProjection, id]);
 
   const operationOptions = useMemo<readonly SegmentOption<InventoryOperatorAction>[]>(
     () => [
@@ -318,10 +325,16 @@ export default function InventoryDetailScreen() {
   }
 
   async function addToOrder() {
-    if (!restaurant || !item) return;
+    if (!restaurant || !item || !prediction) return;
     if (!actionsEditable) {
       setMessage(t("inventory.detail.viewOnlyOrdering"));
       setMessageIsError(true);
+      return;
+    }
+    if (prediction.countEvidence === "contaminated_projection") {
+      setMessage(t("inventory.detail.contaminated.addBlocked"));
+      setMessageIsError(true);
+      setOperation("count");
       return;
     }
     const restaurantId = restaurant.id;
@@ -406,6 +419,14 @@ export default function InventoryDetailScreen() {
             />
           ) : null}
 
+          {contaminatedProjection ? (
+            <StatusNotice
+              tone="warning"
+              title={t("inventory.detail.contaminated.title")}
+              message={t("inventory.detail.contaminated.body")}
+            />
+          ) : null}
+
           {message ? (
             <Text
               style={[styles.message, messageIsError && styles.error]}
@@ -473,7 +494,7 @@ export default function InventoryDetailScreen() {
               <Text style={styles.recommendation}>{localizedPrediction.recommendation}</Text>
               <Text style={styles.copy}>{localizedPrediction.whyItMatters}</Text>
             </View>
-            {mutationAllowed ? (
+            {mutationAllowed && !contaminatedProjection ? (
               <Button
                 title={t("inventory.detail.addToOrder")}
                 accessibilityLabel={t("inventory.detail.addAccessibility", { item: item.item_name })}
@@ -483,6 +504,13 @@ export default function InventoryDetailScreen() {
                 disabled={!actionsEditable || busy}
                 fullWidth
                 style={styles.addButton}
+              />
+            ) : null}
+            {mutationAllowed && contaminatedProjection ? (
+              <StatusNotice
+                tone="warning"
+                title={t("inventory.prediction.action.recount")}
+                message={t("inventory.detail.contaminated.addBlocked")}
               />
             ) : null}
           </Card>
