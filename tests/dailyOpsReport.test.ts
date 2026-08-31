@@ -44,6 +44,24 @@ function wasteSummary(): WasteAnalysisSummary {
         lastWastedAt: "2026-08-01T20:00:00.000Z"
       }
     ],
+    topReasons: [
+      {
+        reasonCode: "spoilage",
+        eventCount: 2,
+        estimatedCost: 12,
+        costComplete: true,
+        shareOfEvents: 0.667,
+        shareOfEstimatedCost: 0.649
+      },
+      {
+        reasonCode: "prep_trim",
+        eventCount: 1,
+        estimatedCost: 6.5,
+        costComplete: true,
+        shareOfEvents: 0.333,
+        shareOfEstimatedCost: 0.351
+      }
+    ],
     recentEvents: [],
     historyTruncated: false
   };

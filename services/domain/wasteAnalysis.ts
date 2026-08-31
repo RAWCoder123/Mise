@@ -1,6 +1,11 @@
 import type { InventoryItem } from "../../types/mise";
 import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
 import type { InventoryEvent } from "./inventoryLedger";
+import {
+  HIGH_ATTENTION_WASTE_REASON_CODES,
+  isWasteReasonCode,
+  type WasteReasonCode
+} from "./wasteReasonCodes";
 
 export type WasteAnalysisStatus = "no_data" | "monitoring" | "attention";
 export type WasteAnalysisTrend = "no_baseline" | "up" | "down" | "flat";
@@ -10,10 +15,12 @@ export type WasteAnalysisReason =
   | "cost_increase"
   | "unpriced_records"
   | "new_records"
+  | "dominant_spoilage"
   | "within_baseline";
 export type WasteAnalysisAction =
   | "start_logging"
   | "review_repeat_item"
+  | "review_spoilage"
   | "complete_cost_setup"
   | "keep_logging";
 
@@ -31,6 +38,15 @@ export interface WasteAnalysisItem {
   lastWastedAt: string;
 }
 
+export interface WasteAnalysisReasonBreakdown {
+  reasonCode: WasteReasonCode | null;
+  eventCount: number;
+  estimatedCost: number | null;
+  costComplete: boolean;
+  shareOfEvents: number;
+  shareOfEstimatedCost: number | null;
+}
+
 export interface WasteAnalysisEvent {
   id: string;
   inventoryItemId: string;
@@ -40,6 +56,7 @@ export interface WasteAnalysisEvent {
   estimatedCost: number | null;
   effectiveAt: string;
   recordedAt: string;
+  reasonCode: WasteReasonCode | null;
   note: string | null;
 }
 
@@ -66,6 +83,7 @@ export interface WasteAnalysisSummary {
   priorCostComplete: boolean;
   trend: WasteAnalysisTrend;
   topItems: WasteAnalysisItem[];
+  topReasons: WasteAnalysisReasonBreakdown[];
   recentEvents: WasteAnalysisEvent[];
   historyTruncated: boolean;
 }
@@ -129,9 +147,11 @@ export function buildWasteAnalysis(input: {
   const currentTotals = summarizeWindow(currentEvidence, itemsById);
   const priorTotals = summarizeWindow(priorEvidence, itemsById);
   const topItems = summarizeItems(currentEvidence, itemsById, currentTotals.estimatedCost);
+  const topReasons = summarizeReasons(currentEvidence, itemsById, currentTotals.estimatedCost);
   const repeatedItem = topItems.find(
     (item) => item.eventCount >= 2 && item.distinctDayCount >= 2
   );
+  const dominantSpoilage = hasDominantSpoilage(topReasons, currentEvidence.length);
   const trend = wasteTrend(currentTotals, priorTotals);
   const costIncrease =
     trend === "up" &&
@@ -142,6 +162,7 @@ export function buildWasteAnalysis(input: {
   const reasons: WasteAnalysisReason[] = [];
   if (currentEvidence.length === 0) reasons.push("no_records");
   if (repeatedItem) reasons.push("repeat_item");
+  if (dominantSpoilage) reasons.push("dominant_spoilage");
   if (costIncrease) reasons.push("cost_increase");
   if (currentTotals.unpricedEventCount > 0) reasons.push("unpriced_records");
   if (currentEvidence.length > 0 && priorEvidence.length === 0) reasons.push("new_records");
@@ -150,7 +171,7 @@ export function buildWasteAnalysis(input: {
   const status: WasteAnalysisStatus =
     currentEvidence.length === 0
       ? "no_data"
-      : repeatedItem || costIncrease
+      : repeatedItem || costIncrease || dominantSpoilage
         ? "attention"
         : "monitoring";
   const primaryItemId = repeatedItem?.inventoryItemId ?? topItems[0]?.inventoryItemId ?? null;
@@ -159,9 +180,11 @@ export function buildWasteAnalysis(input: {
       ? "start_logging"
       : repeatedItem
         ? "review_repeat_item"
-        : currentTotals.pricedEventCount === 0 && currentTotals.unpricedEventCount > 0
-          ? "complete_cost_setup"
-          : "keep_logging";
+        : dominantSpoilage
+          ? "review_spoilage"
+          : currentTotals.pricedEventCount === 0 && currentTotals.unpricedEventCount > 0
+            ? "complete_cost_setup"
+            : "keep_logging";
 
   return {
     restaurantId,
@@ -186,6 +209,7 @@ export function buildWasteAnalysis(input: {
     priorCostComplete: priorTotals.costComplete,
     trend,
     topItems,
+    topReasons,
     recentEvents: currentEvidence
       .slice()
       .sort(
@@ -206,6 +230,7 @@ export function buildWasteAnalysis(input: {
           estimatedCost: estimateEventCost(event, item),
           effectiveAt: event.effectiveAt,
           recordedAt: event.recordedAt,
+          reasonCode: normalizeStoredWasteReason(event.reasonCode),
           note: noteFromMetadata(event.metadata)
         };
       }),
@@ -315,6 +340,95 @@ function summarizeItems(
         left.itemName.localeCompare(right.itemName)
     )
     .slice(0, 12);
+}
+
+function summarizeReasons(
+  evidence: ReadonlyArray<{ event: InventoryEvent; date: string }>,
+  itemsById: ReadonlyMap<string, InventoryItem>,
+  totalEstimatedCost: number | null
+): WasteAnalysisReasonBreakdown[] {
+  if (evidence.length === 0) return [];
+
+  const groups = new Map<
+    string,
+    {
+      reasonCode: WasteReasonCode | null;
+      eventCount: number;
+      estimatedCost: number;
+      pricedEventCount: number;
+    }
+  >();
+
+  for (const { event } of evidence) {
+    const reasonCode = normalizeStoredWasteReason(event.reasonCode);
+    const key = reasonCode ?? "";
+    const group = groups.get(key) ?? {
+      reasonCode,
+      eventCount: 0,
+      estimatedCost: 0,
+      pricedEventCount: 0
+    };
+    group.eventCount += 1;
+    const eventCost = estimateEventCost(event, itemsById.get(event.inventoryItemId));
+    if (eventCost !== null) {
+      group.estimatedCost += eventCost;
+      group.pricedEventCount += 1;
+    }
+    groups.set(key, group);
+  }
+
+  return [...groups.values()]
+    .map((group) => {
+      const estimatedCost =
+        group.pricedEventCount > 0 ? roundCurrency(group.estimatedCost) : null;
+      return {
+        reasonCode: group.reasonCode,
+        eventCount: group.eventCount,
+        estimatedCost,
+        costComplete: group.pricedEventCount === group.eventCount,
+        shareOfEvents: roundRate(group.eventCount / evidence.length),
+        shareOfEstimatedCost:
+          estimatedCost !== null && totalEstimatedCost !== null && totalEstimatedCost > 0
+            ? roundRate(estimatedCost / totalEstimatedCost)
+            : null
+      } satisfies WasteAnalysisReasonBreakdown;
+    })
+    .sort(
+      (left, right) =>
+        right.eventCount - left.eventCount ||
+        (right.estimatedCost ?? -1) - (left.estimatedCost ?? -1) ||
+        compareReasonCodes(left.reasonCode, right.reasonCode)
+    );
+}
+
+function hasDominantSpoilage(
+  topReasons: readonly WasteAnalysisReasonBreakdown[],
+  eventCount: number
+) {
+  if (eventCount < 2) return false;
+  const attentionCount = topReasons
+    .filter(
+      (entry) =>
+        entry.reasonCode !== null && HIGH_ATTENTION_WASTE_REASON_CODES.has(entry.reasonCode)
+    )
+    .reduce((sum, entry) => sum + entry.eventCount, 0);
+  return attentionCount / eventCount >= 0.5;
+}
+
+function normalizeStoredWasteReason(value: string | null): WasteReasonCode | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return isWasteReasonCode(normalized) ? normalized : null;
+}
+
+function compareReasonCodes(
+  left: WasteReasonCode | null,
+  right: WasteReasonCode | null
+) {
+  if (left === right) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return left.localeCompare(right);
 }
 
 function estimateEventCost(event: InventoryEvent, item: InventoryItem | undefined) {
