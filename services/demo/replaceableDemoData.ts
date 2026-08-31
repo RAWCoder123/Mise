@@ -115,6 +115,7 @@ export interface DemoState {
     received_at: string;
     client_delivery_id: string;
     notes: string | null;
+    invoice_total?: number | null;
     created_at: string;
   }>;
   /** Supplier delivery line mirror of hosted supplier_delivery_items. */
@@ -128,6 +129,8 @@ export interface DemoState {
     damaged_quantity: number;
     missing_quantity: number;
     canonical_unit: string;
+    unit_price?: number | null;
+    discrepancy_reason?: string | null;
   }>;
   /** Shared operating-task mirror of hosted restaurant_tasks. */
   restaurantTasks: import("../domain/restaurantTasks").RestaurantTask[];

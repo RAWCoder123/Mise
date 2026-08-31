@@ -78,7 +78,11 @@ export const operatingLimits = {
   recipeQuantityPerSale: 10_000,
   posQuantitySold: 100_000,
   posSalesAmount: 10_000_000,
-  recommendationQuantity: 1_000_000
+  recommendationQuantity: 1_000_000,
+  /** Matches hosted `record_supplier_delivery` invoice_total check. */
+  invoiceTotal: 10_000_000,
+  /** Matches hosted `record_supplier_delivery` line unit_price check. */
+  unitPrice: 1_000_000
 } as const;
 
 const operatorInventoryEventTypes = new Set<InventoryEventType>([
@@ -1213,6 +1217,10 @@ export function normalizeSupplierDeliveryRecord(
     ...value,
     status: normalizeSupplierDeliveryStatus(value.status),
     notes: asNullableString(value.notes),
+    invoice_total:
+      value.invoice_total == null
+        ? null
+        : asBoundedNonNegativeNumber(value.invoice_total, operatingLimits.invoiceTotal),
     received_at: asString(value.received_at),
     created_at: asString(value.created_at, value.received_at)
   };
@@ -1228,8 +1236,42 @@ export function normalizeSupplierDeliveryItemRecord(
     received_quantity: asNonNegativeNumber(value.received_quantity),
     damaged_quantity: asNonNegativeNumber(value.damaged_quantity),
     missing_quantity: asNonNegativeNumber(value.missing_quantity),
+    unit_price:
+      value.unit_price == null
+        ? null
+        : asBoundedNonNegativeNumber(value.unit_price, operatingLimits.unitPrice),
     discrepancy_reason: asNullableString(value.discrepancy_reason)
   };
+}
+
+/**
+ * Optional supplier invoice total for receive. Blank/null stays null; otherwise
+ * must be a finite amount within the hosted RPC bound.
+ */
+export function requireOptionalInvoiceTotal(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const amount = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(amount) || amount < 0 || amount > operatingLimits.invoiceTotal) {
+    throw new Error(
+      `Invoice total must be between 0 and ${operatingLimits.invoiceTotal.toLocaleString()}.`
+    );
+  }
+  return amount;
+}
+
+/**
+ * Optional per-line unit price for receive. Blank/null stays null; otherwise
+ * must be a finite amount within the hosted RPC bound.
+ */
+export function requireOptionalUnitPrice(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const amount = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(amount) || amount < 0 || amount > operatingLimits.unitPrice) {
+    throw new Error(
+      `Unit price must be between 0 and ${operatingLimits.unitPrice.toLocaleString()}.`
+    );
+  }
+  return amount;
 }
 
 function normalizeSupplierDeliveryStatus(value: unknown): SupplierDeliveryStatus {

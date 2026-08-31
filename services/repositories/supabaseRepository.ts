@@ -1596,7 +1596,7 @@ export function createSupabaseRepository(): MiseRepository {
     async fetchSupplierDeliveryHistory(restaurantId) {
       const { data: deliveryRows, error: deliveryError } = await client
         .from("supplier_deliveries")
-        .select("id,restaurant_id,supplier_order_id,status,received_at,notes,created_at")
+        .select("id,restaurant_id,supplier_order_id,status,received_at,notes,invoice_total,created_at")
         .eq("restaurant_id", restaurantId)
         .order("received_at", { ascending: false })
         .limit(100);
@@ -1610,7 +1610,7 @@ export function createSupabaseRepository(): MiseRepository {
       const { data: itemRows, error: itemError } = await client
         .from("supplier_delivery_items")
         .select(
-          "id,restaurant_id,delivery_id,inventory_item_id,ordered_quantity,received_quantity,damaged_quantity,missing_quantity,canonical_unit,discrepancy_reason"
+          "id,restaurant_id,delivery_id,inventory_item_id,ordered_quantity,received_quantity,damaged_quantity,missing_quantity,canonical_unit,unit_price,discrepancy_reason"
         )
         .eq("restaurant_id", restaurantId)
         .in("delivery_id", deliveries.map((delivery) => delivery.id))
