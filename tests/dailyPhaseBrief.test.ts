@@ -278,6 +278,16 @@ function fixtures(options: { allTasksComplete?: boolean } = {}) {
           lastWastedAt: "2026-08-03T20:00:00.000Z"
         }
       ],
+      topReasons: [
+        {
+          reasonCode: "spoilage",
+          eventCount: 2,
+          estimatedCost: 15.6,
+          costComplete: true,
+          shareOfEvents: 1,
+          shareOfEstimatedCost: 1
+        }
+      ],
       recentEvents: [
         {
           id: "waste-1",
@@ -288,6 +298,7 @@ function fixtures(options: { allTasksComplete?: boolean } = {}) {
           estimatedCost: 5.2,
           effectiveAt: "2026-08-03T20:00:00.000Z",
           recordedAt: "2026-08-03T20:00:00.000Z",
+          reasonCode: "spoilage",
           note: null
         }
       ],
