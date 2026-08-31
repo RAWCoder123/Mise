@@ -186,7 +186,12 @@ function fixtures(options: { allTasksComplete?: boolean } = {}) {
       deliveryStatus: "expected",
       deliveryDetail: "One sent order is awaiting confirmation.",
       menuRisks: [
-        { itemName: "Bell peppers", label: "Watch", detail: "Coverage is below two days." }
+        {
+          itemId: "inv_peppers",
+          itemName: "Bell peppers",
+          label: "Watch",
+          detail: "Coverage is below two days."
+        }
       ],
       supplierCutoffDeadlines: [],
       preventableLoss: "A stockout is preventable."

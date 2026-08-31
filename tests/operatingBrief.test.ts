@@ -171,6 +171,9 @@ test("operating brief builds approvals, monitoring, and truthful activity withou
   assert.match(brief.outlook.staffingDetail, /schedule integration/);
   assert.ok(brief.activityWindowSummary);
   assert.match(brief.restaurantStatus.dataFreshness.label, /current|Incomplete|stale|freshness/i);
+  assert.equal(brief.outlook.menuRisks.length, 1);
+  assert.equal(brief.outlook.menuRisks[0]?.itemId, "inv_chicken");
+  assert.equal(brief.outlook.menuRisks[0]?.itemName, "Chicken thighs");
 });
 
 test("operating brief rejects cross-tenant rows", () => {

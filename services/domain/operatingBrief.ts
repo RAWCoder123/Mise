@@ -63,7 +63,12 @@ export interface OperatingOutlook {
   staffingDetail: string;
   deliveryStatus: "none" | "expected" | "overdue" | "unknown";
   deliveryDetail: string;
-  menuRisks: Array<{ itemName: string; label: InventoryHealthLabel; detail: string }>;
+  menuRisks: Array<{
+    itemId: string;
+    itemName: string;
+    label: InventoryHealthLabel;
+    detail: string;
+  }>;
   supplierCutoffDeadlines: string[];
   preventableLoss: string | null;
 }
@@ -405,6 +410,7 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
       });
       if (label === "Healthy" || label === "Learning") return null;
       return {
+        itemId: item.id,
         itemName: item.item_name,
         label,
         detail: prediction.whyItMatters
