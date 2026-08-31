@@ -64,6 +64,7 @@ interface MiseSessionContextValue {
   signInWithProvider: (provider: AuthOAuthProvider) => Promise<void>;
   continueWithDemo: (profile?: { name?: string; cuisine_type?: string; posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   switchRestaurant: (restaurantId: string) => Promise<void>;
+  applyRestaurantProfile: (restaurant: Restaurant) => Promise<void>;
   connectDemoPOS: (provider: PosProvider) => Promise<void>;
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   signOut: () => Promise<void>;
@@ -526,6 +527,38 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     [authUser, availableRestaurants, memberships, refreshPOS, saveSnapshot]
   );
 
+  const applyRestaurantProfile = useCallback(
+    async (nextRestaurant: Restaurant) => {
+      activeRestaurantIdRef.current = nextRestaurant.id;
+      setRestaurant(nextRestaurant);
+      setAvailableRestaurants((current) => {
+        const exists = current.some((entry) => entry.id === nextRestaurant.id);
+        if (!exists) return [nextRestaurant, ...current];
+        return current.map((entry) => (entry.id === nextRestaurant.id ? nextRestaurant : entry));
+      });
+      const currentUser = userRef.current;
+      if (currentUser) {
+        const nextUser: AppUser = {
+          ...currentUser,
+          restaurant_id: nextRestaurant.id
+        };
+        setUser(nextUser);
+        await saveSnapshot({
+          user: isDemoModeRef.current ? nextUser : undefined,
+          activeRestaurantId: nextRestaurant.id,
+          isDemoMode: isDemoModeRef.current
+        });
+        return;
+      }
+      await saveSnapshot({
+        user: undefined,
+        activeRestaurantId: nextRestaurant.id,
+        isDemoMode: isDemoModeRef.current
+      });
+    },
+    [saveSnapshot]
+  );
+
   const connectDemoPOS = useCallback(
     async (provider: PosProvider) => {
       if (!isDemoMode) {
@@ -599,12 +632,14 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       signInWithProvider,
       continueWithDemo,
       switchRestaurant,
+      applyRestaurantProfile,
       connectDemoPOS,
       resetDemoData,
       signOut
     }),
     [
       activeRestaurantId,
+      applyRestaurantProfile,
       authUser,
       availableRestaurants,
       connectDemoPOS,
