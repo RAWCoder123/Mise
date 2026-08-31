@@ -105,6 +105,11 @@ test("daily brief UI uses screen-safe brief and finding-feedback facades", () =>
   assert.match(board, /from "\.\/findingQueueMatch"/);
   assert.match(board, /latestMatchingQueueEntry/);
   assert.match(matchHelper, /queuedFindingMatchesCurrent/);
+  assert.match(board, /presentFindingRecoveryActions/);
+  assert.match(board, /formatFindingMissingDataLabels/);
+  assert.match(board, /dailyBrief\.recovery\.title/);
+  assert.match(board, /router\.push\(action\.href/);
+  assert.doesNotMatch(board, /missingData\.join\(", "\)/);
   assert.match(board, /accessibilityRole="header"/);
   assert.match(board, /approveAccessibility/);
   assert.match(board, /editAccessibility/);
