@@ -194,8 +194,16 @@ export async function updateRecipeBaselineIngredient(
   ]);
   const existing = data.menuItemIngredients.find((mapping) => mapping.id === mappingId);
   if (!existing) throw new Error("Recipe baseline mapping not found");
+  const inventoryItem = data.inventoryItems.find((item) => item.id === existing.inventory_item_id);
+  if (!inventoryItem) throw new Error("Inventory item not found");
+  // Always align the recipe unit to the current inventory unit so Save/Fix repairs
+  // incompatible mappings that would otherwise block POS depletion and purchase authority.
+  const alignedUnit = inventoryItem.unit.trim();
+  if (!alignedUnit) throw new Error("Inventory unit is required.");
   const planningMappings = data.menuItemIngredients.map((mapping) =>
-    mapping.id === mappingId ? { ...mapping, quantity_used_per_sale: normalizedQuantity } : mapping
+    mapping.id === mappingId
+      ? { ...mapping, quantity_used_per_sale: normalizedQuantity, unit: alignedUnit }
+      : mapping
   );
   const recommendations = buildRecommendationInserts(
     restaurantId,
@@ -222,7 +230,7 @@ export async function updateRecipeBaselineIngredient(
     menuItemName: existing.menu_item_name,
     inventoryItemId: existing.inventory_item_id,
     quantityUsedPerSale: normalizedQuantity,
-    unit: existing.unit,
+    unit: alignedUnit,
     expectedQuantity: existing.quantity_used_per_sale,
     recommendations,
     insights
