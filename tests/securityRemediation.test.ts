@@ -15,6 +15,7 @@ import { buildSupplierOrderMessage } from "../services/domain/miseDomain";
 import {
   requireRestaurantName,
   requireRestaurantProfilePatch,
+  requireSupplierDeliveryDate,
   requireSupplierOperatorNote
 } from "../services/miseValidation";
 import { captureMiseError } from "../services/telemetry";
@@ -91,6 +92,11 @@ test("every Edge handler authenticates before body processing and closes accepte
 test("supplier notes, restaurant names, and generated messages stop at their authoritative limits", () => {
   assert.equal(requireSupplierOperatorNote("x".repeat(2000))?.length, 2000);
   assert.throws(() => requireSupplierOperatorNote("x".repeat(2001)), /2,000 characters/);
+  assert.equal(requireSupplierDeliveryDate(null), null);
+  assert.equal(requireSupplierDeliveryDate("  "), null);
+  assert.equal(requireSupplierDeliveryDate("2026-08-31"), "2026-08-31");
+  assert.throws(() => requireSupplierDeliveryDate("08/31/2026"), /YYYY-MM-DD/);
+  assert.throws(() => requireSupplierDeliveryDate("2026-02-30"), /real calendar day/);
   assert.equal(requireRestaurantName("R".repeat(120)).length, 120);
   assert.throws(() => requireRestaurantName("R".repeat(121)), /between 1 and 120/);
 
