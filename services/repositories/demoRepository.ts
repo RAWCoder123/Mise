@@ -3633,6 +3633,7 @@ export function createLocalDemoRepository(): MiseRepository {
             received_at: input.receivedAt,
             client_delivery_id: input.clientDeliveryId,
             notes: input.notes ?? null,
+            invoice_total: input.invoiceTotal ?? null,
             created_at: input.receivedAt
           }
         ];
@@ -3647,7 +3648,9 @@ export function createLocalDemoRepository(): MiseRepository {
             received_quantity: line.receivedQuantity,
             damaged_quantity: line.damagedQuantity ?? 0,
             missing_quantity: line.missingQuantity ?? 0,
-            canonical_unit: line.canonicalUnit
+            canonical_unit: line.canonicalUnit,
+            unit_price: line.unitPrice ?? null,
+            discrepancy_reason: line.discrepancyReason ?? null
           }))
         ];
 

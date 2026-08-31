@@ -20,6 +20,7 @@ import {
   isGmailIntegrationError,
   approveSupplierSendContent,
   prepareSupplierEmailPayload,
+  previewSupplierOrderDeliveryCosts,
   receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
   updateSupplierOrder
@@ -40,7 +41,12 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
-import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
+import {
+  operatingLimits,
+  requireOptionalInvoiceTotal,
+  requireOptionalUnitPrice,
+  SUPPLIER_NOTE_MAX_CHARACTERS
+} from "../../services/miseValidation";
 import type {
   RestaurantEmailConnection,
   SupplierEmailPayload,
@@ -56,16 +62,29 @@ interface OrderNotice {
   recovery?: "gmail" | "supplier" | "retry";
 }
 
+interface ReceiveCostDraftLine {
+  inventoryItemId: string;
+  itemName: string;
+  displayUnit: string;
+  orderedQuantity: number;
+  unitPriceText: string;
+  unitPriceError?: string;
+}
+
 export default function OrderDraftDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
-  const { formatDate, formatNumber, t } = useLocale();
+  const { formatCurrency, formatDate, formatNumber, parseNumber, t } = useLocale();
   const { memberships, restaurant, usingLocalDemo } = useMiseSession();
   const [order, setOrder] = useState<SupplierOrder | null>(null);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
+  const [receiveCostLines, setReceiveCostLines] = useState<ReceiveCostDraftLine[]>([]);
+  const [receiveCostPreviewError, setReceiveCostPreviewError] = useState(false);
+  const [invoiceTotalText, setInvoiceTotalText] = useState("");
+  const [invoiceTotalError, setInvoiceTotalError] = useState<string | undefined>(undefined);
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -119,10 +138,49 @@ export default function OrderDraftDetailScreen() {
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       setOperatorNote(nextDetail.order.operator_note ?? "");
+
+      if (nextDetail.order.status === "sent") {
+        try {
+          const preview = await previewSupplierOrderDeliveryCosts(restaurantId, orderId);
+          if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+            return;
+          }
+          setReceiveCostLines(
+            preview.lines.map((line) => ({
+              inventoryItemId: line.inventoryItemId,
+              itemName: line.itemName,
+              displayUnit: line.displayUnit,
+              orderedQuantity: line.orderedQuantity,
+              unitPriceText: "",
+              unitPriceError: undefined
+            }))
+          );
+          setReceiveCostPreviewError(false);
+          setInvoiceTotalText("");
+          setInvoiceTotalError(undefined);
+        } catch {
+          if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+            return;
+          }
+          setReceiveCostLines([]);
+          setReceiveCostPreviewError(true);
+          setInvoiceTotalText("");
+          setInvoiceTotalError(undefined);
+        }
+      } else {
+        setReceiveCostLines([]);
+        setReceiveCostPreviewError(false);
+        setInvoiceTotalText("");
+        setInvoiceTotalError(undefined);
+      }
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setDeliveryEvidence([]);
+      setReceiveCostLines([]);
+      setReceiveCostPreviewError(false);
+      setInvoiceTotalText("");
+      setInvoiceTotalError(undefined);
       setEmailPayload(null);
       setSupplierSendAction(null);
       setHubLoadError(true);
@@ -146,6 +204,10 @@ export default function OrderDraftDetailScreen() {
     setHubLoadError(false);
     setOrder(null);
     setDeliveryEvidence([]);
+    setReceiveCostLines([]);
+    setReceiveCostPreviewError(false);
+    setInvoiceTotalText("");
+    setInvoiceTotalError(undefined);
     setEmailConnection(null);
     setEmailPayload(null);
     setSupplierSendAction(null);
@@ -363,12 +425,42 @@ export default function OrderDraftDetailScreen() {
       setNotice(viewOnlyNotice(t));
       return;
     }
+    if (receiveCostPreviewError) {
+      setNotice({
+        title: t("orders.detail.receiveCosts.loadFailedTitle"),
+        message: t("orders.detail.receiveCosts.loadFailedBody"),
+        tone: "danger"
+      });
+      return;
+    }
+
+    const validated = validateReceiveCostDrafts({
+      invoiceTotalText,
+      lines: receiveCostLines,
+      parseNumber,
+      formatNumber,
+      t
+    });
+    setInvoiceTotalError(validated.invoiceTotalError);
+    setReceiveCostLines(validated.lines);
+    if (!validated.ok) {
+      setNotice({
+        title: t("orders.detail.receiveCosts.validationTitle"),
+        message: t("orders.detail.receiveCosts.validationBody"),
+        tone: "danger"
+      });
+      return;
+    }
+
     const restaurantId = restaurant.id;
     actionLockRef.current = true;
     setBusy(true);
     setNotice(null);
     try {
-      const result = await receiveSupplierOrderDelivery(restaurantId, order.id);
+      const result = await receiveSupplierOrderDelivery(restaurantId, order.id, {
+        invoiceTotal: validated.invoiceTotal,
+        unitPricesByOrderedItemId: validated.unitPricesByOrderedItemId
+      });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await load(false);
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -395,6 +487,16 @@ export default function OrderDraftDetailScreen() {
       actionLockRef.current = false;
       if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
     }
+  }
+
+  function updateReceiveCostLine(inventoryItemId: string, unitPriceText: string) {
+    setReceiveCostLines((current) =>
+      current.map((line) =>
+        line.inventoryItemId === inventoryItemId
+          ? { ...line, unitPriceText, unitPriceError: undefined }
+          : line
+      )
+    );
   }
 
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
@@ -563,6 +665,23 @@ export default function OrderDraftDetailScreen() {
                           { count: formatNumber(evidence.lineCount) }
                         )}
                   </Text>
+                  {evidence.invoiceTotal != null ? (
+                    <Text style={styles.deliveryEvidenceLine}>
+                      {t("orders.detail.deliveryEvidence.invoiceTotal", {
+                        amount: formatCurrency(evidence.invoiceTotal)
+                      })}
+                    </Text>
+                  ) : null}
+                  {evidence.pricedLineCount > 0 ? (
+                    <Text style={styles.deliveryEvidenceLine}>
+                      {t(
+                        evidence.pricedLineCount === 1
+                          ? "orders.detail.deliveryEvidence.pricedLines.one"
+                          : "orders.detail.deliveryEvidence.pricedLines.other",
+                        { count: formatNumber(evidence.pricedLineCount) }
+                      )}
+                    </Text>
+                  ) : null}
                   {evidence.notes ? (
                     <Text style={styles.deliveryEvidenceNote}>{evidence.notes}</Text>
                   ) : null}
@@ -772,6 +891,102 @@ export default function OrderDraftDetailScreen() {
               disabled={busy}
               fullWidth
             />
+          ) : null}
+
+          {isSent && actionsEditable ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.receiveCosts.title")}</Text>
+              <Text style={styles.sectionBody}>{t("orders.detail.receiveCosts.body")}</Text>
+              {receiveCostPreviewError ? (
+                <StatusNotice
+                  tone="danger"
+                  title={t("orders.detail.receiveCosts.loadFailedTitle")}
+                  message={t("orders.detail.receiveCosts.loadFailedBody")}
+                  actionLabel={t("common.retry")}
+                  onAction={() => void load(false)}
+                />
+              ) : (
+                <>
+                  <View style={styles.receiveCostField}>
+                    <Text style={styles.receiveCostFieldLabel}>
+                      {t("orders.detail.receiveCosts.invoiceTotal")}
+                    </Text>
+                    <TextInput
+                      accessibilityLabel={t("orders.detail.receiveCosts.invoiceTotalAccessibility")}
+                      accessibilityState={{ disabled: busy }}
+                      value={invoiceTotalText}
+                      onChangeText={(value) => {
+                        setInvoiceTotalText(value);
+                        setInvoiceTotalError(undefined);
+                      }}
+                      editable={!busy}
+                      keyboardType="decimal-pad"
+                      placeholder={t("orders.detail.receiveCosts.invoiceTotalPlaceholder")}
+                      placeholderTextColor={colors.faint}
+                      style={[
+                        styles.receiveCostInput,
+                        invoiceTotalError ? styles.receiveCostInputError : null
+                      ]}
+                    />
+                    {invoiceTotalError ? (
+                      <Text style={styles.receiveCostFieldError}>{invoiceTotalError}</Text>
+                    ) : null}
+                  </View>
+                  {receiveCostLines.length > 0 ? (
+                    <View style={styles.receiveCostList}>
+                      {receiveCostLines.map((line, index) => (
+                        <View
+                          key={line.inventoryItemId}
+                          style={[
+                            styles.receiveCostRow,
+                            index < receiveCostLines.length - 1 && styles.receiveCostRowDivider
+                          ]}
+                        >
+                          <Text style={styles.receiveCostItemName}>{line.itemName}</Text>
+                          <Text style={styles.receiveCostOrdered}>
+                            {t("orders.detail.receiveCosts.ordered", {
+                              quantity: formatNumber(line.orderedQuantity, {
+                                maximumFractionDigits: 3
+                              }),
+                              unit: line.displayUnit
+                            })}
+                          </Text>
+                          <Text style={styles.receiveCostFieldLabel}>
+                            {t("orders.detail.receiveCosts.unitPrice")}
+                          </Text>
+                          <TextInput
+                            accessibilityLabel={t(
+                              "orders.detail.receiveCosts.unitPriceAccessibility",
+                              { item: line.itemName }
+                            )}
+                            accessibilityState={{ disabled: busy }}
+                            value={line.unitPriceText}
+                            onChangeText={(value) => updateReceiveCostLine(line.inventoryItemId, value)}
+                            editable={!busy}
+                            keyboardType="decimal-pad"
+                            placeholder={t("orders.detail.receiveCosts.unitPricePlaceholder")}
+                            placeholderTextColor={colors.faint}
+                            style={[
+                              styles.receiveCostInput,
+                              line.unitPriceError ? styles.receiveCostInputError : null
+                            ]}
+                          />
+                          {line.unitPriceError ? (
+                            <Text style={styles.receiveCostFieldError}>{line.unitPriceError}</Text>
+                          ) : null}
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <StatusNotice
+                      tone="warning"
+                      title={t("orders.detail.receiveCosts.emptyTitle")}
+                      message={t("orders.detail.receiveCosts.emptyBody")}
+                    />
+                  )}
+                </>
+              )}
+            </View>
           ) : null}
 
           {isSent && actionsEditable ? (
@@ -1023,6 +1238,89 @@ function generatedOrderMessage(order: SupplierOrder) {
     : order.order_message;
 }
 
+function validateReceiveCostDrafts(input: {
+  invoiceTotalText: string;
+  lines: readonly ReceiveCostDraftLine[];
+  parseNumber: (value: string) => number | null;
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
+  t: Translate;
+}): {
+  ok: boolean;
+  invoiceTotal: number | null;
+  invoiceTotalError?: string;
+  lines: ReceiveCostDraftLine[];
+  unitPricesByOrderedItemId: Record<string, number | null>;
+} {
+  let ok = true;
+  let invoiceTotal: number | null = null;
+  let invoiceTotalError: string | undefined;
+  const invoiceRaw = input.invoiceTotalText.trim();
+
+  if (invoiceRaw.length > 0) {
+    const parsed = input.parseNumber(invoiceRaw);
+    if (parsed == null) {
+      invoiceTotalError = input.t("orders.detail.receiveCosts.validation.invoiceTotal", {
+        max: input.formatNumber(operatingLimits.invoiceTotal)
+      });
+      ok = false;
+    } else {
+      try {
+        invoiceTotal = requireOptionalInvoiceTotal(parsed);
+      } catch {
+        invoiceTotalError = input.t("orders.detail.receiveCosts.validation.invoiceTotal", {
+          max: input.formatNumber(operatingLimits.invoiceTotal)
+        });
+        ok = false;
+      }
+    }
+  }
+
+  const nextLines: ReceiveCostDraftLine[] = [];
+  const unitPricesByOrderedItemId: Record<string, number | null> = {};
+
+  for (const line of input.lines) {
+    const priceRaw = line.unitPriceText.trim();
+    let unitPriceError: string | undefined;
+    let unitPrice: number | null = null;
+
+    if (priceRaw.length > 0) {
+      const parsed = input.parseNumber(priceRaw);
+      if (parsed == null) {
+        unitPriceError = input.t("orders.detail.receiveCosts.validation.unitPrice", {
+          max: input.formatNumber(operatingLimits.unitPrice)
+        });
+        ok = false;
+      } else {
+        try {
+          unitPrice = requireOptionalUnitPrice(parsed);
+        } catch {
+          unitPriceError = input.t("orders.detail.receiveCosts.validation.unitPrice", {
+            max: input.formatNumber(operatingLimits.unitPrice)
+          });
+          ok = false;
+        }
+      }
+    }
+
+    nextLines.push({
+      ...line,
+      unitPriceError
+    });
+
+    if (!unitPriceError) {
+      unitPricesByOrderedItemId[line.inventoryItemId] = unitPrice;
+    }
+  }
+
+  return {
+    ok,
+    invoiceTotal: ok ? invoiceTotal : null,
+    invoiceTotalError,
+    lines: nextLines,
+    unitPricesByOrderedItemId: ok ? unitPricesByOrderedItemId : {}
+  };
+}
+
 const styles = StyleSheet.create({
   stack: {
     gap: 20,
@@ -1202,5 +1500,59 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1
+  },
+  receiveCostField: {
+    gap: 4,
+    marginTop: 4
+  },
+  receiveCostFieldLabel: {
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "700"
+  },
+  receiveCostInput: {
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  receiveCostInputError: {
+    borderColor: colors.danger
+  },
+  receiveCostFieldError: {
+    color: colors.danger,
+    ...typography.caption
+  },
+  receiveCostList: {
+    marginTop: 8,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: "hidden"
+  },
+  receiveCostRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 6
+  },
+  receiveCostRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border
+  },
+  receiveCostItemName: {
+    color: colors.text,
+    ...typography.cardTitle
+  },
+  receiveCostOrdered: {
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "500"
   }
 });
