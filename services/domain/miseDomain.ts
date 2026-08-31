@@ -1938,7 +1938,7 @@ export function buildConditionalAnalyticsSummary(
       : "Supplier trend needs sent order history",
     emptyStates: {
       salesRhythm: "Connect POS sales or load demo sales before charting service rhythm.",
-      supplierTrend: "Send at least two supplier drafts before Mise charts ordering rhythm.",
+      supplierTrend: "Send or complete at least two supplier orders before Mise charts ordering rhythm.",
       recipeCoverage: "Add ingredient-per-dish baselines before Mise can score recipe coverage."
     }
   };
@@ -1986,7 +1986,8 @@ function buildSupplierOrderTrend(orderHistory: SupplierOrder[]) {
     .slice()
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
     .forEach((order) => {
-      const label = new Intl.DateTimeFormat("en-US", { month: "numeric", day: "numeric" }).format(new Date(order.created_at));
+      // ISO calendar day key; UI formats for the active locale.
+      const label = order.created_at.slice(0, 10);
       counts.set(label, (counts.get(label) ?? 0) + 1);
     });
 

@@ -1346,6 +1346,10 @@ test("conditional analytics appear only when operational data supports them", ()
   assert.equal(ready.canShowSupplierTrend, true);
   assert.equal(ready.canShowRecipeCoverage, true);
   assert.equal(ready.supplierTrend.reduce((sum, point) => sum + point.orders, 0), 2);
+  assert.deepEqual(
+    ready.supplierTrend.map((point) => point.label),
+    ["2026-06-20", "2026-06-21"]
+  );
 });
 
 test("supplier email payloads stay blocked until Gmail and recipient data are ready", () => {
