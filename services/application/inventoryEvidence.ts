@@ -1,5 +1,5 @@
 import type { InventoryItem } from "../../types/mise";
-import type { InventoryEvent } from "../domain/inventoryLedger";
+import type { InventoryEvent, InventoryEventType } from "../domain/inventoryLedger";
 import {
   buildInventoryCountEvidence,
   type InventoryCountEvidenceMap,
@@ -20,6 +20,52 @@ export const VERIFIED_COUNT_EVENT_LIMIT = 2000;
  * truncated read cannot prove it, so the read reports its own completeness.
  */
 export const LEDGER_ORDERING_EVENT_LIMIT = 2000;
+
+/** Newest-first window for the restaurant-wide movements browser. */
+export const RESTAURANT_MOVEMENTS_LIMIT = 80;
+
+export type InventoryMovementFeedFilter =
+  | "all"
+  | "count"
+  | "receipt"
+  | "waste"
+  | "usage"
+  | "adjustment"
+  | "transfer"
+  | "stockout";
+
+export const INVENTORY_MOVEMENT_FEED_FILTERS = [
+  "all",
+  "count",
+  "receipt",
+  "waste",
+  "usage",
+  "adjustment",
+  "transfer",
+  "stockout"
+] as const satisfies readonly InventoryMovementFeedFilter[];
+
+export interface RestaurantInventoryMovementRow {
+  event: InventoryEvent;
+  /** Current item display name, or null when the item is no longer present. */
+  itemName: string | null;
+}
+
+export interface RestaurantInventoryMovementsResult {
+  restaurantId: string;
+  filter: InventoryMovementFeedFilter;
+  movements: RestaurantInventoryMovementRow[];
+  truncated: boolean;
+}
+
+/** Maps a movements-browser filter onto ledger event types (undefined = no filter). */
+export function inventoryEventTypesForMovementFilter(
+  filter: InventoryMovementFeedFilter
+): InventoryEventType[] | undefined {
+  if (filter === "all") return undefined;
+  if (filter === "adjustment") return ["adjustment", "correction"];
+  return [filter];
+}
 
 const repository = getMiseRepository();
 
@@ -75,6 +121,61 @@ export async function fetchVerifiedInventoryCountEvents(restaurantId: string) {
     eventTypes: ["count"],
     limit: VERIFIED_COUNT_EVENT_LIMIT
   });
+}
+
+/**
+ * Restaurant-wide append-only inventory movements for the More browser.
+ * Newest recorded rows first. Truncation is reported so the UI never pretends
+ * the window is complete. Item names are joined from the current catalog only.
+ */
+export async function fetchRestaurantInventoryMovements(
+  restaurantId: string,
+  options: {
+    filter?: InventoryMovementFeedFilter;
+    limit?: number;
+    since?: string;
+  } = {}
+): Promise<RestaurantInventoryMovementsResult> {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+
+  const filter = options.filter ?? "all";
+  const limit =
+    options.limit != null && Number.isFinite(options.limit) && options.limit >= 0
+      ? Math.floor(options.limit)
+      : RESTAURANT_MOVEMENTS_LIMIT;
+  const eventTypes = inventoryEventTypesForMovementFilter(filter);
+  const since =
+    typeof options.since === "string" && options.since.trim()
+      ? options.since.trim()
+      : undefined;
+
+  const repositoryClient = getMiseRepository();
+  const [events, inventoryItems] = await Promise.all([
+    repositoryClient.listInventoryEvents(normalizedRestaurantId, {
+      eventTypes,
+      since,
+      limit
+    }),
+    repositoryClient.fetchInventoryItems(normalizedRestaurantId)
+  ]);
+
+  const namesById = new Map(
+    inventoryItems
+      .filter((item) => item.restaurant_id === normalizedRestaurantId)
+      .map((item) => [item.id, item.item_name] as const)
+  );
+
+  const scoped = events.filter((event) => event.restaurantId === normalizedRestaurantId);
+  return {
+    restaurantId: normalizedRestaurantId,
+    filter,
+    movements: scoped.map((event) => ({
+      event,
+      itemName: namesById.get(event.inventoryItemId) ?? null
+    })),
+    truncated: scoped.length === limit && limit > 0
+  };
 }
 
 /**
