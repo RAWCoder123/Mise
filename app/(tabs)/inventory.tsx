@@ -454,13 +454,16 @@ function InventoryListRow({
   const isWatch = prediction.projectedStatus === "Watch";
   const isGood = prediction.projectedStatus === "Good";
   const canonicalReady = isCanonicalUnitReady(item);
-  const entryHint = !canonicalReady
-    ? t("inventory.row.needsVerification")
-    : queueCount > 0
-      ? t(queueCount === 1 ? "inventory.row.queued.one" : "inventory.row.queued.other", {
-          count: formatNumber(queueCount)
-        })
-      : t("inventory.row.openOps");
+  const contaminatedProjection = prediction.countEvidence === "contaminated_projection";
+  const entryHint = contaminatedProjection
+    ? t("inventory.row.contaminated")
+    : !canonicalReady
+      ? t("inventory.row.needsVerification")
+      : queueCount > 0
+        ? t(queueCount === 1 ? "inventory.row.queued.one" : "inventory.row.queued.other", {
+            count: formatNumber(queueCount)
+          })
+        : t("inventory.row.openOps");
   const statusColor = isCritical
     ? inventoryStatusColors.Critical
     : isLow
@@ -468,8 +471,25 @@ function InventoryListRow({
       : isGood
         ? colors.success
         : inventoryStatusColors.Watch;
-  const iconTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "leaf";
-  const badgeTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "success";
+  const iconTone = contaminatedProjection
+    ? "warning"
+    : isCritical
+      ? "danger"
+      : isLow
+        ? "warning"
+        : isWatch
+          ? "caution"
+          : "leaf";
+  const badgeTone = contaminatedProjection
+    ? "warning"
+    : isCritical
+      ? "danger"
+      : isLow
+        ? "warning"
+        : isWatch
+          ? "caution"
+          : "success";
+  const badgeLabel = contaminatedProjection ? t("inventory.prediction.action.recount") : localized.status;
 
   return (
     <OperationalRow
@@ -478,11 +498,11 @@ function InventoryListRow({
       subtitle={`${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${item.unit} · ${localized.coverage}`}
       icon={categoryIcon(item.category, statusColor)}
       iconTone={iconTone}
-      badgeLabel={localized.status}
+      badgeLabel={badgeLabel}
       badgeTone={badgeTone}
       accessibilityLabel={t("inventory.row.accessibilityLedger", {
         item: item.item_name,
-        status: localized.status,
+        status: badgeLabel,
         coverage: localized.coverage,
         action: localized.action,
         confidence: localized.confidence,
