@@ -8,6 +8,8 @@ import {
 } from "../domain/miseDomain";
 import {
   applyCountApprovalsToInventory,
+  assertCountSessionMaterialVarianceNotes,
+  assertSessionMutable,
   planCountSessionApprovals,
   summarizeCountSessionProgress
 } from "../domain/inventoryCountSessions";
@@ -402,6 +404,13 @@ export async function saveInventoryCountLines(
 }
 
 export async function submitInventoryCountSession(restaurantId: string, sessionId: string) {
+  const detail = await repository.fetchInventoryCountSession(restaurantId, sessionId);
+  assertSessionMutable(detail.session, "submit");
+  const progress = summarizeCountSessionProgress(detail.lines);
+  if (!progress.canSubmit) {
+    throw new Error("Count every item before submitting the session.");
+  }
+  assertCountSessionMaterialVarianceNotes(detail.lines);
   return repository.submitInventoryCountSession(restaurantId, sessionId);
 }
 
@@ -422,6 +431,7 @@ export async function approveInventoryCountSession(restaurantId: string, session
   if (!progress.canApprove) {
     throw new Error("Count every item before approving the session.");
   }
+  assertCountSessionMaterialVarianceNotes(detail.lines);
   const approvals = planCountSessionApprovals({
     inventoryItems: data.inventoryItems,
     lines: detail.lines

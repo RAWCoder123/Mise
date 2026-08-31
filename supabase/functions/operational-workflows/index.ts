@@ -1,5 +1,6 @@
 import { calculateOperationalSignals, type OperationalPlanningSnapshot } from "../../../services/domain/operationalSignals.ts";
 import { withPendingCountEvidence } from "../../../services/domain/inventoryCountAuthority.ts";
+import { assertCountSessionMaterialVarianceNotes } from "../../../services/domain/inventoryCountSessions.ts";
 import { inventoryUnitsAreCompatible } from "../../../services/domain/inventoryUnits.ts";
 import {
   firewallBlockedResponse,
@@ -179,7 +180,37 @@ async function refreshWithRetry(
         if (session.status !== "submitted") {
           throw new HttpError(400, "Submit the count session before approving adjustments.");
         }
-        mutationBody = { ...body, approvedLines: requireArray(detail.lines, "count session.lines", 250) };
+        const approvedLines = requireArray(detail.lines, "count session.lines", 250);
+        try {
+          assertCountSessionMaterialVarianceNotes(
+            approvedLines.map((entry, index) => {
+              const row = requireRecord(entry, `count session.lines[${index}]`);
+              return {
+                inventory_item_id: requireUuid(row.inventory_item_id, `count session.lines[${index}].inventory_item_id`),
+                item_name: typeof row.item_name === "string" ? row.item_name : "item",
+                counted_quantity:
+                  row.counted_quantity == null
+                    ? null
+                    : requireBoundedNumber(
+                        row.counted_quantity,
+                        `count session.lines[${index}].counted_quantity`,
+                        0,
+                        1_000_000
+                      ),
+                system_quantity_at_start: requireBoundedNumber(
+                  row.system_quantity_at_start,
+                  `count session.lines[${index}].system_quantity_at_start`,
+                  0,
+                  1_000_000
+                ),
+                note: typeof row.note === "string" ? row.note : null
+              };
+            })
+          );
+        } catch (error) {
+          throw new HttpError(400, error instanceof Error ? error.message : "Material variance notes are required.");
+        }
+        mutationBody = { ...body, approvedLines };
       }
       const planning = applyRequestedMutation(snapshot, action, mutationBody);
       const signals = calculateOperationalSignals(planning);
@@ -273,10 +304,49 @@ async function runCountSessionDraftAction(
     });
   }
   if (action === "submit_count_session") {
+    const sessionId = requireUuid(body.sessionId, "sessionId");
+    const detail = requireRecord(
+      await serviceRpc(securitySupabase, "service_get_inventory_count_session", {
+        p_actor_user_id: actorUserId,
+        p_restaurant_id: restaurantId,
+        p_session_id: sessionId
+      }),
+      "count session"
+    );
+    const lines = requireArray(detail.lines, "count session.lines", 250);
+    try {
+      assertCountSessionMaterialVarianceNotes(
+        lines.map((entry, index) => {
+          const row = requireRecord(entry, `count session.lines[${index}]`);
+          return {
+            inventory_item_id: requireUuid(row.inventory_item_id, `count session.lines[${index}].inventory_item_id`),
+            item_name: typeof row.item_name === "string" ? row.item_name : "item",
+            counted_quantity:
+              row.counted_quantity == null
+                ? null
+                : requireBoundedNumber(
+                    row.counted_quantity,
+                    `count session.lines[${index}].counted_quantity`,
+                    0,
+                    1_000_000
+                  ),
+            system_quantity_at_start: requireBoundedNumber(
+              row.system_quantity_at_start,
+              `count session.lines[${index}].system_quantity_at_start`,
+              0,
+              1_000_000
+            ),
+            note: typeof row.note === "string" ? row.note : null
+          };
+        })
+      );
+    } catch (error) {
+      throw new HttpError(400, error instanceof Error ? error.message : "Material variance notes are required.");
+    }
     return await serviceRpc(securitySupabase, "service_submit_inventory_count_session", {
       p_actor_user_id: actorUserId,
       p_restaurant_id: restaurantId,
-      p_session_id: requireUuid(body.sessionId, "sessionId")
+      p_session_id: sessionId
     });
   }
   return await serviceRpc(securitySupabase, "service_cancel_inventory_count_session", {
