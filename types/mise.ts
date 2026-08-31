@@ -650,6 +650,7 @@ export interface SetupReadinessSummary {
 }
 
 export interface SupplierOrderTrendPoint {
+  /** ISO calendar day (`YYYY-MM-DD`) for the order-send cluster. */
   label: string;
   orders: number;
 }
