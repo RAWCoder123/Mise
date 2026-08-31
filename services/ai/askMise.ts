@@ -1,6 +1,7 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
 import type { OperationalTodayTask } from "../domain/todayTasks";
+import type { WasteAnalysisSummary } from "../domain/wasteAnalysis";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
 export type AskMiseIntent = "priorities" | "stock" | "orders" | "sales" | "briefing" | "prep" | "waste" | "general";
@@ -37,6 +38,12 @@ export interface AskMiseInput {
   restaurant: Pick<Restaurant, "name" | "cuisine_type" | "service_style" | "timezone" | "currency">;
   summary: AskMiseRestaurantContext;
   insights: readonly Insight[];
+  /**
+   * Authoritative waste ledger analysis for the active restaurant.
+   * Null/undefined means the check was unavailable — waste answers fail closed
+   * instead of inventing an all-clear from overstock insight heuristics.
+   */
+  wasteAnalysis?: WasteAnalysisSummary | null;
   helpers: AskMiseHelpers;
 }
 
@@ -76,7 +83,7 @@ export function classifyAskMiseIntent(question: string): AskMiseIntent {
  * grounded reply plus the analysis steps used to reach it.
  */
 export function answerAskMise(input: AskMiseInput): AskMiseReply {
-  const { helpers, restaurant, summary, insights } = input;
+  const { helpers, restaurant, summary, insights, wasteAnalysis = null } = input;
   const { t } = helpers;
   const intent = classifyAskMiseIntent(input.question);
   const openTasks = summary.operationalTasks.filter((task) => task.status === "open");
@@ -85,7 +92,6 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const topInsight = insights[0] ?? summary.importantInsight;
   const presentedInsight = topInsight ? presentInsight(helpers.locale, topInsight) : null;
   const prepInsights = insights.filter((insight) => insight.insight_type === "prep" || insight.insight_type === "sales");
-  const wasteInsights = insights.filter((insight) => insight.insight_type === "waste");
   const attentionTitles = summary.attentionCards.slice(0, 3).map((card) => card.title);
   const topTaskTitles = priorities.map((task) => presentOperationalTodayTask(helpers.locale, task).title);
   const topSale = summary.topItems[0]?.item_name?.trim() || null;
@@ -98,6 +104,7 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
     pendingRecommendations: summary.pendingRecommendations,
     salesToday: summary.salesToday,
     currency: summary.restaurantCurrency,
+    wasteAnalysis,
     helpers
   });
 
@@ -247,21 +254,10 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "waste": {
-      const wasteTitles = wasteInsights
-        .slice(0, 3)
-        .map((insight) => presentInsight(helpers.locale, insight).title);
-      const answer =
-        wasteTitles.length > 0
-          ? [
-              t("ask.answer.waste.lead"),
-              t("ask.answer.waste.named", { items: wasteTitles.join("; ") }),
-              t("ask.answer.waste.next")
-            ].join(" ")
-          : t("ask.answer.waste.clear");
       return {
         intent,
         thinkingSteps,
-        answer,
+        answer: answerWasteFromAnalysis(wasteAnalysis, summary.restaurantCurrency, helpers),
         showPriorities: false,
         priorities: []
       };
@@ -302,6 +298,81 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   }
 }
 
+function answerWasteFromAnalysis(
+  wasteAnalysis: WasteAnalysisSummary | null | undefined,
+  currency: string,
+  helpers: AskMiseHelpers
+): string {
+  const { t } = helpers;
+  if (wasteAnalysis == null) {
+    return t("ask.answer.waste.unavailable");
+  }
+
+  const topNames = wasteAnalysis.topItems
+    .slice(0, 3)
+    .map((item) => item.itemName.trim())
+    .filter(Boolean);
+  const primaryName =
+    wasteAnalysis.topItems.find((item) => item.inventoryItemId === wasteAnalysis.primaryItemId)?.itemName.trim() ||
+    topNames[0] ||
+    null;
+  const itemList = topNames.join("; ") || primaryName || t("ask.answer.waste.itemFallback");
+
+  switch (wasteAnalysis.recommendedAction) {
+    case "start_logging":
+      return [
+        t("ask.answer.waste.no_records", {
+          days: helpers.formatNumber(wasteAnalysis.windowDays)
+        }),
+        t("ask.answer.waste.next.log")
+      ].join(" ");
+    case "review_repeat_item":
+      return [
+        t("ask.answer.waste.attention", {
+          items: itemList,
+          count: helpers.formatNumber(wasteAnalysis.eventCount),
+          days: helpers.formatNumber(wasteAnalysis.windowDays)
+        }),
+        primaryName ? t("ask.answer.waste.repeat", { item: primaryName }) : null,
+        t("ask.answer.waste.next.review")
+      ]
+        .filter(Boolean)
+        .join(" ");
+    case "complete_cost_setup":
+      return [
+        t("ask.answer.waste.cost_setup", {
+          count: helpers.formatNumber(
+            wasteAnalysis.unpricedEventCount > 0
+              ? wasteAnalysis.unpricedEventCount
+              : wasteAnalysis.eventCount
+          ),
+          days: helpers.formatNumber(wasteAnalysis.windowDays)
+        }),
+        t("ask.answer.waste.next.cost")
+      ].join(" ");
+    case "keep_logging":
+    default: {
+      const costLine =
+        wasteAnalysis.estimatedCost != null && wasteAnalysis.costComplete
+          ? t("ask.answer.waste.costKnown", {
+              cost: helpers.formatCompactCurrency(wasteAnalysis.estimatedCost, currency)
+            })
+          : null;
+      return [
+        t("ask.answer.waste.monitoring", {
+          count: helpers.formatNumber(wasteAnalysis.eventCount),
+          days: helpers.formatNumber(wasteAnalysis.windowDays),
+          items: itemList
+        }),
+        costLine,
+        t("ask.answer.waste.next.continue")
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+  }
+}
+
 function buildThinkingSteps(input: {
   intent: AskMiseIntent;
   restaurantName: string;
@@ -310,6 +381,7 @@ function buildThinkingSteps(input: {
   pendingRecommendations: number;
   salesToday: number;
   currency: string;
+  wasteAnalysis: WasteAnalysisSummary | null;
   helpers: AskMiseHelpers;
 }): string[] {
   const { helpers, intent } = input;
@@ -323,12 +395,15 @@ function buildThinkingSteps(input: {
     })
   ];
 
-  if (intent === "stock" || intent === "prep" || intent === "waste" || intent === "briefing" || intent === "general") {
+  if (intent === "stock" || intent === "prep" || intent === "briefing" || intent === "general") {
     steps.push(
       input.stockRisk > 0
         ? t("ask.thinking.stock.risk", { count: helpers.formatNumber(input.stockRisk) })
         : t("ask.thinking.stock.clear")
     );
+  }
+  if (intent === "waste") {
+    steps.push(wasteThinkingStep(input.wasteAnalysis, helpers));
   }
   if (intent === "orders" || intent === "briefing") {
     steps.push(
@@ -356,4 +431,29 @@ function buildThinkingSteps(input: {
 
   steps.push(t("ask.thinking.compose"));
   return steps;
+}
+
+function wasteThinkingStep(
+  wasteAnalysis: WasteAnalysisSummary | null,
+  helpers: AskMiseHelpers
+): string {
+  const { t } = helpers;
+  if (wasteAnalysis == null) {
+    return t("ask.thinking.waste.unavailable");
+  }
+  if (wasteAnalysis.eventCount <= 0 || wasteAnalysis.recommendedAction === "start_logging") {
+    return t("ask.thinking.waste.no_records", {
+      days: helpers.formatNumber(wasteAnalysis.windowDays)
+    });
+  }
+  if (wasteAnalysis.recommendedAction === "review_repeat_item" || wasteAnalysis.status === "attention") {
+    return t("ask.thinking.waste.attention", {
+      count: helpers.formatNumber(wasteAnalysis.eventCount),
+      items: helpers.formatNumber(wasteAnalysis.itemCount)
+    });
+  }
+  return t("ask.thinking.waste.monitoring", {
+    count: helpers.formatNumber(wasteAnalysis.eventCount),
+    days: helpers.formatNumber(wasteAnalysis.windowDays)
+  });
 }
