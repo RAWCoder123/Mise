@@ -21,6 +21,7 @@ import {
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
 import { fetchActivityEvents } from "../../services/miseService";
+import { resolveActivityRelatedEntityHref } from "../../services/presentation/activityRelatedEntityPresentation";
 import { captureMiseError } from "../../services/telemetry";
 
 const dateRanges: ActivityDateRange[] = ["all", "today", "yesterday", "this_week"];
@@ -156,6 +157,13 @@ export default function ActivityHistoryScreen() {
 
         {visible.map((event) => {
           const expanded = Boolean(expandedIds[event.id]);
+          const relatedHref = resolveActivityRelatedEntityHref({
+            relatedEntityType: event.relatedEntityType,
+            relatedEntityId: event.relatedEntityId
+          });
+          const relatedTypeLabel = event.relatedEntityType
+            ? event.relatedEntityType.replace(/_/g, " ")
+            : "";
           return (
             <Pressable
               key={event.id}
@@ -196,10 +204,27 @@ export default function ActivityHistoryScreen() {
                       {event.triggerReference ? ` · ${event.triggerReference}` : ""}
                     </Text>
                     {event.relatedEntityType ? (
-                      <Text style={styles.detailLine}>
-                        {t("activity.detail.related")}: {event.relatedEntityType.replace(/_/g, " ")}
-                        {event.relatedEntityId ? ` · ${event.relatedEntityId}` : ""}
-                      </Text>
+                      <View style={styles.relatedBlock}>
+                        <Text style={styles.detailLine}>
+                          {t("activity.detail.related")}: {relatedTypeLabel}
+                          {event.relatedEntityId ? ` · ${event.relatedEntityId}` : ""}
+                        </Text>
+                        {relatedHref ? (
+                          <Pressable
+                            accessibilityRole="link"
+                            accessibilityLabel={t("activity.detail.openRelated.accessibility", {
+                              type: relatedTypeLabel
+                            })}
+                            onPress={() => router.push(relatedHref as never)}
+                            style={({ pressed }) => [
+                              styles.relatedLink,
+                              pressed && styles.pressed
+                            ]}
+                          >
+                            <Text style={styles.relatedLinkText}>{t("activity.detail.openRelated")}</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
                     ) : null}
                     {event.actionId ? (
                       <Text style={styles.detailLine}>
@@ -304,6 +329,21 @@ const styles = StyleSheet.create({
   detailLine: {
     ...conceptTypography.caption,
     color: colors.muted
+  },
+  relatedBlock: {
+    gap: 6
+  },
+  relatedLink: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 2
+  },
+  relatedLinkText: {
+    ...conceptTypography.caption,
+    color: colors.text,
+    fontWeight: "600",
+    textDecorationLine: "underline"
   },
   evidenceBlock: {
     gap: 2
