@@ -517,7 +517,67 @@ export function createInitialDemoState(
     autonomyRules: [],
     actionOutcomes: [],
     inventoryEvents: [],
-    inventoryCountSessions: [],
+    inventoryCountSessions: [
+      {
+        session: {
+          id: "00000000-0000-4000-8000-000000000c01",
+          restaurant_id: DEMO_RESTAURANT_ID,
+          status: "approved",
+          started_by: DEMO_USER_ID,
+          submitted_by: DEMO_USER_ID,
+          approved_by: DEMO_USER_ID,
+          cancelled_by: null,
+          started_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          submitted_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000 + 45 * 60 * 1000).toISOString(),
+          approved_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000 + 90 * 60 * 1000).toISOString(),
+          cancelled_at: null,
+          note: null,
+          created_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          updated_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000 + 90 * 60 * 1000).toISOString()
+        },
+        lines: [
+          {
+            id: "00000000-0000-4000-8000-000000000c11",
+            restaurant_id: DEMO_RESTAURANT_ID,
+            session_id: "00000000-0000-4000-8000-000000000c01",
+            inventory_item_id: itemIds.chicken,
+            item_name: "Chicken breast",
+            unit: "lbs",
+            system_quantity_at_start: 22,
+            counted_quantity: 18,
+            note: "Trim loss after prep",
+            created_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            updated_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000 + 45 * 60 * 1000).toISOString()
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000c12",
+            restaurant_id: DEMO_RESTAURANT_ID,
+            session_id: "00000000-0000-4000-8000-000000000c01",
+            inventory_item_id: itemIds.lettuce,
+            item_name: "Lettuce",
+            unit: "heads",
+            system_quantity_at_start: 14,
+            counted_quantity: 14,
+            note: null,
+            created_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            updated_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000 + 45 * 60 * 1000).toISOString()
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000c13",
+            restaurant_id: DEMO_RESTAURANT_ID,
+            session_id: "00000000-0000-4000-8000-000000000c01",
+            inventory_item_id: itemIds.eggs,
+            item_name: "Eggs",
+            unit: "units",
+            system_quantity_at_start: 96,
+            counted_quantity: 72,
+            note: "Case cracked in walk-in",
+            created_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            updated_at: new Date(nowDate.getTime() - 2 * 24 * 60 * 60 * 1000 + 45 * 60 * 1000).toISOString()
+          }
+        ]
+      }
+    ],
     supplierDeliveries: [],
     supplierDeliveryItems: [],
     restaurantTasks: [],

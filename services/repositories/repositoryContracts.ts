@@ -5,7 +5,9 @@ import type {
   Insight,
   InventoryItem,
   InventoryItemPatch,
+  InventoryCountSession,
   InventoryCountSessionDetail,
+  InventoryCountSessionStatus,
   MenuItemIngredient,
   MenuItemIngredientInput,
   PosIntegration,
@@ -156,6 +158,8 @@ export type SetupAttachmentInput = Omit<SetupAttachment, "id" | "created_at" | "
  */
 export const RECOMMENDATION_HISTORY_DAYS = 180;
 export const OPERATIONAL_DECISION_HISTORY_DAYS = 180;
+/** Newest-first bound for past inventory count session history browse. */
+export const INVENTORY_COUNT_SESSION_HISTORY_LIMIT = 40;
 
 export type GmailIntegrationErrorStatus =
   | "approval_required"
@@ -603,6 +607,18 @@ export interface MiseRepository {
   ): Promise<InventoryItem>;
   fetchOpenInventoryCountSession(restaurantId: string): Promise<InventoryCountSessionDetail | null>;
   fetchInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
+  /**
+   * Bounded newest-first count-session metadata for history browse.
+   * Defaults to closed sessions (approved/cancelled); open sessions use
+   * fetchOpenInventoryCountSession. Does not include count lines.
+   */
+  listInventoryCountSessions(
+    restaurantId: string,
+    options?: {
+      statuses?: InventoryCountSessionStatus[];
+      limit?: number;
+    }
+  ): Promise<InventoryCountSession[]>;
   beginInventoryCountSession(restaurantId: string, note: string | null): Promise<InventoryCountSessionDetail>;
   saveInventoryCountLines(
     restaurantId: string,

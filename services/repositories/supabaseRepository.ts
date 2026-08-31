@@ -82,6 +82,7 @@ import {
   normalizeAiInsight,
   normalizeRestaurantEmailConnection,
   normalizeInventoryItem,
+  normalizeInventoryCountSession,
   normalizeInventoryCountSessionDetail,
   normalizeMenuItemIngredient,
   normalizePosIntegration,
@@ -104,6 +105,7 @@ import {
 import { toDateKeyInTimeZone } from "../../utils/format";
 import {
   GmailIntegrationError,
+  INVENTORY_COUNT_SESSION_HISTORY_LIMIT,
   SUPPLIER_SEND_BLOCKER_CODES,
   normalizeRestaurantDataExport,
   normalizeRestaurantData,
@@ -2287,6 +2289,29 @@ export function createSupabaseRepository(): MiseRepository {
         session: session as InventoryCountSessionDetail["session"],
         lines: (lines ?? []) as InventoryCountLine[]
       });
+    },
+
+    async listInventoryCountSessions(restaurantId, options) {
+      const limitRaw = options?.limit ?? INVENTORY_COUNT_SESSION_HISTORY_LIMIT;
+      const limit = Math.min(
+        100,
+        Math.max(1, Number.isFinite(limitRaw) ? Math.trunc(limitRaw) : INVENTORY_COUNT_SESSION_HISTORY_LIMIT)
+      );
+      const statuses =
+        options?.statuses && options.statuses.length > 0
+          ? options.statuses
+          : (["approved", "cancelled"] as const);
+      const { data, error } = await client
+        .from("inventory_count_sessions")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .in("status", [...statuses])
+        .order("updated_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []).map((row) =>
+        normalizeInventoryCountSession(row as InventoryCountSessionDetail["session"])
+      );
     },
 
     async beginInventoryCountSession(restaurantId, note) {

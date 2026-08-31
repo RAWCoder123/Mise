@@ -123,6 +123,7 @@ import {
   normalizeAuditLog,
   normalizeRestaurantEmailConnection,
   normalizeInventoryItem,
+  normalizeInventoryCountSession,
   normalizeInventoryCountSessionDetail,
   normalizeMenuItemIngredient,
   normalizePosIntegration,
@@ -142,6 +143,7 @@ import {
 import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
 import {
   GmailIntegrationError,
+  INVENTORY_COUNT_SESSION_HISTORY_LIMIT,
   RESTAURANT_EXPORT_DATASETS,
   normalizeRestaurantDataExport,
   normalizeRestaurantData,
@@ -1335,6 +1337,28 @@ export function createLocalDemoRepository(): MiseRepository {
       const detail = findDemoCountSession(state, restaurantId, sessionId);
       if (!detail) throw new Error("Count session not found");
       return normalizeInventoryCountSessionDetail(detail);
+    },
+
+    async listInventoryCountSessions(restaurantId, options) {
+      const state = await readReadyDemoState(restaurantId);
+      const limitRaw = options?.limit ?? INVENTORY_COUNT_SESSION_HISTORY_LIMIT;
+      const limit = Math.min(
+        100,
+        Math.max(1, Number.isFinite(limitRaw) ? Math.trunc(limitRaw) : INVENTORY_COUNT_SESSION_HISTORY_LIMIT)
+      );
+      const statuses = new Set(
+        options?.statuses && options.statuses.length > 0
+          ? options.statuses
+          : (["approved", "cancelled"] as const)
+      );
+      return (state.inventoryCountSessions ?? [])
+        .filter(
+          (detail) =>
+            detail.session.restaurant_id === restaurantId && statuses.has(detail.session.status)
+        )
+        .map((detail) => normalizeInventoryCountSession(detail.session))
+        .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+        .slice(0, limit);
     },
 
     async beginInventoryCountSession(restaurantId, note) {
