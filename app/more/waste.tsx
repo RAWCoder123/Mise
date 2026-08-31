@@ -25,6 +25,7 @@ import type {
   WasteAnalysisStatus,
   WasteAnalysisTrend
 } from "../../services/domain/wasteAnalysis";
+import { presentWasteRecoveryAction } from "../../services/presentation/wasteRecoveryPresentation";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -91,6 +92,9 @@ export default function WasteScreen() {
   );
 
   const visibleAnalysis = loadedRestaurantId === restaurant?.id ? analysis : null;
+  const recoveryAction = visibleAnalysis
+    ? presentWasteRecoveryAction(visibleAnalysis)
+    : null;
 
   if (!restaurant) {
     return (
@@ -174,14 +178,22 @@ export default function WasteScreen() {
                   })}
                 </Text>
               ) : null}
-              <Button
-                title={t("waste.action.record")}
-                variant="secondary"
-                size="compact"
-                icon={<Plus size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
-                onPress={() => router.push("/inventory")}
-                style={styles.inlineAction}
-              />
+              {recoveryAction ? (
+                <Button
+                  title={t(recoveryAction.labelKey)}
+                  variant="secondary"
+                  size="compact"
+                  icon={
+                    recoveryAction.reason === "start_logging" ||
+                    recoveryAction.reason === "keep_logging" ? (
+                      <Plus size={icon.inline} color={colors.text} strokeWidth={iconStroke} />
+                    ) : undefined
+                  }
+                  onPress={() => router.push(recoveryAction.href as never)}
+                  accessibilityLabel={t(recoveryAction.accessibilityLabelKey)}
+                  style={styles.inlineAction}
+                />
+              ) : null}
             </Card>
 
             <SectionHeader title={t("waste.section.topItems")} />
