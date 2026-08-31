@@ -28,7 +28,8 @@ import {
   fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
-  updateInventoryItem
+  updateInventoryItem,
+  verifySupplierItemPackQuantity
 } from "../../services/miseService";
 import {
   presentRestaurantScopedHubActionsEditable,
@@ -53,9 +54,12 @@ export default function InventoryDetailScreen() {
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
+  const [packQuantity, setPackQuantity] = useState("");
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
+  const [packError, setPackError] = useState<string | undefined>();
   const [savingSettings, setSavingSettings] = useState(false);
+  const [savingPack, setSavingPack] = useState(false);
   const [submittingOperation, setSubmittingOperation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -100,7 +104,16 @@ export default function InventoryDetailScreen() {
             useGrouping: false
           })
         );
+        setPackQuantity(
+          nextOutlook.verifiedPackQuantity != null
+            ? formatNumber(nextOutlook.verifiedPackQuantity, {
+                maximumFractionDigits: 2,
+                useGrouping: false
+              })
+            : ""
+        );
         setSettingErrors({});
+        setPackError(undefined);
       }
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -127,9 +140,12 @@ export default function InventoryDetailScreen() {
     setNoteText("");
     setParLevel("");
     setReorderThreshold("");
+    setPackQuantity("");
     setQuantityError(undefined);
     setSettingErrors({});
+    setPackError(undefined);
     setSavingSettings(false);
+    setSavingPack(false);
     setSubmittingOperation(false);
     setMessage(null);
     setMessageIsError(false);
@@ -154,7 +170,7 @@ export default function InventoryDetailScreen() {
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
-    busy: submittingOperation || savingSettings
+    busy: submittingOperation || savingSettings || savingPack
   });
   const visibleOutlook = hubReady ? outlook : null;
   const visibleQueue = hubReady ? queueEntries : [];
@@ -165,6 +181,8 @@ export default function InventoryDetailScreen() {
   const status = prediction?.projectedStatus ?? null;
   const canonicalReady = item ? isCanonicalUnitReady(item) : false;
   const canonicalUnit = canonicalReady ? item!.canonical_unit! : null;
+  const packVerified = visibleOutlook?.supplierPackVerificationStatus === "verified"
+    && visibleOutlook.verifiedPackQuantity != null;
 
   const operationOptions = useMemo<readonly SegmentOption<InventoryOperatorAction>[]>(
     () => [
@@ -317,6 +335,47 @@ export default function InventoryDetailScreen() {
     }
   }
 
+  async function savePack() {
+    if (!restaurant || !item) return;
+    if (!actionsEditable) {
+      setMessage(t("inventory.detail.viewOnlyInventory"));
+      setMessageIsError(true);
+      return;
+    }
+    const packFieldError = validatePositiveInventoryNumber(
+      packQuantity,
+      t("inventory.detail.field.packQuantity"),
+      parseNumber,
+      formatNumber,
+      t
+    );
+    if (packFieldError) {
+      setPackError(packFieldError);
+      setMessage(t("inventory.detail.reviewFields"));
+      setMessageIsError(true);
+      return;
+    }
+    const restaurantId = restaurant.id;
+    setPackError(undefined);
+    setSavingPack(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      await verifySupplierItemPackQuantity(restaurantId, item.id, parseNumber(packQuantity));
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(t("inventory.detail.packUpdated"));
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setMessage(t("inventory.detail.packSaveError"));
+        setMessageIsError(true);
+      }
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSavingPack(false);
+    }
+  }
+
   async function addToOrder() {
     if (!restaurant || !item) return;
     if (!actionsEditable) {
@@ -342,7 +401,7 @@ export default function InventoryDetailScreen() {
     }
   }
 
-  const busy = submittingOperation || savingSettings;
+  const busy = submittingOperation || savingSettings || savingPack;
 
   return (
     <Screen
@@ -606,6 +665,43 @@ export default function InventoryDetailScreen() {
               />
             ) : null}
           </Card>
+
+          {canManage ? (
+            <Card>
+              <Text style={styles.cardTitle}>{t("inventory.detail.packSettings")}</Text>
+              <Text style={styles.copy}>{t("inventory.detail.packHint")}</Text>
+              <Text style={styles.copy}>
+                {packVerified && visibleOutlook?.verifiedPackQuantity != null
+                  ? t("inventory.detail.packVerified", {
+                      quantity: formatNumber(visibleOutlook.verifiedPackQuantity, {
+                        maximumFractionDigits: 2
+                      }),
+                      unit: item.unit
+                    })
+                  : t("inventory.detail.packUnverified")}
+              </Text>
+              <Field
+                label={t("inventory.detail.packQuantity", { unit: item.unit })}
+                value={packQuantity}
+                onChangeText={(value) => {
+                  setPackQuantity(value);
+                  setPackError(undefined);
+                }}
+                editable={actionsEditable && !busy}
+                error={packError}
+              />
+              {mutationAllowed ? (
+                <Button
+                  title={savingPack ? t("inventory.detail.saving") : t("inventory.detail.verifyPack")}
+                  icon={<PackageCheck size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
+                  onPress={() => void savePack()}
+                  disabled={!actionsEditable || busy}
+                  fullWidth
+                  style={styles.saveButton}
+                />
+              ) : null}
+            </Card>
+          ) : null}
         </View>
       ) : (
         <Text style={[styles.message, messageIsError && styles.error]}>
@@ -761,6 +857,24 @@ function validateOperationQuantity(
   }
   if (parsed <= 0 || parsed > operatingLimits.inventoryQuantity) {
     return t("inventory.ops.quantityPositive", {
+      maximum: formatNumber(operatingLimits.inventoryQuantity)
+    });
+  }
+  return undefined;
+}
+
+function validatePositiveInventoryNumber(
+  value: string,
+  label: string,
+  parseNumber: ReturnType<typeof useLocale>["parseNumber"],
+  formatNumber: ReturnType<typeof useLocale>["formatNumber"],
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  if (!value.trim()) return t("inventory.detail.fieldRequired", { field: label });
+  const parsed = parseNumber(value);
+  if (parsed === null || parsed <= 0 || parsed > operatingLimits.inventoryQuantity) {
+    return t("inventory.detail.fieldRange", {
+      field: label,
       maximum: formatNumber(operatingLimits.inventoryQuantity)
     });
   }

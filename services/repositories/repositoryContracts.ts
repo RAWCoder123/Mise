@@ -22,6 +22,7 @@ import type {
   SetupAttachment,
   Supplier,
   SupplierEmailPayload,
+  SupplierItem,
   SupplierOrder,
   SupplierRecipient,
   SupplierSendContentVersion
@@ -487,6 +488,7 @@ export interface PlanningData {
   sales: PosSale[];
   menuItemIngredients: MenuItemIngredient[];
   providerMappings: VerifiedProviderSaleMapping[];
+  supplierItems: SupplierItem[];
   operatingDate: string;
   /** Restaurant timezone, needed to place a verified count inside the right operating day. */
   timeZone: string;
@@ -585,6 +587,11 @@ export interface MiseRepository {
     canonicalUnit: "g" | "ml" | "each",
     canonicalQuantityPerUnit: number
   ): Promise<InventoryItem>;
+  verifySupplierItemPackQuantity(
+    restaurantId: string,
+    inventoryItemId: string,
+    packQuantity: number
+  ): Promise<SupplierItem>;
   fetchPlanningData(restaurantId: string): Promise<PlanningData>;
   saveRestaurantSetupSnapshot(
     restaurantId: string,
