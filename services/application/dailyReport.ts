@@ -61,6 +61,7 @@ export async function fetchDailyOpsReport(restaurantId: string): Promise<DailyOp
       restaurant,
       summary,
       insights,
+      wasteAnalysis,
       helpers: {
         locale: "en",
         t: (key, values) => translate("en", key, values),
