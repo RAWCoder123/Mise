@@ -1610,7 +1610,7 @@ export function createSupabaseRepository(): MiseRepository {
       const { data: itemRows, error: itemError } = await client
         .from("supplier_delivery_items")
         .select(
-          "id,restaurant_id,delivery_id,inventory_item_id,ordered_quantity,received_quantity,damaged_quantity,missing_quantity,canonical_unit,discrepancy_reason"
+          "id,restaurant_id,delivery_id,inventory_item_id,ordered_quantity,received_quantity,damaged_quantity,missing_quantity,canonical_unit,discrepancy_reason,substitution_item_id"
         )
         .eq("restaurant_id", restaurantId)
         .in("delivery_id", deliveries.map((delivery) => delivery.id))

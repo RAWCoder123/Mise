@@ -29,6 +29,7 @@ export interface SupplierDeliveryItemRecord {
   missing_quantity: number;
   canonical_unit: string;
   discrepancy_reason?: string | null;
+  substitution_item_id?: string | null;
 }
 
 export interface SupplierDeliveryHistory {
@@ -365,7 +366,8 @@ function isDiscrepancyLine(item: SupplierDeliveryItemRecord) {
   return (
     (finiteNonNegative(item.damaged_quantity) ?? 0) > 0 ||
     (finiteNonNegative(item.missing_quantity) ?? 0) > 0 ||
-    Boolean(item.discrepancy_reason?.trim())
+    Boolean(item.discrepancy_reason?.trim()) ||
+    Boolean(item.substitution_item_id?.trim())
   );
 }
 
