@@ -96,6 +96,7 @@ import {
   SUPPLIER_SEND_CONTENT_VERSION
 } from "../domain/supplierSendContent";
 import {
+  assertCountSessionMaterialVarianceNotes,
   assertSessionMutable,
   buildCountSessionLinesFromInventory,
   mergeCountLineUpdates,
@@ -1390,6 +1391,7 @@ export function createLocalDemoRepository(): MiseRepository {
         if (!progress.canSubmit) {
           throw new Error("Count every item before submitting the session");
         }
+        assertCountSessionMaterialVarianceNotes(detail.lines);
         const now = new Date().toISOString();
         return replaceDemoCountSession(state, {
           session: {
@@ -1434,6 +1436,7 @@ export function createLocalDemoRepository(): MiseRepository {
       if (!progress.canApprove) {
         throw new Error("Count every item before approving the session");
       }
+      assertCountSessionMaterialVarianceNotes(detail.lines);
       const state = await readReadyDemoState(restaurantId);
       const approvals = planCountSessionApprovals({
         inventoryItems: state.inventoryItems.filter((item) => item.restaurant_id === restaurantId),
