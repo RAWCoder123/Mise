@@ -21,6 +21,7 @@ import { colors, icon, iconStroke, inventoryStatusColors, radii } from "../../co
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
+import { buildInventoryCoverageGuidance } from "../../services/domain/inventoryCoverageGuidance";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   addInventoryItemToOrder,
@@ -30,6 +31,7 @@ import {
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
+import { presentInventoryCoverageGuidance } from "../../services/presentation/inventoryCoveragePresentation";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -165,6 +167,20 @@ export default function InventoryDetailScreen() {
   const status = prediction?.projectedStatus ?? null;
   const canonicalReady = item ? isCanonicalUnitReady(item) : false;
   const canonicalUnit = canonicalReady ? item!.canonical_unit! : null;
+  const draftParLevel = parseNumber(parLevel);
+  const draftReorderThreshold = parseNumber(reorderThreshold);
+  const coverageGuidance =
+    item && prediction
+      ? buildInventoryCoverageGuidance({
+          averageDailyUsage: prediction.averageDailyUsage,
+          parLevel: draftParLevel ?? item.par_level,
+          reorderThreshold: draftReorderThreshold ?? item.reorder_threshold
+        })
+      : null;
+  const presentedCoverage =
+    item && coverageGuidance
+      ? presentInventoryCoverageGuidance(t, formatNumber, coverageGuidance, item.unit)
+      : null;
 
   const operationOptions = useMemo<readonly SegmentOption<InventoryOperatorAction>[]>(
     () => [
@@ -595,6 +611,54 @@ export default function InventoryDetailScreen() {
               editable={actionsEditable && !busy}
               error={settingErrors.reorderThreshold}
             />
+            {presentedCoverage ? (
+              <View style={styles.coverageGuidance}>
+                <StatusNotice
+                  tone={coverageGuidanceTone(presentedCoverage.status)}
+                  title={presentedCoverage.title}
+                  message={
+                    presentedCoverage.daysSummary
+                      ? `${presentedCoverage.body} ${presentedCoverage.daysSummary}`
+                      : presentedCoverage.body
+                  }
+                />
+                {presentedCoverage.suggestionSummary ? (
+                  <Text style={styles.coverageSuggestion}>{presentedCoverage.suggestionSummary}</Text>
+                ) : null}
+                {mutationAllowed &&
+                presentedCoverage.showApply &&
+                coverageGuidance &&
+                coverageGuidance.suggestedPar !== null &&
+                coverageGuidance.suggestedReorder !== null ? (
+                  <Button
+                    title={presentedCoverage.applyLabel ?? t("inventory.coverage.applySuggestion")}
+                    accessibilityLabel={t("inventory.coverage.applyAccessibility")}
+                    variant="secondary"
+                    size="compact"
+                    onPress={() => {
+                      const nextPar = coverageGuidance.suggestedPar;
+                      const nextReorder = coverageGuidance.suggestedReorder;
+                      if (nextPar === null || nextReorder === null) return;
+                      setParLevel(
+                        formatNumber(nextPar, {
+                          maximumFractionDigits: 2,
+                          useGrouping: false
+                        })
+                      );
+                      setReorderThreshold(
+                        formatNumber(nextReorder, {
+                          maximumFractionDigits: 2,
+                          useGrouping: false
+                        })
+                      );
+                      setSettingErrors({});
+                    }}
+                    disabled={!actionsEditable || busy}
+                    style={styles.coverageApply}
+                  />
+                ) : null}
+              </View>
+            ) : null}
             {mutationAllowed ? (
               <Button
                 title={savingSettings ? t("inventory.detail.saving") : t("inventory.detail.saveSettings")}
@@ -719,6 +783,16 @@ function queueTone(
   if (key === "retryable" || key === "pending") return "warning";
   if (key === "conflict" || key === "rejected") return "danger";
   return "neutral";
+}
+
+function coverageGuidanceTone(
+  status: NonNullable<ReturnType<typeof presentInventoryCoverageGuidance>>["status"]
+): "neutral" | "success" | "caution" | "warning" | "danger" {
+  if (status === "aligned") return "success";
+  if (status === "learning") return "neutral";
+  if (status === "misconfigured") return "danger";
+  if (status === "high_par") return "caution";
+  return "warning";
 }
 
 function describeFlushResult(
@@ -875,6 +949,9 @@ const styles = StyleSheet.create({
   inputReadOnly: { color: colors.muted, backgroundColor: colors.surfaceWarm },
   inputError: { borderColor: colors.danger },
   fieldError: { color: colors.danger, fontSize: 12, lineHeight: 17, marginTop: 5 },
+  coverageGuidance: { gap: 10, marginBottom: 14 },
+  coverageSuggestion: { color: colors.muted, fontSize: 14, lineHeight: 20, fontWeight: "600" },
+  coverageApply: { alignSelf: "flex-start" },
   saveButton: { marginTop: 2 },
   queueList: { gap: 10 },
   queueRow: {
