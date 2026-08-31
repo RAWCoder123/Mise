@@ -128,6 +128,7 @@ export interface DemoState {
     damaged_quantity: number;
     missing_quantity: number;
     canonical_unit: string;
+    substitution_item_id?: string | null;
   }>;
   /** Shared operating-task mirror of hosted restaurant_tasks. */
   restaurantTasks: import("../domain/restaurantTasks").RestaurantTask[];
