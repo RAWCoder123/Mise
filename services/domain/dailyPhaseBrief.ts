@@ -13,7 +13,8 @@ export type DailyPhaseBriefRoute =
   | "/orders"
   | "/insights"
   | "/more/daily-report"
-  | "/more/waste";
+  | "/more/waste"
+  | "/more/supplier-status";
 
 export interface DailyPhaseFinding {
   id: string;
@@ -325,7 +326,7 @@ function buildClosingBrief(
       tone: "attention",
       title: `${report.supplierReliability.attentionSupplierCount} supplier relationship${report.supplierReliability.attentionSupplierCount === 1 ? " needs" : "s need"} follow-up`,
       interpretation: "Use verified delivery timing and discrepancy evidence before the next supplier decision.",
-      route: "/orders",
+      route: "/more/supplier-status",
       evidenceReferences: report.supplierReliability.suppliers
         .filter((supplier) => supplier.status === "watch" || supplier.status === "at_risk")
         .map((supplier) => `supplier:${supplier.supplierId}`)
