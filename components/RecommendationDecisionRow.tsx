@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { router } from "expo-router";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -7,6 +8,7 @@ import { useLocale } from "../contexts/LocaleContext";
 import { presentSupportedRecommendationStatus } from "../services/domain/operationalStatus";
 import {
   purchaseAuthorityBlockerMessageKey,
+  resolvePurchaseAuthorityBlockerRecovery,
   type PurchaseAuthorityResult
 } from "../services/domain/purchaseAuthority";
 import type { MessageKey } from "../i18n/catalog";
@@ -127,11 +129,31 @@ export function RecommendationDecisionRow({
       {approvalBlocked ? (
         <View style={styles.blockerPanel} accessibilityLiveRegion="polite">
           <Text style={styles.blockerTitle}>{t("orders.authority.title")}</Text>
-          {authorityBlockers.slice(0, 3).map((blocker) => (
-            <Text key={blocker.code} style={styles.blockerText}>
-              {t(purchaseAuthorityBlockerMessageKey(blocker.code) as MessageKey)}
-            </Text>
-          ))}
+          {authorityBlockers.slice(0, 3).map((blocker) => {
+            const recovery = authority
+              ? resolvePurchaseAuthorityBlockerRecovery(blocker.code, authority.evidence)
+              : null;
+            return (
+              <View key={blocker.code} style={styles.blockerRow}>
+                <Text style={styles.blockerText}>
+                  {t(purchaseAuthorityBlockerMessageKey(blocker.code) as MessageKey)}
+                </Text>
+                {recovery ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t(recovery.labelKey)}
+                    onPress={() => router.push(recovery.href as never)}
+                    style={({ pressed }) => [
+                      styles.blockerRecovery,
+                      pressed && styles.pressed
+                    ]}
+                  >
+                    <Text style={styles.blockerRecoveryText}>{t(recovery.labelKey)}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            );
+          })}
           {authorityBlockers.length > 3 ? (
             <Text style={styles.blockerText}>
               {t("orders.authority.more", { count: authorityBlockers.length - 3 })}
@@ -352,9 +374,24 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: "700"
   },
+  blockerRow: {
+    gap: 2
+  },
   blockerText: {
     color: colors.muted,
     ...typography.caption
+  },
+  blockerRecovery: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingVertical: 4
+  },
+  blockerRecoveryText: {
+    color: colors.text,
+    ...typography.caption,
+    fontWeight: "700",
+    textDecorationLine: "underline"
   },
   memoryPanel: {
     borderLeftWidth: 2,
