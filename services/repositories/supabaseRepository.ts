@@ -1279,16 +1279,32 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizeInventoryItem(item as InventoryItem);
     },
 
+    async verifySupplierItemPackQuantity(restaurantId, inventoryItemId, packQuantity) {
+      const { data, error } = await client.rpc("verify_supplier_item_pack_quantity", {
+        p_restaurant_id: restaurantId,
+        p_inventory_item_id: inventoryItemId,
+        p_pack_quantity: packQuantity
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const item = Array.isArray(data) ? data[0] : data;
+      if (!item || typeof item !== "object") {
+        throw new Error("Supplier pack verification returned an invalid response.");
+      }
+      return normalizeSupplierItem(item as SupplierItem);
+    },
+
     async fetchPlanningData(restaurantId) {
-      const [inventoryResult, sales, mappingResult, restaurantResult] = await Promise.all([
+      const [inventoryResult, sales, mappingResult, restaurantResult, supplierResult] = await Promise.all([
         client.from("inventory_items").select(inventorySupplierSelect).eq("restaurant_id", restaurantId).order("item_name"),
         fetchBoundedPlanningSales(restaurantId),
         client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
-        client.from("restaurants").select("timezone").eq("id", restaurantId).single()
+        client.from("restaurants").select("timezone").eq("id", restaurantId).single(),
+        client.from("supplier_items").select("*").eq("restaurant_id", restaurantId).order("supplier_name")
       ]);
       if (inventoryResult.error) throw inventoryResult.error;
       if (mappingResult.error) throw mappingResult.error;
       if (restaurantResult.error) throw restaurantResult.error;
+      if (supplierResult.error) throw supplierResult.error;
       const timeZone = (restaurantResult.data as Pick<Restaurant, "timezone">).timezone;
       const providerMappings = await fetchVerifiedProviderMappings(restaurantId);
       return {
@@ -1298,6 +1314,9 @@ export function createSupabaseRepository(): MiseRepository {
         sales,
         menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
         providerMappings,
+        supplierItems: ((supplierResult.data ?? []) as SupplierItem[])
+          .filter((row): row is SupplierItem => Boolean(row) && typeof row === "object")
+          .map(normalizeSupplierItem),
         operatingDate: toDateKeyInTimeZone(new Date(), timeZone),
         timeZone
       };

@@ -1,4 +1,4 @@
-import type { InventoryItemPatch } from "../../types/mise";
+import type { InventoryItem, InventoryItemPatch, SupplierItem } from "../../types/mise";
 import {
   buildInventoryControlSummary,
   buildInventoryOutlooks,
@@ -12,6 +12,10 @@ import {
   summarizeCountSessionProgress
 } from "../domain/inventoryCountSessions";
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
+import {
+  buildVerifiedPackByInventoryItemId,
+  requireSupplierPackQuantity
+} from "../domain/supplierPackQuantity";
 import {
   requireInventoryCountLineUpdates,
   requireInventoryCountSessionNote,
@@ -32,6 +36,16 @@ import {
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
+
+function verifiedPacksForPlanning(
+  restaurantId: string,
+  inventoryItems: readonly InventoryItem[],
+  supplierItems: readonly SupplierItem[]
+) {
+  return [...buildVerifiedPackByInventoryItemId(restaurantId, inventoryItems, supplierItems).entries()].map(
+    ([inventoryItemId, packQuantity]) => ({ inventoryItemId, packQuantity })
+  );
+}
 
 /**
  * Planning data plus the authoritative physical-count evidence that anchors it.
@@ -102,7 +116,8 @@ async function fetchAnchoredInventoryOutlooks(restaurantId: string) {
       data.operatingDate,
       demandFallbackForRestaurant(restaurantId),
       data.countEvidence,
-      data.providerMappings
+      data.providerMappings,
+      data.supplierItems
     )
   };
 }
@@ -205,7 +220,8 @@ export async function updateRecipeBaselineIngredient(
     recommendationHistory,
     data.operatingDate,
     signalCountEvidence(data),
-    data.providerMappings
+    data.providerMappings,
+    verifiedPacksForPlanning(restaurantId, data.inventoryItems, data.supplierItems)
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -214,7 +230,8 @@ export async function updateRecipeBaselineIngredient(
     planningMappings,
     data.operatingDate,
     signalCountEvidence(data),
-    data.providerMappings
+    data.providerMappings,
+    verifiedPacksForPlanning(restaurantId, data.inventoryItems, data.supplierItems)
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -283,7 +300,9 @@ export async function addRecipeBaselineIngredient(
     planningMappings,
     recommendationHistory,
     data.operatingDate,
-    signalCountEvidence(data)
+    signalCountEvidence(data),
+    data.providerMappings,
+    verifiedPacksForPlanning(restaurantId, data.inventoryItems, data.supplierItems)
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -291,7 +310,9 @@ export async function addRecipeBaselineIngredient(
     data.sales,
     planningMappings,
     data.operatingDate,
-    signalCountEvidence(data)
+    signalCountEvidence(data),
+    data.providerMappings,
+    verifiedPacksForPlanning(restaurantId, data.inventoryItems, data.supplierItems)
   );
   return repository.saveRecipeMappingAndSignals({
     restaurantId,
@@ -340,6 +361,21 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
   });
 }
 
+export async function verifySupplierItemPackQuantity(
+  restaurantId: string,
+  inventoryItemId: string,
+  packQuantity: unknown
+) {
+  const normalizedRestaurantId = requireSupplierAuthorityId(restaurantId, "restaurant");
+  const normalizedItemId = requireSupplierAuthorityId(inventoryItemId, "inventory item");
+  const normalizedPack = requireSupplierPackQuantity(packQuantity);
+  return repository.verifySupplierItemPackQuantity(
+    normalizedRestaurantId,
+    normalizedItemId,
+    normalizedPack
+  );
+}
+
 export async function updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch) {
   const normalizedPatch = requireInventoryItemPatch(patch);
   const [data, recommendationHistory] = await Promise.all([
@@ -362,7 +398,8 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     recommendationHistory,
     data.operatingDate,
     signalCountEvidence(data),
-    data.providerMappings
+    data.providerMappings,
+    verifiedPacksForPlanning(restaurantId, planningInventory, data.supplierItems)
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -371,7 +408,8 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     data.menuItemIngredients,
     data.operatingDate,
     signalCountEvidence(data),
-    data.providerMappings
+    data.providerMappings,
+    verifiedPacksForPlanning(restaurantId, planningInventory, data.supplierItems)
   );
   return repository.updateInventoryItemAndSignals(
     restaurantId,
@@ -451,7 +489,8 @@ export async function approveInventoryCountSession(restaurantId: string, session
     recommendationHistory,
     data.operatingDate,
     pendingCountEvidence,
-    data.providerMappings
+    data.providerMappings,
+    verifiedPacksForPlanning(restaurantId, planningInventory, data.supplierItems)
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -460,7 +499,8 @@ export async function approveInventoryCountSession(restaurantId: string, session
     data.menuItemIngredients,
     data.operatingDate,
     pendingCountEvidence,
-    data.providerMappings
+    data.providerMappings,
+    verifiedPacksForPlanning(restaurantId, planningInventory, data.supplierItems)
   );
   return repository.approveInventoryCountSession(
     restaurantId,

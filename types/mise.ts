@@ -265,6 +265,8 @@ export interface SalesImport {
   imported_at: string;
 }
 
+export type SupplierItemVerificationStatus = "draft" | "verified" | "rejected" | "expired";
+
 export interface SupplierItem {
   id: string;
   restaurant_id: string;
@@ -272,9 +274,21 @@ export interface SupplierItem {
   supplier_id?: string | null;
   supplier_name: string;
   supplier_sku: string | null;
+  /** Same-tenant inventory item this catalog row supplies, when linked. */
+  inventory_item_id?: string | null;
   item_name: string;
   unit: string;
+  /** Free-text pack label for display only; never used for quantity authority. */
   pack_size: string | null;
+  /**
+   * Inventory units per order pack. Recommendation rounding uses this only when
+   * `verification_status` is `verified`.
+   */
+  pack_quantity?: number | null;
+  canonical_unit?: "g" | "ml" | "each" | null;
+  verification_status?: SupplierItemVerificationStatus;
+  verified_at?: string | null;
+  verified_by?: string | null;
   estimated_unit_cost: number;
   preferred: boolean;
   created_at: string;
@@ -471,6 +485,10 @@ export interface InventoryPrediction {
 export interface InventoryOutlookItem {
   item: InventoryItem;
   prediction: InventoryPrediction;
+  /** Verified supplier pack size in inventory units, when a catalog row is verified. */
+  verifiedPackQuantity?: number | null;
+  supplierPackVerificationStatus?: SupplierItemVerificationStatus | null;
+  supplierPackSizeLabel?: string | null;
 }
 
 export interface InventoryCategorySummary {

@@ -1324,6 +1324,91 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async verifySupplierItemPackQuantity(restaurantId, inventoryItemId, packQuantity) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        if (!Number.isFinite(packQuantity) || packQuantity <= 0 || packQuantity > 1_000_000) {
+          throw new Error("Pack quantity is invalid");
+        }
+        const inventoryItem = state.inventoryItems.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === inventoryItemId
+        );
+        if (!inventoryItem) throw new Error("Inventory item not found");
+        if (!inventoryItem.supplier_id) {
+          throw new Error("Inventory item requires a durable supplier before pack verification");
+        }
+        const now = new Date().toISOString();
+        let supplierItem = state.supplierItems.find(
+          (entry) =>
+            entry.restaurant_id === restaurantId &&
+            entry.inventory_item_id === inventoryItemId &&
+            entry.preferred
+        );
+        if (!supplierItem) {
+          supplierItem = state.supplierItems.find(
+            (entry) =>
+              entry.restaurant_id === restaurantId && entry.inventory_item_id === inventoryItemId
+          );
+        }
+        if (!supplierItem) {
+          supplierItem = state.supplierItems.find(
+            (entry) =>
+              entry.restaurant_id === restaurantId &&
+              entry.supplier_id === inventoryItem.supplier_id &&
+              entry.item_name.trim().toLowerCase() === inventoryItem.item_name.trim().toLowerCase() &&
+              entry.unit.trim().toLowerCase() === inventoryItem.unit.trim().toLowerCase()
+          );
+        }
+        if (!supplierItem) {
+          supplierItem = {
+            id: createId("supplier_item"),
+            restaurant_id: restaurantId,
+            supplier_id: inventoryItem.supplier_id,
+            supplier_name: inventoryItem.supplier_name,
+            supplier_sku: null,
+            inventory_item_id: inventoryItemId,
+            item_name: inventoryItem.item_name,
+            unit: inventoryItem.unit,
+            pack_size: null,
+            pack_quantity: packQuantity,
+            verification_status: "verified",
+            verified_at: now,
+            verified_by: DEMO_USER_ID,
+            estimated_unit_cost: inventoryItem.estimated_unit_cost,
+            preferred: true,
+            created_at: now,
+            updated_at: now
+          };
+          state.supplierItems.push(supplierItem);
+        } else {
+          supplierItem.pack_quantity = packQuantity;
+          supplierItem.inventory_item_id = inventoryItemId;
+          supplierItem.supplier_id = inventoryItem.supplier_id;
+          supplierItem.supplier_name = inventoryItem.supplier_name;
+          supplierItem.item_name = inventoryItem.item_name;
+          supplierItem.unit = inventoryItem.unit;
+          supplierItem.preferred = true;
+          supplierItem.verification_status = "verified";
+          supplierItem.verified_at = now;
+          supplierItem.verified_by = DEMO_USER_ID;
+          supplierItem.updated_at = now;
+        }
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_item.pack_quantity_verified",
+          entity_table: "supplier_items",
+          entity_id: supplierItem.id,
+          metadata: {
+            inventory_item_id: inventoryItemId,
+            supplier_id: inventoryItem.supplier_id,
+            pack_quantity: packQuantity,
+            simulated: true
+          }
+        });
+        return normalizeSupplierItem(supplierItem);
+      });
+    },
+
     async fetchOpenInventoryCountSession(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
       const detail = findDemoCountSession(state, restaurantId);
@@ -1521,6 +1606,9 @@ export function createLocalDemoRepository(): MiseRepository {
           .filter((mapping) => mapping.restaurant_id === restaurantId)
           .map(normalizeMenuItemIngredient),
         providerMappings,
+        supplierItems: state.supplierItems
+          .filter((entry) => entry.restaurant_id === restaurantId)
+          .map(normalizeSupplierItem),
         operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone),
         timeZone: restaurant.timezone
       };

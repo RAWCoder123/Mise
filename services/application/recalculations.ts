@@ -1,7 +1,19 @@
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
+import { buildVerifiedPackByInventoryItemId } from "../domain/supplierPackQuantity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
+
+function verifiedPacksForRestaurant(
+  restaurantId: string,
+  data: Awaited<ReturnType<typeof repository.fetchPlanningData>>
+) {
+  return [...buildVerifiedPackByInventoryItemId(
+    restaurantId,
+    data.inventoryItems,
+    data.supplierItems
+  ).entries()].map(([inventoryItemId, packQuantity]) => ({ inventoryItemId, packQuantity }));
+}
 
 export async function generateInsightsFromSalesAndInventory(restaurantId: string) {
   const data = await repository.fetchPlanningData(restaurantId);
@@ -12,7 +24,8 @@ export async function generateInsightsFromSalesAndInventory(restaurantId: string
     data.menuItemIngredients,
     data.operatingDate,
     {},
-    data.providerMappings
+    data.providerMappings,
+    verifiedPacksForRestaurant(restaurantId, data)
   );
   await repository.replaceInsights(restaurantId, insights);
   return insights;
@@ -29,7 +42,8 @@ export async function generatePurchaseRecommendations(restaurantId: string) {
     recommendationHistory,
     data.operatingDate,
     {},
-    data.providerMappings
+    data.providerMappings,
+    verifiedPacksForRestaurant(restaurantId, data)
   );
   await repository.replacePendingRecommendations(restaurantId, inserts);
 }
@@ -39,6 +53,7 @@ export async function regenerateOperationalSignals(restaurantId: string) {
     repository.fetchPlanningData(restaurantId),
     repository.fetchRecommendationHistory(restaurantId)
   ]);
+  const packs = verifiedPacksForRestaurant(restaurantId, data);
   const recommendations = buildRecommendationInserts(
     restaurantId,
     data.inventoryItems,
@@ -47,7 +62,8 @@ export async function regenerateOperationalSignals(restaurantId: string) {
     recommendationHistory,
     data.operatingDate,
     {},
-    data.providerMappings
+    data.providerMappings,
+    packs
   );
   const insights = buildInsightsFromData(
     restaurantId,
@@ -56,7 +72,8 @@ export async function regenerateOperationalSignals(restaurantId: string) {
     data.menuItemIngredients,
     data.operatingDate,
     {},
-    data.providerMappings
+    data.providerMappings,
+    packs
   );
   await repository.replaceOperationalSignals(restaurantId, recommendations, insights);
 }
