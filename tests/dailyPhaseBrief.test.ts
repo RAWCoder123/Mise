@@ -115,6 +115,48 @@ test("phase brief identity and operating-date mismatches fail closed", () => {
   );
 });
 
+test("closing supplier follow-up routes to the supplier status drill-down", () => {
+  const base = fixtures();
+  const result = buildDailyPhaseBriefs({
+    restaurantId,
+    ...base,
+    dailyReport: {
+      ...base.dailyReport,
+      supplierReliability: {
+        totalDeliveries: 3,
+        supplierCount: 1,
+        attentionSupplierCount: 1,
+        overallOnTimeRate: 0.5,
+        overallMatchedDeliveryRate: 0.5,
+        suppliers: [
+          {
+            supplierId: "supplier-1",
+            supplierName: "Produce Co.",
+            status: "watch",
+            deliveryCount: 3,
+            onTimeCount: 1,
+            measurableDeliveryCount: 2,
+            issueDeliveryCount: 1,
+            unverifiedDeliveryCount: 0,
+            discrepancyLineCount: 1,
+            onTimeRate: 0.5,
+            matchedDeliveryRate: 0.5,
+            fulfillmentRate: 0.8,
+            reasons: ["late_deliveries", "underfilled_lines"],
+            lastDeliveryAt: "2026-08-03T16:00:00.000Z",
+            relatedOrderIds: ["order-1"]
+          }
+        ]
+      }
+    },
+    now: new Date("2026-08-03T21:00:00.000Z")
+  });
+  const finding = result.briefs.closing.findings.find((entry) => entry.id === "closing-suppliers");
+  assert.ok(finding);
+  assert.equal(finding!.route, "/more/supplier-status");
+  assert.deepEqual(finding!.evidenceReferences, ["supplier:supplier-1"]);
+});
+
 function fixtures(options: { allTasksComplete?: boolean } = {}) {
   const item = planItem(options.allTasksComplete ? "completed" : "open");
   const plan: DailyOperatingPlan = {

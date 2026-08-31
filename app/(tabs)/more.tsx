@@ -90,6 +90,12 @@ export default function MoreScreen() {
           />
           <OperationalRow
             density="menu"
+            title={t("more.row.supplierStatus.title")}
+            icon={<Truck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/supplier-status" as never)}
+          />
+          <OperationalRow
+            density="menu"
             title={t("more.row.activity.title")}
             icon={<Activity size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/activity" as never)}
