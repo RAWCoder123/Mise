@@ -23,6 +23,24 @@ test("orders keeps blocked recommendations visible while disabling only approval
   assert.doesNotMatch(row, /onDismiss[\s\S]{0,180}disabled=\{busy \|\| approvalBlocked\}/);
 });
 
+test("blocked purchase recommendations surface blocker-specific recovery deep links", async () => {
+  const [row, catalog, domain] = await Promise.all([
+    source("components/RecommendationDecisionRow.tsx"),
+    source("i18n/catalog.ts"),
+    source("services/domain/purchaseAuthority.ts")
+  ]);
+
+  assert.match(domain, /export function resolvePurchaseAuthorityBlockerRecovery/);
+  assert.match(row, /resolvePurchaseAuthorityBlockerRecovery\(blocker\.code, authority\.evidence\)/);
+  assert.match(row, /router\.push\(recovery\.href as never\)/);
+  assert.match(row, /t\(recovery\.labelKey\)/);
+  assert.match(catalog, /"orders\.authority\.recovery\.count": "Start inventory count"/);
+  assert.match(catalog, /"orders\.authority\.recovery\.posMappings": "Review POS mappings"/);
+  assert.match(catalog, /"orders\.authority\.recovery\.count": "Iniciar conteo de inventario"/);
+  assert.match(catalog, /"orders\.authority\.recovery\.count": "开始库存盘点"/);
+  assert.doesNotMatch(row, /\.from\("purchase_recommendations"\)/);
+});
+
 test("recipe settings exposes explicit confirmation and hosted changes remain RPC-only", async () => {
   const [screen, inventoryApplication, repository] = await Promise.all([
     source("app/settings/recipes.tsx"),
