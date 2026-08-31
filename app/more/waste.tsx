@@ -25,6 +25,7 @@ import type {
   WasteAnalysisStatus,
   WasteAnalysisTrend
 } from "../../services/domain/wasteAnalysis";
+import { wasteReasonMessageKey } from "../../services/domain/wasteReasonCodes";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -184,6 +185,52 @@ export default function WasteScreen() {
               />
             </Card>
 
+            {visibleAnalysis.eventCount > 0 ? (
+              <>
+                <SectionHeader title={t("waste.section.topReasons")} />
+                <Card style={styles.listCard}>
+                  {visibleAnalysis.topReasons.map((reason) => (
+                    <OperationalRow
+                      key={reason.reasonCode ?? "unspecified"}
+                      density="operational"
+                      title={t(wasteReasonMessageKey(reason.reasonCode))}
+                      subtitle={t(
+                        reason.eventCount === 1
+                          ? "waste.reason.entries.one"
+                          : "waste.reason.entries.other",
+                        {
+                          count: formatNumber(reason.eventCount),
+                          share: formatNumber(Math.round(reason.shareOfEvents * 100))
+                        }
+                      )}
+                      value={
+                        reason.estimatedCost === null
+                          ? t("common.notSet")
+                          : formatCompactCurrency(reason.estimatedCost, restaurant.currency)
+                      }
+                      badgeLabel={
+                        reason.reasonCode &&
+                        (reason.reasonCode === "spoilage" || reason.reasonCode === "expired")
+                          ? t("waste.reason.attention")
+                          : undefined
+                      }
+                      badgeTone={
+                        reason.reasonCode === "spoilage" || reason.reasonCode === "expired"
+                          ? "warning"
+                          : "neutral"
+                      }
+                      icon={<PackageMinus size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
+                      iconTone={
+                        reason.reasonCode === "spoilage" || reason.reasonCode === "expired"
+                          ? "warning"
+                          : "neutral"
+                      }
+                    />
+                  ))}
+                </Card>
+              </>
+            ) : null}
+
             <SectionHeader title={t("waste.section.topItems")} />
             {visibleAnalysis.topItems.length === 0 ? (
               <EmptyState title={t("waste.empty.title")} body={t("waste.empty.body")} />
@@ -259,6 +306,11 @@ export default function WasteScreen() {
                         })
                       })}
                     </Text>
+                    <Text style={styles.recentMeta}>
+                      {t("waste.event.reason", {
+                        reason: t(wasteReasonMessageKey(event.reasonCode))
+                      })}
+                    </Text>
                     {event.note ? <Text style={styles.recentNote}>{event.note}</Text> : null}
                   </View>
                 ))}
@@ -298,6 +350,7 @@ function wasteActionCopy(
   const actionKeys: Record<WasteAnalysisAction, MessageKey> = {
     start_logging: "waste.actionCopy.start_logging",
     review_repeat_item: "waste.actionCopy.review_repeat_item",
+    review_spoilage: "waste.actionCopy.review_spoilage",
     complete_cost_setup: "waste.actionCopy.complete_cost_setup",
     keep_logging: "waste.actionCopy.keep_logging"
   };
