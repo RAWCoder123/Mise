@@ -102,6 +102,7 @@ function createReviewRepository(): MiseRepository {
     sales: [sale],
     menuItemIngredients: [recipe],
     providerMappings: providerMapping(),
+    supplierItems: [],
     operatingDate: "2026-08-20",
     timeZone: "America/New_York"
   });

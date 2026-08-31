@@ -24,6 +24,7 @@ import type {
   RestaurantEmailConnection,
   SetupReadinessSummary,
   SetupReadinessStatus,
+  SupplierItem,
   SupplierOrder,
   SupplierRecipient,
   SupplierOrderStatus,
@@ -49,6 +50,10 @@ import {
   saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity";
+import {
+  resolveVerifiedPackQuantity,
+  roundOrderQuantityToPack
+} from "./supplierPackQuantity";
 import type { PurchaseAuthorityResult } from "./purchaseAuthority";
 
 /**
@@ -83,8 +88,8 @@ function isToday(sale: PosSale, operatingDate: string) {
   return sale.sale_date === operatingDate;
 }
 
-function roundOrderQuantity(value: number) {
-  return Math.max(1, Math.ceil(value));
+function roundOrderQuantity(value: number, packQuantity?: number | null) {
+  return roundOrderQuantityToPack(value, packQuantity);
 }
 
 function finiteNonNegative(value: number) {
@@ -228,7 +233,8 @@ function learnedQuantityKey(itemId: string, unit: string) {
 export function boundedLearnedQuantity(
   item: InventoryItem,
   prediction: InventoryPrediction,
-  learnedQuantities: Map<string, number>
+  learnedQuantities: Map<string, number>,
+  verifiedPackQuantity: number | null = null
 ) {
   const learned = learnedQuantities.get(learnedQuantityKey(item.id, item.unit));
   if (learned === undefined) return undefined;
@@ -236,7 +242,7 @@ export function boundedLearnedQuantity(
   const maximum = Math.max(calculated * 1.75, item.par_level * 1.25, 1);
   const minimum = Math.max(1, calculated * 0.5);
   if (learned < minimum || learned > maximum) return undefined;
-  return Math.max(1, Math.ceil(learned));
+  return roundOrderQuantityToPack(learned, verifiedPackQuantity);
 }
 
 function isHandledRecommendation(recommendation: PurchaseRecommendation) {
@@ -300,7 +306,8 @@ export function buildInventoryOutlooks(
   operatingDate: string,
   demandFallback?: DemandFallback,
   countEvidence?: InventoryCountEvidenceMap,
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  supplierItems: readonly SupplierItem[] = []
 ): InventoryOutlookItem[] {
   const historicalBaselines = buildHistoricalDemandBaselines(
     restaurantId,
@@ -311,19 +318,39 @@ export function buildInventoryOutlooks(
   );
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
-    .map((item) => ({
-      item,
-      prediction: buildInventoryPrediction(
+    .map((item) => {
+      const verifiedPackQuantity = resolveVerifiedPackQuantity(restaurantId, item, supplierItems);
+      const preferredPack = supplierItems
+        .filter(
+          (entry) =>
+            entry.restaurant_id === restaurantId &&
+            (entry.inventory_item_id === item.id ||
+              (entry.supplier_id === item.supplier_id &&
+                entry.item_name.trim().toLowerCase() === item.item_name.trim().toLowerCase() &&
+                entry.unit.trim().toLowerCase() === item.unit.trim().toLowerCase()))
+        )
+        .sort((left, right) => {
+          if (left.preferred !== right.preferred) return left.preferred ? -1 : 1;
+          return right.updated_at.localeCompare(left.updated_at);
+        })[0];
+      return {
         item,
-        sales,
-        mappings,
-        operatingDate,
-        historicalBaselines,
-        demandFallback,
-        inventoryCountEvidenceFor(countEvidence, restaurantId, item.id),
-        providerMappings
-      )
-    }))
+        prediction: buildInventoryPrediction(
+          item,
+          sales,
+          mappings,
+          operatingDate,
+          historicalBaselines,
+          demandFallback,
+          inventoryCountEvidenceFor(countEvidence, restaurantId, item.id),
+          providerMappings,
+          verifiedPackQuantity
+        ),
+        verifiedPackQuantity,
+        supplierPackVerificationStatus: preferredPack?.verification_status ?? null,
+        supplierPackSizeLabel: preferredPack?.pack_size ?? null
+      };
+    })
     .sort((a, b) => {
       const rankDelta = predictionRank(b.prediction) - predictionRank(a.prediction);
       if (rankDelta !== 0) return rankDelta;
@@ -408,7 +435,8 @@ export function buildInventoryPrediction(
   historicalBaselines = buildHistoricalDemandBaselines(item.restaurant_id, sales, operatingDate),
   demandFallback?: DemandFallback,
   countEvidence: InventoryCountEvidence = missingInventoryCountEvidence(item.restaurant_id, item.id),
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  verifiedPackQuantity: number | null = null
 ): InventoryPrediction {
   const identityAwareHistoricalBaselines = providerMappings.length > 0
     ? buildHistoricalDemandBaselines(
@@ -479,7 +507,10 @@ export function buildInventoryPrediction(
   const contaminatedProjection = countEvidence.status === "contaminated";
   const projectedStatus: InventoryStatus = contaminatedProjection ? "Watch" : computedStatus;
   const demandTrend = getDemandTrend(mappedTodayUsage, baselineUsage);
-  const suggestedOrderQuantity = roundOrderQuantity(safeItem.par_level - projectedQuantity);
+  const suggestedOrderQuantity = roundOrderQuantity(
+    safeItem.par_level - projectedQuantity,
+    verifiedPackQuantity
+  );
   const coverageLabel = getCoverageLabel(safeItem, daysCoverage, averageDailyUsage, projectedQuantity);
   const trendLabel = getTrendLabel(demandTrend);
   const suggestedAction = getSuggestedAction(safeItem, suggestedOrderQuantity, daysCoverage, projectedStatus);
@@ -2002,7 +2033,8 @@ export function buildRecommendationInserts(
   operatingDate: string,
   demandFallback?: DemandFallback,
   countEvidence?: InventoryCountEvidenceMap,
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  supplierItems: readonly SupplierItem[] = []
 ) {
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
   const historicalBaselines = buildHistoricalDemandBaselines(
@@ -2016,22 +2048,32 @@ export function buildRecommendationInserts(
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
     .filter((item) => !shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory, countEvidence))
-    .map((item) => ({
-      item,
-      prediction: buildInventoryPrediction(
+    .map((item) => {
+      const verifiedPackQuantity = resolveVerifiedPackQuantity(restaurantId, item, supplierItems);
+      return {
         item,
-        sales,
-        mappings,
-        operatingDate,
-        historicalBaselines,
-        demandFallback,
-        inventoryCountEvidenceFor(countEvidence, restaurantId, item.id),
-        providerMappings
-      )
-    }))
+        verifiedPackQuantity,
+        prediction: buildInventoryPrediction(
+          item,
+          sales,
+          mappings,
+          operatingDate,
+          historicalBaselines,
+          demandFallback,
+          inventoryCountEvidenceFor(countEvidence, restaurantId, item.id),
+          providerMappings,
+          verifiedPackQuantity
+        )
+      };
+    })
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
-    .map(({ item, prediction }) => {
-      const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
+    .map(({ item, prediction, verifiedPackQuantity }) => {
+      const learnedQuantity = boundedLearnedQuantity(
+        item,
+        prediction,
+        learnedQuantities,
+        verifiedPackQuantity
+      );
       return {
         restaurant_id: restaurantId,
         inventory_item_id: item.id,
