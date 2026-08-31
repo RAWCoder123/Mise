@@ -34,6 +34,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { inventoryProjectionAllowsAddToOrder } from "../../services/presentation/inventoryCountFreshnessPresentation";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
 import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
@@ -163,6 +164,9 @@ export default function InventoryDetailScreen() {
   const localizedPrediction =
     item && prediction ? localizeInventoryPrediction(t, formatNumber, item, prediction) : null;
   const status = prediction?.projectedStatus ?? null;
+  const addToOrderBlocked = prediction ? !inventoryProjectionAllowsAddToOrder(prediction) : false;
+  const needsRecountGuidance =
+    localizedPrediction?.needsRecount === true ? localizedPrediction.countTrust : null;
   const canonicalReady = item ? isCanonicalUnitReady(item) : false;
   const canonicalUnit = canonicalReady ? item!.canonical_unit! : null;
 
@@ -318,9 +322,14 @@ export default function InventoryDetailScreen() {
   }
 
   async function addToOrder() {
-    if (!restaurant || !item) return;
+    if (!restaurant || !item || !prediction) return;
     if (!actionsEditable) {
       setMessage(t("inventory.detail.viewOnlyOrdering"));
+      setMessageIsError(true);
+      return;
+    }
+    if (!inventoryProjectionAllowsAddToOrder(prediction)) {
+      setMessage(t("inventory.detail.countFreshness.addBlocked"));
       setMessageIsError(true);
       return;
     }
@@ -406,6 +415,21 @@ export default function InventoryDetailScreen() {
             />
           ) : null}
 
+          {needsRecountGuidance === "stale" ? (
+            <StatusNotice
+              tone="warning"
+              title={t("inventory.detail.countFreshness.stale.title")}
+              message={t("inventory.detail.countFreshness.stale.body")}
+            />
+          ) : null}
+          {needsRecountGuidance === "unverified" ? (
+            <StatusNotice
+              tone="warning"
+              title={t("inventory.detail.countFreshness.unverified.title")}
+              message={t("inventory.detail.countFreshness.unverified.body")}
+            />
+          ) : null}
+
           {message ? (
             <Text
               style={[styles.message, messageIsError && styles.error]}
@@ -473,7 +497,7 @@ export default function InventoryDetailScreen() {
               <Text style={styles.recommendation}>{localizedPrediction.recommendation}</Text>
               <Text style={styles.copy}>{localizedPrediction.whyItMatters}</Text>
             </View>
-            {mutationAllowed ? (
+            {mutationAllowed && !addToOrderBlocked ? (
               <Button
                 title={t("inventory.detail.addToOrder")}
                 accessibilityLabel={t("inventory.detail.addAccessibility", { item: item.item_name })}
@@ -483,6 +507,13 @@ export default function InventoryDetailScreen() {
                 disabled={!actionsEditable || busy}
                 fullWidth
                 style={styles.addButton}
+              />
+            ) : null}
+            {mutationAllowed && addToOrderBlocked ? (
+              <StatusNotice
+                tone="caution"
+                title={t("inventory.prediction.action.recount")}
+                message={t("inventory.detail.countFreshness.addBlocked")}
               />
             ) : null}
           </Card>
