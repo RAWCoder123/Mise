@@ -819,6 +819,7 @@ test("recipe baseline summary proves POS sales can deplete mapped ingredients", 
   assert.equal(summary.ingredientMappings, 10);
   assert.equal(summary.coveragePercent, 100);
   assert.equal(summary.posItemsMissingRecipes.length, 0);
+  assert.equal(summary.posItemsWithIncompatibleUnits.length, 0);
   assert.match(summary.credibilityLabel, /strong/i);
   const chickenBowl = summary.items.find((item) => item.menu_item_name === "Chicken Bowl");
   assert.ok(chickenBowl);
@@ -828,7 +829,8 @@ test("recipe baseline summary proves POS sales can deplete mapped ingredients", 
       (ingredient) =>
         ingredient.itemName === "Chicken breast" &&
         ingredient.quantityUsedPerSale === 0.5 &&
-        ingredient.unit === "lbs"
+        ingredient.unit === "lbs" &&
+        ingredient.unitCompatible
     )
   );
 
@@ -952,12 +954,44 @@ test("adding a recipe baseline mapping closes a POS coverage gap", () => {
   );
 
   assert.equal(mappedSummary.posItemsMissingRecipes.length, 0);
+  assert.equal(mappedSummary.posItemsWithIncompatibleUnits.length, 0);
   assert.equal(mappedSummary.coveragePercent, 100);
   assert.ok(
     mappedSummary.items
       .find((item) => item.menu_item_name === "Veggie Bowl")
       ?.ingredients.some((ingredient) => ingredient.itemName === "Tomatoes" && ingredient.quantityUsedPerSale === 0.2)
   );
+});
+
+test("recipe baseline summary surfaces unit-incompatible mappings separately from unmapped POS items", () => {
+  const state = createInitialDemoState("Toast");
+  const chicken = state.inventoryItems.find((item) => item.item_name === "Chicken breast");
+  assert.ok(chicken);
+
+  const chickenMapping = state.menuItemIngredients.find(
+    (mapping) => mapping.menu_item_name === "Chicken Bowl" && mapping.inventory_item_id === chicken.id
+  );
+  assert.ok(chickenMapping);
+  chickenMapping.unit = "kg";
+
+  const summary = buildRecipeBaselineSummary(
+    DEMO_RESTAURANT_ID,
+    state.posSales,
+    state.menuItemIngredients,
+    state.inventoryItems,
+    demoOperatingDate()
+  );
+
+  assert.ok(summary.posItemsWithIncompatibleUnits.includes("Chicken Bowl"));
+  assert.equal(summary.posItemsMissingRecipes.includes("Chicken Bowl"), false);
+  assert.equal(summary.items[0]?.menu_item_name, "Chicken Bowl");
+  const incompatibleIngredient = summary.items
+    .find((item) => item.menu_item_name === "Chicken Bowl")
+    ?.ingredients.find((ingredient) => ingredient.mappingId === chickenMapping.id);
+  assert.ok(incompatibleIngredient);
+  assert.equal(incompatibleIngredient.unitCompatible, false);
+  assert.equal(incompatibleIngredient.unit, "kg");
+  assert.equal(incompatibleIngredient.inventoryUnit, chicken.unit);
 });
 
 test("insights and today summary use the same generated operating data", () => {
