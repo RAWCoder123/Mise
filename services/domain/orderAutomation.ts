@@ -108,6 +108,69 @@ export const DEFAULT_ORDER_AUTOMATION_POLICY: OrderAutomationPolicy = {
 };
 
 /**
+ * Minimal autonomy-rule fields used to derive a read-only automation policy.
+ * Scope authority uses `supplierId`; null means restaurant-wide.
+ */
+export interface OrderAutomationAutonomyHint {
+  actionType: string;
+  enabled: boolean;
+  requiresApproval: boolean;
+  spendLimitCents: number | null;
+  supplierId: string | null;
+}
+
+export interface OrderAutomationReadinessSummary {
+  manualReviewCount: number;
+  automaticDraftCount: number;
+  automaticSendCount: number;
+  supplierCount: number;
+}
+
+/**
+ * Maps autonomy rules into the bounded order-automation policy used by
+ * `assessOrderAutomation`. Never enables automatic send when the send rule
+ * still requires approval (the hosted save path forces that gate).
+ */
+export function deriveOrderAutomationPolicy(
+  hints: readonly OrderAutomationAutonomyHint[],
+  supplierId?: string | null
+): OrderAutomationPolicy {
+  const normalizedSupplierId = typeof supplierId === "string" ? supplierId.trim() : "";
+  const draft = pickAutonomyHint(hints, "prepare_supplier_order_draft", normalizedSupplierId);
+  const send = pickAutonomyHint(hints, "send_supplier_order", normalizedSupplierId);
+  const policy: OrderAutomationPolicy = { ...DEFAULT_ORDER_AUTOMATION_POLICY };
+  policy.enabled = Boolean(draft?.enabled);
+  policy.allowAutomaticSend = Boolean(send?.enabled && !send.requiresApproval);
+
+  const spendCents = draft?.spendLimitCents;
+  if (spendCents != null && Number.isFinite(spendCents) && spendCents > 0) {
+    const orderValue = spendCents / 100;
+    policy.maximumOrderValue = orderValue;
+    policy.maximumLineValue = Math.min(policy.maximumLineValue, orderValue);
+  }
+  return policy;
+}
+
+export function summarizeOrderAutomationReadiness(
+  assessments: readonly OrderAutomationAssessment[]
+): OrderAutomationReadinessSummary {
+  let manualReviewCount = 0;
+  let automaticDraftCount = 0;
+  let automaticSendCount = 0;
+  for (const assessment of assessments) {
+    if (assessment.decision === "automatic_send") automaticSendCount += 1;
+    else if (assessment.decision === "automatic_draft") automaticDraftCount += 1;
+    else manualReviewCount += 1;
+  }
+  return {
+    manualReviewCount,
+    automaticDraftCount,
+    automaticSendCount,
+    supplierCount: assessments.length
+  };
+}
+
+/**
  * Pure, side-effect-free safety gate for future order automation.
  *
  * This function never approves, drafts, or sends an order. It only proves
@@ -248,6 +311,24 @@ export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomat
     blockers,
     sendBlockers
   };
+}
+
+function pickAutonomyHint(
+  hints: readonly OrderAutomationAutonomyHint[],
+  actionType: string,
+  supplierId: string
+) {
+  if (supplierId) {
+    const scoped = hints.find(
+      (hint) => hint.actionType === actionType && hint.supplierId === supplierId
+    );
+    if (scoped) return scoped;
+  }
+  return hints.find((hint) => {
+    if (hint.actionType !== actionType) return false;
+    const hintSupplierId = typeof hint.supplierId === "string" ? hint.supplierId.trim() : "";
+    return !hintSupplierId;
+  });
 }
 
 function matchingHistory(
