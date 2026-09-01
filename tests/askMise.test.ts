@@ -152,3 +152,130 @@ test("answerAskMise briefing uses restaurant name and board counts", () => {
   assert.match(reply.answer, /ask\.answer\.briefing\.board/);
   assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales")));
 });
+
+test("answerAskMise prep stays blocked when Today has an open inventory count task", () => {
+  const countTask = task({
+    id: "task-count",
+    source: { kind: "inventory_count_session", id: "session-1", status: "in_progress" },
+    title: "Continue inventory count",
+    detail: "Finish counting items and submit for approval.",
+    action: {
+      intent: "continue_inventory_count_session",
+      label: "Continue count",
+      route: "/inventory/count",
+      entityId: "session-1"
+    }
+  });
+  const reply = answerAskMise({
+    question: "What should we prep around?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      operationalTasks: [countTask],
+      inventoryHealth: { low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: []
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "prep");
+  assert.match(reply.answer, /ask\.answer\.prep\.tasks\.lead/);
+  assert.match(reply.answer, /Continue inventory count/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.prep\.clear/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.prep.tasks")));
+  assert.equal(reply.showPriorities, true);
+  assert.equal(reply.priorities[0]?.id, "task-count");
+  assert.equal(reply.priorities[0]?.action.route, "/inventory/count");
+});
+
+test("answerAskMise prep clear only when insights and count tasks are absent", () => {
+  const orderTask = task({
+    id: "task-order",
+    source: { kind: "recommendation", id: "rec-9", status: "pending" },
+    title: "Review supplier draft",
+    action: {
+      intent: "review_recommendation",
+      label: "Review",
+      route: "/orders",
+      entityId: "rec-9"
+    }
+  });
+  const reply = answerAskMise({
+    question: "What should we prep around?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      operationalTasks: [orderTask],
+      inventoryHealth: { low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: []
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "prep");
+  assert.match(reply.answer, /ask\.answer\.prep\.clear/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.prep\.tasks/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.prep.clear")));
+});
+
+test("answerAskMise prep pairs count tasks with prep insights", () => {
+  const beginCount = task({
+    id: "task-begin-count",
+    source: { kind: "inventory_count_session", id: "suggested_begin", status: "suggested" },
+    title: "Start inventory count",
+    action: {
+      intent: "begin_inventory_count_session",
+      label: "Start count",
+      route: "/inventory/count",
+      entityId: null
+    }
+  });
+  const reply = answerAskMise({
+    question: "Prep list for tonight?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      operationalTasks: [beginCount],
+      inventoryHealth: { low: 1, critical: 0 }
+    }),
+    insights: [
+      {
+        id: "insight-prep-1",
+        restaurant_id: "rest-1",
+        insight_type: "prep",
+        severity: "warning",
+        title: "Chicken Bowl depends on low stock",
+        description: "Top seller uses low chicken thigh.",
+        recommended_action: "Confirm chicken thigh before prep.",
+        created_at: "2026-09-01T12:00:00.000Z"
+      }
+    ],
+    helpers
+  });
+
+  assert.equal(reply.intent, "prep");
+  assert.match(reply.answer, /ask\.answer\.prep\.tasks\.lead/);
+  assert.match(reply.answer, /Start inventory count/);
+  assert.match(reply.answer, /ask\.answer\.prep\.named/);
+  assert.match(reply.answer, /Chicken Bowl depends on low stock/);
+  assert.equal(reply.priorities[0]?.id, "task-begin-count");
+});
