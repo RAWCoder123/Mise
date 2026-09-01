@@ -69,6 +69,14 @@ function summary(overrides: Partial<AskMiseRestaurantContext> = {}): AskMiseRest
       }
     ],
     inventoryHealth: { low: 1, critical: 1 },
+    inventoryCountTrust: {
+      itemCount: 4,
+      freshCount: 3,
+      staleCount: 1,
+      unverifiedCount: 0,
+      contaminatedCount: 0,
+      state: "authoritative"
+    },
     operationalTasks: [task()],
     restaurantCurrency: "USD",
     ...overrides
@@ -149,6 +157,124 @@ test("answerAskMise briefing uses restaurant name and board counts", () => {
 
   assert.equal(reply.intent, "briefing");
   assert.match(reply.answer, /Harbor Bistro/);
-  assert.match(reply.answer, /ask\.answer\.briefing\.board/);
+  assert.match(reply.answer, /ask\.answer\.briefing\.board:\{/);
   assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales")));
+});
+
+test("answerAskMise fails closed on stock when count trust is unavailable", () => {
+  const reply = answerAskMise({
+    question: "Which stock is low?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { low: 2, critical: 1 },
+      inventoryCountTrust: null
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "stock");
+  assert.match(reply.answer, /ask\.answer\.stock\.unavailable/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.stockClear/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.stock\.other/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.unavailable")));
+});
+
+test("answerAskMise refuses stock all-clear when counts are unverified", () => {
+  const reply = answerAskMise({
+    question: "Which stock is low?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { low: 0, critical: 0 },
+      inventoryCountTrust: {
+        itemCount: 3,
+        freshCount: 0,
+        staleCount: 0,
+        unverifiedCount: 3,
+        contaminatedCount: 0,
+        state: "unverified"
+      }
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "stock");
+  assert.match(reply.answer, /ask\.answer\.stock\.unverified/);
+  assert.match(reply.answer, /ask\.answer\.stock\.recount/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.stockClear/);
+});
+
+test("answerAskMise caveats provisional low stock when counts are stale", () => {
+  const reply = answerAskMise({
+    question: "Which stock is low?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { low: 1, critical: 1 },
+      inventoryCountTrust: {
+        itemCount: 4,
+        freshCount: 0,
+        staleCount: 4,
+        unverifiedCount: 0,
+        contaminatedCount: 0,
+        state: "stale"
+      }
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "stock");
+  assert.match(reply.answer, /ask\.answer\.stock\.stale/);
+  assert.match(reply.answer, /ask\.answer\.stock\.provisional/);
+  assert.match(reply.answer, /ask\.answer\.stock\.recount/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.stock\.other/);
+});
+
+test("answerAskMise briefing omits authoritative stock counts when trust is weak", () => {
+  const reply = answerAskMise({
+    question: "Give me a quick briefing",
+    restaurant: {
+      name: "Harbor Bistro",
+      cuisine_type: "Seafood",
+      service_style: "full_service",
+      timezone: "America/Los_Angeles",
+      currency: "USD"
+    },
+    summary: summary({
+      restaurantName: "Harbor Bistro",
+      inventoryCountTrust: {
+        itemCount: 5,
+        freshCount: 0,
+        staleCount: 0,
+        unverifiedCount: 5,
+        contaminatedCount: 0,
+        state: "unverified"
+      }
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "briefing");
+  assert.match(reply.answer, /ask\.answer\.briefing\.board\.untrusted/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.briefing\.board:\{/);
 });
