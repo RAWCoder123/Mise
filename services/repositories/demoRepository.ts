@@ -72,6 +72,7 @@ import {
 import type {
   PersistedRecalculationRun,
   RestaurantSetupSnapshotInput,
+  SupplierConfirmationRecordResult,
   SupplierDeliveryRecordResult
 } from "./repositoryContracts";
 import {
@@ -80,6 +81,7 @@ import {
   severityRank,
   severityRankForUrgency
 } from "../domain/miseDomain";
+import type { SupplierConfirmationStatus } from "../domain/supplierConfirmation";
 import { TeamMembershipError } from "../domain/teamMembership";
 import {
   acceptInventoryEvent,
@@ -137,6 +139,7 @@ import {
   normalizeSupplierOrder,
   normalizeSupplierDeliveryItemRecord,
   normalizeSupplierDeliveryRecord,
+  normalizeSupplierOrderConfirmationRecord,
   normalizeSupplierRecipient
 } from "../miseValidation";
 import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
@@ -323,6 +326,7 @@ async function readReadyDemoState(restaurantId: string = DEMO_RESTAURANT_ID) {
     if (!Array.isArray(state.autonomyRules)) state.autonomyRules = [];
     if (!Array.isArray(state.actionOutcomes)) state.actionOutcomes = [];
     if (!Array.isArray(state.supplierDeliveries)) state.supplierDeliveries = [];
+    if (!Array.isArray(state.supplierOrderConfirmations)) state.supplierOrderConfirmations = [];
     if (!Array.isArray(state.supplierDeliveryItems)) state.supplierDeliveryItems = [];
     if (!Array.isArray(state.restaurantTasks)) state.restaurantTasks = [];
     if (!Array.isArray(state.purchaseDecisionEvents)) state.purchaseDecisionEvents = [];
@@ -650,7 +654,7 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   datasets.restaurant_autonomy_rules = (state.autonomyRules ?? [])
     .filter((rule) => rule.restaurantId === restaurantId)
     .map((rule) => ({ ...rule, restaurant_id: rule.restaurantId }));
-  datasets.supplier_order_confirmations = [];
+  datasets.supplier_order_confirmations = tenantRows(state.supplierOrderConfirmations ?? []);
   datasets.supplier_deliveries = tenantRows(state.supplierDeliveries ?? []);
   datasets.supplier_delivery_items = tenantRows(state.supplierDeliveryItems ?? []);
   datasets.restaurant_tasks = (state.restaurantTasks ?? [])
@@ -2323,6 +2327,22 @@ export function createLocalDemoRepository(): MiseRepository {
       return { deliveries, items };
     },
 
+    async fetchSupplierOrderConfirmations(restaurantId, options = {}) {
+      const state = await readDemoState();
+      const limit = Math.min(Math.max(options.limit ?? 100, 1), 200);
+      return (state.supplierOrderConfirmations ?? [])
+        .filter((confirmation) => {
+          if (confirmation.restaurant_id !== restaurantId) return false;
+          if (options.supplierOrderId && confirmation.supplier_order_id !== options.supplierOrderId) {
+            return false;
+          }
+          return true;
+        })
+        .sort((left, right) => right.received_at.localeCompare(left.received_at))
+        .slice(0, limit)
+        .map((confirmation) => normalizeSupplierOrderConfirmationRecord(confirmation));
+    },
+
     async fetchSupplierOrder(restaurantId, orderId) {
       const state = await readDemoState();
       const order = state.supplierOrders.find((item) => item.restaurant_id === restaurantId && item.id === orderId);
@@ -3825,6 +3845,137 @@ export function createLocalDemoRepository(): MiseRepository {
           deliveryId,
           supplierOrderId: order.id,
           outcomeId: outcome.id
+        };
+      });
+    },
+
+    async recordSupplierOrderConfirmation(restaurantId, input): Promise<SupplierConfirmationRecordResult> {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        if (!Array.isArray(state.supplierOrderConfirmations)) {
+          state.supplierOrderConfirmations = [];
+        }
+        const idempotencyKey = `manager_confirmation:${input.clientConfirmationId.trim()}`;
+        const existing = state.supplierOrderConfirmations.find(
+          (entry) =>
+            entry.restaurant_id === restaurantId && entry.idempotency_key === idempotencyKey
+        );
+        if (existing) {
+          if (existing.supplier_order_id !== input.supplierOrderId) {
+            throw new Error("Confirmation id belongs to another order");
+          }
+          const normalized = normalizeSupplierOrderConfirmationRecord(existing);
+          return {
+            confirmationId: normalized.id,
+            supplierOrderId: normalized.supplier_order_id,
+            status: normalized.confirmation_status,
+            outcome: "already_applied"
+          };
+        }
+
+        const order = state.supplierOrders.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === input.supplierOrderId
+        );
+        if (!order) throw new Error("Supplier order not found");
+        if (order.status !== "sent" && order.status !== "completed") {
+          throw new Error("Supplier order is not awaiting confirmation");
+        }
+
+        const status = input.confirmationStatus as SupplierConfirmationStatus;
+        if (
+          status !== "acknowledged" &&
+          status !== "changed" &&
+          status !== "rejected" &&
+          status !== "unverified"
+        ) {
+          throw new Error("Supplier confirmation is invalid");
+        }
+
+        const now = new Date().toISOString();
+        const confirmationId = createId("supplier_confirmation");
+        const confirmation = normalizeSupplierOrderConfirmationRecord({
+          id: confirmationId,
+          restaurant_id: restaurantId,
+          supplier_order_id: order.id,
+          confirmation_status: status,
+          confirmation_reference: input.confirmationReference?.trim() || null,
+          expected_delivery_at: input.expectedDeliveryAt ?? null,
+          received_at: now,
+          source: "manager_manual",
+          idempotency_key: idempotencyKey,
+          created_at: now
+        });
+        state.supplierOrderConfirmations = [...state.supplierOrderConfirmations, confirmation];
+
+        const confirmationEvent: ActivityEvent = {
+          id: createId("activity"),
+          restaurantId,
+          locationId: null,
+          occurredAt: now,
+          createdAt: now,
+          activityType: "supplier_confirmation_received",
+          category: "orders",
+          title: "Supplier confirmation received",
+          summary:
+            status === "acknowledged"
+              ? "The supplier acknowledged the order."
+              : status === "changed"
+                ? "The supplier changed part of the order. Review the confirmation."
+                : status === "rejected"
+                  ? "The supplier rejected the order. Owner attention is required."
+                  : "A supplier response arrived but could not be fully verified.",
+          triggerType: "integration",
+          triggerReference: confirmationId,
+          evidenceReferences: [
+            {
+              type: "supplier_confirmation",
+              id: confirmationId,
+              summary: order.supplier_name,
+              observedAt: now
+            }
+          ],
+          sourceSystems: ["mise", "orders", "manager_manual"],
+          actionId: null,
+          recommendationId: null,
+          autonomyLevel: 3,
+          confidence: null,
+          status: status === "acknowledged" ? "confirmed" : "could_not_verify",
+          requiresAttention: status !== "acknowledged",
+          attentionDeadline: null,
+          relatedEntityType: "supplier_order",
+          relatedEntityId: order.id,
+          parentActivityId: null,
+          sequenceId: `supplier-order:${order.id}`,
+          metadata: {
+            confirmationId,
+            supplierOrderId: order.id,
+            status,
+            expectedDeliveryAt: confirmation.expected_delivery_at
+          },
+          errorCode: null,
+          errorMessage: null,
+          resolvedAt: null,
+          resolvedBy: null
+        };
+        state.activityEvents = [...(state.activityEvents ?? []), confirmationEvent];
+
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_confirmation_recorded",
+          entity_table: "supplier_order_confirmations",
+          entity_id: confirmationId,
+          metadata: {
+            supplier_order_id: order.id,
+            status,
+            source: "manager_manual"
+          }
+        });
+
+        return {
+          confirmationId,
+          supplierOrderId: order.id,
+          status,
+          outcome: "applied"
         };
       });
     }

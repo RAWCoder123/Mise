@@ -58,11 +58,15 @@ import {
   recordRecalculationRunRpcArguments,
   type PersistedRecalculationRunRow
 } from "../domain/recalculationRunTransport";
-import type { SupplierDeliveryRecordResult } from "./repositoryContracts";
+import type {
+  SupplierConfirmationRecordResult,
+  SupplierDeliveryRecordResult
+} from "./repositoryContracts";
 import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord
 } from "../domain/supplierReliability";
+import type { SupplierOrderConfirmationRecord } from "../domain/supplierConfirmation";
 import {
   inventoryEventRejectionFromRpcError,
   inventoryEventRpcArguments,
@@ -96,6 +100,7 @@ import {
   normalizeSupplierOrder,
   normalizeSupplierDeliveryItemRecord,
   normalizeSupplierDeliveryRecord,
+  normalizeSupplierOrderConfirmationRecord,
   normalizeSupplierRecipient,
   normalizeSupplierSendContentPreview,
   requireSupplierDisplayName,
@@ -1625,6 +1630,28 @@ export function createSupabaseRepository(): MiseRepository {
       };
     },
 
+    async fetchSupplierOrderConfirmations(restaurantId, options = {}) {
+      const limit = Math.min(Math.max(options.limit ?? 100, 1), 200);
+      let query = client
+        .from("supplier_order_confirmations")
+        .select(
+          "id,restaurant_id,supplier_order_id,confirmation_status,confirmation_reference,expected_delivery_at,received_at,source,idempotency_key,created_at"
+        )
+        .eq("restaurant_id", restaurantId)
+        .order("received_at", { ascending: false })
+        .limit(limit);
+      if (options.supplierOrderId) {
+        query = query.eq("supplier_order_id", options.supplierOrderId);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return ((data ?? []) as Array<
+        Omit<SupplierOrderConfirmationRecord, "confirmation_status"> & {
+          confirmation_status: unknown;
+        }
+      >).map(normalizeSupplierOrderConfirmationRecord);
+    },
+
     async fetchSupplierOrder(restaurantId, orderId) {
       const { data, error } = await client
         .from("supplier_orders")
@@ -2240,6 +2267,34 @@ export function createSupabaseRepository(): MiseRepository {
         deliveryId,
         supplierOrderId: input.supplierOrderId,
         outcomeId: payload.outcomeId ?? null
+      };
+    },
+
+    async recordSupplierOrderConfirmation(restaurantId, input): Promise<SupplierConfirmationRecordResult> {
+      const { data, error } = await client.rpc("record_supplier_confirmation", {
+        p_restaurant_id: restaurantId,
+        p_supplier_order_id: input.supplierOrderId,
+        p_confirmation_status: input.confirmationStatus,
+        p_client_confirmation_id: input.clientConfirmationId,
+        p_confirmation_reference: input.confirmationReference ?? null,
+        p_expected_delivery_at: input.expectedDeliveryAt ?? null,
+        p_normalized_details: {}
+      });
+      if (error) throw error;
+      const payload = (Array.isArray(data) ? data[0] : data) as {
+        outcome?: "applied" | "already_applied";
+        status?: SupplierConfirmationRecordResult["status"];
+        confirmationId?: string;
+        supplierOrderId?: string;
+      } | null;
+      if (!payload?.outcome || !payload.confirmationId || !payload.status) {
+        throw new Error("Supplier confirmation returned an invalid response.");
+      }
+      return {
+        outcome: payload.outcome,
+        status: payload.status,
+        confirmationId: payload.confirmationId,
+        supplierOrderId: payload.supplierOrderId ?? input.supplierOrderId
       };
     },
 

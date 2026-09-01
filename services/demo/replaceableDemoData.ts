@@ -117,6 +117,19 @@ export interface DemoState {
     notes: string | null;
     created_at: string;
   }>;
+  /** Supplier confirmation mirror of hosted supplier_order_confirmations. */
+  supplierOrderConfirmations: Array<{
+    id: string;
+    restaurant_id: string;
+    supplier_order_id: string;
+    confirmation_status: string;
+    confirmation_reference: string | null;
+    expected_delivery_at: string | null;
+    received_at: string;
+    source: string;
+    idempotency_key: string;
+    created_at: string;
+  }>;
   /** Supplier delivery line mirror of hosted supplier_delivery_items. */
   supplierDeliveryItems: Array<{
     id: string;
@@ -519,6 +532,7 @@ export function createInitialDemoState(
     inventoryEvents: [],
     inventoryCountSessions: [],
     supplierDeliveries: [],
+    supplierOrderConfirmations: [],
     supplierDeliveryItems: [],
     restaurantTasks: [],
     recalculationRuns: [],
@@ -788,6 +802,9 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     supplierDeliveries: Array.isArray(raw.supplierDeliveries)
       ? raw.supplierDeliveries
       : seeded.supplierDeliveries,
+    supplierOrderConfirmations: Array.isArray(raw.supplierOrderConfirmations)
+      ? raw.supplierOrderConfirmations
+      : seeded.supplierOrderConfirmations,
     supplierDeliveryItems: Array.isArray(raw.supplierDeliveryItems)
       ? raw.supplierDeliveryItems
       : seeded.supplierDeliveryItems,
@@ -839,6 +856,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       !Array.isArray(raw.inventoryCountSessions) ||
       (usesReferenceDataset && raw.inventoryEvents.length === 0 && seeded.inventoryEvents.length > 0) ||
       !Array.isArray(raw.supplierDeliveries) ||
+      !Array.isArray(raw.supplierOrderConfirmations) ||
       !Array.isArray(raw.supplierDeliveryItems) ||
       !Array.isArray(raw.restaurantTasks) ||
       !Array.isArray(raw.recalculationRuns) ||
@@ -1380,6 +1398,33 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       client_delivery_id: "demo-delivery-metro-2",
       notes: null,
       created_at: addDays(nowDate, -12).toISOString()
+    }
+  ];
+
+  state.supplierOrderConfirmations = [
+    {
+      id: "00000000-0000-4000-8000-000000000c01",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_order_id: "00000000-0000-4000-8000-000000000603",
+      confirmation_status: "acknowledged",
+      confirmation_reference: "PO-PANTRY-603",
+      expected_delivery_at: addDays(nowDate, -14).toISOString(),
+      received_at: addDays(nowDate, -15).toISOString(),
+      source: "manager_manual",
+      idempotency_key: "manager_confirmation:demo-confirm-pantry-1",
+      created_at: addDays(nowDate, -15).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000c02",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_order_id: "00000000-0000-4000-8000-000000000605",
+      confirmation_status: "changed",
+      confirmation_reference: null,
+      expected_delivery_at: addDays(nowDate, -5).toISOString(),
+      received_at: addDays(nowDate, -6).toISOString(),
+      source: "manager_manual",
+      idempotency_key: "manager_confirmation:demo-confirm-metro-1",
+      created_at: addDays(nowDate, -6).toISOString()
     }
   ];
 

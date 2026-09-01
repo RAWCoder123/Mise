@@ -71,6 +71,11 @@ import type {
   RecalculationRunStatus
 } from "../domain/recalculationSchedule";
 import type { SupplierDeliveryHistory } from "../domain/supplierReliability";
+import type {
+  SupplierConfirmationRecordResult,
+  SupplierConfirmationStatus,
+  SupplierOrderConfirmationRecord
+} from "../domain/supplierConfirmation";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 
 /**
@@ -127,6 +132,12 @@ export interface SupplierDeliveryRecordResult {
   supplierOrderId: string;
   outcomeId: string | null;
 }
+
+export type {
+  SupplierConfirmationRecordResult,
+  SupplierConfirmationStatus,
+  SupplierOrderConfirmationRecord
+} from "../domain/supplierConfirmation";
 import {
   normalizeInsight,
   normalizeInventoryItem,
@@ -792,6 +803,20 @@ export interface MiseRepository {
       notes?: string | null;
     }
   ): Promise<SupplierDeliveryRecordResult>;
+  fetchSupplierOrderConfirmations(
+    restaurantId: string,
+    options?: { supplierOrderId?: string; limit?: number }
+  ): Promise<SupplierOrderConfirmationRecord[]>;
+  recordSupplierOrderConfirmation(
+    restaurantId: string,
+    input: {
+      supplierOrderId: string;
+      clientConfirmationId: string;
+      confirmationStatus: SupplierConfirmationStatus;
+      confirmationReference?: string | null;
+      expectedDeliveryAt?: string | null;
+    }
+  ): Promise<SupplierConfirmationRecordResult>;
 }
 
 export function recommendationHistoryCutoffIso(now = Date.now()): string {

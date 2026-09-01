@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
-import { ArrowLeft, CheckCircle2, Copy, FileText, Save, Send } from "lucide-react-native";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { ArrowLeft, CheckCircle2, ClipboardCheck, Copy, FileText, Save, Send } from "lucide-react-native";
+import { StyleSheet, Text, TextInput, Pressable, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
@@ -21,6 +21,7 @@ import {
   approveSupplierSendContent,
   prepareSupplierEmailPayload,
   receiveSupplierOrderDelivery,
+  recordSupplierOrderConfirmation,
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
@@ -28,6 +29,10 @@ import type {
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
 } from "../../services/domain/supplierReliability";
+import type {
+  SupplierConfirmationStatus,
+  SupplierOrderConfirmationEvidence
+} from "../../services/domain/supplierConfirmation";
 import type { MiseAction } from "../../services/domain/miseActions";
 import { isSupplierSendVerificationRace } from "../../services/domain/supplierSendErrors";
 import {
@@ -66,6 +71,9 @@ export default function OrderDraftDetailScreen() {
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
+  const [confirmationEvidence, setConfirmationEvidence] = useState<SupplierOrderConfirmationEvidence[]>([]);
+  const [confirmationStatus, setConfirmationStatus] = useState<SupplierConfirmationStatus>("acknowledged");
+  const [confirmationReference, setConfirmationReference] = useState("");
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -113,6 +121,7 @@ export default function OrderDraftDetailScreen() {
       }
       setOrder(nextDetail.order);
       setDeliveryEvidence(nextDetail.deliveryEvidence);
+      setConfirmationEvidence(nextDetail.confirmationEvidence);
       setEmailConnection(nextEmailConnection);
       setEmailPayload(nextEmailPayload);
       setSupplierSendAction(nextSendAction);
@@ -123,6 +132,7 @@ export default function OrderDraftDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setDeliveryEvidence([]);
+      setConfirmationEvidence([]);
       setEmailPayload(null);
       setSupplierSendAction(null);
       setHubLoadError(true);
@@ -397,6 +407,59 @@ export default function OrderDraftDetailScreen() {
     }
   }
 
+  async function markConfirmed() {
+    if (
+      !restaurant ||
+      !order ||
+      (order.status !== "sent" && order.status !== "completed") ||
+      actionLockRef.current
+    ) {
+      return;
+    }
+    if (!actionsEditable) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    actionLockRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await recordSupplierOrderConfirmation(restaurantId, order.id, {
+        confirmationStatus,
+        confirmationReference: confirmationReference.trim() || null
+      });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setConfirmationReference("");
+      await load(false);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        title:
+          result.outcome === "already_applied"
+            ? t("orders.detail.notice.alreadyConfirmedTitle")
+            : t("orders.detail.notice.confirmedTitle"),
+        message: t(`orders.detail.notice.confirmedBody.${result.status}` as MessageKey),
+        tone:
+          result.status === "acknowledged"
+            ? "success"
+            : result.status === "rejected"
+              ? "danger"
+              : "warning"
+      });
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setNotice({
+          title: t("orders.detail.notice.confirmFailedTitle"),
+          message: t("orders.detail.notice.confirmFailedBody"),
+          tone: "danger"
+        });
+      }
+    } finally {
+      actionLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
+    }
+  }
+
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const canManageGmail = canDeleteRestaurantData(memberships, restaurant?.id);
   const hubLoadState = resolveRestaurantScopedHubLoadState({
@@ -419,6 +482,13 @@ export default function OrderDraftDetailScreen() {
   const visibleSupplierSendAction = hubReady ? supplierSendAction : null;
   const visibleDeliveryEvidence =
     hubReady ? deliveryEvidence : [];
+  const visibleConfirmationEvidence =
+    hubReady ? confirmationEvidence : [];
+  const canRecordConfirmation = Boolean(
+    actionsEditable &&
+    visibleOrder &&
+    (visibleOrder.status === "sent" || visibleOrder.status === "completed")
+  );
   const gmailReady = Boolean(
     visibleEmailConnection?.status === "connected" &&
     visibleEmailPayload?.ready &&
@@ -521,6 +591,120 @@ export default function OrderDraftDetailScreen() {
               </Text>
             </View>
           </View>
+
+          {visibleConfirmationEvidence.length > 0 || canRecordConfirmation ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.confirmation.title")}</Text>
+              <Text style={styles.sectionBody}>{t("orders.detail.confirmation.body")}</Text>
+              {visibleConfirmationEvidence.map((evidence) => (
+                <View key={evidence.confirmationId} style={styles.deliveryEvidencePanel}>
+                  <View style={styles.deliveryEvidenceHeader}>
+                    <Badge
+                      label={t(
+                        `orders.detail.confirmation.status.${evidence.status}` as MessageKey
+                      )}
+                      tone={confirmationEvidenceTone(evidence.status)}
+                    />
+                    <Text style={styles.deliveryEvidenceMeta}>
+                      {t("orders.detail.confirmation.meta", {
+                        date: formatDate(evidence.receivedAt, {
+                          dateStyle: "medium",
+                          timeZone: restaurant?.timezone ?? "UTC"
+                        }),
+                        source: t(
+                          evidence.source === "manager_manual"
+                            ? "orders.detail.confirmation.source.manager"
+                            : "orders.detail.confirmation.source.integration"
+                        )
+                      })}
+                    </Text>
+                  </View>
+                  {evidence.reference ? (
+                    <Text style={styles.deliveryEvidenceLine}>
+                      {t("orders.detail.confirmation.reference", { reference: evidence.reference })}
+                    </Text>
+                  ) : null}
+                  {evidence.expectedDeliveryAt ? (
+                    <Text style={styles.deliveryEvidenceNote}>
+                      {t("orders.detail.confirmation.expectedDelivery", {
+                        date: formatDate(evidence.expectedDeliveryAt, {
+                          dateStyle: "medium",
+                          timeZone: restaurant?.timezone ?? "UTC"
+                        })
+                      })}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              {canRecordConfirmation ? (
+                <View style={styles.confirmationForm}>
+                  <View style={styles.confirmationStatusRow}>
+                    {(
+                      ["acknowledged", "changed", "rejected"] as const
+                    ).map((status) => {
+                      const selected = confirmationStatus === status;
+                      return (
+                        <Pressable
+                          key={status}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected, disabled: busy }}
+                          accessibilityLabel={t(
+                            `orders.detail.confirmation.status.${status}` as MessageKey
+                          )}
+                          disabled={busy}
+                          onPress={() => setConfirmationStatus(status)}
+                          style={[
+                            styles.confirmationStatusChip,
+                            selected ? styles.confirmationStatusChipSelected : null
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.confirmationStatusChipLabel,
+                              selected ? styles.confirmationStatusChipLabelSelected : null
+                            ]}
+                          >
+                            {t(`orders.detail.confirmation.status.${status}` as MessageKey)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <TextInput
+                    accessibilityLabel={t("orders.detail.confirmation.referenceLabel")}
+                    accessibilityHint={t("orders.detail.confirmation.referenceHint")}
+                    accessibilityState={{ disabled: busy }}
+                    value={confirmationReference}
+                    onChangeText={setConfirmationReference}
+                    maxLength={512}
+                    editable={!busy}
+                    placeholder={t("orders.detail.confirmation.referencePlaceholder")}
+                    placeholderTextColor={colors.faint}
+                    style={styles.confirmationReferenceInput}
+                  />
+                  <Button
+                    title={busy
+                      ? t("orders.detail.action.confirming")
+                      : t("orders.detail.action.recordConfirmation")}
+                    accessibilityLabel={t("orders.detail.action.recordConfirmationAccessibility", {
+                      supplier: visibleOrder.supplier_name
+                    })}
+                    variant="secondary"
+                    icon={
+                      <ClipboardCheck
+                        size={icon.row}
+                        color={colors.text}
+                        strokeWidth={iconStroke}
+                      />
+                    }
+                    onPress={() => void markConfirmed()}
+                    disabled={busy}
+                    fullWidth
+                  />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           {visibleDeliveryEvidence.length > 0 ? (
             <View style={styles.section}>
@@ -826,6 +1010,13 @@ function deliveryEvidenceTone(status: SupplierDeliveryStatus): BadgeTone {
   return "neutral";
 }
 
+function confirmationEvidenceTone(status: SupplierConfirmationStatus): BadgeTone {
+  if (status === "acknowledged") return "success";
+  if (status === "rejected") return "danger";
+  if (status === "changed" || status === "unverified") return "warning";
+  return "neutral";
+}
+
 function viewOnlyNotice(t: Translate): OrderNotice {
   return {
     title: t("orders.detail.viewOnly.title"),
@@ -1100,6 +1291,48 @@ const styles = StyleSheet.create({
   deliveryEvidenceNote: {
     color: colors.muted,
     ...typography.caption
+  },
+  confirmationForm: {
+    gap: 10,
+    marginTop: 8
+  },
+  confirmationStatusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  confirmationStatusChip: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 44,
+    justifyContent: "center"
+  },
+  confirmationStatusChipSelected: {
+    borderColor: colors.text,
+    backgroundColor: colors.surfaceWarm
+  },
+  confirmationStatusChipLabel: {
+    color: colors.muted,
+    ...typography.caption,
+    fontWeight: "700"
+  },
+  confirmationStatusChipLabelSelected: {
+    color: colors.text
+  },
+  confirmationReferenceInput: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    ...typography.body,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10
   },
   messagePanel: {
     borderRadius: radii.lg,
