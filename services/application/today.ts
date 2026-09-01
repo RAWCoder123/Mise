@@ -5,6 +5,10 @@ import {
   buildTodaySummary
 } from "../domain/miseDomain";
 import {
+  summarizeInventoryCountTrust,
+  type InventoryCountTrustSummary
+} from "../domain/inventoryCountTrust";
+import {
   deriveOperationalTodayTasks,
   sortOperationalTodayTasks,
   type OperationalTodayTask
@@ -41,6 +45,11 @@ export interface TodayInventoryHealthCounts {
 /** Screen-ready Today data composed from restaurant-scoped authoritative sources. */
 export interface TodayCommandCenterSummary extends TodaySummary {
   inventoryHealth: TodayInventoryHealthCounts;
+  /**
+   * Physical-count trust for stock claims. Ask Mise and briefing copy must use
+   * this instead of inventing certainty from projected Low/Critical alone.
+   */
+  inventoryCountTrust: InventoryCountTrustSummary;
   operationalTasks: OperationalTodayTask[];
   operatingDate: string;
   restaurantTimeZone: string;
@@ -152,6 +161,12 @@ export async function fetchTodaySummary(
   return {
     ...summary,
     inventoryHealth: inventoryHealthCounts(outlooks.map(({ prediction }) => prediction.projectedStatus)),
+    inventoryCountTrust: summarizeInventoryCountTrust(
+      outlooks.map(({ prediction }) => ({
+        countEvidence: prediction.countEvidence,
+        countFreshness: prediction.countFreshness
+      }))
+    ),
     operationalTasks: sortOperationalTodayTasks([...projectedTasks, ...sharedTasks], {
       restaurantTimeZone: data.restaurant.timezone
     }),
