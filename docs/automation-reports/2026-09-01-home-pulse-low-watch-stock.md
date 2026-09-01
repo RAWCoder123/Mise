@@ -39,6 +39,6 @@ Critical checks, so one Low or Watch item among many Good items could still chip
 
 ## Verification
 
-- `npm run typecheck`
-- focused `tests/operatingBrief.test.ts` and `tests/inventoryHealthPresentation.test.ts`
-- `npm test` (report pass/fail counts)
+- `npm run typecheck` — passed
+- focused `tests/operatingBrief.test.ts` and `tests/inventoryHealthPresentation.test.ts` — 12/12 passed
+- `npm test` — 636 pass / 0 fail / 7 cancelled (pre-existing `recalculationCycles` hang)
