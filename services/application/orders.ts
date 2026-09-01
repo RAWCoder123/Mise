@@ -19,6 +19,12 @@ import {
   type SupplierReliabilitySummary
 } from "../domain/supplierReliability";
 import {
+  buildSupplierOrderConfirmationEvidence,
+  confirmationClientIdForOrder,
+  type SupplierConfirmationStatus,
+  type SupplierOrderConfirmationEvidence
+} from "../domain/supplierConfirmation";
+import {
   requireRecommendationApprovalQuantity,
   requireSupplierOperatorNote,
   requireSupplierRecipientInput
@@ -29,6 +35,7 @@ import type {
   GmailConnectionWorkflowResult,
   GmailDisconnectWorkflowResult,
   GmailIntegrationErrorStatus,
+  SupplierConfirmationRecordResult,
   SupplierOrderEmailSendResult
 } from "../repositories/miseRepository";
 
@@ -138,17 +145,24 @@ export async function fetchSupplierOrders(restaurantId: string) {
   return repository.fetchSupplierOrders(restaurantId);
 }
 
-export type { SupplierOrderDeliveryEvidence };
+export type { SupplierOrderDeliveryEvidence, SupplierOrderConfirmationEvidence };
 
 export async function fetchSupplierOrderOperationalDetail(
   restaurantId: string,
   orderId: string
-): Promise<{ order: SupplierOrder; deliveryEvidence: SupplierOrderDeliveryEvidence[] }> {
+): Promise<{
+  order: SupplierOrder;
+  deliveryEvidence: SupplierOrderDeliveryEvidence[];
+  confirmationEvidence: SupplierOrderConfirmationEvidence[];
+}> {
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
   const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
-  const [order, history, restaurant] = await Promise.all([
+  const [order, history, confirmations, restaurant] = await Promise.all([
     repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
     repository.fetchSupplierDeliveryHistory(normalizedRestaurantId),
+    repository.fetchSupplierOrderConfirmations(normalizedRestaurantId, {
+      supplierOrderId: normalizedOrderId
+    }),
     repository.fetchRestaurant(normalizedRestaurantId)
   ]);
   if (order.restaurant_id !== normalizedRestaurantId) {
@@ -162,8 +176,49 @@ export async function fetchSupplierOrderOperationalDetail(
       order,
       deliveries: history.deliveries,
       items: history.items
+    }),
+    confirmationEvidence: buildSupplierOrderConfirmationEvidence({
+      restaurantId: normalizedRestaurantId,
+      orderId: normalizedOrderId,
+      confirmations
     })
   };
+}
+
+/**
+ * Manager records a supplier phone/email/text confirmation against a sent or
+ * completed order. Does not invent confirmation from delivery or send state.
+ */
+export async function recordSupplierOrderConfirmation(
+  restaurantId: string,
+  supplierOrderId: string,
+  input: {
+    confirmationStatus: SupplierConfirmationStatus;
+    confirmationReference?: string | null;
+    expectedDeliveryAt?: string | null;
+    clientConfirmationId?: string;
+  }
+): Promise<SupplierConfirmationRecordResult> {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const normalizedOrderId = requireWorkflowId(supplierOrderId, "supplier order");
+  const order = await repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId);
+  if (order.restaurant_id !== normalizedRestaurantId) {
+    throw new Error("Supplier order belongs to another restaurant.");
+  }
+  if (order.status !== "sent" && order.status !== "completed") {
+    throw new Error("Only sent or completed orders can accept supplier confirmation.");
+  }
+  const recordedAt = new Date().toISOString();
+  const clientConfirmationId =
+    input.clientConfirmationId?.trim() ||
+    confirmationClientIdForOrder(normalizedOrderId, recordedAt);
+  return repository.recordSupplierOrderConfirmation(normalizedRestaurantId, {
+    supplierOrderId: normalizedOrderId,
+    clientConfirmationId,
+    confirmationStatus: input.confirmationStatus,
+    confirmationReference: input.confirmationReference ?? null,
+    expectedDeliveryAt: input.expectedDeliveryAt ?? null
+  });
 }
 
 export type { SupplierReliabilitySummary };
