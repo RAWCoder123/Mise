@@ -16,12 +16,20 @@ import type { RestaurantAutonomyRule } from "../../services/domain/restaurantAut
 import {
   createSafeDefaultAutonomyRules,
   fetchAutonomyRules,
-  saveAutonomyRule
+  fetchRestaurantOrderAutomationReadiness,
+  saveAutonomyRule,
+  type RestaurantOrderAutomationReadiness
 } from "../../services/miseService";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import {
+  orderAutomationDecisionLabelKey,
+  orderAutomationDecisionTone,
+  presentOrderAutomationBlockerKeys,
+  presentOrderAutomationSummaryKey
+} from "../../services/presentation/orderAutomationPresentation";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -33,10 +41,12 @@ type DraftFields = {
 };
 
 export default function AutonomySettingsScreen() {
-  const { formatNumber, t } = useLocale();
+  const { formatCurrency, formatNumber, t } = useLocale();
   const { memberships, restaurant } = useMiseSession();
   const [rules, setRules] = useState<RestaurantAutonomyRule[]>([]);
   const [drafts, setDrafts] = useState<Record<string, DraftFields>>({});
+  const [readiness, setReadiness] = useState<RestaurantOrderAutomationReadiness | null>(null);
+  const [readinessError, setReadinessError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -51,6 +61,8 @@ export default function AutonomySettingsScreen() {
     requestIdRef.current += 1;
     setRules([]);
     setDrafts({});
+    setReadiness(null);
+    setReadinessError(false);
     setLoadedRestaurantId(null);
     setError(false);
     setNotice(null);
@@ -66,6 +78,7 @@ export default function AutonomySettingsScreen() {
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(false);
+    setReadinessError(false);
     try {
       const next = await fetchAutonomyRules(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -75,7 +88,33 @@ export default function AutonomySettingsScreen() {
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "autonomy", operation: "load", restaurant_id: restaurantId });
+      setRules([]);
+      setDrafts({});
+      setReadiness(null);
+      setReadinessError(true);
       setError(true);
+      setLoadedRestaurantId(null);
+      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        setLoading(false);
+      }
+      return;
+    }
+
+    try {
+      const nextReadiness = await fetchRestaurantOrderAutomationReadiness(restaurantId);
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setReadiness(nextReadiness);
+      setReadinessError(false);
+    } catch (readinessLoadError) {
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(readinessLoadError, {
+        flow: "autonomy",
+        operation: "load_readiness",
+        restaurant_id: restaurantId
+      });
+      // Fail closed on readiness only — never invent draft/send-ready claims.
+      setReadiness(null);
+      setReadinessError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
         setLoading(false);
@@ -168,6 +207,7 @@ export default function AutonomySettingsScreen() {
   }
 
   const visible = hubReady ? rules : [];
+  const visibleReadiness = hubReady && readiness && readiness.restaurantId === restaurant?.id ? readiness : null;
 
   return (
     <Screen
@@ -194,6 +234,78 @@ export default function AutonomySettingsScreen() {
             actionLabel={t("common.retry")}
             onAction={() => void load()}
           />
+        ) : null}
+
+        {hubReady ? (
+          <View style={styles.readinessBlock}>
+            <Text style={styles.readinessHeading}>{t("autonomy.readiness.title")}</Text>
+            <Text style={styles.readinessBody}>{t("autonomy.readiness.body")}</Text>
+            {readinessError || !visibleReadiness ? (
+              <StatusNotice
+                tone="danger"
+                title={t("autonomy.readiness.error.title")}
+                message={t("autonomy.readiness.error.body")}
+                actionLabel={t("common.retry")}
+                onAction={() => void load()}
+              />
+            ) : (
+              <>
+                <StatusNotice
+                  tone={
+                    visibleReadiness.summary.manualReviewCount > 0
+                      ? "caution"
+                      : visibleReadiness.summary.supplierCount === 0
+                        ? "neutral"
+                        : "success"
+                  }
+                  title={t(presentOrderAutomationSummaryKey(visibleReadiness.summary))}
+                  message={t("autonomy.readiness.summary.detail", {
+                    review: formatNumber(visibleReadiness.summary.manualReviewCount),
+                    draft: formatNumber(visibleReadiness.summary.automaticDraftCount),
+                    send: formatNumber(visibleReadiness.summary.automaticSendCount)
+                  })}
+                />
+                {!visibleReadiness.draftAutomationEnabled ? (
+                  <Text style={styles.readinessMeta}>{t("autonomy.readiness.draftDisabled")}</Text>
+                ) : null}
+                {visibleReadiness.suppliers.length === 0 ? (
+                  <Text style={styles.readinessMeta}>{t("autonomy.readiness.empty")}</Text>
+                ) : (
+                  visibleReadiness.suppliers.map((assessment) => {
+                    const blockerKeys = presentOrderAutomationBlockerKeys(assessment);
+                    const valueLabel =
+                      assessment.estimatedOrderValue == null
+                        ? t("autonomy.readiness.valueUnknown")
+                        : formatCurrency(assessment.estimatedOrderValue);
+                    return (
+                      <View key={assessment.supplierId} style={styles.readinessCard}>
+                        <Text style={styles.title}>{assessment.supplierName}</Text>
+                        <StatusNotice
+                          tone={orderAutomationDecisionTone(assessment.decision)}
+                          title={t(orderAutomationDecisionLabelKey(assessment.decision))}
+                          message={t("autonomy.readiness.supplier.meta", {
+                            lines: formatNumber(assessment.lines.length),
+                            value: valueLabel
+                          })}
+                        />
+                        {blockerKeys.length > 0 ? (
+                          <View style={styles.blockerList}>
+                            {blockerKeys.map((key) => (
+                              <Text key={key} style={styles.blockerLine}>
+                                {t(key)}
+                              </Text>
+                            ))}
+                          </View>
+                        ) : (
+                          <Text style={styles.readinessMeta}>{t("autonomy.readiness.noBlockers")}</Text>
+                        )}
+                      </View>
+                    );
+                  })
+                )}
+              </>
+            )}
+          </View>
         ) : null}
 
         {!error && visible.length === 0 ? (
@@ -419,6 +531,36 @@ const styles = StyleSheet.create({
   stack: {
     gap: 12,
     paddingBottom: 24
+  },
+  readinessBlock: {
+    gap: 10
+  },
+  readinessHeading: {
+    ...conceptTypography.sectionTitle,
+    color: colors.text
+  },
+  readinessBody: {
+    ...conceptTypography.body,
+    color: colors.muted
+  },
+  readinessMeta: {
+    ...conceptTypography.caption,
+    color: colors.muted
+  },
+  readinessCard: {
+    gap: 8,
+    padding: 14,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border
+  },
+  blockerList: {
+    gap: 4
+  },
+  blockerLine: {
+    ...conceptTypography.caption,
+    color: colors.muted
   },
   card: {
     gap: 8,
