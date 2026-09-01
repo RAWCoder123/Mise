@@ -449,20 +449,9 @@ export function createInitialDemoState(
         imported_at: now
       }
     ],
-    supplierItems: inventoryItems.map((item, index) => ({
-      id: `00000000-0000-4000-8000-0000000008${String(index).padStart(2, "0")}`,
-      restaurant_id: DEMO_RESTAURANT_ID,
-      supplier_id: item.supplier_id,
-      supplier_name: item.supplier_name,
-      supplier_sku: null,
-      item_name: item.item_name,
-      unit: item.unit,
-      pack_size: item.unit === "lbs" ? "10 lb case" : null,
-      estimated_unit_cost: item.estimated_unit_cost,
-      preferred: true,
-      created_at: now,
-      updated_at: now
-    })),
+    supplierItems: inventoryItems.map((item, index) =>
+      buildDemoSupplierCatalogItem(item, index, now)
+    ),
     purchaseOrders: [],
     aiInsights: [],
     emailConnections: [
@@ -1494,20 +1483,9 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     }
   ];
 
-  state.supplierItems = state.inventoryItems.map((item, index) => ({
-    id: `00000000-0000-4000-8000-0000000008${String(index).padStart(2, "0")}`,
-    restaurant_id: DEMO_RESTAURANT_ID,
-    supplier_id: item.supplier_id,
-    supplier_name: item.supplier_name,
-    supplier_sku: null,
-    item_name: item.item_name,
-    unit: item.unit,
-    pack_size: item.unit === "lbs" ? "10 lb case" : item.unit === "packs" ? "12 pack case" : null,
-    estimated_unit_cost: item.estimated_unit_cost,
-    preferred: true,
-    created_at: createdAt,
-    updated_at: createdAt
-  }));
+  state.supplierItems = state.inventoryItems.map((item, index) =>
+    buildDemoSupplierCatalogItem(item, index, createdAt)
+  );
 
   state.supplierRecipients = [
     {
@@ -1787,6 +1765,58 @@ function ingredient(
     quantity_used_per_sale: quantity,
     unit
   };
+}
+
+/**
+ * Demo-only catalog evidence for SELECT/browse paths. SKUs and pack labels are
+ * explicit seed facts — never invented at read time for hosted tenants.
+ */
+function buildDemoSupplierCatalogItem(
+  item: InventoryItem,
+  index: number,
+  timestamp: string
+): SupplierItem {
+  return {
+    id: `00000000-0000-4000-8000-0000000008${String(index).padStart(2, "0")}`,
+    restaurant_id: DEMO_RESTAURANT_ID,
+    supplier_id: item.supplier_id,
+    supplier_name: item.supplier_name,
+    supplier_sku: demoSupplierSku(item.item_name, index),
+    item_name: item.item_name,
+    unit: item.unit,
+    pack_size: demoSupplierPackSize(item.unit),
+    estimated_unit_cost: item.estimated_unit_cost,
+    preferred: demoSupplierPreferred(item),
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+}
+
+function demoSupplierSku(itemName: string, index: number) {
+  const token = itemName.replace(/[^a-zA-Z0-9]+/g, "").slice(0, 8).toUpperCase() || "ITEM";
+  return `${token}-${String(index + 1).padStart(2, "0")}`;
+}
+
+function demoSupplierPackSize(unit: string) {
+  switch (unit) {
+    case "lbs":
+      return "10 lb case";
+    case "packs":
+      return "12 pack case";
+    case "heads":
+      return "12 head case";
+    case "units":
+      return "24 unit case";
+    case "gallons":
+      return "4 gal case";
+    default:
+      return null;
+  }
+}
+
+function demoSupplierPreferred(item: InventoryItem) {
+  const category = (item.category ?? "").toLocaleLowerCase("en-US");
+  return category === "protein" || category === "produce";
 }
 
 function sale(

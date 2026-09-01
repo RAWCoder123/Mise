@@ -2,6 +2,7 @@ import type { AiInsight, PosProvider, Restaurant, RestaurantMembership } from ".
 import { buildAiInsightInput, parseStructuredInsightOutput } from "../ai/structuredInsights";
 import { DEMO_DATASET, type DemoSetupProfile } from "../demoData";
 import type { AuditLogInput } from "../repositories/miseRepository";
+import { buildSupplierCatalogBrowse } from "../domain/supplierCatalog";
 import {
   normalizeTeamMemberEmail,
   type AssignableTeamRole
@@ -115,6 +116,23 @@ export async function updateRestaurantProfile(
 
 export async function fetchRestaurantOpsProfile(restaurantId: string) {
   return repository.fetchRestaurantOpsProfile(restaurantId);
+}
+
+/**
+ * Read-only supplier catalog browse for pack labels, preferred flags, and SKUs.
+ * Uses the same SELECT-backed `supplier_items` path as ops profile — never invents
+ * catalog evidence and never mutates supplier items.
+ */
+export async function fetchSupplierCatalog(restaurantId: string) {
+  const normalizedRestaurantId = requireSupplierAuthorityId(restaurantId, "restaurant");
+  const profile = await repository.fetchRestaurantOpsProfile(normalizedRestaurantId);
+  if (profile.restaurant.id !== normalizedRestaurantId) {
+    throw new Error("Supplier catalog did not match the active restaurant.");
+  }
+  if (profile.supplierItems.some((item) => item.restaurant_id !== normalizedRestaurantId)) {
+    throw new Error("Supplier catalog included a foreign restaurant row.");
+  }
+  return buildSupplierCatalogBrowse(normalizedRestaurantId, profile.supplierItems);
 }
 
 export async function fetchPosIntegrations(restaurantId: string) {
