@@ -154,8 +154,9 @@ export default function TodayScreen() {
     hubReady,
     busy: Boolean(busyFindingId)
   });
+  // Device-local personal checklist — any active restaurant member may create/complete.
   const floorNotesEditable = presentRestaurantScopedHubActionsEditable({
-    allowed: canManageBrief,
+    allowed: Boolean(restaurant),
     hubReady,
     busy: Boolean(busyFloorNoteId)
   });
@@ -363,20 +364,37 @@ export default function TodayScreen() {
           />
         ) : null}
 
-        {visibleFloorNotes.length > 0 || floorNoteMessage ? (
+        {hubReady ? (
           <View style={styles.floorNotesSection}>
             <SectionHeader
               title={t("today.floorNotes.title")}
               subtitle={
                 visibleFloorNotes.length > 0
                   ? t("today.floorNotes.subtitle", { count: formatNumber(visibleFloorNotes.length) })
-                  : undefined
+                  : t("today.floorNotes.empty")
               }
+              action={restaurant ? t("today.floorNotes.add") : undefined}
+              actionAccessibilityLabel={t("today.floorNotes.addHint")}
+              onAction={restaurant ? () => router.push("/more/create-floor-note") : undefined}
             />
             {floorNoteMessage ? (
               <StatusNotice tone="danger" title={t("common.error")} message={floorNoteMessage} />
             ) : null}
-            {(["now", "up_next", "later"] as const).map((timing) => {
+            {visibleFloorNotes.length === 0 ? (
+              <View style={styles.floorNotesEmpty}>
+                <EmptyState compact title={t("today.floorNotes.title")} body={t("today.floorNotes.empty")} />
+                {restaurant ? (
+                  <Button
+                    title={t("today.floorNotes.add")}
+                    accessibilityLabel={t("today.floorNotes.addHint")}
+                    onPress={() => router.push("/more/create-floor-note")}
+                    fullWidth
+                    style={styles.floorNotesEmptyAction}
+                  />
+                ) : null}
+              </View>
+            ) : (
+              (["now", "up_next", "later"] as const).map((timing) => {
               const notes = groupedFloorNotes[timing];
               if (notes.length === 0) return null;
               return (
@@ -441,7 +459,8 @@ export default function TodayScreen() {
                   })}
                 </View>
               );
-            })}
+            })
+            )}
           </View>
         ) : null}
 
@@ -514,6 +533,12 @@ const styles = StyleSheet.create({
   floorNotesSection: {
     marginTop: 4,
     gap: 6
+  },
+  floorNotesEmpty: {
+    gap: 8
+  },
+  floorNotesEmptyAction: {
+    marginTop: 2
   },
   floorNotesGroup: {
     gap: 6

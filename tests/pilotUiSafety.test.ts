@@ -20,15 +20,16 @@ test("Today promotes and fully reveals the operator-selected task bucket", () =>
   assert.match(today, /key === focus \? grouped\[key\] : grouped\[key\]\.slice\(0, GROUP_CAPS\[key\]\)/);
 });
 
-test("Today keeps floor-note completion behind the restaurant role gate", () => {
+test("Today keeps floor-note completion behind the restaurant membership gate", () => {
   const screen = readFileSync("app/(tabs)/today.tsx", "utf8");
 
   assert.match(
     screen,
-    /const floorNotesEditable = presentRestaurantScopedHubActionsEditable\(\{[\s\S]{0,200}allowed: canManageBrief,[\s\S]{0,200}busy: Boolean\(busyFloorNoteId\)/
+    /const floorNotesEditable = presentRestaurantScopedHubActionsEditable\(\{[\s\S]{0,200}allowed: Boolean\(restaurant\),[\s\S]{0,200}busy: Boolean\(busyFloorNoteId\)/
   );
   assert.match(screen, /if \(!restaurant \|\| !floorNotesEditable\) return;/);
   assert.match(screen, /disabled=\{!floorNotesEditable\}/);
+  assert.match(screen, /router\.push\("\/more\/create-floor-note"\)/);
 });
 
 test("POS readiness failures remain visible and retryable instead of failing open", () => {
