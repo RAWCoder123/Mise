@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { fromPosSyncCompleted } from "../services/domain/activityEvents";
-import { buildOperatingBrief } from "../services/domain/operatingBrief";
+import {
+  buildOperatingBrief,
+  resolveRestaurantPulseStatus
+} from "../services/domain/operatingBrief";
 import type {
   InventoryItem,
   InventoryPrediction,
@@ -295,6 +298,102 @@ test("brief data freshness comes from verified counts, not from row update time"
   });
   assert.equal(staleCount.restaurantStatus.dataFreshness.state, "stale");
   assert.equal(staleCount.restaurantStatus.dataFreshness.asOf, "2026-07-25T14:00:00.000Z");
+});
+
+test("resolveRestaurantPulseStatus fails closed for unknown and stale freshness", () => {
+  assert.equal(
+    resolveRestaurantPulseStatus({
+      criticalCount: 0,
+      pendingApprovals: 0,
+      freshnessState: "fresh",
+      urgentFindings: 0
+    }),
+    "on_track"
+  );
+  assert.equal(
+    resolveRestaurantPulseStatus({
+      criticalCount: 0,
+      pendingApprovals: 0,
+      freshnessState: "stale",
+      urgentFindings: 0
+    }),
+    "attention_needed"
+  );
+  assert.equal(
+    resolveRestaurantPulseStatus({
+      criticalCount: 0,
+      pendingApprovals: 0,
+      freshnessState: "unknown",
+      urgentFindings: 0
+    }),
+    "attention_needed"
+  );
+  assert.equal(
+    resolveRestaurantPulseStatus({
+      criticalCount: 0,
+      pendingApprovals: 0,
+      freshnessState: "incomplete",
+      urgentFindings: 0
+    }),
+    "at_risk"
+  );
+  assert.equal(
+    resolveRestaurantPulseStatus({
+      criticalCount: 1,
+      pendingApprovals: 0,
+      freshnessState: "fresh",
+      urgentFindings: 0
+    }),
+    "at_risk"
+  );
+});
+
+test("stale verified counts with healthy coverage still need attention", () => {
+  const generatedAt = "2026-08-02T15:00:00.000Z";
+  const sale = {
+    id: "sale_stale_healthy",
+    restaurant_id: restaurantId,
+    sale_date: "2026-08-02",
+    item_name: "Burger",
+    category: "Entree",
+    quantity_sold: 10,
+    gross_sales: 120,
+    net_sales: 110,
+    source_pos: "Square",
+    created_at: "2026-07-25T14:00:00.000Z"
+  };
+  const healthyItem = item({ current_quantity: 40, last_updated: "2026-07-25T14:00:00.000Z" });
+  const brief = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt,
+    sales: [sale],
+    inventoryItems: [healthyItem],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: healthyItem,
+        prediction: prediction({
+          projectedQuantity: 30,
+          projectedStatus: "Good",
+          daysCoverage: 3,
+          whyItMatters: "Coverage is stable.",
+          countEvidence: "verified_count",
+          countedAt: "2026-07-25T09:00:00.000Z",
+          countAgeHours: 198,
+          countFreshness: "stale",
+          isTemporallyAuthoritative: true
+        })
+      }
+    ]
+  });
+
+  assert.equal(brief.restaurantStatus.dataFreshness.state, "stale");
+  assert.equal(brief.restaurantStatus.status, "attention_needed");
+  assert.match(brief.restaurantStatus.summary, /hours ago/i);
+  assert.match(brief.restaurantStatus.topRisk ?? "", /hours ago/i);
 });
 
 test("recommendation confidence credits verified count age only", () => {
