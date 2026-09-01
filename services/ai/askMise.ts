@@ -280,11 +280,11 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       const useTrustedBoard = !watchOnlyStock && !salesUntrusted;
 
       let briefingOrdered = openTasks;
-      if (salesUntrusted) {
-        briefingOrdered = preferPosSalesTasks(briefingOrdered, posSalesTasks);
-      }
       if (watchOnlyStock) {
         briefingOrdered = preferWatchCountTasks(briefingOrdered, watchCountTasks);
+      }
+      if (salesUntrusted) {
+        briefingOrdered = preferPosSalesTasks(briefingOrdered, posSalesTasks);
       }
       const briefingPriorities = briefingOrdered.slice(0, 3);
       const briefingFocusTitles = briefingPriorities.map(
