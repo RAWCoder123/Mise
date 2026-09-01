@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -129,7 +130,14 @@ test("answerAskMise returns priority cards for priority questions", () => {
   assert.equal(reply.intent, "priorities");
   assert.equal(reply.showPriorities, true);
   assert.equal(reply.priorities[0]?.id, "task-priority");
+  assert.equal(reply.priorities[0]?.action.route, "/orders");
   assert.match(reply.answer, /ask\.answer\.prioritiesLead/);
+});
+
+test("Ask Mise priority chips prefer task.action.route over task detail", () => {
+  const source = readFileSync("app/ask-mise.tsx", "utf8");
+  assert.match(source, /router\.push\(task\.action\.route\)/);
+  assert.doesNotMatch(source, /router\.push\(`\/tasks\/\$\{task\.id\}`\)/);
 });
 
 test("answerAskMise briefing uses restaurant name and board counts", () => {
