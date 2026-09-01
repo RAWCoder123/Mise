@@ -163,6 +163,8 @@ export default function InventoryDetailScreen() {
   const localizedPrediction =
     item && prediction ? localizeInventoryPrediction(t, formatNumber, item, prediction) : null;
   const status = prediction?.projectedStatus ?? null;
+  const absorbedSameDayPos = localizedPrediction?.absorbedSameDayPos === true;
+  const posEvidenceQuantity = localizedPrediction?.posEvidenceQuantity ?? 0;
   const canonicalReady = item ? isCanonicalUnitReady(item) : false;
   const canonicalUnit = canonicalReady ? item!.canonical_unit! : null;
 
@@ -392,9 +394,11 @@ export default function InventoryDetailScreen() {
                 tone: "neutral"
               },
               {
-                label: t("inventory.detail.posUsed"),
-                value: `${formatNumber(prediction.todayDepletion, { maximumFractionDigits: 1 })} ${item.unit}`,
-                tone: "neutral"
+                label: absorbedSameDayPos
+                  ? t("inventory.detail.posAbsorbed")
+                  : t("inventory.detail.posUsed"),
+                value: `${formatNumber(posEvidenceQuantity, { maximumFractionDigits: 1 })} ${item.unit}`,
+                tone: absorbedSameDayPos ? "caution" : "neutral"
               }
             ]}
           />
@@ -403,6 +407,15 @@ export default function InventoryDetailScreen() {
             <StatusNotice
               title={t("inventory.detail.viewOnly.title")}
               message={t("inventory.detail.viewOnly.body")}
+            />
+          ) : null}
+
+          {absorbedSameDayPos ? (
+            <StatusNotice
+              tone="caution"
+              title={t("inventory.detail.temporalAuthority.title")}
+              message={t("inventory.detail.temporalAuthority.body")}
+              meta={t("inventory.detail.temporalAuthority.meta")}
             />
           ) : null}
 
@@ -428,14 +441,23 @@ export default function InventoryDetailScreen() {
                 </Text>
               </View>
               <View style={styles.countBlock}>
-                <Text style={styles.countLabel}>{t("inventory.detail.posDepleted")}</Text>
-                <Text style={[styles.countValue, prediction.todayDepletion > 0 && styles.depletionValue]}>
+                <Text style={styles.countLabel}>
+                  {absorbedSameDayPos
+                    ? t("inventory.detail.posAbsorbed")
+                    : t("inventory.detail.posDepleted")}
+                </Text>
+                <Text
+                  style={[
+                    styles.countValue,
+                    prediction.todayDepletion > 0 && styles.depletionValue
+                  ]}
+                >
                   {prediction.todayDepletion > 0 ? "-" : ""}
-                  {formatNumber(prediction.todayDepletion, { maximumFractionDigits: 1 })} {item.unit}
+                  {formatNumber(posEvidenceQuantity, { maximumFractionDigits: 1 })} {item.unit}
                 </Text>
               </View>
             </View>
-            {prediction.todayDepletion > 0 ? (
+            {posEvidenceQuantity > 0 ? (
               <View style={styles.depletionRow}>
                 <ArrowDownRight size={icon.inline} color={colors.accentDark} strokeWidth={iconStroke} />
                 <Text style={styles.depletionText}>{localizedPrediction.depletion}</Text>
