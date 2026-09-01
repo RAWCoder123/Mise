@@ -34,6 +34,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { resolveVerifiedCanonicalConversion } from "../../services/presentation/inventoryCanonicalConversionPresentation";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
 import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
@@ -165,6 +166,7 @@ export default function InventoryDetailScreen() {
   const status = prediction?.projectedStatus ?? null;
   const canonicalReady = item ? isCanonicalUnitReady(item) : false;
   const canonicalUnit = canonicalReady ? item!.canonical_unit! : null;
+  const verifiedConversion = resolveVerifiedCanonicalConversion(item);
 
   const operationOptions = useMemo<readonly SegmentOption<InventoryOperatorAction>[]>(
     () => [
@@ -499,9 +501,20 @@ export default function InventoryDetailScreen() {
             ) : (
               <>
                 <Text style={styles.canonicalMeta}>
-                  {t("inventory.ops.canonicalUnit", {
-                    unit: t(`inventory.ops.unit.${canonicalUnit}` as "inventory.ops.unit.g")
-                  })}
+                  {verifiedConversion
+                    ? t("inventory.ops.canonicalConversion", {
+                        purchaseUnit: verifiedConversion.purchaseUnit,
+                        quantity: formatNumber(verifiedConversion.quantityPerUnit, {
+                          maximumFractionDigits: 6,
+                          useGrouping: false
+                        }),
+                        unit: t(
+                          `inventory.ops.unit.${verifiedConversion.canonicalUnit}` as "inventory.ops.unit.g"
+                        )
+                      })
+                    : t("inventory.ops.canonicalUnit", {
+                        unit: t(`inventory.ops.unit.${canonicalUnit}` as "inventory.ops.unit.g")
+                      })}
                 </Text>
                 {mutationAllowed ? (
                   <>
