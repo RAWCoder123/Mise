@@ -7,6 +7,7 @@ import {
   getInventoryHealthTotal,
   getWellStockedPercentage,
   inventoryHealthStatusOrder,
+  inventoryHealthTier,
   normalizeInventoryHealthCounts
 } from "../services/presentation/inventoryHealthPresentation";
 
@@ -64,4 +65,12 @@ test("inventory health accessibility keeps exact counts while announcing the agg
     }),
     "No items"
   );
+});
+
+test("inventory health tier refuses Healthy when Low or Watch items exist", () => {
+  assert.equal(inventoryHealthTier({ good: 9, watch: 0, low: 0, critical: 0 }), "healthy");
+  assert.equal(inventoryHealthTier({ good: 9, watch: 1, low: 0, critical: 0 }), "watch");
+  assert.equal(inventoryHealthTier({ good: 9, watch: 0, low: 1, critical: 0 }), "attention");
+  assert.equal(inventoryHealthTier({ good: 9, watch: 0, low: 0, critical: 1 }), "attention");
+  assert.equal(inventoryHealthTier({ good: 0, watch: 0, low: 0, critical: 0 }), "watch");
 });
