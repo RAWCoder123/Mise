@@ -495,6 +495,18 @@ export interface InventoryControlSummary {
   nextStep: string;
 }
 
+export type RecipeYieldReadout =
+  | {
+      status: "recorded";
+      recipeVersionId: string;
+      versionStatus: "draft" | "verified";
+      servingQuantity: number;
+      prepYield: number;
+      cookingYield: number;
+      rawUsageMultiplier: number;
+    }
+  | { status: "missing" };
+
 export interface RecipeBaselineItem {
   menuItemId?: string | null;
   menu_item_name: string;
@@ -506,6 +518,8 @@ export interface RecipeBaselineItem {
   confirmedRevision?: number | null;
   confirmedAt?: string | null;
   authorityReady?: boolean;
+  /** Current `recipe_versions` yield factors when a SELECT row exists; never invented. */
+  yieldReadout?: RecipeYieldReadout;
 }
 
 export interface RecipeAuthorityState {
