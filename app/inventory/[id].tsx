@@ -53,6 +53,7 @@ export default function InventoryDetailScreen() {
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
+  const [purchaseUnit, setPurchaseUnit] = useState("");
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
   const [savingSettings, setSavingSettings] = useState(false);
@@ -100,6 +101,7 @@ export default function InventoryDetailScreen() {
             useGrouping: false
           })
         );
+        setPurchaseUnit(nextOutlook.item.unit);
         setSettingErrors({});
       }
     } catch {
@@ -127,6 +129,7 @@ export default function InventoryDetailScreen() {
     setNoteText("");
     setParLevel("");
     setReorderThreshold("");
+    setPurchaseUnit("");
     setQuantityError(undefined);
     setSettingErrors({});
     setSavingSettings(false);
@@ -271,6 +274,7 @@ export default function InventoryDetailScreen() {
     }
 
     const nextSettingErrors: InventorySettingErrors = {
+      purchaseUnit: validatePurchaseUnit(purchaseUnit, t),
       parLevel: validateInventoryNumber(
         parLevel,
         t("inventory.detail.field.parLevel"),
@@ -300,6 +304,7 @@ export default function InventoryDetailScreen() {
     setMessageIsError(false);
     try {
       await updateInventoryItem(restaurantId, item.id, {
+        unit: purchaseUnit.trim().replace(/\s+/g, " "),
         par_level: parseNumber(parLevel) ?? 0,
         reorder_threshold: parseNumber(reorderThreshold) ?? 0
       });
@@ -576,7 +581,21 @@ export default function InventoryDetailScreen() {
               {canManage ? t("inventory.detail.parSettings") : t("inventory.detail.countSettings")}
             </Text>
             <Field
-              label={t("inventory.detail.parLevel", { unit: item.unit })}
+              label={t("inventory.detail.purchaseUnit")}
+              value={purchaseUnit}
+              onChangeText={(value) => {
+                setPurchaseUnit(value);
+                setSettingErrors((current) => ({ ...current, purchaseUnit: undefined }));
+              }}
+              editable={actionsEditable && !busy}
+              error={settingErrors.purchaseUnit}
+              keyboardType="default"
+            />
+            {canManage ? (
+              <Text style={styles.copy}>{t("inventory.detail.purchaseUnitHint")}</Text>
+            ) : null}
+            <Field
+              label={t("inventory.detail.parLevel", { unit: purchaseUnit.trim() || item.unit })}
               value={parLevel}
               onChangeText={(value) => {
                 setParLevel(value);
@@ -586,7 +605,9 @@ export default function InventoryDetailScreen() {
               error={settingErrors.parLevel}
             />
             <Field
-              label={t("inventory.detail.reorderThreshold", { unit: item.unit })}
+              label={t("inventory.detail.reorderThreshold", {
+                unit: purchaseUnit.trim() || item.unit
+              })}
               value={reorderThreshold}
               onChangeText={(value) => {
                 setReorderThreshold(value);
@@ -694,8 +715,22 @@ function Field({
 }
 
 interface InventorySettingErrors {
+  purchaseUnit?: string;
   parLevel?: string;
   reorderThreshold?: string;
+}
+
+function validatePurchaseUnit(value: string, t: ReturnType<typeof useLocale>["t"]) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return t("inventory.detail.fieldRequired", { field: t("inventory.detail.field.purchaseUnit") });
+  }
+  if (normalized.length > operatingLimits.inventoryPurchaseUnitLength) {
+    return t("inventory.detail.purchaseUnitLength", {
+      maximum: operatingLimits.inventoryPurchaseUnitLength
+    });
+  }
+  return undefined;
 }
 
 function isCanonicalUnitReady(item: InventoryItem) {

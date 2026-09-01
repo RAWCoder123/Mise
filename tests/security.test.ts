@@ -323,6 +323,10 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
     "supabase/migrations/20260824034152_mise_003c_durable_supplier_identity.sql",
     "utf8"
   );
+  const purchaseUnitMigration = readFileSync(
+    "supabase/migrations/20260901170000_inventory_purchase_unit_policy_patch.sql",
+    "utf8"
+  );
   const projectionMigration = readFileSync(
     "supabase/migrations/20260727203458_inventory_event_projection_authority.sql",
     "utf8"
@@ -330,7 +334,7 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
   const updateWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+updateInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
 
   assert.match(validation, /patch\.current_quantity[\s\S]*remain auditable/i);
-  assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold"\]\)/i);
+  assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold", "unit"\]\)/i);
   assert.doesNotMatch(edgeWorkflow, /new Set\([^\n]+supplier_name/i);
   assert.match(updateWorkflow, /fetchAnchoredPlanningData[\s\S]*fetchRecommendationHistory/i);
   assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);
@@ -361,6 +365,14 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
   );
   assert.doesNotMatch(
     durableSupplierMigration,
+    /safe_patch\s*-\s*array\[[^\]]*'supplier_name'/i
+  );
+  assert.match(
+    purchaseUnitMigration,
+    /safe_patch\s*-\s*array\['par_level',\s*'reorder_threshold',\s*'unit'\]/i
+  );
+  assert.doesNotMatch(
+    purchaseUnitMigration,
     /safe_patch\s*-\s*array\[[^\]]*'supplier_name'/i
   );
   assert.match(projectionMigration, /after insert on public\.inventory_events/i);
