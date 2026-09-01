@@ -418,3 +418,141 @@ test("answerAskMise briefing combines Watch stock and provisional POS sales cave
   assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales.pos")));
   assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.watch")));
 });
+
+test("answerAskMise general refuses all-clear when only Watch inventory remains", () => {
+  const reply = answerAskMise({
+    question: "hello there",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { watch: 2, low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: [
+        {
+          id: "attn-watch",
+          title: "Basil on Watch",
+          detail: "Confirm count",
+          actionLabel: "Open",
+          route: "/inventory",
+          severity: "info"
+        }
+      ],
+      operationalTasks: [],
+      salesToday: 0,
+      itemsSold: 0
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "general");
+  assert.match(reply.answer, /ask\.answer\.stock\.watch\.other/);
+  assert.match(reply.answer, /ask\.answer\.stock\.watch\.named/);
+  assert.match(reply.answer, /Basil on Watch/);
+  assert.match(reply.answer, /ask\.answer\.stock\.watch\.next/);
+  assert.match(reply.answer, /ask\.answer\.general\.steer/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.fallback/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.watch")));
+  assert.equal(reply.showPriorities, false);
+});
+
+test("answerAskMise general prefers POS then Watch tasks and grounds sales thinking", () => {
+  const watchTask = task({
+    id: "task-watch-general",
+    source: { kind: "inventory", id: "item-watch", status: "Watch" },
+    title: "Confirm basil count",
+    action: {
+      intent: "update_inventory_count",
+      label: "Confirm count",
+      route: "/inventory",
+      entityId: "item-watch"
+    }
+  });
+  const posTask = task({
+    id: "task-pos-general",
+    source: { kind: "integration", id: "pos", status: "missing" },
+    title: "Connect Square POS",
+    action: {
+      intent: "connect_pos",
+      label: "Connect POS",
+      route: "/settings/pos",
+      entityId: null
+    }
+  });
+  const otherTask = task({
+    id: "task-other-general",
+    source: { kind: "order", id: "order-1", status: "draft" },
+    title: "Review draft order",
+    action: {
+      intent: "review_recommendation",
+      label: "Review",
+      route: "/orders",
+      entityId: "order-1"
+    }
+  });
+
+  const reply = answerAskMise({
+    question: "hey mise",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { watch: 1, low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: [],
+      operationalTasks: [otherTask, watchTask, posTask],
+      salesToday: 180,
+      itemsSold: 12
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "general");
+  assert.match(reply.answer, /ask\.answer\.general\.tasks/);
+  assert.match(reply.answer, /Connect Square POS/);
+  assert.match(reply.answer, /ask\.answer\.general\.steer/);
+  assert.equal(reply.priorities[0]?.id, "task-pos-general");
+  assert.equal(reply.priorities[1]?.id, "task-watch-general");
+  assert.equal(reply.priorities[2]?.id, "task-other-general");
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales.pos")));
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.watch")));
+});
+
+test("answerAskMise general keeps fallback only when stock Watch and POS are clear", () => {
+  const reply = answerAskMise({
+    question: "hello",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { watch: 0, low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: [],
+      operationalTasks: [],
+      salesToday: 500,
+      itemsSold: 40
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "general");
+  assert.equal(reply.answer, "ask.answer.fallback");
+  assert.equal(reply.showPriorities, false);
+  assert.ok(!reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales.pos")));
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.clear")));
+});
