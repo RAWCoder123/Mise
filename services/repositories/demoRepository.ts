@@ -96,12 +96,13 @@ import {
   SUPPLIER_SEND_CONTENT_VERSION
 } from "../domain/supplierSendContent";
 import {
-  assertSessionMutable,
   buildCountSessionLinesFromInventory,
   mergeCountLineUpdates,
   planCountSessionApprovals,
-  summarizeCountSessionProgress
+  summarizeCountSessionProgress,
+  assertSessionMutable
 } from "../domain/inventoryCountSessions";
+import { normalizeOperationalQuantity } from "../domain/operationalMapping";
 import {
   normalizeOperationalFindingDecision,
   normalizeOperationalFindingDecisionInput
@@ -153,6 +154,23 @@ import {
 } from "./repositoryContracts";
 
 const demoConfirmedRecipeFingerprints = new Map<string, string>();
+
+function applyDemoPurchaseUnitCanonicalNormalization(item: InventoryItem) {
+  const inferred = normalizeOperationalQuantity({ quantity: 1, unit: item.unit });
+  if (inferred.ok) {
+    item.canonical_unit = inferred.unit;
+    item.canonical_quantity_per_unit = inferred.quantity;
+    item.canonical_unit_verification_status = "verified";
+    item.canonical_unit_verified_at = new Date().toISOString();
+    item.canonical_unit_verified_by = DEMO_USER_ID;
+    return;
+  }
+  item.canonical_unit = null;
+  item.canonical_quantity_per_unit = null;
+  item.canonical_unit_verification_status = "draft";
+  item.canonical_unit_verified_at = null;
+  item.canonical_unit_verified_by = null;
+}
 
 function demoRecipeAuthorityStates(state: DemoState, restaurantId: string): RecipeAuthorityState[] {
   const grouped = new Map<string, MenuItemIngredient[]>();
@@ -1815,7 +1833,14 @@ export function createLocalDemoRepository(): MiseRepository {
         if (item.last_updated !== expectedLastUpdated) {
           throw new Error("Inventory item changed since it was loaded. Reload and try again.");
         }
+        const previousUnit = item.unit;
         Object.assign(item, patch, { last_updated: new Date().toISOString() });
+        if (
+          Object.prototype.hasOwnProperty.call(patch, "unit") &&
+          item.unit !== previousUnit
+        ) {
+          applyDemoPurchaseUnitCanonicalNormalization(item);
+        }
         state.purchaseRecommendations = [
           ...state.purchaseRecommendations.filter(
             (recommendation) => recommendation.restaurant_id !== restaurantId || recommendation.status !== "pending"

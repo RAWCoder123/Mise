@@ -712,6 +712,7 @@ test("validation normalizes reads and rejects invalid mutation quantities", () =
     );
   }
   assert.deepEqual(requireInventoryItemPatch({ par_level: 10 }), { par_level: 10 });
+  assert.deepEqual(requireInventoryItemPatch({ unit: " kg " }), { unit: "kg" });
   assert.throws(
     () => requireInventoryItemPatch({ current_quantity: 0 }),
     /remain auditable/

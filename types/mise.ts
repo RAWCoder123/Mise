@@ -688,7 +688,7 @@ export interface TodaySummary {
 }
 
 export type InventoryItemPatch = Partial<
-  Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold">
+  Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold" | "unit">
 >;
 
 export type PosProvider = "Toast" | "Square" | "Clover" | "Lightspeed" | "Manual CSV Upload";
