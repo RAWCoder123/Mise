@@ -86,6 +86,10 @@ import {
   type InventoryEvent,
   type InventoryEventInput
 } from "../domain/inventoryLedger";
+import {
+  normalizeIngredientSubstitution,
+  type IngredientSubstitutionInput
+} from "../domain/ingredientSubstitutions";
 import { isTemporallyValidCount } from "../domain/inventoryCountAuthority";
 import {
   PurchaseAuthorityBlockedError,
@@ -558,6 +562,30 @@ function prepareResetDemoState(state: DemoState) {
   rebuildInsights(state, state.currentRestaurantId);
 }
 
+
+function assertDemoSubstitutionItems(state: DemoState, input: IngredientSubstitutionInput) {
+  if (input.sourceInventoryItemId === input.substituteInventoryItemId) {
+    throw new Error("Substitution items must be distinct");
+  }
+  const source = state.inventoryItems.find(
+    (item) => item.restaurant_id === input.restaurantId && item.id === input.sourceInventoryItemId
+  );
+  const substitute = state.inventoryItems.find(
+    (item) => item.restaurant_id === input.restaurantId && item.id === input.substituteInventoryItemId
+  );
+  if (!source || !substitute) throw new Error("Inventory item not found for restaurant");
+  const sourceNorm = normalizeInventoryItem(source);
+  const substituteNorm = normalizeInventoryItem(substitute);
+  if (
+    sourceNorm.canonical_unit_verification_status !== "verified" ||
+    substituteNorm.canonical_unit_verification_status !== "verified" ||
+    sourceNorm.canonical_unit !== input.canonicalUnit ||
+    substituteNorm.canonical_unit !== input.canonicalUnit
+  ) {
+    throw new Error("Substitution requires verified matching canonical units");
+  }
+}
+
 function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   const restaurant = fetchRestaurantFromState(state, restaurantId);
   const generatedAt = new Date().toISOString();
@@ -614,6 +642,24 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   datasets.supplier_recipients = tenantRows(state.supplierRecipients);
   datasets.operational_finding_decisions = tenantRows(state.operationalFindingDecisions);
   datasets.operational_issues = [];
+  datasets.ingredient_substitutions = (state.ingredientSubstitutions ?? [])
+    .filter((entry) => entry.restaurantId === restaurantId)
+    .map((entry) => ({
+      id: entry.id,
+      restaurant_id: entry.restaurantId,
+      source_inventory_item_id: entry.sourceInventoryItemId,
+      substitute_inventory_item_id: entry.substituteInventoryItemId,
+      source_quantity: entry.sourceQuantity,
+      substitute_quantity: entry.substituteQuantity,
+      canonical_unit: entry.canonicalUnit,
+      verification_status: entry.verificationStatus,
+      effective_from: entry.effectiveFrom,
+      effective_to: entry.effectiveTo,
+      verified_at: entry.verifiedAt,
+      verified_by: entry.verifiedBy,
+      created_at: entry.createdAt,
+      updated_at: entry.updatedAt
+    }));
   datasets.inventory_events = (state.inventoryEvents ?? [])
     .filter((event) => event.restaurantId === restaurantId)
     .map((event) => ({
@@ -1321,6 +1367,182 @@ export function createLocalDemoRepository(): MiseRepository {
           }
         });
         return normalizeInventoryItem(item);
+      });
+    },
+
+    async listIngredientSubstitutions(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return (state.ingredientSubstitutions ?? [])
+        .filter((entry) => entry.restaurantId === restaurantId)
+        .map((entry) => normalizeIngredientSubstitution(entry as unknown as Record<string, unknown>))
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id));
+    },
+
+    async upsertIngredientSubstitution(input) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, input.restaurantId);
+        if (!state.ingredientSubstitutions) state.ingredientSubstitutions = [];
+        assertDemoSubstitutionItems(state, input);
+        const now = new Date().toISOString();
+        if (input.substitutionId) {
+          const existing = state.ingredientSubstitutions.find(
+            (entry) => entry.restaurantId === input.restaurantId && entry.id === input.substitutionId
+          );
+          if (!existing) throw new Error("Ingredient substitution not found");
+          if (existing.verificationStatus !== "draft") {
+            throw new Error("Only draft substitutions can be edited");
+          }
+          existing.sourceInventoryItemId = input.sourceInventoryItemId;
+          existing.substituteInventoryItemId = input.substituteInventoryItemId;
+          existing.sourceQuantity = input.sourceQuantity;
+          existing.substituteQuantity = input.substituteQuantity;
+          existing.canonicalUnit = input.canonicalUnit;
+          existing.updatedAt = now;
+          appendDemoAuditLog(state, {
+            restaurant_id: input.restaurantId,
+            action: "ingredient_substitution.upserted",
+            entity_table: "ingredient_substitutions",
+            entity_id: existing.id,
+            metadata: {
+              source_inventory_item_id: existing.sourceInventoryItemId,
+              substitute_inventory_item_id: existing.substituteInventoryItemId,
+              verification_status: existing.verificationStatus,
+              simulated: true
+            }
+          });
+          return normalizeIngredientSubstitution(existing as unknown as Record<string, unknown>);
+        }
+        const created = {
+          id: createId("ingredient_sub"),
+          restaurantId: input.restaurantId,
+          sourceInventoryItemId: input.sourceInventoryItemId,
+          substituteInventoryItemId: input.substituteInventoryItemId,
+          sourceQuantity: input.sourceQuantity,
+          substituteQuantity: input.substituteQuantity,
+          canonicalUnit: input.canonicalUnit,
+          verificationStatus: "draft" as const,
+          effectiveFrom: now,
+          effectiveTo: null,
+          verifiedAt: null,
+          verifiedBy: null,
+          createdAt: now,
+          updatedAt: now
+        };
+        state.ingredientSubstitutions.push(created);
+        appendDemoAuditLog(state, {
+          restaurant_id: input.restaurantId,
+          action: "ingredient_substitution.upserted",
+          entity_table: "ingredient_substitutions",
+          entity_id: created.id,
+          metadata: {
+            source_inventory_item_id: created.sourceInventoryItemId,
+            substitute_inventory_item_id: created.substituteInventoryItemId,
+            verification_status: created.verificationStatus,
+            simulated: true
+          }
+        });
+        return normalizeIngredientSubstitution(created as unknown as Record<string, unknown>);
+      });
+    },
+
+    async verifyIngredientSubstitution(restaurantId, substitutionId) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const existing = (state.ingredientSubstitutions ?? []).find(
+          (entry) => entry.restaurantId === restaurantId && entry.id === substitutionId
+        );
+        if (!existing) throw new Error("Ingredient substitution not found");
+        if (existing.verificationStatus !== "draft") {
+          throw new Error("Only draft substitutions can be verified");
+        }
+        assertDemoSubstitutionItems(state, {
+          restaurantId,
+          sourceInventoryItemId: existing.sourceInventoryItemId,
+          substituteInventoryItemId: existing.substituteInventoryItemId,
+          sourceQuantity: existing.sourceQuantity,
+          substituteQuantity: existing.substituteQuantity,
+          canonicalUnit: existing.canonicalUnit
+        });
+        const conflict = (state.ingredientSubstitutions ?? []).find(
+          (entry) =>
+            entry.restaurantId === restaurantId &&
+            entry.id !== substitutionId &&
+            entry.sourceInventoryItemId === existing.sourceInventoryItemId &&
+            entry.substituteInventoryItemId === existing.substituteInventoryItemId &&
+            entry.verificationStatus === "verified" &&
+            (entry.effectiveTo == null || Date.parse(entry.effectiveTo) > Date.now())
+        );
+        if (conflict) {
+          throw new Error("An active verified substitution already exists for this pair");
+        }
+        const now = new Date().toISOString();
+        existing.verificationStatus = "verified";
+        existing.verifiedAt = now;
+        existing.verifiedBy = DEMO_USER_ID;
+        existing.updatedAt = now;
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "ingredient_substitution.verified",
+          entity_table: "ingredient_substitutions",
+          entity_id: existing.id,
+          metadata: {
+            source_inventory_item_id: existing.sourceInventoryItemId,
+            substitute_inventory_item_id: existing.substituteInventoryItemId,
+            simulated: true
+          }
+        });
+        return normalizeIngredientSubstitution(existing as unknown as Record<string, unknown>);
+      });
+    },
+
+    async rejectIngredientSubstitution(restaurantId, substitutionId) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const existing = (state.ingredientSubstitutions ?? []).find(
+          (entry) => entry.restaurantId === restaurantId && entry.id === substitutionId
+        );
+        if (!existing) throw new Error("Ingredient substitution not found");
+        if (existing.verificationStatus !== "draft") {
+          throw new Error("Only draft substitutions can be rejected");
+        }
+        const now = new Date().toISOString();
+        existing.verificationStatus = "rejected";
+        existing.verifiedAt = now;
+        existing.verifiedBy = DEMO_USER_ID;
+        existing.updatedAt = now;
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "ingredient_substitution.rejected",
+          entity_table: "ingredient_substitutions",
+          entity_id: existing.id,
+          metadata: { simulated: true }
+        });
+        return normalizeIngredientSubstitution(existing as unknown as Record<string, unknown>);
+      });
+    },
+
+    async expireIngredientSubstitution(restaurantId, substitutionId) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const existing = (state.ingredientSubstitutions ?? []).find(
+          (entry) => entry.restaurantId === restaurantId && entry.id === substitutionId
+        );
+        if (!existing) throw new Error("Ingredient substitution not found");
+        if (existing.verificationStatus !== "verified") {
+          throw new Error("Only verified substitutions can be expired");
+        }
+        const now = new Date().toISOString();
+        existing.verificationStatus = "expired";
+        existing.effectiveTo = now;
+        existing.updatedAt = now;
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "ingredient_substitution.expired",
+          entity_table: "ingredient_substitutions",
+          entity_id: existing.id,
+          metadata: { effective_to: now, simulated: true }
+        });
+        return normalizeIngredientSubstitution(existing as unknown as Record<string, unknown>);
       });
     },
 
