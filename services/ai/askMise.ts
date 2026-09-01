@@ -98,6 +98,7 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
     pendingRecommendations: summary.pendingRecommendations,
     salesToday: summary.salesToday,
     currency: summary.restaurantCurrency,
+    prepWindowTaskCount: openTasks.filter(isBeforePrepRestaurantTask).length,
     helpers
   });
 
@@ -227,23 +228,39 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "prep": {
+      const prepWindowTasks = openTasks.filter(isBeforePrepRestaurantTask);
+      const prepWindowPriorities = preferPrepWindowTasks(openTasks, prepWindowTasks).slice(0, 3);
+      const prepWindowTitles = prepWindowTasks
+        .slice(0, 3)
+        .map((task) => presentOperationalTodayTask(helpers.locale, task).title);
       const prepTitles = prepInsights
         .slice(0, 3)
         .map((insight) => presentInsight(helpers.locale, insight).title);
       const answer =
-        prepTitles.length > 0
+        prepWindowTitles.length > 0
           ? [
               t("ask.answer.prep.lead"),
-              t("ask.answer.prep.named", { items: prepTitles.join("; ") }),
-              t("ask.answer.prep.next")
-            ].join(" ")
-          : t("ask.answer.prep.clear");
+              t("ask.answer.prep.tasks", { items: prepWindowTitles.join("; ") }),
+              t("ask.answer.prep.tasks.next"),
+              prepTitles.length > 0
+                ? t("ask.answer.prep.named", { items: prepTitles.join("; ") })
+                : null
+            ]
+              .filter(Boolean)
+              .join(" ")
+          : prepTitles.length > 0
+            ? [
+                t("ask.answer.prep.lead"),
+                t("ask.answer.prep.named", { items: prepTitles.join("; ") }),
+                t("ask.answer.prep.next")
+              ].join(" ")
+            : t("ask.answer.prep.clear");
       return {
         intent,
         thinkingSteps,
         answer,
-        showPriorities: priorities.length > 0,
-        priorities
+        showPriorities: prepWindowPriorities.length > 0 || priorities.length > 0,
+        priorities: prepWindowPriorities.length > 0 ? prepWindowPriorities : priorities
       };
     }
     case "waste": {
@@ -302,6 +319,27 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   }
 }
 
+/** Open shared restaurant tasks scheduled before prep block prep-clear answers. */
+export function isBeforePrepRestaurantTask(task: OperationalTodayTask): boolean {
+  return (
+    task.status === "open" &&
+    task.source.kind === "restaurant_task" &&
+    task.serviceWindow === "before_prep"
+  );
+}
+
+function preferPrepWindowTasks(
+  openTasks: readonly OperationalTodayTask[],
+  prepWindowTasks: readonly OperationalTodayTask[]
+): OperationalTodayTask[] {
+  if (prepWindowTasks.length === 0) return [...openTasks];
+  const preferredIds = new Set(prepWindowTasks.map((task) => task.id));
+  return [
+    ...prepWindowTasks,
+    ...openTasks.filter((task) => !preferredIds.has(task.id))
+  ];
+}
+
 function buildThinkingSteps(input: {
   intent: AskMiseIntent;
   restaurantName: string;
@@ -310,6 +348,7 @@ function buildThinkingSteps(input: {
   pendingRecommendations: number;
   salesToday: number;
   currency: string;
+  prepWindowTaskCount: number;
   helpers: AskMiseHelpers;
 }): string[] {
   const { helpers, intent } = input;
@@ -328,6 +367,15 @@ function buildThinkingSteps(input: {
       input.stockRisk > 0
         ? t("ask.thinking.stock.risk", { count: helpers.formatNumber(input.stockRisk) })
         : t("ask.thinking.stock.clear")
+    );
+  }
+  if (intent === "prep") {
+    steps.push(
+      input.prepWindowTaskCount > 0
+        ? t("ask.thinking.prep.tasks", {
+            count: helpers.formatNumber(input.prepWindowTaskCount)
+          })
+        : t("ask.thinking.prep.clear")
     );
   }
   if (intent === "orders" || intent === "briefing") {

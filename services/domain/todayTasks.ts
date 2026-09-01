@@ -30,6 +30,15 @@ export type OperationalTodayTaskPriority = "urgent" | "high" | "normal";
 export type OperationalTodayTaskStatus = "open" | "completed";
 export type OperationalTodayTaskRequiredRole = "member" | "manager" | "owner_admin";
 export type OperationalTodayTaskTiming = "overdue" | "due_soon" | "today" | "later" | "unscheduled";
+/** Mirrors shared restaurant-task windows when a Today task projects one. */
+export type OperationalTodayTaskServiceWindow =
+  | "before_lunch"
+  | "before_prep"
+  | "before_supplier_cutoff"
+  | "before_dinner_service"
+  | "during_closing"
+  | "end_of_day"
+  | "custom";
 
 export type OperationalTodayTaskActionIntent =
   | "update_inventory_count"
@@ -88,6 +97,11 @@ export interface OperationalTodayTask {
   action: OperationalTodayTaskAction;
   requiredRole: OperationalTodayTaskRequiredRole;
   status: OperationalTodayTaskStatus;
+  /**
+   * Set when this Today task is projected from a shared restaurant task that
+   * carries an operating service window. Derived workflow tasks leave this unset.
+   */
+  serviceWindow?: OperationalTodayTaskServiceWindow | null;
   completion: {
     derivedFromSource: true;
     canToggleDirectly: false;
