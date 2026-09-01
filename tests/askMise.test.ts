@@ -266,7 +266,15 @@ test("answerAskMise prep pairs count tasks with prep insights", () => {
         title: "Chicken Bowl depends on low stock",
         description: "Top seller uses low chicken thigh.",
         recommended_action: "Confirm chicken thigh before prep.",
-        created_at: "2026-09-01T12:00:00.000Z"
+        created_at: "2026-09-01T12:00:00.000Z",
+        presentation: {
+          code: "insight.rule.prep.low_stock",
+          values: {
+            menuItemName: "Chicken Bowl",
+            inventoryItemName: "Chicken thigh",
+            supplierName: "Sysco"
+          }
+        }
       }
     ],
     helpers
@@ -276,6 +284,6 @@ test("answerAskMise prep pairs count tasks with prep insights", () => {
   assert.match(reply.answer, /ask\.answer\.prep\.tasks\.lead/);
   assert.match(reply.answer, /Start inventory count/);
   assert.match(reply.answer, /ask\.answer\.prep\.named/);
-  assert.match(reply.answer, /Chicken Bowl depends on low stock/);
+  assert.match(reply.answer, /Chicken Bowl/);
   assert.equal(reply.priorities[0]?.id, "task-begin-count");
 });
