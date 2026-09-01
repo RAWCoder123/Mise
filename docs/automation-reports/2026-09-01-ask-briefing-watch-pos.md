@@ -15,7 +15,7 @@ Ask Mise briefings no longer present a trusted board when only Watch inventory r
 ### POS sales on briefing
 - Open `connect_pos` / `manage_pos_connection` / `repair_pos_connection` tasks block authoritative sales on the board
 - Observed sales become provisional; zero sales stays unavailable
-- Prefer those POS tasks ahead of other open work in briefing priorities
+- Prefer those POS tasks ahead of other open work in briefing priorities, including ahead of Watch count tasks when both apply
 - Briefing thinking now uses `ask.thinking.sales.pos` (same as sales intent)
 
 ### Trusted board retained
