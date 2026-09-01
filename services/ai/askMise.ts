@@ -252,24 +252,111 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "priorities": {
-      if (priorities.length === 0) {
+      const watchOnlyStock = stockRisk === 0 && watchCount > 0;
+      const salesUntrusted = posSalesTasks.length > 0;
+
+      let prioritiesOrdered = openTasks;
+      if (watchOnlyStock) {
+        prioritiesOrdered = preferWatchCountTasks(prioritiesOrdered, watchCountTasks);
+      }
+      if (salesUntrusted) {
+        prioritiesOrdered = preferPosSalesTasks(prioritiesOrdered, posSalesTasks);
+      }
+      const orderedPriorities = prioritiesOrdered.slice(0, 3);
+      const insightTail = presentedInsight
+        ? t("ask.answer.prioritiesInsight", { insight: presentedInsight.title })
+        : t("ask.answer.prioritiesNoInsight");
+
+      if (orderedPriorities.length > 0) {
         return {
           intent,
           thinkingSteps,
-          answer: t("ask.answer.fallback"),
+          answer: `${t("ask.answer.prioritiesLead")} ${insightTail}`,
+          showPriorities: true,
+          priorities: orderedPriorities
+        };
+      }
+
+      // No open tasks — refuse all-clear when stock risk, Watch, or pending orders remain.
+      if (stockRisk > 0) {
+        const answer = [
+          t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
+            count: helpers.formatNumber(stockRisk)
+          }),
+          attentionTitles.length > 0
+            ? t("ask.answer.stock.named", { items: attentionTitles.join("; ") })
+            : null,
+          summary.pendingRecommendations > 0
+            ? t(
+                summary.pendingRecommendations === 1
+                  ? "ask.answer.stock.orders.one"
+                  : "ask.answer.stock.orders.other",
+                { count: helpers.formatNumber(summary.pendingRecommendations) }
+              )
+            : t("ask.answer.stock.next"),
+          insightTail
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return {
+          intent,
+          thinkingSteps,
+          answer,
           showPriorities: false,
           priorities: []
         };
       }
-      const insightTail = presentedInsight
-        ? t("ask.answer.prioritiesInsight", { insight: presentedInsight.title })
-        : t("ask.answer.prioritiesNoInsight");
+
+      if (watchCount > 0) {
+        const answer = [
+          t(watchCount === 1 ? "ask.answer.stock.watch.one" : "ask.answer.stock.watch.other", {
+            count: helpers.formatNumber(watchCount)
+          }),
+          attentionTitles.length > 0
+            ? t("ask.answer.stock.watch.named", { items: attentionTitles.join("; ") })
+            : null,
+          t("ask.answer.stock.watch.next"),
+          insightTail
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return {
+          intent,
+          thinkingSteps,
+          answer,
+          showPriorities: false,
+          priorities: []
+        };
+      }
+
+      if (summary.pendingRecommendations > 0) {
+        const answer = [
+          t(
+            summary.pendingRecommendations === 1 ? "ask.answer.orders.one" : "ask.answer.orders.other",
+            { count: helpers.formatNumber(summary.pendingRecommendations) }
+          ),
+          attentionTitles.length > 0
+            ? t("ask.answer.orders.named", { items: attentionTitles.join("; ") })
+            : null,
+          insightTail
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return {
+          intent,
+          thinkingSteps,
+          answer,
+          showPriorities: false,
+          priorities: []
+        };
+      }
+
       return {
         intent,
         thinkingSteps,
-        answer: `${t("ask.answer.prioritiesLead")} ${insightTail}`,
-        showPriorities: true,
-        priorities
+        answer: t("ask.answer.fallback"),
+        showPriorities: false,
+        priorities: []
       };
     }
     case "briefing": {
@@ -519,7 +606,14 @@ function buildThinkingSteps(input: {
     })
   ];
 
-  if (intent === "stock" || intent === "prep" || intent === "waste" || intent === "briefing" || intent === "general") {
+  if (
+    intent === "stock" ||
+    intent === "prep" ||
+    intent === "waste" ||
+    intent === "briefing" ||
+    intent === "general" ||
+    intent === "priorities"
+  ) {
     if (input.stockRisk > 0) {
       steps.push(t("ask.thinking.stock.risk", { count: helpers.formatNumber(input.stockRisk) }));
     } else if (input.watchCount > 0) {
@@ -528,7 +622,7 @@ function buildThinkingSteps(input: {
       steps.push(t("ask.thinking.stock.clear"));
     }
   }
-  if (intent === "orders" || intent === "briefing") {
+  if (intent === "orders" || intent === "briefing" || intent === "priorities") {
     steps.push(
       input.pendingRecommendations > 0
         ? t("ask.thinking.orders.pending", {
@@ -537,7 +631,11 @@ function buildThinkingSteps(input: {
         : t("ask.thinking.orders.clear")
     );
   }
-  if (intent === "sales" || intent === "briefing" || (intent === "general" && input.posSalesTaskCount > 0)) {
+  if (
+    intent === "sales" ||
+    intent === "briefing" ||
+    ((intent === "general" || intent === "priorities") && input.posSalesTaskCount > 0)
+  ) {
     if (input.posSalesTaskCount > 0) {
       steps.push(
         t("ask.thinking.sales.pos", {

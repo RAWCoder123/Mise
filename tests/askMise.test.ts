@@ -255,6 +255,171 @@ test("answerAskMise returns priority cards for priority questions", () => {
   assert.match(reply.answer, /ask\.answer\.prioritiesLead/);
 });
 
+test("answerAskMise priorities refuses all-clear when only Watch inventory remains", () => {
+  const reply = answerAskMise({
+    question: "What should I focus on today?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: null,
+      service_style: "full_service",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      pendingRecommendations: 0,
+      inventoryHealth: { watch: 2, low: 0, critical: 0 },
+      attentionCards: [
+        {
+          id: "attn-watch",
+          title: "Basil on Watch",
+          detail: "Confirm count",
+          actionLabel: "Open",
+          route: "/inventory",
+          severity: "info"
+        }
+      ],
+      operationalTasks: []
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "priorities");
+  assert.match(reply.answer, /ask\.answer\.stock\.watch\.other/);
+  assert.match(reply.answer, /ask\.answer\.stock\.watch\.named/);
+  assert.match(reply.answer, /Basil on Watch/);
+  assert.match(reply.answer, /ask\.answer\.stock\.watch\.next/);
+  assert.match(reply.answer, /ask\.answer\.prioritiesNoInsight/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.fallback/);
+  assert.equal(reply.showPriorities, false);
+  assert.equal(reply.priorities.length, 0);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.watch")));
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.orders.clear")));
+});
+
+test("answerAskMise priorities prefers POS then Watch tasks and grounds sales thinking", () => {
+  const watchTask = task({
+    id: "task-watch-priorities",
+    source: { kind: "inventory", id: "item-watch", status: "Watch" },
+    title: "Confirm basil count",
+    action: {
+      intent: "update_inventory_count",
+      label: "Confirm count",
+      route: "/inventory",
+      entityId: "item-watch"
+    }
+  });
+  const posTask = task({
+    id: "task-pos-priorities",
+    source: { kind: "integration", id: "pos-1", status: "error" },
+    title: "Reconnect Square",
+    action: {
+      intent: "repair_pos_connection",
+      label: "Repair POS",
+      route: "/settings/pos",
+      entityId: "pos-1"
+    }
+  });
+  const otherTask = task({
+    id: "task-other-priorities",
+    title: "Approve produce ticket"
+  });
+  const reply = answerAskMise({
+    question: "What are my top priorities today?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: null,
+      service_style: "full_service",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      pendingRecommendations: 1,
+      inventoryHealth: { watch: 1, low: 0, critical: 0 },
+      operationalTasks: [otherTask, watchTask, posTask],
+      salesToday: 0,
+      itemsSold: 0
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "priorities");
+  assert.match(reply.answer, /ask\.answer\.prioritiesLead/);
+  assert.equal(reply.showPriorities, true);
+  assert.equal(reply.priorities[0]?.id, "task-pos-priorities");
+  assert.equal(reply.priorities[1]?.id, "task-watch-priorities");
+  assert.equal(reply.priorities[2]?.id, "task-other-priorities");
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.watch")));
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales.pos")));
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.orders.pending")));
+});
+
+test("answerAskMise priorities keeps fallback only when Watch stock, risk, and orders are clear", () => {
+  const reply = answerAskMise({
+    question: "What should I prioritize?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: null,
+      service_style: "full_service",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      pendingRecommendations: 0,
+      inventoryHealth: { watch: 0, low: 0, critical: 0 },
+      attentionCards: [],
+      operationalTasks: [],
+      salesToday: 0,
+      itemsSold: 0
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "priorities");
+  assert.equal(reply.answer, "ask.answer.fallback");
+  assert.equal(reply.showPriorities, false);
+  assert.equal(reply.priorities.length, 0);
+});
+
+test("answerAskMise priorities surfaces pending orders when no open tasks remain", () => {
+  const reply = answerAskMise({
+    question: "What are my urgent priorities?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: null,
+      service_style: "full_service",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      pendingRecommendations: 2,
+      inventoryHealth: { watch: 0, low: 0, critical: 0 },
+      attentionCards: [
+        {
+          id: "attn-order",
+          title: "Produce ticket ready",
+          detail: "Approve",
+          actionLabel: "Open",
+          route: "/orders",
+          severity: "warning"
+        }
+      ],
+      operationalTasks: []
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "priorities");
+  assert.match(reply.answer, /ask\.answer\.orders\.other/);
+  assert.match(reply.answer, /ask\.answer\.orders\.named/);
+  assert.match(reply.answer, /Produce ticket ready/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.fallback/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.orders.pending")));
+});
+
 test("answerAskMise briefing uses restaurant name and board counts", () => {
   const reply = answerAskMise({
     question: "Give me a quick briefing",
