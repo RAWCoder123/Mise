@@ -273,5 +273,148 @@ test("answerAskMise briefing uses restaurant name and board counts", () => {
   assert.equal(reply.intent, "briefing");
   assert.match(reply.answer, /Harbor Bistro/);
   assert.match(reply.answer, /ask\.answer\.briefing\.board/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.briefing\.board\.core/);
   assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales")));
+});
+
+test("answerAskMise briefing refuses trusted stock clear when only Watch inventory remains", () => {
+  const watchTask = task({
+    id: "task-watch-brief",
+    source: { kind: "inventory", id: "item-watch", status: "Watch" },
+    title: "Confirm basil count",
+    action: {
+      intent: "update_inventory_count",
+      label: "Confirm count",
+      route: "/inventory",
+      entityId: "item-watch"
+    }
+  });
+  const reply = answerAskMise({
+    question: "Give me a quick briefing",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { watch: 2, low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: [],
+      operationalTasks: [watchTask],
+      salesToday: 640,
+      itemsSold: 44
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "briefing");
+  assert.match(reply.answer, /ask\.answer\.briefing\.board\.core/);
+  assert.match(reply.answer, /ask\.answer\.briefing\.stock\.watch\.other/);
+  assert.match(reply.answer, /ask\.answer\.briefing\.sales:/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.briefing\.board:/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.watch")));
+  assert.equal(reply.priorities[0]?.id, "task-watch-brief");
+});
+
+test("answerAskMise briefing treats sales as provisional when POS connection work is open", () => {
+  const posTask = task({
+    id: "task-pos-brief",
+    source: { kind: "integration", id: "pos", status: "missing" },
+    title: "Connect restaurant sales",
+    detail: "Connect a POS provider before relying on live sales.",
+    action: {
+      intent: "connect_pos",
+      label: "Connect POS",
+      route: "/settings/pos",
+      entityId: null
+    },
+    requiredRole: "owner_admin"
+  });
+  const reply = answerAskMise({
+    question: "How are we looking overall?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { watch: 0, low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: [],
+      operationalTasks: [posTask],
+      salesToday: 0,
+      itemsSold: 0,
+      topItems: []
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "briefing");
+  assert.match(reply.answer, /ask\.answer\.briefing\.board\.core/);
+  assert.match(reply.answer, /ask\.answer\.briefing\.stock\.clear/);
+  assert.match(reply.answer, /ask\.answer\.briefing\.sales\.pos\.unavailable/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.briefing\.board:/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales.pos")));
+  assert.equal(reply.priorities[0]?.id, "task-pos-brief");
+});
+
+test("answerAskMise briefing combines Watch stock and provisional POS sales caveats", () => {
+  const watchTask = task({
+    id: "task-watch-combo",
+    source: { kind: "inventory", id: "item-watch", status: "Watch" },
+    title: "Confirm cream count",
+    action: {
+      intent: "update_inventory_count",
+      label: "Confirm count",
+      route: "/inventory",
+      entityId: "item-watch"
+    }
+  });
+  const repairTask = task({
+    id: "task-pos-combo",
+    source: { kind: "integration", id: "pos-1", status: "error" },
+    title: "Fix Square sales connection",
+    action: {
+      intent: "repair_pos_connection",
+      label: "Repair POS",
+      route: "/settings/pos",
+      entityId: "pos-1"
+    },
+    requiredRole: "owner_admin"
+  });
+  const reply = answerAskMise({
+    question: "Give me a status overview",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { watch: 1, low: 0, critical: 0 },
+      pendingRecommendations: 1,
+      attentionCards: [],
+      operationalTasks: [watchTask, repairTask],
+      salesToday: 310,
+      itemsSold: 22
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "briefing");
+  assert.match(reply.answer, /ask\.answer\.briefing\.stock\.watch\.one/);
+  assert.match(reply.answer, /ask\.answer\.briefing\.sales\.pos\.provisional/);
+  assert.match(reply.answer, /sales=\$310/);
+  assert.equal(reply.priorities[0]?.id, "task-pos-combo");
+  assert.equal(reply.priorities[1]?.id, "task-watch-combo");
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales.pos")));
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.watch")));
 });

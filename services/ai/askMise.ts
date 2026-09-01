@@ -274,19 +274,71 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "briefing": {
+      const hasObservedSales = summary.salesToday > 0 || summary.itemsSold > 0;
+      const watchOnlyStock = stockRisk === 0 && watchCount > 0;
+      const salesUntrusted = posSalesTasks.length > 0;
+      const useTrustedBoard = !watchOnlyStock && !salesUntrusted;
+
+      let briefingOrdered = openTasks;
+      if (salesUntrusted) {
+        briefingOrdered = preferPosSalesTasks(briefingOrdered, posSalesTasks);
+      }
+      if (watchOnlyStock) {
+        briefingOrdered = preferWatchCountTasks(briefingOrdered, watchCountTasks);
+      }
+      const briefingPriorities = briefingOrdered.slice(0, 3);
+      const briefingFocusTitles = briefingPriorities.map(
+        (task) => presentOperationalTodayTask(helpers.locale, task).title
+      );
+
+      const stockLine = stockRisk > 0
+        ? t("ask.answer.briefing.stock.risk", {
+            count: helpers.formatNumber(stockRisk)
+          })
+        : watchOnlyStock
+          ? t(
+              watchCount === 1
+                ? "ask.answer.briefing.stock.watch.one"
+                : "ask.answer.briefing.stock.watch.other",
+              { count: helpers.formatNumber(watchCount) }
+            )
+          : t("ask.answer.briefing.stock.clear");
+
+      const salesLine = salesUntrusted
+        ? hasObservedSales
+          ? t("ask.answer.briefing.sales.pos.provisional", {
+              sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency),
+              count: helpers.formatNumber(summary.itemsSold)
+            })
+          : t("ask.answer.briefing.sales.pos.unavailable")
+        : t("ask.answer.briefing.sales", {
+            sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)
+          });
+
+      const board = useTrustedBoard
+        ? t("ask.answer.briefing.board", {
+            tasks: helpers.formatNumber(openTasks.length),
+            stock: helpers.formatNumber(stockRisk),
+            orders: helpers.formatNumber(summary.pendingRecommendations),
+            sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)
+          })
+        : [
+            t("ask.answer.briefing.board.core", {
+              tasks: helpers.formatNumber(openTasks.length),
+              orders: helpers.formatNumber(summary.pendingRecommendations)
+            }),
+            stockLine,
+            salesLine
+          ].join(" ");
+
       const answer = [
         t("ask.answer.briefing.lead", {
           restaurant: restaurant.name,
           status: summary.miseStatus
         }),
-        t("ask.answer.briefing.board", {
-          tasks: helpers.formatNumber(openTasks.length),
-          stock: helpers.formatNumber(stockRisk),
-          orders: helpers.formatNumber(summary.pendingRecommendations),
-          sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)
-        }),
-        topTaskTitles.length > 0
-          ? t("ask.answer.briefing.focus", { tasks: topTaskTitles.join("; ") })
+        board,
+        briefingFocusTitles.length > 0
+          ? t("ask.answer.briefing.focus", { tasks: briefingFocusTitles.join("; ") })
           : t("ask.answer.fallback"),
         presentedInsight
           ? t("ask.answer.prioritiesInsight", { insight: presentedInsight.title })
@@ -298,8 +350,8 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
         intent,
         thinkingSteps,
         answer,
-        showPriorities: priorities.length > 0,
-        priorities
+        showPriorities: briefingPriorities.length > 0,
+        priorities: briefingPriorities
       };
     }
     case "prep": {
@@ -456,7 +508,7 @@ function buildThinkingSteps(input: {
     );
   }
   if (intent === "sales" || intent === "briefing") {
-    if (intent === "sales" && input.posSalesTaskCount > 0) {
+    if (input.posSalesTaskCount > 0) {
       steps.push(
         t("ask.thinking.sales.pos", {
           count: helpers.formatNumber(input.posSalesTaskCount)
