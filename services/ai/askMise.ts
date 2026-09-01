@@ -1,6 +1,9 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
-import type { OperationalTodayTask } from "../domain/todayTasks";
+import type {
+  OperationalTodayTask,
+  OperationalTodayTaskActionIntent
+} from "../domain/todayTasks";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
 export type AskMiseIntent = "priorities" | "stock" | "orders" | "sales" | "briefing" | "prep" | "waste" | "general";
@@ -30,6 +33,42 @@ export interface AskMiseRestaurantContext {
   };
   operationalTasks: readonly OperationalTodayTask[];
   restaurantCurrency: string;
+}
+
+/** Purchase-loop intents that keep Orders incomplete for the operator. */
+const purchaseLoopIntents = new Set<OperationalTodayTaskActionIntent>([
+  "review_recommendation",
+  "prepare_supplier_draft",
+  "send_supplier_order"
+]);
+
+/** Draft/send follow-through after recommendations leave Review. */
+const purchaseFollowThroughIntents = new Set<OperationalTodayTaskActionIntent>([
+  "prepare_supplier_draft",
+  "send_supplier_order"
+]);
+
+/** Open Today tasks that keep the purchase loop incomplete. */
+export function isOpenPurchaseLoopTask(task: OperationalTodayTask): boolean {
+  return task.status === "open" && purchaseLoopIntents.has(task.action.intent);
+}
+
+/** Open draft/send steps that must not be reported as “orders clear.” */
+export function isOpenPurchaseFollowThroughTask(task: OperationalTodayTask): boolean {
+  return task.status === "open" && purchaseFollowThroughIntents.has(task.action.intent);
+}
+
+/** Prefer purchase-loop follow-through when surfacing Ask Mise priority chips. */
+export function preferPurchaseLoopTasks(
+  openTasks: readonly OperationalTodayTask[],
+  purchaseLoopTasks: readonly OperationalTodayTask[]
+): OperationalTodayTask[] {
+  if (purchaseLoopTasks.length === 0) return [...openTasks];
+  const preferredIds = new Set(purchaseLoopTasks.map((task) => task.id));
+  return [
+    ...purchaseLoopTasks,
+    ...openTasks.filter((task) => !preferredIds.has(task.id))
+  ];
 }
 
 export interface AskMiseInput {
@@ -80,6 +119,12 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const { t } = helpers;
   const intent = classifyAskMiseIntent(input.question);
   const openTasks = summary.operationalTasks.filter((task) => task.status === "open");
+  const purchaseLoopTasks = openTasks.filter(isOpenPurchaseLoopTask);
+  const followThroughTasks = openTasks.filter(isOpenPurchaseFollowThroughTask);
+  const followThroughPriorities = preferPurchaseLoopTasks(openTasks, followThroughTasks).slice(0, 3);
+  const followThroughTitles = followThroughTasks
+    .slice(0, 3)
+    .map((task) => presentOperationalTodayTask(helpers.locale, task).title);
   const priorities = openTasks.slice(0, 3);
   const stockRisk = summary.inventoryHealth.low + summary.inventoryHealth.critical;
   const topInsight = insights[0] ?? summary.importantInsight;
@@ -96,6 +141,7 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
     openTaskCount: openTasks.length,
     stockRisk,
     pendingRecommendations: summary.pendingRecommendations,
+    purchaseFollowThroughCount: followThroughTasks.length,
     salesToday: summary.salesToday,
     currency: summary.restaurantCurrency,
     helpers
@@ -133,24 +179,62 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "orders": {
-      const answer =
-        summary.pendingRecommendations > 0
-          ? [
-              t(
-                summary.pendingRecommendations === 1 ? "ask.answer.orders.one" : "ask.answer.orders.other",
-                { count: helpers.formatNumber(summary.pendingRecommendations) }
-              ),
-              attentionTitles.length > 0
-                ? t("ask.answer.orders.named", { items: attentionTitles.join("; ") })
-                : null
-            ]
-              .filter(Boolean)
-              .join(" ")
-          : t("ask.answer.ordersClear");
+      if (summary.pendingRecommendations > 0) {
+        const answer = [
+          t(
+            summary.pendingRecommendations === 1 ? "ask.answer.orders.one" : "ask.answer.orders.other",
+            { count: helpers.formatNumber(summary.pendingRecommendations) }
+          ),
+          attentionTitles.length > 0
+            ? t("ask.answer.orders.named", { items: attentionTitles.join("; ") })
+            : null,
+          followThroughTitles.length > 0
+            ? t("ask.answer.orders.followThrough.named", { items: followThroughTitles.join("; ") })
+            : null
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return {
+          intent,
+          thinkingSteps,
+          answer,
+          showPriorities: followThroughPriorities.length > 0,
+          priorities: followThroughPriorities
+        };
+      }
+
+      if (purchaseLoopTasks.length > 0) {
+        const loopPriorities = preferPurchaseLoopTasks(openTasks, purchaseLoopTasks).slice(0, 3);
+        const loopTitles = purchaseLoopTasks
+          .slice(0, 3)
+          .map((task) => presentOperationalTodayTask(helpers.locale, task).title);
+        const answer = [
+          t(
+            purchaseLoopTasks.length === 1
+              ? "ask.answer.orders.followThrough.one"
+              : "ask.answer.orders.followThrough.other",
+            { count: helpers.formatNumber(purchaseLoopTasks.length) }
+          ),
+          loopTitles.length > 0
+            ? t("ask.answer.orders.followThrough.named", { items: loopTitles.join("; ") })
+            : null,
+          t("ask.answer.orders.followThrough.next")
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return {
+          intent,
+          thinkingSteps,
+          answer,
+          showPriorities: loopPriorities.length > 0,
+          priorities: loopPriorities
+        };
+      }
+
       return {
         intent,
         thinkingSteps,
-        answer,
+        answer: t("ask.answer.ordersClear"),
         showPriorities: false,
         priorities: []
       };
@@ -268,7 +352,12 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
     }
     case "general":
     default: {
-      if (openTasks.length > 0 || stockRisk > 0 || summary.pendingRecommendations > 0) {
+      if (
+        openTasks.length > 0 ||
+        stockRisk > 0 ||
+        summary.pendingRecommendations > 0 ||
+        purchaseLoopTasks.length > 0
+      ) {
         const lead =
           openTasks.length > 0
             ? t("ask.answer.general.tasks", {
@@ -279,10 +368,19 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
               ? t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
                   count: helpers.formatNumber(stockRisk)
                 })
-              : t(
-                  summary.pendingRecommendations === 1 ? "ask.answer.orders.one" : "ask.answer.orders.other",
-                  { count: helpers.formatNumber(summary.pendingRecommendations) }
-                );
+              : summary.pendingRecommendations > 0
+                ? t(
+                    summary.pendingRecommendations === 1
+                      ? "ask.answer.orders.one"
+                      : "ask.answer.orders.other",
+                    { count: helpers.formatNumber(summary.pendingRecommendations) }
+                  )
+                : t(
+                    purchaseLoopTasks.length === 1
+                      ? "ask.answer.orders.followThrough.one"
+                      : "ask.answer.orders.followThrough.other",
+                    { count: helpers.formatNumber(purchaseLoopTasks.length) }
+                  );
         return {
           intent: "general",
           thinkingSteps,
@@ -308,6 +406,7 @@ function buildThinkingSteps(input: {
   openTaskCount: number;
   stockRisk: number;
   pendingRecommendations: number;
+  purchaseFollowThroughCount: number;
   salesToday: number;
   currency: string;
   helpers: AskMiseHelpers;
@@ -331,13 +430,21 @@ function buildThinkingSteps(input: {
     );
   }
   if (intent === "orders" || intent === "briefing") {
-    steps.push(
-      input.pendingRecommendations > 0
-        ? t("ask.thinking.orders.pending", {
-            count: helpers.formatNumber(input.pendingRecommendations)
-          })
-        : t("ask.thinking.orders.clear")
-    );
+    if (input.pendingRecommendations > 0) {
+      steps.push(
+        t("ask.thinking.orders.pending", {
+          count: helpers.formatNumber(input.pendingRecommendations)
+        })
+      );
+    } else if (input.purchaseFollowThroughCount > 0) {
+      steps.push(
+        t("ask.thinking.orders.followThrough", {
+          count: helpers.formatNumber(input.purchaseFollowThroughCount)
+        })
+      );
+    } else {
+      steps.push(t("ask.thinking.orders.clear"));
+    }
   }
   if (intent === "sales" || intent === "briefing") {
     steps.push(

@@ -152,3 +152,117 @@ test("answerAskMise briefing uses restaurant name and board counts", () => {
   assert.match(reply.answer, /ask\.answer\.briefing\.board/);
   assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales")));
 });
+
+test("answerAskMise refuses orders-clear when draft or send follow-through remains", () => {
+  const sendTask = task({
+    id: "task-send",
+    source: { kind: "order", id: "order-1", status: "draft" },
+    title: "Send Harbor Produce order",
+    detail: "Draft is ready to leave the restaurant.",
+    presentation: {
+      code: "today.order.send",
+      values: { supplierName: "Harbor Produce", deliveryDate: null }
+    },
+    action: {
+      intent: "send_supplier_order",
+      label: "Review and send",
+      route: "/orders/order-1",
+      entityId: "order-1"
+    }
+  });
+  const reply = answerAskMise({
+    question: "What orders need attention?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      pendingRecommendations: 0,
+      inventoryHealth: { low: 0, critical: 0 },
+      attentionCards: [],
+      operationalTasks: [sendTask]
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "orders");
+  assert.doesNotMatch(reply.answer, /ask\.answer\.ordersClear/);
+  assert.match(reply.answer, /ask\.answer\.orders\.followThrough\.one/);
+  assert.match(reply.answer, /ask\.answer\.orders\.followThrough\.named/);
+  assert.match(reply.answer, /ask\.answer\.orders\.followThrough\.next/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.orders.followThrough")));
+  assert.equal(reply.showPriorities, true);
+  assert.equal(reply.priorities[0]?.id, "task-send");
+});
+
+test("answerAskMise keeps review answers and appends named draft follow-through", () => {
+  const draftTask = task({
+    id: "task-draft",
+    source: { kind: "recommendation", id: "rec-2", status: "approved" },
+    title: "Prepare Harbor Produce supplier draft",
+    detail: "Approved item still needs a supplier draft.",
+    presentation: {
+      code: "today.recommendation.prepare_draft",
+      values: { itemName: "Chicken thigh", supplierName: "Harbor Produce" }
+    },
+    action: {
+      intent: "prepare_supplier_draft",
+      label: "Prepare draft",
+      route: "/orders",
+      entityId: "rec-2"
+    }
+  });
+  const reply = answerAskMise({
+    question: "What supplier orders are waiting?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      pendingRecommendations: 1,
+      operationalTasks: [task({ id: "task-review" }), draftTask]
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "orders");
+  assert.match(reply.answer, /ask\.answer\.orders\.one/);
+  assert.match(reply.answer, /ask\.answer\.orders\.followThrough\.named/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.orders.pending")));
+  assert.equal(reply.showPriorities, true);
+  assert.equal(reply.priorities[0]?.id, "task-draft");
+});
+
+test("answerAskMise ordersClear only when review and follow-through are empty", () => {
+  const reply = answerAskMise({
+    question: "Any orders to place?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      pendingRecommendations: 0,
+      inventoryHealth: { low: 0, critical: 0 },
+      attentionCards: [],
+      operationalTasks: []
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "orders");
+  assert.equal(reply.answer, "ask.answer.ordersClear");
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.orders.clear")));
+  assert.equal(reply.showPriorities, false);
+});
