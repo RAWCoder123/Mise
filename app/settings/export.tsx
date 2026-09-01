@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Share, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect, useNavigation } from "expo-router";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
@@ -14,6 +14,12 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import {
+  classifyExpoSharingSettlement,
+  classifyNativeShareAction,
+  isExportShareDismissalError,
+  type ExportShareOutcome
+} from "../../services/domain/exportShareOutcome";
 import { exportRestaurantData } from "../../services/miseService";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
@@ -99,30 +105,18 @@ export default function RestaurantExportScreen() {
       await FileSystem.writeAsStringAsync(fileUri, serialized);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
-      const sharingAvailable = await Sharing.isAvailableAsync();
-      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      if (!sharingAvailable) {
-        setNotice({
-          tone: "caution",
-          title: t("export.notice.sharingUnavailableTitle"),
-          body: t("export.notice.sharingUnavailableBody", { filename })
-        });
-        return;
-      }
-
-      await Sharing.shareAsync(fileUri, {
-        mimeType: "application/json",
-        dialogTitle: t("export.share.dialogTitle"),
-        UTI: "public.json"
+      const shareOutcome = await presentNativeExportShare({
+        fileUri,
+        dialogTitle: t("export.share.dialogTitle")
       });
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice({
-        tone: "success",
-        title: t("export.notice.successTitle"),
-        body: t("export.notice.successBody", { filename })
-      });
+      setNotice(noticeForShareOutcome(shareOutcome, filename, t));
     } catch (exportError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      if (isExportShareDismissalError(exportError)) {
+        setNotice(noticeForShareOutcome("dismissed", "mise-restaurant-export.json", t));
+        return;
+      }
       captureMiseError(exportError, {
         flow: "settings",
         operation: "restaurant_export",
@@ -199,6 +193,65 @@ export default function RestaurantExportScreen() {
       </View>
     </Screen>
   );
+}
+
+async function presentNativeExportShare(input: {
+  fileUri: string;
+  dialogTitle: string;
+}): Promise<ExportShareOutcome> {
+  // iOS UIActivityViewController via RN Share reports dismissedAction; expo-sharing does not.
+  if (Platform.OS === "ios") {
+    const result = await Share.share(
+      { url: input.fileUri },
+      { subject: input.dialogTitle }
+    );
+    return classifyNativeShareAction(result.action);
+  }
+
+  const sharingAvailable = await Sharing.isAvailableAsync();
+  if (!sharingAvailable) {
+    throw new Error("Sharing unavailable on this device.");
+  }
+
+  try {
+    await Sharing.shareAsync(input.fileUri, {
+      mimeType: "application/json",
+      dialogTitle: input.dialogTitle,
+      UTI: "public.json"
+    });
+    return classifyExpoSharingSettlement({ platform: Platform.OS });
+  } catch (shareError) {
+    if (isExportShareDismissalError(shareError)) {
+      return "dismissed";
+    }
+    throw shareError;
+  }
+}
+
+function noticeForShareOutcome(
+  outcome: ExportShareOutcome,
+  filename: string,
+  t: ReturnType<typeof useLocale>["t"]
+): ExportNotice {
+  if (outcome === "shared") {
+    return {
+      tone: "success",
+      title: t("export.notice.successTitle"),
+      body: t("export.notice.successBody", { filename })
+    };
+  }
+  if (outcome === "dismissed") {
+    return {
+      tone: "caution",
+      title: t("export.notice.dismissedTitle"),
+      body: t("export.notice.dismissedBody", { filename })
+    };
+  }
+  return {
+    tone: "caution",
+    title: t("export.notice.unconfirmedTitle"),
+    body: t("export.notice.unconfirmedBody", { filename })
+  };
 }
 
 function formatExportDate(
