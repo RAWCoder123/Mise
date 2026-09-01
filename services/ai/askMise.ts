@@ -1,6 +1,10 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
 import type { OperationalTodayTask } from "../domain/todayTasks";
+import {
+  inventoryCountTrustAllowsStockClaims,
+  type InventoryCountTrustSummary
+} from "../domain/inventoryCountTrust";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
 export type AskMiseIntent = "priorities" | "stock" | "orders" | "sales" | "briefing" | "prep" | "waste" | "general";
@@ -30,6 +34,11 @@ export interface AskMiseRestaurantContext {
     low: number;
     critical: number;
   };
+  /**
+   * Physical-count trust for stock answers. Null/undefined means the check was
+   * unavailable — stock claims fail closed instead of inventing an all-clear.
+   */
+  inventoryCountTrust?: InventoryCountTrustSummary | null;
   operationalTasks: readonly OperationalTodayTask[];
   restaurantCurrency: string;
 }
@@ -85,6 +94,7 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const priorities = openTasks.slice(0, 3);
   const stockRisk = summary.inventoryHealth.low + summary.inventoryHealth.critical;
   const watchCount = summary.inventoryHealth.watch ?? 0;
+  const countTrust = summary.inventoryCountTrust ?? null;
   const topInsight = insights[0] ?? summary.importantInsight;
   const presentedInsight = topInsight ? presentInsight(helpers.locale, topInsight) : null;
   const prepInsights = insights.filter((insight) => insight.insight_type === "prep" || insight.insight_type === "sales");
@@ -104,11 +114,28 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
     salesToday: summary.salesToday,
     currency: summary.restaurantCurrency,
     posSalesTaskCount: posSalesTasks.length,
+    countTrust,
     helpers
   });
 
   switch (intent) {
     case "stock": {
+      if (countTrust == null || !inventoryCountTrustAllowsStockClaims(countTrust)) {
+        return {
+          intent,
+          thinkingSteps,
+          answer: answerStockFromCountTrust({
+            stockRisk,
+            pendingRecommendations: summary.pendingRecommendations,
+            attentionTitles,
+            countTrust,
+            helpers
+          }),
+          showPriorities: false,
+          priorities: []
+        };
+      }
+
       if (stockRisk > 0) {
         const answer = [
           t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
@@ -277,7 +304,29 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
         };
       }
 
-      // No open tasks — refuse all-clear when stock risk, Watch, or pending orders remain.
+      // No open tasks — refuse all-clear when count trust, stock risk, Watch, or pending orders remain.
+      if (countTrust == null || !inventoryCountTrustAllowsStockClaims(countTrust)) {
+        const answer = [
+          answerStockFromCountTrust({
+            stockRisk,
+            pendingRecommendations: summary.pendingRecommendations,
+            attentionTitles,
+            countTrust,
+            helpers
+          }),
+          insightTail
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return {
+          intent,
+          thinkingSteps,
+          answer,
+          showPriorities: false,
+          priorities: []
+        };
+      }
+
       if (stockRisk > 0) {
         const answer = [
           t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
@@ -363,7 +412,8 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       const hasObservedSales = summary.salesToday > 0 || summary.itemsSold > 0;
       const watchOnlyStock = stockRisk === 0 && watchCount > 0;
       const salesUntrusted = posSalesTasks.length > 0;
-      const useTrustedBoard = !watchOnlyStock && !salesUntrusted;
+      const countUntrusted = countTrust == null || !inventoryCountTrustAllowsStockClaims(countTrust);
+      const useTrustedBoard = !watchOnlyStock && !salesUntrusted && !countUntrusted;
 
       let briefingOrdered = openTasks;
       if (watchOnlyStock) {
@@ -377,18 +427,26 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
         (task) => presentOperationalTodayTask(helpers.locale, task).title
       );
 
-      const stockLine = stockRisk > 0
-        ? t("ask.answer.briefing.stock.risk", {
-            count: helpers.formatNumber(stockRisk)
+      const stockLine = countUntrusted
+        ? answerStockFromCountTrust({
+            stockRisk,
+            pendingRecommendations: summary.pendingRecommendations,
+            attentionTitles,
+            countTrust,
+            helpers
           })
-        : watchOnlyStock
-          ? t(
-              watchCount === 1
-                ? "ask.answer.briefing.stock.watch.one"
-                : "ask.answer.briefing.stock.watch.other",
-              { count: helpers.formatNumber(watchCount) }
-            )
-          : t("ask.answer.briefing.stock.clear");
+        : stockRisk > 0
+          ? t("ask.answer.briefing.stock.risk", {
+              count: helpers.formatNumber(stockRisk)
+            })
+          : watchOnlyStock
+            ? t(
+                watchCount === 1
+                  ? "ask.answer.briefing.stock.watch.one"
+                  : "ask.answer.briefing.stock.watch.other",
+                { count: helpers.formatNumber(watchCount) }
+              )
+            : t("ask.answer.briefing.stock.clear");
 
       const salesLine = salesUntrusted
         ? hasObservedSales
@@ -401,21 +459,40 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
             sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)
           });
 
-      const board = useTrustedBoard
-        ? t("ask.answer.briefing.board", {
+      const board = countUntrusted && !salesUntrusted && !watchOnlyStock
+        ? t("ask.answer.briefing.board.untrusted", {
             tasks: helpers.formatNumber(openTasks.length),
-            stock: helpers.formatNumber(stockRisk),
             orders: helpers.formatNumber(summary.pendingRecommendations),
             sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)
           })
-        : [
-            t("ask.answer.briefing.board.core", {
+        : useTrustedBoard
+          ? t("ask.answer.briefing.board", {
               tasks: helpers.formatNumber(openTasks.length),
-              orders: helpers.formatNumber(summary.pendingRecommendations)
-            }),
-            stockLine,
-            salesLine
-          ].join(" ");
+              stock: helpers.formatNumber(stockRisk),
+              orders: helpers.formatNumber(summary.pendingRecommendations),
+              sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)
+            })
+          : [
+              t("ask.answer.briefing.board.core", {
+                tasks: helpers.formatNumber(openTasks.length),
+                orders: helpers.formatNumber(summary.pendingRecommendations)
+              }),
+              stockLine,
+              salesLine
+            ].join(" ");
+
+      const focusLine =
+        briefingFocusTitles.length > 0
+          ? t("ask.answer.briefing.focus", { tasks: briefingFocusTitles.join("; ") })
+          : countUntrusted
+            ? answerStockFromCountTrust({
+                stockRisk,
+                pendingRecommendations: summary.pendingRecommendations,
+                attentionTitles,
+                countTrust,
+                helpers
+              })
+            : t("ask.answer.fallback");
 
       const answer = [
         t("ask.answer.briefing.lead", {
@@ -423,9 +500,7 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
           status: summary.miseStatus
         }),
         board,
-        briefingFocusTitles.length > 0
-          ? t("ask.answer.briefing.focus", { tasks: briefingFocusTitles.join("; ") })
-          : t("ask.answer.fallback"),
+        focusLine,
         presentedInsight
           ? t("ask.answer.prioritiesInsight", { insight: presentedInsight.title })
           : null
@@ -484,6 +559,7 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
     default: {
       const watchOnlyStock = stockRisk === 0 && watchCount > 0;
       const salesUntrusted = posSalesTasks.length > 0;
+      const countUntrusted = countTrust == null || !inventoryCountTrustAllowsStockClaims(countTrust);
 
       let generalOrdered = openTasks;
       if (watchOnlyStock) {
@@ -497,7 +573,13 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
         (task) => presentOperationalTodayTask(helpers.locale, task).title
       );
 
-      if (openTasks.length > 0 || stockRisk > 0 || watchCount > 0 || summary.pendingRecommendations > 0) {
+      if (
+        openTasks.length > 0 ||
+        stockRisk > 0 ||
+        watchCount > 0 ||
+        summary.pendingRecommendations > 0 ||
+        countUntrusted
+      ) {
         const lead =
           openTasks.length > 0
             ? t("ask.answer.general.tasks", {
@@ -505,29 +587,37 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
                 tasks:
                   generalFocusTitles.slice(0, 2).join("; ") || t("ask.answer.general.tasksFallback")
               })
-            : stockRisk > 0
-              ? t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
-                  count: helpers.formatNumber(stockRisk)
+            : countUntrusted
+              ? answerStockFromCountTrust({
+                  stockRisk,
+                  pendingRecommendations: summary.pendingRecommendations,
+                  attentionTitles,
+                  countTrust,
+                  helpers
                 })
-              : watchOnlyStock
-                ? [
-                    t(
-                      watchCount === 1 ? "ask.answer.stock.watch.one" : "ask.answer.stock.watch.other",
-                      { count: helpers.formatNumber(watchCount) }
-                    ),
-                    attentionTitles.length > 0
-                      ? t("ask.answer.stock.watch.named", { items: attentionTitles.join("; ") })
-                      : null,
-                    t("ask.answer.stock.watch.next")
-                  ]
-                    .filter(Boolean)
-                    .join(" ")
-                : t(
-                    summary.pendingRecommendations === 1
-                      ? "ask.answer.orders.one"
-                      : "ask.answer.orders.other",
-                    { count: helpers.formatNumber(summary.pendingRecommendations) }
-                  );
+              : stockRisk > 0
+                ? t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
+                    count: helpers.formatNumber(stockRisk)
+                  })
+                : watchOnlyStock
+                  ? [
+                      t(
+                        watchCount === 1 ? "ask.answer.stock.watch.one" : "ask.answer.stock.watch.other",
+                        { count: helpers.formatNumber(watchCount) }
+                      ),
+                      attentionTitles.length > 0
+                        ? t("ask.answer.stock.watch.named", { items: attentionTitles.join("; ") })
+                        : null,
+                      t("ask.answer.stock.watch.next")
+                    ]
+                      .filter(Boolean)
+                      .join(" ")
+                  : t(
+                      summary.pendingRecommendations === 1
+                        ? "ask.answer.orders.one"
+                        : "ask.answer.orders.other",
+                      { count: helpers.formatNumber(summary.pendingRecommendations) }
+                    );
         return {
           intent: "general",
           thinkingSteps,
@@ -583,6 +673,88 @@ function preferPosSalesTasks(
   return [...posTasks, ...openTasks.filter((task) => !preferredIds.has(task.id))];
 }
 
+function answerStockFromCountTrust(input: {
+  stockRisk: number;
+  pendingRecommendations: number;
+  attentionTitles: readonly string[];
+  countTrust: InventoryCountTrustSummary | null;
+  helpers: AskMiseHelpers;
+}): string {
+  const { helpers, stockRisk, pendingRecommendations, attentionTitles, countTrust } = input;
+  const { t } = helpers;
+
+  if (countTrust == null || countTrust.state === "unavailable") {
+    return t("ask.answer.stock.unavailable");
+  }
+  if (countTrust.state === "empty") {
+    return t("ask.answer.stock.empty");
+  }
+  if (countTrust.state === "contaminated") {
+    return [
+      t("ask.answer.stock.contaminated", {
+        count: helpers.formatNumber(countTrust.contaminatedCount)
+      }),
+      t("ask.answer.stock.recount")
+    ].join(" ");
+  }
+  if (countTrust.state === "unverified") {
+    return [
+      t("ask.answer.stock.unverified", {
+        count: helpers.formatNumber(countTrust.unverifiedCount)
+      }),
+      stockRisk > 0
+        ? t("ask.answer.stock.provisional", {
+            count: helpers.formatNumber(stockRisk)
+          })
+        : null,
+      t("ask.answer.stock.recount")
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (countTrust.state === "stale") {
+    return [
+      t("ask.answer.stock.stale", {
+        count: helpers.formatNumber(countTrust.staleCount)
+      }),
+      stockRisk > 0
+        ? t("ask.answer.stock.provisional", {
+            count: helpers.formatNumber(stockRisk)
+          })
+        : null,
+      attentionTitles.length > 0
+        ? t("ask.answer.stock.named", { items: attentionTitles.join("; ") })
+        : null,
+      t("ask.answer.stock.recount")
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  if (stockRisk > 0) {
+    return [
+      t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
+        count: helpers.formatNumber(stockRisk)
+      }),
+      attentionTitles.length > 0
+        ? t("ask.answer.stock.named", { items: attentionTitles.join("; ") })
+        : null,
+      pendingRecommendations > 0
+        ? t(
+            pendingRecommendations === 1
+              ? "ask.answer.stock.orders.one"
+              : "ask.answer.stock.orders.other",
+            { count: helpers.formatNumber(pendingRecommendations) }
+          )
+        : t("ask.answer.stock.next")
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return t("ask.answer.stockClear");
+}
+
 function buildThinkingSteps(input: {
   intent: AskMiseIntent;
   restaurantName: string;
@@ -593,6 +765,7 @@ function buildThinkingSteps(input: {
   salesToday: number;
   currency: string;
   posSalesTaskCount: number;
+  countTrust: InventoryCountTrustSummary | null;
   helpers: AskMiseHelpers;
 }): string[] {
   const { helpers, intent } = input;
@@ -614,13 +787,7 @@ function buildThinkingSteps(input: {
     intent === "general" ||
     intent === "priorities"
   ) {
-    if (input.stockRisk > 0) {
-      steps.push(t("ask.thinking.stock.risk", { count: helpers.formatNumber(input.stockRisk) }));
-    } else if (input.watchCount > 0) {
-      steps.push(t("ask.thinking.stock.watch", { count: helpers.formatNumber(input.watchCount) }));
-    } else {
-      steps.push(t("ask.thinking.stock.clear"));
-    }
+    steps.push(stockThinkingStep(input.countTrust, input.stockRisk, input.watchCount, helpers));
   }
   if (intent === "orders" || intent === "briefing" || intent === "priorities") {
     steps.push(
@@ -660,4 +827,41 @@ function buildThinkingSteps(input: {
 
   steps.push(t("ask.thinking.compose"));
   return steps;
+}
+
+function stockThinkingStep(
+  countTrust: InventoryCountTrustSummary | null,
+  stockRisk: number,
+  watchCount: number,
+  helpers: AskMiseHelpers
+): string {
+  const { t } = helpers;
+  if (countTrust == null || countTrust.state === "unavailable") {
+    return t("ask.thinking.stock.unavailable");
+  }
+  if (countTrust.state === "empty") {
+    return t("ask.thinking.stock.empty");
+  }
+  if (countTrust.state === "contaminated") {
+    return t("ask.thinking.stock.contaminated", {
+      count: helpers.formatNumber(countTrust.contaminatedCount)
+    });
+  }
+  if (countTrust.state === "unverified") {
+    return t("ask.thinking.stock.unverified", {
+      count: helpers.formatNumber(countTrust.unverifiedCount)
+    });
+  }
+  if (countTrust.state === "stale") {
+    return t("ask.thinking.stock.stale", {
+      count: helpers.formatNumber(countTrust.staleCount)
+    });
+  }
+  if (stockRisk > 0) {
+    return t("ask.thinking.stock.risk", { count: helpers.formatNumber(stockRisk) });
+  }
+  if (watchCount > 0) {
+    return t("ask.thinking.stock.watch", { count: helpers.formatNumber(watchCount) });
+  }
+  return t("ask.thinking.stock.clear");
 }

@@ -69,6 +69,14 @@ function summary(overrides: Partial<AskMiseRestaurantContext> = {}): AskMiseRest
       }
     ],
     inventoryHealth: { watch: 0, low: 1, critical: 1 },
+    inventoryCountTrust: {
+      itemCount: 4,
+      freshCount: 3,
+      staleCount: 1,
+      unverifiedCount: 0,
+      contaminatedCount: 0,
+      state: "authoritative"
+    },
     operationalTasks: [task()],
     restaurantCurrency: "USD",
     ...overrides
@@ -720,4 +728,137 @@ test("answerAskMise general keeps fallback only when stock Watch and POS are cle
   assert.equal(reply.showPriorities, false);
   assert.ok(!reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales.pos")));
   assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.clear")));
+});
+
+test("answerAskMise fails closed on stock when count trust is unavailable", () => {
+  const reply = answerAskMise({
+    question: "Which stock is low?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { watch: 0, low: 2, critical: 1 },
+      inventoryCountTrust: null
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "stock");
+  assert.match(reply.answer, /ask\.answer\.stock\.unavailable/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.stockClear/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.stock\.other/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.unavailable")));
+});
+
+test("answerAskMise priorities refuse all-clear when counts are unverified", () => {
+  const reply = answerAskMise({
+    question: "What should I focus on today?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: null,
+      service_style: "full_service",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      pendingRecommendations: 0,
+      inventoryHealth: { watch: 0, low: 0, critical: 0 },
+      attentionCards: [],
+      operationalTasks: [],
+      inventoryCountTrust: {
+        itemCount: 3,
+        freshCount: 0,
+        staleCount: 0,
+        unverifiedCount: 3,
+        contaminatedCount: 0,
+        state: "unverified"
+      }
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "priorities");
+  assert.match(reply.answer, /ask\.answer\.stock\.unverified/);
+  assert.match(reply.answer, /ask\.answer\.stock\.recount/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.fallback/);
+  assert.equal(reply.showPriorities, false);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.unverified")));
+});
+
+test("answerAskMise general refuses fallback when counts are stale", () => {
+  const reply = answerAskMise({
+    question: "hello",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { watch: 0, low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: [],
+      operationalTasks: [],
+      salesToday: 500,
+      itemsSold: 40,
+      inventoryCountTrust: {
+        itemCount: 4,
+        freshCount: 0,
+        staleCount: 4,
+        unverifiedCount: 0,
+        contaminatedCount: 0,
+        state: "stale"
+      }
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "general");
+  assert.match(reply.answer, /ask\.answer\.stock\.stale/);
+  assert.match(reply.answer, /ask\.answer\.stock\.recount/);
+  assert.match(reply.answer, /ask\.answer\.general\.steer/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.fallback/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.stale")));
+});
+
+test("answerAskMise briefing omits authoritative stock counts when trust is weak", () => {
+  const reply = answerAskMise({
+    question: "Give me a quick briefing",
+    restaurant: {
+      name: "Harbor Bistro",
+      cuisine_type: "Seafood",
+      service_style: "full_service",
+      timezone: "America/Los_Angeles",
+      currency: "USD"
+    },
+    summary: summary({
+      restaurantName: "Harbor Bistro",
+      operationalTasks: [],
+      pendingRecommendations: 0,
+      inventoryHealth: { watch: 0, low: 0, critical: 0 },
+      inventoryCountTrust: {
+        itemCount: 5,
+        freshCount: 0,
+        staleCount: 0,
+        unverifiedCount: 5,
+        contaminatedCount: 0,
+        state: "unverified"
+      }
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "briefing");
+  assert.match(reply.answer, /ask\.answer\.briefing\.board\.untrusted/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.briefing\.board:\{/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.fallback/);
 });
