@@ -9,6 +9,7 @@ import type {
   RecipeAuthorityState,
   SupplierRecipient
 } from "../../types/mise";
+import type { RecipeVersionYield } from "../domain/recipeYield";
 import {
   DEMO_RESTAURANT_ID,
   DEMO_USER_ID,
@@ -180,6 +181,64 @@ function demoRecipeAuthorityStates(state: DemoState, restaurantId: string): Reci
       confirmedAt: ready ? new Date().toISOString() : null,
       ready
     };
+  });
+}
+
+/** Demo-only SELECT mirror of hosted recipe_versions yields — not persisted into DemoState. */
+function demoRecipeVersionYields(state: DemoState, restaurantId: string): RecipeVersionYield[] {
+  const authorities = demoRecipeAuthorityStates(state, restaurantId);
+  const byName = new Map(
+    authorities.map((entry) => [entry.menuItemName.trim().toLowerCase(), entry.menuItemId] as const)
+  );
+  const effectiveFrom = "2020-01-01T00:00:00.000Z";
+  const seeds: Array<{
+    dish: string;
+    prepYield: number;
+    cookingYield: number;
+    servingQuantity: number;
+    versionStatus: "draft" | "verified";
+  }> = [
+    {
+      dish: "Chicken Bowl",
+      prepYield: 0.95,
+      cookingYield: 0.9,
+      servingQuantity: 1,
+      versionStatus: "verified"
+    },
+    {
+      dish: "Burger",
+      prepYield: 1,
+      cookingYield: 0.92,
+      servingQuantity: 1,
+      versionStatus: "verified"
+    },
+    {
+      dish: "Pancakes",
+      prepYield: 1,
+      cookingYield: 1,
+      servingQuantity: 2,
+      versionStatus: "draft"
+    }
+  ];
+
+  return seeds.flatMap((seed, index) => {
+    const menuItemId = byName.get(seed.dish.trim().toLowerCase());
+    if (!menuItemId) return [];
+    return [
+      {
+        id: `demo-recipe-version-${index + 1}`,
+        restaurantId,
+        menuItemId,
+        status: seed.versionStatus,
+        servingQuantity: seed.servingQuantity,
+        prepYield: seed.prepYield,
+        cookingYield: seed.cookingYield,
+        versionNumber: 1,
+        effectiveFrom,
+        effectiveTo: null,
+        locationId: null
+      } satisfies RecipeVersionYield
+    ];
   });
 }
 
@@ -1934,6 +1993,11 @@ export function createLocalDemoRepository(): MiseRepository {
     async fetchRecipeAuthorities(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
       return demoRecipeAuthorityStates(state, restaurantId);
+    },
+
+    async fetchRecipeVersionYields(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return demoRecipeVersionYields(state, restaurantId);
     },
 
     async confirmRecipeComplete(restaurantId, menuItemId, expectedRevision) {

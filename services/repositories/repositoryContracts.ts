@@ -48,6 +48,7 @@ import type {
   PurchaseDecisionPattern
 } from "../domain/purchaseDecisionMemory";
 import type { VerifiedProviderSaleMapping } from "../domain/providerSaleIdentity";
+import type { RecipeVersionYield } from "../domain/recipeYield";
 import {
   PURCHASE_AUTHORITY_BLOCKER_CODES,
   type PurchaseAuthorityResult
@@ -625,6 +626,11 @@ export interface MiseRepository {
   upsertMenuItemIngredient(input: MenuItemIngredientInput): Promise<MenuItemIngredient>;
   saveRecipeMappingAndSignals(input: RecipeMappingSignalInput): Promise<MenuItemIngredient>;
   fetchRecipeAuthorities(restaurantId: string): Promise<RecipeAuthorityState[]>;
+  /**
+   * Active and draft `recipe_versions` yield factors for the restaurant.
+   * SELECT-only — retired rows may be omitted; never invents defaults as recorded.
+   */
+  fetchRecipeVersionYields(restaurantId: string): Promise<RecipeVersionYield[]>;
   confirmRecipeComplete(
     restaurantId: string,
     menuItemId: string,

@@ -27,6 +27,11 @@ import { SUPPLIER_SEND_CONTENT_VERSION } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 import { normalizePurchaseAuthorityResult } from "../domain/purchaseAuthority";
+import {
+  isValidRecipeYieldFactor,
+  isValidServingQuantity,
+  type RecipeVersionYield
+} from "../domain/recipeYield";
 import { TeamMembershipError, teamMembershipErrorFrom } from "../domain/teamMembership";
 import {
   activityEventFromPersistedRow,
@@ -227,6 +232,57 @@ function parseRecipeAuthorityState(value: unknown): RecipeAuthorityState {
       : null,
     confirmedAt: typeof payload.confirmedAt === "string" ? payload.confirmedAt : null,
     ready: payload.ready === true
+  };
+}
+
+function parseRecipeVersionYieldRow(row: Record<string, unknown>): RecipeVersionYield | null {
+  const id = typeof row.id === "string" ? row.id : "";
+  const restaurantId = typeof row.restaurant_id === "string" ? row.restaurant_id : "";
+  const menuItemId = typeof row.menu_item_id === "string" ? row.menu_item_id : "";
+  const status = row.status;
+  const servingQuantity = Number(row.serving_quantity);
+  const prepYield = Number(row.prep_yield);
+  const cookingYield = Number(row.cooking_yield);
+  const versionNumber = Number(row.version_number);
+  const effectiveFrom = typeof row.effective_from === "string" ? row.effective_from : "";
+  const effectiveTo = row.effective_to === null || row.effective_to === undefined
+    ? null
+    : typeof row.effective_to === "string"
+      ? row.effective_to
+      : null;
+  const locationId = row.pos_location_id === null || row.pos_location_id === undefined
+    ? null
+    : typeof row.pos_location_id === "string"
+      ? row.pos_location_id
+      : null;
+
+  if (
+    !id
+    || !restaurantId
+    || !menuItemId
+    || (status !== "draft" && status !== "verified" && status !== "retired")
+    || !isValidServingQuantity(servingQuantity)
+    || !isValidRecipeYieldFactor(prepYield)
+    || !isValidRecipeYieldFactor(cookingYield)
+    || !Number.isSafeInteger(versionNumber)
+    || versionNumber <= 0
+    || !effectiveFrom
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    restaurantId,
+    menuItemId,
+    status,
+    servingQuantity,
+    prepYield,
+    cookingYield,
+    versionNumber,
+    effectiveFrom,
+    effectiveTo,
+    locationId
   };
 }
 
@@ -1435,6 +1491,21 @@ export function createSupabaseRepository(): MiseRepository {
       if (error) throw error;
       if (!Array.isArray(data)) throw new Error("Recipe authority returned an invalid response.");
       return data.map(parseRecipeAuthorityState);
+    },
+
+    async fetchRecipeVersionYields(restaurantId) {
+      const { data, error } = await client
+        .from("recipe_versions")
+        .select(
+          "id, restaurant_id, menu_item_id, status, serving_quantity, prep_yield, cooking_yield, version_number, effective_from, effective_to, pos_location_id"
+        )
+        .eq("restaurant_id", restaurantId)
+        .neq("status", "retired")
+        .order("version_number", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as Array<Record<string, unknown>>)
+        .map(parseRecipeVersionYieldRow)
+        .filter((row): row is NonNullable<typeof row> => row !== null);
     },
 
     async confirmRecipeComplete(restaurantId, menuItemId, expectedRevision) {

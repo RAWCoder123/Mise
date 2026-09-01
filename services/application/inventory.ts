@@ -26,6 +26,10 @@ import {
 } from "../domain/inventoryCountAuthority";
 import { demandFallbackForRestaurant } from "../demoData";
 import {
+  presentRecipeYieldReadout,
+  selectCurrentRecipeVersionYield
+} from "../domain/recipeYield";
+import {
   fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
@@ -129,9 +133,13 @@ export async function fetchRecipeBaselineSummary(restaurantId: string) {
   const authorityRead = typeof repository.fetchRecipeAuthorities === "function"
     ? repository.fetchRecipeAuthorities(restaurantId)
     : Promise.resolve([]);
-  const [data, authorities] = await Promise.all([
+  const yieldsRead = typeof repository.fetchRecipeVersionYields === "function"
+    ? repository.fetchRecipeVersionYields(restaurantId)
+    : Promise.resolve([]);
+  const [data, authorities, recipeYields] = await Promise.all([
     repository.fetchPlanningData(restaurantId),
-    authorityRead
+    authorityRead,
+    yieldsRead
   ]);
   const summary = buildRecipeBaselineSummary(
     restaurantId,
@@ -141,6 +149,7 @@ export async function fetchRecipeBaselineSummary(restaurantId: string) {
     data.operatingDate,
     data.providerMappings
   );
+  const observedAt = new Date();
   return {
     ...summary,
     items: summary.items.map((item) => {
@@ -151,13 +160,18 @@ export async function fetchRecipeBaselineSummary(restaurantId: string) {
         entry.menuItemId === mapping?.menu_item_id
         || entry.menuItemName.trim().toLowerCase() === item.menu_item_name.trim().toLowerCase()
       );
+      const menuItemId = authority?.menuItemId ?? mapping?.menu_item_id ?? null;
+      const yieldVersion = menuItemId
+        ? selectCurrentRecipeVersionYield(recipeYields, menuItemId, observedAt)
+        : null;
       return {
         ...item,
-        menuItemId: authority?.menuItemId ?? mapping?.menu_item_id ?? null,
+        menuItemId,
         recipeRevision: authority?.recipeRevision ?? 0,
         confirmedRevision: authority?.confirmedRevision ?? null,
         confirmedAt: authority?.confirmedAt ?? null,
-        authorityReady: authority?.ready ?? false
+        authorityReady: authority?.ready ?? false,
+        yieldReadout: presentRecipeYieldReadout(yieldVersion)
       };
     })
   };
