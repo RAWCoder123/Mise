@@ -21,6 +21,7 @@ import type {
 } from "../../types/mise";
 import type { SetupPosSaleDraft } from "../domain/setupDrafts";
 import type { OperationalFindingDecision } from "../domain/operationalFindingDecisions";
+import type { IngredientSubstitution } from "../domain/ingredientSubstitutions";
 import type { InventoryEvent } from "../domain/inventoryLedger";
 import type { PurchaseDecisionEvent } from "../domain/purchaseDecisionMemory";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
@@ -68,13 +69,15 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 13;
+  schema_version: 14;
   restaurants: Restaurant[];
   users: AppUser[];
   /** Durable tenant-scoped supplier identities. Names are presentation only. */
   suppliers: Supplier[];
   posSales: PosSale[];
   inventoryItems: InventoryItem[];
+  /** Manager-authored ingredient substitution ratios (draft/verified/rejected/expired). */
+  ingredientSubstitutions: IngredientSubstitution[];
   menuItemIngredients: MenuItemIngredient[];
   purchaseRecommendations: PurchaseRecommendation[];
   supplierOrders: SupplierOrder[];
@@ -355,7 +358,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 13,
+    schema_version: 14,
     restaurants: [restaurant],
     users: [user],
     suppliers: buildDemoSupplierCatalog(
@@ -516,6 +519,40 @@ export function createInitialDemoState(
     },
     autonomyRules: [],
     actionOutcomes: [],
+    ingredientSubstitutions: [
+      {
+        id: "00000000-0000-4000-8000-000000000f01",
+        restaurantId: DEMO_RESTAURANT_ID,
+        sourceInventoryItemId: itemIds.rice,
+        substituteInventoryItemId: itemIds.pancakeMix,
+        sourceQuantity: 1,
+        substituteQuantity: 1,
+        canonicalUnit: "g",
+        verificationStatus: "verified",
+        effectiveFrom: now,
+        effectiveTo: null,
+        verifiedAt: now,
+        verifiedBy: DEMO_USER_ID,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000f02",
+        restaurantId: DEMO_RESTAURANT_ID,
+        sourceInventoryItemId: itemIds.tomatoes,
+        substituteInventoryItemId: itemIds.rice,
+        sourceQuantity: 2,
+        substituteQuantity: 1,
+        canonicalUnit: "g",
+        verificationStatus: "draft",
+        effectiveFrom: now,
+        effectiveTo: null,
+        verifiedAt: null,
+        verifiedBy: null,
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
     inventoryEvents: [],
     inventoryCountSessions: [],
     supplierDeliveries: [],
@@ -566,6 +603,8 @@ export function createInitialDemoState(
  * Version 12 introduces durable tenant-scoped supplier UUIDs. Exact normalized
  * names are used once to repair legacy state; every subsequent demo workflow
  * groups, selects recipients, and serializes content by supplier_id.
+ * Version 14 adds manager-authored ingredient substitution ratios for demo and
+ * export parity without discarding an existing operator workspace.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const referenceRestaurantNameMatches =
@@ -731,12 +770,15 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 13,
+    schema_version: 14,
     restaurants,
     users: raw.users ?? seeded.users,
     suppliers,
     posSales: raw.posSales ?? seeded.posSales,
     inventoryItems,
+    ingredientSubstitutions: Array.isArray(raw.ingredientSubstitutions)
+      ? raw.ingredientSubstitutions
+      : seeded.ingredientSubstitutions,
     menuItemIngredients: raw.menuItemIngredients ?? seeded.menuItemIngredients,
     purchaseRecommendations,
     supplierOrders,
@@ -805,7 +847,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 13 ||
+      raw.schema_version !== 14 ||
       !Array.isArray(raw.suppliers) ||
       JSON.stringify(raw.suppliers ?? []) !== JSON.stringify(suppliers) ||
       sourceInventoryItems.some(
@@ -1193,6 +1235,41 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       supplier_name: "Pantry Wholesale"
     }
   };
+
+  state.ingredientSubstitutions = [
+    {
+      id: "00000000-0000-4000-8000-000000000f01",
+      restaurantId: DEMO_RESTAURANT_ID,
+      sourceInventoryItemId: itemIds.chicken,
+      substituteInventoryItemId: itemIds.beef,
+      sourceQuantity: 1,
+      substituteQuantity: 1.05,
+      canonicalUnit: "g",
+      verificationStatus: "verified",
+      effectiveFrom: createdAt,
+      effectiveTo: null,
+      verifiedAt: createdAt,
+      verifiedBy: DEMO_USER_ID,
+      createdAt,
+      updatedAt: createdAt
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000f02",
+      restaurantId: DEMO_RESTAURANT_ID,
+      sourceInventoryItemId: itemIds.rice,
+      substituteInventoryItemId: itemIds.tomatoes,
+      sourceQuantity: 1,
+      substituteQuantity: 1,
+      canonicalUnit: "g",
+      verificationStatus: "draft",
+      effectiveFrom: createdAt,
+      effectiveTo: null,
+      verifiedAt: null,
+      verifiedBy: null,
+      createdAt,
+      updatedAt: createdAt
+    }
+  ];
 
   state.inventoryItems = state.inventoryItems.map((item) => ({
     ...item,

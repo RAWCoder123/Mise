@@ -72,6 +72,10 @@ import type {
 } from "../domain/recalculationSchedule";
 import type { SupplierDeliveryHistory } from "../domain/supplierReliability";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
+import type {
+  IngredientSubstitution,
+  IngredientSubstitutionInput
+} from "../domain/ingredientSubstitutions";
 
 /**
  * One finished recalculation attempt, as recorded through
@@ -585,6 +589,20 @@ export interface MiseRepository {
     canonicalUnit: "g" | "ml" | "each",
     canonicalQuantityPerUnit: number
   ): Promise<InventoryItem>;
+  listIngredientSubstitutions(restaurantId: string): Promise<IngredientSubstitution[]>;
+  upsertIngredientSubstitution(input: IngredientSubstitutionInput): Promise<IngredientSubstitution>;
+  verifyIngredientSubstitution(
+    restaurantId: string,
+    substitutionId: string
+  ): Promise<IngredientSubstitution>;
+  rejectIngredientSubstitution(
+    restaurantId: string,
+    substitutionId: string
+  ): Promise<IngredientSubstitution>;
+  expireIngredientSubstitution(
+    restaurantId: string,
+    substitutionId: string
+  ): Promise<IngredientSubstitution>;
   fetchPlanningData(restaurantId: string): Promise<PlanningData>;
   saveRestaurantSetupSnapshot(
     restaurantId: string,

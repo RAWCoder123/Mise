@@ -27,6 +27,10 @@ import { SUPPLIER_SEND_CONTENT_VERSION } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 import { normalizePurchaseAuthorityResult } from "../domain/purchaseAuthority";
+import {
+  normalizeIngredientSubstitution,
+  type IngredientSubstitutionInput
+} from "../domain/ingredientSubstitutions";
 import { TeamMembershipError, teamMembershipErrorFrom } from "../domain/teamMembership";
 import {
   activityEventFromPersistedRow,
@@ -1277,6 +1281,75 @@ export function createSupabaseRepository(): MiseRepository {
         throw new Error("Canonical unit verification returned an invalid response.");
       }
       return normalizeInventoryItem(item as InventoryItem);
+    },
+
+    async listIngredientSubstitutions(restaurantId) {
+      const { data, error } = await client
+        .from("ingredient_substitutions")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("updated_at", { ascending: false });
+      if (error) throwRepositoryError(error, restaurantId);
+      return (data ?? []).map((row) =>
+        normalizeIngredientSubstitution(row as Record<string, unknown>)
+      );
+    },
+
+    async upsertIngredientSubstitution(input: IngredientSubstitutionInput) {
+      const { data, error } = await client.rpc("upsert_ingredient_substitution", {
+        p_restaurant_id: input.restaurantId,
+        p_source_inventory_item_id: input.sourceInventoryItemId,
+        p_substitute_inventory_item_id: input.substituteInventoryItemId,
+        p_source_quantity: input.sourceQuantity,
+        p_substitute_quantity: input.substituteQuantity,
+        p_canonical_unit: input.canonicalUnit,
+        p_substitution_id: input.substitutionId ?? null
+      });
+      if (error) throwRepositoryError(error, input.restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") {
+        throw new Error("Ingredient substitution upsert returned an invalid response.");
+      }
+      return normalizeIngredientSubstitution(row as Record<string, unknown>);
+    },
+
+    async verifyIngredientSubstitution(restaurantId, substitutionId) {
+      const { data, error } = await client.rpc("verify_ingredient_substitution", {
+        p_restaurant_id: restaurantId,
+        p_substitution_id: substitutionId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") {
+        throw new Error("Ingredient substitution verify returned an invalid response.");
+      }
+      return normalizeIngredientSubstitution(row as Record<string, unknown>);
+    },
+
+    async rejectIngredientSubstitution(restaurantId, substitutionId) {
+      const { data, error } = await client.rpc("reject_ingredient_substitution", {
+        p_restaurant_id: restaurantId,
+        p_substitution_id: substitutionId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") {
+        throw new Error("Ingredient substitution reject returned an invalid response.");
+      }
+      return normalizeIngredientSubstitution(row as Record<string, unknown>);
+    },
+
+    async expireIngredientSubstitution(restaurantId, substitutionId) {
+      const { data, error } = await client.rpc("expire_ingredient_substitution", {
+        p_restaurant_id: restaurantId,
+        p_substitution_id: substitutionId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") {
+        throw new Error("Ingredient substitution expire returned an invalid response.");
+      }
+      return normalizeIngredientSubstitution(row as Record<string, unknown>);
     },
 
     async fetchPlanningData(restaurantId) {

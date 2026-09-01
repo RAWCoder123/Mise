@@ -8,6 +8,7 @@ export * from "./application/account";
 export * from "./application/setup";
 export * from "./application/today";
 export * from "./application/inventory";
+export * from "./application/ingredientSubstitutions";
 export * from "./application/deviceInventoryOutbox";
 export * from "./application/orders";
 export * from "./application/pos";
