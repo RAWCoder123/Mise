@@ -603,7 +603,11 @@ export interface MiseRepository {
   ): Promise<InventoryItem>;
   fetchOpenInventoryCountSession(restaurantId: string): Promise<InventoryCountSessionDetail | null>;
   fetchInventoryCountSession(restaurantId: string, sessionId: string): Promise<InventoryCountSessionDetail>;
-  beginInventoryCountSession(restaurantId: string, note: string | null): Promise<InventoryCountSessionDetail>;
+  beginInventoryCountSession(
+    restaurantId: string,
+    note: string | null,
+    inventoryItemIds?: string[] | null
+  ): Promise<InventoryCountSessionDetail>;
   saveInventoryCountLines(
     restaurantId: string,
     sessionId: string,

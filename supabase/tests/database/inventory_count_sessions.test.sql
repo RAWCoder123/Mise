@@ -19,7 +19,7 @@ select policies_are(
 select function_privs_are(
   'public',
   'service_begin_inventory_count_session',
-  ARRAY['uuid', 'uuid', 'text']::name[],
+  ARRAY['uuid', 'uuid', 'text', 'uuid[]']::name[],
   'service_role',
   ARRAY['EXECUTE']::name[],
   'count session begin is service_role only'
@@ -27,7 +27,7 @@ select function_privs_are(
 select is(
   has_function_privilege(
     'authenticated',
-    'public.service_begin_inventory_count_session(uuid,uuid,text)',
+    'public.service_begin_inventory_count_session(uuid,uuid,text,uuid[])',
     'EXECUTE'
   ),
   false,

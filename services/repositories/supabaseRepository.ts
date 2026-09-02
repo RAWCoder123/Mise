@@ -2289,11 +2289,12 @@ export function createSupabaseRepository(): MiseRepository {
       });
     },
 
-    async beginInventoryCountSession(restaurantId, note) {
+    async beginInventoryCountSession(restaurantId, note, inventoryItemIds = null) {
       const response = await invokeOperationalWorkflow({
         action: "begin_count_session",
         restaurantId,
-        note
+        note,
+        inventoryItemIds: inventoryItemIds ?? null
       });
       return parseCountSessionWorkflowResult(response.result);
     },

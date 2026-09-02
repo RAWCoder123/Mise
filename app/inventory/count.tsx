@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { ClipboardList, Diff } from "lucide-react-native";
-import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { CheckCircle2, Circle, ClipboardList, Diff } from "lucide-react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -9,10 +9,13 @@ import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, spacing, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
-import { summarizeCountSessionProgress } from "../../services/domain/inventoryCountSessions";
+import {
+  isCountSessionEligibleInventoryItem,
+  summarizeCountSessionProgress
+} from "../../services/domain/inventoryCountSessions";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -21,12 +24,13 @@ import {
   approveInventoryCountSession,
   beginInventoryCountSession,
   cancelInventoryCountSession,
+  fetchInventoryItems,
   fetchOpenInventoryCountSession,
   saveInventoryCountLines,
   submitInventoryCountSession
 } from "../../services/miseService";
 import { canApproveInventoryCount, canDraftInventoryCount } from "../../services/tenantAccess";
-import type { InventoryCountSessionDetail } from "../../types/mise";
+import type { InventoryCountSessionDetail, InventoryItem } from "../../types/mise";
 
 export default function InventoryCountSessionScreen() {
   const { formatNumber, t } = useLocale();
@@ -34,6 +38,9 @@ export default function InventoryCountSessionScreen() {
   const canDraft = canDraftInventoryCount(memberships, restaurant?.id ?? "");
   const canApprove = canApproveInventoryCount(memberships, restaurant?.id ?? "");
   const [detail, setDetail] = useState<InventoryCountSessionDetail | null>(null);
+  const [eligibleItems, setEligibleItems] = useState<InventoryItem[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<Record<string, boolean>>({});
+  const [scopeQuery, setScopeQuery] = useState("");
   const [draftCounts, setDraftCounts] = useState<Record<string, string>>({});
   const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -55,8 +62,19 @@ export default function InventoryCountSessionScreen() {
     setLoading(true);
     setError(null);
     try {
-      const open = await fetchOpenInventoryCountSession(restaurantId);
+      const [open, inventoryItems] = await Promise.all([
+        fetchOpenInventoryCountSession(restaurantId),
+        fetchInventoryItems(restaurantId)
+      ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      const eligible = inventoryItems
+        .filter(isCountSessionEligibleInventoryItem)
+        .sort((left, right) => {
+          const byName = left.item_name.localeCompare(right.item_name);
+          return byName !== 0 ? byName : left.id.localeCompare(right.id);
+        });
+      setEligibleItems(eligible);
+      setSelectedItemIds(Object.fromEntries(eligible.map((item) => [item.id, true])));
       setDetail(open);
       setDraftCounts(
         Object.fromEntries(
@@ -84,6 +102,9 @@ export default function InventoryCountSessionScreen() {
     requestIdRef.current += 1;
     setLoadedRestaurantId(null);
     setDetail(null);
+    setEligibleItems([]);
+    setSelectedItemIds({});
+    setScopeQuery("");
     setDraftCounts({});
     setDraftNotes({});
     setSaving(false);
@@ -116,14 +137,37 @@ export default function InventoryCountSessionScreen() {
     [visibleDetail?.lines]
   );
 
+  const selectedCount = useMemo(
+    () => eligibleItems.reduce((count, item) => count + (selectedItemIds[item.id] ? 1 : 0), 0),
+    [eligibleItems, selectedItemIds]
+  );
+
+  const filteredEligibleItems = useMemo(() => {
+    const needle = scopeQuery.trim().toLowerCase();
+    if (!needle) return eligibleItems;
+    return eligibleItems.filter((item) => {
+      const haystack = `${item.item_name} ${item.category} ${item.supplier_name}`.toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [eligibleItems, scopeQuery]);
+
   async function startSession() {
     if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
+    const selectedIds = eligibleItems
+      .filter((item) => selectedItemIds[item.id])
+      .map((item) => item.id);
+    if (selectedIds.length < 1) {
+      setError(t("inventory.count.scopeNoneSelected"));
+      return;
+    }
+    const scopedIds =
+      selectedIds.length === eligibleItems.length ? null : selectedIds;
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      const next = await beginInventoryCountSession(restaurantId);
+      const next = await beginInventoryCountSession(restaurantId, null, scopedIds);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(next);
       setDraftCounts(
@@ -335,10 +379,106 @@ export default function InventoryCountSessionScreen() {
               title={t("inventory.count.startTitle")}
               subtitle={t("inventory.count.startBody")}
             >
+              {canDraft ? (
+                <View style={styles.scopeBlock}>
+                  <Text style={styles.scopeTitle}>{t("inventory.count.scopeTitle")}</Text>
+                  <Text style={styles.scopeBody}>{t("inventory.count.scopeBody")}</Text>
+                  <Text style={styles.scopeMeta}>
+                    {t("inventory.count.scopeSelected", {
+                      selected: formatNumber(selectedCount),
+                      total: formatNumber(eligibleItems.length)
+                    })}
+                  </Text>
+                  {eligibleItems.length > 0 ? (
+                    <>
+                      <TextInput
+                        accessibilityLabel={t("inventory.count.scopeSearchAccessibility")}
+                        editable={!saving}
+                        value={scopeQuery}
+                        onChangeText={setScopeQuery}
+                        placeholder={t("inventory.count.scopeSearchPlaceholder")}
+                        placeholderTextColor={colors.faint}
+                        style={styles.scopeSearch}
+                      />
+                      <View style={styles.scopeActions}>
+                        <Button
+                          title={t("inventory.count.scopeSelectAll")}
+                          variant="secondary"
+                          size="compact"
+                          disabled={saving}
+                          onPress={() =>
+                            setSelectedItemIds(
+                              Object.fromEntries(eligibleItems.map((item) => [item.id, true]))
+                            )
+                          }
+                        />
+                        <Button
+                          title={t("inventory.count.scopeClear")}
+                          variant="secondary"
+                          size="compact"
+                          disabled={saving}
+                          onPress={() => setSelectedItemIds({})}
+                        />
+                      </View>
+                      <View style={styles.scopeList}>
+                        {filteredEligibleItems.map((item, index) => {
+                          const checked = Boolean(selectedItemIds[item.id]);
+                          return (
+                            <Pressable
+                              key={item.id}
+                              accessibilityRole="checkbox"
+                              accessibilityState={{ checked }}
+                              accessibilityLabel={t("inventory.count.scopeItemAccessibility", {
+                                item: item.item_name
+                              })}
+                              disabled={saving}
+                              onPress={() =>
+                                setSelectedItemIds((current) => ({
+                                  ...current,
+                                  [item.id]: !current[item.id]
+                                }))
+                              }
+                              style={[
+                                styles.scopeRow,
+                                index > 0 ? styles.scopeRowDivided : null
+                              ]}
+                            >
+                              {checked ? (
+                                <CheckCircle2
+                                  size={icon.inline}
+                                  color={colors.success}
+                                  strokeWidth={iconStroke}
+                                />
+                              ) : (
+                                <Circle
+                                  size={icon.inline}
+                                  color={colors.borderStrong}
+                                  strokeWidth={iconStroke}
+                                />
+                              )}
+                              <View style={styles.scopeCopy}>
+                                <Text style={styles.scopeItemName}>{item.item_name}</Text>
+                                <Text style={styles.scopeItemMeta}>
+                                  {item.category} · {item.unit}
+                                </Text>
+                              </View>
+                            </Pressable>
+                          );
+                        })}
+                        {filteredEligibleItems.length < 1 ? (
+                          <Text style={styles.help}>{t("inventory.count.scopeEmpty")}</Text>
+                        ) : null}
+                      </View>
+                    </>
+                  ) : (
+                    <Text style={styles.help}>{t("inventory.count.scopeNoEligible")}</Text>
+                  )}
+                </View>
+              ) : null}
               <Button
                 title={t("inventory.count.startAction")}
                 onPress={() => void startSession()}
-                disabled={!canDraft || saving}
+                disabled={!canDraft || saving || eligibleItems.length < 1}
                 fullWidth
                 accessibilityLabel={t("inventory.count.startAccessibility")}
               />
@@ -522,6 +662,68 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.muted,
     marginTop: 10
+  },
+  scopeBlock: {
+    gap: 8,
+    marginBottom: 12
+  },
+  scopeTitle: {
+    ...typography.cardTitle,
+    color: colors.ink
+  },
+  scopeBody: {
+    ...typography.caption,
+    color: colors.muted
+  },
+  scopeMeta: {
+    ...typography.caption,
+    color: colors.ink
+  },
+  scopeSearch: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceWarm,
+    paddingHorizontal: 10,
+    ...typography.body,
+    color: colors.ink
+  },
+  scopeActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  scopeList: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceWarm,
+    paddingHorizontal: 12,
+    paddingVertical: 4
+  },
+  scopeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 44,
+    paddingVertical: 10
+  },
+  scopeRowDivided: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border
+  },
+  scopeCopy: {
+    flex: 1,
+    gap: 2
+  },
+  scopeItemName: {
+    ...typography.cardTitle,
+    color: colors.ink
+  },
+  scopeItemMeta: {
+    ...typography.caption,
+    color: colors.muted
   },
   progressCopy: {
     ...typography.body,
