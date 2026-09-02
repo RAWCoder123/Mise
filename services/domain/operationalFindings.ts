@@ -11,8 +11,10 @@ import {
 } from "./operationalFindingDecisions";
 import {
   buildInventoryCountEvidence,
+  dayResolutionConsumptionIsAfterCount,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { inventoryUnitsAreCompatible } from "./inventoryUnits";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
@@ -396,6 +398,96 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       sourceWindow: sourceWindow(evidence, generatedAt),
       generatedAt,
       freshness: freshnessFor(generatedAt, generatedAt, ["inventory_items"]),
+      managerFeedback: unreviewedFeedback(recommendedAction),
+      policyVersion: BETA_FINDING_POLICY_VERSION
+    });
+  }
+
+  // Same-day verified counts already observed mapped POS demand at day resolution.
+  // Projected on-hand therefore cannot claim temporal authority for those items until
+  // the next count (or until provider sale instants exist). Surface that gap so Home
+  // and Daily Brief never read as an all-clear on non-authoritative projections.
+  const unattributedSameDayItems: Array<{
+    item: InventoryItem;
+    quantity: number;
+    countedAt: string;
+  }> = [];
+  for (const item of [...input.inventoryItems].sort((left, right) => left.id.localeCompare(right.id))) {
+    const evidence = countEvidence.get(item.id);
+    if (!evidence || evidence.status !== "verified") continue;
+    const todayUsageIsAfterCount = dayResolutionConsumptionIsAfterCount(
+      evidence.countedOperatingDate,
+      input.operatingDate
+    );
+    if (todayUsageIsAfterCount) continue;
+
+    const relevantMappings = input.mappings.filter(
+      (mapping) =>
+        mapping.restaurant_id === restaurantId &&
+        mapping.inventory_item_id === item.id &&
+        inventoryUnitsAreCompatible(item.unit, mapping.unit)
+    );
+    if (relevantMappings.length === 0) continue;
+
+    const mappedTodayUsage = relevantMappings.reduce((sum, mapping) => {
+      const sold = todaySales
+        .filter((sale) => saleMatchesRecipe(sale, mapping, providerMappings))
+        .reduce((saleSum, sale) => {
+          const quantity = Number(sale.quantity_sold);
+          return saleSum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 0);
+        }, 0);
+      const perSale = Number(mapping.quantity_used_per_sale);
+      return sum + sold * (Number.isFinite(perSale) && perSale > 0 ? perSale : 0);
+    }, 0);
+    if (!(mappedTodayUsage > 0)) continue;
+
+    unattributedSameDayItems.push({
+      item,
+      quantity: mappedTodayUsage,
+      countedAt: evidence.countedAt ?? generatedAt
+    });
+  }
+
+  if (unattributedSameDayItems.length > 0) {
+    const evidence = unattributedSameDayItems.slice(0, MAX_EVIDENCE_PER_FINDING).map((entry) => ({
+      type: "inventory_item" as const,
+      id: entry.item.id,
+      observedAt: finiteTimestamp(entry.countedAt, generatedAt),
+      summary: boundedText(
+        `${entry.item.item_name}: today's count already includes about ${Number(entry.quantity.toFixed(2))} ${entry.item.unit} of mapped POS demand`,
+        "Same-day count absorbed mapped POS demand"
+      )
+    }));
+    const itemNames = unattributedSameDayItems
+      .map((entry) => boundedText(entry.item.item_name, "item", 80))
+      .slice(0, 5);
+    const recommendedAction =
+      "Open inventory for the named items, treat projected on-hand as provisional, and recount after service before trusting coverage.";
+    findings.push({
+      id: `finding:data-gap:temporal-authority:${input.operatingDate}`,
+      restaurantId,
+      category: "data_quality",
+      severity: "urgent",
+      priority: "now",
+      title: "Same-day count blocks POS depletion",
+      explanation: boundedText(
+        `${unattributedSameDayItems.length} item${unattributedSameDayItems.length === 1 ? "" : "s"} (${itemNames.join(", ")}) had a verified count during today's service window while mapped POS sales also recorded. Mise is not subtracting that same-day demand again, so projected on-hand is not temporally authoritative until the next count.`,
+        "Same-day verified counts make today's mapped POS demand unattributable for depletion."
+      ),
+      confidence: boundedConfidence(
+        1,
+        "Verified count operating dates were compared directly with restaurant-scoped same-day mapped POS sales."
+      ),
+      evidence,
+      affectedWorkflow: "inventory_count",
+      recommendedAction,
+      sourceWindow: sourceWindow(evidence, generatedAt),
+      generatedAt,
+      freshness: freshnessFor(
+        evidence[evidence.length - 1]?.observedAt ?? generatedAt,
+        generatedAt,
+        ["temporally_authoritative_projection", ...itemNames.map((name) => `same_day_count:${name}`)]
+      ),
       managerFeedback: unreviewedFeedback(recommendedAction),
       policyVersion: BETA_FINDING_POLICY_VERSION
     });

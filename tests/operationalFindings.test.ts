@@ -126,8 +126,13 @@ test("daily brief prioritizes deterministic tenant evidence into Now, Up next, a
   const brief = build({ sales: [sale, unmappedSale] });
 
   assert.equal(brief.policyVersion, BETA_FINDING_POLICY_VERSION);
-  assert.equal(brief.findings[0]?.id, `finding:recommendation:${recommendation.id}`);
-  assert.deepEqual(brief.priorities.now, [`finding:recommendation:${recommendation.id}`]);
+  // Same-day count + mapped POS is urgent data-quality attention and outranks the
+  // purchase recommendation on confidence, so Home cannot read an all-clear pulse.
+  assert.equal(brief.findings[0]?.id, "finding:data-gap:temporal-authority:2026-07-27");
+  assert.deepEqual(brief.priorities.now, [
+    "finding:data-gap:temporal-authority:2026-07-27",
+    `finding:recommendation:${recommendation.id}`
+  ]);
   assert.ok(brief.priorities.upNext.includes("finding:data-gap:mapping:2026-07-27"));
   assert.ok(brief.priorities.later.includes(`finding:insight:${insight.id}`));
   assert.equal(brief.findings.every((finding) => finding.restaurantId === restaurantId), true);
@@ -311,6 +316,55 @@ test("same-day data-gap feedback survives a brief refresh and expires with new e
   );
 });
 
+test("same-day verified counts with mapped POS become urgent temporal-authority findings", () => {
+  const brief = build({ recommendations: [], insights: [] });
+  const finding = brief.findings.find(
+    (entry) => entry.id === "finding:data-gap:temporal-authority:2026-07-27"
+  );
+
+  assert.ok(finding);
+  assert.equal(finding.category, "data_quality");
+  assert.equal(finding.severity, "urgent");
+  assert.equal(finding.priority, "now");
+  assert.equal(finding.affectedWorkflow, "inventory_count");
+  assert.equal(finding.confidence.score, 1);
+  assert.ok(finding.freshness.missingData.includes("temporally_authoritative_projection"));
+  assert.ok(finding.freshness.missingData.some((entry) => entry.startsWith("same_day_count:")));
+  assert.match(finding.explanation, /Chicken Breast/);
+  assert.match(finding.explanation, /not temporally authoritative/i);
+  assert.match(finding.recommendedAction, /recount after service/i);
+  assert.equal(finding.evidence[0]?.type, "inventory_item");
+  assert.equal(finding.evidence[0]?.id, item.id);
+  assert.match(finding.evidence[0]?.summary ?? "", /10 lb of mapped POS demand/);
+});
+
+test("prior-day verified counts keep same-day mapped POS attributable and omit the finding", () => {
+  const brief = build({
+    recommendations: [],
+    insights: [],
+    inventoryLedgerEvents: [verifiedCount("2026-07-26T11:00:00.000Z")]
+  });
+
+  assert.equal(
+    brief.findings.some((entry) => entry.id === "finding:data-gap:temporal-authority:2026-07-27"),
+    false
+  );
+});
+
+test("same-day counts without mapped POS demand do not invent a temporal-authority finding", () => {
+  const brief = build({
+    sales: [],
+    recommendations: [],
+    insights: [],
+    mappings: []
+  });
+
+  assert.equal(
+    brief.findings.some((entry) => entry.id.startsWith("finding:data-gap:temporal-authority:")),
+    false
+  );
+});
+
 test("screen-facing daily brief stays behind miseService and has no AI or mutation dependency", () => {
   const facade = readFileSync("services/miseService.ts", "utf8");
   const application = readFileSync("services/application/findings.ts", "utf8");
@@ -319,6 +373,8 @@ test("screen-facing daily brief stays behind miseService and has no AI or mutati
   assert.match(facade, /export \* from "\.\/application\/findings"/);
   assert.match(application, /repository\.fetchRestaurantData/);
   assert.match(application, /repository\.fetchOperationalFindingDecisions/);
+  assert.match(application, /fetchInventoryLedgerEvidence/);
+  assert.match(application, /providerMappings/);
   assert.match(application, /toDateKeyInTimeZone/);
   assert.doesNotMatch(application, /fetchPlanningData/);
   assert.doesNotMatch(application, /create|insert|update|delete|sendSupplier/i);
