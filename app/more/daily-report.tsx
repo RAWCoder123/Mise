@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Minus,
   Package,
+  PackageCheck,
   PackageMinus,
   ShoppingBag,
   Sparkles,
@@ -31,9 +32,14 @@ import { colors, conceptTypography, icon, iconStroke, typography } from "../../c
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
+  fetchAttentionSupplierDeliveryOutcomeCount,
   fetchDailyOpsReport,
   type DailyOpsReport
 } from "../../services/miseService";
+import {
+  resolveDeliveryLessonsReviewHref,
+  shouldOfferDeliveryLessonsReview
+} from "../../services/presentation/deliveryLessonsNavigation";
 import { captureMiseError } from "../../services/telemetry";
 import type {
   SupplierReliabilityReason,
@@ -57,6 +63,7 @@ export default function DailyReportScreen() {
   const { formatCompactCurrency, formatNumber, t } = useLocale();
   const { restaurant } = useMiseSession();
   const [report, setReport] = useState<DailyOpsReport | null>(null);
+  const [deliveryLessonAttentionCount, setDeliveryLessonAttentionCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -67,6 +74,7 @@ export default function DailyReportScreen() {
   useEffect(() => {
     requestIdRef.current += 1;
     setReport(null);
+    setDeliveryLessonAttentionCount(null);
     setLoadedRestaurantId(null);
     setError(false);
     setLoading(Boolean(restaurant));
@@ -82,9 +90,16 @@ export default function DailyReportScreen() {
     setLoading(true);
     setError(false);
     try {
-      const nextReport = await fetchDailyOpsReport(restaurantId);
+      const [nextReport, attentionResult] = await Promise.all([
+        fetchDailyOpsReport(restaurantId),
+        fetchAttentionSupplierDeliveryOutcomeCount(restaurantId).then(
+          (count) => ({ ok: true as const, count }),
+          () => ({ ok: false as const, count: null as number | null })
+        )
+      ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setReport(nextReport);
+      setDeliveryLessonAttentionCount(attentionResult.ok ? attentionResult.count : null);
       setLoadedRestaurantId(restaurantId);
     } catch (loadError) {
       captureMiseError(loadError, {
@@ -94,6 +109,7 @@ export default function DailyReportScreen() {
       });
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setError(true);
+      setDeliveryLessonAttentionCount(null);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
         setLoading(false);
@@ -512,6 +528,16 @@ export default function DailyReportScreen() {
                 onPress={() => router.push("/orders")}
                 style={styles.inlineAction}
               />
+              {shouldOfferDeliveryLessonsReview(deliveryLessonAttentionCount) ? (
+                <Button
+                  title={t("dailyReport.supplierReliability.reviewDeliveryLessons")}
+                  variant="secondary"
+                  size="compact"
+                  icon={<PackageCheck size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
+                  onPress={() => router.push(resolveDeliveryLessonsReviewHref() as never)}
+                  style={styles.inlineAction}
+                />
+              ) : null}
             </Card>
 
             <SectionHeader title={t("dailyReport.section.signals")} />

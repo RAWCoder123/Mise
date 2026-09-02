@@ -1,6 +1,7 @@
 import {
   assertActionOutcomesTenant,
   buildSupplierDeliveryOutcomeViews,
+  countAttentionSupplierDeliveryOutcomes,
   outcomeLessonForDelivery,
   type DeliveryOutcomeStatusFilter,
   type SupplierDeliveryOutcomeView
@@ -15,6 +16,21 @@ function requireWorkflowId(value: string, label: string) {
   const normalized = value.trim();
   if (!normalized) throw new Error(`Missing ${label}.`);
   return normalized;
+}
+
+/**
+ * Lightweight attention count for Insights/Daily Report CTAs.
+ * Reads append-only outcomes only — no delivery/order join and no Memory mutation.
+ */
+export async function fetchAttentionSupplierDeliveryOutcomeCount(
+  restaurantId: string,
+  options: { limit?: number } = {}
+): Promise<number> {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant workspace");
+  const limit = Math.min(Math.max(options.limit ?? 80, 1), 200);
+  const outcomes = await repository.listActionOutcomes(normalizedRestaurantId, { limit });
+  assertActionOutcomesTenant(normalizedRestaurantId, outcomes);
+  return countAttentionSupplierDeliveryOutcomes(outcomes);
 }
 
 /**

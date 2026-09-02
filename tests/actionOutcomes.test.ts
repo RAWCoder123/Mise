@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   actionOutcomeFromPersistedRow,
   buildSupplierDeliveryOutcomeViews,
+  countAttentionSupplierDeliveryOutcomes,
   deliveryOutcomeKind,
   deliveryOutcomeLessonCode,
   filterSupplierDeliveryOutcomeViews,
@@ -100,6 +101,21 @@ test("delivery outcome views join supplier order presentation fields", () => {
   assert.equal(views[0]?.kind, "discrepancy");
   assert.equal(filterSupplierDeliveryOutcomeViews(views, "attention").length, 1);
   assert.equal(filterSupplierDeliveryOutcomeViews(views, "all").length, 1);
+  assert.equal(countAttentionSupplierDeliveryOutcomes([outcome()]), 1);
+  assert.equal(
+    countAttentionSupplierDeliveryOutcomes([
+      outcome({
+        actual_result: {
+          deliveryStatus: "received",
+          deliveryId: "delivery-matched",
+          lineCount: 1
+        },
+        variance: { deliveryStatusMatched: true },
+        lesson: "The supplier order was received as expected."
+      })
+    ]),
+    0
+  );
 });
 
 test("order delivery evidence attaches append-only outcome lessons", () => {
