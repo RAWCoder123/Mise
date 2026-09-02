@@ -490,6 +490,65 @@ function parseSquareDisconnectWorkflowResponse(data: unknown): SquareDisconnectW
   return { status: "not_connected", outcome: payload.outcome };
 }
 
+function parseSquareModifierSample(value: unknown): { id: string; name: string; count: number } | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const id = typeof row.id === "string" ? row.id.trim() : "";
+  const name = typeof row.name === "string" ? row.name.trim() : "";
+  const count = Number(row.count ?? 0);
+  if (!id || id.length > 128 || !name || name.length > 160) return null;
+  if (!Number.isFinite(count) || count <= 0) return null;
+  return { id, name, count: Math.min(100000, Math.floor(count)) };
+}
+
+function parseSquareModifierSyncSummary(payload: Record<string, unknown>): {
+  modifiersObservedCount: number;
+  modifiersUniqueCount: number;
+  modifiersSample: Array<{ id: string; name: string; count: number }>;
+} {
+  const modifiersObservedCount = Number(payload.modifiersObservedCount ?? 0);
+  const modifiersUniqueCount = Number(payload.modifiersUniqueCount ?? 0);
+  if (
+    !Number.isFinite(modifiersObservedCount) ||
+    modifiersObservedCount < 0 ||
+    !Number.isFinite(modifiersUniqueCount) ||
+    modifiersUniqueCount < 0
+  ) {
+    throw new SquareIntegrationError("unknown", "Square sync returned invalid modifier counts.");
+  }
+  const rawSample = Array.isArray(payload.modifiersSample) ? payload.modifiersSample : [];
+  const modifiersSample = rawSample
+    .slice(0, 20)
+    .map(parseSquareModifierSample)
+    .filter((entry): entry is { id: string; name: string; count: number } => entry !== null);
+  return {
+    modifiersObservedCount: Math.min(1_000_000, Math.floor(modifiersObservedCount)),
+    modifiersUniqueCount: Math.min(100_000, Math.floor(modifiersUniqueCount)),
+    modifiersSample
+  };
+}
+
+function parseSquareModifierSummaryFromMetadata(metadata: unknown): {
+  modifiersObservedCount: number;
+  modifiersUniqueCount: number;
+  modifiersSample: Array<{ id: string; name: string; count: number }>;
+} | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const row = metadata as Record<string, unknown>;
+  if (
+    row.modifiers_observed_count === undefined &&
+    row.modifiers_unique_count === undefined &&
+    row.modifiers_sample === undefined
+  ) {
+    return null;
+  }
+  return parseSquareModifierSyncSummary({
+    modifiersObservedCount: row.modifiers_observed_count ?? 0,
+    modifiersUniqueCount: row.modifiers_unique_count ?? 0,
+    modifiersSample: row.modifiers_sample
+  });
+}
+
 function parseSquareSyncWorkflowResponse(data: unknown): SquareSyncWorkflowResult {
   const payload = asUnknownRecord(data);
   if (payload.status !== "completed") {
@@ -500,11 +559,13 @@ function parseSquareSyncWorkflowResponse(data: unknown): SquareSyncWorkflowResul
   if (!Number.isFinite(recordsProcessed) || recordsProcessed < 0 || !Number.isFinite(catalogProcessed) || catalogProcessed < 0) {
     throw new SquareIntegrationError("unknown", "Square sync returned invalid counts.");
   }
+  const modifierSummary = parseSquareModifierSyncSummary(payload);
   return {
     status: "completed",
     importId: typeof payload.importId === "string" ? payload.importId : null,
     recordsProcessed: Math.floor(recordsProcessed),
-    catalogProcessed: Math.floor(catalogProcessed)
+    catalogProcessed: Math.floor(catalogProcessed),
+    ...modifierSummary
   };
 }
 
@@ -1717,6 +1778,25 @@ export function createSupabaseRepository(): MiseRepository {
         .maybeSingle();
       if (error) throw error;
       return data ? normalizePosIntegration(data as PosIntegration) : null;
+    },
+
+    async fetchLatestSquareModifierSyncSummary(restaurantId) {
+      const { data, error } = await client
+        .from("sales_imports")
+        .select("metadata")
+        .eq("restaurant_id", restaurantId)
+        .eq("import_type", "pos_sync")
+        .eq("status", "completed")
+        .order("imported_at", { ascending: false })
+        .limit(8);
+      if (error) throw error;
+      for (const row of data ?? []) {
+        const summary = parseSquareModifierSummaryFromMetadata(
+          (row as { metadata?: unknown }).metadata
+        );
+        if (summary && summary.modifiersUniqueCount > 0) return summary;
+      }
+      return null;
     },
 
     async fetchPosMappingReviewQueue(restaurantId) {
