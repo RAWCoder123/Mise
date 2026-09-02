@@ -68,7 +68,7 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 13;
+  schema_version: 14;
   restaurants: Restaurant[];
   users: AppUser[];
   /** Durable tenant-scoped supplier identities. Names are presentation only. */
@@ -76,6 +76,24 @@ export interface DemoState {
   posSales: PosSale[];
   inventoryItems: InventoryItem[];
   menuItemIngredients: MenuItemIngredient[];
+  /** Restaurant-wide recipe_versions rows used by yields and modifier adjustments. */
+  recipeVersions: Array<{
+    id: string;
+    restaurantId: string;
+    menuItemId: string;
+    menuItemName: string;
+    status: "draft" | "verified" | "retired";
+    versionNumber: number;
+    servingQuantity: number;
+    prepYield: number;
+    cookingYield: number;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  /** Manager-authored POS modifier → inventory deltas. */
+  modifierRecipeAdjustments: import("../domain/modifierRecipeAdjustments").ModifierRecipeAdjustment[];
   purchaseRecommendations: PurchaseRecommendation[];
   supplierOrders: SupplierOrder[];
   insights: Insight[];
@@ -355,7 +373,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 13,
+    schema_version: 14,
     restaurants: [restaurant],
     users: [user],
     suppliers: buildDemoSupplierCatalog(
@@ -374,6 +392,8 @@ export function createInitialDemoState(
     posSales,
     inventoryItems,
     menuItemIngredients,
+    recipeVersions: [],
+    modifierRecipeAdjustments: [],
     purchaseRecommendations: [
       {
         id: "00000000-0000-4000-8000-000000000501",
@@ -731,13 +751,19 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 13,
+    schema_version: 14,
     restaurants,
     users: raw.users ?? seeded.users,
     suppliers,
     posSales: raw.posSales ?? seeded.posSales,
     inventoryItems,
     menuItemIngredients: raw.menuItemIngredients ?? seeded.menuItemIngredients,
+    recipeVersions: Array.isArray(raw.recipeVersions)
+      ? raw.recipeVersions
+      : seeded.recipeVersions,
+    modifierRecipeAdjustments: Array.isArray(raw.modifierRecipeAdjustments)
+      ? raw.modifierRecipeAdjustments
+      : seeded.modifierRecipeAdjustments,
     purchaseRecommendations,
     supplierOrders,
     insights: raw.insights ?? seeded.insights,
@@ -805,8 +831,10 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 13 ||
+      raw.schema_version !== 14 ||
       !Array.isArray(raw.suppliers) ||
+      !Array.isArray(raw.recipeVersions) ||
+      !Array.isArray(raw.modifierRecipeAdjustments) ||
       JSON.stringify(raw.suppliers ?? []) !== JSON.stringify(suppliers) ||
       sourceInventoryItems.some(
         (item, index) =>
@@ -1214,6 +1242,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     ingredient("00000000-0000-4000-8000-000000000211", "Dumplings", itemIds.chicken, 0.18, "lbs"),
     ingredient("00000000-0000-4000-8000-000000000212", "Egg Drop Soup", itemIds.eggs, 2, "units")
   ];
+  state.recipeVersions = [];
+  state.modifierRecipeAdjustments = [];
 
   state.posSales = [
     ...buildDefaultDemoCurrentSales(today, "Demo POS", createdAt),

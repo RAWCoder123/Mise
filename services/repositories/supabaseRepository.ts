@@ -27,6 +27,10 @@ import { SUPPLIER_SEND_CONTENT_VERSION } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 import { normalizePurchaseAuthorityResult } from "../domain/purchaseAuthority";
+import {
+  normalizeModifierRecipeAdjustment,
+  type ModifierRecipeAdjustmentInput
+} from "../domain/modifierRecipeAdjustments";
 import { TeamMembershipError, teamMembershipErrorFrom } from "../domain/teamMembership";
 import {
   activityEventFromPersistedRow,
@@ -1277,6 +1281,106 @@ export function createSupabaseRepository(): MiseRepository {
         throw new Error("Canonical unit verification returned an invalid response.");
       }
       return normalizeInventoryItem(item as InventoryItem);
+    },
+
+    async listModifierRecipeAdjustments(restaurantId) {
+      const { data, error } = await client
+        .from("modifier_recipe_adjustments")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("updated_at", { ascending: false });
+      if (error) throwRepositoryError(error, restaurantId);
+      return (data ?? []).map((row) =>
+        normalizeModifierRecipeAdjustment(row as Record<string, unknown>)
+      );
+    },
+
+    async listModifierAdjustmentMenuContexts(restaurantId) {
+      const { data, error } = await client
+        .from("recipe_versions")
+        .select("id, menu_item_id, menu_items!inner(name)")
+        .eq("restaurant_id", restaurantId)
+        .is("pos_location_id", null);
+      if (error) throwRepositoryError(error, restaurantId);
+      const contexts = new Map<string, { menuItemId: string; menuItemName: string }>();
+      for (const row of data ?? []) {
+        const record = row as {
+          id?: string;
+          menu_item_id?: string;
+          menu_items?: { name?: string } | { name?: string }[] | null;
+        };
+        const versionId = typeof record.id === "string" ? record.id : "";
+        const menuItemId =
+          typeof record.menu_item_id === "string" ? record.menu_item_id : "";
+        const menuJoin = Array.isArray(record.menu_items)
+          ? record.menu_items[0]
+          : record.menu_items;
+        const menuItemName =
+          typeof menuJoin?.name === "string" && menuJoin.name.trim()
+            ? menuJoin.name.trim()
+            : menuItemId;
+        if (!versionId || !menuItemId) continue;
+        contexts.set(versionId, { menuItemId, menuItemName });
+      }
+      return contexts;
+    },
+
+    async upsertModifierRecipeAdjustment(input: ModifierRecipeAdjustmentInput) {
+      const { data, error } = await client.rpc("upsert_modifier_recipe_adjustment", {
+        p_restaurant_id: input.restaurantId,
+        p_menu_item_id: input.menuItemId,
+        p_external_modifier_id: input.externalModifierId,
+        p_modifier_name: input.modifierName,
+        p_inventory_item_id: input.inventoryItemId,
+        p_quantity_delta: input.quantityDelta,
+        p_canonical_unit: input.canonicalUnit,
+        p_adjustment_id: input.adjustmentId ?? null
+      });
+      if (error) throwRepositoryError(error, input.restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") {
+        throw new Error("Modifier adjustment upsert returned an invalid response.");
+      }
+      return normalizeModifierRecipeAdjustment(row as Record<string, unknown>);
+    },
+
+    async verifyModifierRecipeAdjustment(restaurantId, adjustmentId) {
+      const { data, error } = await client.rpc("verify_modifier_recipe_adjustment", {
+        p_restaurant_id: restaurantId,
+        p_adjustment_id: adjustmentId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") {
+        throw new Error("Modifier adjustment verify returned an invalid response.");
+      }
+      return normalizeModifierRecipeAdjustment(row as Record<string, unknown>);
+    },
+
+    async rejectModifierRecipeAdjustment(restaurantId, adjustmentId) {
+      const { data, error } = await client.rpc("reject_modifier_recipe_adjustment", {
+        p_restaurant_id: restaurantId,
+        p_adjustment_id: adjustmentId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") {
+        throw new Error("Modifier adjustment reject returned an invalid response.");
+      }
+      return normalizeModifierRecipeAdjustment(row as Record<string, unknown>);
+    },
+
+    async expireModifierRecipeAdjustment(restaurantId, adjustmentId) {
+      const { data, error } = await client.rpc("expire_modifier_recipe_adjustment", {
+        p_restaurant_id: restaurantId,
+        p_adjustment_id: adjustmentId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row || typeof row !== "object") {
+        throw new Error("Modifier adjustment expire returned an invalid response.");
+      }
+      return normalizeModifierRecipeAdjustment(row as Record<string, unknown>);
     },
 
     async fetchPlanningData(restaurantId) {

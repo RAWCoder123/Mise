@@ -111,6 +111,10 @@ import {
   createPurchaseDecisionBaseEvent,
   createPurchaseDecisionCompensation
 } from "../domain/purchaseDecisionMemory";
+import {
+  normalizeModifierRecipeAdjustment,
+  type ModifierRecipeAdjustmentInput
+} from "../domain/modifierRecipeAdjustments";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
 import {
   createDemoSupplier,
@@ -153,6 +157,79 @@ import {
 } from "./repositoryContracts";
 
 const demoConfirmedRecipeFingerprints = new Map<string, string>();
+
+function assertDemoModifierAdjustmentItem(state: DemoState, input: ModifierRecipeAdjustmentInput) {
+  const item = state.inventoryItems.find(
+    (entry) =>
+      entry.restaurant_id === input.restaurantId && entry.id === input.inventoryItemId
+  );
+  if (!item) throw new Error("Inventory item not found for restaurant");
+  const normalized = normalizeInventoryItem(item);
+  if (
+    normalized.canonical_unit_verification_status !== "verified" ||
+    normalized.canonical_unit !== input.canonicalUnit
+  ) {
+    throw new Error("Modifier adjustments require a verified matching canonical unit");
+  }
+}
+
+function ensureDemoRecipeVersionForModifiers(
+  state: DemoState,
+  restaurantId: string,
+  menuItemId: string,
+  menuItemName: string
+) {
+  if (!state.recipeVersions) state.recipeVersions = [];
+  const now = new Date().toISOString();
+  const draft = state.recipeVersions
+    .filter(
+      (entry) =>
+        entry.restaurantId === restaurantId &&
+        entry.menuItemId === menuItemId &&
+        entry.status === "draft"
+    )
+    .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+  if (draft) return draft;
+
+  const verified = state.recipeVersions
+    .filter(
+      (entry) =>
+        entry.restaurantId === restaurantId &&
+        entry.menuItemId === menuItemId &&
+        entry.status === "verified" &&
+        entry.effectiveFrom <= now &&
+        (entry.effectiveTo == null || entry.effectiveTo > now)
+    )
+    .sort((left, right) => right.versionNumber - left.versionNumber)[0];
+  if (verified) return verified;
+
+  const nextVersionNumber =
+    Math.max(
+      0,
+      ...state.recipeVersions
+        .filter(
+          (entry) => entry.restaurantId === restaurantId && entry.menuItemId === menuItemId
+        )
+        .map((entry) => entry.versionNumber)
+    ) + 1;
+  const created = {
+    id: createId("recipe_version"),
+    restaurantId,
+    menuItemId,
+    menuItemName,
+    status: "draft" as const,
+    versionNumber: nextVersionNumber,
+    servingQuantity: 1,
+    prepYield: 1,
+    cookingYield: 1,
+    effectiveFrom: now,
+    effectiveTo: null,
+    createdAt: now,
+    updatedAt: now
+  };
+  state.recipeVersions.push(created);
+  return created;
+}
 
 function demoRecipeAuthorityStates(state: DemoState, restaurantId: string): RecipeAuthorityState[] {
   const grouped = new Map<string, MenuItemIngredient[]>();
@@ -571,6 +648,37 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   datasets.suppliers = tenantRows(state.suppliers);
   datasets.inventory_items = tenantRows(state.inventoryItems);
   datasets.menu_item_ingredients = tenantRows(state.menuItemIngredients);
+  datasets.recipe_versions = (state.recipeVersions ?? [])
+    .filter((entry) => entry.restaurantId === restaurantId)
+    .map((entry) => ({
+      id: entry.id,
+      restaurant_id: entry.restaurantId,
+      menu_item_id: entry.menuItemId,
+      status: entry.status,
+      version_number: entry.versionNumber,
+      serving_quantity: entry.servingQuantity,
+      prep_yield: entry.prepYield,
+      cooking_yield: entry.cookingYield,
+      effective_from: entry.effectiveFrom,
+      effective_to: entry.effectiveTo,
+      created_at: entry.createdAt,
+      updated_at: entry.updatedAt
+    }));
+  datasets.modifier_recipe_adjustments = (state.modifierRecipeAdjustments ?? [])
+    .filter((entry) => entry.restaurantId === restaurantId)
+    .map((entry) => ({
+      id: entry.id,
+      restaurant_id: entry.restaurantId,
+      recipe_version_id: entry.recipeVersionId,
+      external_modifier_id: entry.externalModifierId,
+      modifier_name: entry.modifierName,
+      inventory_item_id: entry.inventoryItemId,
+      quantity_delta: entry.quantityDelta,
+      canonical_unit: entry.canonicalUnit,
+      verification_status: entry.verificationStatus,
+      created_at: entry.createdAt,
+      updated_at: entry.updatedAt
+    }));
   datasets.purchase_recommendations = tenantRows(state.purchaseRecommendations);
   datasets.purchase_decision_events = state.purchaseDecisionEvents
     .filter((event) => event.restaurantId === restaurantId)
@@ -1321,6 +1429,219 @@ export function createLocalDemoRepository(): MiseRepository {
           }
         });
         return normalizeInventoryItem(item);
+      });
+    },
+
+    async listModifierRecipeAdjustments(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return (state.modifierRecipeAdjustments ?? [])
+        .filter((entry) => entry.restaurantId === restaurantId)
+        .map((entry) =>
+          normalizeModifierRecipeAdjustment(entry as unknown as Record<string, unknown>)
+        );
+    },
+
+    async listModifierAdjustmentMenuContexts(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      const contexts = new Map<string, { menuItemId: string; menuItemName: string }>();
+      for (const version of state.recipeVersions ?? []) {
+        if (version.restaurantId !== restaurantId) continue;
+        contexts.set(version.id, {
+          menuItemId: version.menuItemId,
+          menuItemName: version.menuItemName
+        });
+      }
+      return contexts;
+    },
+
+    async upsertModifierRecipeAdjustment(input: ModifierRecipeAdjustmentInput) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, input.restaurantId);
+        if (!state.recipeVersions) state.recipeVersions = [];
+        if (!state.modifierRecipeAdjustments) state.modifierRecipeAdjustments = [];
+
+        const menuName =
+          state.menuItemIngredients.find(
+            (mapping) =>
+              mapping.restaurant_id === input.restaurantId &&
+              (mapping.menu_item_id ??
+                `demo-menu:${mapping.menu_item_name.trim().toLowerCase()}`) === input.menuItemId
+          )?.menu_item_name ?? input.menuItemId;
+
+        const version = ensureDemoRecipeVersionForModifiers(
+          state,
+          input.restaurantId,
+          input.menuItemId,
+          menuName
+        );
+        assertDemoModifierAdjustmentItem(state, input);
+
+        const now = new Date().toISOString();
+        if (input.adjustmentId) {
+          const existing = state.modifierRecipeAdjustments.find(
+            (entry) =>
+              entry.restaurantId === input.restaurantId && entry.id === input.adjustmentId
+          );
+          if (!existing) throw new Error("Modifier recipe adjustment not found for restaurant");
+          if (existing.verificationStatus !== "draft") {
+            throw new Error("Only draft modifier adjustments can be edited");
+          }
+          if (existing.recipeVersionId !== version.id) {
+            throw new Error("Modifier adjustment does not belong to this menu item version");
+          }
+          existing.externalModifierId = input.externalModifierId;
+          existing.modifierName = input.modifierName;
+          existing.inventoryItemId = input.inventoryItemId;
+          existing.quantityDelta = input.quantityDelta;
+          existing.canonicalUnit = input.canonicalUnit;
+          existing.updatedAt = now;
+          appendDemoAuditLog(state, {
+            restaurant_id: input.restaurantId,
+            action: "modifier_recipe_adjustment.upserted",
+            entity_table: "modifier_recipe_adjustments",
+            entity_id: existing.id,
+            metadata: {
+              menu_item_id: input.menuItemId,
+              recipe_version_id: existing.recipeVersionId,
+              external_modifier_id: existing.externalModifierId,
+              simulated: true
+            }
+          });
+          return normalizeModifierRecipeAdjustment(existing as unknown as Record<string, unknown>);
+        }
+
+        const created = {
+          id: createId("modifier_adj"),
+          restaurantId: input.restaurantId,
+          recipeVersionId: version.id,
+          externalModifierId: input.externalModifierId,
+          modifierName: input.modifierName,
+          inventoryItemId: input.inventoryItemId,
+          quantityDelta: input.quantityDelta,
+          canonicalUnit: input.canonicalUnit,
+          verificationStatus: "draft" as const,
+          createdAt: now,
+          updatedAt: now
+        };
+        state.modifierRecipeAdjustments.push(created);
+        appendDemoAuditLog(state, {
+          restaurant_id: input.restaurantId,
+          action: "modifier_recipe_adjustment.upserted",
+          entity_table: "modifier_recipe_adjustments",
+          entity_id: created.id,
+          metadata: {
+            menu_item_id: input.menuItemId,
+            recipe_version_id: created.recipeVersionId,
+            external_modifier_id: created.externalModifierId,
+            simulated: true
+          }
+        });
+        return normalizeModifierRecipeAdjustment(created as unknown as Record<string, unknown>);
+      });
+    },
+
+    async verifyModifierRecipeAdjustment(restaurantId, adjustmentId) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const existing = (state.modifierRecipeAdjustments ?? []).find(
+          (entry) => entry.restaurantId === restaurantId && entry.id === adjustmentId
+        );
+        if (!existing) throw new Error("Modifier recipe adjustment not found for restaurant");
+        if (existing.verificationStatus !== "draft") {
+          throw new Error("Only draft modifier adjustments can be verified");
+        }
+        assertDemoModifierAdjustmentItem(state, {
+          restaurantId,
+          menuItemId: "",
+          externalModifierId: existing.externalModifierId,
+          modifierName: existing.modifierName,
+          inventoryItemId: existing.inventoryItemId,
+          quantityDelta: existing.quantityDelta,
+          canonicalUnit: existing.canonicalUnit
+        });
+        const conflict = (state.modifierRecipeAdjustments ?? []).find(
+          (entry) =>
+            entry.restaurantId === restaurantId &&
+            entry.id !== adjustmentId &&
+            entry.recipeVersionId === existing.recipeVersionId &&
+            entry.externalModifierId === existing.externalModifierId &&
+            entry.inventoryItemId === existing.inventoryItemId &&
+            entry.verificationStatus === "verified"
+        );
+        if (conflict) {
+          throw new Error("An active verified modifier adjustment already exists for this triple");
+        }
+        const now = new Date().toISOString();
+        existing.verificationStatus = "verified";
+        existing.updatedAt = now;
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "modifier_recipe_adjustment.verified",
+          entity_table: "modifier_recipe_adjustments",
+          entity_id: existing.id,
+          metadata: {
+            recipe_version_id: existing.recipeVersionId,
+            external_modifier_id: existing.externalModifierId,
+            simulated: true
+          }
+        });
+        return normalizeModifierRecipeAdjustment(existing as unknown as Record<string, unknown>);
+      });
+    },
+
+    async rejectModifierRecipeAdjustment(restaurantId, adjustmentId) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const existing = (state.modifierRecipeAdjustments ?? []).find(
+          (entry) => entry.restaurantId === restaurantId && entry.id === adjustmentId
+        );
+        if (!existing) throw new Error("Modifier recipe adjustment not found for restaurant");
+        if (existing.verificationStatus !== "draft") {
+          throw new Error("Only draft modifier adjustments can be rejected");
+        }
+        const now = new Date().toISOString();
+        existing.verificationStatus = "rejected";
+        existing.updatedAt = now;
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "modifier_recipe_adjustment.rejected",
+          entity_table: "modifier_recipe_adjustments",
+          entity_id: existing.id,
+          metadata: {
+            recipe_version_id: existing.recipeVersionId,
+            external_modifier_id: existing.externalModifierId,
+            simulated: true
+          }
+        });
+        return normalizeModifierRecipeAdjustment(existing as unknown as Record<string, unknown>);
+      });
+    },
+
+    async expireModifierRecipeAdjustment(restaurantId, adjustmentId) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const existing = (state.modifierRecipeAdjustments ?? []).find(
+          (entry) => entry.restaurantId === restaurantId && entry.id === adjustmentId
+        );
+        if (!existing) throw new Error("Modifier recipe adjustment not found for restaurant");
+        if (existing.verificationStatus !== "verified") {
+          throw new Error("Only verified modifier adjustments can be expired");
+        }
+        const now = new Date().toISOString();
+        existing.verificationStatus = "expired";
+        existing.updatedAt = now;
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "modifier_recipe_adjustment.expired",
+          entity_table: "modifier_recipe_adjustments",
+          entity_id: existing.id,
+          metadata: {
+            recipe_version_id: existing.recipeVersionId,
+            external_modifier_id: existing.externalModifierId,
+            simulated: true
+          }
+        });
+        return normalizeModifierRecipeAdjustment(existing as unknown as Record<string, unknown>);
       });
     },
 

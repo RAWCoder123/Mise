@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Shield,
   ShieldCheck,
+  SlidersHorizontal,
   Store,
   Trash2,
   Truck,
@@ -399,6 +400,13 @@ export default function SettingsScreen() {
             icon={<BookOpen size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/recipes" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("settings.operations.modifiers.title")}
+            icon={<SlidersHorizontal size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            disabled={!restaurantActionsEditable}
+            onPress={() => router.push("/settings/modifiers" as never)}
           />
           <OperationalRow
             density="menu"
