@@ -58,7 +58,7 @@ import {
   recordRecalculationRunRpcArguments,
   type PersistedRecalculationRunRow
 } from "../domain/recalculationRunTransport";
-import type { SupplierDeliveryRecordResult } from "./repositoryContracts";
+import type { SupplierDeliveryRecordResult, CloseSupplierOrderUndeliveredResult } from "./repositoryContracts";
 import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord
@@ -2240,6 +2240,42 @@ export function createSupabaseRepository(): MiseRepository {
         deliveryId,
         supplierOrderId: input.supplierOrderId,
         outcomeId: payload.outcomeId ?? null
+      };
+    },
+
+    async closeSupplierOrderUndelivered(
+      restaurantId,
+      supplierOrderId,
+      reason
+    ): Promise<CloseSupplierOrderUndeliveredResult> {
+      const { data, error } = await client.rpc("complete_supplier_order_undelivered", {
+        p_restaurant_id: restaurantId,
+        p_order_id: supplierOrderId,
+        p_reason: reason
+      });
+      if (error) throw error;
+      const payload = (Array.isArray(data) ? data[0] : data) as {
+        outcome?: "applied" | "already_completed";
+        orderId?: string;
+        supplierId?: string;
+        priorDeliveryCount?: number;
+        reason?: CloseSupplierOrderUndeliveredResult["reason"];
+      } | null;
+      if (
+        !payload?.outcome ||
+        !payload.orderId ||
+        !payload.supplierId ||
+        !payload.reason ||
+        typeof payload.priorDeliveryCount !== "number"
+      ) {
+        throw new Error("Undelivered order close returned an invalid response.");
+      }
+      return {
+        outcome: payload.outcome,
+        orderId: payload.orderId,
+        supplierId: payload.supplierId,
+        priorDeliveryCount: payload.priorDeliveryCount,
+        reason: payload.reason
       };
     },
 

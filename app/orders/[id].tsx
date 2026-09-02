@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
-import { ArrowLeft, CheckCircle2, Copy, FileText, Save, Send } from "lucide-react-native";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { ArrowLeft, CheckCircle2, Copy, FileText, Save, Send, XCircle } from "lucide-react-native";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
@@ -20,10 +20,12 @@ import {
   isGmailIntegrationError,
   approveSupplierSendContent,
   prepareSupplierEmailPayload,
+  closeSupplierOrderUndelivered,
   receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
+import type { UndeliveredCloseReason } from "../../services/domain/supplierOrderUndeliveredClose";
 import type {
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
@@ -388,6 +390,77 @@ export default function OrderDraftDetailScreen() {
         setNotice({
           title: t("orders.detail.notice.receiveFailedTitle"),
           message: t("orders.detail.notice.receiveFailedBody"),
+          tone: "danger"
+        });
+      }
+    } finally {
+      actionLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
+    }
+  }
+
+  function confirmCloseUndelivered() {
+    if (!restaurant || !order || order.status !== "sent" || actionLockRef.current) return;
+    if (!actionsEditable) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    if (deliveryEvidence.length > 0) {
+      setNotice({
+        title: t("orders.detail.closeUndelivered.hasDeliveryTitle"),
+        message: t("orders.detail.closeUndelivered.hasDeliveryBody"),
+        tone: "warning"
+      });
+      return;
+    }
+    Alert.alert(
+      t("orders.detail.closeUndelivered.title"),
+      t("orders.detail.closeUndelivered.body", { supplier: order.supplier_name }),
+      [
+        { text: t("orders.detail.closeUndelivered.keep"), style: "cancel" },
+        {
+          text: t("orders.detail.closeUndelivered.reason.neverArrived"),
+          style: "destructive",
+          onPress: () => void closeUndelivered("never_arrived")
+        },
+        {
+          text: t("orders.detail.closeUndelivered.reason.supplierCancelled"),
+          style: "destructive",
+          onPress: () => void closeUndelivered("supplier_cancelled")
+        },
+        {
+          text: t("orders.detail.closeUndelivered.reason.orderedInError"),
+          style: "destructive",
+          onPress: () => void closeUndelivered("ordered_in_error")
+        }
+      ]
+    );
+  }
+
+  async function closeUndelivered(reason: UndeliveredCloseReason) {
+    if (!restaurant || !order || order.status !== "sent" || actionLockRef.current) return;
+    const restaurantId = restaurant.id;
+    actionLockRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await closeSupplierOrderUndelivered(restaurantId, order.id, reason);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load(false);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        title:
+          result.outcome === "already_completed"
+            ? t("orders.detail.closeUndelivered.alreadyTitle")
+            : t("orders.detail.closeUndelivered.successTitle"),
+        message: t("orders.detail.closeUndelivered.successBody"),
+        tone: "success"
+      });
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setNotice({
+          title: t("orders.detail.closeUndelivered.failedTitle"),
+          message: t("orders.detail.closeUndelivered.failedBody"),
           tone: "danger"
         });
       }
@@ -782,6 +855,22 @@ export default function OrderDraftDetailScreen() {
               })}
               icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void markReceived()}
+              disabled={busy}
+              fullWidth
+            />
+          ) : null}
+
+          {isSent && actionsEditable && visibleDeliveryEvidence.length === 0 ? (
+            <Button
+              title={busy
+                ? t("orders.detail.closeUndelivered.busy")
+                : t("orders.detail.closeUndelivered.action")}
+              accessibilityLabel={t("orders.detail.closeUndelivered.accessibility", {
+                supplier: visibleOrder.supplier_name
+              })}
+              variant="secondary"
+              icon={<XCircle size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
+              onPress={() => confirmCloseUndelivered()}
               disabled={busy}
               fullWidth
             />

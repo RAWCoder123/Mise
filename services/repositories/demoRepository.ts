@@ -72,8 +72,13 @@ import {
 import type {
   PersistedRecalculationRun,
   RestaurantSetupSnapshotInput,
+  CloseSupplierOrderUndeliveredResult,
   SupplierDeliveryRecordResult
 } from "./repositoryContracts";
+import {
+  undeliveredCloseReasonLabel,
+  type UndeliveredCloseReason
+} from "../domain/supplierOrderUndeliveredClose";
 import {
   buildSupplierOrderMessage,
   createId,
@@ -3825,6 +3830,108 @@ export function createLocalDemoRepository(): MiseRepository {
           deliveryId,
           supplierOrderId: order.id,
           outcomeId: outcome.id
+        };
+      });
+    },
+
+    async closeSupplierOrderUndelivered(
+      restaurantId,
+      supplierOrderId,
+      reason
+    ): Promise<CloseSupplierOrderUndeliveredResult> {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const normalizedReason = reason as UndeliveredCloseReason;
+        const order = state.supplierOrders.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === supplierOrderId
+        );
+        if (!order) throw new Error("Supplier order not found");
+        const priorDeliveryCount = (state.supplierDeliveries ?? []).filter(
+          (delivery) =>
+            delivery.restaurant_id === restaurantId &&
+            delivery.supplier_order_id === supplierOrderId
+        ).length;
+        if (order.status === "completed") {
+          return {
+            outcome: "already_completed",
+            orderId: order.id,
+            supplierId: order.supplier_id,
+            priorDeliveryCount,
+            reason: normalizedReason
+          };
+        }
+        if (order.status !== "sent" || priorDeliveryCount > 0) {
+          throw new Error(
+            "Only sent supplier orders without delivery evidence can be closed as undelivered."
+          );
+        }
+
+        order.status = "completed";
+        const closedAt = new Date().toISOString();
+        const reasonLabel = undeliveredCloseReasonLabel(normalizedReason);
+        const activityEvent: ActivityEvent = {
+          id: createId("activity"),
+          restaurantId,
+          locationId: null,
+          occurredAt: closedAt,
+          createdAt: closedAt,
+          activityType: "delivery_logged",
+          category: "orders",
+          title: "Supplier order closed undelivered",
+          summary: `${order.supplier_name} order closed without a delivery (${reasonLabel}). No inventory receipt was posted.`,
+          triggerType: "supplier_order_undelivered_close",
+          triggerReference: order.id,
+          evidenceReferences: [
+            {
+              type: "supplier_order",
+              id: order.id,
+              summary: order.supplier_name,
+              observedAt: closedAt
+            }
+          ],
+          sourceSystems: ["mise", "orders"],
+          actionId: null,
+          recommendationId: null,
+          autonomyLevel: 5,
+          confidence: null,
+          status: "confirmed",
+          requiresAttention: false,
+          attentionDeadline: null,
+          relatedEntityType: "supplier_order",
+          relatedEntityId: order.id,
+          parentActivityId: null,
+          sequenceId: `supplier-order:${order.id}`,
+          metadata: {
+            priorDeliveryCount,
+            outcome: "undelivered_closed",
+            reason: normalizedReason,
+            idempotencyKey: `supplier_order_undelivered_close:${order.id}`
+          },
+          errorCode: null,
+          errorMessage: null,
+          resolvedAt: null,
+          resolvedBy: null
+        };
+        state.activityEvents = [...(state.activityEvents ?? []), activityEvent];
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_order_undelivered_closed",
+          entity_table: "supplier_orders",
+          entity_id: order.id,
+          metadata: {
+            supplier_id: order.supplier_id,
+            supplier_name: order.supplier_name,
+            prior_delivery_count: priorDeliveryCount,
+            reason: normalizedReason
+          }
+        });
+
+        return {
+          outcome: "applied",
+          orderId: order.id,
+          supplierId: order.supplier_id,
+          priorDeliveryCount,
+          reason: normalizedReason
         };
       });
     }

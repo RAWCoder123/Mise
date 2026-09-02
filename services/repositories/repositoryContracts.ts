@@ -71,6 +71,7 @@ import type {
   RecalculationRunStatus
 } from "../domain/recalculationSchedule";
 import type { SupplierDeliveryHistory } from "../domain/supplierReliability";
+import type { UndeliveredCloseReason } from "../domain/supplierOrderUndeliveredClose";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 
 /**
@@ -792,6 +793,19 @@ export interface MiseRepository {
       notes?: string | null;
     }
   ): Promise<SupplierDeliveryRecordResult>;
+  closeSupplierOrderUndelivered(
+    restaurantId: string,
+    supplierOrderId: string,
+    reason: UndeliveredCloseReason
+  ): Promise<CloseSupplierOrderUndeliveredResult>;
+}
+
+export interface CloseSupplierOrderUndeliveredResult {
+  outcome: "applied" | "already_completed";
+  orderId: string;
+  supplierId: string;
+  priorDeliveryCount: number;
+  reason: UndeliveredCloseReason;
 }
 
 export function recommendationHistoryCutoffIso(now = Date.now()): string {
