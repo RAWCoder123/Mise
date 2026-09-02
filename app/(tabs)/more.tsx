@@ -8,6 +8,7 @@ import {
   HelpCircle,
   Mail,
   PackageMinus,
+  PlugZap,
   ScanLine,
   Settings,
   Sunrise,
@@ -99,6 +100,12 @@ export default function MoreScreen() {
             title={t("more.row.memory.title")}
             icon={<Brain size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/restaurant-memory" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.posDepletion.title")}
+            icon={<PlugZap size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/pos-depletion" as never)}
           />
           </View>
         </View>
