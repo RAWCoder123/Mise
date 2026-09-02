@@ -68,6 +68,30 @@ export interface SquareCatalogRow {
   category: string;
 }
 
+/** Bounded Square line-item modifier pressure for sync metadata only (not sale rows). */
+export interface SquareModifierSample {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export interface SquareModifierSyncSummary {
+  modifiersObservedCount: number;
+  modifiersUniqueCount: number;
+  modifiersSample: SquareModifierSample[];
+}
+
+export interface SquareOrderSearchResult {
+  sales: SquareSaleRow[];
+  modifierSummary: SquareModifierSyncSummary;
+}
+
+const MAX_MODIFIER_SAMPLE = 20;
+const MAX_MODIFIER_ID_LENGTH = 128;
+const MAX_MODIFIER_NAME_LENGTH = 160;
+const MAX_MODIFIER_OCCURRENCE = 100_000;
+const MAX_MODIFIER_OBSERVED_TOTAL = 1_000_000;
+
 function oauthBase(environment: SquareOAuthConfig["environment"]) {
   return environment === "sandbox"
     ? "https://connect.squareupsandbox.com"
@@ -205,6 +229,91 @@ export async function listSquareLocations(
     .filter((row): row is SquareLocation => row !== null);
 }
 
+export function emptySquareModifierSyncSummary(): SquareModifierSyncSummary {
+  return {
+    modifiersObservedCount: 0,
+    modifiersUniqueCount: 0,
+    modifiersSample: [],
+  };
+}
+
+/**
+ * Accumulate catalog-backed Square line-item modifiers. Entries without a
+ * catalog_object_id are skipped so later mapping work has a stable identity.
+ * Sale rows stay flat; this bag is sync-metadata only.
+ */
+export function accumulateSquareOrderModifiers(
+  order: unknown,
+  counts: Map<string, { name: string; count: number }>,
+): void {
+  if (!order || typeof order !== "object") return;
+  const record = order as Record<string, unknown>;
+  const lineItems = Array.isArray(record.line_items) ? record.line_items : [];
+  for (const line of lineItems) {
+    if (!line || typeof line !== "object") continue;
+    const item = line as Record<string, unknown>;
+    const modifiers = Array.isArray(item.modifiers) ? item.modifiers : [];
+    for (const modifier of modifiers) {
+      if (!modifier || typeof modifier !== "object") continue;
+      const row = modifier as Record<string, unknown>;
+      const id = stringField(row, "catalog_object_id", MAX_MODIFIER_ID_LENGTH);
+      if (!id) continue;
+      const name =
+        stringField(row, "name", MAX_MODIFIER_NAME_LENGTH) || "Untitled modifier";
+      const rawQuantity = Number(row.quantity ?? 1);
+      const quantity = Number.isFinite(rawQuantity)
+        ? Math.min(MAX_MODIFIER_OCCURRENCE, Math.max(0, rawQuantity))
+        : 0;
+      if (quantity <= 0) continue;
+      const existing = counts.get(id);
+      if (existing) {
+        existing.count = Math.min(MAX_MODIFIER_OCCURRENCE, existing.count + quantity);
+        if (name && name !== "Untitled modifier") existing.name = name;
+      } else {
+        counts.set(id, { name, count: quantity });
+      }
+    }
+  }
+}
+
+export function finalizeSquareModifierSyncSummary(
+  counts: Map<string, { name: string; count: number }>,
+): SquareModifierSyncSummary {
+  const entries = [...counts.entries()].map(([id, value]) => ({
+    id,
+    name: value.name.slice(0, MAX_MODIFIER_NAME_LENGTH),
+    count: Math.min(MAX_MODIFIER_OCCURRENCE, Math.max(0, Math.floor(value.count))),
+  }));
+  entries.sort((left, right) => {
+    if (right.count !== left.count) return right.count - left.count;
+    return left.id.localeCompare(right.id);
+  });
+  const modifiersObservedCount = Math.min(
+    MAX_MODIFIER_OBSERVED_TOTAL,
+    entries.reduce((sum, entry) => sum + entry.count, 0),
+  );
+  return {
+    modifiersObservedCount,
+    modifiersUniqueCount: Math.min(MAX_MODIFIER_OCCURRENCE, entries.length),
+    modifiersSample: entries.slice(0, MAX_MODIFIER_SAMPLE),
+  };
+}
+
+/** Snake_case bag for sales_imports.metadata and SQL normalize helpers. */
+export function squareModifierSummaryToMetadata(
+  summary: SquareModifierSyncSummary,
+): Record<string, unknown> {
+  return {
+    modifiers_observed_count: summary.modifiersObservedCount,
+    modifiers_unique_count: summary.modifiersUniqueCount,
+    modifiers_sample: summary.modifiersSample.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      count: entry.count,
+    })),
+  };
+}
+
 export async function searchSquareOrders(
   config: Pick<SquareOAuthConfig, "environment">,
   accessToken: string,
@@ -212,10 +321,13 @@ export async function searchSquareOrders(
   fromIsoDate: string,
   toIsoDate: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<SquareSaleRow[]> {
+): Promise<SquareOrderSearchResult> {
   requireOpaqueToken(accessToken, "access credential", 8, 4096);
-  if (!Array.isArray(locationIds) || locationIds.length === 0) return [];
+  if (!Array.isArray(locationIds) || locationIds.length === 0) {
+    return { sales: [], modifierSummary: emptySquareModifierSyncSummary() };
+  }
   const sales: SquareSaleRow[] = [];
+  const modifierCounts = new Map<string, { name: string; count: number }>();
   for (let locationOffset = 0; locationOffset < locationIds.length; locationOffset += 10) {
     const locationBatch = locationIds.slice(locationOffset, locationOffset + 10);
     let cursor: string | undefined;
@@ -246,11 +358,15 @@ export async function searchSquareOrders(
       const orders = Array.isArray(payload.orders) ? payload.orders : [];
       for (const order of orders) {
         sales.push(...normalizeOrderSales(order));
+        accumulateSquareOrderModifiers(order, modifierCounts);
       }
       cursor = typeof payload.cursor === "string" ? payload.cursor : undefined;
     } while (cursor);
   }
-  return sales;
+  return {
+    sales,
+    modifierSummary: finalizeSquareModifierSyncSummary(modifierCounts),
+  };
 }
 
 export async function listSquareCatalogItems(

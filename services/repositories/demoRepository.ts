@@ -2498,11 +2498,18 @@ export function createLocalDemoRepository(): MiseRepository {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, restaurantId);
         const salesCount = state.posSales.filter((sale) => sale.restaurant_id === restaurantId).length;
+        const modifiersSample =
+          salesCount > 0
+            ? [{ id: "demo-mod-extra-cheese", name: "Extra Cheese", count: Math.min(12, salesCount) }]
+            : [];
         return {
           status: "completed" as const,
           importId: null,
           recordsProcessed: salesCount,
-          catalogProcessed: 0
+          catalogProcessed: 0,
+          modifiersObservedCount: modifiersSample.reduce((sum, entry) => sum + entry.count, 0),
+          modifiersUniqueCount: modifiersSample.length,
+          modifiersSample
         };
       });
     },
@@ -2514,6 +2521,20 @@ export function createLocalDemoRepository(): MiseRepository {
         (entry) => entry.restaurant_id === restaurantId && entry.provider === "square"
       );
       return integration ? normalizePosIntegration(integration) : null;
+    },
+
+    async fetchLatestSquareModifierSyncSummary(restaurantId) {
+      const state = await readDemoState();
+      requireActiveDemoRestaurant(state, restaurantId);
+      const salesCount = state.posSales.filter((sale) => sale.restaurant_id === restaurantId).length;
+      if (salesCount <= 0) return null;
+      return {
+        modifiersObservedCount: Math.min(12, salesCount),
+        modifiersUniqueCount: 1,
+        modifiersSample: [
+          { id: "demo-mod-extra-cheese", name: "Extra Cheese", count: Math.min(12, salesCount) }
+        ]
+      };
     },
 
     async fetchPosMappingReviewQueue(restaurantId) {

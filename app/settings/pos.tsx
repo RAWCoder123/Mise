@@ -18,6 +18,7 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   connectRestaurantSquare,
   disconnectRestaurantSquare,
+  fetchLatestSquareModifierSyncSummary,
   fetchPosMappingReviewQueue,
   fetchPilotReadiness,
   fetchSquarePosIntegration,
@@ -29,6 +30,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import type { PilotReadiness, PilotReadinessAreaId } from "../../services/domain/pilotReadiness";
+import type { SquareModifierSyncSummary } from "../../services/repositories/miseRepository";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import type { PosIntegration, PosProvider } from "../../types/mise";
 import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
@@ -37,7 +39,11 @@ const providers: PosProvider[] = ["Toast", "Square", "Clover", "Lightspeed", "Ma
 type PosMessage =
   | { key: "pos.message.demoLoaded"; values: { provider: string } }
   | { key: "pos.error.demoLoad" }
-  | { key: "pos.message.syncCompleted"; values: { count: string } };
+  | { key: "pos.message.syncCompleted"; values: { count: string } }
+  | {
+      key: "pos.message.syncCompletedWithModifiers";
+      values: { count: string; modifiers: string };
+    };
 
 export default function POSConnectionScreen() {
   const navigation = useNavigation();
@@ -51,6 +57,7 @@ export default function POSConnectionScreen() {
   const [readinessLoadError, setReadinessLoadError] = useState(false);
   const [loadingIntegration, setLoadingIntegration] = useState(!isDemoMode);
   const [mappingReviewCount, setMappingReviewCount] = useState<number | null>(null);
+  const [modifierSummary, setModifierSummary] = useState<SquareModifierSyncSummary | null>(null);
   const [busyAction, setBusyAction] = useState<"connect" | "disconnect" | "sync" | null>(null);
   const [hubLoadError, setHubLoadError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -62,6 +69,7 @@ export default function POSConnectionScreen() {
   const requestIdRef = useRef(0);
   const readinessRequestIdRef = useRef(0);
   const mappingRequestIdRef = useRef(0);
+  const modifierRequestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
   const canManage = canDeleteRestaurantData(memberships, restaurant?.id);
@@ -80,6 +88,7 @@ export default function POSConnectionScreen() {
     setBusyAction(null);
     setLoadingProvider(null);
     setMappingReviewCount(null);
+    setModifierSummary(null);
     setLoadingIntegration(Boolean(restaurant) && !isDemoMode);
     if (isDemoMode && restaurant) {
       setLoadedRestaurantId(restaurant.id);
@@ -105,6 +114,28 @@ export default function POSConnectionScreen() {
     }
   }, [canReviewMappings, isDemoMode, restaurant?.id]);
 
+  const loadModifierSummary = useCallback(async () => {
+    if (!restaurant || (!isDemoMode && !canReviewMappings)) {
+      setModifierSummary(null);
+      return;
+    }
+    const restaurantId = restaurant.id;
+    const requestId = ++modifierRequestIdRef.current;
+    try {
+      const next = await fetchLatestSquareModifierSyncSummary(restaurantId);
+      if (requestId !== modifierRequestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+        return;
+      }
+      setModifierSummary(next);
+    } catch {
+      if (
+        requestId === modifierRequestIdRef.current &&
+        activeRestaurantIdRef.current === restaurantId
+      ) {
+        setModifierSummary(null);
+      }
+    }
+  }, [canReviewMappings, isDemoMode, restaurant?.id]);
   const loadPilotReadiness = useCallback(async () => {
     if (!restaurant) return;
     const restaurantId = restaurant.id;
@@ -174,7 +205,8 @@ export default function POSConnectionScreen() {
       void loadIntegration(false);
       void loadPilotReadiness();
       void loadMappingReviewCount();
-    }, [loadIntegration, loadMappingReviewCount, loadPilotReadiness])
+      void loadModifierSummary();
+    }, [loadIntegration, loadMappingReviewCount, loadModifierSummary, loadPilotReadiness])
   );
 
   useEffect(() => {
@@ -310,18 +342,43 @@ export default function POSConnectionScreen() {
         to
       );
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setMessage({
-        key: "pos.message.syncCompleted",
-        values: { count: String(result.recordsProcessed) }
-      });
-      setNotice({
-        tone: "success",
-        title: t("pos.square.syncTitle"),
-        message: t("pos.square.syncBody", { count: String(result.recordsProcessed) })
-      });
+      if (result.modifiersUniqueCount > 0) {
+        setModifierSummary({
+          modifiersObservedCount: result.modifiersObservedCount,
+          modifiersUniqueCount: result.modifiersUniqueCount,
+          modifiersSample: result.modifiersSample
+        });
+        setMessage({
+          key: "pos.message.syncCompletedWithModifiers",
+          values: {
+            count: String(result.recordsProcessed),
+            modifiers: String(result.modifiersUniqueCount)
+          }
+        });
+        setNotice({
+          tone: "warning",
+          title: t("pos.square.syncTitle"),
+          message: t("pos.square.syncBodyWithModifiers", {
+            count: String(result.recordsProcessed),
+            modifiers: String(result.modifiersUniqueCount)
+          })
+        });
+      } else {
+        setModifierSummary(null);
+        setMessage({
+          key: "pos.message.syncCompleted",
+          values: { count: String(result.recordsProcessed) }
+        });
+        setNotice({
+          tone: "success",
+          title: t("pos.square.syncTitle"),
+          message: t("pos.square.syncBody", { count: String(result.recordsProcessed) })
+        });
+      }
       await loadIntegration(false);
       await loadPilotReadiness();
       await loadMappingReviewCount();
+      await loadModifierSummary();
     } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
@@ -563,6 +620,24 @@ export default function POSConnectionScreen() {
                   onPress={() => router.push("/settings/pos-mappings" as never)}
                   accessibilityHint={t("pos.mappings.openHint")}
                 />
+                {modifierSummary && modifierSummary.modifiersUniqueCount > 0 ? (
+                  <OperationalRow
+                    title={t("pos.modifiers.title")}
+                    subtitle={
+                      modifierSummary.modifiersUniqueCount === 1
+                        ? t("pos.modifiers.observed.one", { count: "1" })
+                        : t("pos.modifiers.observed.other", {
+                            count: String(modifierSummary.modifiersUniqueCount)
+                          })
+                    }
+                    icon={<PlugZap size={icon.row} color={colors.accentDark} strokeWidth={iconStroke} />}
+                    iconTone="warning"
+                    badgeLabel={String(modifierSummary.modifiersUniqueCount)}
+                    badgeTone="warning"
+                    onPress={() => router.push("/settings/recipes" as never)}
+                    accessibilityHint={t("pos.modifiers.openHint")}
+                  />
+                ) : null}
               </View>
             ) : null}
           </Card>
@@ -685,7 +760,10 @@ const styles = StyleSheet.create({
   restrictedCopy: { ...typography.body, color: colors.muted, marginTop: 6 },
   meta: { ...typography.caption, color: colors.muted, marginTop: spacing.sm },
   actions: { gap: spacing.sm, marginTop: spacing.md },
-  mappingReview: { marginTop: spacing.md },
+  mappingReview: {
+    marginTop: spacing.md,
+    gap: spacing.sm
+  },
   pressed: { opacity: 0.92 },
   disabled: { opacity: 0.55 }
 });
