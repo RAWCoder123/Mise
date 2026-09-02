@@ -1,11 +1,12 @@
-import { setupImportLimits } from "../domain/setupDrafts";
-import type {
-  SetupAttachmentDraft,
-  SetupInventoryDraftItem,
-  SetupPersistenceSummary,
-  SetupPosSaleDraft,
-  SetupRecipeDraft,
-  SetupSupplierDraft
+import {
+  resolveSetupRecipeIngredientMapping,
+  setupImportLimits,
+  type SetupAttachmentDraft,
+  type SetupInventoryDraftItem,
+  type SetupPersistenceSummary,
+  type SetupPosSaleDraft,
+  type SetupRecipeDraft,
+  type SetupSupplierDraft
 } from "../domain/setupDrafts";
 import {
   normalizeRecipeBaselineQuantity,
@@ -13,7 +14,6 @@ import {
   operatingLimits,
   requireSupplierDisplayName
 } from "../miseValidation";
-import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
 import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
 
@@ -135,7 +135,17 @@ export async function saveRestaurantSetup(
       }
 
       const linkedInventoryItem = inventoryItemsByName.get(ingredientName.toLowerCase());
-      if (!linkedInventoryItem || !inventoryUnitsAreCompatible(linkedInventoryItem.unit, unit)) {
+      if (!linkedInventoryItem) {
+        skippedRecipeIngredients += 1;
+        continue;
+      }
+
+      const resolved = resolveSetupRecipeIngredientMapping({
+        quantityUsedPerSale,
+        recipeUnit: unit,
+        inventoryUnit: linkedInventoryItem.unit
+      });
+      if (resolved.status !== "mapped") {
         skippedRecipeIngredients += 1;
         continue;
       }
@@ -143,8 +153,8 @@ export async function saveRestaurantSetup(
       recipeMappings.push({
         menu_item_name: menuItemName,
         inventory_item_name: ingredientName,
-        quantity_used_per_sale: quantityUsedPerSale,
-        unit: linkedInventoryItem.unit
+        quantity_used_per_sale: resolved.quantityUsedPerSale,
+        unit: resolved.unit
       });
     }
   }

@@ -85,6 +85,7 @@ export default function SetupScreen() {
   const [selectedDays, setSelectedDays] = useState<string[]>(["Mon", "Thu"]);
   const [orderingStyle, setOrderingStyle] = useState<(typeof stylesOptions)[number]>("Balanced");
   const [readyName, setReadyName] = useState<string | null>(null);
+  const [skippedRecipeIngredients, setSkippedRecipeIngredients] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seededSetupKeyRef = useRef<string | null>(null);
@@ -176,6 +177,7 @@ export default function SetupScreen() {
           recipeBaselineText,
           posSales
         });
+        setSkippedRecipeIngredients(0);
       } else {
         if (!restaurant) {
           setError(t("setup.error.create"));
@@ -199,13 +201,14 @@ export default function SetupScreen() {
           operational_profile: operationalProfile,
           service_style: operationalProfile.serviceStyle
         });
-        await saveRestaurantSetup(nextRestaurant.id, {
+        const setupSummary = await saveRestaurantSetup(nextRestaurant.id, {
           inventoryItems: normalizedInventoryItems,
           suppliers,
           recipes: normalizedRecipes,
           posSales,
           attachments: []
         });
+        setSkippedRecipeIngredients(setupSummary.skippedRecipeIngredients);
       }
       trackMiseEvent("setup_completed", {
         mode: isDemoSetup ? "demo" : "tenant",
@@ -344,6 +347,19 @@ export default function SetupScreen() {
                 })}`
               : ""}
           </Text>
+          {skippedRecipeIngredients > 0 ? (
+            <StatusNotice
+              tone="caution"
+              title={t(
+                skippedRecipeIngredients === 1
+                  ? "setup.ready.skippedIngredients.title.one"
+                  : "setup.ready.skippedIngredients.title.other",
+                { count: formatNumber(skippedRecipeIngredients) }
+              )}
+              message={t("setup.ready.skippedIngredients.body")}
+              style={styles.skippedNotice}
+            />
+          ) : null}
           <Button title={t("setup.ready.openToday")} onPress={() => router.replace("/today")} fullWidth style={styles.button} />
         </Card>
       </Screen>
@@ -1305,6 +1321,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...typography.body,
     fontFamily: fontFamilies.semibold,
+    marginTop: 14
+  },
+  skippedNotice: {
     marginTop: 14
   },
   status: {
