@@ -106,6 +106,8 @@ export interface DemoState {
   inventoryEvents: InventoryEvent[];
   /** Open and historical inventory count sessions. */
   inventoryCountSessions: InventoryCountSessionDetail[];
+  /** Supplier confirmation mirror of hosted supplier_order_confirmations. */
+  supplierOrderConfirmations: import("../domain/supplierConfirmationDeliveryApply").SupplierOrderConfirmationRecord[];
   /** Supplier delivery mirror of hosted supplier_deliveries. */
   supplierDeliveries: Array<{
     id: string;
@@ -518,6 +520,7 @@ export function createInitialDemoState(
     actionOutcomes: [],
     inventoryEvents: [],
     inventoryCountSessions: [],
+    supplierOrderConfirmations: [],
     supplierDeliveries: [],
     supplierDeliveryItems: [],
     restaurantTasks: [],
@@ -785,6 +788,9 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     inventoryCountSessions: Array.isArray(raw.inventoryCountSessions)
       ? raw.inventoryCountSessions
       : seeded.inventoryCountSessions,
+    supplierOrderConfirmations: Array.isArray(raw.supplierOrderConfirmations)
+      ? raw.supplierOrderConfirmations
+      : seeded.supplierOrderConfirmations,
     supplierDeliveries: Array.isArray(raw.supplierDeliveries)
       ? raw.supplierDeliveries
       : seeded.supplierDeliveries,
@@ -837,6 +843,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       !Array.isArray(raw.actionOutcomes) ||
       !Array.isArray(raw.inventoryEvents) ||
       !Array.isArray(raw.inventoryCountSessions) ||
+      !Array.isArray(raw.supplierOrderConfirmations) ||
       (usesReferenceDataset && raw.inventoryEvents.length === 0 && seeded.inventoryEvents.length > 0) ||
       !Array.isArray(raw.supplierDeliveries) ||
       !Array.isArray(raw.supplierDeliveryItems) ||
@@ -1337,6 +1344,22 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       status: "completed",
       delivery_date: toDateKeyInTimeZone(addDays(nowDate, -12), timeZone),
       created_at: addDays(nowDate, -13).toISOString()
+    }
+  ];
+
+  const rescheduleAt = addDays(nowDate, 2).toISOString();
+  state.supplierOrderConfirmations = [
+    {
+      id: "00000000-0000-4000-8000-000000000c01",
+      restaurant_id: DEMO_RESTAURANT_ID,
+      supplier_order_id: "00000000-0000-4000-8000-000000000602",
+      confirmation_status: "changed",
+      confirmation_reference: "PO-DEMO-602",
+      expected_delivery_at: rescheduleAt,
+      received_at: addDays(nowDate, -1).toISOString(),
+      source: "demo_seed",
+      idempotency_key: "demo_confirmation:00000000-0000-4000-8000-000000000602",
+      created_at: addDays(nowDate, -1).toISOString()
     }
   ];
 

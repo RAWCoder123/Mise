@@ -19,6 +19,12 @@ import {
   type SupplierReliabilitySummary
 } from "../domain/supplierReliability";
 import {
+  selectConfirmationDeliveryApplyCandidate,
+  type ConfirmationDeliveryApplyResult,
+  type SupplierConfirmationDeliveryApplyCandidate,
+  type SupplierOrderConfirmationRecord
+} from "../domain/supplierConfirmationDeliveryApply";
+import {
   requireRecommendationApprovalQuantity,
   requireSupplierOperatorNote,
   requireSupplierRecipientInput
@@ -139,17 +145,26 @@ export async function fetchSupplierOrders(restaurantId: string) {
 }
 
 export type { SupplierOrderDeliveryEvidence };
+export type { SupplierConfirmationDeliveryApplyCandidate, ConfirmationDeliveryApplyResult };
 
 export async function fetchSupplierOrderOperationalDetail(
   restaurantId: string,
   orderId: string
-): Promise<{ order: SupplierOrder; deliveryEvidence: SupplierOrderDeliveryEvidence[] }> {
+): Promise<{
+  order: SupplierOrder;
+  deliveryEvidence: SupplierOrderDeliveryEvidence[];
+  confirmationDeliveryApply: SupplierConfirmationDeliveryApplyCandidate | null;
+  confirmations: SupplierOrderConfirmationRecord[];
+}> {
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
   const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
-  const [order, history, restaurant] = await Promise.all([
+  const [order, history, restaurant, confirmations] = await Promise.all([
     repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
     repository.fetchSupplierDeliveryHistory(normalizedRestaurantId),
-    repository.fetchRestaurant(normalizedRestaurantId)
+    repository.fetchRestaurant(normalizedRestaurantId),
+    repository.fetchSupplierOrderConfirmations(normalizedRestaurantId, {
+      supplierOrderId: normalizedOrderId
+    })
   ]);
   if (order.restaurant_id !== normalizedRestaurantId) {
     throw new Error("Supplier order belongs to another restaurant.");
@@ -162,8 +177,30 @@ export async function fetchSupplierOrderOperationalDetail(
       order,
       deliveries: history.deliveries,
       items: history.items
+    }),
+    confirmations,
+    confirmationDeliveryApply: selectConfirmationDeliveryApplyCandidate({
+      restaurantId: normalizedRestaurantId,
+      orderId: normalizedOrderId,
+      orderStatus: order.status,
+      currentDeliveryDate: order.delivery_date,
+      timeZone: restaurant.timezone,
+      confirmations
     })
   };
+}
+
+export async function applySupplierConfirmationDeliveryDate(
+  restaurantId: string,
+  input: { supplierOrderId: string; confirmationId: string }
+): Promise<ConfirmationDeliveryApplyResult> {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const supplierOrderId = requireWorkflowId(input.supplierOrderId, "supplier order");
+  const confirmationId = requireWorkflowId(input.confirmationId, "supplier confirmation");
+  return repository.applySupplierConfirmationDeliveryDate(normalizedRestaurantId, {
+    supplierOrderId,
+    confirmationId
+  });
 }
 
 export type { SupplierReliabilitySummary };

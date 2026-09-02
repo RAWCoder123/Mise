@@ -37,8 +37,15 @@ import {
   fromInventoryWasteRecorded,
   fromRecalculationRunActivity,
   fromRestaurantTaskActivity,
+  type ActivityEvent,
   type ActivityFeedFilter
 } from "../domain/activityEvents";
+import {
+  normalizeSupplierOrderConfirmationRecord,
+  proposeSupplierConfirmationDeliveryApply,
+  deliveryDateKeyFromConfirmationAt,
+  type ConfirmationDeliveryApplyResult
+} from "../domain/supplierConfirmationDeliveryApply";
 import {
   confidenceFromEvidence,
   confirmMemory,
@@ -61,7 +68,6 @@ import {
   defaultAutonomyRules,
   type RestaurantAutonomyRule
 } from "../domain/restaurantAutonomy";
-import type { ActivityEvent } from "../domain/activityEvents";
 import {
   canRestaurantRoleCompleteSharedTask,
   normalizeCompleteRestaurantTaskInput,
@@ -650,7 +656,7 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   datasets.restaurant_autonomy_rules = (state.autonomyRules ?? [])
     .filter((rule) => rule.restaurantId === restaurantId)
     .map((rule) => ({ ...rule, restaurant_id: rule.restaurantId }));
-  datasets.supplier_order_confirmations = [];
+  datasets.supplier_order_confirmations = tenantRows(state.supplierOrderConfirmations ?? []);
   datasets.supplier_deliveries = tenantRows(state.supplierDeliveries ?? []);
   datasets.supplier_delivery_items = tenantRows(state.supplierDeliveryItems ?? []);
   datasets.restaurant_tasks = (state.restaurantTasks ?? [])
@@ -2328,6 +2334,159 @@ export function createLocalDemoRepository(): MiseRepository {
       const order = state.supplierOrders.find((item) => item.restaurant_id === restaurantId && item.id === orderId);
       if (!order) throw new Error("Order draft not found");
       return normalizeSupplierOrder(order);
+    },
+
+    async fetchSupplierOrderConfirmations(restaurantId, options = {}) {
+      const state = await readDemoState();
+      return (state.supplierOrderConfirmations ?? [])
+        .filter((confirmation) => {
+          if (confirmation.restaurant_id !== restaurantId) return false;
+          if (options.supplierOrderId && confirmation.supplier_order_id !== options.supplierOrderId) {
+            return false;
+          }
+          return true;
+        })
+        .sort((left, right) => right.received_at.localeCompare(left.received_at))
+        .map((confirmation) => normalizeSupplierOrderConfirmationRecord(confirmation));
+    },
+
+    async applySupplierConfirmationDeliveryDate(restaurantId, input) {
+      return mutateDemoState((state) => {
+        const order = state.supplierOrders.find(
+          (item) => item.restaurant_id === restaurantId && item.id === input.supplierOrderId
+        );
+        if (!order) throw new Error("Supplier order not found");
+        const confirmation = (state.supplierOrderConfirmations ?? []).find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === input.confirmationId
+        );
+        if (!confirmation) throw new Error("Supplier confirmation not found");
+        const restaurant = state.restaurants.find((entry) => entry.id === restaurantId);
+        if (!restaurant) throw new Error("Restaurant not found");
+
+        const proposal = proposeSupplierConfirmationDeliveryApply({
+          restaurantId,
+          orderId: order.id,
+          orderStatus: order.status,
+          currentDeliveryDate: order.delivery_date,
+          timeZone: restaurant.timezone,
+          confirmation
+        });
+        if (!proposal.ok) {
+          if (proposal.reason === "already_applied") {
+            const deliveryDate =
+              deliveryDateKeyFromConfirmationAt(
+                confirmation.expected_delivery_at ?? "",
+                restaurant.timezone
+              ) ?? order.delivery_date ?? "";
+            const result: ConfirmationDeliveryApplyResult = {
+              outcome: "already_applied",
+              supplierOrderId: order.id,
+              confirmationId: confirmation.id,
+              deliveryDate,
+              previousDeliveryDate: order.delivery_date
+            };
+            return result;
+          }
+          if (proposal.reason === "order_not_sent") {
+            throw new Error("Only sent supplier orders can apply confirmation delivery dates");
+          }
+          if (proposal.reason === "rejected_or_unverified") {
+            throw new Error("Confirmation status cannot update delivery date");
+          }
+          if (proposal.reason === "missing_expected_delivery" || proposal.reason === "invalid_expected_delivery") {
+            throw new Error("Confirmation is missing an expected delivery time");
+          }
+          if (proposal.reason === "order_mismatch") {
+            throw new Error("Supplier confirmation belongs to another order");
+          }
+          throw new Error("Supplier confirmation delivery apply was refused");
+        }
+
+        const previousDeliveryDate = order.delivery_date;
+        order.delivery_date = proposal.deliveryDate;
+
+        const now = new Date().toISOString();
+        const activity: ActivityEvent = {
+          id: createId("activity"),
+          restaurantId,
+          locationId: null,
+          occurredAt: now,
+          createdAt: now,
+          activityType: "delivery_expected",
+          category: "orders",
+          title: "Expected delivery updated",
+          summary: `Delivery date set to ${proposal.deliveryDate} from supplier confirmation.`,
+          triggerType: "supplier_confirmation_delivery_apply",
+          triggerReference: confirmation.id,
+          evidenceReferences: [
+            {
+              type: "supplier_confirmation",
+              id: confirmation.id,
+              summary: confirmation.confirmation_status,
+              observedAt: now
+            },
+            {
+              type: "supplier_order",
+              id: order.id,
+              summary: order.supplier_name,
+              observedAt: now
+            }
+          ],
+          sourceSystems: ["mise", "orders"],
+          actionId: null,
+          recommendationId: null,
+          autonomyLevel: 1,
+          confidence: null,
+          status: "confirmed",
+          requiresAttention: false,
+          attentionDeadline: null,
+          relatedEntityType: "supplier_order",
+          relatedEntityId: order.id,
+          parentActivityId: null,
+          sequenceId: `supplier-order:${order.id}`,
+          metadata: {
+            confirmationId: confirmation.id,
+            supplierOrderId: order.id,
+            confirmationStatus: confirmation.confirmation_status,
+            previousDeliveryDate,
+            deliveryDate: proposal.deliveryDate,
+            expectedDeliveryAt: confirmation.expected_delivery_at,
+            idempotencyKey: `supplier_confirmation_delivery_apply:${confirmation.id}:${proposal.deliveryDate}`
+          },
+          errorCode: null,
+          errorMessage: null,
+          resolvedAt: null,
+          resolvedBy: null
+        };
+        state.activityEvents = [...(state.activityEvents ?? []), activity];
+        state.auditLogs = [
+          ...(state.auditLogs ?? []),
+          {
+            id: createId("audit"),
+            restaurant_id: restaurantId,
+            actor_user_id: DEMO_USER_ID,
+            action: "supplier_confirmation_delivery_applied",
+            entity_table: "supplier_orders",
+            entity_id: order.id,
+            metadata: {
+              confirmationId: confirmation.id,
+              previousDeliveryDate,
+              deliveryDate: proposal.deliveryDate,
+              confirmationStatus: confirmation.confirmation_status
+            },
+            created_at: new Date().toISOString()
+          }
+        ];
+
+        const result: ConfirmationDeliveryApplyResult = {
+          outcome: "applied",
+          supplierOrderId: order.id,
+          confirmationId: confirmation.id,
+          deliveryDate: proposal.deliveryDate,
+          previousDeliveryDate
+        };
+        return result;
+      });
     },
 
     async updateSupplierOrder(restaurantId, orderId, patch) {
