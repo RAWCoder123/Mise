@@ -20,6 +20,7 @@ import {
   type OperationalIssueStatusFilter
 } from "../../services/domain/operationalIssues";
 import { fetchOperationalIssues } from "../../services/miseService";
+import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 
 function severityTone(severity: OperationalIssueSeverity): BadgeTone {
@@ -104,7 +105,13 @@ export default function OperationalIssuesScreen() {
     }, [load])
   );
 
-  const visible = loadedRestaurantId === restaurant?.id ? issues : [];
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const visible = hubReady ? issues : [];
 
   return (
     <Screen
@@ -124,7 +131,9 @@ export default function OperationalIssuesScreen() {
           accessibilityLabel={t("issues.filter.accessibility")}
           options={filterOptions}
           value={filter}
-          onChange={setFilter}
+          onValueChange={setFilter}
+          scrollable
+          variant="pills"
         />
 
         {error ? (
