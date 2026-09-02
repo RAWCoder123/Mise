@@ -159,19 +159,76 @@ export function isCountSessionEligibleInventoryItem(item: Pick<
   );
 }
 
+function sortCountSessionItems(items: readonly InventoryItem[]): InventoryItem[] {
+  return [...items].sort((left, right) => {
+    const byName = left.item_name.localeCompare(right.item_name);
+    if (byName !== 0) return byName;
+    return left.id.localeCompare(right.id);
+  });
+}
+
+/**
+ * Resolves eligible count-session inventory items.
+ * `inventoryItemIds` null/undefined = full verified sheet; a non-empty list = cycle/spot scope.
+ */
+export function resolveCountSessionEligibleItems(
+  inventoryItems: readonly InventoryItem[],
+  inventoryItemIds?: readonly string[] | null
+): InventoryItem[] {
+  const eligibleItems = sortCountSessionItems(
+    inventoryItems.filter(isCountSessionEligibleInventoryItem)
+  );
+  if (inventoryItemIds == null) {
+    if (eligibleItems.length < 1) {
+      throw new Error("Verify canonical units for inventory items before starting a count session.");
+    }
+    if (eligibleItems.length > 250) {
+      throw new Error("Count sessions support at most 250 items.");
+    }
+    return eligibleItems;
+  }
+
+  if (inventoryItemIds.length < 1) {
+    throw new Error("Select at least one inventory item for a cycle count.");
+  }
+  if (inventoryItemIds.length > 250) {
+    throw new Error("Count sessions support at most 250 items.");
+  }
+
+  const seen = new Set<string>();
+  const requestedIds: string[] = [];
+  for (const rawId of inventoryItemIds) {
+    const itemId = typeof rawId === "string" ? rawId.trim() : "";
+    if (!itemId) {
+      throw new Error("Count session inventory item id is invalid.");
+    }
+    if (seen.has(itemId)) {
+      throw new Error("Count session inventory item ids must be unique.");
+    }
+    seen.add(itemId);
+    requestedIds.push(itemId);
+  }
+
+  const eligibleById = new Map(eligibleItems.map((item) => [item.id, item]));
+  const selected: InventoryItem[] = [];
+  for (const itemId of requestedIds) {
+    const item = eligibleById.get(itemId);
+    if (!item) {
+      throw new Error("One or more selected inventory items are not eligible for a count session.");
+    }
+    selected.push(item);
+  }
+  return sortCountSessionItems(selected);
+}
+
 export function buildCountSessionLinesFromInventory(
   restaurantId: string,
   sessionId: string,
   inventoryItems: readonly InventoryItem[],
-  nowIso: string
+  nowIso: string,
+  inventoryItemIds?: readonly string[] | null
 ): InventoryCountLine[] {
-  const eligibleItems = inventoryItems.filter(isCountSessionEligibleInventoryItem);
-  if (eligibleItems.length < 1) {
-    throw new Error("Verify canonical units for inventory items before starting a count session.");
-  }
-  if (eligibleItems.length > 250) {
-    throw new Error("Count sessions support at most 250 items.");
-  }
+  const eligibleItems = resolveCountSessionEligibleItems(inventoryItems, inventoryItemIds);
   return eligibleItems.map((item, index) => ({
     id: `${sessionId}_line_${index + 1}`,
     restaurant_id: restaurantId,

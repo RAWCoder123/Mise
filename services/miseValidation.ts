@@ -522,6 +522,34 @@ export function requireInventoryCountSessionNote(value: string | null | undefine
   return normalized || null;
 }
 
+/** null = full verified sheet; otherwise 1-250 unique inventory item ids for a cycle count. */
+export function requireInventoryCountSessionItemIds(value: unknown): string[] | null {
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) {
+    throw new Error("Count session inventory item ids must be an array.");
+  }
+  if (value.length < 1 || value.length > 250) {
+    throw new Error("Select between 1 and 250 inventory items for a cycle count.");
+  }
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const [index, entry] of value.entries()) {
+    if (typeof entry !== "string") {
+      throw new Error(`Count session inventory item ${index + 1} is invalid.`);
+    }
+    const itemId = entry.trim();
+    if (!itemId) {
+      throw new Error(`Count session inventory item ${index + 1} is invalid.`);
+    }
+    if (seen.has(itemId)) {
+      throw new Error("Count session inventory item ids must be unique.");
+    }
+    seen.add(itemId);
+    ids.push(itemId);
+  }
+  return ids;
+}
+
 export function requireInventoryCountLineNote(value: string | null | undefined) {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") throw new Error("Count line note must be text.");

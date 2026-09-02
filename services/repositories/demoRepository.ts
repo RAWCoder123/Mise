@@ -1337,7 +1337,7 @@ export function createLocalDemoRepository(): MiseRepository {
       return normalizeInventoryCountSessionDetail(detail);
     },
 
-    async beginInventoryCountSession(restaurantId, note) {
+    async beginInventoryCountSession(restaurantId, note, inventoryItemIds = null) {
       return mutateDemoState((state) => {
         if (findDemoCountSession(state, restaurantId)) {
           throw new Error("A count session is already open for this restaurant");
@@ -1362,7 +1362,13 @@ export function createLocalDemoRepository(): MiseRepository {
             created_at: now,
             updated_at: now
           },
-          lines: buildCountSessionLinesFromInventory(restaurantId, sessionId, inventoryItems, now)
+          lines: buildCountSessionLinesFromInventory(
+            restaurantId,
+            sessionId,
+            inventoryItems,
+            now,
+            inventoryItemIds
+          )
         };
         return replaceDemoCountSession(state, detail);
       });

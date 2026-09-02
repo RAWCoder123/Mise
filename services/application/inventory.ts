@@ -14,6 +14,7 @@ import {
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
 import {
   requireInventoryCountLineUpdates,
+  requireInventoryCountSessionItemIds,
   requireInventoryCountSessionNote,
   requireInventoryItemPatch,
   requireRecipeBaselineQuantity,
@@ -387,9 +388,14 @@ export async function fetchOpenInventoryCountSession(restaurantId: string) {
   return repository.fetchOpenInventoryCountSession(restaurantId);
 }
 
-export async function beginInventoryCountSession(restaurantId: string, note?: string | null) {
+export async function beginInventoryCountSession(
+  restaurantId: string,
+  note?: string | null,
+  inventoryItemIds?: unknown
+) {
   const normalizedNote = requireInventoryCountSessionNote(note);
-  return repository.beginInventoryCountSession(restaurantId, normalizedNote);
+  const normalizedItemIds = requireInventoryCountSessionItemIds(inventoryItemIds);
+  return repository.beginInventoryCountSession(restaurantId, normalizedNote, normalizedItemIds);
 }
 
 export async function saveInventoryCountLines(
