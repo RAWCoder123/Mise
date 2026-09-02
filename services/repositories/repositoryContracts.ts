@@ -547,6 +547,15 @@ export interface MiseRepository {
   fetchAiInsights(restaurantId: string): Promise<AiInsight[]>;
   createAiInsight(input: Omit<AiInsight, "id" | "created_at">): Promise<AiInsight>;
   recordAuditLog(input: AuditLogInput): Promise<void>;
+  /**
+   * Owner/admin audit trail. Hosted SELECT is RLS-limited; callers must still
+   * assert tenant scope. Reads stay bounded so a long-lived restaurant never
+   * pulls its entire audit history into the client.
+   */
+  listAuditLogs(
+    restaurantId: string,
+    options?: { since?: string; limit?: number }
+  ): Promise<AuditLog[]>;
   fetchRestaurantData(restaurantId: string): Promise<RestaurantData>;
   recordOperationalFindingDecision(
     input: OperationalFindingDecisionInput

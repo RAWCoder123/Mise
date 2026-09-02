@@ -42,6 +42,14 @@ export function canDeleteRestaurantData(
   return Boolean(membership && ownerAdminRoles.includes(membership.role));
 }
 
+/** Owner/admin-only audit_logs browse (matches hosted RLS SELECT policy). */
+export function canBrowseAuditLogs(
+  memberships: RestaurantMembership[],
+  restaurantId: string | null | undefined
+) {
+  return canDeleteRestaurantData(memberships, restaurantId);
+}
+
 export function canUpdateRestaurantProfile(
   memberships: RestaurantMembership[],
   restaurantId: string | null | undefined
