@@ -463,7 +463,7 @@ test("count evidence anchors the projected on-hand a screen reads", () => {
   assert.equal(yesterdayCount.countEvidence, "verified_count");
   assert.equal(yesterdayCount.isTemporallyAuthoritative, true);
 
-  // Count today: the counter already saw the morning's sales.
+  // Count today without sold_at: date-only sales stay unattributed.
   const middayCount = buildInventoryPrediction(
     countedItem,
     sales,
@@ -479,6 +479,37 @@ test("count evidence anchors the projected on-hand a screen reads", () => {
   assert.equal(middayCount.isTemporallyAuthoritative, false);
   // Demand memory still sees the real sales, so coverage is not silently inflated.
   assert.ok(middayCount.averageDailyUsage > 0);
+
+  // Count today with sold_at: only post-count sales deplete the baseline.
+  const timedSales: PosSale[] = [
+    {
+      ...sales[0]!,
+      id: "sale-morning-timed",
+      source_record_id: "pos-morning",
+      quantity_sold: 4,
+      sold_at: "2026-08-17T11:00:00.000Z"
+    },
+    {
+      ...sales[0]!,
+      id: "sale-afternoon-timed",
+      source_record_id: "pos-afternoon",
+      quantity_sold: 6,
+      sold_at: "2026-08-17T15:00:00.000Z"
+    }
+  ];
+  const middayTimed = buildInventoryPrediction(
+    countedItem,
+    timedSales,
+    mappings,
+    operatingDate,
+    undefined,
+    undefined,
+    evidenceFor([countEvent("2026-08-17T13:00:00.000Z", 10)], { item: countedItem })
+  );
+  assert.equal(middayTimed.todayDepletion, 3); // 6 sales * 0.5 lb
+  assert.equal(middayTimed.projectedQuantity, 7);
+  assert.equal(middayTimed.unattributedTodayDepletion, 2); // 4 morning * 0.5
+  assert.equal(middayTimed.isTemporallyAuthoritative, false);
 
   // No verified count: the projection is labeled unverified even though
   // `last_updated` was touched moments ago.
@@ -529,8 +560,31 @@ test("server-shared signals anchor depletion and unsuppression to verified count
     ...snapshotBase,
     inventoryLedgerEvents: [countEvent("2026-08-17T13:00:00.000Z", 12)]
   });
-  // 12 counted at 13:00 stays 12; the morning's 4 lb is not subtracted again.
+  // 12 counted at 13:00 stays 12; date-only same-day sales are not subtracted again.
   assert.equal(lowStockProjectedQuantity(middayCounted.insights), 12);
+
+  const middayTimed = calculateOperationalSignals({
+    ...snapshotBase,
+    sales: [
+      {
+        restaurant_id: restaurantA,
+        sale_date: operatingDate,
+        item_name: "Chicken bowl",
+        quantity_sold: 4,
+        sold_at: "2026-08-17T11:00:00.000Z"
+      },
+      {
+        restaurant_id: restaurantA,
+        sale_date: operatingDate,
+        item_name: "Chicken bowl",
+        quantity_sold: 6,
+        sold_at: "2026-08-17T15:00:00.000Z"
+      }
+    ],
+    inventoryLedgerEvents: [countEvent("2026-08-17T13:00:00.000Z", 12)]
+  });
+  // Afternoon 6 * 0.5 lb depletes the midday count; morning stays unattributed.
+  assert.equal(lowStockProjectedQuantity(middayTimed.insights), 9);
 
   const countedYesterday = calculateOperationalSignals({
     ...snapshotBase,

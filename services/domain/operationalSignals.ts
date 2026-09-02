@@ -1,7 +1,7 @@
 import { canonicalInventoryUnit, inventoryUnitsAreCompatible } from "./inventoryUnits.ts";
 import {
   buildInventoryCountEvidence,
-  dayResolutionConsumptionIsAfterCount,
+  isSaleInDepletionWindow,
   missingInventoryCountEvidence,
   verifiedCountSupersedes,
   type LedgerProjectionEvent
@@ -38,6 +38,7 @@ export interface OperationalSale {
   sale_date: string;
   item_name: string;
   quantity_sold: number;
+  sold_at?: string | null;
   source_pos?: string | null;
   provider_location_id?: string | null;
   provider_catalog_item_id?: string | null;
@@ -144,12 +145,6 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         mapping.inventory_item_id === item.id &&
         inventoryUnitsAreCompatible(item.unit, mapping.unit)
     );
-    const mappedTodayUsage = mappings.reduce((sum, mapping) => {
-      const sold = todaySales
-        .filter((sale) => saleMatchesRecipe(sale, mapping, providerMappings))
-        .reduce((quantity, sale) => quantity + finiteNonNegative(sale.quantity_sold), 0);
-      return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
-    }, 0);
     const baselineUsage = mappings.reduce((sum, mapping) => {
       return sum + (demand.get(recipeDemandKey(mapping)) ?? 0) * finiteNonNegative(mapping.quantity_used_per_sale);
     }, 0);
@@ -159,16 +154,14 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     // The numeric basis is untrustworthy, so this item produces no quantity-based
     // recommendation or insight until a real recount re-anchors the projection.
     if (itemCountEvidence.status === "contaminated") continue;
-    // A verified count taken inside today's operating day already observed part of
-    // today's day-resolution POS sales, so those sales must not deplete it again.
-    const todayUsage =
-      itemCountEvidence.status !== "verified" ||
-      dayResolutionConsumptionIsAfterCount(
-        itemCountEvidence.countedOperatingDate,
-        snapshot.operatingDate
-      )
-        ? mappedTodayUsage
-        : 0;
+    // Prefer sold_at when present so midday counts only lose post-count demand.
+    const todayUsage = mappings.reduce((sum, mapping) => {
+      const sold = todaySales
+        .filter((sale) => saleMatchesRecipe(sale, mapping, providerMappings))
+        .filter((sale) => isSaleInDepletionWindow(sale, snapshot.operatingDate, itemCountEvidence))
+        .reduce((quantity, sale) => quantity + finiteNonNegative(sale.quantity_sold), 0);
+      return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
+    }, 0);
     const projectedQuantity = Math.max(0, finiteNonNegative(item.current_quantity) - todayUsage);
     const threshold = finiteNonNegative(item.reorder_threshold);
     const isCritical = projectedQuantity <= 0;

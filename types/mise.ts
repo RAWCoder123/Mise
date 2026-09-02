@@ -101,6 +101,8 @@ export interface PosSale {
   provider_variation_id?: string | null;
   provider_location_id?: string | null;
   sale_date: string;
+  /** Provider closed/sold instant when known. Null/absent means date-only evidence. */
+  sold_at?: string | null;
   item_name: string;
   category: string;
   quantity_sold: number;
