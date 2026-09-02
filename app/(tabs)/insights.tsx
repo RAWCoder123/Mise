@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
-import { useFocusEffect } from "expo-router";
-import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronUp, Lightbulb, RefreshCw } from "lucide-react-native";
+import { router, useFocusEffect } from "expo-router";
+import { AlertTriangle, ArrowRight, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronUp, Lightbulb, RefreshCw } from "lucide-react-native";
 
 import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
 import { ActionIcon } from "../../components/ui/ActionIcon";
+import { Button } from "../../components/ui/Button";
 import { DonutChart, donutPaletteColor } from "../../components/ui/DonutChart";
 import { MotionView, StateChangeView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
@@ -36,6 +37,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { resolveLearningMemoryReviewHref } from "../../services/presentation/learningMemoryNavigation";
 import {
   presentInsight,
   presentLearningMemory,
@@ -952,6 +954,14 @@ function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
             ))}
           </View>
           <Text style={styles.evidenceNext}>{presentation.nextStep}</Text>
+          <Button
+            title={t("insights.memory.reviewAction")}
+            variant="secondary"
+            size="compact"
+            icon={<ArrowRight size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push(resolveLearningMemoryReviewHref() as never)}
+            style={styles.evidenceAction}
+          />
         </MotionView>
       ) : null}
     </SectionSurface>
@@ -1541,6 +1551,9 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.semibold,
     fontSize: 12,
     lineHeight: 18
+  },
+  evidenceAction: {
+    alignSelf: "flex-start"
   }
 });
 
