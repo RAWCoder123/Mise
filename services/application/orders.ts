@@ -23,6 +23,7 @@ import {
   requireSupplierOperatorNote,
   requireSupplierRecipientInput
 } from "../miseValidation";
+import { mapOutcomesByDeliveryId } from "./actionOutcomes";
 import { getMiseRepository } from "./repository";
 import { GmailIntegrationError } from "../repositories/miseRepository";
 import type {
@@ -146,10 +147,11 @@ export async function fetchSupplierOrderOperationalDetail(
 ): Promise<{ order: SupplierOrder; deliveryEvidence: SupplierOrderDeliveryEvidence[] }> {
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
   const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
-  const [order, history, restaurant] = await Promise.all([
+  const [order, history, restaurant, outcomes] = await Promise.all([
     repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
     repository.fetchSupplierDeliveryHistory(normalizedRestaurantId),
-    repository.fetchRestaurant(normalizedRestaurantId)
+    repository.fetchRestaurant(normalizedRestaurantId),
+    repository.listActionOutcomes(normalizedRestaurantId, { limit: 120 })
   ]);
   if (order.restaurant_id !== normalizedRestaurantId) {
     throw new Error("Supplier order belongs to another restaurant.");
@@ -161,7 +163,8 @@ export async function fetchSupplierOrderOperationalDetail(
       restaurantTimeZone: restaurant.timezone,
       order,
       deliveries: history.deliveries,
-      items: history.items
+      items: history.items,
+      outcomesByDeliveryId: mapOutcomesByDeliveryId(outcomes)
     })
   };
 }

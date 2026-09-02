@@ -256,4 +256,6 @@ test("order delivery evidence exposes the exact late shortage behind a reliabili
   assert.equal(evidence[0]?.lineCount, 2);
   assert.equal(evidence[0]?.discrepancyLineCount, 1);
   assert.equal(evidence[0]?.missingLineCount, 1);
+  assert.equal(evidence[0]?.outcomeLessonCode, null);
+  assert.equal(evidence[0]?.outcomeKind, null);
 });
