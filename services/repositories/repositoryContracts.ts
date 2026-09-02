@@ -676,6 +676,18 @@ export interface MiseRepository {
    */
   fetchSupplierDeliveryHistory(restaurantId: string): Promise<SupplierDeliveryHistory>;
   fetchSupplierOrder(restaurantId: string, orderId: string): Promise<SupplierOrder>;
+  fetchSupplierOrderConfirmations(
+    restaurantId: string,
+    options?: { supplierOrderId?: string }
+  ): Promise<
+    import("../domain/supplierConfirmationDeliveryApply").SupplierOrderConfirmationRecord[]
+  >;
+  applySupplierConfirmationDeliveryDate(
+    restaurantId: string,
+    input: { supplierOrderId: string; confirmationId: string }
+  ): Promise<
+    import("../domain/supplierConfirmationDeliveryApply").ConfirmationDeliveryApplyResult
+  >;
   updateSupplierOrder(
     restaurantId: string,
     orderId: string,

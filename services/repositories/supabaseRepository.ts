@@ -35,6 +35,10 @@ import {
   type PersistedActivityEventRow
 } from "../domain/activityEvents";
 import {
+  normalizeSupplierOrderConfirmationRecord,
+  type ConfirmationDeliveryApplyResult
+} from "../domain/supplierConfirmationDeliveryApply";
+import {
   miseActionFromPersistedRow,
   type PersistedMiseActionRow
 } from "../domain/miseActions";
@@ -1636,6 +1640,33 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizeSupplierOrder(data as SupplierOrder);
     },
 
+    async fetchSupplierOrderConfirmations(restaurantId, options = {}) {
+      let query = client
+        .from("supplier_order_confirmations")
+        .select(
+          "id, restaurant_id, supplier_order_id, confirmation_status, confirmation_reference, expected_delivery_at, received_at, source, idempotency_key, created_at"
+        )
+        .eq("restaurant_id", restaurantId)
+        .order("received_at", { ascending: false })
+        .limit(100);
+      if (options.supplierOrderId) {
+        query = query.eq("supplier_order_id", options.supplierOrderId);
+      }
+      const { data, error } = await query;
+      if (error) throwRepositoryError(error, restaurantId);
+      return ((data ?? []) as unknown[]).map((row) => normalizeSupplierOrderConfirmationRecord(row));
+    },
+
+    async applySupplierConfirmationDeliveryDate(restaurantId, input) {
+      const { data, error } = await client.rpc("apply_supplier_confirmation_delivery_date", {
+        p_restaurant_id: restaurantId,
+        p_supplier_order_id: input.supplierOrderId,
+        p_confirmation_id: input.confirmationId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return parseConfirmationDeliveryApplyResult(data);
+    },
+
     async updateSupplierOrder(restaurantId, orderId, patch) {
       const { data, error } = await client.rpc("update_supplier_order_draft", {
         p_restaurant_id: restaurantId,
@@ -2349,6 +2380,41 @@ function parseCountSessionWorkflowResult(value: unknown) {
     session: payload.session as InventoryCountSessionDetail["session"],
     lines: (payload.lines ?? []) as InventoryCountLine[]
   });
+}
+
+function parseConfirmationDeliveryApplyResult(value: unknown): ConfirmationDeliveryApplyResult {
+  if (!value || typeof value !== "object") {
+    throw new Error("Confirmation delivery apply returned an invalid response.");
+  }
+  const payload = value as Record<string, unknown>;
+  const outcome = payload.outcome;
+  if (outcome !== "applied" && outcome !== "already_applied") {
+    throw new Error("Confirmation delivery apply returned an invalid outcome.");
+  }
+  const supplierOrderId =
+    typeof payload.supplierOrderId === "string" ? payload.supplierOrderId.trim() : "";
+  const confirmationId =
+    typeof payload.confirmationId === "string" ? payload.confirmationId.trim() : "";
+  const deliveryDate =
+    typeof payload.deliveryDate === "string"
+      ? payload.deliveryDate.trim().slice(0, 10)
+      : "";
+  if (!supplierOrderId || !confirmationId || !/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)) {
+    throw new Error("Confirmation delivery apply returned incomplete evidence.");
+  }
+  const previous =
+    payload.previousDeliveryDate == null
+      ? null
+      : typeof payload.previousDeliveryDate === "string"
+        ? payload.previousDeliveryDate.trim().slice(0, 10)
+        : null;
+  return {
+    outcome,
+    supplierOrderId,
+    confirmationId,
+    deliveryDate,
+    previousDeliveryDate: previous && /^\d{4}-\d{2}-\d{2}$/.test(previous) ? previous : null
+  };
 }
 
 function normalizePosProviderFromIntegration(value: unknown): PosProvider | null {
