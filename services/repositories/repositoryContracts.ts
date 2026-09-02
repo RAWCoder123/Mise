@@ -48,6 +48,10 @@ import type {
   PurchaseDecisionPattern
 } from "../domain/purchaseDecisionMemory";
 import type { VerifiedProviderSaleMapping } from "../domain/providerSaleIdentity";
+import type {
+  ModifierRecipeAdjustment,
+  ModifierRecipeAdjustmentInput
+} from "../domain/modifierRecipeAdjustments";
 import {
   PURCHASE_AUTHORITY_BLOCKER_CODES,
   type PurchaseAuthorityResult
@@ -585,6 +589,25 @@ export interface MiseRepository {
     canonicalUnit: "g" | "ml" | "each",
     canonicalQuantityPerUnit: number
   ): Promise<InventoryItem>;
+  listModifierRecipeAdjustments(restaurantId: string): Promise<ModifierRecipeAdjustment[]>;
+  listModifierAdjustmentMenuContexts(
+    restaurantId: string
+  ): Promise<Map<string, { menuItemId: string; menuItemName: string }>>;
+  upsertModifierRecipeAdjustment(
+    input: ModifierRecipeAdjustmentInput
+  ): Promise<ModifierRecipeAdjustment>;
+  verifyModifierRecipeAdjustment(
+    restaurantId: string,
+    adjustmentId: string
+  ): Promise<ModifierRecipeAdjustment>;
+  rejectModifierRecipeAdjustment(
+    restaurantId: string,
+    adjustmentId: string
+  ): Promise<ModifierRecipeAdjustment>;
+  expireModifierRecipeAdjustment(
+    restaurantId: string,
+    adjustmentId: string
+  ): Promise<ModifierRecipeAdjustment>;
   fetchPlanningData(restaurantId: string): Promise<PlanningData>;
   saveRestaurantSetupSnapshot(
     restaurantId: string,
