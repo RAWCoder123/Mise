@@ -24,12 +24,15 @@ import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   addInventoryItemToOrder,
+  applyInvoiceUnitCostFromDelivery,
   fetchInventoryItemOutlook,
+  fetchInvoiceUnitCostApplyCandidate,
   fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
+import type { InvoiceUnitCostApplyCandidate } from "../../services/domain/invoiceUnitCostApply";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -42,11 +45,13 @@ import { statusTone } from "../../utils/inventory";
 type InventoryOperatorAction = "count" | "receipt" | "waste" | "stockout";
 
 export default function InventoryDetailScreen() {
-  const { formatNumber, parseNumber, t } = useLocale();
+  const { formatCurrency, formatDate, formatNumber, parseNumber, t } = useLocale();
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const { memberships, restaurant } = useMiseSession();
   const [outlook, setOutlook] = useState<InventoryOutlookItem | null>(null);
+  const [invoiceUnitCostApply, setInvoiceUnitCostApply] =
+    useState<InvoiceUnitCostApplyCandidate | null>(null);
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
   const [operation, setOperation] = useState<InventoryOperatorAction>("count");
   const [quantityText, setQuantityText] = useState("");
@@ -56,6 +61,7 @@ export default function InventoryDetailScreen() {
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
   const [savingSettings, setSavingSettings] = useState(false);
+  const [applyingInvoiceCost, setApplyingInvoiceCost] = useState(false);
   const [submittingOperation, setSubmittingOperation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -81,12 +87,14 @@ export default function InventoryDetailScreen() {
     setMessageIsError(false);
     setHubLoadError(false);
     try {
-      const [nextOutlook, nextQueue] = await Promise.all([
+      const [nextOutlook, nextQueue, nextInvoiceCost] = await Promise.all([
         fetchInventoryItemOutlook(restaurantId, itemId),
-        fetchQueuedInventoryEvents(restaurantId)
+        fetchQueuedInventoryEvents(restaurantId),
+        fetchInvoiceUnitCostApplyCandidate(restaurantId, itemId).catch(() => null)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(nextOutlook);
+      setInvoiceUnitCostApply(nextInvoiceCost);
       setQueueEntries(nextQueue.filter((entry) => entry.event.inventoryItemId === itemId));
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
@@ -105,6 +113,7 @@ export default function InventoryDetailScreen() {
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(null);
+      setInvoiceUnitCostApply(null);
       setQueueEntries([]);
       setHubLoadError(true);
       setMessage(t("inventory.detail.loadError"));
@@ -121,6 +130,7 @@ export default function InventoryDetailScreen() {
     setLoadedRestaurantId(null);
     setHubLoadError(false);
     setOutlook(null);
+    setInvoiceUnitCostApply(null);
     setQueueEntries([]);
     setOperation("count");
     setQuantityText("");
@@ -130,6 +140,7 @@ export default function InventoryDetailScreen() {
     setQuantityError(undefined);
     setSettingErrors({});
     setSavingSettings(false);
+    setApplyingInvoiceCost(false);
     setSubmittingOperation(false);
     setMessage(null);
     setMessageIsError(false);
@@ -154,10 +165,11 @@ export default function InventoryDetailScreen() {
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
-    busy: submittingOperation || savingSettings
+    busy: submittingOperation || savingSettings || applyingInvoiceCost
   });
   const visibleOutlook = hubReady ? outlook : null;
   const visibleQueue = hubReady ? queueEntries : [];
+  const visibleInvoiceUnitCostApply = hubReady ? invoiceUnitCostApply : null;
   const item = visibleOutlook?.item ?? null;
   const prediction = visibleOutlook?.prediction ?? null;
   const localizedPrediction =
@@ -262,6 +274,53 @@ export default function InventoryDetailScreen() {
     }
   }
 
+  async function applyInvoiceCost() {
+    if (!restaurant || !item || !invoiceUnitCostApply) return;
+    if (!actionsEditable) {
+      setMessage(t("inventory.detail.viewOnlyInventory"));
+      setMessageIsError(true);
+      return;
+    }
+    const restaurantId = restaurant.id;
+    const deliveryItemId = invoiceUnitCostApply.deliveryItemId;
+    setApplyingInvoiceCost(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      const result = await applyInvoiceUnitCostFromDelivery(restaurantId, {
+        inventoryItemId: item.id,
+        deliveryItemId
+      });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(
+        t(
+          result.outcome === "already_applied"
+            ? "inventory.detail.invoiceCost.alreadyBody"
+            : "inventory.detail.invoiceCost.successBody",
+          {
+            price: formatCurrency(result.unitPrice, {
+              currency: restaurant.currency ?? "USD",
+              maximumFractionDigits: 4
+            })
+          }
+        )
+      );
+      setMessageIsError(false);
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(
+        error instanceof Error && error.message.trim()
+          ? error.message.slice(0, 220)
+          : t("inventory.detail.invoiceCost.failedBody")
+      );
+      setMessageIsError(true);
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setApplyingInvoiceCost(false);
+    }
+  }
+
   async function saveSettings() {
     if (!restaurant || !item) return;
     if (!actionsEditable) {
@@ -342,7 +401,7 @@ export default function InventoryDetailScreen() {
     }
   }
 
-  const busy = submittingOperation || savingSettings;
+  const busy = submittingOperation || savingSettings || applyingInvoiceCost;
 
   return (
     <Screen
@@ -570,6 +629,42 @@ export default function InventoryDetailScreen() {
               </View>
             )}
           </Card>
+
+          {visibleInvoiceUnitCostApply ? (
+            <Card>
+              <Text style={styles.cardTitle}>{t("inventory.detail.invoiceCost.title")}</Text>
+              <Text style={styles.copy}>
+                {t("inventory.detail.invoiceCost.body", {
+                  invoicePrice: formatCurrency(visibleInvoiceUnitCostApply.unitPrice, {
+                    currency: restaurant?.currency ?? "USD",
+                    maximumFractionDigits: 4
+                  }),
+                  currentPrice: formatCurrency(visibleInvoiceUnitCostApply.previousUnitCost, {
+                    currency: restaurant?.currency ?? "USD",
+                    maximumFractionDigits: 4
+                  }),
+                  unit: visibleInvoiceUnitCostApply.displayUnit,
+                  date: formatDate(visibleInvoiceUnitCostApply.receivedAt, {
+                    dateStyle: "medium"
+                  })
+                })}
+              </Text>
+              {mutationAllowed ? (
+                <Button
+                  title={
+                    applyingInvoiceCost
+                      ? t("inventory.detail.invoiceCost.applying")
+                      : t("inventory.detail.invoiceCost.action")
+                  }
+                  onPress={() => void applyInvoiceCost()}
+                  disabled={!actionsEditable || busy}
+                  fullWidth
+                  style={styles.saveButton}
+                  accessibilityLabel={t("inventory.detail.invoiceCost.actionHint")}
+                />
+              ) : null}
+            </Card>
+          ) : null}
 
           <Card>
             <Text style={styles.cardTitle}>

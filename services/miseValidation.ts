@@ -1221,6 +1221,10 @@ export function normalizeSupplierDeliveryRecord(
 export function normalizeSupplierDeliveryItemRecord(
   value: SupplierDeliveryItemRecord
 ): SupplierDeliveryItemRecord {
+  const rawUnitPrice =
+    value.unit_price == null || value.unit_price === ("" as unknown)
+      ? null
+      : asNonNegativeNumber(value.unit_price);
   return {
     ...value,
     ordered_quantity:
@@ -1228,6 +1232,10 @@ export function normalizeSupplierDeliveryItemRecord(
     received_quantity: asNonNegativeNumber(value.received_quantity),
     damaged_quantity: asNonNegativeNumber(value.damaged_quantity),
     missing_quantity: asNonNegativeNumber(value.missing_quantity),
+    unit_price:
+      rawUnitPrice == null || rawUnitPrice > 1_000_000
+        ? null
+        : Math.round(rawUnitPrice * 10_000) / 10_000,
     discrepancy_reason: asNullableString(value.discrepancy_reason)
   };
 }
