@@ -1508,6 +1508,43 @@ export function createSupabaseRepository(): MiseRepository {
         .filter((row): row is NonNullable<typeof row> => row !== null);
     },
 
+    async upsertRecipeVersionYields(input) {
+      const { data, error } = await client.rpc("upsert_recipe_version_yields", {
+        p_restaurant_id: input.restaurantId,
+        p_menu_item_id: input.menuItemId,
+        p_serving_quantity: input.servingQuantity,
+        p_prep_yield: input.prepYield,
+        p_cooking_yield: input.cookingYield,
+        p_recipe_version_id: input.recipeVersionId ?? null
+      });
+      if (error) throw error;
+      const parsed = parseRecipeVersionYieldRow((data ?? {}) as Record<string, unknown>);
+      if (!parsed) throw new Error("Recipe yield response is invalid.");
+      return parsed;
+    },
+
+    async verifyRecipeVersionYields(restaurantId, recipeVersionId) {
+      const { data, error } = await client.rpc("verify_recipe_version_yields", {
+        p_restaurant_id: restaurantId,
+        p_recipe_version_id: recipeVersionId
+      });
+      if (error) throw error;
+      const parsed = parseRecipeVersionYieldRow((data ?? {}) as Record<string, unknown>);
+      if (!parsed) throw new Error("Recipe yield response is invalid.");
+      return parsed;
+    },
+
+    async retireRecipeVersionYields(restaurantId, recipeVersionId) {
+      const { data, error } = await client.rpc("retire_recipe_version_yields", {
+        p_restaurant_id: restaurantId,
+        p_recipe_version_id: recipeVersionId
+      });
+      if (error) throw error;
+      const parsed = parseRecipeVersionYieldRow((data ?? {}) as Record<string, unknown>);
+      if (!parsed) throw new Error("Recipe yield response is invalid.");
+      return parsed;
+    },
+
     async confirmRecipeComplete(restaurantId, menuItemId, expectedRevision) {
       const { data, error } = await client.rpc("confirm_recipe_complete", {
         p_restaurant_id: restaurantId,

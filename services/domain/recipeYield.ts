@@ -1,6 +1,7 @@
 /**
- * Read-only recipe yield presentation from `recipe_versions`.
+ * Recipe yield presentation and manager write helpers for `recipe_versions`.
  * Never invents yield factors — missing rows stay `missing`.
+ * Verified yields are never mutated in place; edits go through draft successors.
  */
 
 export type RecipeVersionYieldStatus = "draft" | "verified" | "retired";
@@ -19,6 +20,21 @@ export interface RecipeVersionYield {
   /** Null means restaurant-wide; location-specific versions stay secondary for hub display. */
   locationId: string | null;
 }
+
+export interface RecipeVersionYieldInput {
+  restaurantId: string;
+  menuItemId: string;
+  servingQuantity: number;
+  prepYield: number;
+  cookingYield: number;
+  recipeVersionId?: string | null;
+}
+
+const MAX_SERVING_QUANTITY = 10_000;
+
+export const recipeYieldLimits = {
+  maxServingQuantity: MAX_SERVING_QUANTITY
+} as const;
 
 export type RecipeYieldReadout =
   | {
@@ -41,7 +57,83 @@ export function isValidRecipeYieldFactor(value: number) {
 }
 
 export function isValidServingQuantity(value: number) {
-  return Number.isFinite(value) && value > 0;
+  return Number.isFinite(value) && value > 0 && value <= MAX_SERVING_QUANTITY;
+}
+
+export function isRecipeVersionYieldStatus(value: unknown): value is RecipeVersionYieldStatus {
+  return value === "draft" || value === "verified" || value === "retired";
+}
+
+export function requireRecipeYieldFactor(value: unknown): number {
+  const factor = typeof value === "number" ? value : Number(value);
+  if (!isValidRecipeYieldFactor(factor)) {
+    throw new Error("Recipe yield factor must be greater than 0 and at most 1.");
+  }
+  return factor;
+}
+
+export function requireServingQuantity(value: unknown): number {
+  const quantity = typeof value === "number" ? value : Number(value);
+  if (!isValidServingQuantity(quantity)) {
+    throw new Error(
+      `Serving quantity must be greater than 0 and no more than ${MAX_SERVING_QUANTITY.toLocaleString()}.`
+    );
+  }
+  return quantity;
+}
+
+/**
+ * Convert an operator-facing percent (1–100) into a stored yield factor (0–1].
+ * Rejects 0% and values above 100%.
+ */
+export function requireYieldPercentAsFactor(value: unknown): number {
+  const percent = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(percent) || percent <= 0 || percent > 100) {
+    throw new Error("Yield percent must be greater than 0 and at most 100.");
+  }
+  return requireRecipeYieldFactor(percent / 100);
+}
+
+export function normalizeRecipeVersionYield(row: Record<string, unknown>): RecipeVersionYield {
+  const status = row.status;
+  if (!isRecipeVersionYieldStatus(status)) {
+    throw new Error("Recipe version yield status is invalid.");
+  }
+  const id = String(row.id ?? "");
+  const restaurantId = String(row.restaurant_id ?? row.restaurantId ?? "");
+  const menuItemId = String(row.menu_item_id ?? row.menuItemId ?? "");
+  const servingQuantity = requireServingQuantity(row.serving_quantity ?? row.servingQuantity);
+  const prepYield = requireRecipeYieldFactor(row.prep_yield ?? row.prepYield);
+  const cookingYield = requireRecipeYieldFactor(row.cooking_yield ?? row.cookingYield);
+  const versionNumber = Number(row.version_number ?? row.versionNumber);
+  const effectiveFrom = String(row.effective_from ?? row.effectiveFrom ?? "");
+  const locationRaw = row.pos_location_id ?? row.locationId ?? row.location_id;
+  if (
+    !id
+    || !restaurantId
+    || !menuItemId
+    || !Number.isSafeInteger(versionNumber)
+    || versionNumber <= 0
+    || !effectiveFrom
+  ) {
+    throw new Error("Recipe version yield identity is incomplete.");
+  }
+  return {
+    id,
+    restaurantId,
+    menuItemId,
+    status,
+    servingQuantity,
+    prepYield,
+    cookingYield,
+    versionNumber,
+    effectiveFrom,
+    effectiveTo:
+      row.effective_to == null && row.effectiveTo == null
+        ? null
+        : String(row.effective_to ?? row.effectiveTo),
+    locationId: locationRaw == null || locationRaw === "" ? null : String(locationRaw)
+  };
 }
 
 export function computeRawUsageMultiplier(

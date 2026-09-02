@@ -3,7 +3,11 @@ import test from "node:test";
 
 import {
   computeRawUsageMultiplier,
+  normalizeRecipeVersionYield,
   presentRecipeYieldReadout,
+  requireRecipeYieldFactor,
+  requireServingQuantity,
+  requireYieldPercentAsFactor,
   selectCurrentRecipeVersionYield,
   type RecipeVersionYield
 } from "../services/domain/recipeYield";
@@ -30,6 +34,38 @@ test("computeRawUsageMultiplier divides serving by prep and cook yields", () => 
   assert.equal(computeRawUsageMultiplier(2, 1, 1), 2);
   assert.equal(computeRawUsageMultiplier(1, 0, 1), null);
   assert.equal(computeRawUsageMultiplier(1, 1.1, 1), null);
+});
+
+test("require helpers reject impossible yield inputs", () => {
+  assert.equal(requireRecipeYieldFactor(0.95), 0.95);
+  assert.equal(requireServingQuantity(2), 2);
+  assert.equal(requireYieldPercentAsFactor(95), 0.95);
+  assert.throws(() => requireRecipeYieldFactor(0), /greater than 0/);
+  assert.throws(() => requireRecipeYieldFactor(1.1), /at most 1/);
+  assert.throws(() => requireServingQuantity(0), /greater than 0/);
+  assert.throws(() => requireServingQuantity(10001), /no more than/);
+  assert.throws(() => requireYieldPercentAsFactor(0), /greater than 0/);
+  assert.throws(() => requireYieldPercentAsFactor(101), /at most 100/);
+});
+
+test("normalizeRecipeVersionYield accepts snake_case and camelCase rows", () => {
+  const normalized = normalizeRecipeVersionYield({
+    id: "rv-9",
+    restaurant_id: "rest-1",
+    menu_item_id: "menu-1",
+    status: "draft",
+    serving_quantity: 2,
+    prep_yield: 0.9,
+    cooking_yield: 0.85,
+    version_number: 3,
+    effective_from: "2026-01-01T00:00:00.000Z",
+    effective_to: null,
+    pos_location_id: null
+  });
+  assert.equal(normalized.prepYield, 0.9);
+  assert.equal(normalized.cookingYield, 0.85);
+  assert.equal(normalized.versionNumber, 3);
+  assert.equal(normalized.locationId, null);
 });
 
 test("presentRecipeYieldReadout never invents recorded yields", () => {
