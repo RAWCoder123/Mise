@@ -22,11 +22,13 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import type { IngredientSubstitutionListItem } from "../../services/domain/ingredientSubstitutions";
 import {
   addInventoryItemToOrder,
   fetchInventoryItemOutlook,
   fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
+  listVerifiedSubstitutesForInventoryItem,
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
@@ -34,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { presentInventoryVerifiedSubstituteRows } from "../../services/presentation/ingredientSubstitutionPresentation";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
 import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
@@ -48,6 +51,9 @@ export default function InventoryDetailScreen() {
   const { memberships, restaurant } = useMiseSession();
   const [outlook, setOutlook] = useState<InventoryOutlookItem | null>(null);
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
+  const [verifiedSubstitutes, setVerifiedSubstitutes] = useState<IngredientSubstitutionListItem[]>(
+    []
+  );
   const [operation, setOperation] = useState<InventoryOperatorAction>("count");
   const [quantityText, setQuantityText] = useState("");
   const [noteText, setNoteText] = useState("");
@@ -81,13 +87,22 @@ export default function InventoryDetailScreen() {
     setMessageIsError(false);
     setHubLoadError(false);
     try {
-      const [nextOutlook, nextQueue] = await Promise.all([
+      const [nextOutlook, nextQueue, nextSubstitutes] = await Promise.all([
         fetchInventoryItemOutlook(restaurantId, itemId),
-        fetchQueuedInventoryEvents(restaurantId)
+        fetchQueuedInventoryEvents(restaurantId),
+        listVerifiedSubstitutesForInventoryItem(restaurantId, itemId).catch(
+          () => [] as IngredientSubstitutionListItem[]
+        )
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(nextOutlook);
       setQueueEntries(nextQueue.filter((entry) => entry.event.inventoryItemId === itemId));
+      setVerifiedSubstitutes(
+        nextSubstitutes.filter(
+          (entry) =>
+            entry.restaurantId === restaurantId && entry.sourceInventoryItemId === itemId
+        )
+      );
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       if (nextOutlook) {
@@ -106,6 +121,7 @@ export default function InventoryDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(null);
       setQueueEntries([]);
+      setVerifiedSubstitutes([]);
       setHubLoadError(true);
       setMessage(t("inventory.detail.loadError"));
       setMessageIsError(true);
@@ -122,6 +138,7 @@ export default function InventoryDetailScreen() {
     setHubLoadError(false);
     setOutlook(null);
     setQueueEntries([]);
+    setVerifiedSubstitutes([]);
     setOperation("count");
     setQuantityText("");
     setNoteText("");
@@ -158,6 +175,7 @@ export default function InventoryDetailScreen() {
   });
   const visibleOutlook = hubReady ? outlook : null;
   const visibleQueue = hubReady ? queueEntries : [];
+  const visibleVerifiedSubstitutes = hubReady ? verifiedSubstitutes : [];
   const item = visibleOutlook?.item ?? null;
   const prediction = visibleOutlook?.prediction ?? null;
   const localizedPrediction =
@@ -165,6 +183,13 @@ export default function InventoryDetailScreen() {
   const status = prediction?.projectedStatus ?? null;
   const canonicalReady = item ? isCanonicalUnitReady(item) : false;
   const canonicalUnit = canonicalReady ? item!.canonical_unit! : null;
+  const verifiedSubstituteRows = useMemo(
+    () =>
+      item
+        ? presentInventoryVerifiedSubstituteRows(visibleVerifiedSubstitutes, item.id)
+        : [],
+    [item, visibleVerifiedSubstitutes]
+  );
 
   const operationOptions = useMemo<readonly SegmentOption<InventoryOperatorAction>[]>(
     () => [
@@ -449,6 +474,31 @@ export default function InventoryDetailScreen() {
               </Text>
             </View>
           </Card>
+
+          {verifiedSubstituteRows.length > 0 ? (
+            <Card>
+              <Text style={styles.cardTitle}>{t("inventory.detail.substitutes.title")}</Text>
+              <Text style={styles.opsBody}>{t("inventory.detail.substitutes.body")}</Text>
+              <View style={styles.substituteList}>
+                {verifiedSubstituteRows.map((row) => (
+                  <View key={row.id} style={styles.substituteRow}>
+                    <Text style={styles.substituteName}>{row.substituteItemName}</Text>
+                    <Text style={styles.substituteRatio}>{row.ratioLabel}</Text>
+                  </View>
+                ))}
+              </View>
+              {canManage ? (
+                <Button
+                  title={t("inventory.detail.substitutes.manage")}
+                  variant="secondary"
+                  onPress={() => router.push("/settings/substitutions")}
+                  accessibilityHint={t("inventory.detail.substitutes.manageHint")}
+                  fullWidth
+                  style={styles.saveButton}
+                />
+              ) : null}
+            </Card>
+          ) : null}
 
           <Card>
             <Text style={styles.cardTitle}>{t("inventory.detail.recentUsage")}</Text>
@@ -817,6 +867,18 @@ const styles = StyleSheet.create({
   kicker: { color: colors.faint, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
   coverage: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "700", marginTop: 6 },
   copy: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 8 },
+  substituteList: { gap: 10, marginBottom: 4 },
+  substituteRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceWarm,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 4
+  },
+  substituteName: { color: colors.text, fontSize: 15, fontWeight: "700" },
+  substituteRatio: { color: colors.muted, fontSize: 13, lineHeight: 18, fontWeight: "600" },
   opsBody: {
     color: colors.muted,
     fontSize: 14,
