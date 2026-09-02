@@ -12,6 +12,7 @@ const routes = [
   "/orders",
   "/insights",
   "/more/waste",
+  "/more/receipt-correct",
   "/more/daily-brief",
   "/settings",
   "/settings/export",

@@ -28,4 +28,5 @@ export * from "./application/restaurantMemory";
 export * from "./application/miseActions";
 export * from "./application/autonomy";
 export * from "./application/waste";
+export * from "./application/receiptCorrection";
 export * from "./application/pilotReadiness";
