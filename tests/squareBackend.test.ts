@@ -75,6 +75,7 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
   assert.equal(sales[0]?.provider_location_id, "loc-a");
   assert.equal(sales[0]?.gross_sales, 24);
   assert.equal(sales[0]?.provider_variation_id, "var-1");
+  assert.equal(sales[0]?.sold_at, "2026-07-30T12:00:00.000Z");
 
   const catalog = normalizeCatalogItem({
     type: "ITEM",

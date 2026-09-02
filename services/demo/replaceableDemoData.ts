@@ -1803,6 +1803,7 @@ function sale(
     id,
     restaurant_id: DEMO_RESTAURANT_ID,
     sale_date: saleDate,
+    sold_at: createdAt,
     item_name: itemName,
     category,
     quantity_sold: quantitySold,

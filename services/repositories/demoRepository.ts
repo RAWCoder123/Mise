@@ -405,6 +405,13 @@ function refreshLocalDemoSalesDate(state: DemoState, restaurantId: string) {
     .filter((sale) => isRollingDemoCurrentDaySale(sale.id))
     .forEach((sale) => {
       sale.sale_date = today;
+      if (typeof sale.sold_at === "string" && Number.isFinite(Date.parse(sale.sold_at))) {
+        const prior = new Date(sale.sold_at);
+        const rolled = new Date(`${today}T${prior.toISOString().slice(11)}`);
+        if (Number.isFinite(rolled.getTime())) {
+          sale.sold_at = rolled.toISOString();
+        }
+      }
     });
 }
 

@@ -139,8 +139,9 @@ export type InventoryCountEvidenceMap = ReadonlyMap<string, InventoryCountEviden
 /**
  * A consumption entry that may deplete a counted baseline.
  *
- * `instant` carries a real occurrence time (ledger usage/waste evidence).
- * `operating_day` carries only a date, which is all a `pos_sales` row records.
+ * `instant` carries a real occurrence time (ledger usage/waste evidence, or a
+ * POS sale with provider `sold_at`).
+ * `operating_day` carries only a date (date-only POS rows without sold_at).
  * Day-resolution consumption cannot be ordered against a count taken inside the
  * same operating day, so it is reported as unattributed instead of guessed at.
  */
@@ -533,6 +534,41 @@ export function dayResolutionConsumptionIsAfterCount(
 ): boolean {
   if (!countedOperatingDate || !operatingDate) return false;
   return operatingDate > countedOperatingDate;
+}
+
+/**
+ * Provider closed/sold timestamp when present and parseable. Date-only POS rows
+ * cannot be ordered inside an operating day, so they return null.
+ */
+export function saleEffectiveAt(
+  sale: { sold_at?: string | null }
+): string | null {
+  if (typeof sale.sold_at !== "string" || !sale.sold_at.trim()) return null;
+  return Number.isFinite(Date.parse(sale.sold_at)) ? sale.sold_at : null;
+}
+
+/**
+ * Whether a POS sale should deplete projected on-hand after verified count evidence.
+ *
+ * - Sale must be on the restaurant operating date.
+ * - No verified count → deplete (prior low-confidence full-day path).
+ * - Count before the operating day → deplete all operating-day sales.
+ * - Count after the operating day → deplete none.
+ * - Same operating day as the count → only sales with sold_at strictly after the
+ *   count. Date-only same-day sales stay unattributed (COUNT_BOUNDARY_RULE).
+ */
+export function isSaleInDepletionWindow(
+  sale: { sale_date: string; sold_at?: string | null },
+  operatingDate: string,
+  evidence: Pick<InventoryCountEvidence, "status" | "countedAt" | "countedOperatingDate">
+): boolean {
+  if (sale.sale_date !== operatingDate) return false;
+  if (evidence.status !== "verified") return true;
+  if (dayResolutionConsumptionIsAfterCount(evidence.countedOperatingDate, operatingDate)) {
+    return true;
+  }
+  if (evidence.countedOperatingDate !== operatingDate) return false;
+  return isStrictlyAfterCount(evidence.countedAt, saleEffectiveAt(sale) ?? undefined);
 }
 
 /**
