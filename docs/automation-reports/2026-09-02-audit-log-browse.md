@@ -8,12 +8,12 @@
 - Application `fetchAuditLogs` + presentation labels for known actions (EN/ES/zh-Hans).
 - Hub fail-closed load state; More row hidden unless owner/admin membership.
 
-## Verification intended
+## Verification
 
-- `npm run typecheck`
-- `npm test` (focused + hub/tenant contract pins)
-- `npm run security:static`
-- `npm run design:static`
+- `npm run typecheck` — pass
+- `npm test` — 640 pass / 0 fail / 7 cancelled
+- `npm run security:static` — pass
+- `npm run design:static` — pass
 
 ## Security notes
 
