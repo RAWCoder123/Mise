@@ -228,7 +228,7 @@ export default function HomeScreen() {
                   )
             }
             actionLabel={t("home.recalculation.action")}
-            onAction={() => router.push("/more/activity")}
+            onAction={() => router.push("/more/recalculation-runs")}
           />
         ) : null}
 
