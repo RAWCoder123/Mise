@@ -1430,6 +1430,176 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     }
   ];
 
+  state.miseActions = [
+    {
+      id: "00000000-0000-4000-8000-000000000a01",
+      restaurantId: DEMO_RESTAURANT_ID,
+      recommendationId: null,
+      actionType: "send_supplier_order",
+      executionMode: "prepare",
+      status: "executed",
+      autonomyLevel: 3,
+      requestedBy: DEMO_USER_ID,
+      approvedBy: DEMO_USER_ID,
+      executedAt: addDays(nowDate, -14).toISOString(),
+      result: { deliveryId: "00000000-0000-4000-8000-000000000d01", status: "received" },
+      error: null,
+      rollbackReference: null,
+      expectedImpact: {
+        supplierName: "Pantry Wholesale",
+        orderId: "00000000-0000-4000-8000-000000000603"
+      },
+      financialImpactCents: null,
+      idempotencyKey: "send_supplier_order:00000000-0000-4000-8000-000000000603",
+      createdAt: addDays(nowDate, -14).toISOString(),
+      updatedAt: addDays(nowDate, -14).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000a02",
+      restaurantId: DEMO_RESTAURANT_ID,
+      recommendationId: null,
+      actionType: "send_supplier_order",
+      executionMode: "prepare",
+      status: "executed",
+      autonomyLevel: 3,
+      requestedBy: DEMO_USER_ID,
+      approvedBy: DEMO_USER_ID,
+      executedAt: addDays(nowDate, -7).toISOString(),
+      result: { deliveryId: "00000000-0000-4000-8000-000000000d02", status: "received" },
+      error: null,
+      rollbackReference: null,
+      expectedImpact: {
+        supplierName: "Pantry Wholesale",
+        orderId: "00000000-0000-4000-8000-000000000604"
+      },
+      financialImpactCents: null,
+      idempotencyKey: "send_supplier_order:00000000-0000-4000-8000-000000000604",
+      createdAt: addDays(nowDate, -7).toISOString(),
+      updatedAt: addDays(nowDate, -7).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000a03",
+      restaurantId: DEMO_RESTAURANT_ID,
+      recommendationId: null,
+      actionType: "send_supplier_order",
+      executionMode: "prepare",
+      status: "executed",
+      autonomyLevel: 3,
+      requestedBy: DEMO_USER_ID,
+      approvedBy: DEMO_USER_ID,
+      executedAt: addDays(nowDate, -4).toISOString(),
+      result: { deliveryId: "00000000-0000-4000-8000-000000000d03", status: "discrepancy" },
+      error: null,
+      rollbackReference: null,
+      expectedImpact: {
+        supplierName: "Metro Produce Supply",
+        orderId: "00000000-0000-4000-8000-000000000605"
+      },
+      financialImpactCents: null,
+      idempotencyKey: "send_supplier_order:00000000-0000-4000-8000-000000000605",
+      createdAt: addDays(nowDate, -4).toISOString(),
+      updatedAt: addDays(nowDate, -4).toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000a04",
+      restaurantId: DEMO_RESTAURANT_ID,
+      recommendationId: null,
+      actionType: "send_supplier_order",
+      executionMode: "prepare",
+      status: "executed",
+      autonomyLevel: 3,
+      requestedBy: DEMO_USER_ID,
+      approvedBy: DEMO_USER_ID,
+      executedAt: addDays(nowDate, -12).toISOString(),
+      result: { deliveryId: "00000000-0000-4000-8000-000000000d04", status: "received" },
+      error: null,
+      rollbackReference: null,
+      expectedImpact: {
+        supplierName: "Metro Produce Supply",
+        orderId: "00000000-0000-4000-8000-000000000606"
+      },
+      financialImpactCents: null,
+      idempotencyKey: "send_supplier_order:00000000-0000-4000-8000-000000000606",
+      createdAt: addDays(nowDate, -12).toISOString(),
+      updatedAt: addDays(nowDate, -12).toISOString()
+    }
+  ];
+
+  state.actionOutcomes = [
+    {
+      id: "00000000-0000-4000-8000-000000000b01",
+      actionId: "00000000-0000-4000-8000-000000000a01",
+      restaurantId: DEMO_RESTAURANT_ID,
+      expectedResult: { deliveryStatus: "received" },
+      actualResult: {
+        deliveryStatus: "received",
+        deliveryId: "00000000-0000-4000-8000-000000000d01",
+        lineCount: 1
+      },
+      variance: {
+        deliveryStatusMatched: true,
+        hasDiscrepancy: false,
+        hasPartialReceipt: false
+      },
+      measuredAt: addDays(nowDate, -14).toISOString(),
+      lesson: "The supplier order was received as expected."
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000b02",
+      actionId: "00000000-0000-4000-8000-000000000a02",
+      restaurantId: DEMO_RESTAURANT_ID,
+      expectedResult: { deliveryStatus: "received" },
+      actualResult: {
+        deliveryStatus: "received",
+        deliveryId: "00000000-0000-4000-8000-000000000d02",
+        lineCount: 1
+      },
+      variance: {
+        deliveryStatusMatched: true,
+        hasDiscrepancy: false,
+        hasPartialReceipt: false
+      },
+      measuredAt: addDays(nowDate, -7).toISOString(),
+      lesson: "The supplier order was received as expected."
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000b03",
+      actionId: "00000000-0000-4000-8000-000000000a03",
+      restaurantId: DEMO_RESTAURANT_ID,
+      expectedResult: { deliveryStatus: "received" },
+      actualResult: {
+        deliveryStatus: "discrepancy",
+        deliveryId: "00000000-0000-4000-8000-000000000d03",
+        lineCount: 1
+      },
+      variance: {
+        deliveryStatusMatched: false,
+        hasDiscrepancy: true,
+        hasPartialReceipt: false
+      },
+      measuredAt: addDays(nowDate, -4).toISOString(),
+      lesson: "Review this supplier outcome before using it to adjust supplier reliability."
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000b04",
+      actionId: "00000000-0000-4000-8000-000000000a04",
+      restaurantId: DEMO_RESTAURANT_ID,
+      expectedResult: { deliveryStatus: "received" },
+      actualResult: {
+        deliveryStatus: "received",
+        deliveryId: "00000000-0000-4000-8000-000000000d04",
+        lineCount: 1
+      },
+      variance: {
+        deliveryStatusMatched: true,
+        hasDiscrepancy: false,
+        hasPartialReceipt: false
+      },
+      measuredAt: addDays(nowDate, -12).toISOString(),
+      lesson: "The supplier order was received as expected."
+    }
+  ];
+
   const sentOrderCreatedAt = addDays(nowDate, -1).toISOString();
   state.purchaseRecommendations = [
     {

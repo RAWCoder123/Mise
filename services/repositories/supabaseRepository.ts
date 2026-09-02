@@ -39,6 +39,10 @@ import {
   type PersistedMiseActionRow
 } from "../domain/miseActions";
 import {
+  actionOutcomeFromPersistedRow,
+  type PersistedActionOutcomeRow
+} from "../domain/actionOutcomes";
+import {
   restaurantMemoryFromPersistedRow,
   type PersistedRestaurantMemoryRow,
   type RestaurantMemoryStatus
@@ -2110,6 +2114,23 @@ export function createSupabaseRepository(): MiseRepository {
         actionId,
         reviewedFingerprint
       );
+    },
+
+    async listActionOutcomes(restaurantId, options = {}) {
+      const { data, error } = await client
+        .from("action_outcomes")
+        .select(
+          "id, restaurant_id, action_id, expected_result, actual_result, variance, measured_at, lesson, idempotency_key, created_at"
+        )
+        .eq("restaurant_id", restaurantId)
+        .order("measured_at", { ascending: false })
+        .limit(options.limit ?? 100);
+      if (error) throw error;
+      const outcomes = ((data ?? []) as PersistedActionOutcomeRow[]).map(actionOutcomeFromPersistedRow);
+      if (outcomes.some((outcome) => outcome.restaurantId !== restaurantId)) {
+        throw new Error("Action outcomes failed restaurant scope validation.");
+      }
+      return outcomes;
     },
 
     async listRestaurantMemories(restaurantId, options = {}) {

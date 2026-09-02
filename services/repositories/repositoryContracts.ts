@@ -38,7 +38,7 @@ import type {
   ActivityEvent,
   ActivityFeedFilter
 } from "../domain/activityEvents";
-import type { MiseAction } from "../domain/miseActions";
+import type { MiseAction, Outcome } from "../domain/miseActions";
 import type {
   OperationalFindingDecision,
   OperationalFindingDecisionInput
@@ -755,6 +755,10 @@ export interface MiseRepository {
     orderId: string,
     contentFingerprint: string
   ): Promise<SupplierSendContentApprovalResult>;
+  listActionOutcomes(
+    restaurantId: string,
+    options?: { limit?: number }
+  ): Promise<Outcome[]>;
   listRestaurantMemories(
     restaurantId: string,
     options?: { status?: RestaurantMemoryStatus | "actionable"; limit?: number }
