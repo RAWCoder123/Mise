@@ -59,6 +59,8 @@ export interface SquareSaleRow {
   provider_location_id?: string;
   provider_catalog_item_id?: string;
   provider_variation_id?: string;
+  /** Catalog-backed modifier catalog_object_ids on this line (bounded). */
+  selected_modifier_ids?: string[];
 }
 
 export interface SquareCatalogRow {
@@ -240,7 +242,6 @@ export function emptySquareModifierSyncSummary(): SquareModifierSyncSummary {
 /**
  * Accumulate catalog-backed Square line-item modifiers. Entries without a
  * catalog_object_id are skipped so later mapping work has a stable identity.
- * Sale rows stay flat; this bag is sync-metadata only.
  */
 export function accumulateSquareOrderModifiers(
   order: unknown,
@@ -274,6 +275,30 @@ export function accumulateSquareOrderModifiers(
       }
     }
   }
+}
+
+/** Distinct catalog-backed modifier ids on one Square line item (max 32). */
+export function selectedModifierIdsFromLineItem(line: unknown): string[] {
+  if (!line || typeof line !== "object") return [];
+  const item = line as Record<string, unknown>;
+  const modifiers = Array.isArray(item.modifiers) ? item.modifiers : [];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const modifier of modifiers) {
+    if (!modifier || typeof modifier !== "object") continue;
+    const row = modifier as Record<string, unknown>;
+    const id = stringField(row, "catalog_object_id", MAX_MODIFIER_ID_LENGTH);
+    if (!id || seen.has(id)) continue;
+    const rawQuantity = Number(row.quantity ?? 1);
+    const quantity = Number.isFinite(rawQuantity)
+      ? Math.min(MAX_MODIFIER_OCCURRENCE, Math.max(0, rawQuantity))
+      : 0;
+    if (quantity <= 0) continue;
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= 32) break;
+  }
+  return ids;
 }
 
 export function finalizeSquareModifierSyncSummary(
@@ -420,6 +445,7 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
       variationId ||
       stringField(item, "variation_name", 80) ||
       "Square";
+    const selectedModifierIds = selectedModifierIdsFromLineItem(item);
     rows.push({
       sale_date: saleDate,
       item_name: name,
@@ -430,6 +456,9 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
       source_record_id: `square_${orderId}_${uid}`.slice(0, 200),
       provider_location_id: providerLocationId,
       provider_variation_id: variationId || undefined,
+      ...(selectedModifierIds.length > 0
+        ? { selected_modifier_ids: selectedModifierIds }
+        : {}),
     });
   }
   return rows;

@@ -49,6 +49,11 @@ import {
   saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity";
+import {
+  accumulateSaleIngredientUsage,
+  usageForInventoryItemFromSale,
+  type ModifierDepletionContext
+} from "./modifierDepletion";
 import type { PurchaseAuthorityResult } from "./purchaseAuthority";
 
 /**
@@ -300,7 +305,8 @@ export function buildInventoryOutlooks(
   operatingDate: string,
   demandFallback?: DemandFallback,
   countEvidence?: InventoryCountEvidenceMap,
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  modifierContext: ModifierDepletionContext | null = null
 ): InventoryOutlookItem[] {
   const historicalBaselines = buildHistoricalDemandBaselines(
     restaurantId,
@@ -321,7 +327,9 @@ export function buildInventoryOutlooks(
         historicalBaselines,
         demandFallback,
         inventoryCountEvidenceFor(countEvidence, restaurantId, item.id),
-        providerMappings
+        providerMappings,
+        modifierContext,
+        inventoryItems
       )
     }))
     .sort((a, b) => {
@@ -408,7 +416,9 @@ export function buildInventoryPrediction(
   historicalBaselines = buildHistoricalDemandBaselines(item.restaurant_id, sales, operatingDate),
   demandFallback?: DemandFallback,
   countEvidence: InventoryCountEvidence = missingInventoryCountEvidence(item.restaurant_id, item.id),
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  modifierContext: ModifierDepletionContext | null = null,
+  inventoryItemsForConversion: readonly InventoryItem[] = []
 ): InventoryPrediction {
   const identityAwareHistoricalBaselines = providerMappings.length > 0
     ? buildHistoricalDemandBaselines(
@@ -434,11 +444,30 @@ export function buildInventoryPrediction(
       mapping.inventory_item_id === item.id &&
       inventoryUnitsAreCompatible(safeItem.unit, mapping.unit)
   );
-  const mappedTodayUsage = relevantMappings.reduce((sum, mapping) => {
-    const sold = todaySales
-      .filter((sale) => saleMatchesRecipe(sale, mapping, providerMappings))
-      .reduce((saleSum, sale) => saleSum + finiteNonNegative(sale.quantity_sold), 0);
-    return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
+  const itemsById = new Map<string, InventoryItem>();
+  for (const candidate of inventoryItemsForConversion) {
+    if (candidate.restaurant_id === item.restaurant_id) {
+      itemsById.set(candidate.id, candidate);
+    }
+  }
+  itemsById.set(item.id, safeItem);
+  const mappedTodayUsage = todaySales.reduce((sum, sale) => {
+    const saleMappings = mappings.filter(
+      (mapping) =>
+        mapping.restaurant_id === item.restaurant_id &&
+        saleMatchesRecipe(sale, mapping, providerMappings)
+    );
+    if (!saleMappings.some((mapping) => mapping.inventory_item_id === item.id)) return sum;
+    return (
+      sum +
+      usageForInventoryItemFromSale({
+        sale,
+        inventoryItemId: item.id,
+        matchingMappings: saleMappings,
+        itemsById,
+        modifierContext
+      })
+    );
   }, 0);
   // `pos_sales` rows carry day resolution only, so a verified count taken inside
   // today's operating day already observed part of today's sales. Those sales must
@@ -712,30 +741,36 @@ function estimateUsage(
   sales: PosSale[],
   mappings: MenuItemIngredient[],
   inventoryItems: InventoryItem[],
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  modifierContext: ModifierDepletionContext | null = null
 ) {
   const itemsById = new Map(inventoryItems.map((item) => [item.id, item]));
   const usage = new Map<string, { itemName: string; quantity: number; unit: string }>();
 
   sales.forEach((sale) => {
-    mappings
-      .filter(
-        (mapping) =>
-          mapping.restaurant_id === sale.restaurant_id &&
-          saleMatchesRecipe(sale, mapping, providerMappings)
-      )
-      .forEach((mapping) => {
-        const item = itemsById.get(mapping.inventory_item_id);
-        if (!item || item.restaurant_id !== sale.restaurant_id) return;
-        if (!inventoryUnitsAreCompatible(item.unit, mapping.unit)) return;
-        const current = usage.get(mapping.inventory_item_id);
-        const quantity = sale.quantity_sold * mapping.quantity_used_per_sale;
-        usage.set(mapping.inventory_item_id, {
-          itemName: item.item_name,
-          quantity: (current?.quantity ?? 0) + quantity,
-          unit: item.unit
-        });
+    const saleMappings = mappings.filter(
+      (mapping) =>
+        mapping.restaurant_id === sale.restaurant_id &&
+        saleMatchesRecipe(sale, mapping, providerMappings)
+    );
+    if (saleMappings.length === 0) return;
+    const result = accumulateSaleIngredientUsage({
+      sale,
+      matchingMappings: saleMappings,
+      itemsById,
+      modifierContext
+    });
+    if (result.status === "skipped_unverified_modifiers") return;
+    for (const [inventoryItemId, quantity] of result.usageByItemId.entries()) {
+      const item = itemsById.get(inventoryItemId);
+      if (!item || item.restaurant_id !== sale.restaurant_id) continue;
+      const current = usage.get(inventoryItemId);
+      usage.set(inventoryItemId, {
+        itemName: item.item_name,
+        quantity: (current?.quantity ?? 0) + quantity,
+        unit: item.unit
       });
+    }
   });
 
   return usage;

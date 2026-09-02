@@ -100,6 +100,12 @@ export interface PosSale {
   provider_catalog_item_id?: string | null;
   provider_variation_id?: string | null;
   provider_location_id?: string | null;
+  /**
+   * Catalog-backed POS modifier ids selected on this sale line.
+   * Empty/absent means base recipe depletion only. When present, depletion
+   * applies verified `modifier_recipe_adjustments` or fails closed for the line.
+   */
+  selected_modifier_ids?: string[] | null;
   sale_date: string;
   item_name: string;
   category: string;
