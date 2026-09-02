@@ -2,6 +2,7 @@ import { supabase } from "../../lib/supabase";
 import type {
   AppUser,
   AiInsight,
+  AuditLog,
   Insight,
   InventoryItem,
   InventoryCountLine,
@@ -78,6 +79,7 @@ import {
 } from "../domain/purchaseDecisionMemory";
 import {
   normalizeAppUser,
+  normalizeAuditLog,
   normalizeInsight,
   normalizeAiInsight,
   normalizeRestaurantEmailConnection,
@@ -1072,6 +1074,23 @@ export function createSupabaseRepository(): MiseRepository {
         p_metadata: input.metadata ?? {}
       });
       if (error) throw error;
+    },
+
+    async listAuditLogs(restaurantId, options = {}) {
+      let query = client
+        .from("audit_logs")
+        .select("id, restaurant_id, actor_user_id, action, entity_table, entity_id, metadata, created_at")
+        .eq("restaurant_id", restaurantId)
+        .order("created_at", { ascending: false })
+        .limit(options.limit ?? 100);
+      if (options.since) query = query.gte("created_at", options.since);
+      const { data, error } = await query;
+      if (error) throw error;
+      const logs = ((data ?? []) as AuditLog[]).map(normalizeAuditLog);
+      if (logs.some((entry) => entry.restaurant_id !== restaurantId)) {
+        throw new Error("Audit logs failed restaurant scope validation.");
+      }
+      return logs;
     },
 
     async fetchRestaurantData(restaurantId) {

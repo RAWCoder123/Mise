@@ -1096,6 +1096,21 @@ export function createLocalDemoRepository(): MiseRepository {
       await mutateDemoState((state) => appendDemoAuditLog(state, input));
     },
 
+    async listAuditLogs(restaurantId, options = {}) {
+      const state = await readReadyDemoState(restaurantId);
+      let logs = (state.auditLogs ?? [])
+        .filter((entry) => entry.restaurant_id === restaurantId)
+        .map((entry) => normalizeAuditLog(entry));
+      if (options.since) {
+        const since = options.since;
+        logs = logs.filter((entry) => entry.created_at >= since);
+      }
+      return logs
+        .slice()
+        .sort((left, right) => right.created_at.localeCompare(left.created_at))
+        .slice(0, options.limit ?? 100);
+    },
+
     async fetchRestaurantData(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
       const providerMappings = await this.fetchVerifiedProviderMappings(restaurantId);
