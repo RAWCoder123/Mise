@@ -313,11 +313,22 @@ export function normalizeRestaurantTeamMember(value: RestaurantTeamMember): Rest
 }
 
 export function normalizePosSale(value: PosSale): PosSale {
+  const selectedModifierIds = Array.isArray(value.selected_modifier_ids)
+    ? [
+        ...new Set(
+          value.selected_modifier_ids
+            .filter((entry): entry is string => typeof entry === "string")
+            .map((entry) => entry.trim())
+            .filter((entry) => entry.length > 0 && entry.length <= 128)
+        )
+      ].slice(0, 32)
+    : [];
   return {
     ...value,
     quantity_sold: asBoundedNonNegativeNumber(value.quantity_sold, operatingLimits.posQuantitySold),
     gross_sales: asBoundedNonNegativeNumber(value.gross_sales, operatingLimits.posSalesAmount),
-    net_sales: asBoundedNonNegativeNumber(value.net_sales, operatingLimits.posSalesAmount)
+    net_sales: asBoundedNonNegativeNumber(value.net_sales, operatingLimits.posSalesAmount),
+    selected_modifier_ids: selectedModifierIds
   };
 }
 

@@ -15,6 +15,11 @@ import {
   saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity.ts";
+import {
+  usageForInventoryItemFromSale,
+  type ModifierDepletionContext
+} from "./modifierDepletion.ts";
+import type { ModifierRecipeAdjustment } from "./modifierRecipeAdjustments.ts";
 
 export interface OperationalInventoryItem {
   id: string;
@@ -31,6 +36,9 @@ export interface OperationalInventoryItem {
    * supplier edits. Planning freshness comes from `inventoryLedgerEvents` instead.
    */
   last_updated?: string;
+  canonical_unit?: "g" | "ml" | "each" | null;
+  canonical_quantity_per_unit?: number | null;
+  canonical_unit_verification_status?: "draft" | "verified" | "rejected" | "expired" | string | null;
 }
 
 export interface OperationalSale {
@@ -42,6 +50,7 @@ export interface OperationalSale {
   provider_location_id?: string | null;
   provider_catalog_item_id?: string | null;
   provider_variation_id?: string | null;
+  selected_modifier_ids?: readonly string[] | null;
 }
 
 export interface OperationalRecipeMapping {
@@ -107,6 +116,12 @@ export interface OperationalPlanningSnapshot {
   ledgerComplete?: boolean;
   /** Restaurant timezone, used to place a count inside the correct operating day. */
   timeZone?: string | null;
+  /**
+   * Verified POS modifier → inventory deltas. Absent context fails closed for
+   * sale lines that carry selected_modifier_ids (base recipe is not invented).
+   */
+  modifierAdjustments?: readonly ModifierRecipeAdjustment[];
+  recipeVersionIdByMenuItemId?: ReadonlyMap<string, string>;
 }
 
 export function calculateOperationalSignals(snapshot: OperationalPlanningSnapshot) {
@@ -123,6 +138,23 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       : undefined
   });
   const providerMappings = snapshot.providerMappings ?? [];
+  const modifierContext: ModifierDepletionContext | null =
+    snapshot.modifierAdjustments && snapshot.recipeVersionIdByMenuItemId
+      ? {
+          adjustments: snapshot.modifierAdjustments,
+          recipeVersionIdByMenuItemId: snapshot.recipeVersionIdByMenuItemId
+        }
+      : snapshot.modifierAdjustments
+        ? {
+            adjustments: snapshot.modifierAdjustments,
+            recipeVersionIdByMenuItemId: new Map()
+          }
+        : null;
+  const itemsById = new Map(
+    snapshot.inventoryItems
+      .filter((item) => item.restaurant_id === snapshot.restaurantId)
+      .map((item) => [item.id, item] as const)
+  );
   const demand = historicalDailyDemand(
     snapshot.sales,
     snapshot.operatingDate,
@@ -144,11 +176,31 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         mapping.inventory_item_id === item.id &&
         inventoryUnitsAreCompatible(item.unit, mapping.unit)
     );
-    const mappedTodayUsage = mappings.reduce((sum, mapping) => {
-      const sold = todaySales
-        .filter((sale) => saleMatchesRecipe(sale, mapping, providerMappings))
-        .reduce((quantity, sale) => quantity + finiteNonNegative(sale.quantity_sold), 0);
-      return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
+    const mappedTodayUsage = todaySales.reduce((sum, sale) => {
+      const matchingMappings = snapshot.menuItemIngredients.filter(
+        (mapping) =>
+          mapping.restaurant_id === snapshot.restaurantId &&
+          saleMatchesRecipe(sale, mapping, providerMappings) &&
+          inventoryUnitsAreCompatible(
+            itemsById.get(mapping.inventory_item_id)?.unit,
+            mapping.unit
+          )
+      );
+      // Only mappings that touch this item contribute; still pass full matching
+      // set so modifier resolution can see the sale's menu item id.
+      if (!matchingMappings.some((mapping) => mapping.inventory_item_id === item.id)) {
+        return sum;
+      }
+      return (
+        sum +
+        usageForInventoryItemFromSale({
+          sale,
+          inventoryItemId: item.id,
+          matchingMappings,
+          itemsById,
+          modifierContext
+        })
+      );
     }, 0);
     const baselineUsage = mappings.reduce((sum, mapping) => {
       return sum + (demand.get(recipeDemandKey(mapping)) ?? 0) * finiteNonNegative(mapping.quantity_used_per_sale);
