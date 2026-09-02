@@ -9,6 +9,7 @@ import type {
   RecipeAuthorityState,
   SupplierRecipient
 } from "../../types/mise";
+import type { RecipeVersionYield } from "../domain/recipeYield";
 import {
   DEMO_RESTAURANT_ID,
   DEMO_USER_ID,
@@ -153,6 +154,8 @@ import {
 } from "./repositoryContracts";
 
 const demoConfirmedRecipeFingerprints = new Map<string, string>();
+/** Mutable demo mirror of recipe_versions yields — seeded lazily, never invents missing dishes. */
+const demoRecipeVersionYieldStore = new Map<string, RecipeVersionYield[]>();
 
 function demoRecipeAuthorityStates(state: DemoState, restaurantId: string): RecipeAuthorityState[] {
   const grouped = new Map<string, MenuItemIngredient[]>();
@@ -181,6 +184,82 @@ function demoRecipeAuthorityStates(state: DemoState, restaurantId: string): Reci
       ready
     };
   });
+}
+
+/** Demo-only mutable mirror of hosted recipe_versions yields — not DemoState schema. */
+function ensureDemoRecipeVersionYields(state: DemoState, restaurantId: string): RecipeVersionYield[] {
+  const existing = demoRecipeVersionYieldStore.get(restaurantId);
+  if (existing) {
+    return existing.filter((entry) => entry.restaurantId === restaurantId);
+  }
+
+  const authorities = demoRecipeAuthorityStates(state, restaurantId);
+  const byName = new Map(
+    authorities.map((entry) => [entry.menuItemName.trim().toLowerCase(), entry.menuItemId] as const)
+  );
+  const effectiveFrom = "2020-01-01T00:00:00.000Z";
+  const seeds: Array<{
+    dish: string;
+    prepYield: number;
+    cookingYield: number;
+    servingQuantity: number;
+    versionStatus: "draft" | "verified";
+  }> = [
+    {
+      dish: "Chicken Bowl",
+      prepYield: 0.95,
+      cookingYield: 0.9,
+      servingQuantity: 1,
+      versionStatus: "verified"
+    },
+    {
+      dish: "Burger",
+      prepYield: 1,
+      cookingYield: 0.92,
+      servingQuantity: 1,
+      versionStatus: "verified"
+    },
+    {
+      dish: "Pancakes",
+      prepYield: 1,
+      cookingYield: 1,
+      servingQuantity: 2,
+      versionStatus: "draft"
+    }
+  ];
+
+  const seeded = seeds.flatMap((seed, index) => {
+    const menuItemId = byName.get(seed.dish.trim().toLowerCase());
+    if (!menuItemId) return [];
+    return [
+      {
+        id: `demo-recipe-version-${index + 1}`,
+        restaurantId,
+        menuItemId,
+        status: seed.versionStatus,
+        servingQuantity: seed.servingQuantity,
+        prepYield: seed.prepYield,
+        cookingYield: seed.cookingYield,
+        versionNumber: 1,
+        effectiveFrom,
+        effectiveTo: null,
+        locationId: null
+      } satisfies RecipeVersionYield
+    ];
+  });
+  demoRecipeVersionYieldStore.set(restaurantId, seeded);
+  return seeded;
+}
+
+function writeDemoRecipeVersionYields(restaurantId: string, versions: RecipeVersionYield[]) {
+  demoRecipeVersionYieldStore.set(
+    restaurantId,
+    versions.filter((entry) => entry.restaurantId === restaurantId)
+  );
+}
+
+function clearDemoRecipeVersionYieldStore() {
+  demoRecipeVersionYieldStore.clear();
 }
 
 function demoPurchaseAuthority(
@@ -1009,6 +1088,7 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async deleteAccount(_restaurantId) {
       // Demo accounts live only on this device; deletion resets the local store.
+      clearDemoRecipeVersionYieldStore();
       await resetDemoStore();
     },
 
@@ -1934,6 +2014,211 @@ export function createLocalDemoRepository(): MiseRepository {
     async fetchRecipeAuthorities(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
       return demoRecipeAuthorityStates(state, restaurantId);
+    },
+
+    async fetchRecipeVersionYields(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return ensureDemoRecipeVersionYields(state, restaurantId).filter(
+        (entry) => entry.status !== "retired"
+      );
+    },
+
+    async upsertRecipeVersionYields(input) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, input.restaurantId);
+        const menuKnown = demoRecipeAuthorityStates(state, input.restaurantId).some(
+          (entry) => entry.menuItemId === input.menuItemId
+        );
+        if (!menuKnown) throw new Error("Menu item not found for restaurant");
+        const versions = ensureDemoRecipeVersionYields(state, input.restaurantId).slice();
+        const now = new Date().toISOString();
+        let updated: RecipeVersionYield;
+        if (input.recipeVersionId) {
+          const index = versions.findIndex(
+            (entry) =>
+              entry.restaurantId === input.restaurantId && entry.id === input.recipeVersionId
+          );
+          if (index < 0) throw new Error("Recipe version not found");
+          const existing = versions[index]!;
+          if (existing.menuItemId !== input.menuItemId) {
+            throw new Error("Recipe version does not belong to this menu item");
+          }
+          if (existing.locationId != null) {
+            throw new Error("Location-specific recipe yields are not editable here");
+          }
+          if (existing.status !== "draft") {
+            throw new Error("Only draft recipe yields can be edited");
+          }
+          updated = {
+            ...existing,
+            servingQuantity: input.servingQuantity,
+            prepYield: input.prepYield,
+            cookingYield: input.cookingYield
+          };
+          versions[index] = updated;
+        } else {
+          const draftIndex = versions.findIndex(
+            (entry) =>
+              entry.restaurantId === input.restaurantId
+              && entry.menuItemId === input.menuItemId
+              && entry.locationId == null
+              && entry.status === "draft"
+          );
+          if (draftIndex >= 0) {
+            const existing = versions[draftIndex]!;
+            updated = {
+              ...existing,
+              servingQuantity: input.servingQuantity,
+              prepYield: input.prepYield,
+              cookingYield: input.cookingYield
+            };
+            versions[draftIndex] = updated;
+          } else {
+            const nextVersion =
+              versions
+                .filter(
+                  (entry) =>
+                    entry.menuItemId === input.menuItemId && entry.locationId == null
+                )
+                .reduce((max, entry) => Math.max(max, entry.versionNumber), 0) + 1;
+            updated = {
+              id: createId("recipe_version"),
+              restaurantId: input.restaurantId,
+              menuItemId: input.menuItemId,
+              status: "draft",
+              servingQuantity: input.servingQuantity,
+              prepYield: input.prepYield,
+              cookingYield: input.cookingYield,
+              versionNumber: nextVersion,
+              effectiveFrom: now,
+              effectiveTo: null,
+              locationId: null
+            };
+            versions.push(updated);
+          }
+        }
+        writeDemoRecipeVersionYields(input.restaurantId, versions);
+        appendDemoAuditLog(state, {
+          restaurant_id: input.restaurantId,
+          action: "recipe_version_yield.upserted",
+          entity_table: "recipe_versions",
+          entity_id: updated.id,
+          metadata: {
+            menu_item_id: updated.menuItemId,
+            version_number: updated.versionNumber,
+            serving_quantity: updated.servingQuantity,
+            prep_yield: updated.prepYield,
+            cooking_yield: updated.cookingYield,
+            status: updated.status,
+            simulated: true
+          }
+        });
+        return updated;
+      });
+    },
+
+    async verifyRecipeVersionYields(restaurantId, recipeVersionId) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const versions = ensureDemoRecipeVersionYields(state, restaurantId).slice();
+        const index = versions.findIndex(
+          (entry) => entry.restaurantId === restaurantId && entry.id === recipeVersionId
+        );
+        if (index < 0) throw new Error("Recipe version not found");
+        const existing = versions[index]!;
+        if (existing.locationId != null) {
+          throw new Error("Location-specific recipe yields are not editable here");
+        }
+        if (existing.status !== "draft") {
+          throw new Error("Only draft recipe yields can be verified");
+        }
+        const now = new Date().toISOString();
+        const closed = versions.map((entry) => {
+          if (
+            entry.id === recipeVersionId
+            || entry.menuItemId !== existing.menuItemId
+            || entry.locationId != null
+            || entry.status === "retired"
+          ) {
+            return entry;
+          }
+          const from = Date.parse(entry.effectiveFrom);
+          const to =
+            entry.effectiveTo == null ? Number.POSITIVE_INFINITY : Date.parse(entry.effectiveTo);
+          const at = Date.parse(now);
+          if (Number.isFinite(from) && from <= at && at < to) {
+            return { ...entry, effectiveTo: now };
+          }
+          return entry;
+        });
+        const verified: RecipeVersionYield = {
+          ...existing,
+          status: "verified",
+          effectiveFrom:
+            Date.parse(existing.effectiveFrom) <= Date.parse(now)
+              ? existing.effectiveFrom
+              : now,
+          effectiveTo: null
+        };
+        const next = closed.map((entry) => (entry.id === recipeVersionId ? verified : entry));
+        writeDemoRecipeVersionYields(restaurantId, next);
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "recipe_version_yield.verified",
+          entity_table: "recipe_versions",
+          entity_id: verified.id,
+          metadata: {
+            menu_item_id: verified.menuItemId,
+            version_number: verified.versionNumber,
+            serving_quantity: verified.servingQuantity,
+            prep_yield: verified.prepYield,
+            cooking_yield: verified.cookingYield,
+            simulated: true
+          }
+        });
+        return verified;
+      });
+    },
+
+    async retireRecipeVersionYields(restaurantId, recipeVersionId) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const versions = ensureDemoRecipeVersionYields(state, restaurantId).slice();
+        const index = versions.findIndex(
+          (entry) => entry.restaurantId === restaurantId && entry.id === recipeVersionId
+        );
+        if (index < 0) throw new Error("Recipe version not found");
+        const existing = versions[index]!;
+        if (existing.locationId != null) {
+          throw new Error("Location-specific recipe yields are not editable here");
+        }
+        if (existing.status === "retired") {
+          throw new Error("Recipe yield version is already retired");
+        }
+        const now = new Date().toISOString();
+        const previousStatus = existing.status;
+        const retired: RecipeVersionYield = {
+          ...existing,
+          status: "retired",
+          effectiveTo: existing.effectiveTo ?? now
+        };
+        versions[index] = retired;
+        writeDemoRecipeVersionYields(restaurantId, versions);
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "recipe_version_yield.retired",
+          entity_table: "recipe_versions",
+          entity_id: retired.id,
+          metadata: {
+            menu_item_id: retired.menuItemId,
+            version_number: retired.versionNumber,
+            previous_status: previousStatus,
+            effective_to: retired.effectiveTo,
+            simulated: true
+          }
+        });
+        return retired;
+      });
     },
 
     async confirmRecipeComplete(restaurantId, menuItemId, expectedRevision) {
@@ -2877,6 +3162,7 @@ export function createLocalDemoRepository(): MiseRepository {
     },
 
     async loadDemoPOSData(provider, setupProfile) {
+      clearDemoRecipeVersionYieldStore();
       const state = await resetDemoStore(provider, setupProfile, prepareResetDemoState);
       const restaurant = state.restaurants[0];
       if (!restaurant) throw new Error("Demo restaurant missing");
@@ -2884,6 +3170,7 @@ export function createLocalDemoRepository(): MiseRepository {
     },
 
     async resetDemoData(provider, setupProfile) {
+      clearDemoRecipeVersionYieldStore();
       const state = await resetDemoStore(provider, setupProfile, prepareResetDemoState);
       const restaurant = state.restaurants[0];
       if (!restaurant) throw new Error("Demo restaurant missing");
