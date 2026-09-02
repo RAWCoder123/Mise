@@ -186,12 +186,27 @@ export function buildSupplierDeliveryOutcomeViews(input: {
     .sort((left, right) => right.measuredAt.localeCompare(left.measuredAt));
 }
 
+export function isAttentionDeliveryOutcomeKind(kind: DeliveryOutcomeKind): boolean {
+  return kind !== "matched" && kind !== "unknown";
+}
+
 export function filterSupplierDeliveryOutcomeViews(
   views: readonly SupplierDeliveryOutcomeView[],
   filter: DeliveryOutcomeStatusFilter
 ): SupplierDeliveryOutcomeView[] {
   if (filter === "all") return [...views];
-  return views.filter((view) => view.kind !== "matched" && view.kind !== "unknown");
+  return views.filter((view) => isAttentionDeliveryOutcomeKind(view.kind));
+}
+
+/**
+ * Count supplier-delivery outcomes that need operator attention.
+ * Uses the same kind rules as the Delivery lessons "attention" filter.
+ */
+export function countAttentionSupplierDeliveryOutcomes(outcomes: readonly Outcome[]): number {
+  return outcomes.reduce((count, outcome) => {
+    if (!isSupplierDeliveryOutcome(outcome)) return count;
+    return isAttentionDeliveryOutcomeKind(deliveryOutcomeKind(outcome)) ? count + 1 : count;
+  }, 0);
 }
 
 export function outcomeLessonForDelivery(

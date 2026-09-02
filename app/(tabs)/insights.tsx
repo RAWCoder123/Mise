@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
-import { useFocusEffect } from "expo-router";
-import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronUp, Lightbulb, RefreshCw } from "lucide-react-native";
+import { router, useFocusEffect } from "expo-router";
+import { AlertTriangle, ArrowRight, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronUp, Lightbulb, PackageCheck, RefreshCw } from "lucide-react-native";
 
 import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
 import { ActionIcon } from "../../components/ui/ActionIcon";
+import { Button } from "../../components/ui/Button";
 import { DonutChart, donutPaletteColor } from "../../components/ui/DonutChart";
 import { MotionView, StateChangeView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
@@ -21,6 +22,7 @@ import type { DailyOperationalBrief, OperationalFinding } from "../../services/d
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
 import type { InsightsSalesAnalytics } from "../../services/domain/insightsSalesAnalytics";
 import {
+  fetchAttentionSupplierDeliveryOutcomeCount,
   fetchDailyOperationalBrief,
   fetchInsights,
   fetchInsightsSalesAnalytics,
@@ -32,6 +34,10 @@ import {
   queueOperationalFindingDecision,
   summarizeInsights
 } from "../../services/miseService";
+import {
+  resolveDeliveryLessonsReviewHref,
+  shouldOfferDeliveryLessonsReview
+} from "../../services/presentation/deliveryLessonsNavigation";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -62,6 +68,7 @@ export default function InsightsScreen() {
   const [brief, setBrief] = useState<DailyOperationalBrief | null>(null);
   const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
   const [memory, setMemory] = useState<LearningMemorySummary | null>(null);
+  const [deliveryLessonAttentionCount, setDeliveryLessonAttentionCount] = useState<number | null>(null);
   const [salesTrend, setSalesTrend] = useState<InsightsSalesTrendPoint[]>([]);
   const [salesAnalytics, setSalesAnalytics] = useState<InsightsSalesAnalytics | null>(null);
   const [surface, setSurface] = useState<InsightsSurface>("signals");
@@ -86,6 +93,7 @@ export default function InsightsScreen() {
     setBrief(null);
     setFindingQueue([]);
     setMemory(null);
+    setDeliveryLessonAttentionCount(null);
     setSalesTrend([]);
     setSalesAnalytics(null);
     setSurface("signals");
@@ -112,14 +120,18 @@ export default function InsightsScreen() {
       await flushQueuedOperationalFindingDecisions(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
-      const [nextInsights, nextMemory, nextSalesTrend, nextAnalytics, nextBrief, nextQueue] =
+      const [nextInsights, nextMemory, nextSalesTrend, nextAnalytics, nextBrief, nextQueue, attentionResult] =
         await Promise.all([
           fetchInsights(restaurantId),
           fetchLearningMemorySummary(restaurantId),
           fetchInsightsSalesTrend(restaurantId),
           fetchInsightsSalesAnalytics(restaurantId),
           fetchDailyOperationalBrief(restaurantId),
-          fetchQueuedOperationalFindingDecisions(restaurantId)
+          fetchQueuedOperationalFindingDecisions(restaurantId),
+          fetchAttentionSupplierDeliveryOutcomeCount(restaurantId).then(
+            (count) => ({ ok: true as const, count }),
+            () => ({ ok: false as const, count: null as number | null })
+          )
         ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setInsights(nextInsights);
@@ -128,10 +140,12 @@ export default function InsightsScreen() {
       setSalesAnalytics(nextAnalytics);
       setBrief(nextBrief);
       setFindingQueue(nextQueue);
+      setDeliveryLessonAttentionCount(attentionResult.ok ? attentionResult.count : null);
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setError(true);
+      setDeliveryLessonAttentionCount(null);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
         hasLoaded.current = true;
@@ -431,7 +445,14 @@ export default function InsightsScreen() {
               </SectionSurface>
             </MotionView>
 
-            {visibleMemory ? <HowMiseKnows memory={visibleMemory} /> : null}
+            {visibleMemory ? (
+              <HowMiseKnows
+                memory={visibleMemory}
+                deliveryLessonAttentionCount={hubReady ? deliveryLessonAttentionCount : null}
+              />
+            ) : shouldOfferDeliveryLessonsReview(hubReady ? deliveryLessonAttentionCount : null) ? (
+              <DeliveryLessonsAttentionCard count={deliveryLessonAttentionCount!} />
+            ) : null}
           </>
         )}
       </View>
@@ -913,10 +934,17 @@ function InsightListRow({ insight, divided }: { insight: Insight; divided: boole
   );
 }
 
-function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
+function HowMiseKnows({
+  memory,
+  deliveryLessonAttentionCount
+}: {
+  memory: LearningMemorySummary;
+  deliveryLessonAttentionCount: number | null;
+}) {
   const { formatNumber, locale, t } = useLocale();
   const [expanded, setExpanded] = useState(false);
   const presentation = presentLearningMemory(locale, memory);
+  const offerDeliveryLessons = shouldOfferDeliveryLessonsReview(deliveryLessonAttentionCount);
 
   return (
     <SectionSurface padding="none">
@@ -952,8 +980,48 @@ function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
             ))}
           </View>
           <Text style={styles.evidenceNext}>{presentation.nextStep}</Text>
+          {offerDeliveryLessons ? (
+            <Button
+              title={t("insights.deliveryLessons.reviewAction")}
+              variant="secondary"
+              size="compact"
+              icon={<PackageCheck size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
+              onPress={() => router.push(resolveDeliveryLessonsReviewHref() as never)}
+              style={styles.evidenceAction}
+            />
+          ) : null}
         </MotionView>
       ) : null}
+    </SectionSurface>
+  );
+}
+
+function DeliveryLessonsAttentionCard({ count }: { count: number }) {
+  const { formatNumber, t } = useLocale();
+  return (
+    <SectionSurface>
+      <View style={styles.deliveryLessonsCard}>
+        <PackageCheck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
+        <View style={styles.deliveryLessonsCopy}>
+          <Text style={styles.evidenceTitle}>{t("insights.deliveryLessons.title")}</Text>
+          <Text style={styles.evidenceSubtitle}>
+            {t(
+              count === 1
+                ? "insights.deliveryLessons.attention.one"
+                : "insights.deliveryLessons.attention.other",
+              { count: formatNumber(count) }
+            )}
+          </Text>
+        </View>
+      </View>
+      <Button
+        title={t("insights.deliveryLessons.reviewAction")}
+        variant="secondary"
+        size="compact"
+        icon={<ArrowRight size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
+        onPress={() => router.push(resolveDeliveryLessonsReviewHref() as never)}
+        style={styles.evidenceAction}
+      />
     </SectionSurface>
   );
 }
@@ -1541,6 +1609,19 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.semibold,
     fontSize: 12,
     lineHeight: 18
+  },
+  evidenceAction: {
+    alignSelf: "flex-start"
+  },
+  deliveryLessonsCard: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 12
+  },
+  deliveryLessonsCopy: {
+    flex: 1,
+    gap: 4
   }
 });
 
