@@ -26,8 +26,8 @@ actionable memories.
 
 ## Verification
 
-- `node --import tsx --test tests/learningMemoryNavigation.test.ts` (3/3)
-- `npm run typecheck`
-- `npm run security:static`
-- `npm run design:static`
-- `npm test` (targeted + suite)
+- `node --import tsx --test tests/learningMemoryNavigation.test.ts` — 3/3 pass
+- `npm run typecheck` — pass
+- `npm run security:static` — pass
+- `npm run design:static` — pass
+- `npm test` — 635 pass / 0 fail / 7 cancelled (pre-existing hang pattern)
