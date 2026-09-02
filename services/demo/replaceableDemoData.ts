@@ -128,6 +128,8 @@ export interface DemoState {
     damaged_quantity: number;
     missing_quantity: number;
     canonical_unit: string;
+    unit_price?: number | null;
+    discrepancy_reason?: string | null;
   }>;
   /** Shared operating-task mirror of hosted restaurant_tasks. */
   restaurantTasks: import("../domain/restaurantTasks").RestaurantTask[];
@@ -1393,7 +1395,9 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       received_quantity: 80,
       damaged_quantity: 0,
       missing_quantity: 0,
-      canonical_unit: "g"
+      canonical_unit: "g",
+      // Distinct from reference estimated_unit_cost (0.95) so managers can apply it.
+      unit_price: 1.05
     },
     {
       id: "00000000-0000-4000-8000-000000000e02",
@@ -1404,7 +1408,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       received_quantity: 24,
       damaged_quantity: 0,
       missing_quantity: 0,
-      canonical_unit: "each"
+      canonical_unit: "each",
+      unit_price: 1.35
     },
     {
       id: "00000000-0000-4000-8000-000000000e03",
@@ -1415,7 +1420,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       received_quantity: 15,
       damaged_quantity: 0,
       missing_quantity: 3,
-      canonical_unit: "each"
+      canonical_unit: "each",
+      unit_price: null
     },
     {
       id: "00000000-0000-4000-8000-000000000e04",
@@ -1426,7 +1432,8 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       received_quantity: 24,
       damaged_quantity: 0,
       missing_quantity: 0,
-      canonical_unit: "g"
+      canonical_unit: "g",
+      unit_price: null
     }
   ];
 

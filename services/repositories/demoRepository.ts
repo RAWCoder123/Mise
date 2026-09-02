@@ -3647,7 +3647,8 @@ export function createLocalDemoRepository(): MiseRepository {
             received_quantity: line.receivedQuantity,
             damaged_quantity: line.damagedQuantity ?? 0,
             missing_quantity: line.missingQuantity ?? 0,
-            canonical_unit: line.canonicalUnit
+            canonical_unit: line.canonicalUnit,
+            unit_price: line.unitPrice ?? null
           }))
         ];
 
@@ -3825,6 +3826,129 @@ export function createLocalDemoRepository(): MiseRepository {
           deliveryId,
           supplierOrderId: order.id,
           outcomeId: outcome.id
+        };
+      });
+    },
+
+    async applyInvoiceUnitCostFromDelivery(restaurantId, input) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const item = state.inventoryItems.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === input.inventoryItemId
+        );
+        if (!item) throw new Error("Inventory item not found");
+        const deliveryItem = (state.supplierDeliveryItems ?? []).find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === input.deliveryItemId
+        );
+        if (!deliveryItem) throw new Error("Supplier delivery line not found");
+        if (deliveryItem.inventory_item_id !== item.id) {
+          throw new Error("Delivery line belongs to another inventory item");
+        }
+        const delivery = (state.supplierDeliveries ?? []).find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === deliveryItem.delivery_id
+        );
+        if (!delivery) throw new Error("Supplier delivery not found");
+        if (!(Number(deliveryItem.received_quantity) > 0)) {
+          throw new Error("Delivery line has no received quantity");
+        }
+        if (deliveryItem.unit_price == null) {
+          throw new Error("Delivery line is missing an invoice unit price");
+        }
+        const unitPrice = Math.round(Number(deliveryItem.unit_price) * 10_000) / 10_000;
+        if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1_000_000) {
+          throw new Error("Delivery unit price is outside supported limits");
+        }
+        const previousUnitCost =
+          Math.round((Number.isFinite(item.estimated_unit_cost) ? item.estimated_unit_cost : 0) * 10_000) /
+          10_000;
+        if (previousUnitCost === unitPrice) {
+          return {
+            outcome: "already_applied" as const,
+            inventoryItemId: item.id,
+            deliveryItemId: deliveryItem.id,
+            deliveryId: delivery.id,
+            unitPrice,
+            previousUnitCost
+          };
+        }
+
+        const now = new Date().toISOString();
+        item.estimated_unit_cost = unitPrice;
+        item.last_updated = now;
+
+        const activityEvent: ActivityEvent = {
+          id: createId("activity"),
+          restaurantId,
+          locationId: null,
+          occurredAt: now,
+          createdAt: now,
+          activityType: "supplier_prices_checked",
+          category: "inventory",
+          title: "Unit cost updated from invoice",
+          summary: `Estimated unit cost set to ${unitPrice} from a received delivery invoice price.`,
+          triggerType: "invoice_unit_cost_apply",
+          triggerReference: deliveryItem.id,
+          evidenceReferences: [
+            {
+              type: "supplier_delivery_item",
+              id: deliveryItem.id,
+              summary: item.item_name,
+              observedAt: delivery.received_at
+            },
+            {
+              type: "inventory_item",
+              id: item.id,
+              summary: item.item_name,
+              observedAt: now
+            }
+          ],
+          sourceSystems: ["mise", "inventory"],
+          actionId: null,
+          recommendationId: null,
+          autonomyLevel: 1,
+          confidence: null,
+          status: "completed",
+          requiresAttention: false,
+          attentionDeadline: null,
+          relatedEntityType: "inventory_item",
+          relatedEntityId: item.id,
+          parentActivityId: null,
+          sequenceId: `inventory-item:${item.id}`,
+          metadata: {
+            deliveryItemId: deliveryItem.id,
+            deliveryId: delivery.id,
+            inventoryItemId: item.id,
+            previousUnitCost,
+            unitPrice,
+            receivedAt: delivery.received_at,
+            idempotencyKey: `invoice_unit_cost_apply:${deliveryItem.id}:${unitPrice}`
+          },
+          errorCode: null,
+          errorMessage: null,
+          resolvedAt: null,
+          resolvedBy: null
+        };
+        state.activityEvents = [...(state.activityEvents ?? []), activityEvent];
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "invoice_unit_cost_applied",
+          entity_table: "inventory_items",
+          entity_id: item.id,
+          metadata: {
+            deliveryItemId: deliveryItem.id,
+            deliveryId: delivery.id,
+            previousUnitCost,
+            unitPrice
+          }
+        });
+
+        return {
+          outcome: "applied" as const,
+          inventoryItemId: item.id,
+          deliveryItemId: deliveryItem.id,
+          deliveryId: delivery.id,
+          unitPrice,
+          previousUnitCost
         };
       });
     }

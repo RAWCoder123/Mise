@@ -1610,7 +1610,7 @@ export function createSupabaseRepository(): MiseRepository {
       const { data: itemRows, error: itemError } = await client
         .from("supplier_delivery_items")
         .select(
-          "id,restaurant_id,delivery_id,inventory_item_id,ordered_quantity,received_quantity,damaged_quantity,missing_quantity,canonical_unit,discrepancy_reason"
+          "id,restaurant_id,delivery_id,inventory_item_id,ordered_quantity,received_quantity,damaged_quantity,missing_quantity,canonical_unit,unit_price,discrepancy_reason"
         )
         .eq("restaurant_id", restaurantId)
         .in("delivery_id", deliveries.map((delivery) => delivery.id))
@@ -2240,6 +2240,41 @@ export function createSupabaseRepository(): MiseRepository {
         deliveryId,
         supplierOrderId: input.supplierOrderId,
         outcomeId: payload.outcomeId ?? null
+      };
+    },
+
+    async applyInvoiceUnitCostFromDelivery(restaurantId, input) {
+      const { data, error } = await client.rpc("apply_invoice_unit_cost_from_delivery", {
+        p_restaurant_id: restaurantId,
+        p_inventory_item_id: input.inventoryItemId,
+        p_delivery_item_id: input.deliveryItemId
+      });
+      if (error) throw error;
+      const payload = (Array.isArray(data) ? data[0] : data) as {
+        outcome?: "applied" | "already_applied";
+        inventoryItemId?: string;
+        deliveryItemId?: string;
+        deliveryId?: string;
+        unitPrice?: number;
+        previousUnitCost?: number;
+      } | null;
+      if (
+        !payload?.outcome ||
+        !payload.inventoryItemId ||
+        !payload.deliveryItemId ||
+        !payload.deliveryId ||
+        !Number.isFinite(Number(payload.unitPrice)) ||
+        !Number.isFinite(Number(payload.previousUnitCost))
+      ) {
+        throw new Error("Invoice unit-cost apply returned an invalid response.");
+      }
+      return {
+        outcome: payload.outcome,
+        inventoryItemId: payload.inventoryItemId,
+        deliveryItemId: payload.deliveryItemId,
+        deliveryId: payload.deliveryId,
+        unitPrice: Number(payload.unitPrice),
+        previousUnitCost: Number(payload.previousUnitCost)
       };
     },
 
