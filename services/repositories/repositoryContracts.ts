@@ -40,6 +40,10 @@ import type {
 } from "../domain/activityEvents";
 import type { MiseAction } from "../domain/miseActions";
 import type {
+  OperationalIssue,
+  OperationalIssueStatusFilter
+} from "../domain/operationalIssues";
+import type {
   OperationalFindingDecision,
   OperationalFindingDecisionInput
 } from "../domain/operationalFindingDecisions";
@@ -725,6 +729,17 @@ export interface MiseRepository {
       attentionOnly?: boolean;
     }
   ): Promise<ActivityEvent[]>;
+  /**
+   * Durable operational issues written by server triggers (and mirrored in
+   * demo). Read-only for authenticated members; mutations stay service-role.
+   */
+  listOperationalIssues(
+    restaurantId: string,
+    options?: {
+      status?: OperationalIssueStatusFilter;
+      limit?: number;
+    }
+  ): Promise<OperationalIssue[]>;
   listRestaurantTasks(restaurantId: string): Promise<RestaurantTask[]>;
   createRestaurantTask(input: CreateRestaurantTaskInput): Promise<RestaurantTask>;
   completeRestaurantTask(input: CompleteRestaurantTaskInput): Promise<RestaurantTask>;

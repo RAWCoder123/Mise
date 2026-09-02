@@ -35,6 +35,12 @@ import {
   type PersistedActivityEventRow
 } from "../domain/activityEvents";
 import {
+  filterOperationalIssues,
+  operationalIssueFromPersistedRow,
+  sortOperationalIssues,
+  type PersistedOperationalIssueRow
+} from "../domain/operationalIssues";
+import {
   miseActionFromPersistedRow,
   type PersistedMiseActionRow
 } from "../domain/miseActions";
@@ -1917,6 +1923,31 @@ export function createSupabaseRepository(): MiseRepository {
         events = filterActivities(events, options.filter as ActivityFeedFilter);
       }
       return events;
+    },
+
+    async listOperationalIssues(restaurantId, options = {}) {
+      let query = client
+        .from("operational_issues")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("last_detected_at", { ascending: false })
+        .limit(Math.min(Math.max(options.limit ?? 80, 1), 200));
+      if (options.status === "open") {
+        query = query.in("status", ["open", "monitoring", "action_prepared"]);
+      } else if (options.status === "resolved") {
+        query = query.in("status", ["resolved", "dismissed", "expired"]);
+      }
+      const { data, error } = await query;
+      if (error) throwRepositoryError(error, restaurantId);
+      const issues = ((data ?? []) as PersistedOperationalIssueRow[]).map(
+        operationalIssueFromPersistedRow
+      );
+      if (issues.some((issue) => issue.restaurantId !== restaurantId)) {
+        throw new Error("Operational issues failed restaurant scope validation.");
+      }
+      return sortOperationalIssues(
+        filterOperationalIssues(issues, options.status ?? "open")
+      ).slice(0, options.limit ?? 80);
     },
 
     async listRestaurantTasks(restaurantId) {

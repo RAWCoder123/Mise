@@ -33,12 +33,20 @@ import {
   seedDemoActivityFromState
 } from "../demo/demoActivity";
 import {
+  syncDemoOperationalIssuesFromRecommendations,
+  upsertDemoOperationalIssueFromRecommendation
+} from "../demo/demoOperationalIssues";
+import {
   filterActivities,
   fromInventoryWasteRecorded,
   fromRecalculationRunActivity,
   fromRestaurantTaskActivity,
   type ActivityFeedFilter
 } from "../domain/activityEvents";
+import {
+  filterOperationalIssues,
+  sortOperationalIssues
+} from "../domain/operationalIssues";
 import {
   confidenceFromEvidence,
   confirmMemory,
@@ -318,6 +326,7 @@ async function readReadyDemoState(restaurantId: string = DEMO_RESTAURANT_ID) {
     rebuildPurchaseRecommendations(state, restaurantId);
     rebuildInsights(state, restaurantId);
     if (!Array.isArray(state.activityEvents)) state.activityEvents = [];
+    if (!Array.isArray(state.operationalIssues)) state.operationalIssues = [];
     if (!Array.isArray(state.restaurantMemories)) state.restaurantMemories = [];
     if (!Array.isArray(state.miseActions)) state.miseActions = [];
     if (!Array.isArray(state.autonomyRules)) state.autonomyRules = [];
@@ -331,6 +340,7 @@ async function readReadyDemoState(restaurantId: string = DEMO_RESTAURANT_ID) {
       .filter((order) => order.restaurant_id === restaurantId)
       .forEach((order) => demoSupplierSendContentRevision(state, order.id));
     seedDemoActivityFromState(state);
+    syncDemoOperationalIssuesFromRecommendations(state);
     if (state.autonomyRules.length === 0) {
       state.autonomyRules = defaultAutonomyRules(restaurantId);
     }
@@ -613,7 +623,28 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   datasets.restaurant_email_connections = tenantRows(state.emailConnections);
   datasets.supplier_recipients = tenantRows(state.supplierRecipients);
   datasets.operational_finding_decisions = tenantRows(state.operationalFindingDecisions);
-  datasets.operational_issues = [];
+  datasets.operational_issues = (state.operationalIssues ?? [])
+    .filter((issue) => issue.restaurantId === restaurantId)
+    .map((issue) => ({
+      id: issue.id,
+      restaurant_id: issue.restaurantId,
+      location_id: issue.locationId,
+      category: issue.category,
+      severity: issue.severity,
+      title: issue.title,
+      explanation: issue.explanation,
+      evidence: issue.evidence,
+      first_detected_at: issue.firstDetectedAt,
+      last_detected_at: issue.lastDetectedAt,
+      deadline: issue.deadline,
+      status: issue.status,
+      related_entity_type: issue.relatedEntityType,
+      related_entity_id: issue.relatedEntityId,
+      dedupe_key: issue.dedupeKey,
+      correlation_id: issue.correlationId,
+      created_at: issue.createdAt,
+      updated_at: issue.updatedAt
+    }));
   datasets.inventory_events = (state.inventoryEvents ?? [])
     .filter((event) => event.restaurantId === restaurantId)
     .map((event) => ({
@@ -1987,6 +2018,7 @@ export function createLocalDemoRepository(): MiseRepository {
           created_at: new Date().toISOString()
         };
         state.purchaseRecommendations.push(recommendation);
+        upsertDemoOperationalIssueFromRecommendation(state, recommendation);
         return normalizePurchaseRecommendation(recommendation);
       });
     },
@@ -2076,6 +2108,7 @@ export function createLocalDemoRepository(): MiseRepository {
             bumpDemoSupplierSendContentRevision(state, affectedOrderId);
           }
         }
+        upsertDemoOperationalIssueFromRecommendation(state, recommendation);
         return normalizePurchaseRecommendation(recommendation);
       });
     },
@@ -2098,6 +2131,7 @@ export function createLocalDemoRepository(): MiseRepository {
         if (result.outcome === "applied") {
           if (result.order) bumpDemoSupplierSendContentRevision(state, result.order.id);
           appendDemoRecommendationActivity(state, result.recommendation, "pending");
+          upsertDemoOperationalIssueFromRecommendation(state, result.recommendation);
           if (result.order) {
             appendDemoSupplierOrderActivity(state, result.order, { previousStatus: null });
           }
@@ -2141,6 +2175,7 @@ export function createLocalDemoRepository(): MiseRepository {
         const result = dismissRecommendationInDemoState(state, restaurantId, recommendationId);
         if (result.outcome === "applied") {
           appendDemoRecommendationActivity(state, result.recommendation, "pending");
+          upsertDemoOperationalIssueFromRecommendation(state, result.recommendation);
           const audit = appendDemoAuditLog(state, {
             restaurant_id: restaurantId,
             action: "recommendation_dismissed",
@@ -2294,6 +2329,7 @@ export function createLocalDemoRepository(): MiseRepository {
         ];
         for (const recommendation of created) {
           appendDemoRecommendationActivity(state, recommendation, null);
+          upsertDemoOperationalIssueFromRecommendation(state, recommendation);
         }
       });
     },
@@ -2917,6 +2953,16 @@ export function createLocalDemoRepository(): MiseRepository {
         events = filterActivities(events, options.filter as ActivityFeedFilter);
       }
       return events.slice(0, options.limit ?? 100);
+    },
+
+    async listOperationalIssues(restaurantId, options = {}) {
+      const state = await readReadyDemoState(restaurantId);
+      requireActiveDemoRestaurant(state, restaurantId);
+      const filtered = filterOperationalIssues(
+        (state.operationalIssues ?? []).filter((issue) => issue.restaurantId === restaurantId),
+        options.status ?? "open"
+      );
+      return sortOperationalIssues(filtered).slice(0, options.limit ?? 80);
     },
 
     async listRestaurantTasks(restaurantId) {
