@@ -100,6 +100,19 @@ export interface InventoryOperationClientInput {
   note?: unknown;
 }
 
+export interface InventoryUsageClientInput {
+  restaurantId: unknown;
+  inventoryItemId: unknown;
+  /** Positive ledger quantity in the item's verified canonical unit. */
+  quantity: unknown;
+  canonicalUnit: unknown;
+  effectiveAt: unknown;
+  /** Required audit explanation for why inventory was consumed. */
+  note: unknown;
+  reasonCode?: unknown;
+  sourceReference?: unknown;
+}
+
 export type ValidatedInventoryOperation = Omit<
   InventoryEventInput,
   "clientEventId" | "idempotencyKey"
@@ -144,6 +157,37 @@ export function requireInventoryOperation(
   };
 }
 
+/**
+ * Manager usage boundary: known non-waste consumption with a required note.
+ * Quantity is always positive; hosted `record_inventory_event` still enforces
+ * owner/admin/manager roles. Does not accept supersedes links.
+ */
+export function requireInventoryUsage(
+  input: InventoryUsageClientInput
+): ValidatedInventoryOperation {
+  const restaurantId = requireBoundedText(input.restaurantId, "restaurant", 200);
+  const inventoryItemId = requireBoundedText(input.inventoryItemId, "inventory item", 200);
+  const canonicalUnit = requireCanonicalUnit(input.canonicalUnit);
+  const effectiveAt = requireInventoryTimestamp(input.effectiveAt);
+  const quantity = requirePositiveInventoryUsageQuantity(input.quantity);
+  const note = requireBoundedText(input.note, "note", 500);
+  const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
+  const reasonCode = optionalInventoryUsageReasonCode(input.reasonCode);
+  return {
+    restaurantId,
+    inventoryItemId,
+    eventType: "usage",
+    quantity,
+    canonicalUnit,
+    effectiveAt,
+    source: "operator_usage",
+    sourceReference,
+    reasonCode,
+    supersedesEventId: null,
+    metadata: { note }
+  };
+}
+
 function requireOperatorInventoryEventType(value: unknown) {
   if (typeof value !== "string" || !operatorInventoryEventTypes.has(value as InventoryEventType)) {
     throw new Error("Choose a supported inventory operation.");
@@ -185,6 +229,30 @@ function requireInventoryQuantity(value: unknown) {
     throw new Error("Enter a valid inventory quantity.");
   }
   return quantity;
+}
+
+function requirePositiveInventoryUsageQuantity(value: unknown) {
+  const quantity = requireInventoryQuantity(value);
+  if (quantity <= 0) {
+    throw new Error("Enter a usage quantity greater than zero.");
+  }
+  return quantity;
+}
+
+function optionalInventoryUsageReasonCode(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") throw new Error("Choose a valid usage reason.");
+  const normalized = value.trim();
+  if (
+    normalized !== "prep" &&
+    normalized !== "staff_meal" &&
+    normalized !== "tasting" &&
+    normalized !== "training" &&
+    normalized !== "other"
+  ) {
+    throw new Error("Choose a valid usage reason.");
+  }
+  return normalized;
 }
 
 function requireBoundedText(value: unknown, label: string, maximum: number) {
