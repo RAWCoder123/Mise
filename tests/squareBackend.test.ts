@@ -3,11 +3,13 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   buildSquareAuthorizationUrl,
+  localDateKeyClosedAtBoundsUtc,
   normalizeCatalogItem,
   normalizeOrderSales,
   searchSquareOrders,
   SQUARE_OAUTH_SCOPES,
   sha256Hex,
+  toDateKeyInTimeZone,
 } from "../supabase/functions/_shared/square.ts";
 
 const migration = readFileSync(
@@ -75,6 +77,7 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
   assert.equal(sales[0]?.provider_location_id, "loc-a");
   assert.equal(sales[0]?.gross_sales, 24);
   assert.equal(sales[0]?.provider_variation_id, "var-1");
+  assert.equal(sales[0]?.sale_date, "2026-07-30");
 
   const catalog = normalizeCatalogItem({
     type: "ITEM",
@@ -133,6 +136,7 @@ test("Square order search exhausts pagination for every ten-location batch", asy
     locationIds,
     "2026-07-26",
     "2026-08-22",
+    "UTC",
     fetchImpl,
   );
 
@@ -162,8 +166,12 @@ test("Square Edge Functions stay fail-closed until configured and enabled", () =
   assert.match(syncPos, /service_fetch_square_sync_credential/i);
   assert.match(syncPos, /provider_not_enabled/i);
   assert.match(syncPos, /service_apply_square_sync_result/i);
+  assert.match(syncPos, /\.from\("restaurants"\)[\s\S]*select\("timezone"\)/i);
+  assert.match(syncPos, /searchSquareOrders\([\s\S]*restaurantTimeZone/i);
   assert.match(webhooks, /x-square-hmacsha256-signature/i);
   assert.match(webhooks, /service_resolve_square_webhook_merchant/i);
+  assert.match(webhooks, /\.from\("restaurants"\)[\s\S]*select\("timezone"\)/i);
+  assert.match(webhooks, /toDateKeyInTimeZone\(new Date\(\), restaurantTimeZone\)/i);
   assert.match(config, /\[functions\.link-square\][\s\S]*verify_jwt = true/i);
   assert.match(config, /\[functions\.square-oauth-callback\][\s\S]*verify_jwt = false/i);
   assert.match(config, /\[functions\.square-webhooks\][\s\S]*verify_jwt = false/i);
@@ -182,4 +190,96 @@ test("Square sync records truthful counts and database replay coverage", () => {
   assert.match(squareDatabaseProof, /the overlapping row is deduplicated/i);
   assert.match(squareDatabaseProof, /metadata->>'recordsProcessed'/i);
   assert.match(squareDatabaseProof, /provider_catalog_item_id.*provider_variation_id/i);
+});
+
+test("Square sale_date and order search bounds follow the restaurant timezone", async () => {
+  const eveningPacific = "2026-07-13T04:30:00.000Z"; // 2026-07-12 21:30 PDT
+  assert.equal(toDateKeyInTimeZone(new Date(eveningPacific), "America/Los_Angeles"), "2026-07-12");
+  assert.equal(toDateKeyInTimeZone(new Date(eveningPacific), "UTC"), "2026-07-13");
+  assert.equal(toDateKeyInTimeZone(new Date(eveningPacific), "Invalid/Zone"), "2026-07-13");
+
+  const sales = normalizeOrderSales(
+    {
+      id: "order-tz",
+      location_id: "loc-a",
+      closed_at: eveningPacific,
+      line_items: [{
+        uid: "line-1",
+        name: "Burger",
+        quantity: "1",
+        gross_sales_money: { amount: 1200 },
+        total_money: { amount: 1200 },
+      }],
+    },
+    "America/Los_Angeles",
+  );
+  assert.equal(sales[0]?.sale_date, "2026-07-12");
+
+  const utcSales = normalizeOrderSales(
+    {
+      id: "order-utc",
+      closed_at: eveningPacific,
+      line_items: [{
+        uid: "line-1",
+        name: "Burger",
+        quantity: "1",
+        gross_sales_money: { amount: 1200 },
+        total_money: { amount: 1200 },
+      }],
+    },
+    "UTC",
+  );
+  assert.equal(utcSales[0]?.sale_date, "2026-07-13");
+
+  const bounds = localDateKeyClosedAtBoundsUtc(
+    "2026-07-12",
+    "2026-07-12",
+    "America/Los_Angeles",
+  );
+  assert.equal(bounds.startAt, "2026-07-12T07:00:00.000Z");
+  assert.equal(bounds.endAt, "2026-07-13T06:59:59.999Z");
+
+  let capturedFilter: { start_at?: string; end_at?: string } | null = null;
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as {
+      query: {
+        filter: {
+          date_time_filter: { closed_at: { start_at: string; end_at: string } };
+        };
+      };
+    };
+    capturedFilter = body.query.filter.date_time_filter.closed_at;
+    return new Response(JSON.stringify({
+      orders: [{
+        id: "order-local-evening",
+        location_id: "loc-1",
+        closed_at: eveningPacific,
+        line_items: [{
+          uid: "line-1",
+          name: "Burger",
+          quantity: "1",
+          gross_sales_money: { amount: 1200 },
+          total_money: { amount: 1200 },
+        }],
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const searched = await searchSquareOrders(
+    { environment: "sandbox" },
+    "square-access-token",
+    ["loc-1"],
+    "2026-07-12",
+    "2026-07-12",
+    "America/Los_Angeles",
+    fetchImpl,
+  );
+  assert.deepEqual(capturedFilter, {
+    start_at: "2026-07-12T07:00:00.000Z",
+    end_at: "2026-07-13T06:59:59.999Z",
+  });
+  assert.equal(searched[0]?.sale_date, "2026-07-12");
 });

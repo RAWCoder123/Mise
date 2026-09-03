@@ -205,16 +205,134 @@ export async function listSquareLocations(
     .filter((row): row is SquareLocation => row !== null);
 }
 
+/**
+ * Restaurant-local calendar day for POS attribution. Matches client
+ * `toDateKeyInTimeZone` so evening service is not rolled into the next UTC day.
+ * Invalid IANA zones fail closed to the UTC calendar day.
+ */
+export function toDateKeyInTimeZone(date: Date, timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const values = new Map(parts.map((part) => [part.type, part.value]));
+    const year = values.get("year");
+    const month = values.get("month");
+    const day = values.get("day");
+    return year && month && day ? `${year}-${month}-${day}` : date.toISOString().slice(0, 10);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+export function addDaysToDateKey(dateKey: string, days: number): string {
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
+    ? new Date(`${dateKey}T12:00:00.000Z`)
+    : null;
+  if (!parsed || !Number.isFinite(parsed.getTime())) return dateKey;
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
+/**
+ * Inclusive Square `closed_at` search bounds for restaurant-local date keys.
+ * Client sync sends local operating days; previously those keys were treated as
+ * UTC midnights and missed late local evenings.
+ */
+export function localDateKeyClosedAtBoundsUtc(
+  fromDateKey: string,
+  toDateKey: string,
+  timeZone: string,
+): { startAt: string; endAt: string } {
+  const startAt = zonedLocalMidnightUtc(fromDateKey, timeZone);
+  const endExclusive = zonedLocalMidnightUtc(addDaysToDateKey(toDateKey, 1), timeZone);
+  return {
+    startAt: startAt.toISOString(),
+    endAt: new Date(endExclusive.getTime() - 1).toISOString(),
+  };
+}
+
+function resolveRestaurantTimeZone(timeZone: string | null | undefined): string {
+  const trimmed = typeof timeZone === "string" ? timeZone.trim().slice(0, 64) : "";
+  if (!trimmed) return "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: trimmed }).format(new Date());
+    return trimmed;
+  } catch {
+    return "UTC";
+  }
+}
+
+function zonedLocalMidnightUtc(dateKey: string, timeZone: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    return new Date(`${String(dateKey).slice(0, 10)}T00:00:00.000Z`);
+  }
+  const naive = Date.parse(`${dateKey}T00:00:00.000Z`);
+  if (!Number.isFinite(naive)) return new Date(0);
+  // Double-pass offset correction converges across DST transitions.
+  const firstPass = naive - zoneOffsetMs(new Date(naive), timeZone);
+  const corrected = naive - zoneOffsetMs(new Date(firstPass), timeZone);
+  return new Date(corrected);
+}
+
+function zoneOffsetMs(date: Date, timeZone: string): number {
+  const parts = zonedParts(date, timeZone);
+  if (!parts) return 0;
+  const asUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+  );
+  return asUtc - date.getTime();
+}
+
+function zonedParts(date: Date, timeZone: string) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).formatToParts(date);
+    const read = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+    const resolved = {
+      year: read("year"),
+      month: read("month"),
+      day: read("day"),
+      hour: read("hour"),
+      minute: read("minute"),
+      second: read("second"),
+    };
+    if (Object.values(resolved).some((value) => !Number.isFinite(value))) return null;
+    return resolved;
+  } catch {
+    return null;
+  }
+}
+
 export async function searchSquareOrders(
   config: Pick<SquareOAuthConfig, "environment">,
   accessToken: string,
   locationIds: string[],
   fromIsoDate: string,
   toIsoDate: string,
+  restaurantTimeZone: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<SquareSaleRow[]> {
   requireOpaqueToken(accessToken, "access credential", 8, 4096);
   if (!Array.isArray(locationIds) || locationIds.length === 0) return [];
+  const timeZone = resolveRestaurantTimeZone(restaurantTimeZone);
+  const { startAt, endAt } = localDateKeyClosedAtBoundsUtc(fromIsoDate, toIsoDate, timeZone);
   const sales: SquareSaleRow[] = [];
   for (let locationOffset = 0; locationOffset < locationIds.length; locationOffset += 10) {
     const locationBatch = locationIds.slice(locationOffset, locationOffset + 10);
@@ -227,8 +345,8 @@ export async function searchSquareOrders(
             state_filter: { states: ["COMPLETED"] },
             date_time_filter: {
               closed_at: {
-                start_at: `${fromIsoDate}T00:00:00.000Z`,
-                end_at: `${toIsoDate}T23:59:59.999Z`,
+                start_at: startAt,
+                end_at: endAt,
               },
             },
           },
@@ -245,7 +363,7 @@ export async function searchSquareOrders(
       if (!response.ok) throw providerHttpError(response.status, "orders_search_failed");
       const orders = Array.isArray(payload.orders) ? payload.orders : [];
       for (const order of orders) {
-        sales.push(...normalizeOrderSales(order));
+        sales.push(...normalizeOrderSales(order, timeZone));
       }
       cursor = typeof payload.cursor === "string" ? payload.cursor : undefined;
     } while (cursor);
@@ -277,7 +395,10 @@ export async function listSquareCatalogItems(
   return items;
 }
 
-export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
+export function normalizeOrderSales(
+  order: unknown,
+  restaurantTimeZone?: string | null,
+): SquareSaleRow[] {
   if (!order || typeof order !== "object") return [];
   const record = order as Record<string, unknown>;
   const orderId = stringField(record, "id", 128);
@@ -286,7 +407,13 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
     stringField(record, "closed_at", 64) ||
     stringField(record, "created_at", 64) ||
     new Date().toISOString();
-  const saleDate = closedAt.slice(0, 10);
+  const closedInstant = new Date(closedAt);
+  const saleDate = Number.isFinite(closedInstant.getTime())
+    ? toDateKeyInTimeZone(
+      closedInstant,
+      resolveRestaurantTimeZone(restaurantTimeZone ?? "UTC"),
+    )
+    : closedAt.slice(0, 10);
   const providerLocationId = stringField(record, "location_id", 128) || undefined;
   const lineItems = Array.isArray(record.line_items) ? record.line_items : [];
   const rows: SquareSaleRow[] = [];
