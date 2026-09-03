@@ -1,5 +1,6 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
+import { INVENTORY_EVENT_EFFECTIVE_AT_MAX_LOOKBACK_MS } from "./securityLimits";
 
 export type InventoryEventType =
   | "receipt"
@@ -180,6 +181,11 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   ) {
     return "future_dated_count";
   }
+  // Far-past effective_at values (epoch bugs, absurd backdating) scramble ledger
+  // ordering and projections. Mirrors reject_far_past_inventory_event (90 days).
+  if (isFarPastEffectiveAt(input.effectiveAt, recordedAt)) {
+    return "effective_at_too_old";
+  }
   if (!Number.isFinite(input.quantity)) return "invalid_quantity";
   if (
     (input.eventType === "receipt" ||
@@ -192,6 +198,17 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
   return null;
+}
+
+function isFarPastEffectiveAt(
+  effectiveAt: string,
+  recordedAt: string,
+  maxLookbackMs: number = INVENTORY_EVENT_EFFECTIVE_AT_MAX_LOOKBACK_MS
+) {
+  const effectiveMs = Date.parse(effectiveAt);
+  const recordedMs = Date.parse(recordedAt);
+  if (!Number.isFinite(effectiveMs) || !Number.isFinite(recordedMs)) return true;
+  return effectiveMs < recordedMs - maxLookbackMs;
 }
 
 function sameEventPayload(event: InventoryEvent, candidate: InventoryEventInput) {

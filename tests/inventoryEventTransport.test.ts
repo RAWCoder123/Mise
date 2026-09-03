@@ -89,6 +89,13 @@ test("known database validation and conflict errors settle without blind retries
     }),
     { status: "rejected", reason: "invalid_canonical_unit" }
   );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError({
+      code: "22023",
+      message: "Inventory ledger events cannot be effective more than 90 days in the past"
+    }),
+    { status: "rejected", reason: "effective_at_too_old" }
+  );
 });
 
 test("transport and authorization failures remain retryable or surfaced", () => {
