@@ -55,6 +55,7 @@ import type {
   InventoryEventInput,
   InventoryEventType
 } from "./domain/inventoryLedger";
+import { requireStockoutReasonCode } from "./domain/stockoutReasonCodes";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
 import type {
   SupplierDeliveryItemRecord,
@@ -127,7 +128,10 @@ export function requireInventoryOperation(
   }
 
   const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
-  const reasonCode = optionalBoundedText(input.reasonCode, "reason", 80);
+  const reasonCode =
+    eventType === "stockout"
+      ? requireStockoutReasonCode(input.reasonCode)
+      : optionalBoundedText(input.reasonCode, "reason", 80);
   const note = optionalBoundedText(input.note, "note", 500);
   return {
     restaurantId,
