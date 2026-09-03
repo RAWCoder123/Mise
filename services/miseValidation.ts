@@ -39,6 +39,7 @@ import {
   SUPPLIER_SEND_CONTENT_VERSION
 } from "../types/mise";
 import {
+  INVENTORY_EVENT_QUANTITY_MAX,
   ORDER_MESSAGE_MAX_BYTES,
   RESTAURANT_ADDRESS_MAX_CHARACTERS,
   RESTAURANT_CUISINE_MAX_CHARACTERS,
@@ -74,7 +75,7 @@ function asNonNegativeNumber(value: unknown, fallback = 0) {
 }
 
 export const operatingLimits = {
-  inventoryQuantity: 1_000_000,
+  inventoryQuantity: INVENTORY_EVENT_QUANTITY_MAX,
   recipeQuantityPerSale: 10_000,
   posQuantitySold: 100_000,
   posSalesAmount: 10_000_000,
