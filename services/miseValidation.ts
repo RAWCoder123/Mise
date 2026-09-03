@@ -39,6 +39,7 @@ import {
   SUPPLIER_SEND_CONTENT_VERSION
 } from "../types/mise";
 import {
+  INVENTORY_EVENT_SOURCE_REFERENCE_MAX_CHARACTERS,
   ORDER_MESSAGE_MAX_BYTES,
   RESTAURANT_ADDRESS_MAX_CHARACTERS,
   RESTAURANT_CUISINE_MAX_CHARACTERS,
@@ -126,7 +127,11 @@ export function requireInventoryOperation(
     throw new Error("Enter a quantity greater than zero.");
   }
 
-  const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
+  const sourceReference = optionalBoundedText(
+    input.sourceReference,
+    "reference",
+    INVENTORY_EVENT_SOURCE_REFERENCE_MAX_CHARACTERS
+  );
   const reasonCode = optionalBoundedText(input.reasonCode, "reason", 80);
   const note = optionalBoundedText(input.note, "note", 500);
   return {
