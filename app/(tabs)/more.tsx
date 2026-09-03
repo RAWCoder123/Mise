@@ -12,7 +12,8 @@ import {
   Settings,
   Sunrise,
   Truck,
-  UsersRound
+  UsersRound,
+  Utensils
 } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -87,6 +88,12 @@ export default function MoreScreen() {
             title={t("more.row.waste.title")}
             icon={<PackageMinus size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/waste" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.inventoryUsage.title")}
+            icon={<Utensils size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/inventory-usage" as never)}
           />
           <OperationalRow
             density="menu"

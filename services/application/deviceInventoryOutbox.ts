@@ -9,7 +9,9 @@ import type {
 import { createId } from "../domain/miseDomain";
 import {
   requireInventoryOperation,
-  type InventoryOperationClientInput
+  requireInventoryUsage,
+  type InventoryOperationClientInput,
+  type InventoryUsageClientInput
 } from "../miseValidation";
 import { deviceInventoryOutboxRepository } from "../repositories/deviceInventoryOutboxRepository";
 import type { InventoryOutboxRepository } from "../repositories/inventoryOutboxRepository";
@@ -39,6 +41,23 @@ export async function queueInventoryEventForSubmission(input: {
 export function queueInventoryOperation(input: InventoryOperationClientInput) {
   const clientEventId = createId("inventory_event");
   const event = requireInventoryOperation(input);
+  return queueInventoryEventForSubmission({
+    outboxId: createId("inventory_outbox"),
+    event: {
+      ...event,
+      clientEventId,
+      idempotencyKey: `inventory:${clientEventId}`
+    }
+  });
+}
+
+/**
+ * Queues a manager inventory usage event. Uses the dedicated positive-quantity
+ * validator so ordinary count/receipt/waste paths stay unchanged.
+ */
+export function queueInventoryUsage(input: InventoryUsageClientInput) {
+  const clientEventId = createId("inventory_event");
+  const event = requireInventoryUsage(input);
   return queueInventoryEventForSubmission({
     outboxId: createId("inventory_outbox"),
     event: {
