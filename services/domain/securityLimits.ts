@@ -9,6 +9,17 @@ export const RESTAURANT_PROFILE_ARRAY_MAX_ITEMS = 20;
 export const RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS = 160;
 export const RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS = 2_000;
 export const STRUCTURED_AI_INSIGHT_MAX_BYTES = 16 * 1024;
+/**
+ * Maximum age of inventory_events.effective_at relative to the accept clock.
+ * Blocks epoch/year-bug timestamps and absurdly delayed backdating while still
+ * allowing multi-week offline outbox sync and late delivery/waste logging.
+ * Mirrors the reject_far_past_inventory_event database trigger (90 days).
+ * Distinct from purchase-authority count freshness (36 hours) and from the
+ * future-dated skew guard (2 minutes).
+ */
+export const INVENTORY_EVENT_EFFECTIVE_AT_MAX_LOOKBACK_DAYS = 90;
+export const INVENTORY_EVENT_EFFECTIVE_AT_MAX_LOOKBACK_MS =
+  INVENTORY_EVENT_EFFECTIVE_AT_MAX_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
 
 export function utf8ByteLength(value: string) {
   let bytes = 0;
