@@ -24,6 +24,7 @@ import {
   isSquareIntegrationError,
   syncSquarePosSales
 } from "../../services/miseService";
+import { readNonItemizedSquareRefundAttention } from "../../services/domain/squareNonItemizedRefunds";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -42,7 +43,7 @@ type PosMessage =
 export default function POSConnectionScreen() {
   const navigation = useNavigation();
   const { square } = useLocalSearchParams<{ square?: string }>();
-  const { formatDate, t } = useLocale();
+  const { formatDate, formatCurrency, t } = useLocale();
   const { isDemoMode, memberships, posProvider, restaurant, connectDemoPOS } = useMiseSession();
   const [loadingProvider, setLoadingProvider] = useState<PosProvider | null>(null);
   const [message, setMessage] = useState<PosMessage | null>(null);
@@ -168,6 +169,9 @@ export default function POSConnectionScreen() {
   });
   const visibleIntegration = hubReady ? integration : null;
   const visibleSquareConnected = visibleIntegration?.status === "connected";
+  const refundAttention = visibleSquareConnected
+    ? readNonItemizedSquareRefundAttention(visibleIntegration?.settings ?? null)
+    : null;
 
   useFocusEffect(
     useCallback(() => {
@@ -314,11 +318,35 @@ export default function POSConnectionScreen() {
         key: "pos.message.syncCompleted",
         values: { count: String(result.recordsProcessed) }
       });
-      setNotice({
-        tone: "success",
-        title: t("pos.square.syncTitle"),
-        message: t("pos.square.syncBody", { count: String(result.recordsProcessed) })
-      });
+      if (result.nonItemizedRefundOrderCount > 0) {
+        const sampleOrderId = result.nonItemizedRefundSampleOrderIds[0] ?? "—";
+        const amount = formatCurrency(result.nonItemizedRefundAmountTotal);
+        const plural = result.nonItemizedRefundOrderCount === 1 ? "" : "s";
+        setNotice({
+          tone: "warning",
+          title: t("pos.square.refundAttentionTitle"),
+          message: [
+            t("pos.square.syncBody", { count: String(result.recordsProcessed) }),
+            t("pos.square.refundAttentionBody", {
+              count: String(result.nonItemizedRefundOrderCount),
+              plural
+            }),
+            result.nonItemizedRefundOrderCount === 1
+              ? t("pos.square.refundAttentionMeta", { amount, orderId: sampleOrderId })
+              : t("pos.square.refundAttentionMetaMany", {
+                  amount,
+                  count: String(result.nonItemizedRefundOrderCount),
+                  orderId: sampleOrderId
+                })
+          ].join(" ")
+        });
+      } else {
+        setNotice({
+          tone: "success",
+          title: t("pos.square.syncTitle"),
+          message: t("pos.square.syncBody", { count: String(result.recordsProcessed) })
+        });
+      }
       await loadIntegration(false);
       await loadPilotReadiness();
       await loadMappingReviewCount();
@@ -415,6 +443,27 @@ export default function POSConnectionScreen() {
             message={notice.message}
             actionLabel={hubLoadError ? t("common.retry") : undefined}
             onAction={hubLoadError ? () => void loadIntegration(true) : undefined}
+          />
+        ) : refundAttention ? (
+          <StatusNotice
+            tone="warning"
+            title={t("pos.square.refundAttentionTitle")}
+            message={[
+              t("pos.square.refundAttentionBody", {
+                count: String(refundAttention.orderCount),
+                plural: refundAttention.orderCount === 1 ? "" : "s"
+              }),
+              refundAttention.orderCount === 1
+                ? t("pos.square.refundAttentionMeta", {
+                    amount: formatCurrency(refundAttention.refundAmountTotal),
+                    orderId: refundAttention.sampleOrderIds[0] ?? "—"
+                  })
+                : t("pos.square.refundAttentionMetaMany", {
+                    amount: formatCurrency(refundAttention.refundAmountTotal),
+                    count: String(refundAttention.orderCount),
+                    orderId: refundAttention.sampleOrderIds[0] ?? "—"
+                  })
+            ].join(" ")}
           />
         ) : null}
 

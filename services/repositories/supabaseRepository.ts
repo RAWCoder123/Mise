@@ -497,14 +497,38 @@ function parseSquareSyncWorkflowResponse(data: unknown): SquareSyncWorkflowResul
   }
   const recordsProcessed = Number(payload.recordsProcessed ?? 0);
   const catalogProcessed = Number(payload.catalogProcessed ?? 0);
+  const nonItemizedRefundOrderCount = Number(payload.nonItemizedRefundOrderCount ?? 0);
+  const nonItemizedRefundAmountTotal = Number(payload.nonItemizedRefundAmountTotal ?? 0);
   if (!Number.isFinite(recordsProcessed) || recordsProcessed < 0 || !Number.isFinite(catalogProcessed) || catalogProcessed < 0) {
     throw new SquareIntegrationError("unknown", "Square sync returned invalid counts.");
+  }
+  if (
+    !Number.isFinite(nonItemizedRefundOrderCount) ||
+    nonItemizedRefundOrderCount < 0 ||
+    nonItemizedRefundOrderCount > 100000 ||
+    !Number.isFinite(nonItemizedRefundAmountTotal) ||
+    nonItemizedRefundAmountTotal < 0 ||
+    nonItemizedRefundAmountTotal > 10_000_000
+  ) {
+    throw new SquareIntegrationError("unknown", "Square sync returned invalid refund diagnostics.");
+  }
+  const sampleIdsRaw = Array.isArray(payload.nonItemizedRefundSampleOrderIds)
+    ? payload.nonItemizedRefundSampleOrderIds
+    : [];
+  const nonItemizedRefundSampleOrderIds: string[] = [];
+  for (const entry of sampleIdsRaw) {
+    if (typeof entry !== "string" || entry.length < 1 || entry.length > 128) continue;
+    nonItemizedRefundSampleOrderIds.push(entry);
+    if (nonItemizedRefundSampleOrderIds.length >= 5) break;
   }
   return {
     status: "completed",
     importId: typeof payload.importId === "string" ? payload.importId : null,
     recordsProcessed: Math.floor(recordsProcessed),
-    catalogProcessed: Math.floor(catalogProcessed)
+    catalogProcessed: Math.floor(catalogProcessed),
+    nonItemizedRefundOrderCount: Math.floor(nonItemizedRefundOrderCount),
+    nonItemizedRefundAmountTotal: Math.round(nonItemizedRefundAmountTotal * 100) / 100,
+    nonItemizedRefundSampleOrderIds
   };
 }
 

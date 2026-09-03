@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   buildSquareAuthorizationUrl,
+  classifyNonItemizedSquareRefund,
   normalizeCatalogItem,
   normalizeOrderSales,
   searchSquareOrders,
@@ -182,4 +183,21 @@ test("Square sync records truthful counts and database replay coverage", () => {
   assert.match(squareDatabaseProof, /the overlapping row is deduplicated/i);
   assert.match(squareDatabaseProof, /metadata->>'recordsProcessed'/i);
   assert.match(squareDatabaseProof, /provider_catalog_item_id.*provider_variation_id/i);
+});
+
+test("cash-only refund classification stays diagnostics-only on the shared Square helper", () => {
+  const cashRefund = classifyNonItemizedSquareRefund({
+    id: "order-cash",
+    closed_at: "2026-09-02T12:00:00.000Z",
+    refunds: [{ status: "COMPLETED", amount_money: { amount: 500 } }],
+  });
+  assert.equal(cashRefund?.refundAmount, 5);
+  assert.equal(
+    classifyNonItemizedSquareRefund({
+      id: "order-itemized",
+      returns: [{ return_line_items: [{ quantity: "1", name: "Soup" }] }],
+      return_amounts: { total_money: { amount: 400 } },
+    }),
+    null,
+  );
 });
