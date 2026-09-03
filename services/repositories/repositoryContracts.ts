@@ -513,6 +513,11 @@ export interface MiseRepository {
     patch: Partial<Pick<RestaurantMembership, "role" | "status">>
   ): Promise<RestaurantMembership>;
   removeRestaurantMember(restaurantId: string, targetUserId: string): Promise<RestaurantMembership>;
+  /**
+   * Removes the signed-in operator's own active non-owner membership.
+   * Hosted mode uses leave_my_restaurant_membership; owners are rejected.
+   */
+  leaveMyRestaurantMembership(restaurantId: string): Promise<RestaurantMembership>;
   updateMyProfile(name: string): Promise<AppUser>;
   /**
    * Permanently deletes the signed-in operator's account. Hosted mode invokes

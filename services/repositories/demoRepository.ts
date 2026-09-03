@@ -998,6 +998,10 @@ export function createLocalDemoRepository(): MiseRepository {
       throw new Error("Team membership management is available only for authenticated restaurant workspaces.");
     },
 
+    async leaveMyRestaurantMembership() {
+      throw new Error("Leaving a restaurant is available only for authenticated restaurant workspaces.");
+    },
+
     async updateMyProfile(name) {
       return mutateDemoState((state) => {
         const user = state.users[0];

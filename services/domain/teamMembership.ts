@@ -1,9 +1,10 @@
 import type { RestaurantRole, RestaurantTeamMember } from "../../types/mise";
 
 // Pure team-management rules mirroring the database membership RPCs
-// (add/update/remove_restaurant_member): owners manage every non-owner
-// membership, admins manage managers and staff, and nobody mutates owners or
-// themselves from the client.
+// (add/update/remove_restaurant_member + leave_my_restaurant_membership):
+// owners manage every non-owner membership, admins manage managers and staff,
+// nobody mutates owners from the client, and only non-owners may leave their
+// own membership via the dedicated leave RPC.
 
 export type AssignableTeamRole = Exclude<RestaurantRole, "owner">;
 
@@ -51,6 +52,17 @@ export function canEditTeamMember(
   if (actorRole === "owner") return true;
   if (actorRole === "admin") return target.role === "manager" || target.role === "staff";
   return false;
+}
+
+/**
+ * Non-owners may leave their own active membership. Owners must transfer
+ * ownership or use account deletion; client remove/leave never orphans a
+ * restaurant by self-removing the last owner.
+ */
+export function canLeaveRestaurantMembership(
+  actorRole: RestaurantRole | null | undefined
+): boolean {
+  return actorRole === "admin" || actorRole === "manager" || actorRole === "staff";
 }
 
 /** Normalized lowercase email, or null when the input is not a usable address. */
