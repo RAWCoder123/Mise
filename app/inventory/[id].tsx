@@ -31,6 +31,11 @@ import {
   updateInventoryItem
 } from "../../services/miseService";
 import {
+  STOCKOUT_REASON_CODES,
+  stockoutReasonMessageKey,
+  type StockoutReasonCode
+} from "../../services/domain/stockoutReasonCodes";
+import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
@@ -51,6 +56,7 @@ export default function InventoryDetailScreen() {
   const [operation, setOperation] = useState<InventoryOperatorAction>("count");
   const [quantityText, setQuantityText] = useState("");
   const [noteText, setNoteText] = useState("");
+  const [stockoutReason, setStockoutReason] = useState<StockoutReasonCode | null>(null);
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
   const [quantityError, setQuantityError] = useState<string | undefined>();
@@ -192,6 +198,18 @@ export default function InventoryDetailScreen() {
     [t]
   );
 
+  const stockoutReasonOptions = useMemo<readonly SegmentOption<StockoutReasonCode>[]>(
+    () =>
+      STOCKOUT_REASON_CODES.map((code) => ({
+        value: code,
+        label: t(stockoutReasonMessageKey(code)),
+        accessibilityLabel: t("inventory.ops.stockoutReason.optionAccessibility", {
+          reason: t(stockoutReasonMessageKey(code))
+        })
+      })),
+    [t]
+  );
+
   function goBackToInventory() {
     if (navigation.canGoBack()) navigation.goBack();
     else router.replace("/inventory");
@@ -221,6 +239,11 @@ export default function InventoryDetailScreen() {
       setMessageIsError(true);
       return;
     }
+    if (operation === "stockout" && !stockoutReason) {
+      setMessage(t("inventory.ops.stockoutReason.required"));
+      setMessageIsError(true);
+      return;
+    }
 
     const restaurantId = restaurant.id;
     setQuantityError(undefined);
@@ -235,6 +258,7 @@ export default function InventoryDetailScreen() {
         quantity,
         canonicalUnit: item.canonical_unit,
         effectiveAt: new Date().toISOString(),
+        reasonCode: operation === "stockout" ? stockoutReason ?? undefined : undefined,
         note: noteText.trim() || undefined
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -247,6 +271,7 @@ export default function InventoryDetailScreen() {
 
       setQuantityText(operation === "stockout" ? "0" : "");
       setNoteText("");
+      setStockoutReason(null);
       setMessage(describeFlushResult(flushSummary, t));
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
     } catch (submitError) {
@@ -513,6 +538,7 @@ export default function InventoryDetailScreen() {
                         setOperation(value);
                         setQuantityError(undefined);
                         if (value === "stockout") setQuantityText("0");
+                        if (value !== "stockout") setStockoutReason(null);
                       }}
                     />
                     {operation === "stockout" ? (
@@ -535,6 +561,24 @@ export default function InventoryDetailScreen() {
                         error={quantityError}
                       />
                     )}
+                    {operation === "stockout" ? (
+                      <>
+                        <Text style={styles.opsBody}>{t("inventory.ops.stockoutReason.label")}</Text>
+                        <FilterRow
+                          accessibilityLabel={t("inventory.ops.stockoutReason.accessibility")}
+                          options={stockoutReasonOptions}
+                          value={(stockoutReason ?? ("_unset" as StockoutReasonCode))}
+                          onValueChange={(value) => {
+                            setStockoutReason(value);
+                            setMessage(null);
+                            setMessageIsError(false);
+                          }}
+                        />
+                        {!stockoutReason ? (
+                          <Text style={styles.copy}>{t("inventory.ops.stockoutReason.hint")}</Text>
+                        ) : null}
+                      </>
+                    ) : null}
                     <Field
                       label={t("inventory.ops.note")}
                       value={noteText}
