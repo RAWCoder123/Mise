@@ -1,6 +1,6 @@
 begin;
 
-select plan(26);
+select plan(28);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -234,6 +234,32 @@ select is(
   $sql$),
   false,
   'an event that would make on-hand negative is rejected atomically'
+);
+select is(
+  pg_temp.execute_error($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'waste', 5, 'g', '2026-07-26T10:31:00Z', 'operator_waste',
+      'manager-oversized-reason-1', 'manager-oversized-reason-1',
+      null, repeat('r', 81), null, '{}'::jsonb
+    )
+  $sql$),
+  'Inventory event reason code is too long',
+  'an oversized reason code is rejected by the ledger evidence bound'
+);
+select is(
+  pg_temp.execute_error($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'waste', 5, 'g', '2026-07-26T10:32:00Z', 'operator_waste',
+      'manager-oversized-metadata-1', 'manager-oversized-metadata-1',
+      null, null, null, jsonb_build_object('note', repeat('n', 8200))
+    )
+  $sql$),
+  'Inventory event metadata is too large',
+  'oversized metadata is rejected by the ledger evidence bound'
 );
 select is(
   (

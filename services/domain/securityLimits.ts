@@ -9,6 +9,12 @@ export const RESTAURANT_PROFILE_ARRAY_MAX_ITEMS = 20;
 export const RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS = 160;
 export const RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS = 2_000;
 export const STRUCTURED_AI_INSIGHT_MAX_BYTES = 16 * 1024;
+/** Matches the operator inventory reason bound and record_inventory_event guard. */
+export const INVENTORY_EVENT_REASON_CODE_MAX_CHARACTERS = 80;
+/** Matches audit-log metadata caps and the record_inventory_event guard. */
+export const INVENTORY_EVENT_METADATA_MAX_BYTES = 8 * 1024;
+/** Operator-facing free-text note nested under inventory event metadata.note. */
+export const INVENTORY_EVENT_NOTE_MAX_CHARACTERS = 500;
 
 export function utf8ByteLength(value: string) {
   let bytes = 0;

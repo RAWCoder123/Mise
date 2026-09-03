@@ -157,3 +157,47 @@ test("projects counts, receipts, usage, waste, and corrections in server sequenc
     conflicts: []
   });
 });
+
+test("rejects oversized reason codes and metadata before accepting ledger evidence", () => {
+  const authority = {
+    id: "event-bound-1",
+    actorUserId: "manager-1",
+    recordedAt: "2026-07-26T10:01:00.000Z"
+  };
+
+  const longReason = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({
+      reasonCode: "r".repeat(81),
+      clientEventId: "oversized-reason",
+      idempotencyKey: "oversized-reason"
+    }),
+    authority
+  });
+  assert.equal(longReason.status, "rejected");
+  assert.equal("reason" in longReason ? longReason.reason : null, "reason_code_too_long");
+
+  const largeMetadata = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({
+      metadata: { note: "n".repeat(8200) },
+      clientEventId: "oversized-metadata",
+      idempotencyKey: "oversized-metadata"
+    }),
+    authority
+  });
+  assert.equal(largeMetadata.status, "rejected");
+  assert.equal("reason" in largeMetadata ? largeMetadata.reason : null, "metadata_too_large");
+
+  const acceptedBound = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({
+      reasonCode: "r".repeat(80),
+      metadata: { note: "within bounds" },
+      clientEventId: "bounded-evidence",
+      idempotencyKey: "bounded-evidence"
+    }),
+    authority
+  });
+  assert.equal(acceptedBound.status, "accepted");
+});
