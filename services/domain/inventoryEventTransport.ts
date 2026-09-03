@@ -212,6 +212,8 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 
 function rejectionReason(message: string) {
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
+  // Hosted projection: "Inventory event would move on-hand outside supported limits"
+  if (message.includes("on-hand")) return "insufficient_on_hand";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
   if (message.includes("evidence")) return "incomplete_evidence";

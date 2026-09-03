@@ -89,6 +89,13 @@ test("known database validation and conflict errors settle without blind retries
     }),
     { status: "rejected", reason: "invalid_canonical_unit" }
   );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError({
+      code: "22023",
+      message: "Inventory event would move on-hand outside supported limits"
+    }),
+    { status: "rejected", reason: "insufficient_on_hand" }
+  );
 });
 
 test("transport and authorization failures remain retryable or surfaced", () => {
