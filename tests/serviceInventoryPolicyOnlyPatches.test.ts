@@ -66,4 +66,14 @@ test("demo inventory signal updates reject current_quantity patches", () => {
     /hasOwnProperty\.call\(patch,\s*"current_quantity"\)/i
   );
   assert.match(method, /remain auditable/i);
+  assert.match(method, /Reorder threshold cannot exceed par level/i);
+});
+
+test("demo inventory updates reject inverted reorder and par pairs", () => {
+  const method =
+    demoRepository.match(
+      /async\s+updateInventoryItem\([\s\S]*?\n\s{4}\},/
+    )?.[0] ?? "";
+  assert.match(method, /nextReorder\s*>\s*nextPar/i);
+  assert.match(method, /Reorder threshold cannot exceed par level/i);
 });

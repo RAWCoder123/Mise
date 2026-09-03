@@ -139,6 +139,15 @@ end $$;
 
 do $$
 begin
+  alter table public.inventory_items
+    add constraint inventory_items_reorder_lte_par
+    check (reorder_threshold <= par_level);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
   alter table public.purchase_recommendations
     add constraint purchase_recommendations_quantity_nonnegative check (recommended_quantity >= 0);
 exception
