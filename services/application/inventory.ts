@@ -11,6 +11,7 @@ import {
   planCountSessionApprovals,
   summarizeCountSessionProgress
 } from "../domain/inventoryCountSessions";
+import { normalizeAdhocReceiptUnitCost } from "../domain/adhocReceiptUnitCost";
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
 import {
   requireInventoryCountLineUpdates,
@@ -29,6 +30,7 @@ import {
   fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
+import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -468,4 +470,26 @@ export async function approveInventoryCountSession(restaurantId: string, session
     recommendations,
     insights
   );
+}
+
+/**
+ * Applies an optional operator-entered ad-hoc receipt unit cost onto the item's
+ * estimated_unit_cost, then refreshes planning signals so order automation sees it.
+ */
+export async function applyAdhocReceiptUnitCost(
+  restaurantId: string,
+  input: { inventoryItemId: string; unitCost: number }
+) {
+  const normalizedRestaurantId = requireSupplierAuthorityId(restaurantId, "restaurant");
+  const inventoryItemId = requireSupplierAuthorityId(input.inventoryItemId, "inventory item");
+  const unitCost = normalizeAdhocReceiptUnitCost(input.unitCost);
+  if (unitCost == null) {
+    throw new Error("Enter a valid unit cost.");
+  }
+  const result = await repository.applyAdhocReceiptUnitCost(normalizedRestaurantId, {
+    inventoryItemId,
+    unitCost
+  });
+  await regenerateOperationalSignals(normalizedRestaurantId);
+  return result;
 }

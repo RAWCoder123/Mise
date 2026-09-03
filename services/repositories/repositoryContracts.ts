@@ -792,6 +792,10 @@ export interface MiseRepository {
       notes?: string | null;
     }
   ): Promise<SupplierDeliveryRecordResult>;
+  applyAdhocReceiptUnitCost(
+    restaurantId: string,
+    input: { inventoryItemId: string; unitCost: number }
+  ): Promise<import("../domain/adhocReceiptUnitCost").AdhocReceiptUnitCostApplyResult>;
 }
 
 export function recommendationHistoryCutoffIso(now = Date.now()): string {
