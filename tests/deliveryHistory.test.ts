@@ -88,6 +88,8 @@ test("mergeDeliveryHistoryEntries includes pending outbox receipts as syncing", 
     id: "outbox-pending-1",
     event: {
       ...receiptInput,
+      source: "operator_receipt",
+      sourceReference: "INV-88",
       clientEventId: "client-receipt-pending",
       idempotencyKey: "inventory:client-receipt-pending",
       effectiveAt: "2026-08-01T10:00:00.000Z",
@@ -106,9 +108,46 @@ test("mergeDeliveryHistoryEntries includes pending outbox receipts as syncing", 
   assert.equal(history[0]!.syncing, true);
   assert.equal(history[0]!.itemName, "Chicken thighs");
   assert.equal(history[0]!.note, "Still syncing");
+  assert.equal(history[0]!.documentReference, "INV-88");
   assert.equal(history[1]!.syncing, false);
   assert.equal(history[1]!.clientEventId, "client-receipt-1");
   assert.equal(history[1]!.note, "Morning drop");
+  assert.equal(history[1]!.documentReference, null);
+});
+
+test("mergeDeliveryHistoryEntries surfaces ad-hoc operator document references only", async () => {
+  const { record, list } = createInMemoryInventoryEventRecorder({
+    actorUserId: "manager-1",
+    idFor: (candidate) => `server-${candidate.clientEventId}`,
+    now: () => "2026-08-01T09:05:00.000Z"
+  });
+
+  await record({
+    ...receiptInput,
+    source: "operator_receipt",
+    sourceReference: "PO-12",
+    clientEventId: "client-receipt-doc",
+    idempotencyKey: "inventory:client-receipt-doc"
+  });
+  await record({
+    ...receiptInput,
+    source: "supplier_delivery",
+    sourceReference: "00000000-0000-4000-8000-000000000d01",
+    clientEventId: "client-receipt-order",
+    idempotencyKey: "inventory:client-receipt-order",
+    metadata: {}
+  });
+
+  const history = mergeDeliveryHistoryEntries({
+    events: list({ restaurantId: "restaurant-a", eventTypes: ["receipt"] }),
+    itemNames: { "item-chicken": "Chicken thighs" },
+    queued: []
+  });
+
+  const adhoc = history.find((entry) => entry.clientEventId === "client-receipt-doc");
+  const orderReceive = history.find((entry) => entry.clientEventId === "client-receipt-order");
+  assert.equal(adhoc?.documentReference, "PO-12");
+  assert.equal(orderReceive?.documentReference, null);
 });
 
 test("mergeDeliveryHistoryEntries dedupes pending entries already accepted", async () => {

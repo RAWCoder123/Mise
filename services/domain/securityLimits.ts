@@ -1,4 +1,6 @@
 export const SUPPLIER_NOTE_MAX_CHARACTERS = 2_000;
+/** Optional invoice / PO document identity on supplier deliveries and ad-hoc receipts. */
+export const SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS = 80;
 export const ORDER_MESSAGE_MAX_BYTES = 64 * 1024;
 export const RESTAURANT_NAME_MAX_CHARACTERS = 120;
 export const RESTAURANT_ADDRESS_MAX_CHARACTERS = 500;

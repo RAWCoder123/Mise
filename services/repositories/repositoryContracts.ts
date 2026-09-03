@@ -790,6 +790,7 @@ export interface MiseRepository {
       lines: SupplierDeliveryLineInput[];
       invoiceTotal?: number | null;
       notes?: string | null;
+      documentReference?: string | null;
     }
   ): Promise<SupplierDeliveryRecordResult>;
 }

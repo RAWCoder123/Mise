@@ -115,6 +115,7 @@ export interface DemoState {
     received_at: string;
     client_delivery_id: string;
     notes: string | null;
+    document_reference: string | null;
     created_at: string;
   }>;
   /** Supplier delivery line mirror of hosted supplier_delivery_items. */
@@ -1349,6 +1350,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       received_at: addDays(nowDate, -14).toISOString(),
       client_delivery_id: "demo-delivery-pantry-1",
       notes: null,
+      document_reference: "INV-1001",
       created_at: addDays(nowDate, -14).toISOString()
     },
     {
@@ -1359,6 +1361,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       received_at: addDays(nowDate, -7).toISOString(),
       client_delivery_id: "demo-delivery-pantry-2",
       notes: null,
+      document_reference: null,
       created_at: addDays(nowDate, -7).toISOString()
     },
     {
@@ -1369,6 +1372,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       received_at: addDays(nowDate, -4).toISOString(),
       client_delivery_id: "demo-delivery-metro-1",
       notes: "Three heads were missing from the delivery.",
+      document_reference: "PO-4420",
       created_at: addDays(nowDate, -4).toISOString()
     },
     {
@@ -1379,6 +1383,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
       received_at: addDays(nowDate, -12).toISOString(),
       client_delivery_id: "demo-delivery-metro-2",
       notes: null,
+      document_reference: null,
       created_at: addDays(nowDate, -12).toISOString()
     }
   ];

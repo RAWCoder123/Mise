@@ -15,6 +15,8 @@ export interface SupplierDeliveryRecord {
   status: SupplierDeliveryStatus;
   received_at: string;
   notes: string | null;
+  /** Optional vendor invoice / PO document identity captured at receive time. */
+  document_reference: string | null;
   created_at: string;
 }
 
@@ -85,6 +87,7 @@ export interface SupplierOrderDeliveryEvidence {
   missingLineCount: number;
   damagedLineCount: number;
   notes: string | null;
+  documentReference: string | null;
 }
 
 interface SupplierAccumulator {
@@ -209,7 +212,8 @@ export function buildSupplierOrderDeliveryEvidence(input: {
           .length,
         damagedLineCount: lines.filter((line) => (finiteNonNegative(line.damaged_quantity) ?? 0) > 0)
           .length,
-        notes: delivery.notes?.trim() || null
+        notes: delivery.notes?.trim() || null,
+        documentReference: delivery.document_reference?.trim() || null
       } satisfies SupplierOrderDeliveryEvidence;
     });
   return evidence.sort((left, right) => right.receivedAt.localeCompare(left.receivedAt));

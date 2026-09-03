@@ -22,6 +22,8 @@ import {
   queueInventoryOperation,
   type DeliveryHistoryEntry
 } from "../../services/miseService";
+import { normalizeOptionalDocumentReference } from "../../services/domain/supplierDelivery";
+import { SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS } from "../../services/miseValidation";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -84,6 +86,7 @@ export default function LogDeliveryScreen() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<InventoryItem | null>(null);
   const [quantityText, setQuantityText] = useState("");
+  const [documentReferenceText, setDocumentReferenceText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -113,6 +116,7 @@ export default function LogDeliveryScreen() {
     setQuery("");
     setSelected(null);
     setQuantityText("");
+    setDocumentReferenceText("");
     setNoteText("");
     setMessage(null);
     setMessageIsError(false);
@@ -186,6 +190,7 @@ export default function LogDeliveryScreen() {
   function resetForm(keepSelection = false) {
     if (!keepSelection) setSelected(null);
     setQuantityText("");
+    setDocumentReferenceText("");
     setNoteText("");
     setMessage(null);
     setMessageIsError(false);
@@ -217,6 +222,21 @@ export default function LogDeliveryScreen() {
     setMessage(null);
     setMessageIsError(false);
     try {
+      let documentReference: string | undefined;
+      try {
+        documentReference =
+          normalizeOptionalDocumentReference(documentReferenceText) ?? undefined;
+      } catch (referenceError) {
+        setMessage(
+          referenceError instanceof Error && referenceError.message.trim()
+            ? referenceError.message.slice(0, 220)
+            : t("logDelivery.error.documentReference")
+        );
+        setMessageIsError(true);
+        setSubmitting(false);
+        return;
+      }
+
       await queueInventoryOperation({
         restaurantId,
         inventoryItemId: itemId,
@@ -224,6 +244,7 @@ export default function LogDeliveryScreen() {
         quantity,
         canonicalUnit: selected.canonical_unit!,
         effectiveAt: new Date().toISOString(),
+        sourceReference: documentReference,
         note: noteText.trim() || undefined
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -235,6 +256,7 @@ export default function LogDeliveryScreen() {
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
       setLastLoggedItemId(itemId);
       setQuantityText("");
+      setDocumentReferenceText("");
       setNoteText("");
       setSelected(null);
 
@@ -353,6 +375,13 @@ export default function LogDeliveryScreen() {
                       <Text style={styles.historyWhen}>
                         {formatWhen(entry.effectiveAt)}
                       </Text>
+                      {entry.documentReference ? (
+                        <Text numberOfLines={1} style={styles.historyNote}>
+                          {t("logDelivery.history.documentReference", {
+                            reference: entry.documentReference
+                          })}
+                        </Text>
+                      ) : null}
                       {entry.note ? (
                         <Text numberOfLines={2} style={styles.historyNote}>
                           {entry.note}
@@ -410,6 +439,7 @@ export default function LogDeliveryScreen() {
                       setMessageIsError(false);
                       setLastLoggedItemId(null);
                       setQuantityText("");
+                      setDocumentReferenceText("");
                       setNoteText("");
                     }}
                     accessibilityLabel={t("logDelivery.row.accessibility", { item: item.item_name })}
@@ -473,6 +503,20 @@ export default function LogDeliveryScreen() {
               keyboardType="decimal-pad"
               style={styles.input}
               editable={actionsEditable && isCanonicalUnitReady(selected)}
+            />
+
+            <SectionHeader title={t("logDelivery.field.documentReference")} />
+            <TextInput
+              accessibilityLabel={t("logDelivery.field.documentReference")}
+              placeholder={t("logDelivery.field.documentReferencePlaceholder")}
+              placeholderTextColor={colors.faint}
+              value={documentReferenceText}
+              onChangeText={setDocumentReferenceText}
+              maxLength={SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              style={styles.input}
+              editable={actionsEditable}
             />
 
             <SectionHeader title={t("logDelivery.field.note")} />
