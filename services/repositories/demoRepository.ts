@@ -30,6 +30,7 @@ import {
 import {
   appendDemoRecommendationActivity,
   appendDemoSupplierOrderActivity,
+  appendDemoPurchaseLineActivity,
   seedDemoActivityFromState
 } from "../demo/demoActivity";
 import {
@@ -111,6 +112,16 @@ import {
   createPurchaseDecisionBaseEvent,
   createPurchaseDecisionCompensation
 } from "../domain/purchaseDecisionMemory";
+import {
+  PURCHASE_LINE_EVIDENCE_VERSION,
+  PURCHASE_LINE_NORMALIZATION_VERSION,
+  normalizePurchaseLineDescription,
+  resolvePurchaseLineConfidence,
+  type NormalizedPurchaseLineInput,
+  type PurchaseLine,
+  type PurchaseLineNetByItem,
+  type PurchaseLineSource
+} from "../domain/purchaseLines";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
 import {
   createDemoSupplier,
@@ -457,6 +468,66 @@ function appendDemoAuditLog(state: DemoState, input: AuditLogInput) {
   const normalized = normalizeAuditLog(entry);
   state.auditLogs.push(normalized);
   return normalized;
+}
+
+function createDemoPurchaseLine(input: {
+  restaurantId: string;
+  supplierId: string | null;
+  source: PurchaseLineSource;
+  sourceDocumentReference: string;
+  correlationId: string;
+  line: NormalizedPurchaseLineInput;
+  revision: number;
+  supersedesLineId: string | null;
+  recordedAt: string;
+}): PurchaseLine {
+  const { line } = input;
+  const normalization = normalizePurchaseLineDescription(line.rawItemDescription);
+  return {
+    id: createId("purchase_line"),
+    restaurantId: input.restaurantId,
+    supplierId: input.supplierId,
+    lineIndex: line.lineIndex,
+    revision: input.revision,
+    lineType: line.lineType,
+    rawItemDescription: line.rawItemDescription,
+    normalizedItemKey: normalization.normalizedItemKey,
+    normalizationVersion: PURCHASE_LINE_NORMALIZATION_VERSION,
+    quantity: line.quantity,
+    unitOfMeasure: line.unitOfMeasure,
+    packSize: line.packSize ?? normalization.packSize,
+    unitPrice: line.unitPrice,
+    extendedPrice: line.extendedPrice,
+    currency: line.currency,
+    transactionDate: line.transactionDate,
+    receivedDate: line.receivedDate,
+    source: input.source,
+    sourceDocumentReference: input.sourceDocumentReference,
+    correlationId: input.correlationId,
+    consistencyFlags: line.consistencyFlags,
+    signedQuantity:
+      line.quantity === null
+        ? null
+        : line.lineType === "credit" ? -line.quantity : line.quantity,
+    signedExtendedPrice:
+      line.extendedPrice === null
+        ? null
+        : line.lineType === "credit" ? -line.extendedPrice : line.extendedPrice,
+    creditsLineId: line.creditsLineId,
+    parseConfidence: resolvePurchaseLineConfidence({
+      requested: line.parseConfidence,
+      quantity: line.quantity,
+      unitOfMeasure: line.unitOfMeasure,
+      unitPrice: line.unitPrice,
+      extendedPrice: line.extendedPrice,
+      normalizedItemKey: normalization.normalizedItemKey,
+      consistencyFlags: line.consistencyFlags
+    }),
+    supersedesLineId: input.supersedesLineId,
+    evidenceVersion: PURCHASE_LINE_EVIDENCE_VERSION,
+    recordedBy: DEMO_USER_ID,
+    recordedAt: input.recordedAt
+  };
 }
 
 function nextDemoPurchaseDecisionSequence(state: DemoState) {
@@ -2226,6 +2297,193 @@ export function createLocalDemoRepository(): MiseRepository {
           order: result.order ? normalizeSupplierOrder(result.order) : null
         };
       });
+    },
+
+    async ingestPurchaseLines(input) {
+      return mutateDemoState((state) => {
+        if (!Array.isArray(state.purchaseLines)) state.purchaseLines = [];
+        const supplierId = input.supplierId ?? null;
+        if (
+          supplierId &&
+          !state.suppliers.some(
+            (supplier) =>
+              supplier.restaurant_id === input.restaurantId && supplier.id === supplierId
+          )
+        ) {
+          throw new Error("Supplier identity is not available for this restaurant.");
+        }
+        const seen = new Set<number>();
+        for (const line of input.lines) {
+          if (seen.has(line.lineIndex)) {
+            throw new Error(`Purchase line position ${line.lineIndex} was submitted twice.`);
+          }
+          seen.add(line.lineIndex);
+        }
+        const correlationId = input.correlationId ?? createId("purchase_line_batch");
+        const recordedAt = new Date().toISOString();
+        let recorded = 0;
+        let duplicates = 0;
+        let downgraded = 0;
+        const confidence = { confirmed: 0, estimated: 0, could_not_verify: 0 };
+        for (const line of input.lines) {
+          // Same idempotency key the server enforces: one line per document position.
+          const existing = state.purchaseLines.find(
+            (candidate) =>
+              candidate.restaurantId === input.restaurantId &&
+              candidate.supplierId === supplierId &&
+              candidate.sourceDocumentReference === input.sourceDocumentReference &&
+              candidate.lineIndex === line.lineIndex &&
+              candidate.revision === 0
+          );
+          if (existing) {
+            duplicates += 1;
+            continue;
+          }
+          const stored = createDemoPurchaseLine({
+            restaurantId: input.restaurantId,
+            supplierId,
+            source: input.source,
+            sourceDocumentReference: input.sourceDocumentReference,
+            correlationId,
+            line,
+            revision: 0,
+            supersedesLineId: null,
+            recordedAt
+          });
+          state.purchaseLines.push(stored);
+          recorded += 1;
+          confidence[stored.parseConfidence] += 1;
+          if (
+            stored.consistencyFlags.length > 0 &&
+            stored.parseConfidence !== line.statedConfidence
+          ) {
+            downgraded += 1;
+          }
+        }
+        const activity = appendDemoPurchaseLineActivity(state, {
+          restaurantId: input.restaurantId,
+          sourceDocumentReference: input.sourceDocumentReference,
+          correlationId,
+          submittedLineCount: input.lines.length,
+          recordedLineCount: recorded,
+          duplicateLineCount: duplicates,
+          confirmedCount: confidence.confirmed,
+          estimatedCount: confidence.estimated,
+          couldNotVerifyCount: confidence.could_not_verify,
+          occurredAt: recordedAt
+        });
+        return {
+          correlationId,
+          sourceDocumentReference: input.sourceDocumentReference,
+          supplierId,
+          submittedLineCount: input.lines.length,
+          recordedLineCount: recorded,
+          duplicateLineCount: duplicates,
+          confirmedCount: confidence.confirmed,
+          estimatedCount: confidence.estimated,
+          couldNotVerifyCount: confidence.could_not_verify,
+          consistencyDowngradeCount: downgraded,
+          activityEventId: activity
+        };
+      });
+    },
+
+    async fetchPurchaseLines(restaurantId, limit = 500) {
+      const state = await readReadyDemoState(restaurantId);
+      return (state.purchaseLines ?? [])
+        .filter((line) => line.restaurantId === restaurantId)
+        .sort(
+          (left, right) =>
+            right.transactionDate.localeCompare(left.transactionDate) ||
+            left.lineIndex - right.lineIndex
+        )
+        .slice(0, limit);
+    },
+
+    async supersedePurchaseLine(restaurantId, lineId, correction) {
+      return mutateDemoState((state) => {
+        if (!Array.isArray(state.purchaseLines)) state.purchaseLines = [];
+        const target = state.purchaseLines.find(
+          (line) => line.restaurantId === restaurantId && line.id === lineId
+        );
+        if (!target) throw new Error("Purchase line not found.");
+        if (
+          state.purchaseLines.some(
+            (line) => line.restaurantId === restaurantId && line.supersedesLineId === target.id
+          )
+        ) {
+          throw new Error("Purchase line has already been corrected.");
+        }
+        // A correction is a new line. The original is never rewritten.
+        const stored = createDemoPurchaseLine({
+          restaurantId,
+          supplierId: target.supplierId,
+          source: "manual_entry",
+          sourceDocumentReference: target.sourceDocumentReference,
+          correlationId: createId("purchase_line_correction"),
+          line: { ...correction, lineIndex: target.lineIndex },
+          revision: target.revision + 1,
+          supersedesLineId: target.id,
+          recordedAt: new Date().toISOString()
+        });
+        state.purchaseLines.push(stored);
+        return stored;
+      });
+    },
+
+    async fetchPurchaseLineNetByItem(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      const superseded = new Set(
+        (state.purchaseLines ?? [])
+          .map((line) => line.supersedesLineId)
+          .filter((id): id is string => id !== null)
+      );
+      const groups = new Map<string, PurchaseLineNetByItem>();
+      for (const line of state.purchaseLines ?? []) {
+        if (line.restaurantId !== restaurantId || superseded.has(line.id)) continue;
+        // Never net across supplier, unit or currency: that would be a larger
+        // claim than the documents support.
+        const key = [
+          line.supplierId ?? "",
+          line.normalizedItemKey ?? "",
+          line.unitOfMeasure ?? "",
+          line.currency ?? ""
+        ].join("\u0000");
+        const group = groups.get(key) ?? {
+          supplierId: line.supplierId,
+          normalizedItemKey: line.normalizedItemKey,
+          unitOfMeasure: line.unitOfMeasure,
+          currency: line.currency,
+          purchaseLineCount: 0,
+          creditLineCount: 0,
+          netQuantity: null,
+          netExtendedPrice: null,
+          unmatchedCredit: false,
+          firstTransactionDate: line.transactionDate,
+          lastTransactionDate: line.transactionDate
+        };
+        const sign = line.lineType === "credit" ? -1 : 1;
+        if (line.lineType === "credit") group.creditLineCount += 1;
+        else group.purchaseLineCount += 1;
+        if (line.quantity !== null) {
+          group.netQuantity = (group.netQuantity ?? 0) + sign * line.quantity;
+        }
+        if (line.extendedPrice !== null) {
+          group.netExtendedPrice = (group.netExtendedPrice ?? 0) + sign * line.extendedPrice;
+        }
+        if (line.transactionDate < group.firstTransactionDate!) {
+          group.firstTransactionDate = line.transactionDate;
+        }
+        if (line.transactionDate > group.lastTransactionDate!) {
+          group.lastTransactionDate = line.transactionDate;
+        }
+        groups.set(key, group);
+      }
+      return [...groups.values()]
+        .map((group) => ({ ...group, unmatchedCredit: group.purchaseLineCount === 0 }))
+        .sort((left, right) =>
+          (left.normalizedItemKey ?? "").localeCompare(right.normalizedItemKey ?? "")
+        );
     },
 
     async fetchPurchaseDecisionPatterns(restaurantId) {

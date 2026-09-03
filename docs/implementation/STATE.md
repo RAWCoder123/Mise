@@ -69,6 +69,101 @@ action-time canonical and context field required by `mise.purchase_decision.v1`,
 so inventing legacy evidence would violate the evidence contract. Collection
 starts forward when MISE-004A is deployed.
 
+## MISE-004C purchase line ledger
+
+This work was originally issued under the MISE-004A label, which was already
+taken by the purchase decision memory above. It was renamed to MISE-004C before
+merge: 004A and 004B were both claimed, and two milestones sharing an ID would
+make every later prompt, PR reference, and lookup here ambiguous. The two share
+no tables. It lives in
+`supabase/migrations/20260903120000_mise_004c_purchase_line_ledger.sql`.
+
+`public.purchase_lines` is the canonical append-only record of every item a
+restaurant has purchased. Each line stores the MISE-003C durable supplier
+reference where one exists, the raw item description exactly as it appeared on
+the source document, a deterministic `normalized_item_key`, quantity, unit of
+measure, pack size, unit and extended price with currency, transaction and
+received dates, the source (`invoice`, `order_confirmation`, `manual_entry`),
+the source document reference, a correlation ID, and a per-line
+`parse_confidence` of `confirmed`, `estimated`, or `could_not_verify`.
+
+Normalization is deterministic string work under
+`mise.purchase_line_normalization.v1`: lowercase, trim, collapse whitespace,
+lift pack/size tokens into their own field against a fixed unit vocabulary,
+then strip punctuation from what remains. There is no AI, no fuzzy matching, no
+stemming, and no clustering. Two spellings a human would call the same item stay
+distinct keys. The identical rules are implemented in SQL and in
+`services/domain/purchaseLines.ts`; `tests/purchaseLineLedgerMigration.test.ts`
+fails if the two vocabularies drift.
+
+Writes are server-authoritative. `public.ingest_purchase_lines` and
+`public.supersede_purchase_line` are the only write paths, both SECURITY DEFINER
+with owner/admin/manager authority. Authenticated clients hold SELECT only,
+under an RLS membership policy. A supplier belonging to another restaurant fails
+closed rather than becoming unattributed.
+
+Ingestion is idempotent on `(restaurant, supplier, source_document_reference,
+line_index)`. A null supplier collapses to the nil UUID so documents from an
+unnamed supplier still deduplicate. Re-ingesting a document records nothing new
+and reports what was already on file. Two lines claiming one document position
+are refused rather than silently collapsed.
+
+History is append-only. A correction appends a new line at the next revision of
+the same document position that references the line it supersedes; the corrected
+line is never rewritten or removed. A line may be corrected at most once, so
+correction chains stay linear. The update/delete trigger permits only the two
+existing ledger escapes: a parent restaurant DELETE cascading tenant history
+away, and the account-deletion path anonymizing an actor who no longer exists.
+
+Parse failures are visible. Confidence is only ever lowered, never raised: a
+line missing quantity, unit of measure, unit price, extended price, or a usable
+normalized key is recorded as `could_not_verify`, and absent fields stay null
+rather than defaulting to zero. Every ingestion emits one `purchase_lines_recorded`
+activity record stating how many lines were recorded, how many were already on
+file, and how many could not be verified, and raises attention when any line
+could not be verified.
+
+## Credits and returns on the purchase line ledger
+
+A credit is a stated direction, never a negative number. `line_type` is
+`purchase` or `credit`, is NOT NULL with no default, and every writer states it.
+Quantity, unit price, and extended price stay non-negative magnitudes, so a
+flipped sign remains a parse error and the internal-consistency rules need no
+sign convention: they apply to credits unchanged, and a credit can be
+internally inconsistent exactly like an invoice line.
+
+`credit_memo` joins the source vocabulary. A credit memo is its own document, so
+it occupies its own idempotency space and never disturbs the invoice it offsets.
+A credit never supersedes anything: a correction says the record was wrong, a
+credit says the record was right and money came back, so the original line stays
+current.
+
+`credits_line_id` is nullable and is set only when the source document itself
+names the original line. Mise never infers it. A stated link is validated
+server-side against the same tenant and supplier and fails closed otherwise.
+Several partial credits may reference one line, so unlike supersession the link
+carries no uniqueness. Unmatched credits are ordinary and fully recordable, and
+linkage never affects confidence.
+
+`signed_quantity` and `signed_extended_price` are stored generated columns, so
+net quantity and net spend are a plain aggregate rather than reconstructed
+application logic. `public.list_purchase_line_net_by_item` groups current,
+non-superseded lines by restaurant, supplier, normalized item key, unit of
+measure, and currency; it never nets across any of those.
+
+**Known limitation.** Netting depends on `normalized_item_key` agreement across
+documents, and that key is only as stable as the wording each document used. A
+credit memo that describes an item differently from the invoice forms its own
+group and will not net against it. MISE-004C forbids fuzzy matching, stemming,
+and clustering, so this cannot be resolved at this stage and is not papered
+over: a group holding credits with no purchase behind it is returned with
+`unmatched_credit` set, so an unnetted credit is visible as an unmatched credit
+rather than disappearing into a silently wrong net.
+
+This ledger predicts nothing. It does not reorder, infer depletion, model
+recipes, match items across suppliers, or aggregate across restaurants. It reads
+and writes no MISE-003 purchasing table. It is substrate for later work only.
+
 ## MISE-003C durable supplier invariant
 
 A supplier display name may change; its authority identity must not. New

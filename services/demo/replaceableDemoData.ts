@@ -88,6 +88,8 @@ export interface DemoState {
   operationalFindingDecisions: StoredOperationalFindingDecision[];
   /** MISE-004A append-only purchase decision evidence. */
   purchaseDecisionEvents: PurchaseDecisionEvent[];
+  /** MISE-004C append-only purchase line ledger. */
+  purchaseLines: import("../domain/purchaseLines").PurchaseLine[];
   emailConnections: RestaurantEmailConnection[];
   supplierRecipients: SupplierRecipient[];
   /** Operator-facing activity mirror of hosted activity_events. */
@@ -508,6 +510,7 @@ export function createInitialDemoState(
     ],
     operationalFindingDecisions: [],
     purchaseDecisionEvents: [],
+    purchaseLines: [],
     activityEvents: [],
     restaurantMemories: [],
     miseActions: [],
@@ -752,6 +755,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     purchaseDecisionEvents: Array.isArray(raw.purchaseDecisionEvents)
       ? raw.purchaseDecisionEvents
       : seeded.purchaseDecisionEvents,
+    purchaseLines: Array.isArray(raw.purchaseLines) ? raw.purchaseLines : seeded.purchaseLines,
     emailConnections: raw.emailConnections ?? seeded.emailConnections,
     supplierRecipients,
     activityEvents: Array.isArray(raw.activityEvents) ? raw.activityEvents : seeded.activityEvents,

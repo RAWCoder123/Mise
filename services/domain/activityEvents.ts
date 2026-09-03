@@ -40,7 +40,9 @@ export type ActivityType =
   | "recommendation_dismissed"
   | "recommendation_outcome_measured"
   | "restaurant_memory_updated"
-  | "inventory_count_recorded";
+  | "inventory_count_recorded"
+  | "purchase_lines_recorded"
+  | "purchase_line_confidence_downgraded";
 
 export type ActivityCategory =
   | "inventory"
@@ -82,7 +84,9 @@ export type ActivityRelatedEntityType =
   | "memory"
   | "mise_action"
   | "pos_import"
-  | "recalculation_run";
+  | "recalculation_run"
+  | "purchase_document"
+  | "purchase_line";
 
 export interface ActivityEvidenceReference {
   type: string;
@@ -1213,5 +1217,54 @@ export function fromForecastUpdated(input: {
       deltaPercent: delta
     },
     idempotencyKey: `forecast_updated:${input.restaurantId}:${input.operatingDate}:${input.occurredAt.slice(0, 13)}`
+  });
+}
+
+/**
+ * MISE-004C ingestion activity. It states what was recorded, what was already
+ * on file, and how many lines could not be verified. It never implies that a
+ * purchase was ordered, predicted, or acted on.
+ */
+export function fromPurchaseLinesRecorded(input: {
+  restaurantId: string;
+  sourceDocumentReference: string;
+  correlationId: string;
+  submittedLineCount: number;
+  recordedLineCount: number;
+  duplicateLineCount: number;
+  confirmedCount: number;
+  estimatedCount: number;
+  couldNotVerifyCount: number;
+  occurredAt: string;
+}): ActivityEvent {
+  return buildEvent({
+    restaurantId: input.restaurantId,
+    occurredAt: input.occurredAt,
+    activityType: "purchase_lines_recorded",
+    category: "orders",
+    title: "Purchase lines recorded",
+    summary:
+      `Recorded ${input.recordedLineCount} of ${input.submittedLineCount} lines from ` +
+      `${input.sourceDocumentReference}. ${input.duplicateLineCount} already on file. ` +
+      `${input.confirmedCount} confirmed, ${input.estimatedCount} estimated, ` +
+      `${input.couldNotVerifyCount} could not be verified.`,
+    triggerType: "purchase_line_ingestion",
+    triggerReference: input.sourceDocumentReference,
+    autonomyLevel: 1,
+    status: "completed",
+    requiresAttention: input.couldNotVerifyCount > 0,
+    relatedEntityType: "purchase_document",
+    relatedEntityId: input.sourceDocumentReference,
+    sourceSystems: ["mise"],
+    metadata: {
+      correlationId: input.correlationId,
+      submittedLineCount: input.submittedLineCount,
+      recordedLineCount: input.recordedLineCount,
+      duplicateLineCount: input.duplicateLineCount,
+      confirmedCount: input.confirmedCount,
+      estimatedCount: input.estimatedCount,
+      couldNotVerifyCount: input.couldNotVerifyCount
+    },
+    idempotencyKey: `purchase_line_ingestion:${input.correlationId}`
   });
 }

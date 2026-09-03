@@ -5,6 +5,7 @@ import {
   fromPurchaseRecommendationCreated,
   fromPurchaseRecommendationDismissed,
   fromSupplierOrderDrafted,
+  fromPurchaseLinesRecorded,
   fromSupplierOrderSent,
   type ActivityEvent
 } from "../domain/activityEvents";
@@ -167,4 +168,11 @@ export function seedDemoActivityFromState(state: DemoState) {
       });
     }
   }
+}
+
+export function appendDemoPurchaseLineActivity(
+  state: DemoState,
+  input: Parameters<typeof fromPurchaseLinesRecorded>[0]
+) {
+  return upsertActivity(state, fromPurchaseLinesRecorded(input)).id;
 }
