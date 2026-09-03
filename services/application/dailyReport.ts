@@ -22,6 +22,14 @@ export type { DailyOpsReport, DailyOpsDeliveryLine };
 
 /**
  * Loads closeout inputs and builds a structured daily ops report.
+ *
+ * Secondary feeds (outlooks, operator tasks, supplier reliability, waste,
+ * deliveries) fail closed with the whole report. Soft-swallowing them as
+ * empty/null falsely claimed clear stock dollars, zero open tasks, empty
+ * deliveries, or empty supplier reliability.
+ *
+ * Ask Mise briefing text stays optional — it is generative explanation, not
+ * an operational quantity claim.
  */
 export async function fetchDailyOpsReport(restaurantId: string): Promise<DailyOpsReport> {
   const normalizedRestaurantId = restaurantId.trim();
@@ -42,16 +50,16 @@ export async function fetchDailyOpsReport(restaurantId: string): Promise<DailyOp
     fetchInsights(normalizedRestaurantId),
     fetchLearningMemorySummary(normalizedRestaurantId),
     fetchInsightsSalesTrend(normalizedRestaurantId),
-    fetchInventoryOutlookItems(normalizedRestaurantId).catch(() => []),
-    listOpenOperatorTasks(normalizedRestaurantId).catch(() => []),
-    fetchSupplierReliabilitySummary(normalizedRestaurantId).catch(() => null)
+    fetchInventoryOutlookItems(normalizedRestaurantId),
+    listOpenOperatorTasks(normalizedRestaurantId),
+    fetchSupplierReliabilitySummary(normalizedRestaurantId)
   ]);
 
   const [deliveries, wasteAnalysis] = await Promise.all([
     loadDeliveriesToday(normalizedRestaurantId, summary.operatingDate),
     fetchWasteAnalysis(normalizedRestaurantId, {
       operatingDate: summary.operatingDate
-    }).catch(() => null)
+    })
   ]);
 
   let askBriefingText: string | null = null;
@@ -104,19 +112,15 @@ async function loadDeliveriesToday(
   restaurantId: string,
   operatingDate: string
 ): Promise<DailyOpsDeliveryLine[]> {
-  try {
-    const history = await fetchDeliveryHistory(restaurantId);
-    return history
-      .filter((entry) => entry.effectiveAt.slice(0, 10) === operatingDate)
-      .map((entry) => ({
-        id: entry.id,
-        itemName: entry.itemName,
-        quantity: entry.quantity,
-        unit: entry.canonicalUnit,
-        note: entry.note,
-        at: entry.effectiveAt
-      }));
-  } catch {
-    return [];
-  }
+  const history = await fetchDeliveryHistory(restaurantId);
+  return history
+    .filter((entry) => entry.effectiveAt.slice(0, 10) === operatingDate)
+    .map((entry) => ({
+      id: entry.id,
+      itemName: entry.itemName,
+      quantity: entry.quantity,
+      unit: entry.canonicalUnit,
+      note: entry.note,
+      at: entry.effectiveAt
+    }));
 }

@@ -34,6 +34,7 @@ import {
   fetchDailyOpsReport,
   type DailyOpsReport
 } from "../../services/miseService";
+import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 import type {
   SupplierReliabilityReason,
@@ -107,7 +108,15 @@ export default function DailyReportScreen() {
     }, [load])
   );
 
-  const visibleReport = loadedRestaurantId === restaurant?.id ? report : null;
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  // Soft-refresh may keep last-known report state, but loadError must not keep
+  // closeout sections ready (empty/clear claims over failed secondary feeds).
+  const visibleReport = hubReady ? report : null;
 
   if (!restaurant) {
     return (
