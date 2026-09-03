@@ -172,13 +172,11 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
-  // A physical count observes the present, so it may not be effective in the future.
-  // Mirrors the reject_future_dated_inventory_count database trigger.
-  if (
-    input.eventType === "count" &&
-    !isTemporallyValidCount(input.effectiveAt, recordedAt, COUNT_CLOCK_SKEW_TOLERANCE_MS)
-  ) {
-    return "future_dated_count";
+  // Ledger events observe the present (or the recent past). Future-dating would
+  // project into on-hand immediately when after the count boundary. Mirrors the
+  // reject_future_dated_inventory_event database trigger (shared 2-minute skew).
+  if (!isTemporallyValidCount(input.effectiveAt, recordedAt, COUNT_CLOCK_SKEW_TOLERANCE_MS)) {
+    return input.eventType === "count" ? "future_dated_count" : "future_dated_event";
   }
   if (!Number.isFinite(input.quantity)) return "invalid_quantity";
   if (

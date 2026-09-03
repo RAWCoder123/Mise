@@ -936,7 +936,8 @@ test("the ledger refuses to append future-dated count evidence", () => {
   });
   assert.equal(current.status, "accepted");
 
-  // Non-count evidence keeps its existing behavior; this change is count-scoped.
+  // Non-count ledger rows share the same clock-skew guard: future receipts must
+  // not project into on-hand ahead of the server clock.
   const futureReceipt = acceptInventoryEvent({
     existingEvents: [],
     candidate: {
@@ -948,7 +949,8 @@ test("the ledger refuses to append future-dated count evidence", () => {
     },
     authority
   });
-  assert.equal(futureReceipt.status, "accepted");
+  assert.equal(futureReceipt.status, "rejected");
+  assert.equal("reason" in futureReceipt ? futureReceipt.reason : null, "future_dated_event");
 });
 
 test("a current-time count approval still produces usable authoritative evidence", () => {
@@ -1032,6 +1034,39 @@ test("the planning snapshot and ledger trigger both exclude future-dated counts"
   assert.doesNotMatch(triggerMigration, /^\s*alter\s+table\s/im);
   // The pre-existing append-only guard is left in place.
   assert.doesNotMatch(triggerMigration, /reject_inventory_event_mutation/i);
+});
+
+test("the broadened ledger trigger rejects future-dated events of every type", () => {
+  const broadenedMigration = readFileSync(
+    "supabase/migrations/20260903120000_reject_future_dated_inventory_events.sql",
+    "utf8"
+  );
+
+  assert.match(
+    broadenedMigration,
+    /create\s+or\s+replace\s+function\s+private\.reject_future_dated_inventory_event/i
+  );
+  assert.match(broadenedMigration, /security\s+invoker[\s\S]*set\s+search_path\s*=\s*''/i);
+  // No event_type filter — every inventory_events row is guarded.
+  assert.match(
+    broadenedMigration,
+    /if\s+new\.effective_at\s*>\s*clock_timestamp\(\)\s*\+\s*interval\s*'2 minutes'/i
+  );
+  assert.doesNotMatch(
+    broadenedMigration,
+    /if\s+new\.event_type\s*=\s*'count'\s*\n\s*and\s+new\.effective_at/i
+  );
+  assert.match(
+    broadenedMigration,
+    /create\s+trigger\s+reject_future_dated_inventory_event[\s\S]*before\s+insert\s+on\s+public\.inventory_events/i
+  );
+  assert.match(
+    broadenedMigration,
+    /Inventory ledger events cannot be effective in the future/i
+  );
+  assert.doesNotMatch(broadenedMigration, /^\s*(grant|revoke)\s/im);
+  assert.doesNotMatch(broadenedMigration, /^\s*(create|drop)\s+policy\s/im);
+  assert.doesNotMatch(broadenedMigration, /^\s*alter\s+table\s/im);
 });
 
 test("a future ledger movement cannot inflate projected inventory", () => {
