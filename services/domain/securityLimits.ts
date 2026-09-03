@@ -9,6 +9,12 @@ export const RESTAURANT_PROFILE_ARRAY_MAX_ITEMS = 20;
 export const RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS = 160;
 export const RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS = 2_000;
 export const STRUCTURED_AI_INSIGHT_MAX_BYTES = 16 * 1024;
+/** Matches inventory_events.source CHECK and ledger insert guard. */
+export const INVENTORY_EVENT_SOURCE_MAX_CHARACTERS = 80;
+/** Matches inventory_events.client_event_id CHECK and ledger insert guard. */
+export const INVENTORY_EVENT_CLIENT_EVENT_ID_MAX_CHARACTERS = 200;
+/** Matches inventory_events.idempotency_key CHECK and ledger insert guard. */
+export const INVENTORY_EVENT_IDEMPOTENCY_KEY_MAX_CHARACTERS = 240;
 
 export function utf8ByteLength(value: string) {
   let bytes = 0;
