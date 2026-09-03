@@ -10,6 +10,13 @@ export const RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS = 160;
 export const RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS = 2_000;
 export const STRUCTURED_AI_INSIGHT_MAX_BYTES = 16 * 1024;
 
+/**
+ * Maximum number of decimal places allowed on an inventory ledger quantity.
+ * Six decimal places covers any real-world unit conversion (e.g. grams→ounces)
+ * while preventing floating-point dust that can corrupt running balances.
+ */
+export const LEDGER_QUANTITY_MAX_SCALE = 6;
+
 export function utf8ByteLength(value: string) {
   let bytes = 0;
   for (const character of value) {
