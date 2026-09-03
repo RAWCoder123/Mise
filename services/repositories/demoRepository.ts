@@ -1789,6 +1789,11 @@ export function createLocalDemoRepository(): MiseRepository {
       return mutateDemoState((state) => {
         const item = state.inventoryItems.find((entry) => entry.restaurant_id === restaurantId && entry.id === itemId);
         if (!item) throw new Error("Inventory item not found");
+        const nextPar = payload.par_level ?? item.par_level;
+        const nextReorder = payload.reorder_threshold ?? item.reorder_threshold;
+        if (nextReorder > nextPar) {
+          throw new Error("Reorder threshold cannot exceed par level.");
+        }
         Object.assign(item, payload);
         return normalizeInventoryItem(item);
       });
@@ -1814,6 +1819,11 @@ export function createLocalDemoRepository(): MiseRepository {
         if (!item) throw new Error("Inventory item not found");
         if (item.last_updated !== expectedLastUpdated) {
           throw new Error("Inventory item changed since it was loaded. Reload and try again.");
+        }
+        const nextPar = patch.par_level ?? item.par_level;
+        const nextReorder = patch.reorder_threshold ?? item.reorder_threshold;
+        if (nextReorder > nextPar) {
+          throw new Error("Reorder threshold cannot exceed par level.");
         }
         Object.assign(item, patch, { last_updated: new Date().toISOString() });
         state.purchaseRecommendations = [

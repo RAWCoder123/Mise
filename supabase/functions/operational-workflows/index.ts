@@ -416,6 +416,13 @@ function requireInventoryPatch(value: unknown) {
   for (const field of ["par_level", "reorder_threshold"] as const) {
     if (patch[field] !== undefined) normalized[field] = requireBoundedNumber(patch[field], field, 0, 1_000_000);
   }
+  if (
+    typeof normalized.par_level === "number" &&
+    typeof normalized.reorder_threshold === "number" &&
+    normalized.reorder_threshold > normalized.par_level
+  ) {
+    throw new HttpError(400, "Reorder threshold cannot exceed par level.");
+  }
   return normalized;
 }
 
