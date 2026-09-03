@@ -3827,6 +3827,98 @@ export function createLocalDemoRepository(): MiseRepository {
           outcomeId: outcome.id
         };
       });
+    },
+
+    async applyAdhocReceiptUnitCost(restaurantId, input) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const item = state.inventoryItems.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === input.inventoryItemId
+        );
+        if (!item) throw new Error("Inventory item not found");
+        const unitCost = Math.round(Number(input.unitCost) * 10_000) / 10_000;
+        if (!Number.isFinite(unitCost) || unitCost < 0 || unitCost > 1_000_000) {
+          throw new Error("Unit cost is outside supported limits");
+        }
+        const previousUnitCost =
+          Math.round((Number.isFinite(item.estimated_unit_cost) ? item.estimated_unit_cost : 0) * 10_000) /
+          10_000;
+        if (previousUnitCost === unitCost) {
+          return {
+            outcome: "already_applied" as const,
+            inventoryItemId: item.id,
+            unitCost,
+            previousUnitCost
+          };
+        }
+
+        const now = new Date().toISOString();
+        item.estimated_unit_cost = unitCost;
+        item.last_updated = now;
+
+        const activityEvent: ActivityEvent = {
+          id: createId("activity"),
+          restaurantId,
+          locationId: null,
+          occurredAt: now,
+          createdAt: now,
+          activityType: "supplier_prices_checked",
+          category: "inventory",
+          title: "Unit cost updated from receipt",
+          summary: `Estimated unit cost set to ${unitCost} from an ad-hoc delivery receipt.`,
+          triggerType: "adhoc_receipt_unit_cost_apply",
+          triggerReference: item.id,
+          evidenceReferences: [
+            {
+              type: "inventory_item",
+              id: item.id,
+              summary: item.item_name,
+              observedAt: now
+            }
+          ],
+          sourceSystems: ["mise", "inventory"],
+          actionId: null,
+          recommendationId: null,
+          autonomyLevel: 1,
+          confidence: null,
+          status: "completed",
+          requiresAttention: false,
+          attentionDeadline: null,
+          relatedEntityType: "inventory_item",
+          relatedEntityId: item.id,
+          parentActivityId: null,
+          sequenceId: `inventory-item:${item.id}`,
+          metadata: {
+            inventoryItemId: item.id,
+            previousUnitCost,
+            unitCost,
+            idempotencyKey: `adhoc_receipt_unit_cost_apply:${item.id}:${unitCost}`
+          },
+          errorCode: null,
+          errorMessage: null,
+          resolvedAt: null,
+          resolvedBy: null
+        };
+        state.activityEvents = [...(state.activityEvents ?? []), activityEvent];
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "adhoc_receipt_unit_cost_applied",
+          entity_table: "inventory_items",
+          entity_id: item.id,
+          metadata: {
+            previousUnitCost,
+            unitCost,
+            simulated: true
+          }
+        });
+
+        return {
+          outcome: "applied" as const,
+          inventoryItemId: item.id,
+          unitCost,
+          previousUnitCost
+        };
+      });
     }
   };
 }

@@ -20,8 +20,11 @@ import {
   fetchInventoryItems,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
+  applyAdhocReceiptUnitCost,
   type DeliveryHistoryEntry
 } from "../../services/miseService";
+import { normalizeAdhocReceiptUnitCost } from "../../services/domain/adhocReceiptUnitCost";
+import { operatingLimits } from "../../services/miseValidation";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -84,6 +87,7 @@ export default function LogDeliveryScreen() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<InventoryItem | null>(null);
   const [quantityText, setQuantityText] = useState("");
+  const [unitCostText, setUnitCostText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -113,6 +117,7 @@ export default function LogDeliveryScreen() {
     setQuery("");
     setSelected(null);
     setQuantityText("");
+    setUnitCostText("");
     setNoteText("");
     setMessage(null);
     setMessageIsError(false);
@@ -186,6 +191,7 @@ export default function LogDeliveryScreen() {
   function resetForm(keepSelection = false) {
     if (!keepSelection) setSelected(null);
     setQuantityText("");
+    setUnitCostText("");
     setNoteText("");
     setMessage(null);
     setMessageIsError(false);
@@ -211,6 +217,22 @@ export default function LogDeliveryScreen() {
       return;
     }
 
+    let unitCost: number | undefined;
+    if (unitCostText.trim()) {
+      const parsedCost = parseNumber(unitCostText);
+      const normalizedCost = normalizeAdhocReceiptUnitCost(parsedCost);
+      if (normalizedCost == null) {
+        setMessage(
+          t("logDelivery.error.unitCost", {
+            maximum: formatNumber(operatingLimits.inventoryQuantity)
+          })
+        );
+        setMessageIsError(true);
+        return;
+      }
+      unitCost = normalizedCost;
+    }
+
     const restaurantId = restaurant.id;
     const itemId = selected.id;
     setSubmitting(true);
@@ -224,17 +246,47 @@ export default function LogDeliveryScreen() {
         quantity,
         canonicalUnit: selected.canonical_unit!,
         effectiveAt: new Date().toISOString(),
-        note: noteText.trim() || undefined
+        note: noteText.trim() || undefined,
+        unitCost
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
       const flushSummary = await flushQueuedInventoryEvents(restaurantId);
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
-      setMessage(describeFlushResult(flushSummary, t));
-      setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
+      let costApplied = false;
+      let costApplyFailed = false;
+      if (
+        unitCost != null &&
+        flushSummary.accepted > 0 &&
+        flushSummary.conflicted === 0 &&
+        flushSummary.rejected === 0
+      ) {
+        try {
+          await applyAdhocReceiptUnitCost(restaurantId, {
+            inventoryItemId: itemId,
+            unitCost
+          });
+          costApplied = true;
+        } catch {
+          costApplyFailed = true;
+        }
+        if (activeRestaurantIdRef.current !== restaurantId) return;
+      }
+
+      if (costApplyFailed) {
+        setMessage(t("logDelivery.unitCost.applyFailed"));
+        setMessageIsError(true);
+      } else if (costApplied) {
+        setMessage(t("logDelivery.unitCost.applied"));
+        setMessageIsError(false);
+      } else {
+        setMessage(describeFlushResult(flushSummary, t));
+        setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
+      }
       setLastLoggedItemId(itemId);
       setQuantityText("");
+      setUnitCostText("");
       setNoteText("");
       setSelected(null);
 
@@ -350,6 +402,13 @@ export default function LogDeliveryScreen() {
                           )
                         })}
                       </Text>
+                      {entry.unitCost != null ? (
+                        <Text style={styles.historyMeta}>
+                          {t("logDelivery.history.unitCost", {
+                            cost: formatNumber(entry.unitCost, { maximumFractionDigits: 4 })
+                          })}
+                        </Text>
+                      ) : null}
                       <Text style={styles.historyWhen}>
                         {formatWhen(entry.effectiveAt)}
                       </Text>
@@ -410,6 +469,7 @@ export default function LogDeliveryScreen() {
                       setMessageIsError(false);
                       setLastLoggedItemId(null);
                       setQuantityText("");
+                      setUnitCostText("");
                       setNoteText("");
                     }}
                     accessibilityLabel={t("logDelivery.row.accessibility", { item: item.item_name })}
@@ -470,6 +530,20 @@ export default function LogDeliveryScreen() {
               placeholderTextColor={colors.faint}
               value={quantityText}
               onChangeText={setQuantityText}
+              keyboardType="decimal-pad"
+              style={styles.input}
+              editable={actionsEditable && isCanonicalUnitReady(selected)}
+            />
+
+            <SectionHeader
+              title={t("logDelivery.field.unitCost", { unit: selected.unit })}
+            />
+            <TextInput
+              accessibilityLabel={t("logDelivery.field.unitCost", { unit: selected.unit })}
+              placeholder={t("logDelivery.field.unitCostPlaceholder")}
+              placeholderTextColor={colors.faint}
+              value={unitCostText}
+              onChangeText={setUnitCostText}
               keyboardType="decimal-pad"
               style={styles.input}
               editable={actionsEditable && isCanonicalUnitReady(selected)}

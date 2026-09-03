@@ -2243,6 +2243,35 @@ export function createSupabaseRepository(): MiseRepository {
       };
     },
 
+    async applyAdhocReceiptUnitCost(restaurantId, input) {
+      const { data, error } = await client.rpc("apply_adhoc_receipt_unit_cost", {
+        p_restaurant_id: restaurantId,
+        p_inventory_item_id: input.inventoryItemId,
+        p_unit_cost: input.unitCost
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const payload = (Array.isArray(data) ? data[0] : data) as {
+        outcome?: "applied" | "already_applied";
+        inventoryItemId?: string;
+        unitCost?: number;
+        previousUnitCost?: number;
+      } | null;
+      if (
+        !payload?.outcome ||
+        !payload.inventoryItemId ||
+        !Number.isFinite(Number(payload.unitCost)) ||
+        !Number.isFinite(Number(payload.previousUnitCost))
+      ) {
+        throw new Error("Ad-hoc receipt unit-cost apply returned an invalid response.");
+      }
+      return {
+        outcome: payload.outcome,
+        inventoryItemId: payload.inventoryItemId,
+        unitCost: Number(payload.unitCost),
+        previousUnitCost: Number(payload.previousUnitCost)
+      };
+    },
+
     async fetchOpenInventoryCountSession(restaurantId) {
       const { data: session, error } = await client
         .from("inventory_count_sessions")

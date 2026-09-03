@@ -14,7 +14,8 @@ test("receiving input becomes bounded canonical ledger evidence", () => {
       effectiveAt: "2026-07-26T10:00:00-04:00",
       sourceReference: " invoice-42 ",
       reasonCode: " delivery ",
-      note: " Chilled on arrival "
+      note: " Chilled on arrival ",
+      unitCost: "3.45"
     }),
     {
       restaurantId: "restaurant-a",
@@ -27,8 +28,27 @@ test("receiving input becomes bounded canonical ledger evidence", () => {
       sourceReference: "invoice-42",
       reasonCode: "delivery",
       supersedesEventId: null,
-      metadata: { note: "Chilled on arrival" }
+      metadata: { note: "Chilled on arrival", unitCost: 3.45 }
     }
+  );
+});
+
+test("receipt unit cost is optional and rejected on non-receipt operations", () => {
+  const base = {
+    restaurantId: "restaurant-a",
+    inventoryItemId: "chicken",
+    quantity: 1,
+    canonicalUnit: "g" as const,
+    effectiveAt: "2026-07-26T10:00:00.000Z"
+  };
+  assert.deepEqual(requireInventoryOperation({ ...base, eventType: "receipt" }).metadata, {});
+  assert.throws(
+    () => requireInventoryOperation({ ...base, eventType: "waste", unitCost: 2 }),
+    /only supported when logging a receipt/
+  );
+  assert.throws(
+    () => requireInventoryOperation({ ...base, eventType: "receipt", unitCost: -1 }),
+    /unit cost/i
   );
 });
 

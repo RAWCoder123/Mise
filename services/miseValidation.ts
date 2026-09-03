@@ -98,6 +98,8 @@ export interface InventoryOperationClientInput {
   sourceReference?: unknown;
   reasonCode?: unknown;
   note?: unknown;
+  /** Optional display/purchase-unit cost for receipts only. */
+  unitCost?: unknown;
 }
 
 export type ValidatedInventoryOperation = Omit<
@@ -129,6 +131,7 @@ export function requireInventoryOperation(
   const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
   const reasonCode = optionalBoundedText(input.reasonCode, "reason", 80);
   const note = optionalBoundedText(input.note, "note", 500);
+  const unitCost = optionalReceiptUnitCost(input.unitCost, eventType);
   return {
     restaurantId,
     inventoryItemId,
@@ -140,8 +143,36 @@ export function requireInventoryOperation(
     sourceReference,
     reasonCode,
     supersedesEventId: null,
-    metadata: note ? { note } : {}
+    metadata: buildOperatorInventoryMetadata({ note, unitCost })
   };
+}
+
+function optionalReceiptUnitCost(value: unknown, eventType: InventoryEventType): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (eventType !== "receipt") {
+    throw new Error("Unit cost is only supported when logging a receipt.");
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (
+    !Number.isFinite(numeric) ||
+    numeric < 0 ||
+    numeric > operatingLimits.inventoryQuantity
+  ) {
+    throw new Error(
+      `Enter a unit cost from 0 to ${operatingLimits.inventoryQuantity.toLocaleString()}.`
+    );
+  }
+  return Math.round(numeric * 10_000) / 10_000;
+}
+
+function buildOperatorInventoryMetadata(input: {
+  note: string | null;
+  unitCost: number | null;
+}): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {};
+  if (input.note) metadata.note = input.note;
+  if (input.unitCost != null) metadata.unitCost = input.unitCost;
+  return metadata;
 }
 
 function requireOperatorInventoryEventType(value: unknown) {
