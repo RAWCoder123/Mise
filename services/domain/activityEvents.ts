@@ -34,6 +34,7 @@ export type ActivityType =
   | "task_completed"
   | "task_reopened"
   | "task_unblocked"
+  | "task_cancelled"
   | "automation_failed"
   | "approval_required"
   | "recommendation_created"
@@ -317,11 +318,16 @@ export function assertTenantScoped(events: readonly ActivityEvent[], restaurantI
 export function fromRestaurantTaskActivity(
   task: RestaurantTask,
   input: {
-    activityType: "task_created" | "task_completed" | "task_reopened" | "task_unblocked";
+    activityType:
+      | "task_created"
+      | "task_completed"
+      | "task_reopened"
+      | "task_unblocked"
+      | "task_cancelled";
     title: string;
     summary: string;
     occurredAt?: string;
-    status: "scheduled" | "completed" | "waiting_for_approval" | "could_not_verify";
+    status: "scheduled" | "completed" | "waiting_for_approval" | "could_not_verify" | "cancelled";
     idempotencySuffix: string;
     metadata?: Record<string, unknown>;
   }

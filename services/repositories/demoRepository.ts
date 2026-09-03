@@ -64,6 +64,7 @@ import {
 import type { ActivityEvent } from "../domain/activityEvents";
 import {
   canRestaurantRoleCompleteSharedTask,
+  normalizeCancelRestaurantTaskInput,
   normalizeCompleteRestaurantTaskInput,
   normalizeCreateRestaurantTaskInput,
   restaurantTaskMatchesCreateRequest,
@@ -3125,6 +3126,72 @@ export function createLocalDemoRepository(): MiseRepository {
           })
         ];
         return { ...reopened, dependencyIds: [...reopened.dependencyIds] };
+      });
+    },
+
+    async cancelRestaurantTask(input) {
+      const normalized = normalizeCancelRestaurantTaskInput(input);
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, normalized.restaurantId);
+        const index = (state.restaurantTasks ?? []).findIndex(
+          (task) => task.restaurantId === normalized.restaurantId && task.id === normalized.taskId
+        );
+        if (index < 0) throw new Error("Restaurant task not found.");
+        const current = state.restaurantTasks[index]!;
+        if (current.status === "cancelled") {
+          return { ...current, dependencyIds: [...current.dependencyIds] };
+        }
+        if (current.status === "completed") {
+          throw new Error("Completed tasks cannot be cancelled; reopen them first.");
+        }
+        if (
+          current.status !== "waiting" &&
+          current.status !== "blocked" &&
+          current.status !== "in_progress" &&
+          current.status !== "could_not_verify"
+        ) {
+          throw new Error("Only open restaurant tasks can be cancelled.");
+        }
+        const openDependent = (state.restaurantTasks ?? []).some(
+          (task) =>
+            task.restaurantId === normalized.restaurantId &&
+            task.dependencyIds.includes(current.id) &&
+            (task.status === "waiting" ||
+              task.status === "blocked" ||
+              task.status === "in_progress" ||
+              task.status === "could_not_verify")
+        );
+        if (openDependent) {
+          throw new Error("Open dependent tasks still require this prerequisite.");
+        }
+        const now = new Date().toISOString();
+        const cancelled: RestaurantTask = {
+          ...current,
+          status: "cancelled",
+          completionResult: null,
+          completionEvidence: [],
+          completedAt: null,
+          completedBy: null,
+          updatedAt: now
+        };
+        state.restaurantTasks[index] = cancelled;
+        state.activityEvents = [
+          ...(state.activityEvents ?? []),
+          fromRestaurantTaskActivity(cancelled, {
+            activityType: "task_cancelled",
+            title: "Restaurant task cancelled",
+            summary: normalized.cancelReason
+              ? `${cancelled.title} was cancelled: ${normalized.cancelReason}`
+              : `${cancelled.title} was cancelled and removed from the operating plan.`,
+            occurredAt: now,
+            status: "cancelled",
+            idempotencySuffix: `cancelled:${now}`,
+            metadata: normalized.cancelReason
+              ? { cancelReason: normalized.cancelReason }
+              : undefined
+          })
+        ];
+        return { ...cancelled, dependencyIds: [...cancelled.dependencyIds] };
       });
     },
 

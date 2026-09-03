@@ -48,6 +48,7 @@ import {
   type PersistedAutonomyRuleRow
 } from "../domain/restaurantAutonomy";
 import {
+  cancelRestaurantTaskRpcArguments,
   completeRestaurantTaskRpcArguments,
   createRestaurantTaskRpcArguments,
   restaurantTaskFromPersistedRow,
@@ -1999,6 +2000,22 @@ export function createSupabaseRepository(): MiseRepository {
       const dependencyIds = await loadRestaurantTaskDependencyIds(restaurantId, row.id);
       const task = restaurantTaskFromPersistedRow(row, dependencyIds);
       if (task.restaurantId !== restaurantId) {
+        throw new Error("Restaurant task failed restaurant scope validation.");
+      }
+      return task;
+    },
+
+    async cancelRestaurantTask(input) {
+      const { data, error } = await client.rpc(
+        "cancel_restaurant_task",
+        cancelRestaurantTaskRpcArguments(input)
+      );
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantTaskRow | null;
+      if (!row) throw new Error("Task cancel returned an empty response.");
+      const dependencyIds = await loadRestaurantTaskDependencyIds(input.restaurantId.trim(), row.id);
+      const task = restaurantTaskFromPersistedRow(row, dependencyIds);
+      if (task.restaurantId !== input.restaurantId.trim()) {
         throw new Error("Restaurant task failed restaurant scope validation.");
       }
       return task;

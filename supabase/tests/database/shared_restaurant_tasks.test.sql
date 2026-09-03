@@ -1,6 +1,6 @@
 begin;
 
-select plan(35);
+select plan(43);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -247,6 +247,98 @@ reset role;
 
 select is((select completion_result from public.restaurant_tasks where client_task_id = 'task-order-chicken'), null, 'reopening clears the stale completion result');
 select is((select count(*) from public.activity_events where event_type = 'task_reopened'), 1::bigint, 'reopening is auditable');
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'a2222222-2222-4222-8222-222222222222', true);
+select is(
+  (public.create_restaurant_task(
+    'a0000000-0000-4000-8000-000000000001', 'task-cancel-leaf',
+    'Retire obsolete prep check', null,
+    'human', 'prep', 'low', 'later', null,
+    null, null, null, 'member',
+    null, 'none', '[]'::jsonb,
+    null, null, null, null, null, array[]::uuid[]
+  )).status,
+  'waiting',
+  'a manager can create a leaf task for cancel coverage'
+);
+select is(
+  (public.cancel_restaurant_task(
+    'a0000000-0000-4000-8000-000000000001',
+    (select id from public.restaurant_tasks where client_task_id = 'task-cancel-leaf'),
+    'Replaced by closing routine'
+  )).status,
+  'cancelled',
+  'a manager can cancel an open leaf task'
+);
+select is(
+  (public.cancel_restaurant_task(
+    'a0000000-0000-4000-8000-000000000001',
+    (select id from public.restaurant_tasks where client_task_id = 'task-cancel-leaf'),
+    null
+  )).status,
+  'cancelled',
+  'cancel replay stays idempotent'
+);
+select is(
+  (select count(*) from public.activity_events where event_type = 'task_cancelled'),
+  1::bigint,
+  'cancel appends one task_cancelled activity event'
+);
+
+select is(
+  (public.create_restaurant_task(
+    'a0000000-0000-4000-8000-000000000001', 'task-cancel-prereq',
+    'Count before dependent cancel test', null,
+    'human', 'inventory', 'normal', 'now', null,
+    null, null, null, 'member',
+    null, 'none', '[]'::jsonb,
+    null, null, null, null, null, array[]::uuid[]
+  )).status,
+  'waiting',
+  'a manager can create a cancel-prerequisite task'
+);
+select is(
+  (public.create_restaurant_task(
+    'a0000000-0000-4000-8000-000000000001', 'task-cancel-dependent',
+    'Order after cancel-prerequisite', null,
+    'human', 'orders', 'normal', 'up_next', null,
+    null, null, null, 'member',
+    null, 'none', '[]'::jsonb,
+    null, null, null, null, null,
+    array[(select id from public.restaurant_tasks where client_task_id = 'task-cancel-prereq')]
+  )).status,
+  'blocked',
+  'a dependent task starts blocked on its open prerequisite'
+);
+select is(
+  pg_temp.try_execute($sql$
+    select public.cancel_restaurant_task(
+      'a0000000-0000-4000-8000-000000000001',
+      (select id from public.restaurant_tasks where client_task_id = 'task-cancel-prereq'),
+      null
+    )
+  $sql$),
+  false,
+  'cancelling a prerequisite with open dependents fails closed'
+);
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'a3333333-3333-4333-8333-333333333333', true);
+select is(
+  pg_temp.try_execute($sql$
+    select public.cancel_restaurant_task(
+      'a0000000-0000-4000-8000-000000000001',
+      (select id from public.restaurant_tasks where client_task_id = 'task-cancel-dependent'),
+      null
+    )
+  $sql$),
+  false,
+  'staff cannot cancel a restaurant task'
+);
+reset role;
+
 select ok(
   exists (
     select 1 from pg_trigger
