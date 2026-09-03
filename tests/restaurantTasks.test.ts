@@ -3,11 +3,14 @@ import test from "node:test";
 
 import {
   canRestaurantRoleCompleteSharedTask,
+  canRestaurantRoleReassignSharedTask,
   completeRestaurantTaskRpcArguments,
   createRestaurantTaskRpcArguments,
   normalizeCompleteRestaurantTaskInput,
   normalizeCreateRestaurantTaskInput,
+  normalizeReassignRestaurantTaskInput,
   operationalTodayTaskFromRestaurantTask,
+  reassignRestaurantTaskRpcArguments,
   restaurantTaskMatchesCreateRequest,
   restaurantTaskFromPersistedRow,
   visibleRestaurantTasksForToday,
@@ -232,4 +235,26 @@ test("shared task completion authorization gates non-assignee staff but permits 
     }),
     false
   );
+});
+
+test("reassign normalization and RPC arguments preserve optional null assignee", () => {
+  const normalized = normalizeReassignRestaurantTaskInput({
+    restaurantId: " restaurant-a ",
+    taskId: " task-1 ",
+    assigneeUserId: null
+  });
+  assert.deepEqual(normalized, {
+    restaurantId: "restaurant-a",
+    taskId: "task-1",
+    assigneeUserId: null
+  });
+  assert.deepEqual(reassignRestaurantTaskRpcArguments(normalized), {
+    p_restaurant_id: "restaurant-a",
+    p_task_id: "task-1",
+    p_assignee_user_id: null
+  });
+  assert.equal(canRestaurantRoleReassignSharedTask("owner"), true);
+  assert.equal(canRestaurantRoleReassignSharedTask("admin"), true);
+  assert.equal(canRestaurantRoleReassignSharedTask("manager"), true);
+  assert.equal(canRestaurantRoleReassignSharedTask("staff"), false);
 });

@@ -1682,6 +1682,9 @@ const en = {
   "tasks.shared.evidenceRequired": "This task requires verification evidence before completion.",
   "tasks.shared.completeError": "The shared task could not be completed.",
   "tasks.shared.reopenError": "The shared task could not be reopened.",
+  "tasks.shared.reassignError": "The shared task could not be reassigned.",
+  "tasks.shared.reassignTitle": "Reassign",
+  "tasks.shared.reassignBody": "Move this open task to another eligible teammate, or leave it unassigned.",
 
   "more.subtitle": "Operations menu",
   "more.shortcuts.title": "Shortcuts",
@@ -3980,6 +3983,9 @@ const es = {
   "tasks.shared.evidenceRequired": "Esta tarea requiere evidencia de verificación.",
   "tasks.shared.completeError": "No se pudo completar la tarea compartida.",
   "tasks.shared.reopenError": "No se pudo reabrir la tarea compartida.",
+  "tasks.shared.reassignError": "No se pudo reasignar la tarea compartida.",
+  "tasks.shared.reassignTitle": "Reasignar",
+  "tasks.shared.reassignBody": "Mueve esta tarea abierta a otro compañero elegible, o déjala sin asignar.",
 
   "more.subtitle": "Menú de operaciones",
   "more.shortcuts.title": "Atajos",
@@ -6274,6 +6280,9 @@ const zhHans = {
   "tasks.shared.evidenceRequired": "此任务完成前需要验证依据。",
   "tasks.shared.completeError": "共享任务无法完成。",
   "tasks.shared.reopenError": "共享任务无法重新打开。",
+  "tasks.shared.reassignError": "共享任务无法重新分配。",
+  "tasks.shared.reassignTitle": "重新分配",
+  "tasks.shared.reassignBody": "将此未完成任务交给其他符合角色要求的队友，或改为未分配。",
 
   "more.subtitle": "运营菜单",
   "more.shortcuts.title": "快捷方式",
