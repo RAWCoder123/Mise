@@ -933,6 +933,14 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizeRestaurantMembership(data as RestaurantMembership);
     },
 
+    async leaveMyRestaurantMembership(restaurantId) {
+      const { data, error } = await client.rpc("leave_my_restaurant_membership", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      return normalizeRestaurantMembership(data as RestaurantMembership);
+    },
+
     async updateMyProfile(name) {
       const { data, error } = await client.rpc("update_my_profile", { p_name: name });
       if (error) throwRepositoryError(error);

@@ -349,8 +349,23 @@ test("tenant reinforcement makes membership and profile authority RPC-only", () 
   assert.match(repository, /rpc\("add_restaurant_member"/i);
   assert.match(repository, /rpc\("update_restaurant_member"/i);
   assert.match(repository, /rpc\("remove_restaurant_member"/i);
+  assert.match(repository, /rpc\("leave_my_restaurant_membership"/i);
   assert.match(edgeShared, /rpc\("service_record_edge_audit_log"/i);
   assert.doesNotMatch(edgeShared, /securitySupabase\.from\("audit_logs"\)\.insert/i);
+});
+
+test("non-owners can leave their own restaurant membership through a guarded RPC", () => {
+  const leaveMigration = readFileSync(
+    "supabase/migrations/20260903030000_leave_my_restaurant_membership.sql",
+    "utf8"
+  );
+  assert.match(leaveMigration, /create or replace function public\.leave_my_restaurant_membership/i);
+  assert.match(leaveMigration, /Owners cannot leave without transferring ownership/i);
+  assert.match(leaveMigration, /auth\.uid\(\)/i);
+  assert.match(
+    leaveMigration,
+    /grant execute on function public\.leave_my_restaurant_membership\(uuid\) to authenticated/i
+  );
 });
 
 test("staging preflight rejects wrong origins before trusted values can be transmitted", async () => {
