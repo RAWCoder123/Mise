@@ -1,5 +1,6 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
+import { LEDGER_QUANTITY_MAX_SCALE } from "./securityLimits";
 
 export type InventoryEventType =
   | "receipt"
@@ -191,7 +192,39 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // Mirror private.reject_oversized_inventory_event_quantity_scale / scale(quantity) <= 6.
+  // Never round dust into a different quantity — reject so idempotency stays exact.
+  if (fractionalScale(input.quantity) > LEDGER_QUANTITY_MAX_SCALE) {
+    return "invalid_quantity_scale";
+  }
   return null;
+}
+
+/**
+ * Returns the number of significant decimal places in a finite number.
+ *
+ * Uses the shortest decimal representation (String(value)) so ordinary operator
+ * and rounded canonical quantities are measured as entered. Not a substitute for
+ * full IEEE-754 analysis of arbitrary intermediate arithmetic — callers should
+ * round intentional conversions (e.g. to 6 places) before acceptance.
+ */
+export function fractionalScale(value: number): number {
+  if (!Number.isFinite(value) || value === 0) return 0;
+  const str = String(Math.abs(value));
+  if (str.includes("e") || str.includes("E")) {
+    const match = /^(-?\d+(?:\.\d+)?)[eE]([+-]?\d+)$/.exec(str);
+    if (!match) return Number.POSITIVE_INFINITY;
+    const mantissa = match[1] ?? "0";
+    const exponent = Number(match[2] ?? "0");
+    if (!Number.isFinite(exponent)) return Number.POSITIVE_INFINITY;
+    if (exponent >= 0) return 0;
+    const mantissaDecimals = mantissa.includes(".")
+      ? (mantissa.split(".")[1] ?? "").length
+      : 0;
+    return Math.abs(exponent) + mantissaDecimals;
+  }
+  const dot = str.indexOf(".");
+  return dot === -1 ? 0 : str.length - dot - 1;
 }
 
 function sameEventPayload(event: InventoryEvent, candidate: InventoryEventInput) {

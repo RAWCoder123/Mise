@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   acceptInventoryEvent,
+  fractionalScale,
   projectInventoryEvents,
   type InventoryEvent,
   type InventoryEventInput
@@ -156,4 +157,48 @@ test("projects counts, receipts, usage, waste, and corrections in server sequenc
     lastSequence: 4,
     conflicts: []
   });
+});
+
+test("fractionalScale returns 0 for integers", () => {
+  assert.equal(fractionalScale(0), 0);
+  assert.equal(fractionalScale(1), 0);
+  assert.equal(fractionalScale(1000), 0);
+  assert.equal(fractionalScale(-42), 0);
+});
+
+test("fractionalScale counts decimal places correctly", () => {
+  assert.equal(fractionalScale(0.5), 1);
+  assert.equal(fractionalScale(0.035274), 6);
+  assert.equal(fractionalScale(1.123456), 6);
+  assert.equal(fractionalScale(1.1234567), 7);
+  assert.equal(fractionalScale(1e-7), 7);
+});
+
+test("accepts quantity with exactly 6 decimal places", () => {
+  const result = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({ quantity: 0.035274 }),
+    authority: { id: "event-1", actorUserId: "user-1", recordedAt: "2026-07-26T10:00:00.000Z" }
+  });
+  assert.equal(result.status, "accepted");
+});
+
+test("rejects quantity with more than 6 decimal places", () => {
+  const result = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({ quantity: 0.1234567 }),
+    authority: { id: "event-1", actorUserId: "user-1", recordedAt: "2026-07-26T10:00:00.000Z" }
+  });
+  assert.equal(result.status, "rejected");
+  assert.equal((result as { status: "rejected"; reason: string }).reason, "invalid_quantity_scale");
+});
+
+test("rejects signed quantity with more than 6 decimal places", () => {
+  const result = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({ eventType: "adjustment", quantity: -1.0000001 }),
+    authority: { id: "event-1", actorUserId: "user-1", recordedAt: "2026-07-26T10:00:00.000Z" }
+  });
+  assert.equal(result.status, "rejected");
+  assert.equal((result as { status: "rejected"; reason: string }).reason, "invalid_quantity_scale");
 });
