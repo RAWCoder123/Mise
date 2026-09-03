@@ -66,6 +66,7 @@ import {
   canRestaurantRoleCompleteSharedTask,
   normalizeCompleteRestaurantTaskInput,
   normalizeCreateRestaurantTaskInput,
+  normalizeRescheduleRestaurantTaskInput,
   restaurantTaskMatchesCreateRequest,
   type RestaurantTask
 } from "../domain/restaurantTasks";
@@ -3125,6 +3126,62 @@ export function createLocalDemoRepository(): MiseRepository {
           })
         ];
         return { ...reopened, dependencyIds: [...reopened.dependencyIds] };
+      });
+    },
+
+    async rescheduleRestaurantTask(input) {
+      const normalized = normalizeRescheduleRestaurantTaskInput(input);
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, normalized.restaurantId);
+        const index = (state.restaurantTasks ?? []).findIndex(
+          (task) => task.restaurantId === normalized.restaurantId && task.id === normalized.taskId
+        );
+        if (index < 0) throw new Error("Restaurant task not found.");
+        const current = state.restaurantTasks[index]!;
+        if (
+          current.status === "completed" ||
+          current.status === "cancelled" ||
+          (current.status !== "waiting" &&
+            current.status !== "blocked" &&
+            current.status !== "in_progress" &&
+            current.status !== "could_not_verify")
+        ) {
+          throw new Error("Only open restaurant tasks can be rescheduled.");
+        }
+        if (
+          current.timingBucket === normalized.timingBucket &&
+          current.dueAt === normalized.dueAt
+        ) {
+          return { ...current, dependencyIds: [...current.dependencyIds] };
+        }
+        const now = new Date().toISOString();
+        const previousTimingBucket = current.timingBucket;
+        const previousDueAt = current.dueAt;
+        const rescheduled: RestaurantTask = {
+          ...current,
+          timingBucket: normalized.timingBucket,
+          dueAt: normalized.dueAt,
+          updatedAt: now
+        };
+        state.restaurantTasks[index] = rescheduled;
+        state.activityEvents = [
+          ...(state.activityEvents ?? []),
+          fromRestaurantTaskActivity(rescheduled, {
+            activityType: "task_rescheduled",
+            title: "Restaurant task rescheduled",
+            summary: `${rescheduled.title} was moved to the ${rescheduled.timingBucket.replace(/_/g, " ")} operating-plan bucket.`,
+            occurredAt: now,
+            status: "scheduled",
+            idempotencySuffix: `rescheduled:${now}`,
+            metadata: {
+              previousTimingBucket,
+              timingBucket: rescheduled.timingBucket,
+              previousDueAt,
+              dueAt: rescheduled.dueAt
+            }
+          })
+        ];
+        return { ...rescheduled, dependencyIds: [...rescheduled.dependencyIds] };
       });
     },
 
