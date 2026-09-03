@@ -9,6 +9,8 @@ export const RESTAURANT_PROFILE_ARRAY_MAX_ITEMS = 20;
 export const RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS = 160;
 export const RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS = 2_000;
 export const STRUCTURED_AI_INSIGHT_MAX_BYTES = 16 * 1024;
+/** Matches operator inventory quantity ceilings and ledger insert magnitude guard. */
+export const INVENTORY_EVENT_QUANTITY_MAX = 1_000_000;
 
 export function utf8ByteLength(value: string) {
   let bytes = 0;

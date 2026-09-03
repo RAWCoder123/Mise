@@ -106,6 +106,42 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
   assert.equal(secondCorrection.status, "conflict");
 });
 
+test("rejects quantities whose magnitude exceeds the shared ledger ceiling", () => {
+  const oversizedReceipt = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({ quantity: 1_000_001 }),
+    authority: {
+      id: "event-oversized-qty",
+      actorUserId: "manager-1",
+      recordedAt: "2026-07-26T10:01:00.000Z"
+    }
+  });
+  assert.deepEqual(oversizedReceipt, {
+    status: "rejected",
+    reason: "quantity_too_large"
+  });
+
+  const oversizedCorrection = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({
+      eventType: "correction",
+      quantity: -1_000_001,
+      clientEventId: "device-event-oversized-correction",
+      idempotencyKey: "correction:oversized",
+      supersedesEventId: null
+    }),
+    authority: {
+      id: "event-oversized-correction",
+      actorUserId: "manager-1",
+      recordedAt: "2026-07-26T10:01:00.000Z"
+    }
+  });
+  assert.deepEqual(oversizedCorrection, {
+    status: "rejected",
+    reason: "quantity_too_large"
+  });
+});
+
 test("projects counts, receipts, usage, waste, and corrections in server sequence", () => {
   const count = accepted(
     [],
