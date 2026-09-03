@@ -1,6 +1,7 @@
 import type {
   CompleteRestaurantTaskInput,
   CreateRestaurantTaskInput,
+  ReassignRestaurantTaskInput,
   RestaurantTask
 } from "../domain/restaurantTasks";
 import { isOpenRestaurantTask } from "../domain/restaurantTasks";
@@ -11,6 +12,7 @@ const repository = getMiseRepository();
 export type {
   CompleteRestaurantTaskInput,
   CreateRestaurantTaskInput,
+  ReassignRestaurantTaskInput,
   RestaurantTask,
   RestaurantTaskCategory,
   RestaurantTaskEvidence,
@@ -59,6 +61,12 @@ export async function reopenSharedRestaurantTask(
     throw new Error("Restaurant and task are required.");
   }
   return repository.reopenRestaurantTask(normalizedRestaurantId, normalizedTaskId);
+}
+
+export async function reassignSharedRestaurantTask(
+  input: ReassignRestaurantTaskInput
+): Promise<RestaurantTask> {
+  return repository.reassignRestaurantTask(input);
 }
 
 function compareRestaurantTasks(left: RestaurantTask, right: RestaurantTask) {

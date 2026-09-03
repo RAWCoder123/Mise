@@ -66,6 +66,7 @@ import {
   canRestaurantRoleCompleteSharedTask,
   normalizeCompleteRestaurantTaskInput,
   normalizeCreateRestaurantTaskInput,
+  normalizeReassignRestaurantTaskInput,
   restaurantTaskMatchesCreateRequest,
   type RestaurantTask
 } from "../domain/restaurantTasks";
@@ -3125,6 +3126,60 @@ export function createLocalDemoRepository(): MiseRepository {
           })
         ];
         return { ...reopened, dependencyIds: [...reopened.dependencyIds] };
+      });
+    },
+
+    async reassignRestaurantTask(input) {
+      const normalized = normalizeReassignRestaurantTaskInput(input);
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, normalized.restaurantId);
+        const index = (state.restaurantTasks ?? []).findIndex(
+          (task) => task.restaurantId === normalized.restaurantId && task.id === normalized.taskId
+        );
+        if (index < 0) throw new Error("Restaurant task not found.");
+        const current = state.restaurantTasks[index]!;
+        if (
+          current.status === "completed" ||
+          current.status === "cancelled" ||
+          (current.status !== "waiting" &&
+            current.status !== "blocked" &&
+            current.status !== "in_progress" &&
+            current.status !== "could_not_verify")
+        ) {
+          throw new Error("Only open restaurant tasks can be reassigned.");
+        }
+        if (current.assigneeUserId === normalized.assigneeUserId) {
+          return { ...current, dependencyIds: [...current.dependencyIds] };
+        }
+        if (normalized.assigneeUserId && normalized.assigneeUserId !== DEMO_USER_ID) {
+          throw new Error("Task assignee is not an active demo restaurant member.");
+        }
+        const now = new Date().toISOString();
+        const previousAssigneeUserId = current.assigneeUserId;
+        const reassigned: RestaurantTask = {
+          ...current,
+          assigneeUserId: normalized.assigneeUserId,
+          updatedAt: now
+        };
+        state.restaurantTasks[index] = reassigned;
+        state.activityEvents = [
+          ...(state.activityEvents ?? []),
+          fromRestaurantTaskActivity(reassigned, {
+            activityType: "task_reassigned",
+            title: "Restaurant task reassigned",
+            summary: reassigned.assigneeUserId
+              ? `${reassigned.title} was reassigned to a different teammate.`
+              : `${reassigned.title} is unassigned and open to eligible teammates.`,
+            occurredAt: now,
+            status: "scheduled",
+            idempotencySuffix: `reassigned:${now}`,
+            metadata: {
+              previousAssigneeUserId,
+              assigneeUserId: reassigned.assigneeUserId
+            }
+          })
+        ];
+        return { ...reassigned, dependencyIds: [...reassigned.dependencyIds] };
       });
     },
 
