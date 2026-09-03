@@ -1596,7 +1596,7 @@ export function createSupabaseRepository(): MiseRepository {
     async fetchSupplierDeliveryHistory(restaurantId) {
       const { data: deliveryRows, error: deliveryError } = await client
         .from("supplier_deliveries")
-        .select("id,restaurant_id,supplier_order_id,status,received_at,notes,created_at")
+        .select("id,restaurant_id,supplier_order_id,status,received_at,notes,document_reference,created_at")
         .eq("restaurant_id", restaurantId)
         .order("received_at", { ascending: false })
         .limit(100);
@@ -2220,7 +2220,8 @@ export function createSupabaseRepository(): MiseRepository {
           discrepancyReason: line.discrepancyReason ?? null
         })),
         p_invoice_total: input.invoiceTotal ?? null,
-        p_notes: input.notes ?? null
+        p_notes: input.notes ?? null,
+        p_document_reference: input.documentReference ?? null
       });
       if (error) throw error;
       const payload = (Array.isArray(data) ? data[0] : data) as {

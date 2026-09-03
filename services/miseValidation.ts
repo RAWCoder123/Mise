@@ -62,7 +62,7 @@ import type {
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
 
-export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
+export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS, SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS } from "./domain/securityLimits";
 
 function asNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -1213,6 +1213,9 @@ export function normalizeSupplierDeliveryRecord(
     ...value,
     status: normalizeSupplierDeliveryStatus(value.status),
     notes: asNullableString(value.notes),
+    document_reference: asNullableString(
+      (value as { document_reference?: unknown }).document_reference
+    ),
     received_at: asString(value.received_at),
     created_at: asString(value.created_at, value.received_at)
   };
