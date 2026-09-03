@@ -2498,11 +2498,36 @@ export function createLocalDemoRepository(): MiseRepository {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, restaurantId);
         const salesCount = state.posSales.filter((sale) => sale.restaurant_id === restaurantId).length;
+        const integration = state.posIntegrations.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.provider === "square"
+        );
+        if (integration) {
+          const priorSettings =
+            integration.settings && typeof integration.settings === "object" && !Array.isArray(integration.settings)
+              ? (integration.settings as Record<string, unknown>)
+              : {};
+          integration.settings = {
+            ...priorSettings,
+            nonItemizedRefundAttention: {
+              orderCount: 1,
+              refundAmountTotal: 12.5,
+              sampleOrderIds: ["demo-cash-refund-1"],
+              detectedAt: new Date().toISOString(),
+              windowFrom: _from,
+              windowTo: _to,
+              importId: null
+            }
+          };
+          integration.updated_at = new Date().toISOString();
+        }
         return {
           status: "completed" as const,
           importId: null,
           recordsProcessed: salesCount,
-          catalogProcessed: 0
+          catalogProcessed: 0,
+          nonItemizedRefundOrderCount: 1,
+          nonItemizedRefundAmountTotal: 12.5,
+          nonItemizedRefundSampleOrderIds: ["demo-cash-refund-1"]
         };
       });
     },
