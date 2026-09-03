@@ -69,6 +69,18 @@ Deno.serve(async (req) => {
       "admin",
       "manager",
     ]);
+
+    const { data: restaurantRow, error: restaurantError } = await supabase
+      .from("restaurants")
+      .select("timezone")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (restaurantError) throw restaurantError;
+    const restaurantTimeZone =
+      typeof restaurantRow?.timezone === "string" && restaurantRow.timezone.trim().length > 0
+        ? restaurantRow.timezone.trim().slice(0, 64)
+        : "UTC";
+
     await recordFunctionAuditLog(
       securitySupabase,
       user.id,
@@ -215,7 +227,14 @@ Deno.serve(async (req) => {
       }
 
       const [sales, catalogItems] = await Promise.all([
-        searchSquareOrders(oauthConfig, tokens.accessToken, locationIds, from, to),
+        searchSquareOrders(
+          oauthConfig,
+          tokens.accessToken,
+          locationIds,
+          from,
+          to,
+          restaurantTimeZone,
+        ),
         listSquareCatalogItems(oauthConfig, tokens.accessToken),
       ]);
 
