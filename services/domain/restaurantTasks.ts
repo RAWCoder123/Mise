@@ -156,6 +156,13 @@ export interface CompleteRestaurantTaskInput {
   completionEvidence?: RestaurantTaskEvidence[];
 }
 
+export interface RescheduleRestaurantTaskInput {
+  restaurantId: string;
+  taskId: string;
+  timingBucket: RestaurantTaskTimingBucket;
+  dueAt?: string | null;
+}
+
 const origins = new Set<RestaurantTaskOrigin>(["human", "mise", "automated", "approval", "verification"]);
 const categories = new Set<RestaurantTaskCategory>([
   "inventory", "orders", "prep", "service", "team", "cleaning", "maintenance",
@@ -370,6 +377,27 @@ export function completeRestaurantTaskRpcArguments(input: CompleteRestaurantTask
   };
 }
 
+export function normalizeRescheduleRestaurantTaskInput(input: RescheduleRestaurantTaskInput) {
+  const timingBucket = input.timingBucket;
+  if (!timingBuckets.has(timingBucket)) throw new Error("Task timing is invalid.");
+  return {
+    restaurantId: requiredText(input.restaurantId, 200, "Restaurant id"),
+    taskId: requiredText(input.taskId, 200, "Task id"),
+    timingBucket,
+    dueAt: optionalIso(input.dueAt, "Task due time")
+  };
+}
+
+export function rescheduleRestaurantTaskRpcArguments(input: RescheduleRestaurantTaskInput) {
+  const task = normalizeRescheduleRestaurantTaskInput(input);
+  return {
+    p_restaurant_id: task.restaurantId,
+    p_task_id: task.taskId,
+    p_timing_bucket: task.timingBucket,
+    p_due_at: task.dueAt
+  };
+}
+
 export function isOpenRestaurantTask(task: Pick<RestaurantTask, "status">) {
   return task.status === "waiting" || task.status === "blocked" || task.status === "in_progress" || task.status === "could_not_verify";
 }
@@ -440,6 +468,11 @@ export function canRestaurantRoleCompleteSharedTask(
       : role === "owner" || role === "admin";
   if (!hasRole) return false;
   return task.assigneeUserId === null || task.assigneeUserId === actorUserId || role !== "staff";
+}
+
+/** Reschedule is manager+ only; staff cannot move shared operating-plan work. */
+export function canRestaurantRoleRescheduleSharedTask(role: RestaurantRole) {
+  return role === "owner" || role === "admin" || role === "manager";
 }
 
 /** Hosted JSONB equality is key-order agnostic; replay checks mirror that here. */
