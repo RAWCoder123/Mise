@@ -1,5 +1,6 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
+import { INVENTORY_EVENT_SOURCE_REFERENCE_MAX_CHARACTERS } from "./securityLimits";
 
 export type InventoryEventType =
   | "receipt"
@@ -191,6 +192,12 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  if (
+    input.sourceReference != null &&
+    input.sourceReference.length > INVENTORY_EVENT_SOURCE_REFERENCE_MAX_CHARACTERS
+  ) {
+    return "source_reference_too_long";
+  }
   return null;
 }
 
