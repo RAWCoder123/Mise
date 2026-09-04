@@ -211,9 +211,51 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Hosted projection / purchase authority: "Inventory item canonical conversion is not verified".
+  // Must be checked before the "canonical unit" substring so conversion failures do not
+  // collapse into invalid_canonical_unit.
+  if (message.includes("canonical conversion")) return "canonical_conversion_unverified";
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
+  // Main count guard + broadened ledger guard (MISE future-dated event migration):
+  // "Physical count evidence cannot be effective in the future"
+  // "Inventory ledger events cannot be effective in the future"
+  if (message.includes("cannot be effective in the future")) {
+    return message.includes("physical count") ? "future_dated_count" : "future_dated_event";
+  }
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
   if (message.includes("evidence")) return "incomplete_evidence";
   return "invalid_inventory_event";
+}
+
+/**
+ * Known terminal outbox / RPC rejection reasons that have operator-facing copy.
+ * Unknown codes remain raw so new server reasons stay visible during rollout.
+ */
+export const INVENTORY_EVENT_REASON_MESSAGE_KEYS = {
+  canonical_conversion_unverified: "inventory.ops.queue.reasonCode.canonical_conversion_unverified",
+  future_dated_count: "inventory.ops.queue.reasonCode.future_dated_count",
+  future_dated_event: "inventory.ops.queue.reasonCode.future_dated_event",
+  invalid_canonical_unit: "inventory.ops.queue.reasonCode.invalid_canonical_unit",
+  invalid_quantity: "inventory.ops.queue.reasonCode.invalid_quantity",
+  unsupported_event_type: "inventory.ops.queue.reasonCode.unsupported_event_type",
+  incomplete_evidence: "inventory.ops.queue.reasonCode.incomplete_evidence",
+  invalid_inventory_event: "inventory.ops.queue.reasonCode.invalid_inventory_event",
+  idempotency_payload_mismatch: "inventory.ops.queue.reasonCode.idempotency_payload_mismatch",
+  event_already_superseded: "inventory.ops.queue.reasonCode.event_already_superseded",
+  inventory_item_not_found: "inventory.ops.queue.reasonCode.inventory_item_not_found",
+  superseded_event_not_found: "inventory.ops.queue.reasonCode.superseded_event_not_found",
+  network_retry: "inventory.ops.queue.reasonCode.network_retry",
+  server_deduplicated: "inventory.ops.queue.reasonCode.server_deduplicated"
+} as const;
+
+export type InventoryEventReasonCode = keyof typeof INVENTORY_EVENT_REASON_MESSAGE_KEYS;
+
+export function inventoryEventReasonMessageKey(
+  reason: string
+): (typeof INVENTORY_EVENT_REASON_MESSAGE_KEYS)[InventoryEventReasonCode] | null {
+  if (Object.prototype.hasOwnProperty.call(INVENTORY_EVENT_REASON_MESSAGE_KEYS, reason)) {
+    return INVENTORY_EVENT_REASON_MESSAGE_KEYS[reason as InventoryEventReasonCode];
+  }
+  return null;
 }
