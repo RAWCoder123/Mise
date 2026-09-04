@@ -1,6 +1,6 @@
 begin;
 
-select plan(26);
+select plan(29);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -245,8 +245,56 @@ select is(
   'a rejected projection leaves on-hand unchanged'
 );
 select is(
+  pg_temp.try_execute($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'correction', 50, 'g', '2026-07-26T10:35:00Z', 'operator_correction',
+      'manager-orphan-correction', 'manager-orphan-correction',
+      null, null, null, '{}'::jsonb
+    )
+  $sql$),
+  false,
+  'orphan inventory corrections are rejected'
+);
+select ok(
+  (public.record_inventory_event(
+    'd0000000-0000-4000-8000-000000000001',
+    'd0000000-0000-4000-8000-000000000011',
+    'correction', 50, 'g', '2026-07-26T10:36:00Z', 'operator_correction',
+    'manager-linked-correction', 'manager-linked-correction',
+    null, null,
+    (
+      select id from public.inventory_events
+      where restaurant_id = 'd0000000-0000-4000-8000-000000000001'
+        and client_event_id = 'manager-event-3'
+    ),
+    '{}'::jsonb
+  )).id is not null,
+  'a linked inventory correction is accepted'
+);
+select is(
+  pg_temp.try_execute($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'correction', 25, 'g', '2026-07-26T10:37:00Z', 'operator_correction',
+      'manager-second-correction', 'manager-second-correction',
+      null, null,
+      (
+        select id from public.inventory_events
+        where restaurant_id = 'd0000000-0000-4000-8000-000000000001'
+          and client_event_id = 'manager-event-3'
+      ),
+      '{}'::jsonb
+    )
+  $sql$),
+  false,
+  'an inventory event can be superseded only once'
+);
+select is(
   (select count(*) from public.inventory_events),
-  3::bigint,
+  4::bigint,
   'replays and denied writes create no duplicate tenant-visible events'
 );
 select is(
@@ -258,7 +306,7 @@ reset role;
 
 select is(
   (select count(*) from public.audit_logs where action = 'inventory_event.recorded'),
-  3::bigint,
+  4::bigint,
   'each accepted event records one audit entry'
 );
 
