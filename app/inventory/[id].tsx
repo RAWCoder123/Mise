@@ -21,7 +21,9 @@ import { colors, icon, iconStroke, inventoryStatusColors, radii } from "../../co
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
+import type { MessageKey } from "../../i18n/catalog";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import { inventoryEventReasonMessageKey } from "../../services/domain/inventoryEventTransport";
 import {
   addInventoryItemToOrder,
   fetchInventoryItemOutlook,
@@ -242,12 +244,15 @@ export default function InventoryDetailScreen() {
       const flushSummary = await flushQueuedInventoryEvents(restaurantId);
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
+      const nextQueue = await fetchQueuedInventoryEvents(restaurantId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
       setQuantityText(operation === "stockout" ? "0" : "");
       setNoteText("");
-      setMessage(describeFlushResult(flushSummary, t));
+      setMessage(describeFlushResult(flushSummary, nextQueue, t));
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
     } catch (submitError) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -646,7 +651,9 @@ function QueueEvidenceRow({
         </Text>
         <Text style={styles.queueMeta}>
           {entry.resolutionReason
-            ? t("inventory.ops.queue.reason", { reason: entry.resolutionReason })
+            ? t("inventory.ops.queue.reason", {
+                reason: formatInventoryQueueReason(entry.resolutionReason, t)
+              })
             : t("inventory.ops.queue.attempts", { count: formatNumber(entry.attemptCount) })}
         </Text>
       </View>
@@ -721,6 +728,14 @@ function queueTone(
   return "neutral";
 }
 
+function formatInventoryQueueReason(
+  reason: string,
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  const key = inventoryEventReasonMessageKey(reason);
+  return key ? t(key as MessageKey) : reason;
+}
+
 function describeFlushResult(
   summary: {
     considered: number;
@@ -729,10 +744,24 @@ function describeFlushResult(
     rejected: number;
     deferred: number;
   },
+  queueEntries: readonly InventoryOutboxEntry[],
   t: ReturnType<typeof useLocale>["t"]
 ) {
   if (summary.conflicted > 0) return t("inventory.ops.result.conflict");
-  if (summary.rejected > 0) return t("inventory.ops.result.rejected");
+  if (summary.rejected > 0) {
+    const rejectedReasons = new Set(
+      queueEntries
+        .filter((entry) => entry.status === "rejected" && entry.resolutionReason)
+        .map((entry) => entry.resolutionReason as string)
+    );
+    if (rejectedReasons.has("canonical_conversion_unverified")) {
+      return t("inventory.ops.result.canonicalConversionUnverified");
+    }
+    if (rejectedReasons.has("future_dated_count") || rejectedReasons.has("future_dated_event")) {
+      return t("inventory.ops.result.futureDated");
+    }
+    return t("inventory.ops.result.rejected");
+  }
   if (summary.deferred > 0) return t("inventory.ops.result.deferred");
   if (summary.accepted > 0) return t("inventory.ops.result.accepted");
   return t("inventory.ops.result.queued");

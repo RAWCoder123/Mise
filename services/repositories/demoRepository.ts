@@ -843,7 +843,12 @@ export function createLocalDemoRepository(): MiseRepository {
         !Number.isFinite(conversion) ||
         conversion <= 0
       ) {
-        throw new Error("Inventory item canonical conversion is not verified");
+        // Terminal rejection (matches hosted 22023). Throwing here would make the
+        // device outbox defer forever as a network_retry.
+        return {
+          status: "rejected" as const,
+          reason: "canonical_conversion_unverified"
+        };
       }
 
       const nativeQuantity = input.quantity / conversion;
