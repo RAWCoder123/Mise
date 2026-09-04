@@ -5,6 +5,7 @@ import type {
   InventoryEventType
 } from "./inventoryLedger";
 import { acceptInventoryEvent } from "./inventoryLedger";
+import { onHandLimitRejectionReason } from "./inventoryOnHandGuard";
 
 const eventTypes = new Set<InventoryEventType>([
   "receipt",
@@ -66,9 +67,13 @@ export function normalizeInventoryEventRecord(value: unknown): InventoryEvent {
  * Only deterministic database rejections become terminal outbox results.
  * Authentication, authorization, connectivity, and unknown server errors
  * return null so the caller can surface or retry them.
+ *
+ * Hosted projection uses one 22023 on-hand message for both floor and ceiling.
+ * Pass `eventType` so receipt overflow is not labeled as insufficient stock.
  */
 export function inventoryEventRejectionFromRpcError(
-  error: unknown
+  error: unknown,
+  options?: { eventType?: InventoryEventType | null }
 ): InventoryEventAcceptance | null {
   const record = isRecord(error) ? error : {};
   const code = typeof record.code === "string" ? record.code : "";
@@ -95,7 +100,7 @@ export function inventoryEventRejectionFromRpcError(
   if (code === "22023") {
     return {
       status: "rejected",
-      reason: rejectionReason(message)
+      reason: rejectionReason(message, options?.eventType)
     };
   }
   return null;
@@ -210,8 +215,10 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
   return Object.freeze({ ...value });
 }
 
-function rejectionReason(message: string) {
+function rejectionReason(message: string, eventType?: InventoryEventType | null) {
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
+  // Hosted projection: "Inventory event would move on-hand outside supported limits"
+  if (message.includes("on-hand")) return onHandLimitRejectionReason(eventType);
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
   if (message.includes("evidence")) return "incomplete_evidence";
