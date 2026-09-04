@@ -255,3 +255,129 @@ export function assertSessionMutable(session: Pick<InventoryCountSession, "statu
     throw new Error("This count session is already closed.");
   }
 }
+
+/** Stable operator-facing reasons for count-session RPC and client validation failures. */
+export type InventoryCountSessionFailureReason =
+  | "unverified_canonical_units"
+  | "item_cap_exceeded"
+  | "already_open"
+  | "session_not_found"
+  | "not_editable"
+  | "incomplete_lines"
+  | "already_closed"
+  | "submit_required"
+  | "planning_conflict"
+  | "permission_denied"
+  | "quantity_outside_limits"
+  | "line_not_in_session"
+  | "item_unavailable"
+  | "note_outside_limits"
+  | "lines_payload_invalid"
+  | "unknown";
+
+export type InventoryCountSessionOperation = "start" | "save" | "submit" | "approve" | "cancel";
+
+export type InventoryCountSessionClientFailureReason =
+  | "note_outside_limits"
+  | "incomplete_lines";
+
+/** Client-side count validation that must not surface as a raw RPC string. */
+export class InventoryCountSessionClientError extends Error {
+  readonly reason: InventoryCountSessionClientFailureReason;
+
+  constructor(reason: InventoryCountSessionClientFailureReason) {
+    super(reason);
+    this.name = "InventoryCountSessionClientError";
+    this.reason = reason;
+  }
+}
+
+function extractCountSessionErrorMessage(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string") {
+    return (error as { message: string }).message;
+  }
+  return "";
+}
+
+function extractCountSessionErrorCode(error: unknown): string {
+  if (error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string") {
+    return (error as { code: string }).code;
+  }
+  return "";
+}
+
+/** Maps Postgres/demo/client count-session failures onto stable reason codes. */
+export function inventoryCountSessionFailureReasonFrom(error: unknown): InventoryCountSessionFailureReason {
+  if (error instanceof InventoryCountSessionClientError) return error.reason;
+
+  const code = extractCountSessionErrorCode(error);
+  const message = extractCountSessionErrorMessage(error);
+
+  if (code === "42501" || /not authorized/i.test(message)) return "permission_denied";
+  if (code === "40001" || /planning snapshot changed/i.test(message)) return "planning_conflict";
+  if (/already open/i.test(message)) return "already_open";
+  if (/canonical unit/i.test(message)) return "unverified_canonical_units";
+  if (/at most 250|too many count lines/i.test(message)) return "item_cap_exceeded";
+  if (/count session not found/i.test(message)) return "session_not_found";
+  if (/only an in-progress count session/i.test(message)) return "not_editable";
+  if (/count every item/i.test(message)) return "incomplete_lines";
+  if (/already closed/i.test(message)) return "already_closed";
+  if (/submit the count session before approving/i.test(message)) return "submit_required";
+  if (/counted quantity|quantity is outside supported limits/i.test(message)) {
+    return "quantity_outside_limits";
+  }
+  if (/not part of this session/i.test(message)) return "line_not_in_session";
+  if (/no longer available/i.test(message)) return "item_unavailable";
+  if (/note is (outside supported limits|limited to)/i.test(message)) return "note_outside_limits";
+  if (/count lines payload|provide at least one count line|missing an inventory item|note must be text/i.test(message)) {
+    return "lines_payload_invalid";
+  }
+  return "unknown";
+}
+
+/** Catalog key for a count-session failure reason + mutation operation. */
+export function inventoryCountSessionFailureMessageKey(
+  reason: InventoryCountSessionFailureReason,
+  operation: InventoryCountSessionOperation
+) {
+  switch (reason) {
+    case "unverified_canonical_units":
+      return "inventory.count.startError" as const;
+    case "item_cap_exceeded":
+      return "inventory.count.failure.itemCap" as const;
+    case "already_open":
+      return "inventory.count.failure.alreadyOpen" as const;
+    case "session_not_found":
+      return "inventory.count.failure.sessionNotFound" as const;
+    case "not_editable":
+      return "inventory.count.failure.notEditable" as const;
+    case "incomplete_lines":
+      return "inventory.count.incomplete" as const;
+    case "already_closed":
+      return "inventory.count.failure.alreadyClosed" as const;
+    case "submit_required":
+      return "inventory.count.failure.submitRequired" as const;
+    case "planning_conflict":
+      return "inventory.count.failure.planningConflict" as const;
+    case "permission_denied":
+      return "inventory.count.failure.permissionDenied" as const;
+    case "quantity_outside_limits":
+      return "inventory.count.failure.quantityLimits" as const;
+    case "line_not_in_session":
+      return "inventory.count.failure.lineMissing" as const;
+    case "item_unavailable":
+      return "inventory.count.failure.itemUnavailable" as const;
+    case "note_outside_limits":
+      return "inventory.count.noteTooLong" as const;
+    case "lines_payload_invalid":
+      return "inventory.count.failure.linesInvalid" as const;
+    case "unknown":
+    default:
+      if (operation === "start") return "inventory.count.startErrorGeneric" as const;
+      if (operation === "save") return "inventory.count.saveError" as const;
+      if (operation === "submit") return "inventory.count.submitError" as const;
+      if (operation === "approve") return "inventory.count.approveError" as const;
+      return "inventory.count.cancelError" as const;
+  }
+}
