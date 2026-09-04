@@ -258,11 +258,20 @@ async function runCountSessionDraftAction(
   body: Record<string, unknown>
 ) {
   if (action === "begin_count_session") {
-    return await serviceRpc(securitySupabase, "service_begin_inventory_count_session", {
-      p_actor_user_id: actorUserId,
-      p_restaurant_id: restaurantId,
-      p_note: body.note == null ? null : requireBoundedString(body.note, "note", 240)
-    });
+    try {
+      return await serviceRpc(securitySupabase, "service_begin_inventory_count_session", {
+        p_actor_user_id: actorUserId,
+        p_restaurant_id: restaurantId,
+        p_note: body.note == null ? null : requireBoundedString(body.note, "note", 240)
+      });
+    } catch (error) {
+      // Preserve the operator-facing open-session race as HTTP 409 instead of a
+      // generic 500 "Unexpected function error." Clients resume via fetchOpen.
+      if (isCountSessionAlreadyOpenRpcError(error)) {
+        throw new HttpError(409, "A count session is already open for this restaurant");
+      }
+      throw error;
+    }
   }
   if (action === "save_count_lines") {
     return await serviceRpc(securitySupabase, "service_save_inventory_count_lines", {
@@ -458,6 +467,12 @@ function requireCountLineUpdates(value: unknown) {
 function isRevisionConflict(error: unknown) {
   const candidate = error as { code?: unknown; message?: unknown };
   return candidate?.code === "40001" || String(candidate?.message ?? "").includes("Planning snapshot changed");
+}
+
+function isCountSessionAlreadyOpenRpcError(error: unknown) {
+  const candidate = error as { code?: unknown; message?: unknown };
+  const message = String(candidate?.message ?? "");
+  return /count session is already open/i.test(message);
 }
 
 function auditAction(action: OperationalAction) {

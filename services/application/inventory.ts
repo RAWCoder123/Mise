@@ -1,4 +1,4 @@
-import type { InventoryItemPatch } from "../../types/mise";
+import type { InventoryItemPatch, InventoryCountSessionDetail } from "../../types/mise";
 import {
   buildInventoryControlSummary,
   buildInventoryOutlooks,
@@ -387,9 +387,40 @@ export async function fetchOpenInventoryCountSession(restaurantId: string) {
   return repository.fetchOpenInventoryCountSession(restaurantId);
 }
 
-export async function beginInventoryCountSession(restaurantId: string, note?: string | null) {
+export type BeginInventoryCountSessionResult = {
+  detail: InventoryCountSessionDetail;
+  resumed: boolean;
+};
+
+/**
+ * Start a count session, or resume the restaurant's already-open session.
+ * Covers stale Start UI, multi-device races, and hosted edge 409/500 wrapping of
+ * the unique open-session guard.
+ */
+export async function beginOrResumeInventoryCountSession(
+  restaurantId: string,
+  note?: string | null
+): Promise<BeginInventoryCountSessionResult> {
   const normalizedNote = requireInventoryCountSessionNote(note);
-  return repository.beginInventoryCountSession(restaurantId, normalizedNote);
+  const openBefore = await repository.fetchOpenInventoryCountSession(restaurantId);
+  if (openBefore) {
+    return { detail: openBefore, resumed: true };
+  }
+  try {
+    const detail = await repository.beginInventoryCountSession(restaurantId, normalizedNote);
+    return { detail, resumed: false };
+  } catch (error) {
+    const openAfter = await repository.fetchOpenInventoryCountSession(restaurantId);
+    if (openAfter) {
+      return { detail: openAfter, resumed: true };
+    }
+    throw error;
+  }
+}
+
+export async function beginInventoryCountSession(restaurantId: string, note?: string | null) {
+  const result = await beginOrResumeInventoryCountSession(restaurantId, note);
+  return result.detail;
 }
 
 export async function saveInventoryCountLines(
