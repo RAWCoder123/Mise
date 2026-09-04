@@ -1339,8 +1339,11 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async beginInventoryCountSession(restaurantId, note) {
       return mutateDemoState((state) => {
-        if (findDemoCountSession(state, restaurantId)) {
-          throw new Error("A count session is already open for this restaurant");
+        const existing = findDemoCountSession(state, restaurantId);
+        if (existing) {
+          // Idempotent begin: resume the open session instead of throwing, matching
+          // the application begin-or-resume path used by the Start count screen.
+          return normalizeInventoryCountSessionDetail(existing);
         }
         const now = new Date().toISOString();
         const sessionId = createId("count_session");

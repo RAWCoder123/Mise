@@ -63,6 +63,20 @@ export function isOpenCountSessionStatus(status: InventoryCountSessionStatus): s
   return status === "in_progress" || status === "submitted";
 }
 
+export const COUNT_SESSION_ALREADY_OPEN_MESSAGE =
+  "A count session is already open for this restaurant";
+
+/** Hosted begin raises 23505 with this message; demos historically threw the same text. */
+export function isCountSessionAlreadyOpenError(error: unknown): boolean {
+  const message =
+    typeof error === "string"
+      ? error
+      : error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string"
+        ? (error as { message: string }).message
+        : "";
+  return /count session is already open/i.test(message);
+}
+
 export function summarizeCountSessionProgress(
   lines: readonly Pick<InventoryCountLine, "counted_quantity" | "system_quantity_at_start">[]
 ): CountSessionProgressSummary {
