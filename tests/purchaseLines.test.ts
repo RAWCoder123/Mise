@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
   PURCHASE_LINE_NORMALIZATION_VERSION,
+  foldPurchaseLineAccents,
   markCurrentPurchaseLines,
   normalizePurchaseLineDescription,
   normalizePurchaseLineInput,
@@ -460,4 +462,76 @@ test("every writer must state direction", () => {
     } as never),
     /purchase or a credit/
   );
+});
+
+test("accent folding makes the key locale-independent and ASCII", () => {
+  // Every case change and class test is pinned to C in both runtimes, so an
+  // accented description folds to plain ASCII rather than depending on the
+  // machine's LC_CTYPE.
+  const cases: [string, string | null][] = [
+    ["Jalapeño Peppers 10 LB", "jalapeno peppers"],
+    ["CRÈME FRAÎCHE", "creme fraiche"],
+    ["Gruyère AOP 2.5kg", "gruyere aop"],
+    ["Müller-Thurgau", "muller thurgau"],
+    ["Æbleskiver mix", "aebleskiver mix"],
+    ["Weißbier 24/500ml", "weissbier"],
+    ["Œuf", "oeuf"],
+    ["Łukasz Pierogi 5lb", "lukasz pierogi"],
+    ["café blend", "cafe blend"],
+    ["豚バラ肉 5kg", null]
+  ];
+  for (const [raw, expected] of cases) {
+    assert.equal(key(raw), expected, raw);
+    if (expected !== null) {
+      assert.match(key(raw)!, /^[a-z0-9 ]+$/, `${raw} must fold to plain ASCII`);
+    }
+  }
+});
+
+test("case and accent agree on one key, which is what netting depends on", () => {
+  assert.equal(key("JALAPEÑO PEPPERS"), key("jalapeño peppers"));
+  assert.equal(key("JALAPEÑO PEPPERS"), "jalapeno peppers");
+  assert.equal(key("Jalapeno Peppers"), key("JALAPEÑO PEPPERS"));
+});
+
+test("an unmapped non-ASCII character is a separator, never a letter", () => {
+  // Deterministic on every machine: it can never count as alphanumeric under
+  // one ctype and as punctuation under another.
+  assert.equal(key("豚バラ肉"), null);
+  assert.equal(key("café ☕ blend"), "cafe blend");
+  assert.equal(key("Ω Ω Ω"), null);
+});
+
+test("pack extraction still reads through accented text", () => {
+  assert.equal(pack("crème fraîche 6/1GAL"), "6x1gal");
+  assert.equal(pack("Gruyère AOP 2.5kg"), "2.5kg");
+  assert.equal(pack("Æbleskiver 12 ct"), "12ct");
+});
+
+test("the SQL and TypeScript accent folds are the same map", () => {
+  // Both are generated from one source; this fails the moment they drift.
+  const migration = readFileSync(
+    new URL("../supabase/migrations/20260903120000_mise_004c_purchase_line_ledger.sql",
+      import.meta.url), "utf8"
+  );
+  const fold = migration.match(
+    /create or replace function private\.fold_purchase_line_accents[\s\S]*?\$\$;/
+  )?.[0] ?? "";
+  const [, sqlSrc, sqlDst] = fold.match(/'([^']{100,})',\s*\n\s*'([^']{100,})'\s*\n\s*\);/) ?? [];
+  assert.ok(sqlSrc && sqlDst, "the SQL fold map must be readable");
+  assert.equal(sqlSrc!.length, sqlDst!.length, "translate() must stay one-to-one");
+  for (const [index, character] of [...sqlSrc!].entries()) {
+    assert.equal(
+      foldPurchaseLineAccents(character),
+      sqlDst![index],
+      `TypeScript must fold ${character} exactly as the SQL map does`
+    );
+  }
+  for (const [from, to] of Object.entries({
+    "\u00c6": "AE", "\u00e6": "ae", "\u0152": "OE", "\u0153": "oe",
+    "\u00df": "ss", "\u00de": "TH", "\u00fe": "th", "\u0132": "IJ", "\u0133": "ij"
+  })) {
+    assert.ok(fold.includes(`'${from}', '${to}'`), `SQL must expand ${from}`);
+    assert.equal(foldPurchaseLineAccents(from), to, `TypeScript must expand ${from}`);
+  }
 });

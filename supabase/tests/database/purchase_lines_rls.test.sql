@@ -7,7 +7,7 @@ begin;
 -- This file has no loops or conditional assertion paths, so call sites and
 -- executions are the same number. If pgTAP reports a different count, that is a
 -- failure to investigate, not a number to edit.
-select plan(58);
+select plan(65);
 
 create or replace function pg_temp.error_of(statement text)
 returns text language plpgsql as $$
@@ -80,6 +80,69 @@ select isnt(
   private.normalize_purchase_item_key('Chicken Thigh 40lb'),
   private.normalize_purchase_item_key('Chicken Thighs 40lb'),
   'ambiguity is preserved: no stemming or fuzzy matching'
+);
+
+-- ---------------------------------------- MISE-005A locale independence
+-- The key feeds a CHECK constraint on an append-only table, so if LC_CTYPE
+-- ever changed the recomputed value, a restore would abort on rows that could
+-- not then be repaired in place. Accents are folded first and every case
+-- change and class test is pinned to COLLATE "C", so the result cannot move.
+-- Compared as bytea because a text result inherits its argument's collation.
+select is(
+  (select count(*) from (values
+     ('JALAPENO PEPPERS 10 LB'), ('creme fraiche 6/1GAL'), ('Weissbier 24/500ml'),
+     ('Gruyere AOP 2.5kg'), ('Aebleskiver 12 ct'), ('MULLER 40LB CASE'),
+     ('Lukasz 6 x 1 gal'), ('cafe blend'), ('###'), ('  mixed   CASE  40lb ')
+   ) fixture(sample)
+   where convert_to(private.normalize_purchase_item_key(fixture.sample collate "C"), 'UTF8')
+     is distinct from
+     convert_to(private.normalize_purchase_item_key(fixture.sample collate "en_US.utf8"), 'UTF8')),
+  0::bigint,
+  'the item key is byte-identical under C and under the database ctype'
+);
+select is(
+  (select count(*) from (values
+     ('JALAPEÑO PEPPERS 10 LB'), ('crème fraîche 6/1GAL'), ('Weißbier 24/500ml'),
+     ('Gruyère AOP 2.5kg'), ('Æbleskiver 12 ct'), ('MÜLLER 40LB CASE'),
+     ('Łukasz 6 x 1 gal'), ('café blend'), ('豚バラ肉 5kg')
+   ) fixture(sample)
+   where convert_to(private.normalize_purchase_item_key(fixture.sample collate "C"), 'UTF8')
+     is distinct from
+     convert_to(private.normalize_purchase_item_key(fixture.sample collate "en_US.utf8"), 'UTF8')),
+  0::bigint,
+  'accented and non-Latin input is byte-identical under both ctypes too'
+);
+select is(
+  private.normalize_purchase_item_key('JALAPEÑO PEPPERS'),
+  private.normalize_purchase_item_key('jalapeño peppers'),
+  'case and accent agree on one key, which is what netting depends on'
+);
+select is(
+  private.normalize_purchase_item_key('JALAPEÑO PEPPERS'),
+  'jalapeno peppers',
+  'the agreed key is the plain ASCII fold'
+);
+select is(
+  (select count(*) from (values
+     ('Jalapeño Peppers 10 LB'), ('CRÈME FRAÎCHE'), ('Gruyère AOP 2.5kg'),
+     ('Müller-Thurgau'), ('Æbleskiver mix'), ('Weißbier 24/500ml'),
+     ('Łukasz Pierogi 5lb'), ('café blend')
+   ) fixture(sample)
+   where private.normalize_purchase_item_key(fixture.sample) !~ '^[a-z0-9 ]+$'),
+  0::bigint,
+  'the key is always plain ASCII, whatever the description contained'
+);
+select is(
+  (select private.normalize_purchase_item_key('Weißbier') || '|'
+       || private.normalize_purchase_item_key('Æbleskiver') || '|'
+       || private.normalize_purchase_item_key('Œuf')),
+  'weissbier|aebleskiver|oeuf',
+  'characters that widen are expanded, not dropped'
+);
+select is(
+  private.normalize_purchase_item_key('豚バラ肉 5kg'),
+  null::text,
+  'an unmapped non-ASCII character is a separator everywhere, never a letter'
 );
 
 -- ---------------------------------------------------------------- ingestion

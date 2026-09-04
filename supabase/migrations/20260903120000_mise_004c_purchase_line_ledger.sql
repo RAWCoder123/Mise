@@ -48,8 +48,35 @@ as $$
   );
 $$;
 
--- Step 1 of normalization: lowercase, collapse whitespace, trim. Punctuation
--- survives this step so pack/size structure such as `6/1gal` is still readable.
+-- MISE-005A. Accent folding runs before any case change or character-class
+-- test, so nothing downstream depends on LC_CTYPE. unaccent() is deliberately
+-- not used: it is dictionary-backed and therefore not immutable.
+-- translate() is strictly one-to-one, so the 9 characters that widen are
+-- expanded by replace() first. Coverage is every letter in the Latin-1
+-- Supplement and Latin Extended-A, plus NBSP folded to a plain space.
+-- Any character outside this map is left alone here and then removed
+-- deterministically by the ASCII-only class tests below.
+create or replace function private.fold_purchase_line_accents(p_value text)
+returns text
+language sql
+immutable
+security invoker
+set search_path = ''
+as $$
+  select pg_catalog.translate(
+    pg_catalog.replace(pg_catalog.replace(pg_catalog.replace(pg_catalog.replace(pg_catalog.replace(pg_catalog.replace(pg_catalog.replace(pg_catalog.replace(pg_catalog.replace(p_value, 'Æ', 'AE'), 'Þ', 'TH'), 'ß', 'ss'), 'æ', 'ae'), 'þ', 'th'), 'Ĳ', 'IJ'), 'ĳ', 'ij'), 'Œ', 'OE'), 'œ', 'oe'),
+    'ÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝàáâãäåçèéêëìíîïðñòóôõöøùúûüýÿĀāĂăĄąĆćĈĉĊċČčĎďĐđĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĦħĨĩĪīĬĭĮįİıĴĵĶķĸĹĺĻļĽľĿŀŁłŃńŅņŇňŉŊŋŌōŎŏŐőŔŕŖŗŘřŚśŜŝŞşŠšŢţŤťŦŧŨũŪūŬŭŮůŰűŲųŴŵŶŷŸŹźŻżŽžſ ',
+    'AAAAAACEEEEIIIIDNOOOOOOUUUUYaaaaaaceeeeiiiidnoooooouuuuyyAaAaAaCcCcCcCcDdDdEeEeEeEeEeGgGgGgGgHhHhIiIiIiIiIiJjKkkLlLlLlLlLlNnNnNnnNnOoOoOoRrRrRrSsSsSsSsTtTtTtUuUuUuUuUuUuWwYyYZzZzZzs '
+  );
+$$;
+
+revoke all on function private.fold_purchase_line_accents(text)
+from public, anon, authenticated, service_role;
+
+-- Step 1 of normalization: fold accents, lowercase, collapse whitespace, trim.
+-- Every case change and class test is pinned to COLLATE "C", so the result is
+-- the same under any database LC_CTYPE. Punctuation survives this step so
+-- pack/size structure such as `6/1gal` is still readable.
 create or replace function private.fold_purchase_line_description(p_value text)
 returns text
 language sql
@@ -58,7 +85,10 @@ security invoker
 set search_path = ''
 as $$
   select pg_catalog.btrim(
-    pg_catalog.regexp_replace(pg_catalog.lower(p_value), '[[:space:]]+', ' ', 'g')
+    pg_catalog.regexp_replace(
+      pg_catalog.lower(private.fold_purchase_line_accents(p_value) collate "C") collate "C",
+      '[[:space:]]+', ' ', 'g'
+    )
   );
 $$;
 
@@ -78,7 +108,7 @@ as $$
   end
   from (
     select pg_catalog.regexp_match(
-      private.fold_purchase_line_description(p_description),
+      private.fold_purchase_line_description(p_description) collate "C",
       private.purchase_line_pack_pattern()
     ) as groups
   ) captured;
@@ -87,6 +117,10 @@ $$;
 -- Step 2 and 3: lift every pack/size token out, then strip punctuation from
 -- what remains. No stemming, no synonyms, no fuzzy matching. Two spellings a
 -- human would call the same item stay distinct. Null when nothing survives.
+-- Pinned to COLLATE "C" so [[:alnum:]] means ASCII alphanumerics under every
+-- LC_CTYPE. An unmapped non-ASCII character is therefore always treated as a
+-- separator, identically on every cluster, rather than as a letter on one and
+-- punctuation on another.
 create or replace function private.normalize_purchase_item_key(p_description text)
 returns text
 language sql
@@ -99,15 +133,15 @@ as $$
       pg_catalog.regexp_replace(
         pg_catalog.regexp_replace(
           pg_catalog.regexp_replace(
-            private.fold_purchase_line_description(p_description),
+            private.fold_purchase_line_description(p_description) collate "C",
             private.purchase_line_pack_pattern(),
             ' ',
             'g'
-          ),
+          ) collate "C",
           '[^[:alnum:]]+',
           ' ',
           'g'
-        ),
+        ) collate "C",
         '[[:space:]]+',
         ' ',
         'g'
