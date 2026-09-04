@@ -128,7 +128,9 @@ test("projects counts, receipts, usage, waste, and corrections in server sequenc
       eventType: "usage",
       quantity: 400,
       clientEventId: "usage-1",
-      idempotencyKey: "usage-1"
+      idempotencyKey: "usage-1",
+      reasonCode: "prep",
+      metadata: { note: "Mise en place draw-down" }
     }),
     "event-3"
   );
