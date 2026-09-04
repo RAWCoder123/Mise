@@ -82,6 +82,12 @@ export function acceptInventoryEvent(input: {
       : { status: "conflict", reason: "idempotency_payload_mismatch", existingEvent: existing };
   }
 
+  // Corrections are audited repairs of a specific prior row. Orphan corrections
+  // (no supersedes link) would be indistinguishable from unsigned adjustments.
+  if (input.candidate.eventType === "correction" && !input.candidate.supersedesEventId?.trim()) {
+    return { status: "rejected", reason: "correction_requires_supersede" };
+  }
+
   if (input.candidate.supersedesEventId) {
     if (input.candidate.eventType !== "correction") {
       return { status: "rejected", reason: "only_corrections_can_supersede" };

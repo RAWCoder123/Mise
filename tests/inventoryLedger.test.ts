@@ -77,6 +77,26 @@ test("surfaces an idempotency conflict instead of overwriting the first event", 
 
 test("requires corrections to supersede a same-tenant, same-item event once", () => {
   const receipt = accepted([], input(), "event-1");
+  const orphan = acceptInventoryEvent({
+    existingEvents: [receipt],
+    candidate: input({
+      eventType: "correction",
+      quantity: -100,
+      clientEventId: "device-event-orphan",
+      idempotencyKey: "correction:orphan",
+      supersedesEventId: null
+    }),
+    authority: {
+      id: "event-orphan",
+      actorUserId: "manager-1",
+      recordedAt: "2026-07-26T10:02:00.000Z"
+    }
+  });
+  assert.equal(orphan.status, "rejected");
+  if (orphan.status === "rejected") {
+    assert.equal(orphan.reason, "correction_requires_supersede");
+  }
+
   const correction = accepted(
     [receipt],
     input({
