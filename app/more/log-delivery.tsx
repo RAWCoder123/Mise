@@ -15,6 +15,11 @@ import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import type { MessageKey } from "../../i18n/catalog";
+import {
+  inventoryOperatorMutationFailureMessageKey,
+  inventoryOperatorMutationFailureReasonFrom
+} from "../../services/domain/inventoryOperatorMutationFailures";
 import {
   fetchDeliveryHistory,
   fetchInventoryItems,
@@ -252,11 +257,8 @@ export default function LogDeliveryScreen() {
         operation: "receipt",
         restaurant_id: restaurantId
       });
-      setMessage(
-        submitError instanceof Error && submitError.message.trim()
-          ? submitError.message.slice(0, 220)
-          : t("inventory.ops.submitError")
-      );
+      const reason = inventoryOperatorMutationFailureReasonFrom(submitError);
+      setMessage(t(inventoryOperatorMutationFailureMessageKey(reason) as MessageKey));
       setMessageIsError(true);
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSubmitting(false);
