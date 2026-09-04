@@ -8,8 +8,12 @@ export interface DeliveryLineBuildResult {
 
 /**
  * Builds idempotent as-ordered delivery lines from recommendations linked to a
- * supplier order. Hosted RPC requires verified canonical units; unverified
- * items are skipped and reported so the operator can finish unit setup.
+ * supplier order. Line quantities are purchase-unit amounts (recommendation /
+ * inventory item.unit). `canonicalUnit` names the verified ledger unit the
+ * hosted RPC converts into via `canonical_quantity_per_unit` when writing the
+ * inventory receipt — it is not the unit of `orderedQuantity`/`receivedQuantity`.
+ * Hosted RPC requires verified canonical units; unverified items are skipped
+ * and reported so the operator can finish unit setup.
  */
 export function buildDeliveryLinesFromOrderRecommendations(input: {
   order: SupplierOrder;

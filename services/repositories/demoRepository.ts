@@ -86,6 +86,7 @@ import {
   type InventoryEvent,
   type InventoryEventInput
 } from "../domain/inventoryLedger";
+import { purchaseUnitsToCanonicalQuantity } from "../domain/supplierDeliveryCanonical";
 import { isTemporallyValidCount } from "../domain/inventoryCountAuthority";
 import {
   PurchaseAuthorityBlockedError,
@@ -3797,13 +3798,87 @@ export function createLocalDemoRepository(): MiseRepository {
         }
 
         for (const line of input.lines) {
+          const targetItemId = line.substitutionInventoryItemId ?? line.inventoryItemId;
           const item = state.inventoryItems.find(
-            (entry) => entry.restaurant_id === restaurantId && entry.id === line.inventoryItemId
+            (entry) => entry.restaurant_id === restaurantId && entry.id === targetItemId
           );
           if (!item) continue;
           const receivedNet = Math.max(0, line.receivedQuantity - (line.damagedQuantity ?? 0));
-          item.current_quantity = Math.round((item.current_quantity + receivedNet) * 1000) / 1000;
-          item.last_updated = input.receivedAt;
+          if (receivedNet <= 0) continue;
+          const normalizedItem = normalizeInventoryItem(item);
+          const conversion = normalizedItem.canonical_quantity_per_unit;
+          const canLedger =
+            normalizedItem.canonical_unit_verification_status === "verified" &&
+            normalizedItem.canonical_unit === line.canonicalUnit &&
+            conversion !== null &&
+            conversion !== undefined &&
+            Number.isFinite(conversion) &&
+            conversion > 0;
+
+          if (!canLedger) {
+            // Demo-only incomplete unit setup: still bump native on-hand without a
+            // ledger row. Hosted receive requires verified conversion and rejects.
+            item.current_quantity = Math.round((item.current_quantity + receivedNet) * 1000) / 1000;
+            item.last_updated = input.receivedAt;
+            continue;
+          }
+
+          const ledgerQuantity = purchaseUnitsToCanonicalQuantity({
+            purchaseQuantity: receivedNet,
+            canonicalQuantityPerUnit: conversion
+          });
+          const clientEventId = `${input.clientDeliveryId}:${targetItemId}`;
+          const idempotencyKey = `supplier_delivery:${input.clientDeliveryId.slice(0, 160)}:${targetItemId}`;
+          const eventInput: InventoryEventInput = {
+            restaurantId,
+            inventoryItemId: targetItemId,
+            eventType: "receipt",
+            quantity: ledgerQuantity,
+            canonicalUnit: line.canonicalUnit,
+            effectiveAt: input.receivedAt,
+            source: "supplier_delivery",
+            sourceReference: deliveryId,
+            reasonCode: null,
+            clientEventId,
+            idempotencyKey,
+            supersedesEventId: null,
+            metadata: {
+              supplierOrderId: order.id,
+              deliveryId,
+              supplierName: order.supplier_name,
+              sequenceId: `supplier-order:${order.id}`,
+              purchaseUnitQuantity: receivedNet,
+              canonicalQuantityPerUnit: conversion
+            }
+          };
+          const acceptance = acceptInventoryEvent({
+            existingEvents: state.inventoryEvents ?? [],
+            candidate: eventInput,
+            authority: {
+              id: deterministicDemoEventId(restaurantId, clientEventId),
+              actorUserId: DEMO_USER_ID,
+              recordedAt: input.receivedAt
+            }
+          });
+          if (acceptance.status !== "accepted" && acceptance.status !== "duplicate") {
+            throw new Error(
+              "reason" in acceptance ? acceptance.reason : "Supplier delivery receipt was rejected"
+            );
+          }
+          if (acceptance.status === "duplicate") continue;
+          const projectionApplied = inventoryEventMovesProjection(
+            state.inventoryEvents ?? [],
+            eventInput,
+            acceptance.event.recordedAt
+          );
+          const recordedEvent = { ...acceptance.event, projectionApplied };
+          state.inventoryEvents = [...(state.inventoryEvents ?? []), recordedEvent];
+          if (projectionApplied) {
+            const nativeQuantity = ledgerQuantity / conversion;
+            item.current_quantity =
+              Math.round((item.current_quantity + nativeQuantity) * 1000) / 1000;
+            item.last_updated = input.receivedAt;
+          }
         }
 
         appendDemoAuditLog(state, {
