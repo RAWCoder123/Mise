@@ -167,11 +167,22 @@ export function projectInventoryEvents(
   };
 }
 
+/** Hosted count-session approval stamps this exact source on ledger count rows. */
+export const INVENTORY_COUNT_SESSION_SOURCE = "approve_count_session" as const;
+
 function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
+  // Physical counts may only enter the ledger from audited session approval.
+  // Mirrors private.enforce_inventory_count_session_source.
+  if (
+    input.eventType === "count" &&
+    input.source.trim() !== INVENTORY_COUNT_SESSION_SOURCE
+  ) {
+    return "count_requires_session";
+  }
   // A physical count observes the present, so it may not be effective in the future.
   // Mirrors the reject_future_dated_inventory_count database trigger.
   if (
