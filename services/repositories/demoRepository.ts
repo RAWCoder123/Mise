@@ -86,6 +86,7 @@ import {
   type InventoryEvent,
   type InventoryEventInput
 } from "../domain/inventoryLedger";
+import { stampStockoutQuantityBeforeMetadata } from "../domain/stockoutQuantityBefore";
 import { isTemporallyValidCount } from "../domain/inventoryCountAuthority";
 import {
   PurchaseAuthorityBlockedError,
@@ -847,6 +848,7 @@ export function createLocalDemoRepository(): MiseRepository {
       }
 
       const nativeQuantity = input.quantity / conversion;
+      const quantityBeforeNative = item.current_quantity;
       const projectedQuantity =
         input.eventType === "count"
           ? nativeQuantity
@@ -876,15 +878,30 @@ export function createLocalDemoRepository(): MiseRepository {
       });
       if (acceptance.status !== "accepted") return acceptance;
 
+      // Mirrors private.stamp_stockout_inventory_event_quantity_before: stockout rows
+      // keep the wiped native on-hand as server-owned metadata. Idempotency compares
+      // client-comparable metadata only, so offline replay still dedupes.
+      const stampedEvent =
+        input.eventType === "stockout"
+          ? {
+              ...acceptance.event,
+              metadata: stampStockoutQuantityBeforeMetadata(
+                acceptance.event.metadata,
+                quantityBeforeNative,
+                conversion
+              )
+            }
+          : acceptance.event;
+
       // Mirrors private.stamp_inventory_event_projection_applied: a row effective at
       // or before the item's authoritative count is retained in history but must not
       // move the on-hand projection again.
       const projectionApplied = inventoryEventMovesProjection(
         state.inventoryEvents ?? [],
         input,
-        acceptance.event.recordedAt
+        stampedEvent.recordedAt
       );
-      const recordedEvent = { ...acceptance.event, projectionApplied };
+      const recordedEvent = { ...stampedEvent, projectionApplied };
       state.inventoryEvents = [...(state.inventoryEvents ?? []), recordedEvent];
       if (projectionApplied) {
         item.current_quantity = projectedQuantity;
