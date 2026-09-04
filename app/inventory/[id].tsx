@@ -21,7 +21,12 @@ import { colors, icon, iconStroke, inventoryStatusColors, radii } from "../../co
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
+import type { MessageKey } from "../../i18n/catalog";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import {
+  inventoryOperatorMutationFailureMessageKey,
+  inventoryOperatorMutationFailureReasonFrom
+} from "../../services/domain/inventoryOperatorMutationFailures";
 import {
   addInventoryItemToOrder,
   fetchInventoryItemOutlook,
@@ -35,6 +40,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+import { captureMiseError } from "../../services/telemetry";
 import { operatingLimits } from "../../services/miseValidation";
 import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
@@ -251,11 +257,13 @@ export default function InventoryDetailScreen() {
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
     } catch (submitError) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setMessage(
-        submitError instanceof Error && submitError.message.trim()
-          ? submitError.message.slice(0, 220)
-          : t("inventory.ops.submitError")
-      );
+      captureMiseError(submitError, {
+        flow: "inventory_detail",
+        operation,
+        restaurant_id: restaurantId
+      });
+      const reason = inventoryOperatorMutationFailureReasonFrom(submitError);
+      setMessage(t(inventoryOperatorMutationFailureMessageKey(reason) as MessageKey));
       setMessageIsError(true);
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSubmittingOperation(false);
@@ -307,11 +315,15 @@ export default function InventoryDetailScreen() {
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setMessage(t("inventory.detail.settingsUpdated"));
-    } catch {
-      if (activeRestaurantIdRef.current === restaurantId) {
-        setMessage(t("inventory.detail.settingsSaveError"));
-        setMessageIsError(true);
-      }
+    } catch (saveError) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(saveError, {
+        flow: "inventory_detail",
+        operation: "save_settings",
+        restaurant_id: restaurantId
+      });
+      setMessage(t("inventory.detail.settingsSaveError"));
+      setMessageIsError(true);
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSavingSettings(false);
     }
@@ -332,11 +344,15 @@ export default function InventoryDetailScreen() {
       await addInventoryItemToOrder(restaurantId, item.id);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setMessage(t("inventory.detail.added"));
-    } catch {
-      if (activeRestaurantIdRef.current === restaurantId) {
-        setMessage(t("inventory.detail.addError"));
-        setMessageIsError(true);
-      }
+    } catch (orderError) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(orderError, {
+        flow: "inventory_detail",
+        operation: "add_to_order",
+        restaurant_id: restaurantId
+      });
+      setMessage(t("inventory.detail.addError"));
+      setMessageIsError(true);
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSavingSettings(false);
     }
