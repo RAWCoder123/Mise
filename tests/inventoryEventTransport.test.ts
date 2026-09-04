@@ -89,6 +89,33 @@ test("known database validation and conflict errors settle without blind retries
     }),
     { status: "rejected", reason: "invalid_canonical_unit" }
   );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError(
+      {
+        code: "22023",
+        message: "Inventory event would move on-hand outside supported limits"
+      },
+      { eventType: "receipt" }
+    ),
+    { status: "rejected", reason: "exceeds_on_hand_ceiling" }
+  );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError(
+      {
+        code: "22023",
+        message: "Inventory event would move on-hand outside supported limits"
+      },
+      { eventType: "waste" }
+    ),
+    { status: "rejected", reason: "insufficient_on_hand" }
+  );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError({
+      code: "22023",
+      message: "Inventory event would move on-hand outside supported limits"
+    }),
+    { status: "rejected", reason: "on_hand_out_of_limits" }
+  );
 });
 
 test("transport and authorization failures remain retryable or surfaced", () => {
@@ -117,6 +144,7 @@ test("hosted inventory writes use only the authoritative RPC boundary", () => {
 
   assert.ok(start >= 0 && end > start);
   assert.match(method, /client\.rpc\(\s*"record_inventory_event"/);
+  assert.match(method, /inventoryEventRejectionFromRpcError\(error,\s*\{\s*eventType:\s*input\.eventType/);
   assert.doesNotMatch(method, /\.from\(\s*"inventory_events"\s*\)/);
   assert.doesNotMatch(method, /\.(?:insert|update|delete)\(/);
 });

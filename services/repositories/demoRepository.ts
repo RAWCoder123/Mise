@@ -857,12 +857,22 @@ export function createLocalDemoRepository(): MiseRepository {
               : input.eventType === "waste" || input.eventType === "usage"
                 ? item.current_quantity - nativeQuantity
                 : item.current_quantity + nativeQuantity;
+      // Terminal projection failures must settle as rejected — throwing here would
+      // make the device outbox treat a known invalid move as a network retry.
       if (
         !Number.isFinite(projectedQuantity) ||
         projectedQuantity < 0 ||
         projectedQuantity > 1_000_000
       ) {
-        throw new Error("Inventory event would move on-hand outside supported limits");
+        return {
+          status: "rejected" as const,
+          reason:
+            Number.isFinite(projectedQuantity) && projectedQuantity < 0
+              ? "insufficient_on_hand"
+              : Number.isFinite(projectedQuantity) && projectedQuantity > 1_000_000
+                ? "exceeds_on_hand_ceiling"
+                : "invalid_inventory_event"
+        };
       }
 
       const acceptance = acceptInventoryEvent({

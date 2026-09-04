@@ -1246,7 +1246,9 @@ export function createSupabaseRepository(): MiseRepository {
         inventoryEventRpcArguments(input)
       );
       if (error) {
-        const terminal = inventoryEventRejectionFromRpcError(error);
+        const terminal = inventoryEventRejectionFromRpcError(error, {
+          eventType: input.eventType
+        });
         if (terminal) return terminal;
         throwRepositoryError(error, input.restaurantId);
       }

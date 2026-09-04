@@ -15,9 +15,12 @@ import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { checkIncreasingInventoryFitsOnHand } from "../../services/domain/inventoryOnHandGuard";
+import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   fetchDeliveryHistory,
   fetchInventoryItems,
+  fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
   type DeliveryHistoryEntry
@@ -56,10 +59,23 @@ function describeFlushResult(
     rejected: number;
     deferred: number;
   },
+  queueEntries: readonly InventoryOutboxEntry[],
   t: ReturnType<typeof useLocale>["t"]
 ) {
   if (summary.conflicted > 0) return t("inventory.ops.result.conflict");
-  if (summary.rejected > 0) return t("inventory.ops.result.rejected");
+  if (summary.rejected > 0) {
+    const exceedsCeiling = queueEntries.some(
+      (entry) =>
+        entry.status === "rejected" && entry.resolutionReason === "exceeds_on_hand_ceiling"
+    );
+    if (exceedsCeiling) return t("inventory.ops.result.exceedsOnHandCeiling");
+    const insufficientOnHand = queueEntries.some(
+      (entry) =>
+        entry.status === "rejected" && entry.resolutionReason === "insufficient_on_hand"
+    );
+    if (insufficientOnHand) return t("inventory.ops.result.insufficientOnHand");
+    return t("inventory.ops.result.rejected");
+  }
   if (summary.deferred > 0) return t("inventory.ops.result.deferred");
   if (summary.accepted > 0) return t("inventory.ops.result.accepted");
   return t("inventory.ops.result.queued");
@@ -211,6 +227,29 @@ export default function LogDeliveryScreen() {
       return;
     }
 
+    const conversion = selected.canonical_quantity_per_unit;
+    if (typeof conversion === "number" && Number.isFinite(conversion) && conversion > 0) {
+      const onHandCheck = checkIncreasingInventoryFitsOnHand({
+        currentNativeQuantity: selected.current_quantity,
+        canonicalQuantityPerUnit: conversion,
+        increaseCanonicalQuantity: quantity
+      });
+      if (!onHandCheck.ok && onHandCheck.reason === "exceeds_on_hand_ceiling") {
+        const remaining = onHandCheck.remainingCanonicalCapacity ?? 0;
+        const unitLabel = t(
+          `inventory.ops.unit.${selected.canonical_unit}` as "inventory.ops.unit.g"
+        );
+        setMessage(
+          t("inventory.ops.exceedsOnHandCeiling", {
+            remaining: formatNumber(remaining, { maximumFractionDigits: 2 }),
+            unit: unitLabel
+          })
+        );
+        setMessageIsError(true);
+        return;
+      }
+    }
+
     const restaurantId = restaurant.id;
     const itemId = selected.id;
     setSubmitting(true);
@@ -231,7 +270,10 @@ export default function LogDeliveryScreen() {
       const flushSummary = await flushQueuedInventoryEvents(restaurantId);
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
-      setMessage(describeFlushResult(flushSummary, t));
+      const nextQueue = await fetchQueuedInventoryEvents(restaurantId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+
+      setMessage(describeFlushResult(flushSummary, nextQueue, t));
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
       setLastLoggedItemId(itemId);
       setQuantityText("");
