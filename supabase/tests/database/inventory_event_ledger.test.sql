@@ -159,43 +159,65 @@ select is(
   false,
   'a manager cannot record an event for another restaurant'
 );
-select ok(
-  (public.record_inventory_event(
-    'd0000000-0000-4000-8000-000000000001',
-    'd0000000-0000-4000-8000-000000000011',
-    'count', 1000, 'g', '2026-07-26T10:00:00Z', 'manual_count',
-    'manager-event-1', 'manager-event-1'
-  )).id is not null,
-  'a manager can record a scoped count'
-);
 select is(
-  (
-    public.record_inventory_event(
+  pg_temp.try_execute($sql$
+    select public.record_inventory_event(
       'd0000000-0000-4000-8000-000000000001',
       'd0000000-0000-4000-8000-000000000011',
       'count', 1000, 'g', '2026-07-26T10:00:00Z', 'manual_count',
       'manager-event-1', 'manager-event-1'
     )
-  ).id,
-  (
-    select id from public.inventory_events
-    where restaurant_id = 'd0000000-0000-4000-8000-000000000001'
-      and client_event_id = 'manager-event-1'
-  ),
-  'an identical offline replay returns the authoritative event'
+  $sql$),
+  false,
+  'a manager cannot record a count outside an approved count session'
 );
 select is(
   pg_temp.try_execute($sql$
     select public.record_inventory_event(
       'd0000000-0000-4000-8000-000000000001',
       'd0000000-0000-4000-8000-000000000011',
-      'count', 999, 'g', '2026-07-26T10:00:00Z', 'manual_count',
-      'manager-event-1', 'manager-event-1'
+      'count', 1000, 'g', '2026-07-26T10:00:00Z', 'approve_count_session',
+      'manager-spoof-1', 'manager-spoof-1'
     )
   $sql$),
   false,
-  'a changed offline replay surfaces an idempotency conflict'
+  'a manager cannot spoof approve_count_session through the ledger RPC'
 );
+reset role;
+
+-- Seed an audited count via service_role so receipt/waste projection assertions
+-- remain anchored to a session-sourced count row.
+set local role service_role;
+insert into public.inventory_events (
+  restaurant_id,
+  inventory_item_id,
+  event_type,
+  quantity,
+  canonical_unit,
+  effective_at,
+  actor_user_id,
+  source,
+  client_event_id,
+  idempotency_key,
+  metadata
+) values (
+  'd0000000-0000-4000-8000-000000000001',
+  'd0000000-0000-4000-8000-000000000011',
+  'count',
+  1000,
+  'g',
+  '2026-07-26T10:00:00Z',
+  'd1111111-1111-4111-8111-111111111111',
+  'approve_count_session',
+  'manager-event-1',
+  'manager-event-1',
+  '{}'::jsonb
+);
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'd1111111-1111-4111-8111-111111111111', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
 select ok(
   (public.record_inventory_event(
     'd0000000-0000-4000-8000-000000000001',
@@ -204,6 +226,34 @@ select ok(
     'manager-event-2', 'manager-event-2'
   )).id is not null,
   'an accepted receipt is appended'
+);
+select is(
+  (
+    public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'receipt', 100, 'g', '2026-07-26T10:10:00Z', 'operator_receipt',
+      'manager-event-2', 'manager-event-2'
+    )
+  ).id,
+  (
+    select id from public.inventory_events
+    where restaurant_id = 'd0000000-0000-4000-8000-000000000001'
+      and client_event_id = 'manager-event-2'
+  ),
+  'an identical offline replay returns the authoritative event'
+);
+select is(
+  pg_temp.try_execute($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'receipt', 99, 'g', '2026-07-26T10:10:00Z', 'operator_receipt',
+      'manager-event-2', 'manager-event-2'
+    )
+  $sql$),
+  false,
+  'a changed offline replay surfaces an idempotency conflict'
 );
 select ok(
   (public.record_inventory_event(

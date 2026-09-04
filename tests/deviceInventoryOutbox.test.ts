@@ -31,15 +31,15 @@ function memoryStorage(): InventoryOutboxStorage {
 const event: InventoryEventInput = {
   restaurantId: "restaurant-a",
   inventoryItemId: "chicken",
-  eventType: "count",
+  eventType: "receipt",
   quantity: 1200,
   canonicalUnit: "g",
   effectiveAt: "2026-07-26T10:00:00.000Z",
-  source: "manual_count",
+  source: "operator_receipt",
   sourceReference: null,
   reasonCode: null,
-  clientEventId: "device-count-1",
-  idempotencyKey: "count:device-count-1",
+  clientEventId: "device-receipt-1",
+  idempotencyKey: "receipt:device-receipt-1",
   supersedesEventId: null,
   metadata: {}
 };
@@ -55,7 +55,7 @@ test("screen-safe queue API persists a stable offline event by restaurant", asyn
       now: "2026-07-26T10:00:01.000Z"
     });
     assert.equal(queued.status, "pending");
-    assert.equal(queued.event.clientEventId, "device-count-1");
+    assert.equal(queued.event.clientEventId, "device-receipt-1");
 
     const restaurantA = await fetchQueuedInventoryEvents("restaurant-a");
     const restaurantB = await fetchQueuedInventoryEvents("restaurant-b");
@@ -74,11 +74,11 @@ test("operator queue API generates one stable retry identity after validation", 
     const queued = await queueInventoryOperation({
       restaurantId: "restaurant-a",
       inventoryItemId: "chicken",
-      eventType: "count",
+      eventType: "receipt",
       quantity: 1200,
       canonicalUnit: "g",
       effectiveAt: "2026-07-26T10:00:00.000Z",
-      note: "Opening count"
+      note: "Opening receipt"
     });
 
     assert.match(queued.id, /^inventory_outbox_/);
@@ -87,7 +87,9 @@ test("operator queue API generates one stable retry identity after validation", 
       queued.event.idempotencyKey,
       `inventory:${queued.event.clientEventId}`
     );
-    assert.deepEqual(queued.event.metadata, { note: "Opening count" });
+    assert.deepEqual(queued.event.metadata, { note: "Opening receipt" });
+    assert.equal(queued.event.source, "operator_receipt");
+    assert.equal(queued.event.eventType, "receipt");
   } finally {
     restore();
   }

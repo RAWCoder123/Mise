@@ -212,6 +212,7 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 
 function rejectionReason(message: string) {
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
+  if (message.includes("approved count session")) return "count_requires_session";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
   if (message.includes("evidence")) return "incomplete_evidence";

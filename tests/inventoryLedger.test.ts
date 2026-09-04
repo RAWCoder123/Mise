@@ -75,6 +75,38 @@ test("surfaces an idempotency conflict instead of overwriting the first event", 
   assert.equal(conflict.status, "conflict");
 });
 
+test("rejects count events that are not sourced from session approval", () => {
+  const rejected = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({
+      eventType: "count",
+      quantity: 2000,
+      source: "operator_count",
+      clientEventId: "count-bypass-1",
+      idempotencyKey: "count-bypass-1"
+    }),
+    authority: {
+      id: "event-bypass",
+      actorUserId: "manager-1",
+      recordedAt: "2026-07-26T10:01:00.000Z"
+    }
+  });
+  assert.deepEqual(rejected, { status: "rejected", reason: "count_requires_session" });
+
+  const acceptedSessionCount = accepted(
+    [],
+    input({
+      eventType: "count",
+      quantity: 2000,
+      source: "approve_count_session",
+      clientEventId: "count-session-1",
+      idempotencyKey: "count-session-1"
+    }),
+    "event-session"
+  );
+  assert.equal(acceptedSessionCount.source, "approve_count_session");
+});
+
 test("requires corrections to supersede a same-tenant, same-item event once", () => {
   const receipt = accepted([], input(), "event-1");
   const correction = accepted(
@@ -112,6 +144,7 @@ test("projects counts, receipts, usage, waste, and corrections in server sequenc
     input({
       eventType: "count",
       quantity: 2000,
+      source: "approve_count_session",
       clientEventId: "count-1",
       idempotencyKey: "count-1"
     }),
