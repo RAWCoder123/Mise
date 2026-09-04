@@ -89,6 +89,27 @@ test("known database validation and conflict errors settle without blind retries
     }),
     { status: "rejected", reason: "invalid_canonical_unit" }
   );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError({
+      code: "22023",
+      message: "Inventory item canonical conversion is not verified"
+    }),
+    { status: "rejected", reason: "canonical_conversion_unverified" }
+  );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError({
+      code: "22023",
+      message: "Physical count evidence cannot be effective in the future"
+    }),
+    { status: "rejected", reason: "future_dated_count" }
+  );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError({
+      code: "22023",
+      message: "Inventory ledger events cannot be effective in the future"
+    }),
+    { status: "rejected", reason: "future_dated_event" }
+  );
 });
 
 test("transport and authorization failures remain retryable or surfaced", () => {
