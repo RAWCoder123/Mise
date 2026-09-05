@@ -490,6 +490,14 @@ function createDemoPurchaseLine(input: {
     lineIndex: line.lineIndex,
     revision: input.revision,
     lineType: line.lineType,
+    rowClass: line.rowClass,
+    orderedQuantity: line.orderedQuantity,
+    shippedQuantity: line.shippedQuantity,
+    supplierItemCode: line.supplierItemCode,
+    sourcePage: line.sourcePage,
+    extractionMethod: line.extractionMethod,
+    parserVersion: line.parserVersion,
+    extractionConfidence: line.extractionConfidence,
     rawItemDescription: line.rawItemDescription,
     normalizedItemKey: normalization.normalizedItemKey,
     normalizationVersion: PURCHASE_LINE_NORMALIZATION_VERSION,
@@ -2441,6 +2449,8 @@ export function createLocalDemoRepository(): MiseRepository {
       const groups = new Map<string, PurchaseLineNetByItem>();
       for (const line of state.purchaseLines ?? []) {
         if (line.restaurantId !== restaurantId || superseded.has(line.id)) continue;
+        // Stored for audit, never folded into an item's net.
+        if (line.rowClass !== "merchandise") continue;
         // Never net across supplier, unit or currency: that would be a larger
         // claim than the documents support.
         const key = [

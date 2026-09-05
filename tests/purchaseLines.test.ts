@@ -188,6 +188,14 @@ test("current lines are derived from supersession rather than stored", () => {
     supplierId: null,
     lineIndex: 0,
     lineType: "purchase" as const,
+    rowClass: "merchandise" as const,
+    orderedQuantity: null,
+    shippedQuantity: null,
+    supplierItemCode: null,
+    sourcePage: null,
+    extractionMethod: null,
+    parserVersion: null,
+    extractionConfidence: null,
     revision: 0,
     rawItemDescription: "Napa Cabbage - 50 ct",
     normalizedItemKey: "napa cabbage",
@@ -534,4 +542,97 @@ test("the SQL and TypeScript accent folds are the same map", () => {
     assert.ok(fold.includes(`'${from}', '${to}'`), `SQL must expand ${from}`);
     assert.equal(foldPurchaseLineAccents(from), to, `TypeScript must expand ${from}`);
   }
+});
+
+test("ordered and shipped are separate magnitudes and may diverge", () => {
+  // Costco 1032136951: ground beef ordered 68.00, shipped 71.40.
+  const line = normalizePurchaseLineInput({
+    lineIndex: 1,
+    lineType: "purchase",
+    supplierItemCode: "749585",
+    rawItemDescription: "GROUND BEEF 80/20",
+    orderedQuantity: 68,
+    shippedQuantity: 71.4,
+    quantity: 71.4,
+    unitOfMeasure: "lb",
+    unitPrice: 3.99,
+    extendedPrice: 284.89,
+    currency: "USD",
+    transactionDate: "2023-05-26",
+    parseConfidence: "confirmed"
+  });
+  assert.equal(line.orderedQuantity, 68);
+  assert.equal(line.shippedQuantity, 71.4);
+  // The arithmetic property checks the billed quantity. Checking ordered would
+  // flag a perfectly correct catch-weight line as inconsistent.
+  assert.deepEqual(line.consistencyFlags, []);
+  assert.equal(line.parseConfidence, "confirmed");
+  assert.equal(line.supplierItemCode, "749585");
+});
+
+test("extraction confidence caps the parse claim without merging the columns", () => {
+  const base = {
+    lineIndex: 0,
+    lineType: "purchase" as const,
+    rawItemDescription: "BACON SLICED 15LB",
+    quantity: 5,
+    unitOfMeasure: "case",
+    unitPrice: 41.99,
+    extendedPrice: 209.95,
+    currency: "USD",
+    transactionDate: "2023-05-26",
+    parseConfidence: "confirmed" as const
+  };
+  assert.equal(normalizePurchaseLineInput(base).parseConfidence, "confirmed");
+  assert.equal(
+    normalizePurchaseLineInput({ ...base, extractionConfidence: "uncertain" }).parseConfidence,
+    "estimated"
+  );
+  assert.equal(
+    normalizePurchaseLineInput({ ...base, extractionConfidence: "unreadable" }).parseConfidence,
+    "could_not_verify"
+  );
+  // Separate axes: a cleanly read line can still contradict itself.
+  const readWellButWrong = normalizePurchaseLineInput({
+    ...base, extendedPrice: 2099.5, extractionConfidence: "exact"
+  });
+  assert.equal(readWellButWrong.extractionConfidence, "exact");
+  assert.equal(readWellButWrong.parseConfidence, "could_not_verify");
+  assert.deepEqual(readWellButWrong.consistencyFlags, ["extended_price_mismatch"]);
+});
+
+test("a section header carries no goods and no money", () => {
+  const header = normalizePurchaseLineInput({
+    lineIndex: 0,
+    lineType: "purchase",
+    rowClass: "section_header",
+    rawItemDescription: "Cooler Items",
+    transactionDate: "2023-05-26",
+    parseConfidence: "confirmed"
+  });
+  assert.equal(header.rowClass, "section_header");
+  assert.equal(header.quantity, null);
+  assert.throws(
+    () => normalizePurchaseLineInput({
+      lineIndex: 0, lineType: "purchase", rowClass: "section_header",
+      rawItemDescription: "Cooler Items", quantity: 3, unitOfMeasure: "case",
+      transactionDate: "2023-05-26", parseConfidence: "confirmed"
+    }),
+    /section header row cannot carry/
+  );
+});
+
+test("provenance is optional so a hand-entered line stays recordable", () => {
+  const manual = normalizePurchaseLineInput({
+    lineIndex: 0,
+    lineType: "purchase",
+    rawItemDescription: "Tomatoes, Roma 25LB",
+    transactionDate: "2026-09-01",
+    parseConfidence: "estimated"
+  });
+  assert.equal(manual.extractionMethod, null);
+  assert.equal(manual.parserVersion, null);
+  assert.equal(manual.sourcePage, null);
+  assert.equal(manual.extractionConfidence, null);
+  assert.equal(manual.rowClass, "merchandise", "merchandise is the default class");
 });
