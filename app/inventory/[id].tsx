@@ -21,6 +21,7 @@ import { colors, icon, iconStroke, inventoryStatusColors, radii } from "../../co
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
+import { checkDecreasingInventoryFitsOnHand } from "../../services/domain/inventoryOnHandGuard";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   addInventoryItemToOrder,
@@ -222,6 +223,38 @@ export default function InventoryDetailScreen() {
       return;
     }
 
+    const conversion = item.canonical_quantity_per_unit;
+    if (
+      operation === "waste" &&
+      typeof conversion === "number" &&
+      Number.isFinite(conversion) &&
+      conversion > 0
+    ) {
+      const onHandCheck = checkDecreasingInventoryFitsOnHand({
+        currentNativeQuantity: item.current_quantity,
+        canonicalQuantityPerUnit: conversion,
+        decreaseCanonicalQuantity: quantity
+      });
+      if (!onHandCheck.ok && onHandCheck.reason === "insufficient_on_hand") {
+        const available = onHandCheck.availableCanonicalQuantity ?? 0;
+        const unitLabel = t(`inventory.ops.unit.${item.canonical_unit}` as "inventory.ops.unit.g");
+        setQuantityError(
+          t("inventory.ops.quantityExceedsOnHand", {
+            available: formatNumber(available, { maximumFractionDigits: 2 }),
+            unit: unitLabel
+          })
+        );
+        setMessage(
+          t("inventory.ops.insufficientOnHand", {
+            available: formatNumber(available, { maximumFractionDigits: 2 }),
+            unit: unitLabel
+          })
+        );
+        setMessageIsError(true);
+        return;
+      }
+    }
+
     const restaurantId = restaurant.id;
     setQuantityError(undefined);
     setSubmittingOperation(true);
@@ -242,12 +275,15 @@ export default function InventoryDetailScreen() {
       const flushSummary = await flushQueuedInventoryEvents(restaurantId);
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
+      const nextQueue = await fetchQueuedInventoryEvents(restaurantId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
       setQuantityText(operation === "stockout" ? "0" : "");
       setNoteText("");
-      setMessage(describeFlushResult(flushSummary, t));
+      setMessage(describeFlushResult(flushSummary, nextQueue, t));
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
     } catch (submitError) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -729,10 +765,18 @@ function describeFlushResult(
     rejected: number;
     deferred: number;
   },
+  queueEntries: readonly InventoryOutboxEntry[],
   t: ReturnType<typeof useLocale>["t"]
 ) {
   if (summary.conflicted > 0) return t("inventory.ops.result.conflict");
-  if (summary.rejected > 0) return t("inventory.ops.result.rejected");
+  if (summary.rejected > 0) {
+    const insufficientOnHand = queueEntries.some(
+      (entry) =>
+        entry.status === "rejected" && entry.resolutionReason === "insufficient_on_hand"
+    );
+    if (insufficientOnHand) return t("inventory.ops.result.insufficientOnHand");
+    return t("inventory.ops.result.rejected");
+  }
   if (summary.deferred > 0) return t("inventory.ops.result.deferred");
   if (summary.accepted > 0) return t("inventory.ops.result.accepted");
   return t("inventory.ops.result.queued");
