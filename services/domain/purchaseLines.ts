@@ -37,7 +37,12 @@ export type PurchaseLineRowClass =
   | "charge"
   | "tax"
   | "subtotal"
-  | "line_adjustment";
+  | "line_adjustment"
+  /** A free-text block among the items: a regulatory notice, a storage
+   *  statement. Addressed to the reader, which separates it from a
+   *  section_header, and carrying no amount, which separates it from a
+   *  charge, tax or subtotal. */
+  | "notice";
 
 export type PurchaseLineExtractionMethod = "manual_entry" | "pdf_text" | "ocr";
 
@@ -561,6 +566,9 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
   // would record something the document did not say.
   if (rowClass === "section_header" && (quantity !== null || unitPrice !== null || extendedPrice !== null)) {
     throw new Error("A section header row cannot carry quantities or prices.");
+  }
+  if (rowClass === "notice" && (quantity !== null || unitPrice !== null || extendedPrice !== null)) {
+    throw new Error("A notice row cannot carry quantities or prices.");
   }
   return {
     lineIndex: input.lineIndex,

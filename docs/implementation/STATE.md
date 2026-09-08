@@ -160,6 +160,61 @@ over: a group holding credits with no purchase behind it is returned with
 `unmatched_credit` set, so an unnetted credit is visible as an unmatched credit
 rather than disappearing into a silently wrong net.
 
+## MISE-006 real invoice structure
+
+`public.purchase_lines` can hold structures that real invoices were observed to
+contain. This is schema only: nothing in MISE-006 parses a document, infers a
+supplier, or optimises for a layout.
+
+**Evidence.** Three real invoices from three independent suppliers — a warehouse
+club, a Japanese seafood specialist, a seafood distributor — were read by the
+operator and transcribed as structure only. The images are not retained and no
+source document is in this repository. Every test fixture is synthetic: it
+reproduces a shape, never a document, and contains no real price, item code,
+order number, or customer identity.
+
+**Attested counts.** A structure seen in all three is structural; a structure
+seen in fewer is possible, not typical, and nothing requires it.
+
+- **1 of 3** — a merchandise line amount is stated *net* of that line's own
+  adjustment. This is why net spend excludes adjustment rows rather than
+  subtracting them: on this format subtracting would deduct the same money
+  twice. Unverified for the other two formats.
+- **Seen, count not reported** — a free-text block appears in the item region
+  rather than the totals block: regulatory notices, storage statements.
+  Recorded as the `notice` row class.
+
+Per-format counts for the remaining structures were not supplied and are
+therefore not recorded. Nothing treats any structure as structural: every
+column MISE-006 adds is nullable or defaulted, and no constraint requires any
+structure to be present.
+
+**Quantities.** Three, each with its own unit, because a catch-weight line is
+ordered in one unit and billed in another. `quantity` is the sole writable
+storage of the billed quantity and `billed_quantity` mirrors it as a generated
+column, so the two cannot disagree. The 004A-C arithmetic property multiplies
+the billed quantity. A line whose billed quantity cannot be identified is
+`could_not_verify`; nothing substitutes ordered or shipped to see which
+reconciles.
+
+**`quantity` nullability.** It was nullable from its creation in MISE-004C and
+has never been NOT NULL, so MISE-006 relaxes nothing. Nullable is deliberate: a
+line whose billed quantity could not be read must still be recordable, storing
+null and resolving to `could_not_verify`, rather than being dropped or
+defaulted to zero.
+
+**Row classes.** `merchandise`, `section_header`, `charge`, `tax`, `subtotal`,
+`line_adjustment`, `notice`. Only `merchandise` reaches net quantity and net
+spend; the rest are stored for audit and excluded from every aggregate. A line
+adjustment is its own row naming the merchandise line it modifies — never a
+column, and never a credit, because a supplier discount changes what was
+charged rather than returning money.
+
+**Confidence.** `extraction_confidence` is a separate column from
+`parse_confidence`. One asks whether the characters were read correctly, the
+other whether the fields agree with each other. They interact in one direction
+only: extraction caps parse and never raises it.
+
 This ledger predicts nothing. It does not reorder, infer depletion, model
 recipes, match items across suppliers, or aggregate across restaurants. It reads
 and writes no MISE-003 purchasing table. It is substrate for later work only.

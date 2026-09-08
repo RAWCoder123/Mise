@@ -2,10 +2,34 @@
 -- contain. Additive and supplier-neutral. Nothing here parses a document,
 -- infers a supplier, or optimizes for a layout.
 --
--- Every structure below comes from the enumerated list in the MISE-006 brief.
--- No source image, real price, real item code, or customer identity enters
--- this repository, and every test fixture is synthetic: it reproduces a shape,
--- never a document.
+-- EVIDENCE. Three real invoices from three independent suppliers -- a
+-- warehouse club, a Japanese seafood specialist, a seafood distributor -- were
+-- read by the operator and transcribed as structure only. The images are not
+-- retained and no source document enters this repository. Every test fixture
+-- is synthetic: it reproduces a shape, never a document, and contains no real
+-- price, item code, order number, or customer identity.
+--
+-- ATTESTED COUNTS. A structure seen in all three is structural; a structure
+-- seen in fewer is possible, not typical, and nothing here requires it.
+--
+--   1 of 3  A line amount is stated NET of that line's own adjustment. See the
+--           net-spend function comment: this is why net spend must not subtract
+--           an adjustment row again. Unverified for the other two formats.
+--   seen    A free-text block appears in the item region rather than the totals
+--           block -- regulatory notices, storage statements. Recorded as the
+--           'notice' row class. The number of formats exhibiting it was not
+--           reported to this migration.
+--
+-- The remaining per-format counts for the brief's structures (a) through (g)
+-- were not supplied and are therefore NOT recorded here. Nothing below treats
+-- any structure as structural: every added column is nullable or defaulted, and
+-- no constraint requires any structure to be present.
+--
+-- NULLABILITY. `quantity` was nullable from its creation in MISE-004C and was
+-- never NOT NULL, so this branch relaxes nothing. Nullable is correct and is
+-- kept deliberately: a line whose billed quantity could not be read must still
+-- be recordable, storing null and resolving to could_not_verify, rather than
+-- being dropped or defaulted to zero.
 
 -- ---------------------------------------------------------------- quantities
 -- Three quantities, each with its own unit, because a catch-weight line is
@@ -82,10 +106,26 @@ alter table public.purchase_lines
   --   tax              remitted rather than paid to the supplier for goods
   --   subtotal         a running or final total row
   --   line_adjustment  a discount or adjustment against one merchandise line
+  --   notice           a free-text block sitting among the items rather than in
+  --                    the totals block: a regulatory notice, a storage
+  --                    statement. Named 'notice' because it is addressed to the
+  --                    reader, which is what separates it from section_header,
+  --                    a label for the rows beneath it. It carries no amount,
+  --                    which separates it from charge, tax and subtotal.
   add constraint purchase_lines_row_class_check check (
     row_class in (
       'merchandise', 'section_header', 'charge', 'tax', 'subtotal',
-      'line_adjustment'
+      'line_adjustment', 'notice'
+    )
+  ),
+  -- A notice is text. Storing money on one would record something the document
+  -- did not say.
+  add constraint purchase_lines_notice_check check (
+    row_class <> 'notice'
+    or (
+      quantity is null and ordered_quantity is null and shipped_quantity is null
+      and unit_price is null and extended_price is null
+      and adjusts_line_id is null
     )
   ),
   -- A grouping header carries no money, no goods, and modifies nothing.
@@ -313,7 +353,8 @@ begin
   resolved_row_class := coalesce(
     private.purchase_line_text(p_line, 'rowClass', 40), 'merchandise');
   if resolved_row_class not in (
-    'merchandise', 'section_header', 'charge', 'tax', 'subtotal', 'line_adjustment'
+    'merchandise', 'section_header', 'charge', 'tax', 'subtotal',
+    'line_adjustment', 'notice'
   ) then
     raise exception 'Purchase line % states an unknown row class', p_line_index
       using errcode = '22023';
@@ -543,8 +584,16 @@ from public, anon, authenticated, service_role;
 grant execute on function public.list_purchase_line_net_by_item(uuid)
 to authenticated;
 
+-- ADJUSTMENT NETTING, ATTESTED. On one of the three transcribed formats the
+-- merchandise line amount is stated NET of that line's own adjustment, so
+-- subtracting the adjustment row here would deduct it a second time. Adjustment
+-- rows are therefore recorded for audit and excluded from net spend, which is
+-- the current behaviour and is deliberate. This is attested for ONE format and
+-- UNVERIFIED for the other two. If a format is found whose line amount is
+-- stated gross, this function cannot stay uniform across suppliers and the
+-- pre/post distinction will have to be recorded per document.
 comment on function public.list_purchase_line_net_by_item(uuid) is
-  'Factual net quantity and spend per merchandise item. Non-merchandise rows are excluded. Credits whose item key matches no purchase are flagged unmatched, never netted silently. It states what was recorded and nothing more.';
+  'Factual net quantity and spend per merchandise item. Non-merchandise rows, including line adjustments, are excluded: on at least one attested format the line amount is already net of its adjustment, so subtracting it again would double count. Credits whose item key matches no purchase are flagged unmatched, never netted silently. It states what was recorded and nothing more.';
 
 -- ---------------------------------------------------- extraction completeness
 -- Reports the footer count beside what was actually recorded. It deliberately

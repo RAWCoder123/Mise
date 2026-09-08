@@ -7,7 +7,7 @@ begin;
 -- This file has no loops or conditional assertion paths, so call sites and
 -- executions are the same number. If pgTAP reports a different count, that is a
 -- failure to investigate, not a number to edit.
-select plan(86);
+select plan(89);
 
 create or replace function pg_temp.error_of(statement text)
 returns text language plpgsql as $$
@@ -645,7 +645,11 @@ select public.ingest_purchase_lines(
      "rawItemDescription":"Merchandise Subtotal","quantity":1,
      "unitOfMeasure":"each","unitPrice":406.00,"extendedPrice":406.00,
      "currency":"USD","transactionDate":"2026-01-05",
-     "parseConfidence":"confirmed","documentLineCount":4}
+     "parseConfidence":"confirmed","documentLineCount":4},
+    {"lineIndex":7,"lineType":"purchase","rowClass":"notice",
+     "rawItemDescription":"Keep refrigerated below 40F on receipt",
+     "transactionDate":"2026-01-05","parseConfidence":"confirmed",
+     "documentLineCount":4}
   ]$json$::jsonb,
   '5a000000-0000-4000-8000-000000000101'
 );
@@ -705,14 +709,15 @@ select is(
   (select pg_catalog.string_agg(distinct row_class, ',' order by row_class)
    from public.purchase_lines
    where source_document_reference = 'SYNTH-DOC-1' and row_class <> 'merchandise'),
-  'charge,section_header,subtotal,tax',
-  'header, fuel charge, tax, and subtotal rows are all recorded'
+  'charge,notice,section_header,subtotal,tax',
+  'header, notice, fuel charge, tax, and subtotal rows are all recorded'
 );
 select is(
   (select count(*) from public.list_purchase_line_net_by_item(
      '5a000000-0000-4000-8000-000000000001')
    where normalized_item_key in
-     ('fuel charge','sales tax','merchandise subtotal','refrigerated section')),
+     ('fuel charge','sales tax','merchandise subtotal','refrigerated section',
+      'keep refrigerated below 40f on receipt')),
   0::bigint,
   'no non-merchandise row reaches net quantity or net spend'
 );
@@ -799,6 +804,37 @@ select is(
   'a merchandise row cannot claim to modify another line'
 );
 
+-- A notice is text sitting among the items. It is not a label for the rows
+-- beneath it, and it carries no money.
+select is(
+  (select row_class || '|' || coalesce(extended_price::text,'<null>')
+   from public.purchase_lines
+   where source_document_reference = 'SYNTH-DOC-1' and line_index = 7),
+  'notice|<null>',
+  'a regulatory or storage notice is recorded as text with no amount'
+);
+select is(
+  pg_temp.error_of($sql$select public.ingest_purchase_lines(
+    '5a000000-0000-4000-8000-000000000001', 'invoice', 'SYNTH-BAD-NOTICE',
+    '[{"lineIndex":0,"lineType":"purchase","rowClass":"notice",
+       "rawItemDescription":"Keep refrigerated","quantity":1,
+       "unitOfMeasure":"each","unitPrice":5,"extendedPrice":5,"currency":"USD",
+       "transactionDate":"2026-01-05","parseConfidence":"confirmed"}]'::jsonb
+  )$sql$),
+  'new row for relation "purchase_lines" violates check constraint "purchase_lines_notice_check"',
+  'a notice cannot carry money'
+);
+
+-- (c) attested on one of three formats: the line amount is already net of its
+-- adjustment, so net spend must not subtract the adjustment row again.
+select is(
+  (select net_extended_price::text
+   from public.list_purchase_line_net_by_item('5a000000-0000-4000-8000-000000000001')
+   where normalized_item_key = 'ground meat coarse'),
+  '206.00',
+  'net spend leaves an adjusted line at its stated amount and does not deduct the adjustment twice'
+);
+
 -- (g) footer line count, reported against both interpretations rather than one
 select is(
   (select stated_line_count::text || '|' || recorded_row_count::text || '|'
@@ -807,7 +843,7 @@ select is(
    from public.list_purchase_document_completeness(
      '5a000000-0000-4000-8000-000000000001')
    where source_document_reference = 'SYNTH-DOC-1'),
-  '4|7|3|false|false',
+  '4|8|3|false|false',
   'the footer count is reported beside both counts, and neither match is assumed'
 );
 
