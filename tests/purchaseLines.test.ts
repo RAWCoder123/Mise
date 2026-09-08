@@ -190,8 +190,14 @@ test("current lines are derived from supersession rather than stored", () => {
     lineType: "purchase" as const,
     rowClass: "merchandise" as const,
     orderedQuantity: null,
+    orderedUnitOfMeasure: null,
     shippedQuantity: null,
+    shippedUnitOfMeasure: null,
+    billedQuantity: 1,
+    billedUnitOfMeasure: "case",
     supplierItemCode: null,
+    adjustsLineId: null,
+    documentLineCount: null,
     sourcePage: null,
     extractionMethod: null,
     parserVersion: null,
@@ -545,42 +551,45 @@ test("the SQL and TypeScript accent folds are the same map", () => {
 });
 
 test("ordered and shipped are separate magnitudes and may diverge", () => {
-  // Costco 1032136951: ground beef ordered 68.00, shipped 71.40.
+  // Synthetic: a catch-weight shape, ordered in cases and billed by weight.
   const line = normalizePurchaseLineInput({
     lineIndex: 1,
     lineType: "purchase",
-    supplierItemCode: "749585",
-    rawItemDescription: "GROUND BEEF 80/20",
-    orderedQuantity: 68,
-    shippedQuantity: 71.4,
-    quantity: 71.4,
+    supplierItemCode: "AAA-0001",
+    rawItemDescription: "GROUND MEAT COARSE 10LB",
+    orderedQuantity: 4,
+    orderedUnitOfMeasure: "case",
+    shippedQuantity: 4,
+    shippedUnitOfMeasure: "case",
+    quantity: 41.2,
     unitOfMeasure: "lb",
-    unitPrice: 3.99,
-    extendedPrice: 284.89,
+    unitPrice: 5,
+    extendedPrice: 206,
     currency: "USD",
-    transactionDate: "2023-05-26",
+    transactionDate: "2026-01-05",
     parseConfidence: "confirmed"
   });
-  assert.equal(line.orderedQuantity, 68);
-  assert.equal(line.shippedQuantity, 71.4);
+  assert.equal(line.orderedQuantity, 4);
+  assert.equal(line.shippedQuantity, 4);
+  assert.equal(line.orderedUnitOfMeasure, "case");
   // The arithmetic property checks the billed quantity. Checking ordered would
   // flag a perfectly correct catch-weight line as inconsistent.
   assert.deepEqual(line.consistencyFlags, []);
   assert.equal(line.parseConfidence, "confirmed");
-  assert.equal(line.supplierItemCode, "749585");
+  assert.equal(line.supplierItemCode, "AAA-0001");
 });
 
 test("extraction confidence caps the parse claim without merging the columns", () => {
   const base = {
     lineIndex: 0,
     lineType: "purchase" as const,
-    rawItemDescription: "BACON SLICED 15LB",
+    rawItemDescription: "CURED PORK SLICED 15LB",
     quantity: 5,
     unitOfMeasure: "case",
-    unitPrice: 41.99,
-    extendedPrice: 209.95,
+    unitPrice: 40,
+    extendedPrice: 200,
     currency: "USD",
-    transactionDate: "2023-05-26",
+    transactionDate: "2026-01-05",
     parseConfidence: "confirmed" as const
   };
   assert.equal(normalizePurchaseLineInput(base).parseConfidence, "confirmed");
@@ -594,7 +603,7 @@ test("extraction confidence caps the parse claim without merging the columns", (
   );
   // Separate axes: a cleanly read line can still contradict itself.
   const readWellButWrong = normalizePurchaseLineInput({
-    ...base, extendedPrice: 2099.5, extractionConfidence: "exact"
+    ...base, extendedPrice: 2000, extractionConfidence: "exact"
   });
   assert.equal(readWellButWrong.extractionConfidence, "exact");
   assert.equal(readWellButWrong.parseConfidence, "could_not_verify");
@@ -606,8 +615,8 @@ test("a section header carries no goods and no money", () => {
     lineIndex: 0,
     lineType: "purchase",
     rowClass: "section_header",
-    rawItemDescription: "Cooler Items",
-    transactionDate: "2023-05-26",
+    rawItemDescription: "Refrigerated Section",
+    transactionDate: "2026-01-05",
     parseConfidence: "confirmed"
   });
   assert.equal(header.rowClass, "section_header");
@@ -615,8 +624,8 @@ test("a section header carries no goods and no money", () => {
   assert.throws(
     () => normalizePurchaseLineInput({
       lineIndex: 0, lineType: "purchase", rowClass: "section_header",
-      rawItemDescription: "Cooler Items", quantity: 3, unitOfMeasure: "case",
-      transactionDate: "2023-05-26", parseConfidence: "confirmed"
+      rawItemDescription: "Refrigerated Section", quantity: 3, unitOfMeasure: "case",
+      transactionDate: "2026-01-05", parseConfidence: "confirmed"
     }),
     /section header row cannot carry/
   );

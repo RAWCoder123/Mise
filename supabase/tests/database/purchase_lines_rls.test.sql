@@ -7,7 +7,7 @@ begin;
 -- This file has no loops or conditional assertion paths, so call sites and
 -- executions are the same number. If pgTAP reports a different count, that is a
 -- failure to investigate, not a number to edit.
-select plan(81);
+select plan(86);
 
 create or replace function pg_temp.error_of(statement text)
 returns text language plpgsql as $$
@@ -574,168 +574,272 @@ select is(
   'a credit link that does not resolve for this supplier fails closed'
 );
 
--- Three generated columns now exist. The anonymization escape must still hold.
+-- Five generated columns now exist. The anonymization escape derives its
+-- excluded set from pg_attribute rather than from names, so adding the billed
+-- mirrors must not reopen it. The assertions below prove that, they do not
+-- assume it.
 select is(
   (select count(*) from pg_catalog.pg_attribute attribute
    where attribute.attrelid = 'public.purchase_lines'::regclass
      and attribute.attnum > 0 and not attribute.attisdropped
      and attribute.attgenerated <> ''),
-  3::bigint,
-  'supplier_scope plus both signed projections are generated columns'
+  5::bigint,
+  'supplier_scope, both signed projections, and both billed mirrors are generated'
 );
 
--- ------------------------------------------- MISE-006 real invoice structure
--- Values are from one photographed Costco Business Center invoice, order
--- 1032136951, 2023-05-26. It proves these structures exist. It proves nothing
--- about what is typical, and nothing below assumes its layout.
+-- ----------------------------------------------- MISE-006 invoice structure
+-- FIXTURES ARE SYNTHETIC. They reproduce shapes the MISE-006 brief enumerates.
+-- No real price, item code, order number, or customer identity appears here,
+-- and no source document was transcribed.
+--
+-- Shape under test: a catch-weight line ordered in cases and billed by weight,
+-- a plain line, a per-line discount as its own row, section header, fuel
+-- charge, tax, and subtotal rows, and a footer line count.
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '5a111111-1111-4111-8111-111111111111', true);
 select public.ingest_purchase_lines(
-  '5a000000-0000-4000-8000-000000000001', 'invoice', 'COSTCO-1032136951',
+  '5a000000-0000-4000-8000-000000000001', 'invoice', 'SYNTH-DOC-1',
   $json$[
     {"lineIndex":0,"lineType":"purchase","rowClass":"section_header",
-     "rawItemDescription":"Cooler Items","transactionDate":"2023-05-26",
+     "rawItemDescription":"Refrigerated Section","transactionDate":"2026-01-05",
      "parseConfidence":"confirmed","sourcePage":1,"extractionMethod":"ocr",
-     "parserVersion":"fixture.v0","extractionConfidence":"exact"},
-    {"lineIndex":1,"lineType":"purchase","supplierItemCode":"749585",
-     "rawItemDescription":"GROUND BEEF 80/20","orderedQuantity":68.00,
-     "shippedQuantity":71.40,"quantity":71.40,"unitOfMeasure":"lb",
-     "unitPrice":3.99,"extendedPrice":284.89,"currency":"USD",
-     "transactionDate":"2023-05-26","parseConfidence":"confirmed",
-     "sourcePage":1,"extractionMethod":"ocr","parserVersion":"fixture.v0",
-     "extractionConfidence":"exact"},
-    {"lineIndex":2,"lineType":"purchase","supplierItemCode":"1207907",
-     "rawItemDescription":"WHOLE MILK 4/1GAL","orderedQuantity":24.00,
-     "shippedQuantity":24.64,"quantity":24.64,"unitOfMeasure":"gal",
-     "unitPrice":4.25,"extendedPrice":104.72,"currency":"USD",
-     "transactionDate":"2023-05-26","parseConfidence":"confirmed",
-     "sourcePage":1,"extractionMethod":"ocr","parserVersion":"fixture.v0",
-     "extractionConfidence":"exact"},
-    {"lineIndex":3,"lineType":"purchase","supplierItemCode":"33778",
-     "rawItemDescription":"BACON SLICED 15LB","orderedQuantity":5.00,
-     "shippedQuantity":5.00,"quantity":5.00,"unitOfMeasure":"case",
-     "unitPrice":41.99,"extendedPrice":209.95,"currency":"USD",
-     "transactionDate":"2023-05-26","parseConfidence":"confirmed",
-     "sourcePage":1,"extractionMethod":"ocr","parserVersion":"fixture.v0",
-     "extractionConfidence":"uncertain"},
+     "parserVersion":"synthetic.v0","extractionConfidence":"exact",
+     "documentLineCount":4},
+    {"lineIndex":1,"lineType":"purchase","supplierItemCode":"AAA-0001",
+     "rawItemDescription":"GROUND MEAT COARSE 10LB",
+     "orderedQuantity":4,"orderedUnitOfMeasure":"case",
+     "shippedQuantity":4,"shippedUnitOfMeasure":"case",
+     "quantity":41.2,"unitOfMeasure":"lb",
+     "unitPrice":5.00,"extendedPrice":206.00,"currency":"USD",
+     "transactionDate":"2026-01-05","parseConfidence":"confirmed",
+     "sourcePage":1,"extractionMethod":"ocr","parserVersion":"synthetic.v0",
+     "extractionConfidence":"exact","documentLineCount":4},
+    {"lineIndex":2,"lineType":"purchase","supplierItemCode":"BBB-0002",
+     "rawItemDescription":"CURED PORK SLICED 15LB",
+     "orderedQuantity":5,"orderedUnitOfMeasure":"case",
+     "shippedQuantity":5,"shippedUnitOfMeasure":"case",
+     "quantity":5,"unitOfMeasure":"case",
+     "unitPrice":40.00,"extendedPrice":200.00,"currency":"USD",
+     "transactionDate":"2026-01-05","parseConfidence":"confirmed",
+     "sourcePage":1,"extractionMethod":"ocr","parserVersion":"synthetic.v0",
+     "extractionConfidence":"uncertain","documentLineCount":4},
+    {"lineIndex":3,"lineType":"purchase","supplierItemCode":"CCC-0003",
+     "rawItemDescription":"UNREADABLE ROW",
+     "orderedQuantity":2,"orderedUnitOfMeasure":"case",
+     "shippedQuantity":2,"shippedUnitOfMeasure":"case",
+     "unitOfMeasure":"case","transactionDate":"2026-01-05",
+     "parseConfidence":"confirmed","sourcePage":1,"extractionMethod":"ocr",
+     "parserVersion":"synthetic.v0","extractionConfidence":"exact",
+     "documentLineCount":4},
     {"lineIndex":4,"lineType":"purchase","rowClass":"charge",
-     "rawItemDescription":"Delivery Surcharge","quantity":1,
-     "unitOfMeasure":"each","unitPrice":25.00,"extendedPrice":25.00,
-     "currency":"USD","transactionDate":"2023-05-26",
-     "parseConfidence":"confirmed","sourcePage":1,"extractionMethod":"ocr"},
+     "rawItemDescription":"Fuel Charge","quantity":1,"unitOfMeasure":"each",
+     "unitPrice":12.00,"extendedPrice":12.00,"currency":"USD",
+     "transactionDate":"2026-01-05","parseConfidence":"confirmed",
+     "documentLineCount":4},
     {"lineIndex":5,"lineType":"purchase","rowClass":"tax",
      "rawItemDescription":"Sales Tax","quantity":1,"unitOfMeasure":"each",
-     "unitPrice":18.44,"extendedPrice":18.44,"currency":"USD",
-     "transactionDate":"2023-05-26","parseConfidence":"confirmed"},
-    {"lineIndex":6,"lineType":"purchase","rowClass":"document_adjustment",
-     "rawItemDescription":"Order Adjustment","quantity":1,
-     "unitOfMeasure":"each","unitPrice":2.00,"extendedPrice":2.00,
-     "currency":"USD","transactionDate":"2023-05-26",
-     "parseConfidence":"confirmed"}
+     "unitPrice":9.00,"extendedPrice":9.00,"currency":"USD",
+     "transactionDate":"2026-01-05","parseConfidence":"confirmed",
+     "documentLineCount":4},
+    {"lineIndex":6,"lineType":"purchase","rowClass":"subtotal",
+     "rawItemDescription":"Merchandise Subtotal","quantity":1,
+     "unitOfMeasure":"each","unitPrice":406.00,"extendedPrice":406.00,
+     "currency":"USD","transactionDate":"2026-01-05",
+     "parseConfidence":"confirmed","documentLineCount":4}
   ]$json$::jsonb,
   '5a000000-0000-4000-8000-000000000101'
 );
 reset role;
 
+-- (a) ordered and shipped are separate columns; (f) billed may use another unit
 select is(
-  (select ordered_quantity::text || '->' || shipped_quantity::text || '|billed ' || quantity::text
+  (select ordered_quantity::text || ' ' || ordered_unit_of_measure
+     || ' -> billed ' || billed_quantity::text || ' ' || billed_unit_of_measure
    from public.purchase_lines
-   where source_document_reference = 'COSTCO-1032136951' and line_index = 1),
-  '68.00->71.40|billed 71.40',
-  'ordered and shipped are stored separately and may diverge'
+   where source_document_reference = 'SYNTH-DOC-1' and line_index = 1),
+  '4 case -> billed 41.2 lb',
+  'a catch-weight line is ordered in one unit and billed in another'
 );
 select is(
-  (select count(*) from public.purchase_lines
-   where source_document_reference = 'COSTCO-1032136951'
-     and ordered_quantity is distinct from shipped_quantity),
-  2::bigint,
-  'two of the three item lines shipped a quantity other than ordered'
+  (select billed_quantity = quantity and billed_unit_of_measure = unit_of_measure
+   from public.purchase_lines
+   where source_document_reference = 'SYNTH-DOC-1' and line_index = 1),
+  true,
+  'billed_quantity mirrors quantity and cannot disagree with it'
 );
 select is(
   (select parse_confidence from public.purchase_lines
-   where source_document_reference = 'COSTCO-1032136951' and line_index = 1),
+   where source_document_reference = 'SYNTH-DOC-1' and line_index = 1),
   'confirmed',
-  'the arithmetic property checks the billed quantity, so catch-weight stays confirmed'
+  'the arithmetic property multiplies the billed quantity, so catch-weight stays confirmed'
 );
+-- The billed quantity is never inferred by trying ordered or shipped instead.
+-- Line 3 ships 2 cases but states no billed quantity, so it cannot be verified.
+select is(
+  (select parse_confidence || '|' || coalesce(billed_quantity::text,'<null>')
+     || '|' || shipped_quantity::text
+   from public.purchase_lines
+   where source_document_reference = 'SYNTH-DOC-1' and line_index = 3),
+  'could_not_verify|<null>|2',
+  'a line whose billed quantity is unidentifiable is could_not_verify, never inferred from shipped'
+);
+
+-- (b) supplier item code, verbatim and not unique
 select is(
   (select pg_catalog.string_agg(supplier_item_code, ',' order by line_index)
    from public.purchase_lines
-   where source_document_reference = 'COSTCO-1032136951' and supplier_item_code is not null),
-  '749585,1207907,33778',
-  'a supplier item code is stored per line exactly as printed'
+   where source_document_reference = 'SYNTH-DOC-1' and supplier_item_code is not null),
+  'AAA-0001,BBB-0002,CCC-0003',
+  'a supplier item code is stored verbatim per line'
+);
+select is(
+  (select count(*) from pg_catalog.pg_index i
+   where i.indrelid = 'public.purchase_lines'::regclass and i.indisunique
+     and pg_catalog.pg_get_indexdef(i.indexrelid) like '%supplier_item_code%'),
+  0::bigint,
+  'no uniqueness constraint was added on the supplier item code'
 );
 
--- Non-merchandise rows are stored for audit and reach no aggregate.
+-- (d) non-merchandise rows are stored for audit and reach no aggregate
 select is(
-  (select count(*) from public.purchase_lines
-   where source_document_reference = 'COSTCO-1032136951' and row_class <> 'merchandise'),
-  4::bigint,
-  'the header, surcharge, tax, and order adjustment rows are all recorded'
+  (select pg_catalog.string_agg(distinct row_class, ',' order by row_class)
+   from public.purchase_lines
+   where source_document_reference = 'SYNTH-DOC-1' and row_class <> 'merchandise'),
+  'charge,section_header,subtotal,tax',
+  'header, fuel charge, tax, and subtotal rows are all recorded'
 );
 select is(
   (select count(*) from public.list_purchase_line_net_by_item(
      '5a000000-0000-4000-8000-000000000001')
-   where normalized_item_key in ('delivery surcharge','sales tax','order adjustment','cooler items')),
+   where normalized_item_key in
+     ('fuel charge','sales tax','merchandise subtotal','refrigerated section')),
   0::bigint,
   'no non-merchandise row reaches net quantity or net spend'
 );
 select is(
   (select net_quantity::text || '|' || net_extended_price::text
    from public.list_purchase_line_net_by_item('5a000000-0000-4000-8000-000000000001')
-   where normalized_item_key = 'ground beef 80 20'),
-  '71.40|284.89',
+   where normalized_item_key = 'ground meat coarse'),
+  '41.2|206.00',
   'a merchandise line nets on its billed quantity and its own money'
 );
 select is(
   pg_temp.error_of($sql$select public.ingest_purchase_lines(
-    '5a000000-0000-4000-8000-000000000001', 'invoice', 'COSTCO-BAD-HEADER',
+    '5a000000-0000-4000-8000-000000000001', 'invoice', 'SYNTH-BAD-HEADER',
     '[{"lineIndex":0,"lineType":"purchase","rowClass":"section_header",
-       "rawItemDescription":"Cooler Items","quantity":3,"unitOfMeasure":"case",
-       "transactionDate":"2023-05-26","parseConfidence":"confirmed"}]'::jsonb
+       "rawItemDescription":"Refrigerated Section","quantity":3,
+       "unitOfMeasure":"case","transactionDate":"2026-01-05",
+       "parseConfidence":"confirmed"}]'::jsonb
   )$sql$),
   'new row for relation "purchase_lines" violates check constraint "purchase_lines_section_header_check"',
   'a grouping header cannot carry goods or money'
 );
 select is(
   pg_temp.error_of($sql$select public.ingest_purchase_lines(
-    '5a000000-0000-4000-8000-000000000001', 'invoice', 'COSTCO-BAD-CLASS',
+    '5a000000-0000-4000-8000-000000000001', 'invoice', 'SYNTH-BAD-CLASS',
     '[{"lineIndex":0,"lineType":"purchase","rowClass":"freight_allowance",
-       "rawItemDescription":"X","transactionDate":"2023-05-26",
+       "rawItemDescription":"X","transactionDate":"2026-01-05",
        "parseConfidence":"estimated"}]'::jsonb
   )$sql$),
   'Purchase line 0 states an unknown row class',
   'an unrecognised row class is refused rather than guessed at'
 );
 
--- Provenance is nullable, because a hand-entered line has no parser.
+-- (c) a per-line adjustment is its own row referencing the line it modifies
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '5a111111-1111-4111-8111-111111111111', true);
+select public.ingest_purchase_lines(
+  '5a000000-0000-4000-8000-000000000001', 'invoice', 'SYNTH-DOC-1-ADJ',
+  format($json$[
+    {"lineIndex":0,"lineType":"purchase","rowClass":"line_adjustment",
+     "adjustsLineId":"%s","rawItemDescription":"Instant Savings",
+     "quantity":1,"unitOfMeasure":"each","unitPrice":7.50,"extendedPrice":7.50,
+     "currency":"USD","transactionDate":"2026-01-05","parseConfidence":"confirmed"}
+  ]$json$, (select id from public.purchase_lines
+            where source_document_reference = 'SYNTH-DOC-1' and line_index = 1))::jsonb,
+  '5a000000-0000-4000-8000-000000000101'
+);
+reset role;
+
+select is(
+  (select adjustment.row_class || '|' || adjustment.line_type || '|'
+       || (adjustment.adjusts_line_id = target.id)::text
+   from public.purchase_lines adjustment
+   join public.purchase_lines target on target.id = adjustment.adjusts_line_id
+   where adjustment.source_document_reference = 'SYNTH-DOC-1-ADJ'),
+  'line_adjustment|purchase|true',
+  'an adjustment is its own row naming the line it modifies, and is not a credit'
+);
+select is(
+  (select count(*) from public.list_purchase_line_net_by_item(
+     '5a000000-0000-4000-8000-000000000001')
+   where normalized_item_key = 'instant savings'),
+  0::bigint,
+  'an adjustment row is stored for audit and reaches no aggregate'
+);
+select is(
+  pg_temp.error_of($sql$select public.ingest_purchase_lines(
+    '5a000000-0000-4000-8000-000000000001', 'invoice', 'SYNTH-ADJ-ORPHAN',
+    '[{"lineIndex":0,"lineType":"purchase","rowClass":"line_adjustment",
+       "rawItemDescription":"Instant Savings","transactionDate":"2026-01-05",
+       "parseConfidence":"estimated"}]'::jsonb
+  )$sql$),
+  'Purchase line 0 adjusts nothing and cannot be a line adjustment',
+  'an adjustment that names no line is refused'
+);
+select is(
+  pg_temp.error_of(format($sql$select public.ingest_purchase_lines(
+    '5a000000-0000-4000-8000-000000000001', 'invoice', 'SYNTH-ADJ-NOTADJ',
+    '[{"lineIndex":0,"lineType":"purchase","rowClass":"merchandise",
+       "adjustsLineId":"%s","rawItemDescription":"X",
+       "transactionDate":"2026-01-05","parseConfidence":"estimated"}]'::jsonb
+  )$sql$, (select id from public.purchase_lines
+           where source_document_reference = 'SYNTH-DOC-1' and line_index = 1))),
+  'Only a line adjustment may reference the line it modifies',
+  'a merchandise row cannot claim to modify another line'
+);
+
+-- (g) footer line count, reported against both interpretations rather than one
+select is(
+  (select stated_line_count::text || '|' || recorded_row_count::text || '|'
+       || recorded_merchandise_count::text || '|' || matches_row_count::text
+       || '|' || matches_merchandise_count::text
+   from public.list_purchase_document_completeness(
+     '5a000000-0000-4000-8000-000000000001')
+   where source_document_reference = 'SYNTH-DOC-1'),
+  '4|7|3|false|false',
+  'the footer count is reported beside both counts, and neither match is assumed'
+);
+
+-- (5) provenance is nullable, because a hand-entered line has no parser
 select is(
   (select coalesce(extraction_method,'<null>') || '|' || coalesce(parser_version,'<null>')
      || '|' || coalesce(source_page::text,'<null>')
    from public.purchase_lines
-   where source_document_reference = 'COSTCO-1032136951' and line_index = 5),
+   where source_document_reference = 'SYNTH-DOC-1' and line_index = 5),
   '<null>|<null>|<null>',
   'provenance is optional so manual entry remains recordable'
 );
 select is(
   (select extraction_method || '|' || parser_version || '|' || source_page::text
    from public.purchase_lines
-   where source_document_reference = 'COSTCO-1032136951' and line_index = 1),
-  'ocr|fixture.v0|1',
+   where source_document_reference = 'SYNTH-DOC-1' and line_index = 1),
+  'ocr|synthetic.v0|1',
   'provenance is recorded where extraction supplied it'
 );
 
--- The two confidence columns are separate axes.
+-- (6) the two confidence columns are separate axes
 select is(
   (select extraction_confidence || '|' || parse_confidence
    from public.purchase_lines
-   where source_document_reference = 'COSTCO-1032136951' and line_index = 3),
+   where source_document_reference = 'SYNTH-DOC-1' and line_index = 2),
   'uncertain|estimated',
   'characters read uncertainly cap the parse claim without merging the columns'
 );
 select is(
   (select extraction_confidence || '|' || parse_confidence
    from public.purchase_lines
-   where source_document_reference = 'COSTCO-1032136951' and line_index = 1),
+   where source_document_reference = 'SYNTH-DOC-1' and line_index = 1),
   'exact|confirmed',
   'a cleanly read, self-consistent line keeps both at full confidence'
 );
@@ -744,29 +848,11 @@ select is(
     (restaurant_id, source, source_document_reference, line_index, raw_item_description,
      normalized_item_key, quantity, unit_of_measure, unit_price, extended_price, currency,
      transaction_date, correlation_id, parse_confidence, line_type, extraction_confidence)
-    values ('5a000000-0000-4000-8000-000000000001','invoice','COSTCO-FORCE',0,
-            'GROUND BEEF 80/20','ground beef 80 20',1,'lb',3.99,3.99,'USD',
-            '2023-05-26', gen_random_uuid(), 'confirmed','purchase','unreadable')$sql$),
+    values ('5a000000-0000-4000-8000-000000000001','invoice','SYNTH-FORCE',0,
+            'GROUND MEAT COARSE 10LB','ground meat coarse',1,'lb',5,5,'USD',
+            '2026-01-05', gen_random_uuid(), 'confirmed','purchase','unreadable')$sql$),
   'new row for relation "purchase_lines" violates check constraint "purchase_lines_extraction_confidence_ceiling_check"',
   'a line read as unreadable cannot be stored confirmed by any writer'
-);
-
--- Supplier-scoped, not globally unique.
-select is(
-  (select count(*) from public.purchase_lines
-   where restaurant_id = '5a000000-0000-4000-8000-000000000001'
-     and supplier_item_code = '749585'),
-  1::bigint,
-  'the same item code may recur; nothing enforces global uniqueness'
-);
-select is(
-  (select count(*) from pg_catalog.pg_index i
-   join pg_catalog.pg_class c on c.oid = i.indexrelid
-   where i.indrelid = 'public.purchase_lines'::regclass
-     and i.indisunique
-     and pg_catalog.pg_get_indexdef(i.indexrelid) like '%supplier_item_code%'),
-  0::bigint,
-  'no uniqueness constraint was added on the supplier item code'
 );
 
 -- ------------------------------------- escape 1 of 2: actor anonymization

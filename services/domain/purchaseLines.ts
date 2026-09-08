@@ -29,14 +29,15 @@ export type PurchaseLineType = "purchase" | "credit";
 /**
  * MISE-006. What kind of row this is. Only merchandise reaches net quantity
  * and net spend; everything else is stored for audit. Each value is justified
- * by the Costco fixture or by structural necessity, never by imagination.
+ * by the structures the MISE-006 brief enumerates, never by imagination.
  */
 export type PurchaseLineRowClass =
   | "merchandise"
   | "section_header"
   | "charge"
   | "tax"
-  | "document_adjustment";
+  | "subtotal"
+  | "line_adjustment";
 
 export type PurchaseLineExtractionMethod = "manual_entry" | "pdf_text" | "ocr";
 
@@ -305,9 +306,14 @@ export interface PurchaseLineInput {
   /** MISE-006 invoice structure. All optional: a caller that knows nothing
    *  about invoice layout still writes valid rows. */
   orderedQuantity?: number | null;
+  orderedUnitOfMeasure?: string | null;
   shippedQuantity?: number | null;
+  shippedUnitOfMeasure?: string | null;
   supplierItemCode?: string | null;
   rowClass?: PurchaseLineRowClass;
+  /** A line adjustment is a row referencing the merchandise line it modifies. */
+  adjustsLineId?: string | null;
+  documentLineCount?: number | null;
   sourcePage?: number | null;
   extractionMethod?: PurchaseLineExtractionMethod | null;
   parserVersion?: string | null;
@@ -332,8 +338,15 @@ export interface PurchaseLine {
   lineType: PurchaseLineType;
   rowClass: PurchaseLineRowClass;
   orderedQuantity: number | null;
+  orderedUnitOfMeasure: string | null;
   shippedQuantity: number | null;
+  shippedUnitOfMeasure: string | null;
+  /** Generated mirror of quantity; the arithmetic property multiplies this. */
+  billedQuantity: number | null;
+  billedUnitOfMeasure: string | null;
   supplierItemCode: string | null;
+  adjustsLineId: string | null;
+  documentLineCount: number | null;
   sourcePage: number | null;
   extractionMethod: PurchaseLineExtractionMethod | null;
   parserVersion: string | null;
@@ -470,8 +483,12 @@ export interface NormalizedPurchaseLineInput extends PurchaseLineInput {
   creditsLineId: string | null;
   rowClass: PurchaseLineRowClass;
   orderedQuantity: number | null;
+  orderedUnitOfMeasure: string | null;
   shippedQuantity: number | null;
+  shippedUnitOfMeasure: string | null;
   supplierItemCode: string | null;
+  adjustsLineId: string | null;
+  documentLineCount: number | null;
   sourcePage: number | null;
   extractionMethod: PurchaseLineExtractionMethod | null;
   parserVersion: string | null;
@@ -523,6 +540,19 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
     describedPackSize: extractedPackSize
   });
   const rowClass = input.rowClass ?? "merchandise";
+  const adjustsLineId = input.adjustsLineId?.trim() || null;
+  // An adjustment is a row that names the line it modifies. It is never a
+  // column on that line, and never a credit: a supplier discount changes what
+  // was charged, it is not money coming back.
+  if (adjustsLineId !== null && rowClass !== "line_adjustment") {
+    throw new Error("Only a line adjustment may reference the line it modifies.");
+  }
+  if (rowClass === "line_adjustment" && adjustsLineId === null) {
+    throw new Error("A line adjustment must name the line it modifies.");
+  }
+  if (rowClass === "line_adjustment" && input.lineType !== "purchase") {
+    throw new Error("A line adjustment is not a credit and must be a purchase line.");
+  }
   const sourcePage = input.sourcePage ?? null;
   if (sourcePage !== null && (!Number.isInteger(sourcePage) || sourcePage < 1 || sourcePage > 10000)) {
     throw new Error("Source page must be a bounded page number.");
@@ -538,8 +568,14 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
     creditsLineId,
     rowClass,
     orderedQuantity: optionalAmount(input.orderedQuantity, "Ordered quantity", MAX_QUANTITY),
+    orderedUnitOfMeasure: optionalBoundedText(
+      input.orderedUnitOfMeasure, "Ordered unit of measure", 80),
     shippedQuantity: optionalAmount(input.shippedQuantity, "Shipped quantity", MAX_QUANTITY),
+    shippedUnitOfMeasure: optionalBoundedText(
+      input.shippedUnitOfMeasure, "Shipped unit of measure", 80),
     supplierItemCode: optionalBoundedText(input.supplierItemCode, "Supplier item code", 80),
+    adjustsLineId: adjustsLineId,
+    documentLineCount: input.documentLineCount ?? null,
     sourcePage,
     extractionMethod: input.extractionMethod ?? null,
     parserVersion: optionalBoundedText(input.parserVersion, "Parser version", 80),
@@ -594,8 +630,14 @@ export function normalizePurchaseLineRow(row: Record<string, unknown>): Purchase
     lineType: row.line_type as PurchaseLineType,
     rowClass: (row.row_class ?? "merchandise") as PurchaseLineRowClass,
     orderedQuantity: nullableNumber("ordered_quantity"),
+    orderedUnitOfMeasure: nullableText("ordered_unit_of_measure"),
     shippedQuantity: nullableNumber("shipped_quantity"),
+    shippedUnitOfMeasure: nullableText("shipped_unit_of_measure"),
+    billedQuantity: nullableNumber("billed_quantity"),
+    billedUnitOfMeasure: nullableText("billed_unit_of_measure"),
     supplierItemCode: nullableText("supplier_item_code"),
+    adjustsLineId: nullableText("adjusts_line_id"),
+    documentLineCount: nullableNumber("document_line_count"),
     sourcePage: nullableNumber("source_page"),
     extractionMethod: nullableText("extraction_method") as PurchaseLineExtractionMethod | null,
     parserVersion: nullableText("parser_version"),
@@ -656,8 +698,12 @@ export function toPurchaseLinePayload(line: NormalizedPurchaseLineInput) {
     creditsLineId: line.creditsLineId,
     rowClass: line.rowClass,
     orderedQuantity: line.orderedQuantity,
+    orderedUnitOfMeasure: line.orderedUnitOfMeasure,
     shippedQuantity: line.shippedQuantity,
+    shippedUnitOfMeasure: line.shippedUnitOfMeasure,
     supplierItemCode: line.supplierItemCode,
+    adjustsLineId: line.adjustsLineId,
+    documentLineCount: line.documentLineCount,
     sourcePage: line.sourcePage,
     extractionMethod: line.extractionMethod,
     parserVersion: line.parserVersion,
