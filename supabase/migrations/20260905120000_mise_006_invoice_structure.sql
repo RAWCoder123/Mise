@@ -9,21 +9,55 @@
 -- is synthetic: it reproduces a shape, never a document, and contains no real
 -- price, item code, order number, or customer identity.
 --
--- ATTESTED COUNTS. A structure seen in all three is structural; a structure
--- seen in fewer is possible, not typical, and nothing here requires it.
+-- SECTION 1 FINDINGS, from operator transcription. Suppliers are abbreviated
+-- WC (warehouse club), JS (Japanese seafood specialist), SD (seafood
+-- distributor). STRUCTURAL means attested in all three independent formats. It
+-- does not mean universal: three formats is three formats.
 --
---   1 of 3  A line amount is stated NET of that line's own adjustment. See the
---           net-spend function comment: this is why net spend must not subtract
---           an adjustment row again. Unverified for the other two formats.
---   seen    A free-text block appears in the item region rather than the totals
---           block -- regulatory notices, storage statements. Recorded as the
---           'notice' row class. The number of formats exhibiting it was not
---           reported to this migration.
+--   (a) ORDERED and SHIPPED as separate columns   POSSIBLE.
+--       2 of 3 have both (WC, JS); 1 of 3 shows divergence (WC). SD has a
+--       single quantity column. Hence both columns are nullable and neither is
+--       ever substituted for the billed quantity.
 --
--- The remaining per-format counts for the brief's structures (a) through (g)
--- were not supplied and are therefore NOT recorded here. Nothing below treats
--- any structure as structural: every added column is nullable or defaulted, and
--- no constraint requires any structure to be present.
+--   (b) Supplier item code per line               STRUCTURAL, 3 of 3.
+--       Two numeric, one alphanumeric with a shared prefix and a trailing
+--       variant letter. Stored verbatim and never parsed: that third shape is
+--       exactly what a parser would corrupt by trying to read structure out of
+--       it. Note this attests that a code is PRINTED by all three, not that a
+--       code is reused across documents, which one invoice per supplier cannot
+--       show and which no constraint here assumes.
+--
+--   (c) Per-line adjustment column                POSSIBLE.
+--       2 of 3 have the column (WC, JS); 1 of 3 populates it (WC). On the
+--       format that populates it the line amount is stated NET of the
+--       adjustment; see the net-spend function comment.
+--
+--   (d) Non-merchandise rows                      STRUCTURAL, 3 of 3.
+--       JS additionally carries a regulatory notice INSIDE the item region,
+--       interleaved with merchandise rows rather than in the totals block.
+--       That is the 'notice' row class, and the interleaving is why it is a
+--       row class rather than a document-level field.
+--
+--   (e) Pack size / unit encoding                 STRUCTURAL, 3 of 3.
+--       Three distinct encodings: in the description; fused to the shipped
+--       quantity; fused to the ordered quantity. The encoding is
+--       supplier-specific. The schema is unaffected -- pack_size is nullable
+--       text and a caller-supplied value already wins over one extracted from
+--       the description -- but note that extract_purchase_pack_size reads the
+--       DESCRIPTION only, so for the two fused encodings a parser must supply
+--       packSize itself. That is a parser concern, not a schema one.
+--
+--   (f) Catch-weight billing                      STRUCTURAL, 3 of 3.
+--       All three bill actual weight against a case or estimate order. This is
+--       why each quantity carries its own unit and why the arithmetic property
+--       multiplies the billed quantity rather than the ordered one.
+--
+--   (g) Footer line count                         POSSIBLE, 1 of 3 (JS).
+--       Hence document_line_count is nullable and completeness reporting is a
+--       separate read rather than a constraint.
+--
+-- Nothing below requires any structure to be present, structural or not: every
+-- added column is nullable or defaulted.
 --
 -- NULLABILITY. `quantity` was nullable from its creation in MISE-004C and was
 -- never NOT NULL, so this branch relaxes nothing. Nullable is correct and is
@@ -108,7 +142,8 @@ alter table public.purchase_lines
   --   line_adjustment  a discount or adjustment against one merchandise line
   --   notice           a free-text block sitting among the items rather than in
   --                    the totals block: a regulatory notice, a storage
-  --                    statement. Named 'notice' because it is addressed to the
+  --                    statement. Attested on JS, interleaved with merchandise
+  --                    rows. Named 'notice' because it is addressed to the
   --                    reader, which is what separates it from section_header,
   --                    a label for the rows beneath it. It carries no amount,
   --                    which separates it from charge, tax and subtotal.
@@ -584,8 +619,9 @@ from public, anon, authenticated, service_role;
 grant execute on function public.list_purchase_line_net_by_item(uuid)
 to authenticated;
 
--- ADJUSTMENT NETTING, ATTESTED. On one of the three transcribed formats the
--- merchandise line amount is stated NET of that line's own adjustment, so
+-- ADJUSTMENT NETTING, ATTESTED. Two of the three formats carry a per-line
+-- adjustment column and one populates it. On that format the merchandise line
+-- amount is stated NET of that line's own adjustment, so
 -- subtracting the adjustment row here would deduct it a second time. Adjustment
 -- rows are therefore recorded for audit and excluded from net spend, which is
 -- the current behaviour and is deliberate. This is attested for ONE format and

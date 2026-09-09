@@ -173,21 +173,35 @@ source document is in this repository. Every test fixture is synthetic: it
 reproduces a shape, never a document, and contains no real price, item code,
 order number, or customer identity.
 
-**Attested counts.** A structure seen in all three is structural; a structure
-seen in fewer is possible, not typical, and nothing requires it.
+**Section 1 findings.** Suppliers abbreviated WC (warehouse club), JS
+(Japanese seafood specialist), SD (seafood distributor). *Structural* means
+attested in all three independent formats; it does not mean universal.
 
-- **1 of 3** — a merchandise line amount is stated *net* of that line's own
-  adjustment. This is why net spend excludes adjustment rows rather than
-  subtracting them: on this format subtracting would deduct the same money
-  twice. Unverified for the other two formats.
-- **Seen, count not reported** — a free-text block appears in the item region
-  rather than the totals block: regulatory notices, storage statements.
-  Recorded as the `notice` row class.
+| Structure | Verdict | Detail |
+| --- | --- | --- |
+| (a) ordered and shipped as separate columns | Possible | 2 of 3 have both (WC, JS); 1 of 3 diverges (WC). SD has a single quantity column. |
+| (b) supplier item code per line | **Structural, 3 of 3** | Two numeric, one alphanumeric with shared prefix and trailing variant letter. Stored verbatim, never parsed. |
+| (c) per-line adjustment column | Possible | 2 of 3 have the column (WC, JS); 1 of 3 populates it (WC). |
+| (d) non-merchandise rows | **Structural, 3 of 3** | JS also carries a regulatory notice inside the item region, interleaved with merchandise rows. |
+| (e) pack size / unit encoding | **Structural, 3 of 3** | Three distinct encodings: in the description; fused to shipped quantity; fused to ordered quantity. Supplier-specific. |
+| (f) catch-weight billing | **Structural, 3 of 3** | All three bill actual weight against a case or estimate order. |
+| (g) footer line count | Possible, 1 of 3 (JS) | Hence `document_line_count` is nullable. |
 
-Per-format counts for the remaining structures were not supplied and are
-therefore not recorded. Nothing treats any structure as structural: every
-column MISE-006 adds is nullable or defaulted, and no constraint requires any
-structure to be present.
+Two consequences worth carrying forward. (b) attests that all three suppliers
+*print* an item code, not that a code is reused across documents — one invoice
+per supplier cannot show that, and no constraint assumes it. (e) is structural
+but its encoding is not: `extract_purchase_pack_size` reads the description
+only, so for the two fused encodings a parser must supply `packSize` itself.
+The schema already allows that, since a caller-supplied pack size wins over an
+extracted one. It is a parser concern, not a schema one.
+
+**Adjustment netting.** On the one format that populates the adjustment column,
+the merchandise line amount is stated *net* of the adjustment. Net spend
+therefore excludes adjustment rows rather than subtracting them: subtracting
+would deduct the same money twice. Attested for that format, unverified for the
+other two. If a format is found whose line amount is stated gross, the net-spend
+function cannot stay uniform across suppliers and the pre/post distinction has
+to be recorded per document.
 
 **Quantities.** Three, each with its own unit, because a catch-weight line is
 ordered in one unit and billed in another. `quantity` is the sole writable
