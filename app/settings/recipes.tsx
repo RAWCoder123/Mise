@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
-import { AlertTriangle, ArrowLeft, BookOpen, Link2, Package, PackageCheck, Plus, Save, ShoppingBag } from "lucide-react-native";
+import { AlertTriangle, ArrowLeft, BookOpen, Link2, Package, PackageCheck, Plus, Save, Search, ShoppingBag } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -17,6 +17,10 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import {
+  filterInventoryItemsForRecipeBuilder,
+  RECIPE_INVENTORY_CHIP_SEARCH_THRESHOLD
+} from "../../services/domain/recipeInventoryItemSearch";
 import {
   addRecipeBaselineIngredient,
   confirmRecipeBaselineComplete,
@@ -472,7 +476,27 @@ function RecipeBaselineBuilder({
   onQuantityChange: (value: string) => void;
   onAdd: () => void;
 }) {
-  const { t } = useLocale();
+  const { formatNumber, t } = useLocale();
+  const [inventoryChipQuery, setInventoryChipQuery] = useState("");
+  const showInventoryChipSearch = inventoryItems.length > RECIPE_INVENTORY_CHIP_SEARCH_THRESHOLD;
+  const inventoryFingerprint = inventoryItems.map((item) => item.id).join("\u0001");
+  const filteredInventoryItems = useMemo(
+    () =>
+      filterInventoryItemsForRecipeBuilder(
+        inventoryItems,
+        showInventoryChipSearch ? inventoryChipQuery : ""
+      ),
+    [inventoryChipQuery, inventoryItems, showInventoryChipSearch]
+  );
+  const inventorySearchNoMatches =
+    showInventoryChipSearch &&
+    inventoryChipQuery.trim().length > 0 &&
+    filteredInventoryItems.length === 0;
+
+  useEffect(() => {
+    setInventoryChipQuery("");
+  }, [inventoryFingerprint]);
+
   return (
     <Card style={styles.builderCard}>
       <View style={styles.builderHeader}>
@@ -518,18 +542,57 @@ function RecipeBaselineBuilder({
 
       <View style={styles.suggestionBlock}>
         <Text style={styles.inputLabel}>{t("recipes.field.inventoryItem")}</Text>
-        <View style={styles.chipRow}>
-          {inventoryItems.slice(0, 7).map((item) => (
-            <SuggestionChip
-              key={item.id}
-              label={item.item_name}
-              active={selectedInventoryItem?.id === item.id}
-              disabled={saving}
-              icon={<Package size={icon.inline} color={selectedInventoryItem?.id === item.id ? colors.surface : colors.text} strokeWidth={iconStroke} />}
-              onPress={() => onInventoryItemNameChange(item.item_name)}
+        {showInventoryChipSearch ? (
+          <View style={styles.inventorySearchBox}>
+            <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
+            <TextInput
+              accessibilityLabel={t("recipes.builder.inventorySearch.accessibility")}
+              accessibilityHint={t("recipes.builder.inventorySearch.hint")}
+              accessibilityState={{ disabled: saving }}
+              value={inventoryChipQuery}
+              onChangeText={setInventoryChipQuery}
+              editable={!saving}
+              placeholder={t("recipes.builder.inventorySearch.placeholder")}
+              placeholderTextColor={colors.faint}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+              style={styles.inventorySearchInput}
             />
-          ))}
-        </View>
+          </View>
+        ) : null}
+        {showInventoryChipSearch ? (
+          <Text style={styles.inventorySearchMeta} accessibilityLiveRegion="polite">
+            {t("recipes.builder.inventorySearch.showing", {
+              shown: formatNumber(filteredInventoryItems.length),
+              total: formatNumber(inventoryItems.length)
+            })}
+          </Text>
+        ) : null}
+        {inventorySearchNoMatches ? (
+          <Text style={styles.inventorySearchEmpty} accessibilityLiveRegion="polite">
+            {t("recipes.builder.inventorySearch.empty")}
+          </Text>
+        ) : (
+          <View style={styles.chipRow}>
+            {filteredInventoryItems.map((item) => (
+              <SuggestionChip
+                key={item.id}
+                label={item.item_name}
+                active={selectedInventoryItem?.id === item.id}
+                disabled={saving}
+                icon={
+                  <Package
+                    size={icon.inline}
+                    color={selectedInventoryItem?.id === item.id ? colors.surface : colors.text}
+                    strokeWidth={iconStroke}
+                  />
+                }
+                onPress={() => onInventoryItemNameChange(item.item_name)}
+              />
+            ))}
+          </View>
+        )}
         <TextInput
           accessibilityLabel={t("recipes.field.inventoryItem")}
           accessibilityState={{ disabled: saving }}
@@ -812,6 +875,38 @@ const styles = StyleSheet.create({
   },
   suggestionBlock: {
     gap: 9
+  },
+  inventorySearchBox: {
+    minHeight: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  inventorySearchInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+    padding: 0
+  },
+  inventorySearchMeta: {
+    color: colors.faint,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700"
+  },
+  inventorySearchEmpty: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700"
   },
   chipRow: {
     flexDirection: "row",
