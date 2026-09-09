@@ -25,6 +25,43 @@ export type PurchaseLineSource =
  * consistency rule needs no sign convention to reason about.
  */
 export type PurchaseLineType = "purchase" | "credit";
+
+/**
+ * MISE-006. What kind of row this is. Only merchandise reaches net quantity
+ * and net spend; everything else is stored for audit. Each value is justified
+ * by the structures the MISE-006 brief enumerates, never by imagination.
+ */
+export type PurchaseLineRowClass =
+  | "merchandise"
+  | "section_header"
+  | "charge"
+  | "tax"
+  | "subtotal"
+  | "line_adjustment"
+  /** A free-text block among the items: a regulatory notice, a storage
+   *  statement. Addressed to the reader, which separates it from a
+   *  section_header, and carrying no amount, which separates it from a
+   *  charge, tax or subtotal. */
+  | "notice";
+
+export type PurchaseLineExtractionMethod = "manual_entry" | "pdf_text" | "ocr";
+
+/**
+ * How sure extraction was that it read the characters correctly. A separate
+ * axis from parse confidence, which asks whether the fields agree with each
+ * other. A line can be read perfectly and still contradict itself, and a line
+ * can be blurry and still be internally consistent.
+ */
+export type PurchaseLineExtractionConfidence = "exact" | "uncertain" | "unreadable";
+
+/** Characters you are unsure you read cannot support a confirmed claim. */
+export function purchaseLineExtractionCeiling(
+  extraction: PurchaseLineExtractionConfidence | null | undefined
+): PurchaseLineConfidence {
+  if (extraction === "unreadable") return "could_not_verify";
+  if (extraction === "uncertain") return "estimated";
+  return "confirmed";
+}
 export type PurchaseLineConfidence = "confirmed" | "estimated" | "could_not_verify";
 
 /**
@@ -271,6 +308,21 @@ export interface PurchaseLineInput {
   rawItemDescription: string;
   /** Only when the source document names the original line. Never inferred. */
   creditsLineId?: string | null;
+  /** MISE-006 invoice structure. All optional: a caller that knows nothing
+   *  about invoice layout still writes valid rows. */
+  orderedQuantity?: number | null;
+  orderedUnitOfMeasure?: string | null;
+  shippedQuantity?: number | null;
+  shippedUnitOfMeasure?: string | null;
+  supplierItemCode?: string | null;
+  rowClass?: PurchaseLineRowClass;
+  /** A line adjustment is a row referencing the merchandise line it modifies. */
+  adjustsLineId?: string | null;
+  documentLineCount?: number | null;
+  sourcePage?: number | null;
+  extractionMethod?: PurchaseLineExtractionMethod | null;
+  parserVersion?: string | null;
+  extractionConfidence?: PurchaseLineExtractionConfidence | null;
   quantity?: number | null;
   unitOfMeasure?: string | null;
   packSize?: string | null;
@@ -289,6 +341,21 @@ export interface PurchaseLine {
   lineIndex: number;
   revision: number;
   lineType: PurchaseLineType;
+  rowClass: PurchaseLineRowClass;
+  orderedQuantity: number | null;
+  orderedUnitOfMeasure: string | null;
+  shippedQuantity: number | null;
+  shippedUnitOfMeasure: string | null;
+  /** Generated mirror of quantity; the arithmetic property multiplies this. */
+  billedQuantity: number | null;
+  billedUnitOfMeasure: string | null;
+  supplierItemCode: string | null;
+  adjustsLineId: string | null;
+  documentLineCount: number | null;
+  sourcePage: number | null;
+  extractionMethod: PurchaseLineExtractionMethod | null;
+  parserVersion: string | null;
+  extractionConfidence: PurchaseLineExtractionConfidence | null;
   rawItemDescription: string;
   normalizedItemKey: string | null;
   normalizationVersion: typeof PURCHASE_LINE_NORMALIZATION_VERSION;
@@ -382,6 +449,7 @@ export function resolvePurchaseLineConfidence(input: {
   extendedPrice: number | null;
   normalizedItemKey: string | null;
   consistencyFlags?: PurchaseLineConsistencyFlag[];
+  extractionConfidence?: PurchaseLineExtractionConfidence | null;
 }): PurchaseLineConfidence {
   const complete =
     input.quantity !== null &&
@@ -389,12 +457,14 @@ export function resolvePurchaseLineConfidence(input: {
     input.unitPrice !== null &&
     input.extendedPrice !== null &&
     input.normalizedItemKey !== null;
-  // Three separate ceilings — what was claimed, what the document carried, and
-  // what the line's own numbers support. The lowest of them wins.
+  // Four separate ceilings — what was claimed, what the document carried, what
+  // the line's own numbers support, and how well it could be read. The lowest
+  // of them wins, and none of them can raise another.
   const ceilings: PurchaseLineConfidence[] = [
     input.requested,
     complete ? "confirmed" : "could_not_verify",
-    purchaseLineConsistencyCeiling(input.consistencyFlags ?? [])
+    purchaseLineConsistencyCeiling(input.consistencyFlags ?? []),
+    purchaseLineExtractionCeiling(input.extractionConfidence)
   ];
   return ceilings.reduce((lowest, candidate) =>
     CONFIDENCE_RANK[candidate] < CONFIDENCE_RANK[lowest] ? candidate : lowest
@@ -416,6 +486,18 @@ export interface NormalizedPurchaseLineInput extends PurchaseLineInput {
   consistencyFlags: PurchaseLineConsistencyFlag[];
   lineType: PurchaseLineType;
   creditsLineId: string | null;
+  rowClass: PurchaseLineRowClass;
+  orderedQuantity: number | null;
+  orderedUnitOfMeasure: string | null;
+  shippedQuantity: number | null;
+  shippedUnitOfMeasure: string | null;
+  supplierItemCode: string | null;
+  adjustsLineId: string | null;
+  documentLineCount: number | null;
+  sourcePage: number | null;
+  extractionMethod: PurchaseLineExtractionMethod | null;
+  parserVersion: string | null;
+  extractionConfidence: PurchaseLineExtractionConfidence | null;
   /** What the caller claimed, before the server's ceilings were applied. */
   statedConfidence: PurchaseLineConfidence;
 }
@@ -462,10 +544,50 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
     statedPackSize,
     describedPackSize: extractedPackSize
   });
+  const rowClass = input.rowClass ?? "merchandise";
+  const adjustsLineId = input.adjustsLineId?.trim() || null;
+  // An adjustment is a row that names the line it modifies. It is never a
+  // column on that line, and never a credit: a supplier discount changes what
+  // was charged, it is not money coming back.
+  if (adjustsLineId !== null && rowClass !== "line_adjustment") {
+    throw new Error("Only a line adjustment may reference the line it modifies.");
+  }
+  if (rowClass === "line_adjustment" && adjustsLineId === null) {
+    throw new Error("A line adjustment must name the line it modifies.");
+  }
+  if (rowClass === "line_adjustment" && input.lineType !== "purchase") {
+    throw new Error("A line adjustment is not a credit and must be a purchase line.");
+  }
+  const sourcePage = input.sourcePage ?? null;
+  if (sourcePage !== null && (!Number.isInteger(sourcePage) || sourcePage < 1 || sourcePage > 10000)) {
+    throw new Error("Source page must be a bounded page number.");
+  }
+  // A grouping header carries no money and no goods; storing amounts on one
+  // would record something the document did not say.
+  if (rowClass === "section_header" && (quantity !== null || unitPrice !== null || extendedPrice !== null)) {
+    throw new Error("A section header row cannot carry quantities or prices.");
+  }
+  if (rowClass === "notice" && (quantity !== null || unitPrice !== null || extendedPrice !== null)) {
+    throw new Error("A notice row cannot carry quantities or prices.");
+  }
   return {
     lineIndex: input.lineIndex,
     lineType: input.lineType,
     creditsLineId,
+    rowClass,
+    orderedQuantity: optionalAmount(input.orderedQuantity, "Ordered quantity", MAX_QUANTITY),
+    orderedUnitOfMeasure: optionalBoundedText(
+      input.orderedUnitOfMeasure, "Ordered unit of measure", 80),
+    shippedQuantity: optionalAmount(input.shippedQuantity, "Shipped quantity", MAX_QUANTITY),
+    shippedUnitOfMeasure: optionalBoundedText(
+      input.shippedUnitOfMeasure, "Shipped unit of measure", 80),
+    supplierItemCode: optionalBoundedText(input.supplierItemCode, "Supplier item code", 80),
+    adjustsLineId: adjustsLineId,
+    documentLineCount: input.documentLineCount ?? null,
+    sourcePage,
+    extractionMethod: input.extractionMethod ?? null,
+    parserVersion: optionalBoundedText(input.parserVersion, "Parser version", 80),
+    extractionConfidence: input.extractionConfidence ?? null,
     rawItemDescription,
     normalizedItemKey,
     normalizationVersion,
@@ -486,7 +608,8 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
       unitPrice,
       extendedPrice,
       normalizedItemKey,
-      consistencyFlags
+      consistencyFlags,
+      extractionConfidence: input.extractionConfidence ?? null
     })
   };
 }
@@ -513,6 +636,21 @@ export function normalizePurchaseLineRow(row: Record<string, unknown>): Purchase
     lineIndex: Number(row.line_index),
     revision: Number(row.revision),
     lineType: row.line_type as PurchaseLineType,
+    rowClass: (row.row_class ?? "merchandise") as PurchaseLineRowClass,
+    orderedQuantity: nullableNumber("ordered_quantity"),
+    orderedUnitOfMeasure: nullableText("ordered_unit_of_measure"),
+    shippedQuantity: nullableNumber("shipped_quantity"),
+    shippedUnitOfMeasure: nullableText("shipped_unit_of_measure"),
+    billedQuantity: nullableNumber("billed_quantity"),
+    billedUnitOfMeasure: nullableText("billed_unit_of_measure"),
+    supplierItemCode: nullableText("supplier_item_code"),
+    adjustsLineId: nullableText("adjusts_line_id"),
+    documentLineCount: nullableNumber("document_line_count"),
+    sourcePage: nullableNumber("source_page"),
+    extractionMethod: nullableText("extraction_method") as PurchaseLineExtractionMethod | null,
+    parserVersion: nullableText("parser_version"),
+    extractionConfidence:
+      nullableText("extraction_confidence") as PurchaseLineExtractionConfidence | null,
     rawItemDescription: String(row.raw_item_description),
     normalizedItemKey: nullableText("normalized_item_key"),
     normalizationVersion: PURCHASE_LINE_NORMALIZATION_VERSION,
@@ -566,6 +704,18 @@ export function toPurchaseLinePayload(line: NormalizedPurchaseLineInput) {
     lineIndex: line.lineIndex,
     lineType: line.lineType,
     creditsLineId: line.creditsLineId,
+    rowClass: line.rowClass,
+    orderedQuantity: line.orderedQuantity,
+    orderedUnitOfMeasure: line.orderedUnitOfMeasure,
+    shippedQuantity: line.shippedQuantity,
+    shippedUnitOfMeasure: line.shippedUnitOfMeasure,
+    supplierItemCode: line.supplierItemCode,
+    adjustsLineId: line.adjustsLineId,
+    documentLineCount: line.documentLineCount,
+    sourcePage: line.sourcePage,
+    extractionMethod: line.extractionMethod,
+    parserVersion: line.parserVersion,
+    extractionConfidence: line.extractionConfidence,
     rawItemDescription: line.rawItemDescription,
     quantity: line.quantity,
     unitOfMeasure: line.unitOfMeasure,

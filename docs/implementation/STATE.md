@@ -160,6 +160,75 @@ over: a group holding credits with no purchase behind it is returned with
 `unmatched_credit` set, so an unnetted credit is visible as an unmatched credit
 rather than disappearing into a silently wrong net.
 
+## MISE-006 real invoice structure
+
+`public.purchase_lines` can hold structures that real invoices were observed to
+contain. This is schema only: nothing in MISE-006 parses a document, infers a
+supplier, or optimises for a layout.
+
+**Evidence.** Three real invoices from three independent suppliers — a warehouse
+club, a Japanese seafood specialist, a seafood distributor — were read by the
+operator and transcribed as structure only. The images are not retained and no
+source document is in this repository. Every test fixture is synthetic: it
+reproduces a shape, never a document, and contains no real price, item code,
+order number, or customer identity.
+
+**Section 1 findings.** Suppliers abbreviated WC (warehouse club), JS
+(Japanese seafood specialist), SD (seafood distributor). *Structural* means
+attested in all three independent formats; it does not mean universal.
+
+| Structure | Verdict | Detail |
+| --- | --- | --- |
+| (a) ordered and shipped as separate columns | Possible | 2 of 3 have both (WC, JS); 1 of 3 diverges (WC). SD has a single quantity column. |
+| (b) supplier item code per line | **Structural, 3 of 3** | Two numeric, one alphanumeric with shared prefix and trailing variant letter. Stored verbatim, never parsed. |
+| (c) per-line adjustment column | Possible | 2 of 3 have the column (WC, JS); 1 of 3 populates it (WC). |
+| (d) non-merchandise rows | **Structural, 3 of 3** | JS also carries a regulatory notice inside the item region, interleaved with merchandise rows. |
+| (e) pack size / unit encoding | **Structural, 3 of 3** | Three distinct encodings: in the description; fused to shipped quantity; fused to ordered quantity. Supplier-specific. |
+| (f) catch-weight billing | **Structural, 3 of 3** | All three bill actual weight against a case or estimate order. |
+| (g) footer line count | Possible, 1 of 3 (JS) | Hence `document_line_count` is nullable. |
+
+Two consequences worth carrying forward. (b) attests that all three suppliers
+*print* an item code, not that a code is reused across documents — one invoice
+per supplier cannot show that, and no constraint assumes it. (e) is structural
+but its encoding is not: `extract_purchase_pack_size` reads the description
+only, so for the two fused encodings a parser must supply `packSize` itself.
+The schema already allows that, since a caller-supplied pack size wins over an
+extracted one. It is a parser concern, not a schema one.
+
+**Adjustment netting.** On the one format that populates the adjustment column,
+the merchandise line amount is stated *net* of the adjustment. Net spend
+therefore excludes adjustment rows rather than subtracting them: subtracting
+would deduct the same money twice. Attested for that format, unverified for the
+other two. If a format is found whose line amount is stated gross, the net-spend
+function cannot stay uniform across suppliers and the pre/post distinction has
+to be recorded per document.
+
+**Quantities.** Three, each with its own unit, because a catch-weight line is
+ordered in one unit and billed in another. `quantity` is the sole writable
+storage of the billed quantity and `billed_quantity` mirrors it as a generated
+column, so the two cannot disagree. The 004A-C arithmetic property multiplies
+the billed quantity. A line whose billed quantity cannot be identified is
+`could_not_verify`; nothing substitutes ordered or shipped to see which
+reconciles.
+
+**`quantity` nullability.** It was nullable from its creation in MISE-004C and
+has never been NOT NULL, so MISE-006 relaxes nothing. Nullable is deliberate: a
+line whose billed quantity could not be read must still be recordable, storing
+null and resolving to `could_not_verify`, rather than being dropped or
+defaulted to zero.
+
+**Row classes.** `merchandise`, `section_header`, `charge`, `tax`, `subtotal`,
+`line_adjustment`, `notice`. Only `merchandise` reaches net quantity and net
+spend; the rest are stored for audit and excluded from every aggregate. A line
+adjustment is its own row naming the merchandise line it modifies — never a
+column, and never a credit, because a supplier discount changes what was
+charged rather than returning money.
+
+**Confidence.** `extraction_confidence` is a separate column from
+`parse_confidence`. One asks whether the characters were read correctly, the
+other whether the fields agree with each other. They interact in one direction
+only: extraction caps parse and never raises it.
+
 This ledger predicts nothing. It does not reorder, infer depletion, model
 recipes, match items across suppliers, or aggregate across restaurants. It reads
 and writes no MISE-003 purchasing table. It is substrate for later work only.
