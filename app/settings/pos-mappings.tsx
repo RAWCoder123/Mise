@@ -17,7 +17,29 @@ import {
   reviewPosCatalogMapping,
   type PosMappingReviewQueue
 } from "../../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+
+function selectionsFromQueue(
+  queue: PosMappingReviewQueue,
+  current: Record<string, string>
+): Record<string, string> {
+  const activeMenuIds = new Set(queue.menuItems.map((item) => item.id));
+  return Object.fromEntries(
+    queue.mappings.flatMap((mapping) => {
+      const currentSelection = current[mapping.id];
+      const selection = currentSelection && activeMenuIds.has(currentSelection)
+        ? currentSelection
+        : mapping.suggestedMenuItemId && activeMenuIds.has(mapping.suggestedMenuItemId)
+          ? mapping.suggestedMenuItemId
+          : null;
+      return selection ? [[mapping.id, selection]] : [];
+    })
+  );
+}
 
 export default function PosMappingsScreen() {
   const navigation = useNavigation();
@@ -29,20 +51,24 @@ export default function PosMappingsScreen() {
   const [expandedMappingId, setExpandedMappingId] = useState<string | null>(null);
   const [busyMappingId, setBusyMappingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(restaurant && canManage));
-  const [loadError, setLoadError] = useState(false);
+  const [hubLoadError, setHubLoadError] = useState(false);
+  const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "neutral" | "danger"; message: string } | null>(null);
   const requestIdRef = useRef(0);
+  const hasLoadedRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoadedRef.current = false;
     setQueue(null);
     setSelectedMenuItemIds({});
     setExpandedMappingId(null);
     setBusyMappingId(null);
     setNotice(null);
-    setLoadError(false);
+    setHubLoadError(false);
+    setLoadedRestaurantId(null);
     setLoading(Boolean(restaurant && canManage));
   }, [canManage, restaurant?.id]);
 
@@ -53,31 +79,43 @@ export default function PosMappingsScreen() {
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
-    setLoadError(false);
+    const soft = hasLoadedRef.current && activeRestaurantIdRef.current === restaurantId;
+    if (soft) {
+      // Invalidate readiness during soft refresh so mutations stay closed until proof returns.
+      setLoadedRestaurantId(null);
+    } else {
+      setLoading(true);
+      setHubLoadError(false);
+      setNotice(null);
+    }
     try {
       const next = await fetchPosMappingReviewQueue(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      const activeMenuIds = new Set(next.menuItems.map((item) => item.id));
       setQueue(next);
-      setSelectedMenuItemIds((current) => Object.fromEntries(
-        next.mappings.flatMap((mapping) => {
-          const currentSelection = current[mapping.id];
-          const selection = currentSelection && activeMenuIds.has(currentSelection)
-            ? currentSelection
-            : mapping.suggestedMenuItemId && activeMenuIds.has(mapping.suggestedMenuItemId)
-              ? mapping.suggestedMenuItemId
-              : null;
-          return selection ? [[mapping.id, selection]] : [];
-        })
-      ));
+      setLoadedRestaurantId(restaurantId);
+      setHubLoadError(false);
+      // Soft refresh must preserve operator menu-item selections that remain valid.
+      if (soft) {
+        setSelectedMenuItemIds((current) => selectionsFromQueue(next, current));
+        setExpandedMappingId((current) =>
+          current && next.mappings.some((mapping) => mapping.id === current) ? current : null
+        );
+      } else {
+        setSelectedMenuItemIds(selectionsFromQueue(next, {}));
+        setExpandedMappingId(null);
+      }
     } catch {
-      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      // Fail closed for display/actions, but keep local drafts and prior queue for retry.
+      setHubLoadError(true);
+      if (!soft) {
         setQueue(null);
-        setLoadError(true);
+        setSelectedMenuItemIds({});
+        setExpandedMappingId(null);
       }
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoadedRef.current = true;
         setLoading(false);
       }
     }
@@ -87,13 +125,26 @@ export default function PosMappingsScreen() {
     void loadQueue();
   }, [loadQueue]));
 
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: hubLoadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy: Boolean(busyMappingId)
+  });
+  const visibleQueue = hubReady ? queue : null;
+
   const menuById = useMemo(
-    () => new Map(queue?.menuItems.map((item) => [item.id, item]) ?? []),
-    [queue?.menuItems]
+    () => new Map(visibleQueue?.menuItems.map((item) => [item.id, item]) ?? []),
+    [visibleQueue?.menuItems]
   );
 
   async function decide(mappingId: string, decision: "verify" | "reject") {
-    if (!restaurant || !canManage || busyMappingId) return;
+    if (!restaurant || !actionsEditable || busyMappingId) return;
     const restaurantId = restaurant.id;
     const menuItemId = decision === "verify" ? selectedMenuItemIds[mappingId] ?? null : null;
     if (decision === "verify" && !menuItemId) {
@@ -114,6 +165,11 @@ export default function PosMappingsScreen() {
       setQueue((current) => current && current.restaurantId === restaurantId
         ? { ...current, mappings: current.mappings.filter((mapping) => mapping.id !== mappingId) }
         : current);
+      setSelectedMenuItemIds((current) => {
+        const next = { ...current };
+        delete next[mappingId];
+        return next;
+      });
       setExpandedMappingId((current) => current === mappingId ? null : current);
       setNotice({
         tone: decision === "verify" ? "success" : "neutral",
@@ -155,7 +211,7 @@ export default function PosMappingsScreen() {
             title={t("pos.mappings.roleTitle")}
             message={t("pos.mappings.roleBody")}
           />
-        ) : loadError ? (
+        ) : hubLoadError ? (
           <StatusNotice
             tone="danger"
             title={t("pos.mappings.loadErrorTitle")}
@@ -163,9 +219,9 @@ export default function PosMappingsScreen() {
             actionLabel={t("common.retry")}
             onAction={() => void loadQueue()}
           />
-        ) : loading || !queue ? (
+        ) : loading || !visibleQueue ? (
           <Text style={styles.loading}>{t("common.loading")}</Text>
-        ) : queue.pendingCount === 0 ? (
+        ) : visibleQueue.pendingCount === 0 ? (
           <Card>
             <View style={styles.emptyState}>
               <CheckCircle size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />
@@ -178,13 +234,14 @@ export default function PosMappingsScreen() {
             <SectionHeader
               eyebrow={t("pos.mappings.eyebrow")}
               title={t("pos.mappings.queueTitle")}
-              action={String(queue.pendingCount)}
+              action={String(visibleQueue.pendingCount)}
             />
-            {queue.mappings.map((mapping) => {
+            {visibleQueue.mappings.map((mapping) => {
               const selectedMenuItemId = selectedMenuItemIds[mapping.id] ?? null;
               const selectedMenuItem = selectedMenuItemId ? menuById.get(selectedMenuItemId) : null;
               const expanded = expandedMappingId === mapping.id;
               const busy = busyMappingId === mapping.id;
+              const rowDisabled = !actionsEditable;
               return (
                 <Card key={mapping.id}>
                   <View style={styles.mappingHeader}>
@@ -210,14 +267,14 @@ export default function PosMappingsScreen() {
 
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityState={{ expanded, disabled: busy }}
+                    accessibilityState={{ expanded, disabled: rowDisabled }}
                     accessibilityHint={t("pos.mappings.chooseHint")}
-                    disabled={busy}
+                    disabled={rowDisabled}
                     onPress={() => setExpandedMappingId((current) => current === mapping.id ? null : mapping.id)}
                     style={({ pressed }) => [
                       styles.choiceControl,
-                      pressed && !busy && styles.pressed,
-                      busy && styles.disabled
+                      pressed && !rowDisabled && styles.pressed,
+                      rowDisabled && styles.disabled
                     ]}
                   >
                     <View style={styles.mappingCopy}>
@@ -229,14 +286,14 @@ export default function PosMappingsScreen() {
 
                   {expanded ? (
                     <View style={styles.choiceList} accessibilityRole="radiogroup">
-                      {queue.menuItems.map((menuItem) => {
+                      {visibleQueue.menuItems.map((menuItem) => {
                         const selected = selectedMenuItemId === menuItem.id;
                         return (
                           <Pressable
                             key={menuItem.id}
                             accessibilityRole="radio"
-                            accessibilityState={{ selected, disabled: busy }}
-                            disabled={busy}
+                            accessibilityState={{ selected, disabled: rowDisabled }}
+                            disabled={rowDisabled}
                             onPress={() => {
                               setSelectedMenuItemIds((current) => ({ ...current, [mapping.id]: menuItem.id }));
                               setExpandedMappingId(null);
@@ -244,7 +301,7 @@ export default function PosMappingsScreen() {
                             style={({ pressed }) => [
                               styles.choiceRow,
                               selected && styles.choiceRowSelected,
-                              pressed && !busy && styles.pressed
+                              pressed && !rowDisabled && styles.pressed
                             ]}
                           >
                             <View style={[styles.choiceDot, selected && styles.choiceDotSelected]}>
@@ -265,7 +322,7 @@ export default function PosMappingsScreen() {
                       title={busy ? t("pos.mappings.reviewing") : t("pos.mappings.verify")}
                       icon={<Check size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />}
                       onPress={() => void decide(mapping.id, "verify")}
-                      disabled={busy || !selectedMenuItemId}
+                      disabled={rowDisabled || !selectedMenuItemId}
                       style={styles.action}
                     />
                     <Button
@@ -273,7 +330,7 @@ export default function PosMappingsScreen() {
                       icon={<X size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />}
                       variant="danger"
                       onPress={() => void decide(mapping.id, "reject")}
-                      disabled={busy}
+                      disabled={rowDisabled}
                       style={styles.action}
                     />
                   </View>
