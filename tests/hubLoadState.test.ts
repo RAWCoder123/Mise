@@ -137,3 +137,32 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
     true
   );
 });
+
+test("order detail preserves operator note drafts on soft-refresh fail-closed", () => {
+  const source = readFileSync("app/orders/[id].tsx", "utf8");
+  assert.match(source, /const \[hubLoadError, setHubLoadError\]/);
+  assert.match(source, /loadError:\s*hubLoadError/);
+  assert.match(source, /hasLoadedRef/);
+  assert.match(source, /loadedOrderIdRef/);
+  assert.match(source, /const soft = hasLoadedRef\.current && loadedOrderIdRef\.current === orderId/);
+  assert.match(
+    source,
+    /\/\/ Soft refresh must preserve operator-entered note drafts\.\s*if \(!soft\) \{\s*setOperatorNote/
+  );
+  assert.match(
+    source,
+    /\/\/ Fail closed for display\/actions, but keep local drafts and prior order evidence for retry\.\s*setHubLoadError\(true\);/
+  );
+  assert.match(
+    source,
+    /if \(!soft\) \{\s*setOrder\(null\);\s*setDeliveryEvidence\(\[\]\);\s*setEmailPayload\(null\);\s*setSupplierSendAction\(null\);\s*\}/
+  );
+  assert.match(source, /hasLoadedRef\.current = false/);
+  assert.match(source, /setOperatorNote\(""\)/);
+  assert.match(source, /RetryNotice/);
+  assert.doesNotMatch(
+    source,
+    /setHubLoadError\(false\);\s*setOperatorNote\(nextDetail\.order\.operator_note/,
+    "hard-path note seeding must not run unconditionally after every successful load"
+  );
+});

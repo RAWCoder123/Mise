@@ -8,7 +8,7 @@ import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Screen } from "../../components/ui/Screen";
-import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -74,10 +74,12 @@ export default function OrderDraftDetailScreen() {
   const [hubLoadError, setHubLoadError] = useState(false);
   const requestIdRef = useRef(0);
   const actionLockRef = useRef(false);
+  const hasLoadedRef = useRef(false);
+  const loadedOrderIdRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
-  const load = useCallback(async (showLoading = true) => {
+  const load = useCallback(async (_showLoading = true) => {
     if (!restaurant || !id) {
       setLoading(false);
       setNotice({
@@ -91,9 +93,15 @@ export default function OrderDraftDetailScreen() {
     const restaurantId = restaurant.id;
     const orderId = id;
     const requestId = ++requestIdRef.current;
-    if (showLoading) setLoading(true);
-    setNotice(null);
-    setHubLoadError(false);
+    const soft = hasLoadedRef.current && loadedOrderIdRef.current === orderId;
+    if (soft) {
+      // Invalidate readiness during soft refresh so mutations stay closed until proof returns.
+      setLoadedRestaurantId(null);
+    } else {
+      setLoading(true);
+      setNotice(null);
+      setHubLoadError(false);
+    }
     try {
       const [nextDetail, nextEmailConnection, nextEmailPayload, nextSendAction] = await Promise.all([
         fetchSupplierOrderOperationalDetail(restaurantId, orderId),
@@ -118,13 +126,15 @@ export default function OrderDraftDetailScreen() {
       setSupplierSendAction(nextSendAction);
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
-      setOperatorNote(nextDetail.order.operator_note ?? "");
+      setNotice(null);
+      loadedOrderIdRef.current = orderId;
+      // Soft refresh must preserve operator-entered note drafts.
+      if (!soft) {
+        setOperatorNote(nextDetail.order.operator_note ?? "");
+      }
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      setOrder(null);
-      setDeliveryEvidence([]);
-      setEmailPayload(null);
-      setSupplierSendAction(null);
+      // Fail closed for display/actions, but keep local drafts and prior order evidence for retry.
       setHubLoadError(true);
       setNotice({
         title: t("orders.detail.load.title"),
@@ -134,14 +144,25 @@ export default function OrderDraftDetailScreen() {
             : t("orders.detail.load.body"),
         tone: "danger"
       });
+      if (!soft) {
+        setOrder(null);
+        setDeliveryEvidence([]);
+        setEmailPayload(null);
+        setSupplierSendAction(null);
+      }
     } finally {
-      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
+      if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoadedRef.current = true;
+        setLoading(false);
+      }
     }
   }, [id, restaurant?.id, t]);
 
   useEffect(() => {
     requestIdRef.current += 1;
     actionLockRef.current = false;
+    hasLoadedRef.current = false;
+    loadedOrderIdRef.current = null;
     setLoadedRestaurantId(null);
     setHubLoadError(false);
     setOrder(null);
@@ -153,6 +174,9 @@ export default function OrderDraftDetailScreen() {
     setBusy(false);
     setNotice(null);
     setLoading(Boolean(restaurant && id));
+  }, [id, restaurant?.id]);
+
+  useEffect(() => {
     void load();
   }, [id, load, restaurant?.id]);
 
@@ -464,6 +488,16 @@ export default function OrderDraftDetailScreen() {
         </ActionIcon>
       }
     >
+      {hubLoadError ? (
+        <RetryNotice
+          title={t("orders.retry.title")}
+          message={t("orders.detail.load.body")}
+          onRetry={() => void load()}
+          retryLabel={t("common.retry")}
+          accessibilityLabel={t("orders.retry.accessibility")}
+        />
+      ) : null}
+
       {visibleOrder ? (
         <View style={styles.stack}>
           {!canManage ? (
