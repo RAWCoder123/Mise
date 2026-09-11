@@ -8,6 +8,7 @@ function source(path: string) {
 
 test("operational screens reject late requests and render only active-restaurant data", () => {
   const screens = {
+    home: source("app/(tabs)/home.tsx"),
     today: source("app/(tabs)/today.tsx"),
     inventory: source("app/(tabs)/inventory.tsx"),
     orders: source("app/(tabs)/orders.tsx"),
@@ -23,7 +24,8 @@ test("operational screens reject late requests and render only active-restaurant
     orderDetail: source("app/orders/[id].tsx"),
     restaurantMemory: source("app/more/restaurant-memory.tsx"),
     logDelivery: source("app/more/log-delivery.tsx"),
-    createTask: source("app/more/create-task.tsx")
+    createTask: source("app/more/create-task.tsx"),
+    activity: source("app/more/activity.tsx")
   };
 
   for (const [name, screen] of Object.entries(screens)) {
@@ -38,6 +40,12 @@ test("operational screens reject late requests and render only active-restaurant
     assert.match(screen, /hubReady/, `${name} must gate restaurant-scoped data on hub readiness`);
   }
 
+  assert.match(screens.home, /hubReady\s*\?\s*summary\s*:\s*null/);
+  assert.match(screens.home, /hubReady\s*\?\s*brief\s*:\s*null/);
+  assert.match(screens.home, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.home, /disabled=\{!actionsEditable \|\| Boolean\(approvingId\)\}/);
+  assert.match(screens.home, /if \(!restaurant \|\| !actionsEditable \|\| approvingId\) return;/);
+  assert.match(screens.activity, /hubReady\s*\?\s*events\s*:\s*\[\]/);
   assert.match(screens.today, /hubReady\s*\?\s*summary\s*:\s*null/);
   assert.match(screens.inventory, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
   assert.match(screens.insights, /hubReady\s*\?\s*insights\s*:\s*\[\]/);

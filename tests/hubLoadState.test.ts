@@ -8,6 +8,7 @@ import {
 } from "../services/presentation/hubLoadState";
 
 const HUB_CONSUMER_FILES = [
+  "app/(tabs)/home.tsx",
   "app/(tabs)/today.tsx",
   "app/(tabs)/inventory.tsx",
   "app/(tabs)/orders.tsx",
@@ -23,7 +24,8 @@ const HUB_CONSUMER_FILES = [
   "app/orders/[id].tsx",
   "app/more/restaurant-memory.tsx",
   "app/more/log-delivery.tsx",
-  "app/more/create-task.tsx"
+  "app/more/create-task.tsx",
+  "app/more/activity.tsx"
 ];
 
 test("restaurant-scoped hub load state fails closed on soft-refresh errors", () => {
