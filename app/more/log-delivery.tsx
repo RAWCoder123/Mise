@@ -93,6 +93,7 @@ export default function LogDeliveryScreen() {
   const [lastLoggedItemId, setLastLoggedItemId] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const hasLoadedRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -108,6 +109,7 @@ export default function LogDeliveryScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoadedRef.current = false;
     setHistory([]);
     setItems([]);
     setQuery("");
@@ -130,8 +132,14 @@ export default function LogDeliveryScreen() {
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
-    setError(false);
+    const soft = hasLoadedRef.current && activeRestaurantIdRef.current === restaurantId;
+    if (soft) {
+      // Invalidate readiness during soft refresh so mutations stay closed until proof returns.
+      setLoadedRestaurantId(null);
+    } else {
+      setLoading(true);
+      setError(false);
+    }
     try {
       const [nextItems, nextHistory] = await Promise.all([
         fetchInventoryItems(restaurantId),
@@ -141,11 +149,25 @@ export default function LogDeliveryScreen() {
       setItems(nextItems);
       setHistory(nextHistory);
       setLoadedRestaurantId(restaurantId);
+      setError(false);
+      // Soft refresh must preserve operator-entered quantity/note drafts and selection.
+      if (soft) {
+        setSelected((current) => {
+          if (!current) return null;
+          return nextItems.find((item) => item.id === current.id) ?? current;
+        });
+      }
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      // Fail closed for display/actions, but keep local drafts and prior lists for retry.
       setError(true);
+      if (!soft) {
+        setItems([]);
+        setHistory([]);
+      }
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoadedRef.current = true;
         setLoading(false);
       }
     }

@@ -137,3 +137,49 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
     true
   );
 });
+
+test("team preserves invite drafts on soft-refresh fail-closed", () => {
+  const source = readFileSync("app/settings/team.tsx", "utf8");
+  assert.match(source, /hasLoadedRef/);
+  assert.match(
+    source,
+    /const soft = hasLoadedRef\.current && activeRestaurantIdRef\.current === restaurantId/
+  );
+  assert.match(
+    source,
+    /\/\/ Invalidate readiness during soft refresh so mutations stay closed until proof returns\.\s*setLoadedRestaurantId\(null\);/
+  );
+  assert.match(
+    source,
+    /\/\/ Soft refresh must preserve operator-entered invite email\/role drafts\./
+  );
+  assert.match(
+    source,
+    /\/\/ Fail closed for display\/actions, but keep local invite drafts and prior members for retry\.\s*setLoadError\(true\);/
+  );
+  assert.match(source, /if \(!soft\) \{\s*setMembers\(\[\]\);\s*\}/);
+  assert.match(source, /RetryNotice/);
+  assert.match(source, /team\.empty\.retryAccessibility/);
+});
+
+test("log-delivery preserves quantity/note drafts on soft-refresh fail-closed", () => {
+  const source = readFileSync("app/more/log-delivery.tsx", "utf8");
+  assert.match(source, /hasLoadedRef/);
+  assert.match(
+    source,
+    /const soft = hasLoadedRef\.current && activeRestaurantIdRef\.current === restaurantId/
+  );
+  assert.match(
+    source,
+    /\/\/ Invalidate readiness during soft refresh so mutations stay closed until proof returns\.\s*setLoadedRestaurantId\(null\);/
+  );
+  assert.match(
+    source,
+    /\/\/ Soft refresh must preserve operator-entered quantity\/note drafts and selection\.\s*if \(soft\) \{/
+  );
+  assert.match(
+    source,
+    /\/\/ Fail closed for display\/actions, but keep local drafts and prior lists for retry\.\s*setError\(true\);/
+  );
+  assert.match(source, /if \(!soft\) \{\s*setItems\(\[\]\);\s*setHistory\(\[\]\);\s*\}/);
+});
