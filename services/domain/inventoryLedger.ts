@@ -105,6 +105,19 @@ export function acceptInventoryEvent(input: {
     ) {
       return { status: "conflict", reason: "event_already_superseded", existingEvent: superseded };
     }
+    // Linked corrections are audited exact reverses of a prior movement — not
+    // free-form signed adjustments under a "correction" label. Count and stockout
+    // set absolute on-hand and cannot be undone by a signed delta.
+    if (superseded.canonicalUnit !== input.candidate.canonicalUnit) {
+      return { status: "rejected", reason: "correction_unit_mismatch" };
+    }
+    const reverseQuantity = inventoryCorrectionReverseQuantity(superseded);
+    if (reverseQuantity === null) {
+      return { status: "rejected", reason: "correction_target_not_reversible" };
+    }
+    if (input.candidate.quantity !== reverseQuantity) {
+      return { status: "rejected", reason: "correction_quantity_mismatch" };
+    }
   }
 
   const maximumSequence = input.existingEvents.reduce(
@@ -121,6 +134,27 @@ export function acceptInventoryEvent(input: {
       recordedAt: input.authority.recordedAt
     }
   };
+}
+
+/**
+ * Exact on-hand delta that undoes a correctable ledger row.
+ * Receipt / signed adjustment / transfer add `quantity`; waste / usage subtract.
+ * Returns null when the event type cannot be reversed by a signed correction.
+ */
+export function inventoryCorrectionReverseQuantity(
+  superseded: Pick<InventoryEvent, "eventType" | "quantity">
+): number | null {
+  switch (superseded.eventType) {
+    case "receipt":
+    case "adjustment":
+    case "transfer":
+      return -superseded.quantity;
+    case "waste":
+    case "usage":
+      return superseded.quantity;
+    default:
+      return null;
+  }
 }
 
 export function projectInventoryEvents(

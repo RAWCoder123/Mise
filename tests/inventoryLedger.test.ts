@@ -81,7 +81,7 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
     [receipt],
     input({
       eventType: "correction",
-      quantity: -100,
+      quantity: -1000,
       clientEventId: "device-event-2",
       idempotencyKey: "correction:event-1",
       supersedesEventId: "event-1"
@@ -92,7 +92,7 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
     existingEvents: [receipt, correction],
     candidate: input({
       eventType: "correction",
-      quantity: -50,
+      quantity: -1000,
       clientEventId: "device-event-3",
       idempotencyKey: "correction:event-1:again",
       supersedesEventId: "event-1"
@@ -104,6 +104,103 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
     }
   });
   assert.equal(secondCorrection.status, "conflict");
+});
+
+test("rejects linked corrections that do not exactly reverse the superseded movement", () => {
+  const receipt = accepted([], input(), "event-1");
+  const waste = accepted(
+    [receipt],
+    input({
+      eventType: "waste",
+      quantity: 250,
+      clientEventId: "waste-1",
+      idempotencyKey: "waste-1"
+    }),
+    "event-2"
+  );
+  const mismatch = acceptInventoryEvent({
+    existingEvents: [receipt, waste],
+    candidate: input({
+      eventType: "correction",
+      quantity: 100,
+      clientEventId: "bad-correction",
+      idempotencyKey: "bad-correction",
+      supersedesEventId: "event-2"
+    }),
+    authority: {
+      id: "event-3",
+      actorUserId: "manager-1",
+      recordedAt: "2026-07-26T10:03:00.000Z"
+    }
+  });
+  assert.equal(mismatch.status, "rejected");
+  if (mismatch.status === "rejected") {
+    assert.equal(mismatch.reason, "correction_quantity_mismatch");
+  }
+
+  const count = accepted(
+    [],
+    input({
+      eventType: "count",
+      quantity: 500,
+      clientEventId: "count-target",
+      idempotencyKey: "count-target"
+    }),
+    "count-1"
+  );
+  const againstCount = acceptInventoryEvent({
+    existingEvents: [count],
+    candidate: input({
+      eventType: "correction",
+      quantity: -500,
+      clientEventId: "count-correction",
+      idempotencyKey: "count-correction",
+      supersedesEventId: "count-1"
+    }),
+    authority: {
+      id: "event-4",
+      actorUserId: "manager-1",
+      recordedAt: "2026-07-26T10:04:00.000Z"
+    }
+  });
+  assert.equal(againstCount.status, "rejected");
+  if (againstCount.status === "rejected") {
+    assert.equal(againstCount.reason, "correction_target_not_reversible");
+  }
+
+  const unitMismatch = acceptInventoryEvent({
+    existingEvents: [receipt, waste],
+    candidate: input({
+      eventType: "correction",
+      quantity: 250,
+      canonicalUnit: "ml",
+      clientEventId: "unit-correction",
+      idempotencyKey: "unit-correction",
+      supersedesEventId: "event-2"
+    }),
+    authority: {
+      id: "event-5",
+      actorUserId: "manager-1",
+      recordedAt: "2026-07-26T10:05:00.000Z"
+    }
+  });
+  assert.equal(unitMismatch.status, "rejected");
+  if (unitMismatch.status === "rejected") {
+    assert.equal(unitMismatch.reason, "correction_unit_mismatch");
+  }
+
+  const restored = accepted(
+    [receipt, waste],
+    input({
+      eventType: "correction",
+      quantity: 250,
+      clientEventId: "waste-correction",
+      idempotencyKey: "waste-correction",
+      supersedesEventId: "event-2"
+    }),
+    "event-6"
+  );
+  assert.equal(restored.quantity, 250);
 });
 
 test("projects counts, receipts, usage, waste, and corrections in server sequence", () => {
@@ -136,7 +233,7 @@ test("projects counts, receipts, usage, waste, and corrections in server sequenc
     [count, receipt, usage],
     input({
       eventType: "correction",
-      quantity: -100,
+      quantity: -1000,
       clientEventId: "correction-1",
       idempotencyKey: "correction-1",
       supersedesEventId: "event-2"
@@ -152,7 +249,7 @@ test("projects counts, receipts, usage, waste, and corrections in server sequenc
     restaurantId: "restaurant-a",
     inventoryItemId: "chicken",
     canonicalUnit: "g",
-    quantity: 2500,
+    quantity: 1600,
     lastSequence: 4,
     conflicts: []
   });
