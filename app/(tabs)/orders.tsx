@@ -25,6 +25,7 @@ import {
   dismissPurchaseRecommendation,
   fetchAdvisoryPurchaseDecisionPatterns,
   fetchEmailConnectionState,
+  fetchPilotReadiness,
   fetchPurchaseRecommendations,
   fetchPurchaseRecommendationAuthorities,
   fetchSupplierOrders,
@@ -39,13 +40,19 @@ import {
 } from "../../services/domain/purchaseAuthority";
 import type { MessageKey } from "../../i18n/catalog";
 import type { PurchaseDecisionPattern } from "../../services/domain/purchaseDecisionMemory";
+import type { PilotReadiness } from "../../services/domain/pilotReadiness";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import {
+  pilotReadinessAreaLabelKey,
+  pilotRecommendUiGate,
+  type PilotRecommendUiGate
+} from "../../services/presentation/pilotRecommendUiGate";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
-import { trackMiseEvent } from "../../services/telemetry";
+import { captureMiseError, trackMiseEvent } from "../../services/telemetry";
 import type { PurchaseRecommendation, RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
 
 type OrderLane = "drafts" | "review" | "sent" | "history";
@@ -71,6 +78,8 @@ export default function OrdersScreen() {
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
   const [spendTrend, setSpendTrend] = useState<SupplierSpendTrendPoint[]>([]);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
+  const [pilotReadiness, setPilotReadiness] = useState<PilotReadiness | null>(null);
+  const [readinessLoadError, setReadinessLoadError] = useState(false);
   const [lane, setLane] = useState<OrderLane>("drafts");
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [quantityErrors, setQuantityErrors] = useState<Record<string, string | undefined>>({});
@@ -112,15 +121,41 @@ export default function OrdersScreen() {
       const requestId = ++requestIdRef.current;
       if (showLoading || loadedRestaurantRef.current !== restaurantId) setLoading(true);
       setLoadError(null);
+      // Soft refresh keeps hub rows visible, but must invalidate readiness immediately.
+      // Otherwise approve can race on a prior canRecommend window before the replacement
+      // readiness resolves (fail-open against the pilot gate).
+      if (!showLoading && loadedRestaurantRef.current === restaurantId) {
+        setPilotReadiness(null);
+        setReadinessLoadError(false);
+      }
 
       try {
-        const [nextRecommendations, nextAuthorities, nextPatterns, nextOrders, nextEmailConnection, nextSpendTrend] = await Promise.all([
+        const [
+          nextRecommendations,
+          nextAuthorities,
+          nextPatterns,
+          nextOrders,
+          nextEmailConnection,
+          nextSpendTrend,
+          nextReadiness
+        ] = await Promise.all([
           fetchPurchaseRecommendations(restaurantId, "pending"),
           fetchPurchaseRecommendationAuthorities(restaurantId),
           fetchAdvisoryPurchaseDecisionPatterns(restaurantId),
           fetchSupplierOrders(restaurantId),
           fetchEmailConnectionState(restaurantId),
-          fetchSupplierSpendTrend(restaurantId)
+          fetchSupplierSpendTrend(restaurantId),
+          fetchPilotReadiness(restaurantId).then(
+            (readiness) => ({ ok: true as const, readiness }),
+            (readinessError) => {
+              captureMiseError(readinessError, {
+                flow: "orders",
+                operation: "pilot_readiness",
+                restaurant_id: restaurantId
+              });
+              return { ok: false as const, readiness: null };
+            }
+          )
         ]);
         if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
@@ -130,6 +165,8 @@ export default function OrdersScreen() {
         setOrders(nextOrders);
         setEmailConnection(nextEmailConnection);
         setSpendTrend(nextSpendTrend);
+        setPilotReadiness(nextReadiness.ok ? nextReadiness.readiness : null);
+        setReadinessLoadError(!nextReadiness.ok);
         setQuantities((current) => {
           const next: Record<string, string> = {};
           nextRecommendations.forEach((recommendation) => {
@@ -144,6 +181,9 @@ export default function OrdersScreen() {
       } catch {
         if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
           setLoadError(t("orders.error.load"));
+          // Fail closed: never leave a prior restaurant's readiness visible after a load failure.
+          setPilotReadiness(null);
+          setReadinessLoadError(true);
         }
       } finally {
         if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
@@ -159,9 +199,12 @@ export default function OrdersScreen() {
     undoLockRef.current = false;
     setRecommendations([]);
     setRecommendationAuthorities({});
+    setPurchaseDecisionPatterns([]);
     setOrders([]);
     setSpendTrend([]);
     setEmailConnection(null);
+    setPilotReadiness(null);
+    setReadinessLoadError(false);
     setQuantities({});
     setQuantityErrors({});
     setRecommendationActions(EMPTY_ACTIONS);
@@ -220,6 +263,14 @@ export default function OrdersScreen() {
   const visibleSpendTrend = hubReady ? spendTrend : [];
   const visibleEmailConnection = hubReady ? emailConnection : null;
   const visiblePurchaseDecisionPatterns = hubReady ? purchaseDecisionPatterns : [];
+  const readinessGate = hubReady
+    ? pilotRecommendUiGate(pilotReadiness, readinessLoadError)
+    : {
+        canOneTapRecommend: false,
+        showBanner: false,
+        bannerKind: "unavailable" as const,
+        attentionAreaIds: []
+      };
   const visibleMessage = messageRestaurantId === restaurant?.id ? message : null;
   const visibleUndoAction = hubReady && actionsEditable ? undoAction : null;
 
@@ -378,6 +429,10 @@ export default function OrdersScreen() {
     if (!restaurant || recommendationLocksRef.current.has(recommendation.id)) return;
     if (!actionsEditable) {
       showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
+      return;
+    }
+    if (!readinessGate.canOneTapRecommend) {
+      router.push("/settings/pos");
       return;
     }
     const restaurantId = restaurant.id;
@@ -590,6 +645,12 @@ export default function OrdersScreen() {
           />
         ) : null}
 
+        <OrdersPilotReadinessNotice
+          gate={readinessGate}
+          t={t}
+          onRetry={() => void load(true)}
+        />
+
         <MotionView key={lane} distance={4} duration={220} style={styles.laneContent}>
           {lane === "drafts" ? (
             <>
@@ -740,6 +801,7 @@ export default function OrdersScreen() {
                         purchaseDecisionPattern={purchaseDecisionPatternsByRecommendation.get(
                           `${recommendation.inventory_item_id}:${recommendation.supplier_id}:${recommendation.generation_source}`
                         )}
+                        setupBlocked={!readinessGate.canOneTapRecommend}
                         readOnly={!actionsEditable}
                         showDivider={index < supplierRecommendations.length - 1}
                       />
@@ -852,6 +914,52 @@ export default function OrdersScreen() {
         </View>
       ) : null}
     </Screen>
+  );
+}
+
+function OrdersPilotReadinessNotice({
+  gate,
+  t,
+  onRetry
+}: {
+  gate: PilotRecommendUiGate;
+  t: (key: MessageKey, values?: Record<string, string | number>) => string;
+  onRetry: () => void;
+}) {
+  if (!gate.showBanner) return null;
+
+  if (gate.bannerKind === "unavailable") {
+    return (
+      <StatusNotice
+        tone="warning"
+        title={t("orders.readiness.unavailableTitle")}
+        message={t("orders.readiness.unavailableBody")}
+        actionLabel={t("common.retry")}
+        onAction={onRetry}
+      />
+    );
+  }
+
+  const areas = gate.attentionAreaIds
+    .map((areaId) => t(pilotReadinessAreaLabelKey(areaId)))
+    .join(", ");
+
+  return (
+    <StatusNotice
+      tone="warning"
+      title={
+        gate.bannerKind === "blocked_recommend"
+          ? t("orders.readiness.blockedRecommendTitle")
+          : t("orders.readiness.blockedSendTitle")
+      }
+      message={
+        gate.bannerKind === "blocked_recommend"
+          ? t("orders.readiness.blockedRecommendBody", { areas })
+          : t("orders.readiness.blockedSendBody", { areas })
+      }
+      actionLabel={t("orders.readiness.action")}
+      onAction={() => router.push("/settings/pos")}
+    />
   );
 }
 
