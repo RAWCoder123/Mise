@@ -1,4 +1,5 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
+import { validateUsageOrAdjustmentEvidence } from "./inventoryUsageAdjustmentEvidence";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
 export type InventoryEventType =
@@ -191,6 +192,13 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // Usage and adjustment rewrite on-hand; require allowlisted reason + note evidence.
+  const evidenceReason = validateUsageOrAdjustmentEvidence({
+    eventType: input.eventType,
+    reasonCode: input.reasonCode,
+    metadata: input.metadata
+  });
+  if (evidenceReason) return evidenceReason;
   return null;
 }
 
