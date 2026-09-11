@@ -31,6 +31,20 @@ test("Today keeps floor-note completion behind the restaurant role gate", () => 
   assert.match(screen, /disabled=\{!floorNotesEditable\}/);
 });
 
+test("Today consumes pilot readiness fail-closed and surfaces repair routes", () => {
+  const today = readFileSync("app/(tabs)/today.tsx", "utf8");
+  const gate = readFileSync("services/presentation/todayPilotReadiness.ts", "utf8");
+  assert.match(today, /fetchPilotReadiness\(restaurantId\)/);
+  assert.match(today, /todayPilotReadinessGate\(/);
+  assert.match(today, /setPilotReadiness\(null\)/);
+  assert.match(today, /Fail closed: never leave a prior restaurant's readiness/);
+  assert.match(today, /today\.readiness\.unavailableTitle/);
+  assert.match(today, /gate\.actions\.map/);
+  assert.match(gate, /pos_sales: "\/settings\/pos"/);
+  assert.match(gate, /recipe_coverage: "\/settings\/recipes"/);
+  assert.match(gate, /email_delivery: "\/settings\/gmail"/);
+});
+
 test("POS readiness failures remain visible and retryable instead of failing open", () => {
   const pos = readFileSync("app/settings/pos.tsx", "utf8");
   assert.match(pos, /setReadinessLoadError\(true\)/);
