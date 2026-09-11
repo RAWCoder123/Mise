@@ -167,21 +167,33 @@ select is(
     select public.record_inventory_event(
       'f0000000-0000-4000-8000-000000000001',
       'f0000000-0000-4000-8000-000000000012',
-      'count', 24, 'g', now(), 'manual_count',
+      'receipt', 24, 'g', now(), 'operator_receipt',
       'canonical-mismatch-1', 'canonical-mismatch-1'
     )
   $sql$),
   false,
   'event units cannot differ from the verified item unit'
 );
+select is(
+  pg_temp.try_execute($sql$
+    select public.record_inventory_event(
+      'f0000000-0000-4000-8000-000000000001',
+      'f0000000-0000-4000-8000-000000000012',
+      'count', 24, 'each', now(), 'manual_count',
+      'canonical-match-1', 'canonical-match-1'
+    )
+  $sql$),
+  false,
+  'verified counts still cannot use the ledger RPC outside session approval'
+);
 select ok(
   (public.record_inventory_event(
     'f0000000-0000-4000-8000-000000000001',
     'f0000000-0000-4000-8000-000000000012',
-    'count', 24, 'each', now(), 'manual_count',
+    'receipt', 24, 'each', now(), 'operator_receipt',
     'canonical-match-1', 'canonical-match-1'
   )).id is not null,
-  'a verified matching unit can create an authoritative event'
+  'a verified matching unit can create an authoritative non-count event'
 );
 reset role;
 

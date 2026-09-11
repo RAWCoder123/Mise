@@ -32,16 +32,20 @@ test("receiving input becomes bounded canonical ledger evidence", () => {
   );
 });
 
-test("counts may be zero while receipts and waste require positive quantities", () => {
+test("receipts and waste require positive quantities while counts are not operator-queueable", () => {
   const base = {
     restaurantId: "restaurant-a",
     inventoryItemId: "chicken",
-    canonicalUnit: "g",
+    canonicalUnit: "g" as const,
     effectiveAt: "2026-07-26T10:00:00.000Z"
   };
-  assert.equal(
-    requireInventoryOperation({ ...base, eventType: "count", quantity: 0 }).quantity,
-    0
+  assert.throws(
+    () => requireInventoryOperation({ ...base, eventType: "count", quantity: 0 }),
+    /supported inventory operation/
+  );
+  assert.throws(
+    () => requireInventoryOperation({ ...base, eventType: "count", quantity: 12 }),
+    /supported inventory operation/
   );
   assert.throws(
     () => requireInventoryOperation({ ...base, eventType: "receipt", quantity: 0 }),
@@ -78,7 +82,7 @@ test("invalid units, times, anomalous quantities, and unbounded evidence are rej
   const base = {
     restaurantId: "restaurant-a",
     inventoryItemId: "chicken",
-    eventType: "count",
+    eventType: "receipt",
     quantity: 1,
     canonicalUnit: "g",
     effectiveAt: "2026-07-26T10:00:00.000Z"

@@ -945,8 +945,13 @@ test("inventory count sessions are service-owned with ledger approve path", () =
     "supabase/migrations/20260810140000_inventory_count_sessions_ledger.sql",
     "utf8"
   );
+  const countSourceAuthority = readFileSync(
+    "supabase/migrations/20260904100000_inventory_count_session_source_authority.sql",
+    "utf8"
+  );
   const validation = readFileSync("services/miseValidation.ts", "utf8");
   const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
+  const ledger = readFileSync("services/domain/inventoryLedger.ts", "utf8");
 
   assert.match(inventoryWorkflow, /beginInventoryCountSession/);
   assert.match(inventoryWorkflow, /approveInventoryCountSession[\s\S]*planCountSessionApprovals/);
@@ -970,6 +975,12 @@ test("inventory count sessions are service-owned with ledger approve path", () =
   assert.match(migration, /grant\s+execute\s+on\s+function\s+public\.service_approve_inventory_count_session[\s\S]*service_role/i);
   assert.match(migration, /grant select on public\.inventory_count_sessions to authenticated/i);
   assert.doesNotMatch(migration, /grant insert on table public\.inventory_count_sessions to authenticated/i);
+  assert.match(countSourceAuthority, /enforce_inventory_count_session_source/);
+  assert.match(
+    countSourceAuthority,
+    /if p_event_type = 'count' then[\s\S]*approved count session/
+  );
+  assert.match(ledger, /count_requires_session/);
   assert.match(validation, /requireInventoryCountLineNote/);
   assert.match(tenantAccess, /canDraftInventoryCount/);
   assert.match(tenantAccess, /canApproveInventoryCount/);

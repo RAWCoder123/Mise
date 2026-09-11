@@ -39,7 +39,7 @@ import { operatingLimits } from "../../services/miseValidation";
 import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
 
-type InventoryOperatorAction = "count" | "receipt" | "waste" | "stockout";
+type InventoryOperatorAction = "receipt" | "waste" | "stockout";
 
 export default function InventoryDetailScreen() {
   const { formatNumber, parseNumber, t } = useLocale();
@@ -48,7 +48,7 @@ export default function InventoryDetailScreen() {
   const { memberships, restaurant } = useMiseSession();
   const [outlook, setOutlook] = useState<InventoryOutlookItem | null>(null);
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
-  const [operation, setOperation] = useState<InventoryOperatorAction>("count");
+  const [operation, setOperation] = useState<InventoryOperatorAction>("receipt");
   const [quantityText, setQuantityText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
@@ -122,7 +122,7 @@ export default function InventoryDetailScreen() {
     setHubLoadError(false);
     setOutlook(null);
     setQueueEntries([]);
-    setOperation("count");
+    setOperation("receipt");
     setQuantityText("");
     setNoteText("");
     setParLevel("");
@@ -169,11 +169,6 @@ export default function InventoryDetailScreen() {
   const operationOptions = useMemo<readonly SegmentOption<InventoryOperatorAction>[]>(
     () => [
       {
-        value: "count",
-        label: t("inventory.ops.action.count"),
-        accessibilityLabel: t("inventory.ops.action.countAccessibility")
-      },
-      {
         value: "receipt",
         label: t("inventory.ops.action.receive"),
         accessibilityLabel: t("inventory.ops.action.receiveAccessibility")
@@ -214,7 +209,7 @@ export default function InventoryDetailScreen() {
     const nextQuantityError =
       operation === "stockout"
         ? undefined
-        : validateOperationQuantity(quantityText, operation, parseNumber, formatNumber, t);
+        : validateOperationQuantity(quantityText, parseNumber, formatNumber, t);
     if (nextQuantityError || quantity === null) {
       setQuantityError(nextQuantityError ?? t("inventory.ops.quantityInvalid"));
       setMessage(t("inventory.ops.reviewQuantity"));
@@ -488,6 +483,24 @@ export default function InventoryDetailScreen() {
           </Card>
 
           <Card>
+            <Text style={styles.cardTitle}>{t("inventory.ops.countSession.title")}</Text>
+            <Text style={styles.opsBody}>{t("inventory.ops.countSession.body")}</Text>
+            {mutationAllowed ? (
+              <Button
+                title={t("inventory.ops.countSession.cta")}
+                accessibilityLabel={t("inventory.ops.countSession.ctaAccessibility")}
+                accessibilityHint={t("inventory.ops.countSession.ctaHint")}
+                variant="secondary"
+                icon={<ClipboardList size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
+                onPress={() => router.push("/inventory/count")}
+                disabled={!actionsEditable || busy}
+                fullWidth
+                style={styles.saveButton}
+              />
+            ) : null}
+          </Card>
+
+          <Card>
             <Text style={styles.cardTitle}>{t("inventory.ops.title")}</Text>
             <Text style={styles.opsBody}>{t("inventory.ops.body")}</Text>
             {!canonicalReady ? (
@@ -740,7 +753,6 @@ function describeFlushResult(
 
 function validateOperationQuantity(
   value: string,
-  operation: InventoryOperatorAction,
   parseNumber: ReturnType<typeof useLocale>["parseNumber"],
   formatNumber: ReturnType<typeof useLocale>["formatNumber"],
   t: ReturnType<typeof useLocale>["t"]
@@ -750,15 +762,6 @@ function validateOperationQuantity(
   }
   const parsed = parseNumber(value);
   if (parsed === null || !Number.isFinite(parsed)) return t("inventory.ops.quantityInvalid");
-  if (operation === "count") {
-    if (parsed < 0 || parsed > operatingLimits.inventoryQuantity) {
-      return t("inventory.detail.fieldRange", {
-        field: t("inventory.ops.quantityLabel"),
-        maximum: formatNumber(operatingLimits.inventoryQuantity)
-      });
-    }
-    return undefined;
-  }
   if (parsed <= 0 || parsed > operatingLimits.inventoryQuantity) {
     return t("inventory.ops.quantityPositive", {
       maximum: formatNumber(operatingLimits.inventoryQuantity)
