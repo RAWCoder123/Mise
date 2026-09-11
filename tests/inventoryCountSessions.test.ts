@@ -9,7 +9,9 @@ import {
   canCancelInventoryCountSession,
   canDraftInventoryCountSession,
   mergeCountLineUpdates,
+  mergeInventoryCountDraftMaps,
   planCountSessionApprovals,
+  seedInventoryCountDraftMaps,
   summarizeCountSessionProgress
 } from "../services/domain/inventoryCountSessions";
 import type { InventoryCountLine, InventoryItem } from "../types/mise";
@@ -192,4 +194,37 @@ test("count sessions only include inventory items with verified canonical conver
       ),
     /canonical units/i
   );
+});
+
+test("count draft maps seed from session lines and soft-refresh merge preserves operator input", () => {
+  const seeded = seedInventoryCountDraftMaps([
+    line("tomatoes", 10, 8),
+    line("onions", 5, null)
+  ]);
+  assert.deepEqual(seeded.counts, { tomatoes: "8", onions: "" });
+  assert.deepEqual(seeded.notes, { tomatoes: "", onions: "" });
+
+  const merged = mergeInventoryCountDraftMaps(
+    {
+      counts: { tomatoes: "12.5", onions: "3", stale: "9" },
+      notes: { tomatoes: "floor count", onions: "", stale: "gone" }
+    },
+    [
+      line("tomatoes", 10, 8),
+      line("onions", 5, 4),
+      { ...line("peppers", 2, 1), note: "cooler" }
+    ]
+  );
+
+  assert.deepEqual(merged.counts, {
+    tomatoes: "12.5",
+    onions: "3",
+    peppers: "1"
+  });
+  assert.deepEqual(merged.notes, {
+    tomatoes: "floor count",
+    onions: "",
+    peppers: "cooler"
+  });
+  assert.equal(Object.prototype.hasOwnProperty.call(merged.counts, "stale"), false);
 });

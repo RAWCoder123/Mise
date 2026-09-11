@@ -20,6 +20,7 @@ test("operational screens reject late requests and render only active-restaurant
     autonomy: source("app/settings/autonomy.tsx"),
     pos: source("app/settings/pos.tsx"),
     inventoryDetail: source("app/inventory/[id].tsx"),
+    inventoryCount: source("app/inventory/count.tsx"),
     orderDetail: source("app/orders/[id].tsx"),
     restaurantMemory: source("app/more/restaurant-memory.tsx"),
     logDelivery: source("app/more/log-delivery.tsx"),
@@ -51,6 +52,10 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);
   assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
   assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
+  assert.match(screens.inventoryCount, /hubReady\s*\?\s*detail\s*:\s*null/);
+  assert.match(screens.inventoryCount, /loadError:\s*hubLoadError/);
+  assert.match(screens.inventoryCount, /approveEditable/);
+  assert.match(screens.inventoryCount, /mergeInventoryCountDraftMaps/);
   assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);
   assert.match(screens.autonomy, /hubReady\s*\?\s*rules\s*:\s*\[\]/);
   assert.match(screens.autonomy, /presentRestaurantScopedHubActionsEditable/);
