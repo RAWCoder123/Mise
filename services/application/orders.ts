@@ -2,8 +2,12 @@ import type { RecommendationStatus, SupplierOrder } from "../../types/mise";
 import { buildOrderQueueSummary } from "../domain/miseDomain";
 import {
   assessOrderAutomation,
+  deriveOrderAutomationPolicy,
+  summarizeOrderAutomationReadiness,
   type OrderAutomationAssessment,
-  type OrderAutomationPolicy
+  type OrderAutomationAutonomyHint,
+  type OrderAutomationPolicy,
+  type OrderAutomationReadinessSummary
 } from "../domain/orderAutomation";
 import { buildSupplierRecipientDirectory } from "../domain/supplierRecipients";
 import { buildSupplierSpendTrend, type SupplierSpendTrendPoint } from "../domain/supplierSpend";
@@ -23,6 +27,8 @@ import {
   requireSupplierOperatorNote,
   requireSupplierRecipientInput
 } from "../miseValidation";
+import { fetchAutonomyRules } from "./autonomy";
+import { fetchInventoryLedgerEvidence } from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
 import { GmailIntegrationError } from "../repositories/miseRepository";
 import type {
@@ -39,6 +45,19 @@ export type {
   GmailIntegrationErrorStatus,
   SupplierOrderEmailSendResult
 };
+
+export type { OrderAutomationAssessment, OrderAutomationPolicy, OrderAutomationReadinessSummary };
+
+export interface RestaurantOrderAutomationReadiness {
+  restaurantId: string;
+  assessedAt: string;
+  /** True when any assessed supplier used an enabled draft-prep autonomy rule. */
+  draftAutomationEnabled: boolean;
+  /** True only when a send rule is enabled without approval — normally false. */
+  allowAutomaticSend: boolean;
+  suppliers: OrderAutomationAssessment[];
+  summary: OrderAutomationReadinessSummary;
+}
 
 const repository = getMiseRepository();
 
@@ -221,15 +240,25 @@ export async function fetchOrderAutomationAssessment(
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
   const normalizedSupplierId = requireWorkflowId(supplierId, "supplier");
 
-  const [suppliers, pendingRecommendations, recommendationHistory, inventoryItems, emailConnection, recipients] =
-    await Promise.all([
-      repository.fetchSuppliers(normalizedRestaurantId),
-      repository.fetchPurchaseRecommendations(normalizedRestaurantId, "pending"),
-      repository.fetchRecommendationHistory(normalizedRestaurantId),
-      repository.fetchInventoryItems(normalizedRestaurantId),
-      repository.fetchEmailConnectionState(normalizedRestaurantId),
-      repository.fetchSupplierRecipients(normalizedRestaurantId)
-    ]);
+  const [
+    suppliers,
+    pendingRecommendations,
+    recommendationHistory,
+    inventoryItems,
+    emailConnection,
+    recipients,
+    ledger,
+    autonomyRules
+  ] = await Promise.all([
+    repository.fetchSuppliers(normalizedRestaurantId),
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "pending"),
+    repository.fetchRecommendationHistory(normalizedRestaurantId),
+    repository.fetchInventoryItems(normalizedRestaurantId),
+    repository.fetchEmailConnectionState(normalizedRestaurantId),
+    repository.fetchSupplierRecipients(normalizedRestaurantId),
+    fetchInventoryLedgerEvidence(normalizedRestaurantId),
+    fetchAutonomyRules(normalizedRestaurantId)
+  ]);
   const supplier = suppliers.find((candidate) => candidate.id === normalizedSupplierId);
   if (!supplier) throw new Error("Supplier not found.");
   const recipientConfigured = recipients.some(
@@ -237,6 +266,8 @@ export async function fetchOrderAutomationAssessment(
       recipient.supplier_id === normalizedSupplierId &&
       Boolean(recipient.email?.trim())
   );
+  const resolvedPolicy =
+    policy ?? deriveOrderAutomationPolicy(toAutonomyHints(autonomyRules), normalizedSupplierId);
 
   return assessOrderAutomation({
     restaurantId: normalizedRestaurantId,
@@ -247,12 +278,149 @@ export async function fetchOrderAutomationAssessment(
     ),
     inventoryItems,
     recommendationHistory,
-    policy,
+    inventoryLedgerEvents: ledger.events,
+    ledgerComplete: ledger.complete,
+    policy: resolvedPolicy,
     delivery: {
       emailConnected: emailConnection?.status === "connected",
       supplierRecipientConfigured: recipientConfigured
     }
   });
+}
+
+/**
+ * Restaurant-wide, read-only order-automation readiness for Autonomy settings.
+ * Assesses each supplier that currently has pending purchase recommendations.
+ * Never drafts, approves, or sends.
+ */
+export async function fetchRestaurantOrderAutomationReadiness(
+  restaurantId: string
+): Promise<RestaurantOrderAutomationReadiness> {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const assessedAt = new Date().toISOString();
+
+  const [
+    suppliers,
+    pendingRecommendations,
+    recommendationHistory,
+    inventoryItems,
+    emailConnection,
+    recipients,
+    ledger,
+    autonomyRules
+  ] = await Promise.all([
+    repository.fetchSuppliers(normalizedRestaurantId),
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "pending"),
+    repository.fetchRecommendationHistory(normalizedRestaurantId),
+    repository.fetchInventoryItems(normalizedRestaurantId),
+    repository.fetchEmailConnectionState(normalizedRestaurantId),
+    repository.fetchSupplierRecipients(normalizedRestaurantId),
+    fetchInventoryLedgerEvidence(normalizedRestaurantId),
+    fetchAutonomyRules(normalizedRestaurantId)
+  ]);
+
+  const hints = toAutonomyHints(autonomyRules);
+  const emailConnected = emailConnection?.status === "connected";
+  const suppliersById = new Map(suppliers.map((supplier) => [supplier.id, supplier] as const));
+  const pendingBySupplier = new Map<string, typeof pendingRecommendations>();
+  for (const recommendation of pendingRecommendations) {
+    if (recommendation.restaurant_id !== normalizedRestaurantId) {
+      throw new Error("Purchase recommendations failed restaurant scope validation.");
+    }
+    const supplierId = recommendation.supplier_id?.trim();
+    if (!supplierId) continue;
+    const existing = pendingBySupplier.get(supplierId);
+    if (existing) existing.push(recommendation);
+    else pendingBySupplier.set(supplierId, [recommendation]);
+  }
+
+  const assessments: OrderAutomationAssessment[] = [];
+  for (const [supplierId, candidates] of pendingBySupplier) {
+    const supplier = suppliersById.get(supplierId);
+    // Skip orphaned supplier ids rather than inventing a registry row.
+    if (!supplier || supplier.restaurant_id !== normalizedRestaurantId) continue;
+    const policy = deriveOrderAutomationPolicy(hints, supplierId);
+    const recipientConfigured = recipients.some(
+      (recipient) => recipient.supplier_id === supplierId && Boolean(recipient.email?.trim())
+    );
+    assessments.push(
+      assessOrderAutomation({
+        restaurantId: normalizedRestaurantId,
+        supplierId,
+        supplierName: supplier.display_name,
+        candidates,
+        inventoryItems,
+        recommendationHistory,
+        inventoryLedgerEvents: ledger.events,
+        ledgerComplete: ledger.complete,
+        policy,
+        delivery: {
+          emailConnected,
+          supplierRecipientConfigured: recipientConfigured
+        },
+        now: new Date(assessedAt)
+      })
+    );
+  }
+
+  assessments.sort((left, right) => {
+    const decisionRank = (decision: OrderAutomationAssessment["decision"]) =>
+      decision === "manual_review" ? 0 : decision === "automatic_draft" ? 1 : 2;
+    const byDecision = decisionRank(left.decision) - decisionRank(right.decision);
+    if (byDecision !== 0) return byDecision;
+    return left.supplierName.localeCompare(right.supplierName);
+  });
+
+  const summary = summarizeOrderAutomationReadiness(assessments);
+  const draftAutomationEnabled = assessments.some((assessment) => {
+    const policy = deriveOrderAutomationPolicy(hints, assessment.supplierId);
+    return policy.enabled;
+  });
+  // Restaurant-wide send flag: true only if any assessed supplier's derived policy allows it.
+  const allowAutomaticSend = assessments.some((assessment) => {
+    const policy = deriveOrderAutomationPolicy(hints, assessment.supplierId);
+    return policy.allowAutomaticSend;
+  });
+
+  return {
+    restaurantId: normalizedRestaurantId,
+    assessedAt,
+    draftAutomationEnabled:
+      draftAutomationEnabled ||
+      Boolean(pickDraftEnabledHint(hints)),
+    allowAutomaticSend:
+      allowAutomaticSend ||
+      hints.some((hint) => hint.actionType === "send_supplier_order" && hint.enabled && !hint.requiresApproval),
+    suppliers: assessments,
+    summary
+  };
+}
+
+function toAutonomyHints(
+  rules: readonly {
+    actionType: string;
+    enabled: boolean;
+    requiresApproval: boolean;
+    spendLimitCents: number | null;
+    supplierId: string | null;
+  }[]
+): OrderAutomationAutonomyHint[] {
+  return rules.map((rule) => ({
+    actionType: String(rule.actionType),
+    enabled: Boolean(rule.enabled),
+    requiresApproval: Boolean(rule.requiresApproval),
+    spendLimitCents: rule.spendLimitCents,
+    supplierId: rule.supplierId
+  }));
+}
+
+function pickDraftEnabledHint(hints: readonly OrderAutomationAutonomyHint[]) {
+  return hints.find(
+    (hint) =>
+      hint.actionType === "prepare_supplier_order_draft" &&
+      hint.enabled &&
+      !(typeof hint.supplierId === "string" && hint.supplierId.trim())
+  );
 }
 
 export async function fetchEmailConnectionState(restaurantId: string) {
