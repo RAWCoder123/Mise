@@ -109,6 +109,7 @@ function summary(overrides: Partial<TodaySummary> = {}): TodaySummary {
       inventoryItemsLinked: 0,
       posItemsCovered: 0,
       posItemsMissingRecipes: [],
+      posItemsWithIncompatibleUnits: [],
       coveragePercent: 0,
       credibilityLabel: "Thin",
       operatorCopy: "",

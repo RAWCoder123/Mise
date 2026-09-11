@@ -162,7 +162,11 @@ export default function RecipeBaselinesScreen() {
     else router.replace("/settings");
   }
 
-  async function saveIngredient(mappingId: string, quantity: string, options?: { quiet?: boolean }) {
+  async function saveIngredient(
+    mappingId: string,
+    quantity: string,
+    options?: { quiet?: boolean; repairUnit?: boolean }
+  ) {
     if (!restaurant) return;
     if (!actionsEditable) {
       setError(t("recipes.error.readOnly"));
@@ -182,7 +186,9 @@ export default function RecipeBaselinesScreen() {
     try {
       await updateRecipeBaselineIngredient(restaurantId, mappingId, parsed);
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      if (!options?.quiet) setNotice(t("recipes.notice.saved"));
+      if (!options?.quiet) {
+        setNotice(t(options?.repairUnit ? "recipes.notice.unitFixed" : "recipes.notice.saved"));
+      }
       scheduleReload(restaurantId);
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -194,11 +200,11 @@ export default function RecipeBaselinesScreen() {
   }
 
   // Debounces the expensive save+recompute path while the operator is still
-  // typing a quantity. Explicit Save flushes the pending timer immediately.
+  // typing a quantity. Explicit Save/Fix flushes the pending timer immediately.
   function queueIngredientSave(
     mappingId: string,
     quantity: string,
-    options?: { immediate?: boolean; cancel?: boolean }
+    options?: { immediate?: boolean; cancel?: boolean; repairUnit?: boolean }
   ) {
     const existing = saveTimersRef.current.get(mappingId);
     if (existing) {
@@ -207,7 +213,7 @@ export default function RecipeBaselinesScreen() {
     }
     if (options?.cancel) return;
     if (options?.immediate) {
-      void saveIngredient(mappingId, quantity);
+      void saveIngredient(mappingId, quantity, { repairUnit: options.repairUnit });
       return;
     }
     const timer = setTimeout(() => {
@@ -394,6 +400,21 @@ export default function RecipeBaselinesScreen() {
               <View style={styles.missingList}>
                 {visibleSummary.posItemsMissingRecipes.map((itemName) => (
                   <Badge key={itemName} label={itemName} tone="warning" />
+                ))}
+              </View>
+            </Card>
+          )}
+
+          {visibleSummary.posItemsWithIncompatibleUnits.length > 0 && (
+            <Card style={styles.warningCard}>
+              <View style={styles.warningHeader}>
+                <AlertTriangle size={icon.emphasis} color={colors.caution} strokeWidth={iconStroke} />
+                <Text style={styles.warningTitle}>{t("recipes.warning.incompatibleTitle")}</Text>
+              </View>
+              <Text style={styles.warningCopy}>{t("recipes.warning.incompatibleBody")}</Text>
+              <View style={styles.missingList}>
+                {visibleSummary.posItemsWithIncompatibleUnits.map((itemName) => (
+                  <Badge key={`incompatible-${itemName}`} label={itemName} tone="warning" />
                 ))}
               </View>
             </Card>
@@ -620,11 +641,16 @@ function RecipeRow({
   canManage: boolean;
   savingMappingId: string | null;
   confirming: boolean;
-  onSave: (mappingId: string, quantity: string, options?: { immediate?: boolean; cancel?: boolean }) => void;
+  onSave: (
+    mappingId: string,
+    quantity: string,
+    options?: { immediate?: boolean; cancel?: boolean; repairUnit?: boolean }
+  ) => void;
   onConfirm: () => void;
 }) {
   const { formatNumber, parseNumber, t } = useLocale();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const hasIncompatibleUnits = item.ingredients.some((ingredient) => !ingredient.unitCompatible);
 
   useEffect(() => {
     setDrafts(
@@ -642,10 +668,14 @@ function RecipeRow({
 
   return (
     <View style={styles.recipeRow}>
-      <View style={styles.statusRail} />
+      <View style={[styles.statusRail, hasIncompatibleUnits && styles.statusRailCaution]} />
       <View style={styles.recipeLead}>
-        <IconBadge tone="leaf">
-          <Link2 size={icon.row} color={colors.success} strokeWidth={iconStroke} />
+        <IconBadge tone={hasIncompatibleUnits ? "caution" : "leaf"}>
+          {hasIncompatibleUnits ? (
+            <AlertTriangle size={icon.row} color={colors.caution} strokeWidth={iconStroke} />
+          ) : (
+            <Link2 size={icon.row} color={colors.success} strokeWidth={iconStroke} />
+          )}
         </IconBadge>
         <View style={styles.recipeText}>
           <View style={styles.recipeTop}>
@@ -683,12 +713,26 @@ function RecipeRow({
               const isBusy = savingMappingId !== null;
               const parsed = parsedQuantity(draftValue);
               const isDirty = parsed !== null && parsed !== ingredient.quantityUsedPerSale;
+              const needsUnitRepair = !ingredient.unitCompatible;
+              const displayUnit = needsUnitRepair
+                ? ingredient.inventoryUnit || ingredient.unit
+                : ingredient.unit;
 
               return (
-                <View key={ingredient.mappingId} style={styles.ingredientEditor}>
+                <View
+                  key={ingredient.mappingId}
+                  style={[styles.ingredientEditor, needsUnitRepair && styles.ingredientEditorCaution]}
+                >
                   <View style={styles.ingredientTextBlock}>
                     <Text style={styles.ingredientName}>{ingredient.itemName}</Text>
-                    <Text style={styles.ingredientUnit}>{t("recipes.row.perSale")}</Text>
+                    <Text style={styles.ingredientUnit}>
+                      {needsUnitRepair
+                        ? t("recipes.row.unitMismatch", {
+                            recipeUnit: ingredient.unit,
+                            inventoryUnit: ingredient.inventoryUnit || "--"
+                          })
+                        : t("recipes.row.perSale")}
+                    </Text>
                   </View>
                   <View style={styles.ingredientControls}>
                     <View style={styles.quantityEdit}>
@@ -723,7 +767,7 @@ function RecipeRow({
                           accessibilityLabel={t("recipes.row.readOnlyAccessibility", {
                             ingredient: ingredient.itemName,
                             quantity: draftValue,
-                            unit: ingredient.unit
+                            unit: displayUnit
                           })}
                           style={styles.readOnlyQuantity}
                         >
@@ -731,17 +775,33 @@ function RecipeRow({
                         </Text>
                       )}
                       <Text style={styles.quantityUnit} numberOfLines={1}>
-                        {ingredient.unit}
+                        {displayUnit}
                       </Text>
                     </View>
                     {canManage ? (
                       <Button
-                        title={t(isSaving ? "recipes.action.saving" : "recipes.action.save")}
-                        accessibilityLabel={t("recipes.action.saveAccessibility", { ingredient: ingredient.itemName })}
+                        title={t(
+                          isSaving
+                            ? "recipes.action.saving"
+                            : needsUnitRepair
+                              ? "recipes.action.fixUnit"
+                              : "recipes.action.save"
+                        )}
+                        accessibilityLabel={t(
+                          needsUnitRepair
+                            ? "recipes.action.fixUnitAccessibility"
+                            : "recipes.action.saveAccessibility",
+                          { ingredient: ingredient.itemName }
+                        )}
                         variant="secondary"
                         icon={<Save size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
-                        disabled={isBusy || !isDirty}
-                        onPress={() => onSave(ingredient.mappingId, draftValue, { immediate: true })}
+                        disabled={isBusy || (!needsUnitRepair && !isDirty)}
+                        onPress={() =>
+                          onSave(ingredient.mappingId, draftValue, {
+                            immediate: true,
+                            repairUnit: needsUnitRepair
+                          })
+                        }
                         style={styles.saveButton}
                       />
                     ) : null}
@@ -919,6 +979,9 @@ const styles = StyleSheet.create({
     width: 4,
     backgroundColor: colors.success
   },
+  statusRailCaution: {
+    backgroundColor: colors.caution
+  },
   recipeLead: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -971,6 +1034,10 @@ const styles = StyleSheet.create({
     padding: 10,
     alignItems: "stretch",
     gap: 8
+  },
+  ingredientEditorCaution: {
+    borderColor: colors.caution,
+    backgroundColor: colors.surfaceWarm
   },
   ingredientTextBlock: {
     minWidth: 0

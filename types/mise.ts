@@ -524,6 +524,10 @@ export interface RecipeBaselineIngredient {
   itemName: string;
   quantityUsedPerSale: number;
   unit: string;
+  /** Current inventory stockkeeping unit for this linked item. */
+  inventoryUnit: string;
+  /** False when recipe unit cannot convert against the inventory unit. */
+  unitCompatible: boolean;
 }
 
 export interface RecipeBaselineSummary {
@@ -532,6 +536,8 @@ export interface RecipeBaselineSummary {
   inventoryItemsLinked: number;
   posItemsCovered: number;
   posItemsMissingRecipes: string[];
+  /** Mapped dishes whose recipe units are incompatible with inventory. */
+  posItemsWithIncompatibleUnits: string[];
   coveragePercent: number;
   credibilityLabel: string;
   operatorCopy: string;

@@ -373,6 +373,10 @@ test("recipe baseline edits and regenerated guidance commit through one optimist
 
   assert.match(inventoryWorkflow, /updateRecipeBaselineIngredient[\s\S]*saveRecipeMappingAndSignals/i);
   assert.match(inventoryWorkflow, /addRecipeBaselineIngredient[\s\S]*saveRecipeMappingAndSignals/i);
+  assert.match(
+    inventoryWorkflow,
+    /updateRecipeBaselineIngredient[\s\S]*alignedUnit[\s\S]*unit:\s*alignedUnit/i
+  );
   assert.doesNotMatch(inventoryWorkflow, /repository\.(?:updateMenuItemIngredientQuantity|upsertMenuItemIngredient)\(/i);
   assert.match(repository, /action:\s*"upsert_recipe"/i);
   assert.match(repository, /functions\.invoke\("operational-workflows"/i);
