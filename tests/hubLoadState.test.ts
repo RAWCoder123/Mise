@@ -137,3 +137,41 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
     true
   );
 });
+
+test("suppliers preserve name/email drafts on soft-refresh fail-closed", () => {
+  const source = readFileSync("app/settings/suppliers.tsx", "utf8");
+  assert.match(source, /hasLoadedRef/);
+  assert.match(
+    source,
+    /const soft = hasLoadedRef\.current && activeRestaurantIdRef\.current === restaurantId/
+  );
+  assert.match(
+    source,
+    /\/\/ Invalidate readiness during soft refresh so mutations stay closed until proof returns\.\s*setLoadedRestaurantId\(null\);/
+  );
+  assert.match(
+    source,
+    /\/\/ Soft refresh must preserve operator-entered name\/email drafts\.\s*if \(soft\) \{/
+  );
+  assert.match(
+    source,
+    /entry\.supplierId in current \? current\[entry\.supplierId\]! : \(entry\.email \?\? ""\)/
+  );
+  assert.match(
+    source,
+    /entry\.supplierId in current \? current\[entry\.supplierId\]! : entry\.supplierName/
+  );
+  assert.match(
+    source,
+    /\/\/ Fail closed for display\/actions, but keep local drafts and prior directory for retry\.\s*setLoadError\(true\);/
+  );
+  assert.match(source, /if \(!soft\) \{\s*setEntries\(\[\]\);\s*\}/);
+  assert.match(source, /hasLoadedRef\.current = false/);
+  assert.match(source, /setDraftEmails\(\{\}\)/);
+  assert.match(source, /setDraftNames\(\{\}\)/);
+  assert.doesNotMatch(
+    source,
+    /setDraftEmails\(Object\.fromEntries\(\s*nextEntries\.map\(\(entry\) => \[entry\.supplierId, entry\.email \?\? ""\]\)\s*\)\);\s*setDraftNames\(Object\.fromEntries\(\s*nextEntries\.map\(\(entry\) => \[entry\.supplierId, entry\.supplierName\]\)\s*\)\);\s*setLoadedRestaurantId\(restaurantId\)/,
+    "hard-path draft seeding must not run unconditionally after every successful load"
+  );
+});

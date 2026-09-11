@@ -47,6 +47,7 @@ export default function SupplierRecipientsScreen() {
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState<SupplierNotice | null>(null);
   const requestIdRef = useRef(0);
+  const hasLoadedRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   const actionLocksRef = useRef(new Set<string>());
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -60,8 +61,15 @@ export default function SupplierRecipientsScreen() {
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
-    setLoadError(false);
+    const soft = hasLoadedRef.current && activeRestaurantIdRef.current === restaurantId;
+    if (soft) {
+      // Invalidate readiness during soft refresh so mutations stay closed until proof returns.
+      setLoadedRestaurantId(null);
+    } else {
+      setLoading(true);
+      setLoadError(false);
+      setNotice(null);
+    }
     try {
       const nextEntries = await fetchSupplierRecipientDirectory(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -69,18 +77,44 @@ export default function SupplierRecipientsScreen() {
         throw new Error("Supplier directory did not match the active restaurant.");
       }
       setEntries(nextEntries);
-      setDraftEmails(Object.fromEntries(
-        nextEntries.map((entry) => [entry.supplierId, entry.email ?? ""])
-      ));
-      setDraftNames(Object.fromEntries(
-        nextEntries.map((entry) => [entry.supplierId, entry.supplierName])
-      ));
       setLoadedRestaurantId(restaurantId);
+      setLoadError(false);
+      // Soft refresh must preserve operator-entered name/email drafts.
+      if (soft) {
+        setDraftEmails((current) =>
+          Object.fromEntries(
+            nextEntries.map((entry) => [
+              entry.supplierId,
+              entry.supplierId in current ? current[entry.supplierId]! : (entry.email ?? "")
+            ])
+          )
+        );
+        setDraftNames((current) =>
+          Object.fromEntries(
+            nextEntries.map((entry) => [
+              entry.supplierId,
+              entry.supplierId in current ? current[entry.supplierId]! : entry.supplierName
+            ])
+          )
+        );
+      } else {
+        setDraftEmails(Object.fromEntries(
+          nextEntries.map((entry) => [entry.supplierId, entry.email ?? ""])
+        ));
+        setDraftNames(Object.fromEntries(
+          nextEntries.map((entry) => [entry.supplierId, entry.supplierName])
+        ));
+      }
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      // Fail closed for display/actions, but keep local drafts and prior directory for retry.
       setLoadError(true);
+      if (!soft) {
+        setEntries([]);
+      }
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoadedRef.current = true;
         setLoading(false);
       }
     }
@@ -88,6 +122,7 @@ export default function SupplierRecipientsScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoadedRef.current = false;
     actionLocksRef.current.clear();
     setEntries([]);
     setDraftEmails({});
