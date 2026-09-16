@@ -415,9 +415,7 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
 
   const draftOrders = input.orders.filter((order) => order.status === "draft");
   const sentOrders = input.orders.filter((order) => order.status === "sent");
-  const criticalCount = outlooks.filter(
-    ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0
-  ).length;
+  const coverageGapCount = menuRisks.length;
 
   return {
     expectedSales: todaySales.length > 0 ? expectedSales : null,
@@ -425,10 +423,11 @@ function buildOutlook(input: OperatingBriefInput): OperatingOutlook {
       todaySales.length > 0
         ? `Recorded net sales so far on ${input.operatingDate}.`
         : "Connect or sync POS sales to show expected sales context.",
-    prepReadiness: criticalCount > 0 ? "gaps" : outlooks.length > 0 ? "ready" : "unknown",
+    // Low/Watch coverage risks are prep gaps too — not only Critical/qty≤0.
+    prepReadiness: coverageGapCount > 0 ? "gaps" : outlooks.length > 0 ? "ready" : "unknown",
     prepReadinessDetail:
-      criticalCount > 0
-        ? `${criticalCount} ingredient${criticalCount === 1 ? "" : "s"} may not cover upcoming demand.`
+      coverageGapCount > 0
+        ? `${coverageGapCount} ingredient${coverageGapCount === 1 ? "" : "s"} may not cover upcoming demand.`
         : outlooks.length > 0
           ? "No critical ingredient coverage gaps in the current projection."
           : "Prep readiness is unavailable until inventory projections exist.",
@@ -506,16 +505,25 @@ function buildMonitoringRows(
   return rows.slice(0, 8);
 }
 
-function pulseStatus(input: {
+/**
+ * Fail closed: Low/Watch inventory coverage risks must never read as an all-clear
+ * Home pulse. Critical / qty≤0 and urgent findings remain `at_risk`.
+ */
+export function resolveRestaurantPulseStatus(input: {
   criticalCount: number;
+  menuRiskCount: number;
   pendingApprovals: number;
-  freshness: DataFreshnessDescriptor;
+  freshnessState: DataFreshnessDescriptor["state"];
   urgentFindings: number;
 }): RestaurantPulseStatus {
-  if (input.criticalCount > 0 || input.urgentFindings > 0 || input.freshness.state === "incomplete") {
+  if (input.criticalCount > 0 || input.urgentFindings > 0 || input.freshnessState === "incomplete") {
     return "at_risk";
   }
-  if (input.pendingApprovals > 0 || input.freshness.state === "stale") {
+  if (
+    input.pendingApprovals > 0 ||
+    input.freshnessState === "stale" ||
+    input.menuRiskCount > 0
+  ) {
     return "attention_needed";
   }
   return "on_track";
@@ -542,10 +550,11 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0
   ).length;
   const urgentFindings = (input.findings ?? []).filter((finding) => finding.severity === "urgent").length;
-  const status = pulseStatus({
+  const status = resolveRestaurantPulseStatus({
     criticalCount,
+    menuRiskCount: outlook.menuRisks.length,
     pendingApprovals: approvals.length,
-    freshness,
+    freshnessState: freshness.state,
     urgentFindings
   });
 
@@ -582,7 +591,26 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
           approvals.length > 0 ? `, and ${approvals.length} decision${approvals.length === 1 ? "" : "s"} still need approval` : ""
         }.`
       : status === "attention_needed"
-        ? `Attention needed: ${approvals.length} approval${approvals.length === 1 ? "" : "s"} and ${outlook.menuRisks.length} inventory watch item${outlook.menuRisks.length === 1 ? "" : "s"} are open.`
+        ? (() => {
+            const approvalPart =
+              approvals.length > 0
+                ? `${approvals.length} approval${approvals.length === 1 ? "" : "s"}`
+                : null;
+            const riskPart =
+              outlook.menuRisks.length > 0
+                ? `${outlook.menuRisks.length} inventory watch item${outlook.menuRisks.length === 1 ? "" : "s"}`
+                : null;
+            if (approvalPart && riskPart) {
+              return `Attention needed: ${approvalPart} and ${riskPart} are open.`;
+            }
+            if (riskPart) {
+              return `Attention needed: ${riskPart} require review before service.`;
+            }
+            if (approvalPart) {
+              return `Attention needed: ${approvalPart} still open.`;
+            }
+            return "Attention needed: open operational items require review before service.";
+          })()
         : (() => {
           const issueCount = criticalCount || urgentFindings || approvals.length;
           return `At risk: ${issueCount} operational issue${issueCount === 1 ? "" : "s"} ${

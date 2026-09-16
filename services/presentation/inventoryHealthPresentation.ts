@@ -95,9 +95,12 @@ export type InventoryHealthTier = "healthy" | "watch" | "attention";
 export function inventoryHealthTier(counts: InventoryHealthCounts): InventoryHealthTier {
   const normalized = normalizeInventoryHealthCounts(counts);
   if (getInventoryHealthTotal(normalized) === 0) return "watch";
-  // Anything genuinely out of stock outranks the average: one critical item is
-  // a service problem even when the rest of the shelf is full.
-  if (normalized.critical > 0) return "attention";
+  // Anything genuinely out of stock or below reorder outranks the average: one
+  // critical or low item is a service problem even when the rest of the shelf
+  // is full.
+  if (normalized.critical > 0 || normalized.low > 0) return "attention";
+  // A single Watch item must never read as "Healthy" just because well-stocked % is high.
+  if (normalized.watch > 0) return "watch";
   const wellStocked = getWellStockedPercentage(normalized);
   if (wellStocked >= 80) return "healthy";
   if (wellStocked >= 60) return "watch";

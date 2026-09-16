@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { fromPosSyncCompleted } from "../services/domain/activityEvents";
-import { buildOperatingBrief } from "../services/domain/operatingBrief";
+import {
+  buildOperatingBrief,
+  resolveRestaurantPulseStatus
+} from "../services/domain/operatingBrief";
 import type {
   InventoryItem,
   InventoryPrediction,
@@ -225,6 +228,127 @@ test("healthy restaurant with no approvals is on track", () => {
 
   assert.equal(brief.restaurantStatus.status, "on_track");
   assert.equal(brief.needsApproval.length, 0);
+  assert.equal(brief.outlook.prepReadiness, "ready");
+});
+
+test("resolveRestaurantPulseStatus elevates Low and Watch coverage risks", () => {
+  assert.equal(
+    resolveRestaurantPulseStatus({
+      criticalCount: 0,
+      menuRiskCount: 1,
+      pendingApprovals: 0,
+      freshnessState: "fresh",
+      urgentFindings: 0
+    }),
+    "attention_needed"
+  );
+  assert.equal(
+    resolveRestaurantPulseStatus({
+      criticalCount: 1,
+      menuRiskCount: 1,
+      pendingApprovals: 0,
+      freshnessState: "fresh",
+      urgentFindings: 0
+    }),
+    "at_risk"
+  );
+  assert.equal(
+    resolveRestaurantPulseStatus({
+      criticalCount: 0,
+      menuRiskCount: 0,
+      pendingApprovals: 0,
+      freshnessState: "fresh",
+      urgentFindings: 0
+    }),
+    "on_track"
+  );
+});
+
+test("fresh Low stock without approvals elevates Home pulse and prep gaps", () => {
+  const brief = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt: "2026-08-02T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_low",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-02",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 10,
+        gross_sales: 120,
+        net_sales: 110,
+        source_pos: "Square",
+        created_at: "2026-08-02T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 12, last_updated: "2026-08-02T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 12 }),
+        prediction: prediction({
+          projectedQuantity: 10,
+          projectedStatus: "Low",
+          daysCoverage: 1.2,
+          whyItMatters: "Chicken thighs are below the reorder threshold."
+        })
+      }
+    ]
+  });
+
+  assert.equal(brief.restaurantStatus.status, "attention_needed");
+  assert.equal(brief.needsApproval.length, 0);
+  assert.equal(brief.outlook.menuRisks.length, 1);
+  assert.equal(brief.outlook.menuRisks[0]?.label, "AtRisk");
+  assert.equal(brief.outlook.prepReadiness, "gaps");
+  assert.match(brief.restaurantStatus.summary, /inventory watch item/i);
+  assert.match(brief.restaurantStatus.topRisk ?? "", /reorder threshold/i);
+});
+
+test("fresh Watch stock without approvals elevates Home pulse", () => {
+  const brief = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt: "2026-08-02T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_watch",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-02",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 8,
+        gross_sales: 96,
+        net_sales: 90,
+        source_pos: "Square",
+        created_at: "2026-08-02T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 22, last_updated: "2026-08-02T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 22 }),
+        prediction: prediction({
+          projectedQuantity: 20,
+          projectedStatus: "Watch",
+          daysCoverage: 1.8,
+          urgency: "low",
+          whyItMatters: "Coverage is thinning before Friday delivery."
+        })
+      }
+    ]
+  });
+
+  assert.equal(brief.restaurantStatus.status, "attention_needed");
+  assert.equal(brief.outlook.menuRisks[0]?.label, "Watch");
+  assert.equal(brief.outlook.prepReadiness, "gaps");
 });
 
 test("brief data freshness comes from verified counts, not from row update time", () => {
