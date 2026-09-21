@@ -235,7 +235,27 @@ Deno.serve(async (req) => {
         },
       );
       if (applyError) throw applyError;
+      const planningGeneration = authoritySyncToken;
       authoritySyncToken = null;
+
+      let planningSyncStatus: "fresh" | "stale" = "stale";
+      let planningSyncErrorCode: string | null = null;
+      let planningSyncPersisted = false;
+
+      const dirtyRecord = await recordPosPlanningSyncState(securitySupabase, {
+        actorUserId: user.id,
+        restaurantId,
+        integrationId: credential.integrationId,
+        status: "stale",
+        errorCode: null,
+        generation: planningGeneration,
+        matchGeneration: false,
+      });
+      if (!dirtyRecord.persisted) {
+        planningSyncErrorCode = "planning_state_persist_failed";
+      } else {
+        planningSyncPersisted = true;
+      }
 
       try {
         const refreshResponse = await fetch(
@@ -250,11 +270,73 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ action: "refresh_signals", restaurantId }),
           },
         );
-        if (!refreshResponse.ok) {
-          // Sales persisted; signal refresh can retry from the client.
+        if (refreshResponse.ok) {
+          const freshRecord = await recordPosPlanningSyncState(securitySupabase, {
+            actorUserId: user.id,
+            restaurantId,
+            integrationId: credential.integrationId,
+            status: "fresh",
+            errorCode: null,
+            generation: planningGeneration,
+            matchGeneration: true,
+          });
+          if (freshRecord.persisted) {
+            planningSyncStatus = "fresh";
+            planningSyncErrorCode = null;
+            planningSyncPersisted = true;
+          } else if (freshRecord.skipped) {
+            // A newer sales generation owns planning state; never claim fresh locally.
+            planningSyncStatus = "stale";
+            planningSyncErrorCode = dirtyRecord.persisted ? null : "planning_state_persist_failed";
+            planningSyncPersisted = false;
+          } else {
+            planningSyncStatus = "stale";
+            planningSyncErrorCode = "planning_state_persist_failed";
+            planningSyncPersisted = false;
+          }
+        } else {
+          const failedRecord = await recordPosPlanningSyncState(securitySupabase, {
+            actorUserId: user.id,
+            restaurantId,
+            integrationId: credential.integrationId,
+            status: "stale",
+            errorCode: "signal_refresh_failed",
+            generation: planningGeneration,
+            matchGeneration: true,
+          });
+          planningSyncStatus = "stale";
+          if (failedRecord.persisted) {
+            planningSyncErrorCode = "signal_refresh_failed";
+            planningSyncPersisted = true;
+          } else if (failedRecord.skipped) {
+            planningSyncErrorCode = "signal_refresh_failed";
+            planningSyncPersisted = false;
+          } else {
+            planningSyncErrorCode = "planning_state_persist_failed";
+            planningSyncPersisted = false;
+          }
         }
       } catch {
-        // Sales persisted; signal refresh can retry from the client.
+        const failedRecord = await recordPosPlanningSyncState(securitySupabase, {
+          actorUserId: user.id,
+          restaurantId,
+          integrationId: credential.integrationId,
+          status: "stale",
+          errorCode: "signal_refresh_failed",
+          generation: planningGeneration,
+          matchGeneration: true,
+        });
+        planningSyncStatus = "stale";
+        if (failedRecord.persisted) {
+          planningSyncErrorCode = "signal_refresh_failed";
+          planningSyncPersisted = true;
+        } else if (failedRecord.skipped) {
+          planningSyncErrorCode = "signal_refresh_failed";
+          planningSyncPersisted = false;
+        } else {
+          planningSyncErrorCode = "planning_state_persist_failed";
+          planningSyncPersisted = false;
+        }
       }
 
       await recordFunctionSecurityEvent(
@@ -269,6 +351,10 @@ Deno.serve(async (req) => {
           provider,
           recordsProcessed: applied?.recordsProcessed ?? sales.length,
           catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
+          planningSyncStatus,
+          planningSyncErrorCode,
+          planningSyncPersisted,
+          planningSyncGeneration: planningGeneration,
         },
       );
       terminalContext = null;
@@ -277,8 +363,11 @@ Deno.serve(async (req) => {
         importId: applied?.importId ?? null,
         recordsProcessed: applied?.recordsProcessed ?? sales.length,
         catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
+        planningSyncStatus,
+        planningSyncErrorCode,
+        planningSyncPersisted,
       });
-    } catch (error) {
+    }    } catch (error) {
       const safeCode =
         error instanceof SquareProviderError ? error.safeCode : "square_sync_failed";
       if (authoritySyncToken) {
@@ -340,4 +429,77 @@ function squareOAuthConfig(): SquareOAuthConfig | null {
     Deno.env.get("SQUARE_ENVIRONMENT") === "production" ? "production" : "sandbox";
   if (!applicationId || !applicationSecret || !redirectUri) return null;
   return { applicationId, applicationSecret, redirectUri, environment };
+}
+
+type PlanningSyncRecordResult = {
+  persisted: boolean;
+  skipped: boolean;
+  status: "fresh" | "stale";
+  errorCode: string | null;
+};
+
+async function recordPosPlanningSyncState(
+  securitySupabase: {
+    rpc: (
+      name: string,
+      parameters: Record<string, unknown>,
+    ) => PromiseLike<{ data: unknown; error: unknown }>;
+  },
+  args: {
+    actorUserId: string;
+    restaurantId: string;
+    integrationId: string;
+    status: "fresh" | "stale";
+    errorCode: string | null;
+    generation: string;
+    matchGeneration: boolean;
+  },
+): Promise<PlanningSyncRecordResult> {
+  try {
+    const { data, error } = await securitySupabase.rpc("service_record_pos_planning_sync_state", {
+      p_actor_user_id: args.actorUserId,
+      p_restaurant_id: args.restaurantId,
+      p_integration_id: args.integrationId,
+      p_status: args.status,
+      p_error_code: args.errorCode,
+      p_generation: args.generation,
+      p_match_generation: args.matchGeneration,
+    });
+    if (error) {
+      return {
+        persisted: false,
+        skipped: false,
+        status: "stale",
+        errorCode: "planning_state_persist_failed",
+      };
+    }
+    const payload =
+      data && typeof data === "object" && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : {};
+    const updatedCount = Number(payload.updatedCount ?? 0);
+    const skipped =
+      payload.skipped === true || (args.matchGeneration && (!Number.isFinite(updatedCount) || updatedCount <= 0));
+    if (skipped) {
+      return {
+        persisted: false,
+        skipped: true,
+        status: "stale",
+        errorCode: args.status === "stale" ? args.errorCode : null,
+      };
+    }
+    return {
+      persisted: true,
+      skipped: false,
+      status: args.status,
+      errorCode: args.status === "fresh" ? null : args.errorCode,
+    };
+  } catch {
+    return {
+      persisted: false,
+      skipped: false,
+      status: "stale",
+      errorCode: "planning_state_persist_failed",
+    };
+  }
 }

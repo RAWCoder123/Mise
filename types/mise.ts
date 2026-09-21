@@ -16,6 +16,7 @@ export type RestaurantMembershipStatus = "active" | "invited" | "disabled";
 export type RestaurantServiceStyle = "quick_service" | "fast_casual" | "full_service" | "bar" | "cafe" | "ghost_kitchen";
 export type PosIntegrationProvider = "square" | "toast" | "clover" | "lightspeed" | "manual_csv" | "demo";
 export type IntegrationStatus = "not_connected" | "connected" | "paused" | "error";
+export type PosPlanningSyncStatus = "fresh" | "stale" | "unknown";
 export type SalesImportStatus = "queued" | "processing" | "completed" | "failed";
 export type PurchaseOrderStatus = "draft" | "submitted" | "received" | "cancelled";
 export type AiInsightRiskLevel = "low" | "medium" | "high";
@@ -247,6 +248,10 @@ export interface PosIntegration {
   authority_window_to?: string | null;
   authority_window_completed_at?: string | null;
   sync_cursor: string | null;
+  /** fresh when signals match latest sales; stale when sales landed without a successful refresh. */
+  planning_sync_status: PosPlanningSyncStatus;
+  planning_synced_at: string | null;
+  planning_sync_error_code: string | null;
   settings: Record<string, unknown>;
   created_at: string;
   updated_at: string;

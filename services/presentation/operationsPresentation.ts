@@ -77,6 +77,8 @@ interface OperationsCopy {
     repairSalesErrorDetail: string;
     repairSalesPausedDetail: string;
     repairSalesDisconnectedDetail: string;
+    planningStaleTitle: (providerName: string) => string;
+    planningStaleDetail: string;
     reviewInsightTitle: (typeLabel: string) => string;
     reviewInsightDetail: string;
   };
@@ -189,6 +191,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesErrorDetail: "The provider reports an error. Review the connection before relying on current sales.",
       repairSalesPausedDetail: "Sales synchronization is paused. Review the connection to resume current signals.",
       repairSalesDisconnectedDetail: "This sales source is not connected.",
+      planningStaleTitle: (providerName) => `Refresh ${providerName} planning after sales sync`,
+      planningStaleDetail: "Sales synced, but inventory planning did not refresh. Open POS settings and sync again.",
       reviewInsightTitle: (typeLabel) => `Review ${typeLabel}`,
       reviewInsightDetail: "Open the evidence and recommended action before the next service window."
     },
@@ -301,6 +305,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesErrorDetail: "El proveedor informa un error. Revisa la conexión antes de usar las ventas actuales.",
       repairSalesPausedDetail: "La sincronización de ventas está pausada. Revisa la conexión para reanudar las señales.",
       repairSalesDisconnectedDetail: "Esta fuente de ventas no está conectada.",
+      planningStaleTitle: (providerName) => `Actualizar la planificación de ${providerName} tras la sincronización`,
+      planningStaleDetail: "Las ventas se sincronizaron, pero la planificación de inventario no se actualizó. Abre POS y sincroniza de nuevo.",
       reviewInsightTitle: (typeLabel) => `Revisar ${typeLabel}`,
       reviewInsightDetail: "Abre la evidencia y la acción recomendada antes del próximo servicio."
     },
@@ -411,6 +417,8 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesErrorDetail: "提供商报告连接错误。请先检查连接，再使用当前销售数据。",
       repairSalesPausedDetail: "销售同步已暂停。请检查连接以恢复当前信号。",
       repairSalesDisconnectedDetail: "此销售数据源尚未连接。",
+      planningStaleTitle: (providerName) => `销售同步后刷新 ${providerName} 规划`,
+      planningStaleDetail: "销售已同步，但库存规划未刷新。请打开 POS 设置并再次同步。",
       reviewInsightTitle: (typeLabel) => `查看${typeLabel}`,
       reviewInsightDetail: "请在下一个营业时段前查看依据和建议操作。"
     },
@@ -536,6 +544,9 @@ export function presentOperationalTodayTask(
         ? copy.today.repairSalesPausedDetail
         : copy.today.repairSalesDisconnectedDetail;
     return result(copy.today.repairSalesTitle(values.providerName), detail);
+  }
+  if (code === "today.integration.planningStale") {
+    return result(copy.today.planningStaleTitle(values.providerName), copy.today.planningStaleDetail);
   }
   if (code === "today.insight.review") {
     return result(
