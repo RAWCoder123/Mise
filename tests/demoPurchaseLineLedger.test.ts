@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DEMO_RESTAURANT_ID } from "../services/demo/replaceableDemoData";
-import { normalizePurchaseLineInput } from "../services/domain/purchaseLines";
+import { normalizePurchaseLineInputWithClock } from "../services/domain/purchaseLines";
+
+/** Pin the clock so September 2026 fixture dates stay inside the 90-day window. */
+const FIXTURE_NOW = new Date("2026-09-25T12:00:00.000Z");
 
 const INVOICE = [
   {
@@ -60,7 +63,7 @@ async function demoRepository() {
 }
 
 function ingest(lines: typeof INVOICE) {
-  return { lines: lines.map(normalizePurchaseLineInput) };
+  return { lines: lines.map((line) => normalizePurchaseLineInputWithClock(line, FIXTURE_NOW)) };
 }
 
 test("demo ingestion is idempotent, truthful, and append-only", async () => {
@@ -141,7 +144,7 @@ test("demo corrections append a superseding line and leave history intact", asyn
   const correction = await repository.supersedePurchaseLine(
     DEMO_RESTAURANT_ID,
     original.id,
-    normalizePurchaseLineInput({
+    normalizePurchaseLineInputWithClock({
       lineIndex: 2,
       lineType: "purchase" as const,
       rawItemDescription: "Napa Cabbage - 50 ct",
@@ -152,7 +155,7 @@ test("demo corrections append a superseding line and leave history intact", asyn
       currency: "USD",
       transactionDate: "2026-09-01",
       parseConfidence: "confirmed"
-    })
+    }, FIXTURE_NOW)
   );
   assert.equal(correction.revision, 1);
   assert.equal(correction.supersedesLineId, original.id);
@@ -169,13 +172,13 @@ test("demo corrections append a superseding line and leave history intact", asyn
     repository.supersedePurchaseLine(
       DEMO_RESTAURANT_ID,
       original.id,
-      normalizePurchaseLineInput({
+      normalizePurchaseLineInputWithClock({
         lineIndex: 2,
         lineType: "purchase" as const,
         rawItemDescription: "Napa Cabbage - 50 ct",
         transactionDate: "2026-09-01",
         parseConfidence: "estimated"
-      })
+      }, FIXTURE_NOW)
     ),
     /already been corrected/
   );
@@ -236,7 +239,7 @@ test("demo credits net against purchases and flag what they cannot match", async
         transactionDate: "2026-09-03",
         parseConfidence: "confirmed" as const
       }
-    ].map(normalizePurchaseLineInput)
+    ].map((line) => normalizePurchaseLineInputWithClock(line, FIXTURE_NOW))
   });
 
   const nets = await repository.fetchPurchaseLineNetByItem(DEMO_RESTAURANT_ID);

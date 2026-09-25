@@ -1,5 +1,18 @@
 export const SUPPLIER_NOTE_MAX_CHARACTERS = 2_000;
 export const ORDER_MESSAGE_MAX_BYTES = 64 * 1024;
+/**
+ * Purchase-line calendar dates (transaction_date / received_date) may not be
+ * older than this many days before the server's current_date. Mirrors the
+ * inventory-event far-past lookback so late invoice entry still works while
+ * absurd backdating cannot poison net-spend windows.
+ */
+export const PURCHASE_LINE_DATE_MAX_LOOKBACK_DAYS = 90;
+/**
+ * Allow one calendar day ahead of current_date so a restaurant still on the
+ * previous local day relative to the UTC server clock can record today's
+ * invoice. Two or more days ahead is rejected as future-dated.
+ */
+export const PURCHASE_LINE_DATE_FUTURE_SKEW_DAYS = 1;
 export const RESTAURANT_NAME_MAX_CHARACTERS = 120;
 export const RESTAURANT_ADDRESS_MAX_CHARACTERS = 500;
 export const RESTAURANT_CUISINE_MAX_CHARACTERS = 120;
