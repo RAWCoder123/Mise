@@ -588,13 +588,11 @@ export function projectAuthoritativeOnHand(
     }
   }
 
+  // Signed projection: consumption past the counted baseline is a real deficit, not zero.
   const projectedQuantity =
     baselineQuantity === null
       ? null
-      : Math.max(
-          0,
-          baselineQuantity + appliedAdditions - appliedLedgerReductions - appliedConsumption
-        );
+      : baselineQuantity + appliedAdditions - appliedLedgerReductions - appliedConsumption;
 
   return {
     restaurantId,

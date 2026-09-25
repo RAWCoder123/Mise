@@ -153,13 +153,24 @@ test("inventory outlooks sort urgent kitchen items first", () => {
     demoDemandFallback
   );
 
-  assert.equal(outlooks[0]?.item.item_name, "Chicken breast");
+  // Deepest oversell (most negative days of cover) ranks ahead of milder Critical items.
+  assert.ok((outlooks[0]?.prediction.projectedQuantity ?? 0) < 0);
   assert.equal(outlooks[0]?.prediction.urgency, "high");
   assert.equal(outlooks[0]?.prediction.projectedStatus, "Critical");
-  assert.equal(outlooks[0]?.prediction.projectedQuantity, 0);
-  assert.equal(outlooks[0]?.prediction.todayDepletion, 21);
-  assert.match(outlooks[0]?.prediction.coverageLabel ?? "", /run out today/i);
-  assert.match(outlooks[0]?.prediction.suggestedAction ?? "", /Order/);
+  assert.match(outlooks[0]?.prediction.coverageLabel ?? "", /sold past counted stock/i);
+
+  const chicken = outlooks.find((outlook) => outlook.item.item_name === "Chicken breast");
+  assert.ok(chicken);
+  // Demo chicken is oversold (18 on hand − 21 POS depletion). Preserve the deficit so
+  // restore-to-par recommendations include the shortfall instead of flooring at zero.
+  assert.equal(chicken.prediction.projectedQuantity, -3);
+  assert.equal(chicken.prediction.todayDepletion, 21);
+  assert.equal(chicken.prediction.suggestedOrderQuantity, 63);
+  assert.equal(chicken.prediction.projectedStatus, "Critical");
+  assert.equal(chicken.prediction.urgency, "high");
+  assert.match(chicken.prediction.coverageLabel, /sold past counted stock/i);
+  assert.match(chicken.prediction.suggestedAction, /Order/);
+  assert.match(chicken.prediction.whyItMatters, /exceeded counted/i);
 
   const summary = buildInventoryControlSummary(DEMO_RESTAURANT_ID, outlooks);
   assert.equal(summary.needOrderCount, 6);
@@ -167,6 +178,61 @@ test("inventory outlooks sort urgent kitchen items first", () => {
   assert.equal(summary.categoryCounts.proteins, 2);
   assert.equal(summary.categoryCounts.produce, 2);
   assert.match(summary.readinessLabel, /risk/i);
+});
+
+test("inventory prediction preserves POS oversell so restore-to-par includes the deficit", () => {
+  const restaurantId = "oversell_restaurant";
+  const item = {
+    id: "oversell_chicken",
+    restaurant_id: restaurantId,
+    item_name: "Chicken",
+    category: "Protein",
+    unit: "lb",
+    current_quantity: 5,
+    par_level: 40,
+    reorder_threshold: 10,
+    estimated_unit_cost: 4,
+    supplier_id: TEST_SUPPLIER_IDS.freshPoultry,
+    supplier_name: "Fresh Co.",
+    last_updated: new Date().toISOString()
+  };
+  const operatingDate = toDateKey(new Date());
+  const prediction = buildInventoryPrediction(
+    item,
+    [
+      {
+        id: "oversell_sale",
+        restaurant_id: restaurantId,
+        source_record_id: "oversell_row",
+        sale_date: operatingDate,
+        item_name: "Chicken Bowl",
+        category: "Entrees",
+        quantity_sold: 20,
+        gross_sales: 200,
+        net_sales: 200,
+        source_pos: "Test POS",
+        created_at: new Date().toISOString()
+      }
+    ],
+    [
+      {
+        id: "oversell_mapping",
+        restaurant_id: restaurantId,
+        menu_item_name: "Chicken Bowl",
+        inventory_item_id: item.id,
+        quantity_used_per_sale: 0.5,
+        unit: "lb"
+      }
+    ],
+    operatingDate
+  );
+
+  assert.equal(prediction.todayDepletion, 10);
+  assert.equal(prediction.projectedQuantity, -5);
+  assert.equal(prediction.projectedStatus, "Critical");
+  assert.equal(prediction.suggestedOrderQuantity, 45);
+  assert.match(prediction.coverageLabel, /sold past counted stock/i);
+  assert.match(prediction.whyItMatters, /exceeded counted/i);
 });
 
 test("real restaurants never inherit static demo demand assumptions", () => {

@@ -291,6 +291,53 @@ test("prediction boundaries ignore wrong dates, anomalous quantities, and incomp
   assert.equal(operational.recommendations[0]?.urgency, "medium");
 });
 
+test("operational signals include the oversell deficit in restore-to-par quantity", () => {
+  const restaurantId = "restaurant-oversell";
+  const item = inventoryItem("oversold-item", restaurantId, 4);
+  item.par_level = 20;
+  item.reorder_threshold = 8;
+  const sales: PosSale[] = [
+    {
+      id: "oversell-sale",
+      restaurant_id: restaurantId,
+      source_record_id: "oversell-row",
+      sale_date: operatingDate,
+      item_name: "Oversold Bowl",
+      category: "Entrees",
+      quantity_sold: 20,
+      gross_sales: 160,
+      net_sales: 160,
+      source_pos: "Test POS",
+      created_at: fixedNow
+    }
+  ];
+  const mappings: MenuItemIngredient[] = [
+    {
+      id: "oversell-mapping",
+      restaurant_id: restaurantId,
+      menu_item_name: "Oversold Bowl",
+      inventory_item_id: item.id,
+      quantity_used_per_sale: 0.5,
+      unit: "lb"
+    }
+  ];
+
+  const operational = calculateOperationalSignals({
+    restaurantId,
+    operatingDate,
+    inventoryItems: [item],
+    sales,
+    menuItemIngredients: mappings,
+    recommendationHistory: []
+  });
+
+  assert.equal(operational.recommendations.length, 1);
+  // 4 on hand − 10 depletion = −6; restore to par 20 requires 26, not 20.
+  assert.equal(operational.recommendations[0]?.recommended_quantity, 26);
+  assert.equal(operational.recommendations[0]?.urgency, "high");
+  assert.match(operational.insights[0]?.description ?? "", /projected at -6/);
+});
+
 test("supplier grouping is tenant-safe and uses the restaurant calendar for tomorrow", () => {
   const restaurantId = "restaurant-orders";
   const instant = new Date("2026-07-14T02:30:00.000Z");

@@ -169,7 +169,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       )
         ? mappedTodayUsage
         : 0;
-    const projectedQuantity = Math.max(0, finiteNonNegative(item.current_quantity) - todayUsage);
+    // Preserve signed oversell so recommended restore-to-par quantities include the deficit.
+    const projectedQuantity = finiteNonNegative(item.current_quantity) - todayUsage;
     const threshold = finiteNonNegative(item.reorder_threshold);
     const isCritical = projectedQuantity <= 0;
     const isLow = !isCritical && projectedQuantity <= threshold;
