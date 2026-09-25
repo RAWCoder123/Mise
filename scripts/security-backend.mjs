@@ -152,20 +152,56 @@ function buildFinalAuthenticatedPolicies(sql) {
 /**
  * Authenticated Data API is SELECT-only for these tables.
  * Mutations must use service_role / Edge / guarded RPCs.
+ * Keep this set complete for every final authenticated SELECT grant
+ * without DML — the inventory completeness check below fails closed
+ * when a new SELECT-only table is omitted.
  */
 const selectOnlyAuthenticatedTables = new Set([
-  "system_operational_controls",
-  "restaurant_operational_controls",
-  "sales_imports",
-  "supplier_items",
-  "purchase_orders",
+  "action_outcomes",
+  "activity_events",
+  "ai_insights",
+  "audit_logs",
+  "ingredient_substitutions",
+  "insights",
+  "inventory_count_lines",
+  "inventory_count_sessions",
+  "inventory_events",
   "inventory_items",
   "menu_item_ingredients",
+  "menu_items",
+  "mise_actions",
+  "modifier_recipe_adjustments",
+  "operational_finding_decisions",
+  "operational_issues",
+  "pos_catalog_item_mappings",
+  "pos_integrations",
+  "pos_locations",
   "pos_sales",
+  "purchase_lines",
+  "purchase_orders",
+  "purchase_recommendations",
+  "recalculation_runs",
+  "recipe_ingredients",
+  "recipe_versions",
+  "restaurant_autonomy_rules",
+  "restaurant_email_connections",
+  "restaurant_memberships",
+  "restaurant_memories",
+  "restaurant_operational_controls",
+  "restaurant_task_dependencies",
+  "restaurant_tasks",
+  "restaurants",
+  "sales_imports",
   "setup_attachments",
-  "inventory_count_sessions",
-  "inventory_count_lines",
-  "purchase_lines"
+  "supplier_deliveries",
+  "supplier_delivery_items",
+  "supplier_items",
+  "supplier_order_confirmations",
+  "supplier_orders",
+  "supplier_recipients",
+  "suppliers",
+  "system_operational_controls",
+  "users"
 ]);
 
 runRequired("Running existing static security checks...", process.execPath, ["scripts/security-static.mjs"]);
@@ -264,6 +300,17 @@ for (const table of selectOnlyAuthenticatedTables) {
   if (hasAuthenticatedTableDml(privileges)) {
     failures.push(
       `supabase: public.${table} must not retain authenticated DML grants after service/Edge ownership (found ${listAuthenticatedDmlPrivileges(privileges).join(", ")}).`
+    );
+  }
+}
+
+for (const [table, privileges] of tablePrivilegeInventory.tables.entries()) {
+  if (!privileges.select || hasAuthenticatedTableDml(privileges)) {
+    continue;
+  }
+  if (!selectOnlyAuthenticatedTables.has(table)) {
+    failures.push(
+      `supabase: public.${table} ends SELECT-only for authenticated but is not pinned in selectOnlyAuthenticatedTables.`
     );
   }
 }
