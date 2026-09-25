@@ -260,3 +260,45 @@ test("demo credits net against purchases and flag what they cannot match", async
   assert.equal(credit?.signedQuantity, -1, "direction lives in the signed projection");
   assert.equal(credit?.parseConfidence, "confirmed", "linkage never affects confidence");
 });
+
+test("demo restaurant export flattens committed purchase lines", async () => {
+  const repository = await demoRepository();
+  const emptyExport = await repository.exportRestaurantData(DEMO_RESTAURANT_ID);
+  assert.equal(emptyExport.datasets.purchase_lines.length, 0);
+  assert.equal(emptyExport.counts.purchase_lines, 0);
+
+  await repository.ingestPurchaseLines({
+    restaurantId: DEMO_RESTAURANT_ID,
+    source: "invoice",
+    sourceDocumentReference: "INV-EXPORT-1",
+    ...ingest(INVOICE)
+  });
+
+  const exported = await repository.exportRestaurantData(DEMO_RESTAURANT_ID);
+  assert.equal(exported.datasets.purchase_lines.length, 3);
+  assert.equal(exported.counts.purchase_lines, 3);
+  assert.ok(
+    exported.datasets.purchase_lines.every(
+      (row) => row.restaurant_id === DEMO_RESTAURANT_ID
+    ),
+    "every exported purchase line must stay tenant-scoped"
+  );
+
+  const chicken = exported.datasets.purchase_lines.find(
+    (row) => row.source_document_reference === "INV-EXPORT-1" && row.line_index === 0
+  );
+  assert.equal(chicken?.raw_item_description, "Chicken Thighs Boneless 40 LB Case");
+  assert.equal(chicken?.normalized_item_key, "chicken thighs boneless case");
+  assert.equal(chicken?.quantity, 2);
+  assert.equal(chicken?.unit_price, 86.5);
+  assert.equal(chicken?.signed_quantity, 2);
+  assert.equal(chicken?.parse_confidence, "confirmed");
+  assert.equal(chicken?.line_type, "purchase");
+  assert.equal(chicken?.source, "invoice");
+
+  const unpriced = exported.datasets.purchase_lines.find(
+    (row) => row.source_document_reference === "INV-EXPORT-1" && row.line_index === 2
+  );
+  assert.equal(unpriced?.parse_confidence, "could_not_verify");
+  assert.equal(unpriced?.unit_price, null);
+});

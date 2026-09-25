@@ -151,4 +151,9 @@ test("client export datasets include operational backend and shared-task tables"
   assert.match(demo, /datasets\.restaurant_autonomy_rules = \(state\.autonomyRules/);
   assert.match(demo, /datasets\.restaurant_tasks = \(state\.restaurantTasks/);
   assert.match(demo, /datasets\.restaurant_task_dependencies/);
+  assert.match(
+    demo,
+    /datasets\.purchase_lines = \(state\.purchaseLines/,
+    "demo privacy export must flatten committed purchase lines, not leave a false-empty key"
+  );
 });
