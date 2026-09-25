@@ -682,6 +682,8 @@ test("backend security script proves local RLS, Data API grants, and firewall gu
   assert.match(script, /buildFinalAuthenticatedTablePrivileges/);
   assert.match(script, /selectOnlyAuthenticatedTables/);
   assert.match(script, /must not retain authenticated DML grants after service\/Edge ownership/i);
+  assert.match(script, /ends SELECT-only for authenticated but is not pinned in selectOnlyAuthenticatedTables/);
+  assert.match(script, /"inventory_events"/);
   assert.match(script, /verify_jwt\s*=\s*true/i);
   assert.match(script, /requireAuthenticatedContext/);
   assert.match(script, /reserveFunctionInvocation/);
