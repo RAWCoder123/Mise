@@ -38,9 +38,22 @@ test("purchase memory cannot feed recommendation or supplier-send authority in 0
 });
 
 test("raw evidence is private, append-only, bounded, and written only by trusted wrappers", () => {
+  const boundPin = readFileSync(
+    new URL(
+      "../supabase/migrations/20260925231000_mise_005e_jsonb_bound_octet_length.sql",
+      import.meta.url
+    ),
+    "utf8"
+  );
   assert.match(migration, /revoke all on table public\.purchase_decision_events from public, anon, authenticated/);
   assert.match(migration, /Purchase decision events are append-only/);
+  // 004A originally used pg_column_size; MISE-005E replaces the live CHECK with
+  // octet_length(...::text) so restore cannot diverge with TOAST storage.
   assert.match(migration, /pg_column_size\(context_evidence\) <= 8192/);
+  assert.match(
+    boundPin,
+    /purchase_decision_events_context_evidence_check[\s\S]*octet_length\(context_evidence::text\) <= 8192/
+  );
   assert.doesNotMatch(migration, /grant insert on table public\.purchase_decision_events to authenticated/);
   assert.doesNotMatch(migration, /operator_note|order_message|gmail|access_token|refresh_token|raw_pos/i);
 });
