@@ -8,6 +8,7 @@ import {
   markCurrentPurchaseLines,
   normalizePurchaseLineDescription,
   normalizePurchaseLineInput,
+  purchaseLinePackUnit,
   purchaseLineUnitDimension,
   resolvePurchaseLineConfidence,
   type PurchaseLine
@@ -396,6 +397,18 @@ test("counting units behave like containers and never conflict with a pack", () 
   }
   assert.equal(purchaseLineUnitDimension("lb"), "mass");
   assert.equal(purchaseLineUnitDimension("GAL"), "volume");
+});
+
+test("MISE-005D unit and pack helpers match lower(... COLLATE C), not locale toLowerCase", () => {
+  assert.equal(purchaseLineUnitDimension("LB"), "mass");
+  assert.equal(purchaseLineUnitDimension("  Gal  "), "volume");
+  assert.equal(purchaseLineUnitDimension("GÁL"), null, "accents are not folded for unit tokens");
+  assert.equal(purchaseLinePackUnit("12x32OZ"), "oz");
+  assert.equal(purchaseLinePackUnit("6/1GAL"), "gal");
+  assert.equal(purchaseLinePackUnit("40 LB"), "lb");
+  // Kelvin sign (K, U+212A) lowercases to "k" under Unicode toLowerCase, but
+  // lower(... COLLATE "C") leaves it alone — so it must not become a unit token.
+  assert.equal(purchaseLinePackUnit("12x32\u212A"), null);
 });
 
 test("a credit is a stated direction, never a negative number", () => {
