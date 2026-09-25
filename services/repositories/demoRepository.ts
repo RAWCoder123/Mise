@@ -917,25 +917,6 @@ export function createLocalDemoRepository(): MiseRepository {
         throw new Error("Inventory item canonical conversion is not verified");
       }
 
-      const nativeQuantity = input.quantity / conversion;
-      const projectedQuantity =
-        input.eventType === "count"
-          ? nativeQuantity
-          : input.eventType === "stockout"
-            ? 0
-            : input.eventType === "receipt"
-              ? item.current_quantity + nativeQuantity
-              : input.eventType === "waste" || input.eventType === "usage"
-                ? item.current_quantity - nativeQuantity
-                : item.current_quantity + nativeQuantity;
-      if (
-        !Number.isFinite(projectedQuantity) ||
-        projectedQuantity < 0 ||
-        projectedQuantity > 1_000_000
-      ) {
-        throw new Error("Inventory event would move on-hand outside supported limits");
-      }
-
       const acceptance = acceptInventoryEvent({
         existingEvents: state.inventoryEvents ?? [],
         candidate: input,
@@ -949,12 +930,33 @@ export function createLocalDemoRepository(): MiseRepository {
 
       // Mirrors private.stamp_inventory_event_projection_applied: a row effective at
       // or before the item's authoritative count is retained in history but must not
-      // move the on-hand projection again.
+      // move the on-hand projection again. Hosted apply_inventory_event_projection
+      // skips on-hand floor/ceiling when projection_applied is false — demo must too.
       const projectionApplied = inventoryEventMovesProjection(
         state.inventoryEvents ?? [],
         input,
         acceptance.event.recordedAt
       );
+      const nativeQuantity = input.quantity / conversion;
+      const projectedQuantity =
+        input.eventType === "count"
+          ? nativeQuantity
+          : input.eventType === "stockout"
+            ? 0
+            : input.eventType === "receipt"
+              ? item.current_quantity + nativeQuantity
+              : input.eventType === "waste" || input.eventType === "usage"
+                ? item.current_quantity - nativeQuantity
+                : item.current_quantity + nativeQuantity;
+      if (projectionApplied) {
+        if (
+          !Number.isFinite(projectedQuantity) ||
+          projectedQuantity < 0 ||
+          projectedQuantity > 1_000_000
+        ) {
+          throw new Error("Inventory event would move on-hand outside supported limits");
+        }
+      }
       const recordedEvent = { ...acceptance.event, projectionApplied };
       state.inventoryEvents = [...(state.inventoryEvents ?? []), recordedEvent];
       if (projectionApplied) {

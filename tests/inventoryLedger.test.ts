@@ -157,3 +157,83 @@ test("projects counts, receipts, usage, waste, and corrections in server sequenc
     conflicts: []
   });
 });
+
+test("projectInventoryEvents skips rows stamped projectionApplied false", () => {
+  const count = accepted(
+    [],
+    input({
+      eventType: "count",
+      quantity: 2000,
+      clientEventId: "count-1",
+      idempotencyKey: "count-1"
+    }),
+    "event-1"
+  );
+  const delayedReceipt = {
+    ...accepted(
+      [count],
+      input({
+        quantity: 500,
+        effectiveAt: "2026-07-26T09:00:00.000Z",
+        clientEventId: "receipt-delayed",
+        idempotencyKey: "receipt-delayed"
+      }),
+      "event-2"
+    ),
+    projectionApplied: false as const
+  };
+  const delayedWaste = {
+    ...accepted(
+      [count, delayedReceipt],
+      input({
+        eventType: "waste" as const,
+        quantity: 400,
+        effectiveAt: "2026-07-26T08:00:00.000Z",
+        clientEventId: "waste-delayed",
+        idempotencyKey: "waste-delayed"
+      }),
+      "event-3"
+    ),
+    projectionApplied: false as const
+  };
+
+  assert.deepEqual(projectInventoryEvents("restaurant-a", "chicken", [
+    delayedWaste,
+    delayedReceipt,
+    count
+  ]), {
+    restaurantId: "restaurant-a",
+    inventoryItemId: "chicken",
+    canonicalUnit: "g",
+    quantity: 2000,
+    lastSequence: 3,
+    conflicts: []
+  });
+});
+
+test("projectInventoryEvents still applies legacy rows without projectionApplied", () => {
+  const count = accepted(
+    [],
+    input({
+      eventType: "count",
+      quantity: 2000,
+      clientEventId: "count-1",
+      idempotencyKey: "count-1"
+    }),
+    "event-1"
+  );
+  const legacyReceipt = accepted(
+    [count],
+    input({
+      quantity: 500,
+      effectiveAt: "2026-07-26T09:00:00.000Z",
+      clientEventId: "receipt-legacy",
+      idempotencyKey: "receipt-legacy"
+    }),
+    "event-2"
+  );
+  assert.equal(
+    projectInventoryEvents("restaurant-a", "chicken", [count, legacyReceipt]).quantity,
+    2500
+  );
+});

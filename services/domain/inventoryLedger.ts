@@ -139,6 +139,12 @@ export function projectInventoryEvents(
   const conflicts: string[] = [];
 
   for (const event of scoped) {
+    // Absent projectionApplied means legacy/applied — fail closed. Explicit false
+    // means the row was retained at/before the count boundary and must not move
+    // reconstructed on-hand (matches private.apply_inventory_event_projection).
+    if (event.projectionApplied === false) {
+      continue;
+    }
     if (canonicalUnit && canonicalUnit !== event.canonicalUnit) {
       conflicts.push(`unit_mismatch:${event.id}`);
       continue;
