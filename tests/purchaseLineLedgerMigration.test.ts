@@ -12,8 +12,13 @@ const migration = readFileSync(
   "utf8"
 );
 const securityGate = readFileSync(new URL("../scripts/security-backend.mjs", import.meta.url), "utf8");
+const securityStatic = readFileSync(new URL("../scripts/security-static.mjs", import.meta.url), "utf8");
 const tenantIsolation = readFileSync(
   new URL("../supabase/tests/database/tenant_isolation.test.sql", import.meta.url),
+  "utf8"
+);
+const purchaseLinesRls = readFileSync(
+  new URL("../supabase/tests/database/purchase_lines_rls.test.sql", import.meta.url),
   "utf8"
 );
 
@@ -200,4 +205,23 @@ test("the ledger is registered with the tenant and security inventories", () => 
   const selectOnly = securityGate.match(/const selectOnlyAuthenticatedTables = new Set\(\[([\s\S]*?)\]\)/)?.[1] ?? "";
   assert.match(selectOnly, /"purchase_lines"/, "must be proven free of authenticated DML");
   assert.match(tenantIsolation, /'purchase_lines',/, "must be in the reviewed Data API allowlist");
+
+  const staticOwned = securityStatic.match(/const restaurantOwnedTables = new Set\(\[([\s\S]*?)\]\)/)?.[1] ?? "";
+  assert.match(staticOwned, /"purchase_lines"/, "static gate must scope destructive purchase_lines queries");
+});
+
+test("purchase line RLS fixtures relativize calendar dates against current_date", () => {
+  assert.match(purchaseLinesRls, /pg_temp\.with_rel_purchase_dates/);
+  assert.match(purchaseLinesRls, /to_char\(current_date - 7, 'YYYY-MM-DD'\)/);
+  assert.match(purchaseLinesRls, /to_char\(current_date - 3, 'YYYY-MM-DD'\)/);
+  const executableDates = purchaseLinesRls.match(/transactionDate":"2026-09-\d{2}"/g) ?? [];
+  assert.ok(executableDates.length > 0, "fixture templates still encode the replace-key anchors");
+  for (const match of purchaseLinesRls.matchAll(/transactionDate":"2026-09-\d{2}"/g)) {
+    const ahead = purchaseLinesRls.slice(Math.max(0, match.index! - 2500), match.index!);
+    assert.match(
+      ahead,
+      /with_rel_purchase_dates/,
+      "every hard-coded transactionDate template must sit inside with_rel_purchase_dates"
+    );
+  }
 });
