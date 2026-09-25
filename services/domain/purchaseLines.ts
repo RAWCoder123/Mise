@@ -54,14 +54,24 @@ const MEASURE_DIMENSIONS: Record<string, "mass" | "volume"> = {
   pt: "volume", pts: "volume", pint: "volume", pints: "volume"
 };
 
-export function purchaseLineUnitDimension(unit: string | null) {
-  if (unit === null) return null;
-  return MEASURE_DIMENSIONS[unit.trim().toLowerCase()] ?? null;
+/**
+ * MISE-005D. Matches `lower(... COLLATE "C")`: only ASCII A-Z are case-folded.
+ * `toLowerCase()` is Unicode-aware and would not match the server under every
+ * LC_CTYPE. Unit vocabulary is ASCII, so accent folding is not applied here.
+ */
+function asciiLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
 }
 
-function packUnit(packSize: string | null) {
+export function purchaseLineUnitDimension(unit: string | null) {
+  if (unit === null) return null;
+  return MEASURE_DIMENSIONS[asciiLower(unit.trim())] ?? null;
+}
+
+/** MISE-005D. Matches `private.purchase_line_pack_unit`: ASCII lower, then trailing [a-z]+. */
+export function purchaseLinePackUnit(packSize: string | null) {
   if (packSize === null) return null;
-  return /([a-z]+)$/u.exec(packSize.toLowerCase())?.[1] ?? null;
+  return /([a-z]+)$/.exec(asciiLower(packSize))?.[1] ?? null;
 }
 
 /**
@@ -92,7 +102,7 @@ export function computePurchaseLineConsistencyFlags(input: {
     }
   }
   const measureDimension = purchaseLineUnitDimension(input.unitOfMeasure);
-  const packDimension = purchaseLineUnitDimension(packUnit(input.packSize));
+  const packDimension = purchaseLineUnitDimension(purchaseLinePackUnit(input.packSize));
   if (measureDimension !== null && packDimension !== null && measureDimension !== packDimension) {
     flags.push("pack_unit_dimension_conflict");
   }
