@@ -65,6 +65,15 @@ const restaurantOwnedTables = new Set([
   "restaurant_email_connections",
   "supplier_recipients",
   "setup_attachments",
+  "restaurant_operational_controls",
+  "pos_locations",
+  "menu_items",
+  "pos_catalog_item_mappings",
+  "recipe_versions",
+  "recipe_ingredients",
+  "modifier_recipe_adjustments",
+  "ingredient_substitutions",
+  "inventory_events",
   "operational_issues",
   "mise_actions",
   "action_outcomes",
@@ -75,7 +84,13 @@ const restaurantOwnedTables = new Set([
   "activity_events",
   "supplier_order_confirmations",
   "supplier_deliveries",
-  "supplier_delivery_items"
+  "supplier_delivery_items",
+  "recalculation_runs",
+  "inventory_count_sessions",
+  "inventory_count_lines",
+  "purchase_lines",
+  "suppliers",
+  "operational_finding_decisions"
 ]);
 
 const serviceOnlyPublicTables = new Set([
@@ -85,7 +100,8 @@ const serviceOnlyPublicTables = new Set([
   "outreach_events",
   "outreach_leads",
   "outreach_messages",
-  "outreach_suppressions"
+  "outreach_suppressions",
+  "purchase_decision_events"
 ]);
 
 const nonTenantEdgeFunctions = new Set(["outreach-agent", "outreach-unsubscribe", "outreach-webhook"]);
@@ -183,14 +199,14 @@ for (const file of sqlFiles) {
   });
 }
 
-const publicTables = [...combinedSql.matchAll(/create\s+table\s+if\s+not\s+exists\s+public\.([a-z_]+)/gi)]
+const publicTables = [...combinedSql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?public\.([a-z_]+)/gi)]
   .map((match) => match[1])
   .filter(Boolean);
 
 for (const table of new Set(publicTables)) {
   if (serviceOnlyPublicTables.has(table)) {
     const revokePattern = new RegExp(
-      `revoke\\s+all\\s+on\\s+public\\.${escapeRegExp(table)}\\s+from\\s+anon\\s*,\\s*authenticated`,
+      `revoke\\s+all\\s+on\\s+(?:table\\s+)?public\\.${escapeRegExp(table)}\\s+from\\s+(?:public\\s*,\\s*)?anon\\s*,\\s*authenticated`,
       "i"
     );
     if (!revokePattern.test(combinedSql)) {
@@ -198,7 +214,10 @@ for (const table of new Set(publicTables)) {
     }
     continue;
   }
-  const grantPattern = new RegExp(`grant\\s+[^;]+\\s+on\\s+public\\.${escapeRegExp(table)}\\s+to\\s+authenticated`, "i");
+  const grantPattern = new RegExp(
+    `grant\\s+[^;]+\\s+on\\s+(?:table\\s+)?public\\.${escapeRegExp(table)}\\s+to\\s+authenticated`,
+    "i"
+  );
   if (!grantPattern.test(combinedSql)) {
     failures.push(`supabase: public.${table} is exposed through the Data API but has no authenticated grant`);
   }

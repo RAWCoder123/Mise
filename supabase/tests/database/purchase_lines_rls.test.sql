@@ -16,6 +16,21 @@ exception when others then return sqlerrm;
 end;
 $$;
 
+-- Fixture calendar anchors stay relative to current_date so a 90-day lookback
+-- (and any later window) cannot silently expire hard-coded September 2026 dates.
+-- Mapping preserves original spacing: 09-01→-7d, 09-02→-6d, 09-03→-5d, 09-05→-3d.
+create or replace function pg_temp.with_rel_purchase_dates(payload text)
+returns text
+language sql
+stable
+as $$
+  select replace(replace(replace(replace(payload,
+    '2026-09-05', to_char(current_date - 3, 'YYYY-MM-DD')),
+    '2026-09-03', to_char(current_date - 5, 'YYYY-MM-DD')),
+    '2026-09-02', to_char(current_date - 6, 'YYYY-MM-DD')),
+    '2026-09-01', to_char(current_date - 7, 'YYYY-MM-DD'));
+$$;
+
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at
@@ -152,7 +167,7 @@ select set_config('request.jwt.claim.sub', '5a111111-1111-4111-8111-111111111111
 select is(
   (public.ingest_purchase_lines(
     '5a000000-0000-4000-8000-000000000001', 'invoice', 'INV-4471',
-    $json$[
+    pg_temp.with_rel_purchase_dates($json$[
       {"lineIndex":0,"lineType":"purchase","rawItemDescription":"Chicken Thighs Boneless 40 LB Case","quantity":2,
        "unitOfMeasure":"case","unitPrice":86.5,"extendedPrice":173,"currency":"USD",
        "transactionDate":"2026-09-01","parseConfidence":"confirmed"},
@@ -161,7 +176,7 @@ select is(
        "transactionDate":"2026-09-01","parseConfidence":"confirmed"},
       {"lineIndex":2,"lineType":"purchase","rawItemDescription":"Napa Cabbage - 50 ct","quantity":1,
        "unitOfMeasure":"case","transactionDate":"2026-09-01","parseConfidence":"confirmed"}
-    ]$json$::jsonb,
+    ]$json$)::jsonb,
     '5a000000-0000-4000-8000-000000000101'
   ))->>'recordedLineCount',
   '3',
@@ -170,7 +185,7 @@ select is(
 select is(
   (public.ingest_purchase_lines(
     '5a000000-0000-4000-8000-000000000001', 'invoice', 'INV-4471',
-    $json$[
+    pg_temp.with_rel_purchase_dates($json$[
       {"lineIndex":0,"lineType":"purchase","rawItemDescription":"Chicken Thighs Boneless 40 LB Case","quantity":2,
        "unitOfMeasure":"case","unitPrice":86.5,"extendedPrice":173,"currency":"USD",
        "transactionDate":"2026-09-01","parseConfidence":"confirmed"},
@@ -179,7 +194,7 @@ select is(
        "transactionDate":"2026-09-01","parseConfidence":"confirmed"},
       {"lineIndex":2,"lineType":"purchase","rawItemDescription":"Napa Cabbage - 50 ct","quantity":1,
        "unitOfMeasure":"case","transactionDate":"2026-09-01","parseConfidence":"confirmed"}
-    ]$json$::jsonb,
+    ]$json$)::jsonb,
     '5a000000-0000-4000-8000-000000000101'
   ))->>'duplicateLineCount',
   '3',
@@ -234,20 +249,20 @@ select is(
 
 -- Malformed submissions fail loudly instead of collapsing.
 select is(
-  pg_temp.error_of($sql$select public.ingest_purchase_lines(
+  pg_temp.error_of(pg_temp.with_rel_purchase_dates($sql$select public.ingest_purchase_lines(
     '5a000000-0000-4000-8000-000000000001', 'invoice', 'INV-DUP',
     '[{"lineIndex":0,"lineType":"purchase","rawItemDescription":"A","transactionDate":"2026-09-01","parseConfidence":"estimated"},
       {"lineIndex":0,"lineType":"purchase","rawItemDescription":"B","transactionDate":"2026-09-01","parseConfidence":"estimated"}]'::jsonb
-  )$sql$),
+  )$sql$)),
   'Purchase line position 0 was submitted twice',
   'a duplicated document position is refused, never silently dropped'
 );
 select is(
-  pg_temp.error_of($sql$select public.ingest_purchase_lines(
+  pg_temp.error_of(pg_temp.with_rel_purchase_dates($sql$select public.ingest_purchase_lines(
     '5a000000-0000-4000-8000-000000000001', 'invoice', 'INV-FOREIGN',
     '[{"lineIndex":0,"lineType":"purchase","rawItemDescription":"X","transactionDate":"2026-09-01","parseConfidence":"estimated"}]'::jsonb,
     '5b000000-0000-4000-8000-000000000101'
-  )$sql$),
+  )$sql$)),
   'Supplier identity is not available for this restaurant',
   'durable supplier identity may not cross a tenant boundary'
 );
@@ -260,9 +275,11 @@ select is(
    cross join lateral (
      select * from public.supersede_purchase_line(
        '5a000000-0000-4000-8000-000000000001', original.id,
-       '{"lineType":"purchase","rawItemDescription":"Napa Cabbage - 50 ct","quantity":2,"unitOfMeasure":"case",
+       pg_temp.with_rel_purchase_dates(
+         '{"lineType":"purchase","rawItemDescription":"Napa Cabbage - 50 ct","quantity":2,"unitOfMeasure":"case",
          "unitPrice":31.25,"extendedPrice":62.5,"currency":"USD",
-         "transactionDate":"2026-09-01","parseConfidence":"confirmed"}'::jsonb)
+         "transactionDate":"2026-09-01","parseConfidence":"confirmed"}'
+       )::jsonb)
    ) correction
    where original.source_document_reference = 'INV-4471'
      and original.line_index = 2 and original.revision = 0),
@@ -276,21 +293,21 @@ select is(
   'the corrected line is left exactly as it was recorded'
 );
 select is(
-  pg_temp.error_of(format($sql$select public.supersede_purchase_line(
+  pg_temp.error_of(pg_temp.with_rel_purchase_dates(format($sql$select public.supersede_purchase_line(
     '5a000000-0000-4000-8000-000000000001', '%s',
     '{"lineType":"purchase","rawItemDescription":"Napa Cabbage - 50 ct","transactionDate":"2026-09-01",
       "parseConfidence":"estimated"}'::jsonb)$sql$,
     (select id from public.purchase_lines
-     where source_document_reference = 'INV-4471' and line_index = 2 and revision = 0))),
+     where source_document_reference = 'INV-4471' and line_index = 2 and revision = 0)))),
   'Purchase line has already been corrected',
   'a correction chain stays linear'
 );
 
 -- ---------------------------------------------------------------- authority
 select is(
-  pg_temp.error_of($sql$select set_config('request.jwt.claim.sub','5a222222-2222-4222-8222-222222222222',true);
+  pg_temp.error_of(pg_temp.with_rel_purchase_dates($sql$select set_config('request.jwt.claim.sub','5a222222-2222-4222-8222-222222222222',true);
     select public.ingest_purchase_lines('5a000000-0000-4000-8000-000000000001','invoice','INV-STAFF',
-    '[{"lineIndex":0,"lineType":"purchase","rawItemDescription":"X","transactionDate":"2026-09-01","parseConfidence":"estimated"}]'::jsonb)$sql$),
+    '[{"lineIndex":0,"lineType":"purchase","rawItemDescription":"X","transactionDate":"2026-09-01","parseConfidence":"estimated"}]'::jsonb)$sql$)),
   'Manager access required',
   'staff may not write purchase history'
 );
@@ -299,8 +316,8 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '5b111111-1111-4111-8111-111111111111', true);
 select is(
-  pg_temp.error_of($sql$select public.ingest_purchase_lines('5a000000-0000-4000-8000-000000000001','invoice','INV-X',
-    '[{"lineIndex":0,"lineType":"purchase","rawItemDescription":"X","transactionDate":"2026-09-01","parseConfidence":"estimated"}]'::jsonb)$sql$),
+  pg_temp.error_of(pg_temp.with_rel_purchase_dates($sql$select public.ingest_purchase_lines('5a000000-0000-4000-8000-000000000001','invoice','INV-X',
+    '[{"lineIndex":0,"lineType":"purchase","rawItemDescription":"X","transactionDate":"2026-09-01","parseConfidence":"estimated"}]'::jsonb)$sql$)),
   'Manager access required',
   'another tenant may not write into this restaurant'
 );
@@ -320,11 +337,11 @@ select is(
 -- The Data API grants SELECT and nothing else. A typo would surface as a
 -- different message than the privilege refusal these assertions are about.
 select is(
-  pg_temp.error_of($sql$insert into public.purchase_lines
+  pg_temp.error_of(pg_temp.with_rel_purchase_dates($sql$insert into public.purchase_lines
     (restaurant_id, source, source_document_reference, line_index, raw_item_description,
      normalized_item_key, transaction_date, correlation_id, parse_confidence, line_type)
     values ('5a000000-0000-4000-8000-000000000001','invoice','INV-CLIENT',0,'X','x',
-            '2026-09-01', gen_random_uuid(), 'estimated','purchase')$sql$),
+            '2026-09-01', gen_random_uuid(), 'estimated','purchase')$sql$)),
   'permission denied for table purchase_lines',
   'a client insert is refused on privilege, not on some other error'
 );
@@ -361,7 +378,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '5a111111-1111-4111-8111-111111111111', true);
 select public.ingest_purchase_lines(
   '5a000000-0000-4000-8000-000000000001', 'invoice', 'INV-CONSIST',
-  $json$[
+  pg_temp.with_rel_purchase_dates($json$[
     {"lineIndex":0,"lineType":"purchase","rawItemDescription":"Chicken Thighs Boneless 40 LB Case","quantity":2,
      "unitOfMeasure":"case","unitPrice":86.5,"extendedPrice":1730,"currency":"USD",
      "transactionDate":"2026-09-01","parseConfidence":"confirmed"},
@@ -377,7 +394,7 @@ select public.ingest_purchase_lines(
     {"lineIndex":4,"lineType":"purchase","rawItemDescription":"Tomatoes, Roma 25LB","quantity":30,
      "unitOfMeasure":"lb","unitPrice":1.33,"extendedPrice":39.99,"currency":"USD",
      "transactionDate":"2026-09-01","parseConfidence":"confirmed"}
-  ]$json$::jsonb
+  ]$json$)::jsonb
 );
 reset role;
 
@@ -459,14 +476,14 @@ select is(
 
 -- The database refuses a confirmed line carrying a contradiction, whatever writes it.
 select is(
-  pg_temp.error_of($sql$insert into public.purchase_lines
+  pg_temp.error_of(pg_temp.with_rel_purchase_dates($sql$insert into public.purchase_lines
     (restaurant_id, source, source_document_reference, line_index, raw_item_description,
      normalized_item_key, quantity, unit_of_measure, unit_price, extended_price, currency,
      transaction_date, correlation_id, parse_confidence, consistency_flags, line_type)
     values ('5a000000-0000-4000-8000-000000000001','invoice','INV-FORCE',0,
             'Chicken Thighs Boneless 40 LB Case','chicken thighs boneless case',
             2,'case',86.5,1730,'USD','2026-09-01', gen_random_uuid(), 'confirmed',
-            array['extended_price_mismatch']::text[], 'purchase')$sql$),
+            array['extended_price_mismatch']::text[], 'purchase')$sql$)),
   'new row for relation "purchase_lines" violates check constraint "purchase_lines_consistency_confidence_check"',
   'a confirmed line carrying a contradiction cannot be written at all'
 );
@@ -474,11 +491,11 @@ select is(
 -- ---------------------------------------------------------- credits and nets
 -- Direction must be stated. Nothing infers it.
 select is(
-  pg_temp.error_of($sql$select public.ingest_purchase_lines(
+  pg_temp.error_of(pg_temp.with_rel_purchase_dates($sql$select public.ingest_purchase_lines(
     '5a000000-0000-4000-8000-000000000001', 'invoice', 'INV-NODIR',
     '[{"lineIndex":0,"rawItemDescription":"X","transactionDate":"2026-09-01",
        "parseConfidence":"estimated"}]'::jsonb
-  )$sql$),
+  )$sql$)),
   'Purchase line 0 must state whether it is a purchase or a credit',
   'a line that does not state its direction is refused'
 );
@@ -488,7 +505,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '5a111111-1111-4111-8111-111111111111', true);
 select public.ingest_purchase_lines(
   '5a000000-0000-4000-8000-000000000001', 'credit_memo', 'CM-8892',
-  $json$[
+  pg_temp.with_rel_purchase_dates($json$[
     {"lineIndex":0,"lineType":"credit",
      "rawItemDescription":"Chicken Thighs Boneless 40 LB Case","quantity":1,
      "unitOfMeasure":"case","unitPrice":86.5,"extendedPrice":86.5,"currency":"USD",
@@ -500,7 +517,7 @@ select public.ingest_purchase_lines(
      "rawItemDescription":"Olive Oil X-Virgin 6/1GAL","quantity":1,
      "unitOfMeasure":"case","unitPrice":121.4,"extendedPrice":1214,"currency":"USD",
      "transactionDate":"2026-09-03","parseConfidence":"confirmed"}
-  ]$json$::jsonb,
+  ]$json$)::jsonb,
   '5a000000-0000-4000-8000-000000000101'
 );
 reset role;
@@ -563,13 +580,13 @@ select is(
 
 -- A stated link is validated, never inferred, and never required.
 select is(
-  pg_temp.error_of(format($sql$select public.ingest_purchase_lines(
+  pg_temp.error_of(pg_temp.with_rel_purchase_dates(format($sql$select public.ingest_purchase_lines(
     '5a000000-0000-4000-8000-000000000001', 'credit_memo', 'CM-CROSS',
     '[{"lineIndex":0,"lineType":"credit","rawItemDescription":"X",
        "transactionDate":"2026-09-03","parseConfidence":"estimated",
        "creditsLineId":"%s"}]'::jsonb
   )$sql$, (select id from public.purchase_lines
-           where source_document_reference = 'INV-4471' and line_index = 0))),
+           where source_document_reference = 'INV-4471' and line_index = 0)))),
   'Credited purchase line is not available for this supplier',
   'a credit link that does not resolve for this supplier fails closed'
 );
@@ -592,9 +609,11 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '5a333333-3333-4333-8333-333333333333', true);
 select public.ingest_purchase_lines(
   '5a000000-0000-4000-8000-000000000001', 'invoice', 'INV-ANON',
-  '[{"lineIndex":0,"lineType":"purchase","rawItemDescription":"Kosher Salt 3lb box","quantity":4,
+  pg_temp.with_rel_purchase_dates(
+    '[{"lineIndex":0,"lineType":"purchase","rawItemDescription":"Kosher Salt 3lb box","quantity":4,
      "unitOfMeasure":"box","unitPrice":5.25,"extendedPrice":21,"currency":"USD",
-     "transactionDate":"2026-09-02","parseConfidence":"confirmed"}]'::jsonb
+     "transactionDate":"2026-09-02","parseConfidence":"confirmed"}]'
+  )::jsonb
 );
 reset role;
 

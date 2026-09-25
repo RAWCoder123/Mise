@@ -50,7 +50,9 @@ const restaurantOwnedTables = new Set([
   "recalculation_runs",
   "inventory_count_sessions",
   "inventory_count_lines",
-  "purchase_lines"
+  "purchase_lines",
+  "suppliers",
+  "operational_finding_decisions"
 ]);
 
 const tenantAuthorizationTables = new Set(["restaurant_memberships"]);
@@ -63,7 +65,8 @@ const serviceOnlyPublicTables = new Set([
   "outreach_events",
   "outreach_leads",
   "outreach_messages",
-  "outreach_suppressions"
+  "outreach_suppressions",
+  "purchase_decision_events"
 ]);
 const edgeFunctionNames = [
   "sync-pos-sales",
@@ -165,7 +168,9 @@ const selectOnlyAuthenticatedTables = new Set([
   "setup_attachments",
   "inventory_count_sessions",
   "inventory_count_lines",
-  "purchase_lines"
+  "purchase_lines",
+  "suppliers",
+  "operational_finding_decisions"
 ]);
 
 runRequired("Running existing static security checks...", process.execPath, ["scripts/security-static.mjs"]);
@@ -183,7 +188,9 @@ if (/\bauth\.role\s*\(/i.test(combinedSql)) {
   failures.push("supabase: RLS policies must not use deprecated auth.role(); use TO authenticated plus row predicates.");
 }
 
-const publicTables = [...combinedSql.matchAll(/create\s+table\s+if\s+not\s+exists\s+public\.([a-z_]+)\s*\(([\s\S]*?)\);/gi)];
+const publicTables = [
+  ...combinedSql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?public\.([a-z_]+)\s*\(([\s\S]*?)\);/gi)
+];
 const publicTableNames = [...new Set(publicTables.map((match) => match[1]))];
 
 for (const table of publicTableNames) {
@@ -192,12 +199,22 @@ for (const table of publicTableNames) {
     failures.push(`supabase: public.${table} is in an exposed schema but does not enable RLS.`);
   }
   if (serviceOnlyPublicTables.has(table)) {
-    if (!new RegExp(`revoke\\s+all\\s+on\\s+public\\.${escapedTable}\\s+from\\s+anon\\s*,\\s*authenticated`, "i").test(combinedSql)) {
+    if (
+      !new RegExp(
+        `revoke\\s+all\\s+on\\s+(?:table\\s+)?public\\.${escapedTable}\\s+from\\s+(?:public\\s*,\\s*)?anon\\s*,\\s*authenticated`,
+        "i"
+      ).test(combinedSql)
+    ) {
       failures.push(`supabase: service-only public.${table} must explicitly revoke anon and authenticated access.`);
     }
     continue;
   }
-  if (!new RegExp(`grant\\s+[^;]+\\s+on\\s+public\\.${escapedTable}\\s+to\\s+authenticated`, "i").test(combinedSql)) {
+  if (
+    !new RegExp(
+      `grant\\s+[^;]+\\s+on\\s+(?:table\\s+)?public\\.${escapedTable}\\s+to\\s+authenticated`,
+      "i"
+    ).test(combinedSql)
+  ) {
     failures.push(`supabase: public.${table} is missing an explicit authenticated Data API grant.`);
   }
 }
