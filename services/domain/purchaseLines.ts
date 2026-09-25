@@ -9,9 +9,19 @@
  * vocabularies and rules stay in step.
  */
 
+import {
+  PURCHASE_LINE_DATE_FUTURE_SKEW_DAYS,
+  PURCHASE_LINE_DATE_MAX_LOOKBACK_DAYS
+} from "./securityLimits";
+
 export const PURCHASE_LINE_EVIDENCE_VERSION = "mise.purchase_line.v1" as const;
 export const PURCHASE_LINE_NORMALIZATION_VERSION =
   "mise.purchase_line_normalization.v1" as const;
+
+export {
+  PURCHASE_LINE_DATE_FUTURE_SKEW_DAYS,
+  PURCHASE_LINE_DATE_MAX_LOOKBACK_DAYS
+};
 
 export type PurchaseLineSource =
   | "invoice"
@@ -369,6 +379,48 @@ function isoDate(value: string, label: string) {
   return trimmed;
 }
 
+/** UTC calendar day for the given Date, matching PostgreSQL `current_date` in UTC sessions. */
+export function purchaseLineUtcCalendarDay(now: Date = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
+function shiftUtcCalendarDay(isoDay: string, days: number) {
+  const shifted = new Date(`${isoDay}T00:00:00.000Z`);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+}
+
+/**
+ * Reject absurd future or ancient calendar dates on purchase lines. Format is
+ * checked first by `isoDate`; this enforces the same window the BEFORE INSERT
+ * trigger applies on `public.purchase_lines`.
+ */
+export function assertPurchaseLineCalendarDateInWindow(
+  value: string,
+  field: "transaction_date" | "received_date",
+  now: Date = new Date()
+) {
+  const today = purchaseLineUtcCalendarDay(now);
+  const latestAllowed = shiftUtcCalendarDay(today, PURCHASE_LINE_DATE_FUTURE_SKEW_DAYS);
+  const earliestAllowed = shiftUtcCalendarDay(today, -PURCHASE_LINE_DATE_MAX_LOOKBACK_DAYS);
+  if (value > latestAllowed) {
+    throw new Error(`Purchase line ${field} is in the future`);
+  }
+  if (value < earliestAllowed) {
+    throw new Error(`Purchase line ${field} is older than the allowed lookback window`);
+  }
+  return value;
+}
+
+function boundedIsoDate(
+  value: string,
+  label: string,
+  field: "transaction_date" | "received_date",
+  now?: Date
+) {
+  return assertPurchaseLineCalendarDateInWindow(isoDate(value, label), field, now);
+}
+
 /**
  * A parsed field that is absent stays absent. Confidence is only ever lowered,
  * never raised: a line missing quantity, unit, unit price, or extended price
@@ -422,6 +474,17 @@ export interface NormalizedPurchaseLineInput extends PurchaseLineInput {
 
 /** Client-side mirror of the server's checks so bad input fails before the RPC. */
 export function normalizePurchaseLineInput(input: PurchaseLineInput): NormalizedPurchaseLineInput {
+  return normalizePurchaseLineInputWithClock(input, new Date());
+}
+
+/**
+ * Test/injection seam for calendar-date window checks. Production callers use
+ * `normalizePurchaseLineInput`, which stamps `now` from the wall clock.
+ */
+export function normalizePurchaseLineInputWithClock(
+  input: PurchaseLineInput,
+  now: Date
+): NormalizedPurchaseLineInput {
   if (!Number.isInteger(input.lineIndex) || input.lineIndex < 0 || input.lineIndex > 9999) {
     throw new Error("Purchase line index must be a bounded document position.");
   }
@@ -451,14 +514,23 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
   }
   const statedPackSize = optionalBoundedText(input.packSize, "Pack size", 80);
   const packSize = statedPackSize ?? extractedPackSize;
+  const transactionDate = boundedIsoDate(
+    input.transactionDate,
+    "Transaction date",
+    "transaction_date",
+    now
+  );
+  const receivedDate = input.receivedDate
+    ? boundedIsoDate(input.receivedDate, "Received date", "received_date", now)
+    : null;
   const consistencyFlags = computePurchaseLineConsistencyFlags({
     quantity,
     unitOfMeasure,
     packSize,
     unitPrice,
     extendedPrice,
-    transactionDate: isoDate(input.transactionDate, "Transaction date"),
-    receivedDate: input.receivedDate ? isoDate(input.receivedDate, "Received date") : null,
+    transactionDate,
+    receivedDate,
     statedPackSize,
     describedPackSize: extractedPackSize
   });
@@ -475,8 +547,8 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
     unitPrice,
     extendedPrice,
     currency,
-    transactionDate: isoDate(input.transactionDate, "Transaction date"),
-    receivedDate: input.receivedDate ? isoDate(input.receivedDate, "Received date") : null,
+    transactionDate,
+    receivedDate,
     consistencyFlags,
     statedConfidence: input.parseConfidence,
     parseConfidence: resolvePurchaseLineConfidence({

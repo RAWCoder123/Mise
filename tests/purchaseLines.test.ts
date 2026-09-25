@@ -7,11 +7,19 @@ import {
   foldPurchaseLineAccents,
   markCurrentPurchaseLines,
   normalizePurchaseLineDescription,
-  normalizePurchaseLineInput,
+  normalizePurchaseLineInputWithClock,
   purchaseLineUnitDimension,
   resolvePurchaseLineConfidence,
-  type PurchaseLine
+  type PurchaseLine,
+  type PurchaseLineInput
 } from "../services/domain/purchaseLines";
+
+/** Pin the clock so September 2026 fixture dates stay inside the 90-day window. */
+const FIXTURE_NOW = new Date("2026-09-25T12:00:00.000Z");
+
+function normalize(input: PurchaseLineInput) {
+  return normalizePurchaseLineInputWithClock(input, FIXTURE_NOW);
+}
 
 function key(raw: string) {
   return normalizePurchaseLineDescription(raw).normalizedItemKey;
@@ -115,7 +123,7 @@ test("confidence is lowered for partial parses and never raised", () => {
 });
 
 test("a partially parsed line keeps its gaps instead of defaulting them", () => {
-  const line = normalizePurchaseLineInput({
+  const line = normalize({
     lineIndex: 2,
     lineType: "purchase" as const,
     rawItemDescription: "Napa Cabbage - 50 ct",
@@ -133,7 +141,7 @@ test("a partially parsed line keeps its gaps instead of defaulting them", () => 
 });
 
 test("a missing unit alone is enough to mark a line unverified", () => {
-  const line = normalizePurchaseLineInput({
+  const line = normalize({
     lineIndex: 0,
     lineType: "purchase" as const,
     rawItemDescription: "Tomatoes, Roma 25LB",
@@ -149,7 +157,7 @@ test("a missing unit alone is enough to mark a line unverified", () => {
 });
 
 test("an explicit pack size from the document wins over the extracted one", () => {
-  const line = normalizePurchaseLineInput({
+  const line = normalize({
     lineIndex: 0,
     lineType: "purchase" as const,
     rawItemDescription: "Olive Oil X-Virgin 6/1GAL",
@@ -168,14 +176,14 @@ test("line input rejects unusable evidence rather than coercing it", () => {
     transactionDate: "2026-09-01",
     parseConfidence: "estimated" as const
   };
-  assert.throws(() => normalizePurchaseLineInput({ ...base, rawItemDescription: "  " }));
-  assert.throws(() => normalizePurchaseLineInput({ ...base, lineIndex: -1 }));
-  assert.throws(() => normalizePurchaseLineInput({ ...base, lineIndex: 1.5 }));
-  assert.throws(() => normalizePurchaseLineInput({ ...base, quantity: -3 }));
-  assert.throws(() => normalizePurchaseLineInput({ ...base, transactionDate: "09/01/2026" }));
-  assert.throws(() => normalizePurchaseLineInput({ ...base, unitPrice: 4, currency: "usd" }));
+  assert.throws(() => normalize({ ...base, rawItemDescription: "  " }));
+  assert.throws(() => normalize({ ...base, lineIndex: -1 }));
+  assert.throws(() => normalize({ ...base, lineIndex: 1.5 }));
+  assert.throws(() => normalize({ ...base, quantity: -3 }));
+  assert.throws(() => normalize({ ...base, transactionDate: "09/01/2026" }));
+  assert.throws(() => normalize({ ...base, unitPrice: 4, currency: "usd" }));
   assert.throws(
-    () => normalizePurchaseLineInput({ ...base, unitPrice: 4 }),
+    () => normalize({ ...base, unitPrice: 4 }),
     /currency/,
     "a price without a currency is not recordable"
   );
@@ -233,7 +241,7 @@ test("current lines are derived from supersession rather than stored", () => {
 });
 
 test("arithmetic contradiction between quantity, unit price, and extended price", () => {
-  const line = normalizePurchaseLineInput({
+  const line = normalize({
     lineIndex: 0,
     lineType: "purchase" as const,
     rawItemDescription: "Chicken Thighs Boneless 40 LB Case",
@@ -253,7 +261,7 @@ test("arithmetic contradiction between quantity, unit price, and extended price"
 
 test("the arithmetic tolerance absorbs ordinary invoice rounding", () => {
   // A unit price printed to the cent is only known to within half a cent.
-  const line = normalizePurchaseLineInput({
+  const line = normalize({
     lineIndex: 0,
     lineType: "purchase" as const,
     rawItemDescription: "Tomatoes, Roma 25LB",
@@ -270,7 +278,7 @@ test("the arithmetic tolerance absorbs ordinary invoice rounding", () => {
 });
 
 test("a pack size and a unit of measure in different dimensions cannot be confirmed", () => {
-  const line = normalizePurchaseLineInput({
+  const line = normalize({
     lineIndex: 0,
     lineType: "purchase" as const,
     rawItemDescription: "Olive Oil X-Virgin 6/1GAL",
@@ -288,7 +296,7 @@ test("a pack size and a unit of measure in different dimensions cannot be confir
 
 test("a container unit never conflicts with a pack size", () => {
   for (const unit of ["case", "box", "pack", "bag", "each"]) {
-    const line = normalizePurchaseLineInput({
+    const line = normalize({
       lineIndex: 0,
       lineType: "purchase" as const,
       rawItemDescription: "Olive Oil X-Virgin 6/1GAL",
@@ -306,7 +314,7 @@ test("a container unit never conflicts with a pack size", () => {
 });
 
 test("a receipt dated before the transaction downgrades to estimated, not unverified", () => {
-  const line = normalizePurchaseLineInput({
+  const line = normalize({
     lineIndex: 0,
     lineType: "purchase" as const,
     rawItemDescription: "Napa Cabbage - 50 ct",
@@ -324,7 +332,7 @@ test("a receipt dated before the transaction downgrades to estimated, not unveri
 });
 
 test("a stated pack size the description does not support downgrades to estimated", () => {
-  const line = normalizePurchaseLineInput({
+  const line = normalize({
     lineIndex: 0,
     lineType: "purchase" as const,
     rawItemDescription: "Olive Oil X-Virgin 6/1GAL",
@@ -343,7 +351,7 @@ test("a stated pack size the description does not support downgrades to estimate
 });
 
 test("a pack size that merely restates the description is not a conflict", () => {
-  const line = normalizePurchaseLineInput({
+  const line = normalize({
     lineIndex: 0,
     lineType: "purchase" as const,
     rawItemDescription: "Olive Oil X-Virgin 6/1GAL",
@@ -399,7 +407,7 @@ test("counting units behave like containers and never conflict with a pack", () 
 });
 
 test("a credit is a stated direction, never a negative number", () => {
-  const credit = normalizePurchaseLineInput({
+  const credit = normalize({
     lineIndex: 0,
     lineType: "credit",
     rawItemDescription: "Chicken Thighs Boneless 40 LB Case",
@@ -416,13 +424,13 @@ test("a credit is a stated direction, never a negative number", () => {
   assert.equal(credit.parseConfidence, "confirmed", "linkage never affects confidence");
   assert.equal(credit.creditsLineId, null, "an unmatched credit is ordinary");
   assert.throws(
-    () => normalizePurchaseLineInput({ ...credit, quantity: -1 }),
+    () => normalize({ ...credit, quantity: -1 }),
     "a negative quantity stays a parse error rather than becoming a credit"
   );
 });
 
 test("the consistency rules apply to credits on magnitudes, with no sign convention", () => {
-  const inconsistentCredit = normalizePurchaseLineInput({
+  const inconsistentCredit = normalize({
     lineIndex: 0,
     lineType: "credit",
     rawItemDescription: "Olive Oil X-Virgin 6/1GAL",
@@ -440,7 +448,7 @@ test("the consistency rules apply to credits on magnitudes, with no sign convent
 
 test("only a credit may reference the line it offsets", () => {
   assert.throws(
-    () => normalizePurchaseLineInput({
+    () => normalize({
       lineIndex: 0,
       lineType: "purchase",
       creditsLineId: "0d1d1a1a-0000-4000-8000-000000000001",
@@ -454,7 +462,7 @@ test("only a credit may reference the line it offsets", () => {
 
 test("every writer must state direction", () => {
   assert.throws(
-    () => normalizePurchaseLineInput({
+    () => normalize({
       lineIndex: 0,
       rawItemDescription: "Tomatoes, Roma 25LB",
       transactionDate: "2026-09-01",
