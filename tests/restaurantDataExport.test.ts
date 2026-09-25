@@ -24,6 +24,8 @@ test("restaurant export covers operational truth and excludes backend-only schem
     "pos_sales",
     "inventory_items",
     "inventory_events",
+    "inventory_count_sessions",
+    "inventory_count_lines",
     "purchase_recommendations",
     "supplier_orders",
     "restaurant_operational_controls",

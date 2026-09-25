@@ -136,7 +136,9 @@ test("client export datasets include operational backend and shared-task tables"
     "restaurant_task_dependencies",
     "supplier_order_confirmations",
     "supplier_deliveries",
-    "supplier_delivery_items"
+    "supplier_delivery_items",
+    "inventory_count_sessions",
+    "inventory_count_lines"
   ]) {
     assert.ok(RESTAURANT_EXPORT_DATASETS.includes(dataset as (typeof RESTAURANT_EXPORT_DATASETS)[number]));
   }
@@ -151,4 +153,16 @@ test("client export datasets include operational backend and shared-task tables"
   assert.match(demo, /datasets\.restaurant_autonomy_rules = \(state\.autonomyRules/);
   assert.match(demo, /datasets\.restaurant_tasks = \(state\.restaurantTasks/);
   assert.match(demo, /datasets\.restaurant_task_dependencies/);
+  assert.match(demo, /datasets\.inventory_count_sessions/);
+  assert.match(demo, /datasets\.inventory_count_lines/);
+});
+
+test("edge and client export catalogs stay aligned on inventory count sessions", () => {
+  const edge = readFileSync("supabase/functions/export-restaurant-data/index.ts", "utf8");
+  assert.match(edge, /name: "inventory_count_sessions"/);
+  assert.match(edge, /name: "inventory_count_lines"/);
+  assert.ok(
+    RESTAURANT_EXPORT_DATASETS.indexOf("inventory_count_sessions") <
+      RESTAURANT_EXPORT_DATASETS.indexOf("inventory_count_lines")
+  );
 });
