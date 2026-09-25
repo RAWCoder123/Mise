@@ -17,7 +17,6 @@ import type {
   RecipeAuthorityState,
   RestaurantMembership,
   RestaurantTeamMember,
-  SetupAttachment,
   Supplier,
   SupplierItem,
   SupplierOrder,
@@ -96,7 +95,6 @@ import {
   normalizeRestaurant,
   normalizeRestaurantMembership,
   normalizeRestaurantTeamMember,
-  normalizeSetupAttachment,
   normalizeSupplier,
   normalizeSupplierItem,
   normalizeSupplierOrder,
@@ -1329,58 +1327,8 @@ export function createSupabaseRepository(): MiseRepository {
       return parseSetupSnapshotSummary(response.setupSummary);
     },
 
-    async upsertInventoryItem(input) {
-      const existing = await client
-        .from("inventory_items")
-        .select("*")
-        .eq("restaurant_id", input.restaurant_id)
-        .eq("item_name", input.item_name)
-        .maybeSingle();
-      if (existing.error) throw existing.error;
 
-      if (existing.data) {
-        const { data, error } = await client
-          .from("inventory_items")
-          .update({ ...input, last_updated: new Date().toISOString() })
-          .eq("restaurant_id", input.restaurant_id)
-          .eq("id", existing.data.id)
-          .select("*")
-          .single();
-        if (error) throw error;
-        return normalizeInventoryItem(data as InventoryItem);
-      }
 
-      const { data, error } = await client
-        .from("inventory_items")
-        .insert(input)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizeInventoryItem(data as InventoryItem);
-    },
-
-    async createPosSale(input) {
-      const { data, error } = await client
-        .from("pos_sales")
-        .insert(input)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizePosSale(data as PosSale);
-    },
-
-    async updateInventoryItem(restaurantId, itemId, patch) {
-      const payload = { ...patch, last_updated: new Date().toISOString() };
-      const { data, error } = await client
-        .from("inventory_items")
-        .update(payload)
-        .eq("restaurant_id", restaurantId)
-        .eq("id", itemId)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizeInventoryItem(data as InventoryItem);
-    },
 
     async updateInventoryItemAndSignals(
       restaurantId,
@@ -1399,27 +1347,7 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizeInventoryItem(response.result as InventoryItem);
     },
 
-    async updateMenuItemIngredientQuantity(restaurantId, mappingId, quantityUsedPerSale) {
-      const { data, error } = await client
-        .from("menu_item_ingredients")
-        .update({ quantity_used_per_sale: quantityUsedPerSale })
-        .eq("restaurant_id", restaurantId)
-        .eq("id", mappingId)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizeMenuItemIngredient(data as MenuItemIngredient);
-    },
 
-    async upsertMenuItemIngredient(input) {
-      const { data, error } = await client
-        .from("menu_item_ingredients")
-        .upsert(input, { onConflict: "restaurant_id,menu_item_name,inventory_item_id" })
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizeMenuItemIngredient(data as MenuItemIngredient);
-    },
 
     async saveRecipeMappingAndSignals(input) {
       const response = await invokeOperationalWorkflow({
@@ -1528,17 +1456,6 @@ export function createSupabaseRepository(): MiseRepository {
       );
     },
 
-    async updatePurchaseRecommendation(restaurantId, recommendationId, patch) {
-      const { data, error } = await client
-        .from("purchase_recommendations")
-        .update(patch)
-        .eq("restaurant_id", restaurantId)
-        .eq("id", recommendationId)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizePurchaseRecommendation(data as PurchaseRecommendation);
-    },
 
     async approvePurchaseRecommendation(restaurantId, recommendationId, recommendedQuantity) {
       const { data, error } = await client.rpc("approve_purchase_recommendation", {
@@ -1885,15 +1802,6 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizedRecipient;
     },
 
-    async createSetupAttachment(input) {
-      const { data, error } = await client
-        .from("setup_attachments")
-        .insert(input)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return normalizeSetupAttachment(data as SetupAttachment);
-    },
 
     async loadDemoPOSData(_provider, _setupProfile) {
       throw new Error("Demo POS seeding is local-only. Hosted Supabase restaurant data cannot be reset from the client.");

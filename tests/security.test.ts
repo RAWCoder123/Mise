@@ -894,6 +894,48 @@ test("legacy ops tables lose authenticated DML while retaining SELECT", () => {
   assert.match(tenantTests, /legacy purchase order writes are service\/Edge-only/i);
 });
 
+test("hosted repository drops orphan PostgREST mutators for select-only ops tables", () => {
+  const hosted = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  const demo = readFileSync("services/repositories/demoRepository.ts", "utf8");
+  const contract = readFileSync("services/repositories/repositoryContracts.ts", "utf8");
+  const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+
+  for (const method of [
+    "upsertInventoryItem",
+    "createPosSale",
+    "updateMenuItemIngredientQuantity",
+    "upsertMenuItemIngredient",
+    "updatePurchaseRecommendation",
+    "createSetupAttachment",
+  ]) {
+    assert.doesNotMatch(contract, new RegExp(String.raw`\b${method}\s*\(`));
+    assert.doesNotMatch(hosted, new RegExp(String.raw`async\s+${method}\s*\(`));
+    assert.doesNotMatch(demo, new RegExp(String.raw`async\s+${method}\s*\(`));
+  }
+
+  assert.doesNotMatch(contract, /updateInventoryItem\s*\(\s*restaurantId/);
+  assert.doesNotMatch(hosted, /async\s+updateInventoryItem\s*\(\s*restaurantId/);
+  assert.doesNotMatch(demo, /async\s+updateInventoryItem\s*\(\s*restaurantId/);
+  assert.match(contract, /updateInventoryItemAndSignals\s*\(/);
+  assert.match(hosted, /async\s+updateInventoryItemAndSignals\s*\(/);
+  assert.match(demo, /async\s+updateInventoryItemAndSignals\s*\(/);
+
+  for (const table of [
+    "inventory_items",
+    "pos_sales",
+    "menu_item_ingredients",
+    "purchase_recommendations",
+    "setup_attachments",
+  ]) {
+    assert.match(securityBackend, new RegExp(`"${table}"`));
+    assert.match(securityBackend, /selectOnlyAuthenticatedTables/);
+    assert.doesNotMatch(
+      hosted,
+      new RegExp(String.raw`\.from\("${table}"\)[\s\S]{0,240}?\.(?:insert|update|upsert|delete)\s*\(`),
+    );
+  }
+});
+
 test("orphan operational write policies are dropped and pinned SELECT-only", () => {
   const migration = readFileSync(
     "supabase/migrations/20260810122000_drop_orphan_operational_write_policies.sql",
