@@ -34,6 +34,7 @@ import {
   seedDemoActivityFromState
 } from "../demo/demoActivity";
 import {
+  activityEventToPersistedInsert,
   filterActivities,
   fromInventoryWasteRecorded,
   fromRecalculationRunActivity,
@@ -47,18 +48,22 @@ import {
   createMemory,
   dismissMemory,
   forgetMemory,
+  restaurantMemoryToPersistedRow,
   temporarilyDisableMemory,
   type RestaurantMemoryStatus
 } from "../domain/restaurantMemory";
 import {
+  actionOutcomeToPersistedRow,
   createPreparedAction,
   markApproved,
   markExecuted,
   markRejected,
   measureOutcome,
-  miseActionIdempotencyKey
+  miseActionIdempotencyKey,
+  miseActionToPersistedRow
 } from "../domain/miseActions";
 import {
+  autonomyRuleToPersistedRow,
   defaultAutonomyRules,
   type RestaurantAutonomyRule
 } from "../domain/restaurantAutonomy";
@@ -68,8 +73,10 @@ import {
   normalizeCompleteRestaurantTaskInput,
   normalizeCreateRestaurantTaskInput,
   restaurantTaskMatchesCreateRequest,
+  restaurantTaskToPersistedRow,
   type RestaurantTask
 } from "../domain/restaurantTasks";
+import { recalculationRunToPersistedRow } from "../domain/recalculationRunTransport";
 import type {
   PersistedRecalculationRun,
   RestaurantSetupSnapshotInput,
@@ -708,25 +715,25 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
     }));
   datasets.activity_events = (state.activityEvents ?? [])
     .filter((event) => event.restaurantId === restaurantId)
-    .map((event) => ({ ...event, restaurant_id: event.restaurantId }));
+    .map((event) => activityEventToPersistedInsert(event));
   datasets.mise_actions = (state.miseActions ?? [])
     .filter((action) => action.restaurantId === restaurantId)
-    .map((action) => ({ ...action, restaurant_id: action.restaurantId }));
+    .map((action) => miseActionToPersistedRow(action));
   datasets.action_outcomes = (state.actionOutcomes ?? [])
     .filter((outcome) => outcome.restaurantId === restaurantId)
-    .map((outcome) => ({ ...outcome, restaurant_id: outcome.restaurantId }));
+    .map((outcome) => actionOutcomeToPersistedRow(outcome));
   datasets.restaurant_memories = (state.restaurantMemories ?? [])
     .filter((memory) => memory.restaurantId === restaurantId)
-    .map((memory) => ({ ...memory, restaurant_id: memory.restaurantId }));
+    .map((memory) => restaurantMemoryToPersistedRow(memory));
   datasets.restaurant_autonomy_rules = (state.autonomyRules ?? [])
     .filter((rule) => rule.restaurantId === restaurantId)
-    .map((rule) => ({ ...rule, restaurant_id: rule.restaurantId }));
+    .map((rule) => autonomyRuleToPersistedRow(rule));
   datasets.supplier_order_confirmations = [];
   datasets.supplier_deliveries = tenantRows(state.supplierDeliveries ?? []);
   datasets.supplier_delivery_items = tenantRows(state.supplierDeliveryItems ?? []);
   datasets.restaurant_tasks = (state.restaurantTasks ?? [])
     .filter((task) => task.restaurantId === restaurantId)
-    .map((task) => ({ ...task, restaurant_id: task.restaurantId }));
+    .map((task) => restaurantTaskToPersistedRow(task));
   datasets.restaurant_task_dependencies = (state.restaurantTasks ?? [])
     .filter((task) => task.restaurantId === restaurantId)
     .flatMap((task) => task.dependencyIds.map((dependencyId) => ({
@@ -738,7 +745,7 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
     })));
   datasets.recalculation_runs = (state.recalculationRuns ?? [])
     .filter((run) => run.restaurantId === restaurantId)
-    .map((run) => ({ ...run, restaurant_id: run.restaurantId }));
+    .map((run) => recalculationRunToPersistedRow(run));
   datasets.audit_logs = tenantRows(state.auditLogs);
 
   const team = state.users

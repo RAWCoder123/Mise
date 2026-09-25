@@ -343,3 +343,25 @@ export function restaurantMemoryFromPersistedRow(
     correctionNote: row.correction ?? null
   };
 }
+
+/** Persist shape matching `public.restaurant_memories` for demo export parity. */
+export function restaurantMemoryToPersistedRow(
+  memory: RestaurantMemory
+): PersistedRestaurantMemoryRow {
+  return {
+    id: memory.id,
+    restaurant_id: memory.restaurantId,
+    memory_type: memory.memoryType,
+    statement: memory.statement,
+    evidence: memory.evidence,
+    confidence: memory.confidence,
+    first_observed_at: memory.firstObservedAt,
+    last_updated_at: memory.lastUpdatedAt,
+    scope: memory.scope,
+    source: memory.source,
+    status: memory.status,
+    affects_recommendations: memory.affectsRecommendations,
+    affects_automation: memory.affectsAutomation,
+    correction: memory.correctionNote
+  };
+}

@@ -79,6 +79,30 @@ export function autonomyRuleFromPersistedRow(row: PersistedAutonomyRuleRow): Res
   };
 }
 
+/** Persist shape matching `public.restaurant_autonomy_rules` for demo export parity. */
+export function autonomyRuleToPersistedRow(
+  rule: RestaurantAutonomyRule
+): PersistedAutonomyRuleRow {
+  return {
+    id: rule.id,
+    restaurant_id: rule.restaurantId,
+    location_id: rule.locationId,
+    action_type: rule.actionType,
+    operational_category: rule.operationalCategory,
+    maximum_autonomy_level: rule.maximumAutonomyLevel,
+    requires_approval: rule.requiresApproval,
+    enabled: rule.enabled,
+    spend_limit_cents: rule.spendLimitCents,
+    supplier_id: rule.supplierId,
+    supplier_name: rule.supplierName,
+    communication_type: rule.communicationType,
+    allowed_start_time: rule.allowedStartTime,
+    allowed_end_time: rule.allowedEndTime,
+    created_at: rule.createdAt,
+    updated_at: rule.updatedAt
+  };
+}
+
 export function defaultAutonomyRules(restaurantId: string, now = new Date().toISOString()): RestaurantAutonomyRule[] {
   return [
     {
