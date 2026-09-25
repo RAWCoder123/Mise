@@ -1722,10 +1722,24 @@ test("the ledger boundary migration retains history and only narrows the project
   assert.doesNotMatch(migration, /disable\s+row\s+level\s+security/i);
   assert.doesNotMatch(migration, /drop\s+trigger\s+if\s+exists\s+reject_inventory_event_mutation/i);
 
-  // Demo mode mirrors the same boundary so both paths agree.
+  // Demo mode mirrors the same boundary so both paths agree — including skipping
+  // on-hand floor/ceiling when the row is retained but not projected.
   const demoRepository = readFileSync("services/repositories/demoRepository.ts", "utf8");
   assert.match(demoRepository, /function inventoryEventMovesProjection/);
+  assert.match(
+    demoRepository,
+    /if \(projectionApplied\) \{\n\s*if \(\n\s*!Number\.isFinite\(projectedQuantity\)/
+  );
   assert.match(demoRepository, /if \(projectionApplied\) \{\n\s*item\.current_quantity = projectedQuantity;/);
+});
+
+test("projectInventoryEvents does not double-count delayed unapplied rows", () => {
+  const ledger = delayedLedger({
+    eventType: "receipt",
+    quantity: 5,
+    effectiveAt: "2026-08-17T12:00:00.000Z"
+  });
+  assert.equal(projectInventoryEvents(restaurantA, itemId, ledger).quantity / CANONICAL_PER_UNIT, 10);
 });
 
 // ---------------------------------------------------------------------------
