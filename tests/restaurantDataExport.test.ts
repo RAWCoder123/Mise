@@ -25,6 +25,8 @@ test("restaurant export covers operational truth and excludes backend-only schem
     "inventory_items",
     "inventory_events",
     "purchase_recommendations",
+    "purchase_decision_events",
+    "purchase_lines",
     "supplier_orders",
     "restaurant_operational_controls",
     "pos_locations",
@@ -46,6 +48,7 @@ test("restaurant export covers operational truth and excludes backend-only schem
     "supplier_order_confirmations",
     "supplier_deliveries",
     "supplier_delivery_items",
+    "recalculation_runs",
     "audit_logs"
   ]) {
     assert.match(edge, new RegExp(`name: "${dataset}"`));
@@ -53,6 +56,43 @@ test("restaurant export covers operational truth and excludes backend-only schem
   assert.doesNotMatch(edge, /\.schema\(["']private["']\)/);
   assert.doesNotMatch(edge, /\.schema\(["']vault["']\)/);
   assert.doesNotMatch(edge, /gmail_credentials|edge_function_security_events|vault\.secrets/);
+});
+
+test("restaurant export reads service-only purchase decision events after owner/admin gate", () => {
+  const decisionMemory = readFileSync(
+    "supabase/migrations/20260824120000_mise_004a_purchase_decision_memory.sql",
+    "utf8"
+  );
+
+  assert.match(
+    edge,
+    /serviceRoleExportDatasets = new Set<ExportDatasetName>\(\[\s*"purchase_decision_events",?\s*\]\)/
+  );
+  assert.match(
+    edge,
+    /const readClient = serviceRoleExportDatasets\.has\(dataset\.name\)\s*\?\s*securitySupabase\s*:\s*supabase/
+  );
+  assert.match(
+    edge,
+    /fetchDataset\(\s*readClient,\s*dataset\.name,\s*dataset\.order,\s*restaurantId/
+  );
+  // Membership-scoped datasets must keep using the caller JWT client.
+  assert.match(edge, /requireRestaurantRole\(supabase, user\.id, restaurantId/);
+  assert.match(edge, /\.from\("restaurants"\)[\s\S]*?\.eq\("id", restaurantId\)/);
+
+  // Do not reopen authenticated Data API SELECT for actor-evidence privacy.
+  assert.match(
+    decisionMemory,
+    /revoke all on table public\.purchase_decision_events from public, anon, authenticated/
+  );
+  assert.match(
+    decisionMemory,
+    /grant select on table public\.purchase_decision_events to service_role/
+  );
+  assert.doesNotMatch(
+    decisionMemory,
+    /grant select on table public\.purchase_decision_events to authenticated/
+  );
 });
 
 test("restaurant export fails closed on truncation, excessive size, and protected keys", () => {
