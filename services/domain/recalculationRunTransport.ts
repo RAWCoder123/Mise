@@ -71,6 +71,32 @@ export function recalculationRunFromPersistedRow(
   };
 }
 
+/** Persist shape matching `public.recalculation_runs` for demo export parity. */
+export function recalculationRunToPersistedRow(
+  run: PersistedRecalculationRun
+): PersistedRecalculationRunRow {
+  return {
+    id: run.id,
+    restaurant_id: run.restaurantId,
+    cycle: run.cycle,
+    operating_date: run.operatingDate,
+    status: run.status,
+    attempt: run.attempt,
+    job_name: run.jobName,
+    monitoring_owner: run.monitoringOwner,
+    started_at: run.startedAt,
+    completed_at: run.completedAt,
+    duration_ms: run.durationMs,
+    timed_out: run.timedOut,
+    failure_reason: run.failureReason,
+    cycle_key: run.cycleKey,
+    idempotency_key: run.idempotencyKey,
+    recorded_by: run.recordedBy,
+    correlation_id: run.correlationId,
+    recorded_at: run.recordedAt
+  };
+}
+
 export function recordRecalculationRunRpcArguments(input: RecalculationRunInput) {
   return {
     p_restaurant_id: input.restaurantId.trim(),

@@ -332,6 +332,45 @@ export function restaurantTaskFromPersistedRow(
   };
 }
 
+/** Persist shape matching `public.restaurant_tasks` for demo export parity with hosted SELECT *. */
+export function restaurantTaskToPersistedRow(task: RestaurantTask): PersistedRestaurantTaskRow {
+  return {
+    id: task.id,
+    restaurant_id: task.restaurantId,
+    location_id: task.locationId,
+    origin: task.origin,
+    title: task.title,
+    detail: task.detail,
+    operational_category: task.operationalCategory,
+    priority: task.priority,
+    status: task.status,
+    timing_bucket: task.timingBucket,
+    due_at: task.dueAt,
+    service_window: task.serviceWindow,
+    window_start: task.windowStart,
+    window_end: task.windowEnd,
+    required_role: task.requiredRole,
+    assignee_user_id: task.assigneeUserId,
+    verification_method: task.verificationMethod,
+    verification_required: task.verificationRequired,
+    checklist: task.checklist,
+    completion_result: task.completionResult,
+    completion_evidence: task.completionEvidence,
+    completed_at: task.completedAt,
+    completed_by: task.completedBy,
+    related_inventory_item_id: task.relatedInventoryItemId,
+    related_order_id: task.relatedOrderId,
+    related_recommendation_id: task.relatedRecommendationId,
+    related_supplier_name: task.relatedSupplierName,
+    source_reference: task.sourceReference,
+    created_by: task.createdBy,
+    client_task_id: task.clientTaskId,
+    correlation_id: task.correlationId,
+    created_at: task.createdAt,
+    updated_at: task.updatedAt
+  };
+}
+
 export function createRestaurantTaskRpcArguments(input: CreateRestaurantTaskInput) {
   const task = normalizeCreateRestaurantTaskInput(input);
   return {

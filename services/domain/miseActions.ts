@@ -342,6 +342,68 @@ export function miseActionFromPersistedRow(row: PersistedMiseActionRow): MiseAct
   };
 }
 
+/** Persist shape matching `public.mise_actions` for demo export parity with hosted SELECT *. */
+export function miseActionToPersistedRow(action: MiseAction): PersistedMiseActionRow {
+  return {
+    id: action.id,
+    restaurant_id: action.restaurantId,
+    recommendation_id: action.recommendationId,
+    action_type: action.actionType,
+    execution_mode: action.executionMode,
+    status: action.status,
+    autonomy_level: action.autonomyLevel,
+    requested_by: action.requestedBy,
+    approved_by: action.approvedBy,
+    executed_at: action.executedAt,
+    result: action.result,
+    error_message: action.error,
+    rollback_reference: action.rollbackReference,
+    expected_impact: action.expectedImpact,
+    financial_impact_cents: action.financialImpactCents,
+    idempotency_key: action.idempotencyKey,
+    created_at: action.createdAt,
+    updated_at: action.updatedAt
+  };
+}
+
+/** Persisted row shape matching Codex `public.action_outcomes`. */
+export interface PersistedActionOutcomeRow {
+  id: string;
+  restaurant_id: string;
+  action_id: string;
+  expected_result: Record<string, unknown>;
+  actual_result: Record<string, unknown>;
+  variance: Record<string, unknown>;
+  measured_at: string;
+  lesson: string | null;
+  idempotency_key: string;
+  created_at: string;
+}
+
+function actionOutcomeIdempotencyKey(outcome: Outcome): string {
+  const deliveryId = outcome.actualResult.deliveryId;
+  if (typeof deliveryId === "string" && deliveryId.trim()) {
+    return `supplier_delivery_outcome:${deliveryId.trim()}`;
+  }
+  return `action_outcome:${outcome.id}`;
+}
+
+/** Persist shape matching `public.action_outcomes` for demo export parity with hosted SELECT *. */
+export function actionOutcomeToPersistedRow(outcome: Outcome): PersistedActionOutcomeRow {
+  return {
+    id: outcome.id,
+    restaurant_id: outcome.restaurantId,
+    action_id: outcome.actionId,
+    expected_result: outcome.expectedResult,
+    actual_result: outcome.actualResult,
+    variance: outcome.variance,
+    measured_at: outcome.measuredAt,
+    lesson: outcome.lesson,
+    idempotency_key: actionOutcomeIdempotencyKey(outcome),
+    created_at: outcome.measuredAt
+  };
+}
+
 export function measureOutcome(input: {
   restaurantId: string;
   actionId: string;
