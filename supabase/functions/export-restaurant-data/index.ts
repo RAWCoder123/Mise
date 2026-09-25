@@ -70,6 +70,17 @@ const exportDatasets = [
 type ExportDatasetName = (typeof exportDatasets)[number]["name"];
 type JsonRecord = Record<string, unknown>;
 
+/**
+ * Datasets that authenticated clients must not SELECT directly (MISE-004A and
+ * peers). After owner/admin membership is proven with the user JWT, the edge
+ * function reads these through the service-role client, still scoped to the
+ * requested restaurant_id. Never grant authenticated SELECT to reopen the
+ * Data API; that would undo actor-evidence privacy.
+ */
+const serviceRoleExportDatasets = new Set<ExportDatasetName>([
+  "purchase_decision_events",
+]);
+
 function assertSecretFree(value: unknown, path = "export"): void {
   if (Array.isArray(value)) {
     value.forEach((entry, index) =>
@@ -200,8 +211,11 @@ Deno.serve(async (req) => {
     let totalRows = team.length;
 
     for (const dataset of exportDatasets) {
+      const readClient = serviceRoleExportDatasets.has(dataset.name)
+        ? securitySupabase
+        : supabase;
       const rows = await fetchDataset(
-        supabase,
+        readClient,
         dataset.name,
         dataset.order,
         restaurantId,
