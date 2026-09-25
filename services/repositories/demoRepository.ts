@@ -629,6 +629,31 @@ function prepareResetDemoState(state: DemoState) {
   rebuildInsights(state, state.currentRestaurantId);
 }
 
+/**
+ * Hosted restaurants always receive one `restaurant_operational_controls` row
+ * (seed + AFTER INSERT trigger) with every provider kill switch off and
+ * `ordering_policy = 'off'`. Demo never enables live Square/Gmail/drafting, so
+ * privacy export must ship that same fail-closed row instead of an empty
+ * dataset that falsely claims controls are absent.
+ */
+function demoRestaurantOperationalControlsExportRow(
+  restaurantId: string,
+  updatedAt: string
+) {
+  return {
+    restaurant_id: restaurantId,
+    square_sync_enabled: false,
+    square_webhooks_enabled: false,
+    gmail_delivery_enabled: false,
+    insight_generation_enabled: false,
+    order_drafting_enabled: false,
+    stripe_invoicing_enabled: false,
+    ordering_policy: "off" as const,
+    updated_at: updatedAt,
+    updated_by: null
+  };
+}
+
 function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   const restaurant = fetchRestaurantFromState(state, restaurantId);
   const generatedAt = new Date().toISOString();
@@ -638,6 +663,12 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   const tenantRows = <TRow extends { restaurant_id: string }>(rows: TRow[]) =>
     rows.filter((row) => row.restaurant_id === restaurantId);
 
+  datasets.restaurant_operational_controls = [
+    demoRestaurantOperationalControlsExportRow(
+      restaurantId,
+      restaurant.created_at
+    )
+  ];
   datasets.pos_sales = tenantRows(state.posSales);
   datasets.suppliers = tenantRows(state.suppliers);
   datasets.inventory_items = tenantRows(state.inventoryItems);
