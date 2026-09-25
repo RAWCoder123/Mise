@@ -644,7 +644,17 @@ test("protected CircleCI closure enforces the complete local gate before staging
 
 test("Expo release config uses the supported splash plugin and mobile QA discovers Linux Chrome", () => {
   const appConfig = JSON.parse(readFileSync("app.json", "utf8"));
-  const expo = appConfig.expo as Record<string, unknown> & { plugins: unknown[] };
+  const expo = appConfig.expo as Record<string, unknown> & {
+    plugins: unknown[];
+    ios?: {
+      privacyManifests?: {
+        NSPrivacyAccessedAPITypes?: Array<{
+          NSPrivacyAccessedAPIType?: string;
+          NSPrivacyAccessedAPITypeReasons?: string[];
+        }>;
+      };
+    };
+  };
   const splashRegistration = expo.plugins.find(
     (plugin) => Array.isArray(plugin) && plugin[0] === "expo-splash-screen"
   );
@@ -660,6 +670,27 @@ test("Expo release config uses the supported splash plugin and mobile QA discove
       backgroundColor: "#F7F3ED"
     }
   ]);
+
+  assert.deepEqual(expo.ios?.privacyManifests?.NSPrivacyAccessedAPITypes, [
+    {
+      NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
+      NSPrivacyAccessedAPITypeReasons: ["CA92.1"]
+    },
+    {
+      NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryFileTimestamp",
+      NSPrivacyAccessedAPITypeReasons: ["0A2A.1", "3B52.1", "C617.1"]
+    },
+    {
+      NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryDiskSpace",
+      NSPrivacyAccessedAPITypeReasons: ["85F4.1", "E174.1"]
+    }
+  ]);
+
+  const iosPrereq = readFileSync("scripts/ios-native-prereq.mjs", "utf8");
+  assert.match(iosPrereq, /privacyManifests/);
+  assert.match(iosPrereq, /NSPrivacyAccessedAPICategoryUserDefaults/);
+  assert.match(iosPrereq, /NSPrivacyAccessedAPICategoryFileTimestamp/);
+  assert.match(iosPrereq, /NSPrivacyAccessedAPICategoryDiskSpace/);
 
   const mobileQa = readFileSync("scripts/mobile-layout-smoke.mjs", "utf8");
   assert.match(mobileQa, /process\.env\.CHROME_PATH/);
