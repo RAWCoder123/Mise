@@ -641,6 +641,12 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
   datasets.pos_sales = tenantRows(state.posSales);
   datasets.suppliers = tenantRows(state.suppliers);
   datasets.inventory_items = tenantRows(state.inventoryItems);
+  datasets.inventory_count_sessions = (state.inventoryCountSessions ?? [])
+    .filter((detail) => detail.session.restaurant_id === restaurantId)
+    .map((detail) => ({ ...detail.session }));
+  datasets.inventory_count_lines = (state.inventoryCountSessions ?? [])
+    .filter((detail) => detail.session.restaurant_id === restaurantId)
+    .flatMap((detail) => detail.lines.map((line) => ({ ...line })));
   datasets.menu_item_ingredients = tenantRows(state.menuItemIngredients);
   datasets.purchase_recommendations = tenantRows(state.purchaseRecommendations);
   datasets.purchase_decision_events = state.purchaseDecisionEvents

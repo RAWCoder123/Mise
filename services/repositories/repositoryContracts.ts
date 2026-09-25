@@ -416,6 +416,8 @@ export const RESTAURANT_EXPORT_DATASETS = [
   "suppliers",
   "inventory_items",
   "inventory_events",
+  "inventory_count_sessions",
+  "inventory_count_lines",
   "menu_item_ingredients",
   "purchase_recommendations",
   "purchase_decision_events",
