@@ -7,7 +7,6 @@ import type {
   InventoryItemPatch,
   InventoryCountSessionDetail,
   MenuItemIngredient,
-  MenuItemIngredientInput,
   PosIntegration,
   PosProvider,
   PosSale,
@@ -598,9 +597,6 @@ export interface MiseRepository {
     restaurantId: string,
     input: RestaurantSetupSnapshotInput
   ): Promise<RestaurantSetupSnapshotSummary>;
-  upsertInventoryItem(input: InventoryItemInput): Promise<InventoryItem>;
-  createPosSale(input: PosSaleInput): Promise<PosSale>;
-  updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch): Promise<InventoryItem>;
   updateInventoryItemAndSignals(
     restaurantId: string,
     itemId: string,
@@ -625,12 +621,6 @@ export interface MiseRepository {
     recommendations: PurchaseRecommendationInput[],
     insights: Insight[]
   ): Promise<InventoryCountSessionDetail>;
-  updateMenuItemIngredientQuantity(
-    restaurantId: string,
-    mappingId: string,
-    quantityUsedPerSale: number
-  ): Promise<MenuItemIngredient>;
-  upsertMenuItemIngredient(input: MenuItemIngredientInput): Promise<MenuItemIngredient>;
   saveRecipeMappingAndSignals(input: RecipeMappingSignalInput): Promise<MenuItemIngredient>;
   fetchRecipeAuthorities(restaurantId: string): Promise<RecipeAuthorityState[]>;
   confirmRecipeComplete(
@@ -653,11 +643,6 @@ export interface MiseRepository {
    * learned quantities or suppression so reads stay bounded per tenant.
    */
   fetchRecommendationHistory(restaurantId: string): Promise<PurchaseRecommendation[]>;
-  updatePurchaseRecommendation(
-    restaurantId: string,
-    recommendationId: string,
-    patch: Partial<Pick<PurchaseRecommendation, "status" | "recommended_quantity" | "supplier_order_id">>
-  ): Promise<PurchaseRecommendation>;
   approvePurchaseRecommendation(
     restaurantId: string,
     recommendationId: string,
@@ -740,7 +725,6 @@ export interface MiseRepository {
   fetchEmailConnectionState(restaurantId: string): Promise<RestaurantEmailConnection | null>;
   fetchSupplierRecipients(restaurantId: string): Promise<SupplierRecipient[]>;
   upsertSupplierRecipient(input: SupplierRecipientInput): Promise<SupplierRecipient>;
-  createSetupAttachment(input: SetupAttachmentInput): Promise<SetupAttachment>;
   loadDemoPOSData(provider: PosProvider, setupProfile?: DemoSetupProfile): Promise<Restaurant>;
   resetDemoData(provider: PosProvider | null, setupProfile?: DemoSetupProfile): Promise<Restaurant>;
   fetchPOSStatus(restaurantId?: string | null): Promise<{ provider: PosProvider | null; connectedAt: string | null; label: string }>;

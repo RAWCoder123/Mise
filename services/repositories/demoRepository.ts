@@ -4,7 +4,6 @@ import type {
   InventoryItem,
   InventoryCountSessionDetail,
   MenuItemIngredient,
-  PosSale,
   PurchaseRecommendation,
   RecipeAuthorityState,
   SupplierRecipient
@@ -142,7 +141,6 @@ import {
   normalizeRestaurant,
   normalizeRestaurantMembership,
   normalizeRestaurantTeamMember,
-  normalizeSetupAttachment,
   normalizeSupplier,
   normalizeSupplierItem,
   normalizeSupplierOrder,
@@ -1807,63 +1805,8 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
-    async upsertInventoryItem(input) {
-      return mutateDemoState((state) => {
-        requireActiveDemoRestaurant(state, input.restaurant_id);
-        const supplier = state.suppliers.find(
-          (candidate) =>
-            candidate.restaurant_id === input.restaurant_id &&
-            candidate.id === input.supplier_id
-        );
-        if (!supplier) throw new Error("Supplier is not part of this restaurant catalog");
-        const authoritativeInput = {
-          ...input,
-          supplier_id: supplier.id,
-          supplier_name: supplier.display_name
-        };
-        const now = new Date().toISOString();
-        const existing = state.inventoryItems.find(
-          (item) =>
-            item.restaurant_id === input.restaurant_id &&
-            item.item_name.trim().toLowerCase() === input.item_name.trim().toLowerCase()
-        );
 
-        if (existing) {
-          Object.assign(existing, authoritativeInput, { last_updated: now });
-          return normalizeInventoryItem(existing);
-        }
 
-        const item: InventoryItem = {
-          ...authoritativeInput,
-          id: createId("item"),
-          last_updated: now
-        };
-        state.inventoryItems.push(item);
-        return normalizeInventoryItem(item);
-      });
-    },
-
-    async createPosSale(input) {
-      return mutateDemoState((state) => {
-        const sale: PosSale = {
-          ...input,
-          id: createId("sale"),
-          created_at: new Date().toISOString()
-        };
-        state.posSales.push(sale);
-        return normalizePosSale(sale);
-      });
-    },
-
-    async updateInventoryItem(restaurantId, itemId, patch) {
-      const payload = { ...patch, last_updated: new Date().toISOString() };
-      return mutateDemoState((state) => {
-        const item = state.inventoryItems.find((entry) => entry.restaurant_id === restaurantId && entry.id === itemId);
-        if (!item) throw new Error("Inventory item not found");
-        Object.assign(item, payload);
-        return normalizeInventoryItem(item);
-      });
-    },
 
     async updateInventoryItemAndSignals(
       restaurantId,
@@ -1905,47 +1848,7 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
-    async updateMenuItemIngredientQuantity(restaurantId, mappingId, quantityUsedPerSale) {
-      return mutateDemoState((state) => {
-        const mapping = state.menuItemIngredients.find(
-          (entry) => entry.restaurant_id === restaurantId && entry.id === mappingId
-        );
-        if (!mapping) throw new Error("Recipe baseline mapping not found");
-        mapping.quantity_used_per_sale = quantityUsedPerSale;
-        return normalizeMenuItemIngredient(mapping);
-      });
-    },
 
-    async upsertMenuItemIngredient(input) {
-      return mutateDemoState((state) => {
-        const inventoryItem = state.inventoryItems.find(
-          (item) => item.restaurant_id === input.restaurant_id && item.id === input.inventory_item_id
-        );
-        if (!inventoryItem) throw new Error("Inventory item not found");
-
-        const existing = state.menuItemIngredients.find(
-          (entry) =>
-            entry.restaurant_id === input.restaurant_id &&
-            entry.inventory_item_id === input.inventory_item_id &&
-            entry.menu_item_name.trim().toLowerCase() === input.menu_item_name.trim().toLowerCase()
-        );
-
-        if (existing) {
-          existing.menu_item_name = input.menu_item_name;
-          existing.quantity_used_per_sale = input.quantity_used_per_sale;
-          existing.unit = input.unit || inventoryItem.unit;
-          return normalizeMenuItemIngredient(existing);
-        }
-
-        const mapping: MenuItemIngredient = {
-          ...input,
-          id: createId("map"),
-          unit: input.unit || inventoryItem.unit
-        };
-        state.menuItemIngredients.push(mapping);
-        return normalizeMenuItemIngredient(mapping);
-      });
-    },
 
     async saveRecipeMappingAndSignals(input) {
       return mutateDemoState((state) => {
@@ -2093,63 +1996,6 @@ export function createLocalDemoRepository(): MiseRepository {
         .sort((a, b) => b.created_at.localeCompare(a.created_at));
     },
 
-    async updatePurchaseRecommendation(restaurantId, recommendationId, patch) {
-      return mutateDemoState((state) => {
-        const recommendation = state.purchaseRecommendations.find(
-          (item) => item.restaurant_id === restaurantId && item.id === recommendationId
-        );
-        if (!recommendation) throw new Error("Recommendation not found");
-        const previousMaterial = {
-          status: recommendation.status,
-          supplierOrderId: recommendation.supplier_order_id,
-          inventoryItemId: recommendation.inventory_item_id,
-          itemName: recommendation.item_name,
-          quantity: recommendation.recommended_quantity,
-          unit: recommendation.unit,
-          supplierId: recommendation.supplier_id,
-          supplierName: recommendation.supplier_name
-        };
-        Object.assign(recommendation, patch);
-        const nextMaterial = {
-          status: recommendation.status,
-          supplierOrderId: recommendation.supplier_order_id,
-          inventoryItemId: recommendation.inventory_item_id,
-          itemName: recommendation.item_name,
-          quantity: recommendation.recommended_quantity,
-          unit: recommendation.unit,
-          supplierId: recommendation.supplier_id,
-          supplierName: recommendation.supplier_name
-        };
-        if (JSON.stringify(previousMaterial) !== JSON.stringify(nextMaterial)) {
-          const affectedOrderIds = new Set(
-            [previousMaterial.supplierOrderId, nextMaterial.supplierOrderId]
-              .filter((orderId): orderId is string => Boolean(orderId))
-          );
-          for (const affectedOrderId of affectedOrderIds) {
-            const affectedOrder = state.supplierOrders.find(
-              (order) => order.restaurant_id === restaurantId && order.id === affectedOrderId
-            );
-            if (!affectedOrder || affectedOrder.status !== "draft") continue;
-            const linked = state.purchaseRecommendations.filter(
-              (entry) =>
-                entry.restaurant_id === restaurantId &&
-                entry.supplier_order_id === affectedOrderId &&
-                entry.status === "approved"
-            );
-            if (linked.some((entry) => entry.supplier_id !== affectedOrder.supplier_id)) {
-              throw new Error("Supplier authority changed. Refresh this order before editing it.");
-            }
-            affectedOrder.order_message = buildSupplierOrderMessage(
-              affectedOrder.supplier_name,
-              linked,
-              affectedOrder.operator_note
-            );
-            bumpDemoSupplierSendContentRevision(state, affectedOrderId);
-          }
-        }
-        return normalizePurchaseRecommendation(recommendation);
-      });
-    },
 
     async approvePurchaseRecommendation(restaurantId, recommendationId, recommendedQuantity) {
       return mutateDemoState((state) => {
@@ -3123,16 +2969,6 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
-    async createSetupAttachment(input) {
-      const now = new Date().toISOString();
-      return normalizeSetupAttachment({
-        ...input,
-        id: createId("setup_ref"),
-        created_by: null,
-        created_at: now,
-        updated_at: now
-      });
-    },
 
     async loadDemoPOSData(provider, setupProfile) {
       const state = await resetDemoStore(provider, setupProfile, prepareResetDemoState);

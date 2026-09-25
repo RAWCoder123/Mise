@@ -114,8 +114,8 @@ test("hosted supplier recipient writes use only the guarded RPC while demo write
   const hostedRepository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
   const localStart = demoRepository.indexOf("async upsertSupplierRecipient(input)");
   const hostedStart = hostedRepository.indexOf("async upsertSupplierRecipient(input)");
-  const localMethod = demoRepository.slice(localStart, demoRepository.indexOf("async createSetupAttachment", localStart));
-  const hostedMethod = hostedRepository.slice(hostedStart, hostedRepository.indexOf("async createSetupAttachment", hostedStart));
+  const localMethod = demoRepository.slice(localStart, demoRepository.indexOf("async loadDemoPOSData", localStart));
+  const hostedMethod = hostedRepository.slice(hostedStart, hostedRepository.indexOf("async loadDemoPOSData", hostedStart));
 
   assert.match(localMethod, /requireActiveDemoRestaurant\(state, input\.restaurant_id\)/);
   assert.match(localMethod, /Supplier is not part of this restaurant catalog/);
