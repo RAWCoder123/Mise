@@ -469,7 +469,9 @@ export function buildInventoryPrediction(
     mappedTodayUsage > 0 && baselineUsage > 0
       ? mappedTodayUsage * 0.35 + baselineUsage * 0.65
       : mappedTodayUsage || baselineUsage;
-  const projectedQuantity = Math.max(0, safeItem.current_quantity - recentUsage);
+  // Keep the signed deficit when POS depletion exceeds on-hand. Flooring at zero
+  // hid oversell from operators and understated the order quantity needed to restore par.
+  const projectedQuantity = safeItem.current_quantity - recentUsage;
   const daysCoverage = averageDailyUsage > 0 ? projectedQuantity / averageDailyUsage : null;
   const quantityStatus = getInventoryStatusForQuantity(safeItem, projectedQuantity);
   const computedStatus = statusWithCoverageRisk(quantityStatus, daysCoverage, projectedQuantity);
@@ -592,6 +594,7 @@ function getCoverageLabel(
   averageDailyUsage: number,
   projectedQuantity: number
 ) {
+  if (projectedQuantity < 0) return "Sold past counted stock";
   if (daysCoverage === null || averageDailyUsage <= 0) return "Mise is still learning this pattern";
   if (projectedQuantity > item.par_level * 1.35 || daysCoverage >= 8) return "Unusually high stock";
   if (daysCoverage <= 0.75) return "May run out today";
@@ -622,6 +625,9 @@ function getWhyItMatters(
   todayDepletion: number,
   projectedQuantity: number
 ) {
+  if (projectedQuantity < 0) {
+    return "Mapped POS sales have already exceeded counted on-hand stock.";
+  }
   if (todayDepletion > 0 && projectedQuantity <= item.reorder_threshold) {
     return "Mapped POS sales have pushed projected stock below the reorder threshold.";
   }

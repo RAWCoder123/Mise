@@ -183,6 +183,19 @@ test("an opening count establishes the baseline and later consumption depletes i
   assert.equal(projection.isTemporallyAuthoritative, true);
 });
 
+test("authoritative projection keeps a signed oversell deficit instead of flooring at zero", () => {
+  const evidence = evidenceFor([countEvent("2026-08-17T08:00:00.000Z", 10)]);
+  const projection = project({
+    evidence,
+    consumption: [consumption("2026-08-17T18:00:00.000Z", 14)]
+  });
+
+  assert.equal(projection.baselineQuantity, 10);
+  assert.equal(projection.appliedConsumption, 14);
+  assert.equal(projection.projectedQuantity, -4);
+  assert.equal(projection.isTemporallyAuthoritative, true);
+});
+
 // B: midday count
 test("a midday count is not reduced again by consumption that happened before it", () => {
   const evidence = evidenceFor([countEvent("2026-08-17T13:00:00.000Z", 10)]);

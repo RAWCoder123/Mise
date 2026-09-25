@@ -20,7 +20,20 @@ test("demo approval, replay, undo, dismissal, and exclusion mirror append-only p
   const { createLocalDemoRepository } = await import("../services/repositories/demoRepository");
   const repository = createLocalDemoRepository();
   await repository.resetDemoData(null);
-  const recommendation = (await repository.fetchPurchaseRecommendations(DEMO_RESTAURANT_ID, "pending"))[0];
+  const pending = await repository.fetchPurchaseRecommendations(DEMO_RESTAURANT_ID, "pending");
+  const inventoryItems = await repository.fetchInventoryItems(DEMO_RESTAURANT_ID);
+  // Pick a Mise-generated recommendation with verified canonical purchase evidence.
+  // Ranking can surface oversold draft-unit items first; memory only records verified units.
+  const recommendation = pending.find((entry) => {
+    if (entry.generation_source !== "mise_rules") return false;
+    const item = inventoryItems.find((candidate) => candidate.id === entry.inventory_item_id);
+    return (
+      item?.canonical_unit_verification_status === "verified" &&
+      Boolean(item.canonical_unit) &&
+      Boolean(item.canonical_quantity_per_unit) &&
+      item.supplier_id === entry.supplier_id
+    );
+  });
   assert.ok(recommendation);
   assert.equal(recommendation.generation_source, "mise_rules");
 

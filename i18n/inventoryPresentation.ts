@@ -65,6 +65,7 @@ function coverageCopy(
   prediction: InventoryPrediction
 ): string {
   const days = prediction.daysCoverage;
+  if (prediction.projectedQuantity < 0) return t("inventory.prediction.coverage.oversold");
   if (days === null || prediction.averageDailyUsage <= 0) return t("inventory.prediction.coverage.learning");
   if (prediction.projectedQuantity > item.par_level * 1.35 || days >= 8) return t("inventory.prediction.coverage.high");
   if (days <= 0.75) return t("inventory.prediction.coverage.today");
@@ -106,6 +107,9 @@ function basisCopy(t: Translate, formatNumber: FormatNumber, prediction: Invento
 }
 
 function whyCopy(t: Translate, item: InventoryItem, prediction: InventoryPrediction): string {
+  if (prediction.projectedQuantity < 0) {
+    return t("inventory.prediction.why.oversold");
+  }
   if (prediction.todayDepletion > 0 && prediction.projectedQuantity <= item.reorder_threshold) {
     return t("inventory.prediction.why.threshold");
   }
