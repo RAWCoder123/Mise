@@ -151,4 +151,6 @@ test("client export datasets include operational backend and shared-task tables"
   assert.match(demo, /datasets\.restaurant_autonomy_rules = \(state\.autonomyRules/);
   assert.match(demo, /datasets\.restaurant_tasks = \(state\.restaurantTasks/);
   assert.match(demo, /datasets\.restaurant_task_dependencies/);
+  assert.match(demo, /demoRestaurantOperationalControlsExportRow/);
+  assert.match(demo, /datasets\.restaurant_operational_controls = \[/);
 });
