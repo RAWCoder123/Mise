@@ -674,6 +674,39 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
       occurred_at: event.occurredAt,
       created_at: event.createdAt
     }));
+  datasets.purchase_lines = (state.purchaseLines ?? [])
+    .filter((line) => line.restaurantId === restaurantId)
+    .map((line) => ({
+      id: line.id,
+      restaurant_id: line.restaurantId,
+      supplier_id: line.supplierId,
+      line_index: line.lineIndex,
+      revision: line.revision,
+      line_type: line.lineType,
+      raw_item_description: line.rawItemDescription,
+      normalized_item_key: line.normalizedItemKey,
+      normalization_version: line.normalizationVersion,
+      quantity: line.quantity,
+      unit_of_measure: line.unitOfMeasure,
+      pack_size: line.packSize,
+      unit_price: line.unitPrice,
+      extended_price: line.extendedPrice,
+      currency: line.currency,
+      transaction_date: line.transactionDate,
+      received_date: line.receivedDate,
+      source: line.source,
+      source_document_reference: line.sourceDocumentReference,
+      correlation_id: line.correlationId,
+      parse_confidence: line.parseConfidence,
+      consistency_flags: line.consistencyFlags,
+      signed_quantity: line.signedQuantity,
+      signed_extended_price: line.signedExtendedPrice,
+      credits_line_id: line.creditsLineId,
+      supersedes_line_id: line.supersedesLineId,
+      evidence_version: line.evidenceVersion,
+      recorded_by: line.recordedBy,
+      recorded_at: line.recordedAt
+    }));
   datasets.supplier_orders = tenantRows(state.supplierOrders);
   datasets.pos_integrations = tenantRows(state.posIntegrations);
   datasets.sales_imports = tenantRows(state.salesImports);
