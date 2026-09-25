@@ -704,6 +704,9 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
       client_event_id: event.clientEventId,
       idempotency_key: event.idempotencyKey,
       supersedes_event_id: event.supersedesEventId,
+      // Match hosted inventory_events.projection_applied. Absent on legacy demo
+      // rows means applied — the same fail-closed read used by planning/domain.
+      projection_applied: event.projectionApplied !== false,
       metadata: event.metadata
     }));
   datasets.activity_events = (state.activityEvents ?? [])

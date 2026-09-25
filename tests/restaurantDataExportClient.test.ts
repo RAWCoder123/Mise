@@ -152,3 +152,15 @@ test("client export datasets include operational backend and shared-task tables"
   assert.match(demo, /datasets\.restaurant_tasks = \(state\.restaurantTasks/);
   assert.match(demo, /datasets\.restaurant_task_dependencies/);
 });
+
+test("demo inventory_events export includes projection_applied with fail-closed default", () => {
+  const demo = readFileSync("services/repositories/demoRepository.ts", "utf8");
+  const mapperStart = demo.indexOf("datasets.inventory_events = (state.inventoryEvents");
+  assert.ok(mapperStart >= 0, "demo export must map inventory_events");
+  const mapper = demo.slice(mapperStart, mapperStart + 1200);
+  assert.match(
+    mapper,
+    /projection_applied:\s*event\.projectionApplied\s*!==\s*false/
+  );
+  assert.doesNotMatch(mapper, /authority_projected_quantity/);
+});
