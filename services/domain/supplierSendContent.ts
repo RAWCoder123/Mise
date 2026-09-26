@@ -51,17 +51,42 @@ interface BuildSupplierSendContentInput {
   recommendations: readonly PurchaseRecommendation[];
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/**
+ * MISE-005Q. Matches SQL
+ *   email collate "C" ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+ * under the C locale space set (space, tab, LF, VT, FF, CR). Prefer this over
+ * JS `\s`, which also rejects Unicode spaces the CHECK would still accept.
+ */
+export const SUPPLIER_SEND_EMAIL_SHAPE =
+  /^[^ \t\n\v\f\r@]+@[^ \t\n\v\f\r@]+\.[^ \t\n\v\f\r@]+$/;
 const CONTENT_MAX_BYTES = 65_536;
 const CONTENT_MAX_LINES = 250;
 
+/**
+ * MISE-005Q. Matches SQL `lower(btrim(email) COLLATE "C")`:
+ * trim default ASCII spaces (0x20) only, then fold A-Z only.
+ */
+export function foldAsciiUpperCase(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+export function matchesSupplierSendEmailShape(value: string) {
+  return SUPPLIER_SEND_EMAIL_SHAPE.test(value);
+}
+
+export function normalizeSupplierSendEmail(value: string) {
+  const trimmed = value.replace(/^ +/, "").replace(/ +$/, "");
+  return foldAsciiUpperCase(trimmed);
+}
+
 function normalizedEmail(value: string | null | undefined) {
-  const normalized = value?.trim().toLowerCase() ?? "";
+  if (typeof value !== "string") return null;
+  const normalized = normalizeSupplierSendEmail(value);
   if (
     normalized.length < 3 ||
     normalized.length > 254 ||
     /[\u0000-\u001f\u007f]/.test(normalized) ||
-    !EMAIL_PATTERN.test(normalized)
+    !matchesSupplierSendEmailShape(normalized)
   ) {
     return null;
   }
@@ -69,9 +94,12 @@ function normalizedEmail(value: string | null | undefined) {
 }
 
 function normalizedSubject(restaurantName: string, supplierName: string) {
+  // Mirror SQL btrim + regexp_replace of CR/LF only; keep other ASCII controls
+  // for the fail-closed path below (matches build_supplier_send_content).
   const subject = `${restaurantName} order for ${supplierName}`
     .replace(/[\r\n]+/g, " ")
-    .trim();
+    .replace(/^ +/, "")
+    .replace(/ +$/, "");
   if (
     subject.length < 1 ||
     subject.length > 500 ||
