@@ -107,6 +107,10 @@ test("supplier recipient validation rejects malformed or unbounded identity", ()
     () => requireSupplierRecipientInput({ ...valid, email: `${"a".repeat(SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS)}@x.test` }),
     /valid supplier email/i
   );
+  assert.throws(
+    () => requireSupplierRecipientInput({ ...valid, email: "orders\t@fresh.test" }),
+    /valid supplier email/i
+  );
 });
 
 test("hosted supplier recipient writes use only the guarded RPC while demo writes audit locally", () => {

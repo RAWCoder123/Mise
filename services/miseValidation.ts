@@ -870,6 +870,28 @@ function supplierSendBlockerDescription(code: SupplierSendContentBlockerCode) {
 export const SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS = 160;
 export const SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS = 254;
 
+/**
+ * MISE-005N. Matches SQL
+ *   email collate "C" ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+ * under the C locale space set (space, tab, LF, VT, FF, CR). Prefer this over
+ * JS `\s`, which also rejects Unicode spaces the CHECK would still accept.
+ */
+export const SUPPLIER_RECIPIENT_EMAIL_SHAPE =
+  /^[^ \t\n\v\f\r@]+@[^ \t\n\v\f\r@]+\.[^ \t\n\v\f\r@]+$/;
+
+/**
+ * MISE-005N. Matches SQL `lower(btrim(email) COLLATE "C")`:
+ * trim default ASCII spaces (0x20) only, then fold A-Z only.
+ */
+export function normalizeSupplierRecipientEmail(value: string) {
+  const trimmed = value.replace(/^ +/, "").replace(/ +$/, "");
+  return trimmed.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+export function matchesSupplierRecipientEmailShape(value: string) {
+  return SUPPLIER_RECIPIENT_EMAIL_SHAPE.test(value);
+}
+
 export function requireSupplierAuthorityId(value: unknown, label = "supplier") {
   const supplierId = typeof value === "string" ? value.trim() : "";
   if (
@@ -952,12 +974,13 @@ export function requireSupplierRecipientInput(input: {
 
   const supplierId = requireSupplierAuthorityId(input.supplier_id);
 
-  const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+  const email =
+    typeof input.email === "string" ? normalizeSupplierRecipientEmail(input.email) : "";
   if (
     email.length < 3 ||
     email.length > SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS ||
     hasControlCharacters(email) ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    !matchesSupplierRecipientEmailShape(email)
   ) {
     throw new Error("Enter a valid supplier email address.");
   }
