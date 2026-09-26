@@ -5,6 +5,25 @@ export const PURCHASE_DECISION_PATTERN_VERSION = "mise.purchase_pattern.v1" as c
 export const PURCHASE_DECISION_MINIMUM_SAMPLE_COUNT = 5;
 export const PURCHASE_DECISION_CONSISTENCY_THRESHOLD = 0.8;
 
+/**
+ * MISE-005H. Matches `purchase_decision_events_recommendation_unit_check` /
+ * `recommendation_unit collate "C" !~ '[[:cntrl:]]'`: ASCII C0 controls and DEL
+ * only. Unicode `\p{Cc}` / `\s` would reject a different set than the server CHECK.
+ */
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
+
+function assertPrintableRecommendationUnit(unit: string): string {
+  const trimmed = unit.trim();
+  if (
+    trimmed.length < 1 ||
+    trimmed.length > 80 ||
+    CONTROL_CHARACTERS.test(trimmed)
+  ) {
+    throw new Error("recommendationUnit must be bounded printable text.");
+  }
+  return trimmed;
+}
+
 export type PurchaseDecisionType =
   | "approve"
   | "approve_with_override"
@@ -173,7 +192,7 @@ export function createPurchaseDecisionBaseEvent(input: {
     inventoryItemId: recommendation.inventory_item_id,
     supplierId: recommendation.supplier_id,
     recommendationSource: recommendation.generation_source,
-    recommendationUnit: recommendation.unit,
+    recommendationUnit: assertPrintableRecommendationUnit(recommendation.unit),
     recommendedQuantity: suggested,
     chosenQuantity: chosen,
     canonicalUnit: inventoryItem.canonical_unit,
@@ -377,7 +396,7 @@ export function normalizePurchaseDecisionEvent(row: Record<string, unknown>): Pu
     inventoryItemId: String(row.inventory_item_id),
     supplierId: String(row.supplier_id),
     recommendationSource: row.recommendation_source as PurchaseDecisionEvent["recommendationSource"],
-    recommendationUnit: String(row.recommendation_unit),
+    recommendationUnit: assertPrintableRecommendationUnit(String(row.recommendation_unit)),
     recommendedQuantity: Number(row.recommended_quantity),
     chosenQuantity: nullableNumber("chosen_quantity"),
     canonicalUnit: row.canonical_unit as PurchaseDecisionEvent["canonicalUnit"],
