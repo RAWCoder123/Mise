@@ -59,8 +59,16 @@ export interface RenderableOutreachDraft {
   personalizationNote: string;
 }
 
+/**
+ * MISE-005L. Matches SQL `lower(btrim(email) COLLATE "C")`:
+ * trim default ASCII spaces (0x20) only, then fold A-Z only.
+ * Do not accent-fold and do not use Unicode/locale `toLowerCase()` —
+ * those diverge from COLLATE "C" for non-ASCII mailboxes and would
+ * miss the unique `email_normalized` discovery key on restore-stable rows.
+ */
 export function normalizeOutreachEmail(value: string) {
-  return value.trim().toLowerCase();
+  const trimmed = value.replace(/^ +/, "").replace(/ +$/, "");
+  return trimmed.replace(/[A-Z]/g, (character) => character.toLowerCase());
 }
 
 export function normalizeOutreachLead(input: OutreachLeadInput): NormalizedOutreachLead {

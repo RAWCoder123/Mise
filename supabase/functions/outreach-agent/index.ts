@@ -7,6 +7,7 @@ import {
   OUTREACH_FOLLOW_UP_MAX,
   buildFallbackOutreachDraft,
   isWithinOutreachSendWindow,
+  normalizeOutreachEmail,
   normalizeOutreachLead,
   renderOutreachEmail,
   type OutreachContactBasis,
@@ -833,7 +834,7 @@ async function assertClaimStillSendable(supabase: SupabaseClient, claim: Outreac
     supabase
       .from("outreach_suppressions")
       .select("id")
-      .eq("email_normalized", claim.lead.email.toLowerCase())
+      .eq("email_normalized", normalizeOutreachEmail(claim.lead.email))
       .maybeSingle()
   ]);
   const error = campaignResult.error ?? leadResult.error ?? enrollmentResult.error ?? suppressionResult.error;
@@ -929,7 +930,7 @@ function requireHeaderText(value: unknown, fieldName: string, maximumLength: num
 }
 
 function requireEmail(value: unknown, fieldName: string) {
-  const email = requireString(value, fieldName, 320).toLowerCase();
+  const email = normalizeOutreachEmail(requireString(value, fieldName, 320));
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, `${fieldName} must be a valid email address.`);
   return email;
 }
