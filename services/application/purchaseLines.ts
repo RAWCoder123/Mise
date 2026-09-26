@@ -2,7 +2,16 @@ import type {
   PurchaseLineInput,
   PurchaseLineSource
 } from "../domain/purchaseLines";
-import { markCurrentPurchaseLines, normalizePurchaseLineInput } from "../domain/purchaseLines";
+import {
+  markCurrentPurchaseLines,
+  normalizePurchaseLineInput,
+  toPurchaseLinePayload
+} from "../domain/purchaseLines";
+import {
+  PURCHASE_LINE_INGEST_MAX_BYTES,
+  PURCHASE_LINE_INGEST_MAX_LINES,
+  utf8ByteLength
+} from "../domain/securityLimits";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -33,10 +42,19 @@ export async function ingestPurchaseLines(input: {
   if (input.lines.length === 0) {
     throw new Error("At least one purchase line is required.");
   }
+  if (input.lines.length > PURCHASE_LINE_INGEST_MAX_LINES) {
+    throw new Error("Between 1 and 500 purchase lines are required.");
+  }
   const lines = input.lines.map(normalizePurchaseLineInput);
   const positions = new Set(lines.map((line) => line.lineIndex));
   if (positions.size !== lines.length) {
     throw new Error("Each purchase line must hold a distinct document position.");
+  }
+  // Client preflight mirrors MISE-005G. Server still measures
+  // octet_length(p_lines::text); JSON.stringify is a fail-closed approx.
+  const payloadBytes = utf8ByteLength(JSON.stringify(lines.map(toPurchaseLinePayload)));
+  if (payloadBytes > PURCHASE_LINE_INGEST_MAX_BYTES) {
+    throw new Error("Purchase line payload exceeds the allowed size.");
   }
   return repository.ingestPurchaseLines({
     restaurantId: requireRestaurantId(input.restaurantId),

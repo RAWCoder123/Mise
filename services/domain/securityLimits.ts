@@ -1,5 +1,13 @@
 export const SUPPLIER_NOTE_MAX_CHARACTERS = 2_000;
 export const ORDER_MESSAGE_MAX_BYTES = 64 * 1024;
+/**
+ * Ceiling for `public.ingest_purchase_lines` `p_lines` jsonb, measured as
+ * `octet_length(p_lines::text)`. Matches `record_supplier_delivery`'s 256 KiB
+ * delivery-line ceiling. Keep in lockstep with MISE-005G.
+ */
+export const PURCHASE_LINE_INGEST_MAX_BYTES = 256 * 1024;
+/** Max array length accepted by `public.ingest_purchase_lines`. */
+export const PURCHASE_LINE_INGEST_MAX_LINES = 500;
 export const RESTAURANT_NAME_MAX_CHARACTERS = 120;
 export const RESTAURANT_ADDRESS_MAX_CHARACTERS = 500;
 export const RESTAURANT_CUISINE_MAX_CHARACTERS = 120;
