@@ -24,11 +24,32 @@ interface RecipeIdentity {
 
 const providerSources = new Set(["square", "toast", "clover", "lightspeed"]);
 
-export function saleRequiresVerifiedProviderIdentity(sale: Pick<ProviderSaleIdentity, "source_pos" | "provider_location_id" | "provider_catalog_item_id" | "provider_variation_id">) {
-  return providerSources.has(normalize(sale.source_pos))
+/**
+ * MISE-005I. Matches `pos_sales_provider_*_check` /
+ * `<column> collate "C" !~ '[[:cntrl:]]'`: ASCII C0 controls and DEL only.
+ * Unicode `\p{Cc}` / `\s` would reject a different set than the server CHECK.
+ */
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
+
+function printableProviderIdentityToken(value: string | null | undefined): string | null {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return null;
+  if (trimmed.length > 128 || CONTROL_CHARACTERS.test(trimmed)) return null;
+  return trimmed;
+}
+
+export function saleRequiresVerifiedProviderIdentity(
+  sale: Pick<
+    ProviderSaleIdentity,
+    "source_pos" | "provider_location_id" | "provider_catalog_item_id" | "provider_variation_id"
+  >
+) {
+  return (
+    providerSources.has(normalize(sale.source_pos))
     || Boolean(sale.provider_location_id)
     || Boolean(sale.provider_catalog_item_id)
-    || Boolean(sale.provider_variation_id);
+    || Boolean(sale.provider_variation_id)
+  );
 }
 
 export function resolveVerifiedProviderMenuItemId(
@@ -36,16 +57,27 @@ export function resolveVerifiedProviderMenuItemId(
   mappings: readonly VerifiedProviderSaleMapping[]
 ) {
   if (!saleRequiresVerifiedProviderIdentity(sale)) return null;
-  if (!sale.provider_variation_id) return null;
-  if (!sale.provider_location_id) return null;
+  const providerVariationId = printableProviderIdentityToken(sale.provider_variation_id);
+  const providerLocationId = printableProviderIdentityToken(sale.provider_location_id);
+  const providerCatalogItemId = printableProviderIdentityToken(sale.provider_catalog_item_id);
+  // Control-bearing or empty identity tokens fail closed: never match a recipe.
+  if (!providerVariationId || !providerLocationId) return null;
+  if (
+    sale.provider_catalog_item_id != null
+    && sale.provider_catalog_item_id.trim() !== ""
+    && !providerCatalogItemId
+  ) {
+    return null;
+  }
   const sourcePos = normalize(sale.source_pos);
-  const providerLocationId = normalize(sale.provider_location_id);
-  const matches = mappings.filter((mapping) =>
-    mapping.restaurantId === sale.restaurant_id
-    && normalize(mapping.sourcePos) === sourcePos
-    && normalize(mapping.providerLocationId) === providerLocationId
-    && mapping.externalVariationId === sale.provider_variation_id
-    && (!sale.provider_catalog_item_id || mapping.externalCatalogItemId === sale.provider_catalog_item_id)
+  const normalizedLocationId = normalize(providerLocationId);
+  const matches = mappings.filter(
+    (mapping) =>
+      mapping.restaurantId === sale.restaurant_id
+      && normalize(mapping.sourcePos) === sourcePos
+      && normalize(mapping.providerLocationId) === normalizedLocationId
+      && mapping.externalVariationId === providerVariationId
+      && (!providerCatalogItemId || mapping.externalCatalogItemId === providerCatalogItemId)
   );
   if (matches.length !== 1) return null;
   return matches[0]!.menuItemId;
@@ -68,7 +100,10 @@ export function recipeDemandKey(recipe: Pick<RecipeIdentity, "menu_item_id" | "m
   return recipe.menu_item_id ? `menu:${recipe.menu_item_id}` : normalize(recipe.menu_item_name);
 }
 
-export function saleDemandKey(sale: ProviderSaleIdentity, providerMappings: readonly VerifiedProviderSaleMapping[]) {
+export function saleDemandKey(
+  sale: ProviderSaleIdentity,
+  providerMappings: readonly VerifiedProviderSaleMapping[]
+) {
   if (saleRequiresVerifiedProviderIdentity(sale)) {
     const menuItemId = resolveVerifiedProviderMenuItemId(sale, providerMappings);
     return menuItemId ? `menu:${menuItemId}` : null;
