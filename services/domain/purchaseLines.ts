@@ -332,6 +332,11 @@ export interface PurchaseLineIngestionResult {
 const MAX_QUANTITY = 1_000_000_000;
 const MAX_EXTENDED_PRICE = 1_000_000_000_000;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/u;
+/**
+ * MISE-005F. Matches `private.purchase_line_has_control_characters` /
+ * `col collate "C" !~ '[[:cntrl:]]'`: ASCII C0 controls and DEL only.
+ * Unicode `\p{Cc}` / `\s` would reject a different set than the server CHECK.
+ */
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
 
 function boundedText(value: string, label: string, maximum: number) {
