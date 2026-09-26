@@ -22,6 +22,37 @@ const MAX_EMAIL_BODY_BYTES = 64 * 1024;
 const EMAIL_PATTERN =
   /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i;
 
+/**
+ * MISE-005O. Matches SQL
+ *   sender_email collate "C" ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+ * under the C locale space set (space, tab, LF, VT, FF, CR). Prefer this over
+ * JS `\s`, which also rejects Unicode spaces the CHECK would still accept.
+ * Stricter RFC-ish EMAIL_PATTERN remains the Edge send gate; this shape mirrors
+ * the durable credential CHECK / OAuth fail-closed contract.
+ */
+export const GMAIL_SENDER_EMAIL_SHAPE =
+  /^[^ \t\n\v\f\r@]+@[^ \t\n\v\f\r@]+\.[^ \t\n\v\f\r@]+$/;
+
+/**
+ * MISE-005O. Matches SQL `lower(... COLLATE "C")`: fold A-Z only.
+ */
+export function foldAsciiUpperCase(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+export function matchesGmailSenderEmailShape(value: string) {
+  return GMAIL_SENDER_EMAIL_SHAPE.test(value);
+}
+
+/**
+ * MISE-005O. Matches SQL `lower(btrim(email) COLLATE "C")`:
+ * trim default ASCII spaces (0x20) only, then fold A-Z only.
+ */
+export function normalizeGmailSenderEmail(value: string) {
+  const trimmed = value.replace(/^ +/, "").replace(/ +$/, "");
+  return foldAsciiUpperCase(trimmed);
+}
+
 export type GmailFailureDisposition = "rejected" | "reauthorize" | "ambiguous";
 
 export class GoogleProviderError extends Error {
@@ -427,8 +458,12 @@ async function readProviderJson(
 }
 
 function normalizeEmail(value: string) {
-  const email = sanitizeHeader(value, 254).toLowerCase();
-  if (!EMAIL_PATTERN.test(email)) throw new Error("Email address is invalid.");
+  // MISE-005O: fold A-Z only (COLLATE "C" lower), then apply the stricter
+  // Edge RFC pattern. Durable SQL CHECK uses GMAIL_SENDER_EMAIL_SHAPE.
+  const email = normalizeGmailSenderEmail(sanitizeHeader(value, 254));
+  if (!EMAIL_PATTERN.test(email) || !matchesGmailSenderEmailShape(email)) {
+    throw new Error("Email address is invalid.");
+  }
   return email;
 }
 
