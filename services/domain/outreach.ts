@@ -63,10 +63,23 @@ export function normalizeOutreachEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
+/**
+ * MISE-005M. Matches SQL
+ *   <email> collate "C" ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+ * under the C locale space set (space, tab, LF, VT, FF, CR). Prefer this over
+ * JS `\s`, which also rejects Unicode spaces the CHECK would still accept.
+ */
+export const OUTREACH_EMAIL_SHAPE =
+  /^[^ \t\n\v\f\r@]+@[^ \t\n\v\f\r@]+\.[^ \t\n\v\f\r@]+$/;
+
+export function matchesOutreachEmailShape(value: string) {
+  return OUTREACH_EMAIL_SHAPE.test(value);
+}
+
 export function normalizeOutreachLead(input: OutreachLeadInput): NormalizedOutreachLead {
   const businessName = requireText(input.businessName, "businessName", 160);
   const email = normalizeOutreachEmail(requireText(input.email, "email", 320));
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("email must be a valid email address.");
+  if (!matchesOutreachEmailShape(email)) throw new Error("email must be a valid email address.");
 
   const sourceUrl = requireHttpUrl(input.sourceUrl, "sourceUrl");
   const website = optionalHttpUrl(input.website, "website");

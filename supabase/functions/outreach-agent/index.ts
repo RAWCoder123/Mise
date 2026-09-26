@@ -7,6 +7,7 @@ import {
   OUTREACH_FOLLOW_UP_MAX,
   buildFallbackOutreachDraft,
   isWithinOutreachSendWindow,
+  matchesOutreachEmailShape,
   normalizeOutreachLead,
   renderOutreachEmail,
   type OutreachContactBasis,
@@ -930,7 +931,8 @@ function requireHeaderText(value: unknown, fieldName: string, maximumLength: num
 
 function requireEmail(value: unknown, fieldName: string) {
   const email = requireString(value, fieldName, 320).toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, `${fieldName} must be a valid email address.`);
+  // MISE-005M: ASCII C [[:space:]] parity with outreach_campaigns CHECKs.
+  if (!matchesOutreachEmailShape(email)) throw new HttpError(400, `${fieldName} must be a valid email address.`);
   return email;
 }
 
