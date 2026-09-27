@@ -12,6 +12,13 @@ export const SQUARE_OAUTH_SCOPES = [
   "ORDERS_READ",
 ] as const;
 
+/** Mirrors private.square_credentials.merchant_id COLLATE "C" CHECK (MISE-005AZ). */
+export const SQUARE_MERCHANT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+export function isSquareMerchantId(value: string): boolean {
+  return SQUARE_MERCHANT_ID_PATTERN.test(value);
+}
+
 const MAX_PROVIDER_RESPONSE_BYTES = 256 * 1024;
 
 export type SquareFailureDisposition = "rejected" | "reauthorize" | "ambiguous";
@@ -382,7 +389,7 @@ function parseTokenSet(payload: Record<string, unknown>, requireRefresh: boolean
   const accessToken = stringField(payload, "access_token", 4096);
   const refreshToken = stringField(payload, "refresh_token", 4096);
   const merchantId = stringField(payload, "merchant_id", 128);
-  if (!accessToken || !merchantId) {
+  if (!accessToken || !merchantId || !isSquareMerchantId(merchantId)) {
     throw new SquareProviderError("token_response_invalid", "ambiguous", 502);
   }
   if (requireRefresh && !refreshToken) {

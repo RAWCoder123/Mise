@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
+  isSquareMerchantId,
   listSquareCatalogItems,
   refreshSquareAccessToken,
   searchSquareOrders,
@@ -54,6 +55,10 @@ Deno.serve(async (req) => {
         ? String((payload.data as Record<string, unknown>).merchant_id)
         : "");
     if (!merchantId) return jsonResponse({ status: "ignored", reason: "merchant_missing" }, 200);
+    // Fail closed before RPC when merchant_id is outside the COLLATE C ASCII class.
+    if (!isSquareMerchantId(merchantId)) {
+      return jsonResponse({ status: "ignored", reason: "merchant_invalid" }, 200);
+    }
 
     const securitySupabase = serviceClient();
     const { data: target, error: targetError } = await securitySupabase.rpc(
