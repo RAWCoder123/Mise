@@ -7,6 +7,7 @@ import {
   OUTREACH_FOLLOW_UP_MAX,
   buildFallbackOutreachDraft,
   isWithinOutreachSendWindow,
+  matchesOutreachHttpUrlPrefix,
   normalizeOutreachLead,
   renderOutreachEmail,
   type OutreachContactBasis,
@@ -937,6 +938,10 @@ function requireEmail(value: unknown, fieldName: string) {
 function optionalHttpUrl(value: unknown, fieldName: string) {
   const text = optionalString(value, fieldName, 2_048);
   if (!text) return null;
+  // MISE-005AI: same COLLATE "C" ~* '^https?://' prefix as the campaign CTA CHECK.
+  if (!matchesOutreachHttpUrlPrefix(text)) {
+    throw new HttpError(400, `${fieldName} must be an HTTP(S) URL.`);
+  }
   try {
     const url = new URL(text);
     if (!["http:", "https:"].includes(url.protocol)) throw new Error();
