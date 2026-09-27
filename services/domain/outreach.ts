@@ -63,6 +63,16 @@ export function normalizeOutreachEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
+/**
+ * Mirrors SQL CHECK: `<url> collate "C" ~* '^https?://'` (MISE-005AI).
+ * ASCII case-fold only — intentionally not locale-aware JS `\s` or Unicode.
+ */
+export const OUTREACH_HTTP_URL_PREFIX = /^https?:\/\//i;
+
+export function matchesOutreachHttpUrlPrefix(value: string) {
+  return OUTREACH_HTTP_URL_PREFIX.test(value);
+}
+
 export function normalizeOutreachLead(input: OutreachLeadInput): NormalizedOutreachLead {
   const businessName = requireText(input.businessName, "businessName", 160);
   const email = normalizeOutreachEmail(requireText(input.email, "email", 320));
@@ -221,6 +231,10 @@ function optionalText(value: unknown, fieldName: string, maximumLength: number) 
 
 function requireHttpUrl(value: unknown, fieldName: string) {
   const text = requireText(value, fieldName, 2_048);
+  // Fail closed on the same prefix the DB CHECK accepts under COLLATE "C".
+  if (!matchesOutreachHttpUrlPrefix(text)) {
+    throw new Error(`${fieldName} must be an HTTP(S) URL.`);
+  }
   try {
     const url = new URL(text);
     if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error();
