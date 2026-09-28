@@ -1,5 +1,12 @@
 const projectRefPattern = /^[a-z0-9]{20}$/;
 
+/** Mirrors private.environment_identity.staging_marker COLLATE "C" CHECK (MISE-005BA). */
+export const STAGING_MARKER_PATTERN = /^[A-Za-z0-9._-]{16,200}$/;
+
+export function isStagingMarker(value) {
+  return typeof value === "string" && STAGING_MARKER_PATTERN.test(value);
+}
+
 export function validateStagingTarget(urlValue, projectRef, productionProjectRef = process.env.SUPABASE_PRODUCTION_PROJECT_REF) {
   if (!urlValue || !projectRef) {
     throw new Error("Staging preflight requires SUPABASE_STAGING_URL and SUPABASE_STAGING_PROJECT_REF.");
@@ -64,8 +71,10 @@ export async function assertStagingPreflight(source = process.env, fetchImplemen
   if (!anonKey || !marker) {
     throw new Error("Staging preflight requires SUPABASE_STAGING_ANON_KEY and MISE_STAGING_MARKER.");
   }
-  if (marker.length < 16 || marker.length > 200) {
-    throw new Error("MISE_STAGING_MARKER must be a non-secret staging identity value between 16 and 200 characters.");
+  if (!isStagingMarker(marker)) {
+    throw new Error(
+      "MISE_STAGING_MARKER must be a non-secret ASCII staging identity (16–200 chars: A–Z, a–z, 0–9, ., _, -)."
+    );
   }
 
   const response = await fetchImplementation(`${target.url}/rest/v1/rpc/verify_staging_identity`, {

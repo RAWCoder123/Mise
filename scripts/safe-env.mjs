@@ -1,4 +1,4 @@
-import { validateStagingTarget } from "./staging-preflight.mjs";
+import { isStagingMarker, validateStagingTarget } from "./staging-preflight.mjs";
 
 export const testflightStagingProjectRef = "ycwozuyyxunnnvalydar";
 
@@ -80,7 +80,7 @@ export function testflightPublicQaEnv(extra = {}, source = process.env) {
   if (projectRef !== testflightStagingProjectRef) {
     throw new Error(`TestFlight QA must target staging project ${testflightStagingProjectRef}.`);
   }
-  if (!anonKey || marker.length < 16 || marker.length > 200) {
+  if (!anonKey || !isStagingMarker(marker)) {
     throw new Error("TestFlight QA requires the public staging anon key and valid staging identity marker.");
   }
 
