@@ -121,7 +121,38 @@ Deno.serve(async (req) => {
       throw new HttpError(400, "Square did not return a refresh credential.");
     }
 
-    const primaryLocation = locations[0]?.externalLocationId ?? null;
+    // Fail closed before RPC when external_location_id is outside the COLLATE C
+    // ASCII class (MISE-005BE). Keeps Edge callback continuous with the table
+    // CHECK without rewriting contested service_complete_square_oauth.
+    const acceptedLocations = locations.filter((location) =>
+      isSquareExternalLocationId(location.externalLocationId)
+    );
+    if (locations.length > 0 && acceptedLocations.length === 0) {
+      await failOAuthFlow(
+        securitySupabase,
+        claimedFlow.flowId,
+        "token_response_invalid",
+        "error",
+      );
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        claimedFlow.actorUserId,
+        claimedFlow.callbackReservationId,
+        claimedFlow.restaurantId,
+        "square-oauth-callback",
+        "error",
+        "square_oauth_location_id_invalid",
+        { provider: "square", reason: "external_location_id_invalid" },
+      );
+      terminalContext = null;
+      return callbackPage(
+        false,
+        "Square could not be connected. Return to Mise to reconnect.",
+        400,
+      );
+    }
+
+    const primaryLocation = acceptedLocations[0]?.externalLocationId ?? null;
     const { error: completionError } = await securitySupabase.rpc(
       "service_complete_square_oauth",
       {
@@ -130,7 +161,7 @@ Deno.serve(async (req) => {
         p_external_location_id: primaryLocation,
         p_credential_material: tokens.refreshToken,
         p_granted_scopes: tokens.grantedScopes,
-        p_locations: locations.map((location) => ({
+        p_locations: acceptedLocations.map((location) => ({
           external_location_id: location.externalLocationId,
           display_name: location.displayName,
           timezone: location.timezone,
@@ -200,6 +231,13 @@ function squareOAuthConfig(): SquareOAuthConfig {
     throw new HttpError(500, "Server configuration is unavailable.");
   }
   return { applicationId, applicationSecret, redirectUri, environment };
+}
+
+/** Mirrors public.pos_locations.external_location_id COLLATE "C" CHECK (MISE-005BE). */
+const SQUARE_EXTERNAL_LOCATION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+function isSquareExternalLocationId(value: string): boolean {
+  return SQUARE_EXTERNAL_LOCATION_ID_PATTERN.test(value);
 }
 
 async function failOAuthFlow(
