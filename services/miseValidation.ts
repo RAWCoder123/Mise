@@ -1161,8 +1161,15 @@ function requireServiceStyle(value: unknown): RestaurantServiceStyle {
   return value;
 }
 
+/** IANA Area/Location ASCII class pinned to restaurants.timezone CHECK (MISE-005BB). */
+export const IANA_TIMEZONE_SHAPE_PATTERN = /^[A-Za-z0-9/_+-]{1,64}$/;
+
+export function isIanaTimezoneShape(value: string): boolean {
+  return IANA_TIMEZONE_SHAPE_PATTERN.test(value);
+}
+
 function requireIanaTimezone(value: unknown) {
-  if (typeof value !== "string" || value.length < 1 || value.length > 64) {
+  if (typeof value !== "string" || !isIanaTimezoneShape(value)) {
     throw new Error("Timezone must be a supported IANA timezone.");
   }
   try {
