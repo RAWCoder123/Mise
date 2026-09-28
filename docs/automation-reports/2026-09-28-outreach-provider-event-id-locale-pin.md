@@ -37,7 +37,7 @@ would refuse (or the reverse), breaking Svix replay continuity.
 
 ## Verification
 
-- `npm run typecheck`
-- focused: `outreachProviderEventIdLocalePin`
-- `npm test`
+- `npm run typecheck` — pass
+- focused: `outreachProviderEventIdLocalePin` — 5/5
+- `npm test` — 681 pass / 0 fail / 7 cancelled (withTimeout baseline)
 - `npm run supabase:test` blocked locally when Docker unavailable
