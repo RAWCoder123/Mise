@@ -133,7 +133,7 @@ async function constantTimeEqual(left: string, right: string) {
 
 async function createCampaign(supabase: SupabaseClient, body: JsonRecord) {
   const input = requireObject(body.campaign, "campaign");
-  const timezone = optionalString(input.timezone, "timezone", 100) ?? "America/New_York";
+  const timezone = optionalString(input.timezone, "timezone", 64) ?? "America/New_York";
   if (!isValidTimeZone(timezone)) throw new HttpError(400, "campaign.timezone is not a valid IANA timezone.");
 
   const startHour = optionalInteger(input.sendWindowStartHour, "sendWindowStartHour", 0, 23) ?? 9;
@@ -983,7 +983,17 @@ function normalizeWeekdays(value: unknown) {
   return [...new Set(weekdays)];
 }
 
+/** MISE-005BC: same IANA Area/Location ASCII class as outreach_campaigns_timezone_check. */
+const IANA_TIMEZONE_SHAPE_PATTERN = /^[A-Za-z0-9/_+-]{1,64}$/;
+
+function isIanaTimezoneShape(value: string) {
+  return IANA_TIMEZONE_SHAPE_PATTERN.test(value);
+}
+
 function isValidTimeZone(value: string) {
+  // Fail closed on the table CHECK ASCII class before Intl, so Edge create and
+  // dump/restore cannot accept timezone bytes the COLLATE "C" gate would refuse.
+  if (!isIanaTimezoneShape(value)) return false;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
     return true;
