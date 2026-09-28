@@ -143,6 +143,34 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Fail closed before RPC when provider_subject is outside the COLLATE C
+    // ASCII class (MISE-005BD). Keeps Edge callback continuous with the table
+    // CHECK without rewriting contested service_complete_gmail_oauth / gmail.ts.
+    if (!isGmailProviderSubject(identity.subject)) {
+      await failOAuthFlow(
+        securitySupabase,
+        claimedFlow.flowId,
+        "token_response_invalid",
+        "needs_reauth",
+      );
+      await recordFunctionSecurityEvent(
+        securitySupabase,
+        claimedFlow.actorUserId,
+        claimedFlow.callbackReservationId,
+        claimedFlow.restaurantId,
+        "gmail-oauth-callback",
+        "error",
+        "gmail_oauth_provider_subject_invalid",
+        { provider: "gmail", reason: "provider_subject_invalid" },
+      );
+      terminalContext = null;
+      return callbackPage(
+        false,
+        "Gmail could not be connected. Return to Mise to reconnect.",
+        502,
+      );
+    }
+
     const { error: completionError } = await securitySupabase.rpc(
       "service_complete_gmail_oauth",
       {
@@ -220,6 +248,13 @@ function googleOAuthConfig(): GoogleOAuthConfig {
     throw new HttpError(500, "Server configuration is unavailable.");
   }
   return { clientId, clientSecret, redirectUri };
+}
+
+/** Mirrors private.gmail_credentials.provider_subject COLLATE "C" CHECK (MISE-005BD). */
+const GMAIL_PROVIDER_SUBJECT_PATTERN = /^[A-Za-z0-9_-]{1,255}$/;
+
+function isGmailProviderSubject(value: string): boolean {
+  return GMAIL_PROVIDER_SUBJECT_PATTERN.test(value);
 }
 
 async function failOAuthFlow(
