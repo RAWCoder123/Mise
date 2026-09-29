@@ -66,7 +66,8 @@ requirements and completion consistency across restore.
 
 - `npm run typecheck` pass
 - focused `tests/restaurantTasksVerificationMethodLocalePin.test.ts` 3/3 pass
-- `npm test` results recorded in the tip commit message
+- `npm test` 679 pass / 0 fail / 7 cancelled (withTimeout baseline; includes
+  the three new MISE-005CR static checks)
 - pgTAP fixture committed (plan 15 from 15 assertion call sites); Docker/hosted
   pgTAP not run here
 
