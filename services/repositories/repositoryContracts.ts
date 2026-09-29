@@ -389,6 +389,11 @@ export interface RestaurantSetupSnapshotSummary {
   skippedRecipeIngredients: number;
 }
 
+export interface ManualPosSalesImportSnapshotSummary {
+  posSalesRowsSaved: number;
+  importId: string | null;
+}
+
 export interface RecipeMappingSignalInput {
   restaurantId: string;
   mappingId: string | null;
@@ -598,6 +603,10 @@ export interface MiseRepository {
     restaurantId: string,
     input: RestaurantSetupSnapshotInput
   ): Promise<RestaurantSetupSnapshotSummary>;
+  importManualPosSalesSnapshot(
+    restaurantId: string,
+    posSales: PosSaleInput[]
+  ): Promise<ManualPosSalesImportSnapshotSummary>;
   upsertInventoryItem(input: InventoryItemInput): Promise<InventoryItem>;
   createPosSale(input: PosSaleInput): Promise<PosSale>;
   updateInventoryItem(restaurantId: string, itemId: string, patch: InventoryItemPatch): Promise<InventoryItem>;
