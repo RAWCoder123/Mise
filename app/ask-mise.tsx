@@ -21,6 +21,10 @@ import {
   fetchTodaySummary,
   type TodayCommandCenterSummary
 } from "../services/miseService";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../services/presentation/hubLoadState";
 import { presentOperationalTodayTask } from "../services/presentation/operationsPresentation";
 import { captureMiseError } from "../services/telemetry";
 import type { Insight } from "../types/mise";
@@ -129,8 +133,22 @@ export default function AskMiseScreen() {
     }, [load])
   );
 
-  const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
-  const visibleInsights = loadedRestaurantId === restaurant?.id ? insights : [];
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: Boolean(error)
+  });
+  const hubReady = hubLoadState === "ready";
+  const askEditable = presentRestaurantScopedHubActionsEditable({
+    hubReady,
+    allowed: true,
+    busy: asking
+  });
+  // Soft-refresh may keep last-known summary/insights in state, but loadError must
+  // never keep Ask Mise answerable from stale operational evidence.
+  const visibleSummary = hubReady ? summary : null;
+  const visibleInsights = hubReady ? insights : [];
+  const visibleMessages = hubReady ? messages : [];
 
   const revealLatestMessage = useCallback((animated = true) => {
     requestAnimationFrame(() => {
@@ -192,7 +210,7 @@ export default function AskMiseScreen() {
   const ask = useCallback(
     async (question: string) => {
       const trimmed = question.trim();
-      if (!trimmed || !visibleSummary || !restaurant || asking) return;
+      if (!trimmed || !visibleSummary || !restaurant || asking || !hubReady) return;
 
       const generation = ++askGenerationRef.current;
       const restaurantId = restaurant.id;
@@ -261,6 +279,7 @@ export default function AskMiseScreen() {
       asking,
       formatCompactCurrency,
       formatNumber,
+      hubReady,
       locale,
       restaurant,
       revealLatestMessage,
@@ -338,7 +357,7 @@ export default function AskMiseScreen() {
           showsVerticalScrollIndicator={false}
           style={styles.chat}
         >
-          {messages.map((message) =>
+          {visibleMessages.map((message) =>
             message.role === "user" ? (
               <View key={message.id} style={[styles.bubble, styles.userBubble]}>
                 <Text style={[styles.bubbleText, styles.userBubbleText]}>{message.text}</Text>
@@ -388,7 +407,7 @@ export default function AskMiseScreen() {
             )
           )}
 
-          {thinking ? (
+          {hubReady && thinking ? (
             <ThinkingBubble
               label={t("ask.thinking.label")}
               steps={thinking.steps}
@@ -397,7 +416,7 @@ export default function AskMiseScreen() {
           ) : null}
         </ScrollView>
 
-        {visibleSummary && !asking ? (
+        {visibleSummary && askEditable ? (
           <View style={styles.suggestions}>
             {suggestions.slice(0, 3).map((question) => (
               <Pressable
@@ -412,7 +431,7 @@ export default function AskMiseScreen() {
           </View>
         ) : null}
 
-        <View style={[styles.composer, asking && styles.composerDisabled]}>
+        <View style={[styles.composer, !askEditable && styles.composerDisabled]}>
           <TextInput
             accessibilityLabel={t("ask.input.accessibility")}
             value={input}
@@ -420,20 +439,22 @@ export default function AskMiseScreen() {
             placeholder={t("ask.input.placeholder")}
             placeholderTextColor={colors.faint}
             style={styles.input}
-            editable={!asking}
-            onSubmitEditing={() => void ask(input)}
+            editable={askEditable}
+            onSubmitEditing={() => {
+              if (askEditable) void ask(input);
+            }}
             returnKeyType="send"
           />
           <ActionIcon
             accessibilityLabel={t("ask.send.accessibility")}
-            accessibilityState={{ disabled: asking || !input.trim() }}
-            disabled={asking || !input.trim()}
+            accessibilityState={{ disabled: !askEditable || !input.trim() }}
+            disabled={!askEditable || !input.trim()}
             onPress={() => void ask(input)}
-            style={[styles.sendButton, !(asking || !input.trim()) && styles.sendButtonReady]}
+            style={[styles.sendButton, askEditable && input.trim() ? styles.sendButtonReady : null]}
           >
             <Send
               size={icon.row}
-              color={asking ? colors.faint : input.trim() ? colors.surface : colors.accent}
+              color={!askEditable ? colors.faint : input.trim() ? colors.surface : colors.accent}
               strokeWidth={iconStroke}
             />
           </ActionIcon>

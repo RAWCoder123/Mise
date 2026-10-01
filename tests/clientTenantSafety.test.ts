@@ -23,7 +23,8 @@ test("operational screens reject late requests and render only active-restaurant
     orderDetail: source("app/orders/[id].tsx"),
     restaurantMemory: source("app/more/restaurant-memory.tsx"),
     logDelivery: source("app/more/log-delivery.tsx"),
-    createTask: source("app/more/create-task.tsx")
+    createTask: source("app/more/create-task.tsx"),
+    askMise: source("app/ask-mise.tsx")
   };
 
   for (const [name, screen] of Object.entries(screens)) {
@@ -60,6 +61,12 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.pos, /visibleIntegration/);
   assert.match(screens.pos, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.createTask, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.askMise, /hubReady\s*\?\s*summary\s*:\s*null/);
+  assert.match(screens.askMise, /hubReady\s*\?\s*insights\s*:\s*\[\]/);
+  assert.match(screens.askMise, /hubReady\s*\?\s*messages\s*:\s*\[\]/);
+  assert.match(screens.askMise, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.askMise, /!hubReady/);
+  assert.match(screens.askMise, /editable=\{askEditable\}/);
   assert.match(screens.settings, /!restaurantActionsEditable/);
   assert.match(
     source("services/presentation/hubLoadState.ts"),
