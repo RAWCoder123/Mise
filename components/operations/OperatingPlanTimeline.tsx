@@ -7,7 +7,11 @@ import { Button } from "../ui/Button";
 import { colors, conceptTypography, density, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
-import type { OperatingPlanBucket, OperatingPlanItem } from "../../services/domain/operatingPlan";
+import {
+  resolveOperatingPlanItemActionRoute,
+  type OperatingPlanBucket,
+  type OperatingPlanItem
+} from "../../services/domain/operatingPlan";
 import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
@@ -178,7 +182,7 @@ function OperatingPlanItemRow({
             detail: presentation.detail,
             action: actionLabel
           })}
-          onPress={() => router.push(`/tasks/${item.id}`)}
+          onPress={() => router.push(resolveOperatingPlanItemActionRoute(item))}
           style={({ pressed }) => [styles.taskMain, pressed && styles.pressed]}
         >
           <View style={styles.taskCopy}>
@@ -209,7 +213,7 @@ function OperatingPlanItemRow({
             <Button
               title={t("today.action.start")}
               size="compact"
-              onPress={() => router.push(task ? task.action.route : `/tasks/${item.id}`)}
+              onPress={() => router.push(resolveOperatingPlanItemActionRoute(item))}
               style={styles.startButton}
             />
           </View>

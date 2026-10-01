@@ -143,6 +143,14 @@ const WINDOW_ORDER: readonly ServiceWindowId[] = [
 
 const BUCKET_ORDER: readonly OperatingPlanBucket[] = ["now", "up_next", "later", "done"];
 
+/**
+ * Prefer the authoritative workflow route from a projected Today task.
+ * Shared restaurant-only plan items fall back to the task detail screen.
+ */
+export function resolveOperatingPlanItemActionRoute(item: OperatingPlanItem): string {
+  return item.sourceTask?.action.route ?? `/tasks/${item.id}`;
+}
+
 export function buildDailyOperatingPlan(input: BuildDailyOperatingPlanInput): DailyOperatingPlan {
   const restaurantId = input.restaurantId.trim();
   if (!restaurantId) throw new Error("A restaurant is required to build an operating plan.");

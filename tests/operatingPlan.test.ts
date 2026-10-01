@@ -6,6 +6,7 @@ import {
   buildDailyOperatingPlan,
   currentServiceWindow,
   hourInTimeZone,
+  resolveOperatingPlanItemActionRoute,
   type BuildDailyOperatingPlanInput
 } from "../services/domain/operatingPlan";
 import {
@@ -225,6 +226,50 @@ test("merges tenant-scoped shared tasks with roles, windows, dependencies, and t
   assert.equal(projectedCompleted?.status, "completed");
   assert.equal(plan.items.some((item) => item.id === cancelled.id), false);
   assert.equal(plan.items.some((item) => item.id === foreign.id), false);
+});
+
+test("resolves plan item action routes to workflow screens, not only task detail", () => {
+  const recommendations = [
+    recommendation({
+      id: "rec_route",
+      inventory_item_id: "inv_critical",
+      status: "pending",
+      urgency: "high"
+    })
+  ];
+  const orders = [order({ id: "order_route", delivery_date: operatingDate, status: "draft" })];
+  const tasks = deriveTasks({ recommendations, orders });
+  const shared = restaurantTask({
+    id: "task_shared_route",
+    title: "Check walk-in",
+    timingBucket: "now"
+  });
+  const plan = buildDailyOperatingPlan(
+    baseInput({ tasks, recommendations, orders, centralTasks: [shared] })
+  );
+
+  const countItem = plan.items.find(
+    (item) => item.sourceTask?.action.intent === "begin_inventory_count_session"
+  );
+  assert.ok(countItem);
+  assert.equal(countItem?.sourceTask?.action.route, "/inventory/count");
+  assert.equal(resolveOperatingPlanItemActionRoute(countItem!), "/inventory/count");
+  assert.notEqual(resolveOperatingPlanItemActionRoute(countItem!), `/tasks/${countItem!.id}`);
+
+  const orderItem = plan.items.find((item) => item.sourceTask?.source.id === "order_route");
+  assert.ok(orderItem);
+  assert.equal(resolveOperatingPlanItemActionRoute(orderItem!), "/orders/order_route");
+  assert.notEqual(resolveOperatingPlanItemActionRoute(orderItem!), `/tasks/${orderItem!.id}`);
+
+  const approvalItem = plan.items.find((item) => item.sourceTask?.source.id === "rec_route");
+  assert.ok(approvalItem);
+  assert.equal(resolveOperatingPlanItemActionRoute(approvalItem!), "/orders");
+  assert.notEqual(resolveOperatingPlanItemActionRoute(approvalItem!), `/tasks/${approvalItem!.id}`);
+
+  const sharedItem = plan.items.find((item) => item.id === shared.id);
+  assert.ok(sharedItem);
+  assert.equal(sharedItem?.sourceTask, null);
+  assert.equal(resolveOperatingPlanItemActionRoute(sharedItem!), `/tasks/${shared.id}`);
 });
 
 test("completion results come from matching activity or source state, never invented prose", () => {

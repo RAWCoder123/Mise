@@ -735,7 +735,7 @@ function HomeTaskRow({
       iconTone={high ? "danger" : "brand"}
       badgeLabel={t(high ? "task.badge.high" : "task.badge.normal")}
       badgeTone={high ? "danger" : "neutral"}
-      onPress={() => router.push(`/tasks/${task.id}`)}
+      onPress={() => router.push(task.action.route)}
     />
   );
 }
