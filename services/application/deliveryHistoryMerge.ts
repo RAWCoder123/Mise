@@ -1,5 +1,6 @@
 import type { InventoryEvent } from "../domain/inventoryLedger";
 import type { InventoryOutboxEntry } from "../domain/inventoryOutbox";
+import { unitCostFromReceiptMetadata } from "../domain/adhocReceiptUnitCost";
 
 export interface DeliveryHistoryEntry {
   id: string;
@@ -11,6 +12,8 @@ export interface DeliveryHistoryEntry {
   effectiveAt: string;
   recordedAt: string | null;
   note: string | null;
+  /** Optional display/purchase-unit cost captured with the ad-hoc receipt. */
+  unitCost: number | null;
   /** True when the receipt is still pending outbox sync. */
   syncing: boolean;
 }
@@ -51,6 +54,7 @@ export function mergeDeliveryHistoryEntries(input: {
       effectiveAt: event.effectiveAt,
       recordedAt: event.recordedAt,
       note: noteFromMetadata(event.metadata),
+      unitCost: unitCostFromReceiptMetadata(event.metadata),
       syncing: false
     }));
 
@@ -73,6 +77,7 @@ export function mergeDeliveryHistoryEntries(input: {
       effectiveAt: entry.event.effectiveAt,
       recordedAt: null,
       note: noteFromMetadata(entry.event.metadata),
+      unitCost: unitCostFromReceiptMetadata(entry.event.metadata),
       syncing: true
     }));
 

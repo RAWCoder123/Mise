@@ -24,12 +24,14 @@ import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   addInventoryItemToOrder,
+  applyAdhocReceiptUnitCost,
   fetchInventoryItemOutlook,
   fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
+import { normalizeAdhocReceiptUnitCost } from "../../services/domain/adhocReceiptUnitCost";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -50,6 +52,7 @@ export default function InventoryDetailScreen() {
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
   const [operation, setOperation] = useState<InventoryOperatorAction>("count");
   const [quantityText, setQuantityText] = useState("");
+  const [unitCostText, setUnitCostText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
@@ -124,6 +127,7 @@ export default function InventoryDetailScreen() {
     setQueueEntries([]);
     setOperation("count");
     setQuantityText("");
+    setUnitCostText("");
     setNoteText("");
     setParLevel("");
     setReorderThreshold("");
@@ -222,6 +226,22 @@ export default function InventoryDetailScreen() {
       return;
     }
 
+    let unitCost: number | undefined;
+    if (operation === "receipt" && unitCostText.trim()) {
+      const parsedCost = parseNumber(unitCostText);
+      const normalizedCost = normalizeAdhocReceiptUnitCost(parsedCost);
+      if (normalizedCost == null) {
+        setMessage(
+          t("inventory.ops.unitCostInvalid", {
+            maximum: formatNumber(operatingLimits.inventoryQuantity)
+          })
+        );
+        setMessageIsError(true);
+        return;
+      }
+      unitCost = normalizedCost;
+    }
+
     const restaurantId = restaurant.id;
     setQuantityError(undefined);
     setSubmittingOperation(true);
@@ -235,20 +255,48 @@ export default function InventoryDetailScreen() {
         quantity,
         canonicalUnit: item.canonical_unit,
         effectiveAt: new Date().toISOString(),
-        note: noteText.trim() || undefined
+        note: noteText.trim() || undefined,
+        unitCost
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
       const flushSummary = await flushQueuedInventoryEvents(restaurantId);
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
+      let costApplyFailed = false;
+      if (
+        unitCost != null &&
+        flushSummary.accepted > 0 &&
+        flushSummary.conflicted === 0 &&
+        flushSummary.rejected === 0
+      ) {
+        try {
+          await applyAdhocReceiptUnitCost(restaurantId, {
+            inventoryItemId: item.id,
+            unitCost
+          });
+        } catch {
+          costApplyFailed = true;
+        }
+        if (activeRestaurantIdRef.current !== restaurantId) return;
+      }
+
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
       setQuantityText(operation === "stockout" ? "0" : "");
+      setUnitCostText("");
       setNoteText("");
-      setMessage(describeFlushResult(flushSummary, t));
-      setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
+      if (costApplyFailed) {
+        setMessage(t("inventory.ops.unitCostApplyFailed"));
+        setMessageIsError(true);
+      } else if (unitCost != null && flushSummary.accepted > 0) {
+        setMessage(t("inventory.ops.unitCostApplied"));
+        setMessageIsError(false);
+      } else {
+        setMessage(describeFlushResult(flushSummary, t));
+        setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
+      }
     } catch (submitError) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setMessage(
@@ -512,6 +560,7 @@ export default function InventoryDetailScreen() {
                       onValueChange={(value) => {
                         setOperation(value);
                         setQuantityError(undefined);
+                        setUnitCostText("");
                         if (value === "stockout") setQuantityText("0");
                       }}
                     />
@@ -535,6 +584,15 @@ export default function InventoryDetailScreen() {
                         error={quantityError}
                       />
                     )}
+                    {operation === "receipt" ? (
+                      <Field
+                        label={t("inventory.ops.unitCost", { unit: item.unit })}
+                        value={unitCostText}
+                        onChangeText={setUnitCostText}
+                        editable={actionsEditable && !busy}
+                        keyboardType="decimal-pad"
+                      />
+                    ) : null}
                     <Field
                       label={t("inventory.ops.note")}
                       value={noteText}

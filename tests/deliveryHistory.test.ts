@@ -106,9 +106,32 @@ test("mergeDeliveryHistoryEntries includes pending outbox receipts as syncing", 
   assert.equal(history[0]!.syncing, true);
   assert.equal(history[0]!.itemName, "Chicken thighs");
   assert.equal(history[0]!.note, "Still syncing");
+  assert.equal(history[0]!.unitCost, null);
   assert.equal(history[1]!.syncing, false);
   assert.equal(history[1]!.clientEventId, "client-receipt-1");
   assert.equal(history[1]!.note, "Morning drop");
+  assert.equal(history[1]!.unitCost, null);
+});
+
+test("mergeDeliveryHistoryEntries surfaces optional receipt unit cost", async () => {
+  const { record, list } = createInMemoryInventoryEventRecorder({
+    actorUserId: "manager-1",
+    idFor: (candidate) => `server-${candidate.clientEventId}`,
+    now: () => "2026-08-01T09:05:00.000Z"
+  });
+  await record({
+    ...receiptInput,
+    metadata: { note: "Priced drop", unitCost: 4.25 }
+  });
+  const events = list({ restaurantId: "restaurant-a", eventTypes: ["receipt"] });
+  const history = mergeDeliveryHistoryEntries({
+    events,
+    itemNames: { "item-chicken": "Chicken thighs" },
+    queued: []
+  });
+  assert.equal(history.length, 1);
+  assert.equal(history[0]!.unitCost, 4.25);
+  assert.equal(history[0]!.note, "Priced drop");
 });
 
 test("mergeDeliveryHistoryEntries dedupes pending entries already accepted", async () => {
