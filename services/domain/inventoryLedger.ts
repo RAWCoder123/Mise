@@ -1,4 +1,5 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
+import { LEDGER_QUANTITY_MAX_SCALE } from "./securityLimits";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
 export type InventoryEventType =
@@ -191,6 +192,7 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  if (fractionalScale(input.quantity) > LEDGER_QUANTITY_MAX_SCALE) return "invalid_quantity_scale";
   return null;
 }
 
@@ -210,4 +212,34 @@ function sameEventPayload(event: InventoryEvent, candidate: InventoryEventInput)
     event.supersedesEventId === candidate.supersedesEventId &&
     JSON.stringify(event.metadata) === JSON.stringify(candidate.metadata)
   );
+}
+
+/**
+ * Returns the number of significant decimal places in a finite number.
+ *
+ * Uses the shortest decimal representation (String(value)) so that
+ * floating-point values like 0.035274 are not inflated by representation
+ * artefacts.  The caller should pass values that were entered or calculated
+ * by humans; this function is not appropriate for the full IEEE 754 scale
+ * of an arbitrary computed result.
+ */
+export function fractionalScale(value: number): number {
+  if (!Number.isFinite(value) || value === 0) return 0;
+  const str = String(Math.abs(value));
+  // Handle scientific notation (e.g. 1e-7 → 0.0000001)
+  if (str.includes("e")) {
+    const match = str.match(/e-(\d+)$/);
+    if (match) {
+      // e.g. "1e-7": the mantissa has 0 extra decimal places beyond the exponent
+      const [mantissa] = str.split("e");
+      const mantissaDecimals =
+        mantissa !== undefined && mantissa.includes(".")
+          ? (mantissa.split(".")[1] ?? "").length
+          : 0;
+      return parseInt(match[1] ?? "0", 10) + mantissaDecimals;
+    }
+    return 0;
+  }
+  const dot = str.indexOf(".");
+  return dot === -1 ? 0 : str.length - dot - 1;
 }
