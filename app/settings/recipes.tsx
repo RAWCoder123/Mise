@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
-import { AlertTriangle, ArrowLeft, BookOpen, Link2, Package, PackageCheck, Plus, Save, ShoppingBag } from "lucide-react-native";
+import { AlertTriangle, ArrowLeft, BookOpen, Link2, Package, PackageCheck, Plus, Save, Search, ShoppingBag } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -24,6 +24,10 @@ import {
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
+import {
+  filterMissingMenuItemsBySearch,
+  RECIPE_MISSING_MENU_SEARCH_THRESHOLD
+} from "../../services/domain/recipeMissingMenuSearch";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -472,7 +476,21 @@ function RecipeBaselineBuilder({
   onQuantityChange: (value: string) => void;
   onAdd: () => void;
 }) {
-  const { t } = useLocale();
+  const { formatNumber, t } = useLocale();
+  const [missingDishQuery, setMissingDishQuery] = useState("");
+  const showMissingDishSearch = missingMenuItems.length > RECIPE_MISSING_MENU_SEARCH_THRESHOLD;
+  const missingMenuFingerprint = missingMenuItems.join("\u0001");
+  const filteredMissingMenuItems = useMemo(
+    () => filterMissingMenuItemsBySearch(missingMenuItems, showMissingDishSearch ? missingDishQuery : ""),
+    [missingDishQuery, missingMenuItems, showMissingDishSearch]
+  );
+  const missingSearchNoMatches =
+    showMissingDishSearch && missingDishQuery.trim().length > 0 && filteredMissingMenuItems.length === 0;
+
+  useEffect(() => {
+    setMissingDishQuery("");
+  }, [missingMenuFingerprint]);
+
   return (
     <Card style={styles.builderCard}>
       <View style={styles.builderHeader}>
@@ -488,17 +506,50 @@ function RecipeBaselineBuilder({
       {missingMenuItems.length > 0 && (
         <View style={styles.suggestionBlock}>
           <Text style={styles.inputLabel}>{t("recipes.builder.missing")}</Text>
-          <View style={styles.chipRow}>
-            {missingMenuItems.slice(0, 5).map((itemName) => (
-              <SuggestionChip
-                key={itemName}
-                label={itemName}
-                active={menuItemName.trim().toLowerCase() === itemName.toLowerCase()}
-                disabled={saving}
-                onPress={() => onMenuItemNameChange(itemName)}
+          {showMissingDishSearch ? (
+            <View style={styles.missingSearchBox}>
+              <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
+              <TextInput
+                accessibilityLabel={t("recipes.builder.missingSearch.accessibility")}
+                accessibilityHint={t("recipes.builder.missingSearch.hint")}
+                accessibilityState={{ disabled: saving }}
+                value={missingDishQuery}
+                onChangeText={setMissingDishQuery}
+                editable={!saving}
+                placeholder={t("recipes.builder.missingSearch.placeholder")}
+                placeholderTextColor={colors.faint}
+                returnKeyType="search"
+                autoCorrect={false}
+                autoCapitalize="none"
+                style={styles.missingSearchInput}
               />
-            ))}
-          </View>
+            </View>
+          ) : null}
+          {showMissingDishSearch ? (
+            <Text style={styles.missingSearchMeta} accessibilityLiveRegion="polite">
+              {t("recipes.builder.missingSearch.showing", {
+                shown: formatNumber(filteredMissingMenuItems.length),
+                total: formatNumber(missingMenuItems.length)
+              })}
+            </Text>
+          ) : null}
+          {missingSearchNoMatches ? (
+            <Text style={styles.missingSearchEmpty} accessibilityLiveRegion="polite">
+              {t("recipes.builder.missingSearch.empty")}
+            </Text>
+          ) : (
+            <View style={styles.chipRow}>
+              {filteredMissingMenuItems.map((itemName) => (
+                <SuggestionChip
+                  key={itemName}
+                  label={itemName}
+                  active={menuItemName.trim().toLowerCase() === itemName.toLowerCase()}
+                  disabled={saving}
+                  onPress={() => onMenuItemNameChange(itemName)}
+                />
+              ))}
+            </View>
+          )}
         </View>
       )}
 
@@ -812,6 +863,38 @@ const styles = StyleSheet.create({
   },
   suggestionBlock: {
     gap: 9
+  },
+  missingSearchBox: {
+    minHeight: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  missingSearchInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+    padding: 0
+  },
+  missingSearchMeta: {
+    color: colors.faint,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700"
+  },
+  missingSearchEmpty: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700"
   },
   chipRow: {
     flexDirection: "row",
