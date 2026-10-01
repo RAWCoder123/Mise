@@ -36,6 +36,7 @@ export default function InventoryCountSessionScreen() {
   const [detail, setDetail] = useState<InventoryCountSessionDetail | null>(null);
   const [draftCounts, setDraftCounts] = useState<Record<string, string>>({});
   const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
+  const [draftOpeningNote, setDraftOpeningNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +87,7 @@ export default function InventoryCountSessionScreen() {
     setDetail(null);
     setDraftCounts({});
     setDraftNotes({});
+    setDraftOpeningNote("");
     setSaving(false);
     setError(null);
     setNotice(null);
@@ -119,17 +121,23 @@ export default function InventoryCountSessionScreen() {
   async function startSession() {
     if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
+    const openingNoteRaw = draftOpeningNote.trim();
+    if (openingNoteRaw.length > 240) {
+      setError(t("inventory.count.sessionNoteTooLong"));
+      return;
+    }
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      const next = await beginInventoryCountSession(restaurantId);
+      const next = await beginInventoryCountSession(restaurantId, openingNoteRaw || null);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(next);
       setDraftCounts(
         Object.fromEntries(next.lines.map((line) => [line.inventory_item_id, ""]))
       );
       setDraftNotes(Object.fromEntries(next.lines.map((line) => [line.inventory_item_id, ""])));
+      setDraftOpeningNote("");
       setLoadedRestaurantId(restaurantId);
       setNotice(t("inventory.count.started"));
     } catch (caught) {
@@ -335,23 +343,36 @@ export default function InventoryCountSessionScreen() {
               title={t("inventory.count.startTitle")}
               subtitle={t("inventory.count.startBody")}
             >
-              <Button
-                title={t("inventory.count.startAction")}
-                onPress={() => void startSession()}
-                disabled={!canDraft || saving}
-                fullWidth
-                accessibilityLabel={t("inventory.count.startAccessibility")}
-              />
-              {!canDraft ? (
-                <Text style={styles.help}>{t("inventory.count.staffReadonly")}</Text>
-              ) : null}
-              <Button
-                title={t("inventory.count.backToList")}
-                variant="secondary"
-                onPress={() => router.replace("/inventory")}
-                fullWidth
-                style={styles.secondaryAction}
-              />
+              <View style={styles.startForm}>
+                {canDraft ? (
+                  <TextInput
+                    accessibilityLabel={t("inventory.count.sessionNoteAccessibility")}
+                    editable={!saving}
+                    value={draftOpeningNote}
+                    onChangeText={setDraftOpeningNote}
+                    placeholder={t("inventory.count.sessionNotePlaceholder")}
+                    placeholderTextColor={colors.faint}
+                    style={styles.noteInput}
+                    multiline
+                  />
+                ) : null}
+                <Button
+                  title={t("inventory.count.startAction")}
+                  onPress={() => void startSession()}
+                  disabled={!canDraft || saving}
+                  fullWidth
+                  accessibilityLabel={t("inventory.count.startAccessibility")}
+                />
+                {!canDraft ? (
+                  <Text style={styles.help}>{t("inventory.count.staffReadonly")}</Text>
+                ) : null}
+                <Button
+                  title={t("inventory.count.backToList")}
+                  variant="secondary"
+                  onPress={() => router.replace("/inventory")}
+                  fullWidth
+                />
+              </View>
             </SectionSurface>
           </MotionView>
         ) : (
@@ -365,6 +386,11 @@ export default function InventoryCountSessionScreen() {
                     variance: formatNumber(progress.varianceLines)
                   })}
                 </Text>
+                {visibleDetail.session.note ? (
+                  <Text style={styles.sessionNote}>
+                    {t("inventory.count.sessionNoteLabel", { note: visibleDetail.session.note })}
+                  </Text>
+                ) : null}
               </SectionSurface>
             </MotionView>
 
@@ -521,11 +547,19 @@ const styles = StyleSheet.create({
   help: {
     ...typography.caption,
     color: colors.muted,
-    marginTop: 10
+    marginTop: 0
+  },
+  startForm: {
+    gap: 10
   },
   progressCopy: {
     ...typography.body,
     color: colors.ink
+  },
+  sessionNote: {
+    ...typography.caption,
+    color: colors.muted,
+    marginTop: 8
   },
   lineList: {
     paddingHorizontal: 14,
