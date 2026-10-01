@@ -7,6 +7,10 @@ import {
   buildDeliveryLinesFromOrderRecommendations,
   deliveryClientIdForOrder
 } from "../domain/supplierDelivery";
+import {
+  requireSupplierDeliveryDiscrepancyReason,
+  requireSupplierDeliveryNotes
+} from "../miseValidation";
 import { getMiseRepository } from "./repository";
 
 export type { DeliveryHistoryEntry } from "./deliveryHistoryMerge";
@@ -87,12 +91,17 @@ export async function receiveSupplierOrderDelivery(
   const receivedAt = options.receivedAt ?? new Date().toISOString();
   const clientDeliveryId =
     options.clientDeliveryId?.trim() || deliveryClientIdForOrder(normalizedOrderId, receivedAt);
+  const notes = requireSupplierDeliveryNotes(options.notes);
+  const lines = built.lines.map((line) => ({
+    ...line,
+    discrepancyReason: requireSupplierDeliveryDiscrepancyReason(line.discrepancyReason)
+  }));
 
   return repository.recordSupplierOrderDelivery(normalizedRestaurantId, {
     supplierOrderId: normalizedOrderId,
     clientDeliveryId,
     receivedAt,
-    lines: built.lines,
-    notes: options.notes ?? null
+    lines,
+    notes
   });
 }

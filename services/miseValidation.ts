@@ -532,6 +532,30 @@ export function requireInventoryCountLineNote(value: string | null | undefined) 
   return normalized || null;
 }
 
+export function requireSupplierDeliveryNotes(value: string | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Delivery notes must be text.");
+  const normalized = value.trim();
+  // MISE-005EO: reject ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) so client
+  // validation matches supplier_deliveries_notes_bound_check under COLLATE "C".
+  if (normalized.length > 2000 || hasControlCharacters(normalized)) {
+    throw new Error("Delivery notes are limited to 2000 characters without control characters.");
+  }
+  return normalized || null;
+}
+
+export function requireSupplierDeliveryDiscrepancyReason(value: string | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Discrepancy reason must be text.");
+  const normalized = value.trim();
+  // MISE-005EO: reject ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) so client
+  // validation matches supplier_delivery_items_reason_bound_check under COLLATE "C".
+  if (normalized.length > 500 || hasControlCharacters(normalized)) {
+    throw new Error("Discrepancy reason is limited to 500 characters without control characters.");
+  }
+  return normalized || null;
+}
+
 export function requireInventoryCountLineUpdates(
   value: unknown
 ): Array<{ inventoryItemId: string; countedQuantity: number; note: string | null }> {
