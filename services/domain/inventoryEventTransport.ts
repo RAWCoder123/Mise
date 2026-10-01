@@ -212,6 +212,16 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 
 function rejectionReason(message: string) {
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
+  // More specific quantity messages must precede the generic "quantity" match so
+  // scale/magnitude/zero rejections stay terminal with distinct reasons.
+  if (message.includes("quantity scale")) return "invalid_quantity_scale";
+  if (message.includes("quantity exceeds supported limits")) return "quantity_too_large";
+  if (
+    message.includes("cannot have a zero quantity") ||
+    message.includes("zero quantity")
+  ) {
+    return "zero_quantity_not_allowed";
+  }
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
   if (message.includes("evidence")) return "incomplete_evidence";

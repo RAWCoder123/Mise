@@ -9,6 +9,12 @@ export const RESTAURANT_PROFILE_ARRAY_MAX_ITEMS = 20;
 export const RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS = 160;
 export const RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS = 2_000;
 export const STRUCTURED_AI_INSIGHT_MAX_BYTES = 16 * 1024;
+/**
+ * Maximum fractional decimal places allowed on inventory_events.quantity.
+ * Six places matches established canonical conversion rounding (round(..., 6))
+ * while rejecting floating-point dust that pollutes append-only ledger history.
+ */
+export const LEDGER_QUANTITY_MAX_SCALE = 6;
 
 export function utf8ByteLength(value: string) {
   let bytes = 0;
