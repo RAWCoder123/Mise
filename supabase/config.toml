@@ -25,7 +25,9 @@ additional_redirect_urls = [
   "http://localhost:8081/auth/callback",
   "http://127.0.0.1:8081/auth/callback",
   "mise://accept-invite",
-  "mise://auth/callback"
+  "mise://auth/callback",
+  "mise://reset-password",
+  "exp://127.0.0.1:8081"
 ]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
