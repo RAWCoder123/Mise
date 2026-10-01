@@ -65,7 +65,7 @@ test("v11 demo repair creates deterministic restaurant-scoped supplier UUIDs", (
     first.suppliers.map((supplier) => supplier.id),
     second.suppliers.map((supplier) => supplier.id)
   );
-  assert.equal(first.schema_version, 13);
+  assert.equal(first.schema_version, 14);
 });
 
 test("v12 demo repair never replaces a cross-tenant supplier ID from matching display text", () => {

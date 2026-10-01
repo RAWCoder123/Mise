@@ -29,6 +29,7 @@ import {
   fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
+import { requirePilotCanRecommend } from "./pilotReadiness";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -307,12 +308,18 @@ export async function addRecipeBaselineIngredient(
 }
 
 export async function addInventoryItemToOrder(restaurantId: string, itemId: string) {
-  const existing = await repository.findPendingRecommendation(restaurantId, itemId);
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+
+  // Fail closed: manual add-to-order is still a purchase recommendation write.
+  await requirePilotCanRecommend(normalizedRestaurantId);
+
+  const existing = await repository.findPendingRecommendation(normalizedRestaurantId, itemId);
   if (existing) return existing;
 
   const [anchored, history] = await Promise.all([
-    fetchAnchoredInventoryOutlooks(restaurantId),
-    repository.fetchRecommendationHistory(restaurantId)
+    fetchAnchoredInventoryOutlooks(normalizedRestaurantId),
+    repository.fetchRecommendationHistory(normalizedRestaurantId)
   ]);
   const outlook = anchored.outlooks.find((entry) => entry.item.id === itemId);
   if (!outlook) throw new Error("Inventory item not found");
@@ -322,11 +329,11 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
       "Record a new physical count for this item first. Its on-hand number came from an invalid future-dated count."
     );
   }
-  if (shouldSuppressRecommendationForItem(restaurantId, item, history, anchored.countEvidence)) {
+  if (shouldSuppressRecommendationForItem(normalizedRestaurantId, item, history, anchored.countEvidence)) {
     throw new Error("Update the inventory count first. This item was already handled.");
   }
   return repository.createPurchaseRecommendation({
-    restaurant_id: restaurantId,
+    restaurant_id: normalizedRestaurantId,
     inventory_item_id: item.id,
     item_name: item.item_name,
     supplier_id: item.supplier_id,
