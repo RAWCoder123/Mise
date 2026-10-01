@@ -1,5 +1,6 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
+import { INVENTORY_EVENT_QUANTITY_MAX } from "./securityLimits";
 
 export type InventoryEventType =
   | "receipt"
@@ -189,6 +190,9 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     input.quantity < 0
   ) {
     return "invalid_quantity";
+  }
+  if (Math.abs(input.quantity) > INVENTORY_EVENT_QUANTITY_MAX) {
+    return "quantity_too_large";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
   return null;

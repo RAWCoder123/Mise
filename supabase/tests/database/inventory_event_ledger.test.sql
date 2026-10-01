@@ -1,6 +1,6 @@
 begin;
 
-select plan(26);
+select plan(27);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -243,6 +243,18 @@ select is(
   ),
   round(1050::numeric / 453.59237::numeric, 6),
   'a rejected projection leaves on-hand unchanged'
+);
+select is(
+  pg_temp.execute_error($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'receipt', 1000001, 'g', '2026-07-26T10:25:00Z', 'operator_receipt',
+      'manager-oversized-quantity-1', 'manager-oversized-quantity-1'
+    )
+  $sql$),
+  'Inventory event quantity exceeds supported limits',
+  'an oversized ledger quantity is rejected by the magnitude bound'
 );
 select is(
   (select count(*) from public.inventory_events),
