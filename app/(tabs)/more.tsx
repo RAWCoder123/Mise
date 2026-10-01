@@ -12,6 +12,7 @@ import {
   Settings,
   Sunrise,
   Truck,
+  Undo2,
   UsersRound
 } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -87,6 +88,12 @@ export default function MoreScreen() {
             title={t("more.row.waste.title")}
             icon={<PackageMinus size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/waste" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.receiptCorrect.title")}
+            icon={<Undo2 size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/receipt-correct" as never)}
           />
           <OperationalRow
             density="menu"
