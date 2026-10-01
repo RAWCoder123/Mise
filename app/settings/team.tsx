@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
-import { ArrowLeft, UserPlus, UsersRound } from "lucide-react-native";
+import { ArrowLeft, Search, UserPlus, UsersRound } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -31,6 +31,10 @@ import {
   type AssignableTeamRole
 } from "../../services/domain/teamMembership";
 import {
+  filterTeamDirectoryBySearch,
+  TEAM_DIRECTORY_SEARCH_THRESHOLD
+} from "../../services/domain/teamDirectorySearch";
+import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
@@ -52,12 +56,13 @@ const roleKeys: Record<RestaurantRole, MessageKey> = {
 
 export default function TeamSettingsScreen() {
   const navigation = useNavigation();
-  const { t } = useLocale();
+  const { formatNumber, t } = useLocale();
   const { restaurant, role, user, usingLocalDemo } = useMiseSession();
   const [members, setMembers] = useState<RestaurantTeamMember[]>([]);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [memberQuery, setMemberQuery] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<AssignableTeamRole>("staff");
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -100,6 +105,7 @@ export default function TeamSettingsScreen() {
     setLoadedRestaurantId(null);
     setLoadError(false);
     setNotice(null);
+    setMemberQuery("");
     setInviteEmail("");
     setBusyKey(null);
     setLoading(Boolean(restaurant));
@@ -139,6 +145,13 @@ export default function TeamSettingsScreen() {
     busy: Boolean(busyKey)
   });
   const visibleMembers = hubReady ? members : [];
+  const showMemberSearch = visibleMembers.length >= TEAM_DIRECTORY_SEARCH_THRESHOLD;
+  const filteredMembers = useMemo(() => {
+    if (!showMemberSearch) return visibleMembers;
+    return filterTeamDirectoryBySearch(visibleMembers, memberQuery);
+  }, [memberQuery, showMemberSearch, visibleMembers]);
+  const memberSearchNoMatches =
+    showMemberSearch && memberQuery.trim().length > 0 && filteredMembers.length === 0;
 
   async function inviteMember() {
     if (!restaurant || !actionsEditable) return;
@@ -277,57 +290,90 @@ export default function TeamSettingsScreen() {
               framed
             />
           ) : null}
-          {visibleMembers.map((member) => {
-            const isSelf = member.user_id === user?.id;
-            const editable = mutationAllowed && canEditTeamMember(role, { role: member.role, isSelf });
-            return (
-              <View key={`${member.restaurant_id}:${member.user_id}`} style={styles.memberCard}>
-                <View style={styles.memberHeader}>
-                  <IconBadge tone="neutral">
-                    <UsersRound size={icon.inline} color={colors.text} strokeWidth={iconStroke} />
-                  </IconBadge>
-                  <View style={styles.memberCopy}>
-                    <Text style={styles.memberName}>
-                      {member.name?.trim() || member.email?.trim() || t("team.member.unnamed")}
-                      {isSelf ? ` · ${t("team.member.you")}` : ""}
-                    </Text>
-                    <Text style={styles.memberEmail}>{member.email?.trim() || t("team.member.emailMissing")}</Text>
-                  </View>
-                  <Badge label={t(roleKeys[member.role])} tone="neutral" />
-                </View>
-                {editable ? (
-                  <View style={styles.memberActions}>
-                    <View style={styles.roleRow}>
-                      {availableRoles.map((option) => {
-                        const selected = option === member.role;
-                        return (
-                          <Pressable
-                            key={option}
-                            onPress={() => void changeRole(member, option)}
-                            style={[styles.roleChip, selected ? styles.roleChipSelected : null]}
-                            disabled={!actionsEditable}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected, disabled: !actionsEditable }}
-                            accessibilityLabel={t("team.member.setRole", { role: t(roleKeys[option]) })}
-                          >
-                            <Text style={[styles.roleChipText, selected ? styles.roleChipTextSelected : null]}>
-                              {t(roleKeys[option])}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
+          {showMemberSearch ? (
+            <View style={styles.memberSearchBox}>
+              <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
+              <TextInput
+                accessibilityLabel={t("team.members.search.accessibility")}
+                accessibilityHint={t("team.members.search.hint")}
+                value={memberQuery}
+                onChangeText={setMemberQuery}
+                placeholder={t("team.members.search.placeholder")}
+                placeholderTextColor={colors.faint}
+                returnKeyType="search"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.memberSearchInput}
+              />
+            </View>
+          ) : null}
+          {showMemberSearch ? (
+            <Text style={styles.memberSearchMeta} accessibilityLiveRegion="polite">
+              {t("team.members.search.showing", {
+                shown: formatNumber(filteredMembers.length),
+                total: formatNumber(visibleMembers.length)
+              })}
+            </Text>
+          ) : null}
+          {memberSearchNoMatches ? (
+            <EmptyState
+              compact
+              title={t("team.members.search.emptyTitle")}
+              body={t("team.members.search.emptyBody")}
+            />
+          ) : (
+            filteredMembers.map((member) => {
+              const isSelf = member.user_id === user?.id;
+              const editable = mutationAllowed && canEditTeamMember(role, { role: member.role, isSelf });
+              return (
+                <View key={`${member.restaurant_id}:${member.user_id}`} style={styles.memberCard}>
+                  <View style={styles.memberHeader}>
+                    <IconBadge tone="neutral">
+                      <UsersRound size={icon.inline} color={colors.text} strokeWidth={iconStroke} />
+                    </IconBadge>
+                    <View style={styles.memberCopy}>
+                      <Text style={styles.memberName}>
+                        {member.name?.trim() || member.email?.trim() || t("team.member.unnamed")}
+                        {isSelf ? ` · ${t("team.member.you")}` : ""}
+                      </Text>
+                      <Text style={styles.memberEmail}>{member.email?.trim() || t("team.member.emailMissing")}</Text>
                     </View>
-                    <Button
-                      title={t(busyKey === `remove:${member.user_id}` ? "team.member.removing" : "team.member.remove")}
-                      variant="secondary"
-                      onPress={() => void removeMember(member)}
-                      disabled={!actionsEditable}
-                    />
+                    <Badge label={t(roleKeys[member.role])} tone="neutral" />
                   </View>
-                ) : null}
-              </View>
-            );
-          })}
+                  {editable ? (
+                    <View style={styles.memberActions}>
+                      <View style={styles.roleRow}>
+                        {availableRoles.map((option) => {
+                          const selected = option === member.role;
+                          return (
+                            <Pressable
+                              key={option}
+                              onPress={() => void changeRole(member, option)}
+                              style={[styles.roleChip, selected ? styles.roleChipSelected : null]}
+                              disabled={!actionsEditable}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected, disabled: !actionsEditable }}
+                              accessibilityLabel={t("team.member.setRole", { role: t(roleKeys[option]) })}
+                            >
+                              <Text style={[styles.roleChipText, selected ? styles.roleChipTextSelected : null]}>
+                                {t(roleKeys[option])}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                      <Button
+                        title={t(busyKey === `remove:${member.user_id}` ? "team.member.removing" : "team.member.remove")}
+                        variant="secondary"
+                        onPress={() => void removeMember(member)}
+                        disabled={!actionsEditable}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })
+          )}
         </SectionSurface>
       </View>
     </Screen>
@@ -351,6 +397,27 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text,
     backgroundColor: colors.surface
+  },
+  memberSearchBox: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  memberSearchInput: {
+    flex: 1,
+    minHeight: 42,
+    ...typography.body,
+    color: colors.text
+  },
+  memberSearchMeta: {
+    ...typography.caption,
+    color: colors.muted
   },
   roleRow: {
     flexDirection: "row",
