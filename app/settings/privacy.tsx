@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
 import { router, useNavigation } from "expo-router";
 import { ArrowLeft, ExternalLink, ShieldCheck } from "lucide-react-native";
@@ -12,13 +12,13 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
-
-const PRIVACY_POLICY_URL = "https://getmise.app/privacy";
+import { readPublicAppConfig } from "../../lib/appConfig";
 
 export default function PrivacySettingsScreen() {
   const navigation = useNavigation();
   const { t } = useLocale();
   const { restaurant, user } = useMiseSession();
+  const privacyUrl = useMemo(() => readPublicAppConfig().privacyUrl, []);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const signedIn = Boolean(user);
@@ -32,16 +32,16 @@ export default function PrivacySettingsScreen() {
   }
 
   async function openPrivacyPolicyUrl() {
-    if (opening) return;
+    if (opening || !privacyUrl) return;
     setOpening(true);
     setLinkError(null);
     try {
-      const canOpen = await Linking.canOpenURL(PRIVACY_POLICY_URL);
+      const canOpen = await Linking.canOpenURL(privacyUrl);
       if (!canOpen) {
         setLinkError(t("privacy.link.unavailable"));
         return;
       }
-      await Linking.openURL(PRIVACY_POLICY_URL);
+      await Linking.openURL(privacyUrl);
     } catch {
       setLinkError(t("privacy.link.unavailable"));
     } finally {
@@ -68,7 +68,15 @@ export default function PrivacySettingsScreen() {
     >
       <View style={styles.stack}>
         <StatusNotice tone="caution" title={t("privacy.beta.title")} message={t("privacy.beta.body")} />
-        <StatusNotice tone="caution" title={t("privacy.hosting.title")} message={t("privacy.hosting.body")} />
+        {privacyUrl ? (
+          <StatusNotice tone="caution" title={t("privacy.hosting.title")} message={t("privacy.hosting.body")} />
+        ) : (
+          <StatusNotice
+            tone="caution"
+            title={t("privacy.missing.title")}
+            message={t("privacy.missing.body")}
+          />
+        )}
 
         <Card>
           <View style={styles.hero}>
@@ -96,7 +104,7 @@ export default function PrivacySettingsScreen() {
           accessibilityHint={t("privacy.action.openPolicyUrlHint")}
           icon={<ExternalLink size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
           onPress={() => void openPrivacyPolicyUrl()}
-          disabled={opening}
+          disabled={opening || !privacyUrl}
           fullWidth
         />
         <Button

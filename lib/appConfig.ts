@@ -5,6 +5,8 @@ export type PublicAppEnv = "development" | "staging" | "production";
 export interface PublicAppConfig {
   appEnv: PublicAppEnv;
   enableDemoMode: boolean;
+  /** HTTPS-only Privacy Policy URL. Null when unset or non-HTTPS. */
+  privacyUrl: string | null;
 }
 
 function normalizeAppEnv(value: string | undefined): PublicAppEnv {
@@ -18,13 +20,32 @@ function parseBoolean(value: string | undefined) {
   return value === "true";
 }
 
+/**
+ * Accept only absolute https:// URLs. Reject http, other schemes, and junk.
+ * App Store legal links must never open an insecure or malformed destination.
+ */
+export function normalizeOptionalHttpsUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "https:") return null;
+    if (!parsed.hostname) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function readPublicAppConfig(): PublicAppConfig {
   const appEnv = normalizeAppEnv(process.env.EXPO_PUBLIC_APP_ENV);
   const demoModeValue = process.env.EXPO_PUBLIC_ENABLE_DEMO_MODE;
 
   return {
     appEnv,
-    enableDemoMode: demoModeValue === undefined ? appEnv !== "production" : parseBoolean(demoModeValue)
+    enableDemoMode: demoModeValue === undefined ? appEnv !== "production" : parseBoolean(demoModeValue),
+    privacyUrl: normalizeOptionalHttpsUrl(process.env.EXPO_PUBLIC_PRIVACY_URL)
   };
 }
 
