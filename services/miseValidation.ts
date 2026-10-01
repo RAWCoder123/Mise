@@ -315,6 +315,7 @@ export function normalizeRestaurantTeamMember(value: RestaurantTeamMember): Rest
 export function normalizePosSale(value: PosSale): PosSale {
   return {
     ...value,
+    record_kind: value.record_kind === "return" ? "return" : "sale",
     quantity_sold: asBoundedNonNegativeNumber(value.quantity_sold, operatingLimits.posQuantitySold),
     gross_sales: asBoundedNonNegativeNumber(value.gross_sales, operatingLimits.posSalesAmount),
     net_sales: asBoundedNonNegativeNumber(value.net_sales, operatingLimits.posSalesAmount)

@@ -93,6 +93,8 @@ export interface RestaurantTeamMember {
   updated_at: string;
 }
 
+export type PosSaleRecordKind = "sale" | "return";
+
 export interface PosSale {
   id: string;
   restaurant_id: string;
@@ -100,6 +102,8 @@ export interface PosSale {
   provider_catalog_item_id?: string | null;
   provider_variation_id?: string | null;
   provider_location_id?: string | null;
+  /** Positive quantity rows; `return` reverses depletion/demand. Defaults to sale. */
+  record_kind?: PosSaleRecordKind;
   sale_date: string;
   item_name: string;
   category: string;

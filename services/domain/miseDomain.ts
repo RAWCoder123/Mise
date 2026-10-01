@@ -34,6 +34,7 @@ import { formatQuantity, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../.
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
+import { posSaleQuantityDelta } from "./posSaleQuantity";
 import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
@@ -129,14 +130,14 @@ export function buildHistoricalDemandBaselines(
       const itemKey = saleDemandKey(sale, providerMappings);
       if (!itemKey) return;
       const daily = quantitiesByItemAndDay.get(itemKey) ?? new Map<string, number>();
-      daily.set(sale.sale_date, (daily.get(sale.sale_date) ?? 0) + sale.quantity_sold);
+      daily.set(sale.sale_date, (daily.get(sale.sale_date) ?? 0) + posSaleQuantityDelta(sale));
       quantitiesByItemAndDay.set(itemKey, daily);
     });
 
   const baselines = new Map<string, HistoricalDemandBaseline>();
   quantitiesByItemAndDay.forEach((daily, itemKey) => {
     if (daily.size < minimumObservedItemDays) return;
-    const serviceDayQuantities = serviceDays.map((date) => daily.get(date) ?? 0);
+    const serviceDayQuantities = serviceDays.map((date) => Math.max(0, daily.get(date) ?? 0));
     const dailyQuantity = robustDailyAverage(serviceDayQuantities);
     if (!Number.isFinite(dailyQuantity) || dailyQuantity <= 0) return;
     baselines.set(itemKey, {
@@ -437,7 +438,7 @@ export function buildInventoryPrediction(
   const mappedTodayUsage = relevantMappings.reduce((sum, mapping) => {
     const sold = todaySales
       .filter((sale) => saleMatchesRecipe(sale, mapping, providerMappings))
-      .reduce((saleSum, sale) => saleSum + finiteNonNegative(sale.quantity_sold), 0);
+      .reduce((saleSum, sale) => saleSum + posSaleQuantityDelta(sale), 0);
     return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
   }, 0);
   // `pos_sales` rows carry day resolution only, so a verified count taken inside
@@ -448,7 +449,7 @@ export function buildInventoryPrediction(
     countEvidence.status !== "verified" ||
     dayResolutionConsumptionIsAfterCount(countEvidence.countedOperatingDate, operatingDate);
   const recentUsage = todayUsageIsAfterCount ? mappedTodayUsage : 0;
-  const unattributedTodayDepletion = todayUsageIsAfterCount ? 0 : mappedTodayUsage;
+  const unattributedTodayDepletion = todayUsageIsAfterCount ? 0 : Math.max(0, mappedTodayUsage);
   let historySampleDays = 0;
   let hasRestaurantHistory = false;
   let hasDemoFallback = false;
@@ -465,10 +466,12 @@ export function buildInventoryPrediction(
   }, 0);
   // Demand rate still uses every mapped sale observed today, even sales the count
   // already absorbed; only the depletion arithmetic is restricted to the count window.
+  // Returns may make net usage negative for on-hand projection; demand rate stays >= 0.
+  const demandTodayUsage = Math.max(0, mappedTodayUsage);
   const averageDailyUsage =
-    mappedTodayUsage > 0 && baselineUsage > 0
-      ? mappedTodayUsage * 0.35 + baselineUsage * 0.65
-      : mappedTodayUsage || baselineUsage;
+    demandTodayUsage > 0 && baselineUsage > 0
+      ? demandTodayUsage * 0.35 + baselineUsage * 0.65
+      : demandTodayUsage || baselineUsage;
   const projectedQuantity = Math.max(0, safeItem.current_quantity - recentUsage);
   const daysCoverage = averageDailyUsage > 0 ? projectedQuantity / averageDailyUsage : null;
   const quantityStatus = getInventoryStatusForQuantity(safeItem, projectedQuantity);
@@ -729,7 +732,7 @@ function estimateUsage(
         if (!item || item.restaurant_id !== sale.restaurant_id) return;
         if (!inventoryUnitsAreCompatible(item.unit, mapping.unit)) return;
         const current = usage.get(mapping.inventory_item_id);
-        const quantity = sale.quantity_sold * mapping.quantity_used_per_sale;
+        const quantity = posSaleQuantityDelta(sale) * mapping.quantity_used_per_sale;
         usage.set(mapping.inventory_item_id, {
           itemName: item.item_name,
           quantity: (current?.quantity ?? 0) + quantity,
@@ -785,9 +788,12 @@ export function buildRecipeBaselineSummary(
   const items = [...mappedMenuItems]
     .map((menuItemName) => {
       const linkedMappings = restaurantMappings.filter((mapping) => mapping.menu_item_name === menuItemName);
-      const todayQuantitySold = todaySales
-        .filter((sale) => linkedMappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
-        .reduce((sum, sale) => sum + sale.quantity_sold, 0);
+      const todayQuantitySold = Math.max(
+        0,
+        todaySales
+          .filter((sale) => linkedMappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
+          .reduce((sum, sale) => sum + posSaleQuantityDelta(sale), 0)
+      );
 
       return {
         menu_item_name: menuItemName,

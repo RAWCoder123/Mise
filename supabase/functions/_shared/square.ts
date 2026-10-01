@@ -56,6 +56,8 @@ export interface SquareSaleRow {
   gross_sales: number;
   net_sales: number;
   source_record_id: string;
+  /** Positive quantity; returns reverse inventory depletion downstream. */
+  record_kind: "sale" | "return";
   provider_location_id?: string;
   provider_catalog_item_id?: string;
   provider_variation_id?: string;
@@ -312,9 +314,53 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
       gross_sales: clampMoney(gross),
       net_sales: clampMoney(net),
       source_record_id: `square_${orderId}_${uid}`.slice(0, 200),
+      record_kind: "sale",
       provider_location_id: providerLocationId,
       provider_variation_id: variationId || undefined,
     });
+  }
+
+  // Itemized returns live on the return/exchange order (often a separate COMPLETED
+  // order). Keep quantity_sold positive and mark record_kind so depletion can reverse.
+  const returns = Array.isArray(record.returns) ? record.returns : [];
+  for (const [returnIndex, returnEntry] of returns.entries()) {
+    if (!returnEntry || typeof returnEntry !== "object") continue;
+    const returnRecord = returnEntry as Record<string, unknown>;
+    const returnUid = stringField(returnRecord, "uid", 128) || String(returnIndex);
+    const returnLineItems = Array.isArray(returnRecord.return_line_items)
+      ? returnRecord.return_line_items
+      : [];
+    for (const [lineIndex, line] of returnLineItems.entries()) {
+      if (!line || typeof line !== "object") continue;
+      const item = line as Record<string, unknown>;
+      const name = stringField(item, "name", 160) || "Untitled item";
+      const quantity = Math.min(100000, Math.max(0, Number(item.quantity ?? 0)));
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+      const uid = stringField(item, "uid", 128) || `${returnUid}_${lineIndex}`;
+      const gross =
+        moneyAmount(item.gross_return_money) ??
+        moneyAmount(item.total_money) ??
+        moneyAmount(item.variation_total_price_money) ??
+        0;
+      const net = moneyAmount(item.total_money) ?? gross;
+      const variationId = stringField(item, "catalog_object_id", 128);
+      const category =
+        variationId ||
+        stringField(item, "variation_name", 80) ||
+        "Square";
+      rows.push({
+        sale_date: saleDate,
+        item_name: name,
+        category: category.slice(0, 80),
+        quantity_sold: quantity,
+        gross_sales: clampMoney(Math.abs(gross)),
+        net_sales: clampMoney(Math.abs(net)),
+        source_record_id: `square_${orderId}_return_${uid}`.slice(0, 200),
+        record_kind: "return",
+        provider_location_id: providerLocationId,
+        provider_variation_id: variationId || undefined,
+      });
+    }
   }
   return rows;
 }

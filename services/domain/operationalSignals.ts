@@ -15,6 +15,7 @@ import {
   saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity.ts";
+import { posSaleQuantityDelta } from "./posSaleQuantity.ts";
 
 export interface OperationalInventoryItem {
   id: string;
@@ -147,7 +148,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const mappedTodayUsage = mappings.reduce((sum, mapping) => {
       const sold = todaySales
         .filter((sale) => saleMatchesRecipe(sale, mapping, providerMappings))
-        .reduce((quantity, sale) => quantity + finiteNonNegative(sale.quantity_sold), 0);
+        .reduce((quantity, sale) => quantity + posSaleQuantityDelta(sale), 0);
       return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
     }, 0);
     const baselineUsage = mappings.reduce((sum, mapping) => {
@@ -411,13 +412,13 @@ function historicalDailyDemand(
     const key = saleDemandKey(sale, providerMappings);
     if (!key) continue;
     const daily = totals.get(key) ?? new Map<string, number>();
-    daily.set(sale.sale_date, (daily.get(sale.sale_date) ?? 0) + finiteNonNegative(sale.quantity_sold));
+    daily.set(sale.sale_date, (daily.get(sale.sale_date) ?? 0) + posSaleQuantityDelta(sale));
     totals.set(key, daily);
   }
   const result = new Map<string, number>();
   for (const [key, daily] of totals) {
     if (daily.size < 3) continue;
-    result.set(key, robustAverage(days.map((day) => daily.get(day) ?? 0)));
+    result.set(key, robustAverage(days.map((day) => Math.max(0, daily.get(day) ?? 0))));
   }
   return result;
 }
