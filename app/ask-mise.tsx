@@ -362,7 +362,7 @@ export default function AskMiseScreen() {
                           <Pressable
                             key={task.id}
                             accessibilityRole="button"
-                            onPress={() => router.push(`/tasks/${task.id}`)}
+                            onPress={() => router.push(task.action.route)}
                             style={({ pressed }) => [styles.priorityRow, pressed && styles.pressed]}
                           >
                             <Circle size={icon.inline} color={colors.borderStrong} strokeWidth={iconStroke} />
