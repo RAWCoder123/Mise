@@ -15,16 +15,18 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
 import { DEMO_DATASET } from "../services/demoData";
+import type { PilotReadiness } from "../services/domain/pilotReadiness";
+import type { OperationalTodayTask } from "../services/domain/todayTasks";
 import {
   answerAskMise,
   fetchInsights,
+  fetchPilotReadiness,
   fetchTodaySummary,
   type TodayCommandCenterSummary
 } from "../services/miseService";
 import { presentOperationalTodayTask } from "../services/presentation/operationsPresentation";
 import { captureMiseError } from "../services/telemetry";
 import type { Insight } from "../types/mise";
-import type { OperationalTodayTask } from "../services/domain/todayTasks";
 
 type ChatMessage = {
   id: string;
@@ -63,6 +65,7 @@ export default function AskMiseScreen() {
   const { canUseDemoMode, continueWithDemo, restaurant, user } = useMiseSession();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [pilotReadiness, setPilotReadiness] = useState<PilotReadiness | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -86,6 +89,7 @@ export default function AskMiseScreen() {
     askGenerationRef.current += 1;
     setSummary(null);
     setInsights([]);
+    setPilotReadiness(null);
     setLoadedRestaurantId(null);
     setError(null);
     setMessages([]);
@@ -106,18 +110,32 @@ export default function AskMiseScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [nextSummary, nextInsights] = await Promise.all([
+      const [nextSummary, nextInsights, nextReadiness] = await Promise.all([
         fetchTodaySummary(restaurantId),
-        fetchInsights(restaurantId)
+        fetchInsights(restaurantId),
+        fetchPilotReadiness(restaurantId).then(
+          (readiness) => ({ ok: true as const, readiness }),
+          (readinessError) => {
+            captureMiseError(readinessError, {
+              flow: "ask_mise",
+              operation: "pilot_readiness",
+              restaurant_id: restaurantId
+            });
+            return { ok: false as const, readiness: null };
+          }
+        )
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
       setInsights(nextInsights);
+      // Fail closed: missing readiness never invents operating-loop claims.
+      setPilotReadiness(nextReadiness.ok ? nextReadiness.readiness : null);
       setLoadedRestaurantId(restaurantId);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "ask_mise", operation: "load", restaurant_id: restaurantId });
       setError(t("ask.error"));
+      setPilotReadiness(null);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
@@ -131,6 +149,7 @@ export default function AskMiseScreen() {
 
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
   const visibleInsights = loadedRestaurantId === restaurant?.id ? insights : [];
+  const visibleReadiness = loadedRestaurantId === restaurant?.id ? pilotReadiness : null;
 
   const revealLatestMessage = useCallback((animated = true) => {
     requestAnimationFrame(() => {
@@ -148,6 +167,7 @@ export default function AskMiseScreen() {
       restaurant,
       summary: visibleSummary,
       insights: visibleInsights,
+      pilotReadiness: visibleReadiness,
       helpers: {
         formatCompactCurrency,
         formatNumber,
@@ -186,6 +206,7 @@ export default function AskMiseScreen() {
     t,
     user?.name,
     visibleInsights,
+    visibleReadiness,
     visibleSummary
   ]);
 
@@ -207,6 +228,7 @@ export default function AskMiseScreen() {
           restaurant,
           summary: visibleSummary,
           insights: visibleInsights,
+          pilotReadiness: visibleReadiness,
           helpers: {
             formatCompactCurrency,
             formatNumber,
@@ -266,6 +288,7 @@ export default function AskMiseScreen() {
       revealLatestMessage,
       t,
       visibleInsights,
+      visibleReadiness,
       visibleSummary
     ]
   );
@@ -298,14 +321,14 @@ export default function AskMiseScreen() {
     );
   }
 
-  // The first three are shown; they are the terse ones, per the reference.
+  // The first three are shown; readiness joins stock/priorities for the pilot loop.
   const suggestions = [
+    t("ask.suggestion.readiness"),
+    t("ask.suggestion.mapping"),
+    t("ask.suggestion.recipients"),
     t("ask.suggestion.stock"),
     t("ask.suggestion.priorities"),
-    t("ask.suggestion.orders"),
-    t("ask.suggestion.prep"),
-    t("ask.suggestion.waste"),
-    t("ask.suggestion.briefing")
+    t("ask.suggestion.orders")
   ];
 
   return (

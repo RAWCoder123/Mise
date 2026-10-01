@@ -1,9 +1,25 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
+import type {
+  PilotReadiness,
+  PilotReadinessArea,
+  PilotReadinessAreaId
+} from "../domain/pilotReadiness";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
-export type AskMiseIntent = "priorities" | "stock" | "orders" | "sales" | "briefing" | "prep" | "waste" | "general";
+export type AskMiseIntent =
+  | "priorities"
+  | "stock"
+  | "orders"
+  | "sales"
+  | "briefing"
+  | "prep"
+  | "waste"
+  | "readiness"
+  | "mapping"
+  | "recipients"
+  | "general";
 
 type Translator = (key: MessageKey, values?: MessageValues) => string;
 
@@ -37,6 +53,11 @@ export interface AskMiseInput {
   restaurant: Pick<Restaurant, "name" | "cuisine_type" | "service_style" | "timezone" | "currency">;
   summary: AskMiseRestaurantContext;
   insights: readonly Insight[];
+  /**
+   * Authoritative pilot readiness for the active restaurant.
+   * Null means the check was unavailable — readiness answers fail closed.
+   */
+  pilotReadiness?: PilotReadiness | null;
   helpers: AskMiseHelpers;
 }
 
@@ -56,11 +77,30 @@ const priorityKeywords = /priorit|prioridad|focus|urgent|today|hoy|优先|今天
 const briefingKeywords = /brief|status|overview|summary|how.*(we|we'?re|restaurant)|resumen|estado|概况|简报/;
 const prepKeywords = /prep|mise en place|line|batch|prep list|preparaci[oó]n|备餐|开餐前/;
 const wasteKeywords = /waste|spoil|overstock|excess|desperdicio|exceso|损耗|积压|过期/;
+const mappingKeywords =
+  /mapping|unmapped|recipe coverage|menu map|catalog.?map|mapeo|cobertura de recetas|sin mapear|映射|配方覆盖|未映射/;
+const recipientKeywords =
+  /recipient|gmail|email delivery|supplier email|send.?ready|destinatario|correo|entrega por correo|收件|邮箱|邮件发送/;
+const readinessKeywords =
+  /readiness|ready to (recommend|order|send|draft)|operating loop|can we (recommend|send|order)|piloto|preparaci[oó]n|listos? para|ciclo operativo|就绪|准备好|运营闭环/;
+
+const AREA_ORDER: readonly PilotReadinessAreaId[] = [
+  "pos_sales",
+  "inventory_counts",
+  "recipe_coverage",
+  "supplier_routing",
+  "email_delivery"
+];
 
 /** Classify a manager question against operational intents. */
 export function classifyAskMiseIntent(question: string): AskMiseIntent {
   const normalized = question.trim().toLowerCase();
   if (!normalized) return "general";
+  // Readiness-family intents before stock/orders so "recipe coverage" and
+  // "supplier email" do not collapse into inventory or purchasing answers.
+  if (mappingKeywords.test(normalized)) return "mapping";
+  if (recipientKeywords.test(normalized)) return "recipients";
+  if (readinessKeywords.test(normalized)) return "readiness";
   if (prepKeywords.test(normalized)) return "prep";
   if (wasteKeywords.test(normalized)) return "waste";
   if (stockKeywords.test(normalized)) return "stock";
@@ -89,6 +129,7 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const attentionTitles = summary.attentionCards.slice(0, 3).map((card) => card.title);
   const topTaskTitles = priorities.map((task) => presentOperationalTodayTask(helpers.locale, task).title);
   const topSale = summary.topItems[0]?.item_name?.trim() || null;
+  const pilotReadiness = input.pilotReadiness ?? null;
 
   const thinkingSteps = buildThinkingSteps({
     intent,
@@ -98,8 +139,23 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
     pendingRecommendations: summary.pendingRecommendations,
     salesToday: summary.salesToday,
     currency: summary.restaurantCurrency,
+    pilotReadiness,
     helpers
   });
+
+  if (intent === "readiness" || intent === "mapping" || intent === "recipients") {
+    return {
+      intent,
+      thinkingSteps,
+      answer: answerReadinessFamily({
+        intent,
+        pilotReadiness,
+        helpers
+      }),
+      showPriorities: false,
+      priorities: []
+    };
+  }
 
   switch (intent) {
     case "stock": {
@@ -302,6 +358,115 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   }
 }
 
+function answerReadinessFamily(input: {
+  intent: "readiness" | "mapping" | "recipients";
+  pilotReadiness: PilotReadiness | null;
+  helpers: AskMiseHelpers;
+}): string {
+  const { helpers, intent, pilotReadiness } = input;
+  const { t } = helpers;
+
+  if (!pilotReadiness) {
+    return t("ask.answer.readiness.unavailable");
+  }
+
+  if (intent === "mapping") {
+    return answerMappingReadiness(pilotReadiness, helpers);
+  }
+  if (intent === "recipients") {
+    return answerRecipientReadiness(pilotReadiness, helpers);
+  }
+  return answerOverallReadiness(pilotReadiness, helpers);
+}
+
+function answerOverallReadiness(readiness: PilotReadiness, helpers: AskMiseHelpers): string {
+  const { t } = helpers;
+  const incomplete = incompleteAreas(readiness, AREA_ORDER);
+  const capability = [
+    readiness.canRecommend
+      ? t("ask.answer.readiness.canRecommend")
+      : t("ask.answer.readiness.cannotRecommend"),
+    readiness.canDraft ? t("ask.answer.readiness.canDraft") : t("ask.answer.readiness.cannotDraft"),
+    readiness.canSend ? t("ask.answer.readiness.canSend") : t("ask.answer.readiness.cannotSend")
+  ].join(" ");
+
+  if (incomplete.length === 0) {
+    return `${t("ask.answer.readiness.ready")} ${capability}`;
+  }
+
+  const areaLabels = incomplete.map((id) => t(areaLabelKey(id))).join("; ");
+  const evidence = firstBlockers(readiness, incomplete, 3);
+  return [
+    t("ask.answer.readiness.incomplete", { areas: areaLabels }),
+    capability,
+    evidence.length > 0 ? t("ask.answer.readiness.evidence", { evidence: evidence.join("; ") }) : null,
+    t("ask.answer.readiness.next")
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function answerMappingReadiness(readiness: PilotReadiness, helpers: AskMiseHelpers): string {
+  const { t } = helpers;
+  const area = areaById(readiness, "recipe_coverage");
+  if (!area) {
+    return t("ask.answer.readiness.unavailable");
+  }
+  if (area.status === "ready") {
+    const coverage = helpers.formatNumber(area.metrics.coveragePercent ?? 0);
+    return t("ask.answer.mapping.ready", { coverage });
+  }
+  const evidence = area.blockers.slice(0, 3);
+  return [
+    t("ask.answer.mapping.incomplete", {
+      coverage: helpers.formatNumber(area.metrics.coveragePercent ?? 0)
+    }),
+    evidence.length > 0 ? t("ask.answer.readiness.evidence", { evidence: evidence.join("; ") }) : null,
+    t("ask.answer.mapping.next")
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function answerRecipientReadiness(readiness: PilotReadiness, helpers: AskMiseHelpers): string {
+  const { t } = helpers;
+  const email = areaById(readiness, "email_delivery");
+  const routing = areaById(readiness, "supplier_routing");
+  if (!email || !routing) {
+    return t("ask.answer.readiness.unavailable");
+  }
+
+  const missingRecipients = Math.max(
+    email.metrics.missingRecipients ?? 0,
+    routing.metrics.missingRecipients ?? 0
+  );
+  const configured = helpers.formatNumber(email.metrics.configuredRecipients ?? 0);
+
+  if (email.status === "ready" && missingRecipients === 0) {
+    return t("ask.answer.recipients.ready", { count: configured });
+  }
+
+  const incompleteIds: PilotReadinessAreaId[] = [];
+  if (routing.status !== "ready") incompleteIds.push("supplier_routing");
+  if (email.status !== "ready") incompleteIds.push("email_delivery");
+  const evidence = firstBlockers(readiness, incompleteIds.length > 0 ? incompleteIds : ["email_delivery"], 3);
+
+  return [
+    missingRecipients > 0
+      ? t(
+          missingRecipients === 1
+            ? "ask.answer.recipients.missing.one"
+            : "ask.answer.recipients.missing.other",
+          { count: helpers.formatNumber(missingRecipients) }
+        )
+      : t("ask.answer.recipients.incomplete"),
+    evidence.length > 0 ? t("ask.answer.readiness.evidence", { evidence: evidence.join("; ") }) : null,
+    t("ask.answer.recipients.next")
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function buildThinkingSteps(input: {
   intent: AskMiseIntent;
   restaurantName: string;
@@ -310,6 +475,7 @@ function buildThinkingSteps(input: {
   pendingRecommendations: number;
   salesToday: number;
   currency: string;
+  pilotReadiness: PilotReadiness | null;
   helpers: AskMiseHelpers;
 }): string[] {
   const { helpers, intent } = input;
@@ -353,7 +519,65 @@ function buildThinkingSteps(input: {
         : t("ask.thinking.priorities.clear")
     );
   }
+  if (intent === "readiness" || intent === "mapping" || intent === "recipients") {
+    steps.push(
+      input.pilotReadiness
+        ? t("ask.thinking.readiness.loaded", {
+            status: input.pilotReadiness.status,
+            recommend: input.pilotReadiness.canRecommend ? "yes" : "no",
+            send: input.pilotReadiness.canSend ? "yes" : "no"
+          })
+        : t("ask.thinking.readiness.unavailable")
+    );
+  }
 
   steps.push(t("ask.thinking.compose"));
   return steps;
+}
+
+function areaById(readiness: PilotReadiness, id: PilotReadinessAreaId): PilotReadinessArea | undefined {
+  return readiness.areas.find((area) => area.id === id);
+}
+
+function incompleteAreas(
+  readiness: PilotReadiness,
+  areaIds: readonly PilotReadinessAreaId[]
+): PilotReadinessAreaId[] {
+  const byId = new Map(readiness.areas.map((area) => [area.id, area]));
+  return areaIds.filter((id) => byId.get(id)?.status !== "ready");
+}
+
+function firstBlockers(
+  readiness: PilotReadiness,
+  areaIds: readonly PilotReadinessAreaId[],
+  limit: number
+): string[] {
+  const byId = new Map(readiness.areas.map((area) => [area.id, area]));
+  const blockers: string[] = [];
+  for (const id of areaIds) {
+    const area = byId.get(id);
+    if (!area) continue;
+    for (const blocker of area.blockers) {
+      const trimmed = blocker.trim();
+      if (!trimmed) continue;
+      blockers.push(trimmed);
+      if (blockers.length >= limit) return blockers;
+    }
+  }
+  return blockers;
+}
+
+function areaLabelKey(areaId: PilotReadinessAreaId): MessageKey {
+  switch (areaId) {
+    case "pos_sales":
+      return "pos.readiness.area.posSales";
+    case "inventory_counts":
+      return "pos.readiness.area.inventoryCounts";
+    case "recipe_coverage":
+      return "pos.readiness.area.recipeCoverage";
+    case "supplier_routing":
+      return "pos.readiness.area.supplierRouting";
+    case "email_delivery":
+      return "pos.readiness.area.emailDelivery";
+  }
 }
