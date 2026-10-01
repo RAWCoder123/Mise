@@ -10,6 +10,7 @@ import {
   type PurchaseAuthorityResult
 } from "../services/domain/purchaseAuthority";
 import type { MessageKey } from "../i18n/catalog";
+import { presentPurchaseRecommendationReason } from "../services/presentation/purchaseRecommendationPresentation";
 import type { PurchaseRecommendation } from "../types/mise";
 import type { PurchaseDecisionPattern } from "../services/domain/purchaseDecisionMemory";
 import { Badge } from "./ui/Badge";
@@ -42,7 +43,7 @@ export function RecommendationDecisionRow({
   authority,
   purchaseDecisionPattern
 }: RecommendationDecisionRowProps) {
-  const { formatNumber, t } = useLocale();
+  const { formatNumber, t, locale } = useLocale();
   const [expanded, setExpanded] = useState(false);
   const busy = Boolean(action);
   const approvalBlocked = authority?.ready === false;
@@ -50,6 +51,7 @@ export function RecommendationDecisionRow({
   const suggestedQuantity = formatNumber(recommendation.recommended_quantity, {
     maximumFractionDigits: 3
   });
+  const localizedReason = presentPurchaseRecommendationReason(locale, recommendation);
   const urgencyLabel =
     recommendation.urgency === "high"
       ? t("orders.recommendation.urgency.high")
@@ -114,7 +116,7 @@ export function RecommendationDecisionRow({
 
       {expanded ? (
         <View style={styles.reasonPanel}>
-          <Text style={styles.reason}>{recommendation.reason}</Text>
+          <Text style={styles.reason}>{localizedReason}</Text>
           <Text style={styles.reasonMeta}>
             {t("orders.recommendation.suggested", {
               quantity: suggestedQuantity,

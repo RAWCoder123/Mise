@@ -3,6 +3,7 @@ import {
   buildInventoryControlSummary,
   buildInventoryOutlooks,
   buildRecipeBaselineSummary,
+  purchaseRecommendationPresentation,
   recommendationReason,
   shouldSuppressRecommendationForItem
 } from "../domain/miseDomain";
@@ -334,6 +335,7 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
     recommended_quantity: prediction.suggestedOrderQuantity,
     unit: item.unit,
     reason: recommendationReason(item, prediction),
+    presentation: purchaseRecommendationPresentation(item, prediction),
     urgency: prediction.urgency,
     status: "pending",
     supplier_order_id: null

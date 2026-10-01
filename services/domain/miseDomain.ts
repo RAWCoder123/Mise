@@ -30,6 +30,7 @@ import type {
   TodaySummary,
   Urgency
 } from "../../types/mise";
+import type { PurchaseRecommendationPresentationDescriptor } from "../../types/presentation";
 import { formatQuantity, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../../utils/format";
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
@@ -179,6 +180,31 @@ export function learnedRecommendationReason(
     return reason;
   }
   return `${reason} Mise is using a stable median from recent approved orders: ${formatQuantity(learnedQuantity)} ${item.unit}.`;
+}
+
+/** Locale-neutral reason descriptor; screens localize at render time. */
+export function purchaseRecommendationPresentation(
+  item: InventoryItem,
+  prediction: InventoryPrediction,
+  learnedQuantity?: number
+): PurchaseRecommendationPresentationDescriptor {
+  const status: "Low" | "Critical" =
+    prediction.projectedStatus === "Critical" ? "Critical" : "Low";
+  const learned =
+    learnedQuantity !== undefined && learnedQuantity !== prediction.suggestedOrderQuantity
+      ? learnedQuantity
+      : null;
+  return {
+    code: "purchase.recommendation.stock_risk",
+    values: {
+      itemName: item.item_name,
+      suggestedOrderQuantity: learnedQuantity ?? prediction.suggestedOrderQuantity,
+      unit: item.unit,
+      supplierName: item.supplier_name,
+      status,
+      learnedQuantity: learned
+    }
+  };
 }
 
 export function buildLearnedOrderQuantities(restaurantId: string, history: PurchaseRecommendation[] = []) {
@@ -2041,6 +2067,7 @@ export function buildRecommendationInserts(
         recommended_quantity: learnedQuantity ?? prediction.suggestedOrderQuantity,
         unit: item.unit,
         reason: learnedRecommendationReason(item, prediction, learnedQuantity),
+        presentation: purchaseRecommendationPresentation(item, prediction, learnedQuantity),
         urgency: prediction.urgency,
         status: "pending" as RecommendationStatus,
         supplier_order_id: null

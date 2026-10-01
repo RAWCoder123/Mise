@@ -32,6 +32,13 @@ test("orders presents reference-aligned draft, sent, and history lanes with safe
   assert.doesNotMatch(screen, /orderTab === "history"/);
 });
 
+test("orders recommendation why panel presents locale-aware reason copy", () => {
+  const row = readFileSync("components/RecommendationDecisionRow.tsx", "utf8");
+  assert.match(row, /presentPurchaseRecommendationReason/);
+  assert.match(row, /localizedReason/);
+  assert.doesNotMatch(row, /\{recommendation\.reason\}/);
+});
+
 test("orders keeps staff read-only while preserving review, copy, and detail access", () => {
   const screen = readFileSync("app/(tabs)/orders.tsx", "utf8");
   const row = readFileSync("components/RecommendationDecisionRow.tsx", "utf8");

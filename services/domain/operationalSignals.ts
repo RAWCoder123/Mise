@@ -7,7 +7,10 @@ import {
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority.ts";
 import { toDateKeyInTimeZone } from "../../utils/format.ts";
-import type { InsightPresentationDescriptor } from "../../types/presentation.ts";
+import type {
+  InsightPresentationDescriptor,
+  PurchaseRecommendationPresentationDescriptor
+} from "../../types/presentation.ts";
 import {
   recipeDemandKey,
   saleDemandKey,
@@ -73,6 +76,7 @@ export interface OperationalRecommendation {
   urgency: "low" | "medium" | "high";
   status: "pending";
   supplier_order_id: null;
+  presentation?: PurchaseRecommendationPresentationDescriptor;
 }
 
 export interface OperationalInsight {
@@ -201,6 +205,18 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         recommended_quantity: quantity,
         unit: item.unit,
         reason,
+        presentation: {
+          code: "purchase.recommendation.stock_risk",
+          values: {
+            itemName: item.item_name,
+            suggestedOrderQuantity: quantity,
+            unit: item.unit,
+            supplierName: item.supplier_name,
+            status: isCritical ? "Critical" : "Low",
+            learnedQuantity:
+              learnedQuantity !== undefined && learnedQuantity !== suggested ? learnedQuantity : null
+          }
+        },
         urgency: isCritical ? "high" : "medium",
         status: "pending",
         supplier_order_id: null

@@ -5,8 +5,10 @@ import type {
   PosSale,
   PurchaseRecommendation,
   Restaurant,
-  SupplierOrder
+  SupplierOrder,
+  Urgency
 } from "../../types/mise";
+import type { PurchaseRecommendationPresentationDescriptor } from "../../types/presentation";
 import {
   assertTenantScoped,
   dedupeActivityEvents,
@@ -52,6 +54,10 @@ export interface OperatingBriefApprovalCard {
   supplierName: string | null;
   quantity: number | null;
   unit: string | null;
+  /** Structured fields for locale-aware Why copy on Home. */
+  itemName?: string | null;
+  urgency?: Urgency | null;
+  reasonPresentation?: PurchaseRecommendationPresentationDescriptor | null;
 }
 
 export interface OperatingOutlook {
@@ -286,7 +292,10 @@ function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalC
       ],
       supplierName: recommendation.supplier_name,
       quantity: recommendation.recommended_quantity,
-      unit: recommendation.unit
+      unit: recommendation.unit,
+      itemName: recommendation.item_name,
+      urgency: recommendation.urgency,
+      reasonPresentation: recommendation.presentation ?? null
     };
   });
 
