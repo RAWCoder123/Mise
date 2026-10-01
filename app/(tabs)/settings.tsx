@@ -8,6 +8,7 @@ import {
   ChevronUp,
   Database,
   Download,
+  Bell,
   Languages,
   LifeBuoy,
   ArrowLeft,
@@ -353,6 +354,13 @@ export default function SettingsScreen() {
             value={LANGUAGE_OPTIONS.find((option) => option.locale === locale)?.nativeName ?? locale}
             icon={<Languages size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/settings/language" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("settings.preference.notifications")}
+            value={t("settings.notifications.title")}
+            icon={<Bell size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/settings/notifications" as never)}
           />
         </SettingsSection>
 

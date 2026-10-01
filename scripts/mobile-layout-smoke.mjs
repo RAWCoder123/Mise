@@ -26,6 +26,7 @@ const baseRoutes = [
   "/settings/privacy",
   "/settings/support",
   "/settings/language",
+  "/settings/notifications",
   "/settings/gmail",
   "/settings/suppliers",
   "/settings/pos",
@@ -489,6 +490,7 @@ async function verifyLocalizedLayouts(cdp, localeLabel) {
     await navigateAndMeasure(cdp, route, []);
   }
   await navigateAndMeasure(cdp, "/settings/language", []);
+  await navigateAndMeasure(cdp, "/settings/notifications", []);
 }
 
 async function runAskMiseInteractionQa(cdp) {
