@@ -55,6 +55,7 @@ import type {
   PurchaseLineSource
 } from "../domain/purchaseLines";
 import type { VerifiedProviderSaleMapping } from "../domain/providerSaleIdentity";
+import type { RecipeVersionYield, RecipeVersionYieldInput } from "../domain/recipeYield";
 import {
   PURCHASE_AUTHORITY_BLOCKER_CODES,
   type PurchaseAuthorityResult
@@ -633,6 +634,24 @@ export interface MiseRepository {
   upsertMenuItemIngredient(input: MenuItemIngredientInput): Promise<MenuItemIngredient>;
   saveRecipeMappingAndSignals(input: RecipeMappingSignalInput): Promise<MenuItemIngredient>;
   fetchRecipeAuthorities(restaurantId: string): Promise<RecipeAuthorityState[]>;
+  /**
+   * Active and draft `recipe_versions` yield factors for the restaurant.
+   * SELECT-only — retired rows may be omitted; never invents defaults as recorded.
+   */
+  fetchRecipeVersionYields(restaurantId: string): Promise<RecipeVersionYield[]>;
+  /**
+   * Manager+ draft create/edit for restaurant-wide recipe yields.
+   * Verified rows are never mutated in place.
+   */
+  upsertRecipeVersionYields(input: RecipeVersionYieldInput): Promise<RecipeVersionYield>;
+  verifyRecipeVersionYields(
+    restaurantId: string,
+    recipeVersionId: string
+  ): Promise<RecipeVersionYield>;
+  retireRecipeVersionYields(
+    restaurantId: string,
+    recipeVersionId: string
+  ): Promise<RecipeVersionYield>;
   confirmRecipeComplete(
     restaurantId: string,
     menuItemId: string,

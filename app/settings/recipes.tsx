@@ -22,7 +22,10 @@ import {
   confirmRecipeBaselineComplete,
   fetchInventoryItems,
   fetchRecipeBaselineSummary,
-  updateRecipeBaselineIngredient
+  retireRecipeVersionYields,
+  updateRecipeBaselineIngredient,
+  upsertRecipeVersionYields,
+  verifyRecipeVersionYields
 } from "../../services/miseService";
 import {
   presentRestaurantScopedHubActionsEditable,
@@ -30,6 +33,10 @@ import {
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { requireRecipeBaselineQuantity } from "../../services/miseValidation";
+import {
+  requireServingQuantity,
+  requireYieldPercentAsFactor
+} from "../../services/domain/recipeYield";
 import type { InventoryItem, RecipeBaselineItem, RecipeBaselineSummary } from "../../types/mise";
 
 export default function RecipeBaselinesScreen() {
@@ -45,6 +52,7 @@ export default function RecipeBaselinesScreen() {
   const [savingMappingId, setSavingMappingId] = useState<string | null>(null);
   const [savingNewLink, setSavingNewLink] = useState(false);
   const [confirmingMenuItemId, setConfirmingMenuItemId] = useState<string | null>(null);
+  const [savingYieldMenuItemId, setSavingYieldMenuItemId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -73,6 +81,7 @@ export default function RecipeBaselinesScreen() {
     setSavingMappingId(null);
     setSavingNewLink(false);
     setConfirmingMenuItemId(null);
+    setSavingYieldMenuItemId(null);
     setError(null);
     setNotice(null);
     setLoading(Boolean(restaurant));
@@ -135,7 +144,8 @@ export default function RecipeBaselinesScreen() {
     loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
-  const mutationBusy = savingNewLink || savingMappingId !== null || confirmingMenuItemId !== null;
+  const mutationBusy =
+    savingNewLink || savingMappingId !== null || confirmingMenuItemId !== null || savingYieldMenuItemId !== null;
   const mutationAllowed = canManage && hubReady;
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
@@ -292,6 +302,107 @@ export default function RecipeBaselinesScreen() {
     }
   }
 
+  async function saveRecipeYield(
+    item: RecipeBaselineItem,
+    drafts: { prepPercent: string; cookPercent: string; serving: string }
+  ) {
+    if (!restaurant || !item.menuItemId) return;
+    if (!actionsEditable) {
+      setError(t("recipes.error.readOnly"));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    let prepYield: number;
+    let cookingYield: number;
+    let servingQuantity: number;
+    try {
+      prepYield = requireYieldPercentAsFactor(parseNumber(drafts.prepPercent));
+      cookingYield = requireYieldPercentAsFactor(parseNumber(drafts.cookPercent));
+      servingQuantity = requireServingQuantity(parseNumber(drafts.serving));
+    } catch {
+      setError(t("recipes.yield.error.invalid"));
+      return;
+    }
+
+    const recipeVersionId =
+      item.yieldReadout?.status === "recorded" && item.yieldReadout.versionStatus === "draft"
+        ? item.yieldReadout.recipeVersionId
+        : null;
+
+    setSavingYieldMenuItemId(item.menuItemId);
+    setError(null);
+    setNotice(null);
+    try {
+      await upsertRecipeVersionYields({
+        restaurantId,
+        menuItemId: item.menuItemId,
+        servingQuantity,
+        prepYield,
+        cookingYield,
+        recipeVersionId
+      });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice(t("recipes.yield.notice.saved", { item: item.menu_item_name }));
+      await load();
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) setError(t("recipes.yield.error.save"));
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSavingYieldMenuItemId(null);
+    }
+  }
+
+  async function verifyRecipeYield(item: RecipeBaselineItem) {
+    if (!restaurant || !item.menuItemId) return;
+    if (!actionsEditable) {
+      setError(t("recipes.error.readOnly"));
+      return;
+    }
+    if (item.yieldReadout?.status !== "recorded" || item.yieldReadout.versionStatus !== "draft") {
+      setError(t("recipes.yield.error.verifyDraft"));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    setSavingYieldMenuItemId(item.menuItemId);
+    setError(null);
+    setNotice(null);
+    try {
+      await verifyRecipeVersionYields(restaurantId, item.yieldReadout.recipeVersionId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice(t("recipes.yield.notice.verified", { item: item.menu_item_name }));
+      await load();
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) setError(t("recipes.yield.error.verify"));
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSavingYieldMenuItemId(null);
+    }
+  }
+
+  async function retireRecipeYield(item: RecipeBaselineItem) {
+    if (!restaurant || !item.menuItemId) return;
+    if (!actionsEditable) {
+      setError(t("recipes.error.readOnly"));
+      return;
+    }
+    if (item.yieldReadout?.status !== "recorded") {
+      setError(t("recipes.yield.error.retireMissing"));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    setSavingYieldMenuItemId(item.menuItemId);
+    setError(null);
+    setNotice(null);
+    try {
+      await retireRecipeVersionYields(restaurantId, item.yieldReadout.recipeVersionId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice(t("recipes.yield.notice.retired", { item: item.menu_item_name }));
+      await load();
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) setError(t("recipes.yield.error.retire"));
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSavingYieldMenuItemId(null);
+    }
+  }
+
   if (!restaurant) {
     return (
       <Screen
@@ -435,8 +546,12 @@ export default function RecipeBaselinesScreen() {
                   canManage={actionsEditable}
                   savingMappingId={savingMappingId}
                   confirming={confirmingMenuItemId === item.menuItemId}
+                  yieldBusy={savingYieldMenuItemId === item.menuItemId}
                   onSave={queueIngredientSave}
                   onConfirm={() => void confirmRecipe(item)}
+                  onSaveYield={(drafts) => void saveRecipeYield(item, drafts)}
+                  onVerifyYield={() => void verifyRecipeYield(item)}
+                  onRetireYield={() => void retireRecipeYield(item)}
                 />
               ))
             )}
@@ -608,20 +723,212 @@ function SuggestionChip({
   );
 }
 
+function RecipeYieldReadoutRow({
+  item,
+  canManage,
+  yieldBusy,
+  formatNumber,
+  t,
+  onSaveYield,
+  onVerifyYield,
+  onRetireYield
+}: {
+  item: RecipeBaselineItem;
+  canManage: boolean;
+  yieldBusy: boolean;
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
+  t: (key: import("../../i18n/catalog").MessageKey, values?: import("../../i18n/catalog").MessageValues) => string;
+  onSaveYield: (drafts: { prepPercent: string; cookPercent: string; serving: string }) => void;
+  onVerifyYield: () => void;
+  onRetireYield: () => void;
+}) {
+  const readout = item.yieldReadout ?? { status: "missing" as const };
+  const [prepPercent, setPrepPercent] = useState(
+    readout.status === "recorded" ? formatNumber(Math.round(readout.prepYield * 100)) : "100"
+  );
+  const [cookPercent, setCookPercent] = useState(
+    readout.status === "recorded" ? formatNumber(Math.round(readout.cookingYield * 100)) : "100"
+  );
+  const [serving, setServing] = useState(
+    readout.status === "recorded" ? formatNumber(readout.servingQuantity) : "1"
+  );
+
+  useEffect(() => {
+    const next = item.yieldReadout ?? { status: "missing" as const };
+    if (next.status === "recorded") {
+      setPrepPercent(formatNumber(Math.round(next.prepYield * 100)));
+      setCookPercent(formatNumber(Math.round(next.cookingYield * 100)));
+      setServing(formatNumber(next.servingQuantity));
+      return;
+    }
+    setPrepPercent("100");
+    setCookPercent("100");
+    setServing("1");
+  }, [
+    formatNumber,
+    item.menuItemId,
+    item.yieldReadout?.status,
+    item.yieldReadout && item.yieldReadout.status === "recorded"
+      ? item.yieldReadout.recipeVersionId
+      : null,
+    item.yieldReadout && item.yieldReadout.status === "recorded"
+      ? item.yieldReadout.prepYield
+      : null,
+    item.yieldReadout && item.yieldReadout.status === "recorded"
+      ? item.yieldReadout.cookingYield
+      : null,
+    item.yieldReadout && item.yieldReadout.status === "recorded"
+      ? item.yieldReadout.servingQuantity
+      : null
+  ]);
+
+  if (!canManage || !item.menuItemId) {
+    if (readout.status !== "recorded") {
+      return (
+        <Text style={styles.yieldMeta} accessibilityLabel={t("recipes.yield.missingAccessibility")}>
+          {t("recipes.yield.missing")}
+        </Text>
+      );
+    }
+
+    const prepLabel = formatNumber(Math.round(readout.prepYield * 100));
+    const cookLabel = formatNumber(Math.round(readout.cookingYield * 100));
+    const servingLabel = formatNumber(readout.servingQuantity);
+    const multiplier = formatNumber(readout.rawUsageMultiplier, {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0
+    });
+    const statusLabel = t(
+      readout.versionStatus === "verified" ? "recipes.yield.status.verified" : "recipes.yield.status.draft"
+    );
+
+    return (
+      <Text
+        style={styles.yieldMeta}
+        accessibilityLabel={t("recipes.yield.recordedAccessibility", {
+          prep: prepLabel,
+          cook: cookLabel,
+          serving: servingLabel,
+          multiplier,
+          status: statusLabel
+        })}
+      >
+        {t("recipes.yield.recorded", {
+          prep: prepLabel,
+          cook: cookLabel,
+          serving: servingLabel,
+          multiplier,
+          status: statusLabel
+        })}
+      </Text>
+    );
+  }
+
+  const canVerify = readout.status === "recorded" && readout.versionStatus === "draft";
+  const canRetire = readout.status === "recorded";
+  const creatingSuccessor = readout.status === "recorded" && readout.versionStatus === "verified";
+
+  return (
+    <View style={styles.yieldEditor}>
+      <Text style={styles.yieldEditorTitle}>{t("recipes.yield.editor.title")}</Text>
+      <Text style={styles.yieldEditorHint}>
+        {creatingSuccessor
+          ? t("recipes.yield.editor.successorHint")
+          : canVerify
+            ? t("recipes.yield.editor.draftHint")
+            : t("recipes.yield.editor.createHint")}
+      </Text>
+      <View style={styles.yieldInputRow}>
+        <View style={styles.yieldField}>
+          <Text style={styles.yieldFieldLabel}>{t("recipes.yield.field.prep")}</Text>
+          <TextInput
+            value={prepPercent}
+            onChangeText={setPrepPercent}
+            editable={!yieldBusy}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+            accessibilityLabel={t("recipes.yield.field.prepAccessibility")}
+            style={styles.yieldInput}
+          />
+        </View>
+        <View style={styles.yieldField}>
+          <Text style={styles.yieldFieldLabel}>{t("recipes.yield.field.cook")}</Text>
+          <TextInput
+            value={cookPercent}
+            onChangeText={setCookPercent}
+            editable={!yieldBusy}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+            accessibilityLabel={t("recipes.yield.field.cookAccessibility")}
+            style={styles.yieldInput}
+          />
+        </View>
+        <View style={styles.yieldField}>
+          <Text style={styles.yieldFieldLabel}>{t("recipes.yield.field.serving")}</Text>
+          <TextInput
+            value={serving}
+            onChangeText={setServing}
+            editable={!yieldBusy}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+            accessibilityLabel={t("recipes.yield.field.servingAccessibility")}
+            style={styles.yieldInput}
+          />
+        </View>
+      </View>
+      <View style={styles.yieldActions}>
+        <Button
+          title={t(yieldBusy ? "recipes.yield.action.saving" : "recipes.yield.action.saveDraft")}
+          variant="secondary"
+          size="compact"
+          disabled={yieldBusy}
+          onPress={() => onSaveYield({ prepPercent, cookPercent, serving })}
+        />
+        {canVerify ? (
+          <Button
+            title={t("recipes.yield.action.verify")}
+            variant="secondary"
+            size="compact"
+            disabled={yieldBusy}
+            onPress={onVerifyYield}
+          />
+        ) : null}
+        {canRetire ? (
+          <Button
+            title={t("recipes.yield.action.retire")}
+            variant="secondary"
+            size="compact"
+            disabled={yieldBusy}
+            onPress={onRetireYield}
+          />
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 function RecipeRow({
   item,
   canManage,
   savingMappingId,
   confirming,
+  yieldBusy,
   onSave,
-  onConfirm
+  onConfirm,
+  onSaveYield,
+  onVerifyYield,
+  onRetireYield
 }: {
   item: RecipeBaselineItem;
   canManage: boolean;
   savingMappingId: string | null;
   confirming: boolean;
+  yieldBusy: boolean;
   onSave: (mappingId: string, quantity: string, options?: { immediate?: boolean; cancel?: boolean }) => void;
   onConfirm: () => void;
+  onSaveYield: (drafts: { prepPercent: string; cookPercent: string; serving: string }) => void;
+  onVerifyYield: () => void;
+  onRetireYield: () => void;
 }) {
   const { formatNumber, parseNumber, t } = useLocale();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -671,16 +978,26 @@ function RecipeRow({
                 title={t(confirming ? "recipes.action.confirming" : "recipes.action.confirm")}
                 variant="secondary"
                 size="compact"
-                disabled={confirming || savingMappingId !== null}
+                disabled={confirming || savingMappingId !== null || yieldBusy}
                 onPress={onConfirm}
               />
             ) : null}
           </View>
+          <RecipeYieldReadoutRow
+            item={item}
+            canManage={canManage}
+            yieldBusy={yieldBusy || savingMappingId !== null || confirming}
+            formatNumber={formatNumber}
+            t={t}
+            onSaveYield={onSaveYield}
+            onVerifyYield={onVerifyYield}
+            onRetireYield={onRetireYield}
+          />
           <View style={styles.ingredientList}>
             {item.ingredients.map((ingredient) => {
               const draftValue = drafts[ingredient.mappingId] ?? formatNumber(ingredient.quantityUsedPerSale);
               const isSaving = savingMappingId === ingredient.mappingId;
-              const isBusy = savingMappingId !== null;
+              const isBusy = savingMappingId !== null || yieldBusy;
               const parsed = parsedQuantity(draftValue);
               const isDirty = parsed !== null && parsed !== ingredient.quantityUsedPerSale;
 
@@ -958,6 +1275,65 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginTop: 8
+  },
+  yieldMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 6
+  },
+  yieldEditor: {
+    marginTop: 8,
+    gap: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceWarm,
+    padding: 10
+  },
+  yieldEditorTitle: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "900"
+  },
+  yieldEditorHint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17
+  },
+  yieldInputRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  yieldField: {
+    flexGrow: 1,
+    flexBasis: "28%",
+    minWidth: 88,
+    gap: 4
+  },
+  yieldFieldLabel: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "700"
+  },
+  yieldInput: {
+    minHeight: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    paddingHorizontal: 10,
+    fontSize: 15,
+    fontWeight: "700"
+  },
+  yieldActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
   },
   ingredientList: {
     gap: 8,
