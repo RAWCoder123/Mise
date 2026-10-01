@@ -179,6 +179,8 @@ test("restaurant export UI is owner/admin-only and never logs payloads", () => {
   assert.match(exportScreen, /canDeleteRestaurantData\(memberships, restaurant\?\.id\)/);
   assert.match(exportScreen, /expo-file-system\/legacy/);
   assert.match(exportScreen, /expo-sharing/);
+  assert.match(exportScreen, /Share\.share/);
+  assert.match(exportScreen, /classifyNativeShareAction|classifyExpoSharingSettlement/);
   assert.match(exportScreen, /mise-restaurant-export-/);
   assert.match(exportScreen, /Platform\.OS === "web"/);
   assert.match(exportScreen, /activeRestaurantIdRef\.current !== restaurantId/);
@@ -186,5 +188,7 @@ test("restaurant export UI is owner/admin-only and never logs payloads", () => {
   assert.doesNotMatch(exportScreen, /JSON\.stringify\(payload\).{0,40}console/);
   assert.match(catalog, /"export\.retention\.body":/);
   assert.match(catalog, /Provider credentials and private security logs are excluded/);
+  assert.match(catalog, /"export\.notice\.dismissedTitle":/);
+  assert.match(catalog, /"export\.notice\.unconfirmedTitle":/);
   assert.equal((catalog.match(/"export\.title":/g) || []).length, 3);
 });
