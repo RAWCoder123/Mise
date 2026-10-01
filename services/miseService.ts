@@ -12,6 +12,7 @@ export * from "./application/deviceInventoryOutbox";
 export * from "./application/orders";
 export * from "./application/purchaseLines";
 export * from "./application/pos";
+export * from "./application/posDepletionDiagnostics";
 export * from "./application/insights";
 export * from "./application/ask";
 export * from "./application/findings";

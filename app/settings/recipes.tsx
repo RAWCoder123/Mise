@@ -14,6 +14,7 @@ import { OperationalHero } from "../../components/ui/OperationalHero";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { StatusNotice } from "../../components/ui/StatusNotice";
+import { PosDepletionDiagnosticsCard } from "../../components/operations/PosDepletionDiagnosticsCard";
 import { colors, icon, iconStroke } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -354,6 +355,8 @@ export default function RecipeBaselinesScreen() {
               { label: t("recipes.stat.items"), value: formatNumber(visibleSummary.inventoryItemsLinked), tone: "neutral" }
             ]}
           />
+
+          <PosDepletionDiagnosticsCard />
 
           <OperationsFlow
             title={t("recipes.flow.title")}

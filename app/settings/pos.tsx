@@ -12,6 +12,7 @@ import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { StatusNotice } from "../../components/ui/StatusNotice";
+import { PosDepletionDiagnosticsCard } from "../../components/operations/PosDepletionDiagnosticsCard";
 import { colors, icon, iconStroke, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
@@ -417,6 +418,8 @@ export default function POSConnectionScreen() {
             onAction={hubLoadError ? () => void loadIntegration(true) : undefined}
           />
         ) : null}
+
+        {hubReady ? <PosDepletionDiagnosticsCard /> : null}
 
         {readinessLoadError ? (
           <StatusNotice
