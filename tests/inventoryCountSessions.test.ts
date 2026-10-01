@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  COUNT_SESSION_ALREADY_OPEN_MESSAGE,
   applyCountApprovalsToInventory,
   assertSessionMutable,
   buildCountSessionLinesFromInventory,
   canApproveInventoryCountSession,
   canCancelInventoryCountSession,
   canDraftInventoryCountSession,
+  isCountSessionAlreadyOpenError,
   mergeCountLineUpdates,
   planCountSessionApprovals,
   summarizeCountSessionProgress
@@ -192,4 +194,17 @@ test("count sessions only include inventory items with verified canonical conver
       ),
     /canonical units/i
   );
+});
+
+test("isCountSessionAlreadyOpenError matches hosted and demo open-session races", () => {
+  assert.equal(
+    isCountSessionAlreadyOpenError(new Error(COUNT_SESSION_ALREADY_OPEN_MESSAGE)),
+    true
+  );
+  assert.equal(
+    isCountSessionAlreadyOpenError({ message: "A count session is already open for this restaurant" }),
+    true
+  );
+  assert.equal(isCountSessionAlreadyOpenError(new Error("Verify canonical units")), false);
+  assert.equal(isCountSessionAlreadyOpenError(null), false);
 });

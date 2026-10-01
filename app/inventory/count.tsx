@@ -19,7 +19,7 @@ import {
 } from "../../services/presentation/hubLoadState";
 import {
   approveInventoryCountSession,
-  beginInventoryCountSession,
+  beginOrResumeInventoryCountSession,
   cancelInventoryCountSession,
   fetchOpenInventoryCountSession,
   saveInventoryCountLines,
@@ -123,18 +123,20 @@ export default function InventoryCountSessionScreen() {
     setError(null);
     setNotice(null);
     try {
-      const next = await beginInventoryCountSession(restaurantId);
+      const { detail: next, resumed } = await beginOrResumeInventoryCountSession(restaurantId);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setDetail(next);
-      setDraftCounts(
-        Object.fromEntries(next.lines.map((line) => [line.inventory_item_id, ""]))
-      );
-      setDraftNotes(Object.fromEntries(next.lines.map((line) => [line.inventory_item_id, ""])));
+      syncDraftsFromDetail(next);
       setLoadedRestaurantId(restaurantId);
-      setNotice(t("inventory.count.started"));
+      setNotice(t(resumed ? "inventory.count.resumed" : "inventory.count.started"));
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.startError"));
+      const message = caught instanceof Error ? caught.message : "";
+      if (/canonical unit/i.test(message)) {
+        setError(t("inventory.count.startError"));
+      } else {
+        setError(t("inventory.count.startErrorGeneric"));
+      }
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }

@@ -949,10 +949,12 @@ test("inventory count sessions are service-owned with ledger approve path", () =
   const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
 
   assert.match(inventoryWorkflow, /beginInventoryCountSession/);
+  assert.match(inventoryWorkflow, /beginOrResumeInventoryCountSession/);
   assert.match(inventoryWorkflow, /approveInventoryCountSession[\s\S]*planCountSessionApprovals/);
   assert.match(repository, /action:\s*"begin_count_session"/i);
   assert.match(repository, /action:\s*"approve_count_session"/i);
   assert.match(edge, /"begin_count_session"/);
+  assert.match(edge, /HttpError\(409,\s*"A count session is already open for this restaurant"\)/);
   assert.match(edge, /"approve_count_session"/);
   assert.match(edge, /staffOperationalActions/);
   assert.match(edge, /service_approve_inventory_count_session/);
