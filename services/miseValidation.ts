@@ -13,6 +13,7 @@ import type {
   MenuItemIngredient,
   PosSale,
   PosIntegration,
+  PosLocation,
   PurchaseOrder,
   PurchaseRecommendation,
   RestaurantMembership,
@@ -1320,6 +1321,24 @@ export function normalizePosIntegration(value: PosIntegration): PosIntegration {
     sync_cursor: asNullableString(value.sync_cursor),
     settings: asRecord(value.settings),
     updated_at: value.updated_at ?? value.created_at
+  };
+}
+
+export function normalizePosLocation(value: PosLocation): PosLocation {
+  const status = value.status;
+  if (status !== "active" && status !== "paused" && status !== "disconnected") {
+    throw new Error("POS location status is invalid.");
+  }
+  return {
+    id: asString(value.id, ""),
+    restaurant_id: asString(value.restaurant_id, ""),
+    pos_integration_id: asString(value.pos_integration_id, ""),
+    external_location_id: asString(value.external_location_id, ""),
+    display_name: asString(value.display_name, "POS location"),
+    timezone: asNullableString(value.timezone),
+    status,
+    created_at: asString(value.created_at, value.updated_at ?? ""),
+    updated_at: asString(value.updated_at ?? value.created_at, value.created_at ?? "")
   };
 }
 

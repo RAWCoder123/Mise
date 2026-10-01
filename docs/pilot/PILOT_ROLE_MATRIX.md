@@ -6,7 +6,7 @@ This matrix documents the current intended authority. A check means the role may
 | --- | ---: | ---: | ---: | ---: | --- |
 | Connect or disconnect Square | ✓ | ✓ | — | — | `link-square`, OAuth service RPCs |
 | Sync Square sales | ✓ | ✓ | ✓ | — | `sync-pos-sales` Edge role gate |
-| Choose authorized Square locations | — | — | — | — | Not implemented as an operator choice |
+| Choose authorized Square locations | ✓ | ✓ | — | — | Settings → POS + `set_pos_location_status` |
 | Resolve catalog/menu mapping | ✓ | ✓ | ✓ | — | Settings → POS mapping review + `review_pos_catalog_mapping` |
 | Begin inventory count | ✓ | ✓ | ✓ | ✓ | `operational-workflows` count draft actions |
 | Save count lines | ✓ | ✓ | ✓ | ✓ | Count-session service RPC |

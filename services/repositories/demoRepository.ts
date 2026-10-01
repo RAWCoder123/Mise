@@ -2774,6 +2774,19 @@ export function createLocalDemoRepository(): MiseRepository {
       return integration ? normalizePosIntegration(integration) : null;
     },
 
+    async fetchPosLocations(restaurantId) {
+      const state = await readDemoState();
+      requireActiveDemoRestaurant(state, restaurantId);
+      // Demo feeds do not model multi-location Square authorization.
+      return [];
+    },
+
+    async setPosLocationStatus(restaurantId) {
+      const state = await readDemoState();
+      requireActiveDemoRestaurant(state, restaurantId);
+      throw new Error("Demo mode has no live Square locations to authorize.");
+    },
+
     async fetchPosMappingReviewQueue(restaurantId) {
       const state = await readDemoState();
       requireActiveDemoRestaurant(state, restaurantId);
