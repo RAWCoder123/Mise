@@ -8,7 +8,9 @@ import type {
 } from "../domain/inventoryLedger";
 import { createId } from "../domain/miseDomain";
 import {
+  requireInventoryAdjustment,
   requireInventoryOperation,
+  type InventoryAdjustmentClientInput,
   type InventoryOperationClientInput
 } from "../miseValidation";
 import { deviceInventoryOutboxRepository } from "../repositories/deviceInventoryOutboxRepository";
@@ -39,6 +41,23 @@ export async function queueInventoryEventForSubmission(input: {
 export function queueInventoryOperation(input: InventoryOperationClientInput) {
   const clientEventId = createId("inventory_event");
   const event = requireInventoryOperation(input);
+  return queueInventoryEventForSubmission({
+    outboxId: createId("inventory_outbox"),
+    event: {
+      ...event,
+      clientEventId,
+      idempotencyKey: `inventory:${clientEventId}`
+    }
+  });
+}
+
+/**
+ * Queues a manager inventory adjustment. Uses the dedicated signed-quantity
+ * validator so ordinary count/receipt/waste paths stay non-negative-only.
+ */
+export function queueInventoryAdjustment(input: InventoryAdjustmentClientInput) {
+  const clientEventId = createId("inventory_event");
+  const event = requireInventoryAdjustment(input);
   return queueInventoryEventForSubmission({
     outboxId: createId("inventory_outbox"),
     event: {

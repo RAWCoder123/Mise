@@ -100,6 +100,19 @@ export interface InventoryOperationClientInput {
   note?: unknown;
 }
 
+export interface InventoryAdjustmentClientInput {
+  restaurantId: unknown;
+  inventoryItemId: unknown;
+  /** Signed non-zero ledger delta in the item's verified canonical unit. */
+  quantity: unknown;
+  canonicalUnit: unknown;
+  effectiveAt: unknown;
+  /** Required audit explanation for why on-hand changed. */
+  note: unknown;
+  reasonCode?: unknown;
+  sourceReference?: unknown;
+}
+
 export type ValidatedInventoryOperation = Omit<
   InventoryEventInput,
   "clientEventId" | "idempotencyKey"
@@ -144,6 +157,37 @@ export function requireInventoryOperation(
   };
 }
 
+/**
+ * Manager adjustment boundary: signed ledger delta with a required note.
+ * Does not accept supersedes links (use the waste-correction flow for those).
+ * Hosted `record_inventory_event` still enforces owner/admin/manager roles.
+ */
+export function requireInventoryAdjustment(
+  input: InventoryAdjustmentClientInput
+): ValidatedInventoryOperation {
+  const restaurantId = requireBoundedText(input.restaurantId, "restaurant", 200);
+  const inventoryItemId = requireBoundedText(input.inventoryItemId, "inventory item", 200);
+  const canonicalUnit = requireCanonicalUnit(input.canonicalUnit);
+  const effectiveAt = requireInventoryTimestamp(input.effectiveAt);
+  const quantity = requireSignedInventoryAdjustmentQuantity(input.quantity);
+  const note = requireBoundedText(input.note, "note", 500);
+  const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
+  const reasonCode = optionalInventoryAdjustmentReasonCode(input.reasonCode);
+  return {
+    restaurantId,
+    inventoryItemId,
+    eventType: "adjustment",
+    quantity,
+    canonicalUnit,
+    effectiveAt,
+    source: "operator_adjustment",
+    sourceReference,
+    reasonCode,
+    supersedesEventId: null,
+    metadata: { note }
+  };
+}
+
 function requireOperatorInventoryEventType(value: unknown) {
   if (typeof value !== "string" || !operatorInventoryEventTypes.has(value as InventoryEventType)) {
     throw new Error("Choose a supported inventory operation.");
@@ -185,6 +229,39 @@ function requireInventoryQuantity(value: unknown) {
     throw new Error("Enter a valid inventory quantity.");
   }
   return quantity;
+}
+
+function requireSignedInventoryAdjustmentQuantity(value: unknown) {
+  if (
+    (typeof value !== "number" && typeof value !== "string") ||
+    (typeof value === "string" && !value.trim())
+  ) {
+    throw new Error("Enter a non-zero adjustment quantity.");
+  }
+  const quantity = Number(value);
+  if (
+    !Number.isFinite(quantity) ||
+    quantity === 0 ||
+    Math.abs(quantity) > operatingLimits.inventoryQuantity
+  ) {
+    throw new Error("Enter a non-zero adjustment quantity.");
+  }
+  return quantity;
+}
+
+function optionalInventoryAdjustmentReasonCode(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") throw new Error("Choose a valid adjustment reason.");
+  const normalized = value.trim();
+  if (
+    normalized !== "found" &&
+    normalized !== "lost" &&
+    normalized !== "recount_delta" &&
+    normalized !== "other"
+  ) {
+    throw new Error("Choose a valid adjustment reason.");
+  }
+  return normalized;
 }
 
 function requireBoundedText(value: unknown, label: string, maximum: number) {

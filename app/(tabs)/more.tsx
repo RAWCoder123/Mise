@@ -8,6 +8,7 @@ import {
   HelpCircle,
   Mail,
   PackageMinus,
+  Scale,
   ScanLine,
   Settings,
   Sunrise,
@@ -87,6 +88,12 @@ export default function MoreScreen() {
             title={t("more.row.waste.title")}
             icon={<PackageMinus size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/waste" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.inventoryAdjust.title")}
+            icon={<Scale size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/inventory-adjust" as never)}
           />
           <OperationalRow
             density="menu"
