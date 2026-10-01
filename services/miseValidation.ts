@@ -972,8 +972,16 @@ function hasControlCharacters(value: string) {
 export function requireRestaurantName(value: unknown) {
   if (typeof value !== "string") throw new Error("Restaurant name is required.");
   const normalized = value.trim();
-  if (normalized.length < 1 || normalized.length > RESTAURANT_NAME_MAX_CHARACTERS) {
-    throw new Error(`Restaurant name must be between 1 and ${RESTAURANT_NAME_MAX_CHARACTERS} characters.`);
+  // MISE-005EJ: reject ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) so client
+  // validation matches restaurants_name_length_check under COLLATE "C".
+  if (
+    normalized.length < 1 ||
+    normalized.length > RESTAURANT_NAME_MAX_CHARACTERS ||
+    hasControlCharacters(normalized)
+  ) {
+    throw new Error(
+      `Restaurant name must be between 1 and ${RESTAURANT_NAME_MAX_CHARACTERS} characters without control characters.`
+    );
   }
   return normalized;
 }
