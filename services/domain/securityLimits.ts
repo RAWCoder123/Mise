@@ -9,6 +9,8 @@ export const RESTAURANT_PROFILE_ARRAY_MAX_ITEMS = 20;
 export const RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS = 160;
 export const RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS = 2_000;
 export const STRUCTURED_AI_INSIGHT_MAX_BYTES = 16 * 1024;
+/** Matches the operator inventory source-reference bound and ledger insert guard. */
+export const INVENTORY_EVENT_SOURCE_REFERENCE_MAX_CHARACTERS = 200;
 
 export function utf8ByteLength(value: string) {
   let bytes = 0;

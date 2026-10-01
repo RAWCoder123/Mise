@@ -1,6 +1,6 @@
 begin;
 
-select plan(26);
+select plan(27);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -234,6 +234,19 @@ select is(
   $sql$),
   false,
   'an event that would make on-hand negative is rejected atomically'
+);
+select is(
+  pg_temp.execute_error($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'waste', 5, 'g', '2026-07-26T10:31:00Z', 'operator_waste',
+      'manager-oversized-source-reference-1', 'manager-oversized-source-reference-1',
+      repeat('r', 201), null, null, '{}'::jsonb
+    )
+  $sql$),
+  'Inventory event source reference is too long',
+  'an oversized source reference is rejected by the ledger evidence bound'
 );
 select is(
   (

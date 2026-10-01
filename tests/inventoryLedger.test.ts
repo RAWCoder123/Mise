@@ -106,6 +106,22 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
   assert.equal(secondCorrection.status, "conflict");
 });
 
+test("rejects oversized source references before accepting ledger evidence", () => {
+  const rejected = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({ sourceReference: "r".repeat(201) }),
+    authority: {
+      id: "event-oversized-ref",
+      actorUserId: "manager-1",
+      recordedAt: "2026-07-26T10:01:00.000Z"
+    }
+  });
+  assert.deepEqual(rejected, {
+    status: "rejected",
+    reason: "source_reference_too_long"
+  });
+});
+
 test("projects counts, receipts, usage, waste, and corrections in server sequence", () => {
   const count = accepted(
     [],
