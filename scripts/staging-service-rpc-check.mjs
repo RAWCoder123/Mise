@@ -115,6 +115,28 @@ await assertDeniedRpc(
   "inventory workflow rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
+  "service_create_inventory_item_and_signals",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_inventory_item_id: "99999999-9999-4999-8999-999999999999",
+    p_expected_revision: 0,
+    p_item: {
+      item_name: "Forged item",
+      category: "Produce",
+      unit: "lb",
+      current_quantity: 1,
+      par_level: 2,
+      reorder_threshold: 1,
+      estimated_unit_cost: 1,
+      supplier_id: "88888888-8888-4888-8888-888888888888"
+    },
+    p_recommendations: [],
+    p_insights: []
+  },
+  "inventory create rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
   "service_save_recipe_and_signals",
   {
     p_actor_user_id: managerA.id,
