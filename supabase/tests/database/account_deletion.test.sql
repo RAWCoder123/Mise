@@ -1,6 +1,6 @@
 begin;
 
-select plan(19);
+select plan(26);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -62,6 +62,13 @@ values
     'authenticated', 'authenticated', 'delete-race-coowner@mise.test',
     crypt('password', gen_salt('bf')), now(),
     '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
+  ),
+  (
+    'a7777777-7777-4777-8777-777777777777',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated', 'authenticated', 'delete-membershipless@mise.test',
+    crypt('password', gen_salt('bf')), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
   );
 
 insert into public.users (id, email, name, role, restaurant_id)
@@ -71,7 +78,8 @@ values
   ('a3333333-3333-4333-8333-333333333333', 'delete-shared-coowner@mise.test', 'Shared Coowner', 'owner', null),
   ('a4444444-4444-4444-8444-444444444444', 'delete-retry-owner@mise.test', 'Retry Owner', 'owner', null),
   ('a5555555-5555-4555-8555-555555555555', 'delete-race-owner@mise.test', 'Race Owner', 'owner', null),
-  ('a6666666-6666-4666-8666-666666666666', 'delete-race-coowner@mise.test', 'Race Coowner', 'owner', null);
+  ('a6666666-6666-4666-8666-666666666666', 'delete-race-coowner@mise.test', 'Race Coowner', 'owner', null),
+  ('a7777777-7777-4777-8777-777777777777', 'delete-membershipless@mise.test', 'Membershipless User', 'staff', null);
 
 insert into public.restaurants (id, name, cuisine_type)
 values
@@ -351,6 +359,97 @@ select ok(
       )->>'phase') = 'tenant_cleanup_completed'
   ),
   'tenant_cleanup_failed audits are service-retryable to tenant_cleanup_completed'
+);
+
+select is(
+  has_function_privilege(
+    'authenticated',
+    'public.service_reserve_membershipless_account_deletion(uuid,text,jsonb)',
+    'EXECUTE'
+  ),
+  false,
+  'authenticated clients cannot reserve membershipless account deletion'
+);
+select is(
+  has_function_privilege(
+    'service_role',
+    'public.service_reserve_membershipless_account_deletion(uuid,text,jsonb)',
+    'EXECUTE'
+  ),
+  true,
+  'service_role can reserve membershipless account deletion'
+);
+
+-- Membershipless planning is forbidden while any active membership remains.
+select ok(
+  not pg_temp.try_execute($sql$
+    select public.service_plan_account_deletion(
+      'a3333333-3333-4333-8333-333333333333',
+      null
+    )
+  $sql$),
+  'membershipless planning fails when the user still has an active membership'
+);
+
+select ok(
+  (
+    public.service_reserve_membershipless_account_deletion(
+      'a3333333-3333-4333-8333-333333333333',
+      'account_deletion_requested',
+      '{"confirmation":"delete_my_account"}'::jsonb
+    )->>'reason'
+  ) = 'forbidden',
+  'membershipless firewall forbids callers with an active membership'
+);
+
+with plan as (
+  select public.service_plan_account_deletion(
+    'a7777777-7777-4777-8777-777777777777',
+    null
+  ) as payload
+)
+select ok(
+  (
+    select
+      payload->>'phase' = 'deletion_planned'
+      and payload->>'membershipless' = 'true'
+      and payload ? 'audit_id'
+      and jsonb_typeof(payload->'owner_restaurant_candidates') = 'array'
+      and jsonb_array_length(payload->'owner_restaurant_candidates') = 0
+    from plan
+  ),
+  'membershipless plan writes deletion_planned with empty restaurant candidates'
+);
+
+select ok(
+  (
+    public.service_reserve_membershipless_account_deletion(
+      'a7777777-7777-4777-8777-777777777777',
+      'account_deletion_requested',
+      '{"confirmation":"delete_my_account"}'::jsonb
+    )->>'allowed'
+  )::boolean,
+  'membershipless firewall allows callers with zero active memberships'
+);
+
+delete from auth.users
+where id = 'a7777777-7777-4777-8777-777777777777';
+
+select is(
+  (
+    public.service_finalize_account_deletion(
+      (
+        select id
+        from private.account_deletion_audit
+        where planned_user_id = 'a7777777-7777-4777-8777-777777777777'
+        order by created_at desc
+        limit 1
+      ),
+      'auth_deletion_completed'
+    )->>'restaurants_deleted'
+  )::integer,
+  0,
+  'membershipless finalize never deletes restaurants'
 );
 
 select * from finish();

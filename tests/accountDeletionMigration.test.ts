@@ -10,8 +10,15 @@ const candidateCleanupMigration = readFileSync(
   "supabase/migrations/20260726223000_account_deletion_candidate_cleanup.sql",
   "utf8"
 );
+const membershiplessMigration = readFileSync(
+  "supabase/migrations/20260827090000_membershipless_account_deletion.sql",
+  "utf8"
+);
 const deleteAccountEdge = readFileSync("supabase/functions/delete-account/index.ts", "utf8");
 const supabaseRepository = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+const setupScreen = readFileSync("app/(auth)/setup.tsx", "utf8");
+const securityBackend = readFileSync("scripts/security-backend.mjs", "utf8");
+const sharedMise = readFileSync("supabase/functions/_shared/mise.ts", "utf8");
 
 test("account deletion plan is written before any tenant wipe", () => {
   assert.match(durableAuditMigration, /create table if not exists private\.account_deletion_audit/i);
@@ -142,7 +149,12 @@ test("post-auth cleanup failures preserve the deletion reference for support", (
 test("account deletion path never mutates inventory_events (inventory FK owns actor anonymization)", () => {
   // Inventory actor nulling is Codex-owned via auth.users FK ON DELETE SET NULL.
   // Account-deletion plan/finalize and Edge must not UPDATE/DELETE inventory_events.
-  for (const source of [durableAuditMigration, candidateCleanupMigration, deleteAccountEdge]) {
+  for (const source of [
+    durableAuditMigration,
+    candidateCleanupMigration,
+    membershiplessMigration,
+    deleteAccountEdge
+  ]) {
     assert.doesNotMatch(source, /update\s+(?:only\s+)?(?:public\.)?inventory_events/i);
     assert.doesNotMatch(source, /delete\s+from\s+(?:public\.)?inventory_events/i);
   }
@@ -150,4 +162,40 @@ test("account deletion path never mutates inventory_events (inventory FK owns ac
     deleteAccountEdge,
     /never UPDATEs\/DELETEs inventory_events|inventory_events\.actor_user_id/
   );
+});
+
+test("membershipless deletion is allowed only with zero active memberships and never plans restaurant deletes", () => {
+  assert.match(
+    membershiplessMigration,
+    /Account deletion without a restaurant requires zero active memberships/i
+  );
+  assert.match(membershiplessMigration, /'membershipless',\s*true/);
+  assert.match(
+    membershiplessMigration,
+    /service_reserve_membershipless_account_deletion/i
+  );
+  assert.match(
+    membershiplessMigration,
+    /service_record_membershipless_account_deletion_event/i
+  );
+  assert.match(
+    membershiplessMigration,
+    /grant execute on function public\.service_reserve_membershipless_account_deletion/i
+  );
+  assert.match(
+    securityBackend,
+    /service_reserve_membershipless_account_deletion/
+  );
+  assert.match(membershiplessMigration, /p_requesting_restaurant_id is null/i);
+  assert.match(membershiplessMigration, /owner_restaurant_candidate_count',\s*0/);
+  assert.match(deleteAccountEdge, /service_reserve_membershipless_account_deletion/);
+  assert.match(deleteAccountEdge, /membershipless/);
+  assert.match(
+    deleteAccountEdge,
+    /Delete your account from Settings while a restaurant workspace is still assigned/
+  );
+  assert.match(sharedMise, /service_record_membershipless_account_deletion_event/);
+  assert.match(supabaseRepository, /normalizedRestaurantId \? \{ restaurantId/);
+  assert.match(setupScreen, /deleteAccount\(null\)/);
+  assert.match(setupScreen, /setup\.access\.deleteTitle/);
 });

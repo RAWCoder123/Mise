@@ -65,10 +65,10 @@ export async function removeRestaurantMember(restaurantId: string, targetUserId:
   return repository.removeRestaurantMember(restaurantId, targetUserId);
 }
 
-export async function deleteAccount(restaurantId: string) {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
-  return repository.deleteAccount(normalizedRestaurantId);
+export async function deleteAccount(restaurantId?: string | null) {
+  const normalizedRestaurantId =
+    typeof restaurantId === "string" ? restaurantId.trim() : "";
+  return repository.deleteAccount(normalizedRestaurantId || null);
 }
 
 export async function exportRestaurantData(restaurantId: string) {
