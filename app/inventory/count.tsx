@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { ClipboardList, Diff } from "lucide-react-native";
+import { ClipboardList, Diff, Search } from "lucide-react-native";
 import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../../components/ui/Button";
@@ -9,9 +9,13 @@ import { MotionView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, radii, spacing, typography } from "../../constants/theme";
+import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import {
+  filterInventoryCountLinesBySearch,
+  INVENTORY_COUNT_LINE_SEARCH_THRESHOLD
+} from "../../services/domain/inventoryCountLineSearch";
 import { summarizeCountSessionProgress } from "../../services/domain/inventoryCountSessions";
 import {
   presentRestaurantScopedHubActionsEditable,
@@ -40,6 +44,7 @@ export default function InventoryCountSessionScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [lineQuery, setLineQuery] = useState("");
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
@@ -86,6 +91,7 @@ export default function InventoryCountSessionScreen() {
     setDetail(null);
     setDraftCounts({});
     setDraftNotes({});
+    setLineQuery("");
     setSaving(false);
     setError(null);
     setNotice(null);
@@ -115,6 +121,16 @@ export default function InventoryCountSessionScreen() {
     () => summarizeCountSessionProgress(visibleDetail?.lines ?? []),
     [visibleDetail?.lines]
   );
+
+  const sessionLines = visibleDetail?.lines ?? [];
+  const showLineSearch = sessionLines.length > INVENTORY_COUNT_LINE_SEARCH_THRESHOLD;
+  const lineFingerprint = sessionLines.map((line) => line.inventory_item_id).join("\u0001");
+  const filteredLines = useMemo(
+    () => filterInventoryCountLinesBySearch(sessionLines, showLineSearch ? lineQuery : ""),
+    [lineFingerprint, lineQuery, sessionLines, showLineSearch]
+  );
+  const lineSearchNoMatches =
+    showLineSearch && lineQuery.trim().length > 0 && filteredLines.length === 0;
 
   async function startSession() {
     if (!restaurant || !actionsEditable) return;
@@ -375,84 +391,115 @@ export default function InventoryCountSessionScreen() {
                 padding="none"
               >
                 <View style={styles.lineList}>
-                  {visibleDetail.lines.map((line, index) => {
-                    const countedRaw = draftCounts[line.inventory_item_id] ?? "";
-                    const noteRaw = draftNotes[line.inventory_item_id] ?? "";
-                    const counted = countedRaw.trim() === "" ? null : Number(countedRaw);
-                    const variance =
-                      counted == null || !Number.isFinite(counted)
-                        ? null
-                        : counted - line.system_quantity_at_start;
-                    const editable =
-                      actionsEditable && visibleDetail.session.status === "in_progress";
-                    const showNoteField =
-                      editable || noteRaw.trim().length > 0 || (variance != null && variance !== 0);
-                    return (
-                      <View
-                        key={line.id}
-                        style={[styles.lineRow, index > 0 ? styles.lineRowDivided : null]}
-                      >
-                        <View style={styles.lineHeader}>
-                          <View style={styles.lineCopy}>
-                            <Text style={styles.lineName}>{line.item_name}</Text>
-                            <Text style={styles.lineMeta}>
-                              {t("inventory.count.systemQty", {
-                                quantity: formatNumber(line.system_quantity_at_start),
-                                unit: line.unit
+                  {showLineSearch ? (
+                    <View style={styles.searchBox}>
+                      <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
+                      <TextInput
+                        accessibilityLabel={t("inventory.count.search.accessibility")}
+                        accessibilityHint={t("inventory.count.search.hint")}
+                        value={lineQuery}
+                        onChangeText={setLineQuery}
+                        placeholder={t("inventory.count.search.placeholder")}
+                        placeholderTextColor={colors.faint}
+                        returnKeyType="search"
+                        autoCorrect={false}
+                        autoCapitalize="none"
+                        style={styles.searchInput}
+                      />
+                    </View>
+                  ) : null}
+                  {showLineSearch ? (
+                    <Text style={styles.searchMeta} accessibilityLiveRegion="polite">
+                      {t("inventory.count.search.showing", {
+                        shown: formatNumber(filteredLines.length),
+                        total: formatNumber(sessionLines.length)
+                      })}
+                    </Text>
+                  ) : null}
+                  {lineSearchNoMatches ? (
+                    <Text style={styles.searchEmpty} accessibilityLiveRegion="polite">
+                      {t("inventory.count.search.empty")}
+                    </Text>
+                  ) : (
+                    filteredLines.map((line, index) => {
+                      const countedRaw = draftCounts[line.inventory_item_id] ?? "";
+                      const noteRaw = draftNotes[line.inventory_item_id] ?? "";
+                      const counted = countedRaw.trim() === "" ? null : Number(countedRaw);
+                      const variance =
+                        counted == null || !Number.isFinite(counted)
+                          ? null
+                          : counted - line.system_quantity_at_start;
+                      const editable =
+                        actionsEditable && visibleDetail.session.status === "in_progress";
+                      const showNoteField =
+                        editable || noteRaw.trim().length > 0 || (variance != null && variance !== 0);
+                      return (
+                        <View
+                          key={line.id}
+                          style={[styles.lineRow, index > 0 || showLineSearch ? styles.lineRowDivided : null]}
+                        >
+                          <View style={styles.lineHeader}>
+                            <View style={styles.lineCopy}>
+                              <Text style={styles.lineName}>{line.item_name}</Text>
+                              <Text style={styles.lineMeta}>
+                                {t("inventory.count.systemQty", {
+                                  quantity: formatNumber(line.system_quantity_at_start),
+                                  unit: line.unit
+                                })}
+                              </Text>
+                              {variance != null && variance !== 0 ? (
+                                <View style={styles.varianceRow}>
+                                  <Diff size={14} color={colors.accent} strokeWidth={2.25} />
+                                  <Text style={styles.varianceText}>
+                                    {t("inventory.count.variance", {
+                                      quantity: formatNumber(variance),
+                                      unit: line.unit
+                                    })}
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </View>
+                            <TextInput
+                              accessibilityLabel={t("inventory.count.countedAccessibility", {
+                                item: line.item_name
                               })}
-                            </Text>
-                            {variance != null && variance !== 0 ? (
-                              <View style={styles.varianceRow}>
-                                <Diff size={14} color={colors.accent} strokeWidth={2.25} />
-                                <Text style={styles.varianceText}>
-                                  {t("inventory.count.variance", {
-                                    quantity: formatNumber(variance),
-                                    unit: line.unit
-                                  })}
-                                </Text>
-                              </View>
-                            ) : null}
+                              editable={editable}
+                              keyboardType="decimal-pad"
+                              value={countedRaw}
+                              onChangeText={(value) =>
+                                setDraftCounts((current) => ({
+                                  ...current,
+                                  [line.inventory_item_id]: value
+                                }))
+                              }
+                              placeholder="0"
+                              placeholderTextColor={colors.faint}
+                              style={styles.countInput}
+                            />
                           </View>
-                          <TextInput
-                            accessibilityLabel={t("inventory.count.countedAccessibility", {
-                              item: line.item_name
-                            })}
-                            editable={editable}
-                            keyboardType="decimal-pad"
-                            value={countedRaw}
-                            onChangeText={(value) =>
-                              setDraftCounts((current) => ({
-                                ...current,
-                                [line.inventory_item_id]: value
-                              }))
-                            }
-                            placeholder="0"
-                            placeholderTextColor={colors.faint}
-                            style={styles.countInput}
-                          />
+                          {showNoteField ? (
+                            <TextInput
+                              accessibilityLabel={t("inventory.count.noteAccessibility", {
+                                item: line.item_name
+                              })}
+                              editable={editable}
+                              value={noteRaw}
+                              onChangeText={(value) =>
+                                setDraftNotes((current) => ({
+                                  ...current,
+                                  [line.inventory_item_id]: value
+                                }))
+                              }
+                              placeholder={t("inventory.count.notePlaceholder")}
+                              placeholderTextColor={colors.faint}
+                              style={styles.noteInput}
+                              multiline
+                            />
+                          ) : null}
                         </View>
-                        {showNoteField ? (
-                          <TextInput
-                            accessibilityLabel={t("inventory.count.noteAccessibility", {
-                              item: line.item_name
-                            })}
-                            editable={editable}
-                            value={noteRaw}
-                            onChangeText={(value) =>
-                              setDraftNotes((current) => ({
-                                ...current,
-                                [line.inventory_item_id]: value
-                              }))
-                            }
-                            placeholder={t("inventory.count.notePlaceholder")}
-                            placeholderTextColor={colors.faint}
-                            style={styles.noteInput}
-                            multiline
-                          />
-                        ) : null}
-                      </View>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </View>
               </SectionSurface>
             </MotionView>
@@ -529,7 +576,41 @@ const styles = StyleSheet.create({
   },
   lineList: {
     paddingHorizontal: 14,
-    paddingBottom: 8
+    paddingBottom: 8,
+    paddingTop: 10,
+    gap: 0
+  },
+  searchBox: {
+    minHeight: 44,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8
+  },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 42,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 12,
+    lineHeight: 17,
+    paddingVertical: 0
+  },
+  searchMeta: {
+    ...typography.caption,
+    color: colors.faint,
+    marginBottom: 4
+  },
+  searchEmpty: {
+    ...typography.body,
+    color: colors.muted,
+    paddingVertical: 12
   },
   lineRow: {
     gap: 8,
