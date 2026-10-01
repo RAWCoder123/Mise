@@ -190,6 +190,11 @@ function OperatingPlanItemRow({
                 {presentation.windowLabel}
               </Text>
             ) : null}
+            {!isDone && presentation.why ? (
+              <Text numberOfLines={2} style={styles.taskWhy}>
+                {t("today.plan.why", { why: presentation.why })}
+              </Text>
+            ) : null}
             {isDone && presentation.completionResult ? (
               <Text numberOfLines={1} style={styles.result}>
                 {t("today.plan.result", { result: presentation.completionResult })}
@@ -423,6 +428,13 @@ const styles = StyleSheet.create({
   taskWindow: {
     color: colors.muted,
     ...conceptTypography.subtitle
+  },
+  taskWhy: {
+    color: colors.muted,
+    ...conceptTypography.body,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2
   },
   taskCopy: {
     flex: 1,
