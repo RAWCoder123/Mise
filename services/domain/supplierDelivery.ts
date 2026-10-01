@@ -1,8 +1,25 @@
 import type { InventoryItem, PurchaseRecommendation, SupplierOrder } from "../../types/mise";
 import type { SupplierDeliveryLineInput } from "../repositories/repositoryContracts";
+import {
+  requireOptionalInvoiceTotal,
+  requireOptionalUnitPrice
+} from "../miseValidation";
 
 export interface DeliveryLineBuildResult {
   lines: SupplierDeliveryLineInput[];
+  skippedItemIds: string[];
+}
+
+export interface DeliveryReceiveCostPreviewLine {
+  inventoryItemId: string;
+  itemName: string;
+  displayUnit: string;
+  orderedQuantity: number;
+  canonicalUnit: "g" | "ml" | "each";
+}
+
+export interface DeliveryReceiveCostPreview {
+  lines: DeliveryReceiveCostPreviewLine[];
   skippedItemIds: string[];
 }
 
@@ -61,6 +78,73 @@ export function buildDeliveryLinesFromOrderRecommendations(input: {
   }
 
   return { lines, skippedItemIds };
+}
+
+/**
+ * Read-only receive cost preview: as-ordered lines with display names so the
+ * operator can optionally capture invoice total and per-line unit prices.
+ */
+export function buildDeliveryReceiveCostPreview(input: {
+  order: SupplierOrder;
+  recommendations: readonly PurchaseRecommendation[];
+  inventoryItems: readonly InventoryItem[];
+  requireVerifiedCanonicalUnit?: boolean;
+}): DeliveryReceiveCostPreview {
+  const built = buildDeliveryLinesFromOrderRecommendations(input);
+  const itemsById = new Map(input.inventoryItems.map((item) => [item.id, item]));
+
+  return {
+    skippedItemIds: built.skippedItemIds,
+    lines: built.lines.map((line) => {
+      const item = itemsById.get(line.inventoryItemId);
+      return {
+        inventoryItemId: line.inventoryItemId,
+        itemName: item?.item_name ?? line.inventoryItemId,
+        displayUnit: item?.unit?.trim() || line.canonicalUnit,
+        orderedQuantity: line.orderedQuantity ?? line.receivedQuantity,
+        canonicalUnit: line.canonicalUnit
+      };
+    })
+  };
+}
+
+/**
+ * Applies optional per-ordered-line unit prices. Unknown ordered IDs fail
+ * closed. Blank/null clears the price; otherwise values must match the hosted
+ * RPC bound.
+ */
+export function applyDeliveryLineUnitPrices(
+  lines: readonly SupplierDeliveryLineInput[],
+  unitPricesByOrderedItemId: Readonly<Record<string, number | string | null | undefined>>
+): SupplierDeliveryLineInput[] {
+  const knownOrderedIds = new Set(lines.map((line) => line.inventoryItemId));
+
+  for (const orderedItemId of Object.keys(unitPricesByOrderedItemId)) {
+    if (!knownOrderedIds.has(orderedItemId)) {
+      throw new Error("Delivery unit price references an unknown ordered line.");
+    }
+  }
+
+  return lines.map((line) => {
+    if (!Object.prototype.hasOwnProperty.call(unitPricesByOrderedItemId, line.inventoryItemId)) {
+      return {
+        ...line,
+        unitPrice: line.unitPrice ?? null
+      };
+    }
+
+    return {
+      ...line,
+      unitPrice: requireOptionalUnitPrice(unitPricesByOrderedItemId[line.inventoryItemId])
+    };
+  });
+}
+
+/** Optional invoice total for the whole delivery; blank stays null. */
+export function normalizeDeliveryInvoiceTotal(
+  value: number | string | null | undefined
+): number | null {
+  return requireOptionalInvoiceTotal(value);
 }
 
 export function deliveryClientIdForOrder(orderId: string, receivedAt: string): string {

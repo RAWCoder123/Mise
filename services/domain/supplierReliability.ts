@@ -15,6 +15,8 @@ export interface SupplierDeliveryRecord {
   status: SupplierDeliveryStatus;
   received_at: string;
   notes: string | null;
+  /** Optional invoice total captured at receive time. */
+  invoice_total?: number | null;
   created_at: string;
 }
 
@@ -28,6 +30,8 @@ export interface SupplierDeliveryItemRecord {
   damaged_quantity: number;
   missing_quantity: number;
   canonical_unit: string;
+  /** Optional paid unit price captured at receive time. */
+  unit_price?: number | null;
   discrepancy_reason?: string | null;
 }
 
@@ -85,6 +89,8 @@ export interface SupplierOrderDeliveryEvidence {
   missingLineCount: number;
   damagedLineCount: number;
   notes: string | null;
+  invoiceTotal: number | null;
+  pricedLineCount: number;
 }
 
 interface SupplierAccumulator {
@@ -209,7 +215,10 @@ export function buildSupplierOrderDeliveryEvidence(input: {
           .length,
         damagedLineCount: lines.filter((line) => (finiteNonNegative(line.damaged_quantity) ?? 0) > 0)
           .length,
-        notes: delivery.notes?.trim() || null
+        notes: delivery.notes?.trim() || null,
+        invoiceTotal: finiteNonNegative(delivery.invoice_total ?? null),
+        pricedLineCount: lines.filter((line) => finiteNonNegative(line.unit_price ?? null) != null)
+          .length
       } satisfies SupplierOrderDeliveryEvidence;
     });
   return evidence.sort((left, right) => right.receivedAt.localeCompare(left.receivedAt));
