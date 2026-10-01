@@ -50,6 +50,11 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.team, /hubReady\s*\?\s*members\s*:\s*\[\]/);
   assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);
   assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
+  assert.match(screens.pos, /hubReady\s*\?\s*integration\s*:\s*null/);
+  assert.match(screens.pos, /hubUnavailable/);
+  assert.match(screens.pos, /pos\.hero\.unavailable/);
+  assert.match(screens.pos, /actionLabel=\{t\("common\.retry"\)\}/);
+  assert.match(screens.pos, /captureMiseError\(loadError/);
   assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
   assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);
   assert.match(screens.autonomy, /hubReady\s*\?\s*rules\s*:\s*\[\]/);
