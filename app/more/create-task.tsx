@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { ArrowLeft, ClipboardList } from "lucide-react-native";
+import { ArrowLeft, ClipboardList, Search } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -15,6 +15,10 @@ import { colors, icon, iconStroke, radii, typography } from "../../constants/the
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import {
+  filterRestaurantTaskAssigneesBySearch,
+  RESTAURANT_TASK_ASSIGNEE_SEARCH_THRESHOLD
+} from "../../services/domain/restaurantTaskAssigneeSearch";
 import {
   completeOperatorTask,
   createSharedRestaurantTask,
@@ -70,7 +74,7 @@ function formatDueLabel(dueAt: string | null, t: ReturnType<typeof useLocale>["t
 }
 
 export default function CreateOperatorTaskScreen() {
-  const { t } = useLocale();
+  const { formatNumber, t } = useLocale();
   const { restaurant, role, user } = useMiseSession();
   const [scope, setScope] = useState<TaskScope>("restaurant");
   const [title, setTitle] = useState("");
@@ -90,6 +94,7 @@ export default function CreateOperatorTaskScreen() {
   const [verificationMethod, setVerificationMethod] = useState<RestaurantTaskVerificationMethod>("none");
   const [checklistText, setChecklistText] = useState("");
   const [assigneeUserId, setAssigneeUserId] = useState<string | null>(null);
+  const [assigneeQuery, setAssigneeQuery] = useState("");
   const [dependencyId, setDependencyId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
@@ -113,6 +118,7 @@ export default function CreateOperatorTaskScreen() {
     setError(null);
     setSaved(false);
     setBusyTaskId(null);
+    setAssigneeQuery("");
   }, [restaurant?.id]);
 
   const priorityOptions = useMemo<readonly SegmentOption<OperatorTaskPriority>[]>(
@@ -274,6 +280,19 @@ export default function CreateOperatorTaskScreen() {
       ),
     [team, requiredRole, role, user?.id, hubReady]
   );
+  const showAssigneeSearch = assignableTeam.length > RESTAURANT_TASK_ASSIGNEE_SEARCH_THRESHOLD;
+  const filteredAssignableTeam = useMemo(
+    () =>
+      filterRestaurantTaskAssigneesBySearch(
+        assignableTeam,
+        showAssigneeSearch ? assigneeQuery : ""
+      ),
+    [assigneeQuery, assignableTeam, showAssigneeSearch]
+  );
+  const assigneeSearchNoMatches =
+    showAssigneeSearch &&
+    assigneeQuery.trim().length > 0 &&
+    filteredAssignableTeam.length === 0;
 
   async function save() {
     if (!restaurant || !actionsEditable) return;
@@ -343,6 +362,7 @@ export default function CreateOperatorTaskScreen() {
       setVerificationMethod("none");
       setChecklistText("");
       setAssigneeUserId(null);
+      setAssigneeQuery("");
       setDependencyId(null);
       await loadTasks();
     } catch (saveError) {
@@ -540,27 +560,63 @@ export default function CreateOperatorTaskScreen() {
               onValueChange={(nextRole) => {
                 setRequiredRole(nextRole);
                 setAssigneeUserId(null);
+                setAssigneeQuery("");
               }}
               variant="pills"
               scrollable
             />
 
             <SectionHeader title={t("operatorTasks.field.assignee")} subtitle={t("operatorTasks.field.assigneeHint")} />
-            <View style={styles.choiceList}>
+            <View style={styles.choiceList} accessibilityRole="radiogroup">
+              {showAssigneeSearch ? (
+                <View style={styles.assigneeSearchBox}>
+                  <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
+                  <TextInput
+                    accessibilityLabel={t("operatorTasks.assignee.search.accessibility")}
+                    accessibilityHint={t("operatorTasks.assignee.search.hint")}
+                    accessibilityState={{ disabled: !actionsEditable }}
+                    value={assigneeQuery}
+                    onChangeText={setAssigneeQuery}
+                    editable={actionsEditable}
+                    placeholder={t("operatorTasks.assignee.search.placeholder")}
+                    placeholderTextColor={colors.faint}
+                    returnKeyType="search"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    style={styles.assigneeSearchInput}
+                  />
+                </View>
+              ) : null}
+              {showAssigneeSearch ? (
+                <Text style={styles.assigneeSearchMeta} accessibilityLiveRegion="polite">
+                  {t("operatorTasks.assignee.search.showing", {
+                    shown: formatNumber(filteredAssignableTeam.length),
+                    total: formatNumber(assignableTeam.length)
+                  })}
+                </Text>
+              ) : null}
               <ChoiceRow
                 label={t("operatorTasks.assignee.unassigned")}
                 selected={!assigneeUserId}
                 onPress={() => setAssigneeUserId(null)}
+                disabled={!actionsEditable}
               />
-              {assignableTeam.map((member) => (
-                <ChoiceRow
-                  key={member.user_id}
-                  label={member.name?.trim() || member.email?.trim() || t("operatorTasks.assignee.teammate")}
-                  detail={member.role}
-                  selected={assigneeUserId === member.user_id}
-                  onPress={() => setAssigneeUserId(member.user_id)}
-                />
-              ))}
+              {assigneeSearchNoMatches ? (
+                <Text style={styles.assigneeSearchEmpty} accessibilityLiveRegion="polite">
+                  {t("operatorTasks.assignee.search.empty")}
+                </Text>
+              ) : (
+                filteredAssignableTeam.map((member) => (
+                  <ChoiceRow
+                    key={member.user_id}
+                    label={member.name?.trim() || member.email?.trim() || t("operatorTasks.assignee.teammate")}
+                    detail={member.role}
+                    selected={assigneeUserId === member.user_id}
+                    onPress={() => setAssigneeUserId(member.user_id)}
+                    disabled={!actionsEditable}
+                  />
+                ))
+              )}
             </View>
 
             <SectionHeader title={t("operatorTasks.field.verification")} />
@@ -859,6 +915,33 @@ const styles = StyleSheet.create({
   },
   choiceList: {
     gap: 8
+  },
+  assigneeSearchBox: {
+    minHeight: 48,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  assigneeSearchInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    color: colors.text,
+    ...typography.body
+  },
+  assigneeSearchMeta: {
+    ...typography.caption,
+    color: colors.muted
+  },
+  assigneeSearchEmpty: {
+    ...typography.body,
+    color: colors.muted,
+    paddingVertical: 4
   },
   choiceRow: {
     minHeight: 44,
