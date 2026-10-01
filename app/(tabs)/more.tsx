@@ -8,6 +8,7 @@ import {
   HelpCircle,
   Mail,
   PackageMinus,
+  RefreshCw,
   ScanLine,
   Settings,
   Sunrise,
@@ -93,6 +94,12 @@ export default function MoreScreen() {
             title={t("more.row.activity.title")}
             icon={<Activity size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/activity" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.recalculationHistory.title")}
+            icon={<RefreshCw size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/recalculation-runs" as never)}
           />
           <OperationalRow
             density="menu"
