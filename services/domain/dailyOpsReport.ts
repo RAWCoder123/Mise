@@ -38,7 +38,7 @@ export interface DailyOpsManagerAction {
   id: string;
   title: string;
   detail: string;
-  route: "/today" | "/inventory" | "/orders" | "/insights" | "/ask-mise";
+  route: "/today" | "/inventory" | "/orders" | "/insights" | "/ask-mise" | "/more/waste";
   severity: InsightSeverity;
 }
 
@@ -223,7 +223,9 @@ export function buildDailyOpsReport(input: DailyOpsReportInput): DailyOpsReport 
         insights,
         openTasks,
         operatorTasksOpen: Math.max(0, Math.floor(operatorTasksOpen)),
-        pendingRecommendations: summary.pendingRecommendations
+        pendingRecommendations: summary.pendingRecommendations,
+        supplierReliability: supplierReliability ?? emptySupplierReliabilitySummary(),
+        wasteAnalysis
       }),
       askBriefingText: askBriefingText?.trim() ? askBriefingText.trim() : null
     }
@@ -332,6 +334,8 @@ function rankManagerActions(input: {
   openTasks: number;
   operatorTasksOpen: number;
   pendingRecommendations: number;
+  supplierReliability: SupplierReliabilitySummary;
+  wasteAnalysis: WasteAnalysisSummary | null;
 }): DailyOpsManagerAction[] {
   const actions: DailyOpsManagerAction[] = [];
 
@@ -371,6 +375,55 @@ function rankManagerActions(input: {
     });
   }
 
+  const wasteAttention = input.wasteAnalysis?.status === "attention" ? input.wasteAnalysis : null;
+  if (wasteAttention && !actions.some((action) => action.route === "/more/waste")) {
+    const leadItem =
+      wasteAttention.topItems.find((item) => item.inventoryItemId === wasteAttention.primaryItemId) ??
+      wasteAttention.topItems[0] ??
+      null;
+    actions.push({
+      id: "waste-attention",
+      title: "Recorded waste needs review",
+      detail: leadItem
+        ? `${leadItem.itemName} leads recent waste evidence — review before the next prep cycle.`
+        : "Recent waste evidence is above the restaurant baseline — review before the next prep cycle.",
+      route: "/more/waste",
+      severity: "warning"
+    });
+  }
+
+  const attentionSuppliers = input.supplierReliability.suppliers.filter(
+    (supplier) => supplier.status === "watch" || supplier.status === "at_risk"
+  );
+  const attentionSupplierCount = Math.max(
+    0,
+    Math.floor(input.supplierReliability.attentionSupplierCount)
+  );
+  if (
+    attentionSupplierCount > 0 &&
+    attentionSuppliers.length > 0 &&
+    !actions.some((action) => action.id === "supplier-reliability")
+  ) {
+    const atRisk = attentionSuppliers.some((supplier) => supplier.status === "at_risk");
+    const leadSupplier = [...attentionSuppliers].sort((left, right) => {
+      if (left.status !== right.status) {
+        return left.status === "at_risk" ? -1 : 1;
+      }
+      return left.supplierName.localeCompare(right.supplierName);
+    })[0]!;
+    const countLabel =
+      attentionSupplierCount === 1
+        ? "1 supplier needs follow-up"
+        : `${attentionSupplierCount} suppliers need follow-up`;
+    actions.push({
+      id: "supplier-reliability",
+      title: countLabel,
+      detail: `${leadSupplier.supplierName} delivery history needs review before the next order.`,
+      route: "/orders",
+      severity: atRisk ? "urgent" : "warning"
+    });
+  }
+
   const openWork = input.openTasks + input.operatorTasksOpen;
   if (openWork > 0 && !actions.some((action) => action.route === "/today")) {
     actions.push({
@@ -399,7 +452,8 @@ function rankManagerActions(input: {
     actions.push({
       id: "all-clear",
       title: "Closeout looks clear",
-      detail: "No urgent stock, order, or task blockers for this operating day.",
+      detail:
+        "No urgent stock, order, waste, supplier, or task blockers for this operating day.",
       route: "/today",
       severity: "info"
     });

@@ -353,3 +353,139 @@ test("buildDailyOpsReport stubs empty deliveries and all-clear advice", () => {
   assert.equal(report.deliveriesToday.count, 0);
   assert.equal(report.managerAdvice.actions[0]?.id, "all-clear");
 });
+
+test("buildDailyOpsReport refuses all-clear when waste analysis needs attention", () => {
+  const report = buildDailyOpsReport({
+    restaurantName: "Harbor",
+    operatingDate: "2026-08-01",
+    restaurantTimeZone: "America/New_York",
+    restaurantCurrency: "USD",
+    summary: summary({
+      inventoryAlerts: 0,
+      pendingRecommendations: 0,
+      attentionCards: [],
+      lowStockCount: 0
+    }),
+    inventoryHealth: { good: 10, watch: 0, low: 0, critical: 0 },
+    operationalTasks: [],
+    insights: [],
+    operatorTasksOpen: 0,
+    wasteAnalysis: wasteSummary()
+  });
+
+  assert.ok(!report.managerAdvice.actions.some((action) => action.id === "all-clear"));
+  const wasteAction = report.managerAdvice.actions.find((action) => action.id === "waste-attention");
+  assert.ok(wasteAction);
+  assert.equal(wasteAction!.route, "/more/waste");
+  assert.equal(wasteAction!.severity, "warning");
+  assert.match(wasteAction!.title, /waste/i);
+  assert.match(wasteAction!.detail, /Herbs/);
+});
+
+test("buildDailyOpsReport refuses all-clear when suppliers need reliability follow-up", () => {
+  const report = buildDailyOpsReport({
+    restaurantName: "Harbor",
+    operatingDate: "2026-08-01",
+    restaurantTimeZone: "America/New_York",
+    restaurantCurrency: "USD",
+    summary: summary({
+      inventoryAlerts: 0,
+      pendingRecommendations: 0,
+      attentionCards: [],
+      lowStockCount: 0
+    }),
+    inventoryHealth: { good: 10, watch: 0, low: 0, critical: 0 },
+    operationalTasks: [],
+    insights: [],
+    operatorTasksOpen: 0,
+    supplierReliability: {
+      totalDeliveries: 2,
+      supplierCount: 1,
+      attentionSupplierCount: 1,
+      overallOnTimeRate: 0.5,
+      overallMatchedDeliveryRate: 0.5,
+      suppliers: [
+        {
+          supplierId: "00000000-0000-4000-8000-000000000402",
+          supplierName: "Produce Co.",
+          status: "at_risk",
+          deliveryCount: 2,
+          onTimeCount: 1,
+          measurableDeliveryCount: 2,
+          issueDeliveryCount: 1,
+          unverifiedDeliveryCount: 0,
+          discrepancyLineCount: 1,
+          onTimeRate: 0.5,
+          matchedDeliveryRate: 0.5,
+          fulfillmentRate: 0.9,
+          reasons: ["late_deliveries"],
+          lastDeliveryAt: "2026-08-01T10:00:00.000Z",
+          relatedOrderIds: ["order-1"]
+        }
+      ]
+    }
+  });
+
+  assert.ok(!report.managerAdvice.actions.some((action) => action.id === "all-clear"));
+  const supplierAction = report.managerAdvice.actions.find(
+    (action) => action.id === "supplier-reliability"
+  );
+  assert.ok(supplierAction);
+  assert.equal(supplierAction!.route, "/orders");
+  assert.equal(supplierAction!.severity, "urgent");
+  assert.match(supplierAction!.title, /supplier/i);
+  assert.match(supplierAction!.detail, /Produce Co\./);
+});
+
+test("buildDailyOpsReport keeps all-clear when waste is only monitoring", () => {
+  const report = buildDailyOpsReport({
+    restaurantName: "Harbor",
+    operatingDate: "2026-08-01",
+    restaurantTimeZone: "America/New_York",
+    restaurantCurrency: "USD",
+    summary: summary({
+      inventoryAlerts: 0,
+      pendingRecommendations: 0,
+      attentionCards: [],
+      lowStockCount: 0
+    }),
+    inventoryHealth: { good: 10, watch: 0, low: 0, critical: 0 },
+    operationalTasks: [],
+    insights: [],
+    operatorTasksOpen: 0,
+    wasteAnalysis: {
+      ...wasteSummary(),
+      status: "monitoring",
+      reasons: ["within_baseline"],
+      recommendedAction: "keep_logging"
+    },
+    supplierReliability: {
+      totalDeliveries: 2,
+      supplierCount: 1,
+      attentionSupplierCount: 0,
+      overallOnTimeRate: 1,
+      overallMatchedDeliveryRate: 1,
+      suppliers: [
+        {
+          supplierId: "00000000-0000-4000-8000-000000000402",
+          supplierName: "Produce Co.",
+          status: "reliable",
+          deliveryCount: 2,
+          onTimeCount: 2,
+          measurableDeliveryCount: 2,
+          issueDeliveryCount: 0,
+          unverifiedDeliveryCount: 0,
+          discrepancyLineCount: 0,
+          onTimeRate: 1,
+          matchedDeliveryRate: 1,
+          fulfillmentRate: 1,
+          reasons: ["matched_history"],
+          lastDeliveryAt: "2026-08-01T10:00:00.000Z",
+          relatedOrderIds: ["order-1"]
+        }
+      ]
+    }
+  });
+
+  assert.equal(report.managerAdvice.actions[0]?.id, "all-clear");
+});
