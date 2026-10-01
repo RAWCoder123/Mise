@@ -91,6 +91,9 @@ test("every Edge handler authenticates before body processing and closes accepte
 test("supplier notes, restaurant names, and generated messages stop at their authoritative limits", () => {
   assert.equal(requireSupplierOperatorNote("x".repeat(2000))?.length, 2000);
   assert.throws(() => requireSupplierOperatorNote("x".repeat(2001)), /2,000 characters/);
+  assert.equal(requireSupplierOperatorNote("Leave at\nback door"), "Leave at\nback door");
+  assert.throws(() => requireSupplierOperatorNote("Leave at\u000bback door"), /control characters/);
+  assert.throws(() => requireSupplierOperatorNote("Leave at\u007fback door"), /control characters/);
   assert.equal(requireRestaurantName("R".repeat(120)).length, 120);
   assert.throws(() => requireRestaurantName("R".repeat(121)), /between 1 and 120/);
 
