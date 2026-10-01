@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { catalogs, SUPPORTED_LOCALES, translate } from "../i18n/catalog.ts";
 import {
   buildSupplierRecipientDirectory
 } from "../services/domain/supplierRecipients";
@@ -166,7 +167,50 @@ test("supplier recipient route is stale-response guarded and staff read-only", (
   assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| emailUnchanged\}/);
   assert.match(screen, /minHeight: 44/);
   assert.match(screen, /accessibilityLabel=\{copy\.saveAccessibility/);
-  assert.match(screen, /Record<AppLocale, SupplierCopy>/);
+  assert.match(screen, /buildSupplierCopy\(t\)/);
+  assert.match(screen, /settings\.suppliers\.title/);
+  assert.doesNotMatch(screen, /Record<AppLocale, SupplierCopy>/);
+  assert.match(screen, /captureMiseError/);
+  // Soft-refresh must not claim an empty directory while the hub is unavailable.
+  assert.match(
+    screen,
+    /!hubReady\s*\?\s*null\s*:\s*visibleEntries\.length === 0/
+  );
+  assert.match(
+    screen,
+    /!hubReady\s*\?\s*undefined\s*:\s*copy\.configuredCount/
+  );
+});
+
+test("supplier recipient copy lives in the shared i18n catalog for EN/ES/zh-Hans", () => {
+  const requiredKeys = [
+    "settings.suppliers.title",
+    "settings.suppliers.notice.invalidBody",
+    "settings.suppliers.notice.renamedBody",
+    "settings.suppliers.configuredCount",
+    "settings.suppliers.empty.title",
+    "settings.suppliers.readOnlyEmailAccessibility"
+  ] as const;
+
+  for (const locale of SUPPORTED_LOCALES) {
+    for (const key of requiredKeys) {
+      assert.equal(typeof catalogs[locale][key], "string");
+      assert.ok(catalogs[locale][key].length > 0);
+    }
+  }
+
+  assert.equal(
+    translate("en", "settings.suppliers.notice.savedBody", { supplier: "Fresh Foods" }),
+    "Fresh Foods is ready for approved order emails."
+  );
+  assert.equal(
+    translate("es", "settings.suppliers.configuredCount", { configured: "2", total: "5" }),
+    "2 de 5 listos"
+  );
+  assert.equal(
+    translate("zh-Hans", "settings.suppliers.empty.title"),
+    "尚无供应商"
+  );
 });
 
 function recipient(patch: Partial<SupplierRecipient> = {}): SupplierRecipient {

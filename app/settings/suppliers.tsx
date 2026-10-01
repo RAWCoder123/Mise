@@ -14,7 +14,7 @@ import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusN
 import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
-import type { AppLocale } from "../../i18n/catalog";
+import type { MessageKey, MessageValues } from "../../i18n/catalog";
 import {
   fetchSupplierRecipientDirectory,
   renameSupplier,
@@ -26,6 +26,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+import { captureMiseError } from "../../services/telemetry";
 
 interface SupplierNotice {
   tone: StatusNoticeTone;
@@ -33,10 +34,126 @@ interface SupplierNotice {
   message: string;
 }
 
+type Translate = (key: MessageKey, values?: MessageValues) => string;
+
+interface SupplierCopy {
+  title: string;
+  subtitle: string;
+  back: string;
+  noRestaurantTitle: string;
+  noRestaurantBody: string;
+  readOnlyTitle: string;
+  readOnlyBody: string;
+  loadErrorTitle: string;
+  loadErrorBody: string;
+  retry: string;
+  retryAccessibility: string;
+  invalidTitle: string;
+  invalidBody: (supplier: string) => string;
+  invalidNameTitle: string;
+  invalidNameBody: string;
+  savedTitle: string;
+  savedBody: (supplier: string) => string;
+  saveErrorTitle: string;
+  saveErrorBody: (supplier: string) => string;
+  renamedTitle: string;
+  renamedBody: (supplier: string) => string;
+  renameErrorTitle: string;
+  renameErrorBody: (supplier: string) => string;
+  safetyTitle: string;
+  safetyBody: string;
+  sectionTitle: string;
+  sectionSubtitle: string;
+  configuredCount: (configured: string, total: string) => string;
+  emptyTitle: string;
+  emptyBody: string;
+  savedRecipient: string;
+  currentSupplier: string;
+  configured: string;
+  needsEmail: string;
+  nameLabel: string;
+  namePlaceholder: string;
+  nameAccessibility: (supplier: string) => string;
+  nameHint: string;
+  rename: string;
+  renameAccessibility: (supplier: string) => string;
+  renameHint: string;
+  emailLabel: string;
+  emailPlaceholder: string;
+  emailAccessibility: (supplier: string) => string;
+  emailHint: string;
+  save: string;
+  saving: string;
+  saveAccessibility: (supplier: string) => string;
+  saveHint: string;
+  readOnlyEmailAccessibility: (supplier: string, email: string | null) => string;
+  notConfigured: string;
+}
+
+function buildSupplierCopy(t: Translate): SupplierCopy {
+  return {
+    title: t("settings.suppliers.title"),
+    subtitle: t("settings.suppliers.subtitle"),
+    back: t("settings.suppliers.back"),
+    noRestaurantTitle: t("settings.suppliers.noRestaurant.title"),
+    noRestaurantBody: t("settings.suppliers.noRestaurant.body"),
+    readOnlyTitle: t("settings.suppliers.readOnly.title"),
+    readOnlyBody: t("settings.suppliers.readOnly.body"),
+    loadErrorTitle: t("settings.suppliers.retry.title"),
+    loadErrorBody: t("settings.suppliers.retry.body"),
+    retry: t("settings.suppliers.retry"),
+    retryAccessibility: t("settings.suppliers.retry.accessibility"),
+    invalidTitle: t("settings.suppliers.notice.invalidTitle"),
+    invalidBody: (supplier) => t("settings.suppliers.notice.invalidBody", { supplier }),
+    invalidNameTitle: t("settings.suppliers.notice.invalidNameTitle"),
+    invalidNameBody: t("settings.suppliers.notice.invalidNameBody"),
+    savedTitle: t("settings.suppliers.notice.savedTitle"),
+    savedBody: (supplier) => t("settings.suppliers.notice.savedBody", { supplier }),
+    saveErrorTitle: t("settings.suppliers.notice.saveErrorTitle"),
+    saveErrorBody: (supplier) => t("settings.suppliers.notice.saveErrorBody", { supplier }),
+    renamedTitle: t("settings.suppliers.notice.renamedTitle"),
+    renamedBody: (supplier) => t("settings.suppliers.notice.renamedBody", { supplier }),
+    renameErrorTitle: t("settings.suppliers.notice.renameErrorTitle"),
+    renameErrorBody: (supplier) => t("settings.suppliers.notice.renameErrorBody", { supplier }),
+    safetyTitle: t("settings.suppliers.safety.title"),
+    safetyBody: t("settings.suppliers.safety.body"),
+    sectionTitle: t("settings.suppliers.section.title"),
+    sectionSubtitle: t("settings.suppliers.section.subtitle"),
+    configuredCount: (configured, total) => t("settings.suppliers.configuredCount", { configured, total }),
+    emptyTitle: t("settings.suppliers.empty.title"),
+    emptyBody: t("settings.suppliers.empty.body"),
+    savedRecipient: t("settings.suppliers.savedRecipient"),
+    currentSupplier: t("settings.suppliers.currentSupplier"),
+    configured: t("settings.suppliers.configured"),
+    needsEmail: t("settings.suppliers.needsEmail"),
+    nameLabel: t("settings.suppliers.nameLabel"),
+    namePlaceholder: t("settings.suppliers.namePlaceholder"),
+    nameAccessibility: (supplier) => t("settings.suppliers.nameAccessibility", { supplier }),
+    nameHint: t("settings.suppliers.nameHint"),
+    rename: t("settings.suppliers.rename"),
+    renameAccessibility: (supplier) => t("settings.suppliers.renameAccessibility", { supplier }),
+    renameHint: t("settings.suppliers.renameHint"),
+    emailLabel: t("settings.suppliers.emailLabel"),
+    emailPlaceholder: t("settings.suppliers.emailPlaceholder"),
+    emailAccessibility: (supplier) => t("settings.suppliers.emailAccessibility", { supplier }),
+    emailHint: t("settings.suppliers.emailHint"),
+    save: t("settings.suppliers.save"),
+    saving: t("settings.suppliers.saving"),
+    saveAccessibility: (supplier) => t("settings.suppliers.saveAccessibility", { supplier }),
+    saveHint: t("settings.suppliers.saveHint"),
+    readOnlyEmailAccessibility: (supplier, email) =>
+      t("settings.suppliers.readOnlyEmailAccessibility", {
+        supplier,
+        email: email ?? t("settings.suppliers.notConfigured")
+      }),
+    notConfigured: t("settings.suppliers.notConfigured")
+  };
+}
+
 export default function SupplierRecipientsScreen() {
   const navigation = useNavigation();
-  const { formatNumber, locale } = useLocale();
-  const copy = supplierCopy[locale];
+  const { formatNumber, t } = useLocale();
+  const copy = useMemo(() => buildSupplierCopy(t), [t]);
   const { memberships, restaurant } = useMiseSession();
   const [entries, setEntries] = useState<SupplierRecipientDirectoryEntry[]>([]);
   const [draftEmails, setDraftEmails] = useState<Record<string, string>>({});
@@ -76,8 +193,9 @@ export default function SupplierRecipientsScreen() {
         nextEntries.map((entry) => [entry.supplierId, entry.supplierName])
       ));
       setLoadedRestaurantId(restaurantId);
-    } catch {
+    } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, { flow: "suppliers", operation: "load", restaurant_id: restaurantId });
       setLoadError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
@@ -121,6 +239,8 @@ export default function SupplierRecipientsScreen() {
     hubReady,
     busy: savingKeys.size > 0
   });
+  // Soft-refresh / load errors clear visible rows via hubReady; do not also
+  // claim "no suppliers" while the directory is unavailable or still loading.
   const visibleEntries = hubReady ? entries : [];
 
   async function saveRecipient(entry: SupplierRecipientDirectoryEntry) {
@@ -161,8 +281,13 @@ export default function SupplierRecipientsScreen() {
         title: copy.savedTitle,
         message: copy.savedBody(entry.supplierName)
       });
-    } catch {
+    } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "suppliers",
+        operation: "save_recipient",
+        restaurant_id: restaurantId
+      });
       setNotice({
         tone: "danger",
         title: copy.saveErrorTitle,
@@ -213,8 +338,13 @@ export default function SupplierRecipientsScreen() {
         title: copy.renamedTitle,
         message: copy.renamedBody(displayName)
       });
-    } catch {
+    } catch (error) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(error, {
+        flow: "suppliers",
+        operation: "rename_supplier",
+        restaurant_id: restaurantId
+      });
       setNotice({
         tone: "danger",
         title: copy.renameErrorTitle,
@@ -279,10 +409,14 @@ export default function SupplierRecipientsScreen() {
           <SectionSurface
             title={copy.sectionTitle}
             subtitle={copy.sectionSubtitle}
-            action={copy.configuredCount(formatNumber(configuredCount), formatNumber(visibleEntries.length))}
+            action={
+              !hubReady
+                ? undefined
+                : copy.configuredCount(formatNumber(configuredCount), formatNumber(visibleEntries.length))
+            }
             padding="none"
           >
-            {visibleEntries.length === 0 ? (
+            {!hubReady ? null : visibleEntries.length === 0 ? (
               <View style={styles.emptyWrap}>
                 <EmptyState compact title={copy.emptyTitle} body={copy.emptyBody} />
               </View>
@@ -410,222 +544,6 @@ function isValidSupplierName(value: string) {
   const canonical = canonicalSupplierName(value);
   return canonical.length >= 1 && canonical.length <= 160 && !/[\u0000-\u001f\u007f]/.test(value);
 }
-
-interface SupplierCopy {
-  title: string;
-  subtitle: string;
-  back: string;
-  noRestaurantTitle: string;
-  noRestaurantBody: string;
-  readOnlyTitle: string;
-  readOnlyBody: string;
-  loadErrorTitle: string;
-  loadErrorBody: string;
-  retry: string;
-  retryAccessibility: string;
-  invalidTitle: string;
-  invalidBody: (supplier: string) => string;
-  invalidNameTitle: string;
-  invalidNameBody: string;
-  savedTitle: string;
-  savedBody: (supplier: string) => string;
-  saveErrorTitle: string;
-  saveErrorBody: (supplier: string) => string;
-  renamedTitle: string;
-  renamedBody: (supplier: string) => string;
-  renameErrorTitle: string;
-  renameErrorBody: (supplier: string) => string;
-  safetyTitle: string;
-  safetyBody: string;
-  sectionTitle: string;
-  sectionSubtitle: string;
-  configuredCount: (configured: string, total: string) => string;
-  emptyTitle: string;
-  emptyBody: string;
-  savedRecipient: string;
-  currentSupplier: string;
-  configured: string;
-  needsEmail: string;
-  nameLabel: string;
-  namePlaceholder: string;
-  nameAccessibility: (supplier: string) => string;
-  nameHint: string;
-  rename: string;
-  renameAccessibility: (supplier: string) => string;
-  renameHint: string;
-  emailLabel: string;
-  emailPlaceholder: string;
-  emailAccessibility: (supplier: string) => string;
-  emailHint: string;
-  save: string;
-  saving: string;
-  saveAccessibility: (supplier: string) => string;
-  saveHint: string;
-  readOnlyEmailAccessibility: (supplier: string, email: string | null) => string;
-  notConfigured: string;
-}
-
-const supplierCopy: Record<AppLocale, SupplierCopy> = {
-  en: {
-    title: "Suppliers",
-    subtitle: "Names and recipients for approved restaurant orders.",
-    back: "Back to settings",
-    noRestaurantTitle: "No restaurant selected",
-    noRestaurantBody: "Open a restaurant workspace before managing supplier recipients.",
-    readOnlyTitle: "View-only supplier emails",
-    readOnlyBody: "Owners, admins, and managers can update recipients. Staff can review the saved addresses.",
-    loadErrorTitle: "Supplier emails could not refresh",
-    loadErrorBody: "Try loading this restaurant’s supplier directory again.",
-    retry: "Try again",
-    retryAccessibility: "Retry loading supplier emails",
-    invalidTitle: "Enter a valid email",
-    invalidBody: (supplier) => `Add a complete email address for ${supplier}.`,
-    invalidNameTitle: "Enter a valid supplier name",
-    invalidNameBody: "Use 1–160 characters without control characters.",
-    savedTitle: "Supplier email saved",
-    savedBody: (supplier) => `${supplier} is ready for approved order emails.`,
-    saveErrorTitle: "Supplier email was not saved",
-    saveErrorBody: (supplier) => `Try saving the recipient for ${supplier} again.`,
-    renamedTitle: "Supplier renamed",
-    renamedBody: (supplier) => `${supplier} keeps its recipient, orders, and purchasing identity.`,
-    renameErrorTitle: "Supplier was not renamed",
-    renameErrorBody: (supplier) => `Try renaming ${supplier} again. The name may already be in use.`,
-    safetyTitle: "Restaurant-scoped recipients",
-    safetyBody: "Each supplier keeps one durable restaurant identity. Renaming it does not detach its recipient or create a different supplier.",
-    sectionTitle: "Supplier directory",
-    sectionSubtitle: "Current suppliers and their approved-order recipients.",
-    configuredCount: (configured, total) => `${configured} of ${total} ready`,
-    emptyTitle: "No suppliers yet",
-    emptyBody: "Add inventory suppliers during setup before configuring order recipients.",
-    savedRecipient: "Saved recipient",
-    currentSupplier: "Current supplier",
-    configured: "Ready",
-    needsEmail: "Needs email",
-    nameLabel: "Display name",
-    namePlaceholder: "Supplier name",
-    nameAccessibility: (supplier) => `Display name for ${supplier}`,
-    nameHint: "Renaming preserves this supplier’s identity and recipient.",
-    rename: "Save name",
-    renameAccessibility: (supplier) => `Save a new display name for ${supplier}`,
-    renameHint: "Changes presentation without assigning a different supplier.",
-    emailLabel: "Order email",
-    emailPlaceholder: "orders@supplier.com",
-    emailAccessibility: (supplier) => `Order email for ${supplier}`,
-    emailHint: "Enter the recipient used for approved supplier orders.",
-    save: "Save email",
-    saving: "Saving",
-    saveAccessibility: (supplier) => `Save order email for ${supplier}`,
-    saveHint: "Saves this recipient to the active restaurant only.",
-    readOnlyEmailAccessibility: (supplier, email) => `${supplier} order email: ${email ?? "not configured"}`,
-    notConfigured: "Not configured"
-  },
-  es: {
-    title: "Proveedores",
-    subtitle: "Nombres y destinatarios de pedidos aprobados del restaurante.",
-    back: "Volver a Configuración",
-    noRestaurantTitle: "No hay restaurante seleccionado",
-    noRestaurantBody: "Abre un espacio de restaurante antes de administrar destinatarios.",
-    readOnlyTitle: "Correos de proveedores de solo lectura",
-    readOnlyBody: "Propietarios, administradores y gerentes pueden actualizar destinatarios. El personal puede revisar las direcciones guardadas.",
-    loadErrorTitle: "No se pudieron actualizar los correos",
-    loadErrorBody: "Intenta cargar nuevamente el directorio de proveedores de este restaurante.",
-    retry: "Reintentar",
-    retryAccessibility: "Volver a cargar los correos de proveedores",
-    invalidTitle: "Ingresa un correo válido",
-    invalidBody: (supplier) => `Agrega una dirección de correo completa para ${supplier}.`,
-    invalidNameTitle: "Ingresa un nombre de proveedor válido",
-    invalidNameBody: "Usa entre 1 y 160 caracteres, sin caracteres de control.",
-    savedTitle: "Correo del proveedor guardado",
-    savedBody: (supplier) => `${supplier} está listo para recibir pedidos aprobados.`,
-    saveErrorTitle: "No se guardó el correo",
-    saveErrorBody: (supplier) => `Intenta guardar nuevamente el destinatario de ${supplier}.`,
-    renamedTitle: "Proveedor renombrado",
-    renamedBody: (supplier) => `${supplier} conserva su destinatario, pedidos e identidad de compra.`,
-    renameErrorTitle: "No se cambió el nombre",
-    renameErrorBody: (supplier) => `Intenta renombrar ${supplier} nuevamente. Es posible que el nombre ya esté en uso.`,
-    safetyTitle: "Destinatarios por restaurante",
-    safetyBody: "Cada proveedor conserva una identidad estable dentro del restaurante. Renombrarlo no desconecta su destinatario ni crea otro proveedor.",
-    sectionTitle: "Directorio de proveedores",
-    sectionSubtitle: "Proveedores actuales y destinatarios de pedidos aprobados.",
-    configuredCount: (configured, total) => `${configured} de ${total} listos`,
-    emptyTitle: "Aún no hay proveedores",
-    emptyBody: "Agrega proveedores de inventario durante la configuración antes de definir destinatarios.",
-    savedRecipient: "Destinatario guardado",
-    currentSupplier: "Proveedor actual",
-    configured: "Listo",
-    needsEmail: "Falta correo",
-    nameLabel: "Nombre visible",
-    namePlaceholder: "Nombre del proveedor",
-    nameAccessibility: (supplier) => `Nombre visible de ${supplier}`,
-    nameHint: "Cambiar el nombre conserva la identidad y el destinatario del proveedor.",
-    rename: "Guardar nombre",
-    renameAccessibility: (supplier) => `Guardar un nuevo nombre visible para ${supplier}`,
-    renameHint: "Cambia la presentación sin asignar otro proveedor.",
-    emailLabel: "Correo para pedidos",
-    emailPlaceholder: "pedidos@proveedor.com",
-    emailAccessibility: (supplier) => `Correo para pedidos de ${supplier}`,
-    emailHint: "Ingresa el destinatario que recibirá los pedidos aprobados.",
-    save: "Guardar correo",
-    saving: "Guardando",
-    saveAccessibility: (supplier) => `Guardar correo para pedidos de ${supplier}`,
-    saveHint: "Guarda este destinatario únicamente en el restaurante activo.",
-    readOnlyEmailAccessibility: (supplier, email) => `Correo para pedidos de ${supplier}: ${email ?? "sin configurar"}`,
-    notConfigured: "Sin configurar"
-  },
-  "zh-Hans": {
-    title: "供应商",
-    subtitle: "餐厅已批准订单使用的名称和收件人。",
-    back: "返回设置",
-    noRestaurantTitle: "未选择餐厅",
-    noRestaurantBody: "请先打开餐厅工作区，再管理供应商收件人。",
-    readOnlyTitle: "供应商邮箱仅供查看",
-    readOnlyBody: "所有者、管理员和经理可以更新收件人；员工可以查看已保存的地址。",
-    loadErrorTitle: "无法刷新供应商邮箱",
-    loadErrorBody: "请重新加载此餐厅的供应商目录。",
-    retry: "重试",
-    retryAccessibility: "重新加载供应商邮箱",
-    invalidTitle: "请输入有效邮箱",
-    invalidBody: (supplier) => `请为 ${supplier} 添加完整的邮箱地址。`,
-    invalidNameTitle: "请输入有效的供应商名称",
-    invalidNameBody: "请使用 1–160 个字符，且不要包含控制字符。",
-    savedTitle: "供应商邮箱已保存",
-    savedBody: (supplier) => `${supplier} 已可接收批准后的订单邮件。`,
-    saveErrorTitle: "未能保存供应商邮箱",
-    saveErrorBody: (supplier) => `请重新保存 ${supplier} 的收件人。`,
-    renamedTitle: "供应商已重命名",
-    renamedBody: (supplier) => `${supplier} 的收件人、订单和采购身份均保持不变。`,
-    renameErrorTitle: "未能重命名供应商",
-    renameErrorBody: (supplier) => `请再次尝试重命名 ${supplier}。该名称可能已被使用。`,
-    safetyTitle: "餐厅专属收件人",
-    safetyBody: "每个供应商在餐厅内都有一个持久身份。重命名不会断开收件人，也不会创建新的供应商。",
-    sectionTitle: "供应商目录",
-    sectionSubtitle: "当前供应商及其已批准订单的收件人。",
-    configuredCount: (configured, total) => `${configured}/${total} 已就绪`,
-    emptyTitle: "尚无供应商",
-    emptyBody: "请先在设置中添加库存供应商，再配置订单收件人。",
-    savedRecipient: "已保存的收件人",
-    currentSupplier: "当前供应商",
-    configured: "已就绪",
-    needsEmail: "需要邮箱",
-    nameLabel: "显示名称",
-    namePlaceholder: "供应商名称",
-    nameAccessibility: (supplier) => `${supplier} 的显示名称`,
-    nameHint: "重命名会保留供应商身份和收件人。",
-    rename: "保存名称",
-    renameAccessibility: (supplier) => `保存 ${supplier} 的新显示名称`,
-    renameHint: "仅更改显示内容，不会分配其他供应商。",
-    emailLabel: "订单邮箱",
-    emailPlaceholder: "orders@supplier.com",
-    emailAccessibility: (supplier) => `${supplier} 的订单邮箱`,
-    emailHint: "输入用于接收已批准供应商订单的收件人。",
-    save: "保存邮箱",
-    saving: "正在保存",
-    saveAccessibility: (supplier) => `保存 ${supplier} 的订单邮箱`,
-    saveHint: "仅将此收件人保存到当前餐厅。",
-    readOnlyEmailAccessibility: (supplier, email) => `${supplier} 的订单邮箱：${email ?? "未配置"}`,
-    notConfigured: "未配置"
-  }
-};
 
 const styles = StyleSheet.create({
   stack: {
