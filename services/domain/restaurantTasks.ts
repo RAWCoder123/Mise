@@ -196,7 +196,7 @@ export function normalizeCreateRestaurantTaskInput(
   const restaurantId = requiredText(input.restaurantId, 200, "Restaurant id");
   const clientTaskId = requiredText(input.clientTaskId, 200, "Client task id");
   const title = requiredText(input.title, 160, "Task title");
-  const detail = optionalText(input.detail, 2000, "Task detail");
+  const detail = optionalTaskDetail(input.detail);
   const origin = input.origin ?? "human";
   const operationalCategory = input.operationalCategory ?? "other";
   const priority = input.priority ?? "normal";
@@ -300,7 +300,7 @@ export function restaurantTaskFromPersistedRow(
     locationId: optionalText(row.location_id, 200, "Location id"),
     origin: row.origin as RestaurantTaskOrigin,
     title: requiredText(row.title, 160, "Task title"),
-    detail: optionalText(row.detail, 2000, "Task detail"),
+    detail: optionalTaskDetail(row.detail),
     operationalCategory: row.operational_category as RestaurantTaskCategory,
     priority: row.priority as RestaurantTaskPriority,
     status: row.status as RestaurantTaskStatus,
@@ -511,6 +511,25 @@ function optionalText(value: unknown, max: number, label: string): string | null
   const normalized = value.trim();
   if (!normalized) return null;
   if (normalized.length > max) throw new Error(`${label} is invalid.`);
+  return normalized;
+}
+
+function hasControlCharacters(value: string) {
+  // ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) — matches
+  // restaurant_tasks_detail_check under COLLATE "C" (MISE-005EP).
+  return /[\u0000-\u001f\u007f]/.test(value);
+}
+
+function optionalTaskDetail(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") throw new Error("Task detail is invalid.");
+  const normalized = value.trim();
+  if (!normalized) return null;
+  // MISE-005EP: reject ASCII C [[:cntrl:]] so client validation matches
+  // restaurant_tasks_detail_check under COLLATE "C".
+  if (normalized.length > 2000 || hasControlCharacters(normalized)) {
+    throw new Error("Task detail is limited to 2000 characters without control characters.");
+  }
   return normalized;
 }
 
