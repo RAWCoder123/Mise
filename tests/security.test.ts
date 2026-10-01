@@ -330,7 +330,10 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
   const updateWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+updateInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
 
   assert.match(validation, /patch\.current_quantity[\s\S]*remain auditable/i);
-  assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold"\]\)/i);
+  assert.match(
+    edgeWorkflow,
+    /new Set\(\["par_level", "reorder_threshold", "estimated_unit_cost"\]\)/i
+  );
   assert.doesNotMatch(edgeWorkflow, /new Set\([^\n]+supplier_name/i);
   assert.match(updateWorkflow, /fetchAnchoredPlanningData[\s\S]*fetchRecommendationHistory/i);
   assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);
@@ -363,6 +366,19 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
     durableSupplierMigration,
     /safe_patch\s*-\s*array\[[^\]]*'supplier_name'/i
   );
+  const unitCostMigration = readFileSync(
+    "supabase/migrations/20260828140000_inventory_policy_estimated_unit_cost.sql",
+    "utf8"
+  );
+  assert.match(
+    unitCostMigration,
+    /safe_patch\s*-\s*array\['par_level',\s*'reorder_threshold',\s*'estimated_unit_cost'\]/i
+  );
+  assert.match(
+    unitCostMigration,
+    /estimated_unit_cost\s*=\s*item_row\.estimated_unit_cost/i
+  );
+  assert.doesNotMatch(unitCostMigration, /set\s+current_quantity\s*=/i);
   assert.match(projectionMigration, /after insert on public\.inventory_events/i);
 });
 

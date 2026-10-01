@@ -53,6 +53,7 @@ export default function InventoryDetailScreen() {
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
+  const [estimatedUnitCost, setEstimatedUnitCost] = useState("");
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
   const [savingSettings, setSavingSettings] = useState(false);
@@ -97,6 +98,12 @@ export default function InventoryDetailScreen() {
         setReorderThreshold(
           formatNumber(nextOutlook.item.reorder_threshold, {
             maximumFractionDigits: 2,
+            useGrouping: false
+          })
+        );
+        setEstimatedUnitCost(
+          formatNumber(nextOutlook.item.estimated_unit_cost, {
+            maximumFractionDigits: 4,
             useGrouping: false
           })
         );
@@ -284,6 +291,13 @@ export default function InventoryDetailScreen() {
         parseNumber,
         formatNumber,
         t
+      ),
+      estimatedUnitCost: validateInventoryNumber(
+        estimatedUnitCost,
+        t("inventory.detail.field.estimatedUnitCost"),
+        parseNumber,
+        formatNumber,
+        t
       )
     };
     if (Object.values(nextSettingErrors).some(Boolean)) {
@@ -301,7 +315,8 @@ export default function InventoryDetailScreen() {
     try {
       await updateInventoryItem(restaurantId, item.id, {
         par_level: parseNumber(parLevel) ?? 0,
-        reorder_threshold: parseNumber(reorderThreshold) ?? 0
+        reorder_threshold: parseNumber(reorderThreshold) ?? 0,
+        estimated_unit_cost: parseNumber(estimatedUnitCost) ?? 0
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await load();
@@ -595,6 +610,18 @@ export default function InventoryDetailScreen() {
               editable={actionsEditable && !busy}
               error={settingErrors.reorderThreshold}
             />
+            <Field
+              label={t("inventory.detail.estimatedUnitCost", {
+                currency: restaurant?.currency ?? "USD"
+              })}
+              value={estimatedUnitCost}
+              onChangeText={(value) => {
+                setEstimatedUnitCost(value);
+                setSettingErrors((current) => ({ ...current, estimatedUnitCost: undefined }));
+              }}
+              editable={actionsEditable && !busy}
+              error={settingErrors.estimatedUnitCost}
+            />
             {mutationAllowed ? (
               <Button
                 title={savingSettings ? t("inventory.detail.saving") : t("inventory.detail.saveSettings")}
@@ -696,6 +723,7 @@ function Field({
 interface InventorySettingErrors {
   parLevel?: string;
   reorderThreshold?: string;
+  estimatedUnitCost?: string;
 }
 
 function isCanonicalUnitReady(item: InventoryItem) {

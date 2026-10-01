@@ -436,7 +436,8 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
   const validated: InventoryItemPatch = { ...patch };
   for (const [field, label] of [
     ["par_level", "Par level"],
-    ["reorder_threshold", "Reorder threshold"]
+    ["reorder_threshold", "Reorder threshold"],
+    ["estimated_unit_cost", "Estimated unit cost"]
   ] as const) {
     const value = validated[field];
     if (value === undefined) continue;
@@ -1191,6 +1192,12 @@ export function normalizeInventoryItemPatch(patch: InventoryItemPatch): Inventor
   if (normalized.reorder_threshold !== undefined) {
     normalized.reorder_threshold = asBoundedNonNegativeNumber(
       normalized.reorder_threshold,
+      operatingLimits.inventoryQuantity
+    );
+  }
+  if (normalized.estimated_unit_cost !== undefined) {
+    normalized.estimated_unit_cost = asBoundedNonNegativeNumber(
+      normalized.estimated_unit_cost,
       operatingLimits.inventoryQuantity
     );
   }
