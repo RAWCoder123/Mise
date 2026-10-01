@@ -4,6 +4,12 @@ import {
   type DeliveryHistoryEntry
 } from "./deliveryHistoryMerge";
 import {
+  findManualReceiptConflictsForOrderReceive,
+  findOpenSentOrderConflictsForInventoryItem,
+  type ManualReceiptBeforeOrderReceiveConflict,
+  type OpenSentOrderReceiptConflict
+} from "../domain/deliveryReceiptConflict";
+import {
   buildDeliveryLinesFromOrderRecommendations,
   deliveryClientIdForOrder
 } from "../domain/supplierDelivery";
@@ -11,6 +17,10 @@ import { getMiseRepository } from "./repository";
 
 export type { DeliveryHistoryEntry } from "./deliveryHistoryMerge";
 export { mergeDeliveryHistoryEntries } from "./deliveryHistoryMerge";
+export type {
+  ManualReceiptBeforeOrderReceiveConflict,
+  OpenSentOrderReceiptConflict
+} from "../domain/deliveryReceiptConflict";
 
 /**
  * Receipt history for the delivery log screen: accepted ledger receipts plus
@@ -33,6 +43,70 @@ export async function fetchDeliveryHistory(restaurantId: string): Promise<Delive
   return mergeDeliveryHistoryEntries({
     events,
     itemNames: new Map(items.map((item) => [item.id, item.item_name])),
+    queued
+  });
+}
+
+/**
+ * Sent supplier orders that already list this inventory item. Used by Log
+ * Delivery to warn before an ad-hoc receipt that could double-count stock.
+ */
+export async function fetchOpenSentOrderConflictsForInventoryItem(
+  restaurantId: string,
+  inventoryItemId: string
+): Promise<OpenSentOrderReceiptConflict[]> {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedItemId = inventoryItemId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!normalizedItemId) throw new Error("Missing inventory item.");
+
+  const repository = getMiseRepository();
+  const [orders, recommendations] = await Promise.all([
+    repository.fetchSupplierOrders(normalizedRestaurantId),
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all")
+  ]);
+
+  return findOpenSentOrderConflictsForInventoryItem({
+    restaurantId: normalizedRestaurantId,
+    inventoryItemId: normalizedItemId,
+    orders,
+    recommendations
+  });
+}
+
+/**
+ * Operator ad-hoc receipts already applied (or still syncing) for items on a
+ * sent supplier order. Mark received would add ordered quantities again.
+ */
+export async function fetchManualReceiptConflictsForSupplierOrder(
+  restaurantId: string,
+  supplierOrderId: string
+): Promise<ManualReceiptBeforeOrderReceiveConflict[]> {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedOrderId = supplierOrderId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!normalizedOrderId) throw new Error("Missing supplier order.");
+
+  const repository = getMiseRepository();
+  const [order, recommendations, events, queued] = await Promise.all([
+    repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
+    repository.listInventoryEvents(normalizedRestaurantId, {
+      eventTypes: ["receipt"],
+      limit: 200
+    }),
+    fetchQueuedInventoryEvents(normalizedRestaurantId)
+  ]);
+
+  if (!order || order.restaurant_id !== normalizedRestaurantId) {
+    throw new Error("Supplier order not found.");
+  }
+
+  return findManualReceiptConflictsForOrderReceive({
+    restaurantId: normalizedRestaurantId,
+    order,
+    recommendations,
+    events,
     queued
   });
 }
