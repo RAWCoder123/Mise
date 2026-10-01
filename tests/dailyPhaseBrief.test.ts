@@ -115,6 +115,39 @@ test("phase brief identity and operating-date mismatches fail closed", () => {
   );
 });
 
+test("evidenced Gmail sender errors surface urgent morning and pre-service findings", () => {
+  const evidence = fixtures();
+  const brokenBrief: OperatingBrief = {
+    ...evidence.operatingBrief,
+    outlook: {
+      ...evidence.operatingBrief.outlook,
+      emailConnectionStatus: "error",
+      emailConnectionDetail: "Gmail authorization must be renewed. Reconnect before sending supplier orders."
+    },
+    restaurantStatus: {
+      ...evidence.operatingBrief.restaurantStatus,
+      status: "at_risk",
+      topRisk: "Gmail authorization must be renewed. Reconnect before sending supplier orders."
+    }
+  };
+  const result = buildDailyPhaseBriefs({
+    restaurantId,
+    ...evidence,
+    operatingBrief: brokenBrief,
+    now: new Date("2026-08-03T12:00:00.000Z")
+  });
+
+  for (const phase of ["morning", "pre_service"] as const) {
+    const finding = result.briefs[phase].findings.find((entry) =>
+      entry.id.includes("gmail-connection")
+    );
+    assert.ok(finding, `${phase} should include a Gmail connection finding`);
+    assert.equal(finding!.tone, "urgent");
+    assert.equal(finding!.route, "/settings/gmail");
+    assert.match(finding!.interpretation, /Gmail authorization must be renewed/i);
+  }
+});
+
 function fixtures(options: { allTasksComplete?: boolean } = {}) {
   const item = planItem(options.allTasksComplete ? "completed" : "open");
   const plan: DailyOperatingPlan = {
@@ -185,6 +218,8 @@ function fixtures(options: { allTasksComplete?: boolean } = {}) {
       staffingDetail: "Requires schedule integration.",
       deliveryStatus: "expected",
       deliveryDetail: "One sent order is awaiting confirmation.",
+      emailConnectionStatus: "ok",
+      emailConnectionDetail: "Gmail sender kitchen@example.com is ready.",
       menuRisks: [
         { itemName: "Bell peppers", label: "Watch", detail: "Coverage is below two days." }
       ],
