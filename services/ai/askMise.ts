@@ -1,6 +1,10 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
 import type { OperationalTodayTask } from "../domain/todayTasks";
+import {
+  inventoryCountTrustAllowsStockClaims,
+  type InventoryCountTrustSummary
+} from "../domain/inventoryCountTrust";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
 export type AskMiseIntent = "priorities" | "stock" | "orders" | "sales" | "briefing" | "prep" | "waste" | "general";
@@ -28,6 +32,11 @@ export interface AskMiseRestaurantContext {
     low: number;
     critical: number;
   };
+  /**
+   * Physical-count trust for stock answers. Null/undefined means the check was
+   * unavailable — stock claims fail closed instead of inventing an all-clear.
+   */
+  inventoryCountTrust?: InventoryCountTrustSummary | null;
   operationalTasks: readonly OperationalTodayTask[];
   restaurantCurrency: string;
 }
@@ -82,6 +91,7 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const openTasks = summary.operationalTasks.filter((task) => task.status === "open");
   const priorities = openTasks.slice(0, 3);
   const stockRisk = summary.inventoryHealth.low + summary.inventoryHealth.critical;
+  const countTrust = summary.inventoryCountTrust ?? null;
   const topInsight = insights[0] ?? summary.importantInsight;
   const presentedInsight = topInsight ? presentInsight(helpers.locale, topInsight) : null;
   const prepInsights = insights.filter((insight) => insight.insight_type === "prep" || insight.insight_type === "sales");
@@ -98,36 +108,22 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
     pendingRecommendations: summary.pendingRecommendations,
     salesToday: summary.salesToday,
     currency: summary.restaurantCurrency,
+    countTrust,
     helpers
   });
 
   switch (intent) {
     case "stock": {
-      const answer =
-        stockRisk > 0
-          ? [
-              t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
-                count: helpers.formatNumber(stockRisk)
-              }),
-              attentionTitles.length > 0
-                ? t("ask.answer.stock.named", { items: attentionTitles.join("; ") })
-                : null,
-              summary.pendingRecommendations > 0
-                ? t(
-                    summary.pendingRecommendations === 1
-                      ? "ask.answer.stock.orders.one"
-                      : "ask.answer.stock.orders.other",
-                    { count: helpers.formatNumber(summary.pendingRecommendations) }
-                  )
-                : t("ask.answer.stock.next")
-            ]
-              .filter(Boolean)
-              .join(" ")
-          : t("ask.answer.stockClear");
       return {
         intent,
         thinkingSteps,
-        answer,
+        answer: answerStockFromCountTrust({
+          stockRisk,
+          pendingRecommendations: summary.pendingRecommendations,
+          attentionTitles,
+          countTrust,
+          helpers
+        }),
         showPriorities: false,
         priorities: []
       };
@@ -198,17 +194,25 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "briefing": {
+      const board =
+        countTrust == null || !inventoryCountTrustAllowsStockClaims(countTrust)
+          ? t("ask.answer.briefing.board.untrusted", {
+              tasks: helpers.formatNumber(openTasks.length),
+              orders: helpers.formatNumber(summary.pendingRecommendations),
+              sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)
+            })
+          : t("ask.answer.briefing.board", {
+              tasks: helpers.formatNumber(openTasks.length),
+              stock: helpers.formatNumber(stockRisk),
+              orders: helpers.formatNumber(summary.pendingRecommendations),
+              sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)
+            });
       const answer = [
         t("ask.answer.briefing.lead", {
           restaurant: restaurant.name,
           status: summary.miseStatus
         }),
-        t("ask.answer.briefing.board", {
-          tasks: helpers.formatNumber(openTasks.length),
-          stock: helpers.formatNumber(stockRisk),
-          orders: helpers.formatNumber(summary.pendingRecommendations),
-          sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency)
-        }),
+        board,
         topTaskTitles.length > 0
           ? t("ask.answer.briefing.focus", { tasks: topTaskTitles.join("; ") })
           : t("ask.answer.fallback"),
@@ -276,8 +280,12 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
                 tasks: topTaskTitles.slice(0, 2).join("; ") || t("ask.answer.general.tasksFallback")
               })
             : stockRisk > 0
-              ? t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
-                  count: helpers.formatNumber(stockRisk)
+              ? answerStockFromCountTrust({
+                  stockRisk,
+                  pendingRecommendations: summary.pendingRecommendations,
+                  attentionTitles,
+                  countTrust,
+                  helpers
                 })
               : t(
                   summary.pendingRecommendations === 1 ? "ask.answer.orders.one" : "ask.answer.orders.other",
@@ -302,6 +310,88 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   }
 }
 
+function answerStockFromCountTrust(input: {
+  stockRisk: number;
+  pendingRecommendations: number;
+  attentionTitles: readonly string[];
+  countTrust: InventoryCountTrustSummary | null;
+  helpers: AskMiseHelpers;
+}): string {
+  const { helpers, stockRisk, pendingRecommendations, attentionTitles, countTrust } = input;
+  const { t } = helpers;
+
+  if (countTrust == null || countTrust.state === "unavailable") {
+    return t("ask.answer.stock.unavailable");
+  }
+  if (countTrust.state === "empty") {
+    return t("ask.answer.stock.empty");
+  }
+  if (countTrust.state === "contaminated") {
+    return [
+      t("ask.answer.stock.contaminated", {
+        count: helpers.formatNumber(countTrust.contaminatedCount)
+      }),
+      t("ask.answer.stock.recount")
+    ].join(" ");
+  }
+  if (countTrust.state === "unverified") {
+    return [
+      t("ask.answer.stock.unverified", {
+        count: helpers.formatNumber(countTrust.unverifiedCount)
+      }),
+      stockRisk > 0
+        ? t("ask.answer.stock.provisional", {
+            count: helpers.formatNumber(stockRisk)
+          })
+        : null,
+      t("ask.answer.stock.recount")
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (countTrust.state === "stale") {
+    return [
+      t("ask.answer.stock.stale", {
+        count: helpers.formatNumber(countTrust.staleCount)
+      }),
+      stockRisk > 0
+        ? t("ask.answer.stock.provisional", {
+            count: helpers.formatNumber(stockRisk)
+          })
+        : null,
+      attentionTitles.length > 0
+        ? t("ask.answer.stock.named", { items: attentionTitles.join("; ") })
+        : null,
+      t("ask.answer.stock.recount")
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  if (stockRisk > 0) {
+    return [
+      t(stockRisk === 1 ? "ask.answer.stock.one" : "ask.answer.stock.other", {
+        count: helpers.formatNumber(stockRisk)
+      }),
+      attentionTitles.length > 0
+        ? t("ask.answer.stock.named", { items: attentionTitles.join("; ") })
+        : null,
+      pendingRecommendations > 0
+        ? t(
+            pendingRecommendations === 1
+              ? "ask.answer.stock.orders.one"
+              : "ask.answer.stock.orders.other",
+            { count: helpers.formatNumber(pendingRecommendations) }
+          )
+        : t("ask.answer.stock.next")
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return t("ask.answer.stockClear");
+}
+
 function buildThinkingSteps(input: {
   intent: AskMiseIntent;
   restaurantName: string;
@@ -310,6 +400,7 @@ function buildThinkingSteps(input: {
   pendingRecommendations: number;
   salesToday: number;
   currency: string;
+  countTrust: InventoryCountTrustSummary | null;
   helpers: AskMiseHelpers;
 }): string[] {
   const { helpers, intent } = input;
@@ -324,11 +415,7 @@ function buildThinkingSteps(input: {
   ];
 
   if (intent === "stock" || intent === "prep" || intent === "waste" || intent === "briefing" || intent === "general") {
-    steps.push(
-      input.stockRisk > 0
-        ? t("ask.thinking.stock.risk", { count: helpers.formatNumber(input.stockRisk) })
-        : t("ask.thinking.stock.clear")
-    );
+    steps.push(stockThinkingStep(input.countTrust, input.stockRisk, helpers));
   }
   if (intent === "orders" || intent === "briefing") {
     steps.push(
@@ -356,4 +443,36 @@ function buildThinkingSteps(input: {
 
   steps.push(t("ask.thinking.compose"));
   return steps;
+}
+
+function stockThinkingStep(
+  countTrust: InventoryCountTrustSummary | null,
+  stockRisk: number,
+  helpers: AskMiseHelpers
+): string {
+  const { t } = helpers;
+  if (countTrust == null || countTrust.state === "unavailable") {
+    return t("ask.thinking.stock.unavailable");
+  }
+  if (countTrust.state === "empty") {
+    return t("ask.thinking.stock.empty");
+  }
+  if (countTrust.state === "contaminated") {
+    return t("ask.thinking.stock.contaminated", {
+      count: helpers.formatNumber(countTrust.contaminatedCount)
+    });
+  }
+  if (countTrust.state === "unverified") {
+    return t("ask.thinking.stock.unverified", {
+      count: helpers.formatNumber(countTrust.unverifiedCount)
+    });
+  }
+  if (countTrust.state === "stale") {
+    return t("ask.thinking.stock.stale", {
+      count: helpers.formatNumber(countTrust.staleCount)
+    });
+  }
+  return stockRisk > 0
+    ? t("ask.thinking.stock.risk", { count: helpers.formatNumber(stockRisk) })
+    : t("ask.thinking.stock.clear");
 }
