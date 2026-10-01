@@ -39,6 +39,8 @@ import {
   SUPPLIER_SEND_CONTENT_VERSION
 } from "../types/mise";
 import {
+  INVENTORY_EVENT_NOTE_MAX_CHARACTERS,
+  INVENTORY_EVENT_REASON_CODE_MAX_CHARACTERS,
   ORDER_MESSAGE_MAX_BYTES,
   RESTAURANT_ADDRESS_MAX_CHARACTERS,
   RESTAURANT_CUISINE_MAX_CHARACTERS,
@@ -127,8 +129,12 @@ export function requireInventoryOperation(
   }
 
   const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
-  const reasonCode = optionalBoundedText(input.reasonCode, "reason", 80);
-  const note = optionalBoundedText(input.note, "note", 500);
+  const reasonCode = optionalBoundedText(
+    input.reasonCode,
+    "reason",
+    INVENTORY_EVENT_REASON_CODE_MAX_CHARACTERS
+  );
+  const note = optionalBoundedText(input.note, "note", INVENTORY_EVENT_NOTE_MAX_CHARACTERS);
   return {
     restaurantId,
     inventoryItemId,
