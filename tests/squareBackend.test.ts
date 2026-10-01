@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  accumulateSquareOrderModifiers,
   buildSquareAuthorizationUrl,
+  emptySquareModifierSyncSummary,
+  finalizeSquareModifierSyncSummary,
   normalizeCatalogItem,
   normalizeOrderSales,
   searchSquareOrders,
   SQUARE_OAUTH_SCOPES,
   sha256Hex,
+  squareModifierSummaryToMetadata,
 } from "../supabase/functions/_shared/square.ts";
 
 const migration = readFileSync(
@@ -16,6 +20,10 @@ const migration = readFileSync(
 );
 const truthfulCountMigration = readFileSync(
   "supabase/migrations/20260814120000_square_sync_truthful_counts.sql",
+  "utf8",
+);
+const modifierMetadataMigration = readFileSync(
+  "supabase/migrations/20260902040000_square_sync_modifier_metadata.sql",
   "utf8",
 );
 const squareDatabaseProof = readFileSync(
@@ -65,6 +73,23 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
         quantity: "2",
         gross_sales_money: { amount: 2400, currency: "USD" },
         total_money: { amount: 2400, currency: "USD" },
+        modifiers: [
+          {
+            catalog_object_id: "mod-extra-cheese",
+            name: "Extra Cheese",
+            quantity: "2",
+          },
+          {
+            catalog_object_id: "mod-no-onion",
+            name: "No Onion",
+            quantity: "1",
+          },
+          {
+            // Name-only modifiers cannot be mapped later; skip them.
+            name: "Guest note",
+            quantity: "1",
+          },
+        ],
       },
     ],
   });
@@ -95,6 +120,39 @@ test("Square order and catalog normalizers produce bounded Mise sales and catalo
   assert.equal(catalog[0]?.external_name, "Burger");
 });
 
+test("Square modifier accumulator keeps sale rows flat and bounds sync metadata", () => {
+  const counts = new Map<string, { name: string; count: number }>();
+  accumulateSquareOrderModifiers(
+    {
+      line_items: [
+        {
+          modifiers: [
+            { catalog_object_id: "mod-a", name: "Extra Cheese", quantity: "2" },
+            { catalog_object_id: "mod-b", name: "Bacon", quantity: "1" },
+          ],
+        },
+        {
+          modifiers: [{ catalog_object_id: "mod-a", name: "Extra Cheese", quantity: "3" }],
+        },
+      ],
+    },
+    counts,
+  );
+  const summary = finalizeSquareModifierSyncSummary(counts);
+  assert.equal(summary.modifiersUniqueCount, 2);
+  assert.equal(summary.modifiersObservedCount, 6);
+  assert.deepEqual(summary.modifiersSample[0], {
+    id: "mod-a",
+    name: "Extra Cheese",
+    count: 5,
+  });
+  assert.deepEqual(squareModifierSummaryToMetadata(emptySquareModifierSyncSummary()), {
+    modifiers_observed_count: 0,
+    modifiers_unique_count: 0,
+    modifiers_sample: [],
+  });
+});
+
 test("Square order search exhausts pagination for every ten-location batch", async () => {
   const requests: Array<{ locationIds: string[]; cursor?: string }> = [];
   const fetchImpl: typeof fetch = async (_input, init) => {
@@ -116,6 +174,11 @@ test("Square order search exhausts pagination for every ten-location batch", asy
           quantity: "1",
           gross_sales_money: { amount: 1200 },
           total_money: { amount: 1200 },
+          modifiers: [{
+            catalog_object_id: "mod-extra-cheese",
+            name: "Extra Cheese",
+            quantity: "1",
+          }],
         }],
       }],
       ...(requestNumber === 1 ? { cursor: "first-batch-page-two" } : {}),
@@ -127,7 +190,7 @@ test("Square order search exhausts pagination for every ten-location batch", asy
   };
 
   const locationIds = Array.from({ length: 11 }, (_, index) => `location-${index + 1}`);
-  const sales = await searchSquareOrders(
+  const result = await searchSquareOrders(
     { environment: "sandbox" },
     "square-access-token",
     locationIds,
@@ -136,7 +199,10 @@ test("Square order search exhausts pagination for every ten-location batch", asy
     fetchImpl,
   );
 
-  assert.equal(sales.length, 3);
+  assert.equal(result.sales.length, 3);
+  assert.equal(result.modifierSummary.modifiersUniqueCount, 1);
+  assert.equal(result.modifierSummary.modifiersObservedCount, 3);
+  assert.equal(result.modifierSummary.modifiersSample[0]?.id, "mod-extra-cheese");
   assert.deepEqual(requests, [
     { locationIds: locationIds.slice(0, 10), cursor: undefined },
     { locationIds: locationIds.slice(0, 10), cursor: "first-batch-page-two" },
@@ -162,8 +228,11 @@ test("Square Edge Functions stay fail-closed until configured and enabled", () =
   assert.match(syncPos, /service_fetch_square_sync_credential/i);
   assert.match(syncPos, /provider_not_enabled/i);
   assert.match(syncPos, /service_apply_square_sync_result/i);
+  assert.match(syncPos, /p_modifier_summary/i);
+  assert.match(syncPos, /modifiersObservedCount/i);
   assert.match(webhooks, /x-square-hmacsha256-signature/i);
   assert.match(webhooks, /service_resolve_square_webhook_merchant/i);
+  assert.match(webhooks, /p_modifier_summary/i);
   assert.match(config, /\[functions\.link-square\][\s\S]*verify_jwt = true/i);
   assert.match(config, /\[functions\.square-oauth-callback\][\s\S]*verify_jwt = false/i);
   assert.match(config, /\[functions\.square-webhooks\][\s\S]*verify_jwt = false/i);
@@ -182,4 +251,15 @@ test("Square sync records truthful counts and database replay coverage", () => {
   assert.match(squareDatabaseProof, /the overlapping row is deduplicated/i);
   assert.match(squareDatabaseProof, /metadata->>'recordsProcessed'/i);
   assert.match(squareDatabaseProof, /provider_catalog_item_id.*provider_variation_id/i);
+});
+
+test("Square modifier sync metadata migration stays bounded and sale-row free", () => {
+  assert.match(modifierMetadataMigration, /normalize_square_modifier_sync_summary/i);
+  assert.match(modifierMetadataMigration, /modifiers_observed_count/i);
+  assert.match(modifierMetadataMigration, /modifiers_unique_count/i);
+  assert.match(modifierMetadataMigration, /modifiers_sample/i);
+  assert.match(modifierMetadataMigration, /p_modifier_summary jsonb default/i);
+  assert.match(modifierMetadataMigration, /sample_count >= 20/i);
+  assert.doesNotMatch(modifierMetadataMigration, /alter table public\.pos_sales/i);
+  assert.doesNotMatch(modifierMetadataMigration, /modifier_recipe_adjustments/i);
 });

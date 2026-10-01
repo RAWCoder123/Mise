@@ -274,11 +274,26 @@ export interface SquareDisconnectWorkflowResult {
   outcome: "disconnected" | "already_disconnected";
 }
 
+export interface SquareModifierSample {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export interface SquareModifierSyncSummary {
+  modifiersObservedCount: number;
+  modifiersUniqueCount: number;
+  modifiersSample: SquareModifierSample[];
+}
+
 export interface SquareSyncWorkflowResult {
   status: "completed";
   importId: string | null;
   recordsProcessed: number;
   catalogProcessed: number;
+  modifiersObservedCount: number;
+  modifiersUniqueCount: number;
+  modifiersSample: SquareModifierSample[];
 }
 
 export interface PosMappingMenuItemChoice {
@@ -721,6 +736,9 @@ export interface MiseRepository {
     to: string
   ): Promise<SquareSyncWorkflowResult>;
   fetchSquarePosIntegration(restaurantId: string): Promise<PosIntegration | null>;
+  fetchLatestSquareModifierSyncSummary(
+    restaurantId: string
+  ): Promise<SquareModifierSyncSummary | null>;
   fetchPosMappingReviewQueue(restaurantId: string): Promise<PosMappingReviewQueue>;
   reviewPosCatalogMapping(
     restaurantId: string,

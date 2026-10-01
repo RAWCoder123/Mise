@@ -214,10 +214,12 @@ Deno.serve(async (req) => {
         });
       }
 
-      const [sales, catalogItems] = await Promise.all([
+      const [orderSearch, catalogItems] = await Promise.all([
         searchSquareOrders(oauthConfig, tokens.accessToken, locationIds, from, to),
         listSquareCatalogItems(oauthConfig, tokens.accessToken),
       ]);
+      const sales = orderSearch.sales;
+      const modifierSummary = orderSearch.modifierSummary;
 
       const { data: applied, error: applyError } = await securitySupabase.rpc(
         "service_apply_square_sync_result_scoped",
@@ -232,6 +234,11 @@ Deno.serve(async (req) => {
           p_sync_cursor: null,
           p_from: from,
           p_to: to,
+          p_modifier_summary: {
+            modifiers_observed_count: modifierSummary.modifiersObservedCount,
+            modifiers_unique_count: modifierSummary.modifiersUniqueCount,
+            modifiers_sample: modifierSummary.modifiersSample,
+          },
         },
       );
       if (applyError) throw applyError;
@@ -269,6 +276,10 @@ Deno.serve(async (req) => {
           provider,
           recordsProcessed: applied?.recordsProcessed ?? sales.length,
           catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
+          modifiersObservedCount:
+            applied?.modifiersObservedCount ?? modifierSummary.modifiersObservedCount,
+          modifiersUniqueCount:
+            applied?.modifiersUniqueCount ?? modifierSummary.modifiersUniqueCount,
         },
       );
       terminalContext = null;
@@ -277,6 +288,14 @@ Deno.serve(async (req) => {
         importId: applied?.importId ?? null,
         recordsProcessed: applied?.recordsProcessed ?? sales.length,
         catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
+        modifiersObservedCount:
+          applied?.modifiersObservedCount ?? modifierSummary.modifiersObservedCount,
+        modifiersUniqueCount:
+          applied?.modifiersUniqueCount ?? modifierSummary.modifiersUniqueCount,
+        modifiersSample:
+          Array.isArray(applied?.modifiersSample) && applied.modifiersSample.length > 0
+            ? applied.modifiersSample
+            : modifierSummary.modifiersSample,
       });
     } catch (error) {
       const safeCode =

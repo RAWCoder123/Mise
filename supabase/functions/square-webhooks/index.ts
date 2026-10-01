@@ -116,10 +116,11 @@ Deno.serve(async (req) => {
         throw new HttpError(409, "Square has no active webhook location.");
       }
       const tokens = await refreshSquareAccessToken(oauthConfig, String(credential.refreshToken));
-      const [sales, catalogItems] = await Promise.all([
+      const [orderSearch, catalogItems] = await Promise.all([
         searchSquareOrders(oauthConfig, tokens.accessToken, locationIds, fromDate, toDate),
         listSquareCatalogItems(oauthConfig, tokens.accessToken),
       ]);
+      const sales = orderSearch.sales;
       const { error: applyError } = await securitySupabase.rpc(
         "service_apply_square_sync_result_scoped",
         {
@@ -133,6 +134,11 @@ Deno.serve(async (req) => {
           p_sync_cursor: null,
           p_from: fromDate,
           p_to: toDate,
+          p_modifier_summary: {
+            modifiers_observed_count: orderSearch.modifierSummary.modifiersObservedCount,
+            modifiers_unique_count: orderSearch.modifierSummary.modifiersUniqueCount,
+            modifiers_sample: orderSearch.modifierSummary.modifiersSample,
+          },
         },
       );
       if (applyError) throw applyError;

@@ -4,6 +4,7 @@ import {
   type SquareDisconnectWorkflowResult,
   type PosMappingReviewQueue,
   type PosMappingReviewResult,
+  type SquareModifierSyncSummary,
   type SquareSyncWorkflowResult
 } from "../repositories/miseRepository";
 import { getMiseRepository } from "./repository";
@@ -14,6 +15,7 @@ export type {
   SquareDisconnectWorkflowResult,
   PosMappingReviewQueue,
   PosMappingReviewResult,
+  SquareModifierSyncSummary,
   SquareSyncWorkflowResult
 };
 
@@ -21,6 +23,14 @@ const repository = getMiseRepository();
 
 export async function fetchSquarePosIntegration(restaurantId: string) {
   return repository.fetchSquarePosIntegration(requireWorkflowId(restaurantId, "restaurant"));
+}
+
+export async function fetchLatestSquareModifierSyncSummary(
+  restaurantId: string
+): Promise<SquareModifierSyncSummary | null> {
+  return repository.fetchLatestSquareModifierSyncSummary(
+    requireWorkflowId(restaurantId, "restaurant")
+  );
 }
 
 export async function fetchPosMappingReviewQueue(
