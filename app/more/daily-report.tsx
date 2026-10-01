@@ -5,6 +5,7 @@ import {
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
+  Brain,
   ClipboardList,
   Minus,
   Package,
@@ -34,6 +35,7 @@ import {
   fetchDailyOpsReport,
   type DailyOpsReport
 } from "../../services/miseService";
+import { resolveLearningMemoryReviewHref } from "../../services/presentation/learningMemoryNavigation";
 import { captureMiseError } from "../../services/telemetry";
 import type {
   SupplierReliabilityReason,
@@ -512,6 +514,16 @@ export default function DailyReportScreen() {
                 onPress={() => router.push("/orders")}
                 style={styles.inlineAction}
               />
+              {visibleReport.supplierReliability.attentionSupplierCount > 0 ? (
+                <Button
+                  title={t("dailyReport.supplierReliability.reviewMemory")}
+                  variant="secondary"
+                  size="compact"
+                  icon={<Brain size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
+                  onPress={() => router.push(resolveLearningMemoryReviewHref() as never)}
+                  style={styles.inlineAction}
+                />
+              ) : null}
             </Card>
 
             <SectionHeader title={t("dailyReport.section.signals")} />
@@ -560,6 +572,14 @@ export default function DailyReportScreen() {
               <Text style={styles.metaLine}>
                 {visibleReport.learning.memoryNextStep ?? visibleReport.learning.credibilityNextStep}
               </Text>
+              <Button
+                title={t("dailyReport.learning.reviewAction")}
+                variant="secondary"
+                size="compact"
+                icon={<Brain size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
+                onPress={() => router.push(resolveLearningMemoryReviewHref() as never)}
+                style={styles.inlineAction}
+              />
             </Card>
 
             <SectionHeader title={t("dailyReport.section.advice")} />
