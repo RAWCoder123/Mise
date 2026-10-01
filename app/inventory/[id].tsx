@@ -31,6 +31,10 @@ import {
   updateInventoryItem
 } from "../../services/miseService";
 import {
+  parseInventoryOperatorAction,
+  type InventoryOperatorAction
+} from "../../services/domain/inventoryOperatorAction";
+import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
@@ -39,16 +43,21 @@ import { operatingLimits } from "../../services/miseValidation";
 import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
 
-type InventoryOperatorAction = "count" | "receipt" | "waste" | "stockout";
+function firstSearchParam(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
 
 export default function InventoryDetailScreen() {
   const { formatNumber, parseNumber, t } = useLocale();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; operation?: string | string[] }>();
+  const id = firstSearchParam(params.id);
+  const requestedOperation = parseInventoryOperatorAction(firstSearchParam(params.operation));
   const navigation = useNavigation();
   const { memberships, restaurant } = useMiseSession();
   const [outlook, setOutlook] = useState<InventoryOutlookItem | null>(null);
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
-  const [operation, setOperation] = useState<InventoryOperatorAction>("count");
+  const [operation, setOperation] = useState<InventoryOperatorAction>(requestedOperation);
   const [quantityText, setQuantityText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
@@ -122,7 +131,7 @@ export default function InventoryDetailScreen() {
     setHubLoadError(false);
     setOutlook(null);
     setQueueEntries([]);
-    setOperation("count");
+    setOperation(requestedOperation);
     setQuantityText("");
     setNoteText("");
     setParLevel("");
@@ -135,7 +144,7 @@ export default function InventoryDetailScreen() {
     setMessageIsError(false);
     setLoading(Boolean(restaurant && id));
     void load();
-  }, [id, load, restaurant?.id]);
+  }, [id, load, requestedOperation, restaurant?.id]);
 
   useFocusEffect(
     useCallback(() => {
