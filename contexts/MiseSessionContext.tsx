@@ -67,6 +67,7 @@ interface MiseSessionContextValue {
   connectDemoPOS: (provider: PosProvider) => Promise<void>;
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   signOut: () => Promise<void>;
+  clearSessionAfterAccountDeletion: () => Promise<void>;
 }
 
 const STORAGE_KEY = "mise:session:v2";
@@ -572,8 +573,30 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
   }, [isDemoMode, posProvider, refreshPOS, saveSnapshot]);
 
   const signOut = useCallback(async () => {
+    let remoteError: unknown = null;
     if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch (error) {
+        remoteError = error;
+      }
+    }
+    await clearSessionState();
+    if (remoteError) throw remoteError;
+  }, [clearSessionState]);
+
+  /**
+   * After Auth account deletion, remote signOut often fails because the user
+   * no longer exists. Always clear local session state and prefer a local-scope
+   * revoke so operators are not stuck behind a false deletion error.
+   */
+  const clearSessionAfterAccountDeletion = useCallback(async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        // Auth user may already be gone; local clear below is authoritative.
+      }
     }
     await clearSessionState();
   }, [clearSessionState]);
@@ -601,12 +624,14 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       switchRestaurant,
       connectDemoPOS,
       resetDemoData,
-      signOut
+      signOut,
+      clearSessionAfterAccountDeletion
     }),
     [
       activeRestaurantId,
       authUser,
       availableRestaurants,
+      clearSessionAfterAccountDeletion,
       connectDemoPOS,
       continueWithDemo,
       isDemoMode,

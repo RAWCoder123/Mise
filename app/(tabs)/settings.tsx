@@ -68,6 +68,7 @@ export default function SettingsScreen() {
     resetDemoData,
     role,
     signOut,
+    clearSessionAfterAccountDeletion,
     switchRestaurant,
     usingLocalDemo,
     user
@@ -202,7 +203,15 @@ export default function SettingsScreen() {
     setMessage(null);
     try {
       await deleteAccount(restaurant.id);
-      await signOut();
+      try {
+        await clearSessionAfterAccountDeletion();
+      } catch (clearError) {
+        captureMiseError(clearError, {
+          flow: "settings",
+          operation: "clear_session_after_account_deletion",
+          restaurant_id: restaurant.id
+        });
+      }
       router.replace("/login");
     } catch (deleteError) {
       captureMiseError(deleteError, { flow: "settings", operation: "delete_account", restaurant_id: restaurant.id });
