@@ -31,6 +31,26 @@ test("Today keeps floor-note completion behind the restaurant role gate", () => 
   assert.match(screen, /disabled=\{!floorNotesEditable\}/);
 });
 
+test("Today dispatches due recalculations before loading the operating plan", () => {
+  const today = readFileSync("app/(tabs)/today.tsx", "utf8");
+  const home = readFileSync("app/(tabs)/home.tsx", "utf8");
+
+  assert.match(today, /import \{ runScheduledRecalculations \} from/);
+  assert.match(today, /const recalculation = await runScheduledRecalculations\(\{/);
+  assert.match(today, /setRecalcAttention\(recalculation\)/);
+  assert.match(
+    today,
+    /setRecalcAttention\(recalculation\);[\s\S]*?fetchDailyOperatingPlan\(restaurantId/
+  );
+  assert.match(today, /recalcAttention \? \(/);
+  assert.match(today, /t\("home\.recalculation\.title"\)/);
+  assert.match(today, /onAction=\{\(\) => router\.push\("\/more\/activity"\)\}/);
+
+  // Home remains the other session surface that must keep the same contract.
+  assert.match(home, /const recalculation = await runScheduledRecalculations\(\{/);
+  assert.match(home, /fetchTodaySummary\(restaurantId\)/);
+});
+
 test("POS readiness failures remain visible and retryable instead of failing open", () => {
   const pos = readFileSync("app/settings/pos.tsx", "utf8");
   assert.match(pos, /setReadinessLoadError\(true\)/);

@@ -33,6 +33,8 @@ import {
   queueOperationalFindingDecision,
   type OperatorTask
 } from "../../services/miseService";
+import { runScheduledRecalculations } from "../../services/application/scheduledRecalculations";
+import type { RecalculationAttentionSummary } from "../../services/presentation/recalculationPresentation";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -69,6 +71,8 @@ export default function TodayScreen() {
   const [busyFloorNoteId, setBusyFloorNoteId] = useState<string | null>(null);
   const [floorNoteMessage, setFloorNoteMessage] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [recalcAttention, setRecalcAttention] =
+    useState<RecalculationAttentionSummary | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -88,6 +92,7 @@ export default function TodayScreen() {
     setBusyFindingId(null);
     setBusyFloorNoteId(null);
     setFloorNoteMessage(null);
+    setRecalcAttention(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
@@ -105,6 +110,15 @@ export default function TodayScreen() {
     try {
       await flushQueuedOperationalFindingDecisions(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+
+      // Dispatch due recalculation cycles before reading the plan, matching Home.
+      // Managers who live on Today during service must still trigger mid_shift/close.
+      const recalculation = await runScheduledRecalculations({
+        restaurantId,
+        restaurantTimeZone: restaurant.timezone
+      });
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setRecalcAttention(recalculation);
 
       const [nextSummary, nextBrief, nextQueue, nextFloorNotes] = await Promise.all([
         fetchDailyOperatingPlan(restaurantId, { includeCompletedTasks: true }),
@@ -127,7 +141,7 @@ export default function TodayScreen() {
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
-  }, [restaurant?.id, t]);
+  }, [restaurant?.id, restaurant?.timezone, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -340,6 +354,25 @@ export default function TodayScreen() {
             retryLabel={t("common.retry")}
             accessibilityLabel={t("dailyBrief.retry.accessibility")}
             onRetry={() => void load()}
+          />
+        ) : null}
+
+        {recalcAttention ? (
+          <StatusNotice
+            tone="warning"
+            title={t("home.recalculation.title")}
+            message={
+              recalcAttention.state === "unavailable"
+                ? t("home.recalculation.unavailable")
+                : t(
+                    recalcAttention.deadLetteredCount === 1
+                      ? "home.recalculation.body.one"
+                      : "home.recalculation.body.other",
+                    { count: formatNumber(recalcAttention.deadLetteredCount) }
+                  )
+            }
+            actionLabel={t("home.recalculation.action")}
+            onAction={() => router.push("/more/activity")}
           />
         ) : null}
 
