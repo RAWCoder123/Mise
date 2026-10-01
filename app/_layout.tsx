@@ -54,6 +54,7 @@ export default function RootLayout() {
               <Stack.Screen name="more/scan-item" />
               <Stack.Screen name="more/daily-report" />
               <Stack.Screen name="more/daily-brief" />
+              <Stack.Screen name="more/operating-routines" />
               <Stack.Screen name="more/waste" />
               <Stack.Screen name="more/activity" />
               <Stack.Screen name="more/restaurant-memory" />

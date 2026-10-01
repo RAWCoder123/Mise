@@ -4,6 +4,7 @@ import {
   BarChart3,
   Brain,
   ChevronRight,
+  ClipboardCheck,
   ClipboardList,
   HelpCircle,
   Mail,
@@ -81,6 +82,12 @@ export default function MoreScreen() {
             title={t("more.row.dailyBrief.title")}
             icon={<Sunrise size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/daily-brief" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.routines.title")}
+            icon={<ClipboardCheck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/operating-routines" as never)}
           />
           <OperationalRow
             density="menu"
