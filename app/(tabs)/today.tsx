@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { CalendarDays } from "lucide-react-native";
+import { CalendarDays, Search } from "lucide-react-native";
 
 import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
 import { OperatingPlanTimeline } from "../../components/operations/OperatingPlanTimeline";
@@ -13,7 +13,7 @@ import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey, MessageValues } from "../../i18n/catalog";
@@ -22,6 +22,10 @@ import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDe
 import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
 import type { DailyOperatingPlan, OperatingPlanBucket } from "../../services/domain/operatingPlan";
+import {
+  filterOperatingPlanTasksBySearch,
+  OPERATING_PLAN_TASK_SEARCH_THRESHOLD
+} from "../../services/domain/operatingPlanTaskSearch";
 import {
   completeOperatorTask,
   fetchDailyOperatingPlan,
@@ -60,6 +64,7 @@ export default function TodayScreen() {
   const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
   const [floorNotes, setFloorNotes] = useState<OperatorTask[]>([]);
   const [focus, setFocus] = useState<TaskFilter>("now");
+  const [taskQuery, setTaskQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [briefError, setBriefError] = useState(false);
@@ -81,6 +86,7 @@ export default function TodayScreen() {
     setFloorNotes([]);
     setLoadedRestaurantId(null);
     setFocus("now");
+    setTaskQuery("");
     setError(null);
     setBriefError(false);
     setBriefMessage(null);
@@ -258,17 +264,53 @@ export default function TodayScreen() {
     return buckets;
   }, [visibleSummary]);
 
+  const focusedBucketItems = grouped[focus];
+  const showTaskSearch =
+    !error &&
+    hubReady &&
+    (focusedBucketItems.length >= OPERATING_PLAN_TASK_SEARCH_THRESHOLD || taskQuery.trim().length > 0);
+  const filteredFocusedItems = useMemo(() => {
+    if (!showTaskSearch) return focusedBucketItems;
+    return filterOperatingPlanTasksBySearch(focusedBucketItems, taskQuery);
+  }, [focusedBucketItems, showTaskSearch, taskQuery]);
+  const searchingFocusedBucket = taskQuery.trim().length > 0;
+  const taskSearchNoMatches =
+    showTaskSearch &&
+    !loading &&
+    !error &&
+    focusedBucketItems.length > 0 &&
+    filteredFocusedItems.length === 0 &&
+    searchingFocusedBucket;
+
   const timelineGroups = useMemo(() => {
+    if (searchingFocusedBucket) {
+      return [
+        {
+          key: focus,
+          label: t(groupLabelKey(focus)),
+          items: filteredFocusedItems,
+          total: focusedBucketItems.length
+        }
+      ];
+    }
+
     const focusedOrder = [focus, ...GROUP_ORDER.filter((key) => key !== focus)];
     return focusedOrder
       .map((key) => ({
         key,
         label: t(groupLabelKey(key)),
-        items: key === focus ? grouped[key] : grouped[key].slice(0, GROUP_CAPS[key]),
+        items: key === focus ? filteredFocusedItems : grouped[key].slice(0, GROUP_CAPS[key]),
         total: grouped[key].length
       }))
       .filter((group) => group.total > 0 || group.key === focus);
-  }, [focus, grouped, t]);
+  }, [
+    focus,
+    filteredFocusedItems,
+    focusedBucketItems.length,
+    grouped,
+    searchingFocusedBucket,
+    t
+  ]);
 
   const filterOptions = useMemo<readonly SegmentOption<TaskFilter>[]>(
     () =>
@@ -352,7 +394,36 @@ export default function TodayScreen() {
           scrollable
         />
 
-        {visibleSummary ? (
+        {showTaskSearch ? (
+          <View style={styles.searchBox}>
+            <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
+            <TextInput
+              accessibilityLabel={t("today.search.accessibility")}
+              accessibilityHint={t("today.search.hint")}
+              value={taskQuery}
+              onChangeText={setTaskQuery}
+              placeholder={t("today.search.placeholder")}
+              placeholderTextColor={colors.faint}
+              returnKeyType="search"
+              style={styles.searchInput}
+            />
+          </View>
+        ) : null}
+
+        {showTaskSearch ? (
+          <Text style={styles.searchMeta} accessibilityLiveRegion="polite">
+            {t("today.search.showing", {
+              shown: String(filteredFocusedItems.length),
+              total: String(focusedBucketItems.length)
+            })}
+          </Text>
+        ) : null}
+
+        {taskSearchNoMatches ? (
+          <EmptyState title={t("today.search.emptyTitle")} body={t("today.search.emptyBody")} />
+        ) : null}
+
+        {visibleSummary && !taskSearchNoMatches ? (
           <OperatingPlanTimeline
             groups={timelineGroups}
             focus={focus}
@@ -493,6 +564,30 @@ function groupLabelKey(filter: TaskFilter): MessageKey {
 const styles = StyleSheet.create({
   stack: {
     gap: 10
+  },
+  searchBox: {
+    minHeight: 44,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 42,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 12,
+    lineHeight: 17,
+    paddingVertical: 0
+  },
+  searchMeta: {
+    ...conceptTypography.caption,
+    color: colors.muted
   },
   emptyButton: {
     marginTop: 16
