@@ -12,6 +12,7 @@ export type DailyPhaseBriefRoute =
   | "/inventory/count"
   | "/orders"
   | "/insights"
+  | "/settings/pos"
   | "/more/daily-report"
   | "/more/waste";
 
@@ -126,6 +127,17 @@ function buildMorningBrief(
   if (brief.needsApproval.length > 0) {
     candidates.push(approvalFinding("morning", brief.needsApproval.length));
   }
+  if (brief.outlook.posConnectionStatus === "error") {
+    candidates.push({
+      id: "morning-pos-connection",
+      rank: 0,
+      tone: "urgent",
+      title: "Repair the POS sales connection before relying on live sales",
+      interpretation: brief.outlook.posConnectionDetail,
+      route: "/settings/pos",
+      evidenceReferences: ["operating-brief:pos-connection"]
+    });
+  }
   if (report.throughput.completedTasks > 0) {
     candidates.push({
       id: "morning-completed",
@@ -235,6 +247,17 @@ function buildPreServiceBrief(
   }
   if (brief.needsApproval.length > 0) {
     candidates.push(approvalFinding("pre-service", brief.needsApproval.length));
+  }
+  if (brief.outlook.posConnectionStatus === "error") {
+    candidates.push({
+      id: "pre-service-pos-connection",
+      rank: 0,
+      tone: "urgent",
+      title: "POS sales connection is failing",
+      interpretation: brief.outlook.posConnectionDetail,
+      route: "/settings/pos",
+      evidenceReferences: ["operating-brief:pos-connection"]
+    });
   }
   const unverified = plan.items.filter(
     (item) => item.status === "open" && item.verificationMethod !== "none"

@@ -20,17 +20,22 @@ export async function fetchOperatingBrief(
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const [data, orders, activityEvents, miseActions, findingDecisions, ledger] = await Promise.all([
+  const [data, orders, activityEvents, miseActions, findingDecisions, ledger, posIntegrations] =
+    await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
     repository.fetchSupplierOrders(normalizedRestaurantId),
     repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }).catch(() => []),
     repository.listMiseActions(normalizedRestaurantId, { status: "awaiting_decision", limit: 40 }).catch(() => []),
     repository.fetchOperationalFindingDecisions(normalizedRestaurantId).catch(() => []),
-    fetchInventoryLedgerEvidence(normalizedRestaurantId)
+    fetchInventoryLedgerEvidence(normalizedRestaurantId),
+    repository.fetchPosIntegrations(normalizedRestaurantId)
   ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
     throw new Error("Operating brief failed restaurant scope validation.");
+  }
+  if (posIntegrations.some((integration) => integration.restaurant_id !== normalizedRestaurantId)) {
+    throw new Error("Operating brief failed POS integration scope validation.");
   }
 
   const operatingDate = toDateKeyInTimeZone(new Date(), data.restaurant.timezone);
@@ -79,6 +84,7 @@ export async function fetchOperatingBrief(
     activityEvents,
     miseActions,
     inventoryOutlooks,
+    posIntegrations,
     demoLabeled: isDemoDatasetRestaurantName(data.restaurant.name)
   });
 }

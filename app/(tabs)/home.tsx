@@ -341,18 +341,37 @@ function RestaurantStatusCard({
   const topRisk = brief.restaurantStatus.topRisk?.trim();
   const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
+  const posConnectionError = brief.outlook.posConnectionStatus === "error";
 
   return (
     <StatusNotice
       variant="row"
-      tone={brief.restaurantStatus.status === "attention_needed" ? "warning" : "danger"}
+      tone={
+        posConnectionError || brief.restaurantStatus.status === "at_risk" ? "danger" : "warning"
+      }
       title={
         primaryMenuRisk
           ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
-          : primaryApproval?.title || t(statusKey)
+          : posConnectionError
+            ? t("home.alert.posSync.title")
+            : primaryApproval?.title || t(statusKey)
       }
-      message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
-      onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
+      message={
+        posConnectionError && !primaryMenuRisk
+          ? brief.outlook.posConnectionDetail
+          : topRisk
+            ? t(statusKey)
+            : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary
+      }
+      onPress={() =>
+        router.push(
+          posConnectionError && !primaryMenuRisk
+            ? "/settings/pos"
+            : primaryApproval
+              ? "/orders"
+              : "/today"
+        )
+      }
     />
   );
 }
