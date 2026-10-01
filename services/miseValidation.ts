@@ -1015,12 +1015,30 @@ const operationalProfileKeys = new Set([
   "notes"
 ]);
 
+export function requireRestaurantAddress(value: unknown) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Restaurant address must be text or empty.");
+  const normalized = value.trim();
+  // MISE-005EK: reject ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) so client
+  // validation matches restaurants_address_length_check under COLLATE "C".
+  if (normalized.length > RESTAURANT_ADDRESS_MAX_CHARACTERS || hasControlCharacters(normalized)) {
+    throw new Error(
+      `Restaurant address is limited to ${RESTAURANT_ADDRESS_MAX_CHARACTERS} characters without control characters.`
+    );
+  }
+  return normalized || null;
+}
+
 export function requireRestaurantCuisineType(value: unknown) {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") throw new Error("Cuisine type must be text or empty.");
   const normalized = value.trim();
-  if (normalized.length > RESTAURANT_CUISINE_MAX_CHARACTERS) {
-    throw new Error(`Cuisine type is limited to ${RESTAURANT_CUISINE_MAX_CHARACTERS} characters.`);
+  // MISE-005EK: reject ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) so client
+  // validation matches restaurants_cuisine_type_length_check under COLLATE "C".
+  if (normalized.length > RESTAURANT_CUISINE_MAX_CHARACTERS || hasControlCharacters(normalized)) {
+    throw new Error(
+      `Cuisine type is limited to ${RESTAURANT_CUISINE_MAX_CHARACTERS} characters without control characters.`
+    );
   }
   return normalized || null;
 }
@@ -1035,13 +1053,7 @@ export function requireRestaurantProfilePatch(value: RestaurantProfilePatch): Re
 
   const patch: RestaurantProfilePatch = { ...value };
   if (patch.name !== undefined) patch.name = requireRestaurantName(patch.name);
-  if (patch.address !== undefined) {
-    patch.address = requireNullableBoundedText(
-      patch.address,
-      "Restaurant address",
-      RESTAURANT_ADDRESS_MAX_CHARACTERS
-    );
-  }
+  if (patch.address !== undefined) patch.address = requireRestaurantAddress(patch.address);
   if (patch.cuisine_type !== undefined) patch.cuisine_type = requireRestaurantCuisineType(patch.cuisine_type);
   if (patch.brand_color !== undefined) patch.brand_color = requireHexColor(patch.brand_color, "Brand color");
   if (patch.accent_color !== undefined) patch.accent_color = requireHexColor(patch.accent_color, "Accent color");
