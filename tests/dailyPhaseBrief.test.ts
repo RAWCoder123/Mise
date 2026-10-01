@@ -66,6 +66,10 @@ test("phase briefs prioritize three to five interpreted findings without fabrica
     assert.ok(brief.findings.length >= 3);
     assert.ok(brief.findings.length <= 5);
     assert.ok(brief.findings.every((finding) => finding.interpretation.length > 0));
+    assert.ok(
+      brief.findings.every((finding) => finding.presentation != null),
+      "every emitted finding should carry a structured presentation descriptor"
+    );
   }
   assert.ok(result.briefs.morning.unavailableSignals.includes("staffing schedule"));
   assert.ok(result.briefs.pre_service.unavailableSignals.includes("reservation load"));
