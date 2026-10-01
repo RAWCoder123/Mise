@@ -279,6 +279,9 @@ export interface SquareSyncWorkflowResult {
   importId: string | null;
   recordsProcessed: number;
   catalogProcessed: number;
+  nonItemizedRefundOrderCount: number;
+  nonItemizedRefundAmountTotal: number;
+  nonItemizedRefundSampleOrderIds: string[];
 }
 
 export interface PosMappingMenuItemChoice {

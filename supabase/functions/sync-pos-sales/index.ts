@@ -1,9 +1,10 @@
 import {
   listSquareCatalogItems,
   refreshSquareAccessToken,
-  searchSquareOrders,
+  searchSquareOrdersDetailed,
   SquareProviderError,
   type SquareOAuthConfig,
+  type SquareNonItemizedRefundSummary,
 } from "../_shared/square.ts";
 import {
   firewallBlockedResponse,
@@ -214,10 +215,12 @@ Deno.serve(async (req) => {
         });
       }
 
-      const [sales, catalogItems] = await Promise.all([
-        searchSquareOrders(oauthConfig, tokens.accessToken, locationIds, from, to),
+      const [orderSearch, catalogItems] = await Promise.all([
+        searchSquareOrdersDetailed(oauthConfig, tokens.accessToken, locationIds, from, to),
         listSquareCatalogItems(oauthConfig, tokens.accessToken),
       ]);
+      const sales = orderSearch.sales;
+      const nonItemizedRefunds = orderSearch.nonItemizedRefunds;
 
       const { data: applied, error: applyError } = await securitySupabase.rpc(
         "service_apply_square_sync_result_scoped",
@@ -236,6 +239,19 @@ Deno.serve(async (req) => {
       );
       if (applyError) throw applyError;
       authoritySyncToken = null;
+
+      const importId =
+        typeof applied?.importId === "string" ? applied.importId : null;
+      await recordNonItemizedRefundAttention(
+        securitySupabase,
+        user.id,
+        restaurantId,
+        credential.integrationId,
+        importId,
+        nonItemizedRefunds,
+        from,
+        to,
+      );
 
       try {
         const refreshResponse = await fetch(
@@ -269,14 +285,19 @@ Deno.serve(async (req) => {
           provider,
           recordsProcessed: applied?.recordsProcessed ?? sales.length,
           catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
+          nonItemizedRefundOrderCount: nonItemizedRefunds.orderCount,
+          nonItemizedRefundAmountTotal: nonItemizedRefunds.refundAmountTotal,
         },
       );
       terminalContext = null;
       return jsonResponse({
         status: "completed",
-        importId: applied?.importId ?? null,
+        importId,
         recordsProcessed: applied?.recordsProcessed ?? sales.length,
         catalogProcessed: applied?.catalogProcessed ?? catalogItems.length,
+        nonItemizedRefundOrderCount: nonItemizedRefunds.orderCount,
+        nonItemizedRefundAmountTotal: nonItemizedRefunds.refundAmountTotal,
+        nonItemizedRefundSampleOrderIds: nonItemizedRefunds.sampleOrderIds,
       });
     } catch (error) {
       const safeCode =
@@ -340,4 +361,36 @@ function squareOAuthConfig(): SquareOAuthConfig | null {
     Deno.env.get("SQUARE_ENVIRONMENT") === "production" ? "production" : "sandbox";
   if (!applicationId || !applicationSecret || !redirectUri) return null;
   return { applicationId, applicationSecret, redirectUri, environment };
+}
+
+async function recordNonItemizedRefundAttention(
+  securitySupabase: {
+    rpc: (
+      fn: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: { message?: string } | null }>;
+  },
+  actorUserId: string,
+  restaurantId: string,
+  integrationId: string,
+  importId: string | null,
+  summary: SquareNonItemizedRefundSummary,
+  from: string,
+  to: string,
+) {
+  const { error } = await securitySupabase.rpc(
+    "service_record_square_non_itemized_refund_attention",
+    {
+      p_actor_user_id: actorUserId,
+      p_restaurant_id: restaurantId,
+      p_integration_id: integrationId,
+      p_import_id: importId,
+      p_order_count: summary.orderCount,
+      p_refund_amount_total: summary.refundAmountTotal,
+      p_sample_order_ids: summary.sampleOrderIds,
+      p_from: from,
+      p_to: to,
+    },
+  );
+  if (error) throw error;
 }

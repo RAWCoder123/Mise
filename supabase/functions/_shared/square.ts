@@ -68,6 +68,28 @@ export interface SquareCatalogRow {
   category: string;
 }
 
+/** Cash-drawer / non-itemized refund: refund money present, no usable return line items. */
+export interface SquareNonItemizedRefundDiagnostic {
+  orderId: string;
+  saleDate: string;
+  providerLocationId?: string;
+  refundAmount: number;
+  reason: "non_itemized_or_cash_refund";
+}
+
+export interface SquareNonItemizedRefundSummary {
+  orderCount: number;
+  refundAmountTotal: number;
+  sampleOrderIds: string[];
+}
+
+export interface SquareOrdersSearchResult {
+  sales: SquareSaleRow[];
+  nonItemizedRefunds: SquareNonItemizedRefundSummary;
+}
+
+const MAX_NON_ITEMIZED_REFUND_SAMPLE_IDS = 5;
+
 function oauthBase(environment: SquareOAuthConfig["environment"]) {
   return environment === "sandbox"
     ? "https://connect.squareupsandbox.com"
@@ -213,9 +235,31 @@ export async function searchSquareOrders(
   toIsoDate: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<SquareSaleRow[]> {
+  const result = await searchSquareOrdersDetailed(
+    config,
+    accessToken,
+    locationIds,
+    fromIsoDate,
+    toIsoDate,
+    fetchImpl,
+  );
+  return result.sales;
+}
+
+export async function searchSquareOrdersDetailed(
+  config: Pick<SquareOAuthConfig, "environment">,
+  accessToken: string,
+  locationIds: string[],
+  fromIsoDate: string,
+  toIsoDate: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SquareOrdersSearchResult> {
   requireOpaqueToken(accessToken, "access credential", 8, 4096);
-  if (!Array.isArray(locationIds) || locationIds.length === 0) return [];
+  if (!Array.isArray(locationIds) || locationIds.length === 0) {
+    return { sales: [], nonItemizedRefunds: emptyNonItemizedRefundSummary() };
+  }
   const sales: SquareSaleRow[] = [];
+  const diagnostics: SquareNonItemizedRefundDiagnostic[] = [];
   for (let locationOffset = 0; locationOffset < locationIds.length; locationOffset += 10) {
     const locationBatch = locationIds.slice(locationOffset, locationOffset + 10);
     let cursor: string | undefined;
@@ -246,11 +290,135 @@ export async function searchSquareOrders(
       const orders = Array.isArray(payload.orders) ? payload.orders : [];
       for (const order of orders) {
         sales.push(...normalizeOrderSales(order));
+        const diagnostic = classifyNonItemizedSquareRefund(order);
+        if (diagnostic) diagnostics.push(diagnostic);
       }
       cursor = typeof payload.cursor === "string" ? payload.cursor : undefined;
     } while (cursor);
   }
-  return sales;
+  return {
+    sales,
+    nonItemizedRefunds: summarizeNonItemizedSquareRefunds(diagnostics),
+  };
+}
+
+/**
+ * Detect cash-only / non-itemized Square refunds.
+ * Does not invent inventory mutations — itemized returns are handled separately.
+ * $0 net comps without refund money are intentionally ignored.
+ */
+export function classifyNonItemizedSquareRefund(
+  order: unknown,
+): SquareNonItemizedRefundDiagnostic | null {
+  if (!order || typeof order !== "object") return null;
+  const record = order as Record<string, unknown>;
+  const orderId = stringField(record, "id", 128);
+  if (!orderId) return null;
+  if (countUsableReturnLineItems(record) > 0) return null;
+  const refundAmount = orderRefundEvidenceMoney(record);
+  if (refundAmount <= 0) return null;
+  const closedAt =
+    stringField(record, "closed_at", 64) ||
+    stringField(record, "created_at", 64) ||
+    new Date().toISOString();
+  const providerLocationId = stringField(record, "location_id", 128) || undefined;
+  return {
+    orderId,
+    saleDate: closedAt.slice(0, 10),
+    providerLocationId,
+    refundAmount,
+    reason: "non_itemized_or_cash_refund",
+  };
+}
+
+export function summarizeNonItemizedSquareRefunds(
+  diagnostics: SquareNonItemizedRefundDiagnostic[],
+): SquareNonItemizedRefundSummary {
+  const sampleOrderIds: string[] = [];
+  let refundAmountTotal = 0;
+  for (const diagnostic of diagnostics) {
+    refundAmountTotal = clampMoney(refundAmountTotal + diagnostic.refundAmount);
+    if (sampleOrderIds.length < MAX_NON_ITEMIZED_REFUND_SAMPLE_IDS) {
+      sampleOrderIds.push(diagnostic.orderId.slice(0, 128));
+    }
+  }
+  return {
+    orderCount: diagnostics.length,
+    refundAmountTotal,
+    sampleOrderIds,
+  };
+}
+
+function emptyNonItemizedRefundSummary(): SquareNonItemizedRefundSummary {
+  return { orderCount: 0, refundAmountTotal: 0, sampleOrderIds: [] };
+}
+
+function countUsableReturnLineItems(record: Record<string, unknown>): number {
+  const returns = Array.isArray(record.returns) ? record.returns : [];
+  let count = 0;
+  for (const entry of returns) {
+    if (!entry || typeof entry !== "object") continue;
+    const returnRecord = entry as Record<string, unknown>;
+    const lines = Array.isArray(returnRecord.return_line_items)
+      ? returnRecord.return_line_items
+      : [];
+    for (const line of lines) {
+      if (!line || typeof line !== "object") continue;
+      const quantity = Number((line as Record<string, unknown>).quantity ?? 0);
+      if (Number.isFinite(quantity) && quantity > 0) count += 1;
+    }
+  }
+  return count;
+}
+
+function orderRefundEvidenceMoney(record: Record<string, unknown>): number {
+  const refunds = Array.isArray(record.refunds) ? record.refunds : [];
+  let refundSum = 0;
+  let sawRefundMoney = false;
+  for (const refund of refunds) {
+    if (!refund || typeof refund !== "object") continue;
+    const refundRecord = refund as Record<string, unknown>;
+    const status = stringField(refundRecord, "status", 40).toUpperCase();
+    if (
+      status &&
+      status !== "COMPLETED" &&
+      status !== "PENDING" &&
+      status !== "APPROVED"
+    ) {
+      continue;
+    }
+    const amount = moneyAmount(refundRecord.amount_money);
+    if (amount != null && amount > 0) {
+      sawRefundMoney = true;
+      refundSum += amount;
+    }
+  }
+  if (sawRefundMoney) return clampMoney(refundSum);
+
+  const returnAmounts =
+    record.return_amounts && typeof record.return_amounts === "object"
+      ? (record.return_amounts as Record<string, unknown>)
+      : null;
+  const topLevel = returnAmounts ? moneyAmount(returnAmounts.total_money) : null;
+  if (topLevel != null && topLevel > 0) return clampMoney(topLevel);
+
+  const returns = Array.isArray(record.returns) ? record.returns : [];
+  let nestedSum = 0;
+  let sawNested = false;
+  for (const entry of returns) {
+    if (!entry || typeof entry !== "object") continue;
+    const returnRecord = entry as Record<string, unknown>;
+    const nestedAmounts =
+      returnRecord.return_amounts && typeof returnRecord.return_amounts === "object"
+        ? (returnRecord.return_amounts as Record<string, unknown>)
+        : null;
+    const nested = nestedAmounts ? moneyAmount(nestedAmounts.total_money) : null;
+    if (nested != null && nested > 0) {
+      sawNested = true;
+      nestedSum += nested;
+    }
+  }
+  return sawNested ? clampMoney(nestedSum) : 0;
 }
 
 export async function listSquareCatalogItems(
