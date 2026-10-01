@@ -27,6 +27,10 @@ import {
   isDemoDatasetRestaurantName
 } from "../services/demoData";
 import {
+  resolveMultiMembershipHydration,
+  settleMembershipRestaurantFetches
+} from "../services/domain/sessionHydration";
+import {
   fetchMembershipsForAuthUser,
   fetchPOSStatus,
   fetchRestaurant,
@@ -166,10 +170,10 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
 
       const nextMemberships = await fetchMembershipsForAuthUser(nextAuthUser.id);
       if (sessionRequestId !== sessionRequestIdRef.current) return;
-      setMemberships(nextMemberships);
 
       if (nextMemberships.length === 0) {
         activeRestaurantIdRef.current = null;
+        setMemberships([]);
         setRestaurant(null);
         setAvailableRestaurants([]);
         setRole(null);
@@ -182,26 +186,40 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const restaurants = await Promise.all(
+      // Tolerate per-membership restaurant failures so one orphan/denied workspace
+      // cannot block every other restaurant. Fail closed only when the preferred
+      // workspace (or every workspace) cannot load.
+      const restaurantResults = await Promise.allSettled(
         nextMemberships.map((membership) => fetchRestaurant(membership.restaurant_id))
       );
       if (sessionRequestId !== sessionRequestIdRef.current) return;
-      setAvailableRestaurants(restaurants);
 
-      const preferredMembership = preferredRestaurantId
-        ? activeMembershipForRestaurant(nextMemberships, preferredRestaurantId)
-        : null;
-      const activeMembership = preferredMembership ?? nextMemberships[0]!;
-      const activeRestaurant =
-        restaurants.find((item) => item.id === activeMembership.restaurant_id) ?? restaurants[0] ?? null;
+      const settlements = settleMembershipRestaurantFetches(nextMemberships, restaurantResults);
+      const hydration = resolveMultiMembershipHydration({
+        memberships: nextMemberships,
+        settlements,
+        preferredRestaurantId
+      });
 
-      activeRestaurantIdRef.current = activeRestaurant?.id ?? null;
+      for (let index = 0; index < hydration.droppedRestaurantIds.length; index += 1) {
+        captureMiseError(hydration.droppedErrors[index], {
+          flow: "session_hydration",
+          operation: "restaurant_fetch",
+          restaurant_id: hydration.droppedRestaurantIds[index] ?? null
+        });
+      }
+
+      const { availableRestaurants, activeMembership, activeRestaurant } = hydration;
+
+      activeRestaurantIdRef.current = activeRestaurant.id;
+      setMemberships(nextMemberships);
+      setAvailableRestaurants(availableRestaurants);
       setRestaurant(activeRestaurant);
       setRole(activeMembership.role);
-      setUser(appUserFromAuth(nextAuthUser, activeRestaurant?.id ?? null, activeMembership.role));
-      await refreshPOS(activeRestaurant?.id ?? null);
+      setUser(appUserFromAuth(nextAuthUser, activeRestaurant.id, activeMembership.role));
+      await refreshPOS(activeRestaurant.id);
       if (sessionRequestId !== sessionRequestIdRef.current) return;
-      await saveSnapshot({ activeRestaurantId: activeRestaurant?.id ?? null, isDemoMode: false });
+      await saveSnapshot({ activeRestaurantId: activeRestaurant.id, isDemoMode: false });
       if (sessionRequestId !== sessionRequestIdRef.current) return;
       setIsLoading(false);
     },
