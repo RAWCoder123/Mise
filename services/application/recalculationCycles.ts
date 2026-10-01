@@ -1,5 +1,6 @@
 import {
   buildRecalculationSchedule,
+  sanitizeRecalculationFailureReason,
   type RecalculationCycle,
   type RecalculationDecision,
   type RecalculationRunRecord,
@@ -203,7 +204,15 @@ export function withTimeout<T>(work: Promise<T>, timeoutMs: number, message: str
 }
 
 function describeError(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message.trim().slice(0, 200);
-  const text = typeof error === "string" ? error.trim() : "";
-  return text.length > 0 ? text.slice(0, 200) : "Unknown recalculation failure";
+  const raw =
+    error instanceof Error && error.message.trim()
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  // MISE-005EQ: strip ASCII controls so durable failure_reason matches the
+  // COLLATE "C" CHECK without dropping the cycle's ledger write.
+  return (
+    sanitizeRecalculationFailureReason(raw) ?? "Unknown recalculation failure"
+  );
 }
