@@ -9,6 +9,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
+import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
@@ -16,7 +17,9 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
   canRestaurantRoleCompleteSharedTask,
-  type RestaurantTask
+  canRestaurantRoleRescheduleSharedTask,
+  type RestaurantTask,
+  type RestaurantTaskTimingBucket
 } from "../../services/domain/restaurantTasks";
 import {
   canRestaurantRoleActOnTodayTask,
@@ -27,11 +30,17 @@ import {
   completeSharedRestaurantTask,
   fetchTodaySummary,
   listSharedRestaurantTasks,
-  reopenSharedRestaurantTask
+  reopenSharedRestaurantTask,
+  rescheduleSharedRestaurantTask
 } from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { captureMiseError } from "../../services/telemetry";
 
+function dueDateTextFromIso(dueAt: string | null): string {
+  if (!dueAt) return "";
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(dueAt);
+  return match?.[1] ?? "";
+}
 function BackAction() {
   const { t } = useLocale();
   return (
@@ -52,6 +61,8 @@ export default function TaskDetailScreen() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [completionResult, setCompletionResult] = useState("");
   const [completionEvidence, setCompletionEvidence] = useState("");
+  const [scheduleTiming, setScheduleTiming] = useState<RestaurantTaskTimingBucket>("now");
+  const [scheduleDueDateText, setScheduleDueDateText] = useState("");
   const [mutating, setMutating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,10 +82,17 @@ export default function TaskDetailScreen() {
     setChecked({});
     setCompletionResult("");
     setCompletionEvidence("");
+    setScheduleTiming("now");
+    setScheduleDueDateText("");
     setError(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id, id]);
 
+  useEffect(() => {
+    if (!sharedTask) return;
+    setScheduleTiming(sharedTask.timingBucket);
+    setScheduleDueDateText(dueDateTextFromIso(sharedTask.dueAt));
+  }, [sharedTask?.id, sharedTask?.timingBucket, sharedTask?.dueAt, sharedTask?.updatedAt]);
   const load = useCallback(async () => {
     if (!restaurant || !id) {
       setLoading(false);
@@ -215,6 +233,43 @@ export default function TaskDetailScreen() {
     }
   }
 
+  async function rescheduleSharedTask() {
+    if (!restaurant || !sharedTask || mutating) return;
+    const dueTrimmed = scheduleDueDateText.trim();
+    if (dueTrimmed && !/^\d{4}-\d{2}-\d{2}$/.test(dueTrimmed)) {
+      setError(t("tasks.shared.rescheduleDueInvalid"));
+      return;
+    }
+    const nextDueAt = dueTrimmed || null;
+    if (
+      sharedTask.timingBucket === scheduleTiming &&
+      dueDateTextFromIso(sharedTask.dueAt) === (nextDueAt ?? "")
+    ) {
+      return;
+    }
+    setMutating(true);
+    setError(null);
+    try {
+      await rescheduleSharedRestaurantTask({
+        restaurantId: restaurant.id,
+        taskId: sharedTask.id,
+        timingBucket: scheduleTiming,
+        dueAt: nextDueAt
+      });
+      await load();
+    } catch (rescheduleError) {
+      captureMiseError(rescheduleError, {
+        flow: "shared_task_detail",
+        operation: "reschedule",
+        restaurant_id: restaurant.id,
+        task_id: sharedTask.id
+      });
+      setError(t("tasks.shared.rescheduleError"));
+    } finally {
+      setMutating(false);
+    }
+  }
+
   if (sharedTask) {
     const completed = sharedTask.status === "completed";
     const high = sharedTask.priority === "urgent" || sharedTask.priority === "high";
@@ -229,6 +284,18 @@ export default function TaskDetailScreen() {
       (role ?? "staff") === "staff"
     );
     const canReopen = role === "owner" || role === "admin" || role === "manager";
+    const canReschedule =
+      canRestaurantRoleRescheduleSharedTask(role ?? "staff") &&
+      !completed &&
+      sharedTask.status !== "cancelled";
+    const scheduleDirty =
+      sharedTask.timingBucket !== scheduleTiming ||
+      dueDateTextFromIso(sharedTask.dueAt) !== scheduleDueDateText.trim();
+    const timingOptions: readonly SegmentOption<RestaurantTaskTimingBucket>[] = [
+      { value: "now", label: t("floorNotes.timing.now"), tone: "danger" },
+      { value: "up_next", label: t("floorNotes.timing.upNext"), tone: "brand" },
+      { value: "later", label: t("floorNotes.timing.later"), tone: "neutral" }
+    ];
     const dueLabel = sharedTask.dueAt && restaurantTimeZone
       ? formatDueTime(sharedTask.dueAt, { timeZone: restaurantTimeZone })
       : sharedTask.serviceWindow
@@ -280,6 +347,38 @@ export default function TaskDetailScreen() {
             <MetaRow label={t("tasks.meta.related")} value={sharedRelatedLabel(sharedTask, t)} />
             <MetaRow label={t("tasks.shared.verification")} value={verificationLabel(sharedTask, t)} />
           </View>
+
+          {canReschedule ? (
+            <View style={styles.instructions}>
+              <Text style={styles.sectionTitle}>{t("tasks.shared.rescheduleTitle")}</Text>
+              <Text style={styles.instructionsBody}>{t("tasks.shared.rescheduleBody")}</Text>
+              <SegmentedControl
+                accessibilityLabel={t("operatorTasks.field.timing")}
+                options={timingOptions}
+                value={scheduleTiming}
+                onValueChange={setScheduleTiming}
+                variant="pills"
+              />
+              <TextInput
+                accessibilityLabel={t("tasks.shared.rescheduleDue")}
+                placeholder={t("tasks.shared.rescheduleDuePlaceholder")}
+                placeholderTextColor={colors.faint}
+                value={scheduleDueDateText}
+                onChangeText={setScheduleDueDateText}
+                style={styles.input}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="numbers-and-punctuation"
+                maxLength={10}
+              />
+              <Button
+                title={mutating ? t("common.saving") : t("tasks.shared.rescheduleSave")}
+                onPress={() => void rescheduleSharedTask()}
+                disabled={mutating || !scheduleDirty}
+                fullWidth
+              />
+            </View>
+          ) : null}
 
           <View style={styles.instructions}>
             <Text style={styles.sectionTitle}>{t("tasks.instructions.title")}</Text>

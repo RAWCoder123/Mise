@@ -3,13 +3,16 @@ import test from "node:test";
 
 import {
   canRestaurantRoleCompleteSharedTask,
+  canRestaurantRoleRescheduleSharedTask,
   completeRestaurantTaskRpcArguments,
   createRestaurantTaskRpcArguments,
   normalizeCompleteRestaurantTaskInput,
   normalizeCreateRestaurantTaskInput,
+  normalizeRescheduleRestaurantTaskInput,
   operationalTodayTaskFromRestaurantTask,
   restaurantTaskMatchesCreateRequest,
   restaurantTaskFromPersistedRow,
+  rescheduleRestaurantTaskRpcArguments,
   visibleRestaurantTasksForToday,
   type PersistedRestaurantTaskRow
 } from "../services/domain/restaurantTasks";
@@ -231,5 +234,48 @@ test("shared task completion authorization gates non-assignee staff but permits 
       assigneeUserId: null
     }),
     false
+  );
+});
+
+test("reschedule normalization and RPC arguments preserve timing bucket and optional due time", () => {
+  const normalized = normalizeRescheduleRestaurantTaskInput({
+    restaurantId: " restaurant-a ",
+    taskId: " task-1 ",
+    timingBucket: "up_next",
+    dueAt: "2026-09-04T17:00:00Z"
+  });
+  assert.deepEqual(normalized, {
+    restaurantId: "restaurant-a",
+    taskId: "task-1",
+    timingBucket: "up_next",
+    dueAt: "2026-09-04T17:00:00.000Z"
+  });
+  assert.deepEqual(rescheduleRestaurantTaskRpcArguments(normalized), {
+    p_restaurant_id: "restaurant-a",
+    p_task_id: "task-1",
+    p_timing_bucket: "up_next",
+    p_due_at: "2026-09-04T17:00:00.000Z"
+  });
+  assert.equal(
+    normalizeRescheduleRestaurantTaskInput({
+      restaurantId: "restaurant-a",
+      taskId: "task-1",
+      timingBucket: "later",
+      dueAt: null
+    }).dueAt,
+    null
+  );
+  assert.equal(canRestaurantRoleRescheduleSharedTask("owner"), true);
+  assert.equal(canRestaurantRoleRescheduleSharedTask("admin"), true);
+  assert.equal(canRestaurantRoleRescheduleSharedTask("manager"), true);
+  assert.equal(canRestaurantRoleRescheduleSharedTask("staff"), false);
+  assert.throws(
+    () =>
+      normalizeRescheduleRestaurantTaskInput({
+        restaurantId: "restaurant-a",
+        taskId: "task-1",
+        timingBucket: "never" as never
+      }),
+    /timing is invalid/i
   );
 });

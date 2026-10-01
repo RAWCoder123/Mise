@@ -70,6 +70,7 @@ import type {
 import type {
   CompleteRestaurantTaskInput,
   CreateRestaurantTaskInput,
+  RescheduleRestaurantTaskInput,
   RestaurantTask,
   RestaurantTaskRequiredRole
 } from "../domain/restaurantTasks";
@@ -758,6 +759,7 @@ export interface MiseRepository {
   createRestaurantTask(input: CreateRestaurantTaskInput): Promise<RestaurantTask>;
   completeRestaurantTask(input: CompleteRestaurantTaskInput): Promise<RestaurantTask>;
   reopenRestaurantTask(restaurantId: string, taskId: string): Promise<RestaurantTask>;
+  rescheduleRestaurantTask(input: RescheduleRestaurantTaskInput): Promise<RestaurantTask>;
   /**
    * Recalculation run ledger. Reads stay bounded to recent service days so a
    * long-lived restaurant never pulls its whole job history to decide what is
