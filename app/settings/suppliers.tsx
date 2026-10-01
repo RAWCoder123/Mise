@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
-import { ArrowLeft, Mail, ShieldCheck } from "lucide-react-native";
+import { ArrowLeft, Mail, Package, ShieldCheck } from "lucide-react-native";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -15,7 +15,9 @@ import { colors, icon, iconStroke, radii, spacing, typography } from "../../cons
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { AppLocale } from "../../i18n/catalog";
+import type { SupplierCatalogGroup } from "../../services/domain/supplierCatalog";
 import {
+  fetchSupplierCatalog,
   fetchSupplierRecipientDirectory,
   renameSupplier,
   saveSupplierRecipient
@@ -25,6 +27,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { filterSupplierCatalogGroups } from "../../services/presentation/supplierCatalogPresentation";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 
 interface SupplierNotice {
@@ -35,10 +38,12 @@ interface SupplierNotice {
 
 export default function SupplierRecipientsScreen() {
   const navigation = useNavigation();
-  const { formatNumber, locale } = useLocale();
+  const { formatCurrency, formatNumber, locale } = useLocale();
   const copy = supplierCopy[locale];
   const { memberships, restaurant } = useMiseSession();
   const [entries, setEntries] = useState<SupplierRecipientDirectoryEntry[]>([]);
+  const [catalogGroups, setCatalogGroups] = useState<SupplierCatalogGroup[]>([]);
+  const [catalogQuery, setCatalogQuery] = useState("");
   const [draftEmails, setDraftEmails] = useState<Record<string, string>>({});
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
@@ -63,12 +68,19 @@ export default function SupplierRecipientsScreen() {
     setLoading(true);
     setLoadError(false);
     try {
-      const nextEntries = await fetchSupplierRecipientDirectory(restaurantId);
+      const [nextEntries, nextCatalog] = await Promise.all([
+        fetchSupplierRecipientDirectory(restaurantId),
+        fetchSupplierCatalog(restaurantId)
+      ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       if (nextEntries.some((entry) => entry.restaurantId !== restaurantId)) {
         throw new Error("Supplier directory did not match the active restaurant.");
       }
+      if (nextCatalog.some((group) => group.lines.some((line) => line.restaurantId !== restaurantId))) {
+        throw new Error("Supplier catalog did not match the active restaurant.");
+      }
       setEntries(nextEntries);
+      setCatalogGroups(nextCatalog);
       setDraftEmails(Object.fromEntries(
         nextEntries.map((entry) => [entry.supplierId, entry.email ?? ""])
       ));
@@ -90,6 +102,8 @@ export default function SupplierRecipientsScreen() {
     requestIdRef.current += 1;
     actionLocksRef.current.clear();
     setEntries([]);
+    setCatalogGroups([]);
+    setCatalogQuery("");
     setDraftEmails({});
     setDraftNames({});
     setLoadedRestaurantId(null);
@@ -235,6 +249,14 @@ export default function SupplierRecipientsScreen() {
   const configuredCount = useMemo(
     () => visibleEntries.filter((entry) => Boolean(entry.email)).length,
     [visibleEntries]
+  );
+  const visibleCatalogGroups = useMemo(
+    () => (hubReady ? filterSupplierCatalogGroups(catalogGroups, catalogQuery) : []),
+    [catalogGroups, catalogQuery, hubReady]
+  );
+  const catalogLineCount = useMemo(
+    () => visibleCatalogGroups.reduce((total, group) => total + group.lines.length, 0),
+    [visibleCatalogGroups]
   );
 
   return (
@@ -391,6 +413,94 @@ export default function SupplierRecipientsScreen() {
               })
             )}
           </SectionSurface>
+
+          <SectionSurface
+            title={copy.catalogTitle}
+            subtitle={copy.catalogSubtitle}
+            action={copy.catalogCount(formatNumber(catalogLineCount))}
+            padding="none"
+          >
+            <View style={styles.catalogSearchWrap}>
+              <TextInput
+                accessibilityLabel={copy.catalogSearchAccessibility}
+                accessibilityHint={copy.catalogSearchHint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                clearButtonMode="while-editing"
+                onChangeText={setCatalogQuery}
+                placeholder={copy.catalogSearchPlaceholder}
+                placeholderTextColor={colors.faint}
+                returnKeyType="search"
+                style={styles.input}
+                value={catalogQuery}
+              />
+            </View>
+            {visibleCatalogGroups.length === 0 ? (
+              <View style={styles.emptyWrap}>
+                <EmptyState
+                  compact
+                  title={catalogQuery.trim() ? copy.catalogSearchEmptyTitle : copy.catalogEmptyTitle}
+                  body={catalogQuery.trim() ? copy.catalogSearchEmptyBody : copy.catalogEmptyBody}
+                />
+              </View>
+            ) : (
+              visibleCatalogGroups.map((group, groupIndex) => (
+                <View
+                  key={group.supplierKey}
+                  style={[styles.catalogGroup, groupIndex > 0 && styles.dividedRow]}
+                >
+                  <View style={styles.catalogGroupHeader}>
+                    <IconBadge tone="neutral">
+                      <Package size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
+                    </IconBadge>
+                    <View style={styles.recipientCopy}>
+                      <Text style={styles.supplierName} numberOfLines={2}>{group.supplierName}</Text>
+                      <Text style={styles.supplierMeta}>
+                        {copy.catalogGroupMeta(
+                          formatNumber(group.lines.length),
+                          formatNumber(group.preferredCount)
+                        )}
+                      </Text>
+                    </View>
+                  </View>
+                  {group.lines.map((line, lineIndex) => (
+                    <View
+                      key={line.id}
+                      style={[styles.catalogLine, lineIndex > 0 && styles.catalogLineDivided]}
+                      accessible
+                      accessibilityLabel={copy.catalogLineAccessibility(
+                        line.itemName,
+                        line.supplierSku,
+                        line.packSize,
+                        line.preferred
+                      )}
+                    >
+                      <View style={styles.catalogLineHeader}>
+                        <Text style={styles.catalogItemName} numberOfLines={2}>{line.itemName}</Text>
+                        {line.preferred ? (
+                          <Badge label={copy.preferred} tone="success" />
+                        ) : null}
+                      </View>
+                      <Text style={styles.catalogMeta}>
+                        {copy.catalogSkuLabel(line.supplierSku)}
+                      </Text>
+                      <Text style={styles.catalogMeta}>
+                        {copy.catalogPackLabel(line.packSize)}
+                      </Text>
+                      <Text style={styles.catalogMeta}>
+                        {copy.catalogUnitCost(
+                          line.unit,
+                          formatCurrency(line.estimatedUnitCost, {
+                            currency: restaurant?.currency ?? "USD"
+                          })
+                        )}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ))
+            )}
+          </SectionSurface>
         </View>
       )}
     </Screen>
@@ -442,6 +552,27 @@ interface SupplierCopy {
   configuredCount: (configured: string, total: string) => string;
   emptyTitle: string;
   emptyBody: string;
+  catalogTitle: string;
+  catalogSubtitle: string;
+  catalogCount: (count: string) => string;
+  catalogSearchPlaceholder: string;
+  catalogSearchAccessibility: string;
+  catalogSearchHint: string;
+  catalogEmptyTitle: string;
+  catalogEmptyBody: string;
+  catalogSearchEmptyTitle: string;
+  catalogSearchEmptyBody: string;
+  catalogGroupMeta: (lines: string, preferred: string) => string;
+  catalogSkuLabel: (sku: string | null) => string;
+  catalogPackLabel: (packSize: string | null) => string;
+  catalogUnitCost: (unit: string, cost: string) => string;
+  catalogLineAccessibility: (
+    itemName: string,
+    sku: string | null,
+    packSize: string | null,
+    preferred: boolean
+  ) => string;
+  preferred: string;
   savedRecipient: string;
   currentSupplier: string;
   configured: string;
@@ -468,7 +599,7 @@ interface SupplierCopy {
 const supplierCopy: Record<AppLocale, SupplierCopy> = {
   en: {
     title: "Suppliers",
-    subtitle: "Names and recipients for approved restaurant orders.",
+    subtitle: "Recipients plus catalog pack labels, preferred items, and SKUs.",
     back: "Back to settings",
     noRestaurantTitle: "No restaurant selected",
     noRestaurantBody: "Open a restaurant workspace before managing supplier recipients.",
@@ -497,6 +628,30 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     configuredCount: (configured, total) => `${configured} of ${total} ready`,
     emptyTitle: "No suppliers yet",
     emptyBody: "Add inventory suppliers during setup before configuring order recipients.",
+    catalogTitle: "Supplier catalog",
+    catalogSubtitle: "Saved pack labels, preferred flags, and supplier SKUs. Read-only — no invented quantities.",
+    catalogCount: (count) => `${count} items`,
+    catalogSearchPlaceholder: "Search item, SKU, or pack label",
+    catalogSearchAccessibility: "Search supplier catalog",
+    catalogSearchHint: "Filters catalog lines by item name, SKU, pack label, or supplier.",
+    catalogEmptyTitle: "No catalog items yet",
+    catalogEmptyBody: "Supplier catalog rows appear after setup seeds or hosted supplier item records exist.",
+    catalogSearchEmptyTitle: "No catalog matches",
+    catalogSearchEmptyBody: "Try another item name, SKU, pack label, or supplier.",
+    catalogGroupMeta: (lines, preferred) => `${lines} items · ${preferred} preferred`,
+    catalogSkuLabel: (sku) => (sku ? `SKU ${sku}` : "No supplier SKU on file"),
+    catalogPackLabel: (packSize) => (packSize ? `Pack ${packSize}` : "No pack label on file"),
+    catalogUnitCost: (unit, cost) => `${unit} · ${cost} each`,
+    catalogLineAccessibility: (itemName, sku, packSize, preferred) =>
+      [
+        itemName,
+        preferred ? "preferred" : null,
+        sku ? `SKU ${sku}` : "no supplier SKU",
+        packSize ? `pack ${packSize}` : "no pack label"
+      ]
+        .filter(Boolean)
+        .join(", "),
+    preferred: "Preferred",
     savedRecipient: "Saved recipient",
     currentSupplier: "Current supplier",
     configured: "Ready",
@@ -521,7 +676,7 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
   },
   es: {
     title: "Proveedores",
-    subtitle: "Nombres y destinatarios de pedidos aprobados del restaurante.",
+    subtitle: "Destinatarios más etiquetas de empaque, preferidos y SKU del catálogo.",
     back: "Volver a Configuración",
     noRestaurantTitle: "No hay restaurante seleccionado",
     noRestaurantBody: "Abre un espacio de restaurante antes de administrar destinatarios.",
@@ -550,6 +705,30 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     configuredCount: (configured, total) => `${configured} de ${total} listos`,
     emptyTitle: "Aún no hay proveedores",
     emptyBody: "Agrega proveedores de inventario durante la configuración antes de definir destinatarios.",
+    catalogTitle: "Catálogo de proveedores",
+    catalogSubtitle: "Etiquetas de empaque, preferidos y SKU guardados. Solo lectura: sin cantidades inventadas.",
+    catalogCount: (count) => `${count} artículos`,
+    catalogSearchPlaceholder: "Buscar artículo, SKU o empaque",
+    catalogSearchAccessibility: "Buscar en el catálogo de proveedores",
+    catalogSearchHint: "Filtra líneas por nombre, SKU, empaque o proveedor.",
+    catalogEmptyTitle: "Aún no hay artículos de catálogo",
+    catalogEmptyBody: "Las filas del catálogo aparecen tras la configuración o cuando existen registros alojados de artículos de proveedor.",
+    catalogSearchEmptyTitle: "Sin coincidencias en el catálogo",
+    catalogSearchEmptyBody: "Prueba otro nombre, SKU, empaque o proveedor.",
+    catalogGroupMeta: (lines, preferred) => `${lines} artículos · ${preferred} preferidos`,
+    catalogSkuLabel: (sku) => (sku ? `SKU ${sku}` : "Sin SKU de proveedor"),
+    catalogPackLabel: (packSize) => (packSize ? `Empaque ${packSize}` : "Sin etiqueta de empaque"),
+    catalogUnitCost: (unit, cost) => `${unit} · ${cost} c/u`,
+    catalogLineAccessibility: (itemName, sku, packSize, preferred) =>
+      [
+        itemName,
+        preferred ? "preferido" : null,
+        sku ? `SKU ${sku}` : "sin SKU de proveedor",
+        packSize ? `empaque ${packSize}` : "sin etiqueta de empaque"
+      ]
+        .filter(Boolean)
+        .join(", "),
+    preferred: "Preferido",
     savedRecipient: "Destinatario guardado",
     currentSupplier: "Proveedor actual",
     configured: "Listo",
@@ -574,7 +753,7 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
   },
   "zh-Hans": {
     title: "供应商",
-    subtitle: "餐厅已批准订单使用的名称和收件人。",
+    subtitle: "收件人以及目录中的包装标签、首选品和 SKU。",
     back: "返回设置",
     noRestaurantTitle: "未选择餐厅",
     noRestaurantBody: "请先打开餐厅工作区，再管理供应商收件人。",
@@ -598,11 +777,35 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     renameErrorBody: (supplier) => `请再次尝试重命名 ${supplier}。该名称可能已被使用。`,
     safetyTitle: "餐厅专属收件人",
     safetyBody: "每个供应商在餐厅内都有一个持久身份。重命名不会断开收件人，也不会创建新的供应商。",
-    sectionTitle: "供应商目录",
+    sectionTitle: "收件人目录",
     sectionSubtitle: "当前供应商及其已批准订单的收件人。",
     configuredCount: (configured, total) => `${configured}/${total} 已就绪`,
     emptyTitle: "尚无供应商",
     emptyBody: "请先在设置中添加库存供应商，再配置订单收件人。",
+    catalogTitle: "供应商货品目录",
+    catalogSubtitle: "已保存的包装标签、首选标记和供应商 SKU。只读，不会虚构数量。",
+    catalogCount: (count) => `${count} 项`,
+    catalogSearchPlaceholder: "搜索货品、SKU 或包装标签",
+    catalogSearchAccessibility: "搜索供应商货品目录",
+    catalogSearchHint: "按货品名称、SKU、包装标签或供应商筛选。",
+    catalogEmptyTitle: "尚无目录货品",
+    catalogEmptyBody: "完成设置或存在托管供应商货品记录后，才会显示目录行。",
+    catalogSearchEmptyTitle: "没有匹配的目录项",
+    catalogSearchEmptyBody: "请尝试其他货品名称、SKU、包装标签或供应商。",
+    catalogGroupMeta: (lines, preferred) => `${lines} 项 · ${preferred} 首选`,
+    catalogSkuLabel: (sku) => (sku ? `SKU ${sku}` : "无供应商 SKU"),
+    catalogPackLabel: (packSize) => (packSize ? `包装 ${packSize}` : "无包装标签"),
+    catalogUnitCost: (unit, cost) => `${unit} · ${cost}/单位`,
+    catalogLineAccessibility: (itemName, sku, packSize, preferred) =>
+      [
+        itemName,
+        preferred ? "首选" : null,
+        sku ? `SKU ${sku}` : "无供应商 SKU",
+        packSize ? `包装 ${packSize}` : "无包装标签"
+      ]
+        .filter(Boolean)
+        .join("，"),
+    preferred: "首选",
     savedRecipient: "已保存的收件人",
     currentSupplier: "当前供应商",
     configured: "已就绪",
@@ -633,6 +836,48 @@ const styles = StyleSheet.create({
   },
   emptyWrap: {
     padding: 14
+  },
+  catalogSearchWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 4,
+    backgroundColor: colors.surface
+  },
+  catalogGroup: {
+    padding: 14,
+    gap: 12,
+    backgroundColor: colors.surface
+  },
+  catalogGroupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12
+  },
+  catalogLine: {
+    gap: 4,
+    paddingLeft: 4
+  },
+  catalogLineDivided: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border
+  },
+  catalogLineHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  catalogItemName: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    ...typography.body,
+    fontWeight: "600"
+  },
+  catalogMeta: {
+    color: colors.muted,
+    ...typography.caption
   },
   recipientRow: {
     padding: 14,
