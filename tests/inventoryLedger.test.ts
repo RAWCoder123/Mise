@@ -106,6 +106,44 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
   assert.equal(secondCorrection.status, "conflict");
 });
 
+test("rejects future-dated receipts, waste, usage, adjustments, and stockouts", () => {
+  const recordedAt = "2026-07-26T10:01:00.000Z";
+  const futureAt = "2026-07-26T12:00:00.000Z";
+  const authority = {
+    id: "event-future",
+    actorUserId: "manager-1",
+    recordedAt
+  };
+
+  for (const eventType of ["receipt", "waste", "usage", "adjustment", "transfer", "stockout"] as const) {
+    const result = acceptInventoryEvent({
+      existingEvents: [],
+      candidate: input({
+        eventType,
+        quantity: eventType === "stockout" ? 0 : 100,
+        effectiveAt: futureAt,
+        clientEventId: `future-${eventType}`,
+        idempotencyKey: `future-${eventType}`
+      }),
+      authority
+    });
+    assert.equal(result.status, "rejected", eventType);
+    assert.equal("reason" in result ? result.reason : null, "future_dated_event", eventType);
+  }
+
+  const withinSkew = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({
+      eventType: "receipt",
+      effectiveAt: "2026-07-26T10:02:30.000Z",
+      clientEventId: "skew-receipt",
+      idempotencyKey: "skew-receipt"
+    }),
+    authority
+  });
+  assert.equal(withinSkew.status, "accepted");
+});
+
 test("projects counts, receipts, usage, waste, and corrections in server sequence", () => {
   const count = accepted(
     [],

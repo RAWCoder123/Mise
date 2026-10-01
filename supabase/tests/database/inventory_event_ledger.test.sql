@@ -1,6 +1,6 @@
 begin;
 
-select plan(26);
+select plan(29);
 
 create or replace function pg_temp.try_execute(statement text)
 returns boolean
@@ -234,6 +234,42 @@ select is(
   $sql$),
   false,
   'an event that would make on-hand negative is rejected atomically'
+);
+select is(
+  pg_temp.execute_error($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'receipt', 25, 'g', now() + interval '1 day', 'operator_receipt',
+      'manager-future-receipt-1', 'manager-future-receipt-1'
+    )
+  $sql$),
+  'Inventory ledger events cannot be effective in the future',
+  'a future-dated receipt is rejected by the ledger clock guard'
+);
+select is(
+  pg_temp.execute_error($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'waste', 5, 'g', now() + interval '1 day', 'operator_waste',
+      'manager-future-waste-1', 'manager-future-waste-1'
+    )
+  $sql$),
+  'Inventory ledger events cannot be effective in the future',
+  'a future-dated waste event is rejected by the ledger clock guard'
+);
+select is(
+  pg_temp.execute_error($sql$
+    select public.record_inventory_event(
+      'd0000000-0000-4000-8000-000000000001',
+      'd0000000-0000-4000-8000-000000000011',
+      'count', 1000, 'g', now() + interval '1 day', 'manual_count',
+      'manager-future-count-1', 'manager-future-count-1'
+    )
+  $sql$),
+  'Physical count evidence cannot be effective in the future',
+  'a future-dated count still uses the count-specific rejection message'
 );
 select is(
   (

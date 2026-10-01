@@ -36,8 +36,9 @@ export const DEFAULT_MAXIMUM_COUNT_AGE_HOURS = 36;
  * seconds; two minutes absorbs unsynced drift without admitting a materially
  * future-dated count. The same two-minute bound is applied in
  * `private.fetch_operational_planning_snapshot` and in the
- * `reject_future_dated_inventory_count` ledger trigger, so the client, the Edge
- * planning path, and the database agree on which counts exist.
+ * `reject_future_dated_inventory_event` ledger trigger (which also guards
+ * non-count ledger rows), so the client, the Edge planning path, and the
+ * database agree on which events may exist ahead of the evaluation clock.
  */
 export const COUNT_VALIDITY_RULE = "reject_counts_effective_after_evaluation_instant" as const;
 export const COUNT_CLOCK_SKEW_TOLERANCE_MS = 120_000;
