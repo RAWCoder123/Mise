@@ -22,6 +22,7 @@ export * from "./application/dailyReport";
 export * from "./application/dailyPhaseBrief";
 export * from "./application/deliveries";
 export * from "./application/activity";
+export * from "./application/operationalIssues";
 export * from "./application/operatingBrief";
 export * from "./application/operatingPlan";
 export * from "./application/restaurantTasks";

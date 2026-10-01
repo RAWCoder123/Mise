@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import {
   Activity,
+  AlertTriangle,
   BarChart3,
   Brain,
   ChevronRight,
@@ -93,6 +94,12 @@ export default function MoreScreen() {
             title={t("more.row.activity.title")}
             icon={<Activity size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/activity" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.issues.title")}
+            icon={<AlertTriangle size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/operational-issues" as never)}
           />
           <OperationalRow
             density="menu"

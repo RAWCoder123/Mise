@@ -94,6 +94,8 @@ export interface DemoState {
   supplierRecipients: SupplierRecipient[];
   /** Operator-facing activity mirror of hosted activity_events. */
   activityEvents: import("../domain/activityEvents").ActivityEvent[];
+  /** Durable inventory-risk issues mirrored from purchase recommendations. */
+  operationalIssues: import("../domain/operationalIssues").OperationalIssue[];
   /** Correctable restaurant memory mirror of hosted restaurant_memories. */
   restaurantMemories: import("../domain/restaurantMemory").RestaurantMemory[];
   /** Prepared/pending Mise actions mirror of hosted mise_actions. */
@@ -512,6 +514,7 @@ export function createInitialDemoState(
     purchaseDecisionEvents: [],
     purchaseLines: [],
     activityEvents: [],
+    operationalIssues: [],
     restaurantMemories: [],
     miseActions: [],
     supplierSendContentRevisions: {
@@ -759,6 +762,9 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     emailConnections: raw.emailConnections ?? seeded.emailConnections,
     supplierRecipients,
     activityEvents: Array.isArray(raw.activityEvents) ? raw.activityEvents : seeded.activityEvents,
+    operationalIssues: Array.isArray(raw.operationalIssues)
+      ? raw.operationalIssues
+      : seeded.operationalIssues,
     restaurantMemories: Array.isArray(raw.restaurantMemories)
       ? raw.restaurantMemories
       : seeded.restaurantMemories,
@@ -836,6 +842,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       purchaseRecommendations.some((recommendation, index) => recommendation.id !== retained[index]?.id) ||
       supplierOrders.some((order, index) => order.operator_note !== raw.supplierOrders?.[index]?.operator_note) ||
       !Array.isArray(raw.activityEvents) ||
+      !Array.isArray(raw.operationalIssues) ||
       !Array.isArray(raw.restaurantMemories) ||
       !raw.supplierSendContentRevisions ||
       !Array.isArray(raw.actionOutcomes) ||
