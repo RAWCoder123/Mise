@@ -152,3 +152,89 @@ test("answerAskMise briefing uses restaurant name and board counts", () => {
   assert.match(reply.answer, /ask\.answer\.briefing\.board/);
   assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales")));
 });
+
+test("answerAskMise prep refuses clear while before-prep restaurant tasks remain open", () => {
+  const prepTask = task({
+    id: "prep-window-1",
+    title: "Stage prep pans",
+    source: { kind: "restaurant_task", id: "prep-window-1", status: "waiting" },
+    serviceWindow: "before_prep",
+    action: {
+      intent: "open_restaurant_task",
+      label: "Open task",
+      route: "/tasks/prep-window-1",
+      entityId: "prep-window-1"
+    }
+  });
+  const otherTask = task({
+    id: "orders-task",
+    title: "Review reorder",
+    serviceWindow: "before_supplier_cutoff",
+    source: { kind: "restaurant_task", id: "orders-task", status: "waiting" },
+    action: {
+      intent: "open_restaurant_task",
+      label: "Open task",
+      route: "/tasks/orders-task",
+      entityId: "orders-task"
+    }
+  });
+
+  const reply = answerAskMise({
+    question: "What should we prep around?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      operationalTasks: [otherTask, prepTask],
+      inventoryHealth: { low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: []
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "prep");
+  assert.match(reply.answer, /ask\.answer\.prep\.tasks/);
+  assert.match(reply.answer, /Stage prep pans/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.prep\.clear/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.prep.tasks")));
+  assert.equal(reply.showPriorities, true);
+  assert.equal(reply.priorities[0]?.id, "prep-window-1");
+});
+
+test("answerAskMise prep clear stays available without before-prep restaurant tasks", () => {
+  const reply = answerAskMise({
+    question: "What should we prep around?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      operationalTasks: [
+        task({
+          id: "cutoff-task",
+          title: "Send supplier draft",
+          source: { kind: "restaurant_task", id: "cutoff-task", status: "waiting" },
+          serviceWindow: "before_supplier_cutoff"
+        })
+      ],
+      inventoryHealth: { low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: []
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "prep");
+  assert.match(reply.answer, /ask\.answer\.prep\.clear/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.prep.clear")));
+});

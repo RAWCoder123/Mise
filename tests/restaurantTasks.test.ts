@@ -180,6 +180,7 @@ test("shared-task Today projection excludes cancelled work and respects complete
   assert.equal(projected.action.intent, "open_restaurant_task");
   assert.equal(projected.action.route, `/tasks/${waiting.id}`);
   assert.equal(projected.status, "open");
+  assert.equal(projected.serviceWindow, "before_supplier_cutoff");
 });
 
 test("create replay comparison is fail-closed and JSON key-order agnostic", () => {

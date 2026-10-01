@@ -416,6 +416,7 @@ export function operationalTodayTaskFromRestaurantTask(
     },
     requiredRole: task.requiredRole,
     status: completed ? "completed" : "open",
+    serviceWindow: task.serviceWindow,
     completion: {
       derivedFromSource: true,
       canToggleDirectly: false,
