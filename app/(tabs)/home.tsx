@@ -46,6 +46,10 @@ import {
   type InventoryHealthTier
 } from "../../services/presentation/inventoryHealthPresentation";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
+import {
+  presentActivitySummary,
+  presentActivityTitle
+} from "../../services/presentation/activityEventCopy";
 import { taskRoleLabelKey } from "../../services/presentation/taskRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -303,7 +307,9 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {visibleBrief ? <ActivitySection brief={visibleBrief} formatDate={formatDate} t={t} /> : null}
+        {visibleBrief ? (
+          <ActivitySection brief={visibleBrief} formatDate={formatDate} locale={locale} t={t} />
+        ) : null}
 
         <Button
           title={t("home.ask.entry")}
@@ -411,10 +417,12 @@ function ApprovalsSection({
 function ActivitySection({
   brief,
   formatDate,
+  locale,
   t
 }: {
   brief: OperatingBrief;
   formatDate: (value: string, options?: Intl.DateTimeFormatOptions) => string;
+  locale: Parameters<typeof presentActivityTitle>[0];
   t: Translator;
 }) {
   const events = brief.liveActivity.slice(0, 5);
@@ -429,7 +437,7 @@ function ActivitySection({
         <Text style={styles.emptyCopy}>{t("home.activity.empty")}</Text>
       ) : (
         events.map((event) => (
-          <ActivityRow key={event.id} event={event} formatDate={formatDate} />
+          <ActivityRow key={event.id} event={event} formatDate={formatDate} locale={locale} />
         ))
       )}
     </View>
@@ -438,22 +446,26 @@ function ActivitySection({
 
 function ActivityRow({
   event,
-  formatDate
+  formatDate,
+  locale
 }: {
   event: ActivityEvent;
   formatDate: (value: string, options?: Intl.DateTimeFormatOptions) => string;
+  locale: Parameters<typeof presentActivityTitle>[0];
 }) {
   // The clock must read in the restaurant's timezone. This used to slice the
   // ISO string, which showed UTC to every restaurant that isn't on it.
   const time = Number.isFinite(Date.parse(event.occurredAt))
     ? formatDate(event.occurredAt, { hour: "2-digit", minute: "2-digit" })
     : "--:--";
+  const title = presentActivityTitle(locale, event);
+  const summary = presentActivitySummary(locale, event);
   return (
     <View style={styles.activityRow}>
       <Text style={styles.activityTime}>{time}</Text>
       <View style={styles.activityCopy}>
-        <Text style={styles.activityTitle} numberOfLines={1}>{event.title}</Text>
-        <Text style={styles.activitySummary} numberOfLines={2}>{event.summary}</Text>
+        <Text style={styles.activityTitle} numberOfLines={1}>{title}</Text>
+        <Text style={styles.activitySummary} numberOfLines={2}>{summary}</Text>
       </View>
     </View>
   );
