@@ -56,9 +56,9 @@ restore.
 
 ## Verification
 
-- `npm run typecheck` (pending)
-- focused `tests/restaurantsServiceStyleLocalePin.test.ts` (pending)
-- `npm test` (pending)
+- `npm run typecheck` pass
+- focused `tests/restaurantsServiceStyleLocalePin.test.ts` 3/3 pass
+- `npm test` 679 pass / 0 fail / 7 cancelled
 - pgTAP fixture committed (plan 14 from 14 assertion call sites); Docker/hosted
   pgTAP not run here
 
