@@ -195,7 +195,7 @@ export function normalizeCreateRestaurantTaskInput(
   } {
   const restaurantId = requiredText(input.restaurantId, 200, "Restaurant id");
   const clientTaskId = requiredText(input.clientTaskId, 200, "Client task id");
-  const title = requiredText(input.title, 160, "Task title");
+  const title = requiredTaskTitle(input.title);
   const detail = optionalText(input.detail, 2000, "Task detail");
   const origin = input.origin ?? "human";
   const operationalCategory = input.operationalCategory ?? "other";
@@ -299,7 +299,7 @@ export function restaurantTaskFromPersistedRow(
     restaurantId: requiredText(row.restaurant_id, 200, "Restaurant id"),
     locationId: optionalText(row.location_id, 200, "Location id"),
     origin: row.origin as RestaurantTaskOrigin,
-    title: requiredText(row.title, 160, "Task title"),
+    title: requiredTaskTitle(row.title),
     detail: optionalText(row.detail, 2000, "Task detail"),
     operationalCategory: row.operational_category as RestaurantTaskCategory,
     priority: row.priority as RestaurantTaskPriority,
@@ -496,6 +496,27 @@ function sameJson(left: unknown, right: unknown): boolean {
       leftKeys.every((key, index) => key === rightKeys[index] && sameJson(leftRecord[key], rightRecord[key]));
   }
   return false;
+}
+
+function hasAsciiControlCharacters(value: string) {
+  // ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) — matches
+  // restaurant_tasks_title_check under COLLATE "C" (MISE-005ER).
+  return /[\u0000-\u001f\u007f]/.test(value);
+}
+
+function requiredTaskTitle(value: unknown): string {
+  if (typeof value !== "string") throw new Error("Task title is required.");
+  const trimmed = value.trim();
+  // MISE-005ER: reject ASCII C controls before whitespace collapse so the
+  // single-line create-task title cannot slip past the COLLATE "C" CHECK.
+  if (!trimmed || hasAsciiControlCharacters(trimmed)) {
+    throw new Error("Task title is limited to 160 characters without control characters.");
+  }
+  const normalized = trimmed.replace(/\s+/g, " ");
+  if (!normalized || normalized.length > 160) {
+    throw new Error("Task title is limited to 160 characters without control characters.");
+  }
+  return normalized;
 }
 
 function requiredText(value: unknown, max: number, label: string) {
