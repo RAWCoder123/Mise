@@ -81,6 +81,25 @@ test("demo shared tasks mirror hosted idempotency, dependencies, verification, a
     /verification evidence is required/i
   );
 
+  const cleared = await repository.reassignRestaurantTask({
+    restaurantId: DEMO_RESTAURANT_ID,
+    taskId: countTask.id,
+    assigneeUserId: null
+  });
+  assert.equal(cleared.assigneeUserId, null);
+  const restored = await repository.reassignRestaurantTask({
+    restaurantId: DEMO_RESTAURANT_ID,
+    taskId: countTask.id,
+    assigneeUserId: DEMO_USER_ID
+  });
+  assert.equal(restored.assigneeUserId, DEMO_USER_ID);
+  const reassignReplay = await repository.reassignRestaurantTask({
+    restaurantId: DEMO_RESTAURANT_ID,
+    taskId: countTask.id,
+    assigneeUserId: DEMO_USER_ID
+  });
+  assert.equal(reassignReplay.updatedAt, restored.updatedAt);
+
   const completed = await repository.completeRestaurantTask({
     restaurantId: DEMO_RESTAURANT_ID,
     taskId: countTask.id,
@@ -88,11 +107,20 @@ test("demo shared tasks mirror hosted idempotency, dependencies, verification, a
     completionEvidence: [{ type: "count", quantity: 18, unit: "lb" }]
   });
   assert.equal(completed.status, "completed");
+  await assert.rejects(
+    () => repository.reassignRestaurantTask({
+      restaurantId: DEMO_RESTAURANT_ID,
+      taskId: countTask.id,
+      assigneeUserId: null
+    }),
+    /only open restaurant tasks can be reassigned/i
+  );
 
   const tasks = await repository.listRestaurantTasks(DEMO_RESTAURANT_ID);
   assert.equal(tasks.find((task) => task.id === orderTask.id)?.status, "waiting");
   const events = await repository.listActivityEvents(DEMO_RESTAURANT_ID);
   assert.ok(events.some((event) => event.activityType === "task_created"));
+  assert.ok(events.some((event) => event.activityType === "task_reassigned"));
   assert.ok(events.some((event) => event.activityType === "task_completed"));
   assert.ok(events.some((event) => event.activityType === "task_unblocked"));
   assert.match(

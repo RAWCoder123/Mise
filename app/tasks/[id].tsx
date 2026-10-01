@@ -10,12 +10,13 @@ import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
 import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
   canRestaurantRoleCompleteSharedTask,
+  canRestaurantRoleReassignSharedTask,
   type RestaurantTask
 } from "../../services/domain/restaurantTasks";
 import {
@@ -25,12 +26,15 @@ import {
 } from "../../services/domain/todayTasks";
 import {
   completeSharedRestaurantTask,
+  fetchRestaurantTeam,
   fetchTodaySummary,
   listSharedRestaurantTasks,
+  reassignSharedRestaurantTask,
   reopenSharedRestaurantTask
 } from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { captureMiseError } from "../../services/telemetry";
+import type { RestaurantTeamMember } from "../../types/mise";
 
 function BackAction() {
   const { t } = useLocale();
@@ -48,6 +52,7 @@ export default function TaskDetailScreen() {
   const { restaurant, role, user } = useMiseSession();
   const [task, setTask] = useState<OperationalTodayTask | null>(null);
   const [sharedTask, setSharedTask] = useState<RestaurantTask | null>(null);
+  const [team, setTeam] = useState<RestaurantTeamMember[]>([]);
   const [restaurantTimeZone, setRestaurantTimeZone] = useState<string | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [completionResult, setCompletionResult] = useState("");
@@ -67,6 +72,7 @@ export default function TaskDetailScreen() {
     requestIdRef.current += 1;
     setTask(null);
     setSharedTask(null);
+    setTeam([]);
     setRestaurantTimeZone(null);
     setChecked({});
     setCompletionResult("");
@@ -86,18 +92,21 @@ export default function TaskDetailScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [summary, sharedTasks] = await Promise.all([
+      const [summary, sharedTasks, nextTeam] = await Promise.all([
         fetchTodaySummary(restaurantId, { includeCompletedTasks: true }),
-        listSharedRestaurantTasks(restaurantId, { includeCompleted: true })
+        listSharedRestaurantTasks(restaurantId, { includeCompleted: true }),
+        fetchRestaurantTeam(restaurantId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setTask(summary.operationalTasks.find((candidate) => candidate.id === id) ?? null);
       setSharedTask(sharedTasks.find((candidate) => candidate.id === id) ?? null);
+      setTeam(nextTeam);
       setRestaurantTimeZone(summary.restaurantTimeZone);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "task_detail", operation: "load", restaurant_id: restaurantId });
       setError(t("tasks.error"));
+      setTeam([]);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
@@ -215,6 +224,31 @@ export default function TaskDetailScreen() {
     }
   }
 
+  async function reassignSharedTask(nextAssigneeUserId: string | null) {
+    if (!restaurant || !sharedTask || mutating) return;
+    if ((sharedTask.assigneeUserId ?? null) === nextAssigneeUserId) return;
+    setMutating(true);
+    setError(null);
+    try {
+      await reassignSharedRestaurantTask({
+        restaurantId: restaurant.id,
+        taskId: sharedTask.id,
+        assigneeUserId: nextAssigneeUserId
+      });
+      await load();
+    } catch (reassignError) {
+      captureMiseError(reassignError, {
+        flow: "shared_task_detail",
+        operation: "reassign",
+        restaurant_id: restaurant.id,
+        task_id: sharedTask.id
+      });
+      setError(t("tasks.shared.reassignError"));
+    } finally {
+      setMutating(false);
+    }
+  }
+
   if (sharedTask) {
     const completed = sharedTask.status === "completed";
     const high = sharedTask.priority === "urgent" || sharedTask.priority === "high";
@@ -229,20 +263,27 @@ export default function TaskDetailScreen() {
       (role ?? "staff") === "staff"
     );
     const canReopen = role === "owner" || role === "admin" || role === "manager";
+    const canReassign = canRestaurantRoleReassignSharedTask(role ?? "staff") && !completed && sharedTask.status !== "cancelled";
+    const assignableTeam = team.filter((member) => memberCanTakeRole(member, sharedTask.requiredRole));
+    const assigneeMember = sharedTask.assigneeUserId
+      ? team.find((member) => member.user_id === sharedTask.assigneeUserId)
+      : null;
     const dueLabel = sharedTask.dueAt && restaurantTimeZone
       ? formatDueTime(sharedTask.dueAt, { timeZone: restaurantTimeZone })
       : sharedTask.serviceWindow
         ? t(serviceWindowKey(sharedTask.serviceWindow))
         : t("tasks.due.none");
-    const assignedLabel = sharedTask.assigneeUserId
-      ? t("tasks.shared.assignedTeammate")
-      : t(
-          sharedTask.requiredRole === "owner_admin"
-            ? "tasks.assigned.ownerAdmin"
-            : sharedTask.requiredRole === "manager"
-              ? "tasks.assigned.manager"
-              : "tasks.assigned.staff"
-        );
+    const assignedLabel = assigneeMember
+      ? (assigneeMember.name?.trim() || assigneeMember.email?.trim() || t("tasks.shared.assignedTeammate"))
+      : sharedTask.assigneeUserId
+        ? t("tasks.shared.assignedTeammate")
+        : t(
+            sharedTask.requiredRole === "owner_admin"
+              ? "tasks.assigned.ownerAdmin"
+              : sharedTask.requiredRole === "manager"
+                ? "tasks.assigned.manager"
+                : "tasks.assigned.staff"
+          );
 
     return (
       <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />}
@@ -280,6 +321,39 @@ export default function TaskDetailScreen() {
             <MetaRow label={t("tasks.meta.related")} value={sharedRelatedLabel(sharedTask, t)} />
             <MetaRow label={t("tasks.shared.verification")} value={verificationLabel(sharedTask, t)} />
           </View>
+
+          {canReassign ? (
+            <View style={styles.instructions}>
+              <Text style={styles.sectionTitle}>{t("tasks.shared.reassignTitle")}</Text>
+              <Text style={styles.instructionsBody}>{t("tasks.shared.reassignBody")}</Text>
+              <View style={styles.choiceList}>
+                <AssigneeChoiceRow
+                  label={t("operatorTasks.assignee.unassigned")}
+                  selected={!sharedTask.assigneeUserId}
+                  disabled={mutating}
+                  onPress={() => void reassignSharedTask(null)}
+                />
+                {assignableTeam.map((member) => (
+                  <AssigneeChoiceRow
+                    key={member.user_id}
+                    label={member.name?.trim() || member.email?.trim() || t("operatorTasks.assignee.teammate")}
+                    detail={t(
+                      member.role === "owner"
+                        ? "settings.role.owner"
+                        : member.role === "admin"
+                          ? "settings.role.admin"
+                          : member.role === "manager"
+                            ? "settings.role.manager"
+                            : "settings.role.staff"
+                    )}
+                    selected={sharedTask.assigneeUserId === member.user_id}
+                    disabled={mutating}
+                    onPress={() => void reassignSharedTask(member.user_id)}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
 
           <View style={styles.instructions}>
             <Text style={styles.sectionTitle}>{t("tasks.instructions.title")}</Text>
@@ -505,6 +579,49 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function AssigneeChoiceRow({
+  label,
+  detail,
+  selected,
+  disabled,
+  onPress
+}: {
+  label: string;
+  detail?: string;
+  selected: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected, disabled: Boolean(disabled) }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.choiceRow,
+        selected && styles.choiceRowSelected,
+        pressed && !disabled && styles.pressed
+      ]}
+    >
+      <View style={[styles.choiceDot, selected && styles.choiceDotSelected]} />
+      <Text style={styles.choiceLabel} numberOfLines={2}>{label}</Text>
+      {detail ? <Text style={styles.choiceDetail}>{detail}</Text> : null}
+    </Pressable>
+  );
+}
+
+function memberCanTakeRole(
+  member: RestaurantTeamMember,
+  requiredRole: RestaurantTask["requiredRole"]
+) {
+  if (requiredRole === "member") return true;
+  if (requiredRole === "manager") {
+    return member.role === "owner" || member.role === "admin" || member.role === "manager";
+  }
+  return member.role === "owner" || member.role === "admin";
+}
+
 function sharedChecklistKey(entry: RestaurantTask["checklist"][number], index: number) {
   return `${index}:${entry.type ?? entry.label ?? "item"}`;
 }
@@ -652,6 +769,46 @@ const styles = StyleSheet.create({
   },
   resultInput: {
     minHeight: 96
+  },
+  choiceList: {
+    gap: 8,
+    marginTop: 4
+  },
+  choiceRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface
+  },
+  choiceRowSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft
+  },
+  choiceDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: colors.borderStrong
+  },
+  choiceDotSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accent
+  },
+  choiceLabel: {
+    flex: 1,
+    color: colors.text,
+    ...conceptTypography.body
+  },
+  choiceDetail: {
+    color: colors.muted,
+    ...conceptTypography.caption
   },
   divider: {
     height: StyleSheet.hairlineWidth,
