@@ -15,6 +15,7 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
+import { filterScanItemInventoryBySearch } from "../../services/domain/scanItemInventorySearch";
 import { fetchInventoryItems } from "../../services/miseService";
 import type { InventoryItem } from "../../types/mise";
 
@@ -28,16 +29,6 @@ function BackAction() {
       <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
     </ActionIcon>
   );
-}
-
-function matchesQuery(item: InventoryItem, query: string) {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  const haystack = [item.item_name, item.id, item.category, item.supplier_name, item.unit]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(needle);
 }
 
 export default function ScanItemScreen() {
@@ -101,7 +92,7 @@ export default function ScanItemScreen() {
 
   const visibleItems = loadedRestaurantId === restaurant?.id ? items : [];
   const searchMatches = useMemo(
-    () => visibleItems.filter((item) => matchesQuery(item, query)).slice(0, 40),
+    () => filterScanItemInventoryBySearch(visibleItems, query),
     [query, visibleItems]
   );
 
@@ -145,11 +136,17 @@ export default function ScanItemScreen() {
 
   const showCamera = CAMERA_SUPPORTED && permission?.granted;
   const listItems = barcodeMatches && barcodeMatches.length > 0 ? barcodeMatches : searchMatches;
+  const queryActive = query.trim().length > 0;
   const listTitle =
     barcodeMatches && barcodeMatches.length > 1
       ? t("scanItem.barcode.multi", { count: formatNumber(barcodeMatches.length) })
-      : query.trim()
-        ? t("scanItem.results", { count: formatNumber(listItems.length) })
+      : queryActive
+        ? searchMatches.length === visibleItems.length
+          ? t("scanItem.results", { count: formatNumber(listItems.length) })
+          : t("scanItem.search.showing", {
+              shown: formatNumber(searchMatches.length),
+              total: formatNumber(visibleItems.length)
+            })
         : t("scanItem.allItems", { count: formatNumber(visibleItems.length) });
 
   return (
