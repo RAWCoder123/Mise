@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { ArrowLeft, ChevronDown, ChevronUp } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ArrowLeft, ChevronDown, ChevronUp, Search } from "lucide-react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge } from "../../components/ui/Badge";
@@ -9,7 +9,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
 import { SegmentedControl, type SegmentOption } from "../../components/ui/SegmentedControl";
 import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
+import { colors, conceptTypography, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
@@ -20,6 +20,10 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import {
+  ACTIVITY_FEED_SEARCH_THRESHOLD,
+  filterActivityFeedBySearch
+} from "../../services/domain/activityFeedSearch";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -30,6 +34,7 @@ export default function ActivityHistoryScreen() {
   const { restaurant } = useMiseSession();
   const [filter, setFilter] = useState<ActivityFeedFilter>("all");
   const [range, setRange] = useState<ActivityDateRange>("all");
+  const [query, setQuery] = useState("");
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
@@ -68,6 +73,7 @@ export default function ActivityHistoryScreen() {
     setLoadedRestaurantId(null);
     setError(false);
     setExpandedIds({});
+    setQuery("");
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
@@ -110,6 +116,15 @@ export default function ActivityHistoryScreen() {
   );
 
   const visible = loadedRestaurantId === restaurant?.id ? events : [];
+  const showSearch =
+    !error &&
+    (visible.length >= ACTIVITY_FEED_SEARCH_THRESHOLD || query.trim().length > 0);
+  const filtered = useMemo(() => {
+    if (!showSearch) return visible;
+    return filterActivityFeedBySearch(visible, query);
+  }, [query, showSearch, visible]);
+  const searchNoMatches =
+    showSearch && !loading && !error && visible.length > 0 && filtered.length === 0 && query.trim().length > 0;
 
   return (
     <Screen
@@ -140,6 +155,31 @@ export default function ActivityHistoryScreen() {
           variant="pills"
         />
 
+        {showSearch ? (
+          <View style={styles.searchBox}>
+            <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
+            <TextInput
+              accessibilityLabel={t("activity.search.accessibility")}
+              accessibilityHint={t("activity.search.hint")}
+              value={query}
+              onChangeText={setQuery}
+              placeholder={t("activity.search.placeholder")}
+              placeholderTextColor={colors.faint}
+              returnKeyType="search"
+              style={styles.searchInput}
+            />
+          </View>
+        ) : null}
+
+        {showSearch ? (
+          <Text style={styles.searchMeta} accessibilityLiveRegion="polite">
+            {t("activity.search.showing", {
+              shown: String(filtered.length),
+              total: String(visible.length)
+            })}
+          </Text>
+        ) : null}
+
         {error ? (
           <RetryNotice
             title={t("activity.error.title")}
@@ -154,7 +194,14 @@ export default function ActivityHistoryScreen() {
           <EmptyState title={t("activity.empty.title")} body={t("activity.empty.body")} />
         ) : null}
 
-        {visible.map((event) => {
+        {searchNoMatches ? (
+          <EmptyState
+            title={t("activity.search.emptyTitle")}
+            body={t("activity.search.emptyBody")}
+          />
+        ) : null}
+
+        {filtered.map((event) => {
           const expanded = Boolean(expandedIds[event.id]);
           return (
             <Pressable
@@ -253,6 +300,30 @@ const styles = StyleSheet.create({
   stack: {
     gap: 12,
     paddingBottom: 24
+  },
+  searchBox: {
+    minHeight: 44,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 42,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 12,
+    lineHeight: 17,
+    paddingVertical: 0
+  },
+  searchMeta: {
+    ...conceptTypography.caption,
+    color: colors.muted
   },
   row: {
     flexDirection: "row",
