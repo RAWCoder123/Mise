@@ -24,6 +24,36 @@ const nonItemLinePatterns = [
   /^recommended based/i
 ];
 
+/**
+ * Fingerprinted Notes headers used by supplier-order message bodies.
+ * Keep in sync with EN/ES/zh-Hans templates (`Notes:` / `Notas:` / `备注：`).
+ * Order-detail "generated body" preview strips the operator note using these
+ * exact suffixes so localized drafts do not leave notes glued into the panel.
+ */
+export const SUPPLIER_ORDER_NOTES_HEADERS = ["Notes:", "Notas:", "备注："] as const;
+
+/**
+ * Returns the order message without a trailing operator-note block when the
+ * note is appended as `\n\n{NotesHeader}\n{note}` for any known locale header.
+ * If the note is absent or the suffix does not match, returns the message unchanged.
+ */
+export function stripOperatorNoteFromOrderMessage(
+  orderMessage: string,
+  operatorNote: string | null | undefined
+): string {
+  const note = typeof operatorNote === "string" ? operatorNote.trim() : "";
+  if (!note) return orderMessage;
+
+  for (const header of SUPPLIER_ORDER_NOTES_HEADERS) {
+    const suffix = `\n\n${header}\n${note}`;
+    if (orderMessage.endsWith(suffix)) {
+      return orderMessage.slice(0, -suffix.length);
+    }
+  }
+
+  return orderMessage;
+}
+
 export function parseSupplierOrderLines(orderMessage: string): SupplierDraftLine[] {
   return scanSupplierOrderLines(orderMessage, Number.POSITIVE_INFINITY).lines;
 }

@@ -46,6 +46,7 @@ import type {
   SupplierEmailPayload,
   SupplierOrder
 } from "../../types/mise";
+import { stripOperatorNoteFromOrderMessage } from "../../utils/orderPresentation";
 
 type Translate = ReturnType<typeof useLocale>["t"];
 
@@ -1015,12 +1016,7 @@ function isPurchaseEvidenceBlockerCode(code: string): code is PurchaseAuthorityB
 }
 
 function generatedOrderMessage(order: SupplierOrder) {
-  const note = order.operator_note?.trim();
-  if (!note) return order.order_message;
-  const suffix = "\n\nNotes:\n" + note;
-  return order.order_message.endsWith(suffix)
-    ? order.order_message.slice(0, -suffix.length)
-    : order.order_message;
+  return stripOperatorNoteFromOrderMessage(order.order_message, order.operator_note);
 }
 
 const styles = StyleSheet.create({
