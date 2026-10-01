@@ -27,6 +27,7 @@ function order(id: string, supplierName: string, deliveryDate: string | null): S
     restaurant_id: RESTAURANT_ID,
     supplier_id: SUPPLIER_IDS[supplierName] ?? "00000000-0000-4000-8000-000000000404",
     supplier_name: supplierName,
+    message_locale: "en" as const,
     order_message: "Recorded order",
     operator_note: null,
     status: "completed",

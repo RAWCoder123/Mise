@@ -445,6 +445,7 @@ function order(overrides: Partial<SupplierOrder> = {}): SupplierOrder {
     restaurant_id: restaurantId,
     supplier_id: "10000000-0000-4000-8000-000000000011",
     supplier_name: "Metro Produce",
+    message_locale: "en" as const,
     order_message: "Please deliver chicken.",
     operator_note: null,
     status: "draft",

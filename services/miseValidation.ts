@@ -1198,10 +1198,15 @@ export function normalizeInventoryItemPatch(patch: InventoryItemPatch): Inventor
 }
 
 export function normalizeSupplierOrder(value: SupplierOrder): SupplierOrder {
+  const messageLocale =
+    value.message_locale === "es" || value.message_locale === "zh-Hans"
+      ? value.message_locale
+      : "en";
   return {
     ...value,
     supplier_id: requireSupplierAuthorityId(value.supplier_id),
     supplier_name: requireSupplierDisplaySnapshot(value.supplier_name),
+    message_locale: messageLocale,
     delivery_date: asNullableString(value.delivery_date)
   };
 }

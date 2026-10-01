@@ -35,6 +35,13 @@ import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/i
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
 import {
+  DEFAULT_SUPPLIER_ORDER_MESSAGE_LOCALE,
+  formatSupplierOrderMessageBody,
+  formatSupplierOrderSubject,
+  resolveSupplierOrderMessageLocale,
+  type SupplierOrderMessageLocale
+} from "./supplierOrderMessageTemplates";
+import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
   verifiedCountSupersedes,
@@ -1206,7 +1213,8 @@ export function buildDraftsFromRecommendations(
       restaurant_id: restaurantId,
       supplier_id: supplierId,
       supplier_name: supplierName,
-      order_message: buildSupplierOrderMessage(supplierName, items),
+      message_locale: DEFAULT_SUPPLIER_ORDER_MESSAGE_LOCALE,
+      order_message: buildSupplierOrderMessage(supplierName, items, null, DEFAULT_SUPPLIER_ORDER_MESSAGE_LOCALE),
       operator_note: null,
       status: "draft" as SupplierOrderStatus,
       delivery_date: deliveryDate,
@@ -1218,15 +1226,28 @@ export function buildDraftsFromRecommendations(
 export function buildSupplierOrderMessage(
   supplierName: string,
   recommendations: PurchaseRecommendation[],
-  operatorNote: string | null = null
+  operatorNote: string | null = null,
+  locale: string | null | undefined = DEFAULT_SUPPLIER_ORDER_MESSAGE_LOCALE
 ) {
   const lines = recommendations
     .slice()
     .sort((a, b) => a.item_name.localeCompare(b.item_name) || a.id.localeCompare(b.id))
     .map((item) => `${item.item_name} - ${formatQuantity(item.recommended_quantity)} ${item.unit}`);
-  const base = `Order draft for ${supplierName}\n\n${lines.join("\n")}\n\nDelivery requested: Tomorrow morning`;
-  const note = operatorNote?.trim();
-  return truncateUtf8(note ? `${base}\n\nNotes:\n${note}` : base, ORDER_MESSAGE_MAX_BYTES);
+  return truncateUtf8(
+    formatSupplierOrderMessageBody({
+      supplierName,
+      linesBody: lines.join("\n"),
+      operatorNote,
+      locale
+    }),
+    ORDER_MESSAGE_MAX_BYTES
+  );
+}
+
+export function supplierOrderMessageLocaleFor(
+  order: Pick<SupplierOrder, "message_locale"> | { message_locale?: string | null }
+): SupplierOrderMessageLocale {
+  return resolveSupplierOrderMessageLocale(order.message_locale);
 }
 
 export type RecommendationWorkflowOutcome = "applied" | "already_applied";
@@ -1957,7 +1978,11 @@ export function buildSupplierEmailPayload(
   );
   const to = recipient?.email ?? null;
   const from = emailConnection?.sender_email ?? null;
-  const subject = `${restaurant.name} order for ${order.supplier_name}`;
+  const subject = formatSupplierOrderSubject(
+    restaurant.name,
+    order.supplier_name,
+    supplierOrderMessageLocaleFor(order)
+  );
   const blockedReason =
     emailConnection?.status !== "connected"
       ? "Connect the restaurant Gmail sender before Mise can send supplier email."

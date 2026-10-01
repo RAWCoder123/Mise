@@ -19,8 +19,14 @@ export interface SupplierDraftPresentation {
 
 const nonItemLinePatterns = [
   /^order draft for/i,
+  /^borrador de pedido para/i,
+  /的订单草稿$/,
   /^delivery requested/i,
+  /^entrega solicitada/i,
+  /^请求送达[：:]/,
   /^notes:?$/i,
+  /^notas:?$/i,
+  /^备注：?$/,
   /^recommended based/i
 ];
 

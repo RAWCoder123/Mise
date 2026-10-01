@@ -291,6 +291,7 @@ function order(patch: Partial<SupplierOrder> = {}): SupplierOrder {
     restaurant_id: restaurantId,
     supplier_id: "10000000-0000-4000-8000-000000000014",
     supplier_name: "Fresh Foods",
+    message_locale: "en" as const,
     order_message: "Please prepare the approved items.",
     operator_note: null,
     status: "draft",

@@ -236,6 +236,7 @@ export function approveRecommendationInDemoState(
       restaurant_id: restaurantId,
       supplier_id: supplier.id,
       supplier_name: supplier.display_name,
+      message_locale: "en",
       order_message: "",
       operator_note: null,
       status: "draft",
@@ -318,7 +319,12 @@ export function undoRecommendationInDemoState(
     if (remaining.length === 0) {
       state.supplierOrders = state.supplierOrders.filter((entry) => entry.id !== order.id);
     } else {
-      order.order_message = buildSupplierOrderMessage(order.supplier_name, remaining, order.operator_note);
+      order.order_message = buildSupplierOrderMessage(
+        order.supplier_name,
+        remaining,
+        order.operator_note,
+        order.message_locale ?? "en"
+      );
     }
   }
   return { outcome: "applied", recommendation, order, previousStatus };
@@ -541,7 +547,8 @@ function rebuildDemoDraftMessage(state: DemoState, order: SupplierOrder) {
   order.order_message = buildSupplierOrderMessage(
     order.supplier_name,
     linked,
-    order.operator_note
+    order.operator_note,
+    order.message_locale ?? "en"
   );
 }
 

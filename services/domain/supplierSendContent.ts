@@ -8,7 +8,8 @@ import {
   type SupplierSendContentBlockerCode,
   type SupplierSendContentLine
 } from "../../types/mise";
-import { buildSupplierOrderMessage } from "./miseDomain";
+import { buildSupplierOrderMessage, supplierOrderMessageLocaleFor } from "./miseDomain";
+import { formatSupplierOrderSubject } from "./supplierOrderMessageTemplates";
 import { utf8ByteLength } from "./securityLimits";
 
 export { SUPPLIER_SEND_CONTENT_VERSION } from "../../types/mise";
@@ -68,10 +69,12 @@ function normalizedEmail(value: string | null | undefined) {
   return normalized;
 }
 
-function normalizedSubject(restaurantName: string, supplierName: string) {
-  const subject = `${restaurantName} order for ${supplierName}`
-    .replace(/[\r\n]+/g, " ")
-    .trim();
+function normalizedSubject(
+  restaurantName: string,
+  supplierName: string,
+  locale: string | null | undefined
+) {
+  const subject = formatSupplierOrderSubject(restaurantName, supplierName, locale);
   if (
     subject.length < 1 ||
     subject.length > 500 ||
@@ -174,7 +177,12 @@ export async function buildCanonicalSupplierSendContent(
     blockers.add("supplier_email_invalid");
   }
 
-  const subject = normalizedSubject(input.restaurant.name, input.order.supplier_name);
+  const messageLocale = supplierOrderMessageLocaleFor(input.order);
+  const subject = normalizedSubject(
+    input.restaurant.name,
+    input.order.supplier_name,
+    messageLocale
+  );
   if (!subject) blockers.add("send_subject_invalid");
 
   const linked = input.recommendations
@@ -201,7 +209,8 @@ export async function buildCanonicalSupplierSendContent(
   const expectedBody = buildSupplierOrderMessage(
     input.order.supplier_name,
     linked,
-    input.order.operator_note
+    input.order.operator_note,
+    messageLocale
   );
   if (utf8ByteLength(input.order.order_message) > CONTENT_MAX_BYTES) {
     blockers.add("send_content_too_large");
