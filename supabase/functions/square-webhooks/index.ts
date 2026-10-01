@@ -1,8 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
+  addDaysToDateKey,
   listSquareCatalogItems,
   refreshSquareAccessToken,
   searchSquareOrders,
+  toDateKeyInTimeZone,
   type SquareOAuthConfig,
 } from "../_shared/square.ts";
 import { HttpError, jsonResponse, requireUuid } from "../_shared/mise.ts";
@@ -86,10 +88,18 @@ Deno.serve(async (req) => {
     }
 
     let locationIds: string[] = [];
-    const to = new Date();
-    const from = new Date(to.getTime() - 2 * 24 * 60 * 60 * 1000);
-    const fromDate = from.toISOString().slice(0, 10);
-    const toDate = to.toISOString().slice(0, 10);
+    const { data: restaurantRow, error: restaurantError } = await securitySupabase
+      .from("restaurants")
+      .select("timezone")
+      .eq("id", target.restaurantId)
+      .maybeSingle();
+    if (restaurantError) throw restaurantError;
+    const restaurantTimeZone =
+      typeof restaurantRow?.timezone === "string" && restaurantRow.timezone.trim().length > 0
+        ? restaurantRow.timezone.trim().slice(0, 64)
+        : "UTC";
+    const toDate = toDateKeyInTimeZone(new Date(), restaurantTimeZone);
+    const fromDate = addDaysToDateKey(toDate, -2);
 
     const { data: syncBoundary, error: syncBoundaryError } = await securitySupabase.rpc(
       "service_begin_square_authority_sync",
@@ -117,7 +127,14 @@ Deno.serve(async (req) => {
       }
       const tokens = await refreshSquareAccessToken(oauthConfig, String(credential.refreshToken));
       const [sales, catalogItems] = await Promise.all([
-        searchSquareOrders(oauthConfig, tokens.accessToken, locationIds, fromDate, toDate),
+        searchSquareOrders(
+          oauthConfig,
+          tokens.accessToken,
+          locationIds,
+          fromDate,
+          toDate,
+          restaurantTimeZone,
+        ),
         listSquareCatalogItems(oauthConfig, tokens.accessToken),
       ]);
       const { error: applyError } = await securitySupabase.rpc(
