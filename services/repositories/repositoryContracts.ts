@@ -571,6 +571,11 @@ export interface MiseRepository {
     itemId: string,
     supplierId: string
   ): Promise<InventoryItem>;
+  setInventoryItemActive(
+    restaurantId: string,
+    itemId: string,
+    active: boolean
+  ): Promise<InventoryItem>;
   fetchVerifiedProviderMappings(restaurantId: string): Promise<VerifiedProviderSaleMapping[]>;
   listInventoryEvents(
     restaurantId: string,

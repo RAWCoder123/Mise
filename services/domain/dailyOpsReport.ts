@@ -15,6 +15,7 @@ import {
 } from "./dailyCloseout";
 import type { SupplierReliabilitySummary } from "./supplierReliability";
 import type { WasteAnalysisSummary } from "./wasteAnalysis";
+import { isActiveInventoryItem } from "./inventoryActivity";
 
 export type DailyOpsSignalType = "waste" | "prep" | "inventory" | "sales" | "cost";
 
@@ -273,6 +274,7 @@ function estimateDollarsAtRisk(
   let total = 0;
   let riskItems = 0;
   for (const { item, prediction } of outlooks) {
+    if (!isActiveInventoryItem(item)) continue;
     if (prediction.projectedStatus !== "Critical" && prediction.projectedStatus !== "Low") {
       continue;
     }

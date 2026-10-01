@@ -28,6 +28,7 @@ import {
   fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
+  setInventoryItemActive,
   updateInventoryItem
 } from "../../services/miseService";
 import {
@@ -56,6 +57,7 @@ export default function InventoryDetailScreen() {
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
   const [savingSettings, setSavingSettings] = useState(false);
+  const [togglingActive, setTogglingActive] = useState(false);
   const [submittingOperation, setSubmittingOperation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -130,6 +132,7 @@ export default function InventoryDetailScreen() {
     setQuantityError(undefined);
     setSettingErrors({});
     setSavingSettings(false);
+    setTogglingActive(false);
     setSubmittingOperation(false);
     setMessage(null);
     setMessageIsError(false);
@@ -154,12 +157,13 @@ export default function InventoryDetailScreen() {
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
-    busy: submittingOperation || savingSettings
+    busy: submittingOperation || savingSettings || togglingActive
   });
   const visibleOutlook = hubReady ? outlook : null;
   const visibleQueue = hubReady ? queueEntries : [];
   const item = visibleOutlook?.item ?? null;
   const prediction = visibleOutlook?.prediction ?? null;
+  const itemActive = item ? item.active !== false : true;
   const localizedPrediction =
     item && prediction ? localizeInventoryPrediction(t, formatNumber, item, prediction) : null;
   const status = prediction?.projectedStatus ?? null;
@@ -324,6 +328,11 @@ export default function InventoryDetailScreen() {
       setMessageIsError(true);
       return;
     }
+    if (item.active === false) {
+      setMessage(t("inventory.detail.inactiveOrdering"));
+      setMessageIsError(true);
+      return;
+    }
     const restaurantId = restaurant.id;
     setSavingSettings(true);
     setMessage(null);
@@ -342,7 +351,39 @@ export default function InventoryDetailScreen() {
     }
   }
 
-  const busy = submittingOperation || savingSettings;
+  async function toggleActive() {
+    if (!restaurant || !item) return;
+    if (!actionsEditable) {
+      setMessage(t("inventory.detail.viewOnlyInventory"));
+      setMessageIsError(true);
+      return;
+    }
+    const restaurantId = restaurant.id;
+    const nextActive = item.active === false;
+    setTogglingActive(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      await setInventoryItemActive(restaurantId, item.id, nextActive);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(
+        t(nextActive ? "inventory.detail.notice.activated" : "inventory.detail.notice.deactivated", {
+          item: item.item_name
+        })
+      );
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setMessage(t("inventory.detail.error.active"));
+        setMessageIsError(true);
+      }
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setTogglingActive(false);
+    }
+  }
+
+  const busy = submittingOperation || savingSettings || togglingActive;
 
   return (
     <Screen
@@ -418,8 +459,36 @@ export default function InventoryDetailScreen() {
           <Card>
             <View style={styles.cardHeader}>
               <Text style={[styles.cardTitle, styles.flushTitle]}>{t("inventory.detail.stockEvidence")}</Text>
-              <Badge label={localizedPrediction.status} tone={statusTone(status)} />
+              <View style={styles.badgeStack}>
+                {!itemActive ? <Badge label={t("inventory.authority.inactive")} tone="neutral" /> : null}
+                <Badge label={localizedPrediction.status} tone={statusTone(status)} />
+              </View>
             </View>
+            {!itemActive ? (
+              <StatusNotice
+                tone="warning"
+                title={t("inventory.detail.inactive.title")}
+                message={t("inventory.detail.inactive.body")}
+              />
+            ) : null}
+            {mutationAllowed ? (
+              <Button
+                title={t(
+                  itemActive ? "inventory.detail.action.deactivate" : "inventory.detail.action.activate"
+                )}
+                accessibilityLabel={t(
+                  itemActive
+                    ? "inventory.detail.action.deactivateAccessibility"
+                    : "inventory.detail.action.activateAccessibility",
+                  { item: item.item_name }
+                )}
+                variant="secondary"
+                onPress={() => void toggleActive()}
+                disabled={!actionsEditable || busy}
+                fullWidth
+                style={styles.activeToggle}
+              />
+            ) : null}
             <View style={styles.countRail}>
               <View style={styles.countBlock}>
                 <Text style={styles.countLabel}>{t("inventory.detail.lastCount")}</Text>
@@ -473,7 +542,7 @@ export default function InventoryDetailScreen() {
               <Text style={styles.recommendation}>{localizedPrediction.recommendation}</Text>
               <Text style={styles.copy}>{localizedPrediction.whyItMatters}</Text>
             </View>
-            {mutationAllowed ? (
+            {mutationAllowed && itemActive ? (
               <Button
                 title={t("inventory.detail.addToOrder")}
                 accessibilityLabel={t("inventory.detail.addAccessibility", { item: item.item_name })}
@@ -794,6 +863,14 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 14
   },
+  badgeStack: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 1,
+    justifyContent: "flex-end"
+  },
+  activeToggle: { marginBottom: 14 },
   countRail: { flexDirection: "row", gap: 10, marginTop: 0 },
   countBlock: {
     flex: 1,

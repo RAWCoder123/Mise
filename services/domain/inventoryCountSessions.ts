@@ -147,10 +147,11 @@ export function applyCountApprovalsToInventory(
 
 export function isCountSessionEligibleInventoryItem(item: Pick<
   InventoryItem,
-  "canonical_unit" | "canonical_quantity_per_unit" | "canonical_unit_verification_status"
+  "active" | "canonical_unit" | "canonical_quantity_per_unit" | "canonical_unit_verification_status"
 >): boolean {
   const conversion = item.canonical_quantity_per_unit;
   return (
+    item.active !== false &&
     item.canonical_unit_verification_status === "verified" &&
     (item.canonical_unit === "g" || item.canonical_unit === "ml" || item.canonical_unit === "each") &&
     conversion != null &&

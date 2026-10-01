@@ -34,6 +34,7 @@ import { formatQuantity, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../.
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
+import { isActiveInventoryItem } from "./inventoryActivity";
 import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
@@ -340,7 +341,9 @@ export function buildInventoryControlSummary(
   restaurantId: string,
   outlooks: InventoryOutlookItem[]
 ): InventoryControlSummary {
-  const restaurantOutlooks = outlooks.filter(({ item }) => item.restaurant_id === restaurantId);
+  const restaurantOutlooks = outlooks.filter(
+    ({ item }) => item.restaurant_id === restaurantId && isActiveInventoryItem(item)
+  );
   const statusCounts = restaurantOutlooks.reduce(
     (current, { prediction }) => {
       current[prediction.projectedStatus] += 1;
@@ -2015,6 +2018,7 @@ export function buildRecommendationInserts(
 
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
+    .filter((item) => isActiveInventoryItem(item))
     .filter((item) => !shouldSuppressRecommendationForItem(restaurantId, item, recommendationHistory, countEvidence))
     .map((item) => ({
       item,

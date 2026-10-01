@@ -1,4 +1,5 @@
 import { canonicalInventoryUnit, inventoryUnitsAreCompatible } from "./inventoryUnits.ts";
+import { isActiveInventoryItem } from "./inventoryActivity.ts";
 import {
   buildInventoryCountEvidence,
   dayResolutionConsumptionIsAfterCount,
@@ -26,6 +27,8 @@ export interface OperationalInventoryItem {
   current_quantity: number;
   par_level: number;
   reorder_threshold: number;
+  /** When false, excluded from purchase planning. Defaults to active. */
+  active?: boolean;
   /**
    * Row mutation time. Not physical-count evidence: it moves for policy, cost, and
    * supplier edits. Planning freshness comes from `inventoryLedgerEvents` instead.
@@ -137,7 +140,9 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   const recommendations: OperationalRecommendation[] = [];
   const insights: OperationalInsight[] = [];
 
-  for (const item of snapshot.inventoryItems.filter((entry) => entry.restaurant_id === snapshot.restaurantId)) {
+  for (const item of snapshot.inventoryItems.filter(
+    (entry) => entry.restaurant_id === snapshot.restaurantId && isActiveInventoryItem(entry)
+  )) {
     const mappings = snapshot.menuItemIngredients.filter(
       (mapping) =>
         mapping.restaurant_id === snapshot.restaurantId &&
