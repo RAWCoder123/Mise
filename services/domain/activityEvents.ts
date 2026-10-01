@@ -235,6 +235,27 @@ function requireRestaurantId(restaurantId: string) {
   return normalized;
 }
 
+function hasAsciiControlCharacters(value: string) {
+  // ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) — matches
+  // activity_events_title_check under COLLATE "C" (MISE-005EV).
+  return /[\u0000-\u001f\u007f]/.test(value);
+}
+
+function requiredActivityTitle(value: unknown): string {
+  if (typeof value !== "string") throw new Error("Activity title is required.");
+  const trimmed = value.trim();
+  // MISE-005EV: reject ASCII C controls before whitespace collapse so the
+  // single-line activity title cannot slip past the COLLATE "C" CHECK.
+  if (!trimmed || hasAsciiControlCharacters(trimmed)) {
+    throw new Error("Activity title is limited to 160 characters without control characters.");
+  }
+  const normalized = trimmed.replace(/\s+/g, " ");
+  if (!normalized || normalized.length > 160) {
+    throw new Error("Activity title is limited to 160 characters without control characters.");
+  }
+  return normalized;
+}
+
 function iso(value: string) {
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) {
@@ -286,7 +307,7 @@ function buildEvent(
     createdAt,
     activityType: input.activityType,
     category: input.category,
-    title: input.title,
+    title: requiredActivityTitle(input.title),
     summary: input.summary,
     triggerType: input.triggerType,
     triggerReference: input.triggerReference ?? null,
@@ -1113,7 +1134,7 @@ export function activityEventFromPersistedRow(row: PersistedActivityEventRow): A
     createdAt: iso(row.recorded_at),
     activityType: row.event_type,
     category: row.category,
-    title: row.title,
+    title: requiredActivityTitle(row.title),
     summary: row.summary,
     triggerType: row.trigger_type,
     triggerReference: row.trigger_reference ?? null,
