@@ -1,5 +1,6 @@
 import {
   recalculationCycleDefinition,
+  sanitizeRecalculationFailureReason,
   type RecalculationCycle,
   type RecalculationRunRecord
 } from "../domain/recalculationSchedule";
@@ -78,7 +79,7 @@ export function createRecalculationPorts(deps: {
           completedAt: record.completedAt,
           durationMs: telemetry.durationMs,
           timedOut: telemetry.timedOut,
-          failureReason: record.failureReason ?? null,
+          failureReason: sanitizeRecalculationFailureReason(record.failureReason),
           cycleKey,
           idempotencyKey: `${cycleKey}:attempt-${record.attempt}`
         });

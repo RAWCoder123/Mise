@@ -75,6 +75,7 @@ import type {
   RestaurantSetupSnapshotInput,
   SupplierDeliveryRecordResult
 } from "./repositoryContracts";
+import { sanitizeRecalculationFailureReason } from "../domain/recalculationSchedule";
 import {
   buildSupplierOrderMessage,
   createId,
@@ -3411,32 +3412,37 @@ export function createLocalDemoRepository(): MiseRepository {
         if (!Number.isInteger(input.attempt) || input.attempt < 1 || input.attempt > 4) {
           throw new Error("Recalculation run attempt is out of range.");
         }
-        if (input.status === "failed" && !input.failureReason) {
+
+        // MISE-005EQ: mirror recalculation_runs_failure_reason_check under COLLATE "C".
+        const failureReason = sanitizeRecalculationFailureReason(input.failureReason);
+        if (input.status === "failed" && !failureReason) {
           throw new Error("A failed recalculation run requires a failure reason.");
         }
-        if (input.status === "succeeded" && (input.failureReason || input.timedOut)) {
+        if (input.status === "succeeded" && (failureReason || input.timedOut)) {
           throw new Error("A succeeded recalculation run cannot carry a failure.");
         }
 
+        const normalizedInput = { ...input, failureReason };
+
         const existing = (state.recalculationRuns ?? []).find(
           (run) =>
-            run.restaurantId === input.restaurantId &&
-            run.idempotencyKey === input.idempotencyKey
+            run.restaurantId === normalizedInput.restaurantId &&
+            run.idempotencyKey === normalizedInput.idempotencyKey
         );
         if (existing) {
           // Mirrors the RPC: an identical replay is the same fact recorded
           // twice; anything else is a different attempt wearing a used key.
           const identical =
-            existing.cycle === input.cycle &&
-            existing.operatingDate === input.operatingDate &&
-            existing.status === input.status &&
-            existing.attempt === input.attempt &&
-            existing.jobName === input.jobName &&
-            existing.monitoringOwner === input.monitoringOwner &&
-            existing.durationMs === input.durationMs &&
-            existing.timedOut === input.timedOut &&
-            existing.failureReason === input.failureReason &&
-            existing.cycleKey === input.cycleKey;
+            existing.cycle === normalizedInput.cycle &&
+            existing.operatingDate === normalizedInput.operatingDate &&
+            existing.status === normalizedInput.status &&
+            existing.attempt === normalizedInput.attempt &&
+            existing.jobName === normalizedInput.jobName &&
+            existing.monitoringOwner === normalizedInput.monitoringOwner &&
+            existing.durationMs === normalizedInput.durationMs &&
+            existing.timedOut === normalizedInput.timedOut &&
+            existing.failureReason === normalizedInput.failureReason &&
+            existing.cycleKey === normalizedInput.cycleKey;
           if (!identical) {
             throw new Error(
               "Recalculation run idempotency key already recorded a different attempt."
@@ -3446,7 +3452,7 @@ export function createLocalDemoRepository(): MiseRepository {
         }
 
         const run: PersistedRecalculationRun = {
-          ...input,
+          ...normalizedInput,
           id: createId("recalculation_run"),
           recordedBy: DEMO_USER_ID,
           correlationId: createId("recalculation_correlation"),

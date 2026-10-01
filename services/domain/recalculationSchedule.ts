@@ -389,9 +389,26 @@ function zonedParts(date: Date, timeZone: string) {
   }
 }
 
+/**
+ * MISE-005EQ: strip ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) and bound to
+ * 200 characters so durable failure_reason values match
+ * recalculation_runs_failure_reason_check under COLLATE "C". System-generated
+ * Error.message values may include newlines; sanitizing keeps ledger writes
+ * from failing closed on otherwise useful diagnostics.
+ */
+export function sanitizeRecalculationFailureReason(
+  reason: string | null | undefined
+): string | null {
+  if (typeof reason !== "string") return null;
+  const cleaned = reason
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[ \t\r\n\f\v]+/g, " ")
+    .trim();
+  return cleaned.length > 0 ? cleaned.slice(0, 200) : null;
+}
+
 function normalizeFailureReason(reason: string | null | undefined): string | null {
-  const trimmed = typeof reason === "string" ? reason.trim() : "";
-  return trimmed.length > 0 ? trimmed.slice(0, 200) : null;
+  return sanitizeRecalculationFailureReason(reason);
 }
 
 function ownerLabel(role: RestaurantTaskRequiredRole): string {
