@@ -58,6 +58,15 @@ test("every allowlisted Today presentation code renders in all locales and prese
         rawTitle: "Opaque source title",
         rawEvidence: "Opaque source evidence"
       }
+    },
+    {
+      code: "today.ordering.chronic_short_ship",
+      values: {
+        itemName,
+        supplierName,
+        fillPercent: 80,
+        sampleCount: 4
+      }
     }
   ];
 
@@ -104,6 +113,15 @@ test("rules-based Insight codes localize structured values while opaque copy is 
       values: { menuItemName: itemName, inventoryItemName: "Crème fraîche", supplierName }
     },
     { code: "insight.rule.waste.overstock", values: { itemName, quantity: 44.5, unit: "lb" } },
+    {
+      code: "insight.rule.ordering.chronic_short_ship",
+      values: {
+        itemName,
+        supplierName,
+        fillPercent: 80,
+        sampleCount: 4
+      }
+    },
     {
       code: "insight.evidence.opaque",
       values: {

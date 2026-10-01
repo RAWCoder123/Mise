@@ -15,6 +15,14 @@ import {
   saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity.ts";
+import {
+  applyReceiveFillBias,
+  buildChronicShortShipInsightInput,
+  buildReceiveFillBiasByItem,
+  receiveFillBiasReasonFragment,
+  type ReceiveDiscrepancySample,
+  type ReceiveFillBias
+} from "./receiveDiscrepancyLearning.ts";
 
 export interface OperationalInventoryItem {
   id: string;
@@ -107,6 +115,8 @@ export interface OperationalPlanningSnapshot {
   ledgerComplete?: boolean;
   /** Restaurant timezone, used to place a count inside the correct operating day. */
   timeZone?: string | null;
+  /** Receiving ledger samples (ordered vs received) for short-ship fill-rate learning. */
+  receivingHistory?: readonly ReceiveDiscrepancySample[];
 }
 
 export function calculateOperationalSignals(snapshot: OperationalPlanningSnapshot) {
@@ -134,8 +144,10 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   );
   const handled = latestHandledByItem(snapshot.recommendationHistory);
   const learned = learnedQuantities(snapshot.recommendationHistory);
+  const receiveBiasByItem = buildReceiveFillBiasByItem(snapshot.receivingHistory ?? []);
   const recommendations: OperationalRecommendation[] = [];
   const insights: OperationalInsight[] = [];
+  const chronicShortShipInsights: OperationalInsight[] = [];
 
   for (const item of snapshot.inventoryItems.filter((entry) => entry.restaurant_id === snapshot.restaurantId)) {
     const mappings = snapshot.menuItemIngredients.filter(
@@ -180,6 +192,9 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const recountedAfterHandling = recentHandled
       ? verifiedCountSupersedes(itemCountEvidence, recentHandled.created_at)
       : false;
+    const receiveBias = receiveBiasByItem.get(item.id);
+    const chronicInsight = buildChronicShortShipInsight(item, receiveBias, now, snapshot.restaurantId);
+    if (chronicInsight) chronicShortShipInsights.push(chronicInsight);
 
     if ((isCritical || isLow) && (!recentHandled || recountedAfterHandling)) {
       const learnedQuantity = boundedLearnedQuantity(
@@ -187,11 +202,22 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         suggested,
         item.par_level
       );
-      const quantity = learnedQuantity ?? suggested;
+      const afterApprovalLearning = learnedQuantity ?? suggested;
+      const paddedQuantity = applyReceiveFillBias(afterApprovalLearning, receiveBias, {
+        calculated: suggested,
+        par: item.par_level
+      });
+      const quantity = paddedQuantity ?? afterApprovalLearning;
       const coverage = baselineUsage > 0 ? projectedQuantity / baselineUsage : null;
-      const reason = coverage === null
+      const baseReason = coverage === null
         ? `${item.item_name} is at or below its reorder level. Mise recommends restoring it to par.`
         : `${item.item_name} has about ${round(coverage)} service days of projected coverage based on mapped demand.`;
+      const reason =
+        receiveBias?.isChronic && paddedQuantity != null && paddedQuantity !== afterApprovalLearning
+          ? `${baseReason} ${receiveFillBiasReasonFragment(receiveBias)}`
+          : learnedQuantity !== undefined && learnedQuantity !== suggested
+            ? `${baseReason} Mise is using a stable median from recent approved orders: ${learnedQuantity} ${item.unit}.`
+            : baseReason;
       recommendations.push({
         restaurant_id: snapshot.restaurantId,
         inventory_item_id: item.id,
@@ -249,6 +275,9 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       });
     }
   }
+
+  // Prefer chronic short-ship insights ahead of lower-priority sales spikes inside the insight cap.
+  insights.unshift(...chronicShortShipInsights.slice(0, 2));
 
   const unverifiedProviderSales = todaySales.filter((sale) => {
     if (!saleRequiresVerifiedProviderIdentity(sale)) return false;
@@ -351,7 +380,8 @@ export function buildRecommendationInserts(
     ledgerComplete?: boolean;
     timeZone?: string | null;
   } = {},
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  receivingHistory: readonly ReceiveDiscrepancySample[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -363,7 +393,8 @@ export function buildRecommendationInserts(
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone,
-    providerMappings
+    providerMappings,
+    receivingHistory
   }).recommendations;
 }
 
@@ -378,7 +409,8 @@ export function buildInsightsFromData(
     ledgerComplete?: boolean;
     timeZone?: string | null;
   } = {},
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  receivingHistory: readonly ReceiveDiscrepancySample[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -390,8 +422,41 @@ export function buildInsightsFromData(
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone,
-    providerMappings
+    providerMappings,
+    receivingHistory
   }).insights;
+}
+
+function buildChronicShortShipInsight(
+  item: OperationalInventoryItem,
+  bias: ReceiveFillBias | undefined,
+  createdAt: string,
+  restaurantId: string
+): OperationalInsight | null {
+  if (!bias) return null;
+  const marker = buildChronicShortShipInsightInput(bias);
+  if (!marker) return null;
+  const fillPercent = marker.fillPercent;
+  return {
+    id: `insight_shortship_${item.id}`,
+    restaurant_id: restaurantId,
+    insight_type: "ordering",
+    title: `${item.item_name} is often short-shipped`,
+    description: `Recent ${item.supplier_name} deliveries for ${item.item_name} averaged about ${fillPercent}% of the ordered quantity across ${bias.sampleCount} receives.`,
+    why_it_matters: "Chronic short-ships leave less on hand than Mise ordered and can create avoidable stockouts.",
+    recommended_action: `Order slightly more from ${item.supplier_name}, or confirm counts carefully when receiving.`,
+    severity: "warning",
+    created_at: createdAt,
+    presentation: {
+      code: "insight.rule.ordering.chronic_short_ship",
+      values: {
+        itemName: item.item_name,
+        supplierName: item.supplier_name,
+        fillPercent,
+        sampleCount: bias.sampleCount
+      }
+    }
+  };
 }
 
 function historicalDailyDemand(

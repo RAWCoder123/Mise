@@ -1,0 +1,201 @@
+/**
+ * Explainable supplier fill-rate learning from authoritative receiving evidence.
+ * Pads order quantities when recent receives chronically short-ship, with hard
+ * sample/window/multiplier bounds so one bad delivery cannot distort Mise.
+ */
+
+export const RECEIVE_FILL_LEARNING_WINDOW_DAYS = 180;
+export const RECEIVE_FILL_LEARNING_MAX_SAMPLES = 8;
+export const RECEIVE_FILL_LEARNING_MIN_SAMPLES = 3;
+/** Median fill at or below this ratio (after winsorize) counts as chronic short-ship. */
+export const RECEIVE_FILL_CHRONIC_THRESHOLD = 0.92;
+export const RECEIVE_FILL_MIN_SHORT_SHIP_COUNT = 3;
+export const RECEIVE_FILL_WINSORIZE_MIN = 0.25;
+export const RECEIVE_FILL_WINSORIZE_MAX = 1;
+export const RECEIVE_FILL_MULTIPLIER_MAX = 1.25;
+
+export type ReceiveDiscrepancySample = {
+  inventoryItemId: string;
+  quantityOrdered: number;
+  quantityReceived: number;
+  discrepancy: number;
+  createdAt: string;
+  supplierOrderId?: string | null;
+};
+
+export type ReceiveFillBias = {
+  inventoryItemId: string;
+  sampleCount: number;
+  shortShipCount: number;
+  medianFillRatio: number;
+  multiplier: number;
+  isChronic: boolean;
+};
+
+export type SupplierDeliveryReceiveSnippet = {
+  id: string;
+  received_at: string;
+  supplier_order_id?: string | null;
+};
+
+export type SupplierDeliveryItemReceiveSnippet = {
+  delivery_id: string;
+  inventory_item_id: string;
+  ordered_quantity: number | null;
+  received_quantity: number;
+};
+
+/**
+ * Builds fill-rate samples from the authoritative supplier delivery ledger.
+ * Lines without a positive ordered quantity cannot measure short-ship ratio.
+ */
+export function extractReceiveSamplesFromDeliveries(
+  deliveries: readonly SupplierDeliveryReceiveSnippet[],
+  items: readonly SupplierDeliveryItemReceiveSnippet[]
+): ReceiveDiscrepancySample[] {
+  const deliveryById = new Map(
+    deliveries
+      .filter((delivery) => typeof delivery.id === "string" && delivery.id.trim())
+      .map((delivery) => [delivery.id, delivery] as const)
+  );
+  const samples: ReceiveDiscrepancySample[] = [];
+  for (const item of items) {
+    const delivery = deliveryById.get(item.delivery_id);
+    if (!delivery) continue;
+    const quantityOrdered = finiteNumber(item.ordered_quantity);
+    const quantityReceived = finiteNumber(item.received_quantity);
+    if (quantityOrdered == null || quantityReceived == null || quantityOrdered <= 0 || quantityReceived < 0) {
+      continue;
+    }
+    const createdAt =
+      typeof delivery.received_at === "string" && delivery.received_at.trim()
+        ? delivery.received_at
+        : "";
+    if (!createdAt) continue;
+    const supplierOrderId =
+      typeof delivery.supplier_order_id === "string" && delivery.supplier_order_id.trim()
+        ? delivery.supplier_order_id.trim()
+        : null;
+    samples.push({
+      inventoryItemId: item.inventory_item_id,
+      quantityOrdered,
+      quantityReceived,
+      discrepancy: quantityReceived - quantityOrdered,
+      createdAt,
+      supplierOrderId
+    });
+  }
+  return samples;
+}
+
+export function buildReceiveFillBiasByItem(
+  samples: readonly ReceiveDiscrepancySample[],
+  nowMs = Date.now()
+): Map<string, ReceiveFillBias> {
+  const byItem = new Map<string, ReceiveDiscrepancySample[]>();
+  const oldest = nowMs - RECEIVE_FILL_LEARNING_WINDOW_DAYS * 86_400_000;
+  const newest = nowMs + 86_400_000;
+
+  for (const sample of samples.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
+    const timestamp = Date.parse(sample.createdAt);
+    if (!Number.isFinite(timestamp) || timestamp < oldest || timestamp > newest) continue;
+    if (!(sample.quantityOrdered > 0) || !(sample.quantityReceived >= 0)) continue;
+    if (!Number.isFinite(sample.quantityOrdered) || !Number.isFinite(sample.quantityReceived)) continue;
+    const inventoryItemId = sample.inventoryItemId.trim();
+    if (!inventoryItemId) continue;
+    const list = byItem.get(inventoryItemId) ?? [];
+    if (list.length >= RECEIVE_FILL_LEARNING_MAX_SAMPLES) continue;
+    list.push(sample);
+    byItem.set(inventoryItemId, list);
+  }
+
+  const result = new Map<string, ReceiveFillBias>();
+  for (const [inventoryItemId, itemSamples] of byItem) {
+    if (itemSamples.length < RECEIVE_FILL_LEARNING_MIN_SAMPLES) continue;
+    const fills = itemSamples.map((sample) =>
+      clamp(
+        sample.quantityReceived / sample.quantityOrdered,
+        RECEIVE_FILL_WINSORIZE_MIN,
+        RECEIVE_FILL_WINSORIZE_MAX
+      )
+    );
+    const medianFillRatio = median(fills);
+    const shortShipCount = itemSamples.filter(
+      (sample) => sample.discrepancy < 0 || sample.quantityReceived < sample.quantityOrdered
+    ).length;
+    const isChronic =
+      medianFillRatio <= RECEIVE_FILL_CHRONIC_THRESHOLD &&
+      shortShipCount >= RECEIVE_FILL_MIN_SHORT_SHIP_COUNT;
+    const multiplier = isChronic
+      ? clamp(1 / medianFillRatio, 1, RECEIVE_FILL_MULTIPLIER_MAX)
+      : 1;
+    result.set(inventoryItemId, {
+      inventoryItemId,
+      sampleCount: itemSamples.length,
+      shortShipCount,
+      medianFillRatio,
+      multiplier,
+      isChronic
+    });
+  }
+  return result;
+}
+
+/**
+ * Inflate a base recommended quantity for chronic short-ships, then re-apply the
+ * same absolute bounds used by approval-median learning so stacked learning cannot explode.
+ */
+export function applyReceiveFillBias(
+  baseQuantity: number,
+  bias: ReceiveFillBias | undefined,
+  bounds: { calculated: number; par: number }
+): number | undefined {
+  if (!bias?.isChronic || bias.multiplier <= 1) return undefined;
+  if (!Number.isFinite(baseQuantity) || baseQuantity <= 0) return undefined;
+  const inflated = Math.max(1, Math.ceil(baseQuantity * bias.multiplier));
+  const calculated = Math.max(1, bounds.calculated);
+  const minimum = Math.max(1, calculated * 0.5);
+  const maximum = Math.max(calculated * 1.75, Math.max(0, bounds.par) * 1.25, 1);
+  const bounded = clamp(inflated, minimum, maximum);
+  return Math.max(1, Math.ceil(bounded));
+}
+
+export function receiveFillBiasReasonFragment(bias: ReceiveFillBias): string {
+  const fillPercent = Math.round(bias.medianFillRatio * 100);
+  return `Mise is padding for a stable short-ship pattern: recent receives averaged ~${fillPercent}% of ordered (median of ${bias.sampleCount} deliveries).`;
+}
+
+export function buildChronicShortShipInsightInput(bias: ReceiveFillBias): {
+  insightType: "ordering";
+  severity: "warning";
+  fillPercent: number;
+} | null {
+  if (!bias.isChronic) return null;
+  return {
+    insightType: "ordering",
+    severity: "warning",
+    fillPercent: Math.round(bias.medianFillRatio * 100)
+  };
+}
+
+function finiteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function median(values: number[]) {
+  const sorted = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
+  if (!sorted.length) return 1;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]!
+    : (sorted[middle - 1]! + sorted[middle]!) / 2;
+}
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value));
+}

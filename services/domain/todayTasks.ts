@@ -61,6 +61,9 @@ export type OperationalTodayTaskRoute =
 /** Stable synthetic source id for the suggested begin-count task (not a DB session id). */
 export const SUGGESTED_INVENTORY_COUNT_SESSION_SOURCE_ID = "suggested_begin";
 
+/** Stable synthetic source id prefix for chronic short-ship ordering tasks. */
+export const CHRONIC_SHORT_SHIP_SOURCE_ID_PREFIX = "chronic_short_ship_";
+
 export interface OperationalTodayTaskAction {
   intent: OperationalTodayTaskActionIntent;
   label: string;
@@ -106,9 +109,19 @@ export interface DeriveOperationalTodayTasksInput {
   posIntegrations?: readonly PosIntegration[];
   insights: readonly Insight[];
   openCountSession?: InventoryCountSession | null;
+  /** Chronic supplier short-ship patterns derived from receiving history. */
+  chronicShortShipItems?: readonly ChronicShortShipTodayItem[];
   now?: Date;
   includeCompleted?: boolean;
 }
+
+export type ChronicShortShipTodayItem = {
+  inventoryItemId: string;
+  itemName: string;
+  supplierName: string;
+  fillPercent: number;
+  sampleCount: number;
+};
 
 export interface OperationalTodayTaskSortOptions {
   restaurantTimeZone: string;
@@ -458,6 +471,43 @@ export function deriveOperationalTodayTasks(
         );
       }
     }
+  }
+
+  const chronicShortShipItems = (input.chronicShortShipItems ?? [])
+    .filter((item) => item.inventoryItemId.trim() && item.itemName.trim())
+    .slice(0, 2);
+  for (const item of chronicShortShipItems) {
+    pushIfVisible(
+      tasks,
+      buildTask({
+        restaurantId,
+        sourceKind: "insight",
+        sourceId: `${CHRONIC_SHORT_SHIP_SOURCE_ID_PREFIX}${item.inventoryItemId}`,
+        sourceStatus: "chronic_short_ship",
+        title: `${item.itemName} is often short-shipped`,
+        detail: `Recent ${item.supplierName} deliveries averaged about ${item.fillPercent}% of ordered across ${item.sampleCount} receives.`,
+        presentation: {
+          code: "today.ordering.chronic_short_ship",
+          values: {
+            itemName: item.itemName,
+            supplierName: item.supplierName,
+            fillPercent: item.fillPercent,
+            sampleCount: item.sampleCount
+          }
+        },
+        priority: "high",
+        action: {
+          intent: "review_insight",
+          label: "Review short-ships",
+          route: "/orders",
+          entityId: item.inventoryItemId
+        },
+        requiredRole: "manager",
+        isComplete: false,
+        completionReason: "Receiving history still shows a chronic short-ship pattern."
+      }),
+      includeCompleted
+    );
   }
 
   for (const insight of input.insights) {

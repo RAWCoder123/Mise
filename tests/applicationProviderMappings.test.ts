@@ -68,7 +68,8 @@ const planningData: PlanningData = {
   menuItemIngredients: [recipe],
   providerMappings: verifiedProviderMappings,
   operatingDate,
-  timeZone: "America/Los_Angeles"
+  timeZone: "America/Los_Angeles",
+  receivingHistory: []
 };
 
 function makeRepository(providerMappings: readonly VerifiedProviderSaleMapping[]): MiseRepository {

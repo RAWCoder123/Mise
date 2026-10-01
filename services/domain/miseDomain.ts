@@ -35,6 +35,13 @@ import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/i
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
 import {
+  applyReceiveFillBias,
+  buildChronicShortShipInsightInput,
+  buildReceiveFillBiasByItem,
+  receiveFillBiasReasonFragment,
+  type ReceiveDiscrepancySample
+} from "./receiveDiscrepancyLearning";
+import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
   verifiedCountSupersedes,
@@ -172,13 +179,15 @@ export function recommendationReason(item: InventoryItem, prediction?: Inventory
 export function learnedRecommendationReason(
   item: InventoryItem,
   prediction: InventoryPrediction,
-  learnedQuantity: number | undefined
+  learnedQuantity: number | undefined,
+  receiveBiasReason?: string
 ) {
   const reason = recommendationReason(item, prediction);
-  if (learnedQuantity === undefined || learnedQuantity === prediction.suggestedOrderQuantity) {
-    return reason;
-  }
-  return `${reason} Mise is using a stable median from recent approved orders: ${formatQuantity(learnedQuantity)} ${item.unit}.`;
+  const withApprovalLearning =
+    learnedQuantity === undefined || learnedQuantity === prediction.suggestedOrderQuantity
+      ? reason
+      : `${reason} Mise is using a stable median from recent approved orders: ${formatQuantity(learnedQuantity)} ${item.unit}.`;
+  return receiveBiasReason ? `${withApprovalLearning} ${receiveBiasReason}` : withApprovalLearning;
 }
 
 export function buildLearnedOrderQuantities(restaurantId: string, history: PurchaseRecommendation[] = []) {
@@ -2002,7 +2011,8 @@ export function buildRecommendationInserts(
   operatingDate: string,
   demandFallback?: DemandFallback,
   countEvidence?: InventoryCountEvidenceMap,
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  receivingHistory: readonly ReceiveDiscrepancySample[] = []
 ) {
   const learnedQuantities = buildLearnedOrderQuantities(restaurantId, recommendationHistory);
   const historicalBaselines = buildHistoricalDemandBaselines(
@@ -2012,6 +2022,7 @@ export function buildRecommendationInserts(
     mappings,
     providerMappings
   );
+  const receiveBiasByItem = buildReceiveFillBiasByItem(receivingHistory);
 
   return inventoryItems
     .filter((item) => item.restaurant_id === restaurantId)
@@ -2032,20 +2043,67 @@ export function buildRecommendationInserts(
     .filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low")
     .map(({ item, prediction }) => {
       const learnedQuantity = boundedLearnedQuantity(item, prediction, learnedQuantities);
+      const afterApprovalLearning = learnedQuantity ?? prediction.suggestedOrderQuantity;
+      const receiveBias = receiveBiasByItem.get(item.id);
+      const paddedQuantity = applyReceiveFillBias(afterApprovalLearning, receiveBias, {
+        calculated: prediction.suggestedOrderQuantity,
+        par: item.par_level
+      });
+      const recommendedQuantity = paddedQuantity ?? afterApprovalLearning;
+      const receiveBiasReason =
+        receiveBias?.isChronic && paddedQuantity != null && paddedQuantity !== afterApprovalLearning
+          ? receiveFillBiasReasonFragment(receiveBias)
+          : undefined;
       return {
         restaurant_id: restaurantId,
         inventory_item_id: item.id,
         item_name: item.item_name,
         supplier_id: item.supplier_id,
         supplier_name: item.supplier_name,
-        recommended_quantity: learnedQuantity ?? prediction.suggestedOrderQuantity,
+        recommended_quantity: recommendedQuantity,
         unit: item.unit,
-        reason: learnedRecommendationReason(item, prediction, learnedQuantity),
+        reason: learnedRecommendationReason(item, prediction, learnedQuantity, receiveBiasReason),
         urgency: prediction.urgency,
         status: "pending" as RecommendationStatus,
         supplier_order_id: null
       };
     });
+}
+
+export function buildChronicShortShipOrderingInsights(
+  restaurantId: string,
+  inventoryItems: InventoryItem[],
+  receivingHistory: readonly ReceiveDiscrepancySample[] = [],
+  createdAt = new Date().toISOString()
+): Insight[] {
+  const receiveBiasByItem = buildReceiveFillBiasByItem(receivingHistory);
+  const insights: Insight[] = [];
+  for (const item of inventoryItems.filter((entry) => entry.restaurant_id === restaurantId)) {
+    const bias = receiveBiasByItem.get(item.id);
+    const marker = bias ? buildChronicShortShipInsightInput(bias) : null;
+    if (!bias || !marker) continue;
+    insights.push({
+      id: `insight_shortship_${item.id}`,
+      restaurant_id: restaurantId,
+      insight_type: "ordering",
+      title: `${item.item_name} is often short-shipped`,
+      description: `Recent ${item.supplier_name} deliveries for ${item.item_name} averaged about ${marker.fillPercent}% of the ordered quantity across ${bias.sampleCount} receives.`,
+      why_it_matters: "Chronic short-ships leave less on hand than Mise ordered and can create avoidable stockouts.",
+      recommended_action: `Order slightly more from ${item.supplier_name}, or confirm counts carefully when receiving.`,
+      severity: "warning",
+      created_at: createdAt,
+      presentation: {
+        code: "insight.rule.ordering.chronic_short_ship",
+        values: {
+          itemName: item.item_name,
+          supplierName: item.supplier_name,
+          fillPercent: marker.fillPercent,
+          sampleCount: bias.sampleCount
+        }
+      }
+    });
+  }
+  return insights.slice(0, 2);
 }
 
 export function severityRankForUrgency(urgency: Urgency) {
