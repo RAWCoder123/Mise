@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
   assignableTeamRoles,
   canEditTeamMember,
   canManageTeam,
+  isTeamMemberAccessDisabled,
+  nextTeamMemberAccessStatus,
   normalizeTeamMemberEmail,
   sortTeamMembers,
   TeamMembershipError,
@@ -34,13 +37,30 @@ test("owners and admins can manage team membership; managers and staff cannot", 
   assert.equal(canManageTeam("manager"), false);
 });
 
-test("edit rules protect owners, self, and admin authority boundaries", () => {
+test("edit rules protect owners, self, invitations, and admin authority boundaries", () => {
   assert.equal(canEditTeamMember("owner", { role: "admin", isSelf: false }), true);
   assert.equal(canEditTeamMember("owner", { role: "owner", isSelf: false }), false);
   assert.equal(canEditTeamMember("owner", { role: "staff", isSelf: true }), false);
   assert.equal(canEditTeamMember("admin", { role: "manager", isSelf: false }), true);
   assert.equal(canEditTeamMember("admin", { role: "admin", isSelf: false }), false);
   assert.equal(canEditTeamMember("manager", { role: "staff", isSelf: false }), false);
+  assert.equal(
+    canEditTeamMember("owner", { role: "staff", isSelf: false, status: "invited" }),
+    false
+  );
+  assert.equal(
+    canEditTeamMember("owner", { role: "staff", isSelf: false, status: "disabled" }),
+    true
+  );
+});
+
+test("access disable toggles between active and disabled only", () => {
+  assert.equal(isTeamMemberAccessDisabled("disabled"), true);
+  assert.equal(isTeamMemberAccessDisabled("active"), false);
+  assert.equal(isTeamMemberAccessDisabled("invited"), false);
+  assert.equal(nextTeamMemberAccessStatus("active"), "disabled");
+  assert.equal(nextTeamMemberAccessStatus("disabled"), "active");
+  assert.equal(nextTeamMemberAccessStatus("invited"), null);
 });
 
 test("team member emails are normalized and rejected when unusable", () => {
@@ -70,4 +90,15 @@ test("Postgres membership failures map onto operator-facing statuses", () => {
   assert.equal(teamMembershipErrorFrom(new Error("boom")).status, "unknown");
   const original = new TeamMembershipError("already_member", "exists");
   assert.equal(teamMembershipErrorFrom(original), original);
+});
+
+test("Team Settings wires reversible access disable through updateRestaurantMember status", () => {
+  const team = readFileSync(new URL("../app/settings/team.tsx", import.meta.url), "utf8");
+  assert.match(team, /nextTeamMemberAccessStatus\(member\.status\)/);
+  assert.match(
+    team,
+    /updateRestaurantMember\(restaurant\.id, member\.user_id, \{\s*status: nextStatus\s*\}\)/
+  );
+  assert.match(team, /statusKeys\[member\.status\]/);
+  assert.match(team, /canEditTeamMember\(role, \{\s*role: member\.role,\s*isSelf,\s*status: member\.status\s*\}\)/);
 });

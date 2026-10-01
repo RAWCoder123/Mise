@@ -1,11 +1,17 @@
-import type { RestaurantRole, RestaurantTeamMember } from "../../types/mise";
+import type {
+  RestaurantMembershipStatus,
+  RestaurantRole,
+  RestaurantTeamMember
+} from "../../types/mise";
 
 // Pure team-management rules mirroring the database membership RPCs
 // (add/update/remove_restaurant_member): owners manage every non-owner
 // membership, admins manage managers and staff, and nobody mutates owners or
-// themselves from the client.
+// themselves from the client. Invited rows stay invitation-workflow owned.
 
 export type AssignableTeamRole = Exclude<RestaurantRole, "owner">;
+
+export type TeamMemberAccessStatus = Extract<RestaurantMembershipStatus, "active" | "disabled">;
 
 export type TeamMembershipErrorStatus =
   | "account_not_found"
@@ -42,15 +48,37 @@ export function canManageTeam(actorRole: RestaurantRole | null | undefined): boo
   return assignableTeamRoles(actorRole).length > 0;
 }
 
-/** Whether the actor can change or remove a specific member. */
+/**
+ * Whether the actor can change role/status or remove a specific member.
+ * Invited memberships require the trusted invitation workflow — client
+ * update/remove RPCs reject them.
+ */
 export function canEditTeamMember(
   actorRole: RestaurantRole | null | undefined,
-  target: { role: RestaurantRole; isSelf: boolean }
+  target: { role: RestaurantRole; isSelf: boolean; status?: RestaurantMembershipStatus }
 ): boolean {
   if (!actorRole || target.isSelf || target.role === "owner") return false;
+  if (target.status === "invited") return false;
   if (actorRole === "owner") return true;
   if (actorRole === "admin") return target.role === "manager" || target.role === "staff";
   return false;
+}
+
+/** True when restaurant access is suspended without deleting the membership row. */
+export function isTeamMemberAccessDisabled(status: RestaurantMembershipStatus): boolean {
+  return status === "disabled";
+}
+
+/**
+ * Next access status for a reversible disable/re-enable toggle.
+ * Returns null for invitation rows the client cannot mutate.
+ */
+export function nextTeamMemberAccessStatus(
+  status: RestaurantMembershipStatus
+): TeamMemberAccessStatus | null {
+  if (status === "active") return "disabled";
+  if (status === "disabled") return "active";
+  return null;
 }
 
 /** Normalized lowercase email, or null when the input is not a usable address. */
