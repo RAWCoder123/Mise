@@ -16,36 +16,120 @@ import { Card } from "../../components/ui/Card";
 import { IconBadge } from "../../components/ui/IconBadge";
 import { usePressScale } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
+import { RetryNotice, StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusNotice";
 import { colors, fontFamilies, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
+import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { LANGUAGE_OPTIONS, translate, type AppLocale, type MessageKey } from "../../i18n/catalog";
+import {
+  presentLanguageSettingsNoticeCopy,
+  presentLanguageSettingsSelection,
+  presentPreferenceSettingsNote,
+  resolvePreferenceSettingsLoadState,
+  type LanguageSettingsNoticeReason
+} from "../../services/presentation/preferenceSettingsPresentation";
+import { captureMiseError } from "../../services/telemetry";
 
-type SaveStatus = { kind: "saved" | "error"; locale: AppLocale } | null;
+type LanguageNotice = {
+  tone: StatusNoticeTone;
+  title: string;
+  message: string;
+};
+
+const NOTICE_COPY_KEYS: Record<
+  LanguageSettingsNoticeReason,
+  { title: MessageKey; message: MessageKey }
+> = {
+  saveFailed: {
+    title: "settings.language.notice.saveFailedTitle",
+    message: "settings.language.saveError"
+  },
+  saved: {
+    title: "settings.language.notice.savedTitle",
+    message: "settings.language.savedAnnouncement"
+  }
+};
 
 export default function LanguageSettingsScreen() {
   const navigation = useNavigation();
-  const { locale, ready, saving, persistenceMode, setLocale, clearError, t } = useLocale();
+  const { ready: sessionReady } = useMiseSession();
+  const {
+    locale,
+    ready,
+    saving,
+    loadError,
+    persistenceMode,
+    setLocale,
+    reload,
+    clearError,
+    t
+  } = useLocale();
   const [busyLocale, setBusyLocale] = useState<AppLocale | null>(null);
-  const [status, setStatus] = useState<SaveStatus>(null);
+  const [notice, setNotice] = useState<LanguageNotice | null>(null);
+
+  const hubLoadState = resolvePreferenceSettingsLoadState({
+    sessionReady,
+    ready,
+    loadError
+  });
+  const selection = presentLanguageSettingsSelection(hubLoadState, locale);
+
+  function clearNotice() {
+    if (notice) setNotice(null);
+  }
+
+  function noticeFor(
+    reason: LanguageSettingsNoticeReason,
+    options?: { messageParams?: Record<string, string>; locale?: AppLocale }
+  ): LanguageNotice {
+    const localize = (key: MessageKey, params?: Record<string, string>) =>
+      options?.locale ? translate(options.locale, key, params) : t(key, params);
+    const localized = (Object.keys(NOTICE_COPY_KEYS) as LanguageSettingsNoticeReason[]).reduce(
+      (acc, key) => {
+        const messageKey = NOTICE_COPY_KEYS[key].message;
+        acc[key] = {
+          title: localize(NOTICE_COPY_KEYS[key].title),
+          message:
+            key === "saved" && options?.messageParams
+              ? localize(messageKey, options.messageParams)
+              : localize(messageKey)
+        };
+        return acc;
+      },
+      {} as Record<LanguageSettingsNoticeReason, { title: string; message: string }>
+    );
+    return presentLanguageSettingsNoticeCopy(reason, localized);
+  }
 
   async function chooseLocale(nextLocale: AppLocale) {
-    if (saving || nextLocale === locale) return;
+    if (!selection.interactive || saving || nextLocale === locale) return;
     setBusyLocale(nextLocale);
-    setStatus(null);
+    clearNotice();
     clearError();
 
     try {
       await setLocale(nextLocale);
-      setStatus({ kind: "saved", locale: nextLocale });
-      const language = translate(
+      const language =
+        LANGUAGE_OPTIONS.find((option) => option.locale === nextLocale)?.nativeName ?? nextLocale;
+      const translatedLanguage = translate(
         nextLocale,
-        LANGUAGE_OPTIONS.find((option) => option.locale === nextLocale)?.translatedNameKey ?? "settings.language.english"
+        LANGUAGE_OPTIONS.find((option) => option.locale === nextLocale)?.translatedNameKey ??
+          "settings.language.english"
+      );
+      setNotice(
+        noticeFor("saved", {
+          locale: nextLocale,
+          messageParams: { language }
+        })
       );
       AccessibilityInfo.announceForAccessibility(
-        translate(nextLocale, "settings.language.savedAnnouncement", { language })
+        translate(nextLocale, "settings.language.savedAnnouncement", {
+          language: translatedLanguage
+        })
       );
-    } catch {
-      setStatus({ kind: "error", locale: nextLocale });
+    } catch (error) {
+      captureMiseError(error, { flow: "settings_language", operation: "save" });
+      setNotice(noticeFor("saveFailed"));
     } finally {
       setBusyLocale(null);
     }
@@ -58,6 +142,12 @@ export default function LanguageSettingsScreen() {
         ? "settings.language.hostedPersistence"
         : "settings.language.sessionPersistence";
 
+  const persistenceNote = presentPreferenceSettingsNote(hubLoadState, {
+    loading: t("settings.language.status.loading"),
+    unavailable: t("settings.language.status.unavailable"),
+    ready: t(persistenceMessageKey)
+  });
+
   function goBackToSettings() {
     if (navigation.canGoBack()) navigation.goBack();
     else router.replace("/settings");
@@ -67,6 +157,7 @@ export default function LanguageSettingsScreen() {
     <Screen
       title={t("settings.language.title")}
       subtitle={t("settings.language.subtitle")}
+      loading={hubLoadState === "loading"}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={goBackToSettings}>
           <ArrowLeft size={icon.emphasis} color={colors.accentDark} strokeWidth={iconStroke} />
@@ -79,15 +170,25 @@ export default function LanguageSettingsScreen() {
           <Text style={styles.sectionBody}>{t("settings.language.sectionBody")}</Text>
         </View>
 
+        {loadError ? (
+          <RetryNotice
+            title={t("settings.language.retry.title")}
+            message={t("settings.language.retry.body")}
+            onRetry={() => reload(true)}
+            retryLabel={t("common.retry")}
+            accessibilityLabel={t("settings.language.retry.accessibility")}
+          />
+        ) : null}
+
         <Card style={styles.languageCard} accessibilityLabel={t("settings.language.sectionTitle")}>
           {LANGUAGE_OPTIONS.map((option, index) => (
             <LanguageOption
               key={option.locale}
               nativeName={option.nativeName}
               translatedName={t(option.translatedNameKey)}
-              selected={locale === option.locale}
+              selected={selection.selectedLocale === option.locale}
               loading={saving && busyLocale === option.locale}
-              disabled={!ready || saving}
+              disabled={!selection.interactive || saving}
               last={index === LANGUAGE_OPTIONS.length - 1}
               accessibilityLabel={t("settings.language.selectAccessibility", { language: option.nativeName })}
               onPress={() => chooseLocale(option.locale)}
@@ -95,33 +196,15 @@ export default function LanguageSettingsScreen() {
           ))}
         </Card>
 
-        {!ready ? (
-          <View style={styles.loading} accessibilityLiveRegion="polite">
-            <ActivityIndicator size="small" color={colors.accent} />
-            <Text style={styles.loadingText}>{t("common.loading")}</Text>
-          </View>
-        ) : null}
-
-        {status ? (
-          <View
-            style={[styles.status, status.kind === "error" ? styles.statusError : styles.statusSuccess]}
-            accessibilityLiveRegion="polite"
-          >
-            <Text style={[styles.statusText, status.kind === "error" ? styles.statusErrorText : styles.statusSuccessText]}>
-              {status.kind === "error"
-                ? t("settings.language.saveError")
-                : t("settings.language.savedAnnouncement", {
-                    language: LANGUAGE_OPTIONS.find((option) => option.locale === status.locale)?.nativeName ?? status.locale
-                  })}
-            </Text>
-          </View>
+        {!loadError && notice ? (
+          <StatusNotice tone={notice.tone} title={notice.title} message={notice.message} />
         ) : null}
 
         <View style={styles.persistenceNote}>
           <IconBadge tone="neutral">
             <Languages size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
           </IconBadge>
-          <Text style={styles.persistenceText}>{t(persistenceMessageKey)}</Text>
+          <Text style={styles.persistenceText}>{persistenceNote}</Text>
         </View>
       </View>
     </Screen>
@@ -241,39 +324,6 @@ const styles = StyleSheet.create({
   selectionSelected: {
     borderColor: colors.accent,
     backgroundColor: colors.accent
-  },
-  loading: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  },
-  loadingText: {
-    color: colors.muted,
-    ...typography.body
-  },
-  status: {
-    minHeight: 44,
-    justifyContent: "center",
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
-  },
-  statusSuccess: {
-    backgroundColor: colors.successSoft
-  },
-  statusError: {
-    backgroundColor: colors.dangerSoft
-  },
-  statusText: {
-    ...typography.caption
-  },
-  statusSuccessText: {
-    color: colors.success
-  },
-  statusErrorText: {
-    color: colors.danger
   },
   persistenceNote: {
     minHeight: 56,

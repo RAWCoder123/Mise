@@ -40,6 +40,7 @@ import {
   type LocalePersistenceMode,
   type LocalePreferenceAdapter
 } from "../services/localePreferences";
+import { isTenantAuthorizationError } from "../services/tenantAuthorizationEvents";
 import { useMiseSession } from "./MiseSessionContext";
 
 type CurrencyFormatOptions = Omit<Intl.NumberFormatOptions, "style" | "currency"> & {
@@ -50,9 +51,11 @@ interface LocaleContextValue {
   locale: AppLocale;
   ready: boolean;
   saving: boolean;
+  loadError: boolean;
   persistenceMode: LocalePersistenceMode;
   error: Error | null;
   setLocale: (locale: AppLocale) => Promise<void>;
+  reload: (showLoading?: boolean) => void;
   clearError: () => void;
   t: (key: MessageKey, values?: MessageValues) => string;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
@@ -82,9 +85,13 @@ export function LocaleProvider({ children, hostedPreferenceAdapter = null }: Loc
   const [locale, setLocaleState] = useState<AppLocale>(deviceLocale);
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const requestIdRef = useRef(0);
   const activeScopeRef = useRef("boot");
+  const loadedScopeRef = useRef<string | null>(null);
+  const forceHardReloadRef = useRef(false);
 
   const persistenceMode: LocalePersistenceMode = isDemoMode
     ? "demo"
@@ -109,31 +116,56 @@ export function LocaleProvider({ children, hostedPreferenceAdapter = null }: Loc
 
     const requestId = ++requestIdRef.current;
     const expectedScope = scopeKey;
-    setLocaleState(deviceLocale);
-    setError(null);
+    const soft = !forceHardReloadRef.current && loadedScopeRef.current === expectedScope;
+    forceHardReloadRef.current = false;
+
     setSaving(false);
 
     if (!preferenceAdapter) {
+      loadedScopeRef.current = expectedScope;
+      setLoadError(false);
+      setError(null);
       setReady(true);
       return;
     }
 
-    setReady(false);
+    if (!soft) {
+      setError(null);
+      setLoadError(false);
+      setLocaleState(deviceLocale);
+      setReady(false);
+    }
+    // Soft-refresh keeps loadError sticky until success so settings cannot
+    // become interactive again while a denied/stale hosted scope is reloading.
+
     preferenceAdapter
       .load()
       .then((storedLocale) => {
         if (requestId !== requestIdRef.current || activeScopeRef.current !== expectedScope) return;
         setLocaleState(storedLocale ?? deviceLocale);
+        loadedScopeRef.current = expectedScope;
+        setLoadError(false);
+        setError(null);
       })
-      .catch((loadError: unknown) => {
+      .catch((loadFailure: unknown) => {
         if (requestId !== requestIdRef.current || activeScopeRef.current !== expectedScope) return;
-        setError(normalizeError(loadError));
+        setLoadError(true);
+        setError(normalizeError(loadFailure));
       })
       .finally(() => {
         if (requestId !== requestIdRef.current || activeScopeRef.current !== expectedScope) return;
         setReady(true);
       });
-  }, [deviceLocale, preferenceAdapter, scopeKey, sessionReady]);
+  }, [deviceLocale, preferenceAdapter, reloadNonce, scopeKey, sessionReady]);
+
+  const reload = useCallback((showLoading = false) => {
+    if (showLoading) {
+      loadedScopeRef.current = null;
+      forceHardReloadRef.current = true;
+      setReady(false);
+    }
+    setReloadNonce((value) => value + 1);
+  }, []);
 
   const setLocale = useCallback(
     async (nextLocale: AppLocale) => {
@@ -145,13 +177,20 @@ export function LocaleProvider({ children, hostedPreferenceAdapter = null }: Loc
       setLocaleState(nextLocale);
       setSaving(true);
       setError(null);
+      setLoadError(false);
 
       try {
         await preferenceAdapter?.save(nextLocale);
+        if (requestId === requestIdRef.current && activeScopeRef.current === expectedScope) {
+          loadedScopeRef.current = expectedScope;
+        }
       } catch (saveError) {
         if (requestId === requestIdRef.current && activeScopeRef.current === expectedScope) {
           setLocaleState(previousLocale);
           setError(normalizeError(saveError));
+          if (isTenantAuthorizationError(saveError)) {
+            setLoadError(true);
+          }
         }
         throw saveError;
       } finally {
@@ -164,7 +203,10 @@ export function LocaleProvider({ children, hostedPreferenceAdapter = null }: Loc
     [locale, preferenceAdapter, scopeKey]
   );
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => {
+    setError(null);
+    setLoadError(false);
+  }, []);
   const t = useCallback((key: MessageKey, values?: MessageValues) => translate(locale, key, values), [locale]);
   const formatNumber = useCallback(
     (value: number, options?: Intl.NumberFormatOptions) => formatLocalizedNumber(locale, value, options),
@@ -214,9 +256,11 @@ export function LocaleProvider({ children, hostedPreferenceAdapter = null }: Loc
       locale,
       ready,
       saving,
+      loadError,
       persistenceMode,
       error,
       setLocale,
+      reload,
       clearError,
       t,
       formatNumber,
@@ -239,9 +283,11 @@ export function LocaleProvider({ children, hostedPreferenceAdapter = null }: Loc
       formatList,
       parseNumber,
       formatRelativeTime,
+      loadError,
       locale,
       persistenceMode,
       ready,
+      reload,
       saving,
       setLocale,
       t
