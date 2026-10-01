@@ -30,3 +30,4 @@ export * from "./application/miseActions";
 export * from "./application/autonomy";
 export * from "./application/waste";
 export * from "./application/pilotReadiness";
+export * from "./application/auditLogHistory";

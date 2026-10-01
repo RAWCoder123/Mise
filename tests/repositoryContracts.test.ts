@@ -121,3 +121,22 @@ test("both repository backends bound and tenant-scope the recalculation run ledg
   assert.match(demoWrite, /attempt is out of range/);
   assert.match(demoWrite, /fromRecalculationRunActivity/);
 });
+
+test("both repository backends bound and tenant-scope audit log reads", () => {
+  const hosted = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  const demo = readFileSync("services/repositories/demoRepository.ts", "utf8");
+  const contracts = readFileSync("services/repositories/repositoryContracts.ts", "utf8");
+
+  assert.match(contracts, /listAuditLogs\(/);
+
+  const hostedRead = hosted.match(/async listAuditLogs\([\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(hostedRead, /\.from\("audit_logs"\)/);
+  assert.match(hostedRead, /\.eq\("restaurant_id", restaurantId\)/);
+  assert.match(hostedRead, /\.limit\(options\.limit \?\? 100\)/);
+  assert.match(hostedRead, /failed restaurant scope validation/);
+  assert.doesNotMatch(hostedRead, /\.insert\(/);
+
+  const demoRead = demo.match(/async listAuditLogs\([\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(demoRead, /entry\.restaurant_id === restaurantId/);
+  assert.match(demoRead, /options\.limit \?\? 100/);
+});

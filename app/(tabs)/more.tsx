@@ -10,6 +10,7 @@ import {
   PackageMinus,
   ScanLine,
   Settings,
+  Shield,
   Sunrise,
   Truck,
   UsersRound
@@ -24,6 +25,7 @@ import { colors, conceptTypography, density, icon, iconStroke, radii } from "../
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import { canBrowseAuditLogs } from "../../services/tenantAccess";
 import type { RestaurantRole } from "../../types/mise";
 
 const roleKeys: Record<RestaurantRole, MessageKey> = {
@@ -35,8 +37,9 @@ const roleKeys: Record<RestaurantRole, MessageKey> = {
 
 export default function MoreScreen() {
   const { t } = useLocale();
-  const { role, user } = useMiseSession();
+  const { memberships, restaurant, role, user } = useMiseSession();
   const initials = initialsFor(user?.name || user?.email || "Mise");
+  const showAuditLogs = canBrowseAuditLogs(memberships, restaurant?.id);
 
   return (
     <Screen title={t("nav.more")} titleAlign="left">
@@ -94,6 +97,14 @@ export default function MoreScreen() {
             icon={<Activity size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/activity" as never)}
           />
+          {showAuditLogs ? (
+            <OperationalRow
+              density="menu"
+              title={t("more.row.auditLogs.title")}
+              icon={<Shield size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+              onPress={() => router.push("/more/audit-logs" as never)}
+            />
+          ) : null}
           <OperationalRow
             density="menu"
             title={t("more.row.memory.title")}
