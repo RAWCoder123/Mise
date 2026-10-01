@@ -41,11 +41,12 @@ import {
   fetchQueuedInventoryEvents,
   summarizeInventoryOutlooks
 } from "../../services/miseService";
+import { inventoryNeedsRecountForFreshness } from "../../services/presentation/inventoryCountFreshnessPresentation";
 import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
 import { canDraftInventoryCount } from "../../services/tenantAccess";
-import type { InventoryItem, InventoryOutlookItem, InventoryStatus } from "../../types/mise";
+import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
 
-type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
+type InventoryFilter = "All" | "At risk" | "Watch" | "Good" | "Needs recount";
 
 export default function InventoryScreen() {
   const { formatNumber, t } = useLocale();
@@ -127,13 +128,21 @@ export default function InventoryScreen() {
       { value: "All", label: t("inventory.filter.all"), tone: "brand" as const },
       { value: "At risk", label: t("inventory.filter.atRisk"), tone: "warning" as const },
       { value: "Watch", label: t("inventory.filter.watch"), tone: "caution" as const },
-      { value: "Good", label: t("inventory.filter.good"), tone: "success" as const }
+      { value: "Good", label: t("inventory.filter.good"), tone: "success" as const },
+      { value: "Needs recount", label: t("inventory.filter.needsRecount"), tone: "caution" as const }
     ];
     return options.map((option) => ({
       ...option,
       accessibilityLabel: t("inventory.filter.option", { status: option.label })
     }));
   }, [t]);
+
+  const needsRecountOutlooksAll = useMemo(
+    () => visibleOutlooks.filter(({ prediction }) => inventoryNeedsRecountForFreshness(prediction)),
+    [visibleOutlooks]
+  );
+  const needsRecountOutlooks = needsRecountOutlooksAll.slice(0, 3);
+  const needsRecountCount = needsRecountOutlooksAll.length;
 
   const summary = useMemo(() => {
     if (!restaurant) return null;
@@ -179,14 +188,14 @@ export default function InventoryScreen() {
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return visibleOutlooks.filter(({ item, prediction }) => {
-      const matchesFilter = matchesInventoryFilter(prediction.projectedStatus, filter);
+    return visibleOutlooks.filter((outlook) => {
+      const matchesFilter = matchesInventoryHubFilter(outlook, filter);
       const matchesQuery =
         !normalized ||
-        item.item_name.toLowerCase().includes(normalized) ||
-        item.supplier_name.toLowerCase().includes(normalized) ||
-        item.category.toLowerCase().includes(normalized) ||
-        prediction.coverageLabel.toLowerCase().includes(normalized);
+        outlook.item.item_name.toLowerCase().includes(normalized) ||
+        outlook.item.supplier_name.toLowerCase().includes(normalized) ||
+        outlook.item.category.toLowerCase().includes(normalized) ||
+        outlook.prediction.coverageLabel.toLowerCase().includes(normalized);
       return matchesFilter && matchesQuery;
     });
   }, [filter, query, visibleOutlooks]);
@@ -274,6 +283,16 @@ export default function InventoryScreen() {
           outlooks={visibleOutlooks.filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Watch").slice(0, 3)}
           queue={visibleQueue}
           onHeaderPress={() => setFilter("Watch")}
+        />
+        <InventoryGroup
+          title={t("inventory.group.needsRecount", {
+            count: formatNumber(needsRecountCount)
+          })}
+          outlooks={needsRecountOutlooks}
+          queue={visibleQueue}
+          onHeaderPress={
+            needsRecountCount > 0 ? () => setFilter("Needs recount") : undefined
+          }
         />
         {/* The concept shows reorder as one summary row, not a repeat of the
             same items already listed under Low stock and Stock alerts. */}
@@ -405,10 +424,13 @@ function InventoryGroup({
   );
 }
 
-function matchesInventoryFilter(status: InventoryStatus, filter: InventoryFilter) {
+function matchesInventoryHubFilter(outlook: InventoryOutlookItem, filter: InventoryFilter) {
   if (filter === "All") return true;
-  if (filter === "At risk") return status === "Critical" || status === "Low";
-  return status === filter;
+  if (filter === "Needs recount") return inventoryNeedsRecountForFreshness(outlook.prediction);
+  if (filter === "At risk") {
+    return outlook.prediction.projectedStatus === "Critical" || outlook.prediction.projectedStatus === "Low";
+  }
+  return outlook.prediction.projectedStatus === filter;
 }
 
 function isCanonicalUnitReady(item: InventoryItem) {
@@ -454,22 +476,46 @@ function InventoryListRow({
   const isWatch = prediction.projectedStatus === "Watch";
   const isGood = prediction.projectedStatus === "Good";
   const canonicalReady = isCanonicalUnitReady(item);
+  const needsRecount = localized.needsRecount;
   const entryHint = !canonicalReady
     ? t("inventory.row.needsVerification")
-    : queueCount > 0
-      ? t(queueCount === 1 ? "inventory.row.queued.one" : "inventory.row.queued.other", {
-          count: formatNumber(queueCount)
-        })
-      : t("inventory.row.openOps");
-  const statusColor = isCritical
-    ? inventoryStatusColors.Critical
-    : isLow
-      ? inventoryStatusColors.Low
-      : isGood
-        ? colors.success
-        : inventoryStatusColors.Watch;
-  const iconTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "leaf";
-  const badgeTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "success";
+    : needsRecount
+      ? localized.countTrust === "stale"
+        ? t("inventory.row.needsRecount.stale")
+        : t("inventory.row.needsRecount.unverified")
+      : queueCount > 0
+        ? t(queueCount === 1 ? "inventory.row.queued.one" : "inventory.row.queued.other", {
+            count: formatNumber(queueCount)
+          })
+        : t("inventory.row.openOps");
+  const statusColor = needsRecount
+    ? inventoryStatusColors.Watch
+    : isCritical
+      ? inventoryStatusColors.Critical
+      : isLow
+        ? inventoryStatusColors.Low
+        : isGood
+          ? colors.success
+          : inventoryStatusColors.Watch;
+  const iconTone = needsRecount
+    ? "caution"
+    : isCritical
+      ? "danger"
+      : isLow
+        ? "warning"
+        : isWatch
+          ? "caution"
+          : "leaf";
+  const badgeTone = needsRecount
+    ? "caution"
+    : isCritical
+      ? "danger"
+      : isLow
+        ? "warning"
+        : isWatch
+          ? "caution"
+          : "success";
+  const badgeLabel = needsRecount ? t("inventory.prediction.action.recount") : localized.status;
 
   return (
     <OperationalRow
@@ -478,11 +524,11 @@ function InventoryListRow({
       subtitle={`${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${item.unit} · ${localized.coverage}`}
       icon={categoryIcon(item.category, statusColor)}
       iconTone={iconTone}
-      badgeLabel={localized.status}
+      badgeLabel={badgeLabel}
       badgeTone={badgeTone}
       accessibilityLabel={t("inventory.row.accessibilityLedger", {
         item: item.item_name,
-        status: localized.status,
+        status: badgeLabel,
         coverage: localized.coverage,
         action: localized.action,
         confidence: localized.confidence,

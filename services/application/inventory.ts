@@ -322,6 +322,19 @@ export async function addInventoryItemToOrder(restaurantId: string, itemId: stri
       "Record a new physical count for this item first. Its on-hand number came from an invalid future-dated count."
     );
   }
+  if (prediction.countFreshness === "stale") {
+    throw new Error(
+      "Record a new physical count for this item first. The newest verified count is older than 36 hours."
+    );
+  }
+  if (
+    prediction.countFreshness === "unverified" ||
+    prediction.countEvidence === "no_verified_count"
+  ) {
+    throw new Error(
+      "Record a verified physical count for this item first. Ordering is blocked until a count anchors on-hand."
+    );
+  }
   if (shouldSuppressRecommendationForItem(restaurantId, item, history, anchored.countEvidence)) {
     throw new Error("Update the inventory count first. This item was already handled.");
   }

@@ -1,4 +1,10 @@
 import type { InventoryItem, InventoryPrediction, InventoryStatus } from "../types/mise";
+import {
+  inventoryNeedsRecountForFreshness,
+  inventoryProjectionAllowsAddToOrder,
+  resolveInventoryCountTrustState,
+  type InventoryCountTrustState
+} from "../services/presentation/inventoryCountFreshnessPresentation";
 import type { MessageKey, MessageValues } from "./catalog";
 
 type Translate = (key: MessageKey, values?: MessageValues) => string;
@@ -14,6 +20,12 @@ export interface LocalizedInventoryPrediction {
   confidence: string;
   whyItMatters: string;
   recommendation: string;
+  /** Count-trust state for ordering and recount guidance. */
+  countTrust: InventoryCountTrustState;
+  /** True when Add to order must stay blocked until a fresh verified count. */
+  addToOrderBlocked: boolean;
+  /** True when stale/unverified freshness should surface recount guidance. */
+  needsRecount: boolean;
 }
 
 export function localizeInventoryPrediction(
@@ -23,15 +35,17 @@ export function localizeInventoryPrediction(
   prediction: InventoryPrediction
 ): LocalizedInventoryPrediction {
   const quantity = (value: number) => formatNumber(value, { maximumFractionDigits: 1 });
-  const coverage = coverageCopy(t, formatNumber, item, prediction);
-  const action = actionCopy(t, quantity, item, prediction);
+  const countTrust = resolveInventoryCountTrustState(prediction);
+  const needsRecount = inventoryNeedsRecountForFreshness(prediction);
+  const coverage = coverageCopy(t, formatNumber, item, prediction, countTrust);
+  const action = actionCopy(t, quantity, item, prediction, countTrust);
 
   return {
     status: inventoryStatusLabel(t, prediction.projectedStatus),
     coverage,
     trend: t(`inventory.prediction.trend.${prediction.demandTrend}`),
     action,
-    basis: basisCopy(t, formatNumber, prediction),
+    basis: basisCopy(t, formatNumber, prediction, countTrust),
     depletion:
       prediction.todayDepletion > 0
         ? t("inventory.prediction.depletion.recorded", {
@@ -40,14 +54,12 @@ export function localizeInventoryPrediction(
             unit: item.unit
           })
         : t("inventory.prediction.depletion.none"),
-    confidence:
-      prediction.historySource === "restaurant_history"
-        ? t("inventory.prediction.confidence.history")
-        : prediction.averageDailyUsage > 0
-          ? t("inventory.prediction.confidence.service")
-          : t("inventory.prediction.confidence.current"),
-    whyItMatters: whyCopy(t, item, prediction),
-    recommendation: recommendationCopy(t, quantity, item, prediction, coverage)
+    confidence: confidenceCopy(t, prediction, countTrust),
+    whyItMatters: whyCopy(t, item, prediction, countTrust),
+    recommendation: recommendationCopy(t, quantity, item, prediction, coverage, countTrust),
+    countTrust,
+    addToOrderBlocked: !inventoryProjectionAllowsAddToOrder(prediction),
+    needsRecount
   };
 }
 
@@ -62,8 +74,11 @@ function coverageCopy(
   t: Translate,
   formatNumber: FormatNumber,
   item: InventoryItem,
-  prediction: InventoryPrediction
+  prediction: InventoryPrediction,
+  countTrust: InventoryCountTrustState
 ): string {
+  if (countTrust === "stale") return t("inventory.prediction.coverage.stale");
+  if (countTrust === "unverified") return t("inventory.prediction.coverage.unverified");
   const days = prediction.daysCoverage;
   if (days === null || prediction.averageDailyUsage <= 0) return t("inventory.prediction.coverage.learning");
   if (prediction.projectedQuantity > item.par_level * 1.35 || days >= 8) return t("inventory.prediction.coverage.high");
@@ -80,8 +95,12 @@ function actionCopy(
   t: Translate,
   quantity: (value: number) => string,
   item: InventoryItem,
-  prediction: InventoryPrediction
+  prediction: InventoryPrediction,
+  countTrust: InventoryCountTrustState
 ): string {
+  if (countTrust === "stale" || countTrust === "unverified") {
+    return t("inventory.prediction.action.recount");
+  }
   if (prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low") {
     return t("inventory.prediction.action.order", {
       quantity: quantity(prediction.suggestedOrderQuantity),
@@ -93,7 +112,14 @@ function actionCopy(
   return t("inventory.prediction.action.none");
 }
 
-function basisCopy(t: Translate, formatNumber: FormatNumber, prediction: InventoryPrediction): string {
+function basisCopy(
+  t: Translate,
+  formatNumber: FormatNumber,
+  prediction: InventoryPrediction,
+  countTrust: InventoryCountTrustState
+): string {
+  if (countTrust === "stale") return t("inventory.prediction.basis.stale");
+  if (countTrust === "unverified") return t("inventory.prediction.basis.unverified");
   if (prediction.historySource === "restaurant_history") {
     const key = prediction.todayDepletion > 0
       ? "inventory.prediction.basis.historyToday"
@@ -105,7 +131,26 @@ function basisCopy(t: Translate, formatNumber: FormatNumber, prediction: Invento
   return t("inventory.prediction.basis.learning");
 }
 
-function whyCopy(t: Translate, item: InventoryItem, prediction: InventoryPrediction): string {
+function confidenceCopy(
+  t: Translate,
+  prediction: InventoryPrediction,
+  countTrust: InventoryCountTrustState
+): string {
+  if (countTrust === "stale") return t("inventory.prediction.confidence.stale");
+  if (countTrust === "unverified") return t("inventory.prediction.confidence.unverified");
+  if (prediction.historySource === "restaurant_history") return t("inventory.prediction.confidence.history");
+  if (prediction.averageDailyUsage > 0) return t("inventory.prediction.confidence.service");
+  return t("inventory.prediction.confidence.current");
+}
+
+function whyCopy(
+  t: Translate,
+  item: InventoryItem,
+  prediction: InventoryPrediction,
+  countTrust: InventoryCountTrustState
+): string {
+  if (countTrust === "stale") return t("inventory.prediction.why.stale");
+  if (countTrust === "unverified") return t("inventory.prediction.why.unverified");
   if (prediction.todayDepletion > 0 && prediction.projectedQuantity <= item.reorder_threshold) {
     return t("inventory.prediction.why.threshold");
   }
@@ -121,8 +166,15 @@ function recommendationCopy(
   quantity: (value: number) => string,
   item: InventoryItem,
   prediction: InventoryPrediction,
-  coverage: string
+  coverage: string,
+  countTrust: InventoryCountTrustState
 ): string {
+  if (countTrust === "stale") {
+    return t("inventory.prediction.recommendation.stale", { coverage });
+  }
+  if (countTrust === "unverified") {
+    return t("inventory.prediction.recommendation.unverified", { coverage });
+  }
   if (prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low") {
     return t("inventory.prediction.recommendation.order", {
       quantity: quantity(prediction.suggestedOrderQuantity),
