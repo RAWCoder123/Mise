@@ -3,11 +3,14 @@ import { test } from "node:test";
 
 import {
   applyCountApprovalsToInventory,
+  assertCountSessionMaterialVarianceNotes,
   assertSessionMutable,
   buildCountSessionLinesFromInventory,
   canApproveInventoryCountSession,
   canCancelInventoryCountSession,
   canDraftInventoryCountSession,
+  isMaterialCountSessionVariance,
+  listCountLinesMissingMaterialVarianceNotes,
   mergeCountLineUpdates,
   planCountSessionApprovals,
   summarizeCountSessionProgress
@@ -149,6 +152,37 @@ test("planCountSessionApprovals carries count-line notes for ledger metadata", (
   });
   assert.equal(planned[0]?.note, "Case short on delivery");
   assert.equal(planned[0]?.changed, true);
+});
+
+test("material count variance requires notes before submit or approve", () => {
+  assert.equal(isMaterialCountSessionVariance(10, 8), true);
+  assert.equal(isMaterialCountSessionVariance(10, 9.5), false);
+  assert.equal(isMaterialCountSessionVariance(100, 95), false);
+  assert.equal(isMaterialCountSessionVariance(10, 10), false);
+
+  const aligned = line("eggs", 12, 12);
+  const small = line("lettuce", 10, 9.5);
+  const material = line("tomatoes", 10, 8);
+  const materialWithNote = line("onions", 20, 15);
+  materialWithNote.note = "  Spoilage after cooler failure  ";
+
+  assert.deepEqual(listCountLinesMissingMaterialVarianceNotes([aligned, small, materialWithNote]), []);
+  const missing = listCountLinesMissingMaterialVarianceNotes([aligned, small, material, materialWithNote]);
+  assert.equal(missing.length, 1);
+  assert.equal(missing[0]?.inventoryItemId, "tomatoes");
+  assert.equal(missing[0]?.variance, -2);
+
+  assert.doesNotThrow(() =>
+    assertCountSessionMaterialVarianceNotes([aligned, small, materialWithNote])
+  );
+  assert.throws(
+    () => assertCountSessionMaterialVarianceNotes([material]),
+    /Add a variance note for tomatoes/i
+  );
+  assert.throws(
+    () => assertCountSessionMaterialVarianceNotes([material, line("peppers", 8, 5)]),
+    /2 material variances/i
+  );
 });
 
 test("assertSessionMutable enforces workflow transitions", () => {

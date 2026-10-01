@@ -950,6 +950,13 @@ test("inventory count sessions are service-owned with ledger approve path", () =
 
   assert.match(inventoryWorkflow, /beginInventoryCountSession/);
   assert.match(inventoryWorkflow, /approveInventoryCountSession[\s\S]*planCountSessionApprovals/);
+  assert.match(inventoryWorkflow, /assertCountSessionMaterialVarianceNotes/);
+  assert.match(
+    inventoryWorkflow,
+    /submitInventoryCountSession[\s\S]*assertCountSessionMaterialVarianceNotes/
+  );
+  assert.match(edge, /submit_count_session[\s\S]*assertCountSessionMaterialVarianceNotes/);
+  assert.match(edge, /approve_count_session[\s\S]*assertCountSessionMaterialVarianceNotes/);
   assert.match(repository, /action:\s*"begin_count_session"/i);
   assert.match(repository, /action:\s*"approve_count_session"/i);
   assert.match(edge, /"begin_count_session"/);

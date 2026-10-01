@@ -59,6 +59,25 @@ export type CountSessionProgressSummary = {
   canApprove: boolean;
 };
 
+/** Purchase-unit thresholds for material count variance (AND of absolute + %). */
+export type CountSessionVarianceThresholds = {
+  absoluteQuantity: number;
+  percentage: number;
+  percentageFloorQuantity: number;
+};
+
+export const DEFAULT_COUNT_SESSION_VARIANCE_THRESHOLDS: CountSessionVarianceThresholds = {
+  absoluteQuantity: 1,
+  percentage: 0.1,
+  percentageFloorQuantity: 1
+};
+
+export type CountLineMissingMaterialVarianceNote = {
+  inventoryItemId: string;
+  itemName: string;
+  variance: number;
+};
+
 export function isOpenCountSessionStatus(status: InventoryCountSessionStatus): status is InventoryCountSessionOpenStatus {
   return status === "in_progress" || status === "submitted";
 }
@@ -83,6 +102,88 @@ export function summarizeCountSessionProgress(
     canSubmit: isComplete,
     canApprove: isComplete
   };
+}
+
+function validateCountSessionVarianceThresholds(thresholds: CountSessionVarianceThresholds) {
+  if (
+    !Number.isFinite(thresholds.absoluteQuantity) ||
+    thresholds.absoluteQuantity < 0 ||
+    !Number.isFinite(thresholds.percentage) ||
+    thresholds.percentage < 0 ||
+    !Number.isFinite(thresholds.percentageFloorQuantity) ||
+    thresholds.percentageFloorQuantity <= 0
+  ) {
+    throw new Error("invalid_count_session_variance_thresholds");
+  }
+}
+
+export function isMaterialCountSessionVariance(
+  systemQuantityAtStart: number,
+  countedQuantity: number,
+  thresholds: CountSessionVarianceThresholds = DEFAULT_COUNT_SESSION_VARIANCE_THRESHOLDS
+): boolean {
+  validateCountSessionVarianceThresholds(thresholds);
+  if (!Number.isFinite(systemQuantityAtStart) || !Number.isFinite(countedQuantity)) {
+    return false;
+  }
+  const varianceQuantity = countedQuantity - systemQuantityAtStart;
+  const absoluteVariance = Math.abs(varianceQuantity);
+  if (absoluteVariance === 0) return false;
+  const percentageDenominator = Math.max(
+    Math.abs(systemQuantityAtStart),
+    thresholds.percentageFloorQuantity
+  );
+  const variancePercentage = absoluteVariance / percentageDenominator;
+  return (
+    absoluteVariance >= thresholds.absoluteQuantity &&
+    variancePercentage >= thresholds.percentage
+  );
+}
+
+export function listCountLinesMissingMaterialVarianceNotes(
+  lines: readonly Pick<
+    InventoryCountLine,
+    "inventory_item_id" | "item_name" | "counted_quantity" | "system_quantity_at_start" | "note"
+  >[],
+  thresholds: CountSessionVarianceThresholds = DEFAULT_COUNT_SESSION_VARIANCE_THRESHOLDS
+): CountLineMissingMaterialVarianceNote[] {
+  const missing: CountLineMissingMaterialVarianceNote[] = [];
+  for (const line of lines) {
+    if (line.counted_quantity == null) continue;
+    const countedQuantity = Number(line.counted_quantity);
+    const systemQuantity = Number(line.system_quantity_at_start);
+    if (!isMaterialCountSessionVariance(systemQuantity, countedQuantity, thresholds)) {
+      continue;
+    }
+    const note =
+      typeof line.note === "string" && line.note.trim() ? line.note.trim() : null;
+    if (note) continue;
+    missing.push({
+      inventoryItemId: line.inventory_item_id,
+      itemName: line.item_name,
+      variance: countedQuantity - systemQuantity
+    });
+  }
+  return missing;
+}
+
+export function assertCountSessionMaterialVarianceNotes(
+  lines: readonly Pick<
+    InventoryCountLine,
+    "inventory_item_id" | "item_name" | "counted_quantity" | "system_quantity_at_start" | "note"
+  >[],
+  thresholds: CountSessionVarianceThresholds = DEFAULT_COUNT_SESSION_VARIANCE_THRESHOLDS
+): void {
+  const missing = listCountLinesMissingMaterialVarianceNotes(lines, thresholds);
+  if (missing.length === 0) return;
+  if (missing.length === 1) {
+    throw new Error(
+      `Add a variance note for ${missing[0]?.itemName ?? "this item"} before continuing.`
+    );
+  }
+  throw new Error(
+    `Add variance notes for ${missing.length} material variances before continuing.`
+  );
 }
 
 export function planCountSessionApprovals(input: {

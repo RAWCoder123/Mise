@@ -12,7 +12,7 @@ import { RetryNotice } from "../../components/ui/StatusNotice";
 import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
-import { summarizeCountSessionProgress } from "../../services/domain/inventoryCountSessions";
+import { summarizeCountSessionProgress, listCountLinesMissingMaterialVarianceNotes, isMaterialCountSessionVariance } from "../../services/domain/inventoryCountSessions";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -116,6 +116,32 @@ export default function InventoryCountSessionScreen() {
     [visibleDetail?.lines]
   );
 
+  const draftGateLines = useMemo(() => {
+    if (!visibleDetail) return [];
+    return visibleDetail.lines.map((line) => {
+      const countedRaw = draftCounts[line.inventory_item_id] ?? "";
+      const parsed =
+        countedRaw.trim() === "" ? null : Number(countedRaw);
+      const countedQuantity =
+        parsed != null && Number.isFinite(parsed) ? parsed : line.counted_quantity;
+      const noteRaw = draftNotes[line.inventory_item_id];
+      return {
+        ...line,
+        counted_quantity: countedQuantity,
+        note: typeof noteRaw === "string" ? noteRaw : line.note
+      };
+    });
+  }, [visibleDetail, draftCounts, draftNotes]);
+
+  const missingMaterialNotes = useMemo(
+    () => listCountLinesMissingMaterialVarianceNotes(draftGateLines),
+    [draftGateLines]
+  );
+  const missingMaterialNoteIds = useMemo(
+    () => new Set(missingMaterialNotes.map((entry) => entry.inventoryItemId)),
+    [missingMaterialNotes]
+  );
+
   async function startSession() {
     if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
@@ -217,6 +243,18 @@ export default function InventoryCountSessionScreen() {
 
   async function submitSession() {
     if (!restaurant || !visibleDetail || !actionsEditable) return;
+    if (missingMaterialNotes.length > 0) {
+      setError(
+        missingMaterialNotes.length === 1
+          ? t("inventory.count.materialNoteRequiredOne", {
+              item: missingMaterialNotes[0]?.itemName ?? ""
+            })
+          : t("inventory.count.materialNoteRequiredMany", {
+              count: formatNumber(missingMaterialNotes.length)
+            })
+      );
+      return;
+    }
     const restaurantId = restaurant.id;
     setSaving(true);
     setError(null);
@@ -240,6 +278,18 @@ export default function InventoryCountSessionScreen() {
 
   async function approveSession() {
     if (!restaurant || !visibleDetail || !canApprove) return;
+    if (missingMaterialNotes.length > 0) {
+      setError(
+        missingMaterialNotes.length === 1
+          ? t("inventory.count.materialNoteRequiredOne", {
+              item: missingMaterialNotes[0]?.itemName ?? ""
+            })
+          : t("inventory.count.materialNoteRequiredMany", {
+              count: formatNumber(missingMaterialNotes.length)
+            })
+      );
+      return;
+    }
     const restaurantId = restaurant.id;
     setSaving(true);
     setError(null);
@@ -365,6 +415,17 @@ export default function InventoryCountSessionScreen() {
                     variance: formatNumber(progress.varianceLines)
                   })}
                 </Text>
+                {missingMaterialNotes.length > 0 ? (
+                  <Text style={styles.materialNoteHelp}>
+                    {missingMaterialNotes.length === 1
+                      ? t("inventory.count.materialNoteRequiredOne", {
+                          item: missingMaterialNotes[0]?.itemName ?? ""
+                        })
+                      : t("inventory.count.materialNoteRequiredMany", {
+                          count: formatNumber(missingMaterialNotes.length)
+                        })}
+                  </Text>
+                ) : null}
               </SectionSurface>
             </MotionView>
 
@@ -385,12 +446,24 @@ export default function InventoryCountSessionScreen() {
                         : counted - line.system_quantity_at_start;
                     const editable =
                       actionsEditable && visibleDetail.session.status === "in_progress";
+                    const materialVariance =
+                      counted != null &&
+                      Number.isFinite(counted) &&
+                      isMaterialCountSessionVariance(line.system_quantity_at_start, counted);
+                    const needsMaterialNote = missingMaterialNoteIds.has(line.inventory_item_id);
                     const showNoteField =
-                      editable || noteRaw.trim().length > 0 || (variance != null && variance !== 0);
+                      editable ||
+                      noteRaw.trim().length > 0 ||
+                      (variance != null && variance !== 0) ||
+                      materialVariance;
                     return (
                       <View
                         key={line.id}
-                        style={[styles.lineRow, index > 0 ? styles.lineRowDivided : null]}
+                        style={[
+                          styles.lineRow,
+                          index > 0 ? styles.lineRowDivided : null,
+                          needsMaterialNote ? styles.lineRowNeedsNote : null
+                        ]}
                       >
                         <View style={styles.lineHeader}>
                           <View style={styles.lineCopy}>
@@ -411,6 +484,11 @@ export default function InventoryCountSessionScreen() {
                                   })}
                                 </Text>
                               </View>
+                            ) : null}
+                            {needsMaterialNote ? (
+                              <Text style={styles.materialNoteLine}>
+                                {t("inventory.count.materialNoteLineHint")}
+                              </Text>
                             ) : null}
                           </View>
                           <TextInput
@@ -444,9 +522,16 @@ export default function InventoryCountSessionScreen() {
                                 [line.inventory_item_id]: value
                               }))
                             }
-                            placeholder={t("inventory.count.notePlaceholder")}
+                            placeholder={
+                              materialVariance
+                                ? t("inventory.count.notePlaceholderRequired")
+                                : t("inventory.count.notePlaceholder")
+                            }
                             placeholderTextColor={colors.faint}
-                            style={styles.noteInput}
+                            style={[
+                              styles.noteInput,
+                              needsMaterialNote ? styles.noteInputRequired : null
+                            ]}
                             multiline
                           />
                         ) : null}
@@ -469,7 +554,7 @@ export default function InventoryCountSessionScreen() {
                   <Button
                     title={t("inventory.count.submitAction")}
                     onPress={() => void submitSession()}
-                    disabled={saving}
+                    disabled={saving || missingMaterialNotes.length > 0 || !progress.canSubmit}
                     fullWidth
                     style={styles.secondaryAction}
                   />
@@ -479,7 +564,7 @@ export default function InventoryCountSessionScreen() {
                 <Button
                   title={t("inventory.count.approveAction")}
                   onPress={() => void approveSession()}
-                  disabled={saving}
+                  disabled={saving || missingMaterialNotes.length > 0}
                   fullWidth
                 />
               ) : null}
@@ -527,6 +612,15 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.ink
   },
+  materialNoteHelp: {
+    ...typography.caption,
+    color: colors.accent,
+    marginTop: 10
+  },
+  materialNoteLine: {
+    ...typography.caption,
+    color: colors.accent
+  },
   lineList: {
     paddingHorizontal: 14,
     paddingBottom: 8
@@ -534,6 +628,9 @@ const styles = StyleSheet.create({
   lineRow: {
     gap: 8,
     paddingVertical: 12
+  },
+  lineRowNeedsNote: {
+    backgroundColor: colors.warningSoft
   },
   lineRowDivided: {
     borderTopWidth: 1,
@@ -587,6 +684,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     ...typography.caption,
     color: colors.ink
+  },
+  noteInputRequired: {
+    borderColor: colors.accent
   },
   actions: {
     gap: 10
