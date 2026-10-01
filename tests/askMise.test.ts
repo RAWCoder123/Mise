@@ -68,7 +68,7 @@ function summary(overrides: Partial<AskMiseRestaurantContext> = {}): AskMiseRest
         severity: "warning"
       }
     ],
-    inventoryHealth: { low: 1, critical: 1 },
+    inventoryHealth: { watch: 0, low: 1, critical: 1 },
     operationalTasks: [task()],
     restaurantCurrency: "USD",
     ...overrides
@@ -110,6 +110,126 @@ test("answerAskMise thinks through restaurant stock risk before answering", () =
   assert.equal(reply.showPriorities, false);
 });
 
+test("answerAskMise refuses service-ready stock when only Watch inventory remains", () => {
+  const watchTask = task({
+    id: "task-watch",
+    source: { kind: "inventory", id: "item-watch", status: "Watch" },
+    title: "Confirm basil count",
+    action: {
+      intent: "update_inventory_count",
+      label: "Confirm count",
+      route: "/inventory",
+      entityId: "item-watch"
+    }
+  });
+  const reply = answerAskMise({
+    question: "Which stock is low?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      inventoryHealth: { watch: 2, low: 0, critical: 0 },
+      pendingRecommendations: 0,
+      attentionCards: [],
+      operationalTasks: [watchTask]
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "stock");
+  assert.match(reply.answer, /ask\.answer\.stock\.watch\.other/);
+  assert.match(reply.answer, /ask\.answer\.stock\.watch\.next/);
+  assert.doesNotMatch(reply.answer, /ask\.answer\.stockClear/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.stock.watch")));
+  assert.equal(reply.showPriorities, true);
+  assert.equal(reply.priorities[0]?.id, "task-watch");
+});
+
+test("answerAskMise grounds sales answers in open POS connect or repair tasks", () => {
+  const posTask = task({
+    id: "task-pos",
+    source: { kind: "integration", id: "pos", status: "missing" },
+    title: "Connect restaurant sales",
+    detail: "Connect a POS provider before relying on live sales.",
+    action: {
+      intent: "connect_pos",
+      label: "Connect POS",
+      route: "/settings/pos",
+      entityId: null
+    },
+    requiredRole: "owner_admin"
+  });
+  const reply = answerAskMise({
+    question: "How are sales today?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      salesToday: 0,
+      itemsSold: 0,
+      topItems: [],
+      operationalTasks: [posTask]
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "sales");
+  assert.match(reply.answer, /ask\.answer\.sales\.pos\.one/);
+  assert.match(reply.answer, /ask\.answer\.sales\.pos\.unavailable/);
+  assert.match(reply.answer, /Connect restaurant sales/);
+  assert.doesNotMatch(reply.answer, /^ask\.answer\.sales:/);
+  assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales.pos")));
+  assert.equal(reply.showPriorities, true);
+  assert.equal(reply.priorities[0]?.id, "task-pos");
+});
+
+test("answerAskMise labels observed sales provisional when POS repair remains open", () => {
+  const repairTask = task({
+    id: "task-pos-repair",
+    source: { kind: "integration", id: "pos-1", status: "error" },
+    title: "Fix Square sales connection",
+    action: {
+      intent: "manage_pos_connection",
+      label: "Review connection",
+      route: "/settings/pos",
+      entityId: "pos-1"
+    },
+    requiredRole: "owner_admin"
+  });
+  const reply = answerAskMise({
+    question: "How are sales today?",
+    restaurant: {
+      name: "Demo Kitchen",
+      cuisine_type: "American",
+      service_style: "fast_casual",
+      timezone: "America/New_York",
+      currency: "USD"
+    },
+    summary: summary({
+      salesToday: 420,
+      itemsSold: 31,
+      operationalTasks: [repairTask]
+    }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "sales");
+  assert.match(reply.answer, /ask\.answer\.sales\.pos\.provisional/);
+  assert.match(reply.answer, /sales=\$420/);
+  assert.equal(reply.priorities[0]?.id, "task-pos-repair");
+});
+
 test("answerAskMise returns priority cards for priority questions", () => {
   const openTask = task({ id: "task-priority" });
   const reply = answerAskMise({
@@ -121,7 +241,10 @@ test("answerAskMise returns priority cards for priority questions", () => {
       timezone: "America/New_York",
       currency: "USD"
     },
-    summary: summary({ operationalTasks: [openTask], inventoryHealth: { low: 0, critical: 0 } }),
+    summary: summary({
+      operationalTasks: [openTask],
+      inventoryHealth: { watch: 0, low: 0, critical: 0 }
+    }),
     insights: [],
     helpers
   });
