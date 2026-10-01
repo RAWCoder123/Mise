@@ -78,7 +78,8 @@ export const operatingLimits = {
   recipeQuantityPerSale: 10_000,
   posQuantitySold: 100_000,
   posSalesAmount: 10_000_000,
-  recommendationQuantity: 1_000_000
+  recommendationQuantity: 1_000_000,
+  inventoryPurchaseUnitLength: 40
 } as const;
 
 const operatorInventoryEventTypes = new Set<InventoryEventType>([
@@ -427,6 +428,22 @@ export function requireRecipeBaselineQuantity(value: unknown) {
   return value;
 }
 
+export function requireInventoryPurchaseUnit(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new Error("Purchase unit is required.");
+  }
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (
+    normalized.length < 1 ||
+    normalized.length > operatingLimits.inventoryPurchaseUnitLength
+  ) {
+    throw new Error(
+      `Purchase unit must be between 1 and ${operatingLimits.inventoryPurchaseUnitLength} characters.`
+    );
+  }
+  return normalized;
+}
+
 export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryItemPatch {
   if (patch.current_quantity !== undefined) {
     throw new Error(
@@ -450,6 +467,9 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
         `${label} must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
       );
     }
+  }
+  if (validated.unit !== undefined) {
+    validated.unit = requireInventoryPurchaseUnit(validated.unit);
   }
   return validated;
 }
@@ -1193,6 +1213,9 @@ export function normalizeInventoryItemPatch(patch: InventoryItemPatch): Inventor
       normalized.reorder_threshold,
       operatingLimits.inventoryQuantity
     );
+  }
+  if (normalized.unit !== undefined) {
+    normalized.unit = requireInventoryPurchaseUnit(normalized.unit);
   }
   return normalized;
 }
