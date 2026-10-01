@@ -120,7 +120,10 @@ test("order list routes drafts through exact-content review before the Gmail del
   assert.match(detail, /notice\.recovery === "retry"[\s\S]{0,180}load\(false\)/);
   assert.match(catalog, /Mise updated the demo workflow\. No email was sent\./);
   assert.match(catalog, /Review the exact email below\. Mise will approve only this version/);
-  assert.match(detail, /operator_note: operatorNote\.trim\(\) \|\| null/);
+  assert.match(detail, /patch\.operator_note = nextNote/);
+  assert.match(detail, /patch\.delivery_date = nextDeliveryDate/);
+  assert.match(detail, /persistDraftEdits/);
+  assert.match(detail, /orders\.detail\.delivery\.editTitle/);
   assert.match(detail, /order\.status === "draft"/);
   assert.match(card, /title=\{busy \? resolvedBusyLabel : resolvedSendLabel\}/);
   assert.doesNotMatch(card, /Send email/i);

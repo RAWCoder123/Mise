@@ -67,6 +67,7 @@ export default function OrderDraftDetailScreen() {
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
   const [operatorNote, setOperatorNote] = useState("");
+  const [deliveryDateText, setDeliveryDateText] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,6 +120,7 @@ export default function OrderDraftDetailScreen() {
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       setOperatorNote(nextDetail.order.operator_note ?? "");
+      setDeliveryDateText(nextDetail.order.delivery_date ?? "");
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
@@ -150,6 +152,7 @@ export default function OrderDraftDetailScreen() {
     setEmailPayload(null);
     setSupplierSendAction(null);
     setOperatorNote("");
+    setDeliveryDateText("");
     setBusy(false);
     setNotice(null);
     setLoading(Boolean(restaurant && id));
@@ -168,33 +171,56 @@ export default function OrderDraftDetailScreen() {
     return preview;
   }
 
-  async function persistNote(): Promise<{
+  function parsedDeliveryDateDraft(): string | null {
+    const trimmed = deliveryDateText.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  function deliveryDateDraftIsValid(): boolean {
+    const parsed = parsedDeliveryDateDraft();
+    return parsed == null || /^\d{4}-\d{2}-\d{2}$/.test(parsed);
+  }
+
+  async function persistDraftEdits(): Promise<{
     order: SupplierOrder;
     preview: SupplierEmailPayload;
   }> {
     if (!restaurant || !order) throw new Error(t("orders.detail.unavailable"));
+    if (!deliveryDateDraftIsValid()) {
+      throw new Error(t("orders.detail.delivery.error"));
+    }
     let updated = order;
-    if (
-      actionsEditable &&
-      order.status === "draft" &&
-      operatorNote.trim() !== (order.operator_note ?? "").trim()
-    ) {
-      updated = await updateSupplierOrder(restaurant.id, order.id, {
-        operator_note: operatorNote.trim() || null
-      });
+    const nextNote = operatorNote.trim() || null;
+    const nextDeliveryDate = parsedDeliveryDateDraft();
+    const noteDirty = operatorNote.trim() !== (order.operator_note ?? "").trim();
+    const deliveryDirty = nextDeliveryDate !== (order.delivery_date ?? null);
+    if (actionsEditable && order.status === "draft" && (noteDirty || deliveryDirty)) {
+      const patch: Partial<Pick<SupplierOrder, "operator_note" | "delivery_date">> = {};
+      if (noteDirty) patch.operator_note = nextNote;
+      if (deliveryDirty) patch.delivery_date = nextDeliveryDate;
+      updated = await updateSupplierOrder(restaurant.id, order.id, patch);
     }
     const preview = await refreshEmailPreview(restaurant.id, updated.id);
     if (activeRestaurantIdRef.current === restaurant.id) {
       setOrder(updated);
       setOperatorNote(updated.operator_note ?? "");
+      setDeliveryDateText(updated.delivery_date ?? "");
     }
     return { order: updated, preview };
   }
 
-  async function saveNote() {
+  async function saveDraftEdits() {
     if (!restaurant || !order || actionLockRef.current) return;
     if (!actionsEditable) {
       setNotice(viewOnlyNotice(t));
+      return;
+    }
+    if (!deliveryDateDraftIsValid()) {
+      setNotice({
+        title: t("orders.detail.notice.deliveryInvalidTitle"),
+        message: t("orders.detail.delivery.error"),
+        tone: "danger"
+      });
       return;
     }
     const restaurantId = restaurant.id;
@@ -202,18 +228,21 @@ export default function OrderDraftDetailScreen() {
     setBusy(true);
     setNotice(null);
     try {
-      await persistNote();
+      await persistDraftEdits();
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
-        title: t("orders.detail.notice.noteSavedTitle"),
-        message: t("orders.detail.notice.noteSavedBody"),
+        title: t("orders.detail.notice.draftSavedTitle"),
+        message: t("orders.detail.notice.draftSavedBody"),
         tone: "success"
       });
-    } catch {
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
         setNotice({
-          title: t("orders.detail.notice.noteSaveFailedTitle"),
-          message: t("orders.detail.notice.noteSaveFailedBody"),
+          title: t("orders.detail.notice.draftSaveFailedTitle"),
+          message:
+            error instanceof Error && error.message === t("orders.detail.delivery.error")
+              ? error.message
+              : t("orders.detail.notice.draftSaveFailedBody"),
           tone: "danger"
         });
       }
@@ -230,7 +259,7 @@ export default function OrderDraftDetailScreen() {
     setBusy(true);
     setNotice(null);
     try {
-      const { order: savedOrder } = await persistNote();
+      const { order: savedOrder } = await persistDraftEdits();
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await Clipboard.setStringAsync(savedOrder.order_message);
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -281,7 +310,7 @@ export default function OrderDraftDetailScreen() {
     setNotice(null);
     try {
       const reviewedPayload = emailPayload;
-      const { order: savedOrder, preview: refreshedPayload } = await persistNote();
+      const { order: savedOrder, preview: refreshedPayload } = await persistDraftEdits();
       if (activeRestaurantIdRef.current !== restaurantId) return;
       if (!sameReviewedSendContent(reviewedPayload, refreshedPayload)) {
         setNotice({
@@ -331,6 +360,7 @@ export default function OrderDraftDetailScreen() {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(result.order);
       setOperatorNote(result.order.operator_note ?? "");
+      setDeliveryDateText(result.order.delivery_date ?? "");
       setNotice({
         title: usingLocalDemo
           ? t("orders.detail.notice.demoSentTitle")
@@ -427,8 +457,10 @@ export default function OrderDraftDetailScreen() {
     canApproveSupplierSendAction(visibleSupplierSendAction)
   );
   const generatedMessage = visibleOrder ? generatedOrderMessage(visibleOrder) : "";
-  const noteNeedsPreviewRefresh = Boolean(
-    isDraft && operatorNote.trim() !== (visibleOrder?.operator_note ?? "").trim()
+  const draftNeedsPreviewRefresh = Boolean(
+    isDraft &&
+      (operatorNote.trim() !== (visibleOrder?.operator_note ?? "").trim() ||
+        deliveryDateText.trim() !== (visibleOrder?.delivery_date ?? "").trim())
   );
   const previewBlockerNotice = visibleEmailPayload && !visibleEmailPayload.ready
     ? supplierSendBlockerNotice(visibleEmailPayload.blockerCodes, t)
@@ -621,7 +653,7 @@ export default function OrderDraftDetailScreen() {
                   </Text>
                 </View>
               </View>
-              {noteNeedsPreviewRefresh ? (
+              {draftNeedsPreviewRefresh ? (
                 <StatusNotice
                   tone="warning"
                   title={t("orders.detail.review.pendingTitle")}
@@ -671,6 +703,42 @@ export default function OrderDraftDetailScreen() {
               ) : null}
             </View>
           ) : null}
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t("orders.detail.delivery.editTitle")}</Text>
+            <Text style={styles.sectionBody}>
+              {t("orders.detail.delivery.editBody")}
+            </Text>
+            {canEditDraft ? (
+              <TextInput
+                accessibilityLabel={t("orders.detail.delivery.label")}
+                accessibilityHint={t("orders.detail.delivery.hint")}
+                accessibilityState={{ disabled: busy }}
+                value={deliveryDateText}
+                onChangeText={setDeliveryDateText}
+                editable={!busy}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="numbers-and-punctuation"
+                placeholder={t("orders.detail.delivery.placeholder")}
+                placeholderTextColor={colors.faint}
+                style={styles.deliveryDateInput}
+              />
+            ) : (
+              <View style={styles.sentNote}>
+                <Text style={styles.sentNoteText}>
+                  {visibleOrder.delivery_date
+                    ? t("orders.detail.delivery.date", {
+                        date: formatDate(`${visibleOrder.delivery_date}T12:00:00.000Z`, {
+                          dateStyle: "medium",
+                          timeZone: "UTC"
+                        })
+                      })
+                    : t("orders.detail.delivery.none")}
+                </Text>
+              </View>
+            )}
+          </View>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("orders.detail.note.title")}</Text>
@@ -745,7 +813,7 @@ export default function OrderDraftDetailScreen() {
                 accessibilityLabel={t("orders.detail.action.saveAccessibility")}
                 variant="secondary"
                 icon={<Save size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
-                onPress={() => void saveNote()}
+                onPress={() => void saveDraftEdits()}
                 disabled={busy}
                 style={styles.actionButton}
               />
@@ -1175,6 +1243,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     padding: 13,
+    marginTop: 6
+  },
+  deliveryDateInput: {
+    minHeight: 44,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 14,
+    lineHeight: 21,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
     marginTop: 6
   },
   sentNote: {

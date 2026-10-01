@@ -35,7 +35,7 @@ export function buildSupplierDraftPresentation(order: SupplierOrder, maxLines = 
     lines: scanned.lines,
     hiddenLineCount: Math.max(0, scanned.itemCount - scanned.lines.length),
     estimatedTotalCents: scanned.estimatedTotalCents,
-    deliveryCopy: order.delivery_date ? "Due tomorrow morning" : "Delivery timing pending",
+    deliveryCopy: order.delivery_date ? `Due ${order.delivery_date}` : "Delivery timing pending",
     totalLabel: scanned.estimatedTotalCents > 0 ? formatCents(scanned.estimatedTotalCents) : null
   };
 }

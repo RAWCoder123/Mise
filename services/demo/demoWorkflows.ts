@@ -318,7 +318,12 @@ export function undoRecommendationInDemoState(
     if (remaining.length === 0) {
       state.supplierOrders = state.supplierOrders.filter((entry) => entry.id !== order.id);
     } else {
-      order.order_message = buildSupplierOrderMessage(order.supplier_name, remaining, order.operator_note);
+      order.order_message = buildSupplierOrderMessage(
+        order.supplier_name,
+        remaining,
+        order.operator_note,
+        order.delivery_date
+      );
     }
   }
   return { outcome: "applied", recommendation, order, previousStatus };
@@ -541,7 +546,8 @@ function rebuildDemoDraftMessage(state: DemoState, order: SupplierOrder) {
   order.order_message = buildSupplierOrderMessage(
     order.supplier_name,
     linked,
-    order.operator_note
+    order.operator_note,
+    order.delivery_date
   );
 }
 

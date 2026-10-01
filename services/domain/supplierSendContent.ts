@@ -201,7 +201,8 @@ export async function buildCanonicalSupplierSendContent(
   const expectedBody = buildSupplierOrderMessage(
     input.order.supplier_name,
     linked,
-    input.order.operator_note
+    input.order.operator_note,
+    input.order.delivery_date
   );
   if (utf8ByteLength(input.order.order_message) > CONTENT_MAX_BYTES) {
     blockers.add("send_content_too_large");

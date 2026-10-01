@@ -1395,7 +1395,7 @@ test("supplier email payloads stay blocked until Gmail and recipient data are re
 
 test("supplier order presentation itemizes current draft messages", () => {
   const lines = parseSupplierOrderLines(
-    "Order draft for Local Produce Co.\n\nRoma Tomatoes - 20 lb\nRed Onions - 10 lb\n\nDelivery requested: Tomorrow morning\n\nNotes:\nRecommended based on recent sales and current inventory levels."
+    "Order draft for Local Produce Co.\n\nRoma Tomatoes - 20 lb\nRed Onions - 10 lb\n\nDelivery requested: 2026-06-23\n\nNotes:\nRecommended based on recent sales and current inventory levels."
   );
   assert.deepEqual(lines, [
     { itemName: "Roma Tomatoes", quantityLabel: "20 lb", estimatedCents: 3260, priceLabel: "$32.60" },
