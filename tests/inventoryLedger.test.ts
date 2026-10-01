@@ -7,6 +7,11 @@ import {
   type InventoryEvent,
   type InventoryEventInput
 } from "../services/domain/inventoryLedger";
+import {
+  INVENTORY_EVENT_CLIENT_EVENT_ID_MAX_CHARACTERS,
+  INVENTORY_EVENT_IDEMPOTENCY_KEY_MAX_CHARACTERS,
+  INVENTORY_EVENT_SOURCE_MAX_CHARACTERS
+} from "../services/domain/securityLimits";
 
 function input(overrides: Partial<InventoryEventInput> = {}): InventoryEventInput {
   return {
@@ -104,6 +109,58 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
     }
   });
   assert.equal(secondCorrection.status, "conflict");
+});
+
+test("rejects oversized ledger identity fields without truncating them", () => {
+  const authority = {
+    id: "event-reject",
+    actorUserId: "manager-1",
+    recordedAt: "2026-07-26T10:01:00.000Z"
+  };
+
+  assert.deepEqual(
+    acceptInventoryEvent({
+      existingEvents: [],
+      candidate: input({ source: "s".repeat(INVENTORY_EVENT_SOURCE_MAX_CHARACTERS + 1) }),
+      authority
+    }),
+    { status: "rejected", reason: "source_too_long" }
+  );
+  assert.deepEqual(
+    acceptInventoryEvent({
+      existingEvents: [],
+      candidate: input({
+        clientEventId: "c".repeat(INVENTORY_EVENT_CLIENT_EVENT_ID_MAX_CHARACTERS + 1),
+        idempotencyKey: "idem-client-oversized"
+      }),
+      authority
+    }),
+    { status: "rejected", reason: "client_event_id_too_long" }
+  );
+  assert.deepEqual(
+    acceptInventoryEvent({
+      existingEvents: [],
+      candidate: input({
+        clientEventId: "idem-key-oversized-client",
+        idempotencyKey: "i".repeat(INVENTORY_EVENT_IDEMPOTENCY_KEY_MAX_CHARACTERS + 1)
+      }),
+      authority
+    }),
+    { status: "rejected", reason: "idempotency_key_too_long" }
+  );
+
+  const boundary = accepted(
+    [],
+    input({
+      source: "s".repeat(INVENTORY_EVENT_SOURCE_MAX_CHARACTERS),
+      clientEventId: "c".repeat(INVENTORY_EVENT_CLIENT_EVENT_ID_MAX_CHARACTERS),
+      idempotencyKey: "i".repeat(INVENTORY_EVENT_IDEMPOTENCY_KEY_MAX_CHARACTERS)
+    }),
+    "event-boundary"
+  );
+  assert.equal(boundary.source.length, INVENTORY_EVENT_SOURCE_MAX_CHARACTERS);
+  assert.equal(boundary.clientEventId.length, INVENTORY_EVENT_CLIENT_EVENT_ID_MAX_CHARACTERS);
+  assert.equal(boundary.idempotencyKey.length, INVENTORY_EVENT_IDEMPOTENCY_KEY_MAX_CHARACTERS);
 });
 
 test("projects counts, receipts, usage, waste, and corrections in server sequence", () => {

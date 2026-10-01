@@ -1,5 +1,10 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
+import {
+  INVENTORY_EVENT_CLIENT_EVENT_ID_MAX_CHARACTERS,
+  INVENTORY_EVENT_IDEMPOTENCY_KEY_MAX_CHARACTERS,
+  INVENTORY_EVENT_SOURCE_MAX_CHARACTERS
+} from "./securityLimits";
 
 export type InventoryEventType =
   | "receipt"
@@ -171,6 +176,17 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
+  // Mirror inventory_events CHECKs: length(trim(...)) between 1 and N.
+  // Never truncate identity fields — that would forge a different idempotency key.
+  if (input.source.trim().length > INVENTORY_EVENT_SOURCE_MAX_CHARACTERS) {
+    return "source_too_long";
+  }
+  if (input.clientEventId.trim().length > INVENTORY_EVENT_CLIENT_EVENT_ID_MAX_CHARACTERS) {
+    return "client_event_id_too_long";
+  }
+  if (input.idempotencyKey.trim().length > INVENTORY_EVENT_IDEMPOTENCY_KEY_MAX_CHARACTERS) {
+    return "idempotency_key_too_long";
+  }
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
   // A physical count observes the present, so it may not be effective in the future.
   // Mirrors the reject_future_dated_inventory_count database trigger.

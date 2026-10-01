@@ -89,6 +89,27 @@ test("known database validation and conflict errors settle without blind retries
     }),
     { status: "rejected", reason: "invalid_canonical_unit" }
   );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError({
+      code: "22023",
+      message: "Inventory event source is too long"
+    }),
+    { status: "rejected", reason: "source_too_long" }
+  );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError({
+      code: "22023",
+      message: "Inventory event client event id is too long"
+    }),
+    { status: "rejected", reason: "client_event_id_too_long" }
+  );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError({
+      code: "22023",
+      message: "Inventory event idempotency key is too long"
+    }),
+    { status: "rejected", reason: "idempotency_key_too_long" }
+  );
 });
 
 test("transport and authorization failures remain retryable or surfaced", () => {

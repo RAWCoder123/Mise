@@ -212,6 +212,9 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 
 function rejectionReason(message: string) {
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
+  if (message.includes("source is too long")) return "source_too_long";
+  if (message.includes("client event id is too long")) return "client_event_id_too_long";
+  if (message.includes("idempotency key is too long")) return "idempotency_key_too_long";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
   if (message.includes("evidence")) return "incomplete_evidence";
