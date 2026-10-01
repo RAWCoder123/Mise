@@ -2209,6 +2209,9 @@ const en = {
   "activity.error.body": "Retry to refresh the operator timeline.",
   "activity.error.retry": "Retry loading activity",
   "activity.attention": "needs attention",
+  "activity.evidence.current_quantity": "Current quantity {quantity} {unit}",
+  "activity.evidence.waste_recorded": "{quantity} {unit} recorded as waste",
+  "activity.evidence.projected_quantity": "{itemName} projected at {quantity} {unit}",
 
   "memory.title": "Restaurant memory",
   "memory.subtitle": "Correctable learning for {restaurant}",
@@ -4507,6 +4510,9 @@ const es = {
   "activity.error.body": "Reintenta para actualizar la línea de tiempo.",
   "activity.error.retry": "Reintentar carga de actividad",
   "activity.attention": "requiere atención",
+  "activity.evidence.current_quantity": "Cantidad actual {quantity} {unit}",
+  "activity.evidence.waste_recorded": "{quantity} {unit} registrados como merma",
+  "activity.evidence.projected_quantity": "{itemName} proyectado en {quantity} {unit}",
 
   "memory.title": "Memoria del restaurante",
   "memory.subtitle": "Aprendizaje corregible para {restaurant}",
@@ -6801,6 +6807,9 @@ const zhHans = {
   "activity.error.body": "请重试以刷新运营时间线。",
   "activity.error.retry": "重试加载活动",
   "activity.attention": "需要关注",
+  "activity.evidence.current_quantity": "当前数量 {quantity} {unit}",
+  "activity.evidence.waste_recorded": "{quantity} {unit} 已记为损耗",
+  "activity.evidence.projected_quantity": "{itemName} 预计为 {quantity} {unit}",
 
   "memory.title": "餐厅记忆",
   "memory.subtitle": "{restaurant} 的可纠正学习",
