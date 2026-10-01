@@ -30,6 +30,11 @@ import {
   reopenSharedRestaurantTask
 } from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
+import {
+  buildChecklistCompletionEvidence,
+  presentSharedTaskEvidence,
+  sharedChecklistRowLabel
+} from "../../services/presentation/sharedTaskEvidence";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -171,11 +176,7 @@ export default function TaskDetailScreen() {
         taskId: sharedTask.id,
         completionResult,
         completionEvidence: [
-          ...sharedTask.checklist.map((entry) => ({
-            type: "checklist_item",
-            label: entry.label ?? entry.type ?? "Completed checklist item",
-            completed: true
-          })),
+          ...buildChecklistCompletionEvidence(sharedTask.checklist),
           ...(completionEvidence.trim()
             ? [{ type: sharedTask.verificationMethod, note: completionEvidence.trim() }]
             : [])
@@ -305,7 +306,7 @@ export default function TaskDetailScreen() {
                       ? <CheckCircle2 size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
                       : <Circle size={icon.inline} color={colors.borderStrong} strokeWidth={iconStroke} />}
                     <Text style={[styles.checkText, isChecked && styles.checkTextDone]}>
-                      {String(entry.label ?? entry.type ?? t("tasks.shared.checklistItem", { number: index + 1 }))}
+                      {sharedChecklistRowLabel(entry, index, t)}
                     </Text>
                   </Pressable>
                 );
@@ -325,7 +326,7 @@ export default function TaskDetailScreen() {
               <Text style={styles.instructionsBody}>{sharedTask.completionResult}</Text>
               {sharedTask.completionEvidence.map((entry, index) => (
                 <Text key={index} style={styles.evidenceText}>
-                  {String(entry.note ?? entry.label ?? entry.type ?? t("tasks.shared.evidence"))}
+                  {presentSharedTaskEvidence(entry, t)}
                 </Text>
               ))}
               {canReopen ? (
