@@ -144,6 +144,31 @@ export function requireInventoryOperation(
   };
 }
 
+export interface WasteCorrectionClientInput {
+  restaurantId: unknown;
+  wasteEventId: unknown;
+  note: unknown;
+  effectiveAt?: unknown;
+}
+
+/**
+ * Dedicated manager reconciliation boundary for mistaken waste. Generic
+ * inventory ops still cannot set supersedesEventId; this path alone may.
+ */
+export function requireWasteCorrectionInput(input: WasteCorrectionClientInput): {
+  restaurantId: string;
+  wasteEventId: string;
+  note: string;
+  effectiveAt: string;
+} {
+  return {
+    restaurantId: requireBoundedText(input.restaurantId, "restaurant", 200),
+    wasteEventId: requireBoundedText(input.wasteEventId, "waste record", 200),
+    note: requireBoundedText(input.note, "correction note", 500),
+    effectiveAt: requireInventoryTimestamp(input.effectiveAt ?? new Date().toISOString())
+  };
+}
+
 function requireOperatorInventoryEventType(value: unknown) {
   if (typeof value !== "string" || !operatorInventoryEventTypes.has(value as InventoryEventType)) {
     throw new Error("Choose a supported inventory operation.");

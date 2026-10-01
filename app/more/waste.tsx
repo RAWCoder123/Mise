@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
 import { ArrowLeft, PackageMinus, Plus } from "lucide-react-native";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
@@ -11,12 +11,13 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { OperationalRow } from "../../components/ui/OperationalRow";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
-import { RetryNotice } from "../../components/ui/StatusNotice";
-import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
+import { colors, conceptTypography, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
+  correctWasteEvent,
   fetchWasteAnalysis,
   type WasteAnalysisSummary
 } from "../../services/miseService";
@@ -25,7 +26,12 @@ import type {
   WasteAnalysisStatus,
   WasteAnalysisTrend
 } from "../../services/domain/wasteAnalysis";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
+import { canManageRestaurantData } from "../../services/tenantAccess";
 
 function BackAction() {
   const { t } = useLocale();
@@ -38,11 +44,16 @@ function BackAction() {
 
 export default function WasteScreen() {
   const { formatCompactCurrency, formatDate, formatNumber, t } = useLocale();
-  const { restaurant } = useMiseSession();
+  const { memberships, restaurant } = useMiseSession();
   const [analysis, setAnalysis] = useState<WasteAnalysisSummary | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [correctingEventId, setCorrectingEventId] = useState<string | null>(null);
+  const [correctionNote, setCorrectionNote] = useState("");
+  const [submittingCorrection, setSubmittingCorrection] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusIsError, setStatusIsError] = useState(false);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -53,6 +64,10 @@ export default function WasteScreen() {
     setLoadedRestaurantId(null);
     setError(false);
     setLoading(Boolean(restaurant));
+    setCorrectingEventId(null);
+    setCorrectionNote("");
+    setStatusMessage(null);
+    setStatusIsError(false);
   }, [restaurant?.id]);
 
   const load = useCallback(async () => {
@@ -90,7 +105,80 @@ export default function WasteScreen() {
     }, [load])
   );
 
-  const visibleAnalysis = loadedRestaurantId === restaurant?.id ? analysis : null;
+  const canManage = canManageRestaurantData(memberships, restaurant?.id);
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canManage,
+    hubReady,
+    busy: submittingCorrection
+  });
+  const visibleAnalysis = hubReady ? analysis : null;
+
+  async function submitCorrection(wasteEventId: string) {
+    if (!restaurant) return;
+    if (!actionsEditable) {
+      setStatusMessage(t("waste.correct.readOnly"));
+      setStatusIsError(true);
+      return;
+    }
+    const note = correctionNote.trim();
+    if (!note) {
+      setStatusMessage(t("waste.correct.noteRequired"));
+      setStatusIsError(true);
+      return;
+    }
+
+    const restaurantId = restaurant.id;
+    setSubmittingCorrection(true);
+    setStatusMessage(null);
+    setStatusIsError(false);
+    try {
+      const flushSummary = await correctWasteEvent({
+        restaurantId,
+        wasteEventId,
+        note
+      });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      if (flushSummary.conflicted > 0) {
+        setStatusMessage(t("waste.correct.conflict"));
+        setStatusIsError(true);
+      } else if (flushSummary.rejected > 0) {
+        setStatusMessage(t("waste.correct.rejected"));
+        setStatusIsError(true);
+      } else if (flushSummary.deferred > 0) {
+        setStatusMessage(t("waste.correct.deferred"));
+        setStatusIsError(false);
+      } else {
+        setStatusMessage(t("waste.correct.success"));
+        setStatusIsError(false);
+      }
+      setCorrectingEventId(null);
+      setCorrectionNote("");
+      await load();
+    } catch (submitError) {
+      captureMiseError(submitError, {
+        flow: "waste_correction",
+        operation: "correct",
+        restaurant_id: restaurantId
+      });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setStatusMessage(
+        submitError instanceof Error && submitError.message.trim()
+          ? submitError.message.slice(0, 220)
+          : t("waste.correct.error")
+      );
+      setStatusIsError(true);
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setSubmittingCorrection(false);
+      }
+    }
+  }
 
   if (!restaurant) {
     return (
@@ -123,6 +211,13 @@ export default function WasteScreen() {
             retryLabel={t("common.retry")}
             accessibilityLabel={t("waste.retry.accessibility")}
             onRetry={() => void load()}
+          />
+        ) : null}
+
+        {statusMessage ? (
+          <StatusNotice
+            title={statusMessage}
+            tone={statusIsError ? "danger" : "success"}
           />
         ) : null}
 
@@ -237,31 +332,86 @@ export default function WasteScreen() {
               <Text style={styles.emptyLine}>{t("waste.recent.empty")}</Text>
             ) : (
               <View style={styles.recentList}>
-                {visibleAnalysis.recentEvents.map((event) => (
-                  <View key={event.id} style={styles.recentRow}>
-                    <View style={styles.recentHeader}>
-                      <Text style={styles.recentTitle}>
-                        {event.itemName ?? t("waste.event.unknownItem")}
+                {visibleAnalysis.recentEvents.map((event) => {
+                  const itemLabel = event.itemName ?? t("waste.event.unknownItem");
+                  const isCorrecting = correctingEventId === event.id;
+                  return (
+                    <View key={event.id} style={styles.recentRow}>
+                      <View style={styles.recentHeader}>
+                        <Text style={styles.recentTitle}>{itemLabel}</Text>
+                        <Text style={styles.recentCost}>
+                          {event.estimatedCost === null
+                            ? t("common.notSet")
+                            : formatCompactCurrency(event.estimatedCost, restaurant.currency)}
+                        </Text>
+                      </View>
+                      <Text style={styles.recentMeta}>
+                        {t("waste.event.meta", {
+                          quantity: formatNumber(event.quantity, { maximumFractionDigits: 2 }),
+                          unit: t(`inventory.ops.unit.${event.canonicalUnit}` as MessageKey),
+                          date: formatDate(event.effectiveAt, {
+                            month: "short",
+                            day: "numeric"
+                          })
+                        })}
                       </Text>
-                      <Text style={styles.recentCost}>
-                        {event.estimatedCost === null
-                          ? t("common.notSet")
-                          : formatCompactCurrency(event.estimatedCost, restaurant.currency)}
-                      </Text>
+                      {event.note ? <Text style={styles.recentNote}>{event.note}</Text> : null}
+                      {canManage ? (
+                        isCorrecting ? (
+                          <View style={styles.correctPanel}>
+                            <Text style={styles.correctLabel}>{t("waste.correct.noteLabel")}</Text>
+                            <TextInput
+                              value={correctionNote}
+                              onChangeText={setCorrectionNote}
+                              placeholder={t("waste.correct.notePlaceholder")}
+                              placeholderTextColor={colors.faint}
+                              editable={actionsEditable}
+                              multiline
+                              style={styles.correctInput}
+                              accessibilityLabel={t("waste.correct.noteLabel")}
+                            />
+                            <View style={styles.correctActions}>
+                              <Button
+                                title={t("waste.action.cancelCorrect")}
+                                variant="ghost"
+                                size="compact"
+                                disabled={submittingCorrection}
+                                onPress={() => {
+                                  setCorrectingEventId(null);
+                                  setCorrectionNote("");
+                                }}
+                              />
+                              <Button
+                                title={t("waste.action.confirmCorrect")}
+                                variant="secondary"
+                                size="compact"
+                                disabled={!actionsEditable}
+                                onPress={() => void submitCorrection(event.id)}
+                              />
+                            </View>
+                          </View>
+                        ) : (
+                          <Button
+                            title={t("waste.action.correct")}
+                            variant="ghost"
+                            size="compact"
+                            disabled={!actionsEditable || Boolean(correctingEventId)}
+                            onPress={() => {
+                              setCorrectingEventId(event.id);
+                              setCorrectionNote("");
+                              setStatusMessage(null);
+                              setStatusIsError(false);
+                            }}
+                            style={styles.correctTrigger}
+                            accessibilityLabel={t("waste.action.correctAccessibility", {
+                              item: itemLabel
+                            })}
+                          />
+                        )
+                      ) : null}
                     </View>
-                    <Text style={styles.recentMeta}>
-                      {t("waste.event.meta", {
-                        quantity: formatNumber(event.quantity, { maximumFractionDigits: 2 }),
-                        unit: t(`inventory.ops.unit.${event.canonicalUnit}` as MessageKey),
-                        date: formatDate(event.effectiveAt, {
-                          month: "short",
-                          day: "numeric"
-                        })
-                      })}
-                    </Text>
-                    {event.note ? <Text style={styles.recentNote}>{event.note}</Text> : null}
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
             {visibleAnalysis.historyTruncated ? (
@@ -363,6 +513,7 @@ const styles = StyleSheet.create({
   },
   recentRow: {
     paddingVertical: 10,
+    paddingHorizontal: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     gap: 3
@@ -389,5 +540,34 @@ const styles = StyleSheet.create({
   recentNote: {
     color: colors.faint,
     ...typography.body
+  },
+  correctTrigger: {
+    alignSelf: "flex-start",
+    marginTop: 6
+  },
+  correctPanel: {
+    marginTop: 8,
+    gap: 8
+  },
+  correctLabel: {
+    color: colors.muted,
+    ...conceptTypography.caption
+  },
+  correctInput: {
+    minHeight: 72,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    color: colors.text,
+    textAlignVertical: "top",
+    ...typography.body
+  },
+  correctActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "flex-end"
   }
 });

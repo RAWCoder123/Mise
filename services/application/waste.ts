@@ -1,8 +1,23 @@
 import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
+import { createId } from "../domain/miseDomain";
+import {
+  buildWasteCorrectionCandidate,
+  findCorrectableWasteEvent
+} from "../domain/wasteCorrection";
 import {
   buildWasteAnalysis,
   type WasteAnalysisSummary
 } from "../domain/wasteAnalysis";
+import {
+  requireWasteCorrectionInput,
+  type WasteCorrectionClientInput
+} from "../miseValidation";
+import type { MiseRepository } from "../repositories/repositoryContracts";
+import {
+  flushQueuedInventoryEvents,
+  queueInventoryEventForSubmission
+} from "./deviceInventoryOutbox";
+import type { InventoryOutboxFlushSummary } from "./inventoryOutbox";
 import { getMiseRepository } from "./repository";
 
 export type { WasteAnalysisSummary } from "../domain/wasteAnalysis";
@@ -34,17 +49,11 @@ export async function fetchWasteAnalysis(
   const operatingDate =
     options.operatingDate ??
     toDateKeyInTimeZone(options.now ?? new Date(), restaurant.timezone);
-  const historyStart = addDaysToDateKey(
-    operatingDate,
-    -(WASTE_ANALYSIS_WINDOW_DAYS * 2)
+  const events = await listWasteCorrectionEvidence(
+    repository,
+    normalizedRestaurantId,
+    operatingDate
   );
-  const events = await repository.listInventoryEvents(normalizedRestaurantId, {
-    eventTypes: ["waste", "correction"],
-    // Include a UTC guard day so restaurants east of UTC do not lose evidence
-    // from the first local hours of the bounded analysis window.
-    since: `${addDaysToDateKey(historyStart, -1)}T00:00:00.000Z`,
-    limit: WASTE_HISTORY_LIMIT
-  });
 
   return buildWasteAnalysis({
     restaurantId: normalizedRestaurantId,
@@ -54,5 +63,69 @@ export async function fetchWasteAnalysis(
     events,
     windowDays: WASTE_ANALYSIS_WINDOW_DAYS,
     historyTruncated: events.length === WASTE_HISTORY_LIMIT
+  });
+}
+
+/**
+ * Manager reconciliation for a mistaken waste row. Appends a signed
+ * `correction` that supersedes the waste once; on-hand restores by the waste
+ * quantity. Staff cannot reach this path through the generic inventory ops
+ * allowlist; hosted RPC still enforces manager membership.
+ */
+export async function correctWasteEvent(
+  input: WasteCorrectionClientInput
+): Promise<InventoryOutboxFlushSummary> {
+  const validated = requireWasteCorrectionInput(input);
+  const repository = getMiseRepository();
+  const restaurant = await repository.fetchRestaurant(validated.restaurantId);
+  if (restaurant.id !== validated.restaurantId) {
+    throw new Error("Waste correction restaurant identity did not match.");
+  }
+
+  const operatingDate = toDateKeyInTimeZone(new Date(validated.effectiveAt), restaurant.timezone);
+  const events = await listWasteCorrectionEvidence(
+    repository,
+    validated.restaurantId,
+    operatingDate
+  );
+  const wasteEvent = findCorrectableWasteEvent({
+    restaurantId: validated.restaurantId,
+    wasteEventId: validated.wasteEventId,
+    events
+  });
+  const candidate = buildWasteCorrectionCandidate({
+    wasteEvent,
+    restaurantId: validated.restaurantId,
+    note: validated.note,
+    effectiveAt: validated.effectiveAt
+  });
+  const clientEventId = createId("inventory_event");
+  await queueInventoryEventForSubmission({
+    outboxId: createId("inventory_outbox"),
+    event: {
+      ...candidate,
+      clientEventId,
+      idempotencyKey: `waste_correction:${wasteEvent.id}:${clientEventId}`
+    },
+    now: validated.effectiveAt
+  });
+  return flushQueuedInventoryEvents(validated.restaurantId);
+}
+
+async function listWasteCorrectionEvidence(
+  repository: MiseRepository,
+  normalizedRestaurantId: string,
+  operatingDate: string
+) {
+  const historyStart = addDaysToDateKey(
+    operatingDate,
+    -(WASTE_ANALYSIS_WINDOW_DAYS * 2)
+  );
+  return repository.listInventoryEvents(normalizedRestaurantId, {
+    eventTypes: ["waste", "correction"],
+    // Include a UTC guard day so restaurants east of UTC do not lose evidence
+    // from the first local hours of the bounded analysis window.
+    since: `${addDaysToDateKey(historyStart, -1)}T00:00:00.000Z`,
+    limit: WASTE_HISTORY_LIMIT
   });
 }
