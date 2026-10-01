@@ -3680,6 +3680,14 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async listActionOutcomes(restaurantId, options = {}) {
+      const state = await readReadyDemoState(restaurantId);
+      return (state.actionOutcomes ?? [])
+        .filter((outcome) => outcome.restaurantId === restaurantId)
+        .sort((left, right) => right.measuredAt.localeCompare(left.measuredAt))
+        .slice(0, options.limit ?? 100);
+    },
+
     async listRestaurantMemories(restaurantId, options = {}) {
       const state = await readReadyDemoState(restaurantId);
       let memories = (state.restaurantMemories ?? []).filter(

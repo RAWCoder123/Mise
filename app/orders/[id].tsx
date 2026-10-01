@@ -563,6 +563,15 @@ export default function OrderDraftDetailScreen() {
                           { count: formatNumber(evidence.lineCount) }
                         )}
                   </Text>
+                  {evidence.outcomeLessonCode ? (
+                    <Text style={styles.deliveryEvidenceLesson}>
+                      {evidence.outcomeLessonCode === "custom" && evidence.outcomeLessonText
+                        ? evidence.outcomeLessonText
+                        : t(
+                            `orders.detail.deliveryEvidence.lesson.${evidence.outcomeLessonCode}` as MessageKey
+                          )}
+                    </Text>
+                  ) : null}
                   {evidence.notes ? (
                     <Text style={styles.deliveryEvidenceNote}>{evidence.notes}</Text>
                   ) : null}
@@ -1096,6 +1105,10 @@ const styles = StyleSheet.create({
   deliveryEvidenceLine: {
     color: colors.text,
     ...typography.body
+  },
+  deliveryEvidenceLesson: {
+    color: colors.muted,
+    ...typography.caption
   },
   deliveryEvidenceNote: {
     color: colors.muted,

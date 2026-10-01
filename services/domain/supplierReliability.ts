@@ -85,6 +85,17 @@ export interface SupplierOrderDeliveryEvidence {
   missingLineCount: number;
   damagedLineCount: number;
   notes: string | null;
+  /** Append-only action_outcomes lesson for this delivery, when measured. */
+  outcomeLessonCode: "matched" | "review_reliability" | "custom" | null;
+  outcomeLessonText: string | null;
+  outcomeKind:
+    | "matched"
+    | "discrepancy"
+    | "partial"
+    | "failed"
+    | "unverified"
+    | "unknown"
+    | null;
 }
 
 interface SupplierAccumulator {
@@ -178,6 +189,14 @@ export function buildSupplierOrderDeliveryEvidence(input: {
   order: SupplierOrder;
   deliveries: readonly SupplierDeliveryRecord[];
   items: readonly SupplierDeliveryItemRecord[];
+  outcomesByDeliveryId?: ReadonlyMap<
+    string,
+    {
+      lessonCode: "matched" | "review_reliability" | "custom";
+      lessonText: string | null;
+      kind: "matched" | "discrepancy" | "partial" | "failed" | "unverified" | "unknown";
+    }
+  >;
 }): SupplierOrderDeliveryEvidence[] {
   const restaurantId = input.restaurantId.trim();
   if (!restaurantId) throw new Error("Supplier delivery evidence requires a restaurant workspace.");
@@ -198,6 +217,7 @@ export function buildSupplierOrderDeliveryEvidence(input: {
           : receivedDate <= input.order.delivery_date
             ? "on_time"
             : "late";
+      const outcome = input.outcomesByDeliveryId?.get(delivery.id) ?? null;
       return {
         deliveryId: delivery.id,
         status: delivery.status,
@@ -209,7 +229,10 @@ export function buildSupplierOrderDeliveryEvidence(input: {
           .length,
         damagedLineCount: lines.filter((line) => (finiteNonNegative(line.damaged_quantity) ?? 0) > 0)
           .length,
-        notes: delivery.notes?.trim() || null
+        notes: delivery.notes?.trim() || null,
+        outcomeLessonCode: outcome?.lessonCode ?? null,
+        outcomeLessonText: outcome?.lessonText ?? null,
+        outcomeKind: outcome?.kind ?? null
       } satisfies SupplierOrderDeliveryEvidence;
     });
   return evidence.sort((left, right) => right.receivedAt.localeCompare(left.receivedAt));

@@ -7,6 +7,7 @@ import {
   ClipboardList,
   HelpCircle,
   Mail,
+  PackageCheck,
   PackageMinus,
   ScanLine,
   Settings,
@@ -99,6 +100,12 @@ export default function MoreScreen() {
             title={t("more.row.memory.title")}
             icon={<Brain size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/restaurant-memory" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.deliveryOutcomes.title")}
+            icon={<PackageCheck size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/delivery-outcomes" as never)}
           />
           </View>
         </View>
