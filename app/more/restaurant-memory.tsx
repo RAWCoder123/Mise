@@ -21,6 +21,10 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import {
+  presentRestaurantMemoryStatusLabel,
+  presentRestaurantMemoryTypeLabel
+} from "../../services/presentation/restaurantMemoryLabels";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -183,14 +187,14 @@ export default function RestaurantMemoryScreen() {
 
         {visible.map((memory) => (
           <View key={memory.id} style={styles.card}>
-            <Text style={styles.type}>{memory.memoryType.replace(/_/g, " ")}</Text>
+            <Text style={styles.type}>{presentRestaurantMemoryTypeLabel(memory.memoryType, t)}</Text>
             <Text style={styles.statement}>{memory.statement}</Text>
             <Text style={styles.meta}>
               {t("memory.confidence", {
                 score: formatNumber(memory.confidence, { style: "percent", maximumFractionDigits: 0 })
               })}
               {" · "}
-              {memory.status}
+              {presentRestaurantMemoryStatusLabel(memory.status, t)}
               {" · "}
               {t("memory.updated", {
                 date: formatDate(memory.lastUpdatedAt, { dateStyle: "medium", timeStyle: "short" })
