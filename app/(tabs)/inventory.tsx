@@ -92,7 +92,8 @@ export default function InventoryScreen() {
       const [nextOutlooks, nextQueue, openSession] = await Promise.all([
         fetchInventoryOutlookItems(restaurantId),
         fetchQueuedInventoryEvents(restaurantId),
-        fetchOpenInventoryCountSession(restaurantId).catch(() => null)
+        // Open count must fail closed with the hub. Null-catch hides Resume count.
+        fetchOpenInventoryCountSession(restaurantId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlooks(nextOutlooks);
