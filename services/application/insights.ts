@@ -21,12 +21,25 @@ export { generateInsightsFromSalesAndInventory };
 export type { InsightsSalesAnalytics };
 
 export async function fetchConditionalAnalytics(restaurantId: string) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+
   const [data, orders] = await Promise.all([
-    repository.fetchPlanningData(restaurantId),
-    repository.fetchSupplierOrders(restaurantId)
+    repository.fetchPlanningData(normalizedRestaurantId),
+    repository.fetchSupplierOrders(normalizedRestaurantId)
   ]);
+
+  if (
+    data.sales.some((sale) => sale.restaurant_id !== normalizedRestaurantId) ||
+    data.menuItemIngredients.some((mapping) => mapping.restaurant_id !== normalizedRestaurantId) ||
+    data.inventoryItems.some((item) => item.restaurant_id !== normalizedRestaurantId) ||
+    orders.some((order) => order.restaurant_id !== normalizedRestaurantId)
+  ) {
+    throw new Error("Conditional analytics failed restaurant scope validation.");
+  }
+
   return buildConditionalAnalyticsSummary(
-    restaurantId,
+    normalizedRestaurantId,
     data.sales,
     data.menuItemIngredients,
     data.inventoryItems,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronUp, Lightbulb, RefreshCw } from "lucide-react-native";
 
 import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
@@ -21,6 +21,7 @@ import type { DailyOperationalBrief, OperationalFinding } from "../../services/d
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
 import type { InsightsSalesAnalytics } from "../../services/domain/insightsSalesAnalytics";
 import {
+  fetchConditionalAnalytics,
   fetchDailyOperationalBrief,
   fetchInsights,
   fetchInsightsSalesAnalytics,
@@ -45,6 +46,7 @@ import { buildConciseTrendDateLabels } from "../../services/presentation/salesTr
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import type { InsightsSalesTrendPoint } from "../../services/miseService";
 import type {
+  ConditionalAnalyticsSummary,
   Insight,
   InsightSeverity,
   LearningMemorySignal,
@@ -58,12 +60,14 @@ type InsightsSurface = "sales" | "signals";
 export default function InsightsScreen() {
   const { formatNumber, t } = useLocale();
   const { memberships, restaurant } = useMiseSession();
+  const router = useRouter();
   const [insights, setInsights] = useState<Insight[]>([]);
   const [brief, setBrief] = useState<DailyOperationalBrief | null>(null);
   const [findingQueue, setFindingQueue] = useState<FindingDecisionOutboxEntry[]>([]);
   const [memory, setMemory] = useState<LearningMemorySummary | null>(null);
   const [salesTrend, setSalesTrend] = useState<InsightsSalesTrendPoint[]>([]);
   const [salesAnalytics, setSalesAnalytics] = useState<InsightsSalesAnalytics | null>(null);
+  const [conditionalAnalytics, setConditionalAnalytics] = useState<ConditionalAnalyticsSummary | null>(null);
   const [surface, setSurface] = useState<InsightsSurface>("signals");
   const [filter, setFilter] = useState<InsightFilter>("all");
   const [loading, setLoading] = useState(true);
@@ -88,6 +92,7 @@ export default function InsightsScreen() {
     setMemory(null);
     setSalesTrend([]);
     setSalesAnalytics(null);
+    setConditionalAnalytics(null);
     setSurface("signals");
     setFilter("all");
     setError(false);
@@ -112,12 +117,13 @@ export default function InsightsScreen() {
       await flushQueuedOperationalFindingDecisions(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
-      const [nextInsights, nextMemory, nextSalesTrend, nextAnalytics, nextBrief, nextQueue] =
+      const [nextInsights, nextMemory, nextSalesTrend, nextAnalytics, nextConditional, nextBrief, nextQueue] =
         await Promise.all([
           fetchInsights(restaurantId),
           fetchLearningMemorySummary(restaurantId),
           fetchInsightsSalesTrend(restaurantId),
           fetchInsightsSalesAnalytics(restaurantId),
+          fetchConditionalAnalytics(restaurantId),
           fetchDailyOperationalBrief(restaurantId),
           fetchQueuedOperationalFindingDecisions(restaurantId)
         ]);
@@ -126,6 +132,7 @@ export default function InsightsScreen() {
       setMemory(nextMemory);
       setSalesTrend(nextSalesTrend);
       setSalesAnalytics(nextAnalytics);
+      setConditionalAnalytics(nextConditional);
       setBrief(nextBrief);
       setFindingQueue(nextQueue);
       setLoadedRestaurantId(restaurantId);
@@ -208,12 +215,13 @@ export default function InsightsScreen() {
     try {
       await generateInsightsFromSalesAndInventory(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      const [nextInsights, nextMemory, nextSalesTrend, nextAnalytics, nextBrief, nextQueue] =
+      const [nextInsights, nextMemory, nextSalesTrend, nextAnalytics, nextConditional, nextBrief, nextQueue] =
         await Promise.all([
           fetchInsights(restaurantId),
           fetchLearningMemorySummary(restaurantId),
           fetchInsightsSalesTrend(restaurantId),
           fetchInsightsSalesAnalytics(restaurantId),
+          fetchConditionalAnalytics(restaurantId),
           fetchDailyOperationalBrief(restaurantId),
           fetchQueuedOperationalFindingDecisions(restaurantId)
         ]);
@@ -222,6 +230,7 @@ export default function InsightsScreen() {
       setMemory(nextMemory);
       setSalesTrend(nextSalesTrend);
       setSalesAnalytics(nextAnalytics);
+      setConditionalAnalytics(nextConditional);
       setBrief(nextBrief);
       setFindingQueue(nextQueue);
       setLoadedRestaurantId(restaurantId);
@@ -239,6 +248,7 @@ export default function InsightsScreen() {
   const visibleMemory = hubReady ? memory : null;
   const visibleSalesTrend = hubReady ? salesTrend : [];
   const visibleSalesAnalytics = hubReady ? salesAnalytics : null;
+  const visibleConditionalAnalytics = hubReady ? conditionalAnalytics : null;
 
   const summary = useMemo(() => {
     if (!restaurant) return null;
@@ -359,6 +369,11 @@ export default function InsightsScreen() {
                 serviceStyle={restaurant?.service_style ?? null}
                 cuisineType={restaurant?.cuisine_type ?? null}
                 restaurantName={restaurant?.name ?? null}
+              />
+              <ConditionalAnalyticsBoard
+                analytics={visibleConditionalAnalytics}
+                onOpenOrders={() => router.push("/orders")}
+                onOpenRecipes={() => router.push("/settings/recipes" as never)}
               />
             </View>
           </MotionView>
@@ -696,6 +711,164 @@ function SalesAnalyticsBoard({
   );
 }
 
+function ConditionalAnalyticsBoard({
+  analytics,
+  onOpenOrders,
+  onOpenRecipes
+}: {
+  analytics: ConditionalAnalyticsSummary | null;
+  onOpenOrders: () => void;
+  onOpenRecipes: () => void;
+}) {
+  const { formatDate, formatNumber, t } = useLocale();
+  const orderCount = analytics?.supplierTrend.reduce((sum, point) => sum + point.orders, 0) ?? 0;
+  const trendLabels =
+    analytics?.supplierTrend.map((point) =>
+      formatDate(`${point.label}T12:00:00.000Z`, { month: "numeric", day: "numeric", timeZone: "UTC" })
+    ) ?? [];
+  const gates = [
+    {
+      id: "sales",
+      ready: Boolean(analytics?.canShowSalesRhythm),
+      label: t("insights.conditional.salesRhythm.label"),
+      detail: analytics?.canShowSalesRhythm
+        ? t("insights.conditional.salesRhythm.ready")
+        : t("insights.conditional.salesRhythm.empty"),
+      actionLabel: null as string | null,
+      onAction: null as (() => void) | null
+    },
+    {
+      id: "orders",
+      ready: Boolean(analytics?.canShowSupplierTrend),
+      label: t("insights.conditional.supplierTrend.label"),
+      detail: analytics?.canShowSupplierTrend
+        ? t("insights.conditional.supplierTrend.ready", { count: formatNumber(orderCount) })
+        : t("insights.conditional.supplierTrend.empty"),
+      actionLabel: analytics?.canShowSupplierTrend ? null : t("insights.conditional.openOrders"),
+      onAction: analytics?.canShowSupplierTrend ? null : onOpenOrders
+    },
+    {
+      id: "recipes",
+      ready: Boolean(analytics?.canShowRecipeCoverage),
+      label: t("insights.conditional.recipeCoverage.label"),
+      detail: analytics?.canShowRecipeCoverage
+        ? t("insights.conditional.recipeCoverage.ready")
+        : t("insights.conditional.recipeCoverage.empty"),
+      actionLabel: analytics?.canShowRecipeCoverage ? null : t("insights.conditional.openRecipes"),
+      onAction: analytics?.canShowRecipeCoverage ? null : onOpenRecipes
+    }
+  ];
+
+  return (
+    <View style={styles.analyticsStack}>
+      <SectionSurface
+        title={t("insights.conditional.title")}
+        subtitle={t("insights.conditional.subtitle")}
+      >
+        <View style={styles.conditionalGateList}>
+          {gates.map((gate, index) => (
+            <View
+              key={gate.id}
+              style={[styles.conditionalGateRow, index > 0 && styles.conditionalGateRowDivided]}
+            >
+              <View
+                style={[
+                  styles.conditionalGateDot,
+                  gate.ready ? styles.conditionalGateDotReady : styles.conditionalGateDotWaiting
+                ]}
+              />
+              <View style={styles.conditionalGateCopy}>
+                <View style={styles.conditionalGateTitleRow}>
+                  <Text style={styles.conditionalGateLabel}>{gate.label}</Text>
+                  <Text
+                    style={[
+                      styles.conditionalGateStatus,
+                      gate.ready ? styles.conditionalGateStatusReady : styles.conditionalGateStatusWaiting
+                    ]}
+                  >
+                    {gate.ready ? t("insights.conditional.ready") : t("insights.conditional.waiting")}
+                  </Text>
+                </View>
+                <Text style={styles.conditionalGateDetail}>{gate.detail}</Text>
+                {gate.actionLabel && gate.onAction ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={gate.actionLabel}
+                    onPress={gate.onAction}
+                    style={({ pressed }) => [styles.conditionalGateAction, pressed && styles.rowPressed]}
+                  >
+                    <Text style={styles.conditionalGateActionText}>{gate.actionLabel}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      </SectionSurface>
+
+      <SectionSurface
+        title={t("insights.conditional.supplierChart.title")}
+        subtitle={t("insights.conditional.supplierChart.subtitle")}
+        action={
+          analytics?.canShowSupplierTrend
+            ? t("insights.conditional.supplierChart.meta", { count: formatNumber(orderCount) })
+            : undefined
+        }
+      >
+        {analytics?.canShowSupplierTrend && analytics.supplierTrend.length > 0 ? (
+          <View style={styles.conditionalTrendBody}>
+            <TrendLineChart
+              series={[{ values: analytics.supplierTrend.map((point) => point.orders), color: colors.accent }]}
+              labels={trendLabels}
+              showArea
+              formatValue={(value) => formatNumber(value, { maximumFractionDigits: 0 })}
+              accessibilityLabel={t("insights.conditional.supplierChart.accessibility", {
+                count: formatNumber(analytics.supplierTrend.length),
+                orders: formatNumber(orderCount)
+              })}
+            />
+            <View style={styles.salesDayList}>
+              {analytics.supplierTrend
+                .slice()
+                .reverse()
+                .map((point, index) => (
+                  <View key={point.label} style={[styles.salesDayRow, index > 0 && styles.salesDayRowDivided]}>
+                    <Text style={styles.salesDayLabel}>
+                      {formatDate(`${point.label}T12:00:00.000Z`, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        timeZone: "UTC"
+                      })}
+                    </Text>
+                    <Text style={styles.salesDayValue}>
+                      {t("insights.conditional.supplierChart.dayMeta", {
+                        count: formatNumber(point.orders)
+                      })}
+                    </Text>
+                  </View>
+                ))}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.trendEmpty}>
+            <Text style={styles.trendEmptyTitle}>{t("insights.conditional.supplierChart.empty.title")}</Text>
+            <Text style={styles.trendEmptyBody}>{t("insights.conditional.supplierTrend.empty")}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t("insights.conditional.openOrders")}
+              onPress={onOpenOrders}
+              style={({ pressed }) => [styles.conditionalGateAction, pressed && styles.rowPressed]}
+            >
+              <Text style={styles.conditionalGateActionText}>{t("insights.conditional.openOrders")}</Text>
+            </Pressable>
+          </View>
+        )}
+      </SectionSurface>
+    </View>
+  );
+}
+
 function ProfileChip({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.profileChip}>
@@ -991,6 +1164,80 @@ const styles = StyleSheet.create({
   },
   analyticsStack: {
     gap: 16
+  },
+  conditionalGateList: {
+    gap: 0
+  },
+  conditionalGateRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingVertical: 12
+  },
+  conditionalGateRowDivided: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
+  },
+  conditionalGateDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 5
+  },
+  conditionalGateDotReady: {
+    backgroundColor: colors.success
+  },
+  conditionalGateDotWaiting: {
+    backgroundColor: colors.muted
+  },
+  conditionalGateCopy: {
+    flex: 1,
+    gap: 4
+  },
+  conditionalGateTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8
+  },
+  conditionalGateLabel: {
+    color: colors.text,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 15,
+    lineHeight: 20,
+    flexShrink: 1
+  },
+  conditionalGateStatus: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 12,
+    lineHeight: 16
+  },
+  conditionalGateStatusReady: {
+    color: colors.success
+  },
+  conditionalGateStatusWaiting: {
+    color: colors.muted
+  },
+  conditionalGateDetail: {
+    color: colors.muted,
+    fontFamily: fontFamilies.body,
+    fontSize: 13,
+    lineHeight: 18
+  },
+  conditionalGateAction: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    minHeight: 44,
+    justifyContent: "center"
+  },
+  conditionalGateActionText: {
+    color: colors.accentDark,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 14,
+    lineHeight: 18
+  },
+  conditionalTrendBody: {
+    gap: 12
   },
   profileGrid: {
     flexDirection: "row",
