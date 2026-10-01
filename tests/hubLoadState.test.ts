@@ -137,3 +137,11 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
     true
   );
 });
+
+test("create-task suppresses empty list claims until hubReady", () => {
+  const source = readFileSync("app/more/create-task.tsx", "utf8");
+  assert.match(source, /!hubReady \? null : \(scope === "restaurant"/);
+  assert.match(source, /!hubReady\s*\?\s*undefined\s*:\s*showCompleted/);
+  assert.match(source, /EmptyState/);
+  assert.match(source, /hubReady \? \(showCompleted \? completedTasks : openTasks\) : \[\]/);
+});
