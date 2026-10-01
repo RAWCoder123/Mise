@@ -45,6 +45,11 @@ import {
   inventoryHealthTier,
   type InventoryHealthTier
 } from "../../services/presentation/inventoryHealthPresentation";
+import {
+  HOME_APPROVAL_EVIDENCE_PREVIEW_LIMIT,
+  homeApprovalEvidenceHasStructuredDetail,
+  presentHomeApprovalEvidence
+} from "../../services/presentation/homeApprovalPresentation";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { taskRoleLabelKey } from "../../services/presentation/taskRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
@@ -265,6 +270,7 @@ export default function HomeScreen() {
           <ApprovalsSection
             brief={visibleBrief}
             approvingId={approvingId}
+            formatNumber={formatNumber}
             t={t}
             onApprove={async (card) => {
               if (!restaurant || approvingId) return;
@@ -360,11 +366,13 @@ function RestaurantStatusCard({
 function ApprovalsSection({
   brief,
   approvingId,
+  formatNumber,
   t,
   onApprove
 }: {
   brief: OperatingBrief;
   approvingId: string | null;
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   t: Translator;
   onApprove: (card: OperatingBriefApprovalCard) => void | Promise<void>;
 }) {
@@ -379,31 +387,135 @@ function ApprovalsSection({
       {cards.length === 0 ? (
         <Text style={styles.emptyCopy}>{t("home.approvals.empty")}</Text>
       ) : (
-        cards.map((card) => {
-          const canOneTap = Boolean(card.recommendationId);
-          return (
-            <View key={card.id} style={styles.briefCard}>
-              <Text style={styles.cardTitle}>{card.title}</Text>
-              <Text style={styles.cardBody}>{card.recommendedAction}</Text>
-              <Text style={styles.metaLine}>{t("home.approvals.why")}: {card.whyItMatters}</Text>
-              <View style={styles.approvalActions}>
-                <Button
-                  title={
-                    approvingId === card.id
-                      ? t("home.approvals.approving")
-                      : canOneTap
-                        ? t("home.approvals.approve")
-                        : t("home.approvals.review")
-                  }
-                  onPress={() => void onApprove(card)}
-                  disabled={Boolean(approvingId)}
-                  style={styles.approvalButton}
-                />
-              </View>
-            </View>
-          );
-        })
+        cards.map((card) => (
+          <HomeApprovalCard
+            key={card.id}
+            card={card}
+            approving={approvingId === card.id}
+            disabled={Boolean(approvingId)}
+            formatNumber={formatNumber}
+            t={t}
+            onApprove={() => void onApprove(card)}
+          />
+        ))
       )}
+    </View>
+  );
+}
+
+function HomeApprovalCard({
+  card,
+  approving,
+  disabled,
+  formatNumber,
+  t,
+  onApprove
+}: {
+  card: OperatingBriefApprovalCard;
+  approving: boolean;
+  disabled: boolean;
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
+  t: Translator;
+  onApprove: () => void;
+}) {
+  const [evidenceExpanded, setEvidenceExpanded] = useState(false);
+  const canOneTap = Boolean(card.recommendationId);
+  const evidence = presentHomeApprovalEvidence(card);
+  const hasStructuredDetail = homeApprovalEvidenceHasStructuredDetail(evidence);
+  const confidencePercent =
+    evidence.confidenceScore === null
+      ? null
+      : formatNumber(evidence.confidenceScore, {
+          style: "percent",
+          maximumFractionDigits: 0
+        });
+  const visibleEvidence = evidenceExpanded
+    ? evidence.evidenceItems
+    : evidence.evidenceItems.slice(0, HOME_APPROVAL_EVIDENCE_PREVIEW_LIMIT);
+  const hiddenEvidenceCount = Math.max(
+    0,
+    evidence.evidenceItems.length - HOME_APPROVAL_EVIDENCE_PREVIEW_LIMIT
+  );
+
+  return (
+    <View style={styles.briefCard}>
+      <Text style={styles.cardTitle}>{card.title}</Text>
+      <Text style={styles.cardBody}>{card.recommendedAction}</Text>
+      <Text style={styles.metaLine}>
+        {t("home.approvals.why")}: {card.whyItMatters}
+      </Text>
+      {hasStructuredDetail ? (
+        <View style={styles.approvalEvidence}>
+          {confidencePercent ? (
+            <Text style={styles.metaLine}>
+              {t("home.approvals.confidence", { score: confidencePercent })}
+            </Text>
+          ) : null}
+          {evidence.confidenceRationale ? (
+            <Text style={styles.cardBody}>{evidence.confidenceRationale}</Text>
+          ) : null}
+          {evidence.expectedOperationalImpact ? (
+            <Text style={styles.metaLine}>
+              {t("home.approvals.impact")}: {evidence.expectedOperationalImpact}
+            </Text>
+          ) : null}
+          {evidence.riskIfIgnored ? (
+            <Text style={styles.metaLine}>
+              {t("home.approvals.risk")}: {evidence.riskIfIgnored}
+            </Text>
+          ) : null}
+          {evidence.evidenceItems.length > 0 ? (
+            <View style={styles.approvalEvidenceList}>
+              <Text style={styles.metaLine}>{t("home.approvals.evidence")}</Text>
+              {visibleEvidence.map((item) => (
+                <Text key={item} style={styles.cardBody}>
+                  · {item}
+                </Text>
+              ))}
+              {hiddenEvidenceCount > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: evidenceExpanded }}
+                  accessibilityLabel={
+                    evidenceExpanded
+                      ? t("home.approvals.evidence.hide")
+                      : t("home.approvals.evidence.show", {
+                          count: formatNumber(hiddenEvidenceCount)
+                        })
+                  }
+                  onPress={() => setEvidenceExpanded((current) => !current)}
+                  style={({ pressed }) => [
+                    styles.approvalEvidenceToggle,
+                    pressed && styles.approvalEvidenceTogglePressed
+                  ]}
+                >
+                  <Text style={styles.approvalEvidenceToggleText}>
+                    {evidenceExpanded
+                      ? t("home.approvals.evidence.hide")
+                      : t("home.approvals.evidence.show", {
+                          count: formatNumber(hiddenEvidenceCount)
+                        })}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+      <View style={styles.approvalActions}>
+        <Button
+          title={
+            approving
+              ? t("home.approvals.approving")
+              : canOneTap
+                ? t("home.approvals.approve")
+                : t("home.approvals.review")
+          }
+          onPress={onApprove}
+          disabled={disabled}
+          style={styles.approvalButton}
+        />
+      </View>
     </View>
   );
 }
@@ -914,6 +1026,29 @@ const styles = StyleSheet.create({
   },
   approvalButton: {
     alignSelf: "flex-start"
+  },
+  approvalEvidence: {
+    marginTop: 2,
+    gap: 2
+  },
+  approvalEvidenceList: {
+    marginTop: 2,
+    gap: 1
+  },
+  approvalEvidenceToggle: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingVertical: 4
+  },
+  approvalEvidenceTogglePressed: {
+    opacity: 0.7
+  },
+  approvalEvidenceToggleText: {
+    color: colors.text,
+    fontFamily: fontFamilies.semibold,
+    fontSize: 11,
+    lineHeight: 14
   },
   briefingSection: {
     gap: 0
