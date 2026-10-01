@@ -106,6 +106,64 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
   assert.equal(secondCorrection.status, "conflict");
 });
 
+test("rejects zero-quantity movements while allowing zero counts and stockouts", () => {
+  const authority = {
+    id: "event-zero",
+    actorUserId: "manager-1",
+    recordedAt: "2026-07-26T10:01:00.000Z"
+  };
+
+  for (const eventType of [
+    "receipt",
+    "waste",
+    "usage",
+    "adjustment",
+    "transfer",
+    "correction"
+  ] as const) {
+    const result = acceptInventoryEvent({
+      existingEvents: [],
+      candidate: input({
+        eventType,
+        quantity: 0,
+        clientEventId: `zero-${eventType}`,
+        idempotencyKey: `zero-${eventType}`,
+      }),
+      authority
+    });
+    assert.equal(result.status, "rejected", eventType);
+    assert.equal(
+      "reason" in result ? result.reason : null,
+      "zero_quantity_not_allowed",
+      eventType
+    );
+  }
+
+  const zeroCount = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({
+      eventType: "count",
+      quantity: 0,
+      clientEventId: "zero-count",
+      idempotencyKey: "zero-count"
+    }),
+    authority
+  });
+  assert.equal(zeroCount.status, "accepted");
+
+  const stockout = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({
+      eventType: "stockout",
+      quantity: 0,
+      clientEventId: "zero-stockout",
+      idempotencyKey: "zero-stockout"
+    }),
+    authority
+  });
+  assert.equal(stockout.status, "accepted");
+});
+
 test("projects counts, receipts, usage, waste, and corrections in server sequence", () => {
   const count = accepted(
     [],
