@@ -36,6 +36,11 @@ import {
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
+import {
+  WASTE_REASON_CODES,
+  type WasteReasonCode,
+  wasteReasonMessageKey
+} from "../../services/domain/wasteReasonCodes";
 import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
 
@@ -51,6 +56,7 @@ export default function InventoryDetailScreen() {
   const [operation, setOperation] = useState<InventoryOperatorAction>("count");
   const [quantityText, setQuantityText] = useState("");
   const [noteText, setNoteText] = useState("");
+  const [wasteReason, setWasteReason] = useState<WasteReasonCode | null>(null);
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
   const [quantityError, setQuantityError] = useState<string | undefined>();
@@ -192,6 +198,18 @@ export default function InventoryDetailScreen() {
     [t]
   );
 
+  const wasteReasonOptions = useMemo<readonly SegmentOption<WasteReasonCode>[]>(
+    () =>
+      WASTE_REASON_CODES.map((code) => ({
+        value: code,
+        label: t(wasteReasonMessageKey(code)),
+        accessibilityLabel: t("inventory.ops.wasteReason.optionAccessibility", {
+          reason: t(wasteReasonMessageKey(code))
+        })
+      })),
+    [t]
+  );
+
   function goBackToInventory() {
     if (navigation.canGoBack()) navigation.goBack();
     else router.replace("/inventory");
@@ -221,6 +239,11 @@ export default function InventoryDetailScreen() {
       setMessageIsError(true);
       return;
     }
+    if (operation === "waste" && !wasteReason) {
+      setMessage(t("inventory.ops.wasteReason.required"));
+      setMessageIsError(true);
+      return;
+    }
 
     const restaurantId = restaurant.id;
     setQuantityError(undefined);
@@ -235,6 +258,7 @@ export default function InventoryDetailScreen() {
         quantity,
         canonicalUnit: item.canonical_unit,
         effectiveAt: new Date().toISOString(),
+        reasonCode: operation === "waste" ? wasteReason ?? undefined : undefined,
         note: noteText.trim() || undefined
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -247,6 +271,7 @@ export default function InventoryDetailScreen() {
 
       setQuantityText(operation === "stockout" ? "0" : "");
       setNoteText("");
+      setWasteReason(null);
       setMessage(describeFlushResult(flushSummary, t));
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
     } catch (submitError) {
@@ -512,7 +537,10 @@ export default function InventoryDetailScreen() {
                       onValueChange={(value) => {
                         setOperation(value);
                         setQuantityError(undefined);
+                        setMessage(null);
+                        setMessageIsError(false);
                         if (value === "stockout") setQuantityText("0");
+                        if (value !== "waste") setWasteReason(null);
                       }}
                     />
                     {operation === "stockout" ? (
@@ -535,6 +563,24 @@ export default function InventoryDetailScreen() {
                         error={quantityError}
                       />
                     )}
+                    {operation === "waste" ? (
+                      <>
+                        <Text style={styles.opsBody}>{t("inventory.ops.wasteReason.label")}</Text>
+                        <FilterRow
+                          accessibilityLabel={t("inventory.ops.wasteReason.accessibility")}
+                          options={wasteReasonOptions}
+                          value={(wasteReason ?? ("_unset" as WasteReasonCode))}
+                          onValueChange={(value) => {
+                            setWasteReason(value);
+                            setMessage(null);
+                            setMessageIsError(false);
+                          }}
+                        />
+                        {!wasteReason ? (
+                          <Text style={styles.copy}>{t("inventory.ops.wasteReason.hint")}</Text>
+                        ) : null}
+                      </>
+                    ) : null}
                     <Field
                       label={t("inventory.ops.note")}
                       value={noteText}
