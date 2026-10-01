@@ -516,8 +516,10 @@ export function requireInventoryCountSessionNote(value: string | null | undefine
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") throw new Error("Count session note must be text.");
   const normalized = value.trim();
-  if (normalized.length > 240) {
-    throw new Error("Count session note is limited to 240 characters.");
+  // MISE-005EN: reject ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) so client
+  // validation matches inventory_count_sessions_note_check under COLLATE "C".
+  if (normalized.length > 240 || hasControlCharacters(normalized)) {
+    throw new Error("Count session note is limited to 240 characters without control characters.");
   }
   return normalized || null;
 }
@@ -526,8 +528,10 @@ export function requireInventoryCountLineNote(value: string | null | undefined) 
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") throw new Error("Count line note must be text.");
   const normalized = value.trim();
-  if (normalized.length > 240) {
-    throw new Error("Count line note is limited to 240 characters.");
+  // MISE-005EN: reject ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) so client
+  // validation matches inventory_count_lines_note_check under COLLATE "C".
+  if (normalized.length > 240 || hasControlCharacters(normalized)) {
+    throw new Error("Count line note is limited to 240 characters without control characters.");
   }
   return normalized || null;
 }
