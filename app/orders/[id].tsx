@@ -19,6 +19,7 @@ import {
   fetchSupplierOrderOperationalDetail,
   isGmailIntegrationError,
   approveSupplierSendContent,
+  applySupplierConfirmationDeliveryDate,
   prepareSupplierEmailPayload,
   receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
@@ -28,6 +29,7 @@ import type {
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
 } from "../../services/domain/supplierReliability";
+import type { SupplierConfirmationDeliveryApplyCandidate } from "../../services/domain/supplierConfirmationDeliveryApply";
 import type { MiseAction } from "../../services/domain/miseActions";
 import { isSupplierSendVerificationRace } from "../../services/domain/supplierSendErrors";
 import {
@@ -66,6 +68,8 @@ export default function OrderDraftDetailScreen() {
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
+  const [confirmationDeliveryApply, setConfirmationDeliveryApply] =
+    useState<SupplierConfirmationDeliveryApplyCandidate | null>(null);
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -113,6 +117,7 @@ export default function OrderDraftDetailScreen() {
       }
       setOrder(nextDetail.order);
       setDeliveryEvidence(nextDetail.deliveryEvidence);
+      setConfirmationDeliveryApply(nextDetail.confirmationDeliveryApply);
       setEmailConnection(nextEmailConnection);
       setEmailPayload(nextEmailPayload);
       setSupplierSendAction(nextSendAction);
@@ -123,6 +128,7 @@ export default function OrderDraftDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setDeliveryEvidence([]);
+      setConfirmationDeliveryApply(null);
       setEmailPayload(null);
       setSupplierSendAction(null);
       setHubLoadError(true);
@@ -146,6 +152,7 @@ export default function OrderDraftDetailScreen() {
     setHubLoadError(false);
     setOrder(null);
     setDeliveryEvidence([]);
+    setConfirmationDeliveryApply(null);
     setEmailConnection(null);
     setEmailPayload(null);
     setSupplierSendAction(null);
@@ -217,6 +224,56 @@ export default function OrderDraftDetailScreen() {
           tone: "danger"
         });
       }
+    } finally {
+      actionLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
+    }
+  }
+
+  async function applyConfirmationDeliveryDate() {
+    if (!restaurant || !order || !confirmationDeliveryApply || actionLockRef.current) return;
+    if (!actionsEditable) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    const confirmationId = confirmationDeliveryApply.confirmationId;
+    actionLockRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await applySupplierConfirmationDeliveryDate(restaurantId, {
+        supplierOrderId: order.id,
+        confirmationId
+      });
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load(false);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        title: t("orders.detail.confirmationApply.successTitle"),
+        message: t(
+          result.outcome === "already_applied"
+            ? "orders.detail.confirmationApply.alreadyBody"
+            : "orders.detail.confirmationApply.successBody",
+          {
+            date: formatDate(`${result.deliveryDate}T12:00:00.000Z`, {
+              dateStyle: "medium",
+              timeZone: "UTC"
+            })
+          }
+        ),
+        tone: "success"
+      });
+    } catch (error) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        title: t("orders.detail.confirmationApply.failedTitle"),
+        message:
+          error instanceof Error && error.message.trim()
+            ? error.message.slice(0, 220)
+            : t("orders.detail.confirmationApply.failedBody"),
+        tone: "danger"
+      });
     } finally {
       actionLockRef.current = false;
       if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
@@ -419,6 +476,7 @@ export default function OrderDraftDetailScreen() {
   const visibleSupplierSendAction = hubReady ? supplierSendAction : null;
   const visibleDeliveryEvidence =
     hubReady ? deliveryEvidence : [];
+  const visibleConfirmationDeliveryApply = hubReady ? confirmationDeliveryApply : null;
   const gmailReady = Boolean(
     visibleEmailConnection?.status === "connected" &&
     visibleEmailPayload?.ready &&
@@ -521,6 +579,32 @@ export default function OrderDraftDetailScreen() {
               </Text>
             </View>
           </View>
+
+          {visibleConfirmationDeliveryApply ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.confirmationApply.title")}</Text>
+              <Text style={styles.sectionBody}>
+                {t("orders.detail.confirmationApply.body", {
+                  status: t(
+                    `orders.detail.confirmationApply.status.${visibleConfirmationDeliveryApply.status}` as MessageKey
+                  ),
+                  date: formatDate(
+                    `${visibleConfirmationDeliveryApply.proposedDeliveryDate}T12:00:00.000Z`,
+                    {
+                      dateStyle: "medium",
+                      timeZone: "UTC"
+                    }
+                  )
+                })}
+              </Text>
+              <Button
+                title={t("orders.detail.confirmationApply.action")}
+                onPress={() => void applyConfirmationDeliveryDate()}
+                disabled={!actionsEditable}
+                accessibilityLabel={t("orders.detail.confirmationApply.actionHint")}
+              />
+            </View>
+          ) : null}
 
           {visibleDeliveryEvidence.length > 0 ? (
             <View style={styles.section}>
