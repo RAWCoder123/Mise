@@ -36,15 +36,22 @@ import {
 import {
   approveOperatingDecision,
   fetchOperatingBrief,
+  fetchPilotReadiness,
   fetchTodaySummary,
   type TodayCommandCenterSummary
 } from "../../services/miseService";
 import { runScheduledRecalculations } from "../../services/application/scheduledRecalculations";
+import type { PilotReadiness } from "../../services/domain/pilotReadiness";
 import type { RecalculationAttentionSummary } from "../../services/presentation/recalculationPresentation";
 import {
   inventoryHealthTier,
   type InventoryHealthTier
 } from "../../services/presentation/inventoryHealthPresentation";
+import {
+  homePilotReadinessAreaLabelKey,
+  homePilotReadinessGate,
+  type HomePilotReadinessGate
+} from "../../services/presentation/homePilotReadinessPresentation";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { taskRoleLabelKey } from "../../services/presentation/taskRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
@@ -68,6 +75,8 @@ export default function HomeScreen() {
   const { formatCurrency, formatDate, formatNumber, t, locale } = useLocale();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [brief, setBrief] = useState<OperatingBrief | null>(null);
+  const [pilotReadiness, setPilotReadiness] = useState<PilotReadiness | null>(null);
+  const [readinessLoadError, setReadinessLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
@@ -84,6 +93,8 @@ export default function HomeScreen() {
     requestIdRef.current += 1;
     setSummary(null);
     setBrief(null);
+    setPilotReadiness(null);
+    setReadinessLoadError(false);
     setLoadedRestaurantId(null);
     setError(null);
     setApprovingId(null);
@@ -129,18 +140,34 @@ export default function HomeScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setRecalcAttention(recalculation);
 
-      const [nextSummary, nextBrief] = await Promise.all([
+      const [nextSummary, nextBrief, nextReadiness] = await Promise.all([
         fetchTodaySummary(restaurantId),
-        fetchOperatingBrief(restaurantId, { lastSeenAt })
+        fetchOperatingBrief(restaurantId, { lastSeenAt }),
+        fetchPilotReadiness(restaurantId).then(
+          (readiness) => ({ ok: true as const, readiness }),
+          (readinessError) => {
+            captureMiseError(readinessError, {
+              flow: "home",
+              operation: "pilot_readiness",
+              restaurant_id: restaurantId
+            });
+            return { ok: false as const, readiness: null };
+          }
+        )
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
       setBrief(nextBrief);
+      setPilotReadiness(nextReadiness.ok ? nextReadiness.readiness : null);
+      setReadinessLoadError(!nextReadiness.ok);
       setLoadedRestaurantId(restaurantId);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "home", operation: "load", restaurant_id: restaurantId });
       setError(t("home.error"));
+      // Fail closed: never leave a prior restaurant's readiness visible after a load failure.
+      setPilotReadiness(null);
+      setReadinessLoadError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
@@ -167,6 +194,10 @@ export default function HomeScreen() {
 
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
   const visibleBrief = loadedRestaurantId === restaurant?.id ? brief : null;
+  const visibleReadiness = loadedRestaurantId === restaurant?.id ? pilotReadiness : null;
+  const visibleReadinessLoadError =
+    loadedRestaurantId === restaurant?.id ? readinessLoadError : false;
+  const readinessGate = homePilotReadinessGate(visibleReadiness, visibleReadinessLoadError);
 
   if (!restaurant) {
     return (
@@ -232,6 +263,8 @@ export default function HomeScreen() {
           />
         ) : null}
 
+        <HomePilotReadinessNotice gate={readinessGate} t={t} onRetry={() => void load()} />
+
         {visibleBrief ? <RestaurantStatusCard brief={visibleBrief} t={t} /> : null}
 
         {visibleSummary ? (
@@ -265,6 +298,7 @@ export default function HomeScreen() {
           <ApprovalsSection
             brief={visibleBrief}
             approvingId={approvingId}
+            canOneTapRecommend={readinessGate.canOneTapRecommend}
             t={t}
             onApprove={async (card) => {
               if (!restaurant || approvingId) return;
@@ -274,6 +308,10 @@ export default function HomeScreen() {
                 } else {
                   router.push("/orders");
                 }
+                return;
+              }
+              if (!readinessGate.canOneTapRecommend) {
+                router.push("/settings/pos");
                 return;
               }
               setApprovingId(card.id);
@@ -315,6 +353,52 @@ export default function HomeScreen() {
         />
       </View>
     </Screen>
+  );
+}
+
+function HomePilotReadinessNotice({
+  gate,
+  t,
+  onRetry
+}: {
+  gate: HomePilotReadinessGate;
+  t: Translator;
+  onRetry: () => void;
+}) {
+  if (!gate.showBanner) return null;
+
+  if (gate.bannerKind === "unavailable") {
+    return (
+      <StatusNotice
+        tone="warning"
+        title={t("home.readiness.unavailableTitle")}
+        message={t("home.readiness.unavailableBody")}
+        actionLabel={t("common.retry")}
+        onAction={onRetry}
+      />
+    );
+  }
+
+  const areas = gate.attentionAreaIds
+    .map((areaId) => t(homePilotReadinessAreaLabelKey(areaId)))
+    .join(", ");
+
+  return (
+    <StatusNotice
+      tone="warning"
+      title={
+        gate.bannerKind === "blocked_recommend"
+          ? t("home.readiness.blockedRecommendTitle")
+          : t("home.readiness.blockedSendTitle")
+      }
+      message={
+        gate.bannerKind === "blocked_recommend"
+          ? t("home.readiness.blockedRecommendBody", { areas })
+          : t("home.readiness.blockedSendBody", { areas })
+      }
+      actionLabel={t("home.readiness.action")}
+      onAction={() => router.push("/settings/pos")}
+    />
   );
 }
 
@@ -360,11 +444,13 @@ function RestaurantStatusCard({
 function ApprovalsSection({
   brief,
   approvingId,
+  canOneTapRecommend,
   t,
   onApprove
 }: {
   brief: OperatingBrief;
   approvingId: string | null;
+  canOneTapRecommend: boolean;
   t: Translator;
   onApprove: (card: OperatingBriefApprovalCard) => void | Promise<void>;
 }) {
@@ -380,12 +466,16 @@ function ApprovalsSection({
         <Text style={styles.emptyCopy}>{t("home.approvals.empty")}</Text>
       ) : (
         cards.map((card) => {
-          const canOneTap = Boolean(card.recommendationId);
+          const canOneTap = Boolean(card.recommendationId) && canOneTapRecommend;
+          const reviewSetup = Boolean(card.recommendationId) && !canOneTapRecommend;
           return (
             <View key={card.id} style={styles.briefCard}>
               <Text style={styles.cardTitle}>{card.title}</Text>
               <Text style={styles.cardBody}>{card.recommendedAction}</Text>
               <Text style={styles.metaLine}>{t("home.approvals.why")}: {card.whyItMatters}</Text>
+              {reviewSetup ? (
+                <Text style={styles.metaLine}>{t("home.approvals.readinessBlocked")}</Text>
+              ) : null}
               <View style={styles.approvalActions}>
                 <Button
                   title={
@@ -393,7 +483,9 @@ function ApprovalsSection({
                       ? t("home.approvals.approving")
                       : canOneTap
                         ? t("home.approvals.approve")
-                        : t("home.approvals.review")
+                        : reviewSetup
+                          ? t("home.approvals.reviewSetup")
+                          : t("home.approvals.review")
                   }
                   onPress={() => void onApprove(card)}
                   disabled={Boolean(approvingId)}
