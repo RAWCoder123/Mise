@@ -405,6 +405,10 @@ export async function submitInventoryCountSession(restaurantId: string, sessionI
   return repository.submitInventoryCountSession(restaurantId, sessionId);
 }
 
+export async function returnInventoryCountSession(restaurantId: string, sessionId: string) {
+  return repository.returnInventoryCountSession(restaurantId, sessionId);
+}
+
 export async function cancelInventoryCountSession(restaurantId: string, sessionId: string) {
   return repository.cancelInventoryCountSession(restaurantId, sessionId);
 }

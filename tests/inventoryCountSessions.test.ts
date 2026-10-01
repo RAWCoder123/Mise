@@ -8,6 +8,7 @@ import {
   canApproveInventoryCountSession,
   canCancelInventoryCountSession,
   canDraftInventoryCountSession,
+  canReturnInventoryCountSession,
   mergeCountLineUpdates,
   planCountSessionApprovals,
   summarizeCountSessionProgress
@@ -156,10 +157,13 @@ test("assertSessionMutable enforces workflow transitions", () => {
   assert.throws(() => assertSessionMutable({ status: "submitted" }, "save"), /in-progress/i);
   assert.doesNotThrow(() => assertSessionMutable({ status: "submitted" }, "approve"));
   assert.throws(() => assertSessionMutable({ status: "in_progress" }, "approve"), /Submit/i);
+  assert.doesNotThrow(() => assertSessionMutable({ status: "submitted" }, "return"));
+  assert.throws(() => assertSessionMutable({ status: "in_progress" }, "return"), /submitted/i);
+  assert.throws(() => assertSessionMutable({ status: "approved" }, "return"), /submitted/i);
   assert.throws(() => assertSessionMutable({ status: "approved" }, "cancel"), /already closed/i);
 });
 
-test("staff may draft and submit counts; only managers approve or cancel", () => {
+test("staff may draft and submit counts; only managers approve, return, or cancel", () => {
   assert.equal(canDraftInventoryCountSession("staff"), true);
   assert.equal(canDraftInventoryCountSession("manager"), true);
   assert.equal(canApproveInventoryCountSession("staff"), false);
@@ -167,6 +171,8 @@ test("staff may draft and submit counts; only managers approve or cancel", () =>
   assert.equal(canApproveInventoryCountSession("owner"), true);
   assert.equal(canCancelInventoryCountSession("staff"), false);
   assert.equal(canCancelInventoryCountSession("admin"), true);
+  assert.equal(canReturnInventoryCountSession("staff"), false);
+  assert.equal(canReturnInventoryCountSession("manager"), true);
   assert.equal(canDraftInventoryCountSession(null), false);
 });
 

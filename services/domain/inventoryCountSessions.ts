@@ -9,7 +9,7 @@ import type {
 export const INVENTORY_COUNT_SESSION_OPEN_STATUSES = ["in_progress", "submitted"] as const;
 export type InventoryCountSessionOpenStatus = (typeof INVENTORY_COUNT_SESSION_OPEN_STATUSES)[number];
 
-/** Staff may begin, save, and submit counts; only managers+ may approve or cancel. */
+/** Staff may begin, save, and submit counts; only managers+ may approve, return, or cancel. */
 export const INVENTORY_COUNT_DRAFT_ROLES: readonly RestaurantRole[] = [
   "owner",
   "admin",
@@ -27,6 +27,11 @@ export function canApproveInventoryCountSession(role: RestaurantRole | null | un
 }
 
 export function canCancelInventoryCountSession(role: RestaurantRole | null | undefined): boolean {
+  return canApproveInventoryCountSession(role);
+}
+
+/** Managers may return a submitted session to in_progress without discarding counted lines. */
+export function canReturnInventoryCountSession(role: RestaurantRole | null | undefined): boolean {
   return canApproveInventoryCountSession(role);
 }
 
@@ -238,7 +243,10 @@ export function mergeCountLineUpdates(
   return next;
 }
 
-export function assertSessionMutable(session: Pick<InventoryCountSession, "status">, action: "save" | "submit" | "approve" | "cancel") {
+export function assertSessionMutable(
+  session: Pick<InventoryCountSession, "status">,
+  action: "save" | "submit" | "approve" | "return" | "cancel"
+) {
   if (action === "save" || action === "submit") {
     if (session.status !== "in_progress") {
       throw new Error("Only an in-progress count session can be edited or submitted.");
@@ -248,6 +256,12 @@ export function assertSessionMutable(session: Pick<InventoryCountSession, "statu
   if (action === "approve") {
     if (session.status !== "submitted") {
       throw new Error("Submit the count session before approving adjustments.");
+    }
+    return;
+  }
+  if (action === "return") {
+    if (session.status !== "submitted") {
+      throw new Error("Only a submitted count session can be returned for revision.");
     }
     return;
   }

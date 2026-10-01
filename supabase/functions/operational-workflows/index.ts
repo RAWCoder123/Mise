@@ -28,6 +28,7 @@ const actions = [
   "begin_count_session",
   "save_count_lines",
   "submit_count_session",
+  "return_count_session",
   "cancel_count_session",
   "approve_count_session"
 ] as const;
@@ -113,7 +114,11 @@ Deno.serve(async (req) => {
         true,
         requireRecord(data, "setup summary")
       );
-    } else if (countSessionDraftActions.has(action) || action === "cancel_count_session") {
+    } else if (
+      countSessionDraftActions.has(action) ||
+      action === "cancel_count_session" ||
+      action === "return_count_session"
+    ) {
       result = await runCountSessionDraftAction(securitySupabase, user.id, restaurantId, action, body);
     } else {
       result = await refreshWithRetry(securitySupabase, user.id, restaurantId, action, body, false, {});
@@ -274,6 +279,13 @@ async function runCountSessionDraftAction(
   }
   if (action === "submit_count_session") {
     return await serviceRpc(securitySupabase, "service_submit_inventory_count_session", {
+      p_actor_user_id: actorUserId,
+      p_restaurant_id: restaurantId,
+      p_session_id: requireUuid(body.sessionId, "sessionId")
+    });
+  }
+  if (action === "return_count_session") {
+    return await serviceRpc(securitySupabase, "service_return_inventory_count_session", {
       p_actor_user_id: actorUserId,
       p_restaurant_id: restaurantId,
       p_session_id: requireUuid(body.sessionId, "sessionId")
@@ -467,6 +479,7 @@ function auditAction(action: OperationalAction) {
   if (action === "begin_count_session") return "inventory_count_session_started";
   if (action === "save_count_lines") return "inventory_count_lines_saved";
   if (action === "submit_count_session") return "inventory_count_session_submitted";
+  if (action === "return_count_session") return "inventory_count_session_returned";
   if (action === "cancel_count_session") return "inventory_count_session_cancelled";
   if (action === "approve_count_session") return "inventory_count_session_approved";
   return "operational_signals_refreshed";
@@ -479,6 +492,7 @@ function auditEntityTable(action: OperationalAction) {
     action === "begin_count_session" ||
     action === "save_count_lines" ||
     action === "submit_count_session" ||
+    action === "return_count_session" ||
     action === "cancel_count_session" ||
     action === "approve_count_session"
   ) {
@@ -493,6 +507,7 @@ function auditEntityId(action: OperationalAction, body: Record<string, unknown>,
   if (
     action === "save_count_lines" ||
     action === "submit_count_session" ||
+    action === "return_count_session" ||
     action === "cancel_count_session" ||
     action === "approve_count_session"
   ) {
