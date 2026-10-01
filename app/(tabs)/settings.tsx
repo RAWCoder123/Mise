@@ -11,6 +11,7 @@ import {
   Languages,
   LifeBuoy,
   ArrowLeft,
+  LogOut,
   Mail,
   PlugZap,
   RefreshCw,
@@ -38,8 +39,10 @@ import {
   fetchDemoReadinessSummary,
   fetchEmailConnectionState,
   fetchRestaurantOpsProfile,
-  fetchSuppliers
+  fetchSuppliers,
+  leaveMyRestaurantMembership
 } from "../../services/miseService";
+import { canLeaveRestaurantMembership, TeamMembershipError } from "../../services/domain/teamMembership";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -65,6 +68,7 @@ export default function SettingsScreen() {
     memberships,
     restaurant,
     posProvider,
+    refreshWorkspaceAccess,
     resetDemoData,
     role,
     signOut,
@@ -78,6 +82,8 @@ export default function SettingsScreen() {
   const [readiness, setReadiness] = useState<DemoReadinessSummary | null>(null);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [message, setMessage] = useState<SettingsNotice | null>(null);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [leavingRestaurant, setLeavingRestaurant] = useState(false);
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -100,6 +106,8 @@ export default function SettingsScreen() {
     setReadiness(null);
     setDiagnosticsOpen(false);
     setMessage(null);
+    setLeaveConfirmOpen(false);
+    setLeavingRestaurant(false);
   }, [restaurant?.id]);
 
   const load = useCallback(async () => {
@@ -189,12 +197,40 @@ export default function SettingsScreen() {
   const restaurantActionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: Boolean(restaurant),
     hubReady,
-    busy: loading || signingOut || deletingAccount || Boolean(switchingRestaurantId)
+    busy: loading || signingOut || deletingAccount || leavingRestaurant || Boolean(switchingRestaurantId)
   });
   const visibleSuppliers = hubReady ? suppliers : [];
   const visibleOpsProfile = hubReady ? opsProfile : null;
   const visibleEmailConnection = hubReady ? emailConnection : null;
   const visibleReadiness = hubReady ? readiness : null;
+  const canLeaveRestaurant = canLeaveRestaurantMembership(role) && !usingLocalDemo;
+
+  async function leaveRestaurantWorkspace() {
+    if (leavingRestaurant || !restaurant || !restaurantActionsEditable || !canLeaveRestaurant) return;
+    const restaurantId = restaurant.id;
+    setLeavingRestaurant(true);
+    setMessage(null);
+    try {
+      await leaveMyRestaurantMembership(restaurantId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setLeaveConfirmOpen(false);
+      await refreshWorkspaceAccess();
+    } catch (leaveError) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      captureMiseError(leaveError, {
+        flow: "settings",
+        operation: "leave_restaurant",
+        restaurant_id: restaurantId
+      });
+      const noticeKey =
+        leaveError instanceof TeamMembershipError && leaveError.status === "permission_denied"
+          ? "settings.notice.leaveRestaurantDenied"
+          : "settings.notice.leaveRestaurantError";
+      setMessage({ key: noticeKey, tone: "danger" });
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setLeavingRestaurant(false);
+    }
+  }
 
   async function removeAccount() {
     if (deletingAccount || !restaurant || !restaurantActionsEditable) return;
@@ -498,6 +534,55 @@ export default function SettingsScreen() {
           ) : null}
 
           <View style={styles.dangerZone}>
+            {canLeaveRestaurant ? (
+              <>
+                <Text style={styles.rowTitle}>{t("settings.account.leaveTitle")}</Text>
+                <Text style={styles.rowBody}>{t("settings.account.leaveBody")}</Text>
+                {leaveConfirmOpen ? (
+                  <View style={styles.deleteConfirm}>
+                    <StatusNotice
+                      tone="warning"
+                      title={t("settings.account.leaveWarningTitle")}
+                      message={t("settings.account.leaveWarningBody", {
+                        restaurant: restaurant?.name ?? t("settings.account.operator")
+                      })}
+                    />
+                    <Button
+                      title={t(
+                        leavingRestaurant
+                          ? "settings.account.leaving"
+                          : "settings.account.leaveConfirm"
+                      )}
+                      variant="danger"
+                      icon={<LogOut size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
+                      onPress={() => void leaveRestaurantWorkspace()}
+                      disabled={!restaurantActionsEditable || leavingRestaurant}
+                      fullWidth
+                    />
+                    <Button
+                      title={t("common.cancel")}
+                      variant="ghost"
+                      onPress={() => setLeaveConfirmOpen(false)}
+                      disabled={leavingRestaurant}
+                      fullWidth
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.deleteOpenAction}>
+                    <Button
+                      title={t("settings.account.leaveTitle")}
+                      accessibilityHint={t("settings.account.leaveOpenHint")}
+                      variant="secondary"
+                      icon={<LogOut size={icon.row} color={colors.danger} strokeWidth={iconStroke} />}
+                      onPress={() => setLeaveConfirmOpen(true)}
+                      disabled={!restaurantActionsEditable}
+                      fullWidth
+                    />
+                  </View>
+                )}
+              </>
+            ) : null}
+
             <Text style={styles.rowTitle}>{t("settings.account.deleteTitle")}</Text>
             <Text style={styles.rowBody}>{t("settings.account.deleteBody")}</Text>
             {deleteConfirmOpen ? (

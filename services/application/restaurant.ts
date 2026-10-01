@@ -4,6 +4,7 @@ import { DEMO_DATASET, type DemoSetupProfile } from "../demoData";
 import type { AuditLogInput } from "../repositories/miseRepository";
 import {
   normalizeTeamMemberEmail,
+  teamMembershipErrorFrom,
   type AssignableTeamRole
 } from "../domain/teamMembership";
 import {
@@ -63,6 +64,16 @@ export async function updateRestaurantMember(
 
 export async function removeRestaurantMember(restaurantId: string, targetUserId: string) {
   return repository.removeRestaurantMember(restaurantId, targetUserId);
+}
+
+export async function leaveMyRestaurantMembership(restaurantId: string) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  try {
+    return await repository.leaveMyRestaurantMembership(normalizedRestaurantId);
+  } catch (error) {
+    throw teamMembershipErrorFrom(error);
+  }
 }
 
 export async function deleteAccount(restaurantId: string) {

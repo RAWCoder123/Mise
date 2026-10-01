@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   assignableTeamRoles,
   canEditTeamMember,
+  canLeaveRestaurantMembership,
   canManageTeam,
   normalizeTeamMemberEmail,
   sortTeamMembers,
@@ -41,6 +42,15 @@ test("edit rules protect owners, self, and admin authority boundaries", () => {
   assert.equal(canEditTeamMember("admin", { role: "manager", isSelf: false }), true);
   assert.equal(canEditTeamMember("admin", { role: "admin", isSelf: false }), false);
   assert.equal(canEditTeamMember("manager", { role: "staff", isSelf: false }), false);
+});
+
+test("non-owners may leave a restaurant; owners must transfer or delete", () => {
+  assert.equal(canLeaveRestaurantMembership("staff"), true);
+  assert.equal(canLeaveRestaurantMembership("manager"), true);
+  assert.equal(canLeaveRestaurantMembership("admin"), true);
+  assert.equal(canLeaveRestaurantMembership("owner"), false);
+  assert.equal(canLeaveRestaurantMembership(null), false);
+  assert.equal(canLeaveRestaurantMembership(undefined), false);
 });
 
 test("team member emails are normalized and rejected when unusable", () => {

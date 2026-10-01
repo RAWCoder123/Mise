@@ -64,6 +64,7 @@ interface MiseSessionContextValue {
   signInWithProvider: (provider: AuthOAuthProvider) => Promise<void>;
   continueWithDemo: (profile?: { name?: string; cuisine_type?: string; posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   switchRestaurant: (restaurantId: string) => Promise<void>;
+  refreshWorkspaceAccess: () => Promise<void>;
   connectDemoPOS: (provider: PosProvider) => Promise<void>;
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
   signOut: () => Promise<void>;
@@ -526,6 +527,22 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     [authUser, availableRestaurants, memberships, refreshPOS, saveSnapshot]
   );
 
+  const refreshWorkspaceAccess = useCallback(async () => {
+    if (isDemoModeRef.current) {
+      await hydrateLocalDemo({
+        user: userRef.current ?? undefined,
+        activeRestaurantId: activeRestaurantIdRef.current,
+        isDemoMode: true
+      });
+      return;
+    }
+    if (!authUser) {
+      await clearSessionState();
+      return;
+    }
+    await hydrateSupabaseUser(authUser, activeRestaurantIdRef.current);
+  }, [authUser, clearSessionState, hydrateLocalDemo, hydrateSupabaseUser]);
+
   const connectDemoPOS = useCallback(
     async (provider: PosProvider) => {
       if (!isDemoMode) {
@@ -599,6 +616,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       signInWithProvider,
       continueWithDemo,
       switchRestaurant,
+      refreshWorkspaceAccess,
       connectDemoPOS,
       resetDemoData,
       signOut
@@ -616,6 +634,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       posStatusLabel,
       ready,
       restaurant,
+      refreshWorkspaceAccess,
       resetDemoData,
       role,
       signIn,
