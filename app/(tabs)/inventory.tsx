@@ -119,6 +119,9 @@ export default function InventoryScreen() {
     loadError: error
   });
   const hubReady = hubLoadState === "ready";
+  // Soft-refresh errors must not claim "no inventory matches" from a cleared
+  // outlook list while RetryNotice is already showing.
+  const hubUnavailable = hubLoadState === "error";
   const visibleOutlooks = hubReady ? outlooks : [];
   const visibleQueue = hubReady ? queueEntries : [];
 
@@ -322,11 +325,20 @@ export default function InventoryScreen() {
             </View>
           </View>
           {filtered.length === 0 ? (
-            <View style={styles.emptyList}>
-              <Package size={icon.emphasis} color={colors.faint} strokeWidth={iconStroke} />
-              <Text style={styles.emptyListTitle}>{t("inventory.emptyMatches.title")}</Text>
-            </View>
-          ) : (
+            hubUnavailable ? (
+              <View style={styles.emptyList}>
+                <Package size={icon.emphasis} color={colors.faint} strokeWidth={iconStroke} />
+                <Text style={styles.emptyListTitle}>{t("inventory.emptyMatches.unavailable.title")}</Text>
+                <Text style={styles.emptyListBody}>{t("inventory.emptyMatches.unavailable.body")}</Text>
+              </View>
+            ) : hubReady ? (
+              <View style={styles.emptyList}>
+                <Package size={icon.emphasis} color={colors.faint} strokeWidth={iconStroke} />
+                <Text style={styles.emptyListTitle}>{t("inventory.emptyMatches.title")}</Text>
+                <Text style={styles.emptyListBody}>{t("inventory.emptyMatches.body")}</Text>
+              </View>
+            ) : null
+          ) : hubReady ? (
             <RowGroup>
               {filtered.map((outlook) => (
                 <InventoryListRow
@@ -336,7 +348,7 @@ export default function InventoryScreen() {
                 />
               ))}
             </RowGroup>
-          )}
+          ) : null}
         </View> : null}
 
         {showStockBrowser && hubReady && (canDraftCount || openCountSessionId) ? (
@@ -569,4 +581,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20
   },
+  emptyListBody: {
+    color: colors.muted,
+    fontFamily: typography.families.body,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center"
+  }
 });
