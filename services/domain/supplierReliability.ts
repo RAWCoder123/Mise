@@ -28,6 +28,8 @@ export interface SupplierDeliveryItemRecord {
   damaged_quantity: number;
   missing_quantity: number;
   canonical_unit: string;
+  /** Optional invoice unit price in the inventory item's display/purchase unit. */
+  unit_price?: number | null;
   discrepancy_reason?: string | null;
 }
 

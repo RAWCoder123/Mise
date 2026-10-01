@@ -11,6 +11,7 @@ import {
   planCountSessionApprovals,
   summarizeCountSessionProgress
 } from "../domain/inventoryCountSessions";
+import { selectInvoiceUnitCostApplyCandidate } from "../domain/invoiceUnitCostApply";
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
 import {
   requireInventoryCountLineUpdates,
@@ -29,6 +30,7 @@ import {
   fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
+import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -468,4 +470,46 @@ export async function approveInventoryCountSession(restaurantId: string, session
     recommendations,
     insights
   );
+}
+
+function requireWorkflowId(value: string, label: string) {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`Missing ${label}.`);
+  return normalized;
+}
+
+export async function fetchInvoiceUnitCostApplyCandidate(
+  restaurantId: string,
+  inventoryItemId: string
+) {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const normalizedItemId = requireWorkflowId(inventoryItemId, "inventory item");
+  const [items, history] = await Promise.all([
+    repository.fetchInventoryItems(normalizedRestaurantId),
+    repository.fetchSupplierDeliveryHistory(normalizedRestaurantId)
+  ]);
+  const item = items.find((entry) => entry.id === normalizedItemId);
+  if (!item) throw new Error("Inventory item not found");
+  return selectInvoiceUnitCostApplyCandidate({
+    restaurantId: normalizedRestaurantId,
+    inventoryItem: item,
+    deliveries: history.deliveries,
+    deliveryItems: history.items
+  });
+}
+
+export async function applyInvoiceUnitCostFromDelivery(
+  restaurantId: string,
+  input: { inventoryItemId: string; deliveryItemId: string }
+) {
+  const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
+  const inventoryItemId = requireWorkflowId(input.inventoryItemId, "inventory item");
+  const deliveryItemId = requireWorkflowId(input.deliveryItemId, "delivery line");
+  const result = await repository.applyInvoiceUnitCostFromDelivery(normalizedRestaurantId, {
+    inventoryItemId,
+    deliveryItemId
+  });
+  // Cost changes affect order-automation readiness and recommendation spend.
+  await regenerateOperationalSignals(normalizedRestaurantId);
+  return result;
 }
