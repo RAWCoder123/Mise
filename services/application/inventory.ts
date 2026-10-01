@@ -12,6 +12,7 @@ import {
   summarizeCountSessionProgress
 } from "../domain/inventoryCountSessions";
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
+import { normalizeCapturedSupplierSku } from "../domain/inventoryBarcodeSku";
 import {
   requireInventoryCountLineUpdates,
   requireInventoryCountSessionNote,
@@ -72,6 +73,30 @@ function signalCountEvidence(data: {
 
 export async function fetchInventoryItems(restaurantId: string) {
   return repository.fetchInventoryItems(restaurantId);
+}
+
+export async function fetchInventoryBarcodeCatalog(restaurantId: string) {
+  const normalizedRestaurantId = requireSupplierAuthorityId(restaurantId, "restaurant");
+  const [inventoryItems, supplierItems] = await Promise.all([
+    repository.fetchInventoryItems(normalizedRestaurantId),
+    repository.fetchSupplierItems(normalizedRestaurantId)
+  ]);
+  return { inventoryItems, supplierItems };
+}
+
+export async function captureInventoryItemSupplierSku(
+  restaurantId: string,
+  inventoryItemId: string,
+  supplierSku: string
+) {
+  const normalizedRestaurantId = requireSupplierAuthorityId(restaurantId, "restaurant");
+  const normalizedItemId = requireSupplierAuthorityId(inventoryItemId, "inventory item");
+  const normalizedSku = normalizeCapturedSupplierSku(supplierSku);
+  return repository.captureInventoryItemSupplierSku(
+    normalizedRestaurantId,
+    normalizedItemId,
+    normalizedSku
+  );
 }
 
 export async function reassignInventoryItemSupplier(

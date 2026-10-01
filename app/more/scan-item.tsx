@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
-import { ArrowLeft, Camera, Package, ScanLine, Search } from "lucide-react-native";
+import { ArrowLeft, Camera, Link2, Package, ScanLine, Search } from "lucide-react-native";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -15,8 +15,12 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
-import { fetchInventoryItems } from "../../services/miseService";
-import type { InventoryItem } from "../../types/mise";
+import {
+  captureInventoryItemSupplierSku,
+  fetchInventoryBarcodeCatalog
+} from "../../services/miseService";
+import { canManageRestaurantData } from "../../services/tenantAccess";
+import type { InventoryItem, SupplierItem } from "../../types/mise";
 
 const CAMERA_SUPPORTED = Platform.OS === "ios" || Platform.OS === "android";
 const SCAN_COOLDOWN_MS = 1600;
@@ -30,10 +34,20 @@ function BackAction() {
   );
 }
 
-function matchesQuery(item: InventoryItem, query: string) {
+function matchesQuery(item: InventoryItem, query: string, supplierItems: readonly SupplierItem[]) {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  const haystack = [item.item_name, item.id, item.category, item.supplier_name, item.unit]
+  const linkedSkus = supplierItems
+    .filter(
+      (entry) =>
+        entry.inventory_item_id === item.id ||
+        (entry.supplier_id === item.supplier_id &&
+          entry.item_name.trim().toLowerCase() === item.item_name.trim().toLowerCase() &&
+          entry.unit.trim().toLowerCase() === item.unit.trim().toLowerCase())
+    )
+    .map((entry) => entry.supplier_sku)
+    .filter(Boolean);
+  const haystack = [item.item_name, item.id, item.category, item.supplier_name, item.unit, ...linkedSkus]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -42,12 +56,17 @@ function matchesQuery(item: InventoryItem, query: string) {
 
 export default function ScanItemScreen() {
   const { formatNumber, t } = useLocale();
-  const { restaurant } = useMiseSession();
+  const { memberships, restaurant } = useMiseSession();
   const [permission, requestPermission] = useCameraPermissions();
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [supplierItems, setSupplierItems] = useState<SupplierItem[]>([]);
   const [query, setQuery] = useState("");
   const [barcodeMatches, setBarcodeMatches] = useState<InventoryItem[] | null>(null);
   const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
+  const [captureMode, setCaptureMode] = useState(false);
+  const [capturingItemId, setCapturingItemId] = useState<string | null>(null);
+  const [captureMessage, setCaptureMessage] = useState<string | null>(null);
+  const [captureError, setCaptureError] = useState(false);
   const [scanPaused, setScanPaused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -56,13 +75,19 @@ export default function ScanItemScreen() {
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   const lastScanAtRef = useRef(0);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
+  const canCapture = canManageRestaurantData(memberships, restaurant?.id);
 
   useEffect(() => {
     requestIdRef.current += 1;
     setItems([]);
+    setSupplierItems([]);
     setQuery("");
     setBarcodeMatches(null);
     setLastScannedCode(null);
+    setCaptureMode(false);
+    setCapturingItemId(null);
+    setCaptureMessage(null);
+    setCaptureError(false);
     setLoadedRestaurantId(null);
     setError(false);
     setLoading(Boolean(restaurant));
@@ -78,9 +103,10 @@ export default function ScanItemScreen() {
     setLoading(true);
     setError(false);
     try {
-      const nextItems = await fetchInventoryItems(restaurantId);
+      const catalog = await fetchInventoryBarcodeCatalog(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
-      setItems(nextItems);
+      setItems(catalog.inventoryItems);
+      setSupplierItems(catalog.supplierItems);
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -100,9 +126,13 @@ export default function ScanItemScreen() {
   );
 
   const visibleItems = loadedRestaurantId === restaurant?.id ? items : [];
+  const visibleSupplierItems = loadedRestaurantId === restaurant?.id ? supplierItems : [];
   const searchMatches = useMemo(
-    () => visibleItems.filter((item) => matchesQuery(item, query)).slice(0, 40),
-    [query, visibleItems]
+    () =>
+      visibleItems
+        .filter((item) => matchesQuery(item, query, visibleSupplierItems))
+        .slice(0, 40),
+    [query, visibleItems, visibleSupplierItems]
   );
 
   const handleBarcode = useCallback(
@@ -113,8 +143,13 @@ export default function ScanItemScreen() {
       if (now - lastScanAtRef.current < SCAN_COOLDOWN_MS) return;
       lastScanAtRef.current = now;
 
-      const { matches } = matchInventoryBarcode(code, visibleItems);
+      const { matches } = matchInventoryBarcode(code, visibleItems, {
+        supplierItems: visibleSupplierItems
+      });
       setLastScannedCode(code);
+      setCaptureMode(false);
+      setCaptureMessage(null);
+      setCaptureError(false);
 
       if (matches.length === 1) {
         setScanPaused(true);
@@ -131,8 +166,46 @@ export default function ScanItemScreen() {
 
       setBarcodeMatches([]);
       setQuery(code);
+      if (canCapture) {
+        setCaptureMode(true);
+      }
     },
-    [scanPaused, visibleItems]
+    [canCapture, scanPaused, visibleItems, visibleSupplierItems]
+  );
+
+  const linkBarcodeToItem = useCallback(
+    async (item: InventoryItem) => {
+      if (!restaurant || !lastScannedCode || !canCapture) return;
+      const restaurantId = restaurant.id;
+      const code = lastScannedCode;
+      setCapturingItemId(item.id);
+      setCaptureMessage(null);
+      setCaptureError(false);
+      try {
+        const saved = await captureInventoryItemSupplierSku(restaurantId, item.id, code);
+        if (activeRestaurantIdRef.current !== restaurantId) return;
+        setSupplierItems((current) => {
+          const without = current.filter((entry) => entry.id !== saved.id);
+          return [...without, saved];
+        });
+        setCaptureMode(false);
+        setBarcodeMatches(null);
+        setScanPaused(true);
+        setCaptureMessage(t("scanItem.capture.success", { item: item.item_name }));
+        router.push(`/inventory/${item.id}`);
+      } catch (caught) {
+        if (activeRestaurantIdRef.current !== restaurantId) return;
+        setCaptureError(true);
+        setCaptureMessage(
+          caught instanceof Error ? caught.message : t("scanItem.capture.error")
+        );
+      } finally {
+        if (activeRestaurantIdRef.current === restaurantId) {
+          setCapturingItemId(null);
+        }
+      }
+    },
+    [canCapture, lastScannedCode, restaurant, t]
   );
 
   if (!restaurant) {
@@ -146,11 +219,13 @@ export default function ScanItemScreen() {
   const showCamera = CAMERA_SUPPORTED && permission?.granted;
   const listItems = barcodeMatches && barcodeMatches.length > 0 ? barcodeMatches : searchMatches;
   const listTitle =
-    barcodeMatches && barcodeMatches.length > 1
-      ? t("scanItem.barcode.multi", { count: formatNumber(barcodeMatches.length) })
-      : query.trim()
-        ? t("scanItem.results", { count: formatNumber(listItems.length) })
-        : t("scanItem.allItems", { count: formatNumber(visibleItems.length) });
+    captureMode && lastScannedCode
+      ? t("scanItem.capture.pickTitle")
+      : barcodeMatches && barcodeMatches.length > 1
+        ? t("scanItem.barcode.multi", { count: formatNumber(barcodeMatches.length) })
+        : query.trim()
+          ? t("scanItem.results", { count: formatNumber(listItems.length) })
+          : t("scanItem.allItems", { count: formatNumber(visibleItems.length) });
 
   return (
     <Screen
@@ -206,7 +281,19 @@ export default function ScanItemScreen() {
           <StatusNotice
             tone="warning"
             title={t("scanItem.barcode.noneTitle")}
-            message={t("scanItem.barcode.noneBody", { code: lastScannedCode })}
+            message={
+              canCapture
+                ? t("scanItem.barcode.noneBodyCapture", { code: lastScannedCode })
+                : t("scanItem.barcode.noneBody", { code: lastScannedCode })
+            }
+          />
+        ) : null}
+
+        {captureMessage ? (
+          <StatusNotice
+            tone={captureError ? "danger" : "success"}
+            title={captureError ? t("scanItem.capture.errorTitle") : t("scanItem.capture.successTitle")}
+            message={captureMessage}
           />
         ) : null}
 
@@ -231,6 +318,7 @@ export default function ScanItemScreen() {
             onChangeText={(value) => {
               setQuery(value);
               setBarcodeMatches(null);
+              if (!value.trim()) setCaptureMode(false);
             }}
             autoCapitalize="none"
             autoCorrect={false}
@@ -259,9 +347,26 @@ export default function ScanItemScreen() {
                   code: item.id
                 })}
                 value={`${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${item.unit}`}
-                icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
-                onPress={() => router.push(`/inventory/${item.id}`)}
-                accessibilityLabel={t("scanItem.row.accessibility", { item: item.item_name })}
+                icon={
+                  captureMode ? (
+                    <Link2 size={icon.row} color={colors.accent} strokeWidth={iconStroke} />
+                  ) : (
+                    <Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />
+                  )
+                }
+                onPress={() => {
+                  if (captureMode && lastScannedCode && canCapture) {
+                    void linkBarcodeToItem(item);
+                    return;
+                  }
+                  router.push(`/inventory/${item.id}`);
+                }}
+                disabled={capturingItemId !== null}
+                accessibilityLabel={
+                  captureMode
+                    ? t("scanItem.capture.rowAccessibility", { item: item.item_name })
+                    : t("scanItem.row.accessibility", { item: item.item_name })
+                }
               />
             ))}
           </View>

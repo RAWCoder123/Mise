@@ -272,6 +272,8 @@ export interface SupplierItem {
   supplier_id?: string | null;
   supplier_name: string;
   supplier_sku: string | null;
+  /** Optional link used for barcode/SKU capture onto inventory authority. */
+  inventory_item_id?: string | null;
   item_name: string;
   unit: string;
   pack_size: string | null;

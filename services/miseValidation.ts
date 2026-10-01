@@ -1341,6 +1341,7 @@ export function normalizeSupplierItem(value: SupplierItem): SupplierItem {
       : requireSupplierAuthorityId(value.supplier_id),
     supplier_name: asString(value.supplier_name, "Supplier"),
     supplier_sku: asNullableString(value.supplier_sku),
+    inventory_item_id: asNullableString(value.inventory_item_id),
     item_name: asString(value.item_name, "Item"),
     unit: asString(value.unit, "unit"),
     pack_size: asNullableString(value.pack_size),
