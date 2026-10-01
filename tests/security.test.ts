@@ -65,11 +65,38 @@ test("tenant role helper keeps staff read-only and lets managers operate invento
 });
 
 test("production mode does not expose demo credentials or demo access", () => {
-  const productionConfig = { appEnv: "production" as const, enableDemoMode: true };
+  const productionConfig = { appEnv: "production" as const, enableDemoMode: true, supportUrl: null };
   const credentials = getInitialLoginCredentials(productionConfig);
 
   assert.equal(canUseDemoMode(productionConfig), false);
   assert.deepEqual(credentials, { email: "", password: "" });
+});
+
+test("support URL config accepts only HTTPS and fails closed otherwise", () => {
+  const previous = process.env.EXPO_PUBLIC_SUPPORT_URL;
+
+  try {
+    process.env.EXPO_PUBLIC_SUPPORT_URL = "https://getmise.app/support";
+    assert.equal(readPublicAppConfig().supportUrl, "https://getmise.app/support");
+
+    process.env.EXPO_PUBLIC_SUPPORT_URL = "http://getmise.app/support";
+    assert.equal(readPublicAppConfig().supportUrl, null);
+
+    process.env.EXPO_PUBLIC_SUPPORT_URL = "ftp://getmise.app/support";
+    assert.equal(readPublicAppConfig().supportUrl, null);
+
+    process.env.EXPO_PUBLIC_SUPPORT_URL = "not-a-url";
+    assert.equal(readPublicAppConfig().supportUrl, null);
+
+    delete process.env.EXPO_PUBLIC_SUPPORT_URL;
+    assert.equal(readPublicAppConfig().supportUrl, null);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.EXPO_PUBLIC_SUPPORT_URL;
+    } else {
+      process.env.EXPO_PUBLIC_SUPPORT_URL = previous;
+    }
+  }
 });
 
 test("development builds default to local demo mode unless explicitly disabled", () => {
