@@ -32,12 +32,17 @@ export interface DataFreshnessDescriptor {
   missingData: string[];
 }
 
+export type OperatingBriefApprovalSource = "recommendation" | "action" | "finding";
+
 export interface OperatingBriefApprovalCard {
   id: string;
+  source: OperatingBriefApprovalSource;
   recommendationId: string | null;
   actionId: string | null;
   orderId?: string | null;
   findingId: string | null;
+  /** Present when title came from structured Mise templates rather than free-form prose. */
+  titleIsStructured: boolean;
   title: string;
   decision: string;
   whyItMatters: string;
@@ -49,6 +54,8 @@ export interface OperatingBriefApprovalCard {
   estimatedFinancialImpact: string | null;
   riskIfIgnored: string;
   workAlreadyCompleted: string[];
+  itemName: string | null;
+  actionType: string | null;
   supplierName: string | null;
   quantity: number | null;
   unit: string | null;
@@ -68,12 +75,18 @@ export interface OperatingOutlook {
   preventableLoss: string | null;
 }
 
+export type MonitoringRowKind = "inventory" | "supplier_order" | "approvals";
+
 export interface MonitoringRow {
   id: string;
+  kind: MonitoringRowKind;
   title: string;
   detail: string;
   startedAt: string;
   status: "monitoring" | "waiting";
+  subjectName: string | null;
+  deliveryDate: string | null;
+  approvalCount: number | null;
   relatedEntityType: string | null;
   relatedEntityId: string | null;
 }
@@ -266,10 +279,12 @@ function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalC
     const confidence = recommendationConfidence(input, recommendation);
     return {
       id: `approval_rec_${recommendation.id}`,
+      source: "recommendation",
       recommendationId: recommendation.id,
       actionId: null,
       orderId: null,
       findingId: null,
+      titleIsStructured: true,
       title: `Approve ${recommendation.item_name} reorder`,
       decision: `Approve ${recommendation.recommended_quantity} ${recommendation.unit} from ${recommendation.supplier_name}`,
       whyItMatters: recommendation.reason,
@@ -284,6 +299,8 @@ function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalC
         "Compared current quantity with mapped demand",
         "Prepared a recommended reorder quantity"
       ],
+      itemName: recommendation.item_name,
+      actionType: null,
       supplierName: recommendation.supplier_name,
       quantity: recommendation.recommended_quantity,
       unit: recommendation.unit
@@ -307,18 +324,21 @@ function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalC
       const orderId = typeof impact.orderId === "string" ? impact.orderId : null;
       if (!orderId || !draftOrderIds.has(orderId)) continue;
     }
+    const providedTitle =
+      typeof impact.title === "string" && impact.title.trim() ? impact.title.trim() : null;
     const title =
-      typeof impact.title === "string" && impact.title.trim()
-        ? impact.title
-        : action.actionType === "send_supplier_order"
-          ? `Approve send to ${typeof impact.supplierName === "string" ? impact.supplierName : "supplier"}`
-          : `Approve ${action.actionType.replace(/_/g, " ")}`;
+      providedTitle ??
+      (action.actionType === "send_supplier_order"
+        ? `Approve send to ${typeof impact.supplierName === "string" ? impact.supplierName : "supplier"}`
+        : `Approve ${action.actionType.replace(/_/g, " ")}`);
     cards.push({
       id: `approval_action_${action.id}`,
+      source: "action",
       recommendationId: action.recommendationId,
       actionId: action.id,
       orderId: typeof impact.orderId === "string" ? impact.orderId : null,
       findingId: null,
+      titleIsStructured: !providedTitle,
       title,
       decision: `Approve prepared action (${action.actionType})`,
       whyItMatters: "Mise prepared this action and is waiting for an explicit operator decision.",
@@ -334,6 +354,8 @@ function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalC
           : `${(action.financialImpactCents / 100).toFixed(2)} estimated impact`,
       riskIfIgnored: "Leaving this undecided blocks the prepared workflow.",
       workAlreadyCompleted: ["Prepared the action with evidence", "Checked autonomy and permission gates"],
+      itemName: null,
+      actionType: action.actionType,
       supplierName: typeof impact.supplierName === "string" ? impact.supplierName : null,
       quantity: null,
       unit: null
@@ -345,10 +367,12 @@ function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalC
     if (finding.severity === "info") continue;
     cards.push({
       id: `approval_finding_${finding.id}`,
+      source: "finding",
       recommendationId: null,
       actionId: null,
       orderId: null,
       findingId: finding.id,
+      titleIsStructured: false,
       title: finding.title,
       decision: finding.recommendedAction,
       whyItMatters: finding.explanation,
@@ -360,6 +384,8 @@ function buildApprovalCards(input: OperatingBriefInput): OperatingBriefApprovalC
       estimatedFinancialImpact: null,
       riskIfIgnored: finding.explanation,
       workAlreadyCompleted: finding.evidence.slice(0, 3).map((entry) => entry.summary),
+      itemName: null,
+      actionType: null,
       supplierName: null,
       quantity: null,
       unit: null
@@ -467,10 +493,14 @@ function buildMonitoringRows(
     if (label === "AtRisk" || label === "Critical" || label === "Watch") {
       rows.push({
         id: `watch_inventory_${outlook.item.id}`,
+        kind: "inventory",
         title: `Tracking ${outlook.item.item_name} usage`,
         detail: outlook.prediction.coverageLabel,
         startedAt: outlook.prediction.countedAt ?? generatedAt,
         status: "monitoring",
+        subjectName: outlook.item.item_name,
+        deliveryDate: null,
+        approvalCount: null,
         relatedEntityType: "inventory_item",
         relatedEntityId: outlook.item.id
       });
@@ -480,12 +510,16 @@ function buildMonitoringRows(
   for (const order of input.orders.filter((entry) => entry.status === "sent").slice(0, 5)) {
     rows.push({
       id: `watch_order_${order.id}`,
+      kind: "supplier_order",
       title: `Waiting for ${order.supplier_name} confirmation`,
       detail: order.delivery_date
         ? `Expected delivery ${order.delivery_date}.`
         : "Delivery date not yet confirmed.",
       startedAt: order.created_at,
       status: "waiting",
+      subjectName: order.supplier_name,
+      deliveryDate: order.delivery_date,
+      approvalCount: null,
       relatedEntityType: "supplier_order",
       relatedEntityId: order.id
     });
@@ -494,10 +528,14 @@ function buildMonitoringRows(
   if (approvals.length > 0) {
     rows.push({
       id: "watch_approvals",
+      kind: "approvals",
       title: "Watching open approval deadlines",
       detail: `${approvals.length} decision${approvals.length === 1 ? "" : "s"} still need an owner.`,
       startedAt: generatedAt,
       status: "waiting",
+      subjectName: null,
+      deliveryDate: null,
+      approvalCount: approvals.length,
       relatedEntityType: null,
       relatedEntityId: null
     });

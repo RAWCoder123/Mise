@@ -157,9 +157,11 @@ function fixtures(options: { allTasksComplete?: boolean } = {}) {
     needsApproval: [
       {
         id: "approval-1",
+        source: "recommendation",
         recommendationId: "recommendation-1",
         actionId: null,
         findingId: null,
+        titleIsStructured: true,
         title: "Approve peppers",
         decision: "Approve or dismiss",
         whyItMatters: "Coverage is low.",
@@ -171,6 +173,8 @@ function fixtures(options: { allTasksComplete?: boolean } = {}) {
         estimatedFinancialImpact: null,
         riskIfIgnored: "Prep may be constrained.",
         workAlreadyCompleted: ["Draft prepared"],
+        itemName: "Bell peppers",
+        actionType: null,
         supplierName: "Metro Produce",
         quantity: 12,
         unit: "lb"

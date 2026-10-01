@@ -24,6 +24,7 @@ import type { MessageKey, MessageValues } from "../../i18n/catalog";
 import { DEMO_DATASET } from "../../services/demoData";
 import type { ActivityEvent } from "../../services/domain/activityEvents";
 import type {
+  MonitoringRow,
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
@@ -46,8 +47,14 @@ import {
   type InventoryHealthTier
 } from "../../services/presentation/inventoryHealthPresentation";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
+import {
+  presentOperatingBriefApproval,
+  presentOperatingBriefMonitoringRow,
+  presentOperatingBriefPulseSummary
+} from "../../services/presentation/operatingBriefPresentation";
 import { taskRoleLabelKey } from "../../services/presentation/taskRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
+import type { AppLocale } from "../../i18n/catalog";
 
 type Translator = (key: MessageKey, values?: MessageValues) => string;
 
@@ -232,7 +239,7 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {visibleBrief ? <RestaurantStatusCard brief={visibleBrief} t={t} /> : null}
+        {visibleBrief ? <RestaurantStatusCard brief={visibleBrief} locale={locale} t={t} /> : null}
 
         {visibleSummary ? (
           <>
@@ -265,6 +272,7 @@ export default function HomeScreen() {
           <ApprovalsSection
             brief={visibleBrief}
             approvingId={approvingId}
+            locale={locale}
             t={t}
             onApprove={async (card) => {
               if (!restaurant || approvingId) return;
@@ -303,6 +311,8 @@ export default function HomeScreen() {
           />
         ) : null}
 
+        {visibleBrief ? <WatchingSection brief={visibleBrief} locale={locale} t={t} /> : null}
+
         {visibleBrief ? <ActivitySection brief={visibleBrief} formatDate={formatDate} t={t} /> : null}
 
         <Button
@@ -320,9 +330,11 @@ export default function HomeScreen() {
 
 function RestaurantStatusCard({
   brief,
+  locale,
   t
 }: {
   brief: OperatingBrief;
+  locale: AppLocale;
   t: Translator;
 }) {
   // A healthy morning needs no banner at all — the concept only shows this
@@ -341,6 +353,10 @@ function RestaurantStatusCard({
   const topRisk = brief.restaurantStatus.topRisk?.trim();
   const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
+  const presentedApproval = primaryApproval
+    ? presentOperatingBriefApproval(locale, primaryApproval)
+    : null;
+  const pulseSummary = presentOperatingBriefPulseSummary(locale, brief);
 
   return (
     <StatusNotice
@@ -349,9 +365,9 @@ function RestaurantStatusCard({
       title={
         primaryMenuRisk
           ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
-          : primaryApproval?.title || t(statusKey)
+          : presentedApproval?.title || t(statusKey)
       }
-      message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
+      message={topRisk ? t(statusKey) : presentedApproval?.whyItMatters ?? pulseSummary}
       onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
     />
   );
@@ -360,11 +376,13 @@ function RestaurantStatusCard({
 function ApprovalsSection({
   brief,
   approvingId,
+  locale,
   t,
   onApprove
 }: {
   brief: OperatingBrief;
   approvingId: string | null;
+  locale: AppLocale;
   t: Translator;
   onApprove: (card: OperatingBriefApprovalCard) => void | Promise<void>;
 }) {
@@ -381,11 +399,14 @@ function ApprovalsSection({
       ) : (
         cards.map((card) => {
           const canOneTap = Boolean(card.recommendationId);
+          const presented = presentOperatingBriefApproval(locale, card);
           return (
             <View key={card.id} style={styles.briefCard}>
-              <Text style={styles.cardTitle}>{card.title}</Text>
-              <Text style={styles.cardBody}>{card.recommendedAction}</Text>
-              <Text style={styles.metaLine}>{t("home.approvals.why")}: {card.whyItMatters}</Text>
+              <Text style={styles.cardTitle}>{presented.title}</Text>
+              <Text style={styles.cardBody}>{presented.recommendedAction}</Text>
+              <Text style={styles.metaLine}>
+                {t("home.approvals.why")}: {presented.whyItMatters}
+              </Text>
               <View style={styles.approvalActions}>
                 <Button
                   title={
@@ -404,6 +425,42 @@ function ApprovalsSection({
           );
         })
       )}
+    </View>
+  );
+}
+
+function WatchingSection({
+  brief,
+  locale,
+  t
+}: {
+  brief: OperatingBrief;
+  locale: AppLocale;
+  t: Translator;
+}) {
+  const rows = brief.miseIsWatching.slice(0, 4);
+  return (
+    <View style={styles.section}>
+      <SectionHeader
+        title={t("home.watching.title")}
+        action={t("home.watching.action")}
+        onAction={() => router.push("/today")}
+      />
+      {rows.length === 0 ? (
+        <Text style={styles.emptyCopy}>{t("home.watching.empty")}</Text>
+      ) : (
+        rows.map((row) => <WatchingRow key={row.id} row={row} locale={locale} />)
+      )}
+    </View>
+  );
+}
+
+function WatchingRow({ row, locale }: { row: MonitoringRow; locale: AppLocale }) {
+  const presented = presentOperatingBriefMonitoringRow(locale, row);
+  return (
+    <View style={styles.briefCard}>
+      <Text style={styles.cardTitle}>{presented.title}</Text>
+      <Text style={styles.cardBody}>{presented.detail}</Text>
     </View>
   );
 }
