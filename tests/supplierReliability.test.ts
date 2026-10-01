@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   buildSupplierReliabilitySummary,
   buildSupplierOrderDeliveryEvidence,
+  indexLatestSupplierOrderDeliveryEvidence,
+  supplierOrderLaneDeliveryAttentionStatus,
   type SupplierDeliveryItemRecord,
   type SupplierDeliveryRecord
 } from "../services/domain/supplierReliability";
@@ -256,4 +258,60 @@ test("order delivery evidence exposes the exact late shortage behind a reliabili
   assert.equal(evidence[0]?.lineCount, 2);
   assert.equal(evidence[0]?.discrepancyLineCount, 1);
   assert.equal(evidence[0]?.missingLineCount, 1);
+});
+
+test("lane delivery index keeps the latest attention status for sent and completed cards", () => {
+  const sentOrder = {
+    ...order("order-sent", "Produce Co.", "2026-07-10"),
+    status: "sent" as const
+  };
+  const completedOrder = order("order-completed", "Pantry Co.", "2026-07-12");
+  const cleanOrder = {
+    ...order("order-clean", "Pantry Co.", "2026-07-14"),
+    status: "sent" as const
+  };
+
+  const indexed = indexLatestSupplierOrderDeliveryEvidence({
+    restaurantId: RESTAURANT_ID,
+    restaurantTimeZone: "America/New_York",
+    orders: [sentOrder, completedOrder, cleanOrder],
+    deliveries: [
+      delivery("delivery-old", sentOrder.id, "2026-07-09T15:00:00.000Z", "partially_received"),
+      delivery("delivery-new", sentOrder.id, "2026-07-11T15:00:00.000Z", "discrepancy"),
+      delivery("delivery-completed", completedOrder.id, "2026-07-12T18:00:00.000Z", "received"),
+      delivery("delivery-clean", cleanOrder.id, "2026-07-14T12:00:00.000Z", "received")
+    ],
+    items: [
+      line("line-old", "delivery-old", 10, 6, { missing_quantity: 4 }),
+      line("line-new", "delivery-new", 10, 8, { missing_quantity: 2 }),
+      line("line-completed", "delivery-completed", 5, 5),
+      line("line-clean", "delivery-clean", 3, 3)
+    ]
+  });
+
+  assert.equal(indexed[sentOrder.id]?.deliveryId, "delivery-new");
+  assert.equal(indexed[sentOrder.id]?.status, "discrepancy");
+  assert.equal(supplierOrderLaneDeliveryAttentionStatus(indexed[sentOrder.id]), "discrepancy");
+  assert.equal(supplierOrderLaneDeliveryAttentionStatus(indexed[completedOrder.id]), null);
+  assert.equal(supplierOrderLaneDeliveryAttentionStatus(indexed[cleanOrder.id]), null);
+  assert.equal(supplierOrderLaneDeliveryAttentionStatus(undefined), null);
+});
+
+test("lane delivery attention rejects cross-restaurant evidence", () => {
+  assert.throws(
+    () =>
+      indexLatestSupplierOrderDeliveryEvidence({
+        restaurantId: RESTAURANT_ID,
+        restaurantTimeZone: "America/New_York",
+        orders: [order("order-1", "Produce Co.", "2026-07-10")],
+        deliveries: [
+          {
+            ...delivery("delivery-1", "order-1", "2026-07-11T15:00:00.000Z", "discrepancy"),
+            restaurant_id: "other-restaurant"
+          }
+        ],
+        items: []
+      }),
+    /cross-restaurant/
+  );
 });

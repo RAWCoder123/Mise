@@ -25,6 +25,7 @@ import {
   dismissPurchaseRecommendation,
   fetchAdvisoryPurchaseDecisionPatterns,
   fetchEmailConnectionState,
+  fetchLatestSupplierOrderDeliveryEvidence,
   fetchPurchaseRecommendations,
   fetchPurchaseRecommendationAuthorities,
   fetchSupplierOrders,
@@ -39,6 +40,10 @@ import {
 } from "../../services/domain/purchaseAuthority";
 import type { MessageKey } from "../../i18n/catalog";
 import type { PurchaseDecisionPattern } from "../../services/domain/purchaseDecisionMemory";
+import {
+  supplierOrderLaneDeliveryAttentionStatus,
+  type SupplierOrderDeliveryEvidence
+} from "../../services/domain/supplierReliability";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -69,6 +74,9 @@ export default function OrdersScreen() {
   const [recommendationAuthorities, setRecommendationAuthorities] = useState<Record<string, PurchaseAuthorityResult>>({});
   const [purchaseDecisionPatterns, setPurchaseDecisionPatterns] = useState<PurchaseDecisionPattern[]>([]);
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
+  const [orderDeliveryEvidence, setOrderDeliveryEvidence] = useState<
+    Record<string, SupplierOrderDeliveryEvidence>
+  >({});
   const [spendTrend, setSpendTrend] = useState<SupplierSpendTrendPoint[]>([]);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [lane, setLane] = useState<OrderLane>("drafts");
@@ -114,11 +122,20 @@ export default function OrdersScreen() {
       setLoadError(null);
 
       try {
-        const [nextRecommendations, nextAuthorities, nextPatterns, nextOrders, nextEmailConnection, nextSpendTrend] = await Promise.all([
+        const [
+          nextRecommendations,
+          nextAuthorities,
+          nextPatterns,
+          nextOrders,
+          nextOrderDeliveryEvidence,
+          nextEmailConnection,
+          nextSpendTrend
+        ] = await Promise.all([
           fetchPurchaseRecommendations(restaurantId, "pending"),
           fetchPurchaseRecommendationAuthorities(restaurantId),
           fetchAdvisoryPurchaseDecisionPatterns(restaurantId),
           fetchSupplierOrders(restaurantId),
+          fetchLatestSupplierOrderDeliveryEvidence(restaurantId),
           fetchEmailConnectionState(restaurantId),
           fetchSupplierSpendTrend(restaurantId)
         ]);
@@ -128,6 +145,7 @@ export default function OrdersScreen() {
         setRecommendationAuthorities(nextAuthorities);
         setPurchaseDecisionPatterns(nextPatterns);
         setOrders(nextOrders);
+        setOrderDeliveryEvidence(nextOrderDeliveryEvidence);
         setEmailConnection(nextEmailConnection);
         setSpendTrend(nextSpendTrend);
         setQuantities((current) => {
@@ -160,6 +178,7 @@ export default function OrdersScreen() {
     setRecommendations([]);
     setRecommendationAuthorities({});
     setOrders([]);
+    setOrderDeliveryEvidence({});
     setSpendTrend([]);
     setEmailConnection(null);
     setQuantities({});
@@ -217,6 +236,7 @@ export default function OrdersScreen() {
   });
   const visibleRecommendations = hubReady ? recommendations : [];
   const visibleOrders = hubReady ? orders : [];
+  const visibleOrderDeliveryEvidence = hubReady ? orderDeliveryEvidence : {};
   const visibleSpendTrend = hubReady ? spendTrend : [];
   const visibleEmailConnection = hubReady ? emailConnection : null;
   const visiblePurchaseDecisionPatterns = hubReady ? purchaseDecisionPatterns : [];
@@ -272,6 +292,13 @@ export default function OrdersScreen() {
     () => visibleOrders.filter((order) => order.status === "completed"),
     [visibleOrders]
   );
+  const sentAttentionCount = useMemo(
+    () =>
+      sentOrders.filter((order) =>
+        Boolean(supplierOrderLaneDeliveryAttentionStatus(visibleOrderDeliveryEvidence[order.id]))
+      ).length,
+    [sentOrders, visibleOrderDeliveryEvidence]
+  );
   const laneOptions = useMemo<readonly SegmentOption<OrderLane>[]>(
     () => {
       const draftsLabel = t("orders.lane.drafts");
@@ -303,14 +330,32 @@ export default function OrdersScreen() {
         {
           value: "sent",
           label: sentLabel,
-          accessibilityLabel: t("orders.lane.optionAccessibility", {
-            lane: sentLabel,
-            count: formatNumber(sentOrders.length)
-          })
+          badge:
+            sentAttentionCount > 0
+              ? formatNumber(sentAttentionCount)
+              : sentOrders.length > 0
+                ? formatNumber(sentOrders.length)
+                : undefined,
+          accessibilityLabel: t(
+            sentAttentionCount > 0
+              ? "orders.lane.sentAttentionAccessibility"
+              : "orders.lane.optionAccessibility",
+            sentAttentionCount > 0
+              ? {
+                  lane: sentLabel,
+                  attention: formatNumber(sentAttentionCount),
+                  count: formatNumber(sentOrders.length)
+                }
+              : {
+                  lane: sentLabel,
+                  count: formatNumber(sentOrders.length)
+                }
+          )
         },
         {
           value: "history",
           label: historyLabel,
+          badge: completedOrders.length > 0 ? formatNumber(completedOrders.length) : undefined,
           accessibilityLabel: t("orders.lane.optionAccessibility", {
             lane: historyLabel,
             count: formatNumber(completedOrders.length)
@@ -318,7 +363,15 @@ export default function OrdersScreen() {
         }
       ];
     },
-    [completedOrders.length, draftOrders.length, formatNumber, sentOrders.length, t, visibleRecommendations.length]
+    [
+      completedOrders.length,
+      draftOrders.length,
+      formatNumber,
+      sentAttentionCount,
+      sentOrders.length,
+      t,
+      visibleRecommendations.length
+    ]
   );
   const gmailStatus = visibleEmailConnection?.status ?? "not_connected";
   const gmailIsConnected = gmailStatus === "connected";
@@ -785,6 +838,7 @@ export default function OrdersScreen() {
                   <SupplierDraftCard
                     key={order.id}
                     order={order}
+                    deliveryEvidence={visibleOrderDeliveryEvidence[order.id] ?? null}
                     onCopy={() => void copyOrder(order)}
                     onOpen={() =>
                       router.push({ pathname: "/orders/[id]", params: { id: order.id } })
@@ -807,6 +861,7 @@ export default function OrdersScreen() {
                 <SupplierDraftCard
                   key={order.id}
                   order={order}
+                  deliveryEvidence={visibleOrderDeliveryEvidence[order.id] ?? null}
                   onCopy={() => void copyOrder(order)}
                   onOpen={() =>
                     router.push({ pathname: "/orders/[id]", params: { id: order.id } })

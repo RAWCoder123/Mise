@@ -215,6 +215,52 @@ export function buildSupplierOrderDeliveryEvidence(input: {
   return evidence.sort((left, right) => right.receivedAt.localeCompare(left.receivedAt));
 }
 
+/**
+ * Latest delivery evidence per supplier order for Orders hub lane cards.
+ * Attention statuses (partial / discrepancy / failed) stay visible even when
+ * the order row is still `sent` or already `completed`.
+ */
+export function indexLatestSupplierOrderDeliveryEvidence(input: {
+  restaurantId: string;
+  restaurantTimeZone: string;
+  orders: readonly SupplierOrder[];
+  deliveries: readonly SupplierDeliveryRecord[];
+  items: readonly SupplierDeliveryItemRecord[];
+}): Record<string, SupplierOrderDeliveryEvidence> {
+  const restaurantId = input.restaurantId.trim();
+  if (!restaurantId) throw new Error("Supplier delivery evidence requires a restaurant workspace.");
+  requireTimeZone(input.restaurantTimeZone);
+  requireTenantScope(restaurantId, input.orders, input.deliveries, input.items);
+
+  const indexed: Record<string, SupplierOrderDeliveryEvidence> = {};
+  for (const order of input.orders) {
+    const latest = buildSupplierOrderDeliveryEvidence({
+      restaurantId,
+      restaurantTimeZone: input.restaurantTimeZone,
+      order,
+      deliveries: input.deliveries,
+      items: input.items
+    })[0];
+    if (latest) indexed[order.id] = latest;
+  }
+  return indexed;
+}
+
+/** Lane-card attention when the latest receipt is partial, discrepant, or failed. */
+export function supplierOrderLaneDeliveryAttentionStatus(
+  evidence: SupplierOrderDeliveryEvidence | null | undefined
+): Extract<SupplierDeliveryStatus, "partially_received" | "discrepancy" | "failed"> | null {
+  if (!evidence) return null;
+  if (
+    evidence.status === "partially_received" ||
+    evidence.status === "discrepancy" ||
+    evidence.status === "failed"
+  ) {
+    return evidence.status;
+  }
+  return null;
+}
+
 function summarizeSupplier(
   supplier: SupplierAccumulator,
   restaurantTimeZone: string
