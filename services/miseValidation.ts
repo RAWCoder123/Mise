@@ -81,9 +81,13 @@ export const operatingLimits = {
   recommendationQuantity: 1_000_000
 } as const;
 
+/**
+ * Operator detail-screen mutations. Physical counts are intentionally excluded:
+ * authoritative on-hand counts must come from audited count-session approval
+ * (`approve_count_session`), not a silent `operator_count` replace.
+ */
 const operatorInventoryEventTypes = new Set<InventoryEventType>([
   "receipt",
-  "count",
   "waste",
   "stockout"
 ]);
@@ -148,7 +152,7 @@ function requireOperatorInventoryEventType(value: unknown) {
   if (typeof value !== "string" || !operatorInventoryEventTypes.has(value as InventoryEventType)) {
     throw new Error("Choose a supported inventory operation.");
   }
-  return value as "receipt" | "count" | "waste" | "stockout";
+  return value as "receipt" | "waste" | "stockout";
 }
 
 function requireCanonicalUnit(value: unknown) {

@@ -74,11 +74,11 @@ test("operator queue API generates one stable retry identity after validation", 
     const queued = await queueInventoryOperation({
       restaurantId: "restaurant-a",
       inventoryItemId: "chicken",
-      eventType: "count",
+      eventType: "receipt",
       quantity: 1200,
       canonicalUnit: "g",
       effectiveAt: "2026-07-26T10:00:00.000Z",
-      note: "Opening count"
+      note: "Opening receipt"
     });
 
     assert.match(queued.id, /^inventory_outbox_/);
@@ -87,7 +87,9 @@ test("operator queue API generates one stable retry identity after validation", 
       queued.event.idempotencyKey,
       `inventory:${queued.event.clientEventId}`
     );
-    assert.deepEqual(queued.event.metadata, { note: "Opening count" });
+    assert.deepEqual(queued.event.metadata, { note: "Opening receipt" });
+    assert.equal(queued.event.source, "operator_receipt");
+    assert.equal(queued.event.eventType, "receipt");
   } finally {
     restore();
   }
