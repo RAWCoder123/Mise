@@ -16,6 +16,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
 import { fetchInventoryItems } from "../../services/miseService";
+import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
 import type { InventoryItem } from "../../types/mise";
 
 const CAMERA_SUPPORTED = Platform.OS === "ios" || Platform.OS === "android";
@@ -55,7 +56,12 @@ export default function ScanItemScreen() {
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   const lastScanAtRef = useRef(0);
+  // Keep the latest scanned code off the load callback identity so ordinary
+  // no-match / multi-match scans do not recreate useFocusEffect and replace
+  // the camera with a blocking inventory reload spinner.
+  const lastScannedCodeRef = useRef<string | null>(null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
+  lastScannedCodeRef.current = lastScannedCode;
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -63,6 +69,7 @@ export default function ScanItemScreen() {
     setQuery("");
     setBarcodeMatches(null);
     setLastScannedCode(null);
+    lastScannedCodeRef.current = null;
     setLoadedRestaurantId(null);
     setError(false);
     setLoading(Boolean(restaurant));
@@ -82,6 +89,15 @@ export default function ScanItemScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setItems(nextItems);
       setLoadedRestaurantId(restaurantId);
+      // Successful soft-refresh retry must not restore barcode match objects from
+      // the prior inventory snapshot (stale qty/name/deleted rows). Re-derive from
+      // the fresh items via ref, or clear when no active barcode search remains.
+      const activeCode = lastScannedCodeRef.current;
+      setBarcodeMatches((prev) => {
+        if (prev === null) return null;
+        if (!activeCode) return null;
+        return matchInventoryBarcode(activeCode, nextItems).matches;
+      });
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setError(true);
@@ -99,7 +115,17 @@ export default function ScanItemScreen() {
     }, [load])
   );
 
-  const visibleItems = loadedRestaurantId === restaurant?.id ? items : [];
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const visibleItems = hubReady ? items : [];
+  // Soft-refresh errors must also hide prior barcode matches; otherwise
+  // listItems prefers stale barcodeMatches while visibleItems is empty.
+  const visibleBarcodeMatches = hubReady ? barcodeMatches : null;
+  const visibleLastScannedCode = hubReady ? lastScannedCode : null;
   const searchMatches = useMemo(
     () => visibleItems.filter((item) => matchesQuery(item, query)).slice(0, 40),
     [query, visibleItems]
@@ -108,7 +134,7 @@ export default function ScanItemScreen() {
   const handleBarcode = useCallback(
     (result: BarcodeScanningResult) => {
       const code = result.data?.trim() ?? "";
-      if (!code || scanPaused) return;
+      if (!code || scanPaused || !hubReady) return;
       const now = Date.now();
       if (now - lastScanAtRef.current < SCAN_COOLDOWN_MS) return;
       lastScanAtRef.current = now;
@@ -132,7 +158,7 @@ export default function ScanItemScreen() {
       setBarcodeMatches([]);
       setQuery(code);
     },
-    [scanPaused, visibleItems]
+    [hubReady, scanPaused, visibleItems]
   );
 
   if (!restaurant) {
@@ -144,10 +170,13 @@ export default function ScanItemScreen() {
   }
 
   const showCamera = CAMERA_SUPPORTED && permission?.granted;
-  const listItems = barcodeMatches && barcodeMatches.length > 0 ? barcodeMatches : searchMatches;
+  const listItems =
+    visibleBarcodeMatches && visibleBarcodeMatches.length > 0
+      ? visibleBarcodeMatches
+      : searchMatches;
   const listTitle =
-    barcodeMatches && barcodeMatches.length > 1
-      ? t("scanItem.barcode.multi", { count: formatNumber(barcodeMatches.length) })
+    visibleBarcodeMatches && visibleBarcodeMatches.length > 1
+      ? t("scanItem.barcode.multi", { count: formatNumber(visibleBarcodeMatches.length) })
       : query.trim()
         ? t("scanItem.results", { count: formatNumber(listItems.length) })
         : t("scanItem.allItems", { count: formatNumber(visibleItems.length) });
@@ -171,7 +200,7 @@ export default function ScanItemScreen() {
                 barcodeScannerSettings={{
                   barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"]
                 }}
-                onBarcodeScanned={scanPaused ? undefined : handleBarcode}
+                onBarcodeScanned={scanPaused || !hubReady ? undefined : handleBarcode}
               />
               <View style={styles.cameraOverlay} pointerEvents="none">
                 <View style={styles.viewfinder} />
@@ -202,11 +231,11 @@ export default function ScanItemScreen() {
           />
         )}
 
-        {lastScannedCode && barcodeMatches?.length === 0 ? (
+        {visibleLastScannedCode && visibleBarcodeMatches?.length === 0 ? (
           <StatusNotice
             tone="warning"
             title={t("scanItem.barcode.noneTitle")}
-            message={t("scanItem.barcode.noneBody", { code: lastScannedCode })}
+            message={t("scanItem.barcode.noneBody", { code: visibleLastScannedCode })}
           />
         ) : null}
 
@@ -228,6 +257,7 @@ export default function ScanItemScreen() {
             placeholder={t("scanItem.search.placeholder")}
             placeholderTextColor={colors.faint}
             value={query}
+            editable={hubReady}
             onChangeText={(value) => {
               setQuery(value);
               setBarcodeMatches(null);
@@ -239,9 +269,9 @@ export default function ScanItemScreen() {
           />
         </View>
 
-        <SectionHeader title={listTitle} />
+        {hubReady ? <SectionHeader title={listTitle} /> : null}
 
-        {listItems.length === 0 ? (
+        {!hubReady ? null : listItems.length === 0 ? (
           <EmptyState
             title={t("scanItem.empty.title")}
             body={t("scanItem.empty.body")}

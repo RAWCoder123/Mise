@@ -30,6 +30,10 @@ import {
   reopenSharedRestaurantTask
 } from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
+import {
+  presentRestaurantScopedHubActionsEditable,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -54,7 +58,9 @@ export default function TaskDetailScreen() {
   const [completionEvidence, setCompletionEvidence] = useState("");
   const [mutating, setMutating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [hubLoadError, setHubLoadError] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -71,7 +77,10 @@ export default function TaskDetailScreen() {
     setChecked({});
     setCompletionResult("");
     setCompletionEvidence("");
+    setMutating(false);
+    setHubLoadError(false);
     setError(null);
+    setLoadedRestaurantId(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id, id]);
 
@@ -84,6 +93,7 @@ export default function TaskDetailScreen() {
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
     setLoading(true);
+    setHubLoadError(false);
     setError(null);
     try {
       const [summary, sharedTasks] = await Promise.all([
@@ -94,9 +104,11 @@ export default function TaskDetailScreen() {
       setTask(summary.operationalTasks.find((candidate) => candidate.id === id) ?? null);
       setSharedTask(sharedTasks.find((candidate) => candidate.id === id) ?? null);
       setRestaurantTimeZone(summary.restaurantTimeZone);
+      setLoadedRestaurantId(restaurantId);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       captureMiseError(loadError, { flow: "task_detail", operation: "load", restaurant_id: restaurantId });
+      setHubLoadError(true);
       setError(t("tasks.error"));
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
@@ -108,6 +120,20 @@ export default function TaskDetailScreen() {
       void load();
     }, [load])
   );
+
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: hubLoadError
+  });
+  const hubReady = hubLoadState === "ready";
+  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: true,
+    hubReady,
+    busy: mutating
+  });
+  const visibleTask = hubReady ? task : null;
+  const visibleSharedTask = hubReady ? sharedTask : null;
 
   const overflow = (
     <OverflowMenu
@@ -132,7 +158,7 @@ export default function TaskDetailScreen() {
     );
   }
 
-  if (!task && !sharedTask && !loading && !error) {
+  if (!visibleTask && !visibleSharedTask && !loading && !hubLoadError) {
     return (
       <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />}
       action={overflow}>
@@ -143,8 +169,8 @@ export default function TaskDetailScreen() {
   }
 
   async function completeSharedTask() {
-    if (!restaurant || !sharedTask || mutating) return;
-    const checklistComplete = sharedTask.checklist.every((entry, index) =>
+    if (!restaurant || !visibleSharedTask || !actionsEditable) return;
+    const checklistComplete = visibleSharedTask.checklist.every((entry, index) =>
       Boolean(checked[sharedChecklistKey(entry, index)])
     );
     if (!checklistComplete) {
@@ -156,8 +182,8 @@ export default function TaskDetailScreen() {
       return;
     }
     if (
-      sharedTask.verificationRequired &&
-      sharedTask.verificationMethod !== "checklist" &&
+      visibleSharedTask.verificationRequired &&
+      visibleSharedTask.verificationMethod !== "checklist" &&
       !completionEvidence.trim()
     ) {
       setError(t("tasks.shared.evidenceRequired"));
@@ -168,78 +194,83 @@ export default function TaskDetailScreen() {
     try {
       await completeSharedRestaurantTask({
         restaurantId: restaurant.id,
-        taskId: sharedTask.id,
+        taskId: visibleSharedTask.id,
         completionResult,
         completionEvidence: [
-          ...sharedTask.checklist.map((entry) => ({
+          ...visibleSharedTask.checklist.map((entry) => ({
             type: "checklist_item",
             label: entry.label ?? entry.type ?? "Completed checklist item",
             completed: true
           })),
           ...(completionEvidence.trim()
-            ? [{ type: sharedTask.verificationMethod, note: completionEvidence.trim() }]
+            ? [{ type: visibleSharedTask.verificationMethod, note: completionEvidence.trim() }]
             : [])
         ]
       });
+      if (activeRestaurantIdRef.current !== restaurant.id) return;
       await load();
     } catch (completionError) {
       captureMiseError(completionError, {
         flow: "shared_task_detail",
         operation: "complete",
         restaurant_id: restaurant.id,
-        task_id: sharedTask.id
+        task_id: visibleSharedTask.id
       });
+      if (activeRestaurantIdRef.current !== restaurant.id) return;
       setError(t("tasks.shared.completeError"));
     } finally {
-      setMutating(false);
+      if (activeRestaurantIdRef.current === restaurant.id) setMutating(false);
     }
   }
 
   async function reopenSharedTask() {
-    if (!restaurant || !sharedTask || mutating) return;
+    if (!restaurant || !visibleSharedTask || !actionsEditable) return;
     setMutating(true);
     setError(null);
     try {
-      await reopenSharedRestaurantTask(restaurant.id, sharedTask.id);
+      await reopenSharedRestaurantTask(restaurant.id, visibleSharedTask.id);
+      if (activeRestaurantIdRef.current !== restaurant.id) return;
       await load();
     } catch (reopenError) {
       captureMiseError(reopenError, {
         flow: "shared_task_detail",
         operation: "reopen",
         restaurant_id: restaurant.id,
-        task_id: sharedTask.id
+        task_id: visibleSharedTask.id
       });
+      if (activeRestaurantIdRef.current !== restaurant.id) return;
       setError(t("tasks.shared.reopenError"));
     } finally {
-      setMutating(false);
+      if (activeRestaurantIdRef.current === restaurant.id) setMutating(false);
     }
   }
 
-  if (sharedTask) {
-    const completed = sharedTask.status === "completed";
-    const high = sharedTask.priority === "urgent" || sharedTask.priority === "high";
-    const canComplete = canRestaurantRoleCompleteSharedTask(
+  if (visibleSharedTask) {
+    const completed = visibleSharedTask.status === "completed";
+    const high = visibleSharedTask.priority === "urgent" || visibleSharedTask.priority === "high";
+    const roleCanComplete = canRestaurantRoleCompleteSharedTask(
       role ?? "staff",
       user?.id,
-      sharedTask
+      visibleSharedTask
     );
     const blockedByAssignee = Boolean(
-      sharedTask.assigneeUserId &&
-      sharedTask.assigneeUserId !== user?.id &&
+      visibleSharedTask.assigneeUserId &&
+      visibleSharedTask.assigneeUserId !== user?.id &&
       (role ?? "staff") === "staff"
     );
-    const canReopen = role === "owner" || role === "admin" || role === "manager";
-    const dueLabel = sharedTask.dueAt && restaurantTimeZone
-      ? formatDueTime(sharedTask.dueAt, { timeZone: restaurantTimeZone })
-      : sharedTask.serviceWindow
-        ? t(serviceWindowKey(sharedTask.serviceWindow))
+    const roleCanReopen = role === "owner" || role === "admin" || role === "manager";
+    const canReopen = actionsEditable && roleCanReopen;
+    const dueLabel = visibleSharedTask.dueAt && restaurantTimeZone
+      ? formatDueTime(visibleSharedTask.dueAt, { timeZone: restaurantTimeZone })
+      : visibleSharedTask.serviceWindow
+        ? t(serviceWindowKey(visibleSharedTask.serviceWindow))
         : t("tasks.due.none");
-    const assignedLabel = sharedTask.assigneeUserId
+    const assignedLabel = visibleSharedTask.assigneeUserId
       ? t("tasks.shared.assignedTeammate")
       : t(
-          sharedTask.requiredRole === "owner_admin"
+          visibleSharedTask.requiredRole === "owner_admin"
             ? "tasks.assigned.ownerAdmin"
-            : sharedTask.requiredRole === "manager"
+            : visibleSharedTask.requiredRole === "manager"
               ? "tasks.assigned.manager"
               : "tasks.assigned.staff"
         );
@@ -249,7 +280,17 @@ export default function TaskDetailScreen() {
       action={overflow} loading={loading} keyboardAware>
         <View style={styles.stack}>
           {error ? (
-            <StatusNotice tone="danger" title={t("common.error")} message={error} />
+            hubLoadError ? (
+              <RetryNotice
+                title={t("tasks.retry.title")}
+                message={error}
+                retryLabel={t("common.retry")}
+                accessibilityLabel={t("tasks.retry.accessibility")}
+                onRetry={() => void load()}
+              />
+            ) : (
+              <StatusNotice tone="danger" title={t("common.error")} message={error} />
+            )
           ) : null}
 
           <View style={styles.hero}>
@@ -263,7 +304,7 @@ export default function TaskDetailScreen() {
               />
             )}
             <View style={styles.heroCopy}>
-              <Text style={styles.title}>{sharedTask.title}</Text>
+              <Text style={styles.title}>{visibleSharedTask.title}</Text>
               <View style={styles.inlineBadges}>
                 <Badge label={t("tasks.shared.restaurantWide")} tone="neutral" />
                 <Badge
@@ -277,19 +318,19 @@ export default function TaskDetailScreen() {
           <View style={styles.metaList}>
             <MetaRow label={t("tasks.meta.due")} value={dueLabel} />
             <MetaRow label={t("tasks.meta.assigned")} value={assignedLabel} />
-            <MetaRow label={t("tasks.meta.related")} value={sharedRelatedLabel(sharedTask, t)} />
-            <MetaRow label={t("tasks.shared.verification")} value={verificationLabel(sharedTask, t)} />
+            <MetaRow label={t("tasks.meta.related")} value={sharedRelatedLabel(visibleSharedTask, t)} />
+            <MetaRow label={t("tasks.shared.verification")} value={verificationLabel(visibleSharedTask, t)} />
           </View>
 
           <View style={styles.instructions}>
             <Text style={styles.sectionTitle}>{t("tasks.instructions.title")}</Text>
-            <Text style={styles.instructionsBody}>{sharedTask.detail ?? t("tasks.shared.noInstructions")}</Text>
+            <Text style={styles.instructionsBody}>{visibleSharedTask.detail ?? t("tasks.shared.noInstructions")}</Text>
           </View>
 
-          {sharedTask.checklist.length > 0 ? (
+          {visibleSharedTask.checklist.length > 0 ? (
             <View style={styles.checklist}>
               <Text style={styles.sectionTitle}>{t("tasks.checklist.title")}</Text>
-              {sharedTask.checklist.map((entry, index) => {
+              {visibleSharedTask.checklist.map((entry, index) => {
                 const key = sharedChecklistKey(entry, index);
                 const isChecked = completed || Boolean(checked[key]);
                 return (
@@ -297,7 +338,7 @@ export default function TaskDetailScreen() {
                     key={key}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: isChecked }}
-                    disabled={completed}
+                    disabled={completed || !actionsEditable}
                     onPress={() => setChecked((current) => ({ ...current, [key]: !current[key] }))}
                     style={({ pressed }) => [styles.checkRow, pressed && styles.pressed]}
                   >
@@ -313,17 +354,17 @@ export default function TaskDetailScreen() {
             </View>
           ) : null}
 
-          {sharedTask.dependencyIds.length > 0 && !completed ? (
+          {visibleSharedTask.dependencyIds.length > 0 && !completed ? (
             <Text style={styles.restricted}>
-              {t("tasks.shared.dependencies", { count: sharedTask.dependencyIds.length })}
+              {t("tasks.shared.dependencies", { count: visibleSharedTask.dependencyIds.length })}
             </Text>
           ) : null}
 
           {completed ? (
             <View style={styles.instructions}>
               <Text style={styles.sectionTitle}>{t("tasks.shared.result")}</Text>
-              <Text style={styles.instructionsBody}>{sharedTask.completionResult}</Text>
-              {sharedTask.completionEvidence.map((entry, index) => (
+              <Text style={styles.instructionsBody}>{visibleSharedTask.completionResult}</Text>
+              {visibleSharedTask.completionEvidence.map((entry, index) => (
                 <Text key={index} style={styles.evidenceText}>
                   {String(entry.note ?? entry.label ?? entry.type ?? t("tasks.shared.evidence"))}
                 </Text>
@@ -333,7 +374,7 @@ export default function TaskDetailScreen() {
                   title={mutating ? t("common.saving") : t("operatorTasks.list.reopen")}
                   variant="secondary"
                   onPress={() => void reopenSharedTask()}
-                  disabled={mutating}
+                  disabled={!actionsEditable || mutating}
                   fullWidth
                 />
               ) : null}
@@ -347,18 +388,20 @@ export default function TaskDetailScreen() {
                 placeholderTextColor={colors.faint}
                 value={completionResult}
                 onChangeText={setCompletionResult}
+                editable={actionsEditable}
                 style={[styles.input, styles.resultInput]}
                 multiline
                 maxLength={1000}
                 textAlignVertical="top"
               />
-              {sharedTask.verificationRequired && sharedTask.verificationMethod !== "checklist" ? (
+              {visibleSharedTask.verificationRequired && visibleSharedTask.verificationMethod !== "checklist" ? (
                 <TextInput
                   accessibilityLabel={t("tasks.shared.evidence")}
                   placeholder={t("tasks.shared.evidencePlaceholder")}
                   placeholderTextColor={colors.faint}
                   value={completionEvidence}
                   onChangeText={setCompletionEvidence}
+                  editable={actionsEditable}
                   style={styles.input}
                   maxLength={500}
                 />
@@ -366,20 +409,20 @@ export default function TaskDetailScreen() {
               <Button
                 title={mutating ? t("common.saving") : t("tasks.action.markComplete")}
                 onPress={() => void completeSharedTask()}
-                disabled={mutating || !canComplete || sharedTask.status === "blocked"}
+                disabled={!actionsEditable || mutating || !roleCanComplete || visibleSharedTask.status === "blocked"}
                 fullWidth
               />
-              {!canComplete ? (
+              {!roleCanComplete ? (
                 <Text style={styles.restricted}>
                   {t(
                     blockedByAssignee
                       ? "tasks.restricted.assignee"
-                      : sharedTask.requiredRole === "owner_admin"
+                      : visibleSharedTask.requiredRole === "owner_admin"
                         ? "tasks.restricted.ownerAdmin"
                         : "tasks.restricted.manager"
                   )}
                 </Text>
-              ) : sharedTask.status === "blocked" ? (
+              ) : visibleSharedTask.status === "blocked" ? (
                 <Text style={styles.restricted}>{t("tasks.shared.blocked")}</Text>
               ) : null}
             </View>
@@ -389,20 +432,23 @@ export default function TaskDetailScreen() {
     );
   }
 
-  const presentation = task ? presentOperationalTodayTask(locale, task) : null;
-  const canAct = task ? canRestaurantRoleActOnTodayTask(role ?? "staff", task) : false;
-  const high = task ? task.priority === "urgent" || task.priority === "high" : false;
-  const dueLabel = task
-    ? task.dueAt && restaurantTimeZone
-      ? formatDueTime(task.dueAt, { timeZone: restaurantTimeZone })
-      : task.dueDate
-        ? formatDate(`${task.dueDate}T12:00:00.000Z`, { month: "short", day: "numeric", timeZone: "UTC" })
+  const presentation = visibleTask ? presentOperationalTodayTask(locale, visibleTask) : null;
+  const roleCanAct = visibleTask
+    ? canRestaurantRoleActOnTodayTask(role ?? "staff", visibleTask)
+    : false;
+  const canAct = roleCanAct && actionsEditable;
+  const high = visibleTask ? visibleTask.priority === "urgent" || visibleTask.priority === "high" : false;
+  const dueLabel = visibleTask
+    ? visibleTask.dueAt && restaurantTimeZone
+      ? formatDueTime(visibleTask.dueAt, { timeZone: restaurantTimeZone })
+      : visibleTask.dueDate
+        ? formatDate(`${visibleTask.dueDate}T12:00:00.000Z`, { month: "short", day: "numeric", timeZone: "UTC" })
         : t("tasks.due.none")
     : "";
-  const checklistKeys = task ? checklistKeysForIntent(task.action.intent) : [];
-  const relatedLabel = task ? relatedLabelFor(task, t) : "";
-  const assignedLabel = task
-    ? t(task.requiredRole === "owner_admin" ? "tasks.assigned.ownerAdmin" : task.requiredRole === "manager" ? "tasks.assigned.manager" : "tasks.assigned.staff")
+  const checklistKeys = visibleTask ? checklistKeysForIntent(visibleTask.action.intent) : [];
+  const relatedLabel = visibleTask ? relatedLabelFor(visibleTask, t) : "";
+  const assignedLabel = visibleTask
+    ? t(visibleTask.requiredRole === "owner_admin" ? "tasks.assigned.ownerAdmin" : visibleTask.requiredRole === "manager" ? "tasks.assigned.manager" : "tasks.assigned.staff")
     : "";
 
   return (
@@ -419,10 +465,10 @@ export default function TaskDetailScreen() {
           />
         ) : null}
 
-        {task && presentation ? (
+        {visibleTask && presentation ? (
           <>
             <View style={styles.hero}>
-              {taskIcon(task, high ? colors.danger : colors.accentDark)}
+              {taskIcon(visibleTask, high ? colors.danger : colors.accentDark)}
               <View style={styles.heroCopy}>
                 <Text style={styles.title}>{presentation.title}</Text>
                 <Badge
@@ -454,6 +500,7 @@ export default function TaskDetailScreen() {
                     key={key}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: isChecked }}
+                    disabled={!actionsEditable}
                     onPress={() => setChecked((current) => ({ ...current, [key]: !current[key] }))}
                     style={({ pressed }) => [styles.checkRow, pressed && styles.pressed]}
                   >
@@ -470,8 +517,8 @@ export default function TaskDetailScreen() {
 
             <View style={styles.actions}>
               <Button
-                title={t(task.status === "completed" ? "today.action.open" : "tasks.action.markComplete")}
-                onPress={() => router.push(task.action.route)}
+                title={t(visibleTask.status === "completed" ? "today.action.open" : "tasks.action.markComplete")}
+                onPress={() => router.push(visibleTask.action.route)}
                 disabled={!canAct}
                 size="compact"
                 style={styles.primaryAction}
@@ -484,9 +531,9 @@ export default function TaskDetailScreen() {
                 style={styles.secondaryAction}
               />
             </View>
-            {!canAct ? (
+            {!roleCanAct ? (
               <Text style={styles.restricted}>
-                {t(task.requiredRole === "owner_admin" ? "tasks.restricted.ownerAdmin" : "tasks.restricted.manager")}
+                {t(visibleTask.requiredRole === "owner_admin" ? "tasks.restricted.ownerAdmin" : "tasks.restricted.manager")}
               </Text>
             ) : null}
           </>
