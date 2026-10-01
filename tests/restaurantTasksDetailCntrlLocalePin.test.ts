@@ -30,6 +30,7 @@ const pgTap = readFileSync(
 );
 
 const sqlBody = migration.replace(/^--.*$/gm, "");
+const multilineControlClass = ["[", "\\x00-\\x08", "\\x0B", "\\x0C", "\\x0E-\\x1F", "\\x7F", "]"].join("");
 
 const baseInput = {
   restaurantId: "a0000000-0000-4000-8000-000000000001",
@@ -37,17 +38,16 @@ const baseInput = {
   title: "Confirm chicken count"
 };
 
-test("MISE-005EP pins restaurant_tasks.detail CHECK to COLLATE C cntrl rejection", () => {
+test("MISE-005EP pins restaurant_tasks.detail CHECK to COLLATE C multiline-aware cntrl rejection", () => {
   assert.ok(migration.includes("MISE-005EP"), "additive pin must stay labeled");
 
   assert.match(
     migration,
-    /add constraint restaurant_tasks_detail_check check \(\s*detail is null\s*or \(\s*length\(trim\(detail\)\) between 1 and 2000\s*and detail collate "C" !~ '\[\[:cntrl:\]\]'\s*\)\s*\)/
+    /add constraint restaurant_tasks_detail_check check \(\s*detail is null\s*or \(\s*length\(trim\(detail\)\) between 1 and 2000\s*and detail collate "C" !~ E'/
   );
-
   assert.ok(
-    migration.includes(`detail collate "C" !~ '[[:cntrl:]]'`),
-    "restaurant_tasks detail CHECK must pin cntrl rejection under COLLATE C"
+    migration.includes(`detail collate "C" !~ E'${multilineControlClass}'`),
+    "restaurant_tasks detail CHECK must pin multiline-aware cntrl rejection under COLLATE C"
   );
   assert.ok(
     migration.includes("length(trim(detail)) between 1 and 2000"),
@@ -64,6 +64,7 @@ test("MISE-005EP pins restaurant_tasks.detail CHECK to COLLATE C cntrl rejection
   assert.doesNotMatch(sqlBody, /operator_note/i);
   assert.doesNotMatch(sqlBody, /recalculation_runs/i);
   assert.doesNotMatch(sqlBody, /insights_content_bounds/i);
+  assert.doesNotMatch(sqlBody, /\[\[:cntrl:\]\]/);
 });
 
 test("original restaurant_tasks.detail CHECK had length(trim) only without cntrl gate", () => {
@@ -73,17 +74,31 @@ test("original restaurant_tasks.detail CHECK had length(trim) only without cntrl
   );
   assert.doesNotMatch(
     original,
-    /detail text check \(detail is null or length\(trim\(detail\)\) between 1 and 2000\)[\s\S]{0,80}\[\[:cntrl:\]\]/
+    /detail text check \(detail is null or length\(trim\(detail\)\) between 1 and 2000\)[\s\S]{0,120}(?:\[\[:cntrl:\]\]|\\x00-\\x08)/
   );
 });
 
-test("normalizeCreateRestaurantTaskInput rejects ASCII C control characters in detail", () => {
+test("normalizeCreateRestaurantTaskInput allows LF/TAB/CR and rejects unsafe controls in detail", () => {
   assert.equal(
     normalizeCreateRestaurantTaskInput({
       ...baseInput,
       detail: " Count the walk-in case before ordering. "
     }).detail,
     "Count the walk-in case before ordering."
+  );
+  assert.equal(
+    normalizeCreateRestaurantTaskInput({
+      ...baseInput,
+      detail: "Count the walk-in\ncase before ordering."
+    }).detail,
+    "Count the walk-in\ncase before ordering."
+  );
+  assert.equal(
+    normalizeCreateRestaurantTaskInput({
+      ...baseInput,
+      detail: "Count the walk-in\tcase"
+    }).detail,
+    "Count the walk-in\tcase"
   );
   assert.equal(
     normalizeCreateRestaurantTaskInput({
@@ -103,7 +118,7 @@ test("normalizeCreateRestaurantTaskInput rejects ASCII C control characters in d
     () =>
       normalizeCreateRestaurantTaskInput({
         ...baseInput,
-        detail: "Count the walk-in\tcase"
+        detail: "Count the walk-in\u0000case"
       }),
     /without control characters/
   );
@@ -111,7 +126,7 @@ test("normalizeCreateRestaurantTaskInput rejects ASCII C control characters in d
     () =>
       normalizeCreateRestaurantTaskInput({
         ...baseInput,
-        detail: "Count the walk-in\ncase"
+        detail: "Count the walk-in\u0007case"
       }),
     /without control characters/
   );
@@ -133,7 +148,7 @@ test("normalizeCreateRestaurantTaskInput rejects ASCII C control characters in d
   );
   assert.match(
     domain,
-    /function optionalTaskDetail[\s\S]*hasControlCharacters\(normalized\)/
+    /function optionalTaskDetail[\s\S]*hasUnsafeMultilineControlCharacters\(normalized\)/
   );
 });
 
@@ -152,10 +167,10 @@ test("pgTAP plan is derived from assertion call sites, not from a passing run", 
   );
 
   assert.ok(
-    pgTap.includes(`detail collate "C" !~ ''[[:cntrl:]]''`),
-    "pgTAP must exercise the exact COLLATE C cntrl class"
+    pgTap.includes(`!~ E'${multilineControlClass}'`),
+    "pgTAP must exercise the exact COLLATE C multiline control class"
   );
   assert.match(pgTap, /length\\\(trim\\\(detail\\\)\\\) between 1 and 2000/);
-  assert.match(pgTap, /tab in restaurant task detail text is rejected/);
+  assert.match(pgTap, /LF in restaurant task detail text is accepted/);
   assert.match(pgTap, /DEL in restaurant task detail text is rejected/);
 });

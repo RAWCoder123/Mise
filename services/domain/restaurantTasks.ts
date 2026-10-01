@@ -514,10 +514,11 @@ function optionalText(value: unknown, max: number, label: string): string | null
   return normalized;
 }
 
-function hasControlCharacters(value: string) {
-  // ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) — matches
-  // restaurant_tasks_detail_check under COLLATE "C" (MISE-005EP).
-  return /[\u0000-\u001f\u007f]/.test(value);
+function hasUnsafeMultilineControlCharacters(value: string) {
+  // Multiline-aware ASCII class (allows LF/TAB/CR; rejects other C0 + DEL) —
+  // matches restaurant_tasks_detail_check under COLLATE "C" (MISE-005EP) and
+  // the established supplier-send / operator_note pattern (MISE-005EM).
+  return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
 }
 
 function optionalTaskDetail(value: unknown): string | null {
@@ -525,9 +526,10 @@ function optionalTaskDetail(value: unknown): string | null {
   if (typeof value !== "string") throw new Error("Task detail is invalid.");
   const normalized = value.trim();
   if (!normalized) return null;
-  // MISE-005EP: reject ASCII C [[:cntrl:]] so client validation matches
-  // restaurant_tasks_detail_check under COLLATE "C".
-  if (normalized.length > 2000 || hasControlCharacters(normalized)) {
+  // MISE-005EP: reject unsafe ASCII controls while allowing LF/TAB/CR so
+  // client validation matches restaurant_tasks_detail_check under COLLATE "C"
+  // and the multiline create-task body field remains valid.
+  if (normalized.length > 2000 || hasUnsafeMultilineControlCharacters(normalized)) {
     throw new Error("Task detail is limited to 2000 characters without control characters.");
   }
   return normalized;
