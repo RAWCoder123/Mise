@@ -66,6 +66,7 @@ interface MiseSessionContextValue {
   switchRestaurant: (restaurantId: string) => Promise<void>;
   connectDemoPOS: (provider: PosProvider) => Promise<void>;
   resetDemoData: (profile?: { posProvider?: PosProvider } & DemoSetupProfile) => Promise<void>;
+  refreshSession: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -578,6 +579,18 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
     await clearSessionState();
   }, [clearSessionState]);
 
+  const refreshSession = useCallback(async () => {
+    if (authUser && !isDemoModeRef.current) {
+      await hydrateSupabaseUser(authUser, activeRestaurantIdRef.current);
+      return;
+    }
+    if (isDemoModeRef.current) {
+      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const snapshot = raw ? (JSON.parse(raw) as SessionSnapshot) : null;
+      await hydrateLocalDemo(snapshot);
+    }
+  }, [authUser, hydrateLocalDemo, hydrateSupabaseUser]);
+
   const value = useMemo<MiseSessionContextValue>(
     () => ({
       ready,
@@ -601,6 +614,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       switchRestaurant,
       connectDemoPOS,
       resetDemoData,
+      refreshSession,
       signOut
     }),
     [
@@ -616,6 +630,7 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       posStatusLabel,
       ready,
       restaurant,
+      refreshSession,
       resetDemoData,
       role,
       signIn,

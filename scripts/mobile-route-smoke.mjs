@@ -5,6 +5,7 @@ const routes = [
   "/",
   "/login",
   "/accept-invite",
+  "/invite/0000000000000000000000000000000000000000000000000000000000000000",
   "/setup",
   "/today",
   "/inventory",

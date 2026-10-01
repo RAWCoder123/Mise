@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect, useNavigation } from "expo-router";
-import { ArrowLeft, UserPlus, UsersRound } from "lucide-react-native";
+import { ArrowLeft, Link2, UserPlus, UsersRound } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
@@ -17,10 +18,18 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
   addRestaurantMemberByEmail,
+  createRestaurantMemberInvite,
+  fetchRestaurantMemberInvites,
   fetchRestaurantTeam,
   removeRestaurantMember,
+  revokeRestaurantMemberInvite,
   updateRestaurantMember
 } from "../../services/miseService";
+import {
+  buildInviteClaimDeepLink,
+  canViewMemberInvites,
+  isInvitePending
+} from "../../services/domain/teamInvites";
 import {
   assignableTeamRoles,
   canEditTeamMember,
@@ -34,7 +43,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
-import type { RestaurantRole, RestaurantTeamMember } from "../../types/mise";
+import type { RestaurantMemberInvite, RestaurantRole, RestaurantTeamMember } from "../../types/mise";
 import { captureMiseError } from "../../services/telemetry";
 
 interface TeamNotice {
@@ -55,11 +64,13 @@ export default function TeamSettingsScreen() {
   const { t } = useLocale();
   const { restaurant, role, user, usingLocalDemo } = useMiseSession();
   const [members, setMembers] = useState<RestaurantTeamMember[]>([]);
+  const [invites, setInvites] = useState<RestaurantMemberInvite[]>([]);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<AssignableTeamRole>("staff");
+  const [lastInviteLink, setLastInviteLink] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [notice, setNotice] = useState<TeamNotice | null>(null);
   const requestIdRef = useRef(0);
@@ -67,6 +78,7 @@ export default function TeamSettingsScreen() {
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   const canManage = canManageTeam(role);
+  const canViewInvites = canViewMemberInvites(role);
   const availableRoles = useMemo(() => assignableTeamRoles(role), [role]);
 
   const load = useCallback(async () => {
@@ -80,8 +92,12 @@ export default function TeamSettingsScreen() {
     setLoadError(false);
     try {
       const nextMembers = sortTeamMembers(await fetchRestaurantTeam(restaurantId));
+      const nextInvites = canViewInvites
+        ? await fetchRestaurantMemberInvites(restaurantId)
+        : [];
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setMembers(nextMembers);
+      setInvites(nextInvites);
       setLoadedRestaurantId(restaurantId);
     } catch (error) {
       captureMiseError(error, { flow: "team", operation: "load", restaurant_id: restaurantId });
@@ -92,15 +108,17 @@ export default function TeamSettingsScreen() {
         setLoading(false);
       }
     }
-  }, [restaurant?.id]);
+  }, [canViewInvites, restaurant?.id]);
 
   useEffect(() => {
     requestIdRef.current += 1;
     setMembers([]);
+    setInvites([]);
     setLoadedRestaurantId(null);
     setLoadError(false);
     setNotice(null);
     setInviteEmail("");
+    setLastInviteLink(null);
     setBusyKey(null);
     setLoading(Boolean(restaurant));
     if (availableRoles.length > 0 && !availableRoles.includes(inviteRole)) {
@@ -139,6 +157,42 @@ export default function TeamSettingsScreen() {
     busy: Boolean(busyKey)
   });
   const visibleMembers = hubReady ? members : [];
+  const pendingInvites = hubReady
+    ? invites.filter((invite) => isInvitePending(invite.status, invite.expires_at))
+    : [];
+
+  async function createInviteLink() {
+    if (!restaurant || !actionsEditable) return;
+    const normalizedEmail = normalizeTeamMemberEmail(inviteEmail);
+    if (!normalizedEmail) {
+      setNotice({ tone: "danger", titleKey: "team.notice.emailInvalid" });
+      return;
+    }
+    setBusyKey("invite-link");
+    setNotice(null);
+    try {
+      const created = await createRestaurantMemberInvite(restaurant.id, normalizedEmail, inviteRole);
+      const link = buildInviteClaimDeepLink(created.claim_token);
+      setLastInviteLink(link);
+      await Clipboard.setStringAsync(link);
+      setInviteEmail("");
+      setNotice({ tone: "success", titleKey: "team.notice.inviteCreated" });
+      await load();
+    } catch (error) {
+      captureMiseError(error, { flow: "team", operation: "create_invite", restaurant_id: restaurant.id });
+      setNotice({
+        tone: "danger",
+        titleKey:
+          error instanceof TeamMembershipError && error.status === "already_member"
+            ? "team.notice.alreadyMember"
+            : error instanceof TeamMembershipError && error.status === "permission_denied"
+              ? "team.notice.permissionDenied"
+              : "team.notice.inviteCreateError"
+      });
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   async function inviteMember() {
     if (!restaurant || !actionsEditable) return;
@@ -167,6 +221,22 @@ export default function TeamSettingsScreen() {
                 ? "team.notice.permissionDenied"
                 : "team.notice.addError"
       });
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function revokeInvite(invite: RestaurantMemberInvite) {
+    if (!restaurant || !actionsEditable) return;
+    setBusyKey(`revoke:${invite.id}`);
+    setNotice(null);
+    try {
+      await revokeRestaurantMemberInvite(restaurant.id, invite.id);
+      setNotice({ tone: "success", titleKey: "team.notice.inviteRevoked" });
+      await load();
+    } catch (error) {
+      captureMiseError(error, { flow: "team", operation: "revoke_invite", restaurant_id: restaurant.id });
+      setNotice({ tone: "danger", titleKey: "team.notice.inviteRevokeError" });
     } finally {
       setBusyKey(null);
     }
@@ -250,15 +320,62 @@ export default function TeamSettingsScreen() {
               })}
             </View>
             <Button
+              title={t(busyKey === "invite-link" ? "team.invite.creatingLink" : "team.invite.createLink")}
+              onPress={() => void createInviteLink()}
+              disabled={!actionsEditable || inviteEmail.trim().length === 0}
+              icon={<Link2 size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />}
+            />
+            <Button
               title={t(busyKey === "invite" ? "team.invite.adding" : "team.invite.add")}
+              variant="secondary"
               onPress={() => void inviteMember()}
               disabled={!actionsEditable || inviteEmail.trim().length === 0}
-              icon={<UserPlus size={icon.inline} color={colors.surface} strokeWidth={iconStroke} />}
+              icon={<UserPlus size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
             />
+            {lastInviteLink ? (
+              <Text style={styles.helper} selectable>
+                {t("team.invite.linkCopied", { link: lastInviteLink })}
+              </Text>
+            ) : null}
           </SectionSurface>
         ) : (
           <StatusNotice title={t("team.notice.readOnlyTitle")} message={t("team.notice.readOnlyBody")} tone="neutral" />
         )}
+
+        {canViewInvites ? (
+          <SectionSurface title={t("team.section.pendingInvites")} padding="comfortable">
+            <Text style={styles.helper}>
+              {t("team.pendingInvites.body", { count: String(pendingInvites.length) })}
+            </Text>
+            {!loading && !loadError && pendingInvites.length === 0 ? (
+              <Text style={styles.helper}>{t("team.pendingInvites.empty")}</Text>
+            ) : null}
+            {pendingInvites.map((invite) => (
+              <View key={invite.id} style={styles.memberCard}>
+                <View style={styles.memberHeader}>
+                  <IconBadge tone="neutral">
+                    <Link2 size={icon.inline} color={colors.text} strokeWidth={iconStroke} />
+                  </IconBadge>
+                  <View style={styles.memberCopy}>
+                    <Text style={styles.memberName}>{invite.email}</Text>
+                    <Text style={styles.memberEmail}>
+                      {t(roleKeys[invite.role])} · {t("team.pendingInvites.expires", { date: invite.expires_at.slice(0, 10) })}
+                    </Text>
+                  </View>
+                  <Badge label={t("team.pendingInvites.pending")} tone="neutral" />
+                </View>
+                {mutationAllowed ? (
+                  <Button
+                    title={t(busyKey === `revoke:${invite.id}` ? "team.pendingInvites.revoking" : "team.pendingInvites.revoke")}
+                    variant="secondary"
+                    onPress={() => void revokeInvite(invite)}
+                    disabled={!actionsEditable}
+                  />
+                ) : null}
+              </View>
+            ))}
+          </SectionSurface>
+        ) : null}
 
         <SectionSurface title={t("team.section.members")} padding="comfortable">
           {loading ? <Text style={styles.helper}>{t("team.loading")}</Text> : null}

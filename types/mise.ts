@@ -93,6 +93,24 @@ export interface RestaurantTeamMember {
   updated_at: string;
 }
 
+export type RestaurantMemberInviteStatus = "pending" | "claimed" | "revoked" | "expired";
+
+export interface RestaurantMemberInvite {
+  id: string;
+  restaurant_id: string;
+  email: string;
+  role: Exclude<RestaurantRole, "owner">;
+  status: RestaurantMemberInviteStatus;
+  expires_at: string;
+  created_at: string;
+  claimed_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface CreatedRestaurantMemberInvite extends RestaurantMemberInvite {
+  claim_token: string;
+}
+
 export interface PosSale {
   id: string;
   restaurant_id: string;
