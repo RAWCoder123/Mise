@@ -27,9 +27,26 @@ import {
 import { demandFallbackForRestaurant } from "../demoData";
 import {
   fetchInventoryLedgerEvidence,
-  inventoryCountEvidenceFor
+  fetchRestaurantInventoryMovements,
+  inventoryCountEvidenceFor,
+  INVENTORY_MOVEMENT_FEED_FILTERS,
+  RESTAURANT_MOVEMENTS_LIMIT,
+  type InventoryMovementFeedFilter,
+  type RestaurantInventoryMovementRow,
+  type RestaurantInventoryMovementsResult
 } from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
+
+export {
+  fetchRestaurantInventoryMovements,
+  INVENTORY_MOVEMENT_FEED_FILTERS,
+  RESTAURANT_MOVEMENTS_LIMIT
+};
+export type {
+  InventoryMovementFeedFilter,
+  RestaurantInventoryMovementRow,
+  RestaurantInventoryMovementsResult
+};
 
 const repository = getMiseRepository();
 

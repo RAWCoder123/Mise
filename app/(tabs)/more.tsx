@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import {
   Activity,
+  ArrowLeftRight,
   BarChart3,
   Brain,
   ChevronRight,
@@ -87,6 +88,12 @@ export default function MoreScreen() {
             title={t("more.row.waste.title")}
             icon={<PackageMinus size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/waste" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.movements.title")}
+            icon={<ArrowLeftRight size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/inventory-movements" as never)}
           />
           <OperationalRow
             density="menu"
