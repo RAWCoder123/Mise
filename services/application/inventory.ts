@@ -387,6 +387,18 @@ export async function fetchOpenInventoryCountSession(restaurantId: string) {
   return repository.fetchOpenInventoryCountSession(restaurantId);
 }
 
+export async function listEligibleCountSessionsForVerification(restaurantId: string) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const sessions = await repository.listEligibleCountSessionsForVerification(
+    normalizedRestaurantId
+  );
+  if (sessions.some((session) => session.restaurant_id !== normalizedRestaurantId)) {
+    throw new Error("Count sessions failed restaurant scope validation.");
+  }
+  return sessions;
+}
+
 export async function beginInventoryCountSession(restaurantId: string, note?: string | null) {
   const normalizedNote = requireInventoryCountSessionNote(note);
   return repository.beginInventoryCountSession(restaurantId, normalizedNote);

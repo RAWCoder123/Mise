@@ -5,6 +5,8 @@ import {
   canRestaurantRoleCompleteSharedTask,
   completeRestaurantTaskRpcArguments,
   createRestaurantTaskRpcArguments,
+  assertStructuredVerificationEvidence,
+  buildCountSessionCompletionEvidence,
   normalizeCompleteRestaurantTaskInput,
   normalizeCreateRestaurantTaskInput,
   operationalTodayTaskFromRestaurantTask,
@@ -218,6 +220,45 @@ test("create replay comparison is fail-closed and JSON key-order agnostic", () =
     restaurantTaskMatchesCreateRequest(taskWithMetadata, { ...request, dependencyIds: [] }),
     false
   );
+});
+
+test("count and receipt verification reject free-text-only evidence", () => {
+  assert.throws(
+    () => assertStructuredVerificationEvidence("count", [{ type: "count", note: "18 lb" }]),
+    /submitted or approved inventory count session/i
+  );
+  assert.throws(
+    () => assertStructuredVerificationEvidence("receipt", [{ type: "receipt", note: "PO-1" }]),
+    /completed supplier order receipt/i
+  );
+  assert.doesNotThrow(() =>
+    assertStructuredVerificationEvidence("count", [
+      { type: "count_session", countSessionId: "session-1", status: "submitted" }
+    ])
+  );
+  assert.throws(
+    () =>
+      assertStructuredVerificationEvidence(
+        "receipt",
+        [{ type: "supplier_receipt", supplierOrderId: "order-2" }],
+        { relatedOrderId: "order-1" }
+      ),
+    /related supplier order/i
+  );
+});
+
+test("count session completion evidence is structured and checklist-preserving", () => {
+  const evidence = buildCountSessionCompletionEvidence({
+    countSessionId: " session-1 ",
+    status: "approved",
+    note: " Walk-in verified ",
+    checklist: [{ label: "Record physical count" }]
+  });
+  assert.equal(evidence[0]?.type, "checklist_item");
+  assert.equal(evidence[1]?.type, "count_session");
+  assert.equal(evidence[1]?.countSessionId, "session-1");
+  assert.equal(evidence[1]?.status, "approved");
+  assert.equal(evidence[1]?.note, "Walk-in verified");
 });
 
 test("shared task completion authorization gates non-assignee staff but permits manager override", () => {
