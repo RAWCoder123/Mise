@@ -37,6 +37,8 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { presentRestaurantTaskStatusLabel } from "../../services/presentation/restaurantTaskStatusLabel";
+import { presentTeamMemberRoleLabel } from "../../services/presentation/teamMemberRoleLabel";
 import { captureMiseError } from "../../services/telemetry";
 import type { RestaurantTeamMember } from "../../types/mise";
 
@@ -556,7 +558,7 @@ export default function CreateOperatorTaskScreen() {
                 <ChoiceRow
                   key={member.user_id}
                   label={member.name?.trim() || member.email?.trim() || t("operatorTasks.assignee.teammate")}
-                  detail={member.role}
+                  detail={presentTeamMemberRoleLabel(member.role, t)}
                   selected={assigneeUserId === member.user_id}
                   onPress={() => setAssigneeUserId(member.user_id)}
                 />
@@ -597,7 +599,7 @@ export default function CreateOperatorTaskScreen() {
                 <ChoiceRow
                   key={task.id}
                   label={task.title}
-                  detail={task.status}
+                  detail={presentRestaurantTaskStatusLabel(task.status, t)}
                   selected={dependencyId === task.id}
                   onPress={() => setDependencyId(task.id)}
                   disabled={!actionsEditable}
