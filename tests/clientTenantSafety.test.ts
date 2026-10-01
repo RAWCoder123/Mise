@@ -46,6 +46,10 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.settings, /disabled=\{!restaurantActionsEditable\}/);
   assert.match(screens.orders, /hubReady\s*\?\s*recommendations\s*:\s*\[\]/);
   assert.match(screens.orders, /hubReady\s*\?\s*orders\s*:\s*\[\]/);
+  assert.match(screens.orders, /hubUnavailable/);
+  assert.match(screens.orders, /orders\.gmail\.unavailable\.title/);
+  assert.match(screens.orders, /showGmailAction/);
+  assert.match(screens.orders, /captureMiseError\(loadFailure/);
   assert.match(screens.recipes, /hubReady\s*\?\s*summary\s*:\s*null/);
   assert.match(screens.team, /hubReady\s*\?\s*members\s*:\s*\[\]/);
   assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);

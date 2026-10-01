@@ -45,7 +45,7 @@ import {
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
-import { trackMiseEvent } from "../../services/telemetry";
+import { captureMiseError, trackMiseEvent } from "../../services/telemetry";
 import type { PurchaseRecommendation, RestaurantEmailConnection, SupplierOrder } from "../../types/mise";
 
 type OrderLane = "drafts" | "review" | "sent" | "history";
@@ -141,8 +141,13 @@ export default function OrdersScreen() {
           return next;
         });
         loadedRestaurantRef.current = restaurantId;
-      } catch {
+      } catch (loadFailure) {
         if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+          captureMiseError(loadFailure, {
+            flow: "orders",
+            operation: "load",
+            restaurant_id: restaurantId
+          });
           setLoadError(t("orders.error.load"));
         }
       } finally {
@@ -211,6 +216,7 @@ export default function OrdersScreen() {
     loadError: Boolean(loadError)
   });
   const hubReady = hubLoadState === "ready";
+  const hubUnavailable = hubLoadState === "error";
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady
@@ -218,6 +224,8 @@ export default function OrdersScreen() {
   const visibleRecommendations = hubReady ? recommendations : [];
   const visibleOrders = hubReady ? orders : [];
   const visibleSpendTrend = hubReady ? spendTrend : [];
+  // Soft-refresh errors must not render last-known Gmail as authority, and must
+  // not fall through null → "not_connected" (false Link Gmail CTA).
   const visibleEmailConnection = hubReady ? emailConnection : null;
   const visiblePurchaseDecisionPatterns = hubReady ? purchaseDecisionPatterns : [];
   const visibleMessage = messageRestaurantId === restaurant?.id ? message : null;
@@ -320,25 +328,31 @@ export default function OrdersScreen() {
     },
     [completedOrders.length, draftOrders.length, formatNumber, sentOrders.length, t, visibleRecommendations.length]
   );
-  const gmailStatus = visibleEmailConnection?.status ?? "not_connected";
+  const gmailStatus = hubUnavailable
+    ? "unavailable"
+    : (visibleEmailConnection?.status ?? "not_connected");
   const gmailIsConnected = gmailStatus === "connected";
   const gmailNeedsAttention = gmailStatus === "needs_reauth" || gmailStatus === "restricted";
-  const gmailTitle = usingLocalDemo
-    ? t("orders.gmail.demo.title")
-    : gmailIsConnected
-      ? t("orders.gmail.connected.title")
-      : gmailStatus === "needs_reauth"
-        ? t("orders.gmail.reauth.title")
-        : t("orders.gmail.ready.title");
-  const gmailBody = usingLocalDemo
-    ? t("orders.gmail.demo.body")
-    : gmailIsConnected
-      ? t("orders.gmail.connected.body", {
-          sender: visibleEmailConnection?.sender_email ?? t("orders.gmail.connected.fallbackSender")
-        })
-      : canConnectGmail
-        ? t("orders.gmail.connect.body")
-        : t("orders.gmail.readOnly.body");
+  const gmailTitle = hubUnavailable
+    ? t("orders.gmail.unavailable.title")
+    : usingLocalDemo
+      ? t("orders.gmail.demo.title")
+      : gmailIsConnected
+        ? t("orders.gmail.connected.title")
+        : gmailStatus === "needs_reauth"
+          ? t("orders.gmail.reauth.title")
+          : t("orders.gmail.ready.title");
+  const gmailBody = hubUnavailable
+    ? t("orders.gmail.unavailable.body")
+    : usingLocalDemo
+      ? t("orders.gmail.demo.body")
+      : gmailIsConnected
+        ? t("orders.gmail.connected.body", {
+            sender: visibleEmailConnection?.sender_email ?? t("orders.gmail.connected.fallbackSender")
+          })
+        : canConnectGmail
+          ? t("orders.gmail.connect.body")
+          : t("orders.gmail.readOnly.body");
   const gmailActionTitle = usingLocalDemo
     ? t("orders.gmail.action.viewSetup")
     : gmailIsConnected
@@ -346,6 +360,7 @@ export default function OrdersScreen() {
       : gmailStatus === "needs_reauth"
         ? t("orders.gmail.action.reconnect")
         : t("orders.gmail.action.link");
+  const showGmailAction = canConnectGmail && !hubUnavailable;
 
   function setRecommendationBusy(
     recommendationId: string,
@@ -593,7 +608,7 @@ export default function OrdersScreen() {
         <MotionView key={lane} distance={4} duration={220} style={styles.laneContent}>
           {lane === "drafts" ? (
             <>
-              {draftOrders.length === 0 ? (
+              {hubUnavailable ? null : draftOrders.length === 0 ? (
                 <EmptyState
                   compact
                   title={t("orders.empty.drafts.title")}
@@ -613,7 +628,7 @@ export default function OrdersScreen() {
                 ))
               )}
 
-              {visibleRecommendations.length > 0 ? (
+              {!hubUnavailable && visibleRecommendations.length > 0 ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t("orders.review.ctaAction")}
@@ -646,20 +661,31 @@ export default function OrdersScreen() {
                       style={[
                         styles.mailIcon,
                         gmailIsConnected && styles.mailIconConnected,
-                        gmailNeedsAttention && styles.mailIconAttention
+                        gmailNeedsAttention && styles.mailIconAttention,
+                        hubUnavailable && styles.mailIconUnavailable
                       ]}
                     >
                       <Mail
                         size={icon.row}
-                        color={gmailIsConnected ? colors.success : gmailNeedsAttention ? colors.caution : colors.muted}
+                        color={
+                          hubUnavailable
+                            ? colors.danger
+                            : gmailIsConnected
+                              ? colors.success
+                              : gmailNeedsAttention
+                                ? colors.caution
+                                : colors.muted
+                        }
                         strokeWidth={iconStroke}
                       />
                     </View>
                     <View style={styles.emailCopy}>
                       <Text style={styles.emailTitle}>{gmailTitle}</Text>
-                      <Text style={styles.emailBody} numberOfLines={1}>{gmailBody}</Text>
+                      <Text style={styles.emailBody} numberOfLines={hubUnavailable ? 2 : 1}>
+                        {gmailBody}
+                      </Text>
                     </View>
-                    {canConnectGmail ? (
+                    {showGmailAction ? (
                       <Button
                         title={gmailActionTitle}
                         variant="secondary"
@@ -679,7 +705,7 @@ export default function OrdersScreen() {
           ) : null}
 
           {lane === "review" ? (
-            visibleRecommendations.length === 0 ? (
+            hubUnavailable ? null : visibleRecommendations.length === 0 ? (
               <EmptyState
                 compact
                 title={t("orders.review.empty.title")}
@@ -774,7 +800,7 @@ export default function OrdersScreen() {
                   />
                 </SectionSurface>
               ) : null}
-              {sentOrders.length === 0 ? (
+              {hubUnavailable ? null : sentOrders.length === 0 ? (
                 <EmptyState
                   compact
                   title={t("orders.empty.sent.title")}
@@ -796,7 +822,7 @@ export default function OrdersScreen() {
           ) : null}
 
           {lane === "history" ? (
-            completedOrders.length === 0 ? (
+            hubUnavailable ? null : completedOrders.length === 0 ? (
               <EmptyState
                 compact
                 title={t("orders.empty.history.title")}
@@ -932,6 +958,9 @@ const styles = StyleSheet.create({
   },
   mailIconAttention: {
     backgroundColor: colors.cautionSoft
+  },
+  mailIconUnavailable: {
+    backgroundColor: colors.dangerSoft
   },
   emailCopy: {
     flex: 1,

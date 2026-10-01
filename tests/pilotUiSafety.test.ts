@@ -38,3 +38,23 @@ test("POS readiness failures remain visible and retryable instead of failing ope
   assert.match(pos, /onAction=\{\(\) => void loadPilotReadiness\(\)\}/);
   assert.match(pos, /readinessLoadError \? \(/);
 });
+
+test("Orders hub soft-refresh errors do not claim Gmail is disconnected", () => {
+  const orders = readFileSync("app/(tabs)/orders.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(orders, /const hubUnavailable = hubLoadState === "error"/);
+  assert.match(orders, /hubUnavailable\s*\?\s*"unavailable"/);
+  assert.match(orders, /orders\.gmail\.unavailable\.title/);
+  assert.match(orders, /orders\.gmail\.unavailable\.body/);
+  assert.match(orders, /showGmailAction = canConnectGmail && !hubUnavailable/);
+  assert.match(orders, /hubUnavailable \? null : draftOrders\.length === 0/);
+  assert.match(orders, /hubUnavailable \? null : visibleRecommendations\.length === 0/);
+  assert.match(orders, /hubUnavailable \? null : sentOrders\.length === 0/);
+  assert.match(orders, /hubUnavailable \? null : completedOrders\.length === 0/);
+  assert.match(orders, /captureMiseError\(loadFailure/);
+  assert.match(catalog, /"orders\.gmail\.unavailable\.title": "Gmail status unavailable"/);
+  assert.match(catalog, /"orders\.gmail\.unavailable\.body":/);
+  assert.equal((catalog.match(/"orders\.gmail\.unavailable\.title":/g) || []).length, 3);
+  assert.equal((catalog.match(/"orders\.gmail\.unavailable\.body":/g) || []).length, 3);
+});

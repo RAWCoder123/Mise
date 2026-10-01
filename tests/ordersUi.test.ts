@@ -24,6 +24,7 @@ test("orders presents reference-aligned draft, sent, and history lanes with safe
   assert.doesNotMatch(screen, /minHeight:\s*(?:36|43)/);
 
   assert.match(screen, /t\("orders\.gmail\.ready\.title"\)/);
+  assert.match(screen, /t\("orders\.gmail\.unavailable\.title"\)/);
   assert.match(screen, /router\.push\("\/settings\/gmail"/i);
   assert.match(screen, /t\("orders\.gmail\.security\.live"\)/);
   assert.doesNotMatch(screen, /Send email/i);
