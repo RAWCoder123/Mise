@@ -21,7 +21,8 @@ const routes = [
   "/settings/gmail",
   "/settings/suppliers",
   "/settings/pos",
-  "/settings/pos-mappings"
+  "/settings/pos-mappings",
+  "/settings/operating-profile"
 ];
 const port = Number(process.env.MISE_ROUTE_SMOKE_PORT ?? 8083);
 const existingBaseUrl = process.env.MISE_ROUTE_SMOKE_URL;

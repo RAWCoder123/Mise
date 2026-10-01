@@ -3,6 +3,7 @@ import { router, useFocusEffect } from "expo-router";
 import {
   BookOpen,
   Building2,
+  CalendarClock,
   Check,
   ChevronDown,
   ChevronUp,
@@ -386,6 +387,20 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t("settings.section.operations")}>
+          <OperationalRow
+            density="menu"
+            title={t("settings.operatingProfile.entryTitle")}
+            value={
+              restaurant
+                ? restaurant.operational_profile.orderCadence.length > 0
+                  ? restaurant.operational_profile.orderCadence.join(", ")
+                  : t("settings.profile.orderCadenceEmpty")
+                : undefined
+            }
+            icon={<CalendarClock size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            disabled={!restaurant}
+            onPress={() => router.push("/settings/operating-profile" as never)}
+          />
           <OperationalRow
             density="menu"
             title={t("settings.operations.salesImport.title")}
