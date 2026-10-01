@@ -21,6 +21,13 @@ import {
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
 import { fetchActivityEvents } from "../../services/miseService";
+import {
+  activityCategoryLabel,
+  activityEvidenceTypeLabel,
+  activityRelatedEntityLabel,
+  activityStatusLabel,
+  activityTriggerLabel
+} from "../../services/presentation/activityEventLabels";
 import { captureMiseError } from "../../services/telemetry";
 
 const dateRanges: ActivityDateRange[] = ["all", "today", "yesterday", "this_week"];
@@ -186,18 +193,19 @@ export default function ActivityHistoryScreen() {
                   {event.summary}
                 </Text>
                 <Text style={styles.meta} numberOfLines={1}>
-                  {event.category}
-                  {` · ${event.status.replace(/_/g, " ")}`}
+                  {activityCategoryLabel(event.category, t)}
+                  {` · ${activityStatusLabel(event.status, t)}`}
                 </Text>
                 {expanded ? (
                   <View style={styles.details}>
                     <Text style={styles.detailLine}>
-                      {t("activity.detail.trigger")}: {event.triggerType}
+                      {t("activity.detail.trigger")}: {activityTriggerLabel(event.triggerType, t)}
                       {event.triggerReference ? ` · ${event.triggerReference}` : ""}
                     </Text>
                     {event.relatedEntityType ? (
                       <Text style={styles.detailLine}>
-                        {t("activity.detail.related")}: {event.relatedEntityType.replace(/_/g, " ")}
+                        {t("activity.detail.related")}:{" "}
+                        {activityRelatedEntityLabel(event.relatedEntityType, t)}
                         {event.relatedEntityId ? ` · ${event.relatedEntityId}` : ""}
                       </Text>
                     ) : null}
@@ -211,7 +219,7 @@ export default function ActivityHistoryScreen() {
                         <Text style={styles.detailLine}>{t("activity.detail.evidence")}</Text>
                         {event.evidenceReferences.slice(0, 4).map((evidence) => (
                           <Text key={`${evidence.type}:${evidence.id}`} style={styles.evidenceLine}>
-                            {evidence.type.replace(/_/g, " ")} — {evidence.summary}
+                            {activityEvidenceTypeLabel(evidence.type, t)} — {evidence.summary}
                           </Text>
                         ))}
                       </View>
@@ -291,8 +299,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     ...conceptTypography.caption,
-    color: colors.faint,
-    textTransform: "capitalize"
+    color: colors.faint
   },
   details: {
     marginTop: 6,
