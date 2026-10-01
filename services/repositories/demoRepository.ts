@@ -3891,6 +3891,7 @@ export function createLocalDemoRepository(): MiseRepository {
             received_at: input.receivedAt,
             client_delivery_id: input.clientDeliveryId,
             notes: input.notes ?? null,
+            document_reference: input.documentReference ?? null,
             created_at: input.receivedAt
           }
         ];

@@ -1,9 +1,29 @@
 import type { InventoryItem, PurchaseRecommendation, SupplierOrder } from "../../types/mise";
 import type { SupplierDeliveryLineInput } from "../repositories/repositoryContracts";
+import { SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS } from "./securityLimits";
 
 export interface DeliveryLineBuildResult {
   lines: SupplierDeliveryLineInput[];
   skippedItemIds: string[];
+}
+
+/**
+ * Optional invoice / PO document identity. Empty input becomes null; oversized
+ * values fail closed so operators cannot store unbounded freeform text here.
+ */
+export function normalizeOptionalDocumentReference(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string") {
+    throw new Error("Enter a valid invoice or PO number.");
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS) {
+    throw new Error(
+      `Invoice or PO number must be ${SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS} characters or fewer.`
+    );
+  }
+  return trimmed;
 }
 
 /**

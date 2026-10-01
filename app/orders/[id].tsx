@@ -40,7 +40,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
-import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
+import { SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type {
   RestaurantEmailConnection,
   SupplierEmailPayload,
@@ -67,6 +67,7 @@ export default function OrderDraftDetailScreen() {
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
   const [operatorNote, setOperatorNote] = useState("");
+  const [documentReferenceText, setDocumentReferenceText] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
   const [loading, setLoading] = useState(true);
@@ -368,8 +369,11 @@ export default function OrderDraftDetailScreen() {
     setBusy(true);
     setNotice(null);
     try {
-      const result = await receiveSupplierOrderDelivery(restaurantId, order.id);
+      const result = await receiveSupplierOrderDelivery(restaurantId, order.id, {
+        documentReference: documentReferenceText
+      });
       if (activeRestaurantIdRef.current !== restaurantId) return;
+      setDocumentReferenceText("");
       await load(false);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
@@ -383,11 +387,14 @@ export default function OrderDraftDetailScreen() {
             : t("orders.detail.notice.receivedBody"),
         tone: result.status === "discrepancy" ? "warning" : "success"
       });
-    } catch {
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
         setNotice({
           title: t("orders.detail.notice.receiveFailedTitle"),
-          message: t("orders.detail.notice.receiveFailedBody"),
+          message:
+            error instanceof Error && error.message.trim()
+              ? error.message.slice(0, 220)
+              : t("orders.detail.notice.receiveFailedBody"),
           tone: "danger"
         });
       }
@@ -563,6 +570,13 @@ export default function OrderDraftDetailScreen() {
                           { count: formatNumber(evidence.lineCount) }
                         )}
                   </Text>
+                  {evidence.documentReference ? (
+                    <Text style={styles.deliveryEvidenceNote}>
+                      {t("orders.detail.deliveryEvidence.documentReference", {
+                        reference: evidence.documentReference
+                      })}
+                    </Text>
+                  ) : null}
                   {evidence.notes ? (
                     <Text style={styles.deliveryEvidenceNote}>{evidence.notes}</Text>
                   ) : null}
@@ -775,16 +789,32 @@ export default function OrderDraftDetailScreen() {
           ) : null}
 
           {isSent && actionsEditable ? (
-            <Button
-              title={busy ? t("orders.detail.action.receiving") : t("orders.detail.action.markReceived")}
-              accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
-                supplier: visibleOrder.supplier_name
-              })}
-              icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
-              onPress={() => void markReceived()}
-              disabled={busy}
-              fullWidth
-            />
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.receive.documentReference")}</Text>
+              <Text style={styles.sectionBody}>{t("orders.detail.receive.documentReferenceBody")}</Text>
+              <TextInput
+                accessibilityLabel={t("orders.detail.receive.documentReference")}
+                placeholder={t("orders.detail.receive.documentReferencePlaceholder")}
+                placeholderTextColor={colors.faint}
+                value={documentReferenceText}
+                onChangeText={setDocumentReferenceText}
+                maxLength={SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                editable={!busy}
+                style={styles.documentReferenceInput}
+              />
+              <Button
+                title={busy ? t("orders.detail.action.receiving") : t("orders.detail.action.markReceived")}
+                accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
+                  supplier: visibleOrder.supplier_name
+                })}
+                icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
+                onPress={() => void markReceived()}
+                disabled={busy}
+                fullWidth
+              />
+            </View>
           ) : null}
         </View>
       ) : (
@@ -1176,6 +1206,21 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     padding: 13,
     marginTop: 6
+  },
+  documentReferenceInput: {
+    minHeight: 48,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 14,
+    lineHeight: 21,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    marginTop: 6,
+    marginBottom: 8
   },
   sentNote: {
     minHeight: 56,

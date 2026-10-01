@@ -5,7 +5,8 @@ import {
 } from "./deliveryHistoryMerge";
 import {
   buildDeliveryLinesFromOrderRecommendations,
-  deliveryClientIdForOrder
+  deliveryClientIdForOrder,
+  normalizeOptionalDocumentReference
 } from "../domain/supplierDelivery";
 import { getMiseRepository } from "./repository";
 
@@ -44,12 +45,19 @@ export async function fetchDeliveryHistory(restaurantId: string): Promise<Delive
 export async function receiveSupplierOrderDelivery(
   restaurantId: string,
   supplierOrderId: string,
-  options: { notes?: string | null; receivedAt?: string; clientDeliveryId?: string } = {}
+  options: {
+    notes?: string | null;
+    documentReference?: string | null;
+    receivedAt?: string;
+    clientDeliveryId?: string;
+  } = {}
 ) {
   const normalizedRestaurantId = restaurantId.trim();
   const normalizedOrderId = supplierOrderId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
   if (!normalizedOrderId) throw new Error("Missing supplier order.");
+
+  const documentReference = normalizeOptionalDocumentReference(options.documentReference);
 
   const repository = getMiseRepository();
   const [order, recommendations, inventoryItems] = await Promise.all([
@@ -93,6 +101,7 @@ export async function receiveSupplierOrderDelivery(
     clientDeliveryId,
     receivedAt,
     lines: built.lines,
-    notes: options.notes ?? null
+    notes: options.notes ?? null,
+    documentReference
   });
 }
