@@ -1,5 +1,9 @@
-import type { RecommendationStatus, SupplierOrder } from "../../types/mise";
-import { buildOrderQueueSummary } from "../domain/miseDomain";
+import type { PurchaseRecommendation, RecommendationStatus, SupplierOrder } from "../../types/mise";
+import {
+  buildOrderQueueSummary,
+  linkedApprovedRecommendationsForOrder,
+  type RecommendationWorkflowResult
+} from "../domain/miseDomain";
 import {
   assessOrderAutomation,
   type OrderAutomationAssessment,
@@ -106,9 +110,11 @@ export async function generateSupplierOrderDraft(restaurantId: string, supplierI
   throw new Error("Supplier drafts are created only by the server-authoritative recommendation approval workflow.");
 }
 
-export async function undoPurchaseRecommendationAction(restaurantId: string, recommendationId: string) {
-  const result = await repository.undoPurchaseRecommendationAction(restaurantId, recommendationId);
-  return result.recommendation;
+export async function undoPurchaseRecommendationAction(
+  restaurantId: string,
+  recommendationId: string
+): Promise<RecommendationWorkflowResult> {
+  return repository.undoPurchaseRecommendationAction(restaurantId, recommendationId);
 }
 
 export async function fetchPurchaseDecisionPatterns(restaurantId: string) {
@@ -143,13 +149,18 @@ export type { SupplierOrderDeliveryEvidence };
 export async function fetchSupplierOrderOperationalDetail(
   restaurantId: string,
   orderId: string
-): Promise<{ order: SupplierOrder; deliveryEvidence: SupplierOrderDeliveryEvidence[] }> {
+): Promise<{
+  order: SupplierOrder;
+  deliveryEvidence: SupplierOrderDeliveryEvidence[];
+  linkedRecommendations: PurchaseRecommendation[];
+}> {
   const normalizedRestaurantId = requireWorkflowId(restaurantId, "restaurant");
   const normalizedOrderId = requireWorkflowId(orderId, "supplier order");
-  const [order, history, restaurant] = await Promise.all([
+  const [order, history, restaurant, approvedRecommendations] = await Promise.all([
     repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
     repository.fetchSupplierDeliveryHistory(normalizedRestaurantId),
-    repository.fetchRestaurant(normalizedRestaurantId)
+    repository.fetchRestaurant(normalizedRestaurantId),
+    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "approved")
   ]);
   if (order.restaurant_id !== normalizedRestaurantId) {
     throw new Error("Supplier order belongs to another restaurant.");
@@ -162,7 +173,12 @@ export async function fetchSupplierOrderOperationalDetail(
       order,
       deliveries: history.deliveries,
       items: history.items
-    })
+    }),
+    linkedRecommendations: linkedApprovedRecommendationsForOrder(
+      normalizedRestaurantId,
+      normalizedOrderId,
+      approvedRecommendations
+    )
   };
 }
 
