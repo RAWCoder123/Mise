@@ -4,13 +4,17 @@ import {
   type DeliveryHistoryEntry
 } from "./deliveryHistoryMerge";
 import {
+  applyDeliveryLineSubstitutions,
   buildDeliveryLinesFromOrderRecommendations,
-  deliveryClientIdForOrder
+  buildDeliveryReceivePreview,
+  deliveryClientIdForOrder,
+  type DeliveryReceivePreview
 } from "../domain/supplierDelivery";
 import { getMiseRepository } from "./repository";
 
 export type { DeliveryHistoryEntry } from "./deliveryHistoryMerge";
 export { mergeDeliveryHistoryEntries } from "./deliveryHistoryMerge";
+export type { DeliveryReceivePreview } from "../domain/supplierDelivery";
 
 /**
  * Receipt history for the delivery log screen: accepted ledger receipts plus
@@ -37,6 +41,87 @@ export async function fetchDeliveryHistory(restaurantId: string): Promise<Delive
   });
 }
 
+async function loadReceivableOrderContext(restaurantId: string, supplierOrderId: string) {
+  const repository = getMiseRepository();
+  const [order, recommendations, inventoryItems] = await Promise.all([
+    repository.fetchSupplierOrder(restaurantId, supplierOrderId),
+    repository.fetchPurchaseRecommendations(restaurantId, "all"),
+    repository.fetchInventoryItems(restaurantId)
+  ]);
+
+  if (!order || order.restaurant_id !== restaurantId) {
+    throw new Error("Supplier order not found.");
+  }
+  if (order.status !== "sent" && order.status !== "completed") {
+    throw new Error("Only sent orders can be received.");
+  }
+
+  return { order, recommendations, inventoryItems };
+}
+
+function buildReceivableLines(input: {
+  order: Awaited<ReturnType<typeof loadReceivableOrderContext>>["order"];
+  recommendations: Awaited<ReturnType<typeof loadReceivableOrderContext>>["recommendations"];
+  inventoryItems: Awaited<ReturnType<typeof loadReceivableOrderContext>>["inventoryItems"];
+  substitutionsByOrderedItemId?: Readonly<Record<string, string | null | undefined>>;
+}) {
+  let built = buildDeliveryLinesFromOrderRecommendations({
+    order: input.order,
+    recommendations: input.recommendations,
+    inventoryItems: input.inventoryItems,
+    requireVerifiedCanonicalUnit: true
+  });
+  if (built.lines.length === 0) {
+    // Demo / incomplete unit setup: still allow as-ordered receive when items exist.
+    built = buildDeliveryLinesFromOrderRecommendations({
+      order: input.order,
+      recommendations: input.recommendations,
+      inventoryItems: input.inventoryItems,
+      requireVerifiedCanonicalUnit: false
+    });
+  }
+  if (built.lines.length === 0) {
+    throw new Error("No receivable lines are ready for this supplier order.");
+  }
+
+  const lines = input.substitutionsByOrderedItemId
+    ? applyDeliveryLineSubstitutions(
+        built.lines,
+        input.substitutionsByOrderedItemId,
+        input.inventoryItems
+      )
+    : built.lines;
+
+  return { lines, skippedItemIds: built.skippedItemIds };
+}
+
+/**
+ * Read-only receive preview: as-ordered lines plus eligible same-unit verified
+ * substitutes. Does not write inventory or delivery evidence.
+ */
+export async function previewSupplierOrderDelivery(
+  restaurantId: string,
+  supplierOrderId: string
+): Promise<DeliveryReceivePreview> {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedOrderId = supplierOrderId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!normalizedOrderId) throw new Error("Missing supplier order.");
+
+  const context = await loadReceivableOrderContext(normalizedRestaurantId, normalizedOrderId);
+  let preview = buildDeliveryReceivePreview({
+    ...context,
+    requireVerifiedCanonicalUnit: true
+  });
+  if (preview.lines.length === 0) {
+    preview = buildDeliveryReceivePreview({
+      ...context,
+      requireVerifiedCanonicalUnit: false
+    });
+  }
+  return preview;
+}
+
 /**
  * Operator receive path: records a supplier delivery, projects inventory
  * receipts, and measures the related Mise action outcome when present.
@@ -44,7 +129,12 @@ export async function fetchDeliveryHistory(restaurantId: string): Promise<Delive
 export async function receiveSupplierOrderDelivery(
   restaurantId: string,
   supplierOrderId: string,
-  options: { notes?: string | null; receivedAt?: string; clientDeliveryId?: string } = {}
+  options: {
+    notes?: string | null;
+    receivedAt?: string;
+    clientDeliveryId?: string;
+    substitutionsByOrderedItemId?: Readonly<Record<string, string | null | undefined>>;
+  } = {}
 ) {
   const normalizedRestaurantId = restaurantId.trim();
   const normalizedOrderId = supplierOrderId.trim();
@@ -52,37 +142,11 @@ export async function receiveSupplierOrderDelivery(
   if (!normalizedOrderId) throw new Error("Missing supplier order.");
 
   const repository = getMiseRepository();
-  const [order, recommendations, inventoryItems] = await Promise.all([
-    repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
-    repository.fetchPurchaseRecommendations(normalizedRestaurantId, "all"),
-    repository.fetchInventoryItems(normalizedRestaurantId)
-  ]);
-
-  if (!order || order.restaurant_id !== normalizedRestaurantId) {
-    throw new Error("Supplier order not found.");
-  }
-  if (order.status !== "sent" && order.status !== "completed") {
-    throw new Error("Only sent orders can be received.");
-  }
-
-  let built = buildDeliveryLinesFromOrderRecommendations({
-    order,
-    recommendations,
-    inventoryItems,
-    requireVerifiedCanonicalUnit: true
+  const context = await loadReceivableOrderContext(normalizedRestaurantId, normalizedOrderId);
+  const { lines } = buildReceivableLines({
+    ...context,
+    substitutionsByOrderedItemId: options.substitutionsByOrderedItemId
   });
-  if (built.lines.length === 0) {
-    // Demo / incomplete unit setup: still allow as-ordered receive when items exist.
-    built = buildDeliveryLinesFromOrderRecommendations({
-      order,
-      recommendations,
-      inventoryItems,
-      requireVerifiedCanonicalUnit: false
-    });
-  }
-  if (built.lines.length === 0) {
-    throw new Error("No receivable lines are ready for this supplier order.");
-  }
 
   const receivedAt = options.receivedAt ?? new Date().toISOString();
   const clientDeliveryId =
@@ -92,7 +156,7 @@ export async function receiveSupplierOrderDelivery(
     supplierOrderId: normalizedOrderId,
     clientDeliveryId,
     receivedAt,
-    lines: built.lines,
+    lines,
     notes: options.notes ?? null
   });
 }

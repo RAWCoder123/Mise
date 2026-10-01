@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { ArrowLeft, CheckCircle2, Copy, FileText, Save, Send } from "lucide-react-native";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
@@ -20,10 +20,12 @@ import {
   isGmailIntegrationError,
   approveSupplierSendContent,
   prepareSupplierEmailPayload,
+  previewSupplierOrderDelivery,
   receiveSupplierOrderDelivery,
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
+import type { DeliveryReceivePreview } from "../../services/domain/supplierDelivery";
 import type {
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
@@ -66,6 +68,10 @@ export default function OrderDraftDetailScreen() {
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
+  const [receivePreview, setReceivePreview] = useState<DeliveryReceivePreview | null>(null);
+  const [substitutionsByOrderedItemId, setSubstitutionsByOrderedItemId] = useState<
+    Record<string, string>
+  >({});
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -119,10 +125,44 @@ export default function OrderDraftDetailScreen() {
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       setOperatorNote(nextDetail.order.operator_note ?? "");
+
+      if (nextDetail.order.status === "sent") {
+        try {
+          const nextPreview = await previewSupplierOrderDelivery(restaurantId, orderId);
+          if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+            return;
+          }
+          setReceivePreview(nextPreview);
+          setSubstitutionsByOrderedItemId((current) => {
+            const next: Record<string, string> = {};
+            for (const line of nextPreview.lines) {
+              const selected = current[line.inventoryItemId];
+              if (
+                selected &&
+                line.eligibleSubstitutes.some((candidate) => candidate.id === selected)
+              ) {
+                next[line.inventoryItemId] = selected;
+              }
+            }
+            return next;
+          });
+        } catch {
+          if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) {
+            return;
+          }
+          setReceivePreview(null);
+          setSubstitutionsByOrderedItemId({});
+        }
+      } else {
+        setReceivePreview(null);
+        setSubstitutionsByOrderedItemId({});
+      }
     } catch (error) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setDeliveryEvidence([]);
+      setReceivePreview(null);
+      setSubstitutionsByOrderedItemId({});
       setEmailPayload(null);
       setSupplierSendAction(null);
       setHubLoadError(true);
@@ -146,6 +186,8 @@ export default function OrderDraftDetailScreen() {
     setHubLoadError(false);
     setOrder(null);
     setDeliveryEvidence([]);
+    setReceivePreview(null);
+    setSubstitutionsByOrderedItemId({});
     setEmailConnection(null);
     setEmailPayload(null);
     setSupplierSendAction(null);
@@ -368,7 +410,15 @@ export default function OrderDraftDetailScreen() {
     setBusy(true);
     setNotice(null);
     try {
-      const result = await receiveSupplierOrderDelivery(restaurantId, order.id);
+      const substitutions = Object.fromEntries(
+        Object.entries(substitutionsByOrderedItemId).filter(([, substituteId]) =>
+          Boolean(substituteId?.trim())
+        )
+      );
+      const result = await receiveSupplierOrderDelivery(restaurantId, order.id, {
+        substitutionsByOrderedItemId:
+          Object.keys(substitutions).length > 0 ? substitutions : undefined
+      });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await load(false);
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -419,6 +469,13 @@ export default function OrderDraftDetailScreen() {
   const visibleSupplierSendAction = hubReady ? supplierSendAction : null;
   const visibleDeliveryEvidence =
     hubReady ? deliveryEvidence : [];
+  const visibleReceivePreview = hubReady && isSent ? receivePreview : null;
+  const substitutionCount = useMemo(
+    () =>
+      Object.values(substitutionsByOrderedItemId).filter((value) => Boolean(value?.trim()))
+        .length,
+    [substitutionsByOrderedItemId]
+  );
   const gmailReady = Boolean(
     visibleEmailConnection?.status === "connected" &&
     visibleEmailPayload?.ready &&
@@ -772,6 +829,125 @@ export default function OrderDraftDetailScreen() {
               disabled={busy}
               fullWidth
             />
+          ) : null}
+
+          {isSent && actionsEditable && visibleReceivePreview && visibleReceivePreview.lines.length > 0 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("orders.detail.receive.title")}</Text>
+              <Text style={styles.sectionBody}>{t("orders.detail.receive.body")}</Text>
+              {visibleReceivePreview.skippedItemIds.length > 0 ? (
+                <StatusNotice
+                  tone="warning"
+                  title={t("orders.detail.receive.skippedTitle")}
+                  message={t("orders.detail.receive.skippedBody", {
+                    count: formatNumber(visibleReceivePreview.skippedItemIds.length)
+                  })}
+                />
+              ) : null}
+              {visibleReceivePreview.lines.map((line) => {
+                const selectedSubstituteId = substitutionsByOrderedItemId[line.inventoryItemId] ?? "";
+                const selectedSubstitute = line.eligibleSubstitutes.find(
+                  (candidate) => candidate.id === selectedSubstituteId
+                );
+                return (
+                  <View key={line.inventoryItemId} style={styles.receiveLine}>
+                    <Text style={styles.receiveLineTitle}>{line.itemName}</Text>
+                    <Text style={styles.receiveLineMeta}>
+                      {t("orders.detail.receive.orderedMeta", {
+                        quantity: formatNumber(line.orderedQuantity),
+                        unit: line.canonicalUnit
+                      })}
+                    </Text>
+                    {line.eligibleSubstitutes.length > 0 ? (
+                      <View style={styles.substituteChipRow}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: !selectedSubstituteId, disabled: busy }}
+                          accessibilityLabel={t("orders.detail.receive.asOrderedAccessibility", {
+                            item: line.itemName
+                          })}
+                          disabled={busy}
+                          onPress={() =>
+                            setSubstitutionsByOrderedItemId((current) => {
+                              const next = { ...current };
+                              delete next[line.inventoryItemId];
+                              return next;
+                            })
+                          }
+                          style={[
+                            styles.substituteChip,
+                            !selectedSubstituteId && styles.substituteChipSelected
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.substituteChipLabel,
+                              !selectedSubstituteId && styles.substituteChipLabelSelected
+                            ]}
+                          >
+                            {t("orders.detail.receive.asOrdered")}
+                          </Text>
+                        </Pressable>
+                        {line.eligibleSubstitutes.map((candidate) => {
+                          const selected = selectedSubstituteId === candidate.id;
+                          return (
+                            <Pressable
+                              key={candidate.id}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected, disabled: busy }}
+                              accessibilityLabel={t("orders.detail.receive.substituteAccessibility", {
+                                ordered: line.itemName,
+                                substitute: candidate.itemName
+                              })}
+                              disabled={busy}
+                              onPress={() =>
+                                setSubstitutionsByOrderedItemId((current) => ({
+                                  ...current,
+                                  [line.inventoryItemId]: candidate.id
+                                }))
+                              }
+                              style={[
+                                styles.substituteChip,
+                                selected && styles.substituteChipSelected
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.substituteChipLabel,
+                                  selected && styles.substituteChipLabelSelected
+                                ]}
+                              >
+                                {candidate.itemName}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      <Text style={styles.receiveLineMeta}>
+                        {t("orders.detail.receive.noSubstitutes")}
+                      </Text>
+                    )}
+                    {selectedSubstitute ? (
+                      <Text style={styles.receiveLineSelected}>
+                        {t("orders.detail.receive.selectedSubstitute", {
+                          item: selectedSubstitute.itemName
+                        })}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+              {substitutionCount > 0 ? (
+                <StatusNotice
+                  tone="warning"
+                  title={t("orders.detail.receive.substitutionNoticeTitle")}
+                  message={t("orders.detail.receive.substitutionNoticeBody", {
+                    count: formatNumber(substitutionCount)
+                  })}
+                />
+              ) : null}
+            </View>
           ) : null}
 
           {isSent && actionsEditable ? (
@@ -1202,5 +1378,49 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1
+  },
+  receiveLine: {
+    borderRadius: radii.lg,
+    backgroundColor: colors.surfaceWarm,
+    padding: 13,
+    gap: 8
+  },
+  receiveLineTitle: {
+    color: colors.text,
+    ...typography.cardTitle
+  },
+  receiveLineMeta: {
+    color: colors.muted,
+    ...typography.caption
+  },
+  receiveLineSelected: {
+    color: colors.text,
+    ...typography.caption
+  },
+  substituteChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  substituteChip: {
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: "center"
+  },
+  substituteChipSelected: {
+    borderColor: colors.text,
+    backgroundColor: colors.text
+  },
+  substituteChipLabel: {
+    color: colors.text,
+    ...typography.caption
+  },
+  substituteChipLabelSelected: {
+    color: colors.surface
   }
 });
