@@ -25,6 +25,8 @@ import {
   updateSupplierOrder
 } from "../../services/miseService";
 import type {
+  CompletedSupplierOrderReceiveLine,
+  CompletedSupplierOrderReceiveSummary,
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
 } from "../../services/domain/supplierReliability";
@@ -66,6 +68,9 @@ export default function OrderDraftDetailScreen() {
   const [emailPayload, setEmailPayload] = useState<SupplierEmailPayload | null>(null);
   const [supplierSendAction, setSupplierSendAction] = useState<MiseAction | null>(null);
   const [deliveryEvidence, setDeliveryEvidence] = useState<SupplierOrderDeliveryEvidence[]>([]);
+  const [receiveSummary, setReceiveSummary] = useState<CompletedSupplierOrderReceiveSummary | null>(
+    null
+  );
   const [operatorNote, setOperatorNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<OrderNotice | null>(null);
@@ -113,6 +118,7 @@ export default function OrderDraftDetailScreen() {
       }
       setOrder(nextDetail.order);
       setDeliveryEvidence(nextDetail.deliveryEvidence);
+      setReceiveSummary(nextDetail.receiveSummary);
       setEmailConnection(nextEmailConnection);
       setEmailPayload(nextEmailPayload);
       setSupplierSendAction(nextSendAction);
@@ -123,6 +129,7 @@ export default function OrderDraftDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOrder(null);
       setDeliveryEvidence([]);
+      setReceiveSummary(null);
       setEmailPayload(null);
       setSupplierSendAction(null);
       setHubLoadError(true);
@@ -146,6 +153,7 @@ export default function OrderDraftDetailScreen() {
     setHubLoadError(false);
     setOrder(null);
     setDeliveryEvidence([]);
+    setReceiveSummary(null);
     setEmailConnection(null);
     setEmailPayload(null);
     setSupplierSendAction(null);
@@ -419,6 +427,13 @@ export default function OrderDraftDetailScreen() {
   const visibleSupplierSendAction = hubReady ? supplierSendAction : null;
   const visibleDeliveryEvidence =
     hubReady ? deliveryEvidence : [];
+  const visibleReceiveSummary = hubReady ? receiveSummary : null;
+  const receiveLinesByDeliveryId = new Map<string, CompletedSupplierOrderReceiveLine[]>();
+  for (const line of visibleReceiveSummary?.lines ?? []) {
+    const existing = receiveLinesByDeliveryId.get(line.deliveryId) ?? [];
+    existing.push(line);
+    receiveLinesByDeliveryId.set(line.deliveryId, existing);
+  }
   const gmailReady = Boolean(
     visibleEmailConnection?.status === "connected" &&
     visibleEmailPayload?.ready &&
@@ -526,7 +541,9 @@ export default function OrderDraftDetailScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("orders.detail.deliveryEvidence.title")}</Text>
               <Text style={styles.sectionBody}>{t("orders.detail.deliveryEvidence.body")}</Text>
-              {visibleDeliveryEvidence.map((evidence) => (
+              {visibleDeliveryEvidence.map((evidence) => {
+                const receiveLines = receiveLinesByDeliveryId.get(evidence.deliveryId) ?? [];
+                return (
                 <View key={evidence.deliveryId} style={styles.deliveryEvidencePanel}>
                   <View style={styles.deliveryEvidenceHeader}>
                     <Badge
@@ -566,8 +583,63 @@ export default function OrderDraftDetailScreen() {
                   {evidence.notes ? (
                     <Text style={styles.deliveryEvidenceNote}>{evidence.notes}</Text>
                   ) : null}
+                  {receiveLines.length > 0 ? (
+                    <View style={styles.receiveSummaryLines}>
+                      <Text style={styles.receiveSummaryLinesTitle}>
+                        {t("orders.detail.receivedSummary.linesTitle")}
+                      </Text>
+                      {receiveLines.map((line) => (
+                        <View key={`${line.deliveryId}:${line.inventoryItemId}`} style={styles.receiveSummaryLine}>
+                          <View style={styles.receiveSummaryLineHeader}>
+                            <Text style={styles.receiveSummaryItemName}>{line.itemName}</Text>
+                            <Badge
+                              label={
+                                line.hasDiscrepancy
+                                  ? line.shortShip
+                                    ? t("orders.detail.receivedSummary.badge.short")
+                                    : line.overReceive
+                                      ? t("orders.detail.receivedSummary.badge.over")
+                                      : t("orders.detail.receivedSummary.badge.discrepancy")
+                                  : t("orders.detail.receivedSummary.badge.matched")
+                              }
+                              tone={
+                                line.hasDiscrepancy
+                                  ? line.shortShip || line.overReceive
+                                    ? "warning"
+                                    : "danger"
+                                  : "success"
+                              }
+                            />
+                          </View>
+                          <Text style={styles.receiveSummaryQuantities}>
+                            {t("orders.detail.receivedSummary.quantities", {
+                              ordered:
+                                line.orderedQuantity == null
+                                  ? t("common.notSet")
+                                  : formatNumber(line.orderedQuantity),
+                              received: formatNumber(line.receivedQuantity),
+                              unit: line.unit
+                            })}
+                          </Text>
+                          {line.missingQuantity > 0 || line.damagedQuantity > 0 ? (
+                            <Text style={styles.receiveSummaryMeta}>
+                              {t("orders.detail.receivedSummary.damageMissing", {
+                                missing: formatNumber(line.missingQuantity),
+                                damaged: formatNumber(line.damagedQuantity),
+                                unit: line.unit
+                              })}
+                            </Text>
+                          ) : null}
+                          {line.discrepancyReason ? (
+                            <Text style={styles.receiveSummaryNote}>{line.discrepancyReason}</Text>
+                          ) : null}
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
-              ))}
+                );
+              })}
             </View>
           ) : null}
 
@@ -1098,6 +1170,45 @@ const styles = StyleSheet.create({
     ...typography.body
   },
   deliveryEvidenceNote: {
+    color: colors.muted,
+    ...typography.caption
+  },
+  receiveSummaryLines: {
+    marginTop: 4,
+    gap: 8
+  },
+  receiveSummaryLinesTitle: {
+    color: colors.text,
+    ...typography.caption,
+    fontWeight: "600"
+  },
+  receiveSummaryLine: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: 8,
+    gap: 4
+  },
+  receiveSummaryLineHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8
+  },
+  receiveSummaryItemName: {
+    flex: 1,
+    color: colors.text,
+    ...typography.body,
+    fontWeight: "600"
+  },
+  receiveSummaryQuantities: {
+    color: colors.text,
+    ...typography.caption
+  },
+  receiveSummaryMeta: {
+    color: colors.muted,
+    ...typography.caption
+  },
+  receiveSummaryNote: {
     color: colors.muted,
     ...typography.caption
   },
