@@ -54,12 +54,23 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);
   assert.match(screens.autonomy, /hubReady\s*\?\s*rules\s*:\s*\[\]/);
   assert.match(screens.autonomy, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.autonomy, /hasLoadedRef/);
+  assert.match(screens.autonomy, /Soft refresh must preserve operator-entered autonomy draft fields/);
   assert.match(screens.restaurantMemory, /hubReady\s*\?\s*memories\s*:\s*\[\]/);
   assert.match(screens.logDelivery, /hubReady\s*\?\s*items\s*:\s*\[\]/);
   assert.match(screens.logDelivery, /hubReady\s*\?\s*history\s*:\s*\[\]/);
   assert.match(screens.pos, /visibleIntegration/);
   assert.match(screens.pos, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.createTask, /presentRestaurantScopedHubActionsEditable/);
+  assert.match(screens.createTask, /hasLoadedRef/);
+  assert.match(
+    screens.createTask,
+    /Hard-reset create-form drafts so restaurant switches cannot leak mid-edit text/
+  );
+  assert.match(
+    screens.createTask,
+    /Soft refresh must preserve operator-entered create-form drafts \(title\/body\/checklist\)/
+  );
   assert.match(screens.settings, /!restaurantActionsEditable/);
   assert.match(
     source("services/presentation/hubLoadState.ts"),
