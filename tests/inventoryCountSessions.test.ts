@@ -193,3 +193,52 @@ test("count sessions only include inventory items with verified canonical conver
     /canonical units/i
   );
 });
+
+test("cycle count sessions include only the selected eligible inventory items", () => {
+  const lines = buildCountSessionLinesFromInventory(
+    "rest_a",
+    "session_1",
+    [item("tomatoes", 10), item("lettuce", 5), item("eggs", 12)],
+    "2026-07-31T00:00:00.000Z",
+    ["eggs", "tomatoes"]
+  );
+  assert.deepEqual(
+    lines.map((entry) => entry.inventory_item_id),
+    ["eggs", "tomatoes"]
+  );
+  assert.equal(lines.length, 2);
+
+  assert.throws(
+    () =>
+      buildCountSessionLinesFromInventory(
+        "rest_a",
+        "session_1",
+        [item("tomatoes", 10), item("lettuce", 5)],
+        "2026-07-31T00:00:00.000Z",
+        ["tomatoes", "missing"]
+      ),
+    /not eligible/i
+  );
+  assert.throws(
+    () =>
+      buildCountSessionLinesFromInventory(
+        "rest_a",
+        "session_1",
+        [item("tomatoes", 10)],
+        "2026-07-31T00:00:00.000Z",
+        []
+      ),
+    /at least one/i
+  );
+  assert.throws(
+    () =>
+      buildCountSessionLinesFromInventory(
+        "rest_a",
+        "session_1",
+        [item("tomatoes", 10)],
+        "2026-07-31T00:00:00.000Z",
+        ["tomatoes", "tomatoes"]
+      ),
+    /unique/i
+  );
+});

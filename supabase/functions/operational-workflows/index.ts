@@ -258,10 +258,13 @@ async function runCountSessionDraftAction(
   body: Record<string, unknown>
 ) {
   if (action === "begin_count_session") {
+    const inventoryItemIds =
+      body.inventoryItemIds == null ? null : requireUuidArray(body.inventoryItemIds, "inventoryItemIds", 250);
     return await serviceRpc(securitySupabase, "service_begin_inventory_count_session", {
       p_actor_user_id: actorUserId,
       p_restaurant_id: restaurantId,
-      p_note: body.note == null ? null : requireBoundedString(body.note, "note", 240)
+      p_note: body.note == null ? null : requireBoundedString(body.note, "note", 240),
+      p_inventory_item_ids: inventoryItemIds
     });
   }
   if (action === "save_count_lines") {
@@ -385,6 +388,13 @@ function requireArray(value: unknown, fieldName: string, maximumLength: number) 
     throw new HttpError(400, `${fieldName} must be an array with at most ${maximumLength} entries.`);
   }
   return value;
+}
+
+function requireUuidArray(value: unknown, fieldName: string, maximumItems: number) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > maximumItems) {
+    throw new HttpError(400, `${fieldName} must contain 1-${maximumItems} UUIDs.`);
+  }
+  return [...new Set(value.map((entry, index) => requireUuid(entry, `${fieldName}[${index}]`)))];
 }
 
 function requireBoundedString(value: unknown, fieldName: string, maximumLength: number) {
