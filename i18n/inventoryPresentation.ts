@@ -14,6 +14,12 @@ export interface LocalizedInventoryPrediction {
   confidence: string;
   whyItMatters: string;
   recommendation: string;
+  /** True when on-hand chronology is contaminated and must not drive orders. */
+  contaminatedProjection: boolean;
+}
+
+export function isContaminatedProjection(prediction: InventoryPrediction): boolean {
+  return prediction.countEvidence === "contaminated_projection";
 }
 
 export function localizeInventoryPrediction(
@@ -23,6 +29,7 @@ export function localizeInventoryPrediction(
   prediction: InventoryPrediction
 ): LocalizedInventoryPrediction {
   const quantity = (value: number) => formatNumber(value, { maximumFractionDigits: 1 });
+  const contaminated = isContaminatedProjection(prediction);
   const coverage = coverageCopy(t, formatNumber, item, prediction);
   const action = actionCopy(t, quantity, item, prediction);
 
@@ -31,7 +38,7 @@ export function localizeInventoryPrediction(
     coverage,
     trend: t(`inventory.prediction.trend.${prediction.demandTrend}`),
     action,
-    basis: basisCopy(t, formatNumber, prediction),
+    basis: contaminated ? t("inventory.prediction.basis.contaminated") : basisCopy(t, formatNumber, prediction),
     depletion:
       prediction.todayDepletion > 0
         ? t("inventory.prediction.depletion.recorded", {
@@ -40,14 +47,16 @@ export function localizeInventoryPrediction(
             unit: item.unit
           })
         : t("inventory.prediction.depletion.none"),
-    confidence:
-      prediction.historySource === "restaurant_history"
+    confidence: contaminated
+      ? t("inventory.prediction.confidence.contaminated")
+      : prediction.historySource === "restaurant_history"
         ? t("inventory.prediction.confidence.history")
         : prediction.averageDailyUsage > 0
           ? t("inventory.prediction.confidence.service")
           : t("inventory.prediction.confidence.current"),
     whyItMatters: whyCopy(t, item, prediction),
-    recommendation: recommendationCopy(t, quantity, item, prediction, coverage)
+    recommendation: recommendationCopy(t, quantity, item, prediction, coverage),
+    contaminatedProjection: contaminated
   };
 }
 
@@ -64,6 +73,7 @@ function coverageCopy(
   item: InventoryItem,
   prediction: InventoryPrediction
 ): string {
+  if (isContaminatedProjection(prediction)) return t("inventory.prediction.coverage.contaminated");
   const days = prediction.daysCoverage;
   if (days === null || prediction.averageDailyUsage <= 0) return t("inventory.prediction.coverage.learning");
   if (prediction.projectedQuantity > item.par_level * 1.35 || days >= 8) return t("inventory.prediction.coverage.high");
@@ -82,6 +92,7 @@ function actionCopy(
   item: InventoryItem,
   prediction: InventoryPrediction
 ): string {
+  if (isContaminatedProjection(prediction)) return t("inventory.prediction.action.recount");
   if (prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low") {
     return t("inventory.prediction.action.order", {
       quantity: quantity(prediction.suggestedOrderQuantity),
@@ -106,6 +117,7 @@ function basisCopy(t: Translate, formatNumber: FormatNumber, prediction: Invento
 }
 
 function whyCopy(t: Translate, item: InventoryItem, prediction: InventoryPrediction): string {
+  if (isContaminatedProjection(prediction)) return t("inventory.prediction.why.contaminated");
   if (prediction.todayDepletion > 0 && prediction.projectedQuantity <= item.reorder_threshold) {
     return t("inventory.prediction.why.threshold");
   }
@@ -123,6 +135,9 @@ function recommendationCopy(
   prediction: InventoryPrediction,
   coverage: string
 ): string {
+  if (isContaminatedProjection(prediction)) {
+    return t("inventory.prediction.recommendation.contaminated", { coverage });
+  }
   if (prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low") {
     return t("inventory.prediction.recommendation.order", {
       quantity: quantity(prediction.suggestedOrderQuantity),
