@@ -37,6 +37,10 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityResult
 } from "../../services/domain/purchaseAuthority";
+import {
+  isPilotReadinessBlockedError,
+  isPilotReadinessUnavailableError
+} from "../../services/domain/pilotReadiness";
 import type { MessageKey } from "../../i18n/catalog";
 import type { PurchaseDecisionPattern } from "../../services/domain/purchaseDecisionMemory";
 import {
@@ -435,6 +439,10 @@ export default function OrdersScreen() {
             restaurantId,
             "danger"
           );
+        } else if (isPilotReadinessBlockedError(error)) {
+          showMessage(t("orders.error.readinessBlocked"), restaurantId, "danger");
+        } else if (isPilotReadinessUnavailableError(error)) {
+          showMessage(t("orders.error.readinessUnavailable"), restaurantId, "danger");
         } else {
           showMessage(t("orders.error.approve"), restaurantId, "danger");
         }
