@@ -156,6 +156,12 @@ export interface CompleteRestaurantTaskInput {
   completionEvidence?: RestaurantTaskEvidence[];
 }
 
+export interface CancelRestaurantTaskInput {
+  restaurantId: string;
+  taskId: string;
+  cancelReason?: string | null;
+}
+
 const origins = new Set<RestaurantTaskOrigin>(["human", "mise", "automated", "approval", "verification"]);
 const categories = new Set<RestaurantTaskCategory>([
   "inventory", "orders", "prep", "service", "team", "cleaning", "maintenance",
@@ -370,6 +376,23 @@ export function completeRestaurantTaskRpcArguments(input: CompleteRestaurantTask
   };
 }
 
+export function normalizeCancelRestaurantTaskInput(input: CancelRestaurantTaskInput) {
+  return {
+    restaurantId: requiredText(input.restaurantId, 200, "Restaurant id"),
+    taskId: requiredText(input.taskId, 200, "Task id"),
+    cancelReason: optionalText(input.cancelReason, 500, "Cancel reason")
+  };
+}
+
+export function cancelRestaurantTaskRpcArguments(input: CancelRestaurantTaskInput) {
+  const task = normalizeCancelRestaurantTaskInput(input);
+  return {
+    p_restaurant_id: task.restaurantId,
+    p_task_id: task.taskId,
+    p_cancel_reason: task.cancelReason
+  };
+}
+
 export function isOpenRestaurantTask(task: Pick<RestaurantTask, "status">) {
   return task.status === "waiting" || task.status === "blocked" || task.status === "in_progress" || task.status === "could_not_verify";
 }
@@ -440,6 +463,11 @@ export function canRestaurantRoleCompleteSharedTask(
       : role === "owner" || role === "admin";
   if (!hasRole) return false;
   return task.assigneeUserId === null || task.assigneeUserId === actorUserId || role !== "staff";
+}
+
+/** Cancel is manager+ only; staff cannot retire shared operating-plan work. */
+export function canRestaurantRoleCancelSharedTask(role: RestaurantRole) {
+  return role === "owner" || role === "admin" || role === "manager";
 }
 
 /** Hosted JSONB equality is key-order agnostic; replay checks mirror that here. */

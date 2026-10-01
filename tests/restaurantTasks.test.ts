@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canRestaurantRoleCancelSharedTask,
   canRestaurantRoleCompleteSharedTask,
+  cancelRestaurantTaskRpcArguments,
   completeRestaurantTaskRpcArguments,
   createRestaurantTaskRpcArguments,
+  normalizeCancelRestaurantTaskInput,
   normalizeCompleteRestaurantTaskInput,
   normalizeCreateRestaurantTaskInput,
   operationalTodayTaskFromRestaurantTask,
@@ -232,4 +235,35 @@ test("shared task completion authorization gates non-assignee staff but permits 
     }),
     false
   );
+});
+
+test("cancel normalization bounds the optional reason and keeps RPC arguments explicit", () => {
+  const normalized = normalizeCancelRestaurantTaskInput({
+    restaurantId: " restaurant-a ",
+    taskId: " task-1 ",
+    cancelReason: "  Duplicate opening checklist  "
+  });
+  assert.equal(normalized.restaurantId, "restaurant-a");
+  assert.equal(normalized.taskId, "task-1");
+  assert.equal(normalized.cancelReason, "Duplicate opening checklist");
+  assert.deepEqual(cancelRestaurantTaskRpcArguments(normalized), {
+    p_restaurant_id: "restaurant-a",
+    p_task_id: "task-1",
+    p_cancel_reason: "Duplicate opening checklist"
+  });
+  assert.throws(
+    () => normalizeCancelRestaurantTaskInput({
+      restaurantId: "restaurant-a",
+      taskId: "task-1",
+      cancelReason: "x".repeat(501)
+    }),
+    /cancel reason is invalid/i
+  );
+});
+
+test("only managers can cancel shared restaurant tasks", () => {
+  assert.equal(canRestaurantRoleCancelSharedTask("owner"), true);
+  assert.equal(canRestaurantRoleCancelSharedTask("admin"), true);
+  assert.equal(canRestaurantRoleCancelSharedTask("manager"), true);
+  assert.equal(canRestaurantRoleCancelSharedTask("staff"), false);
 });

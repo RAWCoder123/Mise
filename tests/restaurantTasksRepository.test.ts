@@ -99,4 +99,60 @@ test("demo shared tasks mirror hosted idempotency, dependencies, verification, a
     events.find((event) => event.activityType === "task_completed")?.summary ?? "",
     /Counted 18 lb/
   );
+
+  const leafTask = await repository.createRestaurantTask({
+    restaurantId: DEMO_RESTAURANT_ID,
+    clientTaskId: "demo-shared-cancel-leaf",
+    title: "Retire obsolete prep check",
+    operationalCategory: "prep",
+    timingBucket: "later"
+  });
+  const cancelled = await repository.cancelRestaurantTask({
+    restaurantId: DEMO_RESTAURANT_ID,
+    taskId: leafTask.id,
+    cancelReason: "Replaced by closing routine"
+  });
+  assert.equal(cancelled.status, "cancelled");
+  const replayCancel = await repository.cancelRestaurantTask({
+    restaurantId: DEMO_RESTAURANT_ID,
+    taskId: leafTask.id
+  });
+  assert.equal(replayCancel.id, cancelled.id);
+  assert.equal(replayCancel.status, "cancelled");
+  await assert.rejects(
+    () => repository.completeRestaurantTask({
+      restaurantId: DEMO_RESTAURANT_ID,
+      taskId: leafTask.id,
+      completionResult: "Should not complete"
+    }),
+    /cancelled tasks cannot be completed/i
+  );
+
+  const prerequisite = await repository.createRestaurantTask({
+    restaurantId: DEMO_RESTAURANT_ID,
+    clientTaskId: "demo-shared-cancel-prereq",
+    title: "Count walk-in before cancel test",
+    operationalCategory: "inventory"
+  });
+  const dependent = await repository.createRestaurantTask({
+    restaurantId: DEMO_RESTAURANT_ID,
+    clientTaskId: "demo-shared-cancel-dependent",
+    title: "Order after count",
+    operationalCategory: "orders",
+    dependencyIds: [prerequisite.id]
+  });
+  assert.equal(dependent.status, "blocked");
+  await assert.rejects(
+    () => repository.cancelRestaurantTask({
+      restaurantId: DEMO_RESTAURANT_ID,
+      taskId: prerequisite.id
+    }),
+    /open dependent tasks still require this prerequisite/i
+  );
+  const afterEvents = await repository.listActivityEvents(DEMO_RESTAURANT_ID);
+  assert.ok(afterEvents.some((event) => event.activityType === "task_cancelled"));
+  assert.match(
+    afterEvents.find((event) => event.activityType === "task_cancelled")?.summary ?? "",
+    /Replaced by closing routine/
+  );
 });

@@ -15,6 +15,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
+  canRestaurantRoleCancelSharedTask,
   canRestaurantRoleCompleteSharedTask,
   type RestaurantTask
 } from "../../services/domain/restaurantTasks";
@@ -24,6 +25,7 @@ import {
   type OperationalTodayTaskActionIntent
 } from "../../services/domain/todayTasks";
 import {
+  cancelSharedRestaurantTask,
   completeSharedRestaurantTask,
   fetchTodaySummary,
   listSharedRestaurantTasks,
@@ -215,8 +217,37 @@ export default function TaskDetailScreen() {
     }
   }
 
+  async function cancelSharedTask() {
+    if (!restaurant || !sharedTask || mutating) return;
+    setMutating(true);
+    setError(null);
+    try {
+      await cancelSharedRestaurantTask({
+        restaurantId: restaurant.id,
+        taskId: sharedTask.id
+      });
+      await load();
+    } catch (cancelError) {
+      captureMiseError(cancelError, {
+        flow: "shared_task_detail",
+        operation: "cancel",
+        restaurant_id: restaurant.id,
+        task_id: sharedTask.id
+      });
+      const message = cancelError instanceof Error ? cancelError.message : "";
+      setError(
+        /open dependent/i.test(message)
+          ? t("tasks.shared.cancelBlockedByDependents")
+          : t("tasks.shared.cancelError")
+      );
+    } finally {
+      setMutating(false);
+    }
+  }
+
   if (sharedTask) {
     const completed = sharedTask.status === "completed";
+    const cancelled = sharedTask.status === "cancelled";
     const high = sharedTask.priority === "urgent" || sharedTask.priority === "high";
     const canComplete = canRestaurantRoleCompleteSharedTask(
       role ?? "staff",
@@ -229,6 +260,7 @@ export default function TaskDetailScreen() {
       (role ?? "staff") === "staff"
     );
     const canReopen = role === "owner" || role === "admin" || role === "manager";
+    const canCancel = canRestaurantRoleCancelSharedTask(role ?? "staff");
     const dueLabel = sharedTask.dueAt && restaurantTimeZone
       ? formatDueTime(sharedTask.dueAt, { timeZone: restaurantTimeZone })
       : sharedTask.serviceWindow
@@ -258,7 +290,7 @@ export default function TaskDetailScreen() {
             ) : (
               <ClipboardList
                 size={icon.emphasis}
-                color={high ? colors.danger : colors.accentDark}
+                color={cancelled ? colors.faint : high ? colors.danger : colors.accentDark}
                 strokeWidth={iconStroke}
               />
             )}
@@ -267,8 +299,16 @@ export default function TaskDetailScreen() {
               <View style={styles.inlineBadges}>
                 <Badge label={t("tasks.shared.restaurantWide")} tone="neutral" />
                 <Badge
-                  label={t(completed ? "task.badge.done" : high ? "tasks.priority.high" : "task.badge.normal")}
-                  tone={completed ? "success" : high ? "danger" : "neutral"}
+                  label={t(
+                    cancelled
+                      ? "task.badge.cancelled"
+                      : completed
+                        ? "task.badge.done"
+                        : high
+                          ? "tasks.priority.high"
+                          : "task.badge.normal"
+                  )}
+                  tone={cancelled ? "neutral" : completed ? "success" : high ? "danger" : "neutral"}
                 />
               </View>
             </View>
@@ -296,8 +336,8 @@ export default function TaskDetailScreen() {
                   <Pressable
                     key={key}
                     accessibilityRole="checkbox"
-                    accessibilityState={{ checked: isChecked }}
-                    disabled={completed}
+                    accessibilityState={{ checked: isChecked, disabled: completed || cancelled }}
+                    disabled={completed || cancelled}
                     onPress={() => setChecked((current) => ({ ...current, [key]: !current[key] }))}
                     style={({ pressed }) => [styles.checkRow, pressed && styles.pressed]}
                   >
@@ -313,13 +353,18 @@ export default function TaskDetailScreen() {
             </View>
           ) : null}
 
-          {sharedTask.dependencyIds.length > 0 && !completed ? (
+          {sharedTask.dependencyIds.length > 0 && !completed && !cancelled ? (
             <Text style={styles.restricted}>
               {t("tasks.shared.dependencies", { count: sharedTask.dependencyIds.length })}
             </Text>
           ) : null}
 
-          {completed ? (
+          {cancelled ? (
+            <View style={styles.instructions}>
+              <Text style={styles.sectionTitle}>{t("tasks.shared.cancelledTitle")}</Text>
+              <Text style={styles.instructionsBody}>{t("tasks.shared.cancelledBody")}</Text>
+            </View>
+          ) : completed ? (
             <View style={styles.instructions}>
               <Text style={styles.sectionTitle}>{t("tasks.shared.result")}</Text>
               <Text style={styles.instructionsBody}>{sharedTask.completionResult}</Text>
@@ -369,6 +414,16 @@ export default function TaskDetailScreen() {
                 disabled={mutating || !canComplete || sharedTask.status === "blocked"}
                 fullWidth
               />
+              {canCancel ? (
+                <Button
+                  title={mutating ? t("common.saving") : t("tasks.action.cancel")}
+                  variant="secondary"
+                  onPress={() => void cancelSharedTask()}
+                  disabled={mutating}
+                  fullWidth
+                  style={styles.cancelAction}
+                />
+              ) : null}
               {!canComplete ? (
                 <Text style={styles.restricted}>
                   {t(
@@ -652,6 +707,9 @@ const styles = StyleSheet.create({
   },
   resultInput: {
     minHeight: 96
+  },
+  cancelAction: {
+    marginTop: 10
   },
   divider: {
     height: StyleSheet.hairlineWidth,

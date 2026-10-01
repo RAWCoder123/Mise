@@ -1,4 +1,5 @@
 import type {
+  CancelRestaurantTaskInput,
   CompleteRestaurantTaskInput,
   CreateRestaurantTaskInput,
   RestaurantTask
@@ -9,6 +10,7 @@ import { getMiseRepository } from "./repository";
 const repository = getMiseRepository();
 
 export type {
+  CancelRestaurantTaskInput,
   CompleteRestaurantTaskInput,
   CreateRestaurantTaskInput,
   RestaurantTask,
@@ -59,6 +61,12 @@ export async function reopenSharedRestaurantTask(
     throw new Error("Restaurant and task are required.");
   }
   return repository.reopenRestaurantTask(normalizedRestaurantId, normalizedTaskId);
+}
+
+export async function cancelSharedRestaurantTask(
+  input: CancelRestaurantTaskInput
+): Promise<RestaurantTask> {
+  return repository.cancelRestaurantTask(input);
 }
 
 function compareRestaurantTasks(left: RestaurantTask, right: RestaurantTask) {

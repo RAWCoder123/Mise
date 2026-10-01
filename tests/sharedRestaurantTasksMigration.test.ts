@@ -40,6 +40,12 @@ test("shared task RPCs derive actor authority and preserve verified completion t
     migration,
     /on conflict\s*\(restaurant_id, idempotency_key\)\s*do nothing/i
   );
+  const cancelMigration = readFileSync(
+    "supabase/migrations/20260903193000_cancel_restaurant_task.sql",
+    "utf8"
+  );
+  assert.match(cancelMigration, /create or replace function public\.cancel_restaurant_task/i);
+  assert.match(cancelMigration, /'task_cancelled'/);
 });
 
 test("database coverage exercises isolation, assignment, cycles, evidence, and unblocking", () => {
