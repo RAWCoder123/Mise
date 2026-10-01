@@ -57,6 +57,26 @@ const briefingKeywords = /brief|status|overview|summary|how.*(we|we'?re|restaura
 const prepKeywords = /prep|mise en place|line|batch|prep list|preparaci[oó]n|备餐|开餐前/;
 const wasteKeywords = /waste|spoil|overstock|excess|desperdicio|exceso|损耗|积压|过期/;
 
+const PREP_BLOCKING_ACTION_INTENTS = new Set<OperationalTodayTask["action"]["intent"]>([
+  "begin_inventory_count_session",
+  "continue_inventory_count_session",
+  "update_inventory_count"
+]);
+
+/**
+ * Today count and low-stock count tasks that must be finished before Mise can
+ * honestly claim prep is clear from sellers/stock alone.
+ */
+export function isPrepBlockingTodayTask(task: OperationalTodayTask): boolean {
+  if (task.status !== "open") return false;
+  if (PREP_BLOCKING_ACTION_INTENTS.has(task.action.intent)) return true;
+  if (task.action.intent === "review_insight" && task.presentation?.code === "today.insight.review") {
+    const insightType = task.presentation.values.insightType;
+    return insightType === "prep" || insightType === "sales";
+  }
+  return false;
+}
+
 /** Classify a manager question against operational intents. */
 export function classifyAskMiseIntent(question: string): AskMiseIntent {
   const normalized = question.trim().toLowerCase();
@@ -90,10 +110,12 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const topTaskTitles = priorities.map((task) => presentOperationalTodayTask(helpers.locale, task).title);
   const topSale = summary.topItems[0]?.item_name?.trim() || null;
 
+  const prepBlockingTasks = openTasks.filter(isPrepBlockingTodayTask);
   const thinkingSteps = buildThinkingSteps({
     intent,
     restaurantName: restaurant.name,
     openTaskCount: openTasks.length,
+    prepBlockingTaskCount: prepBlockingTasks.length,
     stockRisk,
     pendingRecommendations: summary.pendingRecommendations,
     salesToday: summary.salesToday,
@@ -230,20 +252,37 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       const prepTitles = prepInsights
         .slice(0, 3)
         .map((insight) => presentInsight(helpers.locale, insight).title);
+      const prepTaskPriorities = prepBlockingTasks.slice(0, 3);
+      const prepTaskTitles = prepTaskPriorities.map(
+        (task) => presentOperationalTodayTask(helpers.locale, task).title
+      );
+      const answerParts: string[] = [];
+      if (prepTaskTitles.length > 0) {
+        answerParts.push(
+          t("ask.answer.prep.tasks.lead"),
+          t("ask.answer.prep.tasks.named", { items: prepTaskTitles.join("; ") }),
+          t("ask.answer.prep.tasks.next")
+        );
+      }
+      if (prepTitles.length > 0) {
+        if (answerParts.length === 0) {
+          answerParts.push(t("ask.answer.prep.lead"));
+        }
+        answerParts.push(t("ask.answer.prep.named", { items: prepTitles.join("; ") }));
+        if (prepTaskTitles.length === 0) {
+          answerParts.push(t("ask.answer.prep.next"));
+        }
+      }
       const answer =
-        prepTitles.length > 0
-          ? [
-              t("ask.answer.prep.lead"),
-              t("ask.answer.prep.named", { items: prepTitles.join("; ") }),
-              t("ask.answer.prep.next")
-            ].join(" ")
-          : t("ask.answer.prep.clear");
+        answerParts.length > 0 ? answerParts.join(" ") : t("ask.answer.prep.clear");
+      const replyPriorities =
+        prepTaskPriorities.length > 0 ? prepTaskPriorities : priorities;
       return {
         intent,
         thinkingSteps,
         answer,
-        showPriorities: priorities.length > 0,
-        priorities
+        showPriorities: replyPriorities.length > 0,
+        priorities: replyPriorities
       };
     }
     case "waste": {
@@ -306,6 +345,7 @@ function buildThinkingSteps(input: {
   intent: AskMiseIntent;
   restaurantName: string;
   openTaskCount: number;
+  prepBlockingTaskCount: number;
   stockRisk: number;
   pendingRecommendations: number;
   salesToday: number;
@@ -328,6 +368,15 @@ function buildThinkingSteps(input: {
       input.stockRisk > 0
         ? t("ask.thinking.stock.risk", { count: helpers.formatNumber(input.stockRisk) })
         : t("ask.thinking.stock.clear")
+    );
+  }
+  if (intent === "prep") {
+    steps.push(
+      input.prepBlockingTaskCount > 0
+        ? t("ask.thinking.prep.tasks", {
+            count: helpers.formatNumber(input.prepBlockingTaskCount)
+          })
+        : t("ask.thinking.prep.clear")
     );
   }
   if (intent === "orders" || intent === "briefing") {
