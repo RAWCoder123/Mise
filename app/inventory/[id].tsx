@@ -7,7 +7,7 @@ import {
   PackageCheck,
   Save
 } from "lucide-react-native";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge } from "../../components/ui/Badge";
@@ -222,20 +222,77 @@ export default function InventoryDetailScreen() {
       return;
     }
 
-    const restaurantId = restaurant.id;
     setQuantityError(undefined);
+
+    const payload = {
+      restaurantId: restaurant.id,
+      inventoryItemId: item.id,
+      eventType: operation,
+      quantity,
+      canonicalUnit: item.canonical_unit!,
+      note: noteText.trim() || undefined
+    };
+
+    if (operation === "stockout") {
+      confirmStockoutThenSubmit(item, payload);
+      return;
+    }
+
+    await runQueuedInventoryOperation(payload);
+  }
+
+  function confirmStockoutThenSubmit(
+    stockItem: InventoryItem,
+    payload: {
+      restaurantId: string;
+      inventoryItemId: string;
+      eventType: InventoryOperatorAction;
+      quantity: number;
+      canonicalUnit: NonNullable<InventoryItem["canonical_unit"]>;
+      note?: string;
+    }
+  ) {
+    Alert.alert(
+      t("inventory.ops.stockoutConfirm.title"),
+      t("inventory.ops.stockoutConfirm.body", {
+        item: stockItem.item_name,
+        quantity: formatNumber(stockItem.current_quantity, { maximumFractionDigits: 1 }),
+        unit: stockItem.unit
+      }),
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("inventory.ops.stockoutConfirm.action"),
+          style: "destructive",
+          onPress: () => {
+            void runQueuedInventoryOperation(payload);
+          }
+        }
+      ]
+    );
+  }
+
+  async function runQueuedInventoryOperation(payload: {
+    restaurantId: string;
+    inventoryItemId: string;
+    eventType: InventoryOperatorAction;
+    quantity: number;
+    canonicalUnit: NonNullable<InventoryItem["canonical_unit"]>;
+    note?: string;
+  }) {
+    const restaurantId = payload.restaurantId;
     setSubmittingOperation(true);
     setMessage(null);
     setMessageIsError(false);
     try {
       await queueInventoryOperation({
         restaurantId,
-        inventoryItemId: item.id,
-        eventType: operation,
-        quantity,
-        canonicalUnit: item.canonical_unit,
+        inventoryItemId: payload.inventoryItemId,
+        eventType: payload.eventType,
+        quantity: payload.quantity,
+        canonicalUnit: payload.canonicalUnit,
         effectiveAt: new Date().toISOString(),
-        note: noteText.trim() || undefined
+        note: payload.note
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
@@ -245,7 +302,7 @@ export default function InventoryDetailScreen() {
       await load();
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
-      setQuantityText(operation === "stockout" ? "0" : "");
+      setQuantityText(payload.eventType === "stockout" ? "0" : "");
       setNoteText("");
       setMessage(describeFlushResult(flushSummary, t));
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
