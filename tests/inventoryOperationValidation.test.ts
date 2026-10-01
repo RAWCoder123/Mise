@@ -53,7 +53,7 @@ test("counts may be zero while receipts and waste require positive quantities", 
   );
 });
 
-test("stockouts are explicit zeroes and unsupported event types fail closed", () => {
+test("stockouts are explicit zeroes with required reasons and unsupported event types fail closed", () => {
   const base = {
     restaurantId: "restaurant-a",
     inventoryItemId: "chicken",
@@ -61,11 +61,35 @@ test("stockouts are explicit zeroes and unsupported event types fail closed", ()
     effectiveAt: "2026-07-26T10:00:00.000Z"
   };
   assert.equal(
-    requireInventoryOperation({ ...base, eventType: "stockout", quantity: 0 }).eventType,
+    requireInventoryOperation({
+      ...base,
+      eventType: "stockout",
+      quantity: 0,
+      reasonCode: "under_ordered"
+    }).eventType,
     "stockout"
   );
+  assert.equal(
+    requireInventoryOperation({
+      ...base,
+      eventType: "stockout",
+      quantity: 0,
+      reasonCode: "under_ordered"
+    }).reasonCode,
+    "under_ordered"
+  );
   assert.throws(
-    () => requireInventoryOperation({ ...base, eventType: "stockout", quantity: 1 }),
+    () => requireInventoryOperation({ ...base, eventType: "stockout", quantity: 0 }),
+    /Choose a stockout reason/
+  );
+  assert.throws(
+    () =>
+      requireInventoryOperation({
+        ...base,
+        eventType: "stockout",
+        quantity: 1,
+        reasonCode: "under_ordered"
+      }),
     /must be zero/
   );
   assert.throws(
