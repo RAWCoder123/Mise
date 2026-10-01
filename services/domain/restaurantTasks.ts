@@ -250,7 +250,7 @@ export function normalizeCreateRestaurantTaskInput(
     relatedOrderId: optionalText(input.relatedOrderId, 200, "Related order"),
     relatedRecommendationId: optionalText(input.relatedRecommendationId, 200, "Related recommendation"),
     relatedSupplierName: optionalText(input.relatedSupplierName, 200, "Related supplier"),
-    sourceReference: optionalText(input.sourceReference, 240, "Task source reference"),
+    sourceReference: optionalSourceReference(input.sourceReference),
     dependencyIds
   };
 }
@@ -322,7 +322,7 @@ export function restaurantTaskFromPersistedRow(
     relatedOrderId: optionalText(row.related_order_id, 200, "Related order"),
     relatedRecommendationId: optionalText(row.related_recommendation_id, 200, "Related recommendation"),
     relatedSupplierName: optionalText(row.related_supplier_name, 200, "Related supplier"),
-    sourceReference: optionalText(row.source_reference, 240, "Task source reference"),
+    sourceReference: optionalSourceReference(row.source_reference),
     createdBy: requiredText(row.created_by, 200, "Task creator"),
     clientTaskId: requiredText(row.client_task_id, 200, "Client task id"),
     correlationId: requiredText(row.correlation_id, 200, "Task correlation id"),
@@ -511,6 +511,25 @@ function optionalText(value: unknown, max: number, label: string): string | null
   const normalized = value.trim();
   if (!normalized) return null;
   if (normalized.length > max) throw new Error(`${label} is invalid.`);
+  return normalized;
+}
+
+function hasAsciiControlCharacters(value: string) {
+  // ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) — matches
+  // restaurant_tasks_source_reference_bound_check under COLLATE "C" (MISE-005EU).
+  return /[\u0000-\u001f\u007f]/.test(value);
+}
+
+function optionalSourceReference(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") throw new Error("Task source reference is invalid.");
+  const normalized = value.trim();
+  if (!normalized) return null;
+  // MISE-005EU: reject ASCII C controls so the single-line source reference
+  // cannot slip past restaurant_tasks_source_reference_bound_check under COLLATE "C".
+  if (normalized.length > 240 || hasAsciiControlCharacters(normalized)) {
+    throw new Error("Task source reference is limited to 240 characters without control characters.");
+  }
   return normalized;
 }
 
