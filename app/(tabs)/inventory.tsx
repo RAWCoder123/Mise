@@ -42,10 +42,16 @@ import {
   summarizeInventoryOutlooks
 } from "../../services/miseService";
 import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
+import {
+  isInventoryCanonicalUnitReady,
+  listNeedsVerificationOutlooks,
+  matchesInventoryHubFilter,
+  type InventoryHubFilter
+} from "../../services/presentation/inventoryHubPresentation";
 import { canDraftInventoryCount } from "../../services/tenantAccess";
-import type { InventoryItem, InventoryOutlookItem, InventoryStatus } from "../../types/mise";
+import type { InventoryOutlookItem } from "../../types/mise";
 
-type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
+type InventoryFilter = InventoryHubFilter;
 
 export default function InventoryScreen() {
   const { formatNumber, t } = useLocale();
@@ -127,13 +133,25 @@ export default function InventoryScreen() {
       { value: "All", label: t("inventory.filter.all"), tone: "brand" as const },
       { value: "At risk", label: t("inventory.filter.atRisk"), tone: "warning" as const },
       { value: "Watch", label: t("inventory.filter.watch"), tone: "caution" as const },
-      { value: "Good", label: t("inventory.filter.good"), tone: "success" as const }
+      { value: "Good", label: t("inventory.filter.good"), tone: "success" as const },
+      {
+        value: "Needs verification",
+        label: t("inventory.filter.needsVerification"),
+        tone: "neutral" as const
+      }
     ];
     return options.map((option) => ({
       ...option,
       accessibilityLabel: t("inventory.filter.option", { status: option.label })
     }));
   }, [t]);
+
+  const needsVerificationOutlooksAll = useMemo(
+    () => listNeedsVerificationOutlooks(visibleOutlooks),
+    [visibleOutlooks]
+  );
+  const needsVerificationOutlooks = needsVerificationOutlooksAll.slice(0, 3);
+  const needsVerificationCount = needsVerificationOutlooksAll.length;
 
   const summary = useMemo(() => {
     if (!restaurant) return null;
@@ -179,8 +197,9 @@ export default function InventoryScreen() {
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return visibleOutlooks.filter(({ item, prediction }) => {
-      const matchesFilter = matchesInventoryFilter(prediction.projectedStatus, filter);
+    return visibleOutlooks.filter((outlook) => {
+      const matchesFilter = matchesInventoryHubFilter(outlook, filter);
+      const { item, prediction } = outlook;
       const matchesQuery =
         !normalized ||
         item.item_name.toLowerCase().includes(normalized) ||
@@ -274,6 +293,16 @@ export default function InventoryScreen() {
           outlooks={visibleOutlooks.filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Watch").slice(0, 3)}
           queue={visibleQueue}
           onHeaderPress={() => setFilter("Watch")}
+        />
+        <InventoryGroup
+          title={t("inventory.group.needsVerification", {
+            count: formatNumber(needsVerificationCount)
+          })}
+          outlooks={needsVerificationOutlooks}
+          queue={visibleQueue}
+          onHeaderPress={
+            needsVerificationCount > 0 ? () => setFilter("Needs verification") : undefined
+          }
         />
         {/* The concept shows reorder as one summary row, not a repeat of the
             same items already listed under Low stock and Stock alerts. */}
@@ -405,19 +434,6 @@ function InventoryGroup({
   );
 }
 
-function matchesInventoryFilter(status: InventoryStatus, filter: InventoryFilter) {
-  if (filter === "All") return true;
-  if (filter === "At risk") return status === "Critical" || status === "Low";
-  return status === filter;
-}
-
-function isCanonicalUnitReady(item: InventoryItem) {
-  return (
-    item.canonical_unit_verification_status === "verified" &&
-    (item.canonical_unit === "g" || item.canonical_unit === "ml" || item.canonical_unit === "each")
-  );
-}
-
 function categoryIcon(category: string, color: string) {
   const props = { size: 18, color, strokeWidth: 2.2 } as const;
   const normalized = category.trim().toLowerCase();
@@ -453,7 +469,7 @@ function InventoryListRow({
   const isLow = prediction.projectedStatus === "Low";
   const isWatch = prediction.projectedStatus === "Watch";
   const isGood = prediction.projectedStatus === "Good";
-  const canonicalReady = isCanonicalUnitReady(item);
+  const canonicalReady = isInventoryCanonicalUnitReady(item);
   const entryHint = !canonicalReady
     ? t("inventory.row.needsVerification")
     : queueCount > 0
