@@ -286,6 +286,17 @@ export default function InventoryDetailScreen() {
         t
       )
     };
+    const parsedPar = parseNumber(parLevel);
+    const parsedReorder = parseNumber(reorderThreshold);
+    if (
+      !nextSettingErrors.parLevel &&
+      !nextSettingErrors.reorderThreshold &&
+      parsedPar !== null &&
+      parsedReorder !== null &&
+      parsedReorder > parsedPar
+    ) {
+      nextSettingErrors.reorderThreshold = t("inventory.detail.reorderExceedsPar");
+    }
     if (Object.values(nextSettingErrors).some(Boolean)) {
       setSettingErrors(nextSettingErrors);
       setMessage(t("inventory.detail.reviewFields"));

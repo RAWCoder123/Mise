@@ -36,6 +36,7 @@ import {
   normalizeRecipeBaselineQuantity,
   normalizeRecommendedQuantity,
   requireInventoryItemPatch,
+  requireInventoryPolicyPair,
   requireRecipeBaselineQuantity,
   requireRecommendationApprovalQuantity
 } from "../services/miseValidation";
@@ -712,6 +713,22 @@ test("validation normalizes reads and rejects invalid mutation quantities", () =
     );
   }
   assert.deepEqual(requireInventoryItemPatch({ par_level: 10 }), { par_level: 10 });
+  assert.deepEqual(
+    requireInventoryItemPatch({ par_level: 20, reorder_threshold: 8 }),
+    { par_level: 20, reorder_threshold: 8 }
+  );
+  assert.throws(
+    () => requireInventoryItemPatch({ par_level: 5, reorder_threshold: 6 }),
+    /Reorder threshold cannot exceed par level/
+  );
+  assert.throws(
+    () => requireInventoryPolicyPair(10, 12),
+    /Reorder threshold cannot exceed par level/
+  );
+  assert.deepEqual(requireInventoryPolicyPair(10, 10), {
+    par_level: 10,
+    reorder_threshold: 10
+  });
   assert.throws(
     () => requireInventoryItemPatch({ current_quantity: 0 }),
     /remain auditable/

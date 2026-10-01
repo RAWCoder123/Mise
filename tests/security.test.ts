@@ -364,6 +364,18 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
     /safe_patch\s*-\s*array\[[^\]]*'supplier_name'/i
   );
   assert.match(projectionMigration, /after insert on public\.inventory_events/i);
+  const reorderPolicyMigration = readFileSync(
+    "supabase/migrations/20260903210000_inventory_reorder_lte_par.sql",
+    "utf8"
+  );
+  assert.match(
+    reorderPolicyMigration,
+    /inventory_items_reorder_lte_par[\s\S]*reorder_threshold\s*<=\s*par_level/i
+  );
+  assert.match(
+    reorderPolicyMigration,
+    /Reorder threshold cannot exceed par level/i
+  );
 });
 
 test("recipe baseline edits and regenerated guidance commit through one optimistic workflow", () => {

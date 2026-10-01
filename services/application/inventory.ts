@@ -16,6 +16,7 @@ import {
   requireInventoryCountLineUpdates,
   requireInventoryCountSessionNote,
   requireInventoryItemPatch,
+  requireInventoryPolicyPair,
   requireRecipeBaselineQuantity,
   requireSupplierAuthorityId
 } from "../miseValidation";
@@ -353,6 +354,7 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
     ...normalizedPatch,
     last_updated: new Date().toISOString()
   };
+  requireInventoryPolicyPair(updatedForPlanning.par_level, updatedForPlanning.reorder_threshold);
   const planningInventory = data.inventoryItems.map((item) => item.id === itemId ? updatedForPlanning : item);
   const recommendations = buildRecommendationInserts(
     restaurantId,

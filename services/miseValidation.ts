@@ -427,6 +427,27 @@ export function requireRecipeBaselineQuantity(value: unknown) {
   return value;
 }
 
+export function requireInventoryPolicyPair(parLevel: number, reorderThreshold: number) {
+  if (
+    typeof parLevel !== "number" ||
+    typeof reorderThreshold !== "number" ||
+    !Number.isFinite(parLevel) ||
+    !Number.isFinite(reorderThreshold) ||
+    parLevel < 0 ||
+    reorderThreshold < 0 ||
+    parLevel > operatingLimits.inventoryQuantity ||
+    reorderThreshold > operatingLimits.inventoryQuantity
+  ) {
+    throw new Error(
+      `Par level and reorder threshold must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
+    );
+  }
+  if (reorderThreshold > parLevel) {
+    throw new Error("Reorder threshold cannot exceed par level.");
+  }
+  return { par_level: parLevel, reorder_threshold: reorderThreshold };
+}
+
 export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryItemPatch {
   if (patch.current_quantity !== undefined) {
     throw new Error(
@@ -450,6 +471,9 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
         `${label} must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
       );
     }
+  }
+  if (validated.par_level !== undefined && validated.reorder_threshold !== undefined) {
+    requireInventoryPolicyPair(validated.par_level, validated.reorder_threshold);
   }
   return validated;
 }
