@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -14,6 +15,10 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import {
+  formatFindingMissingDataLabels,
+  presentFindingRecoveryActions
+} from "../../services/presentation/findingRecoveryPresentation";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -193,6 +198,8 @@ function FindingCard({
     style: "percent",
     maximumFractionDigits: 0
   });
+  const recoveryActions = presentFindingRecoveryActions(finding);
+  const missingDataLabel = formatFindingMissingDataLabels(finding.freshness.missingData, t);
 
   async function submit(decisionType: OperationalFindingDecisionType, edited?: string) {
     if (disabled || busy) return;
@@ -246,10 +253,28 @@ function FindingCard({
         })}
       </Text>
       <Text style={styles.meta}>{t("dailyBrief.workflow", { workflow: finding.affectedWorkflow })}</Text>
-      {finding.freshness.missingData.length > 0 ? (
+      {finding.freshness.missingData.length > 0 && missingDataLabel ? (
         <Text style={styles.missing}>
-          {t("dailyBrief.missingData", { items: finding.freshness.missingData.join(", ") })}
+          {t("dailyBrief.missingData", { items: missingDataLabel })}
         </Text>
+      ) : null}
+      {recoveryActions.length > 0 ? (
+        <View style={styles.recoveryActions}>
+          <Text style={styles.kicker}>{t("dailyBrief.recovery.title")}</Text>
+          <View style={styles.actions}>
+            {recoveryActions.map((action) => (
+              <Button
+                key={`${action.reason}:${action.href}`}
+                title={t(action.labelKey)}
+                variant="secondary"
+                size="compact"
+                accessibilityLabel={t(action.labelKey)}
+                onPress={() => router.push(action.href as never)}
+                style={styles.actionButton}
+              />
+            ))}
+          </View>
+        </View>
       ) : null}
 
       <Text style={styles.kicker}>{t("dailyBrief.recommended")}</Text>
@@ -448,6 +473,7 @@ const styles = StyleSheet.create({
   cardBody: { color: colors.muted, fontFamily: typography.families.body, fontSize: 13, lineHeight: 18 },
   meta: { color: colors.faint, fontFamily: typography.families.semibold, fontSize: 12, lineHeight: 16 },
   missing: { color: colors.warning, fontFamily: typography.families.semibold, fontSize: 12, lineHeight: 16 },
+  recoveryActions: { gap: 4, marginTop: 4 },
   kicker: {
     marginTop: 4,
     color: colors.faint,
