@@ -93,6 +93,7 @@ test("supplier notes, restaurant names, and generated messages stop at their aut
   assert.throws(() => requireSupplierOperatorNote("x".repeat(2001)), /2,000 characters/);
   assert.equal(requireRestaurantName("R".repeat(120)).length, 120);
   assert.throws(() => requireRestaurantName("R".repeat(121)), /between 1 and 120/);
+  assert.throws(() => requireRestaurantName("Harbor\tKitchen"), /without control characters/);
 
   const recommendation = {
     id: "rec-1",
