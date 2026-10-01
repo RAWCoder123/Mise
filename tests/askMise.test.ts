@@ -132,7 +132,7 @@ test("answerAskMise returns priority cards for priority questions", () => {
   assert.match(reply.answer, /ask\.answer\.prioritiesLead/);
 });
 
-test("answerAskMise briefing uses restaurant name and board counts", () => {
+test("answerAskMise briefing uses restaurant name and localized miseStatus", () => {
   const reply = answerAskMise({
     question: "Give me a quick briefing",
     restaurant: {
@@ -149,6 +149,50 @@ test("answerAskMise briefing uses restaurant name and board counts", () => {
 
   assert.equal(reply.intent, "briefing");
   assert.match(reply.answer, /Harbor Bistro/);
+  assert.match(reply.answer, /ask\.answer\.briefing\.lead/);
+  assert.match(reply.answer, /status=dailyReport\.miseStatus\.ready/);
+  assert.doesNotMatch(reply.answer, /status=Ready(?:}|,)/);
   assert.match(reply.answer, /ask\.answer\.briefing\.board/);
   assert.ok(reply.thinkingSteps.some((step) => step.includes("ask.thinking.sales")));
+});
+
+test("answerAskMise briefing localizes monitoring miseStatus without inventing facts", () => {
+  const monitoring =
+    "Mise is monitoring today's sales, inventory levels, and ordering patterns.";
+  const reply = answerAskMise({
+    question: "How is the restaurant looking?",
+    restaurant: {
+      name: "Harbor Bistro",
+      cuisine_type: "Seafood",
+      service_style: "full_service",
+      timezone: "America/Los_Angeles",
+      currency: "USD"
+    },
+    summary: summary({ miseStatus: monitoring }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "briefing");
+  assert.match(reply.answer, /status=dailyReport\.miseStatus\.monitoring/);
+  assert.doesNotMatch(reply.answer, /status=Mise is monitoring/);
+});
+
+test("answerAskMise briefing preserves unknown miseStatus verbatim", () => {
+  const reply = answerAskMise({
+    question: "Give me a quick briefing",
+    restaurant: {
+      name: "Harbor Bistro",
+      cuisine_type: "Seafood",
+      service_style: "full_service",
+      timezone: "America/Los_Angeles",
+      currency: "USD"
+    },
+    summary: summary({ miseStatus: "Vendor delay noted by GM" }),
+    insights: [],
+    helpers
+  });
+
+  assert.equal(reply.intent, "briefing");
+  assert.match(reply.answer, /status=Vendor delay noted by GM/);
 });
