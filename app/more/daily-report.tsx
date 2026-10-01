@@ -509,7 +509,7 @@ export default function DailyReportScreen() {
                 variant="secondary"
                 size="compact"
                 icon={<ShoppingBag size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
-                onPress={() => router.push("/orders")}
+                onPress={() => router.push("/more/supplier-status" as never)}
                 style={styles.inlineAction}
               />
             </Card>
