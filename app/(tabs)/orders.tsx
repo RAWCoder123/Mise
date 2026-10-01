@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
-import { Mail, RotateCcw, Truck } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Mail, RotateCcw, Search, Truck } from "lucide-react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { RecommendationDecisionRow } from "../../components/RecommendationDecisionRow";
 import { SupplierDraftCard } from "../../components/SupplierDraftCard";
@@ -40,6 +40,10 @@ import {
 import type { MessageKey } from "../../i18n/catalog";
 import type { PurchaseDecisionPattern } from "../../services/domain/purchaseDecisionMemory";
 import {
+  filterPurchaseRecommendationsBySearch,
+  PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD
+} from "../../services/domain/purchaseRecommendationSearch";
+import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
@@ -72,6 +76,7 @@ export default function OrdersScreen() {
   const [spendTrend, setSpendTrend] = useState<SupplierSpendTrendPoint[]>([]);
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [lane, setLane] = useState<OrderLane>("drafts");
+  const [reviewQuery, setReviewQuery] = useState("");
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [quantityErrors, setQuantityErrors] = useState<Record<string, string | undefined>>({});
   const [recommendationActions, setRecommendationActions] =
@@ -171,7 +176,12 @@ export default function OrdersScreen() {
     setMessageRestaurantId(null);
     setLoadError(null);
     setLane("drafts");
+    setReviewQuery("");
   }, [restaurant?.id]);
+
+  useEffect(() => {
+    setReviewQuery("");
+  }, [lane]);
 
   useEffect(() => {
     if (!canManage) setUndoAction(null);
@@ -223,13 +233,28 @@ export default function OrdersScreen() {
   const visibleMessage = messageRestaurantId === restaurant?.id ? message : null;
   const visibleUndoAction = hubReady && actionsEditable ? undoAction : null;
 
+  const showReviewSearch =
+    lane === "review" &&
+    visibleRecommendations.length >= PURCHASE_RECOMMENDATION_SEARCH_THRESHOLD;
+  const filteredRecommendations = useMemo(() => {
+    if (!showReviewSearch) return visibleRecommendations;
+    return filterPurchaseRecommendationsBySearch(
+      visibleRecommendations,
+      reviewQuery
+    );
+  }, [reviewQuery, showReviewSearch, visibleRecommendations]);
+  const reviewSearchNoMatches =
+    showReviewSearch &&
+    reviewQuery.trim().length > 0 &&
+    filteredRecommendations.length === 0;
+
   const groupedRecommendations = useMemo(() => {
     const groups = new Map<string, {
       supplierId: string;
       supplierName: string;
       recommendations: PurchaseRecommendation[];
     }>();
-    visibleRecommendations.forEach((recommendation) => {
+    filteredRecommendations.forEach((recommendation) => {
       const current = groups.get(recommendation.supplier_id);
       if (current) {
         current.recommendations.push(recommendation);
@@ -245,7 +270,7 @@ export default function OrdersScreen() {
       left.supplierName.localeCompare(right.supplierName) ||
       left.supplierId.localeCompare(right.supplierId)
     );
-  }, [visibleRecommendations]);
+  }, [filteredRecommendations]);
 
   const purchaseDecisionPatternsByRecommendation = useMemo(() => {
     const patterns = new Map<string, PurchaseDecisionPattern>();
@@ -687,65 +712,96 @@ export default function OrdersScreen() {
               />
             ) : (
               <View style={styles.reviewQueue}>
+                {showReviewSearch ? (
+                  <View style={styles.reviewSearchBox}>
+                    <Search size={icon.row} color={colors.faint} strokeWidth={iconStroke} />
+                    <TextInput
+                      accessibilityLabel={t("orders.review.search.accessibility")}
+                      accessibilityHint={t("orders.review.search.hint")}
+                      value={reviewQuery}
+                      onChangeText={setReviewQuery}
+                      placeholder={t("orders.review.search.placeholder")}
+                      placeholderTextColor={colors.faint}
+                      returnKeyType="search"
+                      style={styles.reviewSearchInput}
+                    />
+                  </View>
+                ) : null}
+                {showReviewSearch ? (
+                  <Text style={styles.reviewSearchMeta} accessibilityLiveRegion="polite">
+                    {t("orders.review.search.showing", {
+                      shown: formatNumber(filteredRecommendations.length),
+                      total: formatNumber(visibleRecommendations.length)
+                    })}
+                  </Text>
+                ) : null}
                 <SectionHeader
                   title={t("orders.review.title")}
                   actionTone="caution"
                   action={t(
-                    visibleRecommendations.length === 1
+                    filteredRecommendations.length === 1
                       ? "orders.review.total.one"
                       : "orders.review.total.other",
-                    { count: formatNumber(visibleRecommendations.length) }
+                    { count: formatNumber(filteredRecommendations.length) }
                   )}
                   size="compact"
                 />
-                {groupedRecommendations.map(({
-                  supplierId,
-                  supplierName,
-                  recommendations: supplierRecommendations
-                }) => (
-                  <SectionSurface key={supplierId} padding="none">
-                    <View style={styles.supplierHeader}>
-                      <View style={styles.supplierIcon}>
-                        <Truck size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
+                {reviewSearchNoMatches ? (
+                  <EmptyState
+                    compact
+                    title={t("orders.review.search.emptyTitle")}
+                    body={t("orders.review.search.emptyBody")}
+                  />
+                ) : (
+                  groupedRecommendations.map(({
+                    supplierId,
+                    supplierName,
+                    recommendations: supplierRecommendations
+                  }) => (
+                    <SectionSurface key={supplierId} padding="none">
+                      <View style={styles.supplierHeader}>
+                        <View style={styles.supplierIcon}>
+                          <Truck size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
+                        </View>
+                        <View style={styles.supplierHeaderCopy}>
+                          <Text style={styles.supplierName}>{supplierName}</Text>
+                          <Text style={styles.supplierMeta}>
+                            {t(
+                              supplierRecommendations.length === 1
+                                ? "orders.review.supplier.one"
+                                : "orders.review.supplier.other",
+                              { count: formatNumber(supplierRecommendations.length) }
+                            )}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={styles.supplierHeaderCopy}>
-                        <Text style={styles.supplierName}>{supplierName}</Text>
-                        <Text style={styles.supplierMeta}>
-                          {t(
-                            supplierRecommendations.length === 1
-                              ? "orders.review.supplier.one"
-                              : "orders.review.supplier.other",
-                            { count: formatNumber(supplierRecommendations.length) }
+                      {supplierRecommendations.map((recommendation, index) => (
+                        <RecommendationDecisionRow
+                          key={recommendation.id}
+                          recommendation={recommendation}
+                          quantity={quantities[recommendation.id] ?? formatNumber(
+                            recommendation.recommended_quantity,
+                            { maximumFractionDigits: 3 }
                           )}
-                        </Text>
-                      </View>
-                    </View>
-                    {supplierRecommendations.map((recommendation, index) => (
-                      <RecommendationDecisionRow
-                        key={recommendation.id}
-                        recommendation={recommendation}
-                        quantity={quantities[recommendation.id] ?? formatNumber(
-                          recommendation.recommended_quantity,
-                          { maximumFractionDigits: 3 }
-                        )}
-                        onQuantityChange={(value) => {
-                          setQuantities((current) => ({ ...current, [recommendation.id]: value }));
-                          setQuantityErrors((current) => ({ ...current, [recommendation.id]: undefined }));
-                        }}
-                        onApprove={() => void approve(recommendation)}
-                        onDismiss={() => void dismiss(recommendation)}
-                        action={recommendationActions[recommendation.id]}
-                        error={quantityErrors[recommendation.id]}
-                        authority={recommendationAuthorities[recommendation.id]}
-                        purchaseDecisionPattern={purchaseDecisionPatternsByRecommendation.get(
-                          `${recommendation.inventory_item_id}:${recommendation.supplier_id}:${recommendation.generation_source}`
-                        )}
-                        readOnly={!actionsEditable}
-                        showDivider={index < supplierRecommendations.length - 1}
-                      />
-                    ))}
-                  </SectionSurface>
-                ))}
+                          onQuantityChange={(value) => {
+                            setQuantities((current) => ({ ...current, [recommendation.id]: value }));
+                            setQuantityErrors((current) => ({ ...current, [recommendation.id]: undefined }));
+                          }}
+                          onApprove={() => void approve(recommendation)}
+                          onDismiss={() => void dismiss(recommendation)}
+                          action={recommendationActions[recommendation.id]}
+                          error={quantityErrors[recommendation.id]}
+                          authority={recommendationAuthorities[recommendation.id]}
+                          purchaseDecisionPattern={purchaseDecisionPatternsByRecommendation.get(
+                            `${recommendation.inventory_item_id}:${recommendation.supplier_id}:${recommendation.generation_source}`
+                          )}
+                          readOnly={!actionsEditable}
+                          showDivider={index < supplierRecommendations.length - 1}
+                        />
+                      ))}
+                    </SectionSurface>
+                  ))
+                )}
               </View>
             )
           ) : null}
@@ -958,6 +1014,31 @@ const styles = StyleSheet.create({
   reviewQueue: {
     gap: 8,
     paddingTop: 4
+  },
+  reviewSearchBox: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  reviewSearchInput: {
+    flex: 1,
+    minHeight: 42,
+    color: colors.text,
+    fontFamily: typography.families.body,
+    fontSize: 15,
+    lineHeight: 20,
+    paddingVertical: 0
+  },
+  reviewSearchMeta: {
+    color: colors.muted,
+    ...conceptTypography.caption,
+    paddingHorizontal: 2
   },
   supplierHeader: {
     minHeight: 50,
