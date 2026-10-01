@@ -48,9 +48,9 @@ or the reverse — breaking setup-attachment continuity across restore.
 
 ## Verification
 
-- `npm run typecheck` (pending)
-- focused `tests/setupAttachmentsKindStatusLocalePin.test.ts` (pending)
-- `npm test` (pending)
+- `npm run typecheck` pass
+- focused `tests/setupAttachmentsKindStatusLocalePin.test.ts` 3/3 pass
+- `npm test` 679 pass / 0 fail / 7 cancelled
 - pgTAP fixture committed (plan 17 from 17 assertion call sites); Docker/hosted
   pgTAP not run here
 
