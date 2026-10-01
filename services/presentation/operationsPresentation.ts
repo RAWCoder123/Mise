@@ -77,6 +77,10 @@ interface OperationsCopy {
     repairSalesErrorDetail: string;
     repairSalesPausedDetail: string;
     repairSalesDisconnectedDetail: string;
+    mapUnmappedRecipesTitle: (count: string, focusMenuItem: string | null) => string;
+    mapUnmappedRecipesDetail: (count: string, focusMenuItem: string | null) => string;
+    mappedRecipesTitle: string;
+    mappedRecipesDetail: string;
     reviewInsightTitle: (typeLabel: string) => string;
     reviewInsightDetail: string;
   };
@@ -189,6 +193,20 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesErrorDetail: "The provider reports an error. Review the connection before relying on current sales.",
       repairSalesPausedDetail: "Sales synchronization is paused. Review the connection to resume current signals.",
       repairSalesDisconnectedDetail: "This sales source is not connected.",
+      mapUnmappedRecipesTitle: (count, focusMenuItem) =>
+        focusMenuItem && count === "1"
+          ? `Map recipe for ${focusMenuItem}`
+          : focusMenuItem
+            ? `Map recipes for ${count} sold POS items, starting with ${focusMenuItem}`
+            : `Map recipes for ${count} sold POS items`,
+      mapUnmappedRecipesDetail: (count, focusMenuItem) =>
+        focusMenuItem && count === "1"
+          ? `${focusMenuItem} has sales without a dish-to-stock recipe, so inventory will not deplete from those sales.`
+          : focusMenuItem
+            ? `${count} sold POS menu items lack dish-to-stock recipes, starting with ${focusMenuItem}. Inventory will not deplete from those sales.`
+            : `${count} sold POS menu items lack dish-to-stock recipes, so inventory will not deplete from those sales.`,
+      mappedRecipesTitle: "POS recipe mapping complete",
+      mappedRecipesDetail: "Sold POS menu items have recipe baselines for depletion.",
       reviewInsightTitle: (typeLabel) => `Review ${typeLabel}`,
       reviewInsightDetail: "Open the evidence and recommended action before the next service window."
     },
@@ -301,6 +319,20 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesErrorDetail: "El proveedor informa un error. Revisa la conexión antes de usar las ventas actuales.",
       repairSalesPausedDetail: "La sincronización de ventas está pausada. Revisa la conexión para reanudar las señales.",
       repairSalesDisconnectedDetail: "Esta fuente de ventas no está conectada.",
+      mapUnmappedRecipesTitle: (count, focusMenuItem) =>
+        focusMenuItem && count === "1"
+          ? `Vincular receta de ${focusMenuItem}`
+          : focusMenuItem
+            ? `Vincular recetas de ${count} artículos POS vendidos, empezando por ${focusMenuItem}`
+            : `Vincular recetas de ${count} artículos POS vendidos`,
+      mapUnmappedRecipesDetail: (count, focusMenuItem) =>
+        focusMenuItem && count === "1"
+          ? `${focusMenuItem} tiene ventas sin receta plato-inventario, así que esas ventas no descontarán inventario.`
+          : focusMenuItem
+            ? `${count} artículos POS vendidos no tienen receta plato-inventario, empezando por ${focusMenuItem}. Esas ventas no descontarán inventario.`
+            : `${count} artículos POS vendidos no tienen receta plato-inventario, así que esas ventas no descontarán inventario.`,
+      mappedRecipesTitle: "Vinculación de recetas POS completa",
+      mappedRecipesDetail: "Los artículos POS vendidos ya tienen bases de receta para el consumo.",
       reviewInsightTitle: (typeLabel) => `Revisar ${typeLabel}`,
       reviewInsightDetail: "Abre la evidencia y la acción recomendada antes del próximo servicio."
     },
@@ -411,6 +443,20 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       repairSalesErrorDetail: "提供商报告连接错误。请先检查连接，再使用当前销售数据。",
       repairSalesPausedDetail: "销售同步已暂停。请检查连接以恢复当前信号。",
       repairSalesDisconnectedDetail: "此销售数据源尚未连接。",
+      mapUnmappedRecipesTitle: (count, focusMenuItem) =>
+        focusMenuItem && count === "1"
+          ? `为 ${focusMenuItem} 关联菜谱`
+          : focusMenuItem
+            ? `为 ${count} 个已售 POS 菜品关联菜谱，先从 ${focusMenuItem} 开始`
+            : `为 ${count} 个已售 POS 菜品关联菜谱`,
+      mapUnmappedRecipesDetail: (count, focusMenuItem) =>
+        focusMenuItem && count === "1"
+          ? `${focusMenuItem} 有销售记录但缺少菜品到库存的菜谱，因此这些销售不会扣减库存。`
+          : focusMenuItem
+            ? `${count} 个已售 POS 菜品缺少菜品到库存的菜谱，先从 ${focusMenuItem} 开始。这些销售不会扣减库存。`
+            : `${count} 个已售 POS 菜品缺少菜品到库存的菜谱，因此这些销售不会扣减库存。`,
+      mappedRecipesTitle: "POS 菜谱关联已完成",
+      mappedRecipesDetail: "已售 POS 菜品已具备用于扣减库存的菜谱基线。",
       reviewInsightTitle: (typeLabel) => `查看${typeLabel}`,
       reviewInsightDetail: "请在下一个营业时段前查看依据和建议操作。"
     },
@@ -536,6 +582,16 @@ export function presentOperationalTodayTask(
         ? copy.today.repairSalesPausedDetail
         : copy.today.repairSalesDisconnectedDetail;
     return result(copy.today.repairSalesTitle(values.providerName), detail);
+  }
+  if (code === "today.recipe.map_unmapped") {
+    const count = formatQuantity(locale, values.missingCount);
+    return result(
+      copy.today.mapUnmappedRecipesTitle(count, values.focusMenuItem),
+      copy.today.mapUnmappedRecipesDetail(count, values.focusMenuItem)
+    );
+  }
+  if (code === "today.recipe.mapped") {
+    return result(copy.today.mappedRecipesTitle, copy.today.mappedRecipesDetail);
   }
   if (code === "today.insight.review") {
     return result(

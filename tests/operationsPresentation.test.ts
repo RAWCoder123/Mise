@@ -52,6 +52,14 @@ test("every allowlisted Today presentation code renders in all locales and prese
       values: { providerName, status: "error", lastSyncAt: null }
     },
     {
+      code: "today.recipe.map_unmapped",
+      values: { missingCount: 2, focusMenuItem: itemName }
+    },
+    {
+      code: "today.recipe.mapped",
+      values: { missingCount: 0, focusMenuItem: null }
+    },
+    {
       code: "today.insight.review",
       values: {
         insightType: "sales",

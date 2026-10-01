@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { router, useFocusEffect, useNavigation } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
 import { AlertTriangle, ArrowLeft, BookOpen, Link2, Package, PackageCheck, Plus, Save, ShoppingBag } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -36,6 +36,12 @@ export default function RecipeBaselinesScreen() {
   const navigation = useNavigation();
   const { formatNumber, parseNumber, t } = useLocale();
   const { memberships, restaurant } = useMiseSession();
+  const { menuItem: menuItemParam } = useLocalSearchParams<{ menuItem?: string | string[] }>();
+  const focusedMenuItem = useMemo(() => {
+    const raw = Array.isArray(menuItemParam) ? menuItemParam[0] : menuItemParam;
+    const trimmed = typeof raw === "string" ? raw.trim() : "";
+    return trimmed || null;
+  }, [menuItemParam]);
   const [summary, setSummary] = useState<RecipeBaselineSummary | null>(null);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [newMenuItemName, setNewMenuItemName] = useState("");
@@ -53,6 +59,7 @@ export default function RecipeBaselinesScreen() {
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
+  const appliedMenuItemFocusRef = useRef<string | null>(null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   useEffect(() => {
@@ -76,7 +83,15 @@ export default function RecipeBaselinesScreen() {
     setError(null);
     setNotice(null);
     setLoading(Boolean(restaurant));
+    appliedMenuItemFocusRef.current = null;
   }, [restaurant?.id]);
+
+  useEffect(() => {
+    if (!focusedMenuItem) return;
+    if (appliedMenuItemFocusRef.current === focusedMenuItem) return;
+    appliedMenuItemFocusRef.current = focusedMenuItem;
+    setNewMenuItemName(focusedMenuItem);
+  }, [focusedMenuItem]);
 
   const load = useCallback(async () => {
     if (!restaurant) {

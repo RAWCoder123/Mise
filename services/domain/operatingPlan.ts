@@ -499,6 +499,9 @@ function effectForIntent(intent: OperationalTodayTaskActionIntent, task: Operati
   if (intent === "finish_setup") {
     return "Closes the setup gap that blocks reliable operational projections.";
   }
+  if (intent === "map_unmapped_pos_items") {
+    return "Links sold POS dishes to inventory so sales can deplete stock correctly.";
+  }
   if (intent === "connect_pos" || intent === "manage_pos_connection" || intent === "repair_pos_connection") {
     return "Restores trustworthy sales signal freshness for depletion and recommendations.";
   }
@@ -528,7 +531,8 @@ function verificationForIntent(intent: OperationalTodayTaskActionIntent): Verifi
     intent === "review_recommendation" ||
     intent === "prepare_supplier_draft" ||
     intent === "review_insight" ||
-    intent === "finish_setup"
+    intent === "finish_setup" ||
+    intent === "map_unmapped_pos_items"
   ) {
     return "review";
   }
@@ -551,6 +555,8 @@ function relatedRefsForTask(task: OperationalTodayTask): OperatingPlanRelatedRef
     refs.push({ type: "pos_integration", id: task.source.id });
   } else if (task.source.kind === "setup") {
     refs.push({ type: "setup_step", id: task.source.id });
+  } else if (task.source.kind === "recipe") {
+    refs.push({ type: "setup_step", id: "recipes" });
   }
   if (task.action.entityId && !refs.some((ref) => ref.id === task.action.entityId)) {
     if (task.action.intent === "send_supplier_order") {

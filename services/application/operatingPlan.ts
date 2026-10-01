@@ -1,5 +1,6 @@
 import {
   buildInventoryOutlooks,
+  buildRecipeBaselineSummary,
   buildSetupReadinessSummary
 } from "../domain/miseDomain";
 import {
@@ -110,6 +111,14 @@ export async function fetchDailyOperatingPlan(
     orders,
     emailConnection
   });
+  const recipeBaseline = buildRecipeBaselineSummary(
+    normalizedRestaurantId,
+    sales,
+    mappings,
+    inventoryItems,
+    operatingDate,
+    data.providerMappings
+  );
   const tasks = deriveOperationalTodayTasks({
     restaurantId: normalizedRestaurantId,
     restaurantTimeZone: data.restaurant.timezone,
@@ -119,6 +128,7 @@ export async function fetchDailyOperatingPlan(
     setupReadiness,
     posIntegrations,
     insights,
+    posItemsMissingRecipes: recipeBaseline.posItemsMissingRecipes,
     includeCompleted
   });
 
