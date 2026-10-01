@@ -608,6 +608,57 @@ function SuggestionChip({
   );
 }
 
+function RecipeYieldReadoutRow({
+  item,
+  formatNumber,
+  t
+}: {
+  item: RecipeBaselineItem;
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
+  t: (key: import("../../i18n/catalog").MessageKey, values?: import("../../i18n/catalog").MessageValues) => string;
+}) {
+  const readout = item.yieldReadout ?? { status: "missing" as const };
+  if (readout.status !== "recorded") {
+    return (
+      <Text style={styles.yieldMeta} accessibilityLabel={t("recipes.yield.missingAccessibility")}>
+        {t("recipes.yield.missing")}
+      </Text>
+    );
+  }
+
+  const prepPercent = formatNumber(Math.round(readout.prepYield * 100));
+  const cookPercent = formatNumber(Math.round(readout.cookingYield * 100));
+  const serving = formatNumber(readout.servingQuantity);
+  const multiplier = formatNumber(readout.rawUsageMultiplier, {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0
+  });
+  const statusLabel = t(
+    readout.versionStatus === "verified" ? "recipes.yield.status.verified" : "recipes.yield.status.draft"
+  );
+
+  return (
+    <Text
+      style={styles.yieldMeta}
+      accessibilityLabel={t("recipes.yield.recordedAccessibility", {
+        prep: prepPercent,
+        cook: cookPercent,
+        serving,
+        multiplier,
+        status: statusLabel
+      })}
+    >
+      {t("recipes.yield.recorded", {
+        prep: prepPercent,
+        cook: cookPercent,
+        serving,
+        multiplier,
+        status: statusLabel
+      })}
+    </Text>
+  );
+}
+
 function RecipeRow({
   item,
   canManage,
@@ -676,6 +727,7 @@ function RecipeRow({
               />
             ) : null}
           </View>
+          <RecipeYieldReadoutRow item={item} formatNumber={formatNumber} t={t} />
           <View style={styles.ingredientList}>
             {item.ingredients.map((ingredient) => {
               const draftValue = drafts[ingredient.mappingId] ?? formatNumber(ingredient.quantityUsedPerSale);
@@ -958,6 +1010,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginTop: 8
+  },
+  yieldMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 6
   },
   ingredientList: {
     gap: 8,
