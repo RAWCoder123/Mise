@@ -139,7 +139,8 @@ export async function fetchRecipeBaselineSummary(restaurantId: string) {
     data.menuItemIngredients,
     data.inventoryItems,
     data.operatingDate,
-    data.providerMappings
+    data.providerMappings,
+    { itemLimit: null }
   );
   return {
     ...summary,

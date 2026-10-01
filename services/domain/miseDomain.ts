@@ -741,13 +741,22 @@ function estimateUsage(
   return usage;
 }
 
+export type RecipeBaselineSummaryOptions = {
+  /**
+   * Max mapped menu items returned in `items`.
+   * Defaults to 6 for compact Home/summary surfaces; pass `null` for the full Settings list.
+   */
+  itemLimit?: number | null;
+};
+
 export function buildRecipeBaselineSummary(
   restaurantId: string,
   sales: PosSale[],
   mappings: MenuItemIngredient[],
   inventoryItems: InventoryItem[],
   operatingDate: string,
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  options: RecipeBaselineSummaryOptions = {}
 ): RecipeBaselineSummary {
   const restaurantSales = sales.filter((sale) => sale.restaurant_id === restaurantId);
   const todaySales = restaurantSales.filter((sale) => isToday(sale, operatingDate));
@@ -819,6 +828,7 @@ export function buildRecipeBaselineSummary(
     soldMenuItems.size > 0
       ? `Mise can translate ${posItemsCovered} of ${soldMenuItems.size} POS menu items into ingredient movement.`
       : `${mappedMenuItems.size} menu item${mappedMenuItems.size === 1 ? "" : "s"} mapped to inventory usage.`;
+  const itemLimit = options.itemLimit === undefined ? 6 : options.itemLimit;
 
   return {
     menuItemsTracked: mappedMenuItems.size,
@@ -829,7 +839,7 @@ export function buildRecipeBaselineSummary(
     coveragePercent,
     credibilityLabel,
     operatorCopy,
-    items: items.slice(0, 6)
+    items: itemLimit == null ? items : items.slice(0, itemLimit)
   };
 }
 
