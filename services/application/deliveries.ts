@@ -7,6 +7,12 @@ import {
   buildDeliveryLinesFromOrderRecommendations,
   deliveryClientIdForOrder
 } from "../domain/supplierDelivery";
+import {
+  canCloseSupplierOrderUndelivered,
+  requireUndeliveredCloseReason,
+  type UndeliveredCloseReason
+} from "../domain/supplierOrderUndeliveredClose";
+import type { CloseSupplierOrderUndeliveredResult } from "../repositories/repositoryContracts";
 import { getMiseRepository } from "./repository";
 
 export type { DeliveryHistoryEntry } from "./deliveryHistoryMerge";
@@ -95,4 +101,63 @@ export async function receiveSupplierOrderDelivery(
     lines: built.lines,
     notes: options.notes ?? null
   });
+}
+
+/**
+ * Completes a still-sent supplier order that never produced delivery evidence,
+ * without writing an inventory receipt. Requires a bounded operator reason.
+ */
+export async function closeSupplierOrderUndelivered(
+  restaurantId: string,
+  supplierOrderId: string,
+  reason: UndeliveredCloseReason | string
+): Promise<CloseSupplierOrderUndeliveredResult> {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedOrderId = supplierOrderId.trim();
+  const normalizedReason = requireUndeliveredCloseReason(reason);
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!normalizedOrderId) throw new Error("Missing supplier order.");
+
+  const repository = getMiseRepository();
+  const [order, history] = await Promise.all([
+    repository.fetchSupplierOrder(normalizedRestaurantId, normalizedOrderId),
+    repository.fetchSupplierDeliveryHistory(normalizedRestaurantId)
+  ]);
+
+  if (!order || order.restaurant_id !== normalizedRestaurantId) {
+    throw new Error("Supplier order not found.");
+  }
+
+  const priorDeliveryCount = history.deliveries.filter(
+    (delivery) =>
+      delivery.restaurant_id === normalizedRestaurantId &&
+      delivery.supplier_order_id === normalizedOrderId
+  ).length;
+
+  if (order.status === "completed") {
+    return {
+      outcome: "already_completed",
+      orderId: order.id,
+      supplierId: order.supplier_id,
+      priorDeliveryCount,
+      reason: normalizedReason
+    };
+  }
+
+  if (
+    !canCloseSupplierOrderUndelivered({
+      orderStatus: order.status,
+      priorDeliveryCount
+    })
+  ) {
+    throw new Error(
+      "Only sent supplier orders without delivery evidence can be closed as undelivered."
+    );
+  }
+
+  return repository.closeSupplierOrderUndelivered(
+    normalizedRestaurantId,
+    normalizedOrderId,
+    normalizedReason
+  );
 }
