@@ -198,6 +198,18 @@ test("buildDailyOpsReport assembles closeout sections", () => {
     ],
     operatorTasksOpen: 2,
     wasteAnalysis: wasteSummary(),
+    learningMemory: {
+      score: 70,
+      label: "Mise memory is building",
+      operatorCopy: "Mise is collecting recipe, sales, count, and ordering evidence before it should automate more of the workflow.",
+      nextStep: "Map the missing POS items to ingredients before relying on automated ordering.",
+      signals: [],
+      presentation: {
+        labelCode: "memory.label.building",
+        operatorCopyCode: "memory.copy.building",
+        nextStepCode: "memory.next.recipe_coverage"
+      }
+    },
     supplierReliability: {
       totalDeliveries: 2,
       supplierCount: 1,
@@ -267,6 +279,9 @@ test("buildDailyOpsReport assembles closeout sections", () => {
   assert.equal(report.managerAdvice.actions[0]?.severity, "urgent");
   assert.equal(report.managerAdvice.askBriefingText, "Harbor is on watch with open tasks.");
   assert.equal(report.learning.credibilityScore, 62);
+  assert.equal(report.learning.memoryLabel, "Mise memory is building");
+  assert.equal(report.learning.memoryPresentation?.operatorCopyCode, "memory.copy.building");
+  assert.equal(report.learning.memoryPresentation?.nextStepCode, "memory.next.recipe_coverage");
 });
 
 test("buildDailyOpsReport estimates dollars at risk from outlooks", () => {
