@@ -259,7 +259,7 @@ export function normalizeCompleteRestaurantTaskInput(input: CompleteRestaurantTa
   return {
     restaurantId: requiredText(input.restaurantId, 200, "Restaurant id"),
     taskId: requiredText(input.taskId, 200, "Task id"),
-    completionResult: requiredText(input.completionResult, 1000, "Completion result"),
+    completionResult: requiredTaskCompletionResult(input.completionResult),
     completionEvidence: boundedEvidence(input.completionEvidence ?? [], "Completion evidence")
   };
 }
@@ -314,7 +314,7 @@ export function restaurantTaskFromPersistedRow(
     verificationMethod: row.verification_method as RestaurantTaskVerificationMethod,
     verificationRequired: row.verification_required,
     checklist,
-    completionResult: optionalText(row.completion_result, 1000, "Task completion result"),
+    completionResult: optionalTaskCompletionResult(row.completion_result),
     completionEvidence,
     completedAt: optionalIso(row.completed_at, "Task completed time"),
     completedBy: optionalText(row.completed_by, 200, "Task completer"),
@@ -511,6 +511,38 @@ function optionalText(value: unknown, max: number, label: string): string | null
   const normalized = value.trim();
   if (!normalized) return null;
   if (normalized.length > max) throw new Error(`${label} is invalid.`);
+  return normalized;
+}
+
+function hasUnsafeMultilineControlCharacters(value: string) {
+  // Multiline-aware ASCII class (allows LF/TAB/CR; rejects other C0 + DEL) —
+  // matches restaurant_tasks_completion_result_bound_check under COLLATE "C"
+  // (MISE-005ES) and the established supplier-send / operator_note /
+  // restaurant_tasks.detail pattern (MISE-005EM / MISE-005EP).
+  return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
+}
+
+function requiredTaskCompletionResult(value: unknown): string {
+  if (typeof value !== "string") throw new Error("Completion result is required.");
+  const normalized = value.trim();
+  // MISE-005ES: reject unsafe ASCII controls while allowing LF/TAB/CR so
+  // client validation matches restaurant_tasks_completion_result_bound_check
+  // under COLLATE "C" and the multiline complete-task result field remains valid.
+  if (!normalized || normalized.length > 1000 || hasUnsafeMultilineControlCharacters(normalized)) {
+    throw new Error("Completion result is limited to 1000 characters without control characters.");
+  }
+  return normalized;
+}
+
+function optionalTaskCompletionResult(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") throw new Error("Task completion result is invalid.");
+  const normalized = value.trim();
+  if (!normalized) return null;
+  // MISE-005ES: same multiline-aware control gate on the read path.
+  if (normalized.length > 1000 || hasUnsafeMultilineControlCharacters(normalized)) {
+    throw new Error("Task completion result is limited to 1000 characters without control characters.");
+  }
   return normalized;
 }
 
