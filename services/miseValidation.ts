@@ -313,8 +313,15 @@ export function normalizeRestaurantTeamMember(value: RestaurantTeamMember): Rest
 }
 
 export function normalizePosSale(value: PosSale): PosSale {
+  const soldAt =
+    typeof value.sold_at === "string" && value.sold_at.trim() && Number.isFinite(Date.parse(value.sold_at))
+      ? value.sold_at
+      : value.sold_at === null
+        ? null
+        : undefined;
   return {
     ...value,
+    sold_at: soldAt,
     quantity_sold: asBoundedNonNegativeNumber(value.quantity_sold, operatingLimits.posQuantitySold),
     gross_sales: asBoundedNonNegativeNumber(value.gross_sales, operatingLimits.posSalesAmount),
     net_sales: asBoundedNonNegativeNumber(value.net_sales, operatingLimits.posSalesAmount)

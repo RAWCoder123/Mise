@@ -56,6 +56,8 @@ export interface SquareSaleRow {
   gross_sales: number;
   net_sales: number;
   source_record_id: string;
+  /** Order closed_at (or created_at fallback) for count-anchored depletion. */
+  sold_at: string;
   provider_location_id?: string;
   provider_catalog_item_id?: string;
   provider_variation_id?: string;
@@ -312,6 +314,7 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
       gross_sales: clampMoney(gross),
       net_sales: clampMoney(net),
       source_record_id: `square_${orderId}_${uid}`.slice(0, 200),
+      sold_at: closedAt,
       provider_location_id: providerLocationId,
       provider_variation_id: variationId || undefined,
     });

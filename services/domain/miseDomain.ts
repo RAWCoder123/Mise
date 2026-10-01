@@ -35,7 +35,7 @@ import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/i
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
 import {
-  dayResolutionConsumptionIsAfterCount,
+  isSaleInDepletionWindow,
   missingInventoryCountEvidence,
   verifiedCountSupersedes,
   type InventoryCountEvidence,
@@ -440,15 +440,16 @@ export function buildInventoryPrediction(
       .reduce((saleSum, sale) => saleSum + finiteNonNegative(sale.quantity_sold), 0);
     return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
   }, 0);
-  // `pos_sales` rows carry day resolution only, so a verified count taken inside
-  // today's operating day already observed part of today's sales. Those sales must
-  // not deplete the counted baseline a second time; they are reported as
-  // unattributed instead, which drops the item out of temporal authority.
-  const todayUsageIsAfterCount =
-    countEvidence.status !== "verified" ||
-    dayResolutionConsumptionIsAfterCount(countEvidence.countedOperatingDate, operatingDate);
-  const recentUsage = todayUsageIsAfterCount ? mappedTodayUsage : 0;
-  const unattributedTodayDepletion = todayUsageIsAfterCount ? 0 : mappedTodayUsage;
+  // Prefer provider sold_at when present so a midday verified count only loses
+  // post-count demand. Date-only same-day rows stay unattributed (fail closed).
+  const recentUsage = relevantMappings.reduce((sum, mapping) => {
+    const sold = todaySales
+      .filter((sale) => saleMatchesRecipe(sale, mapping, providerMappings))
+      .filter((sale) => isSaleInDepletionWindow(sale, operatingDate, countEvidence))
+      .reduce((saleSum, sale) => saleSum + finiteNonNegative(sale.quantity_sold), 0);
+    return sum + sold * finiteNonNegative(mapping.quantity_used_per_sale);
+  }, 0);
+  const unattributedTodayDepletion = Math.max(0, mappedTodayUsage - recentUsage);
   let historySampleDays = 0;
   let hasRestaurantHistory = false;
   let hasDemoFallback = false;
