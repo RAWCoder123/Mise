@@ -91,4 +91,9 @@ test("invalid units, times, anomalous quantities, and unbounded evidence are rej
   assert.throws(() => requireInventoryOperation({ ...base, quantity: false }), /valid inventory quantity/);
   assert.throws(() => requireInventoryOperation({ ...base, note: "x".repeat(501) }), /shorter note/);
   assert.throws(() => requireInventoryOperation({ ...base, sourceReference: "x".repeat(201) }), /shorter reference/);
+  const farPast = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString();
+  assert.throws(
+    () => requireInventoryOperation({ ...base, effectiveAt: farPast }),
+    /more recent inventory time/
+  );
 });

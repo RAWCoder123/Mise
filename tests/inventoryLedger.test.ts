@@ -106,6 +106,52 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
   assert.equal(secondCorrection.status, "conflict");
 });
 
+test("rejects inventory events effective more than 90 days before the accept clock", () => {
+  const recordedAt = "2026-09-03T12:00:00.000Z";
+  const authority = {
+    id: "event-far-past",
+    actorUserId: "manager-1",
+    recordedAt
+  };
+  const tooOldAt = "2026-06-04T11:59:59.000Z"; // 91 days earlier
+  for (const eventType of [
+    "receipt",
+    "waste",
+    "usage",
+    "adjustment",
+    "transfer",
+    "stockout",
+    "count",
+    "correction"
+  ] as const) {
+    const result = acceptInventoryEvent({
+      existingEvents: [],
+      candidate: input({
+        eventType,
+        quantity: eventType === "stockout" ? 0 : 100,
+        effectiveAt: tooOldAt,
+        clientEventId: `far-past-${eventType}`,
+        idempotencyKey: `far-past-${eventType}`
+      }),
+      authority
+    });
+    assert.equal(result.status, "rejected", eventType);
+    assert.equal("reason" in result ? result.reason : null, "effective_at_too_old", eventType);
+  }
+
+  const withinLookback = acceptInventoryEvent({
+    existingEvents: [],
+    candidate: input({
+      eventType: "receipt",
+      effectiveAt: "2026-06-05T12:00:00.000Z", // exactly 90 days earlier
+      clientEventId: "lookback-edge-receipt",
+      idempotencyKey: "lookback-edge-receipt"
+    }),
+    authority
+  });
+  assert.equal(withinLookback.status, "accepted");
+});
+
 test("projects counts, receipts, usage, waste, and corrections in server sequence", () => {
   const count = accepted(
     [],

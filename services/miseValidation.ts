@@ -48,6 +48,7 @@ import {
   RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS,
   RESTAURANT_PROFILE_ARRAY_MAX_ITEMS,
   RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS,
+  INVENTORY_EVENT_EFFECTIVE_AT_MAX_LOOKBACK_MS,
   SUPPLIER_NOTE_MAX_CHARACTERS,
   utf8ByteLength
 } from "./domain/securityLimits";
@@ -166,7 +167,12 @@ function requireInventoryTimestamp(value: unknown) {
   ) {
     throw new Error("Enter a valid inventory time.");
   }
-  return new Date(value).toISOString();
+  const effectiveAt = new Date(value).toISOString();
+  const effectiveMs = Date.parse(effectiveAt);
+  if (effectiveMs < Date.now() - INVENTORY_EVENT_EFFECTIVE_AT_MAX_LOOKBACK_MS) {
+    throw new Error("Enter a more recent inventory time.");
+  }
+  return effectiveAt;
 }
 
 function requireInventoryQuantity(value: unknown) {
