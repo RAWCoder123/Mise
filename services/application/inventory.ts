@@ -31,6 +31,11 @@ import {
 } from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
 
+export {
+  fetchInventoryItemLedgerHistory,
+  ITEM_LEDGER_HISTORY_LIMIT
+} from "./inventoryEvidence";
+
 const repository = getMiseRepository();
 
 /**

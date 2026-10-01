@@ -83,6 +83,24 @@ test("waste analysis reads a tenant-scoped and bounded ledger window", () => {
   assert.match(application, /historyTruncated: events\.length === WASTE_HISTORY_LIMIT/);
 });
 
+test("item ledger history filters by inventory item and reports truncation", () => {
+  const evidence = readFileSync("services/application/inventoryEvidence.ts", "utf8");
+  const hosted = readFileSync("services/repositories/supabaseRepository.ts", "utf8");
+  const demo = readFileSync("services/repositories/demoRepository.ts", "utf8");
+  const contracts = readFileSync("services/repositories/repositoryContracts.ts", "utf8");
+
+  assert.match(contracts, /inventoryItemId\?: string/);
+  assert.match(evidence, /ITEM_LEDGER_HISTORY_LIMIT = 40/);
+  assert.match(evidence, /inventoryItemId: normalizedItemId/);
+  assert.match(evidence, /truncated: events\.length === limit/);
+
+  const hostedMethod = hosted.match(/async listInventoryEvents\([\s\S]*?\n    \},/)?.[0] ?? "";
+  assert.match(hostedMethod, /\.eq\("inventory_item_id", options\.inventoryItemId\)/);
+
+  const demoMethod = demo.match(/async function listInventoryEvents\([\s\S]*?\n  async function recordInventoryEvent/)?.[0] ?? "";
+  assert.match(demoMethod, /event\.inventoryItemId === inventoryItemId/);
+});
+
 test("phase briefs compose only verified screen-safe operational facades", () => {
   const application = readFileSync("services/application/dailyPhaseBrief.ts", "utf8");
 
