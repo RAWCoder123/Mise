@@ -20,6 +20,7 @@ import {
 } from "../domain/supplierReliability";
 import {
   requireRecommendationApprovalQuantity,
+  requireSupplierDeliveryDate,
   requireSupplierOperatorNote,
   requireSupplierRecipientInput
 } from "../miseValidation";
@@ -352,6 +353,9 @@ export async function updateSupplierOrder(
   const normalizedPatch = { ...patch };
   if (Object.prototype.hasOwnProperty.call(patch, "operator_note")) {
     normalizedPatch.operator_note = requireSupplierOperatorNote(patch.operator_note);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "delivery_date")) {
+    normalizedPatch.delivery_date = requireSupplierDeliveryDate(patch.delivery_date);
   }
   return repository.updateSupplierOrder(restaurantId, orderId, normalizedPatch);
 }

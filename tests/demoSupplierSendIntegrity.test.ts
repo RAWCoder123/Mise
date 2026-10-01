@@ -214,6 +214,30 @@ test("demo approval binds exact content, survives no ABA revert, and completes o
   assert.ok(reverted.contentRevision > changed.contentRevision);
   assert.notEqual(reverted.contentFingerprint, initial.contentFingerprint);
   assert.equal(reverted.body, initial.body);
+
+  const originalDeliveryDate = order.delivery_date;
+  const nextDeliveryDate =
+    originalDeliveryDate === "2099-01-01" ? "2099-01-02" : "2099-01-01";
+  await repository.updateSupplierOrder(DEMO_RESTAURANT_ID, order.id, {
+    delivery_date: nextDeliveryDate
+  });
+  const deliveryChanged = await repository.previewSupplierSendContent(
+    DEMO_RESTAURANT_ID,
+    order.id
+  );
+  assert.ok(deliveryChanged.contentRevision > reverted.contentRevision);
+  assert.notEqual(deliveryChanged.contentFingerprint, reverted.contentFingerprint);
+  assert.equal(deliveryChanged.deliveryDate, nextDeliveryDate);
+  await repository.updateSupplierOrder(DEMO_RESTAURANT_ID, order.id, {
+    delivery_date: originalDeliveryDate
+  });
+  const deliveryReverted = await repository.previewSupplierSendContent(
+    DEMO_RESTAURANT_ID,
+    order.id
+  );
+  assert.ok(deliveryReverted.contentRevision > deliveryChanged.contentRevision);
+  assert.equal(deliveryReverted.deliveryDate, originalDeliveryDate);
+
   await assert.rejects(
     () => repository.sendSupplierOrderEmail(DEMO_RESTAURANT_ID, order.id),
     (error: unknown) =>
@@ -224,7 +248,7 @@ test("demo approval binds exact content, survives no ABA revert, and completes o
     DEMO_RESTAURANT_ID,
     action.id,
     order.id,
-    reverted.contentFingerprint!
+    deliveryReverted.contentFingerprint!
   );
   assert.equal(reapproval.outcome, "applied");
 

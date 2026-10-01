@@ -580,6 +580,33 @@ export function requireSupplierOperatorNote(value: string | null | undefined) {
   return normalized || null;
 }
 
+/**
+ * Structured expected-delivery calendar date for supplier drafts.
+ * Empty clears the date; non-empty must be a real YYYY-MM-DD calendar day.
+ */
+export function requireSupplierDeliveryDate(value: string | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Delivery date must be text.");
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw new Error("Delivery date must use YYYY-MM-DD.");
+  }
+  const [yearText, monthText, dayText] = normalized.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new Error("Delivery date must be a real calendar day.");
+  }
+  return normalized;
+}
+
 const supplierSendContentBlockerCodes = new Set<string>(
   SUPPLIER_SEND_CONTENT_BLOCKER_CODES
 );
