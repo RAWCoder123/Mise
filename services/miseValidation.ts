@@ -57,6 +57,10 @@ import type {
 } from "./domain/inventoryLedger";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
 import type {
+  SupplierConfirmationStatus,
+  SupplierOrderConfirmationRecord
+} from "./domain/supplierConfirmation";
+import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
@@ -1218,6 +1222,23 @@ export function normalizeSupplierDeliveryRecord(
   };
 }
 
+export function normalizeSupplierOrderConfirmationRecord(
+  value: Omit<SupplierOrderConfirmationRecord, "confirmation_status"> & {
+    confirmation_status: unknown;
+  }
+): SupplierOrderConfirmationRecord {
+  return {
+    ...value,
+    confirmation_status: normalizeSupplierConfirmationStatus(value.confirmation_status),
+    confirmation_reference: asNullableString(value.confirmation_reference),
+    expected_delivery_at: asNullableString(value.expected_delivery_at),
+    received_at: asString(value.received_at),
+    source: asString(value.source, "manager_manual"),
+    idempotency_key: asString(value.idempotency_key),
+    created_at: asString(value.created_at, value.received_at)
+  };
+}
+
 export function normalizeSupplierDeliveryItemRecord(
   value: SupplierDeliveryItemRecord
 ): SupplierDeliveryItemRecord {
@@ -1239,6 +1260,18 @@ function normalizeSupplierDeliveryStatus(value: unknown): SupplierDeliveryStatus
     value === "received" ||
     value === "discrepancy" ||
     value === "failed"
+  ) {
+    return value;
+  }
+  return "unverified";
+}
+
+function normalizeSupplierConfirmationStatus(value: unknown): SupplierConfirmationStatus {
+  if (
+    value === "acknowledged" ||
+    value === "changed" ||
+    value === "rejected" ||
+    value === "unverified"
   ) {
     return value;
   }
