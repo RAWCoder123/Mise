@@ -348,6 +348,8 @@ export default function InventoryScreen() {
                   ? t("inventory.count.cardOpenSubtitle")
                   : t("inventory.count.cardSubtitle")
               }
+              action={t("inventory.count.history.cardAction")}
+              onAction={() => router.push("/inventory/count-history")}
             />
             <Button
               title={

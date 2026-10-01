@@ -346,6 +346,14 @@ export default function InventoryCountSessionScreen() {
                 <Text style={styles.help}>{t("inventory.count.staffReadonly")}</Text>
               ) : null}
               <Button
+                title={t("inventory.count.history.cardAction")}
+                variant="secondary"
+                onPress={() => router.push("/inventory/count-history")}
+                fullWidth
+                style={styles.secondaryAction}
+                accessibilityLabel={t("inventory.count.history.title")}
+              />
+              <Button
                 title={t("inventory.count.backToList")}
                 variant="secondary"
                 onPress={() => router.replace("/inventory")}

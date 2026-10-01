@@ -30,6 +30,7 @@ import {
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
 import { getMiseRepository } from "./repository";
+import { INVENTORY_COUNT_SESSION_HISTORY_LIMIT } from "../repositories/repositoryContracts";
 
 const repository = getMiseRepository();
 
@@ -385,6 +386,20 @@ export async function updateInventoryItem(restaurantId: string, itemId: string, 
 
 export async function fetchOpenInventoryCountSession(restaurantId: string) {
   return repository.fetchOpenInventoryCountSession(restaurantId);
+}
+
+export async function fetchInventoryCountSession(restaurantId: string, sessionId: string) {
+  return repository.fetchInventoryCountSession(restaurantId, sessionId);
+}
+
+export async function listInventoryCountSessionHistory(
+  restaurantId: string,
+  options?: { limit?: number }
+) {
+  return repository.listInventoryCountSessions(restaurantId, {
+    statuses: ["approved", "cancelled"],
+    limit: options?.limit ?? INVENTORY_COUNT_SESSION_HISTORY_LIMIT
+  });
 }
 
 export async function beginInventoryCountSession(restaurantId: string, note?: string | null) {
