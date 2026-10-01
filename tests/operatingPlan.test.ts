@@ -94,6 +94,7 @@ test("builds a tenant-scoped windowed plan with why, needed-by, effect, kind, an
   assert.equal(send?.bucket, "now");
   assert.equal(send?.reprioritization?.code, "delivery_due_today");
   assert.match(send?.reprioritization?.reason ?? "", /needed today/);
+  assert.equal(send?.reprioritization?.deliveryDate, operatingDate);
 
   assert.ok(plan.serviceWindows.some((window) => window.id === "before_prep"));
   assert.equal(
@@ -273,6 +274,7 @@ test("overdue delivery and provider failure move items into Now with explicit re
   assert.ok(lateDraft);
   assert.equal(lateDraft?.bucket, "now");
   assert.equal(lateDraft?.reprioritization?.code, "delivery_overdue");
+  assert.equal(lateDraft?.reprioritization?.deliveryDate, "2026-07-30");
 
   const provider = plan.items.find((item) => item.sourceTask?.source.kind === "integration");
   assert.ok(provider);
