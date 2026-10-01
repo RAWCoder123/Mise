@@ -50,6 +50,7 @@ export default function RootLayout() {
               <Stack.Screen name="inventory/count" />
               <Stack.Screen name="orders/[id]" />
               <Stack.Screen name="more/create-task" />
+              <Stack.Screen name="more/create-floor-note" />
               <Stack.Screen name="more/log-delivery" />
               <Stack.Screen name="more/scan-item" />
               <Stack.Screen name="more/daily-report" />
