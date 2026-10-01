@@ -14,6 +14,24 @@ export interface LocalizedInventoryPrediction {
   confidence: string;
   whyItMatters: string;
   recommendation: string;
+  /** Same-operating-day verified count already absorbed mapped POS demand. */
+  absorbedSameDayPos: boolean;
+  /** Quantity to show in POS rails: post-count depletion, else absorbed demand. */
+  posEvidenceQuantity: number;
+}
+
+export function inventoryHasAbsorbedSameDayPos(
+  prediction: Pick<InventoryPrediction, "unattributedTodayDepletion">
+): boolean {
+  return prediction.unattributedTodayDepletion > 0;
+}
+
+export function inventoryPosEvidenceQuantity(
+  prediction: Pick<InventoryPrediction, "todayDepletion" | "unattributedTodayDepletion">
+): number {
+  if (prediction.todayDepletion > 0) return prediction.todayDepletion;
+  if (prediction.unattributedTodayDepletion > 0) return prediction.unattributedTodayDepletion;
+  return 0;
 }
 
 export function localizeInventoryPrediction(
@@ -25,6 +43,8 @@ export function localizeInventoryPrediction(
   const quantity = (value: number) => formatNumber(value, { maximumFractionDigits: 1 });
   const coverage = coverageCopy(t, formatNumber, item, prediction);
   const action = actionCopy(t, quantity, item, prediction);
+  const absorbedSameDayPos = inventoryHasAbsorbedSameDayPos(prediction);
+  const posEvidenceQuantity = inventoryPosEvidenceQuantity(prediction);
 
   return {
     status: inventoryStatusLabel(t, prediction.projectedStatus),
@@ -32,14 +52,7 @@ export function localizeInventoryPrediction(
     trend: t(`inventory.prediction.trend.${prediction.demandTrend}`),
     action,
     basis: basisCopy(t, formatNumber, prediction),
-    depletion:
-      prediction.todayDepletion > 0
-        ? t("inventory.prediction.depletion.recorded", {
-            used: quantity(prediction.todayDepletion),
-            projected: quantity(prediction.projectedQuantity),
-            unit: item.unit
-          })
-        : t("inventory.prediction.depletion.none"),
+    depletion: depletionCopy(t, quantity, item, prediction),
     confidence:
       prediction.historySource === "restaurant_history"
         ? t("inventory.prediction.confidence.history")
@@ -47,8 +60,33 @@ export function localizeInventoryPrediction(
           ? t("inventory.prediction.confidence.service")
           : t("inventory.prediction.confidence.current"),
     whyItMatters: whyCopy(t, item, prediction),
-    recommendation: recommendationCopy(t, quantity, item, prediction, coverage)
+    recommendation: recommendationCopy(t, quantity, item, prediction, coverage),
+    absorbedSameDayPos,
+    posEvidenceQuantity
   };
+}
+
+function depletionCopy(
+  t: Translate,
+  quantity: (value: number) => string,
+  item: InventoryItem,
+  prediction: InventoryPrediction
+): string {
+  if (prediction.todayDepletion > 0) {
+    return t("inventory.prediction.depletion.recorded", {
+      used: quantity(prediction.todayDepletion),
+      projected: quantity(prediction.projectedQuantity),
+      unit: item.unit
+    });
+  }
+  if (prediction.unattributedTodayDepletion > 0) {
+    return t("inventory.prediction.depletion.absorbed", {
+      used: quantity(prediction.unattributedTodayDepletion),
+      projected: quantity(prediction.projectedQuantity),
+      unit: item.unit
+    });
+  }
+  return t("inventory.prediction.depletion.none");
 }
 
 export function inventoryStatusLabel(t: Translate, status: InventoryStatus): string {
@@ -94,14 +132,18 @@ function actionCopy(
 }
 
 function basisCopy(t: Translate, formatNumber: FormatNumber, prediction: InventoryPrediction): string {
+  const hasTodayMappedPos =
+    prediction.todayDepletion > 0 || prediction.unattributedTodayDepletion > 0;
   if (prediction.historySource === "restaurant_history") {
-    const key = prediction.todayDepletion > 0
+    const key = hasTodayMappedPos
       ? "inventory.prediction.basis.historyToday"
       : "inventory.prediction.basis.history";
     return t(key, { count: formatNumber(prediction.historySampleDays) });
   }
   if (prediction.historySource === "demo_fallback") return t("inventory.prediction.basis.demo");
-  if (prediction.historySource === "current_day") return t("inventory.prediction.basis.today");
+  if (prediction.historySource === "current_day" || hasTodayMappedPos) {
+    return t("inventory.prediction.basis.today");
+  }
   return t("inventory.prediction.basis.learning");
 }
 
