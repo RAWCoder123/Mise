@@ -137,3 +137,30 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
     true
   );
 });
+
+test("inventory detail preserves par/reorder drafts on soft-refresh fail-closed", () => {
+  const source = readFileSync("app/inventory/[id].tsx", "utf8");
+  assert.match(source, /const \[hubLoadError, setHubLoadError\]/);
+  assert.match(source, /loadError:\s*hubLoadError/);
+  assert.match(source, /hasLoadedRef/);
+  assert.match(source, /loadedItemIdRef/);
+  assert.match(source, /const soft = hasLoadedRef\.current && loadedItemIdRef\.current === itemId/);
+  assert.match(
+    source,
+    /\/\/ Soft refresh must preserve operator-entered par\/reorder and ops drafts\.\s*if \(nextOutlook && !soft\)/
+  );
+  assert.match(
+    source,
+    /\/\/ Fail closed for display\/actions, but keep local drafts and prior outlook for retry\.\s*setHubLoadError\(true\);/
+  );
+  assert.match(source, /if \(!soft\) \{\s*setOutlook\(null\);\s*setQueueEntries\(\[\]\);\s*\}/);
+  assert.match(source, /hasLoadedRef\.current = false/);
+  assert.match(source, /setParLevel\(""\)/);
+  assert.match(source, /setReorderThreshold\(""\)/);
+  assert.match(source, /RetryNotice/);
+  assert.doesNotMatch(
+    source,
+    /setHubLoadError\(false\);\s*if \(nextOutlook\) \{\s*setParLevel/,
+    "hard-path seeding must not run unconditionally after every successful load"
+  );
+});
