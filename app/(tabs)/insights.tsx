@@ -43,6 +43,7 @@ import {
 } from "../../services/presentation/operationsPresentation";
 import { buildConciseTrendDateLabels } from "../../services/presentation/salesTrendLabels";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+import { captureMiseError } from "../../services/telemetry";
 import type { InsightsSalesTrendPoint } from "../../services/miseService";
 import type {
   Insight,
@@ -129,7 +130,12 @@ export default function InsightsScreen() {
       setBrief(nextBrief);
       setFindingQueue(nextQueue);
       setLoadedRestaurantId(restaurantId);
-    } catch {
+    } catch (loadFailure) {
+      captureMiseError(loadFailure, {
+        flow: "insights",
+        operation: "load",
+        restaurant_id: restaurantId
+      });
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setError(true);
     } finally {
@@ -160,6 +166,9 @@ export default function InsightsScreen() {
     loadError: error
   });
   const hubReady = hubLoadState === "ready";
+  // Soft-refresh errors must not claim "still learning" / "no sales" from
+  // cleared visible* arrays while RetryNotice is already showing.
+  const hubUnavailable = hubLoadState === "error";
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
@@ -278,30 +287,36 @@ export default function InsightsScreen() {
     [t]
   );
 
-  const summaryTitle = summary
-    ? summary.urgentCount > 0
-      ? t("insights.summary.urgent")
-      : summary.warningCount > 0
-        ? t("insights.summary.watch")
-        : summary.signalCount > 0
-          ? t("insights.summary.learning")
-          : t("insights.summary.waiting")
-    : t("insights.summary.waiting");
-  const summaryBody = summary && summary.signalCount > 0
-    ? t(summary.signalCount === 1 ? "insights.summary.withSignals.one" : "insights.summary.withSignals.other", {
-        count: formatNumber(summary.signalCount)
-      })
-    : t("insights.summary.empty");
+  const summaryTitle = hubUnavailable
+    ? t("insights.summary.unavailable")
+    : summary
+      ? summary.urgentCount > 0
+        ? t("insights.summary.urgent")
+        : summary.warningCount > 0
+          ? t("insights.summary.watch")
+          : summary.signalCount > 0
+            ? t("insights.summary.learning")
+            : t("insights.summary.waiting")
+      : t("insights.summary.waiting");
+  const summaryBody = hubUnavailable
+    ? t("insights.summary.unavailableBody")
+    : summary && summary.signalCount > 0
+      ? t(summary.signalCount === 1 ? "insights.summary.withSignals.one" : "insights.summary.withSignals.other", {
+          count: formatNumber(summary.signalCount)
+        })
+      : t("insights.summary.empty");
   const infoCount = visibleInsights.filter((insight) => insight.severity === "info").length;
-  const nextStep = summary
-    ? summary.urgentCount > 0
-      ? t("insights.nextStep.urgent")
-      : summary.warningCount > 0
-        ? t("insights.nextStep.watch")
-        : summary.signalCount > 0
-          ? t("insights.nextStep.signals")
-          : t("insights.nextStep.empty")
-    : t("insights.nextStep.empty");
+  const nextStep = hubUnavailable
+    ? t("insights.nextStep.unavailable")
+    : summary
+      ? summary.urgentCount > 0
+        ? t("insights.nextStep.urgent")
+        : summary.warningCount > 0
+          ? t("insights.nextStep.watch")
+          : summary.signalCount > 0
+            ? t("insights.nextStep.signals")
+            : t("insights.nextStep.empty")
+      : t("insights.nextStep.empty");
   const serviceLabel = restaurant ? serviceStyleLabel(restaurant.service_style, t) : null;
   const subtitle = restaurant
     ? t("insights.subtitleRestaurantStyle", {
@@ -352,86 +367,98 @@ export default function InsightsScreen() {
         {surface === "sales" ? (
           <MotionView key="sales" delay={20} distance={4}>
             <View style={styles.stack}>
-              <SalesTrend points={visibleSalesTrend} currency={restaurant?.currency} />
+              <SalesTrend
+                points={visibleSalesTrend}
+                currency={restaurant?.currency}
+                unavailable={hubUnavailable}
+              />
               <SalesAnalyticsBoard
                 analytics={visibleSalesAnalytics}
                 currency={restaurant?.currency}
                 serviceStyle={restaurant?.service_style ?? null}
                 cuisineType={restaurant?.cuisine_type ?? null}
                 restaurantName={restaurant?.name ?? null}
+                unavailable={hubUnavailable}
               />
             </View>
           </MotionView>
         ) : (
           <>
-            <MotionView delay={20} distance={4}>
-              <DailyBriefBoard
-                brief={visibleBrief}
-                queue={visibleFindingQueue}
-                canManage={actionsEditable}
-                busyFindingId={busyFindingId}
-                message={briefMessage}
-                messageIsError={briefMessageIsError}
-                onSubmitFeedback={submitFindingFeedback}
-              />
-            </MotionView>
+            {hubUnavailable ? null : (
+              <MotionView delay={20} distance={4}>
+                <DailyBriefBoard
+                  brief={visibleBrief}
+                  queue={visibleFindingQueue}
+                  canManage={actionsEditable}
+                  busyFindingId={busyFindingId}
+                  message={briefMessage}
+                  messageIsError={briefMessageIsError}
+                  onSubmitFeedback={submitFindingFeedback}
+                />
+              </MotionView>
+            )}
 
             <MotionView delay={30} distance={4}>
               <InsightsSummary
                 title={summaryTitle}
                 body={summaryBody}
                 nextStep={nextStep}
-                urgent={summary?.urgentCount ?? 0}
-                watch={summary?.warningCount ?? 0}
-                info={infoCount}
+                urgent={hubUnavailable ? 0 : summary?.urgentCount ?? 0}
+                watch={hubUnavailable ? 0 : summary?.warningCount ?? 0}
+                info={hubUnavailable ? 0 : infoCount}
+                unavailable={hubUnavailable}
               />
             </MotionView>
 
-            <SegmentedControl
-              accessibilityLabel={t("insights.filter.accessibility")}
-              options={insightFilters}
-              value={filter}
-              onValueChange={setFilter}
-            />
+            {hubUnavailable ? null : (
+              <>
+                <SegmentedControl
+                  accessibilityLabel={t("insights.filter.accessibility")}
+                  options={insightFilters}
+                  value={filter}
+                  onValueChange={setFilter}
+                />
 
-            <MotionView key={filter} distance={4} duration={220}>
-              <SectionSurface
-                title={t("insights.brief.title")}
-                subtitle={
-                  serviceLabel
-                    ? t("insights.brief.subtitleStyle", { style: serviceLabel })
-                    : t("insights.brief.subtitle")
-                }
-                action={t(filteredInsights.length === 1 ? "insights.signalCount.one" : "insights.signalCount.other", {
-                  count: formatNumber(filteredInsights.length)
-                })}
-                padding="none"
-              >
-                {filteredInsights.length === 0 ? (
-                  <View style={styles.briefEmpty}>
-                    <BarChart3 size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />
-                    <Text style={styles.briefEmptyTitle}>
-                      {visibleInsights.length === 0
-                        ? t("insights.brief.emptyLearning.title")
-                        : t("insights.brief.emptyFilter.title", { filter: labelForFilter(t, filter).toLocaleLowerCase() })}
-                    </Text>
-                    <Text style={styles.briefEmptyBody}>
-                      {visibleInsights.length === 0
-                        ? t("insights.brief.emptyLearning.body")
-                        : t("insights.brief.emptyFilter.body")}
-                    </Text>
-                  </View>
-                ) : (
-                  <View>
-                    {filteredInsights.map((insight, index) => (
-                      <InsightListRow key={insight.id} insight={insight} divided={index > 0} />
-                    ))}
-                  </View>
-                )}
-              </SectionSurface>
-            </MotionView>
+                <MotionView key={filter} distance={4} duration={220}>
+                  <SectionSurface
+                    title={t("insights.brief.title")}
+                    subtitle={
+                      serviceLabel
+                        ? t("insights.brief.subtitleStyle", { style: serviceLabel })
+                        : t("insights.brief.subtitle")
+                    }
+                    action={t(filteredInsights.length === 1 ? "insights.signalCount.one" : "insights.signalCount.other", {
+                      count: formatNumber(filteredInsights.length)
+                    })}
+                    padding="none"
+                  >
+                    {filteredInsights.length === 0 ? (
+                      <View style={styles.briefEmpty}>
+                        <BarChart3 size={icon.emphasis} color={colors.muted} strokeWidth={iconStroke} />
+                        <Text style={styles.briefEmptyTitle}>
+                          {visibleInsights.length === 0
+                            ? t("insights.brief.emptyLearning.title")
+                            : t("insights.brief.emptyFilter.title", { filter: labelForFilter(t, filter).toLocaleLowerCase() })}
+                        </Text>
+                        <Text style={styles.briefEmptyBody}>
+                          {visibleInsights.length === 0
+                            ? t("insights.brief.emptyLearning.body")
+                            : t("insights.brief.emptyFilter.body")}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View>
+                        {filteredInsights.map((insight, index) => (
+                          <InsightListRow key={insight.id} insight={insight} divided={index > 0} />
+                        ))}
+                      </View>
+                    )}
+                  </SectionSurface>
+                </MotionView>
 
-            {visibleMemory ? <HowMiseKnows memory={visibleMemory} /> : null}
+                {visibleMemory ? <HowMiseKnows memory={visibleMemory} /> : null}
+              </>
+            )}
           </>
         )}
       </View>
@@ -445,7 +472,8 @@ function InsightsSummary({
   nextStep,
   urgent,
   watch,
-  info
+  info,
+  unavailable = false
 }: {
   title: string;
   body: string;
@@ -453,15 +481,34 @@ function InsightsSummary({
   urgent: number;
   watch: number;
   info: number;
+  unavailable?: boolean;
 }) {
   const { t } = useLocale();
-  const tone = urgent > 0 ? "danger" : watch > 0 ? "caution" : info > 0 ? "neutral" : "neutral";
-  const palette = summaryToneColors[tone === "danger" || tone === "caution" ? tone : info > 0 ? "success" : "neutral"];
+  const tone = unavailable
+    ? "neutral"
+    : urgent > 0
+      ? "danger"
+      : watch > 0
+        ? "caution"
+        : info > 0
+          ? "neutral"
+          : "neutral";
+  const palette = summaryToneColors[
+    unavailable
+      ? "neutral"
+      : tone === "danger" || tone === "caution"
+        ? tone
+        : info > 0
+          ? "success"
+          : "neutral"
+  ];
   return (
     <SectionSurface padding="none">
       <View style={styles.summaryHeader}>
         <View style={[styles.summaryIcon, { backgroundColor: palette.soft }]}>
-          {tone === "danger" ? (
+          {unavailable ? (
+            <AlertTriangle size={icon.emphasis} color={colors.danger} strokeWidth={iconStroke} />
+          ) : tone === "danger" ? (
             <AlertTriangle size={icon.emphasis} color={palette.strong} strokeWidth={iconStroke} />
           ) : urgent === 0 && watch === 0 && info === 0 ? (
             <CheckCircle2 size={icon.emphasis} color={palette.strong} strokeWidth={iconStroke} />
@@ -475,28 +522,30 @@ function InsightsSummary({
           <Text style={styles.summaryNextStep}>{nextStep}</Text>
         </View>
       </View>
-      <View style={styles.summaryMetrics}>
-        <SummaryMetric
-          label={t("insights.metric.urgent")}
-          value={urgent}
-          tone="danger"
-          icon={<AlertTriangle size={icon.row} color={urgent > 0 ? colors.danger : colors.muted} strokeWidth={iconStroke} />}
-        />
-        <SummaryMetric
-          label={t("insights.metric.watch")}
-          value={watch}
-          tone="caution"
-          icon={<Lightbulb size={icon.row} color={watch > 0 ? colors.caution : colors.muted} strokeWidth={iconStroke} />}
-          divided
-        />
-        <SummaryMetric
-          label={t("insights.metric.info")}
-          value={info}
-          tone="default"
-          icon={<BookOpen size={icon.row} color={info > 0 ? colors.text : colors.muted} strokeWidth={iconStroke} />}
-          divided
-        />
-      </View>
+      {unavailable ? null : (
+        <View style={styles.summaryMetrics}>
+          <SummaryMetric
+            label={t("insights.metric.urgent")}
+            value={urgent}
+            tone="danger"
+            icon={<AlertTriangle size={icon.row} color={urgent > 0 ? colors.danger : colors.muted} strokeWidth={iconStroke} />}
+          />
+          <SummaryMetric
+            label={t("insights.metric.watch")}
+            value={watch}
+            tone="caution"
+            icon={<Lightbulb size={icon.row} color={watch > 0 ? colors.caution : colors.muted} strokeWidth={iconStroke} />}
+            divided
+          />
+          <SummaryMetric
+            label={t("insights.metric.info")}
+            value={info}
+            tone="default"
+            icon={<BookOpen size={icon.row} color={info > 0 ? colors.text : colors.muted} strokeWidth={iconStroke} />}
+            divided
+          />
+        </View>
+      )}
     </SectionSurface>
   );
 }
@@ -506,13 +555,15 @@ function SalesAnalyticsBoard({
   currency,
   serviceStyle,
   cuisineType,
-  restaurantName
+  restaurantName,
+  unavailable = false
 }: {
   analytics: InsightsSalesAnalytics | null;
   currency?: string;
   serviceStyle: RestaurantServiceStyle | null;
   cuisineType: string | null;
   restaurantName: string | null;
+  unavailable?: boolean;
 }) {
   const { formatCompactCurrency, formatNumber, t } = useLocale();
   const hasSales = Boolean(analytics && analytics.saleCount > 0);
@@ -535,6 +586,14 @@ function SalesAnalyticsBoard({
       point.date.slice(5).replace("-", "/")
     ) ?? [];
   const serviceLabel = serviceStyle ? serviceStyleLabel(serviceStyle, t) : null;
+
+  if (unavailable) {
+    return (
+      <SectionSurface title={t("insights.analytics.unavailable.title")}>
+        <Text style={styles.analyticsEmptyBody}>{t("insights.analytics.unavailable.body")}</Text>
+      </SectionSurface>
+    );
+  }
 
   return (
     <View style={styles.analyticsStack}>
@@ -715,10 +774,12 @@ function localizeMixLabel(label: string, t: ReturnType<typeof useLocale>["t"]) {
 
 function SalesTrend({
   points,
-  currency
+  currency,
+  unavailable = false
 }: {
   points: InsightsSalesTrendPoint[];
   currency?: string;
+  unavailable?: boolean;
 }) {
   const { formatCompactCurrency, formatCurrency, formatDate, formatNumber, t } = useLocale();
   const latest = points.at(-1);
@@ -751,7 +812,12 @@ function SalesTrend({
 
       <View style={styles.salesCardBody}>
         <Text style={styles.salesCardTitle}>{t("insights.sales.balance")}</Text>
-        {latest ? (
+        {unavailable ? (
+          <View style={styles.trendEmpty}>
+            <Text style={styles.trendEmptyTitle}>{t("insights.trend.unavailable.title")}</Text>
+            <Text style={styles.trendEmptyBody}>{t("insights.trend.unavailable.body")}</Text>
+          </View>
+        ) : latest ? (
           <StateChangeView stateKey={points.map((point) => `${point.date}:${point.sales}`).join("|")}>
             <View style={styles.trendSummary}>
               <View style={styles.trendSummaryCopy}>

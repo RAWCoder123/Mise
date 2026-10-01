@@ -41,6 +41,9 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.today, /hubReady\s*\?\s*summary\s*:\s*null/);
   assert.match(screens.inventory, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
   assert.match(screens.insights, /hubReady\s*\?\s*insights\s*:\s*\[\]/);
+  assert.match(screens.insights, /hubUnavailable/);
+  assert.match(screens.insights, /insights\.summary\.unavailable/);
+  assert.match(screens.insights, /captureMiseError\(loadFailure/);
   assert.match(screens.settings, /hubReady\s*\?\s*suppliers\s*:\s*\[\]/);
   assert.match(screens.settings, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.settings, /disabled=\{!restaurantActionsEditable\}/);
