@@ -63,7 +63,9 @@ export function rebuildPurchaseRecommendations(state: DemoState, restaurantId: s
     state.menuItemIngredients,
     demoOperatingDate(state, restaurantId),
     demoDemandFallback,
-    countEvidence
+    countEvidence,
+    [],
+    state.supplierItems
   ).filter(({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedStatus === "Low");
   const lowItemIds = new Set(lowOutlooks.map(({ item }) => item.id));
   const kept = state.purchaseRecommendations.filter((recommendation) => {

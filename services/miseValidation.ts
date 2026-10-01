@@ -1333,7 +1333,36 @@ export function normalizeSalesImport(value: SalesImport): SalesImport {
   };
 }
 
+function normalizeSupplierPackVerificationStatus(
+  value: unknown
+): SupplierItem["verification_status"] {
+  if (value === "verified" || value === "rejected" || value === "expired" || value === "draft") {
+    return value;
+  }
+  return "draft";
+}
+
+function normalizeOptionalPositivePackQuantity(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0 || numeric > operatingLimits.recommendationQuantity) {
+    return null;
+  }
+  return numeric;
+}
+
 export function normalizeSupplierItem(value: SupplierItem): SupplierItem {
+  if (!value || typeof value !== "object") {
+    throw new Error("Supplier catalog row is invalid.");
+  }
+  const verificationStatus = normalizeSupplierPackVerificationStatus(value.verification_status);
+  const packQuantity = normalizeOptionalPositivePackQuantity(value.pack_quantity);
+  const verifiedAt = asNullableString(value.verified_at);
+  const verifiedBy = asNullableString(value.verified_by);
+  const verified =
+    verificationStatus === "verified" &&
+    packQuantity != null &&
+    verifiedAt != null;
   return {
     ...value,
     supplier_id: value.supplier_id === null || value.supplier_id === undefined
@@ -1341,9 +1370,21 @@ export function normalizeSupplierItem(value: SupplierItem): SupplierItem {
       : requireSupplierAuthorityId(value.supplier_id),
     supplier_name: asString(value.supplier_name, "Supplier"),
     supplier_sku: asNullableString(value.supplier_sku),
+    inventory_item_id:
+      value.inventory_item_id === null || value.inventory_item_id === undefined || value.inventory_item_id === ""
+        ? null
+        : asString(value.inventory_item_id, "").trim() || null,
     item_name: asString(value.item_name, "Item"),
     unit: asString(value.unit, "unit"),
     pack_size: asNullableString(value.pack_size),
+    pack_quantity: verified ? packQuantity : packQuantity,
+    canonical_unit:
+      value.canonical_unit === "g" || value.canonical_unit === "ml" || value.canonical_unit === "each"
+        ? value.canonical_unit
+        : null,
+    verification_status: verified ? "verified" : verificationStatus === "verified" ? "draft" : verificationStatus,
+    verified_at: verified ? verifiedAt : null,
+    verified_by: verified ? verifiedBy : null,
     estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost),
     preferred: Boolean(value.preferred),
     updated_at: value.updated_at ?? value.created_at

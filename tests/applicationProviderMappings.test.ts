@@ -67,6 +67,7 @@ const planningData: PlanningData = {
   sales: [verifiedSale],
   menuItemIngredients: [recipe],
   providerMappings: verifiedProviderMappings,
+  supplierItems: [],
   operatingDate,
   timeZone: "America/Los_Angeles"
 };
@@ -268,7 +269,8 @@ test("hosted repository planning data preserves provider identity through the re
             menu_item_ingredients: [recipe],
             restaurants: this.filters.get("id") === restaurantId ? restaurant : { timezone: "America/Los_Angeles" },
             pos_catalog_item_mappings: providerRows,
-            inventory_events: []
+            inventory_events: [],
+            supplier_items: []
           };
 
           const data = tableData[this.tableName];
