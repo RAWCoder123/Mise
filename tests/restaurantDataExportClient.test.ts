@@ -143,6 +143,7 @@ test("client export datasets include operational backend and shared-task tables"
 
   const demo = readFileSync("services/repositories/demoRepository.ts", "utf8");
   assert.match(demo, /datasets\.operational_issues/);
+  assert.match(demo, /datasets\.ingredient_substitutions/);
   assert.match(demo, /datasets\.supplier_order_confirmations/);
   assert.match(demo, /datasets\.supplier_deliveries/);
   assert.match(demo, /datasets\.supplier_delivery_items/);

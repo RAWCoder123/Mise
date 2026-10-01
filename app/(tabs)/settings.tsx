@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { router, useFocusEffect } from "expo-router";
 import {
+  ArrowRightLeft,
   BookOpen,
   Building2,
   Check,
@@ -399,6 +400,13 @@ export default function SettingsScreen() {
             icon={<BookOpen size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             disabled={!restaurantActionsEditable}
             onPress={() => router.push("/settings/recipes" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("settings.operations.substitutions.title")}
+            icon={<ArrowRightLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            disabled={!restaurantActionsEditable}
+            onPress={() => router.push("/settings/substitutions" as never)}
           />
           <OperationalRow
             density="menu"
