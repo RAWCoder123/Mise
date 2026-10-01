@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
 import { Mail, RotateCcw, Truck } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { RecommendationDecisionRow } from "../../components/RecommendationDecisionRow";
 import { SupplierDraftCard } from "../../components/SupplierDraftCard";
@@ -23,6 +23,7 @@ import { useMiseSession } from "../../contexts/MiseSessionContext";
 import {
   approvePurchaseRecommendation,
   dismissPurchaseRecommendation,
+  excludePurchaseDecisionEvent,
   fetchAdvisoryPurchaseDecisionPatterns,
   fetchEmailConnectionState,
   fetchPurchaseRecommendations,
@@ -76,6 +77,7 @@ export default function OrdersScreen() {
   const [quantityErrors, setQuantityErrors] = useState<Record<string, string | undefined>>({});
   const [recommendationActions, setRecommendationActions] =
     useState<Record<string, RecommendationAction | undefined>>(EMPTY_ACTIONS);
+  const [excludingPatternIds, setExcludingPatternIds] = useState<Record<string, true>>({});
   const [undoAction, setUndoAction] = useState<UndoAction | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<StatusNoticeTone>("neutral");
@@ -84,6 +86,7 @@ export default function OrdersScreen() {
   const [loading, setLoading] = useState(true);
 
   const recommendationLocksRef = useRef(new Set<string>());
+  const patternExclusionLocksRef = useRef(new Set<string>());
   const undoLockRef = useRef(false);
   const requestIdRef = useRef(0);
   const loadedRestaurantRef = useRef<string | null>(null);
@@ -156,15 +159,18 @@ export default function OrdersScreen() {
     requestIdRef.current += 1;
     loadedRestaurantRef.current = null;
     recommendationLocksRef.current.clear();
+    patternExclusionLocksRef.current.clear();
     undoLockRef.current = false;
     setRecommendations([]);
     setRecommendationAuthorities({});
+    setPurchaseDecisionPatterns([]);
     setOrders([]);
     setSpendTrend([]);
     setEmailConnection(null);
     setQuantities({});
     setQuantityErrors({});
     setRecommendationActions(EMPTY_ACTIONS);
+    setExcludingPatternIds({});
     setUndoAction(null);
     setMessage(null);
     setMessageTone("neutral");
@@ -483,6 +489,78 @@ export default function OrdersScreen() {
     }
   }
 
+  function confirmExcludePattern(
+    recommendation: PurchaseRecommendation,
+    pattern: PurchaseDecisionPattern
+  ) {
+    if (!restaurant || !actionsEditable) {
+      if (restaurant) showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
+      return;
+    }
+    const eventId = pattern.evidenceEventIds[0];
+    if (!eventId) return;
+    const lockKey = `${pattern.inventoryItemId}:${pattern.supplierId}:${pattern.recommendationSource}`;
+    if (patternExclusionLocksRef.current.has(lockKey) || recommendationLocksRef.current.has(recommendation.id)) {
+      return;
+    }
+
+    Alert.alert(
+      t("orders.memory.excludeConfirmTitle"),
+      t("orders.memory.excludeConfirmBody", { item: recommendation.item_name }),
+      [
+        { text: t("orders.memory.excludeCancel"), style: "cancel" },
+        {
+          text: t("orders.memory.excludeConfirmAction"),
+          style: "destructive",
+          onPress: () => void excludePatternEvidence(recommendation, pattern, eventId, lockKey)
+        }
+      ]
+    );
+  }
+
+  async function excludePatternEvidence(
+    recommendation: PurchaseRecommendation,
+    pattern: PurchaseDecisionPattern,
+    eventId: string,
+    lockKey: string
+  ) {
+    if (!restaurant || patternExclusionLocksRef.current.has(lockKey)) return;
+    if (!actionsEditable) {
+      showMessage(t("orders.error.viewOnly"), restaurant.id, "neutral");
+      return;
+    }
+    const restaurantId = restaurant.id;
+    patternExclusionLocksRef.current.add(lockKey);
+    setExcludingPatternIds((current) => ({ ...current, [lockKey]: true }));
+
+    try {
+      await excludePurchaseDecisionEvent(restaurantId, eventId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      trackMiseEvent("purchase_decision_excluded", {
+        restaurant_id: restaurantId,
+        supplier_id: pattern.supplierId,
+        recommendation_source: pattern.recommendationSource,
+        evidence_strength: pattern.evidenceStrength,
+        sample_count: pattern.sampleCount
+      });
+      showMessage(t("orders.notice.excluded", { item: recommendation.item_name }), restaurantId);
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        showMessage(t("orders.error.exclude"), restaurantId, "danger");
+      }
+    } finally {
+      patternExclusionLocksRef.current.delete(lockKey);
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setExcludingPatternIds((current) => {
+          const next = { ...current };
+          delete next[lockKey];
+          return next;
+        });
+        await load(false);
+      }
+    }
+  }
+
   async function undoLastAction() {
     if (!restaurant || !undoAction || undoLockRef.current) return;
     if (!actionsEditable) {
@@ -720,7 +798,11 @@ export default function OrdersScreen() {
                         </Text>
                       </View>
                     </View>
-                    {supplierRecommendations.map((recommendation, index) => (
+                    {supplierRecommendations.map((recommendation, index) => {
+                      const patternKey = `${recommendation.inventory_item_id}:${recommendation.supplier_id}:${recommendation.generation_source}`;
+                      const purchaseDecisionPattern =
+                        purchaseDecisionPatternsByRecommendation.get(patternKey);
+                      return (
                       <RecommendationDecisionRow
                         key={recommendation.id}
                         recommendation={recommendation}
@@ -734,16 +816,21 @@ export default function OrdersScreen() {
                         }}
                         onApprove={() => void approve(recommendation)}
                         onDismiss={() => void dismiss(recommendation)}
+                        onExcludePattern={
+                          actionsEditable && purchaseDecisionPattern
+                            ? () => confirmExcludePattern(recommendation, purchaseDecisionPattern)
+                            : undefined
+                        }
                         action={recommendationActions[recommendation.id]}
+                        excludingPattern={Boolean(excludingPatternIds[patternKey])}
                         error={quantityErrors[recommendation.id]}
                         authority={recommendationAuthorities[recommendation.id]}
-                        purchaseDecisionPattern={purchaseDecisionPatternsByRecommendation.get(
-                          `${recommendation.inventory_item_id}:${recommendation.supplier_id}:${recommendation.generation_source}`
-                        )}
+                        purchaseDecisionPattern={purchaseDecisionPattern}
                         readOnly={!actionsEditable}
                         showDivider={index < supplierRecommendations.length - 1}
                       />
-                    ))}
+                      );
+                    })}
                   </SectionSurface>
                 ))}
               </View>

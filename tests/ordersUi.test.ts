@@ -51,6 +51,14 @@ test("orders keeps staff read-only while preserving review, copy, and detail acc
   assert.match(row, /readOnly\?: boolean/);
   assert.match(row, /!readOnly \? \(/);
   assert.match(row, /accessibilityState=\{\{ disabled: true \}\}/);
+  assert.match(row, /canExcludePattern/);
+  assert.match(row, /onExcludePattern/);
+  assert.match(row, /orders\.memory\.exclude/);
+  assert.match(screen, /confirmExcludePattern/);
+  assert.match(screen, /excludePurchaseDecisionEvent/);
+  assert.match(screen, /onExcludePattern=\{/);
+  assert.match(screen, /actionsEditable && purchaseDecisionPattern/);
+  assert.doesNotMatch(screen, /onExcludePattern=\{\(\) =>/);
   assert.match(card, /showSend\?: boolean/);
   assert.match(card, /canSend\?: boolean/);
   assert.match(card, /isDraft && sendIsVisible && sendAction/);

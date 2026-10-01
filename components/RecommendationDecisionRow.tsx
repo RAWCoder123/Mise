@@ -21,7 +21,9 @@ interface RecommendationDecisionRowProps {
   onQuantityChange: (value: string) => void;
   onApprove: () => void;
   onDismiss: () => void;
+  onExcludePattern?: () => void;
   action?: "approve" | "dismiss";
+  excludingPattern?: boolean;
   error?: string;
   showDivider?: boolean;
   readOnly?: boolean;
@@ -35,7 +37,9 @@ export function RecommendationDecisionRow({
   onQuantityChange,
   onApprove,
   onDismiss,
+  onExcludePattern,
   action,
+  excludingPattern = false,
   error,
   showDivider,
   readOnly = false,
@@ -44,7 +48,11 @@ export function RecommendationDecisionRow({
 }: RecommendationDecisionRowProps) {
   const { formatNumber, t } = useLocale();
   const [expanded, setExpanded] = useState(false);
-  const busy = Boolean(action);
+  const busy = Boolean(action) || excludingPattern;
+  const canExcludePattern =
+    Boolean(onExcludePattern) &&
+    !readOnly &&
+    Boolean(purchaseDecisionPattern?.evidenceEventIds.length);
   const approvalBlocked = authority?.ready === false;
   const authorityBlockers = authority?.blockers ?? [];
   const suggestedQuantity = formatNumber(recommendation.recommended_quantity, {
@@ -173,6 +181,23 @@ export function RecommendationDecisionRow({
               )
             })}
           </Text>
+          {canExcludePattern ? (
+            <Button
+              title={t(
+                excludingPattern ? "orders.memory.excluding" : "orders.memory.exclude"
+              )}
+              accessibilityLabel={t("orders.memory.excludeAccessibility", {
+                item: recommendation.item_name
+              })}
+              accessibilityHint={t("orders.memory.excludeHint")}
+              accessibilityState={{ disabled: busy }}
+              variant="ghost"
+              size="compact"
+              onPress={onExcludePattern}
+              disabled={busy}
+              style={styles.memoryExclude}
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -374,6 +399,10 @@ const styles = StyleSheet.create({
   memoryEvidence: {
     color: colors.muted,
     ...typography.caption
+  },
+  memoryExclude: {
+    alignSelf: "flex-start",
+    marginTop: 4
   },
   quantityRow: {
     flexDirection: "row",

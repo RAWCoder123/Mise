@@ -16,6 +16,7 @@ export type MiseAnalyticsEvent =
   | "recommendation_approved"
   | "recommendation_dismissed"
   | "recommendation_undo"
+  | "purchase_decision_excluded"
   | "order_copied"
   | "email_setup_started";
 

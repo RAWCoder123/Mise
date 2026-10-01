@@ -59,3 +59,14 @@ test("Orders displays memory as factual context without changing the quantity in
   assert.doesNotMatch(ordersScreen, /setQuantities\([^)]*purchaseDecisionPattern/);
   assert.doesNotMatch(ordersScreen, /recommended_quantity\s*=\s*purchaseDecisionPattern/);
 });
+
+test("Orders managers can exclude latest pattern evidence without client raw-event reads", () => {
+  assert.match(ordersScreen, /excludePurchaseDecisionEvent/);
+  assert.match(ordersScreen, /confirmExcludePattern/);
+  assert.match(ordersScreen, /pattern\.evidenceEventIds\[0\]/);
+  assert.match(ordersScreen, /Alert\.alert/);
+  assert.match(ordersScreen, /setPurchaseDecisionPatterns\(\[\]\)/);
+  assert.match(ordersApplication, /excludePurchaseDecisionEvent/);
+  assert.doesNotMatch(ordersScreen, /purchase_decision_events/);
+  assert.doesNotMatch(ordersScreen, /fetchPurchaseDecisionEvents/);
+});
