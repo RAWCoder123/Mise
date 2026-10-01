@@ -1897,6 +1897,10 @@ const en = {
   "dailyReport.subtitleDated": "Closeout for {date}",
   "dailyReport.closeout.eyebrow": "Closeout",
   "dailyReport.closeout.dateBadge": "{date}",
+  "dailyReport.operatingSummary.attention.one":
+    "Mise found {count} item that may need attention before tomorrow.",
+  "dailyReport.operatingSummary.attention.other":
+    "Mise found {count} items that may need attention before tomorrow.",
   "dailyReport.noRestaurant.body": "Open a restaurant before viewing the daily report.",
   "dailyReport.retry.title": "Report could not load",
   "dailyReport.retry.body": "Try again in a moment.",
@@ -4195,6 +4199,10 @@ const es = {
   "dailyReport.subtitleDated": "Cierre del {date}",
   "dailyReport.closeout.eyebrow": "Cierre",
   "dailyReport.closeout.dateBadge": "{date}",
+  "dailyReport.operatingSummary.attention.one":
+    "Mise encontró {count} artículo que puede necesitar atención antes de mañana.",
+  "dailyReport.operatingSummary.attention.other":
+    "Mise encontró {count} artículos que pueden necesitar atención antes de mañana.",
   "dailyReport.noRestaurant.body": "Abre un restaurante antes de ver el informe diario.",
   "dailyReport.retry.title": "No se pudo cargar el informe",
   "dailyReport.retry.body": "Inténtalo de nuevo en un momento.",
@@ -6489,6 +6497,10 @@ const zhHans = {
   "dailyReport.subtitleDated": "{date} 收尾",
   "dailyReport.closeout.eyebrow": "收尾",
   "dailyReport.closeout.dateBadge": "{date}",
+  "dailyReport.operatingSummary.attention.one":
+    "Mise 发现 {count} 个项目在明天前可能需要关注。",
+  "dailyReport.operatingSummary.attention.other":
+    "Mise 发现 {count} 个项目在明天前可能需要关注。",
   "dailyReport.noRestaurant.body": "查看每日报告前请先打开一个餐厅。",
   "dailyReport.retry.title": "报告无法加载",
   "dailyReport.retry.body": "请稍后再试。",
