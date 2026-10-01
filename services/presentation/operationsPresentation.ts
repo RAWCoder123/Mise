@@ -65,8 +65,11 @@ interface OperationsCopy {
     approveCountSessionDetail: string;
     sendOrderTitle: (supplierName: string) => string;
     reviewOrderTitle: (supplierName: string) => string;
+    receiveOrderTitle: (supplierName: string) => string;
+    receivedOrderTitle: (supplierName: string) => string;
     orderDeliveryDetail: string;
     orderDraftDetail: string;
+    orderReceiveDetail: string;
     setupTitles: Record<SetupPresentationCode, string>;
     setupDetails: Record<SetupPresentationCode, string>;
     connectSalesTitle: string;
@@ -157,8 +160,11 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         "A submitted multi-item count is waiting for manager approval before stock is updated.",
       sendOrderTitle: (supplierName) => `Send ${supplierName} order`,
       reviewOrderTitle: (supplierName) => `Review ${supplierName} order`,
+      receiveOrderTitle: (supplierName) => `Receive ${supplierName} order`,
+      receivedOrderTitle: (supplierName) => `Received ${supplierName} order`,
       orderDeliveryDetail: "A supplier delivery commitment is recorded for this order.",
       orderDraftDetail: "Review the approved draft before it leaves the restaurant.",
+      orderReceiveDetail: "Confirm the delivery and record received quantities.",
       setupTitles: {
         "today.setup.profile.open": "Finish restaurant profile",
         "today.setup.profile.complete": "Restaurant profile complete",
@@ -269,8 +275,11 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
         "Un conteo múltiple enviado espera aprobación del gerente antes de actualizar el inventario.",
       sendOrderTitle: (supplierName) => `Enviar pedido a ${supplierName}`,
       reviewOrderTitle: (supplierName) => `Revisar pedido de ${supplierName}`,
+      receiveOrderTitle: (supplierName) => `Recibir pedido de ${supplierName}`,
+      receivedOrderTitle: (supplierName) => `Pedido de ${supplierName} recibido`,
       orderDeliveryDetail: "Este pedido tiene un compromiso de entrega del proveedor.",
       orderDraftDetail: "Revisa el borrador aprobado antes de enviarlo fuera del restaurante.",
+      orderReceiveDetail: "Confirma la entrega y registra las cantidades recibidas.",
       setupTitles: {
         "today.setup.profile.open": "Completar perfil del restaurante",
         "today.setup.profile.complete": "Perfil del restaurante completo",
@@ -379,8 +388,11 @@ const copyByLocale: Readonly<Record<AppLocale, OperationsCopy>> = {
       approveCountSessionDetail: "已提交的多项盘点等待经理审批后才会更新库存。",
       sendOrderTitle: (supplierName) => `发送 ${supplierName} 订单`,
       reviewOrderTitle: (supplierName) => `审核 ${supplierName} 订单`,
+      receiveOrderTitle: (supplierName) => `收货 ${supplierName} 订单`,
+      receivedOrderTitle: (supplierName) => `已收货 ${supplierName} 订单`,
       orderDeliveryDetail: "此订单已记录供应商交货承诺。",
       orderDraftDetail: "请在订单离开餐厅前审核已批准的草稿。",
+      orderReceiveDetail: "确认送达并记录实收数量。",
       setupTitles: {
         "today.setup.profile.open": "完善餐厅资料",
         "today.setup.profile.complete": "餐厅资料已完成",
@@ -517,6 +529,14 @@ export function presentOperationalTodayTask(
         ? copy.today.sendOrderTitle(values.supplierName)
         : copy.today.reviewOrderTitle(values.supplierName),
       values.deliveryDate ? copy.today.orderDeliveryDetail : copy.today.orderDraftDetail
+    );
+  }
+  if (code === "today.order.receive" || code === "today.order.received") {
+    return result(
+      code === "today.order.receive"
+        ? copy.today.receiveOrderTitle(values.supplierName)
+        : copy.today.receivedOrderTitle(values.supplierName),
+      values.deliveryDate ? copy.today.orderDeliveryDetail : copy.today.orderReceiveDetail
     );
   }
   if (code.startsWith("today.setup.")) {

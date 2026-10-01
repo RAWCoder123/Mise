@@ -496,6 +496,11 @@ function effectForIntent(intent: OperationalTodayTaskActionIntent, task: Operati
       ? "Moves an approved draft to the supplier only after explicit send approval."
       : "Keeps the sent or completed supplier order visible for delivery follow-through.";
   }
+  if (intent === "receive_supplier_order") {
+    return task.source.status === "completed"
+      ? "Preserves the recorded receive so operators can reopen delivery evidence."
+      : "Keeps a sent supplier order open until delivery quantities are recorded.";
+  }
   if (intent === "finish_setup") {
     return "Closes the setup gap that blocks reliable operational projections.";
   }
@@ -516,7 +521,7 @@ function verificationForIntent(intent: OperationalTodayTaskActionIntent): Verifi
   ) {
     return "count";
   }
-  if (intent === "send_supplier_order") return "receipt";
+  if (intent === "send_supplier_order" || intent === "receive_supplier_order") return "receipt";
   if (
     intent === "connect_pos" ||
     intent === "manage_pos_connection" ||
@@ -553,7 +558,7 @@ function relatedRefsForTask(task: OperationalTodayTask): OperatingPlanRelatedRef
     refs.push({ type: "setup_step", id: task.source.id });
   }
   if (task.action.entityId && !refs.some((ref) => ref.id === task.action.entityId)) {
-    if (task.action.intent === "send_supplier_order") {
+    if (task.action.intent === "send_supplier_order" || task.action.intent === "receive_supplier_order") {
       refs.push({ type: "supplier_order", id: task.action.entityId });
     } else if (task.action.intent === "update_inventory_count") {
       refs.push({ type: "inventory_item", id: task.action.entityId });
@@ -596,6 +601,11 @@ function dependencyIdsForTask(
     }
   }
 
+  if (task.action.intent === "receive_supplier_order" && task.source.kind === "order") {
+    const sendId = `today:order:${encodeURIComponent(task.source.id)}:send_supplier_order`;
+    if (taskById.has(sendId)) deps.push(sendId);
+  }
+
   return deps;
 }
 
@@ -635,7 +645,7 @@ function assignServiceWindow(
     return task.priority === "urgent" ? "before_prep" : "before_lunch";
   }
   if (task.action.intent === "prepare_supplier_draft") return "before_lunch";
-  if (task.action.intent === "send_supplier_order") {
+  if (task.action.intent === "send_supplier_order" || task.action.intent === "receive_supplier_order") {
     if (order?.delivery_date && timing === "overdue") return "before_prep";
     return currentWindow === "before_dinner" || currentWindow === "during_service"
       ? "before_dinner"

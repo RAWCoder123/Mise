@@ -542,6 +542,9 @@ function checklistKeysForIntent(intent: OperationalTodayTaskActionIntent): reado
   if (intent === "prepare_supplier_draft" || intent === "send_supplier_order") {
     return ["tasks.checklist.order.1", "tasks.checklist.order.2", "tasks.checklist.order.3", "tasks.checklist.generic.3"];
   }
+  if (intent === "receive_supplier_order") {
+    return ["tasks.checklist.receive.1", "tasks.checklist.receive.2", "tasks.checklist.receive.3", "tasks.checklist.generic.3"];
+  }
   if (intent === "connect_pos" || intent === "manage_pos_connection" || intent === "repair_pos_connection") {
     return ["tasks.checklist.pos.1", "tasks.checklist.pos.2", "tasks.checklist.pos.3", "tasks.checklist.generic.3"];
   }

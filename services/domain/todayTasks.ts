@@ -38,6 +38,7 @@ export type OperationalTodayTaskActionIntent =
   | "review_recommendation"
   | "prepare_supplier_draft"
   | "send_supplier_order"
+  | "receive_supplier_order"
   | "finish_setup"
   | "connect_pos"
   | "manage_pos_connection"
@@ -346,7 +347,8 @@ export function deriveOperationalTodayTasks(
   }
 
   for (const order of orders) {
-    const isComplete = order.status === "sent" || order.status === "completed";
+    const sendComplete = order.status === "sent" || order.status === "completed";
+    const deliveryDate = validDateKey(order.delivery_date) ? order.delivery_date : null;
     pushIfVisible(
       tasks,
       buildTask({
@@ -354,33 +356,72 @@ export function deriveOperationalTodayTasks(
         sourceKind: "order",
         sourceId: order.id,
         sourceStatus: order.status,
-        title: `${isComplete ? "Review" : "Send"} ${order.supplier_name} order`,
-        detail: order.delivery_date
-          ? `Supplier delivery is scheduled for ${order.delivery_date}.`
+        title: `${sendComplete ? "Review" : "Send"} ${order.supplier_name} order`,
+        detail: deliveryDate
+          ? `Supplier delivery is scheduled for ${deliveryDate}.`
           : "Review the approved draft before it leaves the restaurant.",
         presentation: {
-          code: isComplete ? "today.order.review" : "today.order.send",
+          code: sendComplete ? "today.order.review" : "today.order.send",
           values: {
             supplierName: order.supplier_name,
-            deliveryDate: validDateKey(order.delivery_date) ? order.delivery_date : null
+            deliveryDate
           }
         },
         priority: "high",
-        dueDate: validDateKey(order.delivery_date) ? order.delivery_date : null,
+        dueDate: deliveryDate,
         action: {
           intent: "send_supplier_order",
-          label: isComplete ? "View order" : "Review and send",
+          label: sendComplete ? "View order" : "Review and send",
           route: `/orders/${encodeURIComponent(order.id)}`,
           entityId: order.id
         },
         requiredRole: "manager",
-        isComplete,
-        completionReason: isComplete
+        isComplete: sendComplete,
+        completionReason: sendComplete
           ? `Supplier order is ${order.status}.`
           : "Supplier order remains a draft and has not been represented as sent."
       }),
       includeCompleted
     );
+
+    // Sent orders stay open as receive work until delivery is recorded as completed.
+    if (order.status === "sent" || order.status === "completed") {
+      const receiveComplete = order.status === "completed";
+      pushIfVisible(
+        tasks,
+        buildTask({
+          restaurantId,
+          sourceKind: "order",
+          sourceId: order.id,
+          sourceStatus: order.status,
+          title: `${receiveComplete ? "Received" : "Receive"} ${order.supplier_name} order`,
+          detail: deliveryDate
+            ? `Supplier delivery is scheduled for ${deliveryDate}.`
+            : "Confirm the delivery and record received quantities.",
+          presentation: {
+            code: receiveComplete ? "today.order.received" : "today.order.receive",
+            values: {
+              supplierName: order.supplier_name,
+              deliveryDate
+            }
+          },
+          priority: "high",
+          dueDate: deliveryDate,
+          action: {
+            intent: "receive_supplier_order",
+            label: receiveComplete ? "View receipt" : "Receive delivery",
+            route: `/orders/${encodeURIComponent(order.id)}`,
+            entityId: order.id
+          },
+          requiredRole: "manager",
+          isComplete: receiveComplete,
+          completionReason: receiveComplete
+            ? "Supplier order delivery has been recorded as received."
+            : "Supplier order was sent and still needs a recorded receive."
+        }),
+        includeCompleted
+      );
+    }
   }
 
   if (input.setupReadiness) {
