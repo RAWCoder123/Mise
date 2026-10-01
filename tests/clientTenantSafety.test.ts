@@ -47,6 +47,8 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.orders, /hubReady\s*\?\s*recommendations\s*:\s*\[\]/);
   assert.match(screens.orders, /hubReady\s*\?\s*orders\s*:\s*\[\]/);
   assert.match(screens.recipes, /hubReady\s*\?\s*summary\s*:\s*null/);
+  assert.match(screens.recipes, /hasLoadedRef/);
+  assert.match(screens.recipes, /Soft refresh must preserve operator-entered ingredient quantity and builder drafts/);
   assert.match(screens.team, /hubReady\s*\?\s*members\s*:\s*\[\]/);
   assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);
   assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
@@ -80,7 +82,9 @@ test("workspace mutations stop stale continuations and session state is latest-w
   assert.match(recipes, /saveTimersRef/);
   assert.match(recipes, /, 700\)/);
   assert.match(recipes, /immediate:\s*true/);
-
+  assert.match(recipes, /draftQuantities/);
+  assert.match(recipes, /hasLoadedRef\.current = false/);
+  assert.match(recipes, /setDraftQuantities\(\{\}\)/);
   assert.match(session, /userRef\.current/);
   assert.match(session, /isDemoModeRef\.current/);
   assert.match(session, /saveSnapshot\(\{\s*user:\s*userRef\.current/);
