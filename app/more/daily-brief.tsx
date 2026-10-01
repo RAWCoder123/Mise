@@ -37,6 +37,7 @@ import type {
   DailyPhaseFinding,
   DailyPhaseFindingTone
 } from "../../services/domain/dailyPhaseBrief";
+import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -105,7 +106,13 @@ export default function DailyPhaseBriefScreen() {
     }, [load])
   );
 
-  const visible = loadedRestaurantId === restaurant?.id ? briefs : null;
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const visible = hubReady ? briefs : null;
   const phase = selectedPhase ?? visible?.activePhase ?? "morning";
   const phaseBrief = visible?.briefs[phase] ?? null;
   const options = useMemo<readonly SegmentOption<DailyBriefPhase>[]>(
