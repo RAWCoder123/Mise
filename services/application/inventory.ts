@@ -154,6 +154,7 @@ export async function fetchRecipeBaselineSummary(restaurantId: string) {
       return {
         ...item,
         menuItemId: authority?.menuItemId ?? mapping?.menu_item_id ?? null,
+        active: authority?.active ?? true,
         recipeRevision: authority?.recipeRevision ?? 0,
         confirmedRevision: authority?.confirmedRevision ?? null,
         confirmedAt: authority?.confirmedAt ?? null,
@@ -179,6 +180,23 @@ export async function confirmRecipeBaselineComplete(
     normalizedRestaurantId,
     normalizedMenuItemId,
     expectedRevision
+  );
+}
+
+export async function setRecipeMenuItemActive(
+  restaurantId: string,
+  menuItemId: string,
+  active: boolean
+) {
+  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedMenuItemId = menuItemId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  if (!normalizedMenuItemId) throw new Error("Missing menu item.");
+  if (typeof active !== "boolean") throw new Error("Menu item active state is invalid.");
+  return repository.setMenuItemActive(
+    normalizedRestaurantId,
+    normalizedMenuItemId,
+    active
   );
 }
 

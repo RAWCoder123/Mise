@@ -502,6 +502,8 @@ export interface RecipeBaselineItem {
   linkedInventoryItems: string[];
   ingredients: RecipeBaselineIngredient[];
   todayQuantitySold: number;
+  /** When false, item is off-menu for planning/sales joins; defaults true when unknown. */
+  active?: boolean;
   recipeRevision?: number;
   confirmedRevision?: number | null;
   confirmedAt?: string | null;
