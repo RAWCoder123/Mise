@@ -10,6 +10,7 @@ import {
   Package,
   Search,
   ShoppingCart,
+  Trash2,
   Wheat
 } from "lucide-react-native";
 import { StyleSheet, Text, TextInput, View } from "react-native";
@@ -42,7 +43,7 @@ import {
   summarizeInventoryOutlooks
 } from "../../services/miseService";
 import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
-import { canDraftInventoryCount } from "../../services/tenantAccess";
+import { canDraftInventoryCount, canManageRestaurantData, canRecordInventoryWaste } from "../../services/tenantAccess";
 import type { InventoryItem, InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
@@ -51,6 +52,9 @@ export default function InventoryScreen() {
   const { formatNumber, t } = useLocale();
   const { restaurant, memberships } = useMiseSession();
   const canDraftCount = canDraftInventoryCount(memberships, restaurant?.id ?? "");
+  const canManageInventory = canManageRestaurantData(memberships, restaurant?.id ?? "");
+  const canRecordWaste = canRecordInventoryWaste(memberships, restaurant?.id ?? "");
+  const showStaffWasteTip = canRecordWaste && !canManageInventory;
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
   const [openCountSessionId, setOpenCountSessionId] = useState<string | null>(null);
@@ -261,6 +265,26 @@ export default function InventoryScreen() {
           body={healthBody}
           accessibilityLabel={healthAccessibilityLabel}
         />
+        ) : null}
+
+        {showStaffWasteTip && hubReady ? (
+          <View style={styles.countSection}>
+            <SectionHeader
+              title={t("inventory.waste.cardTitle")}
+              subtitle={t("inventory.waste.cardSubtitle")}
+            />
+            <Button
+              title={t("inventory.waste.findItemAction")}
+              onPress={() => {
+                setSearchExpanded(true);
+                setTimeout(() => searchInputRef.current?.focus(), 0);
+              }}
+              variant="secondary"
+              size="compact"
+              accessibilityLabel={t("inventory.waste.findItemAccessibility")}
+              icon={<Trash2 size={16} color={colors.text} strokeWidth={iconStroke} />}
+            />
+          </View>
         ) : null}
 
         <InventoryGroup

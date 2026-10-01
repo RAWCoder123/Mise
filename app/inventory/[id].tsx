@@ -34,7 +34,10 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
-import { canManageRestaurantData } from "../../services/tenantAccess";
+import {
+  canManageRestaurantData,
+  canRecordInventoryWaste
+} from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
 import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
@@ -46,9 +49,14 @@ export default function InventoryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const { memberships, restaurant } = useMiseSession();
+  const canManage = canManageRestaurantData(memberships, restaurant?.id);
+  const canRecordWaste = canRecordInventoryWaste(memberships, restaurant?.id);
+  const staffWasteOnly = canRecordWaste && !canManage;
   const [outlook, setOutlook] = useState<InventoryOutlookItem | null>(null);
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
-  const [operation, setOperation] = useState<InventoryOperatorAction>("count");
+  const [operation, setOperation] = useState<InventoryOperatorAction>(
+    staffWasteOnly ? "waste" : "count"
+  );
   const [quantityText, setQuantityText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
@@ -122,7 +130,7 @@ export default function InventoryDetailScreen() {
     setHubLoadError(false);
     setOutlook(null);
     setQueueEntries([]);
-    setOperation("count");
+    setOperation(staffWasteOnly ? "waste" : "count");
     setQuantityText("");
     setNoteText("");
     setParLevel("");
@@ -135,7 +143,7 @@ export default function InventoryDetailScreen() {
     setMessageIsError(false);
     setLoading(Boolean(restaurant && id));
     void load();
-  }, [id, load, restaurant?.id]);
+  }, [id, load, restaurant?.id, staffWasteOnly]);
 
   useFocusEffect(
     useCallback(() => {
@@ -143,7 +151,6 @@ export default function InventoryDetailScreen() {
     }, [load])
   );
 
-  const canManage = canManageRestaurantData(memberships, restaurant?.id);
   const hubLoadState = resolveRestaurantScopedHubLoadState({
     restaurantId: restaurant?.id,
     loadedRestaurantId,
@@ -151,8 +158,16 @@ export default function InventoryDetailScreen() {
   });
   const hubReady = hubLoadState === "ready";
   const mutationAllowed = canManage && hubReady;
-  const actionsEditable = presentRestaurantScopedHubActionsEditable({
+  const wasteMutationAllowed = canRecordWaste && hubReady;
+  const canSubmitCurrentOperation =
+    canManage || (canRecordWaste && operation === "waste");
+  const managerActionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
+    hubReady,
+    busy: submittingOperation || savingSettings
+  });
+  const operationActionsEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canSubmitCurrentOperation,
     hubReady,
     busy: submittingOperation || savingSettings
   });
@@ -199,7 +214,7 @@ export default function InventoryDetailScreen() {
 
   async function submitOperation() {
     if (!restaurant || !item) return;
-    if (!actionsEditable) {
+    if (!operationActionsEditable || (!canManage && operation !== "waste")) {
       setMessage(t("inventory.detail.viewOnlyInventory"));
       setMessageIsError(true);
       return;
@@ -264,7 +279,7 @@ export default function InventoryDetailScreen() {
 
   async function saveSettings() {
     if (!restaurant || !item) return;
-    if (!actionsEditable) {
+    if (!managerActionsEditable) {
       setMessage(t("inventory.detail.viewOnlyInventory"));
       setMessageIsError(true);
       return;
@@ -319,7 +334,7 @@ export default function InventoryDetailScreen() {
 
   async function addToOrder() {
     if (!restaurant || !item) return;
-    if (!actionsEditable) {
+    if (!managerActionsEditable) {
       setMessage(t("inventory.detail.viewOnlyOrdering"));
       setMessageIsError(true);
       return;
@@ -401,8 +416,16 @@ export default function InventoryDetailScreen() {
 
           {!canManage ? (
             <StatusNotice
-              title={t("inventory.detail.viewOnly.title")}
-              message={t("inventory.detail.viewOnly.body")}
+              title={
+                canRecordWaste
+                  ? t("inventory.detail.limitedAccess.title")
+                  : t("inventory.detail.viewOnly.title")
+              }
+              message={
+                canRecordWaste
+                  ? t("inventory.detail.limitedAccess.body")
+                  : t("inventory.detail.viewOnly.body")
+              }
             />
           ) : null}
 
@@ -480,7 +503,7 @@ export default function InventoryDetailScreen() {
                 variant="secondary"
                 icon={<ClipboardList size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => void addToOrder()}
-                disabled={!actionsEditable || busy}
+                disabled={!managerActionsEditable || busy}
                 fullWidth
                 style={styles.addButton}
               />
@@ -488,8 +511,12 @@ export default function InventoryDetailScreen() {
           </Card>
 
           <Card>
-            <Text style={styles.cardTitle}>{t("inventory.ops.title")}</Text>
-            <Text style={styles.opsBody}>{t("inventory.ops.body")}</Text>
+            <Text style={styles.cardTitle}>
+              {staffWasteOnly ? t("inventory.ops.wasteTitle") : t("inventory.ops.title")}
+            </Text>
+            <Text style={styles.opsBody}>
+              {staffWasteOnly ? t("inventory.ops.wasteBody") : t("inventory.ops.body")}
+            </Text>
             {!canonicalReady ? (
               <StatusNotice
                 tone="warning"
@@ -503,19 +530,21 @@ export default function InventoryDetailScreen() {
                     unit: t(`inventory.ops.unit.${canonicalUnit}` as "inventory.ops.unit.g")
                   })}
                 </Text>
-                {mutationAllowed ? (
+                {mutationAllowed || wasteMutationAllowed ? (
                   <>
-                    <FilterRow
-                      accessibilityLabel={t("inventory.ops.action.accessibility")}
-                      options={operationOptions}
-                      value={operation}
-                      onValueChange={(value) => {
-                        setOperation(value);
-                        setQuantityError(undefined);
-                        if (value === "stockout") setQuantityText("0");
-                      }}
-                    />
-                    {operation === "stockout" ? (
+                    {mutationAllowed ? (
+                      <FilterRow
+                        accessibilityLabel={t("inventory.ops.action.accessibility")}
+                        options={operationOptions}
+                        value={operation}
+                        onValueChange={(value) => {
+                          setOperation(value);
+                          setQuantityError(undefined);
+                          if (value === "stockout") setQuantityText("0");
+                        }}
+                      />
+                    ) : null}
+                    {operation === "stockout" && mutationAllowed ? (
                       <StatusNotice
                         tone="caution"
                         title={t("inventory.ops.stockoutNotice.title")}
@@ -531,7 +560,7 @@ export default function InventoryDetailScreen() {
                           setQuantityText(value);
                           setQuantityError(undefined);
                         }}
-                        editable={actionsEditable && !busy}
+                        editable={operationActionsEditable && !busy}
                         error={quantityError}
                       />
                     )}
@@ -539,16 +568,20 @@ export default function InventoryDetailScreen() {
                       label={t("inventory.ops.note")}
                       value={noteText}
                       onChangeText={setNoteText}
-                      editable={actionsEditable && !busy}
+                      editable={operationActionsEditable && !busy}
                       keyboardType="default"
                     />
                     <Button
                       title={
-                        submittingOperation ? t("inventory.ops.submitting") : t("inventory.ops.submit")
+                        submittingOperation
+                          ? t("inventory.ops.submitting")
+                          : staffWasteOnly
+                            ? t("inventory.ops.submitWaste")
+                            : t("inventory.ops.submit")
                       }
                       accessibilityHint={t("inventory.ops.submitHint")}
                       onPress={() => void submitOperation()}
-                      disabled={!actionsEditable || busy}
+                      disabled={!operationActionsEditable || busy}
                       fullWidth
                       style={styles.saveButton}
                     />
@@ -582,7 +615,7 @@ export default function InventoryDetailScreen() {
                 setParLevel(value);
                 setSettingErrors((current) => ({ ...current, parLevel: undefined }));
               }}
-              editable={actionsEditable && !busy}
+              editable={managerActionsEditable && !busy}
               error={settingErrors.parLevel}
             />
             <Field
@@ -592,7 +625,7 @@ export default function InventoryDetailScreen() {
                 setReorderThreshold(value);
                 setSettingErrors((current) => ({ ...current, reorderThreshold: undefined }));
               }}
-              editable={actionsEditable && !busy}
+              editable={managerActionsEditable && !busy}
               error={settingErrors.reorderThreshold}
             />
             {mutationAllowed ? (
@@ -600,7 +633,7 @@ export default function InventoryDetailScreen() {
                 title={savingSettings ? t("inventory.detail.saving") : t("inventory.detail.saveSettings")}
                 icon={<Save size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
                 onPress={() => void saveSettings()}
-                disabled={!actionsEditable || busy}
+                disabled={!managerActionsEditable || busy}
                 fullWidth
                 style={styles.saveButton}
               />

@@ -8,6 +8,7 @@ import {
   canDeleteRestaurantData,
   canManageRestaurantData,
   canReadRestaurantData,
+  canRecordInventoryWaste,
   canUpdateRestaurantProfile
 } from "../services/tenantAccess";
 import { sanitizeTelemetryProperties } from "../services/telemetry";
@@ -47,7 +48,7 @@ test("tenant access helper isolates restaurant data by active membership", () =>
   assert.equal(canReadRestaurantData([membership("restaurant_a", "owner", "disabled")], "restaurant_a"), false);
 });
 
-test("tenant role helper keeps staff read-only and lets managers operate inventory workflows", () => {
+test("tenant role helper keeps staff out of manager edits while allowing waste", () => {
   const staff = [membership("restaurant_a", "staff")];
   const manager = [membership("restaurant_a", "manager")];
   const owner = [membership("restaurant_a", "owner")];
@@ -56,12 +57,15 @@ test("tenant role helper keeps staff read-only and lets managers operate invento
   assert.equal(canReadRestaurantData(staff, "restaurant_a"), true);
   assert.equal(canManageRestaurantData(staff, "restaurant_a"), false);
   assert.equal(canDeleteRestaurantData(staff, "restaurant_a"), false);
+  assert.equal(canRecordInventoryWaste(staff, "restaurant_a"), true);
 
   assert.equal(canManageRestaurantData(manager, "restaurant_a"), true);
   assert.equal(canDeleteRestaurantData(manager, "restaurant_a"), false);
+  assert.equal(canRecordInventoryWaste(manager, "restaurant_a"), true);
 
   assert.equal(canUpdateRestaurantProfile(owner, "restaurant_a"), true);
   assert.equal(canUpdateRestaurantProfile(admin, "restaurant_a"), true);
+  assert.equal(canRecordInventoryWaste(owner, "restaurant_a"), true);
 });
 
 test("production mode does not expose demo credentials or demo access", () => {
@@ -980,4 +984,36 @@ test("inventory count sessions are service-owned with ledger approve path", () =
   assert.match(staffActionsBlock, /"submit_count_session"/);
   assert.doesNotMatch(staffActionsBlock, /approve_count_session/);
   assert.doesNotMatch(staffActionsBlock, /cancel_count_session/);
+});
+
+test("staff waste recording is authorized on the ledger RPC and inventory UI", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260827210000_staff_inventory_waste_roles.sql",
+    "utf8"
+  );
+  const detail = readFileSync("app/inventory/[id].tsx", "utf8");
+  const list = readFileSync("app/(tabs)/inventory.tsx", "utf8");
+  const tenantAccess = readFileSync("services/tenantAccess.ts", "utf8");
+  const domain = readFileSync("services/domain/inventoryWaste.ts", "utf8");
+  const pgTap = readFileSync("supabase/tests/database/staff_inventory_waste.test.sql", "utf8");
+
+  assert.match(domain, /INVENTORY_WASTE_RECORD_ROLES/);
+  assert.match(domain, /canRecordInventoryWaste/);
+  assert.match(tenantAccess, /export function canRecordInventoryWaste/);
+  assert.match(
+    migration,
+    /p_event_type = 'waste'[\s\S]*array\['owner', 'admin', 'manager', 'staff'\]/i
+  );
+  assert.match(
+    migration,
+    /elsif not private\.has_restaurant_role\([\s\S]*array\['owner', 'admin', 'manager'\]/i
+  );
+  assert.match(migration, /grant execute on function public\.record_inventory_event/i);
+  assert.match(detail, /canRecordWaste/);
+  assert.match(detail, /staffWasteOnly/);
+  assert.match(detail, /inventory\.detail\.limitedAccess/);
+  assert.match(list, /showStaffWasteTip/);
+  assert.match(pgTap, /staff can record a scoped waste event/i);
+  assert.match(pgTap, /staff cannot record count events/i);
+  assert.match(pgTap, /staff cannot record waste for another restaurant/i);
 });
