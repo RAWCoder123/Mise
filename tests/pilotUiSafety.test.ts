@@ -38,3 +38,34 @@ test("POS readiness failures remain visible and retryable instead of failing ope
   assert.match(pos, /onAction=\{\(\) => void loadPilotReadiness\(\)\}/);
   assert.match(pos, /readinessLoadError \? \(/);
 });
+
+test("Home gates one-tap recommendation approve on fail-closed pilot readiness", () => {
+  const home = readFileSync("app/(tabs)/home.tsx", "utf8");
+  assert.match(home, /fetchPilotReadiness\(restaurantId\)/);
+  assert.match(home, /homePilotReadinessGate\(/);
+  assert.match(home, /canOneTapRecommend=\{readinessGate\.canOneTapRecommend\}/);
+  assert.match(home, /if \(!readinessGate\.canOneTapRecommend\)/);
+  assert.match(home, /router\.push\("\/settings\/pos"\)/);
+  assert.match(home, /home\.approvals\.reviewSetup/);
+});
+
+test("Orders gates recommendation approve on the same fail-closed pilot readiness contract", () => {
+  const orders = readFileSync("app/(tabs)/orders.tsx", "utf8");
+  assert.match(orders, /fetchPilotReadiness\(restaurantId\)/);
+  assert.match(orders, /pilotRecommendUiGate\(/);
+  assert.match(orders, /if \(!readinessGate\.canOneTapRecommend\)/);
+  assert.match(orders, /setupBlocked=\{!readinessGate\.canOneTapRecommend\}/);
+  assert.match(orders, /router\.push\("\/settings\/pos"\)/);
+  assert.match(orders, /OrdersPilotReadinessNotice/);
+});
+
+test("Orders soft reload invalidates pilot readiness before replacement data arrives", () => {
+  const orders = readFileSync("app/(tabs)/orders.tsx", "utf8");
+  // Soft refresh must clear readiness immediately so approve cannot race on a stale gate.
+  assert.match(
+    orders,
+    /if \(!showLoading && loadedRestaurantRef\.current === restaurantId\) \{\s*setPilotReadiness\(null\);\s*setReadinessLoadError\(false\);\s*\}/
+  );
+  assert.match(orders, /pilotRecommendUiGate\(pilotReadiness, readinessLoadError\)/);
+  assert.match(orders, /if \(!readinessGate\.canOneTapRecommend\)/);
+});

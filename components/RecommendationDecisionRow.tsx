@@ -25,6 +25,8 @@ interface RecommendationDecisionRowProps {
   error?: string;
   showDivider?: boolean;
   readOnly?: boolean;
+  /** When true, recommend approve is gated and routes to setup instead of approving. */
+  setupBlocked?: boolean;
   authority?: PurchaseAuthorityResult;
   purchaseDecisionPattern?: PurchaseDecisionPattern;
 }
@@ -39,6 +41,7 @@ export function RecommendationDecisionRow({
   error,
   showDivider,
   readOnly = false,
+  setupBlocked = false,
   authority,
   purchaseDecisionPattern
 }: RecommendationDecisionRowProps) {
@@ -121,6 +124,13 @@ export function RecommendationDecisionRow({
               unit: recommendation.unit
             })}
           </Text>
+        </View>
+      ) : null}
+
+      {setupBlocked && !approvalBlocked ? (
+        <View style={styles.blockerPanel} accessibilityLiveRegion="polite">
+          <Text style={styles.blockerTitle}>{t("orders.readiness.rowTitle")}</Text>
+          <Text style={styles.blockerText}>{t("orders.readiness.rowBody")}</Text>
         </View>
       ) : null}
 
@@ -228,10 +238,22 @@ export function RecommendationDecisionRow({
       {!readOnly ? (
         <View style={styles.actions}>
           <Button
-            title={t(action === "approve" ? "orders.recommendation.approving" : "orders.recommendation.approve")}
-            accessibilityLabel={t("orders.recommendation.approveAccessibility", {
-              item: recommendation.item_name
-            })}
+            title={
+              action === "approve"
+                ? t("orders.recommendation.approving")
+                : setupBlocked && !approvalBlocked
+                  ? t("orders.readiness.reviewSetup")
+                  : t("orders.recommendation.approve")
+            }
+            accessibilityLabel={
+              setupBlocked && !approvalBlocked
+                ? t("orders.readiness.reviewSetupAccessibility", {
+                    item: recommendation.item_name
+                  })
+                : t("orders.recommendation.approveAccessibility", {
+                    item: recommendation.item_name
+                  })
+            }
             accessibilityState={{ disabled: busy || approvalBlocked }}
             icon={<Check size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
             onPress={onApprove}
