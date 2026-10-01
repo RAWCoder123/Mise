@@ -20,6 +20,7 @@ const HUB_CONSUMER_FILES = [
   "app/settings/autonomy.tsx",
   "app/settings/pos.tsx",
   "app/inventory/[id].tsx",
+  "app/inventory/count.tsx",
   "app/orders/[id].tsx",
   "app/more/restaurant-memory.tsx",
   "app/more/log-delivery.tsx",
