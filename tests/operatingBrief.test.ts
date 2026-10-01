@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { fromPosSyncCompleted } from "../services/domain/activityEvents";
-import { buildOperatingBrief } from "../services/domain/operatingBrief";
+import { buildOperatingBrief, classifySupplierDeliveryOutlook } from "../services/domain/operatingBrief";
 import type {
   InventoryItem,
   InventoryPrediction,
@@ -324,4 +324,133 @@ test("recommendation confidence credits verified count age only", () => {
   assert.match(fresh.needsApproval[0]?.confidenceRationale ?? "", /within 24 hours/i);
   assert.match(unverified.needsApproval[0]?.confidenceRationale ?? "", /older or unknown inventory count/i);
   assert.ok((fresh.needsApproval[0]?.confidence ?? 0) > (unverified.needsApproval[0]?.confidence ?? 0));
+});
+
+test("sent supplier orders past delivery date mark outlook overdue and elevate pulse", () => {
+  const brief = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-04",
+    generatedAt: "2026-08-04T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_1",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-04",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 10,
+        gross_sales: 120,
+        net_sales: 110,
+        source_pos: "Square",
+        created_at: "2026-08-04T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 40, last_updated: "2026-08-04T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [
+      {
+        id: "order_overdue",
+        restaurant_id: restaurantId,
+        supplier_id: supplierId,
+        supplier_name: "Metro Produce",
+        order_message: "Please deliver",
+        operator_note: null,
+        status: "sent",
+        delivery_date: "2026-08-03",
+        created_at: "2026-08-02T10:00:00.000Z"
+      }
+    ],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 40 }),
+        prediction: prediction({
+          projectedQuantity: 30,
+          projectedStatus: "Good",
+          daysCoverage: 3,
+          whyItMatters: "Coverage is stable."
+        })
+      }
+    ]
+  });
+
+  assert.equal(brief.outlook.deliveryStatus, "overdue");
+  assert.match(brief.outlook.deliveryDetail, /Metro Produce/);
+  assert.match(brief.outlook.deliveryDetail, /2026-08-03/);
+  assert.equal(brief.restaurantStatus.status, "attention_needed");
+  assert.equal(brief.restaurantStatus.topRisk, brief.outlook.deliveryDetail);
+  assert.ok(brief.miseIsWatching.some((row) => /Overdue Metro Produce receipt/.test(row.title)));
+});
+
+test("future-dated sent orders stay expected and do not elevate pulse alone", () => {
+  const brief = buildOperatingBrief({
+    restaurant: restaurant(),
+    operatingDate: "2026-08-02",
+    generatedAt: "2026-08-02T15:00:00.000Z",
+    sales: [
+      {
+        id: "sale_1",
+        restaurant_id: restaurantId,
+        sale_date: "2026-08-02",
+        item_name: "Burger",
+        category: "Entree",
+        quantity_sold: 10,
+        gross_sales: 120,
+        net_sales: 110,
+        source_pos: "Square",
+        created_at: "2026-08-02T14:00:00.000Z"
+      }
+    ],
+    inventoryItems: [item({ current_quantity: 40, last_updated: "2026-08-02T14:00:00.000Z" })],
+    recommendations: [],
+    orders: [
+      {
+        id: "order_expected",
+        restaurant_id: restaurantId,
+        supplier_id: supplierId,
+        supplier_name: "Metro Produce",
+        order_message: "Please deliver",
+        operator_note: null,
+        status: "sent",
+        delivery_date: "2026-08-03",
+        created_at: "2026-08-02T10:00:00.000Z"
+      }
+    ],
+    insights: [],
+    inventoryOutlooks: [
+      {
+        item: item({ current_quantity: 40 }),
+        prediction: prediction({
+          projectedQuantity: 30,
+          projectedStatus: "Good",
+          daysCoverage: 3,
+          whyItMatters: "Coverage is stable."
+        })
+      }
+    ]
+  });
+
+  assert.equal(brief.outlook.deliveryStatus, "expected");
+  assert.equal(brief.restaurantStatus.status, "on_track");
+});
+
+test("draft orders past delivery date are overdue until sent or completed", () => {
+  const classified = classifySupplierDeliveryOutlook(
+    [
+      {
+        id: "order_draft_late",
+        restaurant_id: restaurantId,
+        supplier_id: supplierId,
+        supplier_name: "Metro Produce",
+        order_message: "Hold",
+        operator_note: null,
+        status: "draft",
+        delivery_date: "2026-08-01",
+        created_at: "2026-08-01T10:00:00.000Z"
+      }
+    ],
+    "2026-08-02"
+  );
+  assert.equal(classified.deliveryStatus, "overdue");
+  assert.equal(classified.overdueOrders.length, 1);
 });
