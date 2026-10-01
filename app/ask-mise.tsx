@@ -19,7 +19,9 @@ import {
   answerAskMise,
   fetchInsights,
   fetchTodaySummary,
-  type TodayCommandCenterSummary
+  fetchWasteAnalysis,
+  type TodayCommandCenterSummary,
+  type WasteAnalysisSummary
 } from "../services/miseService";
 import { presentOperationalTodayTask } from "../services/presentation/operationsPresentation";
 import { captureMiseError } from "../services/telemetry";
@@ -63,6 +65,7 @@ export default function AskMiseScreen() {
   const { canUseDemoMode, continueWithDemo, restaurant, user } = useMiseSession();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [wasteAnalysis, setWasteAnalysis] = useState<WasteAnalysisSummary | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -86,6 +89,7 @@ export default function AskMiseScreen() {
     askGenerationRef.current += 1;
     setSummary(null);
     setInsights([]);
+    setWasteAnalysis(null);
     setLoadedRestaurantId(null);
     setError(null);
     setMessages([]);
@@ -106,13 +110,26 @@ export default function AskMiseScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [nextSummary, nextInsights] = await Promise.all([
+      const [nextSummary, nextInsights, nextWaste] = await Promise.all([
         fetchTodaySummary(restaurantId),
-        fetchInsights(restaurantId)
+        fetchInsights(restaurantId),
+        fetchWasteAnalysis(restaurantId).then(
+          (analysis) => ({ ok: true as const, analysis }),
+          (wasteError) => {
+            captureMiseError(wasteError, {
+              flow: "ask_mise",
+              operation: "waste_analysis",
+              restaurant_id: restaurantId
+            });
+            return { ok: false as const, analysis: null };
+          }
+        )
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
       setInsights(nextInsights);
+      // Fail closed: missing waste analysis never invents an all-clear claim.
+      setWasteAnalysis(nextWaste.ok ? nextWaste.analysis : null);
       setLoadedRestaurantId(restaurantId);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -131,6 +148,7 @@ export default function AskMiseScreen() {
 
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
   const visibleInsights = loadedRestaurantId === restaurant?.id ? insights : [];
+  const visibleWasteAnalysis = loadedRestaurantId === restaurant?.id ? wasteAnalysis : null;
 
   const revealLatestMessage = useCallback((animated = true) => {
     requestAnimationFrame(() => {
@@ -148,6 +166,7 @@ export default function AskMiseScreen() {
       restaurant,
       summary: visibleSummary,
       insights: visibleInsights,
+      wasteAnalysis: visibleWasteAnalysis,
       helpers: {
         formatCompactCurrency,
         formatNumber,
@@ -186,7 +205,8 @@ export default function AskMiseScreen() {
     t,
     user?.name,
     visibleInsights,
-    visibleSummary
+    visibleSummary,
+    visibleWasteAnalysis
   ]);
 
   const ask = useCallback(
@@ -207,6 +227,7 @@ export default function AskMiseScreen() {
           restaurant,
           summary: visibleSummary,
           insights: visibleInsights,
+          wasteAnalysis: visibleWasteAnalysis,
           helpers: {
             formatCompactCurrency,
             formatNumber,
@@ -266,7 +287,8 @@ export default function AskMiseScreen() {
       revealLatestMessage,
       t,
       visibleInsights,
-      visibleSummary
+      visibleSummary,
+      visibleWasteAnalysis
     ]
   );
 
