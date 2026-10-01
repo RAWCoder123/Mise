@@ -12,7 +12,13 @@ import { RetryNotice } from "../../components/ui/StatusNotice";
 import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
-import { summarizeCountSessionProgress } from "../../services/domain/inventoryCountSessions";
+import {
+  InventoryCountSessionClientError,
+  inventoryCountSessionFailureMessageKey,
+  inventoryCountSessionFailureReasonFrom,
+  summarizeCountSessionProgress,
+  type InventoryCountSessionOperation
+} from "../../services/domain/inventoryCountSessions";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -27,6 +33,7 @@ import {
 } from "../../services/miseService";
 import { canApproveInventoryCount, canDraftInventoryCount } from "../../services/tenantAccess";
 import type { InventoryCountSessionDetail } from "../../types/mise";
+import type { MessageKey } from "../../i18n/catalog";
 
 export default function InventoryCountSessionScreen() {
   const { formatNumber, t } = useLocale();
@@ -116,6 +123,11 @@ export default function InventoryCountSessionScreen() {
     [visibleDetail?.lines]
   );
 
+  function presentCountSessionFailure(error: unknown, operation: InventoryCountSessionOperation) {
+    const reason = inventoryCountSessionFailureReasonFrom(error);
+    return t(inventoryCountSessionFailureMessageKey(reason, operation) as MessageKey);
+  }
+
   async function startSession() {
     if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
@@ -134,7 +146,7 @@ export default function InventoryCountSessionScreen() {
       setNotice(t("inventory.count.started"));
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.startError"));
+      setError(presentCountSessionFailure(caught, "start"));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -164,7 +176,7 @@ export default function InventoryCountSessionScreen() {
         if (!Number.isFinite(countedQuantity)) return null;
         const noteRaw = draftNotes[line.inventory_item_id] ?? "";
         if (noteRaw.trim().length > 240) {
-          throw new Error(t("inventory.count.noteTooLong"));
+          throw new InventoryCountSessionClientError("note_outside_limits");
         }
         return {
           inventoryItemId: line.inventory_item_id,
@@ -179,7 +191,7 @@ export default function InventoryCountSessionScreen() {
           Boolean(line)
       );
     if (requireComplete && lines.length !== sessionDetail.lines.length) {
-      throw new Error(t("inventory.count.incomplete"));
+      throw new InventoryCountSessionClientError("incomplete_lines");
     }
     return lines;
   }
@@ -191,7 +203,7 @@ export default function InventoryCountSessionScreen() {
     try {
       lines = buildCountLinePayload(visibleDetail, false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : t("inventory.count.saveError"));
+      setError(presentCountSessionFailure(caught, "save"));
       return;
     }
     if (lines.length < 1) {
@@ -209,7 +221,7 @@ export default function InventoryCountSessionScreen() {
       setNotice(t("inventory.count.saved"));
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.saveError"));
+      setError(presentCountSessionFailure(caught, "save"));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -232,7 +244,7 @@ export default function InventoryCountSessionScreen() {
       setNotice(t("inventory.count.submitted"));
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.submitError"));
+      setError(presentCountSessionFailure(caught, "submit"));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -251,7 +263,7 @@ export default function InventoryCountSessionScreen() {
       setNotice(t("inventory.count.approved"));
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.approveError"));
+      setError(presentCountSessionFailure(caught, "approve"));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -278,7 +290,7 @@ export default function InventoryCountSessionScreen() {
               setNotice(t("inventory.count.cancelled"));
             } catch (caught) {
               if (activeRestaurantIdRef.current !== restaurantId) return;
-              setError(caught instanceof Error ? caught.message : t("inventory.count.cancelError"));
+              setError(presentCountSessionFailure(caught, "cancel"));
             } finally {
               if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
             }
