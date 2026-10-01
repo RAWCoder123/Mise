@@ -1,4 +1,5 @@
 import { operatingLimits } from "../miseValidation";
+import { convertRecipeQuantityToInventoryUnit } from "./inventoryUnits";
 
 export const setupImportLimits = {
   characters: 256_000,
@@ -94,6 +95,45 @@ export interface SetupPersistenceSummary {
   posSalesRowsSaved: number;
   attachmentMetadataSaved: number;
   skippedRecipeIngredients: number;
+}
+
+export type SetupRecipeIngredientMappingResult =
+  | {
+      status: "mapped";
+      quantityUsedPerSale: number;
+      unit: string;
+      converted: boolean;
+    }
+  | { status: "skipped"; reason: "invalid_quantity" | "unknown_unit" | "incompatible_units" };
+
+/**
+ * Resolve a setup recipe ingredient into the linked inventory item's stored unit.
+ * Same-dimension standard units convert; pack/unknown/cross-dimension units skip.
+ */
+export function resolveSetupRecipeIngredientMapping(input: {
+  quantityUsedPerSale: number;
+  recipeUnit: string;
+  inventoryUnit: string;
+  maxQuantityPerSale?: number;
+}): SetupRecipeIngredientMappingResult {
+  const maxQuantity = input.maxQuantityPerSale ?? operatingLimits.recipeQuantityPerSale;
+  const conversion = convertRecipeQuantityToInventoryUnit({
+    quantity: input.quantityUsedPerSale,
+    recipeUnit: input.recipeUnit,
+    inventoryUnit: input.inventoryUnit
+  });
+  if (!conversion.ok) {
+    return { status: "skipped", reason: conversion.reason };
+  }
+  if (conversion.quantity <= 0 || conversion.quantity > maxQuantity) {
+    return { status: "skipped", reason: "invalid_quantity" };
+  }
+  return {
+    status: "mapped",
+    quantityUsedPerSale: conversion.quantity,
+    unit: input.inventoryUnit,
+    converted: conversion.converted
+  };
 }
 
 export interface SetupStarterDrafts {
