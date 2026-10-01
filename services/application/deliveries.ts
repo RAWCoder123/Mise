@@ -4,6 +4,7 @@ import {
   type DeliveryHistoryEntry
 } from "./deliveryHistoryMerge";
 import {
+  assertReceivableDeliveryLines,
   buildDeliveryLinesFromOrderRecommendations,
   deliveryClientIdForOrder
 } from "../domain/supplierDelivery";
@@ -11,6 +12,11 @@ import { getMiseRepository } from "./repository";
 
 export type { DeliveryHistoryEntry } from "./deliveryHistoryMerge";
 export { mergeDeliveryHistoryEntries } from "./deliveryHistoryMerge";
+export {
+  isSupplierDeliveryLinesSkippedError,
+  SUPPLIER_DELIVERY_LINES_SKIPPED_CODE,
+  SupplierDeliveryLinesSkippedError
+} from "../domain/supplierDelivery";
 
 /**
  * Receipt history for the delivery log screen: accepted ledger receipts plus
@@ -65,21 +71,15 @@ export async function receiveSupplierOrderDelivery(
     throw new Error("Only sent orders can be received.");
   }
 
-  let built = buildDeliveryLinesFromOrderRecommendations({
+  const built = buildDeliveryLinesFromOrderRecommendations({
     order,
     recommendations,
     inventoryItems,
     requireVerifiedCanonicalUnit: true
   });
-  if (built.lines.length === 0) {
-    // Demo / incomplete unit setup: still allow as-ordered receive when items exist.
-    built = buildDeliveryLinesFromOrderRecommendations({
-      order,
-      recommendations,
-      inventoryItems,
-      requireVerifiedCanonicalUnit: false
-    });
-  }
+  // Never fall back to unverified units and never silently receive a verified
+  // subset while other ordered lines are skipped — both understate on-hand stock.
+  assertReceivableDeliveryLines({ built, inventoryItems });
   if (built.lines.length === 0) {
     throw new Error("No receivable lines are ready for this supplier order.");
   }
