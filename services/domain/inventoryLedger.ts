@@ -1,5 +1,6 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
+import { clientComparableInventoryEventMetadata } from "./stockoutQuantityBefore";
 
 export type InventoryEventType =
   | "receipt"
@@ -208,6 +209,7 @@ function sameEventPayload(event: InventoryEvent, candidate: InventoryEventInput)
     event.clientEventId === candidate.clientEventId &&
     event.idempotencyKey === candidate.idempotencyKey &&
     event.supersedesEventId === candidate.supersedesEventId &&
-    JSON.stringify(event.metadata) === JSON.stringify(candidate.metadata)
+    JSON.stringify(clientComparableInventoryEventMetadata(event.metadata)) ===
+      JSON.stringify(clientComparableInventoryEventMetadata(candidate.metadata))
   );
 }
