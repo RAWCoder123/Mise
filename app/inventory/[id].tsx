@@ -5,7 +5,9 @@ import {
   ArrowLeft,
   ClipboardList,
   PackageCheck,
-  Save
+  Plus,
+  Save,
+  Truck
 } from "lucide-react-native";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -24,10 +26,13 @@ import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   addInventoryItemToOrder,
+  createSupplier,
   fetchInventoryItemOutlook,
   fetchQueuedInventoryEvents,
+  fetchSuppliers,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
+  reassignInventoryItemSupplier,
   updateInventoryItem
 } from "../../services/miseService";
 import {
@@ -35,8 +40,11 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
-import { operatingLimits } from "../../services/miseValidation";
-import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
+import {
+  operatingLimits,
+  SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS
+} from "../../services/miseValidation";
+import type { InventoryItem, InventoryOutlookItem, Supplier } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
 
 type InventoryOperatorAction = "count" | "receipt" | "waste" | "stockout";
@@ -47,15 +55,20 @@ export default function InventoryDetailScreen() {
   const navigation = useNavigation();
   const { memberships, restaurant } = useMiseSession();
   const [outlook, setOutlook] = useState<InventoryOutlookItem | null>(null);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
   const [operation, setOperation] = useState<InventoryOperatorAction>("count");
   const [quantityText, setQuantityText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
+  const [newSupplierName, setNewSupplierName] = useState("");
+  const [newSupplierError, setNewSupplierError] = useState<string | undefined>();
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
   const [savingSettings, setSavingSettings] = useState(false);
+  const [savingSupplier, setSavingSupplier] = useState(false);
   const [submittingOperation, setSubmittingOperation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -81,12 +94,17 @@ export default function InventoryDetailScreen() {
     setMessageIsError(false);
     setHubLoadError(false);
     try {
-      const [nextOutlook, nextQueue] = await Promise.all([
+      const [nextOutlook, nextQueue, nextSuppliers] = await Promise.all([
         fetchInventoryItemOutlook(restaurantId, itemId),
-        fetchQueuedInventoryEvents(restaurantId)
+        fetchQueuedInventoryEvents(restaurantId),
+        fetchSuppliers(restaurantId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      if (nextSuppliers.some((supplier) => supplier.restaurant_id !== restaurantId)) {
+        throw new Error("Supplier directory did not match the active restaurant.");
+      }
       setOutlook(nextOutlook);
+      setSuppliers(nextSuppliers);
       setQueueEntries(nextQueue.filter((entry) => entry.event.inventoryItemId === itemId));
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
@@ -100,12 +118,17 @@ export default function InventoryDetailScreen() {
             useGrouping: false
           })
         );
+        setSelectedSupplierId(nextOutlook.item.supplier_id);
+        setNewSupplierName("");
+        setNewSupplierError(undefined);
         setSettingErrors({});
       }
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(null);
+      setSuppliers([]);
       setQueueEntries([]);
+      setSelectedSupplierId(null);
       setHubLoadError(true);
       setMessage(t("inventory.detail.loadError"));
       setMessageIsError(true);
@@ -121,15 +144,20 @@ export default function InventoryDetailScreen() {
     setLoadedRestaurantId(null);
     setHubLoadError(false);
     setOutlook(null);
+    setSuppliers([]);
     setQueueEntries([]);
     setOperation("count");
     setQuantityText("");
     setNoteText("");
     setParLevel("");
     setReorderThreshold("");
+    setSelectedSupplierId(null);
+    setNewSupplierName("");
+    setNewSupplierError(undefined);
     setQuantityError(undefined);
     setSettingErrors({});
     setSavingSettings(false);
+    setSavingSupplier(false);
     setSubmittingOperation(false);
     setMessage(null);
     setMessageIsError(false);
@@ -154,10 +182,11 @@ export default function InventoryDetailScreen() {
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
-    busy: submittingOperation || savingSettings
+    busy: submittingOperation || savingSettings || savingSupplier
   });
   const visibleOutlook = hubReady ? outlook : null;
   const visibleQueue = hubReady ? queueEntries : [];
+  const visibleSuppliers = hubReady ? suppliers : [];
   const item = visibleOutlook?.item ?? null;
   const prediction = visibleOutlook?.prediction ?? null;
   const localizedPrediction =
@@ -165,6 +194,8 @@ export default function InventoryDetailScreen() {
   const status = prediction?.projectedStatus ?? null;
   const canonicalReady = item ? isCanonicalUnitReady(item) : false;
   const canonicalUnit = canonicalReady ? item!.canonical_unit! : null;
+  const supplierSelectionDirty =
+    Boolean(item && selectedSupplierId && selectedSupplierId !== item.supplier_id);
 
   const operationOptions = useMemo<readonly SegmentOption<InventoryOperatorAction>[]>(
     () => [
@@ -190,6 +221,18 @@ export default function InventoryDetailScreen() {
       }
     ],
     [t]
+  );
+
+  const supplierOptions = useMemo<readonly SegmentOption<string>[]>(
+    () =>
+      visibleSuppliers.map((supplier) => ({
+        value: supplier.id,
+        label: supplier.display_name,
+        accessibilityLabel: t("inventory.detail.supplier.optionAccessibility", {
+          supplier: supplier.display_name
+        })
+      })),
+    [t, visibleSuppliers]
   );
 
   function goBackToInventory() {
@@ -342,7 +385,83 @@ export default function InventoryDetailScreen() {
     }
   }
 
-  const busy = submittingOperation || savingSettings;
+  async function saveSupplierAssignment() {
+    if (!restaurant || !item) return;
+    if (!actionsEditable) {
+      setMessage(t("inventory.detail.viewOnlyInventory"));
+      setMessageIsError(true);
+      return;
+    }
+    if (!selectedSupplierId) {
+      setMessage(t("inventory.detail.supplier.selectRequired"));
+      setMessageIsError(true);
+      return;
+    }
+    if (selectedSupplierId === item.supplier_id) {
+      setMessage(t("inventory.detail.supplier.unchanged"));
+      setMessageIsError(false);
+      return;
+    }
+
+    const restaurantId = restaurant.id;
+    setSavingSupplier(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      await reassignInventoryItemSupplier(restaurantId, item.id, selectedSupplierId);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(t("inventory.detail.supplier.reassigned"));
+    } catch (reassignError) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(presentSupplierReassignError(reassignError, t));
+      setMessageIsError(true);
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSavingSupplier(false);
+    }
+  }
+
+  async function createAndAssignSupplier() {
+    if (!restaurant || !item) return;
+    if (!actionsEditable) {
+      setMessage(t("inventory.detail.viewOnlyInventory"));
+      setMessageIsError(true);
+      return;
+    }
+
+    const displayName = canonicalizeSupplierName(newSupplierName);
+    const nameError = validateNewSupplierName(newSupplierName, t);
+    if (nameError || !displayName) {
+      setNewSupplierError(nameError ?? t("inventory.detail.supplier.nameRequired"));
+      setMessage(t("inventory.detail.supplier.reviewName"));
+      setMessageIsError(true);
+      return;
+    }
+
+    const restaurantId = restaurant.id;
+    setNewSupplierError(undefined);
+    setSavingSupplier(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      const created = await createSupplier(restaurantId, displayName);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await reassignInventoryItemSupplier(restaurantId, item.id, created.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(t("inventory.detail.supplier.createdAndAssigned", { supplier: created.display_name }));
+    } catch (createError) {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(presentSupplierReassignError(createError, t));
+      setMessageIsError(true);
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSavingSupplier(false);
+    }
+  }
+
+  const busy = submittingOperation || savingSettings || savingSupplier;
 
   return (
     <Screen
@@ -572,6 +691,77 @@ export default function InventoryDetailScreen() {
           </Card>
 
           <Card>
+            <Text style={styles.cardTitle}>{t("inventory.detail.supplier.title")}</Text>
+            <Text style={styles.opsBody}>{t("inventory.detail.supplier.body")}</Text>
+            <View style={styles.supplierCurrentRow}>
+              <Truck size={icon.row} color={colors.accentDark} strokeWidth={iconStroke} />
+              <Text style={styles.supplierCurrent}>
+                {t("inventory.detail.supplier.current", { supplier: item.supplier_name })}
+              </Text>
+            </View>
+            {mutationAllowed ? (
+              <>
+                {supplierOptions.length > 0 ? (
+                  <FilterRow
+                    accessibilityLabel={t("inventory.detail.supplier.chooserAccessibility")}
+                    options={supplierOptions}
+                    value={selectedSupplierId ?? item.supplier_id}
+                    onValueChange={(value) => {
+                      setSelectedSupplierId(value);
+                      setMessage(null);
+                      setMessageIsError(false);
+                    }}
+                  />
+                ) : (
+                  <StatusNotice
+                    tone="caution"
+                    title={t("inventory.detail.supplier.emptyTitle")}
+                    message={t("inventory.detail.supplier.emptyBody")}
+                  />
+                )}
+                <Button
+                  title={
+                    savingSupplier && supplierSelectionDirty
+                      ? t("inventory.detail.supplier.saving")
+                      : t("inventory.detail.supplier.save")
+                  }
+                  accessibilityHint={t("inventory.detail.supplier.saveHint")}
+                  icon={<Save size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
+                  onPress={() => void saveSupplierAssignment()}
+                  disabled={!actionsEditable || busy || !supplierSelectionDirty}
+                  fullWidth
+                  style={styles.saveButton}
+                />
+                <Text style={styles.supplierCreateLabel}>{t("inventory.detail.supplier.createLabel")}</Text>
+                <Field
+                  label={t("inventory.detail.supplier.nameField")}
+                  value={newSupplierName}
+                  onChangeText={(value) => {
+                    setNewSupplierName(value);
+                    setNewSupplierError(undefined);
+                  }}
+                  editable={actionsEditable && !busy}
+                  error={newSupplierError}
+                  keyboardType="default"
+                />
+                <Button
+                  title={
+                    savingSupplier && !supplierSelectionDirty
+                      ? t("inventory.detail.supplier.creating")
+                      : t("inventory.detail.supplier.createAndAssign")
+                  }
+                  variant="secondary"
+                  accessibilityHint={t("inventory.detail.supplier.createHint")}
+                  icon={<Plus size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
+                  onPress={() => void createAndAssignSupplier()}
+                  disabled={!actionsEditable || busy || !newSupplierName.trim()}
+                  fullWidth
+                />
+              </>
+            ) : null}
+          </Card>
+
+          <Card>
             <Text style={styles.cardTitle}>
               {canManage ? t("inventory.detail.parSettings") : t("inventory.detail.countSettings")}
             </Text>
@@ -785,6 +975,51 @@ function validateInventoryNumber(
   return undefined;
 }
 
+function canonicalizeSupplierName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function validateNewSupplierName(value: string, t: ReturnType<typeof useLocale>["t"]) {
+  const displayName = canonicalizeSupplierName(value);
+  if (!displayName) return t("inventory.detail.supplier.nameRequired");
+  if (displayName.length > SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS) {
+    return t("inventory.detail.supplier.nameTooLong", {
+      maximum: String(SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS)
+    });
+  }
+  if (/[\u0000-\u001F\u007F]/.test(value)) {
+    return t("inventory.detail.supplier.nameInvalid");
+  }
+  return undefined;
+}
+
+function presentSupplierReassignError(
+  error: unknown,
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  const message = error instanceof Error ? error.message.trim() : "";
+  if (/Undo or finish existing supplier purchasing|Undo the approved supplier draft line/i.test(message)) {
+    return t("inventory.detail.supplier.error.purchasingBlocked");
+  }
+  if (/A supplier with that name already exists/i.test(message)) {
+    return t("inventory.detail.supplier.error.duplicateName");
+  }
+  if (/Supplier identity is not valid/i.test(message)) {
+    return t("inventory.detail.supplier.error.invalidSupplier");
+  }
+  if (/Supplier assignment changed concurrently/i.test(message)) {
+    return t("inventory.detail.supplier.error.concurrent");
+  }
+  if (/Not authorized/i.test(message)) {
+    return t("inventory.detail.supplier.error.unauthorized");
+  }
+  if (/Inventory item not found/i.test(message)) {
+    return t("inventory.detail.notFound");
+  }
+  if (message) return message.slice(0, 220);
+  return t("inventory.detail.supplier.error.generic");
+}
+
 const styles = StyleSheet.create({
   stack: { gap: 14 },
   cardHeader: {
@@ -817,6 +1052,27 @@ const styles = StyleSheet.create({
   kicker: { color: colors.faint, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
   coverage: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "700", marginTop: 6 },
   copy: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 8 },
+  supplierCurrentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12
+  },
+  supplierCurrent: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "700"
+  },
+  supplierCreateLabel: {
+    color: colors.faint,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    marginTop: 8,
+    marginBottom: 4
+  },
   opsBody: {
     color: colors.muted,
     fontSize: 14,

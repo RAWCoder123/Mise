@@ -51,6 +51,7 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.suppliers, /hubReady\s*\?\s*entries\s*:\s*\[\]/);
   assert.match(screens.gmail, /hubReady\s*\?\s*connection\s*:\s*null/);
   assert.match(screens.inventoryDetail, /hubReady\s*\?\s*outlook\s*:\s*null/);
+  assert.match(screens.inventoryDetail, /hubReady\s*\?\s*suppliers\s*:\s*\[\]/);
   assert.match(screens.orderDetail, /hubReady\s*\?\s*order\s*:\s*null/);
   assert.match(screens.autonomy, /hubReady\s*\?\s*rules\s*:\s*\[\]/);
   assert.match(screens.autonomy, /presentRestaurantScopedHubActionsEditable/);
@@ -74,6 +75,8 @@ test("workspace mutations stop stale continuations and session state is latest-w
   const session = source("contexts/MiseSessionContext.tsx");
 
   assert.match(inventoryDetail, /await updateInventoryItem[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
+  assert.match(inventoryDetail, /await reassignInventoryItemSupplier[\s\S]*activeRestaurantIdRef\.current !== restaurantId/);
+  assert.match(inventoryDetail, /fetchSuppliers/);
   assert.match(orderDetail, /await persistNote\(\)[\s\S]*activeRestaurantIdRef\.current !== restaurantId[\s\S]*await sendSupplierOrderEmail/);
   assert.match(recipes, /selectedInventoryItem\.restaurant_id !== restaurantId/);
   assert.match(recipes, /queueIngredientSave/);
