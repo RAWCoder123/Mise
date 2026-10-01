@@ -15,6 +15,7 @@ import {
 } from "./dailyCloseout";
 import type { SupplierReliabilitySummary } from "./supplierReliability";
 import type { WasteAnalysisSummary } from "./wasteAnalysis";
+import { estimateInventoryDollarsAtRisk } from "./inventoryValuation";
 
 export type DailyOpsSignalType = "waste" | "prep" | "inventory" | "sales" | "cost";
 
@@ -157,7 +158,7 @@ export function buildDailyOpsReport(input: DailyOpsReportInput): DailyOpsReport 
   const completedTasks = operationalTasks.filter((task) => task.status === "completed").length;
   const deliveryLines = [...(deliveries ?? [])];
   const trend = summarizeSalesTrend(salesTrend);
-  const estimatedDollarsAtRisk = estimateDollarsAtRisk(inventoryOutlooks);
+  const estimatedDollarsAtRisk = estimateInventoryDollarsAtRisk(inventoryOutlooks);
   const closeout = buildDailyCloseoutSummary({
     operatingDate,
     restaurantTimeZone,
@@ -263,29 +264,6 @@ function summarizeSalesTrend(salesTrend: readonly RecordedSalesTrendPoint[] | nu
   const direction: "up" | "down" | "flat" =
     Math.abs(delta) < 0.005 ? "flat" : delta > 0 ? "up" : "down";
   return { priorSales: prior.sales, delta, direction };
-}
-
-function estimateDollarsAtRisk(
-  outlooks: readonly InventoryOutlookItem[] | null | undefined
-): number | null {
-  if (!outlooks || outlooks.length === 0) return null;
-
-  let total = 0;
-  let riskItems = 0;
-  for (const { item, prediction } of outlooks) {
-    if (prediction.projectedStatus !== "Critical" && prediction.projectedStatus !== "Low") {
-      continue;
-    }
-    riskItems += 1;
-    const unitCost = Number.isFinite(item.estimated_unit_cost) ? Math.max(0, item.estimated_unit_cost) : 0;
-    const shortfallToPar = Math.max(0, item.par_level - prediction.projectedQuantity);
-    const exposedQty =
-      shortfallToPar > 0 ? shortfallToPar : Math.max(0, item.current_quantity);
-    total += unitCost * exposedQty;
-  }
-
-  if (riskItems === 0) return 0;
-  return Math.round(total * 100) / 100;
 }
 
 function pickSignalLine(
