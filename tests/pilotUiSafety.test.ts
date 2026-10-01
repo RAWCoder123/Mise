@@ -38,3 +38,21 @@ test("POS readiness failures remain visible and retryable instead of failing ope
   assert.match(pos, /onAction=\{\(\) => void loadPilotReadiness\(\)\}/);
   assert.match(pos, /readinessLoadError \? \(/);
 });
+
+test("Settings hub soft-refresh errors do not claim Gmail is disconnected or suppliers are zero", () => {
+  const settings = readFileSync("app/(tabs)/settings.tsx", "utf8");
+  const catalog = readFileSync("i18n/catalog.ts", "utf8");
+
+  assert.match(settings, /const hubUnavailable = hubLoadState === "error"/);
+  assert.match(settings, /gmailConnectionBadge\(visibleEmailConnection, t, hubUnavailable\)/);
+  assert.match(settings, /if \(hubUnavailable\) return t\("settings\.gmail\.status\.unavailable"\)/);
+  assert.match(settings, /settings\.operations\.suppliers\.unavailable/);
+  assert.match(settings, /actionLabel=\{message\.key === "settings\.notice\.loadError" \? t\("common\.retry"\) : undefined\}/);
+  assert.match(settings, /settings\.notice\.loadErrorRetryAccessibility/);
+  assert.match(catalog, /"settings\.gmail\.status\.unavailable": "Unavailable"/);
+  assert.match(catalog, /"settings\.operations\.suppliers\.unavailable": "Unavailable"/);
+  assert.match(catalog, /"settings\.notice\.loadErrorBody":/);
+  assert.equal((catalog.match(/"settings\.gmail\.status\.unavailable":/g) || []).length, 3);
+  assert.equal((catalog.match(/"settings\.operations\.suppliers\.unavailable":/g) || []).length, 3);
+  assert.equal((catalog.match(/"settings\.notice\.loadErrorBody":/g) || []).length, 3);
+});
