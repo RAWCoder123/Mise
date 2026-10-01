@@ -570,12 +570,21 @@ export function requireInventoryCountLineUpdates(
   });
 }
 
+// Shared with supplier-send body/note preview parsing and the
+// supplier_orders.operator_note DB CHECK (MISE-005EM): allow LF/TAB/CR,
+// reject other C0 controls and DEL.
+const unsafeSupplierSendMultilineControlPattern =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+
 export function requireSupplierOperatorNote(value: string | null | undefined) {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") throw new Error("Supplier note must be text.");
   const normalized = value.trim();
   if (normalized.length > SUPPLIER_NOTE_MAX_CHARACTERS) {
     throw new Error(`Supplier note is limited to ${SUPPLIER_NOTE_MAX_CHARACTERS.toLocaleString()} characters.`);
+  }
+  if (unsafeSupplierSendMultilineControlPattern.test(normalized)) {
+    throw new Error("Supplier note cannot include control characters.");
   }
   return normalized || null;
 }
@@ -585,8 +594,6 @@ const supplierSendContentBlockerCodes = new Set<string>(
 );
 const supplierSendUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const unsafeSupplierSendMultilineControlPattern =
-  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 
 export function requireSupplierSendContentFingerprint(value: unknown) {
   if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) {
