@@ -116,6 +116,8 @@ export default function SupplierRecipientsScreen() {
     loadError
   });
   const hubReady = hubLoadState === "ready";
+  // Soft-refresh / load errors clear visible rows via hubReady; do not also
+  // claim "no suppliers" while the directory is unavailable or still loading.
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
@@ -279,10 +281,14 @@ export default function SupplierRecipientsScreen() {
           <SectionSurface
             title={copy.sectionTitle}
             subtitle={copy.sectionSubtitle}
-            action={copy.configuredCount(formatNumber(configuredCount), formatNumber(visibleEntries.length))}
+            action={
+              !hubReady
+                ? undefined
+                : copy.configuredCount(formatNumber(configuredCount), formatNumber(visibleEntries.length))
+            }
             padding="none"
           >
-            {visibleEntries.length === 0 ? (
+            {!hubReady ? null : visibleEntries.length === 0 ? (
               <View style={styles.emptyWrap}>
                 <EmptyState compact title={copy.emptyTitle} body={copy.emptyBody} />
               </View>
