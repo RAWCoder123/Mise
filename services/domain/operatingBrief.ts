@@ -506,16 +506,25 @@ function buildMonitoringRows(
   return rows.slice(0, 8);
 }
 
-function pulseStatus(input: {
+/** Fail closed: unknown freshness must never read as an all-clear pulse. */
+export function resolveRestaurantPulseStatus(input: {
   criticalCount: number;
   pendingApprovals: number;
-  freshness: DataFreshnessDescriptor;
+  freshnessState: DataFreshnessDescriptor["state"];
   urgentFindings: number;
 }): RestaurantPulseStatus {
-  if (input.criticalCount > 0 || input.urgentFindings > 0 || input.freshness.state === "incomplete") {
+  if (
+    input.criticalCount > 0 ||
+    input.urgentFindings > 0 ||
+    input.freshnessState === "incomplete"
+  ) {
     return "at_risk";
   }
-  if (input.pendingApprovals > 0 || input.freshness.state === "stale") {
+  if (
+    input.pendingApprovals > 0 ||
+    input.freshnessState === "stale" ||
+    input.freshnessState === "unknown"
+  ) {
     return "attention_needed";
   }
   return "on_track";
@@ -542,10 +551,10 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
     ({ prediction }) => prediction.projectedStatus === "Critical" || prediction.projectedQuantity <= 0
   ).length;
   const urgentFindings = (input.findings ?? []).filter((finding) => finding.severity === "urgent").length;
-  const status = pulseStatus({
+  const status = resolveRestaurantPulseStatus({
     criticalCount,
     pendingApprovals: approvals.length,
-    freshness,
+    freshnessState: freshness.state,
     urgentFindings
   });
 
@@ -562,10 +571,14 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
     : filterActivities(activity, "completed_by_mise").slice(0, 12);
 
   const liveActivity = [...activity].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+  const freshnessBlocksClearPulse =
+    freshness.state === "incomplete" ||
+    freshness.state === "stale" ||
+    freshness.state === "unknown";
   const topRisk =
     outlook.menuRisks[0]?.detail ??
     approvals[0]?.riskIfIgnored ??
-    (freshness.state === "incomplete" ? freshness.label : null);
+    (freshnessBlocksClearPulse ? freshness.label : null);
   const topOpportunity =
     approvals[0]?.expectedOperationalImpact ??
     (input.insights.find((insight) => insight.severity !== "urgent")?.recommended_action ?? null);
@@ -582,7 +595,11 @@ export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief 
           approvals.length > 0 ? `, and ${approvals.length} decision${approvals.length === 1 ? "" : "s"} still need approval` : ""
         }.`
       : status === "attention_needed"
-        ? `Attention needed: ${approvals.length} approval${approvals.length === 1 ? "" : "s"} and ${outlook.menuRisks.length} inventory watch item${outlook.menuRisks.length === 1 ? "" : "s"} are open.`
+        ? freshness.state === "stale" || freshness.state === "unknown"
+          ? approvals.length > 0
+            ? `Attention needed: ${approvals.length} approval${approvals.length === 1 ? "" : "s"} are open, and ${freshness.label}`
+            : freshness.label
+          : `Attention needed: ${approvals.length} approval${approvals.length === 1 ? "" : "s"} and ${outlook.menuRisks.length} inventory watch item${outlook.menuRisks.length === 1 ? "" : "s"} are open.`
         : (() => {
           const issueCount = criticalCount || urgentFindings || approvals.length;
           return `At risk: ${issueCount} operational issue${issueCount === 1 ? "" : "s"} ${
