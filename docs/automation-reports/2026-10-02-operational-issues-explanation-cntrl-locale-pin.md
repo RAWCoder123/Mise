@@ -13,7 +13,7 @@ Does not rewrite the purchase_recommendations sync trigger, title (#561) / dedup
 
 ## Verification
 
-- `npm run typecheck` — pending in this report until run
-- focused `operationalIssuesExplanationCntrlLocalePin` — pending
-- `npm test` — pending
-- pgTAP plan **12** counted from 12 assertion call sites (Docker may be unavailable)
+- `npm run typecheck` — passed
+- focused `operationalIssuesExplanationCntrlLocalePin` — 3/3
+- `npm test` — 679 pass / 0 fail / 7 cancelled
+- pgTAP plan **12** counted from 12 assertion call sites (Docker unavailable in this environment)
