@@ -29,5 +29,5 @@ refuse.
 
 - `npm run typecheck` passed
 - focused `inventoryEventsSourceCntrlLocalePin` 4/4 passed
-- `npm test` results recorded in PR
+- `npm test` 680 pass / 0 fail / 7 cancelled (pre-existing `recalculationCycles` withTimeout hang)
 - pgTAP plan 14 from 14 assertion call sites (Docker/pgTAP unavailable in this environment)
