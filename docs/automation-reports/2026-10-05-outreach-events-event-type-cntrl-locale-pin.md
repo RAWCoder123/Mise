@@ -27,8 +27,9 @@ control-character injection at the database boundary.
 
 ## Verification
 
-- `npm run typecheck` — pending in this report until local run completes
-- focused `outreachEventsEventTypeCntrlLocalePin` — pending
-- `npm test` — pending
-- pgTAP plan **14** from 14 assertion call sites (Docker/pgTAP typically
-  unavailable in this environment)
+- `npm run typecheck` — passed
+- focused `outreachEventsEventTypeCntrlLocalePin` — 4/4 passed
+- `npm test` — 687 total; 680 pass / 0 fail / 7 cancelled (inherited
+  `recalculationCycles` timer cancel flake; new tip assertions all pass)
+- pgTAP plan **14** from 14 assertion call sites (Docker/pgTAP unavailable
+  in this environment)
