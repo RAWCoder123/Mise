@@ -11,6 +11,7 @@ import {
   normalizeRecipeBaselineQuantity,
   normalizeRecommendedQuantity,
   operatingLimits,
+  requireSetupAttachmentLabel,
   requireSupplierDisplayName
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
@@ -167,7 +168,7 @@ export async function saveRestaurantSetup(
     attachments: input.attachments.map((attachment) => ({
       client_reference_id: attachment.id,
       kind: attachment.kind,
-      label: attachment.label.trim() || "Setup reference",
+      label: requireSetupAttachmentLabel(attachment.label),
       status: attachment.status
     })),
     skippedRecipeIngredients

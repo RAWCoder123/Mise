@@ -978,6 +978,26 @@ export function requireRestaurantName(value: unknown) {
   return normalized;
 }
 
+export const SETUP_ATTACHMENT_LABEL_MAX_CHARACTERS = 240;
+
+export function requireSetupAttachmentLabel(value: unknown) {
+  // MISE-005IJ: reject ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) so client
+  // validation matches setup_attachments_metadata_only_check under COLLATE "C".
+  // Empty input falls back to the same default the setup write path already used.
+  const raw = typeof value === "string" ? value.trim() : "";
+  const normalized = raw || "Setup reference";
+  if (
+    normalized.length < 1 ||
+    normalized.length > SETUP_ATTACHMENT_LABEL_MAX_CHARACTERS ||
+    hasControlCharacters(normalized)
+  ) {
+    throw new Error(
+      `Setup attachment label must be between 1 and ${SETUP_ATTACHMENT_LABEL_MAX_CHARACTERS} characters without control characters.`
+    );
+  }
+  return normalized;
+}
+
 export type RestaurantProfilePatch = Partial<
   Pick<
     Restaurant,
