@@ -969,6 +969,25 @@ function hasControlCharacters(value: string) {
   return /[\u0000-\u001f\u007f]/.test(value);
 }
 
+export const PROFILE_NAME_MAX_CHARACTERS = 120;
+
+export function requireProfileName(value: unknown) {
+  if (typeof value !== "string") throw new Error("Profile name is required.");
+  const normalized = value.trim();
+  // MISE-005IL: reject ASCII C [[:cntrl:]] (U+0000–U+001F, U+007F) so client
+  // validation matches users_name_check under COLLATE "C".
+  if (
+    normalized.length < 1 ||
+    normalized.length > PROFILE_NAME_MAX_CHARACTERS ||
+    hasControlCharacters(normalized)
+  ) {
+    throw new Error(
+      `Profile name must be between 1 and ${PROFILE_NAME_MAX_CHARACTERS} characters without control characters.`
+    );
+  }
+  return normalized;
+}
+
 export function requireRestaurantName(value: unknown) {
   if (typeof value !== "string") throw new Error("Restaurant name is required.");
   const normalized = value.trim();
