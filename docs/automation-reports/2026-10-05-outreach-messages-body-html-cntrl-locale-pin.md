@@ -33,8 +33,9 @@ value_proposition #634) and rejects other C0 controls and DEL.
 
 ## Verification
 
-- `npm run typecheck` — pending
-- focused `outreachMessagesBodyHtmlCntrlLocalePin` — pending
-- `npm test` — pending
+- `npm run typecheck` — passed
+- focused `outreachMessagesBodyHtmlCntrlLocalePin` — 4/4 passed
+- `npm test` — 687 total; 680 pass / 0 fail / 7 cancelled (inherited
+  `recalculationCycles` timer cancel flake; new tip assertions all pass)
 - pgTAP plan **16** counted from 16 assertion call sites (Docker/pgTAP
-  availability TBD)
+  unavailable in this environment)
