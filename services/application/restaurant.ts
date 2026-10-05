@@ -7,6 +7,7 @@ import {
   type AssignableTeamRole
 } from "../domain/teamMembership";
 import {
+  requireProfileName,
   requireRestaurantCuisineType,
   requireRestaurantName,
   requireRestaurantProfilePatch,
@@ -78,11 +79,7 @@ export async function exportRestaurantData(restaurantId: string) {
 }
 
 export async function updateMyProfile(name: string) {
-  const normalizedName = name.trim();
-  if (normalizedName.length < 1 || normalizedName.length > 120) {
-    throw new Error("Profile name must be between 1 and 120 characters.");
-  }
-  return repository.updateMyProfile(normalizedName);
+  return repository.updateMyProfile(requireProfileName(name));
 }
 
 export async function createRestaurantWithOwner(name: string, cuisineType?: string | null) {
