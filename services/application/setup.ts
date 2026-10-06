@@ -19,6 +19,64 @@ import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JK). Only ASCII A-Z is folded; Unicode-aware `toLowerCase` /
+ * `toLocaleLowerCase("en-US")` would map Kelvin sign `K` → `k` and invent
+ * a duplicate-supplier match (or a mailbox) the hosted COLLATE C path would
+ * not treat as identical.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so setup supplier-name and email keys stay
+ * aligned with server helpers that btrim under COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/** ASCII controls under C locale `[[:cntrl:]]` (0x00–0x1F and DEL). */
+const asciiCControl = /[\u0000-\u001f\u007f]/;
+
+/**
+ * ASCII C mailbox shape — mirrors SQL
+ * `^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$` under COLLATE "C".
+ * Uses an explicit ASCII whitespace class instead of Unicode `\s`.
+ */
+const asciiCMailboxShape = /^[^ \t\n\r\f\v@]+@[^ \t\n\r\f\v@]+\.[^ \t\n\r\f\v@]+$/;
+
+/**
+ * Setup supplier-name identity key used for client-side duplicate detection
+ * before persistence.
+ */
+export function normalizeSetupSupplierNameKey(value: string) {
+  return asciiCLower(asciiCTrim(value));
+}
+
+export function setupSupplierNameKeysMatch(left: string, right: string) {
+  return normalizeSetupSupplierNameKey(left) === normalizeSetupSupplierNameKey(right);
+}
+
+/**
+ * Optional supplier email normalize for setup persistence. Empty input is
+ * null; invalid shape throws. Pinned to ASCII C so Kelvin-folded mailboxes
+ * cannot invent a lookalike ASCII address.
+ */
+export function normalizeSetupOptionalEmail(value: string) {
+  const normalized = asciiCTrim(asciiCLower(value));
+  if (!normalized) return null;
+  if (asciiCControl.test(normalized)) {
+    throw new Error("Enter a valid supplier email address.");
+  }
+  if (!asciiCMailboxShape.test(normalized)) {
+    throw new Error("Enter a valid supplier email address.");
+  }
+  return normalized;
+}
+
 export interface SaveRestaurantSetupInput {
   inventoryItems: SetupInventoryDraftItem[];
   suppliers: SetupSupplierDraft[];
@@ -69,7 +127,7 @@ export async function saveRestaurantSetup(
       restaurant_id: normalizedRestaurantId,
       client_reference_id: supplierReferenceId,
       display_name: displayName,
-      email: normalizeOptionalEmail(supplier.email)
+      email: normalizeSetupOptionalEmail(supplier.email)
     });
   }
 
@@ -189,12 +247,12 @@ function validateSetupInput(input: SaveRestaurantSetupInput) {
     }
     supplierReferences.add(supplierReferenceId);
     const displayName = requireSupplierDisplayName(supplier.name);
-    const normalizedName = displayName.toLocaleLowerCase("en-US");
+    const normalizedName = normalizeSetupSupplierNameKey(displayName);
     if (normalizedSupplierNames.has(normalizedName)) {
       throw new Error(`Setup contains a duplicate supplier named ${displayName}.`);
     }
     normalizedSupplierNames.add(normalizedName);
-    normalizeOptionalEmail(supplier.email);
+    normalizeSetupOptionalEmail(supplier.email);
   });
 
   input.inventoryItems.forEach((item) => {
@@ -239,15 +297,6 @@ function assertBoundedSetupNumber(value: unknown, minimum: number, maximum: numb
   if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) {
     throw new Error(`${label} must be between ${minimum} and ${maximum.toLocaleString()}.`);
   }
-}
-
-function normalizeOptionalEmail(value: string) {
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) return null;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
-    throw new Error("Enter a valid supplier email address.");
-  }
-  return normalized;
 }
 
 function requireSetupReferenceId(value: unknown, label: string) {
