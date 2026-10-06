@@ -273,11 +273,16 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   }
 
   for (const sale of todaySales) {
-    const baseline = demand.get(normalizeKey(sale.item_name));
+    // Demand baselines are keyed by saleDemandKey (menu:id for verified
+    // provider sales; ASCII-C name fold for manual). Looking up by raw item
+    // name would miss every provider-mapped baseline and invent Kelvin folds.
+    const demandKey = saleDemandKey(sale, providerMappings);
+    if (!demandKey) continue;
+    const baseline = demand.get(demandKey);
     if (!baseline || sale.quantity_sold < baseline * 1.2) continue;
     const lift = Math.round(((sale.quantity_sold - baseline) / baseline) * 100);
     insights.push({
-      id: `insight_spike_${normalizeKey(sale.item_name).replace(/\s+/g, "_")}`,
+      id: `insight_spike_${insightDemandSlug(demandKey)}`,
       restaurant_id: snapshot.restaurantId,
       insight_type: "sales",
       title: `${sale.item_name} demand is rising`,
@@ -298,6 +303,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
 
   const topSale = [...todaySales].sort((a, b) => b.quantity_sold - a.quantity_sold)[0];
   if (topSale) {
+    const topDemandKey = saleDemandKey(topSale, providerMappings);
     const lowLinked = snapshot.inventoryItems.find((item) => {
       if (item.restaurant_id !== snapshot.restaurantId) return false;
       const linked = snapshot.menuItemIngredients.some(
@@ -313,9 +319,9 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
           (insight.severity === "urgent" || insight.severity === "warning")
       );
     });
-    if (lowLinked) {
+    if (lowLinked && topDemandKey) {
       insights.push({
-        id: `insight_prep_${normalizeKey(topSale.item_name).replace(/\s+/g, "_")}`,
+        id: `insight_prep_${insightDemandSlug(topDemandKey)}`,
         restaurant_id: snapshot.restaurantId,
         insight_type: "prep",
         title: `${topSale.item_name} depends on low stock`,
@@ -482,8 +488,28 @@ function finiteNonNegative(value: number) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-function normalizeKey(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JH). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a demand-spike identity
+ * the hosted COLLATE C / providerSaleIdentity ASCII C path would not.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Collapse only ASCII whitespace so spike/prep insight demand slugs stay
+ * aligned with server helpers pinned under COLLATE "C".
+ */
+function asciiCNormalizeToken(value: string) {
+  return asciiCLower(value)
+    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "")
+    .replace(/[ \t\n\r\f\v]+/g, " ");
+}
+
+function insightDemandSlug(demandKey: string) {
+  return asciiCNormalizeToken(demandKey).replace(/[^a-z0-9]+/g, "_");
 }
 
 function round(value: number) {
