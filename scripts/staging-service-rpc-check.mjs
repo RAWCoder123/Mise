@@ -131,6 +131,18 @@ await assertDeniedRpc(
   "recipe workflow rejects a forged actor/tenant binding"
 );
 await assertDeniedRpc(
+  "service_delete_recipe_and_signals",
+  {
+    p_actor_user_id: managerA.id,
+    p_restaurant_id: tenantB,
+    p_mapping_id: "00000000-0000-4000-8000-000000000001",
+    p_expected_revision: 0,
+    p_recommendations: [],
+    p_insights: []
+  },
+  "recipe unlink rejects a forged actor/tenant binding"
+);
+await assertDeniedRpc(
   "service_begin_inventory_count_session",
   {
     p_actor_user_id: managerA.id,
