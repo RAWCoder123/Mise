@@ -7,6 +7,15 @@ import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
+/** Matches public.ingest_purchase_lines / purchase_lines CHECK length bound. */
+export const PURCHASE_LINE_SOURCE_DOCUMENT_REFERENCE_MAX = 200;
+
+/**
+ * ASCII C [[:cntrl:]] — mirrors SQL `collate "C" ~ '[[:cntrl:]]'` (MISE-005IY).
+ * Same byte class as domain purchase-line text gates.
+ */
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
+
 function requireRestaurantId(restaurantId: string) {
   const normalized = restaurantId.trim();
   if (!normalized) throw new Error("Missing restaurant workspace.");
@@ -28,6 +37,14 @@ export async function ingestPurchaseLines(input: {
 }) {
   const sourceDocumentReference = input.sourceDocumentReference.trim();
   if (!sourceDocumentReference) {
+    throw new Error("A source document reference is required.");
+  }
+  if (sourceDocumentReference.length > PURCHASE_LINE_SOURCE_DOCUMENT_REFERENCE_MAX) {
+    throw new Error("A source document reference is required.");
+  }
+  // Fail closed on ASCII controls before the hosted RPC so demo/hosted paths
+  // agree with the MISE-005IY COLLATE "C" writer preflight.
+  if (CONTROL_CHARACTERS.test(sourceDocumentReference)) {
     throw new Error("A source document reference is required.");
   }
   if (input.lines.length === 0) {
