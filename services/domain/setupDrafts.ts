@@ -321,8 +321,8 @@ export function parseSetupPosSalesCsv(input: string): SetupPosSalesImportResult 
 
     const sourceFingerprint = setupPosSourceFingerprint([
       saleDate,
-      itemName.trim().toLowerCase(),
-      category.trim().toLowerCase(),
+      asciiCNormalizeToken(itemName),
+      asciiCNormalizeToken(category),
       String(roundedQuantity),
       String(roundedSales)
     ].join("\u001f"));
@@ -459,8 +459,30 @@ function resolveHeader(value: string) {
   return headerAliases[normalizeHeader(value)] ?? null;
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JG). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a CSV header alias or
+ * POS import fingerprint the hosted COLLATE C path would not.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Collapse and strip only ASCII whitespace so setup CSV identity stays
+ * aligned with server helpers pinned under COLLATE "C".
+ */
+function asciiCNormalizeToken(value: string) {
+  return asciiCLower(value)
+    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "")
+    .replace(/[ \t\n\r\f\v]+/g, " ");
+}
+
 function normalizeHeader(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return asciiCNormalizeToken(value)
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function splitCsvLine(line: string) {
