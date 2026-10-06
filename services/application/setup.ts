@@ -19,6 +19,36 @@ import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JJ). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a setup inventory-name
+ * match when linking recipe ingredients to draft inventory items.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so setup inventory-name keys stay aligned
+ * with server helpers that btrim under COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * Setup inventory-name identity key used to link draft inventory rows to
+ * recipe ingredients before persistence.
+ */
+export function normalizeSetupInventoryItemKey(value: string) {
+  return asciiCLower(asciiCTrim(value));
+}
+
+export function setupInventoryItemKeysMatch(left: string, right: string) {
+  return normalizeSetupInventoryItemKey(left) === normalizeSetupInventoryItemKey(right);
+}
+
 export interface SaveRestaurantSetupInput {
   inventoryItems: SetupInventoryDraftItem[];
   suppliers: SetupSupplierDraft[];
@@ -74,7 +104,7 @@ export async function saveRestaurantSetup(
   }
 
   for (const draft of input.inventoryItems) {
-    const itemName = draft.name.trim();
+    const itemName = asciiCTrim(draft.name);
     if (!itemName) continue;
     const currentQuantity = normalizeRecommendedQuantity(draft.quantity);
     const parLevel = normalizeRecommendedQuantity(draft.parLevel || currentQuantity);
@@ -83,7 +113,7 @@ export async function saveRestaurantSetup(
     if (!suppliersByReference.has(supplierReferenceId)) {
       throw new Error(`${itemName} references an unavailable supplier.`);
     }
-    inventoryItemsByName.set(itemName.toLowerCase(), {
+    inventoryItemsByName.set(normalizeSetupInventoryItemKey(itemName), {
       restaurant_id: normalizedRestaurantId,
       item_name: itemName,
       category: "Setup baseline",
@@ -107,7 +137,7 @@ export async function saveRestaurantSetup(
     const menuItemName = recipe.dishName.trim();
     if (!menuItemName) continue;
     for (const ingredient of recipe.ingredients) {
-      const ingredientName = ingredient.itemName.trim();
+      const ingredientName = asciiCTrim(ingredient.itemName);
       const unit = ingredient.unit.trim() || "unit";
       const quantityUsedPerSale = normalizeRecipeBaselineQuantity(ingredient.quantity);
       if (!ingredientName || quantityUsedPerSale <= 0) {
@@ -115,13 +145,14 @@ export async function saveRestaurantSetup(
         continue;
       }
 
-      if (!inventoryItemsByName.has(ingredientName.toLowerCase())) {
+      const ingredientKey = normalizeSetupInventoryItemKey(ingredientName);
+      if (!inventoryItemsByName.has(ingredientKey)) {
         const supplierReferenceId = firstSupplierReferenceId(suppliersByReference);
         if (!supplierReferenceId) {
           skippedRecipeIngredients += 1;
           continue;
         }
-        inventoryItemsByName.set(ingredientName.toLowerCase(), {
+        inventoryItemsByName.set(ingredientKey, {
           restaurant_id: normalizedRestaurantId,
           item_name: ingredientName,
           category: "Recipe baseline",
@@ -134,7 +165,7 @@ export async function saveRestaurantSetup(
         });
       }
 
-      const linkedInventoryItem = inventoryItemsByName.get(ingredientName.toLowerCase());
+      const linkedInventoryItem = inventoryItemsByName.get(ingredientKey);
       if (!linkedInventoryItem || !inventoryUnitsAreCompatible(linkedInventoryItem.unit, unit)) {
         skippedRecipeIngredients += 1;
         continue;
@@ -142,7 +173,7 @@ export async function saveRestaurantSetup(
 
       recipeMappings.push({
         menu_item_name: menuItemName,
-        inventory_item_name: ingredientName,
+        inventory_item_name: linkedInventoryItem.item_name,
         quantity_used_per_sale: quantityUsedPerSale,
         unit: linkedInventoryItem.unit
       });
