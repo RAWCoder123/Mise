@@ -54,14 +54,35 @@ const MEASURE_DIMENSIONS: Record<string, "mass" | "volume"> = {
   pt: "volume", pts: "volume", pint: "volume", pints: "volume"
 };
 
+/**
+ * MISE-005IZ. Mirror `lower(... collate "C")` used by
+ * `private.purchase_line_unit_dimension` / `private.purchase_line_pack_unit`
+ * (MISE-005IX). Only ASCII A-Z is folded; Unicode-aware `toLowerCase` would
+ * disagree with the server after dump/restore locale drift and could flip
+ * `pack_unit_dimension_conflict` / confidence for the same unit bytes.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
 export function purchaseLineUnitDimension(unit: string | null) {
   if (unit === null) return null;
-  return MEASURE_DIMENSIONS[unit.trim().toLowerCase()] ?? null;
+  // Match SQL: btrim(lower(... collate "C")) — ASCII space only after fold.
+  const folded = asciiCLower(unit).replace(/^ +/, "").replace(/ +$/, "");
+  return MEASURE_DIMENSIONS[folded] ?? null;
+}
+
+/**
+ * Trailing pack-size unit token. Matches SQL `purchase_line_pack_unit`:
+ * lower(... collate "C") then `([a-z]+)$` (ASCII letters only).
+ */
+export function purchaseLinePackUnit(packSize: string | null) {
+  if (packSize === null) return null;
+  return /([a-z]+)$/.exec(asciiCLower(packSize))?.[1] ?? null;
 }
 
 function packUnit(packSize: string | null) {
-  if (packSize === null) return null;
-  return /([a-z]+)$/u.exec(packSize.toLowerCase())?.[1] ?? null;
+  return purchaseLinePackUnit(packSize);
 }
 
 /**
