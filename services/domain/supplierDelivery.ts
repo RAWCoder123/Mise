@@ -37,6 +37,8 @@ export interface SupplierDeliveryReceivePreview {
 
 const QUANTITY_LIMIT = operatingLimits.recommendationQuantity;
 const REASON_LIMIT = 500;
+/** ASCII C [[:cntrl:]] — mirrors supplier_delivery_items.discrepancy_reason CHECK (#661). */
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/gu;
 
 /**
  * Builds idempotent as-ordered delivery lines from recommendations linked to a
@@ -225,8 +227,15 @@ function requireBoundedQuantity(value: number, label: string): number {
 
 function normalizeDiscrepancyReason(value: string | null | undefined): string | null {
   if (value == null) return null;
-  const trimmed = value.trim().slice(0, REASON_LIMIT);
-  return trimmed.length > 0 ? trimmed : null;
+  // Single-line reason: strip ASCII C controls (incl. LF/TAB) then bound length.
+  // Matches supplier_delivery_items.discrepancy_reason CHECK under COLLATE "C" (#661).
+  const cleaned = value
+    .replace(CONTROL_CHARACTERS, " ")
+    .replace(/ +/g, " ")
+    .trim()
+    .slice(0, REASON_LIMIT)
+    .trim();
+  return cleaned.length > 0 ? cleaned : null;
 }
 
 function roundQuantity(value: number): number {

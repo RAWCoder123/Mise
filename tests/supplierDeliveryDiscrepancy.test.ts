@@ -151,6 +151,25 @@ test("receive preview exposes item labels for the operator checklist", () => {
   assert.equal(preview.lines[0]!.receivedQuantity, 10);
 });
 
+test("discrepancy reasons strip ASCII controls before length bound", () => {
+  const { item, order, recommendation } = sampleOrderContext();
+  const [line] = buildDeliveryLinesFromOrderRecommendations({
+    order,
+    recommendations: [recommendation],
+    inventoryItems: [item],
+    requireVerifiedCanonicalUnit: false
+  }).lines;
+
+  const normalized = normalizeDeliveryLineDiscrepancy(line!, {
+    inventoryItemId: item.id,
+    receivedQuantity: 9,
+    discrepancyReason: "Short\u0000 ship\nnoted\tby dock"
+  });
+
+  assert.equal(normalized.discrepancyReason, "Short ship noted by dock");
+  assert.equal(deliveryLineHasDiscrepancy(normalized), true);
+});
+
 test("order detail receive UI collects per-line discrepancy edits before submit", () => {
   const detail = readFileSync("app/orders/[id].tsx", "utf8");
   const catalog = readFileSync("i18n/catalog.ts", "utf8");
