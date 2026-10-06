@@ -30,3 +30,13 @@ test("recipe unlink regenerates planning without the deleted mapping", () => {
   assert.match(demo, /async deleteRecipeMappingAndSignals/);
   assert.match(demo, /splice\(index, 1\)/);
 });
+
+test("recipe unlink confirmation cancels pending saves and guards in-flight save errors", () => {
+  const screen = readFileSync("app/settings/recipes.tsx", "utf8");
+  assert.match(screen, /unlinkGuardIdsRef/);
+  assert.match(screen, /inflightSavePromisesRef/);
+  assert.match(screen, /cancelPendingIngredientSave\(mappingId\)/);
+  assert.match(screen, /unlinkGuardIdsRef\.current\.add\(mappingId\)/);
+  assert.match(screen, /await inflightSave\.catch/);
+  assert.match(screen, /!unlinkGuardIdsRef\.current\.has\(mappingId\)/);
+});

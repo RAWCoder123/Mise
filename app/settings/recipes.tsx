@@ -53,6 +53,10 @@ export default function RecipeBaselinesScreen() {
   const requestIdRef = useRef(0);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  // Mapping IDs with an open unlink confirmation or in-flight delete. Debounced
+  // quantity saves that finish after unlink must not surface a false "save" error.
+  const unlinkGuardIdsRef = useRef(new Set<string>());
+  const inflightSavePromisesRef = useRef(new Map<string, Promise<void>>());
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
@@ -64,6 +68,8 @@ export default function RecipeBaselinesScreen() {
     }
     saveTimersRef.current.forEach((timer) => clearTimeout(timer));
     saveTimersRef.current.clear();
+    unlinkGuardIdsRef.current.clear();
+    inflightSavePromisesRef.current.clear();
     setLoadedRestaurantId(null);
     setHubLoadError(false);
     setSummary(null);
@@ -169,6 +175,7 @@ export default function RecipeBaselinesScreen() {
       setError(t("recipes.error.readOnly"));
       return;
     }
+    if (unlinkGuardIdsRef.current.has(mappingId)) return;
     const restaurantId = restaurant.id;
     let parsed: number;
     try {
@@ -180,18 +187,30 @@ export default function RecipeBaselinesScreen() {
     setSavingMappingId(mappingId);
     setError(null);
     if (!options?.quiet) setNotice(null);
-    try {
-      await updateRecipeBaselineIngredient(restaurantId, mappingId, parsed);
-      if (activeRestaurantIdRef.current !== restaurantId) return;
-      if (!options?.quiet) setNotice(t("recipes.notice.saved"));
-      scheduleReload(restaurantId);
-    } catch {
-      if (activeRestaurantIdRef.current === restaurantId) {
-        setError(t("recipes.error.save"));
+    let saveWork: Promise<void> = Promise.resolve();
+    saveWork = (async () => {
+      try {
+        await updateRecipeBaselineIngredient(restaurantId, mappingId, parsed);
+        if (activeRestaurantIdRef.current !== restaurantId) return;
+        if (unlinkGuardIdsRef.current.has(mappingId)) return;
+        if (!options?.quiet) setNotice(t("recipes.notice.saved"));
+        scheduleReload(restaurantId);
+      } catch {
+        if (
+          activeRestaurantIdRef.current === restaurantId &&
+          !unlinkGuardIdsRef.current.has(mappingId)
+        ) {
+          setError(t("recipes.error.save"));
+        }
+      } finally {
+        if (inflightSavePromisesRef.current.get(mappingId) === saveWork) {
+          inflightSavePromisesRef.current.delete(mappingId);
+        }
+        if (activeRestaurantIdRef.current === restaurantId) setSavingMappingId(null);
       }
-    } finally {
-      if (activeRestaurantIdRef.current === restaurantId) setSavingMappingId(null);
-    }
+    })();
+    inflightSavePromisesRef.current.set(mappingId, saveWork);
+    await saveWork;
   }
 
   // Debounces the expensive save+recompute path while the operator is still
@@ -218,12 +237,23 @@ export default function RecipeBaselinesScreen() {
     saveTimersRef.current.set(mappingId, timer);
   }
 
+  function cancelPendingIngredientSave(mappingId: string) {
+    const pendingSave = saveTimersRef.current.get(mappingId);
+    if (pendingSave) {
+      clearTimeout(pendingSave);
+      saveTimersRef.current.delete(mappingId);
+    }
+  }
+
   function confirmUnlinkIngredient(mappingId: string, ingredientName: string, dishName: string) {
     if (!restaurant) return;
     if (!actionsEditable) {
       setError(t("recipes.error.readOnly"));
       return;
     }
+    // Cancel any debounced save as soon as confirmation opens so typing cannot
+    // race the unlink after the operator has already decided to remove the link.
+    cancelPendingIngredientSave(mappingId);
     Alert.alert(
       t("recipes.unlink.confirmTitle"),
       t("recipes.unlink.confirmBody", { ingredient: ingredientName, dish: dishName }),
@@ -247,10 +277,13 @@ export default function RecipeBaselinesScreen() {
       return;
     }
     const restaurantId = restaurant.id;
-    const pendingSave = saveTimersRef.current.get(mappingId);
-    if (pendingSave) {
-      clearTimeout(pendingSave);
-      saveTimersRef.current.delete(mappingId);
+    cancelPendingIngredientSave(mappingId);
+    unlinkGuardIdsRef.current.add(mappingId);
+    const inflightSave = inflightSavePromisesRef.current.get(mappingId);
+    if (inflightSave) {
+      // Let an already-started save finish (or fail quietly under the guard)
+      // before deleting so the backend revision lock is not contested mid-flight.
+      await inflightSave.catch(() => undefined);
     }
     setSavingMappingId(mappingId);
     setError(null);
@@ -265,6 +298,7 @@ export default function RecipeBaselinesScreen() {
         setError(t("recipes.error.unlink"));
       }
     } finally {
+      unlinkGuardIdsRef.current.delete(mappingId);
       if (activeRestaurantIdRef.current === restaurantId) setSavingMappingId(null);
     }
   }
