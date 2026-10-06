@@ -158,8 +158,24 @@ function robustDailyAverage(values: number[]) {
   return Math.round((trimmed.reduce((sum, value) => sum + value, 0) / trimmed.length) * 10000) / 10000;
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JF). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a menu-item demand key
+ * the hosted COLLATE C path would not.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Collapse only ASCII whitespace so client menu-item / sale demand keys
+ * stay aligned with server helpers pinned under COLLATE "C".
+ */
 function normalizeMenuItemKey(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return asciiCLower(value)
+    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "")
+    .replace(/[ \t\n\r\f\v]+/g, " ");
 }
 
 export function recommendationReason(item: InventoryItem, prediction?: InventoryPrediction) {
@@ -222,7 +238,7 @@ export function buildLearnedOrderQuantities(restaurantId: string, history: Purch
 }
 
 function learnedQuantityKey(itemId: string, unit: string) {
-  return `${itemId}::${unit.trim().toLowerCase()}`;
+  return `${itemId}::${normalizeMenuItemKey(unit)}`;
 }
 
 export function boundedLearnedQuantity(
@@ -761,7 +777,7 @@ export function buildRecipeBaselineSummary(
       return sale.source_record_id
         ?? `${sale.source_pos ?? "provider"}:${sale.provider_location_id ?? "unknown-location"}:${sale.provider_variation_id ?? sale.provider_catalog_item_id ?? sale.item_name}`;
     }
-    return sale.item_name.trim().toLowerCase().replace(/\s+/g, " ");
+    return normalizeMenuItemKey(sale.item_name);
   };
   const soldMenuItems = new Set(restaurantSales.map(saleKey));
   const mappedMenuItems = new Set(restaurantMappings.map((mapping) => mapping.menu_item_name));
