@@ -53,11 +53,44 @@ export function canEditTeamMember(
   return false;
 }
 
-/** Normalized lowercase email, or null when the input is not a usable address. */
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JD; complements MISE-005AA). Only ASCII A-Z is folded;
+ * Unicode-aware `toLowerCase` would map Kelvin sign `K` → `k` and invent
+ * a mailbox the hosted COLLATE C invite lookup would not match.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so client invite mailboxes stay aligned with
+ * server helpers that btrim under COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/** ASCII controls under C locale `[[:cntrl:]]` (0x00–0x1F and DEL). */
+const asciiCControl = /[\u0000-\u001f\u007f]/;
+
+/**
+ * ASCII C mailbox shape — mirrors SQL
+ * `^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$` under COLLATE "C".
+ * Uses an explicit ASCII whitespace class instead of Unicode `\s`.
+ */
+const asciiCMailboxShape = /^[^ \t\n\r\f\v@]+@[^ \t\n\r\f\v@]+\.[^ \t\n\r\f\v@]+$/;
+
+/**
+ * Normalized lowercase email, or null when the input is not a usable address.
+ * Pinned to ASCII C so owner/admin invite lookup matches
+ * `find_restaurant_member_candidate` after MISE-005AA.
+ */
 export function normalizeTeamMemberEmail(value: string): string | null {
-  const normalized = value.trim().toLowerCase();
+  const normalized = asciiCTrim(asciiCLower(value));
   if (normalized.length < 3 || normalized.length > 254) return null;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return null;
+  if (asciiCControl.test(normalized)) return null;
+  if (!asciiCMailboxShape.test(normalized)) return null;
   return normalized;
 }
 
