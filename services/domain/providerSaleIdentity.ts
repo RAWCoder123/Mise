@@ -76,6 +76,23 @@ export function saleDemandKey(sale: ProviderSaleIdentity, providerMappings: read
   return normalize(sale.item_name);
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JC). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and could invent a provider source
+ * token or item-name match the hosted COLLATE C path would not.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Collapse only ASCII whitespace so client provider-sale identity stays
+ * aligned with server helpers that trim/fold under COLLATE "C".
+ */
 function normalize(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (value == null) return "";
+  return asciiCLower(value)
+    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "")
+    .replace(/[ \t\n\r\f\v]+/g, " ");
 }
