@@ -34,6 +34,30 @@ import { getMiseRepository } from "./repository";
 const repository = getMiseRepository();
 
 /**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JI). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a recipe-baseline menu
+ * match the hosted COLLATE C path would not.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Collapse only ASCII whitespace so recipe-baseline menu-item identity
+ * stays aligned with server helpers pinned under COLLATE "C".
+ */
+export function normalizeRecipeMenuItemKey(value: string) {
+  return asciiCLower(value)
+    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "")
+    .replace(/[ \t\n\r\f\v]+/g, " ");
+}
+
+function recipeMenuItemKeysMatch(left: string, right: string) {
+  return normalizeRecipeMenuItemKey(left) === normalizeRecipeMenuItemKey(right);
+}
+
+/**
  * Planning data plus the authoritative physical-count evidence that anchors it.
  * Every planning read goes through here so no path can fall back to
  * `inventory_items.last_updated` as proof that a count happened.
@@ -149,7 +173,7 @@ export async function fetchRecipeBaselineSummary(restaurantId: string) {
       );
       const authority = authorities.find((entry) =>
         entry.menuItemId === mapping?.menu_item_id
-        || entry.menuItemName.trim().toLowerCase() === item.menu_item_name.trim().toLowerCase()
+        || recipeMenuItemKeysMatch(entry.menuItemName, item.menu_item_name)
       );
       return {
         ...item,
@@ -261,7 +285,7 @@ export async function addRecipeBaselineIngredient(
   const existing = data.menuItemIngredients.find(
     (mapping) =>
       mapping.inventory_item_id === inventoryItemId &&
-      mapping.menu_item_name.trim().toLowerCase() === menuItemName.toLowerCase()
+      recipeMenuItemKeysMatch(mapping.menu_item_name, menuItemName)
   );
   const planningMapping = existing
     ? { ...existing, menu_item_name: menuItemName, quantity_used_per_sale: quantityUsedPerSale, unit }
