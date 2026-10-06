@@ -347,8 +347,20 @@ function percentage(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 10_000) / 100 : 0;
 }
 
+/** ASCII C-locale case fold — mirrors SQL `lower(... collate "C")` (MISE-005IV). */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (char) =>
+    String.fromCharCode(char.charCodeAt(0) + 32)
+  );
+}
+
 function normalizeUnit(value: string) {
-  return value.trim().toLocaleLowerCase().replace(/\./g, "").replace(/\s+/g, " ");
+  // Collapse only ASCII whitespace so client lookup stays aligned with the
+  // server IMMUTABLE helpers pinned under COLLATE "C".
+  return asciiCLower(value)
+    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "")
+    .replace(/\./g, "")
+    .replace(/[ \t\n\r\f\v]+/g, " ");
 }
 
 function failedQuantity(blocker: MappingBlocker): OperationalQuantityResult {
