@@ -72,8 +72,18 @@ function normalizeDisplayName(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JZ). Only ASCII A-Z is folded; Unicode-aware
+ * `toLocaleLowerCase` would map Kelvin sign `K` → `k` and invent a
+ * directory sort key that collides with ordinary `K` suppliers.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
 function supplierKey(value: string) {
-  return value.toLocaleLowerCase("en-US");
+  return asciiCLower(value);
 }
 
 function isNewer(candidate: string, current: string | null) {
