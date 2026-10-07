@@ -1,6 +1,7 @@
 import { calculateOperationalSignals, type OperationalPlanningSnapshot } from "../../../services/domain/operationalSignals.ts";
 import { withPendingCountEvidence } from "../../../services/domain/inventoryCountAuthority.ts";
 import { inventoryUnitsAreCompatible } from "../../../services/domain/inventoryUnits.ts";
+import { recipeMenuItemKeysMatch } from "../../../services/domain/recipeMenuItemKey.ts";
 import {
   firewallBlockedResponse,
   handleError,
@@ -355,9 +356,10 @@ function applyRequestedMutation(
     if (!inventoryUnitsAreCompatible(inventoryItem.unit, mapping.unit)) {
       throw new HttpError(400, `Recipe unit must match the inventory unit (${inventoryItem.unit}).`);
     }
+    // MISE-005JS: ASCII C menu-item identity — do not Unicode-fold Kelvin lookalikes.
     const existingMappingId = mappingId ?? (snapshot.menuItemIngredients.find((entry) =>
       entry.inventory_item_id === inventoryItemId &&
-      entry.menu_item_name.trim().toLowerCase() === mapping.menu_item_name.toLowerCase()
+      recipeMenuItemKeysMatch(entry.menu_item_name, mapping.menu_item_name)
     ) as { id?: string } | undefined)?.id;
     return {
       ...snapshot,
