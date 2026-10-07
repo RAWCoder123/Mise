@@ -730,7 +730,12 @@ function requireNullableSupplierSendText(
 function requireNullableSupplierSendEmail(value: unknown, label: string) {
   if (value === null) return null;
   const email = requireExactSupplierSendText(value, label, 254);
-  if (email !== email.toLowerCase() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  // Already-canonical preview mailboxes must stay ASCII-case-folded and match
+  // the C-locale mailbox shape (MISE-005JL). Unicode toLowerCase / Unicode
+  // whitespace classes would reject Kelvin-preserving addresses the hosted
+  // COLLATE C path accepts, or treat NBSP as whitespace the C [[:space:]]
+  // class does not.
+  if (email !== asciiCLower(email) || !asciiCMailboxShape.test(email)) {
     throw new Error(`Supplier send preview returned an invalid ${label}.`);
   }
   return email;
@@ -870,6 +875,32 @@ function supplierSendBlockerDescription(code: SupplierSendContentBlockerCode) {
 export const SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS = 160;
 export const SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS = 254;
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JL; complements open MISE-005IU / #663 and MISE-005K / #419).
+ * Only ASCII A-Z is folded; Unicode-aware `toLowerCase` would map Kelvin
+ * sign `K` → `k` and invent a mailbox the hosted COLLATE C recipient
+ * CHECK / upsert path would not treat as identical.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so supplier-recipient mailboxes stay aligned
+ * with server helpers that btrim under COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * ASCII C mailbox shape — mirrors SQL
+ * `^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$` under COLLATE "C".
+ * Uses an explicit ASCII whitespace class instead of Unicode `\s`.
+ */
+const asciiCMailboxShape = /^[^ \t\n\r\f\v@]+@[^ \t\n\r\f\v@]+\.[^ \t\n\r\f\v@]+$/;
+
 export function requireSupplierAuthorityId(value: unknown, label = "supplier") {
   const supplierId = typeof value === "string" ? value.trim() : "";
   if (
@@ -952,12 +983,13 @@ export function requireSupplierRecipientInput(input: {
 
   const supplierId = requireSupplierAuthorityId(input.supplier_id);
 
-  const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+  const email =
+    typeof input.email === "string" ? asciiCTrim(asciiCLower(input.email)) : "";
   if (
     email.length < 3 ||
     email.length > SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS ||
     hasControlCharacters(email) ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    !asciiCMailboxShape.test(email)
   ) {
     throw new Error("Enter a valid supplier email address.");
   }
