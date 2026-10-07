@@ -27,6 +27,7 @@ import { SUPPLIER_SEND_CONTENT_VERSION } from "../../types/mise";
 import { isTenantAuthorizationError, throwRepositoryError } from "../tenantAuthorizationEvents";
 import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
 import { normalizePurchaseAuthorityResult } from "../domain/purchaseAuthority";
+import { normalizeHostedInviteEmailDisplay } from "../domain/hostedInviteEmail";
 import { TeamMembershipError, teamMembershipErrorFrom } from "../domain/teamMembership";
 import {
   activityEventFromPersistedRow,
@@ -903,7 +904,7 @@ export function createSupabaseRepository(): MiseRepository {
         role: membership.role,
         status: membership.status,
         name: null,
-        email: email.trim().toLowerCase(),
+        email: normalizeHostedInviteEmailDisplay(email),
         created_at: membership.created_at,
         updated_at: membership.updated_at
       });
