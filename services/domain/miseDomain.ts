@@ -162,6 +162,32 @@ function normalizeMenuItemKey(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005KI). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a demand-spike / prep
+ * insight identity that operationalSignals ASCII C (#677 / MISE-005JH)
+ * and hosted COLLATE C paths would refuse.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Collapse only ASCII whitespace so spike/prep insight demand slugs stay
+ * aligned with operationalSignals insightDemandSlug under COLLATE "C".
+ */
+function asciiCNormalizeToken(value: string) {
+  return asciiCLower(value)
+    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "")
+    .replace(/[ \t\n\r\f\v]+/g, " ");
+}
+
+/** Stable insight id slug for demand-spike / prep keys — ASCII C only. */
+function insightDemandSlug(value: string) {
+  return asciiCNormalizeToken(value).replace(/[^a-z0-9]+/g, "_");
+}
+
 export function recommendationReason(item: InventoryItem, prediction?: InventoryPrediction) {
   if (prediction) {
     return `${prediction.coverageLabel}. ${prediction.whyItMatters}`;
@@ -906,7 +932,7 @@ export function buildInsightsFromData(
     if (lift < 20) return;
 
     insights.push({
-      id: `insight_spike_${sale.item_name.replace(/\s+/g, "_").toLowerCase()}`,
+      id: `insight_spike_${insightDemandSlug(sale.item_name)}`,
       restaurant_id: restaurantId,
       insight_type: "sales",
       title: `${sale.item_name} demand is rising`,
@@ -937,7 +963,7 @@ export function buildInsightsFromData(
     if (lowIngredientOutlook) {
       const lowIngredient = lowIngredientOutlook.item;
       insights.push({
-        id: `insight_prep_${topSale.item_name.replace(/\s+/g, "_").toLowerCase()}`,
+        id: `insight_prep_${insightDemandSlug(topSale.item_name)}`,
         restaurant_id: restaurantId,
         insight_type: "prep",
         title: `${topSale.item_name} depends on low stock`,
