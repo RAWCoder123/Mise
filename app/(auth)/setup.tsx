@@ -36,6 +36,12 @@ import {
   isDemoDatasetRestaurantName
 } from "../../services/demoData";
 import { saveRestaurantSetup, updateRestaurantProfile } from "../../services/miseService";
+import {
+  canonicalSetupScreenSupplierDisplayName,
+  isValidSetupScreenSupplierDisplayName,
+  isValidSetupScreenSupplierEmail,
+  normalizeSetupScreenSupplierNameKey
+} from "../../services/domain/setupScreenSupplierIdentity";
 import { canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { trackMiseEvent } from "../../services/telemetry";
 import { operatingLimits } from "../../services/miseValidation";
@@ -962,9 +968,10 @@ function validateSetupDrafts({
 
   const seenSupplierNames = new Set<string>();
   for (const [index, supplier] of suppliers.entries()) {
-    const name = supplier.name.trim().replace(/\s+/g, " ");
-    const email = supplier.email.trim();
-    if (!name && email) {
+    // MISE-005KA: C-locale display prep + ASCII C duplicate / email identity.
+    const name = canonicalSetupScreenSupplierDisplayName(supplier.name);
+    const email = supplier.email;
+    if (!name && email.trim()) {
       return setupValidationFailure(
         "inventory",
         t("setup.validation.supplierName", {
@@ -972,13 +979,13 @@ function validateSetupDrafts({
         })
       );
     }
-    if (name && (name.length > 160 || /[\u0000-\u001f\u007f]/.test(supplier.name))) {
+    if (name && !isValidSetupScreenSupplierDisplayName(supplier.name)) {
       return setupValidationFailure(
         "inventory",
         t("setup.validation.supplierNameInvalid", { supplier: name })
       );
     }
-    const normalizedName = name.toLocaleLowerCase("en-US");
+    const normalizedName = normalizeSetupScreenSupplierNameKey(supplier.name);
     if (normalizedName && seenSupplierNames.has(normalizedName)) {
       return setupValidationFailure(
         "inventory",
@@ -986,7 +993,7 @@ function validateSetupDrafts({
       );
     }
     if (normalizedName) seenSupplierNames.add(normalizedName);
-    if (email && !isValidEmail(email)) {
+    if (email.trim() && !isValidSetupScreenSupplierEmail(email)) {
       return setupValidationFailure(
         "inventory",
         t("setup.validation.supplierEmail", {
@@ -1055,10 +1062,6 @@ function isBoundedSetupNumber(
 ) {
   const parsed = parseNumber(value);
   return parsed !== null && parsed >= minimum && parsed <= maximum;
-}
-
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function makeLocalId(prefix: string) {
