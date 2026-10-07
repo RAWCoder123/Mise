@@ -440,9 +440,20 @@ function sanitizeHeader(value: string, maximumLength: number) {
   return sanitized;
 }
 
+/**
+ * MISE-005JY. RFC Message-ID angle-addr shape using C-locale `[[:space:]]` only
+ * (space, tab, LF, VT, FF, CR). Unicode `\s` also treats NBSP / other Zs as
+ * whitespace, inventing rejections that hosted COLLATE `"C"` `[[:space:]]`
+ * preflights would not mirror. Companion to MISE-005JX (#693) sanitizeHeader
+ * trim — do not retarget that trim here.
+ */
+export function isAsciiCGmailRfcMessageIdShape(value: string) {
+  return /^<[^<> \t\n\v\f\r@]+@[^<> \t\n\v\f\r@]+>$/u.test(value);
+}
+
 function requireMessageId(value: string) {
   const messageId = sanitizeHeader(value, 512);
-  if (!/^<[^<>\s@]+@[^<>\s@]+>$/u.test(messageId))
+  if (!isAsciiCGmailRfcMessageIdShape(messageId))
     throw new Error("Message id is invalid.");
   return messageId;
 }
