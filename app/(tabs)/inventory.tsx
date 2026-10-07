@@ -34,6 +34,7 @@ import { colors, icon, iconStroke, inventoryStatusColors, radii, typography } fr
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
+import { classifyInventoryCategoryIcon } from "../../services/domain/inventoryCategoryIconIdentity";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   fetchInventoryOutlookItems,
@@ -420,23 +421,21 @@ function isCanonicalUnitReady(item: InventoryItem) {
 
 function categoryIcon(category: string, color: string) {
   const props = { size: 18, color, strokeWidth: 2.2 } as const;
-  const normalized = category.trim().toLowerCase();
-  if (normalized.includes("protein") || normalized.includes("meat") || normalized.includes("beef") || normalized.includes("chicken")) {
-    return <Beef {...props} />;
+  switch (classifyInventoryCategoryIcon(category)) {
+    case "protein":
+      return <Beef {...props} />;
+    case "produce":
+      return <LeafyGreen {...props} />;
+    case "dairy":
+      return <Milk {...props} />;
+    case "dry":
+      return <Wheat {...props} />;
+    case "liquid":
+      return <Droplets {...props} />;
+    case "package":
+    default:
+      return <Package {...props} />;
   }
-  if (normalized.includes("produce") || normalized.includes("veg") || normalized.includes("fruit")) {
-    return <LeafyGreen {...props} />;
-  }
-  if (normalized.includes("dairy") || normalized.includes("milk") || normalized.includes("cheese")) {
-    return <Milk {...props} />;
-  }
-  if (normalized.includes("dry") || normalized.includes("grain") || normalized.includes("flour") || normalized.includes("rice")) {
-    return <Wheat {...props} />;
-  }
-  if (normalized.includes("oil") || normalized.includes("sauce") || normalized.includes("liquid")) {
-    return <Droplets {...props} />;
-  }
-  return <Package {...props} />;
 }
 
 function InventoryListRow({
