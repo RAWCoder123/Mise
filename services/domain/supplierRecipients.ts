@@ -1,4 +1,5 @@
 import type { Supplier, SupplierRecipient } from "../../types/mise";
+import { canonicalSupplierDisplayName } from "./supplierDisplayNameIdentity";
 
 export interface SupplierRecipientDirectoryEntry {
   restaurantId: string;
@@ -69,7 +70,8 @@ export function buildSupplierRecipientDirectory(
 }
 
 function normalizeDisplayName(value: string) {
-  return value.trim().replace(/\s+/g, " ");
+  // MISE-005JW: same C-locale display prep as requireSupplierDisplayName.
+  return canonicalSupplierDisplayName(value);
 }
 
 function supplierKey(value: string) {
