@@ -28,6 +28,10 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import {
+  recipeSettingsNameKeysMatch,
+  trimRecipeSettingsMenuItemName
+} from "../../services/domain/recipeSettingsIdentity";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { requireRecipeBaselineQuantity } from "../../services/miseValidation";
 import type { InventoryItem, RecipeBaselineItem, RecipeBaselineSummary } from "../../types/mise";
@@ -145,10 +149,14 @@ export default function RecipeBaselinesScreen() {
   const visibleSummary = hubReady ? summary : null;
   const visibleInventoryItems = hubReady ? inventoryItems : [];
 
+  // MISE-005JT: ASCII C inventory-name identity — do not Unicode-fold Kelvin lookalikes.
   const selectedInventoryItem = useMemo(() => {
-    const normalized = newInventoryItemName.trim().toLowerCase();
-    if (!normalized) return null;
-    return visibleInventoryItems.find((item) => item.item_name.toLowerCase() === normalized) ?? null;
+    if (!trimRecipeSettingsMenuItemName(newInventoryItemName)) return null;
+    return (
+      visibleInventoryItems.find((item) =>
+        recipeSettingsNameKeysMatch(item.item_name, newInventoryItemName)
+      ) ?? null
+    );
   }, [newInventoryItemName, visibleInventoryItems]);
 
   useFocusEffect(
@@ -224,7 +232,8 @@ export default function RecipeBaselinesScreen() {
       return;
     }
     const restaurantId = restaurant.id;
-    const menuItemName = newMenuItemName.trim();
+    // MISE-005JT: ASCII C trim for persisted menu names (Unicode trim not authority).
+    const menuItemName = trimRecipeSettingsMenuItemName(newMenuItemName);
 
     if (!menuItemName) {
       setError(t("recipes.error.menuItem"));
@@ -493,7 +502,7 @@ function RecipeBaselineBuilder({
               <SuggestionChip
                 key={itemName}
                 label={itemName}
-                active={menuItemName.trim().toLowerCase() === itemName.toLowerCase()}
+                active={recipeSettingsNameKeysMatch(menuItemName, itemName)}
                 disabled={saving}
                 onPress={() => onMenuItemNameChange(itemName)}
               />
