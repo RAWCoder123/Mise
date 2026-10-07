@@ -35,6 +35,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import { inventoryOutlookMatchesTypedSearchQuery } from "../../services/domain/inventoryTypedSearchIdentity";
 import {
   fetchInventoryOutlookItems,
   fetchOpenInventoryCountSession,
@@ -178,15 +179,13 @@ export default function InventoryScreen() {
   });
 
   const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
     return visibleOutlooks.filter(({ item, prediction }) => {
       const matchesFilter = matchesInventoryFilter(prediction.projectedStatus, filter);
-      const matchesQuery =
-        !normalized ||
-        item.item_name.toLowerCase().includes(normalized) ||
-        item.supplier_name.toLowerCase().includes(normalized) ||
-        item.category.toLowerCase().includes(normalized) ||
-        prediction.coverageLabel.toLowerCase().includes(normalized);
+      const matchesQuery = inventoryOutlookMatchesTypedSearchQuery(
+        item,
+        prediction.coverageLabel,
+        query
+      );
       return matchesFilter && matchesQuery;
     });
   }, [filter, query, visibleOutlooks]);
