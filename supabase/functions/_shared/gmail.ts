@@ -427,17 +427,41 @@ async function readProviderJson(
 }
 
 function normalizeEmail(value: string) {
+  // MISE-005O (#423) retargets the mailbox fold separately. Keep Unicode
+  // toLowerCase here until that tip lands; do not re-tip normalizeEmail.
   const email = sanitizeHeader(value, 254).toLowerCase();
   if (!EMAIL_PATTERN.test(email)) throw new Error("Email address is invalid.");
   return email;
 }
 
-function sanitizeHeader(value: string, maximumLength: number) {
-  const sanitized = requireBoundedString(value, "header", maximumLength)
-    .replace(/[\r\n]+/gu, " ")
-    .trim();
+/**
+ * MISE-005JX. Trim only C-locale `[[:space:]]` (space, tab, LF, VT, FF, CR).
+ * Unicode `String#trim` also drops NBSP / em-space / other Zs, inventing a
+ * header canonical form the hosted COLLATE "C" email paths would not treat as
+ * equal. Email tips preserve NBSP — do not fold it to a plain space here.
+ */
+export function trimAsciiCHeaderWhitespace(value: string) {
+  return value.replace(/^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g, "");
+}
+
+/**
+ * MISE-005JX. Sanitize a Gmail header field (subject, Message-ID, and the
+ * bounded string that later feeds mailbox normalization): collapse CR/LF to a
+ * space (header-injection gate), then ASCII C trim. Exported for parity tests.
+ */
+export function sanitizeGmailHeader(value: string, maximumLength: number) {
+  const sanitized = trimAsciiCHeaderWhitespace(
+    requireBoundedString(value, "header", maximumLength).replace(
+      /[\r\n]+/gu,
+      " ",
+    ),
+  );
   if (!sanitized) throw new Error("Email header is invalid.");
   return sanitized;
+}
+
+function sanitizeHeader(value: string, maximumLength: number) {
+  return sanitizeGmailHeader(value, maximumLength);
 }
 
 function requireMessageId(value: string) {
