@@ -1674,36 +1674,67 @@ export function providerToIntegrationProvider(provider: PosProvider | null) {
   return "demo";
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JQ). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a demo setup-list /
+ * ingredient-lookup identity key the hosted COLLATE C path would not.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so demo setup-list and ingredient-lookup
+ * identity keys stay aligned with server helpers that btrim under
+ * COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * Demo setup-list dedupe key (inventory item names / supplier names).
+ * Pinned to ASCII C so custom demo setup cannot collapse Kelvin lookalikes
+ * that sibling client tips and hosted COLLATE C refuse.
+ */
+export function normalizeReplaceableDemoSetupKey(value: string) {
+  return asciiCLower(asciiCTrim(value));
+}
+
+/**
+ * Demo ingredient/inventory fuzzy lookup key used when seeding custom
+ * recipe lines onto replaceable demo inventory. Same ASCII C fold, then
+ * the existing ASCII pack/unit token collapse.
+ */
+export function normalizeReplaceableDemoLookup(value: string) {
+  return asciiCLower(asciiCTrim(value))
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\bheads?\b/g, "head")
+    .replace(/\bunits?\b/g, "unit")
+    .replace(/\blbs?\b/g, "lb")
+    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
 function normalizeSetupList(values?: string[]) {
   const seen = new Set<string>();
   return (values ?? [])
-    .map((value) => value.trim())
+    .map((value) => asciiCTrim(value))
     .filter(Boolean)
     .filter((value) => {
-      const key = value.toLowerCase();
+      const key = normalizeReplaceableDemoSetupKey(value);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
 }
 
-function normalizeLookup(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\bheads?\b/g, "head")
-    .replace(/\bunits?\b/g, "unit")
-    .replace(/\blbs?\b/g, "lb")
-    .trim();
-}
-
 function findInventoryItemByName(items: InventoryItem[], ingredientName: string) {
-  const lookup = normalizeLookup(ingredientName);
+  const lookup = normalizeReplaceableDemoLookup(ingredientName);
   return (
-    items.find((item) => normalizeLookup(item.item_name) === lookup) ??
+    items.find((item) => normalizeReplaceableDemoLookup(item.item_name) === lookup) ??
     items.find((item) => {
-      const itemLookup = normalizeLookup(item.item_name);
+      const itemLookup = normalizeReplaceableDemoLookup(item.item_name);
       return itemLookup.includes(lookup) || lookup.includes(itemLookup);
     }) ??
     null
