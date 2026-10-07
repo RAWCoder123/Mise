@@ -1,4 +1,5 @@
 import type { SupplierOrder } from "../types/mise";
+import { estimateOrderPresentationUnitCents } from "../services/domain/orderPresentationIdentity";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "../services/domain/securityLimits";
 
 export interface SupplierDraftLine {
@@ -78,26 +79,9 @@ function scanSupplierOrderLines(orderMessage: string, maximumStoredLines: number
 function estimateLineCents(itemName: string, quantityLabel: string) {
   const quantity = Number.parseFloat(quantityLabel.replace(/,/g, ""));
   if (!Number.isFinite(quantity) || quantity <= 0) return 0;
-  const normalized = itemName.toLowerCase();
-  const unitCents =
-    normalized.includes("tomato") ? 163 :
-    normalized.includes("onion") ? 182 :
-    normalized.includes("lemon") ? 295 :
-    normalized.includes("cilantro") ? 420 :
-    normalized.includes("garlic") ? 455 :
-    normalized.includes("cabbage") ? 210 :
-    normalized.includes("pepper") ? 235 :
-    normalized.includes("scallion") ? 385 :
-    normalized.includes("ginger") ? 315 :
-    normalized.includes("wrapper") ? 220 :
-    normalized.includes("soy sauce") ? 850 :
-    normalized.includes("sesame oil") ? 1125 :
-    normalized.includes("chicken") ? 370 :
-    normalized.includes("rice") ? 95 :
-    normalized.includes("beef") ? 545 :
-    normalized.includes("lettuce") ? 230 :
-    0;
-  return Math.round(quantity * unitCents);
+  // Demo unit cents must use ASCII C fold — Unicode toLowerCase invents
+  // Kelvin-sign matches such as chicKen → chicken (MISE-005KH).
+  return Math.round(quantity * estimateOrderPresentationUnitCents(itemName));
 }
 
 function formatCents(cents: number) {
