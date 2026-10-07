@@ -163,6 +163,53 @@ import {
   type RestaurantSetupSnapshotSummary
 } from "./repositoryContracts";
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JN). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a demo inventory/menu
+ * identity key the hosted COLLATE C path would not.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so demo inventory/menu identity keys stay
+ * aligned with server helpers that btrim under COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * Demo inventory item-name identity key. Pinned to ASCII C so setup upsert,
+ * recipe mapping lookup, and inventory upsert cannot invent Kelvin lookalikes
+ * that sibling client tips (#679/#678/#675) and hosted COLLATE C refuse.
+ */
+export function normalizeDemoInventoryItemKey(value: string) {
+  return asciiCLower(asciiCTrim(value));
+}
+
+/**
+ * Demo menu-item-name identity key (recipe mapping match + synthetic
+ * `demo-menu:` authority ids). Same ASCII C fold as inventory names.
+ */
+export function normalizeDemoMenuItemKey(value: string) {
+  return asciiCLower(asciiCTrim(value));
+}
+
+function demoMenuItemKeysMatch(left: string, right: string) {
+  return normalizeDemoMenuItemKey(left) === normalizeDemoMenuItemKey(right);
+}
+
+function demoInventoryItemKeysMatch(left: string, right: string) {
+  return normalizeDemoInventoryItemKey(left) === normalizeDemoInventoryItemKey(right);
+}
+
+function demoSyntheticMenuItemId(menuItemName: string) {
+  return `demo-menu:${normalizeDemoMenuItemKey(menuItemName)}`;
+}
+
 const demoConfirmedRecipeFingerprints = new Map<string, string>();
 
 function demoRecipeAuthorityStates(state: DemoState, restaurantId: string): RecipeAuthorityState[] {
@@ -170,7 +217,7 @@ function demoRecipeAuthorityStates(state: DemoState, restaurantId: string): Reci
   state.menuItemIngredients
     .filter((mapping) => mapping.restaurant_id === restaurantId)
     .forEach((mapping) => {
-      const menuItemId = mapping.menu_item_id ?? `demo-menu:${mapping.menu_item_name.trim().toLowerCase()}`;
+      const menuItemId = mapping.menu_item_id ?? demoSyntheticMenuItemId(mapping.menu_item_name);
       grouped.set(menuItemId, [...(grouped.get(menuItemId) ?? []), mapping]);
     });
   return [...grouped.entries()].map(([menuItemId, mappings]) => {
@@ -1711,9 +1758,11 @@ export function createLocalDemoRepository(): MiseRepository {
             supplier_id: supplier.id,
             supplier_name: supplier.display_name
           };
-          const key = inventoryInput.item_name.trim().toLowerCase();
+          const key = normalizeDemoInventoryItemKey(inventoryInput.item_name);
           const existing = state.inventoryItems.find(
-            (item) => item.restaurant_id === restaurantId && item.item_name.trim().toLowerCase() === key
+            (item) =>
+              item.restaurant_id === restaurantId &&
+              demoInventoryItemKeysMatch(item.item_name, inventoryInput.item_name)
           );
           if (existing) {
             Object.assign(existing, authoritativeInput, { last_updated: now });
@@ -1730,18 +1779,19 @@ export function createLocalDemoRepository(): MiseRepository {
         });
 
         input.recipeMappings.forEach((mappingInput) => {
-          const inventoryItem = inventoryByName.get(mappingInput.inventory_item_name.trim().toLowerCase()) ??
+          const inventoryItem =
+            inventoryByName.get(normalizeDemoInventoryItemKey(mappingInput.inventory_item_name)) ??
             state.inventoryItems.find(
               (item) =>
                 item.restaurant_id === restaurantId &&
-                item.item_name.trim().toLowerCase() === mappingInput.inventory_item_name.trim().toLowerCase()
+                demoInventoryItemKeysMatch(item.item_name, mappingInput.inventory_item_name)
             );
           if (!inventoryItem) throw new Error("Recipe inventory item was not persisted.");
           const existing = state.menuItemIngredients.find(
             (mapping) =>
               mapping.restaurant_id === restaurantId &&
               mapping.inventory_item_id === inventoryItem.id &&
-              mapping.menu_item_name.trim().toLowerCase() === mappingInput.menu_item_name.trim().toLowerCase()
+              demoMenuItemKeysMatch(mapping.menu_item_name, mappingInput.menu_item_name)
           );
           if (existing) {
             existing.menu_item_name = mappingInput.menu_item_name;
@@ -1825,7 +1875,7 @@ export function createLocalDemoRepository(): MiseRepository {
         const existing = state.inventoryItems.find(
           (item) =>
             item.restaurant_id === input.restaurant_id &&
-            item.item_name.trim().toLowerCase() === input.item_name.trim().toLowerCase()
+            demoInventoryItemKeysMatch(item.item_name, input.item_name)
         );
 
         if (existing) {
@@ -1927,7 +1977,7 @@ export function createLocalDemoRepository(): MiseRepository {
           (entry) =>
             entry.restaurant_id === input.restaurant_id &&
             entry.inventory_item_id === input.inventory_item_id &&
-            entry.menu_item_name.trim().toLowerCase() === input.menu_item_name.trim().toLowerCase()
+            demoMenuItemKeysMatch(entry.menu_item_name, input.menu_item_name)
         );
 
         if (existing) {
@@ -1961,7 +2011,7 @@ export function createLocalDemoRepository(): MiseRepository {
               (entry) =>
                 entry.restaurant_id === input.restaurantId &&
                 entry.inventory_item_id === input.inventoryItemId &&
-                entry.menu_item_name.trim().toLowerCase() === input.menuItemName.trim().toLowerCase()
+                demoMenuItemKeysMatch(entry.menu_item_name, input.menuItemName)
             );
         if (input.mappingId) {
           if (!mapping) throw new Error("Recipe mapping not found");
@@ -2017,7 +2067,7 @@ export function createLocalDemoRepository(): MiseRepository {
         }
         const mappings = state.menuItemIngredients.filter((mapping) =>
           mapping.restaurant_id === restaurantId
-          && (mapping.menu_item_id ?? `demo-menu:${mapping.menu_item_name.trim().toLowerCase()}`) === menuItemId
+          && (mapping.menu_item_id ?? demoSyntheticMenuItemId(mapping.menu_item_name)) === menuItemId
         );
         const fingerprint = mappings
           .slice()
