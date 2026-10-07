@@ -9,13 +9,32 @@ export interface InventoryBarcodeMatchResult {
   matches: InventoryItem[];
 }
 
-/** Normalize barcode / inventory tokens for comparison (case, punctuation, whitespace). */
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JR). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a barcode / inventory
+ * match token the ASCII C path would refuse.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so barcode / inventory match tokens stay
+ * aligned with server helpers that btrim under COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * Normalize barcode / inventory tokens for comparison (case, punctuation,
+ * whitespace). Pinned to ASCII C so Scan Item matching cannot collapse
+ * Kelvin lookalikes that sibling client tips and hosted COLLATE C refuse.
+ */
 export function normalizeInventoryBarcodeToken(value: string | null | undefined): string {
   if (typeof value !== "string") return "";
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
+  return asciiCLower(asciiCTrim(value)).replace(/[^a-z0-9]+/g, "");
 }
 
 /**
