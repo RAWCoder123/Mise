@@ -166,8 +166,50 @@ export function createMemoryFromLearningSignals(
     );
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005KD). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a learning-signal memory
+ * type (for example `wastK` → `waste`) the ASCII C path would refuse.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so learning-signal classification haystacks
+ * stay aligned with server helpers that btrim under COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * Normalize one learning-signal classification token (label or detail) to
+ * ASCII C case fold + ASCII-only end trim. Mid-string non-C whitespace is
+ * preserved so em-space / NBSP cannot invent keyword identity across
+ * tokens that Unicode trim would collapse.
+ */
+export function normalizeRestaurantMemoryLearningSignalToken(
+  value: string | null | undefined
+): string {
+  if (typeof value !== "string") return "";
+  return asciiCLower(asciiCTrim(value));
+}
+
+/**
+ * Build the classification haystack for a learning signal. Pinned to ASCII C
+ * so Kelvin lookalikes cannot invent `waste_pattern`, `prep_habit`, or other
+ * typed memories that feed recommendation-affecting statements.
+ */
+export function restaurantMemoryLearningSignalHaystack(
+  signal: Pick<LearningMemorySignal, "label" | "detail">
+): string {
+  return normalizeRestaurantMemoryLearningSignalToken(`${signal.label} ${signal.detail}`);
+}
+
 function classifyLearningSignal(signal: LearningMemorySignal): RestaurantMemoryType {
-  const haystack = `${signal.label} ${signal.detail}`.toLowerCase();
+  const haystack = restaurantMemoryLearningSignalHaystack(signal);
   if (haystack.includes("supplier")) return "supplier_reliability";
   if (haystack.includes("waste")) return "waste_pattern";
   if (haystack.includes("approv") || haystack.includes("prefer")) return "approval_preference";
