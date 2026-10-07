@@ -56,6 +56,7 @@ import type {
   InventoryEventType
 } from "./domain/inventoryLedger";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
+import { canonicalSupplierDisplayName } from "./domain/supplierDisplayNameIdentity";
 import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord,
@@ -885,7 +886,10 @@ export function requireSupplierAuthorityId(value: unknown, label = "supplier") {
 
 export function requireSupplierDisplayName(value: unknown) {
   const rawName = typeof value === "string" ? value : "";
-  const displayName = rawName.trim().replace(/\s+/g, " ");
+  // MISE-005JW: C-locale display prep (NBSP fold + ASCII whitespace).
+  // Unicode trim / \s would invent equality for non-C whitespace the hosted
+  // COLLATE "C" path leaves alone (complements #691 / #410).
+  const displayName = canonicalSupplierDisplayName(rawName);
   if (
     displayName.length < 1 ||
     displayName.length > SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS ||
