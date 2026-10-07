@@ -22,6 +22,11 @@ import {
 } from "../../services/miseService";
 import type { SupplierRecipientDirectoryEntry } from "../../services/domain/supplierRecipients";
 import {
+  canonicalSupplierSettingsDisplayName,
+  isValidSupplierSettingsDisplayName,
+  supplierSettingsDisplayNamesMatch
+} from "../../services/domain/supplierSettingsNameIdentity";
+import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
@@ -186,8 +191,9 @@ export default function SupplierRecipientsScreen() {
     const key = entry.supplierId;
     if (actionLocksRef.current.has(key)) return;
     const requestedName = draftNames[key] ?? "";
-    const displayName = canonicalSupplierName(requestedName);
-    if (!isValidSupplierName(requestedName)) {
+    // MISE-005JV: C-locale display prep (NBSP fold + ASCII whitespace).
+    const displayName = canonicalSupplierSettingsDisplayName(requestedName);
+    if (!isValidSupplierSettingsDisplayName(requestedName)) {
       setNotice({
         tone: "warning",
         title: copy.invalidNameTitle,
@@ -293,7 +299,11 @@ export default function SupplierRecipientsScreen() {
                 const draftName = draftNames[key] ?? entry.supplierName;
                 const saving = savingKeys.has(key);
                 const emailUnchanged = draftEmail.trim().toLowerCase() === (entry.email ?? "").toLowerCase();
-                const nameUnchanged = canonicalSupplierName(draftName) === entry.supplierName;
+                // MISE-005JV: compare rename drafts under C-locale display prep.
+                const nameUnchanged = supplierSettingsDisplayNamesMatch(
+                  draftName,
+                  entry.supplierName
+                );
                 return (
                   <View
                     key={key}
@@ -400,15 +410,6 @@ export default function SupplierRecipientsScreen() {
 function isValidRecipientEmail(value: string) {
   const normalized = value.trim();
   return normalized.length >= 3 && normalized.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
-}
-
-function canonicalSupplierName(value: string) {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function isValidSupplierName(value: string) {
-  const canonical = canonicalSupplierName(value);
-  return canonical.length >= 1 && canonical.length <= 160 && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
 interface SupplierCopy {
