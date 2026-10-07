@@ -54,12 +54,53 @@ const orderKeywords = /order|supplier|pedido|proveedor|draft|reorder|订货|订�
 const salesKeywords = /sales|revenue|venta|ingreso|sold|cover|销售|营收|营业额/;
 const priorityKeywords = /priorit|prioridad|focus|urgent|today|hoy|优先|今天|今日/;
 const briefingKeywords = /brief|status|overview|summary|how.*(we|we'?re|restaurant)|resumen|estado|概况|简报/;
-const prepKeywords = /prep|mise en place|line|batch|prep list|preparaci[oó]n|备餐|开餐前/;
+// Keep uppercase Ó in the Spanish stem so ALL-CAPS PREPARACIÓN still matches
+// after ASCII C fold (which leaves Latin-1 Ó alone, unlike Unicode toLowerCase).
+const prepKeywords = /prep|mise en place|line|batch|prep list|preparaci[oóÓ]n|备餐|开餐前/;
 const wasteKeywords = /waste|spoil|overstock|excess|desperdicio|exceso|损耗|积压|过期/;
+
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005KE). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a stock intent
+ * (for example `stocK` → `stock`) the ASCII C path would refuse.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so Ask Mise intent haystacks stay aligned with
+ * server helpers that btrim under COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * Normalize one Ask Mise intent-classification token to ASCII C case fold +
+ * ASCII-only end trim. Mid-string non-C whitespace is preserved so em-space /
+ * NBSP cannot invent keyword identity across tokens that Unicode trim would
+ * collapse. Latin-1 uppercase accents used by multilingual stems (Ó) are
+ * left intact; the prep regex accepts them explicitly.
+ */
+export function normalizeAskMiseIntentToken(value: string | null | undefined): string {
+  if (typeof value !== "string") return "";
+  return asciiCLower(asciiCTrim(value));
+}
+
+/**
+ * Build the classification haystack for an Ask Mise question. Pinned to ASCII C
+ * so Kelvin lookalikes cannot invent stock/waste/prep (or sibling) intents that
+ * steer grounded operational answers.
+ */
+export function askMiseIntentHaystack(question: string | null | undefined): string {
+  return normalizeAskMiseIntentToken(question);
+}
 
 /** Classify a manager question against operational intents. */
 export function classifyAskMiseIntent(question: string): AskMiseIntent {
-  const normalized = question.trim().toLowerCase();
+  const normalized = askMiseIntentHaystack(question);
   if (!normalized) return "general";
   if (prepKeywords.test(normalized)) return "prep";
   if (wasteKeywords.test(normalized)) return "waste";
