@@ -15,6 +15,7 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
+import { scanItemMatchesQuery } from "../../services/domain/scanItemSearchIdentity";
 import { fetchInventoryItems } from "../../services/miseService";
 import type { InventoryItem } from "../../types/mise";
 
@@ -28,16 +29,6 @@ function BackAction() {
       <ArrowLeft size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />
     </ActionIcon>
   );
-}
-
-function matchesQuery(item: InventoryItem, query: string) {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  const haystack = [item.item_name, item.id, item.category, item.supplier_name, item.unit]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(needle);
 }
 
 export default function ScanItemScreen() {
@@ -101,7 +92,7 @@ export default function ScanItemScreen() {
 
   const visibleItems = loadedRestaurantId === restaurant?.id ? items : [];
   const searchMatches = useMemo(
-    () => visibleItems.filter((item) => matchesQuery(item, query)).slice(0, 40),
+    () => visibleItems.filter((item) => scanItemMatchesQuery(item, query)).slice(0, 40),
     [query, visibleItems]
   );
 
