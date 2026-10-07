@@ -24,7 +24,11 @@ import type { OperationalFindingDecision } from "../domain/operationalFindingDec
 import type { InventoryEvent } from "../domain/inventoryLedger";
 import type { PurchaseDecisionEvent } from "../domain/purchaseDecisionMemory";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
-import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
+import {
+  DEMO_DATASET,
+  isDemoDatasetRestaurantName,
+  type DemoDatasetId
+} from "./demoDataset";
 import {
   buildDemoSupplierCatalog,
   demoSupplierIdForLegacyName,
@@ -571,9 +575,9 @@ export function createInitialDemoState(
  * groups, selects recipients, and serializes content by supplier_id.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
-  const referenceRestaurantNameMatches =
-    raw.restaurants?.[0]?.name?.trim().toLowerCase() ===
-    DEMO_DATASET.restaurant.name.toLowerCase();
+  const referenceRestaurantNameMatches = isDemoDatasetRestaurantName(
+    raw.restaurants?.[0]?.name
+  );
   const referenceInventoryNames = new Set(["Bell peppers", "Chicken thigh", "Jasmine rice"]);
   const referenceInventoryMatchCount = (raw.inventoryItems ?? []).filter((item) =>
     referenceInventoryNames.has(item.item_name)
