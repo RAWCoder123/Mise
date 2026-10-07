@@ -22,6 +22,7 @@ import {
   queueInventoryOperation,
   type DeliveryHistoryEntry
 } from "../../services/miseService";
+import { logDeliveryItemMatchesTypedSearchQuery } from "../../services/domain/inventoryTypedSearchIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -171,16 +172,10 @@ export default function LogDeliveryScreen() {
   const visibleItems = hubReady ? items : [];
   const visibleHistory = hubReady ? history : [];
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return visibleItems.slice(0, 40);
-    return visibleItems
-      .filter((item) => {
-        const haystack = [item.item_name, item.id, item.category, item.supplier_name]
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(needle);
-      })
-      .slice(0, 40);
+    const matches = visibleItems.filter((item) =>
+      logDeliveryItemMatchesTypedSearchQuery(item, query)
+    );
+    return matches.slice(0, 40);
   }, [query, visibleItems]);
 
   function resetForm(keepSelection = false) {
