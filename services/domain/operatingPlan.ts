@@ -411,15 +411,43 @@ export function hourInTimeZone(date: Date, timeZone: string): number {
   return date.getUTCHours();
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005JO). Only ASCII A-Z is folded; Unicode-aware `toLowerCase` /
+ * `toLocaleLowerCase` would map Kelvin sign `K` → `k` and invent a prep-window
+ * token the hosted COLLATE C path would not.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so prep-window tokens stay aligned with server
+ * helpers that btrim under COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * Prep-window token identity for mapping restaurant `prepWindows` profile
+ * strings onto service-window descriptors. Pinned to ASCII C so NBSP / Kelvin
+ * cannot invent or suppress a window the operator did not enter in ASCII.
+ */
+export function normalizeOperatingPlanPrepWindowToken(value: string) {
+  return asciiCLower(asciiCTrim(value));
+}
+
 function evidenceFromPrepWindows(prepWindows: readonly string[]): Map<ServiceWindowId, string> {
   const evidence = new Map<ServiceWindowId, string>();
   for (const raw of prepWindows) {
-    const token = raw.trim().toLocaleLowerCase("en-US");
+    const token = normalizeOperatingPlanPrepWindowToken(raw);
     if (!token) continue;
     const windowId = parsePrepWindowToken(token);
     if (!windowId) continue;
+    const display = asciiCTrim(raw) || raw;
     const existing = evidence.get(windowId);
-    evidence.set(windowId, existing ? `${existing}; ${raw.trim()}` : raw.trim());
+    evidence.set(windowId, existing ? `${existing}; ${display}` : display);
   }
   return evidence;
 }
