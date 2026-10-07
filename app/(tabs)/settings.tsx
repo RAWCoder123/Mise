@@ -44,6 +44,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { matchesAccountDeletionConfirmWord } from "../../services/domain/accountDeletionConfirmIdentity";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type {
@@ -198,6 +199,13 @@ export default function SettingsScreen() {
 
   async function removeAccount() {
     if (deletingAccount || !restaurant || !restaurantActionsEditable) return;
+    // MISE-005KG: re-check confirmation under ASCII C identity before the
+    // irreversible delete path. Do not trust button-disabled state alone —
+    // Unicode trim/toLowerCase would invent a match from NBSP padding.
+    const expectedConfirmWord = t("settings.account.deleteConfirmWord");
+    if (!matchesAccountDeletionConfirmWord(deleteConfirmText, expectedConfirmWord)) {
+      return;
+    }
     setDeletingAccount(true);
     setMessage(null);
     try {
@@ -532,8 +540,11 @@ export default function SettingsScreen() {
                   disabled={
                     !restaurantActionsEditable ||
                     deletingAccount ||
-                    deleteConfirmText.trim().toLowerCase() !==
-                      t("settings.account.deleteConfirmWord").toLowerCase()
+                    // MISE-005KG: ASCII C confirm identity (not Unicode trim/lower).
+                    !matchesAccountDeletionConfirmWord(
+                      deleteConfirmText,
+                      t("settings.account.deleteConfirmWord")
+                    )
                   }
                   fullWidth
                 />
