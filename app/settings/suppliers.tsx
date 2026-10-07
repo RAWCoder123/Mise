@@ -22,6 +22,11 @@ import {
 } from "../../services/miseService";
 import type { SupplierRecipientDirectoryEntry } from "../../services/domain/supplierRecipients";
 import {
+  isValidSupplierSettingsRecipientEmail,
+  normalizeSupplierSettingsRecipientEmail,
+  supplierSettingsEmailsMatch
+} from "../../services/domain/supplierSettingsEmailIdentity";
+import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
@@ -128,8 +133,9 @@ export default function SupplierRecipientsScreen() {
     const restaurantId = restaurant.id;
     const key = entry.supplierId;
     if (actionLocksRef.current.has(key)) return;
-    const email = (draftEmails[key] ?? "").trim();
-    if (!isValidRecipientEmail(email)) {
+    // MISE-005JU: ASCII C trim + case fold — do not invent Kelvin lookalikes.
+    const email = normalizeSupplierSettingsRecipientEmail(draftEmails[key] ?? "");
+    if (!isValidSupplierSettingsRecipientEmail(email)) {
       setNotice({
         tone: "warning",
         title: copy.invalidTitle,
@@ -292,7 +298,11 @@ export default function SupplierRecipientsScreen() {
                 const draftEmail = draftEmails[key] ?? "";
                 const draftName = draftNames[key] ?? entry.supplierName;
                 const saving = savingKeys.has(key);
-                const emailUnchanged = draftEmail.trim().toLowerCase() === (entry.email ?? "").toLowerCase();
+                // MISE-005JU: ASCII C equality — Kelvin must not disable Save.
+                const emailUnchanged = supplierSettingsEmailsMatch(
+                  draftEmail,
+                  entry.email ?? ""
+                );
                 const nameUnchanged = canonicalSupplierName(draftName) === entry.supplierName;
                 return (
                   <View
@@ -395,11 +405,6 @@ export default function SupplierRecipientsScreen() {
       )}
     </Screen>
   );
-}
-
-function isValidRecipientEmail(value: string) {
-  const normalized = value.trim();
-  return normalized.length >= 3 && normalized.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
 }
 
 function canonicalSupplierName(value: string) {
