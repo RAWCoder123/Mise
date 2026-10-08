@@ -7,8 +7,15 @@ import {
   telemetryPayloadFits
 } from "../../../services/domain/telemetrySecurity.ts";
 import { HttpError, jsonResponse, readJsonObject } from "./http.ts";
+import { requireCanonicalEdgeUuid } from "./uuidIdentity.ts";
 
 export { HttpError, jsonHeaders, jsonResponse, MAX_JSON_BODY_BYTES, readJsonObject } from "./http.ts";
+export {
+  asciiCLowerUuidToken,
+  asciiTrimUuidToken,
+  canonicalizeEdgeUuid,
+  requireCanonicalEdgeUuid
+} from "./uuidIdentity.ts";
 
 export type RestaurantRole = "owner" | "admin" | "manager" | "staff";
 export type PosProvider = "square" | "toast" | "clover" | "lightspeed" | "manual_csv";
@@ -124,12 +131,20 @@ export function requireString(value: unknown, fieldName: string) {
   return value.trim();
 }
 
+/**
+ * Edge UUID identity (MISE-005KP). ASCII-only end trim + ASCII C case fold
+ * before the UUID shape check so Unicode trim cannot invent a canonical ID
+ * from NBSP / em-space padding around an otherwise-valid UUID.
+ */
 export function requireUuid(value: unknown, fieldName: string) {
-  const text = requireString(value, fieldName).toLowerCase();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text)) {
-    throw new HttpError(400, `${fieldName} must be a valid UUID.`);
+  try {
+    return requireCanonicalEdgeUuid(value, fieldName);
+  } catch (error) {
+    throw new HttpError(
+      400,
+      error instanceof Error ? error.message : `${fieldName} must be a valid UUID.`
+    );
   }
-  return text;
 }
 
 export function requireIsoDateString(value: unknown, fieldName: string) {
