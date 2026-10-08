@@ -56,6 +56,7 @@ import type {
   InventoryEventType
 } from "./domain/inventoryLedger";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
+import { requireCanonicalSupplierAuthorityUuid } from "./domain/supplierAuthorityIdentity";
 import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord,
@@ -870,17 +871,9 @@ function supplierSendBlockerDescription(code: SupplierSendContentBlockerCode) {
 export const SUPPLIER_RECIPIENT_NAME_MAX_CHARACTERS = 160;
 export const SUPPLIER_RECIPIENT_EMAIL_MAX_CHARACTERS = 254;
 
+/** MISE-005KW: supplier-authority UUID identity pinned to ASCII C trim/fold. */
 export function requireSupplierAuthorityId(value: unknown, label = "supplier") {
-  const supplierId = typeof value === "string" ? value.trim() : "";
-  if (
-    !supplierId ||
-    supplierId.length > 128 ||
-    hasControlCharacters(supplierId) ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(supplierId)
-  ) {
-    throw new Error(`Missing ${label} identity.`);
-  }
-  return supplierId;
+  return requireCanonicalSupplierAuthorityUuid(value, label);
 }
 
 export function requireSupplierDisplayName(value: unknown) {
