@@ -88,7 +88,12 @@ const serviceOnlyPublicTables = new Set([
   "outreach_suppressions"
 ]);
 
-const nonTenantEdgeFunctions = new Set(["outreach-agent", "outreach-unsubscribe", "outreach-webhook"]);
+const nonTenantEdgeFunctions = new Set([
+  "outreach-agent",
+  "outreach-unsubscribe",
+  "outreach-webhook",
+  "run-scheduled-recalculations"
+]);
 const providerCallbackEdgeFunctions = new Set([
   "gmail-oauth-callback",
   "square-oauth-callback",
@@ -242,6 +247,13 @@ for (const file of functionSources) {
     if (functionName === "outreach-agent") {
       if (!/await\s+requireAgentSecret\(req\);[\s\S]*?await\s+readJsonObject\(req\);[\s\S]*?createServiceClient\(\)/.test(contents)) {
         failures.push(`${file}: service-only authentication must complete before body handling or service credentials are loaded`);
+      }
+    } else if (functionName === "run-scheduled-recalculations") {
+      if (!/await\s+requireRunnerSecret\(req\);[\s\S]*?await\s+readJsonObject\(req\);[\s\S]*?createServiceClient\(\)/.test(contents)) {
+        failures.push(`${file}: recalculation runner authentication must complete before body handling or service credentials are loaded`);
+      }
+      if (!/MISE_RECALCULATION_RUNNER_SECRET/.test(contents) || !/x-mise-recalculation-secret/.test(contents)) {
+        failures.push(`${file}: recalculation runner must authenticate with a dedicated secret header`);
       }
     } else if (functionName === "outreach-webhook") {
       if (!/new\s+Webhook\(webhookSecret\)\.verify\([\s\S]*?createServiceClient\(\)/.test(contents)) {

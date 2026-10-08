@@ -91,3 +91,6 @@ verify_jwt = false
 
 [functions.outreach-unsubscribe]
 verify_jwt = false
+
+[functions.run-scheduled-recalculations]
+verify_jwt = false

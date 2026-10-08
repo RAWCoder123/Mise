@@ -13,10 +13,10 @@ const repository = getMiseRepository();
  * Dispatches whichever recalculation cycles are due for this restaurant and
  * reports back only what an operator needs to see.
  *
- * Mise has no scheduler and no machine-actor auth path yet, so this is called
- * from an authenticated operator session. A restaurant nobody opens receives no
- * recalculation until someone does; that limitation is recorded in the ledger
- * migration header rather than papered over here.
+ * Interactive path: called from an authenticated operator session (Today/Home).
+ * Unattended path: `supabase/functions/run-scheduled-recalculations` uses a
+ * dedicated runner secret and service-role machine ledger writes. Keep this
+ * member-session entry point for immediate operator-driven refresh.
  *
  * Never throws. A background loop that breaks the screen it is trying to keep
  * accurate is worse than one that quietly defers.
