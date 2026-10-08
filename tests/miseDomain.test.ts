@@ -648,6 +648,17 @@ test("demo recommendation rebuild uses full history without browser runtime erro
   const chicken = state.inventoryItems.find((item) => item.item_name === "Chicken breast");
   assert.ok(chicken);
   chicken.last_updated = "2026-06-20T09:00:00.000Z";
+  // Keep count evidence older than the handled recommendation so rebuild does
+  // not reopen a pending row from newer physical-count authority.
+  state.inventoryEvents = state.inventoryEvents.map((event) =>
+    event.inventoryItemId === chicken.id && event.eventType === "count"
+      ? {
+          ...event,
+          effectiveAt: "2026-06-20T08:00:00.000Z",
+          recordedAt: "2026-06-20T08:00:00.000Z"
+        }
+      : event
+  );
   state.purchaseRecommendations.push({
     id: "rec_browser_regression",
     restaurant_id: DEMO_RESTAURANT_ID,
