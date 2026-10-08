@@ -48,7 +48,12 @@ const trustedStagingVariables = [
   "CHROME_PATH"
 ];
 
-const forbiddenChildName = /(secret|password|service[_-]?role|private[_-]?key|access[_-]?token|refresh[_-]?token)/i;
+/**
+ * Lowercase-only child-env secret markers. Names are Unicode-folded first so
+ * Kelvin lookalikes (`access_toKen`) cannot bypass the refuse-to-pass check
+ * the way a bare `/i` pattern without the Unicode flag would.
+ */
+const forbiddenChildName = /(secret|password|service[_-]?role|private[_-]?key|access[_-]?token|refresh[_-]?token)/;
 
 function pick(source, names) {
   return Object.fromEntries(names.flatMap((name) => source[name] === undefined ? [] : [[name, source[name]]]));
@@ -57,7 +62,7 @@ function pick(source, names) {
 export function minimalChildEnv(extra = {}, source = process.env) {
   const env = { ...pick(source, baseChildVariables), ...extra };
   for (const name of Object.keys(env)) {
-    if (forbiddenChildName.test(name)) {
+    if (forbiddenChildName.test(name.toLowerCase())) {
       throw new Error(`Refusing to pass trusted value ${name} to a QA subprocess.`);
     }
   }

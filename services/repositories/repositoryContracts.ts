@@ -473,8 +473,13 @@ export interface RestaurantDataExport {
   };
 }
 
+/**
+ * Lowercase-only protected export key markers. Keys are Unicode-folded first so
+ * Kelvin lookalikes (`access_toKen`) cannot bypass the export scrub the way a
+ * bare `/i` pattern without the Unicode flag would.
+ */
 const restaurantExportProtectedKeyPattern =
-  /(?:^|_)(?:access_token|refresh_token|oauth_token|client_secret|api_key|password|authorization|pkce_verifier|claim_token|credential_id|secret_id)(?:$|_)/i;
+  /(?:^|_)(?:access_token|refresh_token|oauth_token|client_secret|api_key|password|authorization|pkce_verifier|claim_token|credential_id|secret_id)(?:$|_)/;
 
 function assertRestaurantExportProtectedDataAbsent(value: unknown): void {
   if (Array.isArray(value)) {
@@ -483,7 +488,7 @@ function assertRestaurantExportProtectedDataAbsent(value: unknown): void {
   }
   if (!value || typeof value !== "object") return;
   for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-    if (restaurantExportProtectedKeyPattern.test(key)) {
+    if (restaurantExportProtectedKeyPattern.test(key.toLowerCase())) {
       throw new Error("Restaurant export contained protected provider data.");
     }
     assertRestaurantExportProtectedDataAbsent(nested);

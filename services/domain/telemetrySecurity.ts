@@ -16,12 +16,21 @@ export const TELEMETRY_MAX_PAYLOAD_BYTES = 8 * 1024;
 export const EXTERNAL_ERROR_MESSAGE = "Mise operation failed.";
 export const TELEMETRY_NOT_APPLICABLE = "not_applicable";
 
+/**
+ * Lowercase-only secret markers. Callers must Unicode-fold the haystack first
+ * (`toLowerCase`) so Kelvin lookalikes still match — e.g. `toKen` → `token`.
+ * Case-insensitive `/i` without the Unicode flag does not fold Kelvin and
+ * would let lookalike secret keys/values bypass redaction.
+ *
+ * Intentionally opposite of ASCII C identity tips: scrubbers want Unicode
+ * inventing so secrets cannot evade markers with lookalike code points.
+ */
 const forbiddenTelemetryMarker =
-  /(token|secret|password|authorization|cookie|credential|private|service[_-]?role|api[_-]?key)/i;
+  /(token|secret|password|authorization|cookie|credential|private|service[_-]?role|api[_-]?key)/;
 const forbiddenTelemetryKeyMarker =
-  /(email|phone|name|address|contact|recipient|sender|note|message|body|payload)/i;
-const emailLikeValuePattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
-const bearerLikeValuePattern = /\bbearer\s+[A-Za-z0-9._~+/-]+=*/i;
+  /(email|phone|name|address|contact|recipient|sender|note|message|body|payload)/;
+const emailLikeValuePattern = /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/;
+const bearerLikeValuePattern = /\bbearer\s+[a-z0-9._~+/-]+=*/;
 const safeErrorTypePattern = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 const safeErrorCodePattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
 const safeCorrelationValuePattern = /^[A-Za-z0-9][A-Za-z0-9_.:/@+-]{0,127}$/;
@@ -58,6 +67,22 @@ export function sanitizeTelemetryRecord(input: unknown): Record<string, SafeTele
   return { telemetry_truncated: true };
 }
 
+/**
+ * Unicode case-fold telemetry text before secret-marker checks so Kelvin
+ * lookalikes (`K`) cannot bypass redaction the way ASCII-only `/i` would.
+ */
+export function unicodeFoldTelemetryText(value: string) {
+  return value.toLowerCase();
+}
+
+export function hasForbiddenTelemetryMarker(value: string) {
+  return forbiddenTelemetryMarker.test(unicodeFoldTelemetryText(value));
+}
+
+export function hasForbiddenTelemetryKeyMarker(value: string) {
+  return forbiddenTelemetryKeyMarker.test(unicodeFoldTelemetryText(value));
+}
+
 export function safeExternalError(error: unknown) {
   const candidateType = error instanceof Error ? error.name : "Error";
   const candidateCode =
@@ -65,13 +90,13 @@ export function safeExternalError(error: unknown) {
       ? (error as { code?: unknown }).code
       : undefined;
   const type =
-    safeErrorTypePattern.test(candidateType) && !forbiddenTelemetryMarker.test(candidateType)
+    safeErrorTypePattern.test(candidateType) && !hasForbiddenTelemetryMarker(candidateType)
       ? candidateType
       : "Error";
   const code =
     typeof candidateCode === "string" &&
     safeErrorCodePattern.test(candidateCode) &&
-    !forbiddenTelemetryMarker.test(candidateCode)
+    !hasForbiddenTelemetryMarker(candidateCode)
       ? candidateCode
       : undefined;
 
@@ -108,14 +133,15 @@ function sanitizeTelemetryValue(
   depth: number,
   state: SanitizeState
 ): SafeTelemetryValue {
-  if (forbiddenTelemetryMarker.test(key) || forbiddenTelemetryKeyMarker.test(key)) {
+  if (hasForbiddenTelemetryMarker(key) || hasForbiddenTelemetryKeyMarker(key)) {
     return "[redacted]";
   }
   if (typeof value === "string") {
+    const folded = unicodeFoldTelemetryText(value);
     if (
-      forbiddenTelemetryMarker.test(value) ||
-      emailLikeValuePattern.test(value) ||
-      bearerLikeValuePattern.test(value)
+      forbiddenTelemetryMarker.test(folded) ||
+      emailLikeValuePattern.test(folded) ||
+      bearerLikeValuePattern.test(folded)
     ) {
       return "[redacted]";
     }
@@ -158,7 +184,7 @@ function safeCorrelationValue(value: unknown, fallback: string) {
   const normalized = value.trim();
   if (
     !safeCorrelationValuePattern.test(normalized) ||
-    forbiddenTelemetryMarker.test(normalized)
+    hasForbiddenTelemetryMarker(normalized)
   ) {
     return fallback;
   }
