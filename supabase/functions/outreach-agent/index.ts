@@ -13,6 +13,7 @@ import {
   type OutreachLeadInput
 } from "../../../services/domain/outreach.ts";
 import { HttpError, jsonResponse, readJsonObject } from "../_shared/http.ts";
+import { requireCanonicalEdgeUuid } from "../_shared/uuidIdentity.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -954,12 +955,22 @@ function optionalInteger(value: unknown, fieldName: string, minimum: number, max
   return value as number;
 }
 
+/**
+ * Outreach campaign/lead/message UUID identity (MISE-005KQ).
+ * Local requireUuid previously used Unicode trim + toLowerCase via
+ * requireString, which could invent a canonical UUID from NBSP / em-space
+ * padding. Pin ASCII-only trim + ASCII C fold through the shared helper;
+ * do not retarget shared mise.ts requireUuid here (that is MISE-005KP).
+ */
 function requireUuid(value: unknown, fieldName: string) {
-  const text = requireString(value, fieldName, 50).toLowerCase();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text)) {
-    throw new HttpError(400, `${fieldName} must be a valid UUID.`);
+  try {
+    return requireCanonicalEdgeUuid(value, fieldName);
+  } catch (error) {
+    throw new HttpError(
+      400,
+      error instanceof Error ? error.message : `${fieldName} must be a valid UUID.`
+    );
   }
-  return text;
 }
 
 function requireUuidArray(value: unknown, fieldName: string, maximumItems: number) {
