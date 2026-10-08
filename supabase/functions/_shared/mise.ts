@@ -7,6 +7,11 @@ import {
   telemetryPayloadFits
 } from "../../../services/domain/telemetrySecurity.ts";
 import { HttpError, jsonResponse, readJsonObject } from "./http.ts";
+import {
+  requireCanonicalEdgeEnum,
+  requireCanonicalEdgeIsoDateString,
+  requireCanonicalEdgeString
+} from "./stringIdentity.ts";
 
 export { HttpError, jsonHeaders, jsonResponse, MAX_JSON_BODY_BYTES, readJsonObject } from "./http.ts";
 
@@ -117,11 +122,23 @@ export async function requireRestaurantRole(
   return role;
 }
 
+/**
+ * Edge required-string identity (MISE-005KT). ASCII-only end trim so Unicode
+ * trim cannot invent a normalized enum, ISO date, confirmation, or related
+ * Edge string identity from NBSP / em-space padding.
+ *
+ * UUID canonicalization remains on `requireUuid` (MISE-005KP tip) and is not
+ * retargeted here.
+ */
 export function requireString(value: unknown, fieldName: string) {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new HttpError(400, `${fieldName} is required.`);
+  try {
+    return requireCanonicalEdgeString(value, fieldName);
+  } catch (error) {
+    throw new HttpError(
+      400,
+      error instanceof Error ? error.message : `${fieldName} is required.`
+    );
   }
-  return value.trim();
 }
 
 export function requireUuid(value: unknown, fieldName: string) {
@@ -133,12 +150,14 @@ export function requireUuid(value: unknown, fieldName: string) {
 }
 
 export function requireIsoDateString(value: unknown, fieldName: string) {
-  const text = requireString(value, fieldName);
-  const timestamp = Date.parse(text);
-  if (!Number.isFinite(timestamp)) {
-    throw new HttpError(400, `${fieldName} must be a valid ISO date string.`);
+  try {
+    return requireCanonicalEdgeIsoDateString(value, fieldName);
+  } catch (error) {
+    throw new HttpError(
+      400,
+      error instanceof Error ? error.message : `${fieldName} must be a valid ISO date string.`
+    );
   }
-  return text;
 }
 
 export function requireEnum<TValue extends string>(
@@ -146,11 +165,14 @@ export function requireEnum<TValue extends string>(
   fieldName: string,
   allowedValues: readonly TValue[]
 ): TValue {
-  const text = requireString(value, fieldName);
-  if (!allowedValues.includes(text as TValue)) {
-    throw new HttpError(400, `${fieldName} is not supported.`);
+  try {
+    return requireCanonicalEdgeEnum(value, fieldName, allowedValues);
+  } catch (error) {
+    throw new HttpError(
+      400,
+      error instanceof Error ? error.message : `${fieldName} is not supported.`
+    );
   }
-  return text as TValue;
 }
 
 export function safeFunctionMetadata(input: Record<string, unknown>) {
