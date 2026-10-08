@@ -51,17 +51,51 @@ interface BuildSupplierSendContentInput {
   recommendations: readonly PurchaseRecommendation[];
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/**
+ * ASCII C mailbox shape — mirrors SQL
+ * `^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$` under COLLATE "C"
+ * (MISE-005KM; complements open MISE-005JL / #681 and MISE-005IU / #663).
+ * Uses an explicit ASCII whitespace class instead of Unicode `\s`.
+ */
+const ASCII_C_MAILBOX_SHAPE =
+  /^[^ \t\n\r\f\v@]+@[^ \t\n\r\f\v@]+\.[^ \t\n\r\f\v@]+$/;
 const CONTENT_MAX_BYTES = 65_536;
 const CONTENT_MAX_LINES = 250;
 
-function normalizedEmail(value: string | null | undefined) {
-  const normalized = value?.trim().toLowerCase() ?? "";
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005KM). Only ASCII A-Z is folded; Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent a From/To mailbox the
+ * hosted COLLATE C supplier-send path would not treat as identical.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so demo supplier-send From/To addresses stay
+ * aligned with server helpers that btrim under COLLATE "C".
+ */
+function asciiCTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * Normalize one demo supplier-send mailbox identity to ASCII C case fold +
+ * ASCII-only end trim + ASCII mailbox shape. Returns null when the value is
+ * missing or not a durable mailbox under those rules. Kelvin lookalikes must
+ * not invent ordinary ASCII addresses that change the reviewed send fingerprint.
+ */
+export function normalizeSupplierSendEmail(
+  value: string | null | undefined
+): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = asciiCTrim(asciiCLower(value));
   if (
     normalized.length < 3 ||
     normalized.length > 254 ||
     /[\u0000-\u001f\u007f]/.test(normalized) ||
-    !EMAIL_PATTERN.test(normalized)
+    !ASCII_C_MAILBOX_SHAPE.test(normalized)
   ) {
     return null;
   }
@@ -156,7 +190,7 @@ export async function buildCanonicalSupplierSendContent(
   if (input.order.status !== "draft") blockers.add("order_not_draft");
 
   const from = input.emailConnection?.status === "connected"
-    ? normalizedEmail(input.emailConnection.sender_email)
+    ? normalizeSupplierSendEmail(input.emailConnection.sender_email)
     : null;
   if (!from) blockers.add("gmail_not_connected");
 
@@ -166,7 +200,7 @@ export async function buildCanonicalSupplierSendContent(
       recipient.supplier_id === input.order.supplier_id
   );
   const to = matchingRecipients.length === 1
-    ? normalizedEmail(matchingRecipients[0]?.email)
+    ? normalizeSupplierSendEmail(matchingRecipients[0]?.email)
     : null;
   if (matchingRecipients.length === 0 || !matchingRecipients[0]?.email) {
     blockers.add("supplier_email_missing");
