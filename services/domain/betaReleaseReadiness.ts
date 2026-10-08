@@ -174,9 +174,29 @@ export function evaluateBetaReleaseReadiness(
   };
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005KO). Only ASCII A–Z is folded so hex A–F normalize without
+ * Unicode case mappings.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * ASCII-only end trim; Unicode `trim()` would strip NBSP / em-space
+ * padding and invent a normalized commit identity.
+ */
+function asciiTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
 function normalizeCommit(value: string | null) {
-  if (!value || !/^[0-9a-f]{40}$/i.test(value.trim())) return null;
-  return value.trim().toLowerCase();
+  if (!value) return null;
+  const trimmed = asciiTrim(value);
+  // Fail closed on anything outside ASCII hex after ASCII trim.
+  if (!/^[0-9a-fA-F]{40}$/.test(trimmed)) return null;
+  return asciiCLower(trimmed);
 }
 
 function isTimestamp(value: string | null) {
