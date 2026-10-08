@@ -347,8 +347,28 @@ function percentage(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 10_000) / 100 : 0;
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005KN; complements open MISE-005JA / #669 inventoryUnits client pin
+ * and MISE-005IV / #664 canonical-unit SQL lower). Only ASCII A-Z is folded;
+ * Unicode-aware `toLocaleLowerCase` / `toLowerCase` would map Kelvin sign
+ * `K` → `k` and invent a `kg` mass alias (1000× grams) from lookalike input.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Normalize one operational unit token to ASCII C case fold + ASCII-only
+ * end trim / whitespace collapse, then strip `.` so aliases like `fl. oz.`
+ * still resolve. Kelvin lookalikes must not invent ordinary ASCII unit keys
+ * that change forecast/draft quantity conversion.
+ */
 function normalizeUnit(value: string) {
-  return value.trim().toLocaleLowerCase().replace(/\./g, "").replace(/\s+/g, " ");
+  return asciiCLower(value)
+    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "")
+    .replace(/\./g, "")
+    .replace(/[ \t\n\r\f\v]+/g, " ");
 }
 
 function failedQuantity(blocker: MappingBlocker): OperationalQuantityResult {
