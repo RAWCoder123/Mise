@@ -1,4 +1,9 @@
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
+import {
+  isPilotReadinessBlockedError,
+  isPilotReadinessUnavailableError,
+  requirePilotCanRecommend
+} from "./pilotReadiness";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -19,10 +24,16 @@ export async function generateInsightsFromSalesAndInventory(restaurantId: string
 }
 
 export async function generatePurchaseRecommendations(restaurantId: string) {
-  const data = await repository.fetchPlanningData(restaurantId);
-  const recommendationHistory = await repository.fetchRecommendationHistory(restaurantId);
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+
+  // Fail closed: unverified POS/count/recipe evidence must not create pending orders.
+  await requirePilotCanRecommend(normalizedRestaurantId);
+
+  const data = await repository.fetchPlanningData(normalizedRestaurantId);
+  const recommendationHistory = await repository.fetchRecommendationHistory(normalizedRestaurantId);
   const inserts = buildRecommendationInserts(
-    restaurantId,
+    normalizedRestaurantId,
     data.inventoryItems,
     data.sales,
     data.menuItemIngredients,
@@ -31,26 +42,19 @@ export async function generatePurchaseRecommendations(restaurantId: string) {
     {},
     data.providerMappings
   );
-  await repository.replacePendingRecommendations(restaurantId, inserts);
+  await repository.replacePendingRecommendations(normalizedRestaurantId, inserts);
 }
 
 export async function regenerateOperationalSignals(restaurantId: string) {
+  const normalizedRestaurantId = restaurantId.trim();
+  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+
   const [data, recommendationHistory] = await Promise.all([
-    repository.fetchPlanningData(restaurantId),
-    repository.fetchRecommendationHistory(restaurantId)
+    repository.fetchPlanningData(normalizedRestaurantId),
+    repository.fetchRecommendationHistory(normalizedRestaurantId)
   ]);
-  const recommendations = buildRecommendationInserts(
-    restaurantId,
-    data.inventoryItems,
-    data.sales,
-    data.menuItemIngredients,
-    recommendationHistory,
-    data.operatingDate,
-    {},
-    data.providerMappings
-  );
   const insights = buildInsightsFromData(
-    restaurantId,
+    normalizedRestaurantId,
     data.inventoryItems,
     data.sales,
     data.menuItemIngredients,
@@ -58,5 +62,29 @@ export async function regenerateOperationalSignals(restaurantId: string) {
     {},
     data.providerMappings
   );
-  await repository.replaceOperationalSignals(restaurantId, recommendations, insights);
+
+  // Insights remain useful before the operating loop is ready. Pending purchase
+  // recommendations do not: publish an empty set when readiness is incomplete
+  // or unverifiable so operators never see untrustworthy order suggestions.
+  let recommendations: ReturnType<typeof buildRecommendationInserts> = [];
+  try {
+    await requirePilotCanRecommend(normalizedRestaurantId);
+    recommendations = buildRecommendationInserts(
+      normalizedRestaurantId,
+      data.inventoryItems,
+      data.sales,
+      data.menuItemIngredients,
+      recommendationHistory,
+      data.operatingDate,
+      {},
+      data.providerMappings
+    );
+  } catch (error) {
+    if (!isPilotReadinessBlockedError(error) && !isPilotReadinessUnavailableError(error)) {
+      throw error;
+    }
+    recommendations = [];
+  }
+
+  await repository.replaceOperationalSignals(normalizedRestaurantId, recommendations, insights);
 }

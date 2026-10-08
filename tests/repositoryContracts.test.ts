@@ -57,8 +57,15 @@ test("recompute paths use the bounded history fetch instead of full recommendati
   const inventory = readFileSync("services/application/inventory.ts", "utf8");
 
   for (const source of [recalculations, inventory]) {
-    assert.match(source, /repository\.fetchRecommendationHistory\(restaurantId\)/);
+    assert.match(
+      source,
+      /repository\.fetchRecommendationHistory\((?:restaurantId|normalizedRestaurantId)\)/
+    );
     assert.doesNotMatch(source, /fetchPurchaseRecommendations\(restaurantId,\s*"all"\)/);
+    assert.doesNotMatch(
+      source,
+      /fetchPurchaseRecommendations\(normalizedRestaurantId,\s*"all"\)/
+    );
   }
 });
 

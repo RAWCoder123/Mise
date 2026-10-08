@@ -68,7 +68,7 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 13;
+  schema_version: 14;
   restaurants: Restaurant[];
   users: AppUser[];
   /** Durable tenant-scoped supplier identities. Names are presentation only. */
@@ -333,7 +333,7 @@ export function createInitialDemoState(
       supplier_name: "Dry Goods Wholesale",
       last_updated: now
     }
-  ];
+  ].map(withVerifiedDemoCanonicalUnits);
 
   const menuItemIngredients: MenuItemIngredient[] = [
     ingredient("00000000-0000-4000-8000-000000000201", "Chicken Bowl", itemIds.chicken, 0.5, "lbs"),
@@ -357,7 +357,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 13,
+    schema_version: 14,
     restaurants: [restaurant],
     users: [user],
     suppliers: buildDemoSupplierCatalog(
@@ -519,7 +519,7 @@ export function createInitialDemoState(
     },
     autonomyRules: [],
     actionOutcomes: [],
-    inventoryEvents: [],
+    inventoryEvents: seedDemoPhysicalCountEvents(inventoryItems, nowDate),
     inventoryCountSessions: [],
     supplierDeliveries: [],
     supplierDeliveryItems: [],
@@ -569,6 +569,9 @@ export function createInitialDemoState(
  * Version 12 introduces durable tenant-scoped supplier UUIDs. Exact normalized
  * names are used once to repair legacy state; every subsequent demo workflow
  * groups, selects recipients, and serializes content by supplier_id.
+ * Version 14 seeds fresh physical-count ledger events and verified canonical
+ * unit metadata for every inventory item so pilot readiness canRecommend matches
+ * the demo operating loop without inventing mass/volume conversions.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const referenceRestaurantNameMatches =
@@ -624,10 +627,10 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       attached.restaurant_id,
       attached.supplier_id
     );
-    return {
+    return withVerifiedDemoCanonicalUnits({
       ...attached,
       supplier_name: supplier?.display_name ?? attached.supplier_name
-    };
+    });
   });
   const supplierOrders = sourceSupplierOrders.map((order) => ({
     ...attachDemoSupplierIdentity(order, suppliers, allowLegacySupplierNameRepair),
@@ -734,7 +737,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 13,
+    schema_version: 14,
     restaurants,
     users: raw.users ?? seeded.users,
     suppliers,
@@ -784,7 +787,13 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     inventoryEvents:
       Array.isArray(raw.inventoryEvents) &&
       !(usesReferenceDataset && raw.inventoryEvents.length === 0)
-        ? raw.inventoryEvents
+        ? ensureDemoPhysicalCountEvents(
+            raw.inventoryEvents,
+            inventoryItems,
+            raw.schema_version == null || raw.schema_version < 14
+              ? seeded.inventoryEvents
+              : []
+          )
         : seeded.inventoryEvents,
     inventoryCountSessions: Array.isArray(raw.inventoryCountSessions)
       ? raw.inventoryCountSessions
@@ -809,7 +818,7 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 13 ||
+      raw.schema_version !== 14 ||
       !Array.isArray(raw.suppliers) ||
       JSON.stringify(raw.suppliers ?? []) !== JSON.stringify(suppliers) ||
       sourceInventoryItems.some(
@@ -1198,11 +1207,13 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     }
   };
 
-  state.inventoryItems = state.inventoryItems.map((item) => ({
-    ...item,
-    ...itemUpdates[item.id],
-    last_updated: createdAt
-  }));
+  state.inventoryItems = state.inventoryItems.map((item) =>
+    withVerifiedDemoCanonicalUnits({
+      ...item,
+      ...itemUpdates[item.id],
+      last_updated: createdAt
+    })
+  );
 
   state.menuItemIngredients = [
     ingredient("00000000-0000-4000-8000-000000000201", "General Tso Chicken", itemIds.chicken, 0.42, "lbs"),
@@ -1225,9 +1236,10 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
   ];
 
   state.inventoryEvents = [
+    ...seedDemoPhysicalCountEvents(state.inventoryItems, nowDate),
     demoInventoryEvent({
       id: "demo-waste-peppers-1",
-      sequence: 1,
+      sequence: state.inventoryItems.length + 1,
       inventoryItemId: itemIds.tomatoes,
       quantity: 1800,
       canonicalUnit: "g",
@@ -1236,7 +1248,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     }),
     demoInventoryEvent({
       id: "demo-waste-chicken-1",
-      sequence: 2,
+      sequence: state.inventoryItems.length + 2,
       inventoryItemId: itemIds.chicken,
       quantity: 900,
       canonicalUnit: "g",
@@ -1245,7 +1257,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     }),
     demoInventoryEvent({
       id: "demo-waste-peppers-2",
-      sequence: 3,
+      sequence: state.inventoryItems.length + 3,
       inventoryItemId: itemIds.tomatoes,
       quantity: 1200,
       canonicalUnit: "g",
@@ -1254,7 +1266,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     }),
     demoInventoryEvent({
       id: "demo-waste-rice-1",
-      sequence: 4,
+      sequence: state.inventoryItems.length + 4,
       inventoryItemId: itemIds.rice,
       quantity: 2000,
       canonicalUnit: "g",
@@ -1263,7 +1275,7 @@ function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null,
     }),
     demoInventoryEvent({
       id: "demo-waste-chicken-prior",
-      sequence: 5,
+      sequence: state.inventoryItems.length + 5,
       inventoryItemId: itemIds.chicken,
       quantity: 1000,
       canonicalUnit: "g",
@@ -1815,4 +1827,176 @@ function sale(
     source_pos: sourcePos,
     created_at: createdAt
   };
+}
+
+/** Exact mass multipliers matching `services/domain/operationalMapping.ts`. */
+const DEMO_MASS_TO_GRAMS: Record<string, number> = {
+  g: 1,
+  gram: 1,
+  grams: 1,
+  kg: 1000,
+  kilogram: 1000,
+  kilograms: 1000,
+  oz: 28.349523125,
+  ounce: 28.349523125,
+  ounces: 28.349523125,
+  lb: 453.59237,
+  lbs: 453.59237,
+  pound: 453.59237,
+  pounds: 453.59237
+};
+
+const DEMO_VOLUME_TO_ML: Record<string, number> = {
+  ml: 1,
+  milliliter: 1,
+  milliliters: 1,
+  l: 1000,
+  liter: 1000,
+  liters: 1000
+};
+
+/**
+ * Discrete purchase units that are themselves the counted inventory unit.
+ * Heads and packs are verified as each@1 only when the product is inventoried
+ * by that purchase unit (1 head / 1 pack counted as 1 each). Unknown units are
+ * left unverified — never invent a conversion.
+ */
+const DEMO_DISCRETE_EACH_UNITS = new Set([
+  "each",
+  "ea",
+  "unit",
+  "units",
+  "count",
+  "head",
+  "heads",
+  "pack",
+  "packs"
+]);
+
+function resolveDemoCanonicalForUnit(
+  unitRaw: string
+): { canonical_unit: "g" | "ml" | "each"; canonical_quantity_per_unit: number } | null {
+  const unit = unitRaw.trim().toLowerCase();
+  const massMultiplier = DEMO_MASS_TO_GRAMS[unit];
+  if (massMultiplier !== undefined) {
+    return { canonical_unit: "g", canonical_quantity_per_unit: massMultiplier };
+  }
+  const volumeMultiplier = DEMO_VOLUME_TO_ML[unit];
+  if (volumeMultiplier !== undefined) {
+    return { canonical_unit: "ml", canonical_quantity_per_unit: volumeMultiplier };
+  }
+  if (DEMO_DISCRETE_EACH_UNITS.has(unit)) {
+    return { canonical_unit: "each", canonical_quantity_per_unit: 1 };
+  }
+  return null;
+}
+
+function withVerifiedDemoCanonicalUnits(item: InventoryItem): InventoryItem {
+  const resolved = resolveDemoCanonicalForUnit(item.unit);
+  if (!resolved) {
+    // Unknown purchase units stay unverified. Clear a stale verification that
+    // belonged to a previous unit so preset renames cannot keep mass metadata
+    // on discrete packs/heads.
+    if (item.canonical_unit_verification_status === "verified") {
+      return {
+        ...item,
+        canonical_unit: null,
+        canonical_quantity_per_unit: null,
+        canonical_unit_verification_status: "draft",
+        canonical_unit_verified_at: null,
+        canonical_unit_verified_by: null
+      };
+    }
+    return item;
+  }
+
+  if (
+    item.canonical_unit_verification_status === "verified" &&
+    item.canonical_unit === resolved.canonical_unit &&
+    Number(item.canonical_quantity_per_unit) === resolved.canonical_quantity_per_unit
+  ) {
+    return item;
+  }
+
+  return {
+    ...item,
+    canonical_unit: resolved.canonical_unit,
+    canonical_quantity_per_unit: resolved.canonical_quantity_per_unit,
+    canonical_unit_verification_status: "verified",
+    canonical_unit_verified_at: item.last_updated,
+    canonical_unit_verified_by: DEMO_USER_ID
+  };
+}
+
+function seedDemoPhysicalCountEvents(
+  items: readonly InventoryItem[],
+  nowDate: Date
+): InventoryEvent[] {
+  const countedAt = new Date(nowDate.getTime() - 6 * 60 * 60 * 1000).toISOString();
+  return items.map((item, index) => {
+    const verified = withVerifiedDemoCanonicalUnits(item);
+    const canonicalUnit =
+      verified.canonical_unit === "ml" ? "ml" : verified.canonical_unit === "g" ? "g" : "each";
+    const quantityPerUnit =
+      Number.isFinite(verified.canonical_quantity_per_unit) &&
+      Number(verified.canonical_quantity_per_unit) > 0
+        ? Number(verified.canonical_quantity_per_unit)
+        : 1;
+    return {
+      id: `demo-count-${item.id}`,
+      sequence: index + 1,
+      restaurantId: DEMO_RESTAURANT_ID,
+      inventoryItemId: item.id,
+      eventType: "count" as const,
+      quantity: Math.max(0, item.current_quantity) * quantityPerUnit,
+      canonicalUnit,
+      effectiveAt: countedAt,
+      recordedAt: countedAt,
+      actorUserId: DEMO_USER_ID,
+      source: "demo_count",
+      sourceReference: null,
+      reasonCode: null,
+      clientEventId: `demo:count:${item.id}`,
+      idempotencyKey: `demo_inventory:count:${item.id}`,
+      supersedesEventId: null,
+      metadata: {
+        note: "Seeded opening physical count for the demo operating loop.",
+        simulated: true
+      }
+    };
+  });
+}
+
+/**
+ * When upgrading older demo stores, retain operator waste/history and only add
+ * missing physical-count rows required for pilot readiness.
+ */
+function ensureDemoPhysicalCountEvents(
+  existing: readonly InventoryEvent[],
+  items: readonly InventoryItem[],
+  seeded: readonly InventoryEvent[]
+): InventoryEvent[] {
+  const countedItemIds = new Set(
+    existing
+      .filter((event) => event.eventType === "count")
+      .map((event) => event.inventoryItemId)
+  );
+  const missingCounts = seeded.filter(
+    (event) =>
+      event.eventType === "count" &&
+      items.some((item) => item.id === event.inventoryItemId) &&
+      !countedItemIds.has(event.inventoryItemId)
+  );
+  if (missingCounts.length === 0) return [...existing];
+  const maxSequence = existing.reduce(
+    (maximum, event) => Math.max(maximum, event.sequence),
+    0
+  );
+  return [
+    ...existing,
+    ...missingCounts.map((event, index) => ({
+      ...event,
+      sequence: maxSequence + index + 1
+    }))
+  ];
 }

@@ -27,6 +27,8 @@ import {
   fetchInventoryItemOutlook,
   fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
+  isPilotReadinessBlockedError,
+  isPilotReadinessUnavailableError,
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
@@ -332,9 +334,15 @@ export default function InventoryDetailScreen() {
       await addInventoryItemToOrder(restaurantId, item.id);
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setMessage(t("inventory.detail.added"));
-    } catch {
+    } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
-        setMessage(t("inventory.detail.addError"));
+        if (isPilotReadinessBlockedError(error)) {
+          setMessage(t("inventory.detail.readinessBlocked"));
+        } else if (isPilotReadinessUnavailableError(error)) {
+          setMessage(t("inventory.detail.readinessUnavailable"));
+        } else {
+          setMessage(t("inventory.detail.addError"));
+        }
         setMessageIsError(true);
       }
     } finally {
