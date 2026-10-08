@@ -75,6 +75,12 @@ export function buildCloseReconciliation(input: {
   restaurantTimeZone: string;
   inventoryItems: readonly CloseReconciliationInventoryItem[];
   inventoryEvents: readonly InventoryEvent[];
+  /**
+   * False when the caller's bounded ledger read was truncated. Variance math
+   * requires prior baselines and intervening usage; an incomplete history must
+   * not invent blocked or material results.
+   */
+  ledgerComplete?: boolean;
   /** Optional post-recompute stock-risk item ids; never invents when omitted. */
   stockRiskItemIds?: readonly string[];
   thresholds?: InventoryReconciliationThresholds;
@@ -181,6 +187,21 @@ export function buildCloseReconciliation(input: {
   let blockedCountCount = 0;
   if (countEvents.length === 0) {
     unavailableSignals.push("operating-day physical counts");
+  } else if (input.ledgerComplete === false) {
+    unavailableSignals.push("complete inventory ledger history");
+    findings.push({
+      id: `close-variance-incomplete-ledger:${input.operatingDate}`,
+      category: "data_quality",
+      severity: "warning",
+      title: "Count variance could not be verified",
+      explanation:
+        "The inventory ledger read was truncated, so Mise will not invent blocked or material variance from an incomplete history.",
+      recommendedAction:
+        "Retry closing reconciliation once the full ledger can be read, or review today's counts manually.",
+      inventoryItemId: null,
+      itemName: null,
+      evidenceReferences: ["data-gap:ledger-truncated", ...countEvents.slice(0, 5).map((event) => `inventory-event:${event.id}`)]
+    });
   } else {
     for (const count of countEvents) {
       const itemEvents = input.inventoryEvents.filter(
@@ -349,6 +370,52 @@ export function mergeCloseReconciliationInsights(
     if (result.length >= limit) break;
   }
   return result;
+}
+
+/**
+ * Shared close enrichment for demo client recomputes and hosted Edge refresh.
+ * Keeps waste / variance / carryover findings in the same evidence path so a
+ * hosted `refresh_signals` cannot succeed while discarding close work.
+ */
+export function enrichInsightsWithCloseReconciliation(input: {
+  restaurantId: string;
+  operatingDate: string;
+  restaurantTimeZone: string;
+  inventoryItems: readonly CloseReconciliationInventoryItem[];
+  inventoryEvents: readonly InventoryEvent[];
+  ledgerComplete?: boolean;
+  planningInsights: readonly OperationalInsight[];
+  generatedAt?: string;
+  now?: Date;
+}): { reconciliation: CloseReconciliationSummary; insights: OperationalInsight[] } {
+  const stockRiskItemIds = input.planningInsights
+    .filter(
+      (insight) =>
+        insight.presentation.code === "insight.rule.inventory.stock_risk" &&
+        (insight.severity === "urgent" || insight.severity === "warning")
+    )
+    .map((insight) => insight.id.replace(/^insight_low_/, ""))
+    .filter((id) => id.length > 0 && !id.startsWith("insight_"));
+
+  const reconciliation = buildCloseReconciliation({
+    restaurantId: input.restaurantId,
+    operatingDate: input.operatingDate,
+    restaurantTimeZone: input.restaurantTimeZone,
+    inventoryItems: input.inventoryItems,
+    inventoryEvents: input.inventoryEvents,
+    ledgerComplete: input.ledgerComplete,
+    stockRiskItemIds,
+    generatedAt: input.generatedAt,
+    now: input.now
+  });
+
+  return {
+    reconciliation,
+    insights: mergeCloseReconciliationInsights(
+      input.planningInsights,
+      closeReconciliationInsights(reconciliation)
+    )
+  };
 }
 
 function deriveStatus(input: {

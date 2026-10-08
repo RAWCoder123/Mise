@@ -3014,7 +3014,9 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
-    async replaceOperationalSignals(restaurantId, recommendations, insights) {
+    async replaceOperationalSignals(restaurantId, recommendations, insights, _options) {
+      // Demo persists the caller-supplied insights (including close merges).
+      // Hosted mode ignores payloads and recomputes inside operational-workflows.
       await mutateDemoState((state) => {
         state.purchaseRecommendations = [
           ...state.purchaseRecommendations.filter(

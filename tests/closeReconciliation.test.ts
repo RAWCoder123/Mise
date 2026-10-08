@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildCloseReconciliation,
   closeReconciliationInsights,
+  enrichInsightsWithCloseReconciliation,
   mergeCloseReconciliationInsights
 } from "../services/domain/closeReconciliation";
 import type { InventoryEvent } from "../services/domain/inventoryLedger";
@@ -150,6 +151,65 @@ test("rejects cross-tenant evidence", () => {
       }),
     /cross-restaurant inventory event/
   );
+});
+
+test("truncated ledger evidence does not invent blocked or material variance", () => {
+  const summary = buildCloseReconciliation({
+    restaurantId,
+    operatingDate,
+    restaurantTimeZone: timeZone,
+    inventoryItems: [item()],
+    inventoryEvents: [
+      event("close-count", 4, "count", 500, {
+        effectiveAt: "2026-08-05T22:30:00.000Z",
+        recordedAt: "2026-08-05T22:30:01.000Z"
+      })
+    ],
+    ledgerComplete: false,
+    generatedAt: "2026-08-05T23:00:00.000Z"
+  });
+
+  assert.equal(summary.materialVarianceCount, 0);
+  assert.equal(summary.blockedCountCount, 0);
+  assert.ok(summary.unavailableSignals.includes("complete inventory ledger history"));
+  assert.ok(
+    summary.findings.some(
+      (finding) =>
+        finding.category === "data_quality" && finding.id.includes("incomplete-ledger")
+    )
+  );
+});
+
+test("enrichInsightsWithCloseReconciliation merges close findings ahead of planning", () => {
+  const planning: OperationalInsight[] = [
+    {
+      id: "insight_plan_0",
+      restaurant_id: restaurantId,
+      insight_type: "sales",
+      title: "Plan 0",
+      description: "Planning insight",
+      why_it_matters: null,
+      recommended_action: "Review",
+      severity: "info",
+      created_at: "2026-08-05T22:00:00.000Z",
+      presentation: {
+        code: "insight.rule.sales.demand_rising",
+        values: { itemName: "Item 0", liftPercent: 20 }
+      }
+    }
+  ];
+  const { insights, reconciliation } = enrichInsightsWithCloseReconciliation({
+    restaurantId,
+    operatingDate,
+    restaurantTimeZone: timeZone,
+    inventoryItems: [item({ current_quantity: 100, reorder_threshold: 500 })],
+    inventoryEvents: [event("waste-1", 1, "waste", 50)],
+    planningInsights: planning,
+    generatedAt: "2026-08-05T23:00:00.000Z"
+  });
+  assert.equal(reconciliation.wasteEventCount, 1);
+  assert.ok(insights[0]?.id.startsWith("insight_close-"));
+  assert.ok(insights.some((insight) => insight.id === "insight_plan_0"));
 });
 
 test("close insights merge ahead of planning insights without exceeding the cap", () => {

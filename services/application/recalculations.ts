@@ -1,8 +1,5 @@
-import { addDaysToDateKey } from "../../utils/format";
 import {
-  buildCloseReconciliation,
-  closeReconciliationInsights,
-  mergeCloseReconciliationInsights
+  enrichInsightsWithCloseReconciliation
 } from "../domain/closeReconciliation";
 import { buildInsightsFromData, buildRecommendationInserts } from "../domain/operationalSignals";
 import type { RecalculationCycle } from "../domain/recalculationSchedule";
@@ -10,9 +7,23 @@ import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
-/** How far back close reconciliation reads waste/count/correction evidence. */
-const CLOSE_LEDGER_LOOKBACK_DAYS = 14;
-const CLOSE_LEDGER_LIMIT = 500;
+/**
+ * Close variance needs prior baselines and intervening usage/receipts. A short
+ * calendar lookback can drop that evidence and invent blocked or material
+ * results. Match the inventory-evidence bound and report incompleteness when
+ * the read hits the ceiling instead of pretending the history is whole.
+ */
+export const CLOSE_RECONCILIATION_LEDGER_LIMIT = 2000;
+
+const CLOSE_LEDGER_EVENT_TYPES = [
+  "waste",
+  "count",
+  "correction",
+  "usage",
+  "receipt",
+  "adjustment",
+  "transfer"
+] as const;
 
 export async function generateInsightsFromSalesAndInventory(restaurantId: string) {
   const data = await repository.fetchPlanningData(restaurantId);
@@ -49,6 +60,10 @@ export async function generatePurchaseRecommendations(restaurantId: string) {
  * Refreshes recommendations and insights. When the cycle is `close`, also merges
  * waste / count-variance / carryover stock findings so the closing pass is not
  * identical to open and mid-shift recomputes.
+ *
+ * Demo persists the enriched insights directly. Hosted mode passes `cycle` into
+ * operational-workflows so the Edge refresh recomputes and merges the same
+ * close findings server-side instead of discarding client-computed evidence.
  */
 export async function regenerateOperationalSignals(
   restaurantId: string,
@@ -79,35 +94,24 @@ export async function regenerateOperationalSignals(
   );
 
   if (options.cycle === "close") {
-    const since = `${addDaysToDateKey(data.operatingDate, -CLOSE_LEDGER_LOOKBACK_DAYS)}T00:00:00.000Z`;
     const events = await repository.listInventoryEvents(restaurantId, {
-      eventTypes: ["waste", "count", "correction", "usage", "receipt", "adjustment", "transfer"],
-      since,
-      limit: CLOSE_LEDGER_LIMIT
+      eventTypes: [...CLOSE_LEDGER_EVENT_TYPES],
+      limit: CLOSE_RECONCILIATION_LEDGER_LIMIT
     });
-    const stockRiskItemIds = insights
-      .filter(
-        (insight) =>
-          insight.presentation.code === "insight.rule.inventory.stock_risk" &&
-          (insight.severity === "urgent" || insight.severity === "warning")
-      )
-      .map((insight) => insight.id.replace(/^insight_low_/, ""))
-      .filter((id) => id.length > 0 && !id.startsWith("insight_"));
-
-    const reconciliation = buildCloseReconciliation({
+    const enriched = enrichInsightsWithCloseReconciliation({
       restaurantId,
       operatingDate: data.operatingDate,
       restaurantTimeZone: data.timeZone,
       inventoryItems: data.inventoryItems,
       inventoryEvents: events,
-      stockRiskItemIds,
+      ledgerComplete: events.length < CLOSE_RECONCILIATION_LEDGER_LIMIT,
+      planningInsights: insights,
       generatedAt: new Date().toISOString()
     });
-    insights = mergeCloseReconciliationInsights(
-      insights,
-      closeReconciliationInsights(reconciliation)
-    );
+    insights = enriched.insights;
   }
 
-  await repository.replaceOperationalSignals(restaurantId, recommendations, insights);
+  await repository.replaceOperationalSignals(restaurantId, recommendations, insights, {
+    cycle: options.cycle
+  });
 }

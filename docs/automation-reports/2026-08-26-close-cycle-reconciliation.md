@@ -39,6 +39,18 @@ waste, variance, and carryover stock, but the work itself did not differ.
   recalculationRunLedgerMigration
 - `npm test`
 
+## Greptile follow-up (hosted persist + ledger completeness)
+
+1. Hosted `replaceOperationalSignals` now forwards `cycle: "close"` into
+   `operational-workflows`. Edge `refresh_signals` recomputes planning signals,
+   loads a bounded inventory ledger, merges close findings via
+   `enrichInsightsWithCloseReconciliation`, then commits. Close waste / variance /
+   carryover insights are no longer discarded on Supabase tenants.
+2. Close ledger reads no longer use a 14-day `since` window. They use the same
+   2000-row bound as inventory evidence and set `ledgerComplete=false` when the
+   ceiling is hit. Incomplete history skips variance math instead of inventing
+   blocked or material results.
+
 ## Not in this tip
 
 - Unattended machine-runner / cron auth for recalculation
