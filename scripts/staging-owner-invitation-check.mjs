@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { createClient } from "@supabase/supabase-js";
 
 import { parseInviteCallbackUrl } from "../services/domain/accountAuth.ts";
+import { provisioningEmailsMatch } from "./lib/betaRestaurantProvisioning.mjs";
 import { assertStagingPreflight } from "./staging-preflight.mjs";
 
 const exec = promisify(execFile);
@@ -193,8 +194,9 @@ async function findUsersByEmail(targetEmail) {
     const response = await admin.auth.admin.listUsers({ page, perPage: 1000 });
     if (response.error) throw response.error;
     matches.push(
-      ...response.data.users.filter(
-        (user) => user.email?.trim().toLowerCase() === targetEmail.toLowerCase()
+      // MISE-005KL: ASCII C mailbox compare — do not Unicode-fold Auth emails.
+      ...response.data.users.filter((user) =>
+        provisioningEmailsMatch(user.email, targetEmail)
       )
     );
     if (response.data.users.length < 1000) return matches;
