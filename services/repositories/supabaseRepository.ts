@@ -1833,8 +1833,12 @@ export function createSupabaseRepository(): MiseRepository {
       await invokeOperationalWorkflow({ action: "refresh_signals", restaurantId });
     },
 
-    async replaceOperationalSignals(restaurantId, _recommendations, _insights) {
-      await invokeOperationalWorkflow({ action: "refresh_signals", restaurantId });
+    async replaceOperationalSignals(restaurantId, _recommendations, _insights, options) {
+      await invokeOperationalWorkflow({
+        action: "refresh_signals",
+        restaurantId,
+        ...(options?.cycle ? { cycle: options.cycle } : {})
+      });
     },
 
     async fetchEmailConnectionState(restaurantId) {

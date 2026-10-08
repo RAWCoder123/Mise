@@ -735,7 +735,12 @@ export interface MiseRepository {
   replaceOperationalSignals(
     restaurantId: string,
     recommendations: PurchaseRecommendationInput[],
-    insights: Insight[]
+    insights: Insight[],
+    /**
+     * Hosted refreshes recompute server-side. Pass `close` so Edge merges the
+     * closing reconciliation findings instead of discarding client evidence.
+     */
+    options?: { cycle?: "daily_open" | "mid_shift" | "close" }
   ): Promise<void>;
   fetchEmailConnectionState(restaurantId: string): Promise<RestaurantEmailConnection | null>;
   fetchSupplierRecipients(restaurantId: string): Promise<SupplierRecipient[]>;

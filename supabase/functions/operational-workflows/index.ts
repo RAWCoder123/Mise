@@ -1,6 +1,12 @@
-import { calculateOperationalSignals, type OperationalPlanningSnapshot } from "../../../services/domain/operationalSignals.ts";
+import { enrichInsightsWithCloseReconciliation } from "../../../services/domain/closeReconciliation.ts";
+import { normalizeInventoryEventRecord } from "../../../services/domain/inventoryEventTransport.ts";
 import { withPendingCountEvidence } from "../../../services/domain/inventoryCountAuthority.ts";
 import { inventoryUnitsAreCompatible } from "../../../services/domain/inventoryUnits.ts";
+import {
+  calculateOperationalSignals,
+  type OperationalInsight,
+  type OperationalPlanningSnapshot
+} from "../../../services/domain/operationalSignals.ts";
 import {
   firewallBlockedResponse,
   handleError,
@@ -19,6 +25,20 @@ import {
   requireUuid,
   type InvocationTerminalContext
 } from "../_shared/mise.ts";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+
+/** Match application close ledger bound; truncated reads fail closed on variance. */
+const CLOSE_RECONCILIATION_LEDGER_LIMIT = 2000;
+const CLOSE_LEDGER_EVENT_TYPES = [
+  "waste",
+  "count",
+  "correction",
+  "usage",
+  "receipt",
+  "adjustment",
+  "transfer"
+] as const;
+const RECALCULATION_CYCLES = ["daily_open", "mid_shift", "close"] as const;
 
 const actions = [
   "refresh_signals",
@@ -147,7 +167,7 @@ Deno.serve(async (req) => {
 });
 
 async function refreshWithRetry(
-  securitySupabase: Parameters<typeof serviceRpc>[0],
+  securitySupabase: SupabaseClient,
   actorUserId: string,
   restaurantId: string,
   action: OperationalAction,
@@ -189,14 +209,13 @@ async function refreshWithRetry(
         reason: recommendation.reason,
         urgency: recommendation.urgency
       }));
-      const insights = signals.insights.map((insight) => ({
-        insight_type: insight.insight_type,
-        title: insight.title,
-        description: insight.description,
-        why_it_matters: insight.why_it_matters,
-        recommended_action: insight.recommended_action,
-        severity: insight.severity
-      }));
+      const insightRows = await resolveInsightRowsForCommit(
+        securitySupabase,
+        action,
+        body,
+        planning,
+        signals.insights
+      );
 
       if (action === "update_inventory") {
         return await serviceRpc(securitySupabase, "service_update_inventory_and_signals", {
@@ -206,7 +225,7 @@ async function refreshWithRetry(
           p_expected_revision: revision,
           p_patch: requireInventoryPatch(body.patch),
           p_recommendations: recommendations,
-          p_insights: insights
+          p_insights: insightRows
         });
       }
       if (action === "upsert_recipe") {
@@ -220,7 +239,7 @@ async function refreshWithRetry(
           p_unit: requireBoundedString(body.unit, "unit", 40),
           p_expected_revision: revision,
           p_recommendations: recommendations,
-          p_insights: insights
+          p_insights: insightRows
         });
       }
       if (action === "approve_count_session") {
@@ -230,7 +249,7 @@ async function refreshWithRetry(
           p_session_id: requireUuid(body.sessionId, "sessionId"),
           p_expected_revision: revision,
           p_recommendations: recommendations,
-          p_insights: insights
+          p_insights: insightRows
         });
       }
       return await serviceRpc(securitySupabase, "service_commit_operational_signals", {
@@ -238,7 +257,7 @@ async function refreshWithRetry(
         p_restaurant_id: restaurantId,
         p_expected_revision: revision,
         p_recommendations: recommendations,
-        p_insights: insights,
+        p_insights: insightRows,
         p_complete_setup: completeSetup,
         p_setup_metadata: setupMetadata
       });
@@ -248,6 +267,68 @@ async function refreshWithRetry(
     }
   }
   throw lastError;
+}
+
+/**
+ * Close-cycle refresh must persist waste / variance / carryover findings.
+ * Open and mid-shift keep ordinary planning insights only.
+ */
+async function resolveInsightRowsForCommit(
+  securitySupabase: SupabaseClient,
+  action: OperationalAction,
+  body: Record<string, unknown>,
+  planning: OperationalPlanningSnapshot,
+  planningInsights: readonly OperationalInsight[]
+) {
+  let insights: readonly OperationalInsight[] = planningInsights;
+  if (action === "refresh_signals" && body.cycle != null) {
+    const cycle = requireEnum(body.cycle, "cycle", RECALCULATION_CYCLES);
+    if (cycle === "close") {
+      const ledger = await fetchCloseReconciliationLedger(securitySupabase, planning.restaurantId);
+      const timeZone =
+        typeof planning.timeZone === "string" && planning.timeZone.trim().length > 0
+          ? planning.timeZone.trim()
+          : "UTC";
+      insights = enrichInsightsWithCloseReconciliation({
+        restaurantId: planning.restaurantId,
+        operatingDate: String(planning.operatingDate),
+        restaurantTimeZone: timeZone,
+        inventoryItems: planning.inventoryItems,
+        inventoryEvents: ledger.events,
+        ledgerComplete: ledger.complete,
+        planningInsights,
+        generatedAt: new Date().toISOString()
+      }).insights;
+    }
+  }
+  return insights.map((insight) => ({
+    insight_type: insight.insight_type,
+    title: insight.title,
+    description: insight.description,
+    why_it_matters: insight.why_it_matters,
+    recommended_action: insight.recommended_action,
+    severity: insight.severity
+  }));
+}
+
+async function fetchCloseReconciliationLedger(
+  securitySupabase: SupabaseClient,
+  restaurantId: string
+) {
+  const { data, error } = await securitySupabase
+    .from("inventory_events")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .in("event_type", [...CLOSE_LEDGER_EVENT_TYPES])
+    .order("recorded_at", { ascending: false })
+    .order("sequence", { ascending: false })
+    .limit(CLOSE_RECONCILIATION_LEDGER_LIMIT);
+  if (error) throw error;
+  const events = (data ?? []).map((row) => normalizeInventoryEventRecord(row));
+  return {
+    events,
+    complete: events.length < CLOSE_RECONCILIATION_LEDGER_LIMIT
+  };
 }
 
 async function runCountSessionDraftAction(

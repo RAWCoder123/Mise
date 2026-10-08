@@ -113,7 +113,7 @@ const CYCLE_DEFINITIONS: readonly CycleDefinition[] = [
   {
     cycle: "close",
     opensAtHour: 17,
-    // Closing reconciles spend, waste, and variance, which is owner/admin work.
+    // Closing reconciles spend, waste, and variance via differentiated close work.
     monitoringOwner: "owner_admin",
     jobName: "recalculation.close",
     timeoutMs: 180_000,
