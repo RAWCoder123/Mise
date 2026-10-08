@@ -13,6 +13,7 @@ import {
   type OutreachLeadInput
 } from "../../../services/domain/outreach.ts";
 import { HttpError, jsonResponse, readJsonObject } from "../_shared/http.ts";
+import { requireCanonicalOutreachString } from "../_shared/outreachStringIdentity.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -910,11 +911,23 @@ function requireObject(value: unknown, fieldName: string): JsonRecord {
   return value as JsonRecord;
 }
 
+/**
+ * Outreach action/campaign/header/mailbox string identity (MISE-005KU).
+ * Local requireString previously used Unicode trim, which could invent a
+ * canonical action or field value from NBSP / em-space padding. Pin
+ * ASCII-only end trim through the shared helper; do not retarget shared
+ * mise.ts requireString (MISE-005KT), local requireUuid (MISE-005KQ),
+ * isCanonicalEmail, or #706 secret scrubbers.
+ */
 function requireString(value: unknown, fieldName: string, maximumLength: number) {
-  if (typeof value !== "string") throw new HttpError(400, `${fieldName} is required.`);
-  const text = value.trim();
-  if (!text || text.length > maximumLength) throw new HttpError(400, `${fieldName} must contain 1-${maximumLength} characters.`);
-  return text;
+  try {
+    return requireCanonicalOutreachString(value, fieldName, maximumLength);
+  } catch (error) {
+    throw new HttpError(
+      400,
+      error instanceof Error ? error.message : `${fieldName} is required.`
+    );
+  }
 }
 
 function optionalString(value: unknown, fieldName: string, maximumLength: number) {
