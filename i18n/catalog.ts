@@ -6946,9 +6946,26 @@ export function translate(locale: AppLocale, key: MessageKey, values: MessageVal
   });
 }
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005KR). Only ASCII A–Z is folded so BCP 47 language tags
+ * normalize without Unicode case mappings.
+ */
+function asciiCLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * ASCII-only end trim; Unicode `trim()` would strip NBSP / em-space
+ * padding and invent a supported locale identity from padded tags.
+ */
+function asciiTrim(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
 export function matchSupportedLocale(value: string | null | undefined): AppLocale | null {
   if (!value) return null;
-  const normalized = value.trim().replace(/_/g, "-").toLowerCase();
+  const normalized = asciiCLower(asciiTrim(value).replace(/_/g, "-"));
   if (normalized === "en" || normalized.startsWith("en-")) return "en";
   if (normalized === "es" || normalized.startsWith("es-")) return "es";
   if (
