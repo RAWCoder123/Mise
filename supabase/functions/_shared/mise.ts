@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient, type User } from "npm:@supabase/supa
 import {
   TELEMETRY_MAX_PAYLOAD_BYTES,
   buildTelemetryCorrelation,
+  hasForbiddenTelemetryMarker,
   safeExternalError,
   sanitizeTelemetryRecord,
   telemetryPayloadFits
@@ -394,10 +395,13 @@ function sentryEnvelopeEndpoint(dsn: string) {
   }
 }
 
+/**
+ * Edge audit metadata scrubbing shares `hasForbiddenTelemetryMarker` so Kelvin
+ * lookalike secret keys/values (`toKen`, `cooKie`) cannot bypass redaction.
+ */
 function sanitizeMetadataValue(value: unknown, key = ""): unknown {
-  const forbidden = /(token|secret|password|authorization|cookie|credential|private|service_role|api[_-]?key)/i;
-  if (forbidden.test(key)) return "[redacted]";
-  if (typeof value === "string") return forbidden.test(value) ? "[redacted]" : value;
+  if (hasForbiddenTelemetryMarker(key)) return "[redacted]";
+  if (typeof value === "string") return hasForbiddenTelemetryMarker(value) ? "[redacted]" : value;
   if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
   if (Array.isArray(value)) return value.slice(0, 20).map((entry) => sanitizeMetadataValue(entry));
   if (typeof value === "object") {
