@@ -63,6 +63,7 @@ import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord
 } from "../domain/supplierReliability";
+import { requireCanonicalHostedUuid } from "../domain/hostedUuidIdentity";
 import {
   inventoryEventRejectionFromRpcError,
   inventoryEventRpcArguments,
@@ -135,15 +136,9 @@ import {
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
 
-const hostedUuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
+/** MISE-005KV: pin hosted UUID identity to ASCII C (no Unicode trim inventing). */
 function requireHostedUuid(value: string, label: string) {
-  const normalized = typeof value === "string" ? value.trim() : "";
-  if (!hostedUuidPattern.test(normalized)) {
-    throw new Error(`Invalid ${label} identity.`);
-  }
-  return normalized.toLowerCase();
+  return requireCanonicalHostedUuid(value, label);
 }
 
 function normalizeHostedSupplier(value: Supplier, expectedRestaurantId: string) {
