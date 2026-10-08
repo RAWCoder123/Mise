@@ -285,18 +285,32 @@ export async function sendGmailMessage(
   };
 }
 
+/**
+ * MISE-005KJ. Fold only ASCII A-Z so Kelvin-sign lookalikes cannot invent a
+ * Message-ID domain or UUID local-part the Unicode `/iu` + `toLowerCase` path
+ * would accept. Hosted COLLATE "C" email identity tips fold the same way.
+ */
+export function asciiCLowerGmailMessageIdToken(value: string) {
+  return value.replace(/[A-Z]/g, (character) =>
+    String.fromCharCode(character.charCodeAt(0) + 32),
+  );
+}
+
+const GMAIL_MESSAGE_ID_ORDER_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const GMAIL_MESSAGE_ID_DOMAIN =
+  /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
+
 export function gmailMessageId(orderId: string, domain = "mail.mise.app") {
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-      orderId,
-    )
-  ) {
+  const normalizedOrderId = asciiCLowerGmailMessageIdToken(orderId);
+  const normalizedDomain = asciiCLowerGmailMessageIdToken(domain);
+  if (!GMAIL_MESSAGE_ID_ORDER_UUID.test(normalizedOrderId)) {
     throw new Error("Order id must be a UUID.");
   }
-  if (!/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/iu.test(domain)) {
+  if (!GMAIL_MESSAGE_ID_DOMAIN.test(normalizedDomain)) {
     throw new Error("Message id domain is invalid.");
   }
-  return `<mise-${orderId.toLowerCase()}@${domain.toLowerCase()}>`;
+  return `<mise-${normalizedOrderId}@${normalizedDomain}>`;
 }
 
 function parseTokenSet(
