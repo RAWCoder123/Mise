@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildPilotReadiness } from "../services/domain/pilotReadiness";
+import {
+  assertPilotCanRecommend,
+  buildPilotReadiness,
+  isPilotReadinessRpcBlockedError,
+  PilotReadinessBlockedError
+} from "../services/domain/pilotReadiness";
 import type { InventoryEvent } from "../services/domain/inventoryLedger";
 import type {
   InventoryItem,
@@ -122,4 +127,25 @@ test("pilot readiness rejects cross-restaurant evidence", () => {
     }),
     /restaurant scope validation/i
   );
+});
+
+test("assertPilotCanRecommend fails closed when recommendation areas are incomplete", () => {
+  const readiness = buildPilotReadiness({ ...readyInput(), countEvents: [] });
+  assert.throws(
+    () => assertPilotCanRecommend(readiness),
+    (error: unknown) =>
+      error instanceof PilotReadinessBlockedError &&
+      error.message.length > 0 &&
+      error.readiness.canRecommend === false
+  );
+});
+
+test("isPilotReadinessRpcBlockedError detects the hosted SQL gate message", () => {
+  assert.equal(
+    isPilotReadinessRpcBlockedError(
+      new Error("Pilot readiness is incomplete for purchase recommendations.")
+    ),
+    true
+  );
+  assert.equal(isPilotReadinessRpcBlockedError(new Error("Recommendation not found")), false);
 });

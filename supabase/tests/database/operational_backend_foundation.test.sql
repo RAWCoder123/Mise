@@ -69,14 +69,17 @@ values
 
 insert into public.inventory_items (
   id, restaurant_id, item_name, category, unit, current_quantity,
-  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name
+  par_level, reorder_threshold, estimated_unit_cost, supplier_id, supplier_name,
+  canonical_unit, canonical_quantity_per_unit, canonical_unit_verification_status,
+  canonical_unit_verified_at, canonical_unit_verified_by
 )
 values
   (
     'd0000000-0000-4000-8000-000000000011',
     'd0000000-0000-4000-8000-000000000001',
     'Roma tomatoes', 'Produce', 'lb', 1, 10, 3, 2.5,
-    'd0000000-0000-4000-8000-000000000010', 'Reliable Produce'
+    'd0000000-0000-4000-8000-000000000010', 'Reliable Produce',
+    'g', 453.59237, 'verified', now(), 'd2222222-2222-4222-8222-222222222222'
   );
 
 insert into public.purchase_recommendations (
@@ -110,6 +113,39 @@ insert into public.inventory_events (
   'd2222222-2222-4222-8222-222222222222',
   'mise-003a-test', 'operational-ready-count', 'operational-ready-count'
 );
+
+insert into public.pos_integrations (
+  id, restaurant_id, provider, status, last_sync_at
+) values (
+  'd0000000-0000-4000-8000-000000000050',
+  'd0000000-0000-4000-8000-000000000001',
+  'manual_csv', 'connected', now()
+);
+
+insert into public.menu_items (id, restaurant_id, name, category, active)
+values (
+  'd0000000-0000-4000-8000-000000000060',
+  'd0000000-0000-4000-8000-000000000001',
+  'Tomato Salad', 'Entree', true
+);
+
+insert into public.menu_item_ingredients (
+  id, restaurant_id, menu_item_id, menu_item_name, inventory_item_id, quantity_used_per_sale, unit
+) values (
+  'd0000000-0000-4000-8000-000000000061',
+  'd0000000-0000-4000-8000-000000000001',
+  'd0000000-0000-4000-8000-000000000060', 'Tomato Salad',
+  'd0000000-0000-4000-8000-000000000011', 100, 'g'
+);
+
+insert into public.pos_sales (
+  restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales,
+  source_pos, source_record_id
+)
+select
+  'd0000000-0000-4000-8000-000000000001', current_date - service_day,
+  'Tomato Salad', 'Entree', 2, 20, 18, 'Manual CSV Upload', 'ops-sale-' || service_day
+from generate_series(0, 7) service_day;
 
 select is(
   (

@@ -507,6 +507,39 @@ insert into public.inventory_events (
     'mise-003c-test', 'reassign-count', 'reassign-count'
   );
 
+insert into public.pos_integrations (
+  id, restaurant_id, provider, status, last_sync_at
+) values (
+  '3c000000-0000-4000-8000-000000000250',
+  '3c000000-0000-4000-8000-000000000001',
+  'manual_csv', 'connected', now()
+);
+
+insert into public.menu_items (id, restaurant_id, name, category, active)
+values (
+  '3c000000-0000-4000-8000-000000000260',
+  '3c000000-0000-4000-8000-000000000001',
+  'Metro Bowl', 'Entree', true
+);
+
+insert into public.menu_item_ingredients (
+  id, restaurant_id, menu_item_id, menu_item_name, inventory_item_id, quantity_used_per_sale, unit
+) values (
+  '3c000000-0000-4000-8000-000000000261',
+  '3c000000-0000-4000-8000-000000000001',
+  '3c000000-0000-4000-8000-000000000260', 'Metro Bowl',
+  '3c000000-0000-4000-8000-000000000101', 1, 'each'
+);
+
+insert into public.pos_sales (
+  restaurant_id, sale_date, item_name, category, quantity_sold, gross_sales, net_sales,
+  source_pos, source_record_id
+)
+select
+  '3c000000-0000-4000-8000-000000000001', current_date - service_day,
+  'Metro Bowl', 'Entree', 2, 20, 18, 'Manual CSV Upload', 'durable-sale-' || service_day
+from generate_series(0, 7) service_day;
+
 insert into public.purchase_recommendations (
   id, restaurant_id, inventory_item_id, item_name, supplier_id, supplier_name,
   recommended_quantity, unit, reason, urgency, status, generation_source
