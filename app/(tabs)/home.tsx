@@ -29,6 +29,10 @@ import type {
 } from "../../services/domain/operatingBrief";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
+  isPilotReadinessBlockedError,
+  isPilotReadinessUnavailableError
+} from "../../services/domain/pilotReadiness";
+import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
   type OperationalTodayTaskTiming
@@ -294,7 +298,13 @@ export default function HomeScreen() {
                   restaurant_id: restaurant.id
                 });
                 if (activeRestaurantIdRef.current === restaurant.id) {
-                  setApprovalNotice(t("home.approvals.approveError"));
+                  if (isPilotReadinessBlockedError(approveError)) {
+                    setApprovalNotice(t("home.approvals.readinessBlocked"));
+                  } else if (isPilotReadinessUnavailableError(approveError)) {
+                    setApprovalNotice(t("home.approvals.readinessUnavailable"));
+                  } else {
+                    setApprovalNotice(t("home.approvals.approveError"));
+                  }
                 }
               } finally {
                 if (activeRestaurantIdRef.current === restaurant.id) setApprovingId(null);
