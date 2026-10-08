@@ -56,6 +56,7 @@ import type {
   InventoryEventType
 } from "./domain/inventoryLedger";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
+import { requireCanonicalSupplierRecipientRestaurantId } from "./domain/supplierRecipientRestaurantIdentity";
 import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord,
@@ -936,6 +937,7 @@ export function normalizeSupplier(value: Supplier): Supplier {
   };
 }
 
+/** MISE-005KX: restaurant workspace identity pinned to ASCII C end trim. */
 export function requireSupplierRecipientInput(input: {
   restaurant_id: unknown;
   supplier_id: unknown;
@@ -945,10 +947,7 @@ export function requireSupplierRecipientInput(input: {
   supplier_id: string;
   email: string;
 } {
-  const restaurantId = typeof input.restaurant_id === "string" ? input.restaurant_id.trim() : "";
-  if (!restaurantId || restaurantId.length > 128 || hasControlCharacters(restaurantId)) {
-    throw new Error("Missing restaurant workspace.");
-  }
+  const restaurantId = requireCanonicalSupplierRecipientRestaurantId(input.restaurant_id);
 
   const supplierId = requireSupplierAuthorityId(input.supplier_id);
 
