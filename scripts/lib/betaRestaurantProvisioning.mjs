@@ -6,18 +6,57 @@ const INVITE_LINK_MAX = 20_000;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/**
+ * ASCII C-locale case fold — mirrors SQL `lower(... collate "C")`
+ * (MISE-005KL). Only ASCII A-Z is folded. Unicode-aware `toLowerCase`
+ * would map Kelvin sign `K` → `k` and invent an owner mailbox
+ * (`toKen@…` → `token@…`) the invite/provisioning path would treat as
+ * an ordinary ASCII address.
+ */
+export function asciiCLower(value) {
+  return String(value ?? "").replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/**
+ * Trim only ASCII whitespace so provisioning mailboxes stay aligned with
+ * C-locale `btrim` / `[[:space:]]` gates rather than Unicode `trim()`.
+ */
+export function asciiCTrim(value) {
+  return String(value ?? "").replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * ASCII C mailbox shape — uses an explicit ASCII whitespace class instead
+ * of Unicode `\s`, so NBSP is not treated as a mailbox separator.
+ */
+export const ASCII_C_MAILBOX_SHAPE =
+  /^[^ \t\n\r\f\v@]+@[^ \t\n\r\f\v@]+\.[^ \t\n\r\f\v@]+$/;
+
+/** Normalize an owner email for beta provisioning identity (MISE-005KL). */
+export function normalizeProvisioningEmail(value) {
+  return asciiCTrim(asciiCLower(value));
+}
+
+/** Compare Auth / request mailboxes without Unicode case inventing. */
+export function provisioningEmailsMatch(left, right) {
+  return normalizeProvisioningEmail(left) === normalizeProvisioningEmail(right);
+}
+
 export function normalizeProvisioningRequest(input) {
-  const email = String(input.email ?? "").trim().toLowerCase();
+  // MISE-005KL: ASCII C fold + ASCII whitespace trim for owner email and
+  // hex idempotency keys. Do not use Unicode trim/toLowerCase — those
+  // invent Kelvin-folded mailboxes and treat NBSP as whitespace.
+  const email = normalizeProvisioningEmail(input.email);
   const restaurantName = String(input.restaurantName ?? "").trim();
   const cuisineType = String(input.cuisineType ?? "").trim();
-  const idempotencyKey = String(input.idempotencyKey ?? "").trim().toLowerCase();
+  const idempotencyKey = asciiCTrim(asciiCLower(input.idempotencyKey));
   const redirectTo = String(input.redirectTo ?? "mise://accept-invite").trim();
   const inviteFile = String(input.inviteFile ?? "").trim();
 
   if (
     email.length < 3 ||
     email.length > EMAIL_MAX ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    !ASCII_C_MAILBOX_SHAPE.test(email)
   ) {
     throw new Error("A valid owner email is required.");
   }

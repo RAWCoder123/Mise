@@ -10,7 +10,8 @@ import {
   assertProvisioningEnvironment,
   executeBetaRestaurantProvisioning,
   maskProvisioningEmail,
-  normalizeProvisioningRequest
+  normalizeProvisioningRequest,
+  provisioningEmailsMatch
 } from "./lib/betaRestaurantProvisioning.mjs";
 
 const { values } = parseArgs({
@@ -150,7 +151,8 @@ async function findUsersByEmail(email) {
     const response = await admin.auth.admin.listUsers({ page, perPage: 1000 });
     if (response.error) throw response.error;
     matches.push(
-      ...response.data.users.filter((user) => user.email?.trim().toLowerCase() === email)
+      // MISE-005KL: ASCII C mailbox compare — do not Unicode-fold Auth emails.
+      ...response.data.users.filter((user) => provisioningEmailsMatch(user.email, email))
     );
     if (response.data.users.length < 1000) return matches;
   }
