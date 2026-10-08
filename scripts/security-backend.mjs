@@ -283,7 +283,10 @@ const serviceOnlyPublicFunctions = new Set([
 const globalServiceOnlyPublicFunctions = new Set([
   "public.service_claim_outreach_enrollment",
   "public.service_release_stale_outreach_claims",
-  "public.service_unsubscribe_outreach"
+  "public.service_unsubscribe_outreach",
+  "public.service_list_recalculation_runner_targets",
+  "public.service_resolve_recalculation_signal_actor",
+  "public.service_record_machine_recalculation_run"
 ]);
 for (const fn of functionInventory.functions.values()) {
   if (fn.securityMode !== "definer") continue;

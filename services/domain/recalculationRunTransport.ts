@@ -27,6 +27,7 @@ export interface PersistedRecalculationRunRow {
   cycle_key: string;
   idempotency_key: string;
   recorded_by: string | null;
+  recorded_source?: string | null;
   correlation_id: string;
   recorded_at: string;
 }
