@@ -7,6 +7,7 @@ import {
   prepWindowsFromProfile,
   type DailyOperatingPlan
 } from "../domain/operatingPlan";
+import { requireCanonicalOperatingPlanWorkspaceId } from "../domain/operatingPlanRestaurantIdentity";
 import { deriveOperationalTodayTasks } from "../domain/todayTasks";
 import { visibleRestaurantTasksForToday } from "../domain/restaurantTasks";
 import { demandFallbackForRestaurant } from "../demoData";
@@ -21,6 +22,11 @@ const repository = getMiseRepository();
 
 export type { DailyOperatingPlan };
 
+/** MISE-005LF: ASCII-C restaurant workspace identity for operating-plan entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalOperatingPlanWorkspaceId(restaurantId);
+}
+
 /**
  * Screen-ready Daily Operating Plan composed from restaurant-scoped
  * authoritative sources. Demo and hosted share the same pure builder.
@@ -33,8 +39,7 @@ export async function fetchDailyOperatingPlan(
   restaurantId: string,
   options: { includeCompletedTasks?: boolean } = {}
 ): Promise<DailyOperatingPlan> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
 
   const [
     data,

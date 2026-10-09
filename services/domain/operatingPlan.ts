@@ -18,6 +18,12 @@ import {
   type OperationalTodayTaskPriority,
   type OperationalTodayTaskTiming
 } from "./todayTasks";
+import { requireCanonicalOperatingPlanRestaurantId } from "./operatingPlanRestaurantIdentity";
+
+/** MISE-005LF: ASCII-C restaurant workspace identity for operating-plan entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalOperatingPlanRestaurantId(restaurantId);
+}
 
 /**
  * Deterministic Daily Operating Plan projection.
@@ -144,8 +150,7 @@ const WINDOW_ORDER: readonly ServiceWindowId[] = [
 const BUCKET_ORDER: readonly OperatingPlanBucket[] = ["now", "up_next", "later", "done"];
 
 export function buildDailyOperatingPlan(input: BuildDailyOperatingPlanInput): DailyOperatingPlan {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("A restaurant is required to build an operating plan.");
+  const restaurantId = requireRestaurantId(input.restaurantId);
   if (!validDateKey(input.operatingDate)) {
     throw new Error("Operating plan requires a valid operating date.");
   }
