@@ -1,16 +1,21 @@
 import type { MiseAction } from "../domain/miseActions";
+import { requireCanonicalMiseActionsWorkspaceId } from "../domain/miseActionsRestaurantIdentity";
 import { requireSupplierSendContentFingerprint } from "../miseValidation";
 import { approvePurchaseRecommendation } from "./orders";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
+/** MISE-005LH: ASCII-C restaurant workspace identity for Mise-action entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalMiseActionsWorkspaceId(restaurantId);
+}
+
 export async function fetchMiseActions(
   restaurantId: string,
   options: { status?: MiseAction["status"] | "awaiting_decision"; limit?: number } = {}
 ) {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const actions = await repository.listMiseActions(normalizedRestaurantId, options);
   if (actions.some((action) => action.restaurantId !== normalizedRestaurantId)) {
     throw new Error("Mise actions failed restaurant scope validation.");
@@ -19,9 +24,8 @@ export async function fetchMiseActions(
 }
 
 export async function fetchSupplierSendAction(restaurantId: string, orderId: string) {
-  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const normalizedOrderId = orderId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
   if (!normalizedOrderId) throw new Error("Missing supplier order.");
   if (!repository.fetchSupplierSendAction) {
     throw new Error("Supplier send action lookup is unavailable.");
@@ -41,8 +45,7 @@ export async function decideMiseAction(
   actionId: string,
   decision: "approved" | "rejected"
 ) {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const action = await repository.decideMiseAction(normalizedRestaurantId, actionId, decision);
   if (action.restaurantId !== normalizedRestaurantId) {
     throw new Error("Mise action failed restaurant scope validation.");
@@ -56,10 +59,7 @@ export async function approveSupplierSendContent(
   orderId: string,
   contentFingerprint: string
 ) {
-  const normalizedRestaurantId = requireSupplierSendApprovalId(
-    restaurantId,
-    "restaurant workspace"
-  );
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const normalizedActionId = requireSupplierSendApprovalId(actionId, "supplier send action");
   const normalizedOrderId = requireSupplierSendApprovalId(orderId, "supplier order");
   const normalizedFingerprint = requireSupplierSendContentFingerprint(contentFingerprint);

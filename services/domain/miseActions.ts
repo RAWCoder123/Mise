@@ -1,5 +1,9 @@
 import { createId } from "./miseDomain";
 import type { AutonomyLevel } from "./operationalStatus";
+import {
+  requireCanonicalMiseActionsOutcomeRestaurantId,
+  requireCanonicalMiseActionsRestaurantId
+} from "./miseActionsRestaurantIdentity";
 
 export type MiseActionType =
   | "create_internal_task"
@@ -132,7 +136,9 @@ export function miseActionIdempotencyKey(
   actionType: MiseActionType,
   subjectId: string
 ) {
-  return `${restaurantId.trim()}:${actionType}:${subjectId.trim()}`;
+  // MISE-005LH: ASCII-C restaurant workspace identity for idempotency keys.
+  const normalizedRestaurantId = requireCanonicalMiseActionsRestaurantId(restaurantId);
+  return `${normalizedRestaurantId}:${actionType}:${subjectId.trim()}`;
 }
 
 export function createPreparedAction(input: {
@@ -145,8 +151,8 @@ export function createPreparedAction(input: {
   idempotencyKey: string;
   now?: string;
 }): MiseAction {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("Mise actions require a restaurant id.");
+  // MISE-005LH: ASCII-C restaurant workspace identity for prepared actions.
+  const restaurantId = requireCanonicalMiseActionsRestaurantId(input.restaurantId);
   if (!input.idempotencyKey.trim()) throw new Error("Mise actions require an idempotency key.");
 
   const now = input.now ? new Date(input.now).toISOString() : new Date().toISOString();
@@ -350,8 +356,8 @@ export function measureOutcome(input: {
   measuredAt?: string;
   lesson?: string | null;
 }): Outcome {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("Outcomes require a restaurant id.");
+  // MISE-005LH: ASCII-C restaurant workspace identity for outcomes.
+  const restaurantId = requireCanonicalMiseActionsOutcomeRestaurantId(input.restaurantId);
   if (!input.actionId.trim()) throw new Error("Outcomes require an action id.");
 
   return {
