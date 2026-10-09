@@ -1,6 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { requireCanonicalFloorNoteRestaurantId } from "../domain/floorNoteRestaurantIdentity";
 import { createId } from "../domain/miseDomain";
+
+/** MISE-005LA: floor-note restaurant workspace pinned to ASCII C. */
 
 /**
  * Operator tasks stored on-device.
@@ -85,11 +88,13 @@ function enqueue<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 function storageKeyV1(restaurantId: string) {
-  return `${STORAGE_PREFIX_V1}:${restaurantId.trim()}`;
+  // Callers pass requireRestaurantId output; do not Unicode-trim here.
+  return `${STORAGE_PREFIX_V1}:${restaurantId}`;
 }
 
 function storageKeyLegacy(restaurantId: string) {
-  return `${STORAGE_PREFIX_LEGACY}:${restaurantId.trim()}`;
+  // Callers pass requireRestaurantId output; do not Unicode-trim here.
+  return `${STORAGE_PREFIX_LEGACY}:${restaurantId}`;
 }
 
 export function normalizeOperatorTaskTitle(value: string): string {
@@ -147,9 +152,7 @@ export function operatorTaskFocusRoute(focusArea: OperatorTaskFocusArea | null):
 export const floorNoteFocusRoute = operatorTaskFocusRoute;
 
 function requireRestaurantId(restaurantId: string) {
-  const normalized = restaurantId.trim();
-  if (!normalized) throw new Error("Missing restaurant workspace.");
-  return normalized;
+  return requireCanonicalFloorNoteRestaurantId(restaurantId);
 }
 
 function normalizeDueAt(value: string | null | undefined): string | null {
