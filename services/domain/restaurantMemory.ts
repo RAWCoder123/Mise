@@ -1,6 +1,7 @@
 import type { LearningMemorySignal, LearningMemorySummary } from "../../types/mise";
 import { createId } from "./miseDomain";
 import type { Outcome } from "./miseActions";
+import { requireCanonicalRestaurantMemoryRestaurantId } from "./restaurantMemoryRestaurantIdentity";
 
 export type RestaurantMemoryType =
   | "demand_pattern"
@@ -62,10 +63,9 @@ export interface RestaurantMemoryRuleDraft {
   sourceMemoryStatus: RestaurantMemoryStatus;
 }
 
+/** MISE-005LB: ASCII-C restaurant workspace identity for restaurant-memory entry points. */
 function requireRestaurantId(restaurantId: string) {
-  const normalized = restaurantId.trim();
-  if (!normalized) throw new Error("Restaurant memory requires a restaurant id.");
-  return normalized;
+  return requireCanonicalRestaurantMemoryRestaurantId(restaurantId);
 }
 
 function boundedStatement(value: string) {
@@ -326,7 +326,7 @@ export function restaurantMemoryFromPersistedRow(
 ): RestaurantMemory {
   return {
     id: row.id,
-    restaurantId: row.restaurant_id.trim(),
+    restaurantId: requireRestaurantId(row.restaurant_id),
     memoryType: row.memory_type,
     // Hosted corrections are preserved separately for auditability; expose the
     // corrected wording as the effective operator-facing statement.
