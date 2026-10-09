@@ -29,9 +29,15 @@ import {
   fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
+import { requireCanonicalInventoryWorkspaceId } from "../domain/inventoryRestaurantIdentity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
+
+/** MISE-005LN: ASCII-C restaurant workspace identity for inventory entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalInventoryWorkspaceId(restaurantId);
+}
 
 /**
  * Planning data plus the authoritative physical-count evidence that anchors it.
@@ -168,9 +174,8 @@ export async function confirmRecipeBaselineComplete(
   menuItemId: string,
   expectedRevision: number
 ) {
-  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const normalizedMenuItemId = menuItemId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
   if (!normalizedMenuItemId) throw new Error("Missing menu item.");
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
     throw new Error("Recipe revision is invalid.");
