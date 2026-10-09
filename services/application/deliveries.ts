@@ -7,18 +7,23 @@ import {
   buildDeliveryLinesFromOrderRecommendations,
   deliveryClientIdForOrder
 } from "../domain/supplierDelivery";
+import { requireCanonicalDeliveriesWorkspaceId } from "../domain/deliveriesRestaurantIdentity";
 import { getMiseRepository } from "./repository";
 
 export type { DeliveryHistoryEntry } from "./deliveryHistoryMerge";
 export { mergeDeliveryHistoryEntries } from "./deliveryHistoryMerge";
+
+/** MISE-005LR: ASCII-C restaurant workspace identity for deliveries entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalDeliveriesWorkspaceId(restaurantId);
+}
 
 /**
  * Receipt history for the delivery log screen: accepted ledger receipts plus
  * pending outbox receipts still syncing on this device.
  */
 export async function fetchDeliveryHistory(restaurantId: string): Promise<DeliveryHistoryEntry[]> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
 
   const repository = getMiseRepository();
   const [events, items, queued] = await Promise.all([
@@ -46,9 +51,8 @@ export async function receiveSupplierOrderDelivery(
   supplierOrderId: string,
   options: { notes?: string | null; receivedAt?: string; clientDeliveryId?: string } = {}
 ) {
-  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const normalizedOrderId = supplierOrderId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
   if (!normalizedOrderId) throw new Error("Missing supplier order.");
 
   const repository = getMiseRepository();
