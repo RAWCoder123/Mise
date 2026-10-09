@@ -3,6 +3,7 @@ import type {
   RecalculationRunInput
 } from "../repositories/repositoryContracts";
 import type { RecalculationCycle, RecalculationRunStatus } from "./recalculationSchedule";
+import { requireCanonicalRecalculationRunTransportRestaurantId } from "./recalculationRunTransportRestaurantIdentity";
 import type { RestaurantTaskRequiredRole } from "./restaurantTasks";
 
 /**
@@ -72,8 +73,12 @@ export function recalculationRunFromPersistedRow(
 }
 
 export function recordRecalculationRunRpcArguments(input: RecalculationRunInput) {
+  // MISE-005LD: ASCII-C restaurant workspace identity for run RPC marshalling.
+  const restaurantId = requireCanonicalRecalculationRunTransportRestaurantId(
+    input.restaurantId
+  );
   return {
-    p_restaurant_id: input.restaurantId.trim(),
+    p_restaurant_id: restaurantId,
     p_cycle: input.cycle,
     p_operating_date: input.operatingDate,
     p_status: input.status,
