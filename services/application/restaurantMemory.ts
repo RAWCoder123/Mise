@@ -3,18 +3,23 @@ import {
   type RestaurantMemory,
   type RestaurantMemoryStatus
 } from "../domain/restaurantMemory";
+import { requireCanonicalRestaurantMemoryWorkspaceId } from "../domain/restaurantMemoryRestaurantIdentity";
 import type { AutonomyOperationalCategory } from "../domain/restaurantAutonomy";
 import { saveAutonomyRule } from "./autonomy";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
+/** MISE-005LB: ASCII-C restaurant workspace identity for restaurant-memory entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalRestaurantMemoryWorkspaceId(restaurantId);
+}
+
 export async function fetchRestaurantMemories(
   restaurantId: string,
   options: { status?: RestaurantMemoryStatus | "actionable"; limit?: number } = {}
 ): Promise<RestaurantMemory[]> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const memories = await repository.listRestaurantMemories(normalizedRestaurantId, options);
   if (memories.some((memory) => memory.restaurantId !== normalizedRestaurantId)) {
     throw new Error("Restaurant memories failed restaurant scope validation.");
@@ -28,8 +33,7 @@ export async function updateRestaurantMemoryDecision(
   decision: Exclude<RestaurantMemoryStatus, "active">,
   correction?: string | null
 ): Promise<RestaurantMemory> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const memory = await repository.updateRestaurantMemoryDecision(
     normalizedRestaurantId,
     memoryId,
@@ -50,8 +54,7 @@ export async function convertRestaurantMemoryToSafeRule(
   restaurantId: string,
   memoryId: string
 ) {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const memories = await fetchRestaurantMemories(normalizedRestaurantId, { limit: 200 });
   const memory = memories.find((entry) => entry.id === memoryId);
   if (!memory || memory.restaurantId !== normalizedRestaurantId) {
