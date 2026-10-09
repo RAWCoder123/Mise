@@ -1,13 +1,18 @@
 import { buildPilotReadiness, type PilotReadiness } from "../domain/pilotReadiness";
+import { requireCanonicalPilotReadinessWorkspaceId } from "../domain/pilotReadinessRestaurantIdentity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
+/** MISE-005LO: ASCII-C restaurant workspace identity for pilot-readiness entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalPilotReadinessWorkspaceId(restaurantId);
+}
+
 export type { PilotReadiness };
 
 export async function fetchPilotReadiness(restaurantId: string): Promise<PilotReadiness> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const [data, posIntegrations, countEvents, supplierRecipients, emailConnection] = await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
     repository.fetchPosIntegrations(normalizedRestaurantId),
