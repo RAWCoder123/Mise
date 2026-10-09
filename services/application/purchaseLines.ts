@@ -3,14 +3,14 @@ import type {
   PurchaseLineSource
 } from "../domain/purchaseLines";
 import { markCurrentPurchaseLines, normalizePurchaseLineInput } from "../domain/purchaseLines";
+import { requireCanonicalPurchaseLineRestaurantId } from "../domain/purchaseLineRestaurantIdentity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
+/** MISE-005KY: ASCII-C restaurant workspace identity for purchase-line entry points. */
 function requireRestaurantId(restaurantId: string) {
-  const normalized = restaurantId.trim();
-  if (!normalized) throw new Error("Missing restaurant workspace.");
-  return normalized;
+  return requireCanonicalPurchaseLineRestaurantId(restaurantId);
 }
 
 /**
