@@ -41,8 +41,8 @@ test("MISE-005LC pins recalculation-schedule restaurant_id to ASCII C", () => {
   assert.doesNotMatch(identitySource, /floorNoteRestaurantIdentity/);
   assert.doesNotMatch(identitySource, /activityEventRestaurantIdentity/);
   assert.doesNotMatch(identitySource, /purchaseLineRestaurantIdentity/);
-  assert.doesNotMatch(identitySource, /recalculationRunTransport/);
-  assert.doesNotMatch(identitySource, /scheduledRecalculations/);
+  assert.doesNotMatch(scheduleSource, /recalculationRunTransport/);
+  assert.doesNotMatch(scheduleSource, /scheduledRecalculations/);
 });
 
 test("ASCII trim keeps ordinary recalculation-schedule restaurant workspace padding stable", () => {
