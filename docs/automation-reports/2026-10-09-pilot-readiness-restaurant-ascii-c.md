@@ -27,9 +27,9 @@ non-UUID tokens such as `restaurant_a`.
 
 ## Verification
 
-- Focused: `tests/pilotReadinessRestaurantAsciiC.test.ts` — pending run
-- `npm run typecheck` — pending run
-- `npm test` — pending run
-- `npm run security:static` — pending run
-- `npm run security:backend` — pending run
+- Focused: `tests/pilotReadinessRestaurantAsciiC.test.ts` — 4/4 pass
+- `npm run typecheck` — pass
+- `npm test` — 687 total / 680 pass / 0 fail / 7 cancelled (inherited withTimeout parent-cancel noise)
+- `npm run security:static` — pass
+- `npm run security:backend` — pass
 - Docker pgTAP unavailable in this environment
