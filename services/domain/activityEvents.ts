@@ -5,6 +5,7 @@ import type {
   PurchaseRecommendation,
   SupplierOrder
 } from "../../types/mise";
+import { requireCanonicalActivityEventRestaurantId } from "./activityEventRestaurantIdentity";
 import type { OperationalFinding } from "./operationalFindings";
 import type { AutonomyLevel } from "./operationalStatus";
 import type { RestaurantTask } from "./restaurantTasks";
@@ -229,10 +230,9 @@ type ActivityBaseInput = {
   idempotencyKey?: string;
 };
 
+/** MISE-005KZ: ASCII-C restaurant workspace identity for activity-event entry points. */
 function requireRestaurantId(restaurantId: string) {
-  const normalized = restaurantId.trim();
-  if (!normalized) throw new Error("Activity events require a restaurant id.");
-  return normalized;
+  return requireCanonicalActivityEventRestaurantId(restaurantId);
 }
 
 function iso(value: string) {
