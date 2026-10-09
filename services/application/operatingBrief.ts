@@ -1,5 +1,6 @@
 import { buildInventoryOutlooks } from "../domain/miseDomain";
 import { buildOperatingBrief, type OperatingBrief } from "../domain/operatingBrief";
+import { requireCanonicalOperatingBriefWorkspaceId } from "../domain/operatingBriefRestaurantIdentity";
 import { buildDailyOperationalBrief } from "../domain/operationalFindings";
 import { demandFallbackForRestaurant, isDemoDatasetRestaurantName } from "../demoData";
 import { toDateKeyInTimeZone } from "../../utils/format";
@@ -11,14 +12,18 @@ import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
+/** MISE-005LP: ASCII-C restaurant workspace identity for operating-brief entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalOperatingBriefWorkspaceId(restaurantId);
+}
+
 export type { OperatingBrief };
 
 export async function fetchOperatingBrief(
   restaurantId: string,
   options: { lastSeenAt?: string | null } = {}
 ): Promise<OperatingBrief> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
 
   const [data, orders, activityEvents, miseActions, findingDecisions, ledger] = await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
