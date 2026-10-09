@@ -7,6 +7,7 @@ import {
   buildInsightsSalesAnalytics,
   type InsightsSalesAnalytics
 } from "../domain/insightsSalesAnalytics";
+import { requireCanonicalInsightsWorkspaceId } from "../domain/insightsRestaurantIdentity";
 import {
   buildRecordedSalesTrend,
   type RecordedSalesTrendPoint
@@ -19,6 +20,11 @@ const repository = getMiseRepository();
 
 export { generateInsightsFromSalesAndInventory };
 export type { InsightsSalesAnalytics };
+
+/** MISE-005LJ: ASCII-C restaurant workspace identity for Insights entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalInsightsWorkspaceId(restaurantId);
+}
 
 export async function fetchConditionalAnalytics(restaurantId: string) {
   const [data, orders] = await Promise.all([
@@ -42,8 +48,7 @@ export type InsightsSalesTrendPoint = RecordedSalesTrendPoint;
 
 /** Returns recorded POS gross sales for the latest service days; no forecast values are introduced. */
 export async function fetchInsightsSalesTrend(restaurantId: string): Promise<InsightsSalesTrendPoint[]> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
 
   const data = await repository.fetchPlanningData(normalizedRestaurantId);
   if (data.sales.some((sale) => sale.restaurant_id !== normalizedRestaurantId)) {
@@ -65,8 +70,7 @@ export function buildInsightsSalesTrend(
 export async function fetchInsightsSalesAnalytics(
   restaurantId: string
 ): Promise<InsightsSalesAnalytics> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
 
   const data = await repository.fetchPlanningData(normalizedRestaurantId);
   if (data.sales.some((sale) => sale.restaurant_id !== normalizedRestaurantId)) {
