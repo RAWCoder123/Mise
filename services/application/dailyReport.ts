@@ -4,6 +4,7 @@ import {
   type DailyOpsDeliveryLine,
   type DailyOpsReport
 } from "../domain/dailyOpsReport";
+import { requireCanonicalDailyReportWorkspaceId } from "../domain/dailyReportRestaurantIdentity";
 import { answerAskMise } from "../ai/askMise";
 import { fetchDeliveryHistory } from "./deliveries";
 import { listOpenOperatorTasks } from "./floorNotes";
@@ -20,12 +21,16 @@ import { fetchWasteAnalysis } from "./waste";
 
 export type { DailyOpsReport, DailyOpsDeliveryLine };
 
+/** MISE-005LT: ASCII-C restaurant workspace identity for daily-report entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalDailyReportWorkspaceId(restaurantId);
+}
+
 /**
  * Loads closeout inputs and builds a structured daily ops report.
  */
 export async function fetchDailyOpsReport(restaurantId: string): Promise<DailyOpsReport> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
 
   const [
     restaurant,
