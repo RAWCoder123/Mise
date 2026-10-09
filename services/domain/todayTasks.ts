@@ -11,6 +11,12 @@ import type {
   SupplierOrder
 } from "../../types/mise";
 import type { TodayTaskPresentationDescriptor } from "../../types/presentation";
+import { requireCanonicalTodayTasksRestaurantId } from "./todayTasksRestaurantIdentity";
+
+/** MISE-005LG: ASCII-C restaurant workspace identity for Today-tasks entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalTodayTasksRestaurantId(restaurantId);
+}
 
 /**
  * Today tasks are projections of authoritative workflow state. They are never
@@ -121,8 +127,7 @@ export const DEFAULT_TODAY_TASK_DUE_SOON_WINDOW_MS = 4 * 60 * 60 * 1000;
 export function deriveOperationalTodayTasks(
   input: DeriveOperationalTodayTasksInput
 ): OperationalTodayTask[] {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("A restaurant is required to derive Today tasks.");
+  const restaurantId = requireRestaurantId(input.restaurantId);
 
   const includeCompleted = input.includeCompleted ?? false;
   const tasks: OperationalTodayTask[] = [];
