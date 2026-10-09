@@ -3,12 +3,18 @@ import {
   buildWasteAnalysis,
   type WasteAnalysisSummary
 } from "../domain/wasteAnalysis";
+import { requireCanonicalWasteWorkspaceId } from "../domain/wasteRestaurantIdentity";
 import { getMiseRepository } from "./repository";
 
 export type { WasteAnalysisSummary } from "../domain/wasteAnalysis";
 
 const WASTE_ANALYSIS_WINDOW_DAYS = 7;
 const WASTE_HISTORY_LIMIT = 500;
+
+/** MISE-005LU: ASCII-C restaurant workspace identity for waste entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalWasteWorkspaceId(restaurantId);
+}
 
 /**
  * Screen-safe waste intelligence boundary. Hosted and demo evidence both come
@@ -19,8 +25,7 @@ export async function fetchWasteAnalysis(
   restaurantId: string,
   options: { operatingDate?: string; now?: Date } = {}
 ): Promise<WasteAnalysisSummary> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
 
   const repository = getMiseRepository();
   const [restaurant, inventoryItems] = await Promise.all([
