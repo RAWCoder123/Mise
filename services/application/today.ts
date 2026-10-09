@@ -9,6 +9,7 @@ import {
   sortOperationalTodayTasks,
   type OperationalTodayTask
 } from "../domain/todayTasks";
+import { requireCanonicalTodayTasksWorkspaceId } from "../domain/todayTasksRestaurantIdentity";
 import {
   fetchOpenInventoryCountSession
 } from "./inventory";
@@ -31,6 +32,11 @@ import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
+/** MISE-005LG: ASCII-C restaurant workspace identity for Today entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalTodayTasksWorkspaceId(restaurantId);
+}
+
 export interface TodayInventoryHealthCounts {
   good: number;
   watch: number;
@@ -51,8 +57,7 @@ export async function fetchTodaySummary(
   restaurantId: string,
   options: { includeCompletedTasks?: boolean } = {}
 ): Promise<TodayCommandCenterSummary> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
 
   const [
     data,
