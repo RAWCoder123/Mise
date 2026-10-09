@@ -7,6 +7,7 @@ import type {
   SetupRecipeDraft,
   SetupSupplierDraft
 } from "../domain/setupDrafts";
+import { requireCanonicalSetupWorkspaceId } from "../domain/setupRestaurantIdentity";
 import {
   normalizeRecipeBaselineQuantity,
   normalizeRecommendedQuantity,
@@ -29,12 +30,16 @@ export interface SaveRestaurantSetupInput {
 
 export interface SaveRestaurantSetupSummary extends SetupPersistenceSummary {}
 
+/** MISE-005LL: ASCII-C restaurant workspace identity for setup entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalSetupWorkspaceId(restaurantId);
+}
+
 export async function saveRestaurantSetup(
   restaurantId: string,
   input: SaveRestaurantSetupInput
 ): Promise<SaveRestaurantSetupSummary> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   validateSetupInput(input);
 
   const suppliersByReference = new Map<
