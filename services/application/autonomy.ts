@@ -1,3 +1,4 @@
+import { requireCanonicalAutonomyWorkspaceId } from "../domain/autonomyRestaurantIdentity";
 import { defaultAutonomyRules } from "../domain/restaurantAutonomy";
 import type {
   AutonomyOperationalCategory,
@@ -22,9 +23,13 @@ export type AutonomyRuleInput = {
   allowedEndTime?: string | null;
 };
 
+/** MISE-005LK: ASCII-C restaurant workspace identity for autonomy entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalAutonomyWorkspaceId(restaurantId);
+}
+
 export async function fetchAutonomyRules(restaurantId: string): Promise<RestaurantAutonomyRule[]> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const rules = await repository.listAutonomyRules(normalizedRestaurantId);
   if (rules.some((rule) => rule.restaurantId !== normalizedRestaurantId)) {
     throw new Error("Autonomy rules failed restaurant scope validation.");
@@ -33,8 +38,7 @@ export async function fetchAutonomyRules(restaurantId: string): Promise<Restaura
 }
 
 export async function saveAutonomyRule(restaurantId: string, input: AutonomyRuleInput) {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   if (input.supplierName?.trim() && !input.supplierId?.trim()) {
     throw new Error("Supplier-scoped autonomy requires a durable supplier identity.");
   }
@@ -57,8 +61,7 @@ export async function saveAutonomyRule(restaurantId: string, input: AutonomyRule
 export async function createSafeDefaultAutonomyRules(
   restaurantId: string
 ): Promise<RestaurantAutonomyRule[]> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
 
   const existing = await fetchAutonomyRules(normalizedRestaurantId);
   if (existing.length > 0) return existing;
