@@ -3,6 +3,12 @@ import type { DailyOpsReport } from "./dailyOpsReport";
 import type { OperatingBrief } from "./operatingBrief";
 import type { DailyOperatingPlan, OperatingPlanItem } from "./operatingPlan";
 import { hourInTimeZone } from "./operatingPlan";
+import { requireCanonicalDailyPhaseBriefRestaurantId } from "./dailyPhaseBriefRestaurantIdentity";
+
+/** MISE-005LQ: ASCII-C restaurant workspace identity for daily-phase-brief domain. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalDailyPhaseBriefRestaurantId(restaurantId);
+}
 
 export type DailyBriefPhase = "morning" | "pre_service" | "closing";
 export type DailyPhaseFindingTone = "urgent" | "attention" | "positive" | "neutral";
@@ -59,8 +65,7 @@ export function buildDailyPhaseBriefs(input: {
   dailyReport: DailyOpsReport;
   now?: Date;
 }): DailyPhaseBriefs {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("Daily phase briefs require a restaurant.");
+  const restaurantId = requireRestaurantId(input.restaurantId);
   if (
     input.operatingPlan.restaurantId !== restaurantId ||
     input.operatingBrief.restaurantId !== restaurantId
