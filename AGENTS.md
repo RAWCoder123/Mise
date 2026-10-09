@@ -99,3 +99,13 @@ Available gstack skills:
 /investigate, /document-release, /document-generate, /codex, /cso, /autoplan,
 /plan-devex-review, /devex-review, /careful, /freeze, /guard, /unfreeze,
 /gstack-upgrade, /learn
+
+## Cursor Cloud
+
+Local demo mode is the default when `EXPO_PUBLIC_APP_ENV` is unset. The Expo app runs without Supabase keys.
+
+`npm ci` fails on npm 10.9 because the lockfile omits optional peer `react-native-worklets@0.8.3`. Install with `npm ci --legacy-peer-deps`.
+
+The web dev server is `npx expo start --web --port 8081 --host localhost` with `EXPO_NO_TELEMETRY=1` and `CI=1`. It listens on IPv6 `localhost:8081`. Open `http://localhost:8081` and use **Open demo data**.
+
+`npm test` can exit nonzero while reporting zero failures: seven recalculation-cycle tests are cancelled by pending timers. `npm run typecheck` is the clean compile check. `npm run supabase:test` needs Docker and is not started on Cloud Agent boot.
