@@ -1,4 +1,5 @@
 import type { RestaurantTaskRequiredRole } from "./restaurantTasks";
+import { requireCanonicalRecalculationScheduleRestaurantId } from "./recalculationScheduleRestaurantIdentity";
 
 /**
  * Section 26 "Background Jobs" scheduling brain for the three recalculation
@@ -166,8 +167,8 @@ export function buildRecalculationSchedule(input: {
   runs: readonly RecalculationRunRecord[];
   now?: Date;
 }): RecalculationSchedule {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("Recalculation scheduling requires a restaurant.");
+  /** MISE-005LC: ASCII-C restaurant workspace identity for schedule entry. */
+  const restaurantId = requireCanonicalRecalculationScheduleRestaurantId(input.restaurantId);
   const timeZone = input.restaurantTimeZone.trim();
   if (!timeZone) throw new Error("Recalculation scheduling requires a restaurant timezone.");
   for (const run of input.runs) {
