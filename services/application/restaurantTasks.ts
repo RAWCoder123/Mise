@@ -4,9 +4,18 @@ import type {
   RestaurantTask
 } from "../domain/restaurantTasks";
 import { isOpenRestaurantTask } from "../domain/restaurantTasks";
+import {
+  requireCanonicalRestaurantTasksReopenRestaurantId,
+  requireCanonicalRestaurantTasksWorkspaceId
+} from "../domain/restaurantTasksRestaurantIdentity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
+
+/** MISE-005LI: ASCII-C restaurant workspace identity for restaurant-task entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalRestaurantTasksWorkspaceId(restaurantId);
+}
 
 export type {
   CompleteRestaurantTaskInput,
@@ -27,8 +36,7 @@ export async function listSharedRestaurantTasks(
   restaurantId: string,
   options: { includeCompleted?: boolean } = {}
 ): Promise<RestaurantTask[]> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const tasks = await repository.listRestaurantTasks(normalizedRestaurantId);
   if (tasks.some((task) => task.restaurantId !== normalizedRestaurantId)) {
     throw new Error("Restaurant tasks failed restaurant scope validation.");
@@ -53,9 +61,9 @@ export async function reopenSharedRestaurantTask(
   restaurantId: string,
   taskId: string
 ): Promise<RestaurantTask> {
-  const normalizedRestaurantId = restaurantId.trim();
+  const normalizedRestaurantId = requireCanonicalRestaurantTasksReopenRestaurantId(restaurantId);
   const normalizedTaskId = taskId.trim();
-  if (!normalizedRestaurantId || !normalizedTaskId) {
+  if (!normalizedTaskId) {
     throw new Error("Restaurant and task are required.");
   }
   return repository.reopenRestaurantTask(normalizedRestaurantId, normalizedTaskId);
