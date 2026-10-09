@@ -2,6 +2,7 @@ import type { AiInsight, PosProvider, Restaurant, RestaurantMembership } from ".
 import { buildAiInsightInput, parseStructuredInsightOutput } from "../ai/structuredInsights";
 import { DEMO_DATASET, type DemoSetupProfile } from "../demoData";
 import type { AuditLogInput } from "../repositories/miseRepository";
+import { requireCanonicalRestaurantAppWorkspaceId } from "../domain/restaurantAppRestaurantIdentity";
 import {
   normalizeTeamMemberEmail,
   type AssignableTeamRole
@@ -18,6 +19,11 @@ import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
 
+/** MISE-005LM: ASCII-C restaurant workspace identity for restaurant app entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalRestaurantAppWorkspaceId(restaurantId);
+}
+
 export async function fetchRestaurant(restaurantId: string) {
   return repository.fetchRestaurant(restaurantId);
 }
@@ -27,8 +33,7 @@ export async function fetchMembershipsForAuthUser(userId: string) {
 }
 
 export async function fetchRestaurantTeam(restaurantId: string) {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   return repository.fetchRestaurantTeam(normalizedRestaurantId);
 }
 
@@ -37,8 +42,7 @@ export async function addRestaurantMemberByEmail(
   email: string,
   role: AssignableTeamRole
 ) {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const normalizedEmail = normalizeTeamMemberEmail(email);
   if (!normalizedEmail) throw new Error("Enter a valid teammate email.");
   return repository.addRestaurantMemberByEmail(normalizedRestaurantId, normalizedEmail, role);
@@ -66,14 +70,12 @@ export async function removeRestaurantMember(restaurantId: string, targetUserId:
 }
 
 export async function deleteAccount(restaurantId: string) {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   return repository.deleteAccount(normalizedRestaurantId);
 }
 
 export async function exportRestaurantData(restaurantId: string) {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   return repository.exportRestaurantData(normalizedRestaurantId);
 }
 
