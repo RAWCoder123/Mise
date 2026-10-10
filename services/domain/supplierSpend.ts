@@ -1,5 +1,6 @@
 import type { InventoryItem, PurchaseRecommendation, SupplierOrder } from "../../types/mise";
 import { toDateKeyInTimeZone } from "../../utils/format";
+import { requireCanonicalSupplierSpendWorkspaceId } from "./supplierSpendRestaurantIdentity";
 
 export interface SupplierSpendTrendPoint {
   date: string;
@@ -24,8 +25,8 @@ export function buildSupplierSpendTrend(
   inventoryItems: readonly InventoryItem[],
   options: SupplierSpendTrendOptions = {}
 ): SupplierSpendTrendPoint[] {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) return [];
+  /** MISE-005MT: ASCII-C restaurant workspace identity for supplier-spend entry. */
+  const normalizedRestaurantId = requireCanonicalSupplierSpendWorkspaceId(restaurantId);
 
   const pointLimit = typeof options.limit === "number" && Number.isFinite(options.limit)
     ? Math.max(1, Math.floor(options.limit))
