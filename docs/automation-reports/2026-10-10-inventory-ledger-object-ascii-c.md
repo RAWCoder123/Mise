@@ -35,11 +35,10 @@ merge helpers or rewrite restaurant/source trim in this tip.
 
 ## Verification
 
-- `tests/inventoryLedgerObjectAsciiC.test.ts`: focused run
-- `tests/inventoryLedger.test.ts`: regression
-- `npm run typecheck`
-- `npm run security:static` / `security:backend`
-- `npm test`
+- `tests/inventoryLedgerObjectAsciiC.test.ts` + `tests/inventoryLedger.test.ts`: 8/8
+- `npm run typecheck`: pass
+- `npm run security:static` / `security:backend`: pass
+- `npm test`: 687 total / 680 pass / 0 fail / 7 cancelled (pre-existing recalculationCycles)
 
 ## Do not
 
