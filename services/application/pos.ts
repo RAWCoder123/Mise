@@ -6,6 +6,7 @@ import {
   type PosMappingReviewResult,
   type SquareSyncWorkflowResult
 } from "../repositories/miseRepository";
+import { requireCanonicalPosRestaurantId } from "../domain/posRestaurantIdentity";
 import { getMiseRepository } from "./repository";
 
 export { SquareIntegrationError };
@@ -71,7 +72,11 @@ export function isSquareIntegrationError(error: unknown): error is SquareIntegra
   return error instanceof SquareIntegrationError;
 }
 
+/** MISE-005MA: ASCII-C restaurant workspace identity for POS workflow IDs. */
 function requireWorkflowId(value: string, label: string) {
+  if (label === "restaurant") {
+    return requireCanonicalPosRestaurantId(value);
+  }
   const normalized = value.trim();
   if (!normalized) throw new Error(`A valid ${label} id is required.`);
   return normalized;
