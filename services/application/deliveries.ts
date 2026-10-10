@@ -7,6 +7,7 @@ import {
   buildDeliveryLinesFromOrderRecommendations,
   deliveryClientIdForOrder
 } from "../domain/supplierDelivery";
+import { requireCanonicalDeliveriesSupplierOrderId } from "../domain/deliveriesSupplierOrderIdentity";
 import { getMiseRepository } from "./repository";
 
 export type { DeliveryHistoryEntry } from "./deliveryHistoryMerge";
@@ -47,9 +48,9 @@ export async function receiveSupplierOrderDelivery(
   options: { notes?: string | null; receivedAt?: string; clientDeliveryId?: string } = {}
 ) {
   const normalizedRestaurantId = restaurantId.trim();
-  const normalizedOrderId = supplierOrderId.trim();
+  // MISE-005MD: ASCII-C supplier-order identity for deliveries receive.
+  const normalizedOrderId = requireCanonicalDeliveriesSupplierOrderId(supplierOrderId);
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
-  if (!normalizedOrderId) throw new Error("Missing supplier order.");
 
   const repository = getMiseRepository();
   const [order, recommendations, inventoryItems] = await Promise.all([
