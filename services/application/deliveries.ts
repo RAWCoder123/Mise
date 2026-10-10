@@ -7,6 +7,7 @@ import {
   buildDeliveryLinesFromOrderRecommendations,
   deliveryClientIdForOrder
 } from "../domain/supplierDelivery";
+import { resolveCanonicalDeliveriesClientDeliveryId } from "../domain/deliveriesClientDeliveryIdentity";
 import { getMiseRepository } from "./repository";
 
 export type { DeliveryHistoryEntry } from "./deliveryHistoryMerge";
@@ -85,8 +86,11 @@ export async function receiveSupplierOrderDelivery(
   }
 
   const receivedAt = options.receivedAt ?? new Date().toISOString();
-  const clientDeliveryId =
-    options.clientDeliveryId?.trim() || deliveryClientIdForOrder(normalizedOrderId, receivedAt);
+  // MISE-005MI: ASCII-C optional client-delivery identity for deliveries receive.
+  const clientDeliveryId = resolveCanonicalDeliveriesClientDeliveryId(
+    options.clientDeliveryId,
+    deliveryClientIdForOrder(normalizedOrderId, receivedAt)
+  );
 
   return repository.recordSupplierOrderDelivery(normalizedRestaurantId, {
     supplierOrderId: normalizedOrderId,
