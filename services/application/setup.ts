@@ -14,6 +14,7 @@ import {
   requireSupplierDisplayName
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
+import { requireCanonicalSetupReferenceId } from "../domain/setupReferenceIdentity";
 import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
 
@@ -251,15 +252,8 @@ function normalizeOptionalEmail(value: string) {
 }
 
 function requireSetupReferenceId(value: unknown, label: string) {
-  const referenceId = typeof value === "string" ? value.trim() : "";
-  if (
-    !referenceId ||
-    referenceId.length > 128 ||
-    /[\u0000-\u001f\u007f]/.test(referenceId)
-  ) {
-    throw new Error(`Setup ${label} reference is invalid.`);
-  }
-  return referenceId;
+  // MISE-005MM: ASCII-C setup client-reference identity for supplier drafts.
+  return requireCanonicalSetupReferenceId(value, label);
 }
 
 function firstSupplierReferenceId(
