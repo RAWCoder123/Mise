@@ -4,6 +4,7 @@ import type {
   RestaurantTask
 } from "../domain/restaurantTasks";
 import { isOpenRestaurantTask } from "../domain/restaurantTasks";
+import { requireCanonicalRestaurantTasksTaskId } from "../domain/restaurantTasksObjectIdentity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -54,8 +55,9 @@ export async function reopenSharedRestaurantTask(
   taskId: string
 ): Promise<RestaurantTask> {
   const normalizedRestaurantId = restaurantId.trim();
-  const normalizedTaskId = taskId.trim();
-  if (!normalizedRestaurantId || !normalizedTaskId) {
+  // MISE-005MF: ASCII-C task identity for restaurant-task reopen.
+  const normalizedTaskId = requireCanonicalRestaurantTasksTaskId(taskId);
+  if (!normalizedRestaurantId) {
     throw new Error("Restaurant and task are required.");
   }
   return repository.reopenRestaurantTask(normalizedRestaurantId, normalizedTaskId);
