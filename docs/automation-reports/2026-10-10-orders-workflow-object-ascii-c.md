@@ -34,7 +34,8 @@ When landing with #756, keep both restaurant and object-label branches in
 
 ## Verification
 
-- Focused `tests/ordersWorkflowObjectAsciiC.test.ts`
-- `npm run typecheck`
-- `npm run security:static` / `npm run security:backend`
-- `npm test` (expect pre-existing recalculationCycles cancelled-by-parent only)
+- `tests/ordersWorkflowObjectAsciiC.test.ts`: 4/4
+- `tests/gmailClient.test.ts`: pass (restaurant path still Unicode trim)
+- `npm run typecheck`: pass
+- `npm run security:static` / `npm run security:backend`: pass
+- `npm test`: 687 total / 680 pass / 0 fail / 7 cancelled (pre-existing recalculationCycles)
