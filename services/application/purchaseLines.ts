@@ -3,6 +3,7 @@ import type {
   PurchaseLineSource
 } from "../domain/purchaseLines";
 import { markCurrentPurchaseLines, normalizePurchaseLineInput } from "../domain/purchaseLines";
+import { requireCanonicalPurchaseLinesLineId } from "../domain/purchaseLinesObjectIdentity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -60,8 +61,8 @@ export async function correctPurchaseLine(
   lineId: string,
   correction: PurchaseLineInput
 ) {
-  const normalizedLineId = lineId.trim();
-  if (!normalizedLineId) throw new Error("Missing purchase line.");
+  // MISE-005MH: ASCII-C line identity for purchase-line correction.
+  const normalizedLineId = requireCanonicalPurchaseLinesLineId(lineId);
   return repository.supersedePurchaseLine(
     requireRestaurantId(restaurantId),
     normalizedLineId,
