@@ -4,6 +4,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { canonicalizeOrderAutomationSupplierId } from "./orderAutomationSupplierIdentity";
 
 export type OrderAutomationDecision = "manual_review" | "automatic_draft" | "automatic_send";
 
@@ -116,7 +117,9 @@ export const DEFAULT_ORDER_AUTOMATION_POLICY: OrderAutomationPolicy = {
  */
 export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomationAssessment {
   const restaurantId = input.restaurantId.trim();
-  const supplierId = input.supplierId.trim();
+  // MISE-005MQ: ASCII-C supplier identity for order-automation assessment.
+  // Unicode trim would invent a match against unpadded supplier_id values.
+  const supplierId = canonicalizeOrderAutomationSupplierId(input.supplierId) ?? "";
   const supplierName = input.supplierName.trim();
   const policy = input.policy ?? DEFAULT_ORDER_AUTOMATION_POLICY;
   const now = input.now ?? new Date();
