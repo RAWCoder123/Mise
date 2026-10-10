@@ -1,4 +1,8 @@
 import type { MiseAction } from "../domain/miseActions";
+import {
+  requireCanonicalMiseActionsObjectId,
+  type MiseActionsObjectLabel
+} from "../domain/miseActionsObjectIdentity";
 import { requireSupplierSendContentFingerprint } from "../miseValidation";
 import { approvePurchaseRecommendation } from "./orders";
 import { getMiseRepository } from "./repository";
@@ -20,9 +24,9 @@ export async function fetchMiseActions(
 
 export async function fetchSupplierSendAction(restaurantId: string, orderId: string) {
   const normalizedRestaurantId = restaurantId.trim();
-  const normalizedOrderId = orderId.trim();
+  // MISE-005ME: ASCII-C supplier-order identity for Mise-action send lookup.
+  const normalizedOrderId = requireCanonicalMiseActionsObjectId(orderId, "supplier order");
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
-  if (!normalizedOrderId) throw new Error("Missing supplier order.");
   if (!repository.fetchSupplierSendAction) {
     throw new Error("Supplier send action lookup is unavailable.");
   }
@@ -83,6 +87,10 @@ export async function approveSupplierSendContent(
 }
 
 function requireSupplierSendApprovalId(value: string, label: string) {
+  // MISE-005ME: ASCII-C object identities for supplier send approval.
+  if (label === "supplier order" || label === "supplier send action") {
+    return requireCanonicalMiseActionsObjectId(value, label as MiseActionsObjectLabel);
+  }
   const normalized = typeof value === "string" ? value.trim() : "";
   if (!normalized || normalized.length > 128 || /[\u0000-\u001f\u007f]/.test(normalized)) {
     throw new Error(`Missing ${label}.`);
