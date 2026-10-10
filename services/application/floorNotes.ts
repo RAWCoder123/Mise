@@ -1,6 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { requireCanonicalFloorNotesTaskId } from "../domain/floorNotesObjectIdentity";
 import { createId } from "../domain/miseDomain";
+
+/** MISE-005MJ: floor-notes / operator-task object identity pinned to ASCII C. */
 
 /**
  * Operator tasks stored on-device.
@@ -384,8 +387,8 @@ export async function completeOperatorTask(input: {
   now?: string;
 }): Promise<OperatorTask | null> {
   const restaurantId = requireRestaurantId(input.restaurantId);
-  const taskId = input.taskId.trim();
-  if (!taskId) throw new Error("Missing operator task id.");
+  // MISE-005MJ: ASCII-C task identity for operator-task complete / floor-note done.
+  const taskId = requireCanonicalFloorNotesTaskId(input.taskId);
 
   return enqueue(async () => {
     const existing = await readTasks(restaurantId);
@@ -422,8 +425,8 @@ export async function reopenOperatorTask(input: {
   taskId: string;
 }): Promise<OperatorTask | null> {
   const restaurantId = requireRestaurantId(input.restaurantId);
-  const taskId = input.taskId.trim();
-  if (!taskId) throw new Error("Missing operator task id.");
+  // MISE-005MJ: ASCII-C task identity for operator-task reopen.
+  const taskId = requireCanonicalFloorNotesTaskId(input.taskId);
 
   return enqueue(async () => {
     const existing = await readTasks(restaurantId);
