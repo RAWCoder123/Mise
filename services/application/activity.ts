@@ -7,9 +7,15 @@ import {
   type ActivityStory,
   type ActivityWindowSummary
 } from "../domain/activityEvents";
+import { requireCanonicalActivityWorkspaceId } from "../domain/activityRestaurantIdentity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
+
+/** MISE-005LW: ASCII-C restaurant workspace identity for activity entry points. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalActivityWorkspaceId(restaurantId);
+}
 
 export async function fetchActivityEvents(
   restaurantId: string,
@@ -21,8 +27,7 @@ export async function fetchActivityEvents(
     attentionOnly?: boolean;
   } = {}
 ): Promise<ActivityEvent[]> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantId(restaurantId);
   const events = await repository.listActivityEvents(normalizedRestaurantId, options);
   if (events.some((event) => event.restaurantId !== normalizedRestaurantId)) {
     throw new Error("Activity events failed restaurant scope validation.");
