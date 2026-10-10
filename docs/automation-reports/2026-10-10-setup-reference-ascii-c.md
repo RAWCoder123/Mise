@@ -25,11 +25,11 @@ the normalized identity and pass the control/length gate.
 
 ## Verification
 
-- Focused `tests/setupReferenceAsciiC.test.ts`
-- `npm run typecheck`
-- `npm test`
-- `npm run security:static`
-- `npm run security:backend`
+- Focused `tests/setupReferenceAsciiC.test.ts`: 4/4 passed
+- `npm run typecheck`: passed
+- `npm test`: 687 total / 680 pass / 0 fail / 7 cancelled (pre-existing recalculationCycles)
+- `npm run security:static`: passed
+- `npm run security:backend`: passed
 
 ## Merge note
 
