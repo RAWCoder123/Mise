@@ -29,6 +29,7 @@ import {
   fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
+import { requireCanonicalInventoryMenuItemId } from "../domain/inventoryMenuItemIdentity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -169,9 +170,9 @@ export async function confirmRecipeBaselineComplete(
   expectedRevision: number
 ) {
   const normalizedRestaurantId = restaurantId.trim();
-  const normalizedMenuItemId = menuItemId.trim();
+  // MISE-005MG: ASCII-C menu-item identity for recipe-baseline confirmation.
+  const normalizedMenuItemId = requireCanonicalInventoryMenuItemId(menuItemId);
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
-  if (!normalizedMenuItemId) throw new Error("Missing menu item.");
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
     throw new Error("Recipe revision is invalid.");
   }
