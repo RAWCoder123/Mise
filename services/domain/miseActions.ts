@@ -1,4 +1,5 @@
 import { createId } from "./miseDomain";
+import { requireCanonicalMiseActionsDomainObjectId } from "./miseActionsDomainObjectIdentity";
 import type { AutonomyLevel } from "./operationalStatus";
 
 export type MiseActionType =
@@ -132,7 +133,10 @@ export function miseActionIdempotencyKey(
   actionType: MiseActionType,
   subjectId: string
 ) {
-  return `${restaurantId.trim()}:${actionType}:${subjectId.trim()}`;
+  // MISE-005MP: ASCII-C subject identity for durable Mise-action idempotency keys.
+  // Restaurant workspace stays on Unicode trim.
+  const canonicalSubjectId = requireCanonicalMiseActionsDomainObjectId(subjectId, "subject id");
+  return `${restaurantId.trim()}:${actionType}:${canonicalSubjectId}`;
 }
 
 export function createPreparedAction(input: {
@@ -147,7 +151,11 @@ export function createPreparedAction(input: {
 }): MiseAction {
   const restaurantId = input.restaurantId.trim();
   if (!restaurantId) throw new Error("Mise actions require a restaurant id.");
-  if (!input.idempotencyKey.trim()) throw new Error("Mise actions require an idempotency key.");
+  // MISE-005MP: ASCII-C idempotency key; preserves existing missing-key message.
+  const idempotencyKey = requireCanonicalMiseActionsDomainObjectId(
+    input.idempotencyKey,
+    "idempotency key"
+  );
 
   const now = input.now ? new Date(input.now).toISOString() : new Date().toISOString();
   const needsApproval = requiresApproval(input.actionType);
@@ -171,7 +179,7 @@ export function createPreparedAction(input: {
       input.financialImpactCents === undefined || input.financialImpactCents === null
         ? null
         : Math.round(input.financialImpactCents),
-    idempotencyKey: input.idempotencyKey.trim(),
+    idempotencyKey,
     createdAt: now,
     updatedAt: now
   };
@@ -352,11 +360,12 @@ export function measureOutcome(input: {
 }): Outcome {
   const restaurantId = input.restaurantId.trim();
   if (!restaurantId) throw new Error("Outcomes require a restaurant id.");
-  if (!input.actionId.trim()) throw new Error("Outcomes require an action id.");
+  // MISE-005MP: ASCII-C action identity; preserves existing missing-action message.
+  const actionId = requireCanonicalMiseActionsDomainObjectId(input.actionId, "action id");
 
   return {
     id: createId("outcome"),
-    actionId: input.actionId,
+    actionId,
     restaurantId,
     expectedResult: input.expectedResult,
     actualResult: input.actualResult,
