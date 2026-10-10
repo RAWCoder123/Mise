@@ -23,6 +23,7 @@ import {
   requireSupplierOperatorNote,
   requireSupplierRecipientInput
 } from "../miseValidation";
+import { requireCanonicalOrdersWorkflowObjectId } from "../domain/ordersWorkflowObjectIdentity";
 import { getMiseRepository } from "./repository";
 import { GmailIntegrationError } from "../repositories/miseRepository";
 import type {
@@ -361,7 +362,15 @@ export async function markSupplierOrderSent(restaurantId: string, orderId: strin
   return { order, orderedRecommendations };
 }
 
+/** MISE-005MC: ASCII-C object identity for orders workflow IDs. */
 function requireWorkflowId(value: string, label: string) {
+  if (
+    label === "supplier order" ||
+    label === "purchase decision event" ||
+    label === "supplier"
+  ) {
+    return requireCanonicalOrdersWorkflowObjectId(value, label);
+  }
   const normalized = typeof value === "string" ? value.trim() : "";
   if (!normalized || normalized.length > 128) throw new Error(`Missing ${label}.`);
   return normalized;
