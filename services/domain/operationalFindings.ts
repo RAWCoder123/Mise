@@ -13,6 +13,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { requireCanonicalOperationalFindingsWorkspaceId } from "./operationalFindingsRestaurantIdentity";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
@@ -197,9 +198,9 @@ function unreviewedFeedback(recommendedAction: string): OperationalFinding["mana
   };
 }
 
+/** MISE-005LY: ASCII-C restaurant workspace identity for operational-findings entry. */
 export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): DailyOperationalBrief {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("Missing restaurant workspace.");
+  const restaurantId = requireCanonicalOperationalFindingsWorkspaceId(input.restaurantId);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.operatingDate)) {
     throw new Error("Operating date must use YYYY-MM-DD.");
   }
