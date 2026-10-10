@@ -23,6 +23,7 @@ import {
   requireSupplierOperatorNote,
   requireSupplierRecipientInput
 } from "../miseValidation";
+import { requireCanonicalOrdersWorkspaceId } from "../domain/ordersRestaurantIdentity";
 import { getMiseRepository } from "./repository";
 import { GmailIntegrationError } from "../repositories/miseRepository";
 import type {
@@ -42,6 +43,11 @@ export type {
 
 const repository = getMiseRepository();
 
+/** MISE-005LX: ASCII-C restaurant workspace identity for orders authorities. */
+function requireRestaurantWorkspaceId(restaurantId: string) {
+  return requireCanonicalOrdersWorkspaceId(restaurantId);
+}
+
 export async function fetchPurchaseRecommendations(
   restaurantId: string,
   status: RecommendationStatus | "all" = "pending"
@@ -52,8 +58,7 @@ export async function fetchPurchaseRecommendations(
 export async function fetchPurchaseRecommendationAuthorities(
   restaurantId: string
 ): Promise<Record<string, PurchaseAuthorityResult>> {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
+  const normalizedRestaurantId = requireRestaurantWorkspaceId(restaurantId);
   return repository.fetchPurchaseRecommendationAuthorities(normalizedRestaurantId);
 }
 
