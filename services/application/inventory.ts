@@ -29,6 +29,7 @@ import {
   fetchInventoryLedgerEvidence,
   inventoryCountEvidenceFor
 } from "./inventoryEvidence";
+import { requireCanonicalInventoryItemId } from "../domain/inventoryItemIdentity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -239,12 +240,12 @@ export async function addRecipeBaselineIngredient(
   }
 ) {
   const menuItemName = input.menuItemName.trim();
-  const inventoryItemId = input.inventoryItemId.trim();
+  // MISE-005MK: ASCII-C inventory-item identity for recipe-baseline mapping.
+  const inventoryItemId = requireCanonicalInventoryItemId(input.inventoryItemId);
   const unit = input.unit.trim();
   const quantityUsedPerSale = requireRecipeBaselineQuantity(input.quantityUsedPerSale);
 
   if (!menuItemName) throw new Error("Enter the POS menu item name.");
-  if (!inventoryItemId) throw new Error("Choose an inventory item.");
   if (!unit) throw new Error("Inventory unit is required.");
 
   const [data, recommendationHistory] = await Promise.all([
