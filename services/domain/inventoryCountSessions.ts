@@ -5,6 +5,7 @@ import type {
   InventoryItem,
   RestaurantRole
 } from "../../types/mise";
+import { requireCanonicalInventoryCountItemId } from "./inventoryCountItemIdentity";
 
 export const INVENTORY_COUNT_SESSION_OPEN_STATUSES = ["in_progress", "submitted"] as const;
 export type InventoryCountSessionOpenStatus = (typeof INVENTORY_COUNT_SESSION_OPEN_STATUSES)[number];
@@ -196,8 +197,8 @@ export function mergeCountLineUpdates(
 
   const updatesByItemId = new Map<string, { countedQuantity: number; note: string | null; noteProvided: boolean }>();
   for (const update of updates) {
-    const itemId = update.inventoryItemId.trim();
-    if (!itemId) throw new Error("Count line is missing an inventory item.");
+    // MISE-005MN: ASCII-C inventory-item identity for count-line saves.
+    const itemId = requireCanonicalInventoryCountItemId(update.inventoryItemId);
     const quantity = Number(update.countedQuantity);
     if (!Number.isFinite(quantity) || quantity < 0 || quantity > 1_000_000) {
       throw new Error("Counted quantity must be between 0 and 1,000,000.");
