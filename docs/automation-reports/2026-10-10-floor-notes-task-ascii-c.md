@@ -29,9 +29,10 @@ restaurant `Missing restaurant workspace.` / `requireCanonicalFloorNoteRestauran
 ## Verification
 
 - `tests/floorNotesObjectAsciiC.test.ts`: 4/4
+- `tests/floorNotes.test.ts`: 9/9
 - `npm run typecheck`: pass
 - `npm run security:static` / `security:backend`: pass
-- `npm test`: pending run on this tip
+- `npm test`: 687 total / 680 pass / 0 fail / 7 cancelled (pre-existing recalculationCycles)
 
 ## Do not
 
