@@ -3,6 +3,7 @@ import type {
   PurchaseLineSource
 } from "../domain/purchaseLines";
 import { markCurrentPurchaseLines, normalizePurchaseLineInput } from "../domain/purchaseLines";
+import { requireCanonicalPurchaseLinesSourceDocumentReference } from "../domain/purchaseLinesSourceDocumentIdentity";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -26,10 +27,10 @@ export async function ingestPurchaseLines(input: {
   supplierId?: string | null;
   correlationId?: string | null;
 }) {
-  const sourceDocumentReference = input.sourceDocumentReference.trim();
-  if (!sourceDocumentReference) {
-    throw new Error("A source document reference is required.");
-  }
+  // MISE-005ML: ASCII-C source-document identity for purchase-line ingestion.
+  const sourceDocumentReference = requireCanonicalPurchaseLinesSourceDocumentReference(
+    input.sourceDocumentReference
+  );
   if (input.lines.length === 0) {
     throw new Error("At least one purchase line is required.");
   }
