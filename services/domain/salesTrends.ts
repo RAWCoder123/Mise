@@ -1,4 +1,5 @@
 import type { PosSale } from "../../types/mise";
+import { requireCanonicalSalesTrendsWorkspaceId } from "./salesTrendsRestaurantIdentity";
 
 export interface RecordedSalesTrendPoint {
   date: string;
@@ -19,8 +20,8 @@ export function buildRecordedSalesTrend(
   sales: readonly PosSale[],
   options: RecordedSalesTrendOptions = {}
 ): RecordedSalesTrendPoint[] {
-  const normalizedRestaurantId = restaurantId.trim();
-  if (!normalizedRestaurantId) return [];
+  /** MISE-005MS: ASCII-C restaurant workspace identity for sales-trends entry. */
+  const normalizedRestaurantId = requireCanonicalSalesTrendsWorkspaceId(restaurantId);
 
   const pointLimit = typeof options.limit === "number" && Number.isFinite(options.limit)
     ? Math.max(1, Math.floor(options.limit))
