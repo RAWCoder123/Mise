@@ -1,5 +1,6 @@
 import type { InventoryItem, PurchaseRecommendation, SupplierOrder } from "../../types/mise";
 import type { SupplierDeliveryLineInput } from "../repositories/repositoryContracts";
+import { requireCanonicalSupplierDeliveryOrderId } from "./supplierDeliveryOrderIdentity";
 
 export interface DeliveryLineBuildResult {
   lines: SupplierDeliveryLineInput[];
@@ -64,5 +65,8 @@ export function buildDeliveryLinesFromOrderRecommendations(input: {
 }
 
 export function deliveryClientIdForOrder(orderId: string, receivedAt: string): string {
-  return `supplier_delivery:${orderId.trim()}:${receivedAt}`;
+  // MISE-005MR: ASCII-C order identity inside generated client-delivery keys.
+  // Unicode trim would invent a match against unpadded order ids.
+  const canonicalOrderId = requireCanonicalSupplierDeliveryOrderId(orderId);
+  return `supplier_delivery:${canonicalOrderId}:${receivedAt}`;
 }
