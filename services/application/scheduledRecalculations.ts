@@ -2,6 +2,7 @@ import { runDueRecalculationCycles } from "./recalculationCycles";
 import { createRecalculationPorts } from "./recalculationPorts";
 import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
+import { canonicalizeScheduledRecalculationTimeZone } from "../domain/scheduledRecalculationTimeZoneIdentity";
 import {
   summarizeRecalculationAttention,
   type RecalculationAttentionSummary
@@ -27,7 +28,10 @@ export async function runScheduledRecalculations(input: {
   now?: Date;
 }): Promise<RecalculationAttentionSummary | null> {
   const restaurantId = input.restaurantId.trim();
-  const restaurantTimeZone = input.restaurantTimeZone.trim();
+  // MISE-005NG: ASCII-C restaurant timezone identity for session dispatch.
+  const restaurantTimeZone = canonicalizeScheduledRecalculationTimeZone(
+    input.restaurantTimeZone
+  );
   if (!restaurantId || !restaurantTimeZone) return null;
 
   try {
