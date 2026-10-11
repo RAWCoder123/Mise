@@ -3,6 +3,11 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import {
+  requireCanonicalOperationalFindingCategory,
+  requireCanonicalOperationalFindingDecisionType,
+  requireCanonicalOperationalFindingSeverity
+} from "./operationalFindingDecisionResponseEnumIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -257,9 +262,13 @@ export function normalizeOperationalFindingDecision(
   if (record.restaurant_id !== expectedRestaurantId) {
     throw new Error("Finding decision failed restaurant scope validation.");
   }
-  const decisionType = requireBoundedText(record.decision_type, "Finding decision type", 16);
-  const findingCategory = requireBoundedText(record.finding_category, "Finding category", 32);
-  const severity = requireBoundedText(record.severity, "Finding severity", 16);
+  // MISE-005NL: ASCII-C response enum tokens before allowlist. Evidence type,
+  // evidence id/summary, restaurant workspace, finding.id, object identities,
+  // and response identity fields remain on Unicode trim / requireBoundedText
+  // (or raw Set.has on the input path) in this tip.
+  const decisionType = requireCanonicalOperationalFindingDecisionType(record.decision_type);
+  const findingCategory = requireCanonicalOperationalFindingCategory(record.finding_category);
+  const severity = requireCanonicalOperationalFindingSeverity(record.severity);
   if (!decisionTypes.has(decisionType as OperationalFindingDecisionType)) {
     throw new Error("Finding decision type is invalid.");
   }
