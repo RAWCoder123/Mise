@@ -4,6 +4,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { requireCanonicalOrderAutomationWorkspaceId } from "./orderAutomationRestaurantIdentity";
 
 export type OrderAutomationDecision = "manual_review" | "automatic_draft" | "automatic_send";
 
@@ -115,7 +116,9 @@ export const DEFAULT_ORDER_AUTOMATION_POLICY: OrderAutomationPolicy = {
  * evidence to be considered for those later workflow stages.
  */
 export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomationAssessment {
-  const restaurantId = input.restaurantId.trim();
+  /** MISE-005MW: ASCII-C restaurant workspace identity for order-automation assessment. */
+  const restaurantId = requireCanonicalOrderAutomationWorkspaceId(input.restaurantId);
+  // Leave supplierId / supplierName on Unicode trim for open tip #773 and presentation.
   const supplierId = input.supplierId.trim();
   const supplierName = input.supplierName.trim();
   const policy = input.policy ?? DEFAULT_ORDER_AUTOMATION_POLICY;
