@@ -3,6 +3,7 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import { requireCanonicalOperationalFindingDecisionResponseActorUserId } from "./operationalFindingDecisionResponseActorIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -309,7 +310,10 @@ export function normalizeOperationalFindingDecision(
     actorUserId:
       record.actor_user_id === null
         ? null
-        : requireBoundedText(record.actor_user_id, "Finding decision actor", 64),
+        : // MISE-005NQ: ASCII-C pin; do not Unicode-trim invent actor identity.
+          requireCanonicalOperationalFindingDecisionResponseActorUserId(
+            record.actor_user_id
+          ),
     recordedAt: requireTimestamp(record.recorded_at, "Finding decision timestamp")
   };
 }
