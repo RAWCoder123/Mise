@@ -15,7 +15,12 @@
  *
  * This module is intentionally dependency-free so the Expo client, the pure
  * domain tests, and the Deno Edge planning path can all share one rule set.
+ * Restaurant workspace identity for `buildInventoryCountEvidence` is pinned to
+ * ASCII C via `inventoryCountAuthorityRestaurantIdentity` (MISE-005MV).
  */
+
+import { requireCanonicalInventoryCountAuthorityWorkspaceId } from "./inventoryCountAuthorityRestaurantIdentity";
+
 
 /** Events exactly at the count instant are inside the baseline, never applied again. */
 export const COUNT_BOUNDARY_RULE = "count_instant_included_in_baseline" as const;
@@ -406,7 +411,8 @@ export function buildInventoryCountEvidence(input: {
   clockSkewToleranceMs?: number;
   resolveOperatingDate?: (iso: string) => string;
 }): Map<string, InventoryCountEvidence> {
-  const restaurantId = input.restaurantId.trim();
+  /** MISE-005MV: ASCII-C restaurant workspace identity for count-evidence entry. */
+  const restaurantId = requireCanonicalInventoryCountAuthorityWorkspaceId(input.restaurantId);
   const generatedAt = input.generatedAt ?? new Date().toISOString();
   const maximumCountAgeHours = boundedAgeHours(input.maximumCountAgeHours);
   const clockSkewToleranceMs = boundedTolerance(input.clockSkewToleranceMs);
