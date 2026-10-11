@@ -3,6 +3,7 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import { requireCanonicalOperationalFindingDecisionFindingId } from "./operationalFindingDecisionFindingIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -273,7 +274,12 @@ export function normalizeOperationalFindingDecision(
     record.edited_recommended_action === null
       ? null
       : requireBoundedText(record.edited_recommended_action, "Edited recommended action", 320);
-  const findingId = requireBoundedText(record.finding_id, "Finding identity", 240);
+  // MISE-005NM: ASCII-C response finding_id before the finding-id pattern check.
+  // Input finding.id stays on raw pattern + Unicode trim (already fail-closed).
+  // Response enums, evidence, restaurant, object identities, decision id /
+  // actor / client event / idempotency remain on Unicode trim /
+  // requireBoundedText in this tip.
+  const findingId = requireCanonicalOperationalFindingDecisionFindingId(record.finding_id);
   const policyVersion = requireBoundedText(record.policy_version, "Finding policy version", 64);
   if (!findingIdPattern.test(findingId)) throw new Error("Finding identity is invalid.");
   if (!policyVersionPattern.test(policyVersion)) throw new Error("Finding policy version is invalid.");
