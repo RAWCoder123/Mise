@@ -1,5 +1,9 @@
 import type { SupplierOrder } from "../../types/mise";
 import { toDateKeyInTimeZone } from "../../utils/format";
+import {
+  requireCanonicalSupplierDeliveryEvidenceWorkspaceId,
+  requireCanonicalSupplierReliabilityWorkspaceId
+} from "./supplierReliabilityRestaurantIdentity";
 
 export type SupplierDeliveryStatus =
   | "unverified"
@@ -113,8 +117,8 @@ export function buildSupplierReliabilitySummary(input: {
   deliveries: readonly SupplierDeliveryRecord[];
   items: readonly SupplierDeliveryItemRecord[];
 }): SupplierReliabilitySummary {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("Supplier reliability requires a restaurant workspace.");
+  /** MISE-005MX: ASCII-C restaurant workspace identity for reliability summary. */
+  const restaurantId = requireCanonicalSupplierReliabilityWorkspaceId(input.restaurantId);
   requireTimeZone(input.restaurantTimeZone);
   requireTenantScope(restaurantId, input.orders, input.deliveries, input.items);
 
@@ -179,8 +183,8 @@ export function buildSupplierOrderDeliveryEvidence(input: {
   deliveries: readonly SupplierDeliveryRecord[];
   items: readonly SupplierDeliveryItemRecord[];
 }): SupplierOrderDeliveryEvidence[] {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("Supplier delivery evidence requires a restaurant workspace.");
+  /** MISE-005MX: ASCII-C restaurant workspace identity for delivery evidence. */
+  const restaurantId = requireCanonicalSupplierDeliveryEvidenceWorkspaceId(input.restaurantId);
   requireTimeZone(input.restaurantTimeZone);
   requireTenantScope(restaurantId, [input.order], input.deliveries, input.items);
 
