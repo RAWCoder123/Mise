@@ -1,8 +1,13 @@
 import type { RestaurantTaskRequiredRole } from "./restaurantTasks";
+import { requireCanonicalRecalculationScheduleTimeZone } from "./recalculationScheduleTimeZoneIdentity";
 
 /**
  * Section 26 "Background Jobs" scheduling brain for the three recalculation
  * cycles the operating loop depends on.
+ *
+ * MISE-005NF: restaurantTimeZone is ASCII-C canonicalized before service-day
+ * evaluation so Unicode-padded IANA tokens cannot invent a parallel operating
+ * date identity beside the unpadded restaurant timezone.
  *
  * This module is deliberately storage-agnostic and pure: it receives the run
  * ledger that has already been read for the restaurant and returns what should
@@ -168,8 +173,7 @@ export function buildRecalculationSchedule(input: {
 }): RecalculationSchedule {
   const restaurantId = input.restaurantId.trim();
   if (!restaurantId) throw new Error("Recalculation scheduling requires a restaurant.");
-  const timeZone = input.restaurantTimeZone.trim();
-  if (!timeZone) throw new Error("Recalculation scheduling requires a restaurant timezone.");
+  const timeZone = requireCanonicalRecalculationScheduleTimeZone(input.restaurantTimeZone);
   for (const run of input.runs) {
     if (run.restaurantId !== restaurantId) {
       throw new Error("Recalculation scheduling received a cross-restaurant run record.");
