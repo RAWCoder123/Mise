@@ -3,6 +3,7 @@ import {
   type OperationalFindingDecision,
   type OperationalFindingDecisionInput
 } from "./operationalFindingDecisions";
+import { requireCanonicalFindingDecisionOutboxId } from "./findingDecisionOutboxIdentity";
 
 export type FindingDecisionOutboxStatus =
   | "pending"
@@ -29,13 +30,14 @@ export function createFindingDecisionOutboxEntry(input: {
   now: string;
 }): FindingDecisionOutboxEntry {
   assertTimestamp(input.now, "invalid_finding_decision_outbox_timestamp");
-  if (!input.id.trim()) throw new Error("missing_finding_decision_outbox_id");
+  // MISE-005NC: ASCII-C outbox entry-id identity for createFindingDecisionOutboxEntry.
+  const id = requireCanonicalFindingDecisionOutboxId(input.id);
   const decision = cloneDecision(normalizeOperationalFindingDecisionInput(input.decision));
   if (new TextEncoder().encode(JSON.stringify(decision)).byteLength > 32_000) {
     throw new Error("finding_decision_outbox_payload_too_large");
   }
   return {
-    id: input.id,
+    id,
     decision,
     status: "pending",
     attemptCount: 0,
