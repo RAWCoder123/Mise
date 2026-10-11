@@ -3,6 +3,7 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import { requireCanonicalOperationalFindingDecisionResponseClientEventId } from "./operationalFindingDecisionResponseClientEventIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -304,7 +305,10 @@ export function normalizeOperationalFindingDecision(
     evidence: normalizeEvidence(record.evidence),
     originalRecommendedAction,
     editedRecommendedAction,
-    clientEventId: requireBoundedText(record.client_event_id, "Finding decision event identity", 200),
+    // MISE-005NO: ASCII-C pin for response client_event_id (not Unicode trim).
+    clientEventId: requireCanonicalOperationalFindingDecisionResponseClientEventId(
+      record.client_event_id
+    ),
     idempotencyKey: requireBoundedText(record.idempotency_key, "Finding decision idempotency key", 240),
     actorUserId:
       record.actor_user_id === null
