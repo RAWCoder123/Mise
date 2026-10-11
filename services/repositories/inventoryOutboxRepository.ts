@@ -1,4 +1,6 @@
 import type { InventoryOutboxEntry } from "../domain/inventoryOutbox";
+// MISE-005NE: ASCII-C keyPrefix canonicalize for storage partition identity.
+import { requireCanonicalInventoryOutboxKeyPrefix } from "../domain/inventoryOutboxKeyPrefixIdentity";
 
 export interface InventoryOutboxStorage {
   getItem(key: string): Promise<string | null>;
@@ -121,9 +123,9 @@ function isInventoryOutboxEntry(value: unknown): value is InventoryOutboxEntry {
 }
 
 function storageKey(keyPrefix: string, restaurantId: string) {
-  if (!keyPrefix.trim()) throw new Error("missing_outbox_key_prefix");
+  const canonicalPrefix = requireCanonicalInventoryOutboxKeyPrefix(keyPrefix);
   if (!/^[A-Za-z0-9_-]+$/.test(restaurantId)) {
     throw new Error("invalid_outbox_restaurant_id");
   }
-  return `${keyPrefix}:${restaurantId}`;
+  return `${canonicalPrefix}:${restaurantId}`;
 }
