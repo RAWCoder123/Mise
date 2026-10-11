@@ -3,6 +3,7 @@ import type {
   InventoryEventAcceptance,
   InventoryEventInput
 } from "./inventoryLedger";
+import { requireCanonicalInventoryOutboxId } from "./inventoryOutboxIdentity";
 
 export type InventoryOutboxStatus =
   | "pending"
@@ -29,13 +30,15 @@ export function createInventoryOutboxEntry(input: {
   now: string;
 }): InventoryOutboxEntry {
   assertTimestamp(input.now, "invalid_outbox_timestamp");
-  if (!input.id.trim()) throw new Error("missing_outbox_id");
+  // MISE-005NB: ASCII-C outbox entry-id identity for createInventoryOutboxEntry.
+  // Event clientEventId / idempotencyKey remain on Unicode trim for #771.
+  const id = requireCanonicalInventoryOutboxId(input.id);
   if (!input.event.clientEventId.trim() || !input.event.idempotencyKey.trim()) {
     throw new Error("missing_event_idempotency");
   }
 
   return {
-    id: input.id,
+    id,
     event: freezeEventIdentity(input.event),
     status: "pending",
     attemptCount: 0,
