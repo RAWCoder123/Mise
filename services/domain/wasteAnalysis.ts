@@ -1,6 +1,7 @@
 import type { InventoryItem } from "../../types/mise";
 import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
 import type { InventoryEvent } from "./inventoryLedger";
+import { requireCanonicalWasteAnalysisWorkspaceId } from "./wasteAnalysisRestaurantIdentity";
 
 export type WasteAnalysisStatus = "no_data" | "monitoring" | "attention";
 export type WasteAnalysisTrend = "no_baseline" | "up" | "down" | "flat";
@@ -89,8 +90,8 @@ export function buildWasteAnalysis(input: {
   windowDays?: number;
   historyTruncated?: boolean;
 }): WasteAnalysisSummary {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("Waste analysis requires a restaurant.");
+  /** MISE-005MU: ASCII-C restaurant workspace identity for waste-analysis entry. */
+  const restaurantId = requireCanonicalWasteAnalysisWorkspaceId(input.restaurantId);
   requireDateKey(input.operatingDate);
   requireTimeZone(input.restaurantTimeZone);
   requireTenantScope(restaurantId, input.inventoryItems, input.events);
