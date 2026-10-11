@@ -3,6 +3,7 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import { requireCanonicalOperationalFindingDecisionEvidenceId } from "./operationalFindingDecisionEvidenceIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -162,7 +163,10 @@ function normalizeEvidence(value: unknown): FindingEvidenceReference[] {
     }
     return {
       type: type as FindingEvidenceReference["type"],
-      id: requireBoundedText(record.id, "Finding evidence identity", 240),
+      // MISE-005NJ: ASCII-C evidence identity. Evidence type/summary, restaurant
+      // workspace, finding.id, and client/idempotency object identities remain
+      // on Unicode trim / requireBoundedText in this tip.
+      id: requireCanonicalOperationalFindingDecisionEvidenceId(record.id),
       observedAt: requireTimestamp(record.observedAt, "Finding evidence timestamp"),
       summary: requireBoundedText(record.summary, "Finding evidence summary", 240)
     };
