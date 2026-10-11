@@ -3,6 +3,10 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import {
+  requireCanonicalOperationalFindingDecisionClientEventId,
+  requireCanonicalOperationalFindingDecisionIdempotencyKey
+} from "./operationalFindingDecisionObjectIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -220,8 +224,11 @@ export function normalizeOperationalFindingDecisionInput(
     },
     decisionType: input.decisionType,
     editedRecommendedAction,
-    clientEventId: requireBoundedText(input.clientEventId, "Finding decision event identity", 200),
-    idempotencyKey: requireBoundedText(input.idempotencyKey, "Finding decision idempotency key", 240)
+    // MISE-005NH: ASCII-C object identities for finding-decision client event /
+    // idempotency key. Restaurant workspace, finding.id, evidence, and free-text
+    // actions remain on Unicode trim / requireBoundedText in this tip.
+    clientEventId: requireCanonicalOperationalFindingDecisionClientEventId(input.clientEventId),
+    idempotencyKey: requireCanonicalOperationalFindingDecisionIdempotencyKey(input.idempotencyKey)
   };
 }
 
