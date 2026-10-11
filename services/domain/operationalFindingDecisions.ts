@@ -3,6 +3,7 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import { requireCanonicalOperationalFindingDecisionEvidenceType } from "./operationalFindingDecisionEvidenceTypeIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -156,7 +157,10 @@ function normalizeEvidence(value: unknown): FindingEvidenceReference[] {
       throw new Error("Finding evidence is invalid.");
     }
     const record = entry as Record<string, unknown>;
-    const type = requireBoundedText(record.type, "Finding evidence type", 80);
+    // MISE-005NK: ASCII-C evidence type before allowlist. Evidence id/summary,
+    // restaurant workspace, finding.id, and object identities remain on Unicode
+    // trim / requireBoundedText in this tip.
+    const type = requireCanonicalOperationalFindingDecisionEvidenceType(record.type);
     if (!evidenceTypes.has(type as FindingEvidenceReference["type"])) {
       throw new Error("Finding evidence type is invalid.");
     }
