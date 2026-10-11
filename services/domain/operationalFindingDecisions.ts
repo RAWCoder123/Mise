@@ -3,6 +3,7 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import { requireCanonicalOperationalFindingDecisionRestaurantId } from "./operationalFindingDecisionRestaurantIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -176,7 +177,12 @@ function normalizeEvidence(value: unknown): FindingEvidenceReference[] {
 export function normalizeOperationalFindingDecisionInput(
   input: OperationalFindingDecisionInput
 ): OperationalFindingDecisionInput {
-  const restaurantId = requireBoundedText(input.restaurantId, "Restaurant workspace", 64);
+  // MISE-005NI: pin restaurant workspace to ASCII C. Object identities
+  // (clientEventId / idempotencyKey), finding.id, evidence, and free-text
+  // recommended actions remain on Unicode requireBoundedText / trim in this tip.
+  const restaurantId = requireCanonicalOperationalFindingDecisionRestaurantId(
+    input.restaurantId
+  );
   if (input.finding.restaurantId !== restaurantId) {
     throw new Error("Finding decision failed restaurant scope validation.");
   }
