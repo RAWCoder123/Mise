@@ -3,6 +3,7 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import { requireCanonicalOperationalFindingDecisionResponseId } from "./operationalFindingDecisionResponseIdIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -291,7 +292,11 @@ export function normalizeOperationalFindingDecision(
   }
 
   return {
-    id: requireBoundedText(record.id, "Finding decision identity", 64),
+    // MISE-005NN: ASCII-C response decision id before manager-feedback authority.
+    // Response finding_id, enums, evidence, restaurant, object identities,
+    // actor / client event / idempotency remain on Unicode trim /
+    // requireBoundedText in this tip.
+    id: requireCanonicalOperationalFindingDecisionResponseId(record.id),
     sequence: requireFiniteNumber(record.sequence, "Finding decision sequence", 1, Number.MAX_SAFE_INTEGER),
     restaurantId: expectedRestaurantId,
     findingId,
