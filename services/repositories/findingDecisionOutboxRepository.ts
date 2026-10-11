@@ -1,5 +1,8 @@
 import type { FindingDecisionOutboxEntry } from "../domain/findingDecisionOutbox";
+import { requireCanonicalFindingDecisionOutboxKeyPrefix } from "../domain/findingDecisionOutboxKeyPrefixIdentity";
 import { normalizeOperationalFindingDecisionInput } from "../domain/operationalFindingDecisions";
+
+// MISE-005ND: storage keyPrefix is ASCII-C canonicalized before partition build.
 
 export interface FindingDecisionOutboxStorage {
   getItem(key: string): Promise<string | null>;
@@ -131,9 +134,9 @@ function decisionIdentity(entry: FindingDecisionOutboxEntry) {
 }
 
 function storageKey(keyPrefix: string, restaurantId: string) {
-  if (!keyPrefix.trim()) throw new Error("missing_finding_decision_outbox_key_prefix");
+  const canonicalPrefix = requireCanonicalFindingDecisionOutboxKeyPrefix(keyPrefix);
   if (!/^[A-Za-z0-9_-]+$/.test(restaurantId)) {
     throw new Error("invalid_finding_decision_outbox_restaurant_id");
   }
-  return `${keyPrefix}:${restaurantId}`;
+  return `${canonicalPrefix}:${restaurantId}`;
 }
