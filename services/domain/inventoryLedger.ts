@@ -1,4 +1,5 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
+import { canonicalizeInventoryLedgerSource } from "./inventoryLedgerSourceIdentity";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
 export type InventoryEventType =
@@ -62,45 +63,49 @@ export function acceptInventoryEvent(input: {
   candidate: InventoryEventInput;
   authority: { id: string; actorUserId: string; recordedAt: string };
 }): InventoryEventAcceptance {
-  const invalidReason = validateEventInput(input.candidate, input.authority.recordedAt);
+  const scoped = canonicalizeEventSourceIdentity(input.candidate);
+  if (scoped.status === "rejected") return scoped;
+
+  const candidate = scoped.candidate;
+  const invalidReason = validateEventInput(candidate, input.authority.recordedAt);
   if (invalidReason) return { status: "rejected", reason: invalidReason };
 
   const sameClientEvent = input.existingEvents.find(
     (event) =>
-      event.restaurantId === input.candidate.restaurantId &&
-      event.clientEventId === input.candidate.clientEventId
+      event.restaurantId === candidate.restaurantId &&
+      event.clientEventId === candidate.clientEventId
   );
   const sameIdempotencyKey = input.existingEvents.find(
     (event) =>
-      event.restaurantId === input.candidate.restaurantId &&
-      event.idempotencyKey === input.candidate.idempotencyKey
+      event.restaurantId === candidate.restaurantId &&
+      event.idempotencyKey === candidate.idempotencyKey
   );
   const existing = sameClientEvent ?? sameIdempotencyKey;
   if (existing) {
-    return sameEventPayload(existing, input.candidate)
+    return sameEventPayload(existing, candidate)
       ? { status: "duplicate", event: existing }
       : { status: "conflict", reason: "idempotency_payload_mismatch", existingEvent: existing };
   }
 
-  if (input.candidate.supersedesEventId) {
-    if (input.candidate.eventType !== "correction") {
+  if (candidate.supersedesEventId) {
+    if (candidate.eventType !== "correction") {
       return { status: "rejected", reason: "only_corrections_can_supersede" };
     }
     const superseded = input.existingEvents.find(
-      (event) => event.id === input.candidate.supersedesEventId
+      (event) => event.id === candidate.supersedesEventId
     );
     if (
       !superseded ||
-      superseded.restaurantId !== input.candidate.restaurantId ||
-      superseded.inventoryItemId !== input.candidate.inventoryItemId
+      superseded.restaurantId !== candidate.restaurantId ||
+      superseded.inventoryItemId !== candidate.inventoryItemId
     ) {
       return { status: "conflict", reason: "superseded_event_not_found", existingEvent: null };
     }
     if (
       input.existingEvents.some(
         (event) =>
-          event.restaurantId === input.candidate.restaurantId &&
-          event.supersedesEventId === input.candidate.supersedesEventId
+          event.restaurantId === candidate.restaurantId &&
+          event.supersedesEventId === candidate.supersedesEventId
       )
     ) {
       return { status: "conflict", reason: "event_already_superseded", existingEvent: superseded };
@@ -114,7 +119,7 @@ export function acceptInventoryEvent(input: {
   return {
     status: "accepted",
     event: {
-      ...input.candidate,
+      ...candidate,
       id: input.authority.id,
       sequence: maximumSequence + 1,
       actorUserId: input.authority.actorUserId,
@@ -167,10 +172,37 @@ export function projectInventoryEvents(
   };
 }
 
+/**
+ * MISE-005NA: ASCII-C source-label identity for ledger accept.
+ * Restaurant workspace and object identities (`inventoryItemId` /
+ * `clientEventId` / `idempotencyKey`) remain on Unicode trim for open tips
+ * #782 / #771.
+ */
+function canonicalizeEventSourceIdentity(
+  input: InventoryEventInput
+):
+  | { status: "ok"; candidate: InventoryEventInput }
+  | { status: "rejected"; reason: string } {
+  const source = canonicalizeInventoryLedgerSource(input.source);
+  if (!source) {
+    return { status: "rejected", reason: "missing_source" };
+  }
+
+  return {
+    status: "ok",
+    candidate: {
+      ...input,
+      source
+    }
+  };
+}
+
 function validateEventInput(input: InventoryEventInput, recordedAt: string) {
+  // Source is already ASCII-C canonicalized by canonicalizeEventSourceIdentity;
+  // restaurant / object identities remain Unicode trim for open tips #782 / #771.
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
-  if (!input.source.trim()) return "missing_source";
+  if (!input.source) return "missing_source";
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
   // A physical count observes the present, so it may not be effective in the future.
   // Mirrors the reject_future_dated_inventory_count database trigger.
