@@ -1,4 +1,5 @@
 import type { PosSale } from "../../types/mise";
+import { requireCanonicalInsightsSalesAnalyticsWorkspaceId } from "./insightsSalesAnalyticsRestaurantIdentity";
 
 export interface InsightsSalesBestSeller {
   itemName: string;
@@ -69,7 +70,8 @@ export function buildInsightsSalesAnalytics(input: {
   bestSellerLimit?: number;
   mixLimit?: number;
 }): InsightsSalesAnalytics {
-  const restaurantId = input.restaurantId.trim();
+  /** MISE-005MY: ASCII-C restaurant workspace identity for sales-analytics entry. */
+  const restaurantId = requireCanonicalInsightsSalesAnalyticsWorkspaceId(input.restaurantId);
   const lookbackDays = Math.max(1, Math.min(31, input.lookbackDays ?? 7));
   const bestSellerLimit = Math.max(1, Math.min(12, input.bestSellerLimit ?? 5));
   const mixLimit = Math.max(2, Math.min(8, input.mixLimit ?? 5));
