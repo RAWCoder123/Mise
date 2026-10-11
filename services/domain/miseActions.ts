@@ -1,4 +1,5 @@
 import { createId } from "./miseDomain";
+import { normalizeCanonicalMiseActionsApprovedBy } from "./miseActionsApprovedByIdentity";
 import type { AutonomyLevel } from "./operationalStatus";
 
 export type MiseActionType =
@@ -199,7 +200,8 @@ export function markApproved(
   }
   return touch(action, now, {
     status: "approved",
-    approvedBy: approvedBy.trim() || null
+    // MISE-005NR: ASCII-C pin; do not Unicode-trim invent approver identity.
+    approvedBy: normalizeCanonicalMiseActionsApprovedBy(approvedBy)
   });
 }
 
@@ -213,7 +215,11 @@ export function markRejected(
   }
   return touch(action, now, {
     status: "rejected",
-    approvedBy: approvedBy?.trim() || action.approvedBy
+    // MISE-005NR: ASCII-C pin; soft-empty still falls back to prior approvedBy.
+    approvedBy:
+      approvedBy == null
+        ? action.approvedBy
+        : normalizeCanonicalMiseActionsApprovedBy(approvedBy) || action.approvedBy
   });
 }
 
