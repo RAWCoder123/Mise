@@ -1,3 +1,5 @@
+import { normalizeCanonicalRestaurantTasksRelatedSupplierName } from "./restaurantTasksRelatedSupplierNameIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -249,7 +251,8 @@ export function normalizeCreateRestaurantTaskInput(
     relatedInventoryItemId: optionalText(input.relatedInventoryItemId, 200, "Related inventory item"),
     relatedOrderId: optionalText(input.relatedOrderId, 200, "Related order"),
     relatedRecommendationId: optionalText(input.relatedRecommendationId, 200, "Related recommendation"),
-    relatedSupplierName: optionalText(input.relatedSupplierName, 200, "Related supplier"),
+    // MISE-005OM: pin relatedSupplierName to ASCII C display prep (see restaurantTasksRelatedSupplierNameIdentity).
+    relatedSupplierName: normalizeCanonicalRestaurantTasksRelatedSupplierName(input.relatedSupplierName),
     sourceReference: optionalText(input.sourceReference, 240, "Task source reference"),
     dependencyIds
   };
@@ -321,7 +324,8 @@ export function restaurantTaskFromPersistedRow(
     relatedInventoryItemId: optionalText(row.related_inventory_item_id, 200, "Related inventory item"),
     relatedOrderId: optionalText(row.related_order_id, 200, "Related order"),
     relatedRecommendationId: optionalText(row.related_recommendation_id, 200, "Related recommendation"),
-    relatedSupplierName: optionalText(row.related_supplier_name, 200, "Related supplier"),
+    // MISE-005OM: pin relatedSupplierName to ASCII C display prep (see restaurantTasksRelatedSupplierNameIdentity).
+    relatedSupplierName: normalizeCanonicalRestaurantTasksRelatedSupplierName(row.related_supplier_name),
     sourceReference: optionalText(row.source_reference, 240, "Task source reference"),
     createdBy: requiredText(row.created_by, 200, "Task creator"),
     clientTaskId: requiredText(row.client_task_id, 200, "Client task id"),
