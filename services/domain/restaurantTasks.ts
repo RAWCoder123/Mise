@@ -1,3 +1,5 @@
+import { requireCanonicalRestaurantTasksCorrelationId } from "./restaurantTasksCorrelationIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -325,7 +327,8 @@ export function restaurantTaskFromPersistedRow(
     sourceReference: optionalText(row.source_reference, 240, "Task source reference"),
     createdBy: requiredText(row.created_by, 200, "Task creator"),
     clientTaskId: requiredText(row.client_task_id, 200, "Client task id"),
-    correlationId: requiredText(row.correlation_id, 200, "Task correlation id"),
+    // MISE-005OA: pin correlationId to ASCII C (see restaurantTasksCorrelationIdentity).
+    correlationId: requireCanonicalRestaurantTasksCorrelationId(row.correlation_id),
     dependencyIds: [...new Set(dependencyIds.map((id) => requiredText(id, 200, "Dependency id")))],
     createdAt: requiredIso(row.created_at, "Task created time"),
     updatedAt: requiredIso(row.updated_at, "Task updated time")
