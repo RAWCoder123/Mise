@@ -9,6 +9,8 @@
  * vocabularies and rules stay in step.
  */
 
+import { normalizeCanonicalPurchaseLinesCreditsLineId } from "./purchaseLinesCreditsLineIdentity";
+
 export const PURCHASE_LINE_EVIDENCE_VERSION = "mise.purchase_line.v1" as const;
 export const PURCHASE_LINE_NORMALIZATION_VERSION =
   "mise.purchase_line_normalization.v1" as const;
@@ -428,7 +430,10 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
   if (input.lineType !== "purchase" && input.lineType !== "credit") {
     throw new Error("Every purchase line must state whether it is a purchase or a credit.");
   }
-  const creditsLineId = input.creditsLineId?.trim() || null;
+  // MISE-005NT: ASCII-C credit-offset identity for stated creditsLineId links.
+  const creditsLineId = normalizeCanonicalPurchaseLinesCreditsLineId(
+    input.creditsLineId
+  );
   if (creditsLineId !== null && input.lineType !== "credit") {
     throw new Error("Only a credit line may reference the line it offsets.");
   }
