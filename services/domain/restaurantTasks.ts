@@ -1,3 +1,5 @@
+import { normalizeCanonicalRestaurantTasksAssigneeUserId } from "./restaurantTasksAssigneeIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -243,7 +245,8 @@ export function normalizeCreateRestaurantTaskInput(
     windowStart,
     windowEnd,
     requiredRole,
-    assigneeUserId: optionalText(input.assigneeUserId, 200, "Task assignee"),
+    // MISE-005OC: pin assigneeUserId to ASCII C (see restaurantTasksAssigneeIdentity).
+    assigneeUserId: normalizeCanonicalRestaurantTasksAssigneeUserId(input.assigneeUserId),
     verificationMethod,
     checklist,
     relatedInventoryItemId: optionalText(input.relatedInventoryItemId, 200, "Related inventory item"),
@@ -310,7 +313,8 @@ export function restaurantTaskFromPersistedRow(
     windowStart: optionalIso(row.window_start, "Task window start"),
     windowEnd: optionalIso(row.window_end, "Task window end"),
     requiredRole: row.required_role as RestaurantTaskRequiredRole,
-    assigneeUserId: optionalText(row.assignee_user_id, 200, "Task assignee"),
+    // MISE-005OC: pin assigneeUserId to ASCII C (see restaurantTasksAssigneeIdentity).
+    assigneeUserId: normalizeCanonicalRestaurantTasksAssigneeUserId(row.assignee_user_id),
     verificationMethod: row.verification_method as RestaurantTaskVerificationMethod,
     verificationRequired: row.verification_required,
     checklist,
