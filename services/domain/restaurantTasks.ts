@@ -1,3 +1,5 @@
+import { normalizeCanonicalRestaurantTasksDetail } from "./restaurantTasksDetailIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -196,7 +198,8 @@ export function normalizeCreateRestaurantTaskInput(
   const restaurantId = requiredText(input.restaurantId, 200, "Restaurant id");
   const clientTaskId = requiredText(input.clientTaskId, 200, "Client task id");
   const title = requiredText(input.title, 160, "Task title");
-  const detail = optionalText(input.detail, 2000, "Task detail");
+  // MISE-005OO: pin detail to ASCII C multiline free-text prep (see restaurantTasksDetailIdentity).
+  const detail = normalizeCanonicalRestaurantTasksDetail(input.detail);
   const origin = input.origin ?? "human";
   const operationalCategory = input.operationalCategory ?? "other";
   const priority = input.priority ?? "normal";
@@ -300,7 +303,8 @@ export function restaurantTaskFromPersistedRow(
     locationId: optionalText(row.location_id, 200, "Location id"),
     origin: row.origin as RestaurantTaskOrigin,
     title: requiredText(row.title, 160, "Task title"),
-    detail: optionalText(row.detail, 2000, "Task detail"),
+    // MISE-005OO: pin detail to ASCII C multiline free-text prep (see restaurantTasksDetailIdentity).
+    detail: normalizeCanonicalRestaurantTasksDetail(row.detail),
     operationalCategory: row.operational_category as RestaurantTaskCategory,
     priority: row.priority as RestaurantTaskPriority,
     status: row.status as RestaurantTaskStatus,
