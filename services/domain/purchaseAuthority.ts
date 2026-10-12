@@ -1,3 +1,5 @@
+import { normalizeCanonicalPurchaseAuthorityMetadataKey } from "./purchaseAuthorityMetadataKeyIdentity";
+
 export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "inventory_count_missing",
   "inventory_count_stale",
@@ -164,7 +166,8 @@ function finiteInteger(value: unknown) {
 function sanitizeMetadata(metadata: Record<string, unknown>) {
   const safe: Record<string, string | number | boolean | null> = {};
   for (const [key, value] of Object.entries(metadata).slice(0, 12)) {
-    const safeKey = boundedString(key, 60);
+    // MISE-005OJ: ASCII-C durable metadata map keys for purchase-authority blockers.
+    const safeKey = normalizeCanonicalPurchaseAuthorityMetadataKey(key);
     if (!safeKey) continue;
     if (typeof value === "boolean" || value === null) safe[safeKey] = value;
     else if (typeof value === "number" && Number.isFinite(value)) safe[safeKey] = value;
