@@ -1,3 +1,5 @@
+import { normalizeCanonicalPurchaseAuthorityMetadataValue } from "./purchaseAuthorityMetadataValueIdentity";
+
 export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "inventory_count_missing",
   "inventory_count_stale",
@@ -168,7 +170,10 @@ function sanitizeMetadata(metadata: Record<string, unknown>) {
     if (!safeKey) continue;
     if (typeof value === "boolean" || value === null) safe[safeKey] = value;
     else if (typeof value === "number" && Number.isFinite(value)) safe[safeKey] = value;
-    else if (typeof value === "string") safe[safeKey] = boundedString(value, 120);
+    // MISE-005OK: ASCII-C durable metadata string values for purchase-authority blockers.
+    else if (typeof value === "string") {
+      safe[safeKey] = normalizeCanonicalPurchaseAuthorityMetadataValue(value);
+    }
   }
   return safe;
 }
