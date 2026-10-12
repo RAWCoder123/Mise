@@ -1,3 +1,5 @@
+import { normalizeCanonicalRestaurantTasksLocationId } from "./restaurantTasksLocationIdIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -297,7 +299,8 @@ export function restaurantTaskFromPersistedRow(
   return {
     id: requiredText(row.id, 200, "Task id"),
     restaurantId: requiredText(row.restaurant_id, 200, "Restaurant id"),
-    locationId: optionalText(row.location_id, 200, "Location id"),
+    // MISE-005OI: pin locationId to ASCII C (see restaurantTasksLocationIdIdentity).
+    locationId: normalizeCanonicalRestaurantTasksLocationId(row.location_id),
     origin: row.origin as RestaurantTaskOrigin,
     title: requiredText(row.title, 160, "Task title"),
     detail: optionalText(row.detail, 2000, "Task detail"),
