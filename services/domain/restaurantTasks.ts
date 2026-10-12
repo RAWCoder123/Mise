@@ -1,3 +1,5 @@
+import { normalizeCanonicalRestaurantTasksRelatedRecommendationId } from "./restaurantTasksRelatedRecommendationIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -248,7 +250,8 @@ export function normalizeCreateRestaurantTaskInput(
     checklist,
     relatedInventoryItemId: optionalText(input.relatedInventoryItemId, 200, "Related inventory item"),
     relatedOrderId: optionalText(input.relatedOrderId, 200, "Related order"),
-    relatedRecommendationId: optionalText(input.relatedRecommendationId, 200, "Related recommendation"),
+    // MISE-005OF: pin relatedRecommendationId to ASCII C (see restaurantTasksRelatedRecommendationIdentity).
+    relatedRecommendationId: normalizeCanonicalRestaurantTasksRelatedRecommendationId(input.relatedRecommendationId),
     relatedSupplierName: optionalText(input.relatedSupplierName, 200, "Related supplier"),
     sourceReference: optionalText(input.sourceReference, 240, "Task source reference"),
     dependencyIds
@@ -320,7 +323,8 @@ export function restaurantTaskFromPersistedRow(
     completedBy: optionalText(row.completed_by, 200, "Task completer"),
     relatedInventoryItemId: optionalText(row.related_inventory_item_id, 200, "Related inventory item"),
     relatedOrderId: optionalText(row.related_order_id, 200, "Related order"),
-    relatedRecommendationId: optionalText(row.related_recommendation_id, 200, "Related recommendation"),
+    // MISE-005OF: pin relatedRecommendationId to ASCII C (see restaurantTasksRelatedRecommendationIdentity).
+    relatedRecommendationId: normalizeCanonicalRestaurantTasksRelatedRecommendationId(row.related_recommendation_id),
     relatedSupplierName: optionalText(row.related_supplier_name, 200, "Related supplier"),
     sourceReference: optionalText(row.source_reference, 240, "Task source reference"),
     createdBy: requiredText(row.created_by, 200, "Task creator"),
