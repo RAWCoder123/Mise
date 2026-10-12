@@ -1,3 +1,5 @@
+import { normalizeCanonicalPurchaseAuthorityRecipeRevisionKey } from "./purchaseAuthorityRecipeRevisionIdentity";
+
 export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "inventory_count_missing",
   "inventory_count_stale",
@@ -96,13 +98,18 @@ export function normalizePurchaseAuthorityResult(value: unknown): PurchaseAuthor
     : [];
   const evaluatedAt = boundedString(payload.evaluatedAt, 80);
   const planningRevision = finiteInteger(payload.planningRevision);
+  // MISE-005NY: ASCII-C durable recipe-revision map keys for purchase-authority evidence.
   const recipeRevisions = evidencePayload.recipeRevisions && typeof evidencePayload.recipeRevisions === "object"
     && !Array.isArray(evidencePayload.recipeRevisions)
     ? Object.fromEntries(
       Object.entries(evidencePayload.recipeRevisions as Record<string, unknown>)
-        .filter(([key, revision]) => Boolean(boundedString(key, 80)) && finiteInteger(revision) !== null)
+        .flatMap(([key, revision]): Array<[string, number]> => {
+          const canonicalKey = normalizeCanonicalPurchaseAuthorityRecipeRevisionKey(key);
+          const revisionValue = finiteInteger(revision);
+          if (!canonicalKey || revisionValue === null) return [];
+          return [[canonicalKey, revisionValue]];
+        })
         .slice(0, 250)
-        .map(([key, revision]) => [boundedString(key, 80), finiteInteger(revision)!])
     )
     : {};
   const supplierId = boundedString(evidencePayload.supplierId, 80);
