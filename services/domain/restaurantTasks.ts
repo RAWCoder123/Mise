@@ -1,3 +1,5 @@
+import { requireCanonicalRestaurantTasksCreatedBy } from "./restaurantTasksCreatedByIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -323,7 +325,8 @@ export function restaurantTaskFromPersistedRow(
     relatedRecommendationId: optionalText(row.related_recommendation_id, 200, "Related recommendation"),
     relatedSupplierName: optionalText(row.related_supplier_name, 200, "Related supplier"),
     sourceReference: optionalText(row.source_reference, 240, "Task source reference"),
-    createdBy: requiredText(row.created_by, 200, "Task creator"),
+    // MISE-005OG: pin createdBy to ASCII C (see restaurantTasksCreatedByIdentity).
+    createdBy: requireCanonicalRestaurantTasksCreatedBy(row.created_by),
     clientTaskId: requiredText(row.client_task_id, 200, "Client task id"),
     correlationId: requiredText(row.correlation_id, 200, "Task correlation id"),
     dependencyIds: [...new Set(dependencyIds.map((id) => requiredText(id, 200, "Dependency id")))],
