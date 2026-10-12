@@ -1,3 +1,5 @@
+import { requireCanonicalRestaurantTasksClientTaskId } from "./restaurantTasksClientTaskIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -194,7 +196,8 @@ export function normalizeCreateRestaurantTaskInput(
     sourceReference: string | null;
   } {
   const restaurantId = requiredText(input.restaurantId, 200, "Restaurant id");
-  const clientTaskId = requiredText(input.clientTaskId, 200, "Client task id");
+  // MISE-005NZ: ASCII-C durable client-task identity for shared-task create.
+  const clientTaskId = requireCanonicalRestaurantTasksClientTaskId(input.clientTaskId);
   const title = requiredText(input.title, 160, "Task title");
   const detail = optionalText(input.detail, 2000, "Task detail");
   const origin = input.origin ?? "human";
@@ -324,7 +327,8 @@ export function restaurantTaskFromPersistedRow(
     relatedSupplierName: optionalText(row.related_supplier_name, 200, "Related supplier"),
     sourceReference: optionalText(row.source_reference, 240, "Task source reference"),
     createdBy: requiredText(row.created_by, 200, "Task creator"),
-    clientTaskId: requiredText(row.client_task_id, 200, "Client task id"),
+    // MISE-005NZ: ASCII-C durable client-task identity for shared-task hydrate.
+    clientTaskId: requireCanonicalRestaurantTasksClientTaskId(row.client_task_id),
     correlationId: requiredText(row.correlation_id, 200, "Task correlation id"),
     dependencyIds: [...new Set(dependencyIds.map((id) => requiredText(id, 200, "Dependency id")))],
     createdAt: requiredIso(row.created_at, "Task created time"),
