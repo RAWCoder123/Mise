@@ -1,3 +1,8 @@
+import {
+  normalizeCanonicalRestaurantTasksCompletionResult,
+  requireCanonicalRestaurantTasksCompletionResult
+} from "./restaurantTasksCompletionResultIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -259,7 +264,9 @@ export function normalizeCompleteRestaurantTaskInput(input: CompleteRestaurantTa
   return {
     restaurantId: requiredText(input.restaurantId, 200, "Restaurant id"),
     taskId: requiredText(input.taskId, 200, "Task id"),
-    completionResult: requiredText(input.completionResult, 1000, "Completion result"),
+    // MISE-005OP: pin completionResult to ASCII C multiline free-text prep
+    // (see restaurantTasksCompletionResultIdentity).
+    completionResult: requireCanonicalRestaurantTasksCompletionResult(input.completionResult),
     completionEvidence: boundedEvidence(input.completionEvidence ?? [], "Completion evidence")
   };
 }
@@ -314,7 +321,9 @@ export function restaurantTaskFromPersistedRow(
     verificationMethod: row.verification_method as RestaurantTaskVerificationMethod,
     verificationRequired: row.verification_required,
     checklist,
-    completionResult: optionalText(row.completion_result, 1000, "Task completion result"),
+    // MISE-005OP: pin completionResult to ASCII C multiline free-text prep
+    // (see restaurantTasksCompletionResultIdentity).
+    completionResult: normalizeCanonicalRestaurantTasksCompletionResult(row.completion_result),
     completionEvidence,
     completedAt: optionalIso(row.completed_at, "Task completed time"),
     completedBy: optionalText(row.completed_by, 200, "Task completer"),
