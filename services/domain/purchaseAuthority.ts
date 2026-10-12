@@ -1,3 +1,5 @@
+import { normalizeCanonicalPurchaseAuthoritySupplierId } from "./purchaseAuthoritySupplierIdentity";
+
 export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "inventory_count_missing",
   "inventory_count_stale",
@@ -105,7 +107,10 @@ export function normalizePurchaseAuthorityResult(value: unknown): PurchaseAuthor
         .map(([key, revision]) => [boundedString(key, 80), finiteInteger(revision)!])
     )
     : {};
-  const supplierId = boundedString(evidencePayload.supplierId, 80);
+  // MISE-005NU: ASCII-C durable supplier identity for purchase-authority evidence.
+  const supplierId = normalizeCanonicalPurchaseAuthoritySupplierId(
+    evidencePayload.supplierId
+  );
 
   return {
     ready: payload.ready === true && blockers.length === 0 && Boolean(supplierId),
