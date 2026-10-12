@@ -1,3 +1,5 @@
+import { normalizeCanonicalRestaurantTasksCompletedBy } from "./restaurantTasksCompletedByIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -317,7 +319,8 @@ export function restaurantTaskFromPersistedRow(
     completionResult: optionalText(row.completion_result, 1000, "Task completion result"),
     completionEvidence,
     completedAt: optionalIso(row.completed_at, "Task completed time"),
-    completedBy: optionalText(row.completed_by, 200, "Task completer"),
+    // MISE-005OH: pin completedBy to ASCII C (see restaurantTasksCompletedByIdentity).
+    completedBy: normalizeCanonicalRestaurantTasksCompletedBy(row.completed_by),
     relatedInventoryItemId: optionalText(row.related_inventory_item_id, 200, "Related inventory item"),
     relatedOrderId: optionalText(row.related_order_id, 200, "Related order"),
     relatedRecommendationId: optionalText(row.related_recommendation_id, 200, "Related recommendation"),
