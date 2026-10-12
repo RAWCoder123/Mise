@@ -1,3 +1,5 @@
+import { requireCanonicalRestaurantTasksTitle } from "./restaurantTasksTitleIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -195,7 +197,8 @@ export function normalizeCreateRestaurantTaskInput(
   } {
   const restaurantId = requiredText(input.restaurantId, 200, "Restaurant id");
   const clientTaskId = requiredText(input.clientTaskId, 200, "Client task id");
-  const title = requiredText(input.title, 160, "Task title");
+  // MISE-005ON: pin title to ASCII C display prep (see restaurantTasksTitleIdentity).
+  const title = requireCanonicalRestaurantTasksTitle(input.title);
   const detail = optionalText(input.detail, 2000, "Task detail");
   const origin = input.origin ?? "human";
   const operationalCategory = input.operationalCategory ?? "other";
@@ -299,7 +302,8 @@ export function restaurantTaskFromPersistedRow(
     restaurantId: requiredText(row.restaurant_id, 200, "Restaurant id"),
     locationId: optionalText(row.location_id, 200, "Location id"),
     origin: row.origin as RestaurantTaskOrigin,
-    title: requiredText(row.title, 160, "Task title"),
+    // MISE-005ON: pin title to ASCII C display prep (see restaurantTasksTitleIdentity).
+    title: requireCanonicalRestaurantTasksTitle(row.title),
     detail: optionalText(row.detail, 2000, "Task detail"),
     operationalCategory: row.operational_category as RestaurantTaskCategory,
     priority: row.priority as RestaurantTaskPriority,
