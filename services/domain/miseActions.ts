@@ -1,5 +1,6 @@
 import { createId } from "./miseDomain";
 import type { AutonomyLevel } from "./operationalStatus";
+import { requireCanonicalMiseActionsRollbackReference } from "./miseActionsRollbackReferenceIdentity";
 
 export type MiseActionType =
   | "create_internal_task"
@@ -261,7 +262,8 @@ export function markReversed(
   }
   return touch(action, now, {
     status: "reversed",
-    rollbackReference: rollbackReference.trim()
+    // MISE-005NS: ASCII-C pin; do not Unicode-trim invent rollback reference.
+    rollbackReference: requireCanonicalMiseActionsRollbackReference(rollbackReference)
   });
 }
 
