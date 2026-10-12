@@ -1,3 +1,5 @@
+import { requireCanonicalRestaurantTasksDependencyId } from "./restaurantTasksDependencyIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -226,7 +228,12 @@ export function normalizeCreateRestaurantTaskInput(
   }
 
   const checklist = boundedEvidence(input.checklist ?? [], "Task checklist");
-  const dependencyIds = [...new Set((input.dependencyIds ?? []).map((id) => requiredText(id, 200, "Dependency id")))];
+  // MISE-005OB: pin dependencyIds to ASCII C (see restaurantTasksDependencyIdentity).
+  const dependencyIds = [
+    ...new Set(
+      (input.dependencyIds ?? []).map((id) => requireCanonicalRestaurantTasksDependencyId(id))
+    )
+  ];
   if (dependencyIds.length > 32) throw new Error("Task dependencies exceed the supported limit.");
 
   return {
@@ -326,7 +333,10 @@ export function restaurantTaskFromPersistedRow(
     createdBy: requiredText(row.created_by, 200, "Task creator"),
     clientTaskId: requiredText(row.client_task_id, 200, "Client task id"),
     correlationId: requiredText(row.correlation_id, 200, "Task correlation id"),
-    dependencyIds: [...new Set(dependencyIds.map((id) => requiredText(id, 200, "Dependency id")))],
+    // MISE-005OB: pin dependencyIds to ASCII C (see restaurantTasksDependencyIdentity).
+    dependencyIds: [
+      ...new Set(dependencyIds.map((id) => requireCanonicalRestaurantTasksDependencyId(id)))
+    ],
     createdAt: requiredIso(row.created_at, "Task created time"),
     updatedAt: requiredIso(row.updated_at, "Task updated time")
   };
