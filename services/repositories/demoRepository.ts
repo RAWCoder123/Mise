@@ -122,6 +122,7 @@ import {
   type PurchaseLineNetByItem,
   type PurchaseLineSource
 } from "../domain/purchaseLines";
+import { canonicalizeSupplierOperatorNote } from "../domain/supplierOperatorNoteIdentity";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
 import {
   createDemoSupplier,
@@ -2597,7 +2598,9 @@ export function createLocalDemoRepository(): MiseRepository {
         const previousDeliveryDate = order.delivery_date;
         Object.assign(order, patch);
         if (Object.prototype.hasOwnProperty.call(patch, "operator_note")) {
-          order.operator_note = patch.operator_note?.trim() || null;
+          // MISE-005PF: pin demo operator_note patch to ASCII C multiline prep.
+          // Soft canonicalize preserves prior never-throw empty→null contract.
+          order.operator_note = canonicalizeSupplierOperatorNote(patch.operator_note);
           const linked = state.purchaseRecommendations.filter(
             (recommendation) =>
               recommendation.restaurant_id === restaurantId &&
