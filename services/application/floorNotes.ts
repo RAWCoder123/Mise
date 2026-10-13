@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { createId } from "../domain/miseDomain";
+import { canonicalizeFloorNotesTitle } from "./floorNotesTitleIdentity";
 
 /**
  * Operator tasks stored on-device.
@@ -92,8 +93,9 @@ function storageKeyLegacy(restaurantId: string) {
   return `${STORAGE_PREFIX_LEGACY}:${restaurantId.trim()}`;
 }
 
+/** MISE-005PD: soft ASCII C display prep; no Unicode em-space inventing. */
 export function normalizeOperatorTaskTitle(value: string): string {
-  return value.trim().replace(/\s+/g, " ").slice(0, TITLE_MAX);
+  return canonicalizeFloorNotesTitle(value);
 }
 
 /** Alias kept for existing callers/tests. */
