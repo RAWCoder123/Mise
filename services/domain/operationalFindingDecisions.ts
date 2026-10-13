@@ -3,6 +3,10 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import {
+  requireCanonicalOperationalFindingEditedRecommendedAction,
+  requireCanonicalOperationalFindingRecommendedAction
+} from "./operationalFindingRecommendedActionIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -188,15 +192,17 @@ export function normalizeOperationalFindingDecisionInput(
   if (!severities.has(input.finding.severity)) throw new Error("Finding severity is invalid.");
   if (!decisionTypes.has(input.decisionType)) throw new Error("Finding decision type is invalid.");
 
-  const originalRecommendedAction = requireBoundedText(
-    input.finding.recommendedAction,
-    "Finding recommended action",
-    320
+  // MISE-005OX: pin recommended-action free-text to ASCII C multiline prep
+  // (see operationalFindingRecommendedActionIdentity).
+  const originalRecommendedAction = requireCanonicalOperationalFindingRecommendedAction(
+    input.finding.recommendedAction
   );
   const editedRecommendedAction =
     input.editedRecommendedAction === undefined || input.editedRecommendedAction === null
       ? null
-      : requireBoundedText(input.editedRecommendedAction, "Edited recommended action", 320);
+      : requireCanonicalOperationalFindingEditedRecommendedAction(
+          input.editedRecommendedAction
+        );
   if (
     input.decisionType === "edited"
       ? !editedRecommendedAction || editedRecommendedAction === originalRecommendedAction
@@ -272,15 +278,16 @@ export function normalizeOperationalFindingDecision(
   const editedRecommendedAction =
     record.edited_recommended_action === null
       ? null
-      : requireBoundedText(record.edited_recommended_action, "Edited recommended action", 320);
+      : requireCanonicalOperationalFindingEditedRecommendedAction(
+          record.edited_recommended_action
+        );
   const findingId = requireBoundedText(record.finding_id, "Finding identity", 240);
   const policyVersion = requireBoundedText(record.policy_version, "Finding policy version", 64);
   if (!findingIdPattern.test(findingId)) throw new Error("Finding identity is invalid.");
   if (!policyVersionPattern.test(policyVersion)) throw new Error("Finding policy version is invalid.");
-  const originalRecommendedAction = requireBoundedText(
-    record.original_recommended_action,
-    "Finding recommended action",
-    320
+  // MISE-005OX: pin hydrate recommended-action free-text to ASCII C multiline prep.
+  const originalRecommendedAction = requireCanonicalOperationalFindingRecommendedAction(
+    record.original_recommended_action
   );
   if (
     decisionType === "edited"
