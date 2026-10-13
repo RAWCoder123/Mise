@@ -1,4 +1,5 @@
 import { createId } from "./miseDomain";
+import { normalizeCanonicalMiseActionsError } from "./miseActionsErrorIdentity";
 import type { AutonomyLevel } from "./operationalStatus";
 
 export type MiseActionType =
@@ -244,9 +245,11 @@ export function markFailed(
   error: string,
   now = new Date().toISOString()
 ): MiseAction {
+  // MISE-005OT: ASCII C multiline free-text prep so Unicode trim cannot invent
+  // a clean durable failure message via NBSP/em-space padding.
   return touch(action, now, {
     status: "failed",
-    error: error.trim() || "Action failed.",
+    error: normalizeCanonicalMiseActionsError(error),
     executedAt: action.executedAt ?? now
   });
 }
