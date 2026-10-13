@@ -61,8 +61,13 @@ import type {
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
+import { normalizeCanonicalSupplierOperatorNote } from "./domain/supplierOperatorNoteIdentity";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
+export {
+  canonicalizeSupplierOperatorNote,
+  canonicalSupplierOperatorNote
+} from "./domain/supplierOperatorNoteIdentity";
 
 function asNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -571,13 +576,10 @@ export function requireInventoryCountLineUpdates(
 }
 
 export function requireSupplierOperatorNote(value: string | null | undefined) {
-  if (value === null || value === undefined) return null;
-  if (typeof value !== "string") throw new Error("Supplier note must be text.");
-  const normalized = value.trim();
-  if (normalized.length > SUPPLIER_NOTE_MAX_CHARACTERS) {
-    throw new Error(`Supplier note is limited to ${SUPPLIER_NOTE_MAX_CHARACTERS.toLocaleString()} characters.`);
-  }
-  return normalized || null;
+  // MISE-005PF: pin supplier operator_note to ASCII C multiline free-text prep.
+  // Leave inventory count-line note helpers and generatedOrderMessage display
+  // trim on their existing Unicode-trim contracts in this tip.
+  return normalizeCanonicalSupplierOperatorNote(value);
 }
 
 const supplierSendContentBlockerCodes = new Set<string>(

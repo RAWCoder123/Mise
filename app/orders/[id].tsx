@@ -40,7 +40,10 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
-import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
+import {
+  canonicalizeSupplierOperatorNote,
+  SUPPLIER_NOTE_MAX_CHARACTERS
+} from "../../services/miseValidation";
 import type {
   RestaurantEmailConnection,
   SupplierEmailPayload,
@@ -174,13 +177,16 @@ export default function OrderDraftDetailScreen() {
   }> {
     if (!restaurant || !order) throw new Error(t("orders.detail.unavailable"));
     let updated = order;
+    // MISE-005PF: compare / persist via ASCII C prep — do not Unicode-trim
+    // invent a clean note before requireSupplierOperatorNote sees it.
     if (
       actionsEditable &&
       order.status === "draft" &&
-      operatorNote.trim() !== (order.operator_note ?? "").trim()
+      canonicalizeSupplierOperatorNote(operatorNote) !==
+        canonicalizeSupplierOperatorNote(order.operator_note)
     ) {
       updated = await updateSupplierOrder(restaurant.id, order.id, {
-        operator_note: operatorNote.trim() || null
+        operator_note: operatorNote
       });
     }
     const preview = await refreshEmailPreview(restaurant.id, updated.id);
@@ -428,7 +434,9 @@ export default function OrderDraftDetailScreen() {
   );
   const generatedMessage = visibleOrder ? generatedOrderMessage(visibleOrder) : "";
   const noteNeedsPreviewRefresh = Boolean(
-    isDraft && operatorNote.trim() !== (visibleOrder?.operator_note ?? "").trim()
+    isDraft &&
+      canonicalizeSupplierOperatorNote(operatorNote) !==
+        canonicalizeSupplierOperatorNote(visibleOrder?.operator_note)
   );
   const previewBlockerNotice = visibleEmailPayload && !visibleEmailPayload.ready
     ? supplierSendBlockerNotice(visibleEmailPayload.blockerCodes, t)
