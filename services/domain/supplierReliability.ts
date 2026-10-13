@@ -1,5 +1,6 @@
 import type { SupplierOrder } from "../../types/mise";
 import { toDateKeyInTimeZone } from "../../utils/format";
+import { canonicalizeSupplierReliabilityDeliveryNotes } from "./supplierReliabilityDeliveryNotesIdentity";
 
 export type SupplierDeliveryStatus =
   | "unverified"
@@ -209,7 +210,10 @@ export function buildSupplierOrderDeliveryEvidence(input: {
           .length,
         damagedLineCount: lines.filter((line) => (finiteNonNegative(line.damaged_quantity) ?? 0) > 0)
           .length,
-        notes: delivery.notes?.trim() || null
+        // MISE-005PA: pin delivery notes to ASCII C multiline free-text prep.
+        // Leave discrepancy_reason emptiness-only gates and supplier_name /
+        // supplier_id / restaurantId on their existing Unicode-trim contracts.
+        notes: canonicalizeSupplierReliabilityDeliveryNotes(delivery.notes)
       } satisfies SupplierOrderDeliveryEvidence;
     });
   return evidence.sort((left, right) => right.receivedAt.localeCompare(left.receivedAt));
