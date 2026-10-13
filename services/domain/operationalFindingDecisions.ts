@@ -3,6 +3,7 @@ import type {
   FindingEvidenceReference,
   OperationalFinding
 } from "./operationalFindings";
+import { requireCanonicalOperationalFindingEvidenceSummary } from "./operationalFindingEvidenceSummaryIdentity";
 
 export type OperationalFindingDecisionType = "approved" | "edited" | "dismissed";
 
@@ -164,7 +165,9 @@ function normalizeEvidence(value: unknown): FindingEvidenceReference[] {
       type: type as FindingEvidenceReference["type"],
       id: requireBoundedText(record.id, "Finding evidence identity", 240),
       observedAt: requireTimestamp(record.observedAt, "Finding evidence timestamp"),
-      summary: requireBoundedText(record.summary, "Finding evidence summary", 240)
+      // MISE-005OW: pin evidence summary to ASCII C multiline free-text prep
+      // (see operationalFindingEvidenceSummaryIdentity).
+      summary: requireCanonicalOperationalFindingEvidenceSummary(record.summary)
     };
   });
   if (new TextEncoder().encode(JSON.stringify(normalized)).byteLength > 12_000) {
