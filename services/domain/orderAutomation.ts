@@ -4,6 +4,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { canonicalizeOrderAutomationSupplierName } from "./orderAutomationSupplierNameIdentity";
 
 export type OrderAutomationDecision = "manual_review" | "automatic_draft" | "automatic_send";
 
@@ -117,7 +118,9 @@ export const DEFAULT_ORDER_AUTOMATION_POLICY: OrderAutomationPolicy = {
 export function assessOrderAutomation(input: OrderAutomationInput): OrderAutomationAssessment {
   const restaurantId = input.restaurantId.trim();
   const supplierId = input.supplierId.trim();
-  const supplierName = input.supplierName.trim();
+  // MISE-005OY: pin supplierName to ASCII C display prep (see orderAutomationSupplierNameIdentity).
+  // Unicode trim would invent a clean supplier presentation name.
+  const supplierName = canonicalizeOrderAutomationSupplierName(input.supplierName);
   const policy = input.policy ?? DEFAULT_ORDER_AUTOMATION_POLICY;
   const now = input.now ?? new Date();
   const topLevelBlockers = new Set<OrderAutomationBlocker>();
