@@ -1,7 +1,8 @@
 # MISE-005OZ supplierReliability supplierName ASCII C display prep
 
 Date: 2026-10-13  
-Branch: `cursor/mise-supplier-reliability-supplier-name-ascii-c`  
+Branch: `cursor/mise-supplier-reliability-supplier-name-ascii-c` @ `f189adc3`  
+PR: #834  
 Base: `origin/main` @ `78da737`
 
 ## Problem
