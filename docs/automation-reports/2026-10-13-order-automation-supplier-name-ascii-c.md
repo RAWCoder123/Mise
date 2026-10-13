@@ -1,6 +1,7 @@
 # MISE-005OY orderAutomation supplierName ASCII C display prep (2026-10-13)
 
-- Branch: `cursor/mise-order-automation-supplier-name-ascii-c`
+- Branch: `cursor/mise-order-automation-supplier-name-ascii-c` @ `9c05d0b5`
+- PR: #833
 - Base: `origin/main` @ `78da737`
 
 ## Inventing proof
