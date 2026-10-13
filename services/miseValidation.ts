@@ -61,8 +61,13 @@ import type {
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
+import { normalizeCanonicalInventoryCountSessionNote } from "./domain/inventoryCountSessionNoteIdentity";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
+export {
+  canonicalizeInventoryCountSessionNote,
+  canonicalInventoryCountSessionNote
+} from "./domain/inventoryCountSessionNoteIdentity";
 
 function asNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -513,13 +518,11 @@ export function normalizeInventoryCountSessionDetail(value: InventoryCountSessio
 }
 
 export function requireInventoryCountSessionNote(value: string | null | undefined) {
-  if (value === null || value === undefined) return null;
-  if (typeof value !== "string") throw new Error("Count session note must be text.");
-  const normalized = value.trim();
-  if (normalized.length > 240) {
-    throw new Error("Count session note is limited to 240 characters.");
-  }
-  return normalized || null;
+  // MISE-005PK: pin inventory count-session opening note to ASCII C multiline
+  // free-text prep. Leave requireInventoryCountLineNote, domain count-line
+  // note tip #827 / MISE-005OS, and generatedOrderMessage display trim on
+  // their existing Unicode-trim contracts in this tip.
+  return normalizeCanonicalInventoryCountSessionNote(value);
 }
 
 export function requireInventoryCountLineNote(value: string | null | undefined) {
