@@ -61,8 +61,13 @@ import type {
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
+import { normalizeCanonicalInventoryCountLineNote } from "./domain/inventoryCountLineNoteIdentity";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
+export {
+  canonicalizeInventoryCountLineNote,
+  canonicalInventoryCountLineNote
+} from "./domain/inventoryCountLineNoteIdentity";
 
 function asNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -523,13 +528,12 @@ export function requireInventoryCountSessionNote(value: string | null | undefine
 }
 
 export function requireInventoryCountLineNote(value: string | null | undefined) {
-  if (value === null || value === undefined) return null;
-  if (typeof value !== "string") throw new Error("Count line note must be text.");
-  const normalized = value.trim();
-  if (normalized.length > 240) {
-    throw new Error("Count line note is limited to 240 characters.");
-  }
-  return normalized || null;
+  // MISE-005PL: pin inventory count-line notes to ASCII C multiline free-text
+  // prep. Leave requireInventoryCountSessionNote, domain count-line note tip
+  // #827 / MISE-005OS Unicode-trim contracts, generatedOrderMessage display
+  // trim, and inventoryItemId Map-key trim on their existing contracts in
+  // this tip.
+  return normalizeCanonicalInventoryCountLineNote(value);
 }
 
 export function requireInventoryCountLineUpdates(
