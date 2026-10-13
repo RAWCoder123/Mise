@@ -5,6 +5,7 @@ import type {
   InventoryItem,
   RestaurantRole
 } from "../../types/mise";
+import { normalizeCanonicalInventoryCountLineNote } from "./inventoryCountLineNoteIdentity";
 
 export const INVENTORY_COUNT_SESSION_OPEN_STATUSES = ["in_progress", "submitted"] as const;
 export type InventoryCountSessionOpenStatus = (typeof INVENTORY_COUNT_SESSION_OPEN_STATUSES)[number];
@@ -106,11 +107,15 @@ export function planCountSessionApprovals(input: {
     }
     const quantityBefore = Number(item.current_quantity);
     const quantityAfter = countedQuantity;
+    // MISE-005OS: pin count-line note to ASCII C multiline free-text prep.
+    // Leave non-string notes soft-null (prior typeof gate) and leave
+    // inventoryItemId / miseValidation note paths on their Unicode-trim tips.
     const note =
-      typeof line.note === "string" && line.note.trim() ? line.note.trim() : null;
-    if (note && note.length > 240) {
-      throw new Error("Count line note is outside supported limits.");
-    }
+      typeof line.note === "string"
+        ? normalizeCanonicalInventoryCountLineNote(line.note, {
+            overLongMessage: "Count line note is outside supported limits."
+          })
+        : null;
     planned.push({
       inventoryItemId: item.id,
       itemName: item.item_name,
@@ -207,14 +212,10 @@ export function mergeCountLineUpdates(
     if (noteProvided) {
       if (update.note === null || update.note === undefined) {
         note = null;
-      } else if (typeof update.note !== "string") {
-        throw new Error("Count line note must be text.");
       } else {
-        const normalized = update.note.trim();
-        if (normalized.length > 240) {
-          throw new Error("Count line note is limited to 240 characters.");
-        }
-        note = normalized || null;
+        // MISE-005OS: pin count-line note to ASCII C multiline free-text prep.
+        // inventoryItemId above stays on Unicode trim until tipped separately.
+        note = normalizeCanonicalInventoryCountLineNote(update.note);
       }
     }
     updatesByItemId.set(itemId, { countedQuantity: quantity, note, noteProvided });
