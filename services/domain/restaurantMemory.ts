@@ -1,6 +1,10 @@
 import type { LearningMemorySignal, LearningMemorySummary } from "../../types/mise";
 import { createId } from "./miseDomain";
 import type { Outcome } from "./miseActions";
+import {
+  normalizeCanonicalRestaurantMemoryStatement,
+  requireCanonicalRestaurantMemoryStatement
+} from "./restaurantMemoryStatementIdentity";
 
 export type RestaurantMemoryType =
   | "demand_pattern"
@@ -69,9 +73,10 @@ function requireRestaurantId(restaurantId: string) {
 }
 
 function boundedStatement(value: string) {
-  const normalized = value.trim().replace(/\s+/g, " ");
-  if (!normalized) throw new Error("Restaurant memory requires a non-empty statement.");
-  return normalized.slice(0, 320);
+  // MISE-005OV: ASCII C multiline free-text prep so Unicode trim / `\s`
+  // collapse cannot invent a clean durable memory statement via
+  // NBSP/em-space padding.
+  return requireCanonicalRestaurantMemoryStatement(value);
 }
 
 export function confidenceFromEvidence(
@@ -184,13 +189,18 @@ export function createMemoryFromOutcome(
   outcome: Outcome,
   options: { statement?: string; now?: string } = {}
 ): RestaurantMemory {
-  if (!outcome.lesson?.trim() && !options.statement?.trim()) {
+  // MISE-005OV: ASCII C multiline free-text prep so Unicode trim cannot
+  // invent a clean lesson/statement before durable memory creation.
+  const statement =
+    normalizeCanonicalRestaurantMemoryStatement(options.statement) ??
+    normalizeCanonicalRestaurantMemoryStatement(outcome.lesson);
+  if (!statement) {
     throw new Error("Outcome memories require a lesson or explicit statement.");
   }
   return createMemory({
     restaurantId,
     memoryType: "action_outcome",
-    statement: options.statement?.trim() || outcome.lesson!,
+    statement,
     evidence: [
       {
         type: "action_outcome",
@@ -324,13 +334,19 @@ export interface PersistedRestaurantMemoryRow {
 export function restaurantMemoryFromPersistedRow(
   row: PersistedRestaurantMemoryRow
 ): RestaurantMemory {
+  // MISE-005OV: ASCII C multiline free-text prep so Unicode trim cannot
+  // invent a clean correction-facing statement on hydrate. Raw correction
+  // column remains pass-through on correctionNote.
+  const correctionStatement = normalizeCanonicalRestaurantMemoryStatement(
+    row.correction
+  );
   return {
     id: row.id,
     restaurantId: row.restaurant_id.trim(),
     memoryType: row.memory_type,
     // Hosted corrections are preserved separately for auditability; expose the
     // corrected wording as the effective operator-facing statement.
-    statement: row.correction?.trim() || row.statement,
+    statement: correctionStatement || row.statement,
     evidence: Array.isArray(row.evidence) ? row.evidence : [],
     confidence: Number(row.confidence),
     firstObservedAt: new Date(row.first_observed_at).toISOString(),
