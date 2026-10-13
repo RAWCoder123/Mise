@@ -41,7 +41,6 @@ import {
 import {
   ORDER_MESSAGE_MAX_BYTES,
   RESTAURANT_ADDRESS_MAX_CHARACTERS,
-  RESTAURANT_CUISINE_MAX_CHARACTERS,
   RESTAURANT_LOGO_URL_MAX_CHARACTERS,
   RESTAURANT_NAME_MAX_CHARACTERS,
   RESTAURANT_OPERATIONAL_PROFILE_MAX_BYTES,
@@ -61,6 +60,7 @@ import type {
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
+import { normalizeCanonicalRestaurantCuisineType } from "./domain/restaurantCuisineTypeIdentity";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
 
@@ -1016,13 +1016,8 @@ const operationalProfileKeys = new Set([
 ]);
 
 export function requireRestaurantCuisineType(value: unknown) {
-  if (value === null || value === undefined) return null;
-  if (typeof value !== "string") throw new Error("Cuisine type must be text or empty.");
-  const normalized = value.trim();
-  if (normalized.length > RESTAURANT_CUISINE_MAX_CHARACTERS) {
-    throw new Error(`Cuisine type is limited to ${RESTAURANT_CUISINE_MAX_CHARACTERS} characters.`);
-  }
-  return normalized || null;
+  // MISE-005PH: ASCII C identity prep — refuse Unicode-trim inventing of clean cuisine.
+  return normalizeCanonicalRestaurantCuisineType(value);
 }
 
 export function requireRestaurantProfilePatch(value: RestaurantProfilePatch): RestaurantProfilePatch {

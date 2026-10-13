@@ -162,6 +162,7 @@ import {
   type MiseRepository,
   type RestaurantSetupSnapshotSummary
 } from "./repositoryContracts";
+import { canonicalizeRestaurantCuisineType } from "../domain/restaurantCuisineTypeIdentity";
 
 const demoConfirmedRecipeFingerprints = new Map<string, string>();
 
@@ -1096,7 +1097,9 @@ export function createLocalDemoRepository(): MiseRepository {
           restaurant.name = nextName;
           bumpDemoSupplierSendContentForExternalChange(state, restaurant.id);
         }
-        restaurant.cuisine_type = cuisineType?.trim() || restaurant.cuisine_type;
+        // MISE-005PH: ASCII C identity prep — refuse Unicode-trim inventing of clean cuisine.
+        restaurant.cuisine_type =
+          canonicalizeRestaurantCuisineType(cuisineType) || restaurant.cuisine_type;
         return normalizeRestaurant(restaurant);
       });
     },
