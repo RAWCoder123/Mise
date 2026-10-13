@@ -26,7 +26,8 @@ control / over-long(>500) / non-string.
 
 ## Verification
 
-- Focused AsciiC + wasteAnalysis tests
-- `npm run typecheck`
-- `npm run security:static` / `security:backend`
-- `npm test` (full suite; Docker pgTAP unavailable in this environment)
+- Focused AsciiC + wasteAnalysis: 11/11 pass
+- `npm run typecheck` pass
+- `npm run security:static` / `security:backend` pass
+- `npm test`: 688 total / 681 pass / 0 fail / 7 cancelled (inherited recalculationCycles timer flake)
+- Docker pgTAP unavailable in this environment
