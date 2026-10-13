@@ -162,6 +162,7 @@ import {
   type MiseRepository,
   type RestaurantSetupSnapshotSummary
 } from "./repositoryContracts";
+import { canonicalizeRestaurantName } from "../domain/restaurantNameIdentity";
 
 const demoConfirmedRecipeFingerprints = new Map<string, string>();
 
@@ -1091,7 +1092,8 @@ export function createLocalDemoRepository(): MiseRepository {
       return mutateDemoState((state) => {
         const restaurant = state.restaurants[0];
         if (!restaurant) throw new Error("Demo restaurant missing");
-        const nextName = name.trim() || restaurant.name;
+        // MISE-005PJ: ASCII C identity prep — refuse Unicode-trim inventing of clean restaurant names.
+        const nextName = canonicalizeRestaurantName(name) || restaurant.name;
         if (restaurant.name !== nextName) {
           restaurant.name = nextName;
           bumpDemoSupplierSendContentForExternalChange(state, restaurant.id);
