@@ -37,6 +37,7 @@ import {
 import { activeMembershipForRestaurant, requireRestaurantAccess } from "../services/tenantAccess";
 import { captureMiseError } from "../services/telemetry";
 import { subscribeToTenantAuthorizationDenials } from "../services/tenantAuthorizationEvents";
+import { canonicalizeRestaurantName } from "../services/domain/restaurantNameIdentity";
 
 interface SessionSnapshot {
   user?: AppUser | null;
@@ -420,7 +421,10 @@ export function MiseSessionProvider({ children }: { children: ReactNode }) {
       const finalRestaurant =
         profile?.name || profile?.cuisine_type
           ? await updateRestaurantProfile(nextRestaurant.id, {
-              name: profile.name?.trim() || nextRestaurant.name,
+              // MISE-005PJ: ASCII C identity prep — refuse Unicode-trim inventing of clean restaurant names.
+              name:
+                canonicalizeRestaurantName(profile.name) ||
+                nextRestaurant.name,
               cuisine_type: profile.cuisine_type?.trim() || nextRestaurant.cuisine_type
             })
           : nextRestaurant;

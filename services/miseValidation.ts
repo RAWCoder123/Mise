@@ -43,7 +43,6 @@ import {
   RESTAURANT_ADDRESS_MAX_CHARACTERS,
   RESTAURANT_CUISINE_MAX_CHARACTERS,
   RESTAURANT_LOGO_URL_MAX_CHARACTERS,
-  RESTAURANT_NAME_MAX_CHARACTERS,
   RESTAURANT_OPERATIONAL_PROFILE_MAX_BYTES,
   RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS,
   RESTAURANT_PROFILE_ARRAY_MAX_ITEMS,
@@ -61,6 +60,7 @@ import type {
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
+import { normalizeCanonicalRestaurantName } from "./domain/restaurantNameIdentity";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
 
@@ -970,12 +970,8 @@ function hasControlCharacters(value: string) {
 }
 
 export function requireRestaurantName(value: unknown) {
-  if (typeof value !== "string") throw new Error("Restaurant name is required.");
-  const normalized = value.trim();
-  if (normalized.length < 1 || normalized.length > RESTAURANT_NAME_MAX_CHARACTERS) {
-    throw new Error(`Restaurant name must be between 1 and ${RESTAURANT_NAME_MAX_CHARACTERS} characters.`);
-  }
-  return normalized;
+  // MISE-005PJ: ASCII C identity prep — refuse Unicode-trim inventing of clean restaurant names.
+  return normalizeCanonicalRestaurantName(value);
 }
 
 export type RestaurantProfilePatch = Partial<
