@@ -1,4 +1,5 @@
 import { createId } from "./miseDomain";
+import { normalizeCanonicalMiseActionsLesson } from "./miseActionsLessonIdentity";
 import type { AutonomyLevel } from "./operationalStatus";
 
 export type MiseActionType =
@@ -364,6 +365,8 @@ export function measureOutcome(input: {
     measuredAt: input.measuredAt
       ? new Date(input.measuredAt).toISOString()
       : new Date().toISOString(),
-    lesson: input.lesson?.trim() || null
+    // MISE-005OU: ASCII C multiline free-text prep so Unicode trim cannot
+    // invent a clean durable outcome lesson via NBSP/em-space padding.
+    lesson: normalizeCanonicalMiseActionsLesson(input.lesson)
   };
 }
