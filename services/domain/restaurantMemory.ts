@@ -1,6 +1,12 @@
 import type { LearningMemorySignal, LearningMemorySummary } from "../../types/mise";
 import { createId } from "./miseDomain";
 import type { Outcome } from "./miseActions";
+import {
+  normalizeCanonicalRestaurantMemoryScope,
+  normalizeCanonicalRestaurantMemorySource,
+  requireCanonicalRestaurantMemoryScope,
+  requireCanonicalRestaurantMemorySource
+} from "./restaurantMemoryScopeSourceIdentity";
 
 export type RestaurantMemoryType =
   | "demand_pattern"
@@ -128,8 +134,11 @@ export function createMemory(input: {
     confidence: confidenceFromEvidence(evidence, { now }),
     firstObservedAt: now,
     lastUpdatedAt: now,
-    scope: (input.scope ?? "restaurant").trim() || "restaurant",
-    source: (input.source ?? "mise_learning").trim() || "mise_learning",
+    // MISE-005PG: pin scope/source to ASCII C identity prep so Unicode trim
+    // cannot invent a clean durable key via NBSP/em-space padding. Soft empty
+    // still falls through to the prior create defaults.
+    scope: normalizeCanonicalRestaurantMemoryScope(input.scope) ?? "restaurant",
+    source: normalizeCanonicalRestaurantMemorySource(input.source) ?? "mise_learning",
     status: "active",
     affectsRecommendations: input.affectsRecommendations ?? true,
     affectsAutomation: input.affectsAutomation ?? false,
@@ -335,8 +344,10 @@ export function restaurantMemoryFromPersistedRow(
     confidence: Number(row.confidence),
     firstObservedAt: new Date(row.first_observed_at).toISOString(),
     lastUpdatedAt: new Date(row.last_updated_at).toISOString(),
-    scope: row.scope,
-    source: row.source,
+    // MISE-005PG: pin hydrate scope/source to ASCII C identity prep. Soft empty
+    // fails closed on read rather than inventing create-time defaults.
+    scope: requireCanonicalRestaurantMemoryScope(row.scope),
+    source: requireCanonicalRestaurantMemorySource(row.source),
     status: row.status,
     affectsRecommendations: Boolean(row.affects_recommendations ?? true),
     affectsAutomation: Boolean(row.affects_automation ?? false),
