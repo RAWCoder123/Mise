@@ -1,5 +1,6 @@
 import type { SupplierOrder } from "../../types/mise";
 import { toDateKeyInTimeZone } from "../../utils/format";
+import { canonicalizeSupplierReliabilitySupplierId } from "./supplierReliabilitySupplierIdentity";
 
 export type SupplierDeliveryStatus =
   | "unverified"
@@ -130,10 +131,12 @@ export function buildSupplierReliabilitySummary(input: {
   for (const delivery of input.deliveries) {
     const order = ordersById.get(delivery.supplier_order_id);
     if (!order) continue;
-    const key = order.supplier_id.trim();
+    // MISE-005OQ: ASCII-C supplier identity for reliability Map-key grouping.
+    // Unicode trim would invent a clean key and merge padded supplier_id values.
+    const key = canonicalizeSupplierReliabilitySupplierId(order.supplier_id);
     if (!key) continue;
     const current = suppliers.get(key) ?? {
-      supplierId: order.supplier_id,
+      supplierId: key,
       supplierName: order.supplier_name.trim(),
       deliveries: [],
       orders: [],
