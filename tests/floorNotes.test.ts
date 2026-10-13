@@ -35,12 +35,14 @@ test("normalizeFloorNoteTitle trims and collapses whitespace", () => {
   assert.equal(normalizeFloorNoteTitle("  Check  walk-in  "), "Check walk-in");
 });
 
-test("normalizeOperatorTaskBody preserves newlines and trims ends", () => {
+test("normalizeOperatorTaskBody preserves newlines and C-trims ends only", () => {
+  // MISE-005PE: ASCII C end-trim; internal spaces/LF preserved (no per-line \s collapse).
   assert.equal(
     normalizeOperatorTaskBody("  Line one  \n  Line two  \n"),
-    "Line one\nLine two"
+    "Line one  \n  Line two"
   );
-  assert.equal(normalizeFloorNoteBody("  Ask  prep  "), "Ask prep");
+  assert.equal(normalizeFloorNoteBody("  Ask  prep  "), "Ask  prep");
+  assert.equal(normalizeFloorNoteBody("  Ask prep  "), "Ask prep");
 });
 
 test("createFloorNote persists per restaurant and lists open notes", async () => {

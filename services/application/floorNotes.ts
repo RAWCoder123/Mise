@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { createId } from "../domain/miseDomain";
+import { canonicalizeFloorNotesBody } from "./floorNotesBodyIdentity";
 
 /**
  * Operator tasks stored on-device.
@@ -70,7 +71,6 @@ export type FloorNoteStorage = OperatorTaskStorage;
 const STORAGE_PREFIX_V1 = "mise.operator-tasks.v1";
 const STORAGE_PREFIX_LEGACY = "mise.floor-notes.v1";
 const TITLE_MAX = 120;
-const BODY_MAX = 2000;
 
 let activeStorage: OperatorTaskStorage = AsyncStorage;
 let writeQueue: Promise<unknown> = Promise.resolve();
@@ -100,21 +100,11 @@ export function normalizeOperatorTaskTitle(value: string): string {
 export const normalizeFloorNoteTitle = normalizeOperatorTaskTitle;
 
 /**
- * Preserve newlines in body; only trim ends and collapse runs of spaces/tabs
- * on each line (not across line breaks).
+ * MISE-005PE: soft ASCII C multiline free-text prep; no Unicode em-space
+ * inventing. Preserve internal LF/TAB/CR; fold NBSP; C-end-trim only.
  */
 export function normalizeOperatorTaskBody(value: string | null | undefined): string | null {
-  if (value == null) return null;
-  const trimmed = value.replace(/^\s+/, "").replace(/\s+$/, "");
-  if (!trimmed) return null;
-  const normalized = trimmed
-    .split("\n")
-    .map((line) => line.replace(/[^\S\n]+/g, " ").replace(/^ +| +$/g, ""))
-    .join("\n")
-    .replace(/^\n+/, "")
-    .replace(/\n+$/, "");
-  if (!normalized) return null;
-  return normalized.slice(0, BODY_MAX);
+  return canonicalizeFloorNotesBody(value);
 }
 
 /** Alias: same newline-preserving body normalize. */
