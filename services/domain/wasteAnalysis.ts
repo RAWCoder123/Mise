@@ -1,6 +1,7 @@
 import type { InventoryItem } from "../../types/mise";
 import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
 import type { InventoryEvent } from "./inventoryLedger";
+import { canonicalizeWasteAnalysisNote } from "./wasteAnalysisNoteIdentity";
 
 export type WasteAnalysisStatus = "no_data" | "monitoring" | "attention";
 export type WasteAnalysisTrend = "no_baseline" | "up" | "down" | "flat";
@@ -353,8 +354,9 @@ function wasteTrend(
 }
 
 function noteFromMetadata(metadata: Readonly<Record<string, unknown>>) {
+  // MISE-005PB: ASCII C free-text prep — do not Unicode-trim invent a clean note.
   const note = metadata.note;
-  return typeof note === "string" && note.trim() ? note.trim().slice(0, 500) : null;
+  return typeof note === "string" ? canonicalizeWasteAnalysisNote(note) : null;
 }
 
 function normalizedWindowDays(value: number | undefined) {
