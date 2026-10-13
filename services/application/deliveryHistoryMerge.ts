@@ -1,5 +1,6 @@
 import type { InventoryEvent } from "../domain/inventoryLedger";
 import type { InventoryOutboxEntry } from "../domain/inventoryOutbox";
+import { canonicalizeDeliveryHistoryNote } from "./deliveryHistoryNoteIdentity";
 
 export interface DeliveryHistoryEntry {
   id: string;
@@ -15,10 +16,11 @@ export interface DeliveryHistoryEntry {
   syncing: boolean;
 }
 
+/** MISE-005PC: soft ASCII C free-text prep; no Unicode em-space inventing. */
 function noteFromMetadata(metadata: Readonly<Record<string, unknown>> | undefined): string | null {
   if (!metadata) return null;
   const note = metadata.note;
-  return typeof note === "string" && note.trim() ? note.trim() : null;
+  return typeof note === "string" ? canonicalizeDeliveryHistoryNote(note) : null;
 }
 
 function sortByEffectiveAtDesc(left: DeliveryHistoryEntry, right: DeliveryHistoryEntry) {
