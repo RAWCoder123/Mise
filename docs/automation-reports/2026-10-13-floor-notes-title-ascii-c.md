@@ -25,11 +25,11 @@ single-line title before local floor-note / operator-task rows stored it
 
 ## Verification
 
-- Focused AsciiC + existing floorNotes tests
+- Focused AsciiC + existing floorNotes: 14/14 pass
 - `npm run typecheck` pass
 - `npm run security:static` / `security:backend` pass
-- `npm test` results recorded in PR
-- Docker pgTAP unavailable in this environment when applicable
+- `npm test`: 688 total / 681 pass / 0 fail / 7 cancelled
+- Docker pgTAP unavailable in this environment
 
 ## Merge note
 
