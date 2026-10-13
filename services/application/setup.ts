@@ -8,6 +8,10 @@ import type {
   SetupSupplierDraft
 } from "../domain/setupDrafts";
 import {
+  normalizeCanonicalSetupAttachmentLabel,
+  SETUP_ATTACHMENT_LABEL_DEFAULT
+} from "../domain/setupAttachmentLabelIdentity";
+import {
   normalizeRecipeBaselineQuantity,
   normalizeRecommendedQuantity,
   operatingLimits,
@@ -167,7 +171,11 @@ export async function saveRestaurantSetup(
     attachments: input.attachments.map((attachment) => ({
       client_reference_id: attachment.id,
       kind: attachment.kind,
-      label: attachment.label.trim() || "Setup reference",
+      // MISE-005PI: pin labels to ASCII C identity prep so Unicode trim cannot
+      // invent a clean durable setup reference before setup_attachments stores it.
+      label:
+        normalizeCanonicalSetupAttachmentLabel(attachment.label) ??
+        SETUP_ATTACHMENT_LABEL_DEFAULT,
       status: attachment.status
     })),
     skippedRecipeIngredients
