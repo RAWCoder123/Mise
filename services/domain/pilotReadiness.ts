@@ -8,6 +8,7 @@ import type {
   SupplierRecipient
 } from "../../types/mise";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
+import { canonicalizePilotReadinessSupplierId } from "./pilotReadinessSupplierIdentity";
 
 export type PilotReadinessStatus = "ready" | "attention" | "blocked" | "external";
 export type PilotReadinessAreaId =
@@ -221,13 +222,22 @@ function assessSupplierRouting(
   items: readonly InventoryItem[],
   recipients: readonly SupplierRecipient[]
 ): PilotReadinessArea {
-  const missingSupplier = items.filter((item) => !item.supplier_id.trim());
+  // MISE-005OR: ASCII-C supplier identity for readiness Set-key grouping.
+  // Unicode trim would invent a clean key and merge padded supplier_id values.
+  const missingSupplier = items.filter(
+    (item) => !canonicalizePilotReadinessSupplierId(item.supplier_id)
+  );
   const missingCost = items.filter((item) => !Number.isFinite(item.estimated_unit_cost) || item.estimated_unit_cost <= 0);
-  const suppliers = new Set(items.map((item) => item.supplier_id.trim()).filter(Boolean));
+  const suppliers = new Set(
+    items
+      .map((item) => canonicalizePilotReadinessSupplierId(item.supplier_id))
+      .filter((id): id is string => Boolean(id))
+  );
   const recipientSuppliers = new Set(
     recipients
       .filter((recipient) => Boolean(recipient.email?.trim()))
-      .map((recipient) => recipient.supplier_id.trim())
+      .map((recipient) => canonicalizePilotReadinessSupplierId(recipient.supplier_id))
+      .filter((id): id is string => Boolean(id))
   );
   const missingRecipients = [...suppliers].filter((supplier) => !recipientSuppliers.has(supplier));
   const blockers: string[] = [];
@@ -249,11 +259,18 @@ function assessEmailDelivery(
   items: readonly InventoryItem[],
   recipients: readonly SupplierRecipient[]
 ): PilotReadinessArea {
-  const suppliers = new Set(items.map((item) => item.supplier_id.trim()).filter(Boolean));
+  // MISE-005OR: ASCII-C supplier identity for readiness Set-key grouping.
+  // Unicode trim would invent a clean key and merge padded supplier_id values.
+  const suppliers = new Set(
+    items
+      .map((item) => canonicalizePilotReadinessSupplierId(item.supplier_id))
+      .filter((id): id is string => Boolean(id))
+  );
   const configured = new Set(
     recipients
       .filter((recipient) => Boolean(recipient.email?.trim()))
-      .map((recipient) => recipient.supplier_id.trim())
+      .map((recipient) => canonicalizePilotReadinessSupplierId(recipient.supplier_id))
+      .filter((id): id is string => Boolean(id))
   );
   const missingRecipients = [...suppliers].filter((supplier) => !configured.has(supplier)).length;
   if (connection?.status !== "connected") {
