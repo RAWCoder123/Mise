@@ -12,6 +12,7 @@ import { colors, conceptTypography, icon, iconStroke, radii } from "../../consta
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { RestaurantMemory } from "../../services/domain/restaurantMemory";
+import { canonicalizeRestaurantMemoryCorrectionDraft } from "../../services/domain/restaurantMemoryCorrectionDraftIdentity";
 import {
   convertRestaurantMemoryToSafeRule,
   fetchRestaurantMemories,
@@ -100,8 +101,14 @@ export default function RestaurantMemoryScreen() {
     setBusyId(memory.id);
     setNotice(null);
     try {
+      // MISE-005PN: ASCII C multiline free-text prep — do not Unicode-trim
+      // invent a clean correction before the decision path.
       const correction =
-        decision === "corrected" ? (correctionDrafts[memory.id] ?? memory.statement).trim() : null;
+        decision === "corrected"
+          ? canonicalizeRestaurantMemoryCorrectionDraft(
+              correctionDrafts[memory.id] ?? memory.statement
+            )
+          : null;
       if (decision === "corrected" && !correction) {
         setNotice(t("memory.notice.correctionRequired"));
         return;
