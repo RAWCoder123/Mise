@@ -33,6 +33,7 @@ import type {
 import { formatQuantity, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../../utils/format";
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
+import { canonicalizeOrderMessageNote } from "./generatedOrderMessageIdentity";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
 import {
   dayResolutionConsumptionIsAfterCount,
@@ -1225,7 +1226,9 @@ export function buildSupplierOrderMessage(
     .sort((a, b) => a.item_name.localeCompare(b.item_name) || a.id.localeCompare(b.id))
     .map((item) => `${item.item_name} - ${formatQuantity(item.recommended_quantity)} ${item.unit}`);
   const base = `Order draft for ${supplierName}\n\n${lines.join("\n")}\n\nDelivery requested: Tomorrow morning`;
-  const note = operatorNote?.trim();
+  // MISE-005PM: ASCII C Notes: prep — do not Unicode-trim invent a clean
+  // note before appending (parity with generatedOrderMessage display strip).
+  const note = canonicalizeOrderMessageNote(operatorNote);
   return truncateUtf8(note ? `${base}\n\nNotes:\n${note}` : base, ORDER_MESSAGE_MAX_BYTES);
 }
 
