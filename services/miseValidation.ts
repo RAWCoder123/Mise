@@ -42,7 +42,6 @@ import {
   ORDER_MESSAGE_MAX_BYTES,
   RESTAURANT_ADDRESS_MAX_CHARACTERS,
   RESTAURANT_CUISINE_MAX_CHARACTERS,
-  RESTAURANT_LOGO_URL_MAX_CHARACTERS,
   RESTAURANT_NAME_MAX_CHARACTERS,
   RESTAURANT_OPERATIONAL_PROFILE_MAX_BYTES,
   RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS,
@@ -56,6 +55,7 @@ import type {
   InventoryEventType
 } from "./domain/inventoryLedger";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
+import { normalizeCanonicalRestaurantLogoUrl } from "./domain/restaurantLogoUrlIdentity";
 import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord,
@@ -1129,22 +1129,9 @@ function requireHexColor(value: unknown, label: string) {
   return value;
 }
 
-function requireHttpsLogoUrl(value: unknown) {
-  const normalized = requireNullableBoundedText(value, "Logo URL", RESTAURANT_LOGO_URL_MAX_CHARACTERS);
-  if (normalized === null) return null;
-  try {
-    const url = new URL(normalized);
-    if (
-      url.protocol !== "https:" ||
-      Boolean(url.username || url.password) ||
-      !/^(?:[a-z0-9-]+\.)+[a-z]{2,63}$/i.test(url.hostname)
-    ) {
-      throw new Error();
-    }
-  } catch {
-    throw new Error("Logo URL must be a valid HTTPS URL.");
-  }
-  return normalized;
+export function requireHttpsLogoUrl(value: unknown) {
+  // MISE-005PS: ASCII C identity prep — refuse Unicode-trim inventing of clean HTTPS logo URLs.
+  return normalizeCanonicalRestaurantLogoUrl(value);
 }
 
 function requireServiceStyle(value: unknown): RestaurantServiceStyle {
