@@ -1,6 +1,7 @@
 # MISE-005PM generatedOrderMessage Notes: ASCII C prep (2026-10-14)
 
-- Branch: `cursor/mise-generated-order-message-ascii-c`
+- Branch: `cursor/mise-generated-order-message-ascii-c` @ `301c3c5c`
+- PR: #847
 - Base: `origin/main` @ `78da737`
 
 ## Inventing proof
@@ -28,10 +29,11 @@ note. Soft empty / Unicode-only spaces stay soft-null.
 
 ## Verification
 
-- focused AsciiC tests
-- `npm run typecheck`
-- `npm run security:static` / `npm run security:backend`
-- `npm test`
+- focused AsciiC 6/6
+- `npm run typecheck` pass
+- `npm run security:static` / `npm run security:backend` pass
+- `npm test` 689 total / 689 pass / 0 fail
+- Docker pgTAP unavailable in this environment
 
 ## Merge
 
