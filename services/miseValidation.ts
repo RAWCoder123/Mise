@@ -40,7 +40,6 @@ import {
 } from "../types/mise";
 import {
   ORDER_MESSAGE_MAX_BYTES,
-  RESTAURANT_ADDRESS_MAX_CHARACTERS,
   RESTAURANT_CUISINE_MAX_CHARACTERS,
   RESTAURANT_LOGO_URL_MAX_CHARACTERS,
   RESTAURANT_NAME_MAX_CHARACTERS,
@@ -61,6 +60,7 @@ import type {
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
+import { normalizeCanonicalRestaurantAddress } from "./domain/restaurantAddressIdentity";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
 
@@ -1025,6 +1025,11 @@ export function requireRestaurantCuisineType(value: unknown) {
   return normalized || null;
 }
 
+export function requireRestaurantAddress(value: unknown) {
+  // MISE-005PP: ASCII C identity prep — refuse Unicode-trim inventing of clean restaurant addresses.
+  return normalizeCanonicalRestaurantAddress(value);
+}
+
 export function requireRestaurantProfilePatch(value: RestaurantProfilePatch): RestaurantProfilePatch {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Restaurant profile changes must be an object.");
@@ -1035,13 +1040,7 @@ export function requireRestaurantProfilePatch(value: RestaurantProfilePatch): Re
 
   const patch: RestaurantProfilePatch = { ...value };
   if (patch.name !== undefined) patch.name = requireRestaurantName(patch.name);
-  if (patch.address !== undefined) {
-    patch.address = requireNullableBoundedText(
-      patch.address,
-      "Restaurant address",
-      RESTAURANT_ADDRESS_MAX_CHARACTERS
-    );
-  }
+  if (patch.address !== undefined) patch.address = requireRestaurantAddress(patch.address);
   if (patch.cuisine_type !== undefined) patch.cuisine_type = requireRestaurantCuisineType(patch.cuisine_type);
   if (patch.brand_color !== undefined) patch.brand_color = requireHexColor(patch.brand_color, "Brand color");
   if (patch.accent_color !== undefined) patch.accent_color = requireHexColor(patch.accent_color, "Accent color");
