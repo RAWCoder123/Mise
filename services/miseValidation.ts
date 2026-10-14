@@ -61,8 +61,14 @@ import type {
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
+import { normalizeCanonicalOperationalProfileArrayEntry } from "./domain/operationalProfileArrayEntryIdentity";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
+export {
+  asciiTrimOperationalProfileArrayEntryToken,
+  canonicalizeOperationalProfileArrayEntry,
+  canonicalizeOperationalProfileArrayEntryToken
+} from "./domain/operationalProfileArrayEntryIdentity";
 
 function asNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -1079,6 +1085,10 @@ function requireRestaurantOperationalProfile(value: unknown): RestaurantOperatio
 
   const normalized: RestaurantOperationalProfile = {
     serviceStyle: requireServiceStyle(profile.serviceStyle),
+    // MISE-005PR: pin orderCadence / prepWindows / primarySuppliers /
+    // inventoryReviewDays entry trim to ASCII C. Leave notes inventing
+    // (#851 / MISE-005PQ when landed), requireNullableBoundedText (logo URL /
+    // address until #850), and cuisine/name inventing alone.
     orderCadence: requireBoundedStringArray(profile.orderCadence, "Order cadence"),
     prepWindows: requireBoundedStringArray(profile.prepWindows, "Prep windows"),
     primarySuppliers: requireBoundedStringArray(profile.primarySuppliers, "Primary suppliers"),
@@ -1100,9 +1110,11 @@ function requireBoundedStringArray(value: unknown, label: string) {
     throw new Error(`${label} is limited to ${RESTAURANT_PROFILE_ARRAY_MAX_ITEMS} entries.`);
   }
   return value.map((entry) => {
-    if (typeof entry !== "string") throw new Error(`${label} entries must be text.`);
-    const normalized = entry.trim();
+    // MISE-005PR: ASCII C end-trim only — refuse Unicode-trim inventing of
+    // clean operational profile array entries.
+    const normalized = normalizeCanonicalOperationalProfileArrayEntry(entry, label);
     if (
+      !normalized ||
       normalized.length < 1 ||
       normalized.length > RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS
     ) {
