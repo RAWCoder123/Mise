@@ -40,6 +40,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
+import { generatedOrderMessage } from "../../services/domain/generatedOrderMessageIdentity";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type {
   RestaurantEmailConnection,
@@ -1014,14 +1015,9 @@ function isPurchaseEvidenceBlockerCode(code: string): code is PurchaseAuthorityB
     isPurchaseAuthorityBlockerCode(code);
 }
 
-function generatedOrderMessage(order: SupplierOrder) {
-  const note = order.operator_note?.trim();
-  if (!note) return order.order_message;
-  const suffix = "\n\nNotes:\n" + note;
-  return order.order_message.endsWith(suffix)
-    ? order.order_message.slice(0, -suffix.length)
-    : order.order_message;
-}
+// MISE-005PM: generatedOrderMessage lives in
+// services/domain/generatedOrderMessageIdentity.ts so Notes: suffix strip
+// uses ASCII C prep instead of Unicode-trim inventing.
 
 const styles = StyleSheet.create({
   stack: {
