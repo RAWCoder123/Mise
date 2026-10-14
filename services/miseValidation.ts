@@ -47,7 +47,6 @@ import {
   RESTAURANT_OPERATIONAL_PROFILE_MAX_BYTES,
   RESTAURANT_PROFILE_ARRAY_ITEM_MAX_CHARACTERS,
   RESTAURANT_PROFILE_ARRAY_MAX_ITEMS,
-  RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS,
   SUPPLIER_NOTE_MAX_CHARACTERS,
   utf8ByteLength
 } from "./domain/securityLimits";
@@ -61,8 +60,13 @@ import type {
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
+import { normalizeCanonicalOperationalProfileNotes } from "./domain/operationalProfileNotesIdentity";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
+export {
+  canonicalizeOperationalProfileNotes,
+  canonicalOperationalProfileNotes
+} from "./domain/operationalProfileNotesIdentity";
 
 function asNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -1069,6 +1073,12 @@ export function requireRestaurantProfilePatch(value: RestaurantProfilePatch): Re
   return patch;
 }
 
+export function requireOperationalProfileNotes(value: unknown) {
+  // MISE-005PQ: ASCII C multiline free-text prep — refuse Unicode-trim inventing
+  // of clean operational profile notes.
+  return normalizeCanonicalOperationalProfileNotes(value);
+}
+
 function requireRestaurantOperationalProfile(value: unknown): RestaurantOperationalProfile {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Operational profile must be an object.");
@@ -1083,11 +1093,10 @@ function requireRestaurantOperationalProfile(value: unknown): RestaurantOperatio
     prepWindows: requireBoundedStringArray(profile.prepWindows, "Prep windows"),
     primarySuppliers: requireBoundedStringArray(profile.primarySuppliers, "Primary suppliers"),
     inventoryReviewDays: requireBoundedStringArray(profile.inventoryReviewDays, "Inventory review days"),
-    notes: requireNullableBoundedText(
-      profile.notes,
-      "Operational profile notes",
-      RESTAURANT_PROFILE_NOTES_MAX_CHARACTERS
-    )
+    // MISE-005PQ: pin operational profile notes to ASCII C multiline free-text prep.
+    // Leave requireNullableBoundedText (logo URL / address until #850), address tip
+    // (#850), cuisine/name inventing, and requireBoundedStringArray entry trim alone.
+    notes: requireOperationalProfileNotes(profile.notes)
   };
   if (utf8ByteLength(JSON.stringify(normalized)) > RESTAURANT_OPERATIONAL_PROFILE_MAX_BYTES) {
     throw new Error(`Operational profile is limited to ${RESTAURANT_OPERATIONAL_PROFILE_MAX_BYTES} bytes.`);
