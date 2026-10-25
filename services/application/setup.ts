@@ -8,6 +8,10 @@ import type {
   SetupSupplierDraft
 } from "../domain/setupDrafts";
 import {
+  normalizeCanonicalSetupInventoryUnit,
+  SETUP_INVENTORY_UNIT_DEFAULT
+} from "../domain/setupInventoryUnitIdentity";
+import {
   normalizeRecipeBaselineQuantity,
   normalizeRecommendedQuantity,
   operatingLimits,
@@ -78,7 +82,10 @@ export async function saveRestaurantSetup(
     if (!itemName) continue;
     const currentQuantity = normalizeRecommendedQuantity(draft.quantity);
     const parLevel = normalizeRecommendedQuantity(draft.parLevel || currentQuantity);
-    const unit = draft.unit.trim() || "unit";
+    // MISE-005QA: pin inventory draft units to ASCII C identity prep so Unicode
+    // trim cannot invent a clean durable unit before inventory_items stores it.
+    const unit =
+      normalizeCanonicalSetupInventoryUnit(draft.unit) ?? SETUP_INVENTORY_UNIT_DEFAULT;
     const supplierReferenceId = requireSetupReferenceId(draft.supplierId, "supplier");
     if (!suppliersByReference.has(supplierReferenceId)) {
       throw new Error(`${itemName} references an unavailable supplier.`);
@@ -108,7 +115,11 @@ export async function saveRestaurantSetup(
     if (!menuItemName) continue;
     for (const ingredient of recipe.ingredients) {
       const ingredientName = ingredient.itemName.trim();
-      const unit = ingredient.unit.trim() || "unit";
+      // MISE-005QA: pin recipe-ingredient units to the same ASCII C prep as
+      // inventory draft units so Unicode trim cannot invent a clean unit before
+      // recipe baseline inventory rows store it.
+      const unit =
+        normalizeCanonicalSetupInventoryUnit(ingredient.unit) ?? SETUP_INVENTORY_UNIT_DEFAULT;
       const quantityUsedPerSale = normalizeRecipeBaselineQuantity(ingredient.quantity);
       if (!ingredientName || quantityUsedPerSale <= 0) {
         skippedRecipeIngredients += 1;
