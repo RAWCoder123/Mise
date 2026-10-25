@@ -55,6 +55,10 @@ import type {
   InventoryEventInput,
   InventoryEventType
 } from "./domain/inventoryLedger";
+import {
+  requireCanonicalInventoryOperationInventoryItemId,
+  requireCanonicalInventoryOperationRestaurantId
+} from "./domain/inventoryOperationScopeIdentity";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
 import type {
   SupplierDeliveryItemRecord,
@@ -113,8 +117,16 @@ export type ValidatedInventoryOperation = Omit<
 export function requireInventoryOperation(
   input: InventoryOperationClientInput
 ): ValidatedInventoryOperation {
-  const restaurantId = requireBoundedText(input.restaurantId, "restaurant", 200);
-  const inventoryItemId = requireBoundedText(input.inventoryItemId, "inventory item", 200);
+  // MISE-005PZ: pin inventory-operation restaurantId / inventoryItemId to
+  // ASCII C single-line scope identity prep. Leave sourceReference / reasonCode
+  // / note on their existing Unicode-trim contracts in this tip (open #855 /
+  // MISE-005PU owns reference/reason; open #854 / MISE-005PT owns note).
+  const restaurantId = requireCanonicalInventoryOperationRestaurantId(
+    input.restaurantId
+  );
+  const inventoryItemId = requireCanonicalInventoryOperationInventoryItemId(
+    input.inventoryItemId
+  );
   const eventType = requireOperatorInventoryEventType(input.eventType);
   const canonicalUnit = requireCanonicalUnit(input.canonicalUnit);
   const effectiveAt = requireInventoryTimestamp(input.effectiveAt);
@@ -185,15 +197,6 @@ function requireInventoryQuantity(value: unknown) {
     throw new Error("Enter a valid inventory quantity.");
   }
   return quantity;
-}
-
-function requireBoundedText(value: unknown, label: string, maximum: number) {
-  if (typeof value !== "string") throw new Error(`Enter a valid ${label}.`);
-  const normalized = value.trim();
-  if (!normalized || normalized.length > maximum) {
-    throw new Error(`Enter a valid ${label}.`);
-  }
-  return normalized;
 }
 
 function optionalBoundedText(value: unknown, label: string, maximum: number) {
