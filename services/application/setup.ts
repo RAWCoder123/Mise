@@ -7,6 +7,7 @@ import type {
   SetupRecipeDraft,
   SetupSupplierDraft
 } from "../domain/setupDrafts";
+import { normalizeCanonicalSetupRecipeDishName } from "../domain/setupRecipeDishNameIdentity";
 import {
   normalizeRecipeBaselineQuantity,
   normalizeRecommendedQuantity,
@@ -104,7 +105,10 @@ export async function saveRestaurantSetup(
   }> = [];
   let skippedRecipeIngredients = 0;
   for (const recipe of input.recipes) {
-    const menuItemName = recipe.dishName.trim();
+    // MISE-005QB: pin recipe dish names to ASCII C identity prep so Unicode
+    // trim cannot invent a clean durable menu_item_name before recipe
+    // mappings store it. Soft empty still skips the recipe.
+    const menuItemName = normalizeCanonicalSetupRecipeDishName(recipe.dishName);
     if (!menuItemName) continue;
     for (const ingredient of recipe.ingredients) {
       const ingredientName = ingredient.itemName.trim();
