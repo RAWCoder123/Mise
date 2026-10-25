@@ -9,6 +9,8 @@
  * vocabularies and rules stay in step.
  */
 
+import { normalizeCanonicalPurchaseLineIsoDate } from "./purchaseLineIsoDateIdentity";
+
 export const PURCHASE_LINE_EVIDENCE_VERSION = "mise.purchase_line.v1" as const;
 export const PURCHASE_LINE_NORMALIZATION_VERSION =
   "mise.purchase_line_normalization.v1" as const;
@@ -360,15 +362,6 @@ function optionalAmount(
   return value;
 }
 
-/** ISO date (YYYY-MM-DD) only; a source document date is never invented. */
-function isoDate(value: string, label: string) {
-  const trimmed = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(trimmed) || Number.isNaN(Date.parse(`${trimmed}T00:00:00Z`))) {
-    throw new Error(`${label} must be an ISO calendar date.`);
-  }
-  return trimmed;
-}
-
 /**
  * A parsed field that is absent stays absent. Confidence is only ever lowered,
  * never raised: a line missing quantity, unit, unit price, or extended price
@@ -451,14 +444,22 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
   }
   const statedPackSize = optionalBoundedText(input.packSize, "Pack size", 80);
   const packSize = statedPackSize ?? extractedPackSize;
+  // MISE-005PX: ASCII-C ISO calendar-date identity for transaction/received.
+  const transactionDate = normalizeCanonicalPurchaseLineIsoDate(
+    input.transactionDate,
+    "Transaction date"
+  );
+  const receivedDate = input.receivedDate
+    ? normalizeCanonicalPurchaseLineIsoDate(input.receivedDate, "Received date")
+    : null;
   const consistencyFlags = computePurchaseLineConsistencyFlags({
     quantity,
     unitOfMeasure,
     packSize,
     unitPrice,
     extendedPrice,
-    transactionDate: isoDate(input.transactionDate, "Transaction date"),
-    receivedDate: input.receivedDate ? isoDate(input.receivedDate, "Received date") : null,
+    transactionDate,
+    receivedDate,
     statedPackSize,
     describedPackSize: extractedPackSize
   });
@@ -475,8 +476,8 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
     unitPrice,
     extendedPrice,
     currency,
-    transactionDate: isoDate(input.transactionDate, "Transaction date"),
-    receivedDate: input.receivedDate ? isoDate(input.receivedDate, "Received date") : null,
+    transactionDate,
+    receivedDate,
     consistencyFlags,
     statedConfidence: input.parseConfidence,
     parseConfidence: resolvePurchaseLineConfidence({
