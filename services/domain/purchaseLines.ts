@@ -9,6 +9,12 @@
  * vocabularies and rules stay in step.
  */
 
+import {
+  normalizeCanonicalPurchaseLineCurrency,
+  normalizeCanonicalPurchaseLinePackSize,
+  normalizeCanonicalPurchaseLineUnitOfMeasure
+} from "./purchaseLineOptionalTextIdentity";
+
 export const PURCHASE_LINE_EVIDENCE_VERSION = "mise.purchase_line.v1" as const;
 export const PURCHASE_LINE_NORMALIZATION_VERSION =
   "mise.purchase_line_normalization.v1" as const;
@@ -342,12 +348,6 @@ function boundedText(value: string, label: string, maximum: number) {
   return trimmed;
 }
 
-function optionalBoundedText(value: string | null | undefined, label: string, maximum: number) {
-  if (value === null || value === undefined) return null;
-  const trimmed = value.trim();
-  return trimmed === "" ? null : boundedText(trimmed, label, maximum);
-}
-
 function optionalAmount(
   value: number | null | undefined,
   label: string,
@@ -439,17 +439,20 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
     packSize: extractedPackSize
   } = normalizePurchaseLineDescription(rawItemDescription);
   const quantity = optionalAmount(input.quantity, "Quantity", MAX_QUANTITY);
-  const unitOfMeasure = optionalBoundedText(input.unitOfMeasure, "Unit of measure", 80);
+  // MISE-005PW: ASCII-C optional unit / currency / pack identity.
+  const unitOfMeasure = normalizeCanonicalPurchaseLineUnitOfMeasure(
+    input.unitOfMeasure
+  );
   const unitPrice = optionalAmount(input.unitPrice, "Unit price", MAX_QUANTITY);
   const extendedPrice = optionalAmount(input.extendedPrice, "Extended price", MAX_EXTENDED_PRICE);
-  const currency = optionalBoundedText(input.currency, "Currency", 3);
+  const currency = normalizeCanonicalPurchaseLineCurrency(input.currency);
   if (currency !== null && !CURRENCY_PATTERN.test(currency)) {
     throw new Error("Currency must be a three-letter ISO 4217 code.");
   }
   if (currency === null && (unitPrice !== null || extendedPrice !== null)) {
     throw new Error("Priced purchase lines must carry a currency.");
   }
-  const statedPackSize = optionalBoundedText(input.packSize, "Pack size", 80);
+  const statedPackSize = normalizeCanonicalPurchaseLinePackSize(input.packSize);
   const packSize = statedPackSize ?? extractedPackSize;
   const consistencyFlags = computePurchaseLineConsistencyFlags({
     quantity,
