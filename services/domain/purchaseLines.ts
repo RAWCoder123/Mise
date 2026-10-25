@@ -9,6 +9,8 @@
  * vocabularies and rules stay in step.
  */
 
+import { normalizeCanonicalPurchaseLineRawItemDescription } from "./purchaseLineRawItemDescriptionIdentity";
+
 export const PURCHASE_LINE_EVIDENCE_VERSION = "mise.purchase_line.v1" as const;
 export const PURCHASE_LINE_NORMALIZATION_VERSION =
   "mise.purchase_line_normalization.v1" as const;
@@ -432,7 +434,10 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
   if (creditsLineId !== null && input.lineType !== "credit") {
     throw new Error("Only a credit line may reference the line it offsets.");
   }
-  const rawItemDescription = boundedText(input.rawItemDescription, "Raw item description", 500);
+  // MISE-005PY: ASCII-C required raw item description identity.
+  const rawItemDescription = normalizeCanonicalPurchaseLineRawItemDescription(
+    input.rawItemDescription
+  );
   const {
     normalizedItemKey,
     normalizationVersion,
