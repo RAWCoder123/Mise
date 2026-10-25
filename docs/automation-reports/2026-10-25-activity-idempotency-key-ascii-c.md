@@ -37,4 +37,10 @@ Alone-OK with #790 / #569 / #772. Keep
 
 ## Verification
 
-Focused and gate results are recorded in the PR body after the run completes.
+- focused `tests/activityEventIdempotencyAsciiC.test.ts` — 4/4
+- `npm run typecheck` — pass
+- `npm run security:static` / `npm run security:backend` — pass
+- `npm test` — 687 total / 680 pass / 0 fail / 7 cancelled (pre-existing
+  `recalculationCycles` `withTimeout` hung-promise `cancelledByParent` on this
+  runner; not introduced by this tip)
+- Docker pgTAP unavailable in this environment
