@@ -13,6 +13,7 @@ import {
   buildDailyCloseoutSummary,
   type DailyCloseoutSummary
 } from "./dailyCloseout";
+import { normalizeDailyOpsSignalLineText } from "./dailyOpsSignalLineIdentity";
 import type { SupplierReliabilitySummary } from "./supplierReliability";
 import type { WasteAnalysisSummary } from "./wasteAnalysis";
 
@@ -308,8 +309,9 @@ function pickSignalLine(
     };
   }
 
-  const action = best.recommended_action?.trim();
-  const why = best.why_it_matters?.trim();
+  // MISE-005QG: ASCII C free-text prep — do not Unicode-trim invent.
+  const action = normalizeDailyOpsSignalLineText(best.recommended_action);
+  const why = normalizeDailyOpsSignalLineText(best.why_it_matters);
   const line = action
     ? why
       ? `${action} — ${why}`
