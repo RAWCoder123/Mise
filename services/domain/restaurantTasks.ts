@@ -1,3 +1,5 @@
+import { requireCanonicalRestaurantTasksEvidenceType } from "./restaurantTasksEvidenceTypeIdentity";
+
 export type RestaurantTaskOrigin =
   | "human"
   | "mise"
@@ -535,12 +537,17 @@ function boundedEvidence(value: unknown, label: string): RestaurantTaskEvidence[
       throw new Error(`${label} contains an invalid entry.`);
     }
     const record = { ...(entry as Record<string, unknown>) };
+    // Soft-empty type (Unicode trim) keeps the label → checklist_item fallback.
+    // Emptiness-only label.trim() is intentional and does not store the trim.
     if (typeof record.type !== "string" || !record.type.trim()) {
       const labelValue = typeof record.label === "string" ? record.label.trim() : "";
       if (!labelValue) throw new Error(`${label} entries require a type or label.`);
       record.type = "checklist_item";
     } else {
-      record.type = record.type.trim();
+      // MISE-005PV: pin present evidence type to ASCII C (see
+      // restaurantTasksEvidenceTypeIdentity). Unicode trim previously invented
+      // durable checklist / completion evidence types from NBSP/em-space padding.
+      record.type = requireCanonicalRestaurantTasksEvidenceType(record.type, label);
     }
     return record as RestaurantTaskEvidence;
   });
