@@ -1,4 +1,5 @@
 import type { PosSale } from "../../types/mise";
+import { normalizeInsightsSalesLabel } from "./insightsSalesLabelIdentity";
 
 export interface InsightsSalesBestSeller {
   itemName: string;
@@ -245,7 +246,9 @@ function shiftDateKey(dateKey: string, deltaDays: number): string {
 }
 
 function normalizeLabel(value: string | null | undefined): string {
-  return (value ?? "").trim().replace(/\s+/g, " ");
+  // MISE-005QI: pin Insights sales aggregation labels to ASCII C so
+  // NBSP/em-space padding cannot invent clean best-seller / mix Map keys.
+  return normalizeInsightsSalesLabel(value);
 }
 
 function sum(values: readonly number[]) {
