@@ -35,7 +35,10 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
-import { operatingLimits } from "../../services/miseValidation";
+import {
+  canonicalizeInventoryOperationNote,
+  operatingLimits
+} from "../../services/miseValidation";
 import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
 
@@ -235,7 +238,8 @@ export default function InventoryDetailScreen() {
         quantity,
         canonicalUnit: item.canonical_unit,
         effectiveAt: new Date().toISOString(),
-        note: noteText.trim() || undefined
+        // MISE-005PT: soft-canonicalize before queue; do not invent via Unicode trim.
+        note: canonicalizeInventoryOperationNote(noteText) ?? undefined
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
