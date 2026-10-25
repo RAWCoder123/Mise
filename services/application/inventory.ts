@@ -24,6 +24,7 @@ import {
   withPendingCountEvidence,
   type LedgerProjectionEvent
 } from "../domain/inventoryCountAuthority";
+import { requireCanonicalInventoryRecipeUnit } from "../domain/inventoryRecipeUnitIdentity";
 import { demandFallbackForRestaurant } from "../demoData";
 import {
   fetchInventoryLedgerEvidence,
@@ -240,12 +241,15 @@ export async function addRecipeBaselineIngredient(
 ) {
   const menuItemName = input.menuItemName.trim();
   const inventoryItemId = input.inventoryItemId.trim();
-  const unit = input.unit.trim();
+  // MISE-005QD: pin recipe-mapping units to ASCII C identity prep so Unicode
+  // trim cannot invent a clean durable unit before compatibility checks and
+  // mapping writes. Soft empty / Unicode-padded tokens fail closed with the
+  // existing empty-gate contract.
+  const unit = requireCanonicalInventoryRecipeUnit(input.unit);
   const quantityUsedPerSale = requireRecipeBaselineQuantity(input.quantityUsedPerSale);
 
   if (!menuItemName) throw new Error("Enter the POS menu item name.");
   if (!inventoryItemId) throw new Error("Choose an inventory item.");
-  if (!unit) throw new Error("Inventory unit is required.");
 
   const [data, recommendationHistory] = await Promise.all([
     fetchAnchoredPlanningData(restaurantId),
