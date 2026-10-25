@@ -39,6 +39,10 @@ import {
   SUPPLIER_SEND_CONTENT_VERSION
 } from "../types/mise";
 import {
+  normalizeCanonicalInventoryOperationReasonCode,
+  normalizeCanonicalInventoryOperationSourceReference
+} from "./domain/inventoryOperationReferenceIdentity";
+import {
   ORDER_MESSAGE_MAX_BYTES,
   RESTAURANT_ADDRESS_MAX_CHARACTERS,
   RESTAURANT_CUISINE_MAX_CHARACTERS,
@@ -126,8 +130,13 @@ export function requireInventoryOperation(
     throw new Error("Enter a quantity greater than zero.");
   }
 
-  const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
-  const reasonCode = optionalBoundedText(input.reasonCode, "reason", 80);
+  // MISE-005PU: pin inventory-operation sourceReference / reasonCode to ASCII C
+  // single-line identity prep. Leave note on its existing Unicode-trim contract
+  // in this tip (open #854 / MISE-005PT owns the note path).
+  const sourceReference = normalizeCanonicalInventoryOperationSourceReference(
+    input.sourceReference
+  );
+  const reasonCode = normalizeCanonicalInventoryOperationReasonCode(input.reasonCode);
   const note = optionalBoundedText(input.note, "note", 500);
   return {
     restaurantId,
