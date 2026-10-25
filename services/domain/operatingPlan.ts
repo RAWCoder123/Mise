@@ -18,11 +18,13 @@ import {
   type OperationalTodayTaskPriority,
   type OperationalTodayTaskTiming
 } from "./todayTasks";
+import { normalizeOperatingPlanWhyText } from "./operatingPlanWhyIdentity";
 
 /**
  * Deterministic Daily Operating Plan projection.
  * Composes authoritative Today tasks, orders, recommendations, and activity.
  * Never fabricates staffing, weather, reservations, or unverified cutoffs.
+ * MISE-005QE pins why / completion-result free-text prep to ASCII C.
  */
 export type OperatingPlanItemKind =
   | "mise_task"
@@ -462,11 +464,14 @@ function whyForTask(
   recommendation: PurchaseRecommendation | null,
   order: SupplierOrder | null
 ) {
-  if (recommendation?.reason?.trim()) return recommendation.reason.trim();
+  // MISE-005QE: ASCII C free-text prep — do not invent clean why tokens via Unicode trim.
+  const recommendationWhy = normalizeOperatingPlanWhyText(recommendation?.reason);
+  if (recommendationWhy) return recommendationWhy;
   if (order?.delivery_date && validDateKey(order.delivery_date)) {
     return `Supplier delivery is scheduled for ${order.delivery_date}.`;
   }
-  if (task.detail.trim()) return task.detail.trim();
+  const detailWhy = normalizeOperatingPlanWhyText(task.detail);
+  if (detailWhy) return detailWhy;
   return task.completion.reason;
 }
 
@@ -606,8 +611,11 @@ function completionResultForTask(
   const matched = activityEvents
     .filter((event) => activityMatchesTask(event, task))
     .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt))[0];
-  if (matched?.summary?.trim()) return matched.summary.trim();
-  if (matched?.title?.trim()) return matched.title.trim();
+  // MISE-005QE: ASCII C free-text prep — do not invent clean completion prose via Unicode trim.
+  const summaryResult = normalizeOperatingPlanWhyText(matched?.summary);
+  if (summaryResult) return summaryResult;
+  const titleResult = normalizeOperatingPlanWhyText(matched?.title);
+  if (titleResult) return titleResult;
   return task.completion.reason;
 }
 
