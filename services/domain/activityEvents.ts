@@ -5,6 +5,7 @@ import type {
   PurchaseRecommendation,
   SupplierOrder
 } from "../../types/mise";
+import { normalizeActivityEventIdempotencyKey } from "./activityEventIdempotencyIdentity";
 import type { OperationalFinding } from "./operationalFindings";
 import type { AutonomyLevel } from "./operationalStatus";
 import type { RestaurantTask } from "./restaurantTasks";
@@ -432,8 +433,10 @@ export function activityIdempotencyKey(event: Pick<
   ActivityEvent,
   "activityType" | "relatedEntityType" | "relatedEntityId" | "occurredAt" | "metadata"
 >) {
-  const explicit = event.metadata.idempotencyKey;
-  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+  // MISE-005QH: pin explicit metadata idempotency keys to ASCII C so
+  // NBSP/em-space padding cannot invent a clean dedupe / persist identity.
+  const explicit = normalizeActivityEventIdempotencyKey(event.metadata.idempotencyKey);
+  if (explicit) return explicit;
   const bucket = event.occurredAt.slice(0, 16);
   return [
     event.activityType,
