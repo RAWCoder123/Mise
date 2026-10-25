@@ -43,9 +43,11 @@ Unicode-trims.
 
 ## Verification
 
-- focused `tests/insightsSalesLabelAsciiC.test.ts` — pending
-- related `tests/insightsSalesAnalytics.test.ts` — pending
-- `npm run typecheck` — pending
-- `npm run security:static` / `npm run security:backend` — pending
-- `npm test` — pending
+- focused `tests/insightsSalesLabelAsciiC.test.ts` — 4/4
+- related `tests/insightsSalesAnalytics.test.ts` — 2/2
+- `npm run typecheck` — pass
+- `npm run security:static` / `npm run security:backend` — pass
+- `npm test` — 687 total / 680 pass / 0 fail / 7 cancelled (pre-existing
+  `recalculationCycles` `withTimeout` hung-promise `cancelledByParent` on this
+  runner; not introduced by this tip)
 - Docker pgTAP unavailable in this environment
