@@ -24,6 +24,7 @@ import {
   withPendingCountEvidence,
   type LedgerProjectionEvent
 } from "../domain/inventoryCountAuthority";
+import { requireCanonicalInventoryRecipeMenuItemName } from "../domain/inventoryRecipeMenuItemNameIdentity";
 import { demandFallbackForRestaurant } from "../demoData";
 import {
   fetchInventoryLedgerEvidence,
@@ -238,12 +239,15 @@ export async function addRecipeBaselineIngredient(
     unit: string;
   }
 ) {
-  const menuItemName = input.menuItemName.trim();
+  // MISE-005QC: pin recipe-mapping menu item names to ASCII C identity prep so
+  // Unicode trim cannot invent a clean durable menu_item_name before mapping
+  // writes. Soft empty / Unicode-padded tokens fail closed with the existing
+  // empty-gate contract.
+  const menuItemName = requireCanonicalInventoryRecipeMenuItemName(input.menuItemName);
   const inventoryItemId = input.inventoryItemId.trim();
   const unit = input.unit.trim();
   const quantityUsedPerSale = requireRecipeBaselineQuantity(input.quantityUsedPerSale);
 
-  if (!menuItemName) throw new Error("Enter the POS menu item name.");
   if (!inventoryItemId) throw new Error("Choose an inventory item.");
   if (!unit) throw new Error("Inventory unit is required.");
 
