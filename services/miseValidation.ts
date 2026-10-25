@@ -55,6 +55,7 @@ import type {
   InventoryEventInput,
   InventoryEventType
 } from "./domain/inventoryLedger";
+import { normalizeCanonicalInventoryOperationNote } from "./domain/inventoryOperationNoteIdentity";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
 import type {
   SupplierDeliveryItemRecord,
@@ -62,7 +63,15 @@ import type {
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
 
-export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
+export {
+  INVENTORY_OPERATION_NOTE_MAX_CHARACTERS,
+  RESTAURANT_NAME_MAX_CHARACTERS,
+  SUPPLIER_NOTE_MAX_CHARACTERS
+} from "./domain/securityLimits";
+export {
+  canonicalizeInventoryOperationNote,
+  canonicalInventoryOperationNote
+} from "./domain/inventoryOperationNoteIdentity";
 
 function asNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -128,7 +137,10 @@ export function requireInventoryOperation(
 
   const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
   const reasonCode = optionalBoundedText(input.reasonCode, "reason", 80);
-  const note = optionalBoundedText(input.note, "note", 500);
+  // MISE-005PT: pin inventory-operation note to ASCII C multiline free-text prep.
+  // Leave sourceReference / reasonCode on their existing Unicode-trim contracts
+  // in this tip.
+  const note = normalizeCanonicalInventoryOperationNote(input.note);
   return {
     restaurantId,
     inventoryItemId,
