@@ -13,6 +13,7 @@ import {
   buildDailyCloseoutSummary,
   type DailyCloseoutSummary
 } from "./dailyCloseout";
+import { normalizeDailyOpsAskBriefingText } from "./dailyOpsAskBriefingIdentity";
 import type { SupplierReliabilitySummary } from "./supplierReliability";
 import type { WasteAnalysisSummary } from "./wasteAnalysis";
 
@@ -225,7 +226,8 @@ export function buildDailyOpsReport(input: DailyOpsReportInput): DailyOpsReport 
         operatorTasksOpen: Math.max(0, Math.floor(operatorTasksOpen)),
         pendingRecommendations: summary.pendingRecommendations
       }),
-      askBriefingText: askBriefingText?.trim() ? askBriefingText.trim() : null
+      // MISE-005QF: ASCII C free-text prep — do not Unicode-trim invent.
+      askBriefingText: normalizeDailyOpsAskBriefingText(askBriefingText)
     }
   };
 }
