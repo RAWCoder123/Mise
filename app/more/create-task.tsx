@@ -15,6 +15,7 @@ import { colors, icon, iconStroke, radii, typography } from "../../constants/the
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import { normalizeCreateTaskTitle } from "../../services/domain/createTaskTitleIdentity";
 import {
   completeOperatorTask,
   createSharedRestaurantTask,
@@ -39,6 +40,8 @@ import {
 } from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 import type { RestaurantTeamMember } from "../../types/mise";
+
+/** MISE-005QT: Create Task title gate uses ASCII C display prep. */
 
 type FocusChoice = OperatorTaskFocusArea | "none";
 type TaskScope = "restaurant" | "personal";
@@ -277,8 +280,9 @@ export default function CreateOperatorTaskScreen() {
 
   async function save() {
     if (!restaurant || !actionsEditable) return;
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
+    // MISE-005QT: ASCII C title prep — do not Unicode-trim invent a clean title.
+    const preparedTitle = normalizeCreateTaskTitle(title);
+    if (!preparedTitle) {
       setError(t("operatorTasks.error.titleRequired"));
       setSaved(false);
       return;
@@ -300,7 +304,7 @@ export default function CreateOperatorTaskScreen() {
         await createSharedRestaurantTask({
           restaurantId,
           clientTaskId: `restaurant-task:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
-          title: trimmedTitle,
+          title: preparedTitle,
           detail: body,
           origin: "human",
           operationalCategory:
@@ -322,7 +326,7 @@ export default function CreateOperatorTaskScreen() {
       } else {
         await createOperatorTask({
           restaurantId,
-          title: trimmedTitle,
+          title: preparedTitle,
           body,
           priority,
           dueAt: dueTrimmed || null,
