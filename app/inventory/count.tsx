@@ -13,6 +13,7 @@ import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { summarizeCountSessionProgress } from "../../services/domain/inventoryCountSessions";
+import { prepareInventoryCountQuantityText } from "../../services/domain/inventoryCountQuantityIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -158,10 +159,12 @@ export default function InventoryCountSessionScreen() {
   ) {
     const lines = sessionDetail.lines
       .map((line) => {
-        const raw = draftCounts[line.inventory_item_id]?.trim() ?? "";
-        if (!raw) return null;
-        const countedQuantity = Number(raw);
-        if (!Number.isFinite(countedQuantity)) return null;
+        // MISE-005RD: refuse Unicode trim / Number TrimString inventing a clean quantity.
+        const prepared = prepareInventoryCountQuantityText(
+          draftCounts[line.inventory_item_id]
+        );
+        if (prepared.status !== "ok") return null;
+        const countedQuantity = prepared.quantity;
         const noteRaw = draftNotes[line.inventory_item_id] ?? "";
         if (noteRaw.trim().length > 240) {
           throw new Error(t("inventory.count.noteTooLong"));
@@ -378,11 +381,12 @@ export default function InventoryCountSessionScreen() {
                   {visibleDetail.lines.map((line, index) => {
                     const countedRaw = draftCounts[line.inventory_item_id] ?? "";
                     const noteRaw = draftNotes[line.inventory_item_id] ?? "";
-                    const counted = countedRaw.trim() === "" ? null : Number(countedRaw);
+                    // MISE-005RD: variance display must not invent via Unicode Number TrimString.
+                    const preparedCount = prepareInventoryCountQuantityText(countedRaw);
+                    const counted =
+                      preparedCount.status === "ok" ? preparedCount.quantity : null;
                     const variance =
-                      counted == null || !Number.isFinite(counted)
-                        ? null
-                        : counted - line.system_quantity_at_start;
+                      counted == null ? null : counted - line.system_quantity_at_start;
                     const editable =
                       actionsEditable && visibleDetail.session.status === "in_progress";
                     const showNoteField =
