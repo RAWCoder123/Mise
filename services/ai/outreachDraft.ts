@@ -1,3 +1,5 @@
+import { normalizeCanonicalOutreachDraftText } from "../domain/outreachDraftTextIdentity";
+
 export interface OutreachDraft {
   subject: string;
   body: string;
@@ -57,10 +59,6 @@ export function parseOutreachDraft(value: unknown): OutreachDraft {
 }
 
 function requireBoundedText(value: unknown, fieldName: string, maximumLength: number) {
-  if (typeof value !== "string") throw new Error(`${fieldName} must be text.`);
-  const text = value.trim();
-  if (!text || text.length > maximumLength) {
-    throw new Error(`${fieldName} must contain 1-${maximumLength} characters.`);
-  }
-  return text;
+  // MISE-005QN: ASCII C free-text prep — do not Unicode-trim invent.
+  return normalizeCanonicalOutreachDraftText(value, fieldName, maximumLength);
 }
