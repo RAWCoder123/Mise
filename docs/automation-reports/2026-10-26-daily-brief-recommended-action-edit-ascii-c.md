@@ -36,7 +36,8 @@ this tip's assertion that `operationalFindingDecisions.ts` still routes through
 
 ## Verification
 
-- focused `tests/dailyBriefRecommendedActionEditAsciiC.test.ts`
-- `npm run typecheck`
-- `npm run security:static` / `npm run security:backend`
-- `npm test`
+- focused `tests/dailyBriefRecommendedActionEditAsciiC.test.ts` (4/4)
+- `npm run typecheck`: passed
+- `npm run security:static` / `npm run security:backend`: passed
+- `npm test`: 687 total / 680 pass / 0 fail / 7 cancelled
+- Docker pgTAP unavailable in this environment
