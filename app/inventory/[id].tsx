@@ -21,6 +21,7 @@ import { colors, icon, iconStroke, inventoryStatusColors, radii } from "../../co
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
+import { prepareInventoryDetailSettingsQuantityText } from "../../services/domain/inventoryDetailSettingsQuantityIdentity"; // MISE-005RG
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   addInventoryItemToOrder,
@@ -270,23 +271,30 @@ export default function InventoryDetailScreen() {
       return;
     }
 
+    // MISE-005RG: refuse Unicode-padded settings quantity drafts before locale parse.
+    const preparedParLevel = prepareInventoryDetailSettingsQuantityText(parLevel);
+    const preparedReorderThreshold = prepareInventoryDetailSettingsQuantityText(reorderThreshold);
     const nextSettingErrors: InventorySettingErrors = {
-      parLevel: validateInventoryNumber(
-        parLevel,
+      parLevel: validatePreparedInventorySettingsQuantity(
+        preparedParLevel,
         t("inventory.detail.field.parLevel"),
         parseNumber,
         formatNumber,
         t
       ),
-      reorderThreshold: validateInventoryNumber(
-        reorderThreshold,
+      reorderThreshold: validatePreparedInventorySettingsQuantity(
+        preparedReorderThreshold,
         t("inventory.detail.field.reorderThreshold"),
         parseNumber,
         formatNumber,
         t
       )
     };
-    if (Object.values(nextSettingErrors).some(Boolean)) {
+    if (
+      Object.values(nextSettingErrors).some(Boolean) ||
+      preparedParLevel.status !== "ok" ||
+      preparedReorderThreshold.status !== "ok"
+    ) {
       setSettingErrors(nextSettingErrors);
       setMessage(t("inventory.detail.reviewFields"));
       setMessageIsError(true);
@@ -300,8 +308,8 @@ export default function InventoryDetailScreen() {
     setMessageIsError(false);
     try {
       await updateInventoryItem(restaurantId, item.id, {
-        par_level: parseNumber(parLevel) ?? 0,
-        reorder_threshold: parseNumber(reorderThreshold) ?? 0
+        par_level: parseNumber(preparedParLevel.text) ?? 0,
+        reorder_threshold: parseNumber(preparedReorderThreshold.text) ?? 0
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await load();
@@ -767,15 +775,23 @@ function validateOperationQuantity(
   return undefined;
 }
 
-function validateInventoryNumber(
-  value: string,
+function validatePreparedInventorySettingsQuantity(
+  prepared: ReturnType<typeof prepareInventoryDetailSettingsQuantityText>,
   label: string,
   parseNumber: ReturnType<typeof useLocale>["parseNumber"],
   formatNumber: ReturnType<typeof useLocale>["formatNumber"],
   t: ReturnType<typeof useLocale>["t"]
 ) {
-  if (!value.trim()) return t("inventory.detail.fieldRequired", { field: label });
-  const parsed = parseNumber(value);
+  if (prepared.status === "empty") {
+    return t("inventory.detail.fieldRequired", { field: label });
+  }
+  if (prepared.status === "invalid") {
+    return t("inventory.detail.fieldRange", {
+      field: label,
+      maximum: formatNumber(operatingLimits.inventoryQuantity)
+    });
+  }
+  const parsed = parseNumber(prepared.text);
   if (parsed === null || parsed < 0 || parsed > operatingLimits.inventoryQuantity) {
     return t("inventory.detail.fieldRange", {
       field: label,
