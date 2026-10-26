@@ -7,6 +7,7 @@ import type {
   RestaurantEmailConnection,
   SupplierRecipient
 } from "../../types/mise";
+import { normalizePilotReadinessSaleItemName } from "./pilotReadinessSaleItemIdentity";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export type PilotReadinessStatus = "ready" | "attention" | "blocked" | "external";
@@ -199,10 +200,13 @@ function assessRecipeCoverage(
     0
   );
   const coverage = totalQuantity > 0 ? mappedQuantity / totalQuantity : 0;
+  // MISE-005QO: pin missing-recipe sale item-name Set keys to ASCII C so
+  // NBSP/em-space padding cannot invent equality with clean menu-item blockers.
   const missingNames = new Set(
     sales
       .filter((sale) => positive(sale.quantity_sold) > 0 && !mappings.some((mapping) => saleMatchesRecipe(sale, mapping, providerMappings)))
-      .map((sale) => sale.item_name.trim())
+      .map((sale) => normalizePilotReadinessSaleItemName(sale.item_name))
+      .filter((name) => name.length > 0)
   );
   const blockers = coverage >= minimumCoverage ? [] : [
     `Recipe coverage is ${Math.round(coverage * 100)}%; ${Math.round(minimumCoverage * 100)}% is required.`,
