@@ -1,6 +1,6 @@
 # MISE-005RG inventory detail settings quantity ASCII C (2026-10-26)
 
-Tip: `cursor/mise-product-inspection-49d7` (inventory detail settings quantity).
+Tip: `cursor/mise-product-inspection-49d7` @ `6fbff3e6` / PR #893.
 
 ## Inventing proof
 
