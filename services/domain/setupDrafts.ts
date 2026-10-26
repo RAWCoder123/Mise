@@ -1,4 +1,5 @@
 import { operatingLimits } from "../miseValidation";
+import { normalizeSetupPosItemLabel } from "./setupPosItemLabelIdentity";
 
 export const setupImportLimits = {
   characters: 256_000,
@@ -280,13 +281,20 @@ export function parseSetupPosSalesCsv(input: string): SetupPosSalesImportResult 
     const rowNumber = (hasHeader ? index + 2 : index + 1);
     const cells = splitCsvLine(line);
     const record = headers.reduce<Record<string, string>>((entry, header, cellIndex) => {
-      if (header) entry[header] = cells[cellIndex]?.trim() ?? "";
+      if (!header) return entry;
+      const raw = cells[cellIndex] ?? "";
+      // MISE-005QL: itemName / category must not invent via Unicode cell trim
+      // before ASCII C label canonicalize. Other CSV fields keep prior trim
+      // (saleDate remains on open #871 / MISE-005QK).
+      entry[header] =
+        header === "itemName" || header === "category" ? raw : raw.trim();
       return entry;
     }, {});
     const rowIssues: SetupImportValidationIssue[] = [];
     const saleDate = normalizeSaleDate(record.saleDate ?? "");
-    const itemName = (record.itemName ?? "").trim();
-    const category = (record.category ?? "").trim() || "Sales";
+    // MISE-005QL: pin durable POS import itemName / category identity to ASCII C.
+    const itemName = normalizeSetupPosItemLabel(record.itemName ?? "");
+    const category = normalizeSetupPosItemLabel(record.category ?? "") || "Sales";
     const quantitySold = parseSetupNumber(record.quantitySold ?? "");
     const grossSales = parseSetupNumber(record.grossSales ?? "");
 
