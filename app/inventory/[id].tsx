@@ -21,6 +21,7 @@ import { colors, icon, iconStroke, inventoryStatusColors, radii } from "../../co
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
+import { prepareInventoryDetailQuantityText } from "../../services/domain/inventoryDetailQuantityIdentity"; // MISE-005RF
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   addInventoryItemToOrder,
@@ -210,11 +211,33 @@ export default function InventoryDetailScreen() {
       return;
     }
 
-    const quantity = operation === "stockout" ? 0 : parseNumber(quantityText);
-    const nextQuantityError =
-      operation === "stockout"
-        ? undefined
-        : validateOperationQuantity(quantityText, operation, parseNumber, formatNumber, t);
+    // MISE-005RF: refuse Unicode-padded quantity drafts before locale parse.
+    let quantity: number | null;
+    let nextQuantityError: string | undefined;
+    if (operation === "stockout") {
+      quantity = 0;
+      nextQuantityError = undefined;
+    } else {
+      const prepared = prepareInventoryDetailQuantityText(quantityText);
+      if (prepared.status === "empty") {
+        quantity = null;
+        nextQuantityError = t("inventory.detail.fieldRequired", {
+          field: t("inventory.ops.quantityLabel")
+        });
+      } else if (prepared.status === "invalid") {
+        quantity = null;
+        nextQuantityError = t("inventory.ops.quantityInvalid");
+      } else {
+        quantity = parseNumber(prepared.text);
+        nextQuantityError = validateOperationQuantity(
+          prepared.text,
+          operation,
+          parseNumber,
+          formatNumber,
+          t
+        );
+      }
+    }
     if (nextQuantityError || quantity === null) {
       setQuantityError(nextQuantityError ?? t("inventory.ops.quantityInvalid"));
       setMessage(t("inventory.ops.reviewQuantity"));
