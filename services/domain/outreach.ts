@@ -1,3 +1,5 @@
+import { normalizeCanonicalOutreachLeadText } from "./outreachLeadTextIdentity";
+
 export const OUTREACH_DAILY_SEND_LIMIT_MAX = 50;
 export const OUTREACH_FOLLOW_UP_MAX = 2;
 export const OUTREACH_BATCH_SIZE_MAX = 25;
@@ -205,13 +207,8 @@ function weekdayNumber(value: string | undefined) {
 }
 
 function requireText(value: unknown, fieldName: string, maximumLength: number) {
-  if (typeof value !== "string") throw new Error(`${fieldName} is required.`);
-  const text = value.trim();
-  if (!text || text.length > maximumLength) throw new Error(`${fieldName} must contain 1-${maximumLength} characters.`);
-  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(text)) {
-    throw new Error(`${fieldName} contains unsupported control characters.`);
-  }
-  return text;
+  // MISE-005QM: ASCII C end trim + fail-closed canonicalize (no Unicode trim inventing).
+  return normalizeCanonicalOutreachLeadText(value, fieldName, maximumLength);
 }
 
 function optionalText(value: unknown, fieldName: string, maximumLength: number) {
