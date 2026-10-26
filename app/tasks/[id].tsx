@@ -18,6 +18,7 @@ import {
   canRestaurantRoleCompleteSharedTask,
   type RestaurantTask
 } from "../../services/domain/restaurantTasks";
+import { normalizeTaskCompletionEvidenceNote } from "../../services/domain/taskCompletionEvidenceNoteIdentity";
 import {
   canRestaurantRoleActOnTodayTask,
   type OperationalTodayTask,
@@ -31,6 +32,8 @@ import {
 } from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { captureMiseError } from "../../services/telemetry";
+
+/** MISE-005QW: shared-task completion evidence notes use ASCII C free-text prep. */
 
 function BackAction() {
   const { t } = useLocale();
@@ -155,10 +158,12 @@ export default function TaskDetailScreen() {
       setError(t("tasks.shared.resultRequired"));
       return;
     }
+    // MISE-005QW: ASCII C evidence-note prep — do not Unicode-trim invent a clean note.
+    const evidenceNote = normalizeTaskCompletionEvidenceNote(completionEvidence);
     if (
       sharedTask.verificationRequired &&
       sharedTask.verificationMethod !== "checklist" &&
-      !completionEvidence.trim()
+      !evidenceNote
     ) {
       setError(t("tasks.shared.evidenceRequired"));
       return;
@@ -176,8 +181,8 @@ export default function TaskDetailScreen() {
             label: entry.label ?? entry.type ?? "Completed checklist item",
             completed: true
           })),
-          ...(completionEvidence.trim()
-            ? [{ type: sharedTask.verificationMethod, note: completionEvidence.trim() }]
+          ...(evidenceNote
+            ? [{ type: sharedTask.verificationMethod, note: evidenceNote }]
             : [])
         ]
       });
