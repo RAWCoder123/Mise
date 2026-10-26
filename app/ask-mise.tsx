@@ -15,6 +15,8 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
 import { DEMO_DATASET } from "../services/demoData";
+import { normalizeAskMiseQuestion } from "../services/domain/askMiseQuestionIdentity";
+import type { OperationalTodayTask } from "../services/domain/todayTasks";
 import {
   answerAskMise,
   fetchInsights,
@@ -24,7 +26,6 @@ import {
 import { presentOperationalTodayTask } from "../services/presentation/operationsPresentation";
 import { captureMiseError } from "../services/telemetry";
 import type { Insight } from "../types/mise";
-import type { OperationalTodayTask } from "../services/domain/todayTasks";
 
 type ChatMessage = {
   id: string;
@@ -191,19 +192,20 @@ export default function AskMiseScreen() {
 
   const ask = useCallback(
     async (question: string) => {
-      const trimmed = question.trim();
-      if (!trimmed || !visibleSummary || !restaurant || asking) return;
+      // MISE-005QS: ASCII C free-text prep — do not Unicode-trim invent.
+      const normalized = normalizeAskMiseQuestion(question);
+      if (!normalized || !visibleSummary || !restaurant || asking) return;
 
       const generation = ++askGenerationRef.current;
       const restaurantId = restaurant.id;
       setAsking(true);
       setInput("");
-      setMessages((current) => [...current, { id: `u-${Date.now()}`, role: "user", text: trimmed }]);
+      setMessages((current) => [...current, { id: `u-${Date.now()}`, role: "user", text: normalized }]);
       revealLatestMessage();
 
       try {
         const reply = answerAskMise({
-          question: trimmed,
+          question: normalized,
           restaurant,
           summary: visibleSummary,
           insights: visibleInsights,
