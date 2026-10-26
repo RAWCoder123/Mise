@@ -1,4 +1,5 @@
 import { operatingLimits } from "../miseValidation";
+import { normalizeSetupPosSaleDate } from "./setupPosSaleDateIdentity";
 
 export const setupImportLimits = {
   characters: 256_000,
@@ -280,11 +281,16 @@ export function parseSetupPosSalesCsv(input: string): SetupPosSalesImportResult 
     const rowNumber = (hasHeader ? index + 2 : index + 1);
     const cells = splitCsvLine(line);
     const record = headers.reduce<Record<string, string>>((entry, header, cellIndex) => {
-      if (header) entry[header] = cells[cellIndex]?.trim() ?? "";
+      if (!header) return entry;
+      const raw = cells[cellIndex] ?? "";
+      // MISE-005QK: saleDate must not invent via Unicode cell trim before
+      // ASCII C calendar-date canonicalize. Other CSV fields keep prior trim.
+      entry[header] = header === "saleDate" ? raw : raw.trim();
       return entry;
     }, {});
     const rowIssues: SetupImportValidationIssue[] = [];
-    const saleDate = normalizeSaleDate(record.saleDate ?? "");
+    // MISE-005QK: pin durable POS import saleDate identity to ASCII C.
+    const saleDate = normalizeSetupPosSaleDate(record.saleDate ?? "");
     const itemName = (record.itemName ?? "").trim();
     const category = (record.category ?? "").trim() || "Sales";
     const quantitySold = parseSetupNumber(record.quantitySold ?? "");
@@ -490,23 +496,6 @@ function splitCsvLine(line: string) {
 
   cells.push(current);
   return cells;
-}
-
-function normalizeSaleDate(value: string) {
-  const trimmed = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed) && isExactCalendarDate(trimmed)) {
-    return trimmed;
-  }
-  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!match) return "";
-  const [, month, day, year] = match;
-  const normalized = `${year}-${month!.padStart(2, "0")}-${day!.padStart(2, "0")}`;
-  return isExactCalendarDate(normalized) ? normalized : "";
-}
-
-function isExactCalendarDate(value: string) {
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 function parseSetupNumber(value: string) {
