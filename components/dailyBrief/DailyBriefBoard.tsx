@@ -14,7 +14,9 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefRecommendedActionEdit } from "../../services/domain/dailyBriefRecommendedActionEditIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
+// MISE-005QX: Daily Brief save-edit recommended-action identity (ASCII C).
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
 
@@ -283,8 +285,11 @@ function FindingCard({
               <Button
                 title={t("dailyBrief.action.saveEdit")}
                 onPress={() => {
-                  const next = editText.trim();
-                  if (!next || next === finding.recommendedAction.trim() || next.length > 320) {
+                  const next = normalizeDailyBriefRecommendedActionEdit(editText);
+                  const current = normalizeDailyBriefRecommendedActionEdit(
+                    finding.recommendedAction
+                  );
+                  if (!next || next === current) {
                     setEditError(t("dailyBrief.edit.invalid"));
                     return;
                   }
