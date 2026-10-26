@@ -39,6 +39,7 @@ import {
 } from "../../services/domain/purchaseAuthority";
 import type { MessageKey } from "../../i18n/catalog";
 import type { PurchaseDecisionPattern } from "../../services/domain/purchaseDecisionMemory";
+import { prepareOrdersRecommendationQuantityText } from "../../services/domain/ordersRecommendationQuantityIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -382,10 +383,12 @@ export default function OrdersScreen() {
     }
     const restaurantId = restaurant.id;
 
-    const rawQuantity = quantities[recommendation.id]?.trim() ?? "";
-    const nextQuantity = parseNumber(rawQuantity);
+    // MISE-005RC: refuse Unicode trim inventing a clean quantity draft.
+    const prepared = prepareOrdersRecommendationQuantityText(quantities[recommendation.id]);
+    const nextQuantity =
+      prepared.status === "ok" ? parseNumber(prepared.text) : null;
     if (
-      !rawQuantity ||
+      prepared.status !== "ok" ||
       nextQuantity === null ||
       nextQuantity <= 0 ||
       nextQuantity > operatingLimits.recommendationQuantity
