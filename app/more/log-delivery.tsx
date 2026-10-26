@@ -15,6 +15,7 @@ import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { canonicalizeInventoryOperationNote } from "../../services/domain/inventoryOperationNoteIdentity";
 import {
   fetchDeliveryHistory,
   fetchInventoryItems,
@@ -224,7 +225,9 @@ export default function LogDeliveryScreen() {
         quantity,
         canonicalUnit: selected.canonical_unit!,
         effectiveAt: new Date().toISOString(),
-        note: noteText.trim() || undefined
+        // MISE-005QZ: soft-canonicalize before queue; do not invent via Unicode trim.
+        // Reuses MISE-005PT inventoryOperationNoteIdentity (open #854).
+        note: canonicalizeInventoryOperationNote(noteText) ?? undefined
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
