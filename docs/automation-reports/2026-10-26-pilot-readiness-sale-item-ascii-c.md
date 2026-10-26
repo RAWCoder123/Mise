@@ -26,4 +26,8 @@ separate from those helpers.
 
 ## Verification
 
-Pending focused + suite runs on this tip.
+- `node --test --import tsx tests/pilotReadinessSaleItemAsciiC.test.ts tests/pilotReadiness.test.ts` — 10/10
+- `npm run typecheck` — passed
+- `npm run security:static` / `npm run security:backend` — passed
+- `npm test` — 687 total / 680 pass / 0 fail / 7 cancelled (pre-existing
+  `recalculationCycles` `withTimeout` hung-promise `cancelledByParent`)
