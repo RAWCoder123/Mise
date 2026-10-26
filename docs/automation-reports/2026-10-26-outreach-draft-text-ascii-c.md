@@ -1,6 +1,6 @@
 # MISE-005QN outreach draft requireBoundedText ASCII C (2026-10-26)
 
-Tip: `cursor/mise-outreach-draft-text-ascii-c`
+Tip: `cursor/mise-outreach-draft-text-ascii-c` @ `570c63e6` / PR #874.
 
 ## Inventing proof
 
