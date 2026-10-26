@@ -33,6 +33,7 @@ import {
   type RestaurantTaskServiceWindow,
   type RestaurantTaskVerificationMethod
 } from "../../services/miseService";
+import { normalizeCreateTaskDueDate } from "../../services/domain/createTaskDueDateIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -284,8 +285,9 @@ export default function CreateOperatorTaskScreen() {
       return;
     }
 
-    const dueTrimmed = dueDateText.trim();
-    if (scope === "personal" && dueTrimmed && !/^\d{4}-\d{2}-\d{2}$/.test(dueTrimmed)) {
+    // MISE-005QU: ASCII C due-date prep — do not Unicode-trim invent a clean ISO day.
+    const preparedDueDate = normalizeCreateTaskDueDate(dueDateText);
+    if (scope === "personal" && dueDateText.trim() && !preparedDueDate) {
       setError(t("operatorTasks.error.dueDate"));
       setSaved(false);
       return;
@@ -325,8 +327,8 @@ export default function CreateOperatorTaskScreen() {
           title: trimmedTitle,
           body,
           priority,
-          dueAt: dueTrimmed || null,
-          timing: dueTrimmed ? undefined : timing,
+          dueAt: preparedDueDate,
+          timing: preparedDueDate ? undefined : timing,
           focusArea: focus === "none" ? null : focus
         });
       }
