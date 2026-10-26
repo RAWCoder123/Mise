@@ -11,6 +11,7 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizeAutonomyCommunicationType } from "../../services/domain/autonomyCommunicationTypeIdentity";
 import { autonomyLevelLabel } from "../../services/domain/operationalStatus";
 import type { RestaurantAutonomyRule } from "../../services/domain/restaurantAutonomy";
 import {
@@ -130,7 +131,8 @@ export default function AutonomySettingsScreen() {
         enabled: patch.enabled ?? rule.enabled,
         spendLimitCents: spendParsed,
         supplierId: rule.supplierId,
-        communicationType: draft.communicationType.trim() || null,
+        // MISE-005QQ: ASCII C soft-normalize; do not Unicode-trim invent channel labels.
+        communicationType: normalizeAutonomyCommunicationType(draft.communicationType),
         allowedStartTime: normalizeTime(draft.allowedStartTime),
         allowedEndTime: normalizeTime(draft.allowedEndTime)
       });
