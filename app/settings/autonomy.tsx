@@ -11,6 +11,7 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizeAutonomyAllowedTime } from "../../services/domain/autonomyAllowedTimeIdentity";
 import { autonomyLevelLabel } from "../../services/domain/operationalStatus";
 import type { RestaurantAutonomyRule } from "../../services/domain/restaurantAutonomy";
 import {
@@ -131,8 +132,9 @@ export default function AutonomySettingsScreen() {
         spendLimitCents: spendParsed,
         supplierId: rule.supplierId,
         communicationType: draft.communicationType.trim() || null,
-        allowedStartTime: normalizeTime(draft.allowedStartTime),
-        allowedEndTime: normalizeTime(draft.allowedEndTime)
+        // MISE-005QR: ASCII C soft-normalize; do not Unicode-trim invent allowed-window clocks.
+        allowedStartTime: normalizeAutonomyAllowedTime(draft.allowedStartTime),
+        allowedEndTime: normalizeAutonomyAllowedTime(draft.allowedEndTime)
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice(t("autonomy.notice.saved"));
@@ -359,13 +361,6 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
       </View>
     </View>
   );
-}
-
-function normalizeTime(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) return null;
-  return trimmed.length === 5 ? `${trimmed}:00` : trimmed;
 }
 
 function Field({
