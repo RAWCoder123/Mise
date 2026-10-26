@@ -11,6 +11,7 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { parseAutonomySpendLimitText } from "../../services/domain/autonomySpendLimitIdentity";
 import { autonomyLevelLabel } from "../../services/domain/operationalStatus";
 import type { RestaurantAutonomyRule } from "../../services/domain/restaurantAutonomy";
 import {
@@ -112,13 +113,14 @@ export default function AutonomySettingsScreen() {
     if (!restaurant || !actionsEditable) return;
     const restaurantId = restaurant.id;
     const draft = drafts[rule.id] ?? draftFromRule(rule);
-    const spendParsed = draft.spendLimitText.trim()
-      ? Math.round(Number(draft.spendLimitText) * 100)
-      : null;
-    if (draft.spendLimitText.trim() && (!Number.isFinite(spendParsed) || (spendParsed ?? 0) < 0)) {
+    // MISE-005RB: ASCII C soft-normalize; do not Unicode-trim / Number-TrimString
+    // invent a clean spend ceiling from NBSP / em-space padding.
+    const spendParsed = parseAutonomySpendLimitText(draft.spendLimitText);
+    if (spendParsed.status === "invalid") {
       setNotice(t("autonomy.notice.spendInvalid"));
       return;
     }
+    const spendLimitCents = spendParsed.status === "empty" ? null : spendParsed.cents;
     setBusyKey(rule.id);
     setNotice(null);
     try {
@@ -128,7 +130,7 @@ export default function AutonomySettingsScreen() {
         maximumAutonomyLevel: patch.maximumAutonomyLevel ?? rule.maximumAutonomyLevel,
         requiresApproval: patch.requiresApproval ?? rule.requiresApproval,
         enabled: patch.enabled ?? rule.enabled,
-        spendLimitCents: spendParsed,
+        spendLimitCents,
         supplierId: rule.supplierId,
         communicationType: draft.communicationType.trim() || null,
         allowedStartTime: normalizeTime(draft.allowedStartTime),
