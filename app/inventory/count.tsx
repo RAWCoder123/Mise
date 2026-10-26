@@ -13,6 +13,7 @@ import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { summarizeCountSessionProgress } from "../../services/domain/inventoryCountSessions";
+import { normalizeInventoryCountSheetNote } from "../../services/domain/inventoryCountSheetNoteIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -27,6 +28,8 @@ import {
 } from "../../services/miseService";
 import { canApproveInventoryCount, canDraftInventoryCount } from "../../services/tenantAccess";
 import type { InventoryCountSessionDetail } from "../../types/mise";
+
+/** MISE-005QY: inventory count-sheet variance notes use ASCII C free-text prep. */
 
 export default function InventoryCountSessionScreen() {
   const { formatNumber, t } = useLocale();
@@ -163,13 +166,15 @@ export default function InventoryCountSessionScreen() {
         const countedQuantity = Number(raw);
         if (!Number.isFinite(countedQuantity)) return null;
         const noteRaw = draftNotes[line.inventory_item_id] ?? "";
-        if (noteRaw.trim().length > 240) {
+        // MISE-005QY: ASCII C variance-note prep — do not Unicode-trim invent a clean note.
+        const note = normalizeInventoryCountSheetNote(noteRaw);
+        if (note && note.length > 240) {
           throw new Error(t("inventory.count.noteTooLong"));
         }
         return {
           inventoryItemId: line.inventory_item_id,
           countedQuantity,
-          note: noteRaw.trim() || null
+          note
         };
       })
       .filter(
