@@ -63,7 +63,8 @@ test("recommendation actions validate quantity, lock locally, and reload authori
 
   assert.match(screen, /nextQuantity <= 0/);
   assert.match(screen, /operatingLimits\.recommendationQuantity/);
-  assert.match(screen, /parseNumber\(rawQuantity\)/);
+  assert.match(screen, /prepareOrdersRecommendationQuantityText\(/);
+  assert.match(screen, /parseNumber\(prepared\.text\)/);
   assert.match(screen, /t\("orders\.validation\.quantityRange"/);
   assert.match(screen, /recommendationLocksRef\.current\.has\(recommendation\.id\)/);
   assert.match(screen, /undoLockRef\.current/);
