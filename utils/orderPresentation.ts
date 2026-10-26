@@ -1,5 +1,8 @@
 import type { SupplierOrder } from "../types/mise";
+import { normalizeOrderPresentationLineLabel } from "../services/domain/orderPresentationLineIdentity";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "../services/domain/securityLimits";
+
+/** MISE-005RA: supplier-draft line labels use ASCII C display prep. */
 
 export interface SupplierDraftLine {
   itemName: string;
@@ -50,13 +53,16 @@ function scanSupplierOrderLines(orderMessage: string, maximumStoredLines: number
   while (cursor <= boundedMessage.length) {
     const nextBreak = boundedMessage.indexOf("\n", cursor);
     const end = nextBreak === -1 ? boundedMessage.length : nextBreak;
-    const rawLine = boundedMessage.slice(cursor, end).replace(/\r$/, "").trim();
+    // MISE-005RA: ASCII C line prep — do not Unicode-trim invent a clean draft line.
+    const rawLine = normalizeOrderPresentationLineLabel(
+      boundedMessage.slice(cursor, end).replace(/\r$/, "")
+    );
     cursor = nextBreak === -1 ? boundedMessage.length + 1 : nextBreak + 1;
     if (!rawLine || nonItemLinePatterns.some((pattern) => pattern.test(rawLine))) continue;
 
     const match = rawLine.match(/^(.+?)\s+[-–—]\s+(.+)$/);
-    const itemName = match?.[1]?.trim();
-    const quantityLabel = match?.[2]?.trim();
+    const itemName = normalizeOrderPresentationLineLabel(match?.[1]);
+    const quantityLabel = normalizeOrderPresentationLineLabel(match?.[2]);
     if (!itemName || !quantityLabel) continue;
 
     const estimatedCents = estimateLineCents(itemName, quantityLabel);
