@@ -22,6 +22,7 @@ import type { MessageKey } from "../../i18n/catalog";
 import { getInitialLoginCredentials } from "../../lib/appConfig";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { DEMO_DATASET } from "../../services/demoData";
+import { normalizeLoginEmail } from "../../services/domain/loginEmailIdentity";
 import { captureMiseError } from "../../services/telemetry";
 
 type LoginStep = "identity" | "password";
@@ -85,7 +86,9 @@ export default function LoginScreen() {
   }
 
   async function handleContinue() {
-    const normalizedEmail = email.trim();
+    // MISE-005QP: ASCII C identity prep — refuse Unicode-trim inventing of a
+    // clean Auth mailbox before the password step.
+    const normalizedEmail = normalizeLoginEmail(email);
     if (!normalizedEmail) {
       setErrorKey("login.error.emailRequired");
       return;
@@ -95,7 +98,9 @@ export default function LoginScreen() {
   }
 
   async function handleSignIn() {
-    const normalizedEmail = email.trim();
+    // MISE-005QP: ASCII C identity prep — refuse Unicode-trim inventing of a
+    // clean Auth mailbox before signInWithPassword.
+    const normalizedEmail = normalizeLoginEmail(email);
     if (!normalizedEmail) {
       setErrorKey("login.error.emailRequired");
       return;
@@ -274,7 +279,7 @@ export default function LoginScreen() {
                   }}
                   style={styles.emailChip}
                 >
-                  <Text style={styles.emailChipText}>{email.trim()}</Text>
+                  <Text style={styles.emailChipText}>{normalizeLoginEmail(email) || email}</Text>
                 </Pressable>
               </View>
               <View style={styles.field}>
