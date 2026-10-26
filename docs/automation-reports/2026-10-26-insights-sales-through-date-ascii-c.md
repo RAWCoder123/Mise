@@ -33,4 +33,10 @@ When landing with #869, drop #869's assertion that
 
 ## Verification
 
-See PR body / commit evidence after local gates.
+- Focused `insightsSalesThroughDateAsciiC` + `insightsSalesAnalytics`: 6/6
+- `npm run typecheck`
+- `npm run security:static` / `security:backend`
+- `npm test`: 687 total / 680 pass / 0 fail / 7 cancelled
+  (pre-existing `recalculationCycles` `withTimeout` hung-promise
+  `cancelledByParent` on this runner; not introduced by this tip)
+- Docker pgTAP unavailable in this environment
