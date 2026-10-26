@@ -1,4 +1,5 @@
 import type { PosSale } from "../../types/mise";
+import { normalizeInsightsSalesThroughDate } from "./insightsSalesThroughDateIdentity";
 
 export interface InsightsSalesBestSeller {
   itemName: string;
@@ -74,8 +75,10 @@ export function buildInsightsSalesAnalytics(input: {
   const bestSellerLimit = Math.max(1, Math.min(12, input.bestSellerLimit ?? 5));
   const mixLimit = Math.max(2, Math.min(8, input.mixLimit ?? 5));
 
+  // MISE-005QJ: ASCII-C soft ISO throughDate window identity (Unicode trim
+  // invents clean calendar ends from NBSP/em-space padding).
   const throughDate =
-    input.throughDate?.trim() ||
+    normalizeInsightsSalesThroughDate(input.throughDate) ||
     latestSaleDate(input.sales.filter((sale) => sale.restaurant_id === restaurantId));
   const windowStart = throughDate ? shiftDateKey(throughDate, -(lookbackDays - 1)) : null;
 
