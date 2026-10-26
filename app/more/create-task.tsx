@@ -15,6 +15,7 @@ import { colors, icon, iconStroke, radii, typography } from "../../constants/the
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import { normalizeCreateTaskChecklist } from "../../services/domain/createTaskChecklistIdentity";
 import {
   completeOperatorTask,
   createSharedRestaurantTask,
@@ -39,6 +40,8 @@ import {
 } from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 import type { RestaurantTeamMember } from "../../types/mise";
+
+/** MISE-005QV: Create Task checklist labels use ASCII C display prep. */
 
 type FocusChoice = OperatorTaskFocusArea | "none";
 type TaskScope = "restaurant" | "personal";
@@ -312,11 +315,11 @@ export default function CreateOperatorTaskScreen() {
           requiredRole,
           assigneeUserId,
           verificationMethod,
-          checklist: checklistText
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .map((label) => ({ type: "checklist_item", label })),
+          // MISE-005QV: ASCII C checklist prep — do not Unicode-trim invent clean labels.
+          checklist: normalizeCreateTaskChecklist(checklistText).map((label) => ({
+            type: "checklist_item",
+            label
+          })),
           dependencyIds: dependencyId ? [dependencyId] : []
         });
       } else {
