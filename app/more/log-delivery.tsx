@@ -15,6 +15,7 @@ import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { prepareLogDeliveryQuantityText } from "../../services/domain/logDeliveryQuantityIdentity"; // MISE-005RE
 import {
   fetchDeliveryHistory,
   fetchInventoryItems,
@@ -29,6 +30,7 @@ import {
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
 import type { InventoryItem } from "../../types/mise";
+
 
 type Tab = "history" | "log";
 
@@ -204,7 +206,9 @@ export default function LogDeliveryScreen() {
       return;
     }
 
-    const quantity = parseNumber(quantityText);
+    // MISE-005RE: refuse Unicode-padded quantity drafts before locale parse.
+    const prepared = prepareLogDeliveryQuantityText(quantityText);
+    const quantity = prepared.status === "ok" ? parseNumber(prepared.text) : null;
     if (quantity === null || quantity <= 0) {
       setMessage(t("logDelivery.error.quantity"));
       setMessageIsError(true);
