@@ -38,6 +38,7 @@ import {
 import { saveRestaurantSetup, updateRestaurantProfile } from "../../services/miseService";
 import { canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { trackMiseEvent } from "../../services/telemetry";
+import { prepareSetupSupplierNameText } from "../../services/domain/setupSupplierNamesIdentity"; // MISE-005RR
 import { operatingLimits } from "../../services/miseValidation";
 import type { PosProvider } from "../../types/mise";
 
@@ -159,7 +160,8 @@ export default function SetupScreen() {
     try {
       const normalizedInventoryItems = normalizeInventoryDraftNumbers(inventoryItems, parseNumber);
       const normalizedRecipes = normalizeRecipeDraftNumbers(recipes, parseNumber);
-      const supplierNames = suppliers.map((supplier) => supplier.name.trim()).filter(Boolean);
+      // MISE-005RR: pin durable supplierNames through ASCII C prep (no Unicode-trim invent).
+      const supplierNames = collectSetupSupplierNames(suppliers);
       const inventoryItemNames = normalizedInventoryItems.map((item) => item.name.trim()).filter(Boolean);
       const recipeBaselineText = recipeDraftsToBaselineText(normalizedRecipes);
       const posSales = posSalesImport.rows;
@@ -962,6 +964,17 @@ function validateSetupDrafts({
 
   const seenSupplierNames = new Set<string>();
   for (const [index, supplier] of suppliers.entries()) {
+    // MISE-005RR: refuse Unicode-padded supplier names before durable supplierNames.
+    const preparedName = prepareSetupSupplierNameText(supplier.name);
+    if (preparedName.status === "invalid") {
+      return setupValidationFailure(
+        "inventory",
+        t("setup.validation.supplierNameInvalid", {
+          supplier: t("setup.validation.supplierLabel", { count: formatNumber(index + 1) })
+        })
+      );
+    }
+    // Leave duplicate/email bare trim for open #696 / MISE-005KA.
     const name = supplier.name.trim().replace(/\s+/g, " ");
     const email = supplier.email.trim();
     if (!name && email) {
@@ -1083,6 +1096,17 @@ function styleLabel(t: TranslateFunction, style: (typeof stylesOptions)[number])
   if (style === "Conservative") return t("setup.style.conservative");
   if (style === "Lean") return t("setup.style.lean");
   return t("setup.style.balanced");
+}
+
+/** MISE-005RR: durable supplierNames from ASCII C-prepared drafts only. */
+function collectSetupSupplierNames(suppliers: SetupSupplierDraft[]) {
+  return suppliers.flatMap((supplier) => {
+    const prepared = prepareSetupSupplierNameText(supplier.name);
+    if (prepared.status === "empty") return [];
+    // Validation refuses invalid drafts before collect; leave raw rather than invent.
+    if (prepared.status === "invalid") return [];
+    return [prepared.text];
+  });
 }
 
 function normalizeInventoryDraftNumbers(
