@@ -1,4 +1,5 @@
 import { utf8ByteLength } from "./securityLimits.ts";
+import { resolveTelemetryCorrelationValue } from "./telemetryCorrelationIdentity.ts";
 
 export type SafeTelemetryValue =
   | string
@@ -24,7 +25,6 @@ const emailLikeValuePattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const bearerLikeValuePattern = /\bbearer\s+[A-Za-z0-9._~+/-]+=*/i;
 const safeErrorTypePattern = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 const safeErrorCodePattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
-const safeCorrelationValuePattern = /^[A-Za-z0-9][A-Za-z0-9_.:/@+-]{0,127}$/;
 
 export interface TelemetryCorrelationInput {
   environment: unknown;
@@ -88,14 +88,19 @@ export function telemetryPayloadFits(value: string | unknown) {
 }
 
 export function buildTelemetryCorrelation(input: TelemetryCorrelationInput): TelemetryCorrelation {
+  // MISE-005SE: pin correlation tokens to ASCII C so Unicode trim cannot invent
+  // durable telemetry identity (request_id / restaurant_id / operation / …).
   return {
-    app_env: safeCorrelationValue(input.environment, "unknown"),
-    release: safeCorrelationValue(input.release, "unversioned"),
-    operation: safeCorrelationValue(input.operation, "unknown_operation"),
-    request_id: safeCorrelationValue(input.requestId, "missing_request_id"),
-    operation_id: safeCorrelationValue(input.operationId, "missing_operation_id"),
-    restaurant_id: safeCorrelationValue(input.restaurantId, TELEMETRY_NOT_APPLICABLE),
-    authoritative_event_id: safeCorrelationValue(
+    app_env: resolveTelemetryCorrelationValue(input.environment, "unknown"),
+    release: resolveTelemetryCorrelationValue(input.release, "unversioned"),
+    operation: resolveTelemetryCorrelationValue(input.operation, "unknown_operation"),
+    request_id: resolveTelemetryCorrelationValue(input.requestId, "missing_request_id"),
+    operation_id: resolveTelemetryCorrelationValue(input.operationId, "missing_operation_id"),
+    restaurant_id: resolveTelemetryCorrelationValue(
+      input.restaurantId,
+      TELEMETRY_NOT_APPLICABLE
+    ),
+    authoritative_event_id: resolveTelemetryCorrelationValue(
       input.authoritativeEventId,
       TELEMETRY_NOT_APPLICABLE
     )
@@ -151,16 +156,4 @@ function sanitizeTelemetryValue(
 
 function isSafeRecord(value: SafeTelemetryValue): value is Record<string, SafeTelemetryValue> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function safeCorrelationValue(value: unknown, fallback: string) {
-  if (typeof value !== "string") return fallback;
-  const normalized = value.trim();
-  if (
-    !safeCorrelationValuePattern.test(normalized) ||
-    forbiddenTelemetryMarker.test(normalized)
-  ) {
-    return fallback;
-  }
-  return normalized;
 }
