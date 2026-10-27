@@ -32,6 +32,7 @@ import {
   findDemoSupplierByLegacyName,
   isDemoSupplierId
 } from "./demoSupplierIdentity";
+import { prepareDemoRecipeBaselineIngredientEntryText } from "../domain/demoRecipeBaselineIngredientEntryIdentity";
 
 export const DEMO_RESTAURANT_ID = DEMO_DATASET.restaurant.id;
 export const DEMO_USER_ID = DEMO_DATASET.user.id;
@@ -1716,8 +1717,15 @@ function parseRecipeLine(line: string) {
 
   const ingredients = ingredientText
     .split(",")
-    .map((entry) => entry.trim())
     .map((entry) => {
+      // MISE-005RT: pin durable demo recipe-baseline ingredient-entry identity
+      // to ASCII C so NBSP / em-space padding cannot invent a clean parse.
+      const preparedEntry = prepareDemoRecipeBaselineIngredientEntryText(entry);
+      if (preparedEntry.status !== "ok") return null;
+      return preparedEntry.text;
+    })
+    .map((entry) => {
+      if (!entry) return null;
       const match = entry.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s+([a-zA-Z]+)$/);
       if (!match) return null;
       return {
