@@ -14,6 +14,7 @@ import {
   requireSupplierDisplayName
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
+import { normalizeCanonicalSetupRecipeIngredientItemNameSave } from "../domain/setupRecipeIngredientItemNameSaveIdentity";
 import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
 
@@ -107,7 +108,12 @@ export async function saveRestaurantSetup(
     const menuItemName = recipe.dishName.trim();
     if (!menuItemName) continue;
     for (const ingredient of recipe.ingredients) {
-      const ingredientName = ingredient.itemName.trim();
+      // MISE-005RP: pin recipe ingredient itemNames to ASCII C identity prep so
+      // Unicode trim cannot invent a clean durable inventory / mapping name
+      // before recipe-baseline rows store it. Soft empty still skips.
+      const ingredientName = normalizeCanonicalSetupRecipeIngredientItemNameSave(
+        ingredient.itemName
+      );
       const unit = ingredient.unit.trim() || "unit";
       const quantityUsedPerSale = normalizeRecipeBaselineQuantity(ingredient.quantity);
       if (!ingredientName || quantityUsedPerSale <= 0) {
