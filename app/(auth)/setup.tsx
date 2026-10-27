@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { prepareSetupRecipeIngredientItemNameText } from "../../services/domain/setupRecipeIngredientItemNameIdentity"; // MISE-005RO
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -1011,8 +1012,12 @@ function validateSetupDrafts({
     }
 
     for (const [ingredientIndex, ingredient] of startedIngredients.entries()) {
-      const ingredientLabel = ingredient.itemName.trim() || t("setup.validation.ingredientLabel", { count: formatNumber(ingredientIndex + 1) });
-      if (!ingredient.itemName.trim() || !ingredient.quantity.trim() || !ingredient.unit.trim()) {
+      // MISE-005RO: refuse Unicode-padded setup recipe ingredient itemName drafts before labels / save.
+      const preparedItemName = prepareSetupRecipeIngredientItemNameText(ingredient.itemName);
+      const ingredientLabel =
+        (preparedItemName.status === "ok" ? preparedItemName.text : "") ||
+        t("setup.validation.ingredientLabel", { count: formatNumber(ingredientIndex + 1) });
+      if (preparedItemName.status !== "ok" || !ingredient.quantity.trim() || !ingredient.unit.trim()) {
         return setupValidationFailure(
           "recipes",
           t("setup.validation.ingredientFields", { recipe: recipeLabel, ingredient: ingredientLabel })
@@ -1104,9 +1109,19 @@ function normalizeRecipeDraftNumbers(
     ...recipe,
     ingredients: recipe.ingredients.map((ingredient) => ({
       ...ingredient,
+      // MISE-005RO: pin setup recipe ingredient itemName through ASCII C prep.
+      itemName: normalizeSetupRecipeIngredientItemName(ingredient.itemName),
       quantity: normalizeDraftNumber(ingredient.quantity, parseNumber)
     }))
   }));
+}
+
+function normalizeSetupRecipeIngredientItemName(value: string) {
+  const prepared = prepareSetupRecipeIngredientItemNameText(value);
+  if (prepared.status === "empty") return "";
+  // Validation refuses invalid drafts before normalize; leave raw rather than invent.
+  if (prepared.status === "invalid") return value;
+  return prepared.text;
 }
 
 function normalizeDraftNumber(value: string, parseNumber: (value: string) => number | null) {
