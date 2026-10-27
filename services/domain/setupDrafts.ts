@@ -1,4 +1,5 @@
 import { operatingLimits } from "../miseValidation";
+import { prepareSetupDraftsPosGrossSalesText } from "./setupDraftsPosGrossSalesIdentity";
 
 export const setupImportLimits = {
   characters: 256_000,
@@ -280,7 +281,13 @@ export function parseSetupPosSalesCsv(input: string): SetupPosSalesImportResult 
     const rowNumber = (hasHeader ? index + 2 : index + 1);
     const cells = splitCsvLine(line);
     const record = headers.reduce<Record<string, string>>((entry, header, cellIndex) => {
-      if (header) entry[header] = cells[cellIndex]?.trim() ?? "";
+      if (!header) return entry;
+      const raw = cells[cellIndex] ?? "";
+      // MISE-005RX: grossSales must not invent via Unicode cell trim before
+      // ASCII C amount canonicalize. Other CSV fields keep prior trim
+      // (quantitySold remains on open #909 / MISE-005RW; itemName/category
+      // remain on open #872 / MISE-005QL; saleDate on open #871 / MISE-005QK).
+      entry[header] = header === "grossSales" ? raw : raw.trim();
       return entry;
     }, {});
     const rowIssues: SetupImportValidationIssue[] = [];
@@ -288,7 +295,10 @@ export function parseSetupPosSalesCsv(input: string): SetupPosSalesImportResult 
     const itemName = (record.itemName ?? "").trim();
     const category = (record.category ?? "").trim() || "Sales";
     const quantitySold = parseSetupNumber(record.quantitySold ?? "");
-    const grossSales = parseSetupNumber(record.grossSales ?? "");
+    // MISE-005RX: pin durable POS import grossSales identity to ASCII C.
+    const preparedGrossSales = prepareSetupDraftsPosGrossSalesText(record.grossSales ?? "");
+    const grossSales =
+      preparedGrossSales.status === "ok" ? preparedGrossSales.amount : Number.NaN;
 
     if (!saleDate) rowIssues.push({ row: rowNumber, field: "sale_date", message: "Use YYYY-MM-DD for the sale date." });
     if (!itemName) rowIssues.push({ row: rowNumber, field: "item_name", message: "Add the POS item or dish name." });
