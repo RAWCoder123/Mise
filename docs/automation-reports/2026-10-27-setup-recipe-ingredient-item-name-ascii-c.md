@@ -47,4 +47,5 @@ assertion that setup still uses bare
 - focused AsciiC 4/4
 - `npm run typecheck`
 - `npm run security:static` / `npm run security:backend`
-- `npm test` (recorded in PR)
+- `npm test`: 687 total / 680 pass / 0 fail / 7 cancelled (inherited
+  `recalculationCycles` on main; tip +4 vs main ~683)
