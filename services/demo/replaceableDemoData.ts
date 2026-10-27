@@ -32,6 +32,7 @@ import {
   findDemoSupplierByLegacyName,
   isDemoSupplierId
 } from "./demoSupplierIdentity";
+import { prepareDemoRecipeBaselineMenuItemNameText } from "../domain/demoRecipeBaselineMenuItemNameIdentity";
 
 export const DEMO_RESTAURANT_ID = DEMO_DATASET.restaurant.id;
 export const DEMO_USER_ID = DEMO_DATASET.user.id;
@@ -1714,6 +1715,11 @@ function parseRecipeLine(line: string) {
   const [menuItemName, ingredientText] = line.split(":");
   if (!menuItemName || !ingredientText) return null;
 
+  // MISE-005RS: pin durable demo recipe-baseline menuItemName identity to
+  // ASCII C so NBSP / em-space padding cannot invent a clean menu_item_name.
+  const preparedMenuItemName = prepareDemoRecipeBaselineMenuItemNameText(menuItemName);
+  if (preparedMenuItemName.status !== "ok") return null;
+
   const ingredients = ingredientText
     .split(",")
     .map((entry) => entry.trim())
@@ -1731,7 +1737,7 @@ function parseRecipeLine(line: string) {
     );
 
   return {
-    menuItemName: menuItemName.trim(),
+    menuItemName: preparedMenuItemName.text,
     ingredients
   };
 }
