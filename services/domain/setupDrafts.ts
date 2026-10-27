@@ -1,4 +1,5 @@
 import { operatingLimits } from "../miseValidation";
+import { prepareSetupDraftsPosQuantitySoldText } from "./setupDraftsPosQuantitySoldIdentity";
 
 export const setupImportLimits = {
   characters: 256_000,
@@ -280,14 +281,24 @@ export function parseSetupPosSalesCsv(input: string): SetupPosSalesImportResult 
     const rowNumber = (hasHeader ? index + 2 : index + 1);
     const cells = splitCsvLine(line);
     const record = headers.reduce<Record<string, string>>((entry, header, cellIndex) => {
-      if (header) entry[header] = cells[cellIndex]?.trim() ?? "";
+      if (!header) return entry;
+      const raw = cells[cellIndex] ?? "";
+      // MISE-005RW: quantitySold must not invent via Unicode cell trim before
+      // ASCII C quantity canonicalize. Other CSV fields keep prior trim
+      // (itemName/category remain on open #872 / MISE-005QL; saleDate on
+      // open #871 / MISE-005QK; grossSales stays on parseSetupNumber until
+      // its own tip).
+      entry[header] = header === "quantitySold" ? raw : raw.trim();
       return entry;
     }, {});
     const rowIssues: SetupImportValidationIssue[] = [];
     const saleDate = normalizeSaleDate(record.saleDate ?? "");
     const itemName = (record.itemName ?? "").trim();
     const category = (record.category ?? "").trim() || "Sales";
-    const quantitySold = parseSetupNumber(record.quantitySold ?? "");
+    // MISE-005RW: pin durable POS import quantitySold identity to ASCII C.
+    const preparedQuantity = prepareSetupDraftsPosQuantitySoldText(record.quantitySold ?? "");
+    const quantitySold =
+      preparedQuantity.status === "ok" ? preparedQuantity.quantity : Number.NaN;
     const grossSales = parseSetupNumber(record.grossSales ?? "");
 
     if (!saleDate) rowIssues.push({ row: rowNumber, field: "sale_date", message: "Use YYYY-MM-DD for the sale date." });
