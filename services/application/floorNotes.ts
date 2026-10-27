@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { createId } from "../domain/miseDomain";
+import { normalizeFloorNotesDueAt } from "../domain/floorNotesDueAtIdentity";
 
 /**
  * Operator tasks stored on-device.
@@ -152,18 +153,9 @@ function requireRestaurantId(restaurantId: string) {
   return normalized;
 }
 
+/** MISE-005RZ: ASCII C dueAt prep — do not Unicode-trim invent durable instants. */
 function normalizeDueAt(value: string | null | undefined): string | null {
-  if (value == null) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  // Accept date-only YYYY-MM-DD as start-of-day UTC, or full ISO.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    const iso = `${trimmed}T00:00:00.000Z`;
-    if (!Number.isFinite(Date.parse(iso))) return null;
-    return iso;
-  }
-  if (!Number.isFinite(Date.parse(trimmed))) return null;
-  return new Date(trimmed).toISOString();
+  return normalizeFloorNotesDueAt(value);
 }
 
 function coerceBody(value: unknown): string | null {
