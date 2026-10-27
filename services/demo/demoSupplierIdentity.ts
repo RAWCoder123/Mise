@@ -1,29 +1,24 @@
 import type { Supplier } from "../../types/mise";
+import {
+  normalizeCanonicalDemoSupplierDisplayName,
+  normalizeDemoSupplierDiscoveryName
+} from "../domain/demoSupplierDisplayNameIdentity";
 
-const SUPPLIER_NAME_MAX_CHARACTERS = 160;
-const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Demo uses the same bounded display-name contract as hosted supplier
  * identity. Names are accepted only while creating or repairing a supplier;
  * authority lookups use the persisted supplier UUID after that point.
+ *
+ * MISE-005SB: pin demo supplier display-name / discovery-key identity to ASCII C.
  */
 export function normalizeDemoSupplierDisplayName(value: string) {
-  const displayName = value.trim().replace(/\s+/g, " ");
-  if (
-    CONTROL_CHARACTER_PATTERN.test(value) ||
-    displayName.length < 1 ||
-    displayName.length > SUPPLIER_NAME_MAX_CHARACTERS ||
-    CONTROL_CHARACTER_PATTERN.test(displayName)
-  ) {
-    throw new Error("Enter a valid supplier name.");
-  }
-  return displayName;
+  return normalizeCanonicalDemoSupplierDisplayName(value);
 }
 
 export function demoSupplierNormalizedName(value: string) {
-  return normalizeDemoSupplierDisplayName(value).toLocaleLowerCase("en-US");
+  return normalizeDemoSupplierDiscoveryName(value);
 }
 
 /**
