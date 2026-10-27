@@ -32,6 +32,7 @@ import {
   findDemoSupplierByLegacyName,
   isDemoSupplierId
 } from "./demoSupplierIdentity";
+import { normalizeCanonicalDemoPurchaseRecommendationId } from "../domain/demoPurchaseRecommendationIdIdentity";
 
 export const DEMO_RESTAURANT_ID = DEMO_DATASET.restaurant.id;
 export const DEMO_USER_ID = DEMO_DATASET.user.id;
@@ -710,7 +711,13 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   });
   const seenIds = new Set<string>();
   const purchaseRecommendations = retained.map((recommendation, index) => {
-    const baseId = recommendation.id?.trim() || `rec_legacy_${index + 1}`;
+    // MISE-005SC: pin durable demo purchase-recommendation id identity to
+    // ASCII C so NBSP / em-space padding cannot invent a clean recommendation
+    // id. Soft empty still falls through to the legacy migration id.
+    const canonicalId = normalizeCanonicalDemoPurchaseRecommendationId(
+      recommendation.id
+    );
+    const baseId = canonicalId ?? `rec_legacy_${index + 1}`;
     let id = baseId;
     let collision = 1;
     while (seenIds.has(id)) {
