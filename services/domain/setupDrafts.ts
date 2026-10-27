@@ -1,4 +1,5 @@
 import { operatingLimits } from "../miseValidation";
+import { normalizeSetupDraftsRecipeIngredientUnitText } from "./setupDraftsRecipeIngredientUnitIdentity";
 
 export const setupImportLimits = {
   characters: 256_000,
@@ -143,7 +144,13 @@ export function buildSetupDraftReadiness({
   const recipesReady = recipes.some(
     (recipe) =>
       recipe.dishName.trim() &&
-      recipe.ingredients.some((ingredient) => ingredient.itemName.trim() && ingredient.quantity.trim() && ingredient.unit.trim())
+      recipe.ingredients.some(
+        (ingredient) =>
+          ingredient.itemName.trim() &&
+          ingredient.quantity.trim() &&
+          // MISE-005RM: unit presence must not invent via Unicode trim.
+          normalizeSetupDraftsRecipeIngredientUnitText(ingredient.unit)
+      )
   );
   const posSalesReady = (posSales ?? []).length >= 3;
   const emailReady = emailConnected;
@@ -180,7 +187,9 @@ export function recipeDraftsToBaselineText(recipes: SetupRecipeDraft[]) {
         .map((ingredient) => {
           const itemName = ingredient.itemName.trim();
           const quantity = ingredient.quantity.trim();
-          const unit = ingredient.unit.trim();
+          // MISE-005RM: pin durable baseline unit identity to ASCII C so
+          // NBSP / em-space padding cannot invent a clean ingredient unit.
+          const unit = normalizeSetupDraftsRecipeIngredientUnitText(ingredient.unit);
           if (!itemName || !quantity || !unit) return null;
           return `${itemName} ${quantity} ${unit}`;
         })
@@ -216,9 +225,16 @@ export function buildSetupPersistencePreview({
     suppliers: supplierIds.size,
     recipeMappings: recipes.reduce((count, recipe) => {
       if (!recipe.dishName.trim()) return count;
-      return count + recipe.ingredients.filter((ingredient) =>
-        ingredient.itemName.trim() && ingredient.quantity.trim() && ingredient.unit.trim()
-      ).length;
+      return (
+        count +
+        recipe.ingredients.filter(
+          (ingredient) =>
+            ingredient.itemName.trim() &&
+            ingredient.quantity.trim() &&
+            // MISE-005RM: unit presence must not invent via Unicode trim.
+            normalizeSetupDraftsRecipeIngredientUnitText(ingredient.unit)
+        ).length
+      );
     }, 0),
     posSalesRows: (posSales ?? []).length,
     attachmentMetadata: attachments.length,
@@ -401,9 +417,16 @@ export function buildSetupDataHealthSummary({
       validSupplierIds.has(item.supplierId)
   ).length;
   const supplierCount = validSupplierIds.size;
-  const recipeCount = recipes.filter((recipe) =>
-    recipe.dishName.trim() &&
-    recipe.ingredients.some((ingredient) => ingredient.itemName.trim() && ingredient.quantity.trim() && ingredient.unit.trim())
+  const recipeCount = recipes.filter(
+    (recipe) =>
+      recipe.dishName.trim() &&
+      recipe.ingredients.some(
+        (ingredient) =>
+          ingredient.itemName.trim() &&
+          ingredient.quantity.trim() &&
+          // MISE-005RM: unit presence must not invent via Unicode trim.
+          normalizeSetupDraftsRecipeIngredientUnitText(ingredient.unit)
+      )
   ).length;
   const posRowCount = posSales.length;
   const signals = [
