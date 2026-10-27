@@ -10,6 +10,7 @@ import {
 } from "../../types/mise";
 import { buildSupplierOrderMessage } from "./miseDomain";
 import { utf8ByteLength } from "./securityLimits";
+import { buildSupplierSendSubject } from "./supplierSendSubjectIdentity";
 
 export { SUPPLIER_SEND_CONTENT_VERSION } from "../../types/mise";
 
@@ -68,18 +69,9 @@ function normalizedEmail(value: string | null | undefined) {
   return normalized;
 }
 
+/** MISE-005SA: pin demo supplier-send subject identity to ASCII C. */
 function normalizedSubject(restaurantName: string, supplierName: string) {
-  const subject = `${restaurantName} order for ${supplierName}`
-    .replace(/[\r\n]+/g, " ")
-    .trim();
-  if (
-    subject.length < 1 ||
-    subject.length > 500 ||
-    /[\u0000-\u001f\u007f]/.test(subject)
-  ) {
-    return null;
-  }
-  return subject;
+  return buildSupplierSendSubject(restaurantName, supplierName);
 }
 
 /**
