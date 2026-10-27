@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { prepareSetupInventoryParLevelText } from "../../services/domain/setupInventoryParLevelIdentity"; // MISE-005RH
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -949,7 +950,13 @@ function validateSetupDrafts({
         })
       );
     }
-    if (item.parLevel.trim() && !isBoundedSetupNumber(item.parLevel, 0, operatingLimits.inventoryQuantity, parseNumber)) {
+    // MISE-005RH: refuse Unicode-padded setup inventory parLevel drafts before locale parse.
+    const preparedParLevel = prepareSetupInventoryParLevelText(item.parLevel);
+    if (
+      preparedParLevel.status === "invalid" ||
+      (preparedParLevel.status === "ok" &&
+        !isBoundedSetupNumber(preparedParLevel.text, 0, operatingLimits.inventoryQuantity, parseNumber))
+    ) {
       return setupValidationFailure(
         "inventory",
         t("setup.validation.parRange", {
@@ -1092,8 +1099,20 @@ function normalizeInventoryDraftNumbers(
   return items.map((item) => ({
     ...item,
     quantity: normalizeDraftNumber(item.quantity, parseNumber),
-    parLevel: normalizeDraftNumber(item.parLevel, parseNumber)
+    // MISE-005RH: pin setup inventory parLevel through ASCII C prep; leave on-hand quantity alone.
+    parLevel: normalizeSetupInventoryParLevel(item.parLevel, parseNumber)
   }));
+}
+
+function normalizeSetupInventoryParLevel(
+  value: string,
+  parseNumber: (value: string) => number | null
+) {
+  const prepared = prepareSetupInventoryParLevelText(value);
+  if (prepared.status === "empty") return "";
+  // Validation refuses invalid drafts before normalize; leave raw rather than invent.
+  if (prepared.status === "invalid") return value;
+  return normalizeDraftNumber(prepared.text, parseNumber);
 }
 
 function normalizeRecipeDraftNumbers(
