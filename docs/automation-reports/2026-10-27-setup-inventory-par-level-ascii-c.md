@@ -1,6 +1,6 @@
 # MISE-005RH setup inventory parLevel ASCII C (2026-10-27)
 
-Tip: `cursor/mise-setup-inventory-par-level-ascii-c` (PR pending).
+Tip: `cursor/mise-setup-inventory-par-level-ascii-c` @ `7cfc0784` / PR #894.
 
 ## Inventing proof
 
