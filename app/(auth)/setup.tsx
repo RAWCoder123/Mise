@@ -38,6 +38,7 @@ import {
 import { saveRestaurantSetup, updateRestaurantProfile } from "../../services/miseService";
 import { canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { trackMiseEvent } from "../../services/telemetry";
+import { prepareSetupInventoryItemNameText } from "../../services/domain/setupInventoryItemNameIdentity"; // MISE-005RQ
 import { operatingLimits } from "../../services/miseValidation";
 import type { PosProvider } from "../../types/mise";
 
@@ -160,7 +161,8 @@ export default function SetupScreen() {
       const normalizedInventoryItems = normalizeInventoryDraftNumbers(inventoryItems, parseNumber);
       const normalizedRecipes = normalizeRecipeDraftNumbers(recipes, parseNumber);
       const supplierNames = suppliers.map((supplier) => supplier.name.trim()).filter(Boolean);
-      const inventoryItemNames = normalizedInventoryItems.map((item) => item.name.trim()).filter(Boolean);
+      // MISE-005RQ: inventory names already ASCII-C normalized; do not Unicode-trim again.
+      const inventoryItemNames = normalizedInventoryItems.map((item) => item.name).filter(Boolean);
       const recipeBaselineText = recipeDraftsToBaselineText(normalizedRecipes);
       const posSales = posSalesImport.rows;
 
@@ -933,8 +935,14 @@ function validateSetupDrafts({
       item.name.trim() || item.quantity.trim() || item.parLevel.trim() || item.supplierId
     );
     if (!hasDraftData) continue;
-    const label = item.name.trim() || t("setup.validation.inventoryLabel", { count: formatNumber(index + 1) });
-    if (!item.name.trim()) return setupValidationFailure("inventory", t("setup.validation.needsName", { item: label }));
+    // MISE-005RQ: refuse Unicode-padded setup inventory item name drafts before labels / save.
+    const preparedName = prepareSetupInventoryItemNameText(item.name);
+    const label =
+      (preparedName.status === "ok" ? preparedName.text : "") ||
+      t("setup.validation.inventoryLabel", { count: formatNumber(index + 1) });
+    if (preparedName.status !== "ok") {
+      return setupValidationFailure("inventory", t("setup.validation.needsName", { item: label }));
+    }
     if (!item.quantity.trim()) return setupValidationFailure("inventory", t("setup.validation.needsQuantity", { item: label }));
     if (!item.unit.trim()) return setupValidationFailure("inventory", t("setup.validation.needsUnit", { item: label }));
     if (!item.supplierId || !suppliers.some((supplier) => supplier.id === item.supplierId && supplier.name.trim())) {
@@ -1091,9 +1099,19 @@ function normalizeInventoryDraftNumbers(
 ) {
   return items.map((item) => ({
     ...item,
+    // MISE-005RQ: pin setup inventory item names through ASCII C prep.
+    name: normalizeSetupInventoryItemName(item.name),
     quantity: normalizeDraftNumber(item.quantity, parseNumber),
     parLevel: normalizeDraftNumber(item.parLevel, parseNumber)
   }));
+}
+
+function normalizeSetupInventoryItemName(value: string) {
+  const prepared = prepareSetupInventoryItemNameText(value);
+  if (prepared.status === "empty") return "";
+  // Validation refuses invalid drafts before normalize; leave raw rather than invent.
+  if (prepared.status === "invalid") return value;
+  return prepared.text;
 }
 
 function normalizeRecipeDraftNumbers(
