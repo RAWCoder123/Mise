@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { prepareSetupInventoryQuantityText } from "../../services/domain/setupInventoryQuantityIdentity"; // MISE-005RI
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -935,12 +936,20 @@ function validateSetupDrafts({
     if (!hasDraftData) continue;
     const label = item.name.trim() || t("setup.validation.inventoryLabel", { count: formatNumber(index + 1) });
     if (!item.name.trim()) return setupValidationFailure("inventory", t("setup.validation.needsName", { item: label }));
-    if (!item.quantity.trim()) return setupValidationFailure("inventory", t("setup.validation.needsQuantity", { item: label }));
+    // MISE-005RI: refuse Unicode-padded setup inventory on-hand quantity drafts before locale parse.
+    const preparedQuantity = prepareSetupInventoryQuantityText(item.quantity);
+    if (preparedQuantity.status === "empty") {
+      return setupValidationFailure("inventory", t("setup.validation.needsQuantity", { item: label }));
+    }
     if (!item.unit.trim()) return setupValidationFailure("inventory", t("setup.validation.needsUnit", { item: label }));
     if (!item.supplierId || !suppliers.some((supplier) => supplier.id === item.supplierId && supplier.name.trim())) {
       return setupValidationFailure("inventory", t("setup.validation.inventorySupplier", { item: label }));
     }
-    if (!isBoundedSetupNumber(item.quantity, 0, operatingLimits.inventoryQuantity, parseNumber)) {
+    if (
+      preparedQuantity.status === "invalid" ||
+      (preparedQuantity.status === "ok" &&
+        !isBoundedSetupNumber(preparedQuantity.text, 0, operatingLimits.inventoryQuantity, parseNumber))
+    ) {
       return setupValidationFailure(
         "inventory",
         t("setup.validation.onHandRange", {
@@ -1091,9 +1100,21 @@ function normalizeInventoryDraftNumbers(
 ) {
   return items.map((item) => ({
     ...item,
-    quantity: normalizeDraftNumber(item.quantity, parseNumber),
+    // MISE-005RI: pin setup inventory on-hand quantity through ASCII C prep; leave parLevel alone.
+    quantity: normalizeSetupInventoryQuantity(item.quantity, parseNumber),
     parLevel: normalizeDraftNumber(item.parLevel, parseNumber)
   }));
+}
+
+function normalizeSetupInventoryQuantity(
+  value: string,
+  parseNumber: (value: string) => number | null
+) {
+  const prepared = prepareSetupInventoryQuantityText(value);
+  if (prepared.status === "empty") return "";
+  // Validation refuses invalid drafts before normalize; leave raw rather than invent.
+  if (prepared.status === "invalid") return value;
+  return normalizeDraftNumber(prepared.text, parseNumber);
 }
 
 function normalizeRecipeDraftNumbers(
