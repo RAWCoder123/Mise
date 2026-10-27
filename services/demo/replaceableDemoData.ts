@@ -32,6 +32,7 @@ import {
   findDemoSupplierByLegacyName,
   isDemoSupplierId
 } from "./demoSupplierIdentity";
+import { prepareDemoRecipeBaselineLineText } from "../domain/demoRecipeBaselineLineIdentity";
 
 export const DEMO_RESTAURANT_ID = DEMO_DATASET.restaurant.id;
 export const DEMO_USER_ID = DEMO_DATASET.user.id;
@@ -1746,8 +1747,14 @@ function applyRecipeBaselineText(state: DemoState, recipeBaselineText?: string) 
 
   const parsedLines = recipeBaselineText
     .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
+    .map((line) => {
+      // MISE-005RU: pin durable demo recipe-baseline line identity to ASCII C
+      // so NBSP / em-space padding cannot invent a clean parse line.
+      const preparedLine = prepareDemoRecipeBaselineLineText(line);
+      if (preparedLine.status !== "ok") return null;
+      return preparedLine.text;
+    })
+    .filter((line): line is string => Boolean(line))
     .map(parseRecipeLine)
     .filter((line): line is { menuItemName: string; ingredients: { itemName: string; quantity: number; unit: string }[] } =>
       Boolean(line && line.ingredients.length > 0)
