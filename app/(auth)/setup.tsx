@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { prepareSetupRecipeIngredientQuantityText } from "../../services/domain/setupRecipeIngredientQuantityIdentity"; // MISE-005RJ
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -1012,13 +1013,24 @@ function validateSetupDrafts({
 
     for (const [ingredientIndex, ingredient] of startedIngredients.entries()) {
       const ingredientLabel = ingredient.itemName.trim() || t("setup.validation.ingredientLabel", { count: formatNumber(ingredientIndex + 1) });
-      if (!ingredient.itemName.trim() || !ingredient.quantity.trim() || !ingredient.unit.trim()) {
+      // MISE-005RJ: refuse Unicode-padded setup recipe ingredient quantity drafts before locale parse.
+      const preparedQuantity = prepareSetupRecipeIngredientQuantityText(ingredient.quantity);
+      if (!ingredient.itemName.trim() || preparedQuantity.status === "empty" || !ingredient.unit.trim()) {
         return setupValidationFailure(
           "recipes",
           t("setup.validation.ingredientFields", { recipe: recipeLabel, ingredient: ingredientLabel })
         );
       }
-      if (!isBoundedSetupNumber(ingredient.quantity, Number.EPSILON, operatingLimits.recipeQuantityPerSale, parseNumber)) {
+      if (
+        preparedQuantity.status === "invalid" ||
+        (preparedQuantity.status === "ok" &&
+          !isBoundedSetupNumber(
+            preparedQuantity.text,
+            Number.EPSILON,
+            operatingLimits.recipeQuantityPerSale,
+            parseNumber
+          ))
+      ) {
         return setupValidationFailure(
           "recipes",
           t("setup.validation.ingredientRange", {
@@ -1104,9 +1116,21 @@ function normalizeRecipeDraftNumbers(
     ...recipe,
     ingredients: recipe.ingredients.map((ingredient) => ({
       ...ingredient,
-      quantity: normalizeDraftNumber(ingredient.quantity, parseNumber)
+      // MISE-005RJ: pin setup recipe ingredient quantity through ASCII C prep.
+      quantity: normalizeSetupRecipeIngredientQuantity(ingredient.quantity, parseNumber)
     }))
   }));
+}
+
+function normalizeSetupRecipeIngredientQuantity(
+  value: string,
+  parseNumber: (value: string) => number | null
+) {
+  const prepared = prepareSetupRecipeIngredientQuantityText(value);
+  if (prepared.status === "empty") return "";
+  // Validation refuses invalid drafts before normalize; leave raw rather than invent.
+  if (prepared.status === "invalid") return value;
+  return normalizeDraftNumber(prepared.text, parseNumber);
 }
 
 function normalizeDraftNumber(value: string, parseNumber: (value: string) => number | null) {
