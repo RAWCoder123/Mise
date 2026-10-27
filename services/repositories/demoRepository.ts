@@ -128,6 +128,10 @@ import {
   demoSupplierNormalizedName
 } from "../demo/demoSupplierIdentity";
 import {
+  requireCanonicalDemoInventorySupplierSetupClientReference,
+  requireCanonicalDemoSupplierSetupClientReference
+} from "../domain/demoSetupClientReferenceIdentity";
+import {
   normalizeAppUser,
   normalizeInsight,
   normalizeAiInsight,
@@ -1634,13 +1638,11 @@ export function createLocalDemoRepository(): MiseRepository {
           if (supplierInput.restaurant_id !== restaurantId) {
             throw new Error("Supplier recipient belongs to a different restaurant.");
           }
-          const clientReferenceId = supplierInput.client_reference_id.trim();
-          if (
-            !clientReferenceId ||
-            clientReferenceId.length > 128 ||
-            /[\u0000-\u001f\u007f]/.test(supplierInput.client_reference_id) ||
-            supplierByClientReference.has(clientReferenceId)
-          ) {
+          // MISE-005SD: ASCII C client-reference Map keys (no Unicode trim invent).
+          const clientReferenceId = requireCanonicalDemoSupplierSetupClientReference(
+            supplierInput.client_reference_id
+          );
+          if (supplierByClientReference.has(clientReferenceId)) {
             throw new Error("Supplier setup references must be unique.");
           }
           const normalizedName = demoSupplierNormalizedName(supplierInput.display_name);
@@ -1694,14 +1696,11 @@ export function createLocalDemoRepository(): MiseRepository {
           if (inventoryInput.restaurant_id !== restaurantId) {
             throw new Error("Inventory item belongs to a different restaurant.");
           }
-          const supplierClientReferenceId = inventoryInput.supplier_client_reference_id.trim();
-          if (
-            !supplierClientReferenceId ||
-            supplierClientReferenceId.length > 128 ||
-            /[\u0000-\u001f\u007f]/.test(inventoryInput.supplier_client_reference_id)
-          ) {
-            throw new Error("Inventory supplier setup reference is invalid.");
-          }
+          // MISE-005SD: ASCII C inventory→supplier setup reference lookup keys.
+          const supplierClientReferenceId =
+            requireCanonicalDemoInventorySupplierSetupClientReference(
+              inventoryInput.supplier_client_reference_id
+            );
           const supplier = supplierByClientReference.get(supplierClientReferenceId);
           if (!supplier) throw new Error("Inventory supplier setup reference is invalid.");
           const { supplier_client_reference_id: _supplierClientReferenceId, ...inventoryFields } =
