@@ -15,6 +15,7 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
+import { prepareScanItemCameraBarcodeText } from "../../services/domain/scanItemCameraBarcodeIdentity"; // MISE-005RY
 import { fetchInventoryItems } from "../../services/miseService";
 import type { InventoryItem } from "../../types/mise";
 
@@ -107,8 +108,10 @@ export default function ScanItemScreen() {
 
   const handleBarcode = useCallback(
     (result: BarcodeScanningResult) => {
-      const code = result.data?.trim() ?? "";
-      if (!code || scanPaused) return;
+      // MISE-005RY: refuse Unicode-padded camera barcodes before match / query seed.
+      const prepared = prepareScanItemCameraBarcodeText(result.data);
+      if (prepared.status !== "ok" || scanPaused) return;
+      const code = prepared.text;
       const now = Date.now();
       if (now - lastScanAtRef.current < SCAN_COOLDOWN_MS) return;
       lastScanAtRef.current = now;
