@@ -1,4 +1,5 @@
 import { operatingLimits } from "../miseValidation";
+import { prepareSetupDraftsPosCsvLineText } from "./setupDraftsPosCsvLineIdentity";
 
 export const setupImportLimits = {
   characters: 256_000,
@@ -248,8 +249,14 @@ export function parseSetupPosSalesCsv(input: string): SetupPosSalesImportResult 
 
   const lines = input
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .map((line) => {
+      // MISE-005RV: pin durable setup-drafts POS CSV line identity to ASCII C
+      // so NBSP / em-space padding cannot invent a clean CSV parse line.
+      const preparedLine = prepareSetupDraftsPosCsvLineText(line);
+      if (preparedLine.status !== "ok") return null;
+      return preparedLine.text;
+    })
+    .filter((line): line is string => Boolean(line));
 
   if (lines.length === 0) {
     return {
