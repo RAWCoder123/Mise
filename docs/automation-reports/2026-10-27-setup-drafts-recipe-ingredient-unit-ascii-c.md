@@ -54,4 +54,4 @@ merge the unit, itemName, and quantity modules.
 - focused AsciiC 4/4
 - `npm run typecheck`
 - `npm run security:static` / `npm run security:backend`
-- `npm test`: see commit evidence
+- `npm test`: 687 total / 687 pass / 0 fail / 0 cancelled (tip +4 vs main ~683)
