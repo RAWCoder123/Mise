@@ -1,4 +1,5 @@
 import { operatingLimits } from "../miseValidation";
+import { normalizeSetupDraftsRecipeDishNameText } from "./setupDraftsRecipeDishNameIdentity";
 
 export const setupImportLimits = {
   characters: 256_000,
@@ -142,7 +143,8 @@ export function buildSetupDraftReadiness({
     ).length >= 3;
   const recipesReady = recipes.some(
     (recipe) =>
-      recipe.dishName.trim() &&
+      // MISE-005RN: dishName presence must not invent via Unicode trim.
+      normalizeSetupDraftsRecipeDishNameText(recipe.dishName) &&
       recipe.ingredients.some((ingredient) => ingredient.itemName.trim() && ingredient.quantity.trim() && ingredient.unit.trim())
   );
   const posSalesReady = (posSales ?? []).length >= 3;
@@ -175,7 +177,9 @@ export function buildSetupDraftReadiness({
 export function recipeDraftsToBaselineText(recipes: SetupRecipeDraft[]) {
   return recipes
     .map((recipe) => {
-      const dishName = recipe.dishName.trim();
+      // MISE-005RN: pin durable baseline dishName identity to ASCII C so
+      // NBSP / em-space padding cannot invent a clean dish token.
+      const dishName = normalizeSetupDraftsRecipeDishNameText(recipe.dishName);
       const ingredientText = recipe.ingredients
         .map((ingredient) => {
           const itemName = ingredient.itemName.trim();
@@ -215,7 +219,8 @@ export function buildSetupPersistencePreview({
     ).length,
     suppliers: supplierIds.size,
     recipeMappings: recipes.reduce((count, recipe) => {
-      if (!recipe.dishName.trim()) return count;
+      // MISE-005RN: dishName presence must not invent via Unicode trim.
+      if (!normalizeSetupDraftsRecipeDishNameText(recipe.dishName)) return count;
       return count + recipe.ingredients.filter((ingredient) =>
         ingredient.itemName.trim() && ingredient.quantity.trim() && ingredient.unit.trim()
       ).length;
@@ -401,9 +406,11 @@ export function buildSetupDataHealthSummary({
       validSupplierIds.has(item.supplierId)
   ).length;
   const supplierCount = validSupplierIds.size;
-  const recipeCount = recipes.filter((recipe) =>
-    recipe.dishName.trim() &&
-    recipe.ingredients.some((ingredient) => ingredient.itemName.trim() && ingredient.quantity.trim() && ingredient.unit.trim())
+  const recipeCount = recipes.filter(
+    (recipe) =>
+      // MISE-005RN: dishName presence must not invent via Unicode trim.
+      normalizeSetupDraftsRecipeDishNameText(recipe.dishName) &&
+      recipe.ingredients.some((ingredient) => ingredient.itemName.trim() && ingredient.quantity.trim() && ingredient.unit.trim())
   ).length;
   const posRowCount = posSales.length;
   const signals = [
