@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareOrderSaleProviderLocationId } from "../../../services/domain/squareOrderSaleProviderLocationIdIdentity.ts"; // MISE-005SZ
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -287,7 +288,12 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
     stringField(record, "created_at", 64) ||
     new Date().toISOString();
   const saleDate = closedAt.slice(0, 10);
-  const providerLocationId = stringField(record, "location_id", 128) || undefined;
+  // MISE-005SZ: pin location_id → provider_location_id to ASCII C so Unicode
+  // `.trim()` cannot invent a clean durable sale-row location identity.
+  const providerLocationId =
+    normalizeSquareOrderSaleProviderLocationId(
+      typeof record.location_id === "string" ? record.location_id : null
+    ) ?? undefined;
   const lineItems = Array.isArray(record.line_items) ? record.line_items : [];
   const rows: SquareSaleRow[] = [];
   for (const [index, line] of lineItems.entries()) {
