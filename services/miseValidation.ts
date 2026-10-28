@@ -61,6 +61,7 @@ import type {
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
+import { canonicalizeSupplierSendPreviewExpectedId } from "./domain/supplierSendPreviewExpectedIdentity";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
 
@@ -682,7 +683,11 @@ export function normalizeSupplierSendContentPreview(
 }
 
 function requireExactSupplierSendId(value: unknown, expected: string, label: string) {
-  const normalizedExpected = typeof expected === "string" ? expected.trim() : "";
+  // MISE-005SN: ASCII-C expected restaurant/order identity for preview scope match.
+  const normalizedExpected =
+    typeof expected === "string"
+      ? canonicalizeSupplierSendPreviewExpectedId(expected) ?? ""
+      : "";
   if (
     typeof value !== "string" ||
     !normalizedExpected ||
