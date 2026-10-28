@@ -1,6 +1,12 @@
 import { createId } from "./miseDomain";
 import type { AutonomyLevel } from "./operationalStatus";
 import type { MiseActionType } from "./miseActions";
+import { requireCanonicalRestaurantAutonomyRestaurantId } from "./restaurantAutonomyRestaurantIdentity";
+
+/** MISE-005SG: ASCII-C restaurant workspace identity for autonomy rule hydrate. */
+function requireRestaurantId(restaurantId: string) {
+  return requireCanonicalRestaurantAutonomyRestaurantId(restaurantId);
+}
 
 export type AutonomyOperationalCategory =
   | "inventory"
@@ -58,7 +64,8 @@ export function autonomyRuleFromPersistedRow(row: PersistedAutonomyRuleRow): Res
   }
   return {
     id: row.id,
-    restaurantId: row.restaurant_id.trim(),
+    // MISE-005SG: ASCII-C restaurant workspace identity for persisted hydrate.
+    restaurantId: requireRestaurantId(row.restaurant_id),
     locationId: row.location_id ?? null,
     actionType: row.action_type,
     operationalCategory: row.operational_category,
