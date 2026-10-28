@@ -13,6 +13,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { boundedCanonicalOperationalFindingsUnmappedMenuItemName } from "./operationalFindingsUnmappedMenuItemNameIdentity";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
@@ -411,8 +412,14 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       observedAt: finiteTimestamp(sale.created_at, generatedAt),
       summary: boundedText(`${sale.item_name}: ${sale.quantity_sold} sold without a recipe mapping`, "Unmapped sale")
     }));
-    const missingNames = [...new Set(unmappedSales.map((sale) => boundedText(sale.item_name, "menu item", 80)))]
-      .slice(0, 5);
+    // MISE-005SL: pin unmapped menu-item names to ASCII C display prep (see operationalFindingsUnmappedMenuItemNameIdentity).
+    const missingNames = [
+      ...new Set(
+        unmappedSales.map((sale) =>
+          boundedCanonicalOperationalFindingsUnmappedMenuItemName(sale.item_name, "menu item", 80)
+        )
+      )
+    ].slice(0, 5);
     const recommendedAction = "Verify recipe and ingredient mappings for the sold items before using depletion forecasts.";
     findings.push({
       id: `finding:data-gap:mapping:${input.operatingDate}`,
