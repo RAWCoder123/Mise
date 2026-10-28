@@ -134,6 +134,7 @@ import {
   type SupplierSendContentApprovalResult,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
+import { normalizeVerifiedProviderLocationId } from "./verifiedProviderLocationIdIdentity";
 
 const hostedUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -792,7 +793,16 @@ export function createSupabaseRepository(): MiseRepository {
     }).map((row) => ({
       restaurantId: row.restaurant_id,
       sourcePos: String(row.pos_locations?.pos_integrations?.provider ?? "").trim(),
-      providerLocationId: String(row.pos_locations?.external_location_id ?? "").trim(),
+      // MISE-005SX: pin verified-provider mapping providerLocationId to ASCII C.
+      // Soft empty / Unicode-padded / control-bearing tokens soft to "" so the
+      // existing second-pass filter drops them without inventing a clean durable
+      // location identity via Unicode `.trim()`.
+      providerLocationId:
+        normalizeVerifiedProviderLocationId(
+          typeof row.pos_locations?.external_location_id === "string"
+            ? row.pos_locations.external_location_id
+            : null
+        ) ?? "",
       externalCatalogItemId: row.external_catalog_item_id,
       externalVariationId: row.external_variation_id,
       menuItemId: row.menu_item_id
