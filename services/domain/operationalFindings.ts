@@ -13,6 +13,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { boundedCanonicalOperationalFindingsEvidenceSummary } from "./operationalFindingsEvidenceSummaryIdentity";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
@@ -244,7 +245,8 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
         type: "purchase_recommendation",
         id: recommendation.id,
         observedAt: finiteTimestamp(recommendation.created_at, generatedAt),
-        summary: boundedText(
+        // MISE-005SK: pin finding evidence summary to ASCII C display prep (see operationalFindingsEvidenceSummaryIdentity).
+        summary: boundedCanonicalOperationalFindingsEvidenceSummary(
           `${recommendation.item_name}: ${recommendation.recommended_quantity} ${recommendation.unit} suggested`,
           "Pending purchase recommendation"
         )
@@ -255,7 +257,8 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
         type: "inventory_item",
         id: item.id,
         observedAt: asOf,
-        summary: boundedText(
+        // MISE-005SK: pin finding evidence summary to ASCII C display prep (see operationalFindingsEvidenceSummaryIdentity).
+        summary: boundedCanonicalOperationalFindingsEvidenceSummary(
           `${item.item_name}: ${item.current_quantity} ${item.unit} on hand; reorder at ${item.reorder_threshold}`,
           "Inventory evidence"
         )
@@ -309,7 +312,8 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       type: "insight",
       id: insight.id,
       observedAt: asOf,
-      summary: boundedText(insight.description, insight.title)
+      // MISE-005SK: pin finding evidence summary to ASCII C display prep (see operationalFindingsEvidenceSummaryIdentity).
+      summary: boundedCanonicalOperationalFindingsEvidenceSummary(insight.description, insight.title)
     }];
     const priority: FindingPriority = insight.severity === "urgent"
       ? "now"
@@ -409,7 +413,11 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       type: "pos_sale" as const,
       id: sale.id,
       observedAt: finiteTimestamp(sale.created_at, generatedAt),
-      summary: boundedText(`${sale.item_name}: ${sale.quantity_sold} sold without a recipe mapping`, "Unmapped sale")
+      // MISE-005SK: pin finding evidence summary to ASCII C display prep (see operationalFindingsEvidenceSummaryIdentity).
+      summary: boundedCanonicalOperationalFindingsEvidenceSummary(
+        `${sale.item_name}: ${sale.quantity_sold} sold without a recipe mapping`,
+        "Unmapped sale"
+      )
     }));
     const missingNames = [...new Set(unmappedSales.map((sale) => boundedText(sale.item_name, "menu item", 80)))]
       .slice(0, 5);
