@@ -1,5 +1,6 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
+import { normalizeAskMiseTopSaleItemName } from "../domain/askMiseTopSaleItemNameIdentity";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
@@ -88,7 +89,9 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const wasteInsights = insights.filter((insight) => insight.insight_type === "waste");
   const attentionTitles = summary.attentionCards.slice(0, 3).map((card) => card.title);
   const topTaskTitles = priorities.map((task) => presentOperationalTodayTask(helpers.locale, task).title);
-  const topSale = summary.topItems[0]?.item_name?.trim() || null;
+  // MISE-005SY: pin sales top-item names to ASCII C so Unicode trim cannot
+  // invent a clean POS item label into ask.answer.sales.topItem.
+  const topSale = normalizeAskMiseTopSaleItemName(summary.topItems[0]?.item_name);
 
   const thinkingSteps = buildThinkingSteps({
     intent,
