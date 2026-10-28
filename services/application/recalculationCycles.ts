@@ -5,6 +5,7 @@ import {
   type RecalculationRunRecord,
   type RecalculationSchedule
 } from "../domain/recalculationSchedule";
+import { describeRecalculationError } from "./recalculationDescribeErrorIdentity";
 
 /**
  * Executes the recalculation cycles that `recalculationSchedule` reports as due.
@@ -202,8 +203,7 @@ export function withTimeout<T>(work: Promise<T>, timeoutMs: number, message: str
   });
 }
 
+/** MISE-005SP: pin describeError haystacks to ASCII C free-text prep. */
 function describeError(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message.trim().slice(0, 200);
-  const text = typeof error === "string" ? error.trim() : "";
-  return text.length > 0 ? text.slice(0, 200) : "Unknown recalculation failure";
+  return describeRecalculationError(error);
 }
