@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareOrderSaleProviderVariationId } from "../../../services/domain/squareOrderSaleProviderVariationIdIdentity.ts"; // MISE-005TA
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -299,7 +300,12 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
     const uid = stringField(item, "uid", 128) || String(index);
     const gross = moneyAmount(item.gross_sales_money) ?? moneyAmount(item.total_money) ?? 0;
     const net = moneyAmount(item.total_money) ?? gross;
-    const variationId = stringField(item, "catalog_object_id", 128);
+    // MISE-005TA: pin catalog_object_id → provider_variation_id to ASCII C so
+    // Unicode `.trim()` cannot invent a clean durable sale-row variation identity.
+    const variationId =
+      normalizeSquareOrderSaleProviderVariationId(
+        typeof item.catalog_object_id === "string" ? item.catalog_object_id : null
+      ) ?? undefined;
     const category =
       variationId ||
       stringField(item, "variation_name", 80) ||
@@ -313,7 +319,7 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
       net_sales: clampMoney(net),
       source_record_id: `square_${orderId}_${uid}`.slice(0, 200),
       provider_location_id: providerLocationId,
-      provider_variation_id: variationId || undefined,
+      provider_variation_id: variationId,
     });
   }
   return rows;
