@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareOrderSaleSourceRecordOrderId } from "../../../services/domain/squareOrderSaleSourceRecordOrderIdIdentity.ts"; // MISE-005TB
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -280,7 +281,11 @@ export async function listSquareCatalogItems(
 export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
   if (!order || typeof order !== "object") return [];
   const record = order as Record<string, unknown>;
-  const orderId = stringField(record, "id", 128);
+  // MISE-005TB: pin order id → source_record_id composition to ASCII C so
+  // Unicode `.trim()` cannot invent a clean durable sale source-record identity.
+  const orderId = normalizeSquareOrderSaleSourceRecordOrderId(
+    typeof record.id === "string" ? record.id : null
+  );
   if (!orderId) return [];
   const closedAt =
     stringField(record, "closed_at", 64) ||
