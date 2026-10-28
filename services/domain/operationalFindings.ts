@@ -13,6 +13,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { boundedCanonicalOperationalFindingsTitle } from "./operationalFindingsTitleIdentity";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
@@ -279,7 +280,12 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       category: "ordering",
       severity,
       priority,
-      title: boundedText(`Review ${recommendation.item_name} coverage`, "Review inventory coverage", 120),
+      // MISE-005SH: pin finding title to ASCII C display prep (see operationalFindingsTitleIdentity).
+      title: boundedCanonicalOperationalFindingsTitle(
+        `Review ${recommendation.item_name} coverage`,
+        "Review inventory coverage",
+        120
+      ),
       explanation: boundedText(recommendation.reason, "Inventory is below the restaurant's configured operating level."),
       confidence: boundedConfidence(
         confidenceScore,
@@ -323,7 +329,8 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       category: insight.insight_type,
       severity: insight.severity,
       priority,
-      title: boundedText(insight.title, "Operational finding", 120),
+      // MISE-005SH: pin finding title to ASCII C display prep (see operationalFindingsTitleIdentity).
+      title: boundedCanonicalOperationalFindingsTitle(insight.title, "Operational finding", 120),
       explanation: boundedText(insight.why_it_matters ?? insight.description, insight.description),
       confidence: boundedConfidence(
         freshness.state === "fresh" ? 0.78 : 0.52,
