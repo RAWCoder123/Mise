@@ -1,4 +1,5 @@
 import type { RestaurantTaskRequiredRole } from "./restaurantTasks";
+import { normalizeRecalculationScheduleFailureReason } from "./recalculationScheduleFailureReasonIdentity";
 
 /**
  * Section 26 "Background Jobs" scheduling brain for the three recalculation
@@ -236,7 +237,10 @@ function decideCycle(
     .slice()
     .sort((left, right) => left.attempt - right.attempt);
   const lastFailure = failures.length > 0 ? failures[failures.length - 1] : null;
-  const lastFailureReason = normalizeFailureReason(lastFailure?.failureReason);
+  // MISE-005SO: ASCII C free-text prep — do not Unicode-trim invent clean diagnostics.
+  const lastFailureReason = normalizeRecalculationScheduleFailureReason(
+    lastFailure?.failureReason
+  );
   const attemptsUsed = context.runs.reduce(
     (highest, run) => Math.max(highest, Number.isFinite(run.attempt) ? Math.floor(run.attempt) : 0),
     0
@@ -387,11 +391,6 @@ function zonedParts(date: Date, timeZone: string) {
     // Invalid timezones fall back to UTC rather than throwing mid-schedule.
     return null;
   }
-}
-
-function normalizeFailureReason(reason: string | null | undefined): string | null {
-  const trimmed = typeof reason === "string" ? reason.trim() : "";
-  return trimmed.length > 0 ? trimmed.slice(0, 200) : null;
 }
 
 function ownerLabel(role: RestaurantTaskRequiredRole): string {
