@@ -134,6 +134,7 @@ import {
   type SupplierSendContentApprovalResult,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
+import { resolveAccountDeletionReference } from "./accountDeletionReferenceIdentity";
 
 const hostedUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -954,13 +955,19 @@ export function createSupabaseRepository(): MiseRepository {
       });
       if (error) {
         const payload = await readFunctionErrorPayload(error);
+        // Leave payload.error Unicode trim alone for open #931 / MISE-005SS.
         const message = typeof payload.error === "string" && payload.error.trim().length > 0
           ? payload.error.trim().slice(0, 320)
           : "Your account could not be deleted. Try again.";
-        const deletionReference =
+        // MISE-005ST: pin account-deletion payload.deletionReference haystacks
+        // to ASCII C identity prep so Unicode trim cannot invent a clean
+        // support reference into the operator-facing Error. Leave payload.error
+        // alone for a separate tip (#931).
+        const deletionReference = resolveAccountDeletionReference(
           typeof payload.deletionReference === "string"
-            ? payload.deletionReference.trim().slice(0, 80)
-            : "";
+            ? payload.deletionReference
+            : null
+        );
         throw new Error(
           deletionReference
             ? `${message} Reference: ${deletionReference}`
