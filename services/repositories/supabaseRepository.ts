@@ -134,6 +134,7 @@ import {
   type SupplierSendContentApprovalResult,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
+import { resolveSquareIntegrationErrorMessage } from "./squareIntegrationErrorMessageIdentity";
 
 const hostedUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -671,7 +672,9 @@ async function squareIntegrationErrorFrom(error: unknown, fallbackMessage: strin
       : typeof payload.error === "string"
         ? payload.error
         : "";
-  const message = candidateMessage.trim().slice(0, 320) || fallbackMessage;
+  // MISE-005SQ: pin Square error haystacks to ASCII C free-text prep so Unicode
+  // trim cannot invent a clean operator-facing SquareIntegrationError message.
+  const message = resolveSquareIntegrationErrorMessage(candidateMessage, fallbackMessage);
   return new SquareIntegrationError(status, message);
 }
 
