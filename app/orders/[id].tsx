@@ -35,6 +35,7 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityBlockerCode
 } from "../../services/domain/purchaseAuthority";
+import { normalizeSupplierSendBlockerCodes } from "../../services/domain/supplierSendBlockerCodeIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -993,15 +994,12 @@ function purchaseAuthoritySendNotice(
 }
 
 function safeBlockerCodes(error: unknown): string[] {
+  // MISE-005SV: ASCII C blocker-code prep — do not Unicode-trim invent a clean
+  // routing token from NBSP/em-space padded error.blockerCodes entries.
   const value = error && typeof error === "object"
     ? (error as { blockerCodes?: unknown }).blockerCodes
     : null;
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((entry): entry is string => typeof entry === "string")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .slice(0, 20);
+  return normalizeSupplierSendBlockerCodes(value);
 }
 
 function isPurchaseAuthorityBlockerCode(code: string): code is PurchaseAuthorityBlockerCode {
