@@ -59,6 +59,7 @@ import {
   type PersistedRecalculationRunRow
 } from "../domain/recalculationRunTransport";
 import type { SupplierDeliveryRecordResult } from "./repositoryContracts";
+import { resolveExportRestaurantDataErrorMessage } from "./exportRestaurantDataErrorMessageIdentity";
 import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord
@@ -978,10 +979,14 @@ export function createSupabaseRepository(): MiseRepository {
       });
       if (error) {
         const payload = await readFunctionErrorPayload(error);
-        const message =
-          typeof payload.error === "string" && payload.error.trim().length > 0
-            ? payload.error.trim().slice(0, 320)
-            : "Restaurant data could not be exported. Try again.";
+        // MISE-005SU: pin export-restaurant-data payload.error haystacks to
+        // ASCII C free-text prep so Unicode trim cannot invent a clean
+        // operator-facing Error message. Leave account-deletion /
+        // Gmail / Square haystacks alone for separate tips.
+        const message = resolveExportRestaurantDataErrorMessage(
+          typeof payload.error === "string" ? payload.error : null,
+          "Restaurant data could not be exported. Try again."
+        );
         throw new Error(message);
       }
       return normalizeRestaurantDataExport(data, restaurantId);
