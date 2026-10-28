@@ -29,6 +29,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+import { prepareRecipesSettingsQuantityText } from "../../services/domain/recipesSettingsQuantityIdentity";
 import { requireRecipeBaselineQuantity } from "../../services/miseValidation";
 import type { InventoryItem, RecipeBaselineItem, RecipeBaselineSummary } from "../../types/mise";
 
@@ -169,9 +170,12 @@ export default function RecipeBaselinesScreen() {
       return;
     }
     const restaurantId = restaurant.id;
+    // MISE-005SF: refuse Unicode trim inventing a clean quantity draft.
+    const prepared = prepareRecipesSettingsQuantityText(quantity);
     let parsed: number;
     try {
-      parsed = requireRecipeBaselineQuantity(parseNumber(quantity));
+      if (prepared.status !== "ok") throw new Error("invalid_recipes_settings_quantity");
+      parsed = requireRecipeBaselineQuantity(parseNumber(prepared.text));
     } catch {
       setError(t("recipes.error.quantity"));
       return;
@@ -238,9 +242,14 @@ export default function RecipeBaselinesScreen() {
       setError(t("recipes.error.wrongRestaurant"));
       return;
     }
+    // MISE-005SF: refuse Unicode trim inventing a clean quantity draft.
+    const preparedQuantity = prepareRecipesSettingsQuantityText(newQuantity);
     let quantity: number;
     try {
-      quantity = requireRecipeBaselineQuantity(parseNumber(newQuantity));
+      if (preparedQuantity.status !== "ok") {
+        throw new Error("invalid_recipes_settings_quantity");
+      }
+      quantity = requireRecipeBaselineQuantity(parseNumber(preparedQuantity.text));
     } catch {
       setError(t("recipes.error.quantity"));
       return;
@@ -633,8 +642,11 @@ function RecipeRow({
   }, [formatNumber, item]);
 
   function parsedQuantity(draftValue: string) {
+    // MISE-005SF: refuse Unicode trim inventing a clean quantity draft.
+    const prepared = prepareRecipesSettingsQuantityText(draftValue);
+    if (prepared.status !== "ok") return null;
     try {
-      return requireRecipeBaselineQuantity(parseNumber(draftValue));
+      return requireRecipeBaselineQuantity(parseNumber(prepared.text));
     } catch {
       return null;
     }
