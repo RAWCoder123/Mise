@@ -59,6 +59,7 @@ import {
   type PersistedRecalculationRunRow
 } from "../domain/recalculationRunTransport";
 import type { SupplierDeliveryRecordResult } from "./repositoryContracts";
+import { normalizeRecipeAuthorityMenuItemName } from "./recipeAuthorityMenuItemNameIdentity";
 import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord
@@ -215,7 +216,14 @@ function parseRecipeAuthorityState(value: unknown): RecipeAuthorityState {
     ? value as Record<string, unknown>
     : {};
   const menuItemId = typeof payload.menuItemId === "string" ? payload.menuItemId : "";
-  const menuItemName = typeof payload.menuItemName === "string" ? payload.menuItemName.trim() : "";
+  // MISE-005SW: pin recipe-authority hydrate menuItemName to ASCII C.
+  // Soft empty / Unicode-padded / control-bearing tokens soft to "" so the
+  // existing invalid-response gate fails closed without inventing a clean
+  // durable name via Unicode `.trim()`.
+  const menuItemName =
+    normalizeRecipeAuthorityMenuItemName(
+      typeof payload.menuItemName === "string" ? payload.menuItemName : null
+    ) ?? "";
   const recipeRevision = Number(payload.recipeRevision);
   const confirmedRevision = payload.confirmedRevision === null || payload.confirmedRevision === undefined
     ? null
