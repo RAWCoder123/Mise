@@ -13,6 +13,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { boundedCanonicalOperationalFindingsConfidenceRationale } from "./operationalFindingsConfidenceRationaleIdentity";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
@@ -158,7 +159,12 @@ function sourceWindow(evidence: FindingEvidenceReference[], generatedAt: string)
 function boundedConfidence(score: number, rationale: string) {
   return {
     score: Math.max(0, Math.min(1, Number.isFinite(score) ? score : 0)),
-    rationale: boundedText(rationale, "Confidence is limited by available restaurant evidence.", 180)
+    // MISE-005SM: pin confidence rationale to ASCII C display prep (see operationalFindingsConfidenceRationaleIdentity).
+    rationale: boundedCanonicalOperationalFindingsConfidenceRationale(
+      rationale,
+      "Confidence is limited by available restaurant evidence.",
+      180
+    )
   };
 }
 
