@@ -13,6 +13,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import { boundedCanonicalOperationalFindingsRecommendedAction } from "./operationalFindingsRecommendedActionIdentity";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
@@ -269,7 +270,8 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
         : "info";
     const priority: FindingPriority = severity === "urgent" ? "now" : severity === "warning" ? "up_next" : "later";
     const confidenceScore = freshness.state === "fresh" ? 0.92 : freshness.state === "stale" ? 0.55 : 0.62;
-    const recommendedAction = boundedText(
+    // MISE-005SJ: pin finding recommendedAction to ASCII C display prep (see operationalFindingsRecommendedActionIdentity).
+    const recommendedAction = boundedCanonicalOperationalFindingsRecommendedAction(
       `Review ${recommendation.recommended_quantity} ${recommendation.unit} from ${recommendation.supplier_name}; edit or dismiss the draft suggestion as needed.`,
       "Review the recommendation."
     );
@@ -316,7 +318,11 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
       : insight.severity === "warning"
         ? "up_next"
         : "later";
-    const recommendedAction = boundedText(insight.recommended_action, "Review the underlying restaurant evidence.");
+    // MISE-005SJ: pin finding recommendedAction to ASCII C display prep (see operationalFindingsRecommendedActionIdentity).
+    const recommendedAction = boundedCanonicalOperationalFindingsRecommendedAction(
+      insight.recommended_action,
+      "Review the underlying restaurant evidence."
+    );
     findings.push({
       id: `finding:insight:${insight.id}`,
       restaurantId,
