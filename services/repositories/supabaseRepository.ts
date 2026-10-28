@@ -134,6 +134,7 @@ import {
   type SupplierSendContentApprovalResult,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
+import { resolveAccountDeletionErrorMessage } from "./accountDeletionErrorMessageIdentity";
 
 const hostedUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -954,9 +955,13 @@ export function createSupabaseRepository(): MiseRepository {
       });
       if (error) {
         const payload = await readFunctionErrorPayload(error);
-        const message = typeof payload.error === "string" && payload.error.trim().length > 0
-          ? payload.error.trim().slice(0, 320)
-          : "Your account could not be deleted. Try again.";
+        // MISE-005SS: pin account-deletion payload.error haystacks to ASCII C
+        // free-text prep so Unicode trim cannot invent a clean operator-facing
+        // Error message. Leave deletionReference alone for a separate tip.
+        const message = resolveAccountDeletionErrorMessage(
+          typeof payload.error === "string" ? payload.error : null,
+          "Your account could not be deleted. Try again."
+        );
         const deletionReference =
           typeof payload.deletionReference === "string"
             ? payload.deletionReference.trim().slice(0, 80)
