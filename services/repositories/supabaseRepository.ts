@@ -134,6 +134,7 @@ import {
   type SupplierSendContentApprovalResult,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
+import { resolveGmailIntegrationErrorMessage } from "./gmailIntegrationErrorMessageIdentity";
 
 const hostedUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -686,7 +687,9 @@ async function gmailIntegrationErrorFrom(error: unknown, fallbackMessage: string
     : typeof payload.error === "string"
       ? payload.error
       : "";
-  const message = candidateMessage.trim().slice(0, 320) || fallbackMessage;
+  // MISE-005SR: pin Gmail error haystacks to ASCII C free-text prep so Unicode
+  // trim cannot invent a clean operator-facing GmailIntegrationError message.
+  const message = resolveGmailIntegrationErrorMessage(candidateMessage, fallbackMessage);
   let blockerCodes: SupplierSendBlockerCode[] = [];
   try {
     blockerCodes = parseSupplierSendBlockerCodes(payload.blockerCodes);
