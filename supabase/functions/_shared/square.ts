@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareCatalogVariationExternalId } from "../../../services/domain/squareCatalogVariationExternalIdIdentity.ts"; // MISE-005TG
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -353,7 +354,12 @@ export function normalizeCatalogItem(object: unknown): SquareCatalogRow[] {
         row.item_variation_data && typeof row.item_variation_data === "object"
           ? (row.item_variation_data as Record<string, unknown>)
           : {};
-      const variationId = stringField(row, "id", 128);
+      // MISE-005TG: pin variation id → external_variation_id to ASCII C so
+      // Unicode `.trim()` cannot invent a clean durable catalog variation identity.
+      const variationId =
+        normalizeSquareCatalogVariationExternalId(
+          typeof row.id === "string" ? row.id : null
+        ) ?? "";
       const variationName = stringField(variationData, "name", 160);
       const externalName =
         variationName && variationName !== "Regular"
