@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareOrderSaleVariationName } from "../../../services/domain/squareOrderSaleVariationNameIdentity.ts"; // MISE-005TL
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -300,9 +301,13 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
     const gross = moneyAmount(item.gross_sales_money) ?? moneyAmount(item.total_money) ?? 0;
     const net = moneyAmount(item.total_money) ?? gross;
     const variationId = stringField(item, "catalog_object_id", 128);
+    // MISE-005TL: pin variation_name → category (fallback) to ASCII C so
+    // Unicode `.trim()` cannot invent a clean durable sale category label.
     const category =
       variationId ||
-      stringField(item, "variation_name", 80) ||
+      normalizeSquareOrderSaleVariationName(
+        typeof item.variation_name === "string" ? item.variation_name : null
+      ) ||
       "Square";
     rows.push({
       sale_date: saleDate,
