@@ -15,6 +15,7 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
 import { DEMO_DATASET } from "../services/demoData";
+import { normalizePresentationGreetingFirstName } from "../services/domain/presentationGreetingFirstNameIdentity";
 import {
   answerAskMise,
   fetchInsights,
@@ -141,7 +142,11 @@ export default function AskMiseScreen() {
   useEffect(() => {
     if (!visibleSummary || !restaurant || seededRef.current) return;
     seededRef.current = true;
-    const greetingName = user?.name?.trim().split(/\s+/)[0] || t("ask.greeting.fallbackName");
+    // MISE-005TW: pin Ask Mise presentation greeting firstName to ASCII C.
+    // Soft-null / Unicode-padded tokens fall through to the i18n fallback
+    // without inventing a clean first-name greeting via Unicode `.trim()`.
+    const greetingName =
+      normalizePresentationGreetingFirstName(user?.name) || t("ask.greeting.fallbackName");
     const question = t("ask.suggestion.priorities");
     const reply = answerAskMise({
       question,
