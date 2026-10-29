@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareOrderSaleLineUid } from "../../../services/domain/squareOrderSaleLineUidIdentity.ts"; // MISE-005TD
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -296,7 +297,12 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
     const name = stringField(item, "name", 160) || "Untitled item";
     const quantity = Math.min(100000, Math.max(0, Number(item.quantity ?? 0)));
     if (!Number.isFinite(quantity) || quantity <= 0) continue;
-    const uid = stringField(item, "uid", 128) || String(index);
+    // MISE-005TD: pin line uid → source_record_id composition to ASCII C so
+    // Unicode `.trim()` cannot invent a clean durable sale line identity.
+    const uid =
+      normalizeSquareOrderSaleLineUid(
+        typeof item.uid === "string" ? item.uid : null
+      ) ?? String(index);
     const gross = moneyAmount(item.gross_sales_money) ?? moneyAmount(item.total_money) ?? 0;
     const net = moneyAmount(item.total_money) ?? gross;
     const variationId = stringField(item, "catalog_object_id", 128);
