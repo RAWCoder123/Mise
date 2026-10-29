@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareOAuthGrantedScopes } from "../../../services/domain/squareOAuthScopeIdentity.ts"; // MISE-005TP
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -388,11 +389,11 @@ function parseTokenSet(payload: Record<string, unknown>, requireRefresh: boolean
   if (requireRefresh && !refreshToken) {
     throw new SquareProviderError("refresh_token_missing", "reauthorize", 400);
   }
-  const scopeValue = stringField(payload, "scope", 2000) || "";
-  const grantedScopes = scopeValue
-    .split(/[,\s]+/u)
-    .map((scope) => scope.trim())
-    .filter(Boolean);
+  // MISE-005TP: pin OAuth scope → grantedScopes to ASCII C so Unicode
+  // `.trim()` cannot invent clean durable granted scope identity.
+  const grantedScopes = normalizeSquareOAuthGrantedScopes(
+    typeof payload.scope === "string" ? payload.scope : null
+  );
   for (const required of SQUARE_OAUTH_SCOPES) {
     if (!grantedScopes.includes(required)) {
       throw new SquareProviderError("square_scope_missing", "rejected", 403);
