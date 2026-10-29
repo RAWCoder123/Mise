@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareOrderSaleClosedAt } from "../../../services/domain/squareOrderSaleClosedAtIdentity.ts"; // MISE-005TM
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -282,9 +283,15 @@ export function normalizeOrderSales(order: unknown): SquareSaleRow[] {
   const record = order as Record<string, unknown>;
   const orderId = stringField(record, "id", 128);
   if (!orderId) return [];
+  // MISE-005TM: pin closed_at / created_at → sale_date to ASCII C so
+  // Unicode `.trim()` cannot invent a clean durable sale date.
   const closedAt =
-    stringField(record, "closed_at", 64) ||
-    stringField(record, "created_at", 64) ||
+    normalizeSquareOrderSaleClosedAt(
+      typeof record.closed_at === "string" ? record.closed_at : null
+    ) ||
+    normalizeSquareOrderSaleClosedAt(
+      typeof record.created_at === "string" ? record.created_at : null
+    ) ||
     new Date().toISOString();
   const saleDate = closedAt.slice(0, 10);
   const providerLocationId = stringField(record, "location_id", 128) || undefined;
