@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { Webhook } from "npm:svix@1";
 
 import { normalizeOutreachEmail, suppressionReasonForProviderEvent } from "../../../services/domain/outreach.ts";
+import { normalizeOutreachWebhookFromMailbox } from "../../../services/domain/outreachWebhookFromEmailIdentity.ts"; // MISE-005TU
 
 type JsonRecord = Record<string, unknown>;
 
@@ -201,7 +202,8 @@ function readProviderMessageId(data: JsonRecord) {
 
 function extractEmail(value: string) {
   const bracketed = value.match(/<([^<>\s@]+@[^<>\s@]+)>/);
-  const candidate = bracketed?.[1] ?? value.trim();
+  const candidate = bracketed?.[1] ?? normalizeOutreachWebhookFromMailbox(value);
+  if (!candidate) return null;
   const normalized = normalizeOutreachEmail(candidate);
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) ? normalized : null;
 }
