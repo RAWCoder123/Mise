@@ -28,6 +28,7 @@ import type {
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
+import { normalizePresentationGreetingFirstName } from "../../services/domain/presentationGreetingFirstNameIdentity";
 import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
@@ -771,7 +772,10 @@ function timingKey(timing: OperationalTodayTaskTiming): MessageKey {
 }
 
 function firstName(name: string | null | undefined) {
-  return name?.trim().split(/\s+/)[0] ?? "";
+  // MISE-005TW: pin Home presentation greeting firstName to ASCII C.
+  // Soft-null / Unicode-padded tokens fall through to the i18n fallback
+  // without inventing a clean first-name greeting via Unicode `.trim()`.
+  return normalizePresentationGreetingFirstName(name) ?? "";
 }
 
 // The greeting must read in the restaurant's timezone for the same reason the
