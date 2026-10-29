@@ -24,6 +24,7 @@ import { colors, conceptTypography, density, icon, iconStroke, radii } from "../
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import { presentationProfileInitialsFromSeed } from "../../services/domain/presentationProfileInitialsIdentity";
 import type { RestaurantRole } from "../../types/mise";
 
 const roleKeys: Record<RestaurantRole, MessageKey> = {
@@ -36,7 +37,7 @@ const roleKeys: Record<RestaurantRole, MessageKey> = {
 export default function MoreScreen() {
   const { t } = useLocale();
   const { role, user } = useMiseSession();
-  const initials = initialsFor(user?.name || user?.email || "Mise");
+  const initials = presentationProfileInitialsFromSeed(user?.name || user?.email || "Mise");
 
   return (
     <Screen title={t("nav.more")} titleAlign="left">
@@ -163,13 +164,6 @@ export default function MoreScreen() {
       </View>
     </Screen>
   );
-}
-
-function initialsFor(value: string) {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "M";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
 }
 
 const styles = StyleSheet.create({

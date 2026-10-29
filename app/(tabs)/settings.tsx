@@ -32,6 +32,7 @@ import { colors, conceptTypography, density, fontFamilies, icon, iconStroke, rad
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { LANGUAGE_OPTIONS, type MessageKey, type MessageValues } from "../../i18n/catalog";
+import { presentationProfileInitialsFromSeed } from "../../services/domain/presentationProfileInitialsIdentity";
 import { DEMO_DATASET } from "../../services/demoData";
 import {
   deleteAccount,
@@ -251,7 +252,9 @@ export default function SettingsScreen() {
 
         <View style={styles.accountHero}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initialsFor(user?.name || user?.email || "Mise")}</Text>
+            <Text style={styles.avatarText}>
+              {presentationProfileInitialsFromSeed(user?.name || user?.email || "Mise")}
+            </Text>
           </View>
           <View style={styles.accountHeroCopy}>
             <Text style={styles.accountHeroName}>{user?.name?.trim() || t("settings.account.title")}</Text>
@@ -600,13 +603,6 @@ function gmailConnectionBadge(connection: RestaurantEmailConnection | null, t: T
 
 function roleLabel(role: RestaurantRole, t: Translator) {
   return t(`settings.role.${role}` as MessageKey);
-}
-
-function initialsFor(value: string) {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "M";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
 }
 
 function serviceStyleLabel(style: RestaurantServiceStyle, t: Translator) {
