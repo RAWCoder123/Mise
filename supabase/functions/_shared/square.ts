@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareOAuthTokenEndpointErrorCode } from "../../../services/domain/squareOAuthTokenEndpointErrorCodeIdentity.ts"; // MISE-005TQ
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -420,7 +421,16 @@ function clampMoney(value: number) {
 }
 
 function tokenEndpointError(status: number, payload: Record<string, unknown>) {
-  const code = stringField(payload, "code", 80) || stringField(payload, "error", 80);
+  // MISE-005TQ: pin OAuth token-endpoint code/error to ASCII C so Unicode
+  // `.trim()` cannot invent clean `unauthorized_client` reauthorize disposition.
+  const code =
+    normalizeSquareOAuthTokenEndpointErrorCode(
+      typeof payload.code === "string" ? payload.code : null,
+    ) ||
+    normalizeSquareOAuthTokenEndpointErrorCode(
+      typeof payload.error === "string" ? payload.error : null,
+    ) ||
+    "";
   if (status === 401 || code === "unauthorized_client") {
     return new SquareProviderError("square_unauthorized", "reauthorize", status);
   }
