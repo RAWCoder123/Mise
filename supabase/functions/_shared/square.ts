@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareOAuthExpiresAt } from "../../../services/domain/squareOAuthExpiresAtIdentity.ts"; // MISE-005TO
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -401,7 +402,11 @@ function parseTokenSet(payload: Record<string, unknown>, requireRefresh: boolean
   return {
     accessToken,
     refreshToken: refreshToken || null,
-    expiresAt: stringField(payload, "expires_at", 64),
+    // MISE-005TO: pin OAuth expires_at → expiresAt to ASCII C so Unicode
+    // `.trim()` cannot invent a clean durable access-token expiry.
+    expiresAt: normalizeSquareOAuthExpiresAt(
+      typeof payload.expires_at === "string" ? payload.expires_at : null
+    ),
     merchantId,
     grantedScopes,
   };
