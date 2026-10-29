@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareMerchantId } from "../../../services/domain/squareMerchantIdIdentity.ts"; // MISE-005TF
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -381,7 +382,11 @@ function squareHeaders(accessToken: string) {
 function parseTokenSet(payload: Record<string, unknown>, requireRefresh: boolean): SquareTokenSet {
   const accessToken = stringField(payload, "access_token", 4096);
   const refreshToken = stringField(payload, "refresh_token", 4096);
-  const merchantId = stringField(payload, "merchant_id", 128);
+  // MISE-005TF: pin OAuth merchant_id → merchantId to ASCII C so Unicode
+  // `.trim()` cannot invent a clean durable merchant identity.
+  const merchantId = normalizeSquareMerchantId(
+    typeof payload.merchant_id === "string" ? payload.merchant_id : null
+  );
   if (!accessToken || !merchantId) {
     throw new SquareProviderError("token_response_invalid", "ambiguous", 502);
   }
