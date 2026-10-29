@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareLocationDisplayName } from "../../../services/domain/squareLocationDisplayNameIdentity.ts"; // MISE-005TK
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -190,7 +191,12 @@ export async function listSquareLocations(
       if (!row || typeof row !== "object") return null;
       const record = row as Record<string, unknown>;
       const id = stringField(record, "id", 128);
-      const name = stringField(record, "name", 200) || "Square location";
+      // MISE-005TK: pin location name → displayName to ASCII C so Unicode
+      // `.trim()` cannot invent a clean durable location display label.
+      const name =
+        normalizeSquareLocationDisplayName(
+          typeof record.name === "string" ? record.name : null
+        ) ?? "Square location";
       const timezone =
         typeof record.timezone === "string" && record.timezone.length <= 64
           ? record.timezone
