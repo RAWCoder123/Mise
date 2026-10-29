@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2";
+import { normalizeEdgeSentryContextString } from "../../../services/domain/edgeSentryContextIdentity.ts"; // MISE-005TS
 import {
   TELEMETRY_MAX_PAYLOAD_BYTES,
   buildTelemetryCorrelation,
@@ -412,7 +413,10 @@ function sanitizeMetadataValue(value: unknown, key = ""): unknown {
 }
 
 function safeContextString(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  // MISE-005TS: pin Edge Sentry capture-context tokens to ASCII C so Unicode
+  // `.trim()` cannot invent clean durable requestId / operationId / operation
+  // identities before buildTelemetryCorrelation and Sentry tags.
+  return normalizeEdgeSentryContextString(value) ?? undefined;
 }
 
 export const structuredInsightContract = {
