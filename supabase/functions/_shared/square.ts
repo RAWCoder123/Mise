@@ -1,6 +1,7 @@
 // Square OAuth and Orders/Catalog helpers for backend-only Edge Functions.
 // Access tokens stay ephemeral; refresh credentials live in Vault only.
 
+import { normalizeSquareCatalogItemExternalId } from "../../../services/domain/squareCatalogItemExternalIdIdentity.ts"; // MISE-005TH
 import { randomBase64Url, sha256Base64Url, sha256Hex } from "./gmail.ts";
 
 export { randomBase64Url, sha256Base64Url, sha256Hex };
@@ -328,7 +329,12 @@ export function normalizeCatalogItem(object: unknown): SquareCatalogRow[] {
       ? (record.item_data as Record<string, unknown>)
       : null;
   if (!itemData) return [];
-  const itemId = stringField(record, "id", 128);
+  // MISE-005TH: pin catalog item id → external_catalog_item_id to ASCII C so
+  // Unicode `.trim()` cannot invent a clean durable catalog item identity.
+  const itemId =
+    normalizeSquareCatalogItemExternalId(
+      typeof record.id === "string" ? record.id : null
+    ) ?? "";
   const itemName = stringField(itemData, "name", 160) || "Untitled item";
   const category =
     stringField(itemData, "product_type", 80) ||
