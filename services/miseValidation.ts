@@ -55,6 +55,7 @@ import type {
   InventoryEventInput,
   InventoryEventType
 } from "./domain/inventoryLedger";
+import { requireCanonicalInventoryCountLineItemId } from "./domain/inventoryCountLineItemIdentity";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
 import type {
   SupplierDeliveryItemRecord,
@@ -544,10 +545,13 @@ export function requireInventoryCountLineUpdates(
       throw new Error(`Count line ${index + 1} is invalid.`);
     }
     const row = entry as Record<string, unknown>;
-    const inventoryItemId = String(row.inventoryItemId ?? row.inventory_item_id ?? "").trim();
-    if (!inventoryItemId) {
-      throw new Error(`Count line ${index + 1} is missing an inventory item.`);
-    }
+    // MISE-005TT: pin count-line inventoryItemId to ASCII C so Unicode
+    // `.trim()` cannot invent a clean durable item identity before
+    // duplicate detection and save (`'\u2003tomatoes\u2003'.trim() === 'tomatoes'`).
+    const inventoryItemId = requireCanonicalInventoryCountLineItemId(
+      row.inventoryItemId ?? row.inventory_item_id,
+      index + 1
+    );
     if (seen.has(inventoryItemId)) {
       throw new Error(`Count line ${index + 1} duplicates an inventory item.`);
     }
