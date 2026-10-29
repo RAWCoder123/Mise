@@ -1,3 +1,5 @@
+import { normalizeOutreachGreetingFirstName } from "./outreachGreetingFirstNameIdentity"; // MISE-005TV
+
 export const OUTREACH_DAILY_SEND_LIMIT_MAX = 50;
 export const OUTREACH_FOLLOW_UP_MAX = 2;
 export const OUTREACH_BATCH_SIZE_MAX = 25;
@@ -196,7 +198,9 @@ export function suppressionReasonForProviderEvent(type: string) {
 }
 
 function firstName(value: string) {
-  return value.trim().split(/\s+/)[0]?.slice(0, 80) || "there";
+  // MISE-005TV: pin greeting first-name prep to ASCII C so Unicode `.trim()`
+  // cannot invent a clean durable fallback-draft greeting token.
+  return normalizeOutreachGreetingFirstName(value) || "there";
 }
 
 function weekdayNumber(value: string | undefined) {
