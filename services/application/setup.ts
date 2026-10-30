@@ -14,6 +14,7 @@ import {
   requireSupplierDisplayName
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
+import { presentationSetupInventoryQuantityParLabel } from "../domain/presentationSetupInventoryQuantityParLabelIdentity";
 import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
 
@@ -206,12 +207,21 @@ function validateSetupInput(input: SaveRestaurantSetupInput) {
     if (!supplierReferences.has(supplierReferenceId)) {
       throw new Error(`${item.name.trim() || "Inventory item"} requires a configured supplier.`);
     }
-    assertBoundedSetupNumber(item.quantity, 0, operatingLimits.inventoryQuantity, `${item.name || "Inventory item"} quantity`);
+    // MISE-005UO: ASCII C error-label prep — do not embed Unicode padding or
+    // invent a clean inventory name in quantity/par assertBounded Errors.
+    const quantityParLabel =
+      presentationSetupInventoryQuantityParLabel(item.name) || "Inventory item";
+    assertBoundedSetupNumber(
+      item.quantity,
+      0,
+      operatingLimits.inventoryQuantity,
+      `${quantityParLabel} quantity`
+    );
     assertBoundedSetupNumber(
       item.parLevel || item.quantity,
       0,
       operatingLimits.inventoryQuantity,
-      `${item.name || "Inventory item"} par level`
+      `${quantityParLabel} par level`
     );
   });
   input.recipes.forEach((recipe) => {
