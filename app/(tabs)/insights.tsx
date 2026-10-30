@@ -20,6 +20,7 @@ import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDe
 import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
 import type { InsightsSalesAnalytics } from "../../services/domain/insightsSalesAnalytics";
+import { presentationInsightsProfileCuisineType } from "../../services/domain/presentationInsightsProfileCuisineTypeIdentity";
 import {
   fetchDailyOperationalBrief,
   fetchInsights,
@@ -553,7 +554,7 @@ function SalesAnalyticsBoard({
           />
           <ProfileChip
             label={t("insights.analytics.profile.cuisine")}
-            value={cuisineType?.trim() || t("insights.analytics.profile.unknown")}
+            value={presentationInsightsProfileCuisineType(cuisineType) || t("insights.analytics.profile.unknown")}
           />
           <ProfileChip
             label={t("insights.analytics.profile.window")}
