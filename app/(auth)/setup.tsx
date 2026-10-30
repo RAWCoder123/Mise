@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { presentationSetupInventoryValidationLabel } from "../../services/domain/presentationSetupInventoryValidationLabelIdentity";
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -933,7 +934,9 @@ function validateSetupDrafts({
       item.name.trim() || item.quantity.trim() || item.parLevel.trim() || item.supplierId
     );
     if (!hasDraftData) continue;
-    const label = item.name.trim() || t("setup.validation.inventoryLabel", { count: formatNumber(index + 1) });
+    const label =
+      presentationSetupInventoryValidationLabel(item.name) ||
+      t("setup.validation.inventoryLabel", { count: formatNumber(index + 1) });
     if (!item.name.trim()) return setupValidationFailure("inventory", t("setup.validation.needsName", { item: label }));
     if (!item.quantity.trim()) return setupValidationFailure("inventory", t("setup.validation.needsQuantity", { item: label }));
     if (!item.unit.trim()) return setupValidationFailure("inventory", t("setup.validation.needsUnit", { item: label }));
