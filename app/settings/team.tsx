@@ -31,6 +31,10 @@ import {
   type AssignableTeamRole
 } from "../../services/domain/teamMembership";
 import {
+  presentationTeamDirectoryEmailLabel,
+  presentationTeamDirectoryMemberLabel
+} from "../../services/domain/presentationTeamDirectoryLabelIdentity";
+import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
@@ -288,10 +292,12 @@ export default function TeamSettingsScreen() {
                   </IconBadge>
                   <View style={styles.memberCopy}>
                     <Text style={styles.memberName}>
-                      {member.name?.trim() || member.email?.trim() || t("team.member.unnamed")}
+                      {presentationTeamDirectoryMemberLabel(member.name, member.email) || t("team.member.unnamed")}
                       {isSelf ? ` · ${t("team.member.you")}` : ""}
                     </Text>
-                    <Text style={styles.memberEmail}>{member.email?.trim() || t("team.member.emailMissing")}</Text>
+                    <Text style={styles.memberEmail}>
+                      {presentationTeamDirectoryEmailLabel(member.email) || t("team.member.emailMissing")}
+                    </Text>
                   </View>
                   <Badge label={t(roleKeys[member.role])} tone="neutral" />
                 </View>
