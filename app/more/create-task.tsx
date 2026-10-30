@@ -33,11 +33,13 @@ import {
   type RestaurantTaskServiceWindow,
   type RestaurantTaskVerificationMethod
 } from "../../services/miseService";
+import { presentationCreateTaskAssigneeLabel } from "../../services/domain/presentationCreateTaskAssigneeLabelIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
+
 import type { RestaurantTeamMember } from "../../types/mise";
 
 type FocusChoice = OperatorTaskFocusArea | "none";
@@ -555,7 +557,7 @@ export default function CreateOperatorTaskScreen() {
               {assignableTeam.map((member) => (
                 <ChoiceRow
                   key={member.user_id}
-                  label={member.name?.trim() || member.email?.trim() || t("operatorTasks.assignee.teammate")}
+                  label={presentationCreateTaskAssigneeLabel(member.name, member.email) || t("operatorTasks.assignee.teammate")}
                   detail={member.role}
                   selected={assigneeUserId === member.user_id}
                   onPress={() => setAssigneeUserId(member.user_id)}
