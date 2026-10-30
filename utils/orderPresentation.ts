@@ -1,4 +1,9 @@
 import type { SupplierOrder } from "../types/mise";
+import {
+  asciiTrimPresentationSupplierDraftLineLabel,
+  presentationSupplierDraftItemName,
+  presentationSupplierDraftQuantityLabel
+} from "../services/domain/presentationSupplierDraftLineIdentity";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "../services/domain/securityLimits";
 
 export interface SupplierDraftLine {
@@ -50,13 +55,18 @@ function scanSupplierOrderLines(orderMessage: string, maximumStoredLines: number
   while (cursor <= boundedMessage.length) {
     const nextBreak = boundedMessage.indexOf("\n", cursor);
     const end = nextBreak === -1 ? boundedMessage.length : nextBreak;
-    const rawLine = boundedMessage.slice(cursor, end).replace(/\r$/, "").trim();
+    const slicedLine = boundedMessage.slice(cursor, end).replace(/\r$/, "");
+    // ASCII end trim only — Unicode String#trim invents clean draft lines
+    // from NBSP/em-space padding before itemName/quantityLabel extraction.
+    const asciiLine = asciiTrimPresentationSupplierDraftLineLabel(slicedLine);
     cursor = nextBreak === -1 ? boundedMessage.length + 1 : nextBreak + 1;
-    if (!rawLine || nonItemLinePatterns.some((pattern) => pattern.test(rawLine))) continue;
+    // Soft-empty Unicode-only space lines the way prior `.trim()` emptiness did.
+    if (!asciiLine || !asciiLine.trim()) continue;
+    if (nonItemLinePatterns.some((pattern) => pattern.test(asciiLine))) continue;
 
-    const match = rawLine.match(/^(.+?)\s+[-–—]\s+(.+)$/);
-    const itemName = match?.[1]?.trim();
-    const quantityLabel = match?.[2]?.trim();
+    const match = asciiLine.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+    const itemName = presentationSupplierDraftItemName(match?.[1]);
+    const quantityLabel = presentationSupplierDraftQuantityLabel(match?.[2]);
     if (!itemName || !quantityLabel) continue;
 
     const estimatedCents = estimateLineCents(itemName, quantityLabel);
