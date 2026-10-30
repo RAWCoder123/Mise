@@ -14,6 +14,7 @@ import {
   requireSupplierDisplayName
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
+import { presentationSetupInventorySupplierRequiredLabel } from "../domain/presentationSetupInventorySupplierRequiredLabelIdentity";
 import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
 
@@ -204,7 +205,10 @@ function validateSetupInput(input: SaveRestaurantSetupInput) {
     if (!hasDraftData) return;
     const supplierReferenceId = requireSetupReferenceId(item.supplierId, "supplier");
     if (!supplierReferences.has(supplierReferenceId)) {
-      throw new Error(`${item.name.trim() || "Inventory item"} requires a configured supplier.`);
+      // MISE-005UM: ASCII C error-label prep — do not Unicode-trim invent a clean name.
+      throw new Error(
+        `${presentationSetupInventorySupplierRequiredLabel(item.name) || "Inventory item"} requires a configured supplier.`
+      );
     }
     assertBoundedSetupNumber(item.quantity, 0, operatingLimits.inventoryQuantity, `${item.name || "Inventory item"} quantity`);
     assertBoundedSetupNumber(
