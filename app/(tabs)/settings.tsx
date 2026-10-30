@@ -32,6 +32,7 @@ import { colors, conceptTypography, density, fontFamilies, icon, iconStroke, rad
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { LANGUAGE_OPTIONS, type MessageKey, type MessageValues } from "../../i18n/catalog";
+import { presentationProfileNameLabel } from "../../services/domain/presentationProfileNameLabelIdentity";
 import { DEMO_DATASET } from "../../services/demoData";
 import {
   deleteAccount,
@@ -254,7 +255,7 @@ export default function SettingsScreen() {
             <Text style={styles.avatarText}>{initialsFor(user?.name || user?.email || "Mise")}</Text>
           </View>
           <View style={styles.accountHeroCopy}>
-            <Text style={styles.accountHeroName}>{user?.name?.trim() || t("settings.account.title")}</Text>
+            <Text style={styles.accountHeroName}>{presentationProfileNameLabel(user?.name) || t("settings.account.title")}</Text>
             <Text style={styles.accountHeroMeta}>
               {localizedRole ?? t("settings.account.operator")}
             </Text>

@@ -24,6 +24,7 @@ import { colors, conceptTypography, density, icon, iconStroke, radii } from "../
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import { presentationProfileNameLabel } from "../../services/domain/presentationProfileNameLabelIdentity";
 import type { RestaurantRole } from "../../types/mise";
 
 const roleKeys: Record<RestaurantRole, MessageKey> = {
@@ -155,7 +156,7 @@ export default function MoreScreen() {
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
           <View style={styles.profileCopy}>
-            <Text style={styles.profileName}>{user?.name?.trim() || t("more.profile.fallbackName")}</Text>
+            <Text style={styles.profileName}>{presentationProfileNameLabel(user?.name) || t("more.profile.fallbackName")}</Text>
             <Text style={styles.profileMeta}>{role ? t(roleKeys[role]) : t("settings.account.operator")}</Text>
           </View>
           <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={iconStroke} />
