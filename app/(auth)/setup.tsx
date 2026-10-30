@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { presentationSetupSupplierChipLabel } from "../../services/domain/presentationSetupSupplierChipLabelIdentity";
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -632,7 +633,9 @@ function InventoryDraftRow({
         {suppliers.length > 0 ? (
           <View style={styles.chips}>
             {suppliers.map((supplier, index) => {
-              const label = supplier.name.trim() || t("setup.validation.supplierLabel", { count: String(index + 1) });
+              const label =
+                presentationSetupSupplierChipLabel(supplier.name) ||
+                t("setup.validation.supplierLabel", { count: String(index + 1) });
               return (
                 <ChoiceChip
                   key={supplier.id}
