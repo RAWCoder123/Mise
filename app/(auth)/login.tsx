@@ -22,6 +22,7 @@ import type { MessageKey } from "../../i18n/catalog";
 import { getInitialLoginCredentials } from "../../lib/appConfig";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { DEMO_DATASET } from "../../services/demoData";
+import { presentationLoginEmailChipLabel } from "../../services/domain/presentationLoginEmailChipLabelIdentity";
 import { captureMiseError } from "../../services/telemetry";
 
 type LoginStep = "identity" | "password";
@@ -274,7 +275,9 @@ export default function LoginScreen() {
                   }}
                   style={styles.emailChip}
                 >
-                  <Text style={styles.emailChipText}>{email.trim()}</Text>
+                  <Text style={styles.emailChipText}>
+                    {presentationLoginEmailChipLabel(email) || email}
+                  </Text>
                 </Pressable>
               </View>
               <View style={styles.field}>
