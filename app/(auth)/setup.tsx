@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { presentationSetupRecipeValidationLabel } from "../../services/domain/presentationSetupRecipeValidationLabelIdentity";
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -1002,7 +1003,9 @@ function validateSetupDrafts({
     );
     const hasDraftData = Boolean(recipe.dishName.trim() || startedIngredients.length > 0);
     if (!hasDraftData) continue;
-    const recipeLabel = recipe.dishName.trim() || t("setup.validation.recipeLabel", { count: formatNumber(recipeIndex + 1) });
+    const recipeLabel =
+      presentationSetupRecipeValidationLabel(recipe.dishName) ||
+      t("setup.validation.recipeLabel", { count: formatNumber(recipeIndex + 1) });
     if (!recipe.dishName.trim()) {
       return setupValidationFailure("recipes", t("setup.validation.recipeName", { recipe: recipeLabel }));
     }
