@@ -32,6 +32,7 @@ import {
   queueOperationalFindingDecision,
   summarizeInsights
 } from "../../services/miseService";
+import { presentationInsightsProfileRestaurantName } from "../../services/domain/presentationInsightsProfileRestaurantNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -545,7 +546,7 @@ function SalesAnalyticsBoard({
         <View style={styles.profileGrid}>
           <ProfileChip
             label={t("insights.analytics.profile.restaurant")}
-            value={restaurantName?.trim() || t("insights.analytics.profile.unknown")}
+            value={presentationInsightsProfileRestaurantName(restaurantName) || t("insights.analytics.profile.unknown")}
           />
           <ProfileChip
             label={t("insights.analytics.profile.service")}
