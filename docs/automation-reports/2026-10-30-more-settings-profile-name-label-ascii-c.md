@@ -34,11 +34,12 @@ alone.
 
 ## Verification
 
-- `npm run typecheck`: (recorded after run)
-- `npm run security:static`: (recorded after run)
-- `npm run security:backend`: (recorded after run)
-- focused More/Settings profile name label ASCII C tests: (recorded after run)
-- `npm test`: (recorded after run)
+- `npm run typecheck`: passed
+- `npm run security:static`: passed
+- `npm run security:backend`: passed
+- focused More/Settings profile name label ASCII C tests: 3/3
+- `npm test`: 686 total / 679 pass / 0 fail / 7 cancelled (inherited
+  recalculationCycles `withTimeout`); tip +3 vs main ~683
 - Docker pgTAP unavailable in this environment
 
 ## Do not
