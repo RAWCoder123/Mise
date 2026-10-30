@@ -32,6 +32,7 @@ import { colors, conceptTypography, density, fontFamilies, icon, iconStroke, rad
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { LANGUAGE_OPTIONS, type MessageKey, type MessageValues } from "../../i18n/catalog";
+import { presentationSettingsAccountEmailLabel } from "../../services/domain/presentationSettingsAccountEmailLabelIdentity";
 import { DEMO_DATASET } from "../../services/demoData";
 import {
   deleteAccount,
@@ -258,7 +259,7 @@ export default function SettingsScreen() {
             <Text style={styles.accountHeroMeta}>
               {localizedRole ?? t("settings.account.operator")}
             </Text>
-            <Text style={styles.accountHeroEmail}>{user?.email?.trim() || t("settings.account.emailMissing")}</Text>
+            <Text style={styles.accountHeroEmail}>{presentationSettingsAccountEmailLabel(user?.email) || t("settings.account.emailMissing")}</Text>
           </View>
         </View>
 
