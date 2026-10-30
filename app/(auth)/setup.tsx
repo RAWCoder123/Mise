@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { presentationSetupIngredientValidationLabel } from "../../services/domain/presentationSetupIngredientValidationLabelIdentity";
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -1011,7 +1012,9 @@ function validateSetupDrafts({
     }
 
     for (const [ingredientIndex, ingredient] of startedIngredients.entries()) {
-      const ingredientLabel = ingredient.itemName.trim() || t("setup.validation.ingredientLabel", { count: formatNumber(ingredientIndex + 1) });
+      const ingredientLabel =
+        presentationSetupIngredientValidationLabel(ingredient.itemName) ||
+        t("setup.validation.ingredientLabel", { count: formatNumber(ingredientIndex + 1) });
       if (!ingredient.itemName.trim() || !ingredient.quantity.trim() || !ingredient.unit.trim()) {
         return setupValidationFailure(
           "recipes",
