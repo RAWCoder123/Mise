@@ -31,7 +31,7 @@ alone.
 ## Verification
 
 - Focused AsciiC 3/3
-- `npm run typecheck`
-- `npm run security:static` / `security:backend`
-- `npm test`
+- `npm run typecheck` pass
+- `npm run security:static` / `security:backend` pass
+- `npm test`: 686 total / 679 pass / 0 fail / 7 cancelled (inherited recalculationCycles)
 - Docker pgTAP unavailable in this environment
