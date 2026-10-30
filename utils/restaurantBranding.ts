@@ -1,4 +1,5 @@
 import { colors } from "../constants/theme";
+import { presentationRestaurantInitialsFromSeed } from "../services/domain/presentationRestaurantInitialsIdentity";
 import type { Restaurant, RestaurantServiceStyle } from "../types/mise";
 
 export function restaurantBrandColor(restaurant?: Restaurant | null) {
@@ -10,13 +11,7 @@ export function restaurantAccentColor(restaurant?: Restaurant | null) {
 }
 
 export function restaurantInitials(restaurant?: Restaurant | null) {
-  const name = restaurant?.name?.trim();
-  if (!name) return "M";
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
+  return presentationRestaurantInitialsFromSeed(restaurant?.name);
 }
 
 export function serviceStyleLabel(value?: RestaurantServiceStyle | null) {
