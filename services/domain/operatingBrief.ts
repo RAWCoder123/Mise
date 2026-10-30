@@ -22,6 +22,7 @@ import {
   resolveInventoryHealthLabel,
   type InventoryHealthLabel
 } from "./operationalStatus";
+import { requireCanonicalOperatingBriefDomainRestaurantId } from "./operatingBriefDomainRestaurantIdentity";
 
 export type RestaurantPulseStatus = "on_track" | "attention_needed" | "at_risk";
 
@@ -522,8 +523,8 @@ function pulseStatus(input: {
 }
 
 export function buildOperatingBrief(input: OperatingBriefInput): OperatingBrief {
-  const restaurantId = input.restaurant.id.trim();
-  if (!restaurantId) throw new Error("Operating brief requires a restaurant id.");
+  // MISE-005UN: ASCII-C domain restaurant workspace identity for buildOperatingBrief.
+  const restaurantId = requireCanonicalOperatingBriefDomainRestaurantId(input.restaurant.id);
 
   requireScoped(input.sales, restaurantId, "Sales");
   requireScoped(input.inventoryItems, restaurantId, "Inventory");
