@@ -1,3 +1,5 @@
+import { boundedCanonicalPurchaseAuthorityDescription } from "./purchaseAuthorityDescriptionIdentity";
+
 export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "inventory_count_missing",
   "inventory_count_stale",
@@ -89,7 +91,9 @@ export function normalizePurchaseAuthorityResult(value: unknown): PurchaseAuthor
         : {};
       return [{
         code: blocker.code as PurchaseAuthorityBlockerCode,
-        description: boundedString(blocker.description, 240) || "Purchase evidence needs attention.",
+        // MISE-005UQ: pin blocker description to ASCII C display prep (see
+        // purchaseAuthorityDescriptionIdentity).
+        description: boundedCanonicalPurchaseAuthorityDescription(blocker.description),
         metadata
       }];
     })
