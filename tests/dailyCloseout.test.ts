@@ -86,3 +86,46 @@ test("daily closeout normalizes invalid counts and rejects ambiguous identity", 
     /operating date/i
   );
 });
+
+test("daily closeout fails closed on Unicode-padded or invalid restaurant timezones", () => {
+  // Em-space padding stays truthy through the emptiness gate. Without Intl
+  // validation, hourInTimeZone would silently fall back to UTC and could invent
+  // a closing-window phase for the wrong local hour.
+  const padded = `\u2003${base.restaurantTimeZone}\u2003`;
+  assert.equal(padded.trim(), base.restaurantTimeZone);
+  assert.throws(
+    () =>
+      buildDailyCloseoutSummary({
+        ...base,
+        restaurantTimeZone: padded,
+        completedTasks: 6,
+        now: new Date("2026-08-04T01:00:00.000Z")
+      }),
+    /valid restaurant timezone/i
+  );
+  assert.throws(
+    () =>
+      buildDailyCloseoutSummary({
+        ...base,
+        restaurantTimeZone: "\u2003",
+        now: new Date("2026-08-03T17:00:00.000Z")
+      }),
+    /timezone/i
+  );
+  assert.throws(
+    () =>
+      buildDailyCloseoutSummary({
+        ...base,
+        restaurantTimeZone: "Not/A_Real_Zone",
+        now: new Date("2026-08-03T17:00:00.000Z")
+      }),
+    /valid restaurant timezone/i
+  );
+
+  const valid = buildDailyCloseoutSummary({
+    ...base,
+    completedTasks: 6,
+    now: new Date("2026-08-04T01:00:00.000Z")
+  });
+  assert.equal(valid.phase, "closing");
+});
