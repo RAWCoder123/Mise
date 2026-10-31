@@ -319,6 +319,64 @@ test("supplier grouping is tenant-safe and uses the restaurant calendar for tomo
   assert.doesNotMatch(produceDraft.order_message, /Pending|Foreign item/);
 });
 
+test("supplier draft generation fails closed on omitted, Unicode-padded, or invalid restaurant timezones", () => {
+  // At 2026-10-31T22:30:00.000Z a valid Asia/Tokyo next delivery date is 2026-11-02.
+  // Omitted / invalid / em-space-padded zones previously invented UTC next-day
+  // 2026-11-01 via `options.timeZone ?? "UTC"` and toDateKeyInTimeZone's catch fallback.
+  const restaurantId = "restaurant-draft-timezone";
+  const when = new Date("2026-10-31T22:30:00.000Z");
+  const approved = [
+    approvedRecommendation("zucchini", restaurantId, "Fresh Foods", "Zucchini")
+  ];
+
+  const tokyo = buildDraftsFromRecommendations(restaurantId, approved, {
+    now: when,
+    timeZone: "Asia/Tokyo"
+  });
+  assert.equal(tokyo.length, 1);
+  assert.equal(tokyo[0]?.delivery_date, "2026-11-02");
+  assert.equal(nextDateKeyInTimeZone(when, "UTC"), "2026-11-01");
+
+  const padded = "\u2003Asia/Tokyo\u2003";
+  assert.equal(padded.trim(), "Asia/Tokyo");
+  assert.throws(
+    () =>
+      buildDraftsFromRecommendations(restaurantId, approved, {
+        now: when,
+        timeZone: padded
+      }),
+    /valid restaurant timezone/i
+  );
+  assert.throws(
+    () =>
+      buildDraftsFromRecommendations(restaurantId, approved, {
+        now: when,
+        timeZone: "\u2003"
+      }),
+    /timezone/i
+  );
+  assert.throws(
+    () =>
+      buildDraftsFromRecommendations(restaurantId, approved, {
+        now: when,
+        timeZone: ""
+      }),
+    /timezone/i
+  );
+  assert.throws(
+    () => buildDraftsFromRecommendations(restaurantId, approved, { now: when }),
+    /timezone/i
+  );
+  assert.throws(
+    () =>
+      buildDraftsFromRecommendations(restaurantId, approved, {
+        now: when,
+        timeZone: "Not/A_Real_Zone"
+      }),
+    /valid restaurant timezone/i
+  );
+});
+
 test("equal-timestamp handling suppresses duplicates and recommendation rebuilds are replay-safe", () => {
   const restaurantId = "restaurant-suppression";
   const item = inventoryItem("low-item", restaurantId, 5);

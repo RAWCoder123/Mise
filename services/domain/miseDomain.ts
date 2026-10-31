@@ -1197,7 +1197,10 @@ export function buildDraftsFromRecommendations(
     });
 
   const now = options.now ?? new Date();
-  const timeZone = options.timeZone ?? "UTC";
+  // Fail closed before nextDateKeyInTimeZone / toDateKeyInTimeZone can invent a
+  // UTC calendar delivery day for omitted, empty, Unicode-padded, or otherwise
+  // invalid restaurant timezones.
+  const timeZone = requireRestaurantTimeZoneForDrafts(options.timeZone);
   return [...grouped.entries()].map(([supplierId, items]) => {
     const supplierName = items[0]?.supplier_name ?? "Supplier";
     const deliveryDate = nextDateKeyInTimeZone(now, timeZone);
@@ -1213,6 +1216,24 @@ export function buildDraftsFromRecommendations(
       created_at: now.toISOString()
     };
   });
+}
+
+/**
+ * Fail closed before draft delivery dates can silently invent a UTC calendar
+ * day. Emptiness uses `.trim()` only as a Boolean gate; Intl validates the raw
+ * IANA value so Unicode padding cannot invent a usable restaurant timezone.
+ * Do not default omitted zones to `"UTC"`.
+ */
+function requireRestaurantTimeZoneForDrafts(timeZone: string | undefined): string {
+  if (typeof timeZone !== "string" || !timeZone.trim()) {
+    throw new Error("Supplier draft generation requires a restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Supplier draft generation requires a valid restaurant timezone.");
+  }
+  return timeZone;
 }
 
 export function buildSupplierOrderMessage(
