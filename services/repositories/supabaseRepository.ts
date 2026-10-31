@@ -58,6 +58,7 @@ import {
   recordRecalculationRunRpcArguments,
   type PersistedRecalculationRunRow
 } from "../domain/recalculationRunTransport";
+import { requireCanonicalRestaurantTasksHostedRestaurantId } from "./restaurantTasksHostedRestaurantIdentity";
 import type { SupplierDeliveryRecordResult } from "./repositoryContracts";
 import type {
   SupplierDeliveryItemRecord,
@@ -2014,9 +2015,14 @@ export function createSupabaseRepository(): MiseRepository {
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantTaskRow | null;
       if (!row) throw new Error("Task creation returned an empty response.");
-      const dependencyIds = await loadRestaurantTaskDependencyIds(input.restaurantId.trim(), row.id);
+      // MISE-005VA: pin hosted create restaurant workspace to ASCII C (see
+      // restaurantTasksHostedRestaurantIdentity).
+      const restaurantId = requireCanonicalRestaurantTasksHostedRestaurantId(
+        input.restaurantId
+      );
+      const dependencyIds = await loadRestaurantTaskDependencyIds(restaurantId, row.id);
       const task = restaurantTaskFromPersistedRow(row, dependencyIds);
-      if (task.restaurantId !== input.restaurantId.trim()) {
+      if (task.restaurantId !== restaurantId) {
         throw new Error("Restaurant task failed restaurant scope validation.");
       }
       return task;
@@ -2030,9 +2036,14 @@ export function createSupabaseRepository(): MiseRepository {
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantTaskRow | null;
       if (!row) throw new Error("Task completion returned an empty response.");
-      const dependencyIds = await loadRestaurantTaskDependencyIds(input.restaurantId.trim(), row.id);
+      // MISE-005VA: pin hosted complete restaurant workspace to ASCII C (see
+      // restaurantTasksHostedRestaurantIdentity).
+      const restaurantId = requireCanonicalRestaurantTasksHostedRestaurantId(
+        input.restaurantId
+      );
+      const dependencyIds = await loadRestaurantTaskDependencyIds(restaurantId, row.id);
       const task = restaurantTaskFromPersistedRow(row, dependencyIds);
-      if (task.restaurantId !== input.restaurantId.trim()) {
+      if (task.restaurantId !== restaurantId) {
         throw new Error("Restaurant task failed restaurant scope validation.");
       }
       return task;
