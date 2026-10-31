@@ -183,8 +183,14 @@ export function formatLocalizedDueTime(
   }
 
   const dayDifference = calendarDayDifference(now, targetDate, options.timeZone);
-  if (dayDifference === 0) return translate(locale, "relative.today");
-  if (dayDifference === 1) return translate(locale, "relative.tomorrow");
+  if (dayDifference === null) {
+    // A provided timezone that cannot form a restaurant calendar day must not
+    // invent Today / Tomorrow / a runtime-local date via UTC or default-zone fallbacks.
+    if (typeof options.timeZone === "string") return "—";
+  } else {
+    if (dayDifference === 0) return translate(locale, "relative.today");
+    if (dayDifference === 1) return translate(locale, "relative.tomorrow");
+  }
 
   return formatLocalizedDate(locale, targetDate, {
     month: "short",
@@ -238,7 +244,8 @@ function dateKeyInTimeZone(date: Date, timeZone?: string): string | null {
     const day = values.get("day");
     return year && month && day ? `${year}-${month}-${day}` : null;
   } catch {
-    return date.toISOString().slice(0, 10);
+    // Invalid or Unicode-padded IANA names must not invent a UTC calendar day.
+    return null;
   }
 }
 
