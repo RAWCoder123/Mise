@@ -35,9 +35,7 @@ export function buildDailyCloseoutSummary(input: DailyCloseoutInput): DailyClose
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.operatingDate)) {
     throw new Error("Daily closeout requires a valid operating date.");
   }
-  if (!input.restaurantTimeZone.trim()) {
-    throw new Error("Daily closeout requires a restaurant timezone.");
-  }
+  requireRestaurantTimeZone(input.restaurantTimeZone);
 
   const completedTasks = boundedCount(input.completedTasks);
   const remainingTasks =
@@ -81,4 +79,21 @@ function boundedCount(value: number) {
 
 function boundedHour(value: number | undefined, fallback: number) {
   return Number.isInteger(value) && value! >= 0 && value! <= 23 ? value! : fallback;
+}
+
+/**
+ * Fail closed before `hourInTimeZone` can silently fall back to UTC.
+ * Emptiness uses `.trim()` only as a Boolean gate; the raw timezone is what
+ * Intl validates. Unicode-padded or otherwise invalid IANA names reject here
+ * instead of inventing a wrong restaurant-local closeout phase via UTC.
+ */
+function requireRestaurantTimeZone(timeZone: string) {
+  if (!timeZone.trim()) {
+    throw new Error("Daily closeout requires a restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Daily closeout requires a valid restaurant timezone.");
+  }
 }
