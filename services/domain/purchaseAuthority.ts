@@ -1,3 +1,5 @@
+import { normalizeCanonicalPurchaseAuthorityEvaluatedAt } from "./purchaseAuthorityEvaluatedAtIdentity";
+
 export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "inventory_count_missing",
   "inventory_count_stale",
@@ -94,7 +96,8 @@ export function normalizePurchaseAuthorityResult(value: unknown): PurchaseAuthor
       }];
     })
     : [];
-  const evaluatedAt = boundedString(payload.evaluatedAt, 80);
+  // MISE-005UR: ASCII-C evaluation timestamp for purchase-authority results.
+  const evaluatedAt = normalizeCanonicalPurchaseAuthorityEvaluatedAt(payload.evaluatedAt);
   const planningRevision = finiteInteger(payload.planningRevision);
   const recipeRevisions = evidencePayload.recipeRevisions && typeof evidencePayload.recipeRevisions === "object"
     && !Array.isArray(evidencePayload.recipeRevisions)
