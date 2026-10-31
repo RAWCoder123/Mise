@@ -149,6 +149,7 @@ export function buildDailyOperatingPlan(input: BuildDailyOperatingPlanInput): Da
   if (!validDateKey(input.operatingDate)) {
     throw new Error("Operating plan requires a valid operating date.");
   }
+  requireRestaurantTimeZone(input.restaurantTimeZone);
 
   const now = validNow(input.now);
   const dueSoonWindowMs = validDueSoonWindow(input.dueSoonWindowMs);
@@ -409,6 +410,23 @@ export function hourInTimeZone(date: Date, timeZone: string): number {
     // Invalid timezones fall through to UTC.
   }
   return date.getUTCHours();
+}
+
+/**
+ * Fail closed before `hourInTimeZone` can silently fall back to UTC.
+ * Emptiness uses `.trim()` only as a Boolean gate; the raw timezone is what
+ * Intl validates. Unicode-padded or otherwise invalid IANA names reject here
+ * instead of inventing the wrong restaurant-local service window via UTC.
+ */
+function requireRestaurantTimeZone(timeZone: string) {
+  if (!timeZone.trim()) {
+    throw new Error("Operating plan requires a restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Operating plan requires a valid restaurant timezone.");
+  }
 }
 
 function evidenceFromPrepWindows(prepWindows: readonly string[]): Map<ServiceWindowId, string> {
