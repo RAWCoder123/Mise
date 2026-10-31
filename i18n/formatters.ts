@@ -84,11 +84,9 @@ export function formatLocalizedCurrency(
       ...options
     }).format(value);
   } catch {
-    return new Intl.NumberFormat(intlLocaleFor(locale), {
-      style: "currency",
-      currency: "USD",
-      ...options
-    }).format(value);
+    // Never replace a rejected currency with USD — that invents a dollar
+    // amount for padded, empty, or invalid restaurant currency codes. Fail closed.
+    return "—";
   }
 }
 
