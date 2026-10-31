@@ -58,6 +58,7 @@ import {
   recordRecalculationRunRpcArguments,
   type PersistedRecalculationRunRow
 } from "../domain/recalculationRunTransport";
+import { requireCanonicalRecalculationRecordRestaurantId } from "./recalculationRecordRestaurantIdentity";
 import type { SupplierDeliveryRecordResult } from "./repositoryContracts";
 import type {
   SupplierDeliveryItemRecord,
@@ -2085,7 +2086,12 @@ export function createSupabaseRepository(): MiseRepository {
       const row = (Array.isArray(data) ? data[0] : data) as PersistedRecalculationRunRow | null;
       if (!row) throw new Error("Recalculation run recording returned an empty response.");
       const run = recalculationRunFromPersistedRow(row);
-      if (run.restaurantId !== input.restaurantId.trim()) {
+      // MISE-005VB: pin hosted record restaurant workspace to ASCII C (see
+      // recalculationRecordRestaurantIdentity). Leave transport #734 alone.
+      const restaurantId = requireCanonicalRecalculationRecordRestaurantId(
+        input.restaurantId
+      );
+      if (run.restaurantId !== restaurantId) {
         throw new Error("Recalculation run failed restaurant scope validation.");
       }
       return run;
