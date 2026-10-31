@@ -55,8 +55,13 @@ test("number, currency, and date helpers honor locale and restaurant settings", 
   assert.equal(formatLocalizedList("es", ["lunes", "jueves"]), "lunes y jueves");
   assert.match(formatLocalizedCurrency("en", 12.5, "USD"), /\$12\.50/);
   assert.match(formatLocalizedCurrency("es", 12.5, "EUR"), /12,50\s ?€/);
+  // Invalid / Unicode-padded currencies must not invent USD pricing.
+  assert.equal(formatLocalizedCurrency("en", 12.5, "\u2003EUR\u2003"), "—");
+  assert.equal(formatLocalizedCurrency("en", 12.5, "NotACurrency"), "—");
+  assert.equal(formatLocalizedCurrency("en", 12.5, ""), "—");
   assert.equal(formatLocalizedCompactCurrency("en", 7898, "USD"), "$7.9K");
   assert.equal(formatLocalizedCompactCurrency("zh-Hans", 7898, "USD"), "$7.9千");
+  assert.equal(formatLocalizedCompactCurrency("en", 7898, "\u2003EUR\u2003"), "—");
   assert.equal(
     formatLocalizedDate("en", "2026-07-20T01:00:00.000Z", {
       month: "short",
