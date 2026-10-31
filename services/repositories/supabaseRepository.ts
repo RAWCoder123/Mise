@@ -134,6 +134,7 @@ import {
   type SupplierSendContentApprovalResult,
   type SupplierOrderEmailSendResult
 } from "./repositoryContracts";
+import { normalizeRecipeAuthorityMenuItemId } from "./recipeAuthorityMenuItemIdIdentity";
 
 const hostedUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -214,7 +215,14 @@ function parseRecipeAuthorityState(value: unknown): RecipeAuthorityState {
   const payload = value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
-  const menuItemId = typeof payload.menuItemId === "string" ? payload.menuItemId : "";
+  // MISE-005UY: pin recipe-authority hydrate menuItemId to ASCII C.
+  // Soft empty / Unicode-padded / control-bearing tokens soft to "" so the
+  // existing invalid-response gate fails closed without inventing a clean
+  // durable id via Unicode `.trim()` (or storing raw Unicode padding).
+  const menuItemId =
+    normalizeRecipeAuthorityMenuItemId(
+      typeof payload.menuItemId === "string" ? payload.menuItemId : null
+    ) ?? "";
   const menuItemName = typeof payload.menuItemName === "string" ? payload.menuItemName.trim() : "";
   const recipeRevision = Number(payload.recipeRevision);
   const confirmedRevision = payload.confirmedRevision === null || payload.confirmedRevision === undefined
