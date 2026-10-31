@@ -53,7 +53,8 @@ drop #979's assertion that recipe ingredient labels still use raw
 
 ## Verification
 
-- Focused AsciiC tests
-- `npm run typecheck`
-- `npm run security:static` / `npm run security:backend`
-- `npm test`
+- Focused AsciiC: 3/3 pass
+- `npm run typecheck` pass
+- `npm run security:static` / `npm run security:backend` pass
+- `npm test`: 686 total / 679 pass / 0 fail / 7 cancelled (inherited recalculationCycles)
+- Docker pgTAP unavailable in this environment
