@@ -762,11 +762,11 @@ test("supplier drafts group approved recommendations by supplier", () => {
     status: "dismissed" as const
   };
 
-  const drafts = buildDraftsFromRecommendations(DEMO_RESTAURANT_ID, [
-    ...approvedInserts,
-    orderedHistory,
-    dismissedHistory
-  ]);
+  const drafts = buildDraftsFromRecommendations(
+    DEMO_RESTAURANT_ID,
+    [...approvedInserts, orderedHistory, dismissedHistory],
+    { timeZone: DEMO_RESTAURANT_TIME_ZONE }
+  );
   const summary = buildOrderQueueSummary(DEMO_RESTAURANT_ID, pendingRecommendations, drafts);
 
   assert.equal(drafts.length, new Set(pendingRecommendations.map((insert) => insert.supplier_id)).size);
@@ -795,7 +795,9 @@ test("order queue summary counts draft suppliers when recommendations are cleare
     status: "approved" as const,
     created_at: new Date().toISOString()
   }));
-  const drafts = buildDraftsFromRecommendations(DEMO_RESTAURANT_ID, approvedRecommendations);
+  const drafts = buildDraftsFromRecommendations(DEMO_RESTAURANT_ID, approvedRecommendations, {
+    timeZone: DEMO_RESTAURANT_TIME_ZONE
+  });
   const summary = buildOrderQueueSummary(DEMO_RESTAURANT_ID, [], drafts);
 
   assert.equal(summary.pendingItems, 0);
