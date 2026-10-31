@@ -14,6 +14,7 @@ import {
   requireSupplierDisplayName
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
+import { presentationSetupRecipeIngredientQuantityLabel } from "../domain/presentationSetupRecipeIngredientQuantityLabelIdentity";
 import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
 
@@ -216,11 +217,17 @@ function validateSetupInput(input: SaveRestaurantSetupInput) {
   });
   input.recipes.forEach((recipe) => {
     recipe.ingredients.forEach((ingredient) => {
+      // MISE-005UP: ASCII C error-label prep — do not embed Unicode padding or
+      // invent a clean recipe ingredient name in quantity-per-sale
+      // assertBounded Errors.
+      const quantityPerSaleLabel =
+        presentationSetupRecipeIngredientQuantityLabel(ingredient.itemName) ||
+        "Recipe ingredient";
       assertBoundedSetupNumber(
         ingredient.quantity,
         0,
         operatingLimits.recipeQuantityPerSale,
-        `${ingredient.itemName || "Recipe ingredient"} quantity per sale`
+        `${quantityPerSaleLabel} quantity per sale`
       );
     });
   });
