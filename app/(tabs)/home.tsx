@@ -27,7 +27,7 @@ import type {
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
-import { hourInTimeZone } from "../../services/domain/operatingPlan";
+import { greetingPeriodForNow } from "../../services/domain/homeGreeting";
 import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
@@ -194,7 +194,7 @@ export default function HomeScreen() {
         {/* The restaurant chip lives in the brand chrome (see Screen.tsx), the
             way the concept binds it to the wordmark. */}
         <View style={styles.greetingBlock}>
-          <Text style={styles.greeting}>{t(greetingKeyForNow(restaurant.timezone), { name: greetingName })}</Text>
+          <Text style={styles.greeting}>{t(greetingKeyForRestaurant(restaurant.timezone), { name: greetingName })}</Text>
           <Text style={styles.greetingSubtext} numberOfLines={2}>
             {t("home.greeting.subtext", { restaurant: restaurant.name })}
           </Text>
@@ -777,11 +777,15 @@ function firstName(name: string | null | undefined) {
 // The greeting must read in the restaurant's timezone for the same reason the
 // activity log does: a manager away from the site would otherwise be greeted
 // against their own device clock rather than the service they are running.
-function greetingKeyForNow(timeZone: string): MessageKey {
-  const hour = hourInTimeZone(new Date(), timeZone);
-  if (hour < 12) return "home.greeting.morning";
-  if (hour < 17) return "home.greeting.afternoon";
-  return "home.greeting.evening";
+// Invalid or Unicode-padded IANA names fail closed in domain instead of
+// inventing morning/afternoon/evening via hourInTimeZone's UTC fallback; the
+// UI then uses a time-neutral hello rather than crashing Home.
+function greetingKeyForRestaurant(timeZone: string): MessageKey {
+  try {
+    return `home.greeting.${greetingPeriodForNow(timeZone)}`;
+  } catch {
+    return "home.greeting.hello";
+  }
 }
 
 function operatingBriefSeenKey(restaurantId: string) {
