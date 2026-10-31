@@ -75,9 +75,10 @@ export function buildDailyPhaseBriefs(input: {
     throw new Error("Daily phase briefs require one operating date.");
   }
   const timeZone = input.operatingPlan.restaurantTimeZone;
-  if (input.dailyReport.day.restaurantTimeZone !== timeZone || !timeZone.trim()) {
+  if (input.dailyReport.day.restaurantTimeZone !== timeZone) {
     throw new Error("Daily phase briefs require one restaurant timezone.");
   }
+  requireRestaurantTimeZone(timeZone);
   const now = input.now instanceof Date && Number.isFinite(input.now.getTime())
     ? input.now
     : new Date();
@@ -482,4 +483,21 @@ function salesTrendInterpretation(report: DailyOpsReport) {
     return `Recorded sales are ${delta.toFixed(2)} below the prior service baseline. Review mix and prep before changing tomorrow's plan.`;
   }
   return "Recorded sales are level with the prior service baseline; no forecast accuracy is being inferred.";
+}
+
+/**
+ * Fail closed before `hourInTimeZone` can silently fall back to UTC.
+ * Emptiness uses `.trim()` only as a Boolean gate; the raw timezone is what
+ * Intl validates. Unicode-padded or otherwise invalid IANA names reject here
+ * instead of inventing the wrong restaurant-local daily brief phase via UTC.
+ */
+function requireRestaurantTimeZone(timeZone: string) {
+  if (!timeZone.trim()) {
+    throw new Error("Daily phase briefs require one restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Daily phase briefs require a valid restaurant timezone.");
+  }
 }

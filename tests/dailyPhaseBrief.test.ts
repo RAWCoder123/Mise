@@ -115,6 +115,70 @@ test("phase brief identity and operating-date mismatches fail closed", () => {
   );
 });
 
+test("daily phase briefs fail closed on Unicode-padded or invalid restaurant timezones", () => {
+  // Em-space padding stays truthy through the emptiness gate. Without Intl
+  // validation, hourInTimeZone would silently fall back to UTC and invent
+  // pre_service (UTC hour 13) instead of morning (America/New_York hour 9).
+  const evidence = fixtures();
+  const padded = `\u2003${evidence.operatingPlan.restaurantTimeZone}\u2003`;
+  assert.equal(padded.trim(), evidence.operatingPlan.restaurantTimeZone);
+  const inventingNow = new Date("2026-08-03T13:00:00.000Z");
+
+  assert.throws(
+    () =>
+      buildDailyPhaseBriefs({
+        restaurantId,
+        ...evidence,
+        operatingPlan: { ...evidence.operatingPlan, restaurantTimeZone: padded },
+        dailyReport: {
+          ...evidence.dailyReport,
+          day: { ...evidence.dailyReport.day, restaurantTimeZone: padded }
+        },
+        now: inventingNow
+      }),
+    /valid restaurant timezone/i
+  );
+  assert.throws(
+    () =>
+      buildDailyPhaseBriefs({
+        restaurantId,
+        ...evidence,
+        operatingPlan: { ...evidence.operatingPlan, restaurantTimeZone: "\u2003" },
+        dailyReport: {
+          ...evidence.dailyReport,
+          day: { ...evidence.dailyReport.day, restaurantTimeZone: "\u2003" }
+        },
+        now: inventingNow
+      }),
+    /timezone/i
+  );
+  assert.throws(
+    () =>
+      buildDailyPhaseBriefs({
+        restaurantId,
+        ...evidence,
+        operatingPlan: {
+          ...evidence.operatingPlan,
+          restaurantTimeZone: "Not/A_Real_Zone"
+        },
+        dailyReport: {
+          ...evidence.dailyReport,
+          day: { ...evidence.dailyReport.day, restaurantTimeZone: "Not/A_Real_Zone" }
+        },
+        now: inventingNow
+      }),
+    /valid restaurant timezone/i
+  );
+
+  const valid = buildDailyPhaseBriefs({
+    restaurantId,
+    ...evidence,
+    now: inventingNow
+  });
+  assert.equal(valid.activePhase, "morning");
+  assert.equal(valid.restaurantTimeZone, "America/New_York");
+});
+
 function fixtures(options: { allTasksComplete?: boolean } = {}) {
   const item = planItem(options.allTasksComplete ? "completed" : "open");
   const plan: DailyOperatingPlan = {
