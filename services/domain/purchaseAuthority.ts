@@ -1,3 +1,5 @@
+import { normalizeCanonicalPurchaseAuthorityProviderWindowFrom } from "./purchaseAuthorityProviderWindowFromIdentity"; // MISE-005UU
+
 export const PURCHASE_AUTHORITY_BLOCKER_CODES = [
   "inventory_count_missing",
   "inventory_count_stale",
@@ -106,6 +108,9 @@ export function normalizePurchaseAuthorityResult(value: unknown): PurchaseAuthor
     )
     : {};
   const supplierId = boundedString(evidencePayload.supplierId, 80);
+  const providerWindowFrom = normalizeCanonicalPurchaseAuthorityProviderWindowFrom(
+    evidencePayload.providerWindowFrom
+  );
 
   return {
     ready: payload.ready === true && blockers.length === 0 && Boolean(supplierId),
@@ -120,7 +125,7 @@ export function normalizePurchaseAuthorityResult(value: unknown): PurchaseAuthor
       countedAt: nullableString(evidencePayload.countedAt, 80),
       projectedQuantity: finiteNumber(evidencePayload.projectedQuantity),
       canonicalUnit: nullableString(evidencePayload.canonicalUnit, 20),
-      providerWindowFrom: nullableString(evidencePayload.providerWindowFrom, 20),
+      providerWindowFrom,
       providerWindowTo: nullableString(evidencePayload.providerWindowTo, 20),
       providerWindowCompletedAt: nullableString(evidencePayload.providerWindowCompletedAt, 80),
       recipeRevisions,
