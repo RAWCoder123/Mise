@@ -65,6 +65,25 @@ test("number, currency, and date helpers honor locale and restaurant settings", 
     }),
     "Jul 19"
   );
+  // Invalid / Unicode-padded IANA names must not invent a runtime-local calendar day.
+  // At 2026-07-20T01:00:00.000Z, America/New_York is still Jul 19; stripping the
+  // timezone on a UTC host previously invented Jul 20.
+  assert.equal(
+    formatLocalizedDate("en", "2026-07-20T01:00:00.000Z", {
+      month: "short",
+      day: "numeric",
+      timeZone: "\u2003America/New_York\u2003"
+    }),
+    "—"
+  );
+  assert.equal(
+    formatLocalizedDate("en", "2026-07-20T01:00:00.000Z", {
+      month: "short",
+      day: "numeric",
+      timeZone: "Not/A_Real_Zone"
+    }),
+    "—"
+  );
   assert.equal(formatLocalizedDate("en", "not-a-date"), "—");
 });
 
