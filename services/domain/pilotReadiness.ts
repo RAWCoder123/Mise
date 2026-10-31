@@ -7,6 +7,7 @@ import type {
   RestaurantEmailConnection,
   SupplierRecipient
 } from "../../types/mise";
+import { requireCanonicalPilotReadinessDomainRestaurantId } from "./pilotReadinessDomainRestaurantIdentity";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export type PilotReadinessStatus = "ready" | "attention" | "blocked" | "external";
@@ -59,8 +60,11 @@ const statusRank: Record<PilotReadinessStatus, number> = {
 };
 
 export function buildPilotReadiness(input: PilotReadinessInput): PilotReadiness {
-  const restaurantId = input.restaurantId.trim();
-  if (!restaurantId) throw new Error("Pilot readiness requires a restaurant id.");
+  // MISE-005UZ: pin domain restaurant workspace to ASCII C (see
+  // pilotReadinessDomainRestaurantIdentity).
+  const restaurantId = requireCanonicalPilotReadinessDomainRestaurantId(
+    input.restaurantId
+  );
   assertRestaurantScope(restaurantId, input);
 
   const generatedAt = new Date(input.generatedAt ?? Date.now()).toISOString();
