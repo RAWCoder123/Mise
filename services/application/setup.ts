@@ -14,6 +14,7 @@ import {
   requireSupplierDisplayName
 } from "../miseValidation";
 import { inventoryUnitsAreCompatible } from "../domain/inventoryUnits";
+import { presentationSetupInventoryUnavailableSupplierLabel } from "../domain/presentationSetupInventoryUnavailableSupplierLabelIdentity"; // MISE-005UX
 import { regenerateOperationalSignals } from "./recalculations";
 import { getMiseRepository } from "./repository";
 
@@ -81,7 +82,10 @@ export async function saveRestaurantSetup(
     const unit = draft.unit.trim() || "unit";
     const supplierReferenceId = requireSetupReferenceId(draft.supplierId, "supplier");
     if (!suppliersByReference.has(supplierReferenceId)) {
-      throw new Error(`${itemName} references an unavailable supplier.`);
+      // MISE-005UX: pin unavailable-supplier error labels to ASCII C; leave durable itemName trim alone (#679).
+      throw new Error(
+        `${presentationSetupInventoryUnavailableSupplierLabel(draft.name) || "Inventory item"} references an unavailable supplier.`
+      );
     }
     inventoryItemsByName.set(itemName.toLowerCase(), {
       restaurant_id: normalizedRestaurantId,
