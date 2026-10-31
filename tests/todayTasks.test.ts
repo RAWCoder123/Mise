@@ -190,10 +190,55 @@ test("classifies and sorts exact instants and local delivery dates in the restau
     "overdue",
     "the same date-only commitment is already past in UTC but still today in New York"
   );
+});
+
+test("fails closed when restaurant timezone is missing, invalid, or Unicode-padded", () => {
+  const today = task("today", { dueDate: "2026-07-18" });
+  const paddedTimeZone = "\u2003America/New_York\u2003";
+
+  // Inventing proof: with now=2026-07-19T03:30Z, America/New_York is still
+  // 2026-07-18 (today). dateKeyInTimeZone's pre-fix UTC fallback treated the
+  // padded IANA string as UTC and invented overdue for the same dueDate.
   assert.equal(
-    classifyOperationalTodayTaskTiming(today, { restaurantTimeZone: "Invalid/Timezone", now }),
-    "overdue",
-    "invalid timezones fall back deterministically to UTC"
+    classifyOperationalTodayTaskTiming(today, { restaurantTimeZone: "America/New_York", now }),
+    "today"
+  );
+  assert.throws(
+    () => classifyOperationalTodayTaskTiming(today, { restaurantTimeZone: paddedTimeZone, now }),
+    /Today tasks require a valid restaurant timezone/
+  );
+  assert.throws(
+    () => classifyOperationalTodayTaskTiming(today, { restaurantTimeZone: "Invalid/Timezone", now }),
+    /Today tasks require a valid restaurant timezone/
+  );
+  assert.throws(
+    () => classifyOperationalTodayTaskTiming(today, { restaurantTimeZone: "", now }),
+    /Today tasks require a restaurant timezone/
+  );
+  assert.throws(
+    () => classifyOperationalTodayTaskTiming(today, { restaurantTimeZone: "\u2003", now }),
+    /Today tasks require a restaurant timezone/
+  );
+  assert.throws(
+    () =>
+      deriveOperationalTodayTasks({
+        restaurantId,
+        restaurantTimeZone: paddedTimeZone,
+        inventoryOutlooks: [],
+        recommendations: [],
+        orders: [],
+        insights: [],
+        now
+      }),
+    /Today tasks require a valid restaurant timezone/
+  );
+  assert.throws(
+    () =>
+      sortOperationalTodayTasks([today, task("later", { dueDate: "2026-07-19" })], {
+        restaurantTimeZone: paddedTimeZone,
+        now
+      }),
+    /Today tasks require a valid restaurant timezone/
   );
 });
 

@@ -123,6 +123,7 @@ export function deriveOperationalTodayTasks(
 ): OperationalTodayTask[] {
   const restaurantId = input.restaurantId.trim();
   if (!restaurantId) throw new Error("A restaurant is required to derive Today tasks.");
+  requireRestaurantTimeZone(input.restaurantTimeZone);
 
   const includeCompleted = input.includeCompleted ?? false;
   const tasks: OperationalTodayTask[] = [];
@@ -515,6 +516,7 @@ export function classifyOperationalTodayTaskTiming(
   task: Pick<OperationalTodayTask, "dueAt" | "dueDate">,
   options: OperationalTodayTaskSortOptions
 ): OperationalTodayTaskTiming {
+  requireRestaurantTimeZone(options.restaurantTimeZone);
   const now = validNow(options.now);
   const dueSoonWindowMs = validDueSoonWindow(options.dueSoonWindowMs);
   const dueAt = utcInstant(task.dueAt);
@@ -794,6 +796,19 @@ function validDateKey(value: string | null | undefined): value is string {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
+function requireRestaurantTimeZone(timeZone: string) {
+  if (!timeZone.trim()) {
+    throw new Error("Today tasks require a restaurant timezone.");
+  }
+  try {
+    // Validate the raw IANA value. Do not Unicode-trim into a clean identity —
+    // padding that survives emptiness checks must fail closed, not invent UTC.
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Today tasks require a valid restaurant timezone.");
+  }
+}
+
 function dateKeyInTimeZone(date: Date, timeZone: string) {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
@@ -808,7 +823,8 @@ function dateKeyInTimeZone(date: Date, timeZone: string) {
     const day = values.get("day");
     if (year && month && day) return `${year}-${month}-${day}`;
   } catch {
-    // Invalid or unavailable timezones intentionally fall back to UTC below.
+    // Callers must fail closed via requireRestaurantTimeZone before this path.
+    // Retain UTC only as a last-resort defense if Intl rejects mid-format.
   }
   return date.toISOString().slice(0, 10);
 }
