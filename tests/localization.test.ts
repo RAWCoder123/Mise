@@ -84,3 +84,40 @@ test("relative and operational due-time helpers are deterministic and localized"
     "Tomorrow"
   );
 });
+
+test("due-time calendar labels fail closed on invalid restaurant timezones", () => {
+  // Near the Pacific day boundary: valid LA is still July 18 locally, so a July 19
+  // local due date is Tomorrow. Unicode-padded IANA used to throw through Intl and
+  // invent Today from the UTC calendar day.
+  const now = "2026-07-19T02:00:00.000Z";
+  const target = "2026-07-19T20:00:00.000Z";
+
+  assert.equal(
+    formatLocalizedDueTime("en", target, {
+      now,
+      timeZone: "America/Los_Angeles"
+    }),
+    "Tomorrow"
+  );
+  assert.equal(
+    formatLocalizedDueTime("en", target, {
+      now,
+      timeZone: "\u2003America/Los_Angeles\u2003"
+    }),
+    "—"
+  );
+  assert.equal(
+    formatLocalizedDueTime("es", target, {
+      now,
+      timeZone: "Not/A_Zone"
+    }),
+    "—"
+  );
+  assert.equal(
+    formatLocalizedDueTime("zh-Hans", target, {
+      now,
+      timeZone: ""
+    }),
+    "—"
+  );
+});
