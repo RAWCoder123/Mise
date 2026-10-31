@@ -314,6 +314,73 @@ test("rejects missing restaurant and invalid operating date", () => {
   );
 });
 
+test("operating plan fails closed on Unicode-padded or invalid restaurant timezones", () => {
+  // Em-space padding stays truthy through the emptiness gate. Without Intl
+  // validation, hourInTimeZone would silently fall back to UTC and invent
+  // before_lunch (UTC hour 13) instead of before_prep (America/New_York hour 9).
+  const inventingNow = new Date("2026-08-03T13:00:00.000Z");
+  const padded = `\u2003${timeZone}\u2003`;
+  assert.equal(padded.trim(), timeZone);
+  assert.equal(hourInTimeZone(inventingNow, timeZone), 9);
+  assert.equal(currentServiceWindow(9), "before_prep");
+  assert.equal(hourInTimeZone(inventingNow, padded), 13);
+  assert.equal(currentServiceWindow(13), "before_lunch");
+
+  assert.throws(
+    () =>
+      buildDailyOperatingPlan(
+        baseInput({ restaurantTimeZone: padded, tasks: [], now: inventingNow })
+      ),
+    /valid restaurant timezone/i
+  );
+  assert.throws(
+    () =>
+      buildDailyOperatingPlan(
+        baseInput({ restaurantTimeZone: "\u2003", tasks: [], now: inventingNow })
+      ),
+    /timezone/i
+  );
+  assert.throws(
+    () =>
+      buildDailyOperatingPlan(
+        baseInput({ restaurantTimeZone: "Not/A_Real_Zone", tasks: [], now: inventingNow })
+      ),
+    /valid restaurant timezone/i
+  );
+  assert.throws(
+    () =>
+      buildDailyOperatingPlan(
+        baseInput({ restaurantTimeZone: "", tasks: [], now: inventingNow })
+      ),
+    /timezone/i
+  );
+
+  const urgentSetup = manualTask({
+    id: "today:setup:setup:finish_setup",
+    source: { kind: "setup", id: "setup", status: "incomplete" },
+    title: "Finish setup",
+    detail: "Setup still incomplete.",
+    priority: "urgent",
+    action: {
+      intent: "finish_setup",
+      label: "Finish setup",
+      route: "/setup",
+      entityId: "setup"
+    },
+    requiredRole: "owner_admin",
+    completion: {
+      derivedFromSource: true,
+      canToggleDirectly: false,
+      reason: "Setup readiness remains incomplete."
+    }
+  });
+  const valid = buildDailyOperatingPlan(
+    baseInput({ tasks: [urgentSetup], now: inventingNow, operatingDate: "2026-08-03" })
+  );
+  assert.equal(valid.restaurantTimeZone, timeZone);
+  assert.equal(valid.items[0]?.serviceWindow, "before_prep");
+});
+
 function baseInput(
   overrides: Partial<BuildDailyOperatingPlanInput> & {
     tasks?: OperationalTodayTask[];
