@@ -30,7 +30,9 @@ export function buildSupplierSpendTrend(
   const pointLimit = typeof options.limit === "number" && Number.isFinite(options.limit)
     ? Math.max(1, Math.floor(options.limit))
     : 6;
-  const timeZone = options.timeZone ?? "UTC";
+  // Fail closed before toDateKeyInTimeZone can invent a UTC calendar day for
+  // omitted, empty, Unicode-padded, or otherwise invalid restaurant timezones.
+  const timeZone = requireRestaurantTimeZone(options.timeZone);
 
   const unitCostByItemId = new Map<string, number>();
   inventoryItems.forEach((item) => {
@@ -86,4 +88,22 @@ export function buildSupplierSpendTrend(
       date,
       spend: Math.round(spend * 100) / 100
     }));
+}
+
+/**
+ * Fail closed before `toDateKeyInTimeZone` can silently invent a UTC calendar
+ * day. Emptiness uses `.trim()` only as a Boolean gate; Intl validates the raw
+ * IANA value so Unicode padding cannot invent a usable restaurant timezone.
+ * Do not default omitted zones to `"UTC"`.
+ */
+function requireRestaurantTimeZone(timeZone: string | undefined): string {
+  if (typeof timeZone !== "string" || !timeZone.trim()) {
+    throw new Error("Supplier spend trend requires a restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Supplier spend trend requires a valid restaurant timezone.");
+  }
+  return timeZone;
 }

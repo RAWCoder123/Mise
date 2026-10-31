@@ -93,8 +93,52 @@ test("supplier spend trend ignores unpriced lines and foreign restaurants", () =
       recommendation("o1", "missing_item", 5),
       { ...recommendation("o1", "item_a", 2), restaurant_id: "other" }
     ],
-    [inventory("item_a", 10)]
+    [inventory("item_a", 10)],
+    { timeZone: "UTC" }
   );
 
   assert.deepEqual(points, []);
+});
+
+test("supplier spend trend fails closed on omitted, Unicode-padded, or invalid restaurant timezones", () => {
+  // At 2026-10-31T22:30:00.000Z a valid Asia/Tokyo service date is 2026-11-01.
+  // Omitted / invalid / em-space-padded zones previously invented UTC 2026-10-31
+  // via `options.timeZone ?? "UTC"` and `toDateKeyInTimeZone`'s catch fallback.
+  const when = "2026-10-31T22:30:00.000Z";
+  const priced = [
+    order("o1", "sent", when)
+  ] as const;
+  const lines = [recommendation("o1", "item_a", 2)];
+  const items = [inventory("item_a", 10)];
+
+  const tokyo = buildSupplierSpendTrend(restaurantId, priced, lines, items, {
+    timeZone: "Asia/Tokyo"
+  });
+  assert.deepEqual(tokyo, [{ date: "2026-11-01", spend: 20 }]);
+
+  const padded = "\u2003Asia/Tokyo\u2003";
+  assert.equal(padded.trim(), "Asia/Tokyo");
+  assert.throws(
+    () => buildSupplierSpendTrend(restaurantId, priced, lines, items, { timeZone: padded }),
+    /valid restaurant timezone/i
+  );
+  assert.throws(
+    () => buildSupplierSpendTrend(restaurantId, priced, lines, items, { timeZone: "\u2003" }),
+    /timezone/i
+  );
+  assert.throws(
+    () => buildSupplierSpendTrend(restaurantId, priced, lines, items, { timeZone: "" }),
+    /timezone/i
+  );
+  assert.throws(
+    () => buildSupplierSpendTrend(restaurantId, priced, lines, items),
+    /timezone/i
+  );
+  assert.throws(
+    () =>
+      buildSupplierSpendTrend(restaurantId, priced, lines, items, {
+        timeZone: "Not/A_Real_Zone"
+      }),
+    /valid restaurant timezone/i
+  );
 });
