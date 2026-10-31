@@ -132,8 +132,9 @@ export function formatLocalizedDate(
   try {
     return new Intl.DateTimeFormat(intlLocaleFor(locale), options).format(date);
   } catch {
-    const { timeZone: _invalidTimeZone, ...safeOptions } = options;
-    return new Intl.DateTimeFormat(intlLocaleFor(locale), safeOptions).format(date);
+    // Never strip an invalid timeZone and reformat in the host zone — that
+    // invents a wrong calendar day near timezone boundaries. Fail closed.
+    return "—";
   }
 }
 
