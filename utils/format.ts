@@ -25,7 +25,17 @@ export function toDateKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Restaurant-local calendar day for operating-date math.
+ *
+ * Invalid, empty, or Unicode-padded IANA names must fail closed. Falling back
+ * to the UTC calendar day invents the wrong operating date near timezone
+ * boundaries (for example Asia/Tokyo Nov 1 vs UTC Oct 31). Do not Unicode-trim
+ * into a clean IANA identity — Intl validates the raw value, matching waste
+ * analysis / supplier reliability and the domain timezone fail-closed tips.
+ */
 export function toDateKeyInTimeZone(date: Date, timeZone: string) {
+  requireOperatingDateTimeZone(timeZone);
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone,
@@ -37,9 +47,24 @@ export function toDateKeyInTimeZone(date: Date, timeZone: string) {
     const year = values.get("year");
     const month = values.get("month");
     const day = values.get("day");
-    return year && month && day ? `${year}-${month}-${day}` : toDateKey(date);
+    if (year && month && day) return `${year}-${month}-${day}`;
   } catch {
-    return toDateKey(date);
+    // requireOperatingDateTimeZone already validated the IANA name. Incomplete
+    // formatToParts results must not invent a UTC calendar day.
+  }
+  throw new Error("Operating date requires a valid restaurant timezone.");
+}
+
+function requireOperatingDateTimeZone(timeZone: string) {
+  if (!timeZone.trim()) {
+    throw new Error("Operating date requires a restaurant timezone.");
+  }
+  try {
+    // Validate the raw IANA value. Do not Unicode-trim into a clean identity —
+    // padding that survives emptiness checks must fail closed, not invent UTC.
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Operating date requires a valid restaurant timezone.");
   }
 }
 

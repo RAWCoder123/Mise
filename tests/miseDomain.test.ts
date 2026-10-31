@@ -102,7 +102,11 @@ test("restaurant operating dates follow the restaurant timezone", () => {
   const instant = new Date("2026-07-13T02:00:00.000Z");
   assert.equal(toDateKey(instant), "2026-07-13");
   assert.equal(toDateKeyInTimeZone(instant, "America/Los_Angeles"), "2026-07-12");
-  assert.equal(toDateKeyInTimeZone(instant, "Invalid/Timezone"), "2026-07-13");
+  // Invalid IANA names must fail closed — UTC fallback invented the wrong day.
+  assert.throws(
+    () => toDateKeyInTimeZone(instant, "Invalid/Timezone"),
+    /Operating date requires a valid restaurant timezone/
+  );
 });
 
 test("demo sales use the restaurant date across the UTC date boundary", () => {
